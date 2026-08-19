@@ -271,10 +271,32 @@ function readKerning(font: import("opentype.js").Font, glyphs: Glyph[]): KernPai
   return pairs;
 }
 
+/**
+ * Read a name-table entry.
+ *
+ * opentype.js groups names by platform, so the useful values live under
+ * `names.windows` and `names.macintosh` rather than on `names` itself. Windows
+ * is preferred because it is the record that modern systems read, with the
+ * Macintosh record as the fallback for fonts that only carry one.
+ */
 function readName(font: import("opentype.js").Font, key: string): string {
-  const entry = font.names?.[key];
-  if (!entry) return "";
-  return entry.en ?? Object.values(entry)[0] ?? "";
+  const names = font.names as unknown as Record<string, Record<string, Record<string, string>>>;
+  if (!names) return "";
+
+  for (const platform of ["windows", "macintosh"]) {
+    const entry = names[platform]?.[key];
+    if (entry) {
+      const value = entry.en ?? Object.values(entry)[0];
+      if (value) return value;
+    }
+  }
+  // Older builds put the entries directly on `names`.
+  const direct = names[key] as unknown as Record<string, string> | undefined;
+  if (direct && typeof direct === "object") {
+    const value = direct.en ?? Object.values(direct)[0];
+    if (typeof value === "string") return value;
+  }
+  return "";
 }
 
 function uniqueName(name: string, taken: Set<string>): string {

@@ -16,7 +16,14 @@ import { contourSegments, contoursToPath2D } from "@/font/geometry";
 import { classifyNodes } from "@/font/quadratic";
 import { resolveGlyphContours } from "@/font/transform";
 import type { Contour, Glyph, GlyphNode, Typeface, Vec2 } from "@/font/types";
-import { prepareCanvas, readToken, toFontX, toFontY, type GlyphView } from "@/components/glyph-render";
+import {
+  applyView,
+  prepareCanvas,
+  readToken,
+  toFontX,
+  toFontY,
+  type GlyphView,
+} from "@/components/glyph-render";
 import { nodeKey, store, useAppState, type NodeRef } from "@/state/useStore";
 
 /** How close a click has to land, in screen pixels, to grab a node. */
@@ -112,8 +119,8 @@ export function GlyphEditorView(): React.JSX.Element {
     const canvasPoint = pointerPosition(event);
     event.currentTarget.setPointerCapture(event.pointerId);
 
-    // Middle button, or space held, pans the view.
-    if (event.button === 1 || event.shiftKey === false && event.altKey) {
+    // Middle button or alt-drag pans the view.
+    if (event.button === 1 || event.altKey) {
       dragRef.current = { kind: "pan", from: canvasPoint, startPan: pan };
       return;
     }
@@ -393,17 +400,7 @@ function drawContours(
   options: { fill: string },
 ): void {
   context.save();
-  // prepareCanvas already scaled the context for the device pixel ratio, and
-  // setTransform replaces rather than composes, so fold that ratio back in here.
-  const ratio = Math.min(window.devicePixelRatio || 1, 2);
-  context.setTransform(
-    view.scale * ratio,
-    0,
-    0,
-    -view.scale * ratio,
-    view.originX * ratio,
-    view.originY * ratio,
-  );
+  applyView(context, view);
   context.fillStyle = options.fill;
   context.fill(contoursToPath2D(contours), "nonzero");
   context.restore();

@@ -50,7 +50,11 @@ declare module "opentype.js" {
       hhea?: Record<string, number>;
       name?: Record<string, Record<string, string>>;
     };
-    names: Record<string, Record<string, string>>;
+    /**
+     * Name-table entries grouped by platform ("windows", "macintosh"), then by
+     * name key, then by language tag.
+     */
+    names: Record<string, Record<string, Record<string, string>>>;
     charToGlyph(char: string): Glyph;
     charToGlyphIndex(char: string): number;
     getKerningValue(left: Glyph, right: Glyph): number;

@@ -27,6 +27,15 @@ suite("export pipeline", () => {
     expect(capitalA!.advanceWidth).toBeGreaterThan(0);
   });
 
+  it("reads the real family name rather than falling back to the filename", async () => {
+    const { typeface } = await importFont(source!, "DejaVuSans.ttf");
+    // opentype.js groups name entries by platform. Reading the wrong level
+    // silently yields the filename, which would then be written into exports.
+    expect(typeface.meta.familyName).toBe("DejaVu Sans");
+    expect(typeface.meta.styleName).toBe("Book");
+    expect(typeface.meta.familyName).not.toBe("DejaVuSans");
+  });
+
   it("writes a TrueType file fontTools accepts, keeping outlines and kerning", async () => {
     const { typeface } = await importFont(source!, "DejaVuSans.ttf");
     const before = inspectFont(source!);

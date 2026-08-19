@@ -38,8 +38,32 @@ export function fitEmSquare(
   return { scale, originX: width / 2, originY };
 }
 
+/**
+ * Canvas backing-store scale. Capped at 2, beyond which the extra pixels cost
+ * more than they show.
+ */
+export function deviceRatio(): number {
+  return Math.min(typeof window === "undefined" ? 1 : window.devicePixelRatio || 1, 2);
+}
+
+/**
+ * Put the context into font-unit space: y increases upward and the origin sits
+ * on the baseline.
+ *
+ * setTransform replaces rather than composes, so the device pixel ratio that
+ * prepareCanvas applied has to be folded back in here. Leaving it out draws
+ * everything at half size on a high-resolution display.
+ */
 export function applyView(context: CanvasRenderingContext2D, view: GlyphView): void {
-  context.setTransform(view.scale, 0, 0, -view.scale, view.originX, view.originY);
+  const ratio = deviceRatio();
+  context.setTransform(
+    view.scale * ratio,
+    0,
+    0,
+    -view.scale * ratio,
+    view.originX * ratio,
+    view.originY * ratio,
+  );
 }
 
 /** Font units to canvas pixels. */
@@ -69,7 +93,6 @@ export function drawGlyph(
   if (contours.length === 0) return;
 
   context.save();
-  context.translate((options.offsetX ?? 0) * view.scale, 0);
   applyView(context, {
     ...view,
     originX: view.originX + (options.offsetX ?? 0) * view.scale,
@@ -94,7 +117,7 @@ export function prepareCanvas(
   width: number,
   height: number,
 ): CanvasRenderingContext2D | null {
-  const ratio = Math.min(window.devicePixelRatio || 1, 2);
+  const ratio = deviceRatio();
   const pixelWidth = Math.max(1, Math.round(width * ratio));
   const pixelHeight = Math.max(1, Math.round(height * ratio));
   if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {

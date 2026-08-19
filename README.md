@@ -108,3 +108,23 @@ src/ui/       the Toolcraft component kit, see NOTICE.md
 The interface components in `src/ui/` come from Toolcraft and carry the
 Toolcraft Designer License, which does not permit selling this application as a
 product. Everything in `src/font/` is original work. See `NOTICE.md`.
+
+## Moving this into its own repository
+
+Typeforge is self-contained: it has its own `package.json`, its own CI workflow,
+and no imports that reach outside `typeforge/`. Nothing in the Flutter app at
+the top level of this repository refers to it.
+
+To split it out while keeping the history:
+
+```bash
+git subtree split --prefix=typeforge -b typeforge-only
+# then, in a fresh clone of the new repository
+git pull <path-to-this-repo> typeforge-only
+```
+
+Afterwards, move `.github/workflows/typeforge.yml` to `.github/workflows/ci.yml`
+in the new repository and delete the `paths:` filters and the
+`working-directory: typeforge` default, since everything will be at the root.
+
+This is the same route Beat Studio took out of this repository.
