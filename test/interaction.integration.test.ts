@@ -91,18 +91,36 @@ suite("controls used together", { timeout: FONT_SUITE_TIMEOUT }, () => {
     }
   });
 
-  it("leaves a letter alone when its bar meets a curve rather than a stem", async () => {
+  /**
+   * A bar whose ends meet curves moves too, by stretching the short curves that
+   * join it to the bowl. An exact slide is often unavailable: e's bar ends at
+   * (305,516) on a curve running down to (420,227), so there is no point on it
+   * at any greater height. Only the bar's own points move either way.
+   */
+  it("moves a bar whose ends meet curves, without disturbing the bowl", async () => {
     const typeface = await open();
     for (const name of ["e", "B", "P", "R"]) {
       const before = resolve(typeface, name, {});
-      const after = resolve(typeface, name, { crossbar: 150 });
-      const moved = before.flatMap((contour, ci) =>
-        contour.nodes.filter((node, ni) => {
-          const now = after[ci].nodes[ni].point;
-          return now.x !== node.point.x || now.y !== node.point.y;
-        }),
-      );
-      expect(moved, `${name} should not have moved`).toHaveLength(0);
+      const barBefore = findCrossbar(before)!;
+
+      for (const shift of [-100, 100]) {
+        const after = resolve(typeface, name, { crossbar: shift });
+        const moved = before.flatMap((contour, ci) =>
+          contour.nodes.filter((node, ni) => {
+            const now = after[ci].nodes[ni].point;
+            return now.x !== node.point.x || now.y !== node.point.y;
+          }),
+        );
+        // The bar's two edges and nothing else.
+        expect(moved, `${name} moved too much at ${shift}`).toHaveLength(4);
+        expect(Math.round(findCrossbar(after)!.bottom - barBefore.bottom)).toBe(shift);
+
+        // The letter keeps its height: the bowl is not dragged with the bar.
+        const was = contoursBounds(before);
+        const now = contoursBounds(after);
+        expect(now.yMax).toBeCloseTo(was.yMax, 3);
+        expect(now.yMin).toBeCloseTo(was.yMin, 3);
+      }
     }
   });
 

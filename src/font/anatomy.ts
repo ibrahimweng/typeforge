@@ -29,7 +29,13 @@
  * it, because that stem exists only as the arch coming down.
  */
 
-import { contourSegments, contoursBounds } from "./geometry";
+import {
+  contourSegments,
+  contoursBounds,
+  cubicParametersAtY,
+  splitCubic,
+  type Segment,
+} from "./geometry";
 import type { Contour, GlyphNode, Vec2 } from "./types";
 
 /** How far from horizontal a segment may run and still count as one. */
@@ -100,28 +106,110 @@ export function findCrossbar(contours: Contour[]): Crossbar | null {
   return best;
 }
 
+/** What one point of a bar's edge becomes after the move. */
+interface NodeEdit {
+  point: Vec2;
+  handleIn?: Vec2 | null;
+  handleOut?: Vec2 | null;
+}
+
+/**
+ * Where a bar's end lands after moving, and what it does to what it is
+ * attached to.
+ *
+ * A straight attachment is easy: slide along it, which on a vertical stem is
+ * straight up and on the diagonal of an A is along the diagonal.
+ *
+ * A curved attachment is the interesting one, and translating the point was
+ * never going to work: it drags the end of the curve while the far end and the
+ * handles stay put, which is what tore the bowl of an e. Instead the curve is
+ * solved for the height wanted and split there. The point lands exactly on the
+ * curve, and the piece that remains is the original curve's own tail rather
+ * than an approximation of it, so nothing outside the join is disturbed. The
+ * bar naturally becomes shorter or longer as the bowl narrows or widens, which
+ * is what the letter should do.
+ *
+ * When the curve does not reach that height, the end is moved to it anyway and
+ * the curve stretches to follow, carrying its own handle with it and leaving
+ * the far end alone. That is the ordinary result of dragging a point in any
+ * editor. It is needed because an exact slide is often not available: the bar
+ * of an e ends at (305,516) on a curve running down to (420,227), so raising it
+ * has nowhere on that curve to land -- the corner is the highest the aperture
+ * reaches. The two joining curves are reshaped rather than reproduced, which is
+ * visible only at large moves; the bowl's outer shape is untouched either way.
+ */
+function slideAlong(
+  attachment: Segment,
+  end: "from" | "to",
+  point: Vec2,
+  shift: number,
+): { here: NodeEdit; far: Partial<NodeEdit> } | null {
+  const wanted = point.y + shift;
+
+  if (attachment.kind === "line") {
+    const dx = attachment.to.x - attachment.from.x;
+    const dy = attachment.to.y - attachment.from.y;
+    // A vertical edge gives no sideways travel; a diagonal gives exactly
+    // enough to stay on it.
+    const alongX = Math.abs(dy) < 1e-6 ? 0 : (dx / dy) * shift;
+    return { here: { point: { x: point.x + alongX, y: wanted } }, far: {} };
+  }
+
+  const { from, c1, c2, to } = attachment;
+  const parameters = cubicParametersAtY(from, c1, c2, to, wanted).filter((t) => t > 0 && t < 1);
+  if (parameters.length === 0) {
+    // No point on this curve sits at the height wanted, so stretch it instead.
+    const moved = { x: point.x, y: wanted };
+    return end === "from"
+      ? { here: { point: moved, handleOut: { x: c1.x, y: c1.y + shift } }, far: {} }
+      : { here: { point: moved, handleIn: { x: c2.x, y: c2.y + shift } }, far: {} };
+  }
+  // Nearest to the end being moved, so a curve doubling back cannot send the
+  // bar to the far side of it.
+  const t = parameters.reduce((best, candidate) =>
+    Math.abs(candidate - (end === "from" ? 0 : 1)) < Math.abs(best - (end === "from" ? 0 : 1))
+      ? candidate
+      : best,
+  );
+
+  const [left, right] = splitCubic(from, c1, c2, to, t);
+  if (end === "from") {
+    // The bar's end starts this curve, so keep the far portion.
+    return {
+      here: { point: right[0], handleOut: right[1] },
+      far: { handleIn: right[2] },
+    };
+  }
+  // The curve arrives at the bar's end, so keep the near portion.
+  return {
+    here: { point: left[3], handleIn: left[2] },
+    far: { handleOut: left[1] },
+  };
+}
+
 /**
  * Move the crossbar up or down.
  *
- * Only the bar's own two edges move, and each end slides along whatever it is
- * attached to, so the bar stays joined to the strokes it crosses. On an A,
- * whose sides are diagonal, the ends travel along the diagonals rather than
- * straight up, which is the difference between moving the bar and detaching
- * it.
+ * Only the bar's own two edges move, and each end follows whatever it is
+ * attached to -- along a stem, down the diagonal of an A, or around the bowl of
+ * an e. Selecting points by height alone was the first version of this, and it
+ * dragged whatever else happened to lie at that height: the bowl of an e lost
+ * three curve points to it, and B, P and R one each.
  *
- * Nothing moves at all unless every end sits on a straight segment. Selecting
- * points by height alone was the first version of this, and it dragged
- * whatever else happened to lie at that height: the bowl of an e lost three
- * curve points to it, and B, P and R one each. A bar whose ends meet a curve
- * is left alone rather than torn away from it.
+ * Nothing moves unless every end can be placed, so a bar is never left
+ * half-attached.
  */
 export function shiftCrossbar(contours: Contour[], shift: number): Contour[] {
   if (shift === 0) return contours;
   const bar = findCrossbar(contours);
   if (!bar) return contours;
 
-  // Where each node has to go. Empty means there was nothing safe to move.
-  const moves = new Map<string, Vec2>();
+  const edits = new Map<string, NodeEdit>();
+  const merge = (ci: number, ni: number, edit: Partial<NodeEdit>, fallback: Vec2): void => {
+    const key = `${ci}:${ni}`;
+    const existing = edits.get(key);
+    edits.set(key, { point: fallback, ...existing, ...edit } as NodeEdit);
+  };
 
   for (let ci = 0; ci < contours.length; ci++) {
     const contour = contours[ci];
@@ -133,40 +221,38 @@ export function shiftCrossbar(contours: Contour[], shift: number): Contour[] {
       if (segment.kind !== "line") continue;
       if (!isHorizontal(segment.from, segment.to)) continue;
       const y = (segment.from.y + segment.to.y) / 2;
-      const onBar =
-        Math.abs(y - bar.bottom) <= SAME_LEVEL || Math.abs(y - bar.top) <= SAME_LEVEL;
-      if (!onBar) continue;
+      if (Math.abs(y - bar.bottom) > SAME_LEVEL && Math.abs(y - bar.top) > SAME_LEVEL) continue;
 
-      // The two nodes this edge runs between, and the segment beyond each.
-      for (const [nodeIndex, neighbour] of [
-        [i, segments[(i - 1 + segments.length) % segments.length]],
-        [(i + 1) % count, segments[(i + 1) % segments.length]],
-      ] as const) {
-        // A bar whose end meets a curve cannot be slid without deforming it.
-        if (neighbour.kind !== "line") return contours;
+      const startIndex = i;
+      const endIndex = (i + 1) % count;
+      const before = segments[(i - 1 + segments.length) % segments.length];
+      const after = segments[(i + 1) % segments.length];
 
-        const dx = neighbour.to.x - neighbour.from.x;
-        const dy = neighbour.to.y - neighbour.from.y;
-        // Slide along the attachment. A vertical edge gives no sideways travel;
-        // a diagonal one gives exactly enough to stay on it.
-        const alongX = Math.abs(dy) < 1e-6 ? 0 : (dx / dy) * shift;
-        const node = contour.nodes[nodeIndex];
-        moves.set(`${ci}:${nodeIndex}`, {
-          x: node.point.x + alongX,
-          y: node.point.y + shift,
-        });
-      }
+      // The edge's own two points, each following the segment beyond it.
+      const startSlide = slideAlong(before, "to", contour.nodes[startIndex].point, shift);
+      const endSlide = slideAlong(after, "from", contour.nodes[endIndex].point, shift);
+      if (!startSlide || !endSlide) continue;
+
+      merge(ci, startIndex, startSlide.here, contour.nodes[startIndex].point);
+      merge(ci, (startIndex - 1 + count) % count, startSlide.far, contour.nodes[(startIndex - 1 + count) % count].point);
+      merge(ci, endIndex, endSlide.here, contour.nodes[endIndex].point);
+      merge(ci, (endIndex + 1) % count, endSlide.far, contour.nodes[(endIndex + 1) % count].point);
     }
   }
 
-  if (moves.size === 0) return contours;
+  if (edits.size === 0) return contours;
 
   return contours.map((contour, ci) => ({
     closed: contour.closed,
     nodes: contour.nodes.map((node, ni) => {
-      const to = moves.get(`${ci}:${ni}`);
-      if (!to) return node;
-      return moveNode(node, to.x - node.point.x, to.y - node.point.y);
+      const edit = edits.get(`${ci}:${ni}`);
+      if (!edit) return node;
+      return {
+        ...node,
+        point: edit.point,
+        handleIn: edit.handleIn !== undefined ? edit.handleIn : node.handleIn,
+        handleOut: edit.handleOut !== undefined ? edit.handleOut : node.handleOut,
+      };
     }),
   }));
 }

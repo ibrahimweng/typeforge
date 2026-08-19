@@ -14,7 +14,12 @@
  * something drawn here.
  */
 
-import { contourSegments, contoursBounds, type Segment } from "./geometry";
+import {
+  contourSegments,
+  contoursBounds,
+  cubicParametersAtY,
+  type Segment,
+} from "./geometry";
 import { classifyContours } from "./outline";
 import type { Contour } from "./types";
 
@@ -54,90 +59,12 @@ function collectCrossings(segment: Segment, y: number, out: number[]): void {
   }
 
   const { from, c1, c2, to } = segment;
-  for (const raw of cubicRootsForY(from.y, c1.y, c2.y, to.y, y)) {
-    const t = clampParameter(raw);
-    if (t === null) continue;
+  for (const t of cubicParametersAtY(from, c1, c2, to, y)) {
     const u = 1 - t;
     out.push(
       u * u * u * from.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * to.x,
     );
   }
-}
-
-/** Solve the cubic for the parameters where the curve reaches y. */
-function cubicRootsForY(p0: number, p1: number, p2: number, p3: number, y: number): number[] {
-  // Bezier basis rearranged into at^3 + bt^2 + ct + d.
-  const a = -p0 + 3 * p1 - 3 * p2 + p3;
-  const b = 3 * p0 - 6 * p1 + 3 * p2;
-  const c = -3 * p0 + 3 * p1;
-  const d = p0 - y;
-  return solveCubic(a, b, c, d);
-}
-
-const EPSILON = 1e-9;
-
-/**
- * How close to an endpoint a root has to be to count as sitting on it.
- *
- * A ray cast at exactly the height of an on-curve point should cross there, but
- * solving the cubic for that point can land a hair either side of the interval:
- * a root that is mathematically zero arrives as -1e-9 and a strict t >= 0 drops
- * it, losing a crossing and leaving an odd number behind, which then pairs the
- * remaining ones wrongly and reports nonsense widths. Flat-topped letters put
- * nodes on round numbers, so rays land on them often.
- */
-const PARAMETER_TOLERANCE = 1e-7;
-
-/**
- * Fit a root into the half-open interval a segment owns.
- *
- * Each shared endpoint belongs to exactly one of the two segments that meet
- * there -- the one starting at it -- so that a crossing through a node is
- * counted once rather than twice or not at all.
- */
-function clampParameter(t: number): number | null {
-  if (t > -PARAMETER_TOLERANCE && t < PARAMETER_TOLERANCE) return 0;
-  if (Math.abs(t - 1) < PARAMETER_TOLERANCE) return null;
-  if (t < 0 || t > 1) return null;
-  return t;
-}
-
-function solveCubic(a: number, b: number, c: number, d: number): number[] {
-  if (Math.abs(a) < EPSILON) return solveQuadratic(b, c, d);
-
-  // Depressed cubic t^3 + pt + q, via the standard substitution.
-  const bn = b / a;
-  const cn = c / a;
-  const dn = d / a;
-  const shift = bn / 3;
-  const p = cn - (bn * bn) / 3;
-  const q = (2 * bn * bn * bn) / 27 - (bn * cn) / 3 + dn;
-  const discriminant = (q * q) / 4 + (p * p * p) / 27;
-
-  if (discriminant > EPSILON) {
-    const root = Math.sqrt(discriminant);
-    return [Math.cbrt(-q / 2 + root) + Math.cbrt(-q / 2 - root) - shift];
-  }
-  if (Math.abs(discriminant) <= EPSILON) {
-    const u = Math.cbrt(-q / 2);
-    return [2 * u - shift, -u - shift];
-  }
-  // Three real roots: the trigonometric form avoids complex arithmetic.
-  const r = Math.sqrt(-(p * p * p) / 27);
-  const phi = Math.acos(Math.min(1, Math.max(-1, -q / (2 * r))));
-  const m = 2 * Math.cbrt(r);
-  return [0, 1, 2].map((k) => m * Math.cos((phi + 2 * Math.PI * k) / 3) - shift);
-}
-
-function solveQuadratic(a: number, b: number, c: number): number[] {
-  if (Math.abs(a) < EPSILON) {
-    if (Math.abs(b) < EPSILON) return [];
-    return [-c / b];
-  }
-  const discriminant = b * b - 4 * a * c;
-  if (discriminant < 0) return [];
-  const root = Math.sqrt(discriminant);
-  return [(-b + root) / (2 * a), (-b - root) / (2 * a)];
 }
 
 /**
@@ -148,13 +75,16 @@ function solveQuadratic(a: number, b: number, c: number): number[] {
  * used on -- one ray across n, o, H, O -- the two readings agree, and pairing
  * needs no winding information.
  */
+/** Narrower than this and a run of ink is rounding rather than a stroke. */
+const HAIRLINE = 1e-9;
+
 export function inkSpans(contours: Contour[], y: number): Span[] {
   const crossings = horizontalCrossings(contours, y);
   const spans: Span[] = [];
   for (let i = 0; i + 1 < crossings.length; i += 2) {
     const start = crossings[i];
     const end = crossings[i + 1];
-    if (end - start > EPSILON) spans.push({ start, end, width: end - start });
+    if (end - start > HAIRLINE) spans.push({ start, end, width: end - start });
   }
   return spans;
 }

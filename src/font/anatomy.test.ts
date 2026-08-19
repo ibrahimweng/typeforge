@@ -202,3 +202,84 @@ describe("shiftShoulders", () => {
     expect(shiftShoulders([ARCH], 0)[0]).toBe(ARCH);
   });
 });
+
+describe("a crossbar attached to curves", () => {
+  /**
+   * A bar whose lower edge meets the letter on curves, as an e's does.
+   *
+   * The curves either side of that edge run downward from it, so no point on
+   * either sits above y=300 and there is nothing to slide along. On a real e
+   * the bar ends at (305,516) on a curve dropping to (420,227), which is the
+   * same situation.
+   */
+  const OUTER: Contour = {
+    closed: true,
+    nodes: [
+      { point: { x: 0, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+      { point: { x: 0, y: 300 }, handleIn: { x: 0, y: 150 }, handleOut: null, type: "corner" },
+      { point: { x: 900, y: 300 }, handleIn: null, handleOut: { x: 900, y: 150 }, type: "corner" },
+      { point: { x: 900, y: 1200 }, handleIn: null, handleOut: null, type: "corner" },
+      { point: { x: 0, y: 1200 }, handleIn: null, handleOut: null, type: "corner" },
+    ],
+  };
+  const COUNTER = polygon([
+    { x: 200, y: 600 },
+    { x: 700, y: 600 },
+    { x: 700, y: 900 },
+    { x: 200, y: 900 },
+  ]);
+  const SHAPE = [OUTER, COUNTER];
+
+  it("finds the bar between the curved edge and the counter", () => {
+    const bar = findCrossbar(SHAPE)!;
+    expect(bar.bottom).toBeCloseTo(300, 6);
+    expect(bar.top).toBeCloseTo(600, 6);
+  });
+
+  it("moves the bar even where no point on the curve sits at that height", () => {
+    const moved = shiftCrossbar(SHAPE, 120);
+    expect(moved[0].nodes[1].point.y).toBeCloseTo(420, 6);
+    expect(moved[0].nodes[2].point.y).toBeCloseTo(420, 6);
+  });
+
+  /**
+   * The two ends of this bar take different routes, which is the whole point.
+   *
+   * On the left the curve runs (0,0) to (0,300) and never reaches 420, so the
+   * end is moved there and the curve stretches after it, its handle travelling
+   * by the same amount. On the right the curve runs (900,300) to (900,1200) and
+   * passes through 420 at t=0.29, so that end slides exactly along it and the
+   * curve is split rather than reshaped.
+   */
+  it("stretches the curve that cannot reach, and slides along the one that can", () => {
+    const moved = shiftCrossbar(SHAPE, 120);
+
+    // Stretched: the handle moved with the point.
+    expect(moved[0].nodes[1].handleIn!.y).toBeCloseTo(270, 6);
+
+    // Slid: the point sits on the curve that was already there, at 420, and the
+    // handle is the split's own rather than the old one carried up.
+    expect(moved[0].nodes[2].point.y).toBeCloseTo(420, 6);
+    expect(moved[0].nodes[2].handleOut!.y).not.toBeCloseTo(270, 6);
+    expect(moved[0].nodes[2].handleOut!.y).toBeGreaterThan(420);
+  });
+
+  it("leaves the rest of the letter where it was", () => {
+    const moved = shiftCrossbar(SHAPE, 120);
+    expect(moved[0].nodes[0].point).toEqual({ x: 0, y: 0 });
+    expect(moved[0].nodes[3].point).toEqual({ x: 900, y: 1200 });
+    expect(moved[0].nodes[4].point).toEqual({ x: 0, y: 1200 });
+  });
+
+  it("keeps the letter the same height", () => {
+    const before = contoursBounds(SHAPE);
+    const after = contoursBounds(shiftCrossbar(SHAPE, 120));
+    expect(after.yMin).toBeCloseTo(before.yMin, 6);
+    expect(after.yMax).toBeCloseTo(before.yMax, 6);
+  });
+
+  it("moves the bar the other way just as readily", () => {
+    const moved = shiftCrossbar(SHAPE, -120);
+    expect(moved[0].nodes[1].point.y).toBeCloseTo(180, 6);
+  });
+});
