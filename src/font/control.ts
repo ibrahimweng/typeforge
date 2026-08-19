@@ -248,6 +248,12 @@ function fitParams(
 export function deriveParams(
   baseline: ControlReadings,
   current: ControlReadings,
+  /**
+   * The control letter's outline **as it was when the baseline was taken**, not
+   * as it is now. The fit works by applying candidate parameters to the old
+   * shape and comparing against the new measurements, so handing it the edited
+   * outline asks it to fit the target to itself and it derives nothing at all.
+   */
   outlineFor: (name: string) => Contour[] | null = () => null,
 ): Derivation {
   const changes: ControlChange[] = [];

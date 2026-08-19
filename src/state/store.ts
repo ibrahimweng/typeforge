@@ -13,6 +13,13 @@
 
 import { buildAccents, deriveAnchors, suggestAnchors, looksLikeMark } from "@/font/accents";
 import { dependentsOf } from "@/font/composite";
+import {
+  deriveParams,
+  isControlGlyph,
+  readControls,
+  type ControlChange,
+  type ControlReadings,
+} from "@/font/control";
 import { importFont } from "@/font/parse";
 import { effectiveParams } from "@/font/transform";
 import {
@@ -20,6 +27,7 @@ import {
   type Anchor,
   emptyTypeface,
   type Glyph,
+  type Contour,
   type GlyphParams,
   type KernClass,
   type KernPair,
@@ -56,6 +64,11 @@ export interface AppState {
   canRedo: boolean;
   /** Bumped whenever the document changes, so views can memoise against it. */
   revision: number;
+  /**
+   * What the last edit to a control letter pushed out to the rest of the font,
+   * so the change can be shown rather than just silently happening.
+   */
+  lastDerivation: ControlChange[];
 }
 
 interface HistoryEntry {
@@ -67,6 +80,16 @@ interface HistoryEntry {
 const MAX_HISTORY = 200;
 
 class Store {
+  /** The control letters as the font was opened, never updated afterwards. */
+  private controlBaseline: ControlReadings | null = null;
+  /**
+   * Their outlines at that same moment, kept because the fit needs the shape it
+   * is fitting from. Once a letter is edited the old outline is gone from the
+   * document, and fitting the edited shape against its own measurements derives
+   * nothing.
+   */
+  private controlOutlines = new Map<string, Contour[]>();
+
   private state: AppState = {
     typeface: null,
     fileName: "",
@@ -78,6 +101,7 @@ class Store {
     search: "",
     previewText: "Hamburgefonstiv",
     status: null,
+    lastDerivation: [],
     busy: false,
     canUndo: false,
     canRedo: false,
@@ -117,6 +141,10 @@ class Store {
       const { typeface, warnings } = await importFont(bytes, fileName);
       this.undoStack = [];
       this.redoStack = [];
+      // The control letters as they arrived. Every later derivation compares
+      // against this rather than against the previous edit, so editing n twice
+      // expresses the total change instead of compounding.
+      this.controlBaseline = readControls(typeface);
       this.set({
         typeface,
         fileName,
@@ -154,6 +182,7 @@ class Store {
       selectedGlyphs: new Set(),
       status: null,
     });
+    this.captureControlBaseline();
     this.touch();
   }
 
@@ -250,16 +279,95 @@ class Store {
     const index = typeface.glyphIndex.get(name);
     if (index === undefined) return;
     const after = cloneGlyph(typeface.glyphs[index]);
+
+    // A control letter carries the family with it. Both halves belong to one
+    // history step: undoing the edit that moved the font has to move it back.
+    const paramsBefore = { ...typeface.params };
+    const controlsBefore = new Map(
+      [...(this.controlBaseline?.keys() ?? [])].map((controlName) => {
+        const at = typeface.glyphIndex.get(controlName);
+        return [controlName, at === undefined ? {} : { ...typeface.glyphs[at].params }] as const;
+      }),
+    );
+    const changes = isControlGlyph(name) ? this.propagateFromControls() : [];
+    const paramsAfter = { ...typeface.params };
+    const controlsAfter = new Map(
+      [...controlsBefore.keys()].map((controlName) => {
+        const at = typeface.glyphIndex.get(controlName);
+        return [controlName, at === undefined ? {} : { ...typeface.glyphs[at].params }] as const;
+      }),
+    );
+
+    const restore = (
+      params: GlyphParams,
+      controls: ReadonlyMap<string, Partial<GlyphParams>>,
+    ): void => {
+      typeface.params = { ...params };
+      for (const [controlName, controlParams] of controls) {
+        const at = typeface.glyphIndex.get(controlName);
+        if (at !== undefined) typeface.glyphs[at].params = { ...controlParams };
+      }
+    };
+
     this.push({
       label,
       undo: () => {
         typeface.glyphs[index] = cloneGlyph(before);
+        restore(paramsBefore, controlsBefore);
       },
       redo: () => {
         typeface.glyphs[index] = cloneGlyph(after);
+        restore(paramsAfter, controlsAfter);
       },
     });
+    this.set({ lastDerivation: changes });
     this.touch();
+  }
+
+  /**
+   * Push what changed on a control letter out to the rest of the font.
+   *
+   * The letter that was edited is pinned to neutral parameters afterwards.
+   * Without that it is hit twice -- once by the points the designer moved, and
+   * again by the family weight those very points produced -- so thickening n by
+   * 30 units would leave n 30 units ahead of the alphabet it is supposed to be
+   * setting the standard for.
+   */
+  /**
+   * Record the control letters as they stand, as the thing later edits are
+   * measured against. Called when a font is opened, and whenever the document
+   * is replaced wholesale.
+   */
+  captureControlBaseline(): void {
+    const typeface = this.state.typeface;
+    this.controlBaseline = typeface ? readControls(typeface) : null;
+    this.controlOutlines = new Map();
+    if (!typeface || !this.controlBaseline) return;
+    for (const name of this.controlBaseline.keys()) {
+      const index = typeface.glyphIndex.get(name);
+      if (index === undefined) continue;
+      this.controlOutlines.set(name, structuredClone(typeface.glyphs[index].contours));
+    }
+  }
+
+  private propagateFromControls(): ControlChange[] {
+    const typeface = this.state.typeface;
+    const baseline = this.controlBaseline;
+    if (!typeface || !baseline) return [];
+
+    const outlineFor = (name: string) => this.controlOutlines.get(name) ?? null;
+
+    const { params, changes } = deriveParams(baseline, readControls(typeface), outlineFor);
+    if (changes.length === 0) return [];
+
+    typeface.params = { ...typeface.params, ...params };
+    for (const name of baseline.keys()) {
+      const index = typeface.glyphIndex.get(name);
+      if (index !== undefined) {
+        typeface.glyphs[index].params = { ...DEFAULT_PARAMS };
+      }
+    }
+    return changes;
   }
 
   setFamilyParam<K extends keyof GlyphParams>(key: K, value: GlyphParams[K]): void {

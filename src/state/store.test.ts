@@ -106,3 +106,88 @@ describe("glyph editing", () => {
     expect(store.glyph("A")!.advanceWidth).toBe(500);
   });
 });
+
+describe("editing a control letter carries the family", () => {
+  /** A closed rectangle, wound clockwise as a real font outline is. */
+  function bar(x: number, y: number, width: number, height: number) {
+    const points = [
+      { x, y },
+      { x, y: y + height },
+      { x: x + width, y: y + height },
+      { x: x + width, y },
+    ];
+    return {
+      closed: true,
+      nodes: points.map((point) => ({
+        point,
+        handleIn: null,
+        handleOut: null,
+        type: "corner" as const,
+      })),
+    };
+  }
+
+  function seedWithOutlines(): void {
+    seed(["n", "o", "p", "H"]);
+    const typeface = store.getSnapshot().typeface!;
+    for (const name of ["n", "o", "p", "H"]) {
+      const index = typeface.glyphIndex.get(name)!;
+      typeface.glyphs[index].contours = [bar(100, 0, 180, 1100)];
+      typeface.glyphs[index].advanceWidth = 600;
+    }
+    store.captureControlBaseline();
+  }
+
+  beforeEach(seedWithOutlines);
+
+  it("thickens every other letter when n is thickened", () => {
+    const typeface = store.getSnapshot().typeface!;
+    const before = store.paramsFor("p").weight;
+
+    const snapshot = store.snapshotGlyph("n")!;
+    const index = typeface.glyphIndex.get("n")!;
+    typeface.glyphs[index].contours = [bar(90, 0, 220, 1100)];
+    store.commitGlyphEdit("n", "Thicken n", snapshot);
+
+    // p was never touched, but it has to follow the letter that sets the stem.
+    expect(store.paramsFor("p").weight).not.toBe(before);
+    expect(store.getSnapshot().lastDerivation.some((c) => c.quality === "stem")).toBe(true);
+  });
+
+  it("leaves the edited letter exactly as drawn rather than weighting it twice", () => {
+    const typeface = store.getSnapshot().typeface!;
+    const snapshot = store.snapshotGlyph("n")!;
+    const index = typeface.glyphIndex.get("n")!;
+    typeface.glyphs[index].contours = [bar(90, 0, 220, 1100)];
+    store.commitGlyphEdit("n", "Thicken n", snapshot);
+
+    expect(store.paramsFor("n").weight).toBe(0);
+  });
+
+  it("puts the font back where it was on undo", () => {
+    const typeface = store.getSnapshot().typeface!;
+    const before = store.paramsFor("p").weight;
+
+    const snapshot = store.snapshotGlyph("n")!;
+    const index = typeface.glyphIndex.get("n")!;
+    typeface.glyphs[index].contours = [bar(90, 0, 220, 1100)];
+    store.commitGlyphEdit("n", "Thicken n", snapshot);
+    expect(store.paramsFor("p").weight).not.toBe(before);
+
+    store.undo();
+    expect(store.paramsFor("p").weight).toBe(before);
+  });
+
+  it("does not move the family when an ordinary letter is edited", () => {
+    const typeface = store.getSnapshot().typeface!;
+    const before = store.paramsFor("H").weight;
+
+    const snapshot = store.snapshotGlyph("p")!;
+    const index = typeface.glyphIndex.get("p")!;
+    typeface.glyphs[index].contours = [bar(90, 0, 220, 1100)];
+    store.commitGlyphEdit("p", "Thicken p", snapshot);
+
+    expect(store.paramsFor("H").weight).toBe(before);
+    expect(store.getSnapshot().lastDerivation).toEqual([]);
+  });
+});
