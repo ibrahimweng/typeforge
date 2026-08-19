@@ -202,4 +202,49 @@ suite("export pipeline", { timeout: FONT_SUITE_TIMEOUT }, () => {
     expect(result.fidelity).toBe("rebuild");
     expect(result.fileName.endsWith(".otf")).toBe(true);
   });
+  /**
+   * A pixel font is still a font. Quantising replaces every curve with right
+   * angles and multiplies the contour count, which is exactly the kind of
+   * change that breaks an exporter, so fontTools has to accept the result.
+   */
+  it("writes a valid font after quantising every letter to a pixel grid", async () => {
+    const { typeface } = await importFont(source!, "DejaVuSans.ttf");
+    const before = inspectFont(source!);
+    typeface.params = { ...typeface.params, pixelGrid: 24 };
+
+    const result = await exportFont(typeface, { format: "ttf", fidelity: "rebuild", now: 0 });
+    const report = inspectFont(result.bytes);
+
+    expect(report.error).toBeUndefined();
+    expect(report.recompiles).toBe(true);
+    expect(report.outlineFormat).toBe("truetype");
+    expect(report.numGlyphs).toBe(before.numGlyphs);
+    expect(report.unitsPerEm).toBe(before.unitsPerEm);
+    // Right angles have no curve turns to sit inside a segment.
+    expect(report.interiorExtremes).toBe(0);
+  });
+
+  /**
+   * Preserve is the default way out, and it copies untouched glyphs across
+   * byte for byte. A family-wide pixel grid touches every one of them, so this
+   * is the path most exports would actually take.
+   */
+  it("writes a valid font after quantising, on the preserving path too", async () => {
+    const { typeface } = await importFont(source!, "DejaVuSans.ttf");
+    typeface.params = { ...typeface.params, pixelGrid: 24 };
+
+    const result = await exportFont(typeface, { format: "ttf", fidelity: "preserve", now: 0 });
+    const report = inspectFont(result.bytes);
+
+    expect(report.error).toBeUndefined();
+    expect(report.recompiles).toBe(true);
+    expect(report.interiorExtremes).toBe(0);
+  });
+
+  it("leaves the font alone when the pixel grid is off", async () => {
+    const { typeface } = await importFont(source!, "DejaVuSans.ttf");
+    expect(typeface.params.pixelGrid).toBe(0);
+    const plain = await exportFont(typeface, { format: "ttf", fidelity: "rebuild", now: 0 });
+    expect(inspectFont(plain.bytes).error).toBeUndefined();
+  });
 });

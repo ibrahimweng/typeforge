@@ -109,6 +109,11 @@ export interface GlyphParams {
   counterScale: number;
   /** Extra space added to both sidebearings, in font units. */
   tracking: number;
+  /**
+   * Cells across the em square when quantising the letter to a pixel grid.
+   * Zero leaves the outline alone.
+   */
+  pixelGrid: number;
 }
 
 export const DEFAULT_PARAMS: GlyphParams = {
@@ -119,6 +124,7 @@ export const DEFAULT_PARAMS: GlyphParams = {
   xHeightScale: 1,
   counterScale: 1,
   tracking: 0,
+  pixelGrid: 0,
 };
 
 export interface VerticalMetrics {

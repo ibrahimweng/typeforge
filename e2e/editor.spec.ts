@@ -292,3 +292,35 @@ test("shows the control letters and what an edit to one carried across", async (
   await page.getByRole("button", { name: "family", exact: true }).click();
   await expect(page.getByText("Last change carried across")).toBeVisible({ timeout: 15_000 });
 });
+
+test("quantises the letters onto a pixel grid", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await page.waitForTimeout(500);
+
+  // The control sits with the other family parameters, in the order they are
+  // declared, so its position is checked rather than assumed.
+  const labels = await page.locator("aside span").allTextContents();
+  const pixelIndex = labels.filter((text) =>
+    ["Corner radius", "Weight", "Middle space", "Width", "Slant", "x-height", "Pixel grid", "Tracking"].includes(text),
+  ).indexOf("Pixel grid");
+  expect(pixelIndex).toBeGreaterThanOrEqual(0);
+
+  const inkBefore = await measureInk(page);
+
+  const slider = page.getByRole("slider").nth(pixelIndex);
+  await slider.focus();
+  // Up to a coarse grid, where the quantising is unmistakable.
+  for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowRight");
+  await page.waitForTimeout(1200);
+
+  const inkAfter = await measureInk(page);
+  // Squaring a letter off changes how much of the canvas it covers.
+  expect(inkAfter).not.toBe(inkBefore);
+  expect(inkAfter).toBeGreaterThan(0);
+  expect(errors).toEqual([]);
+});

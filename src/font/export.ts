@@ -389,18 +389,17 @@ function compositeRefsFor(glyph: Glyph, typeface: Typeface): CompositeRef[] | un
   return refs;
 }
 
-/** True when a family-wide parameter is set, which reshapes every glyph. */
+/**
+ * True when a family-wide parameter is set, which reshapes every glyph.
+ *
+ * Asks paramsAreDefault rather than listing the parameters again. The list was
+ * duplicated here once, and adding the pixel grid to one copy and not the other
+ * meant a quantised font exported with most of its letters still curved: the
+ * glyphs nobody had touched were judged unchanged and copied across from the
+ * original, hinting, curves and all.
+ */
 function hasFamilyEdits(typeface: Typeface): boolean {
-  const p = typeface.params;
-  return (
-    p.cornerRadius !== 0 ||
-    p.weight !== 0 ||
-    p.width !== 1 ||
-    p.slant !== 0 ||
-    p.xHeightScale !== 1 ||
-    p.counterScale !== 1 ||
-    p.tracking !== 0
-  );
+  return !paramsAreDefault(typeface.params);
 }
 
 function buildBaselineTables(

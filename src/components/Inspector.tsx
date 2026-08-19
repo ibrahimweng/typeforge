@@ -90,6 +90,15 @@ const PARAMS: ParamSpec[] = [
     step: 0.005,
   },
   {
+    key: "pixelGrid",
+    label: "Pixel grid",
+    hint: "Redraws every letter on a grid this many cells to the em. Zero leaves the curves alone.",
+    min: 0,
+    max: 64,
+    step: 1,
+    unit: " px/em",
+  },
+  {
     key: "tracking",
     label: "Tracking",
     hint: "Adds space either side of every glyph, loosening the whole setting.",
