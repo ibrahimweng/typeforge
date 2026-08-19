@@ -7,14 +7,14 @@ import { describe, expect, it } from "vitest";
 
 import { exportFont } from "../src/font/export";
 import { importFont } from "../src/font/parse";
-import { loadTestFont } from "./fixtures";
+import { FONT_SUITE_TIMEOUT, loadTestFont } from "./fixtures";
 import { hasFontTools, inspectFont } from "./fonttools";
 
 const source = loadTestFont();
 const canRun = source !== null && hasFontTools();
 const suite = canRun ? describe : describe.skip;
 
-suite("export pipeline", () => {
+suite("export pipeline", { timeout: FONT_SUITE_TIMEOUT }, () => {
   it("imports a real font into the document model", async () => {
     const { typeface } = await importFont(source!, "DejaVuSans.ttf");
     expect(typeface.glyphs.length).toBeGreaterThan(1000);

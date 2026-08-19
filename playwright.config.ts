@@ -29,9 +29,17 @@ export default defineConfig({
     ...(executablePath ? { launchOptions: { executablePath } } : {}),
   },
   webServer: {
-    command: "npm run dev -- --port 5183 --strictPort",
+    // Bind the address Playwright polls, rather than "localhost". Vite resolves
+    // "localhost" itself, and on a runner with IPv6 that can land on ::1 while
+    // the poll below asks 127.0.0.1, so the server comes up healthy and the
+    // wait times out anyway. Naming one address leaves nothing to resolve.
+    command: "npm run dev -- --host 127.0.0.1 --port 5183 --strictPort",
     url: "http://127.0.0.1:5183",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    // Without these a server that fails to boot reports only "timed out",
+    // which says nothing about why.
+    stdout: "pipe",
+    stderr: "pipe",
   },
 });

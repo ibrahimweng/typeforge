@@ -8,14 +8,14 @@ import { describe, expect, it } from "vitest";
 
 import { buildGposTable, buildKernTable } from "../src/font/kern";
 import { readSfnt, writeSfnt } from "../src/font/sfnt";
-import { loadTestFont } from "./fixtures";
+import { FONT_SUITE_TIMEOUT, loadTestFont } from "./fixtures";
 import { hasFontTools, inspectFont } from "./fonttools";
 
 const source = loadTestFont();
 const canRun = source !== null && hasFontTools();
 const suite = canRun ? describe : describe.skip;
 
-suite("sfnt round trip with injected kerning", () => {
+suite("sfnt round trip with injected kerning", { timeout: FONT_SUITE_TIMEOUT }, () => {
   it("rewrites a real font without disturbing it", () => {
     const font = readSfnt(source!);
     const before = inspectFont(source!);

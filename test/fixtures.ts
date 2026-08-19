@@ -25,3 +25,15 @@ export function loadTestFont(): Uint8Array | null {
   const path = findTestFont();
   return path ? new Uint8Array(readFileSync(path)) : null;
 }
+
+/**
+ * Timeout for suites that compile a whole font.
+ *
+ * These tests import DejaVu (≈400ms), run the full export pipeline over every
+ * glyph (≈2.2s) and shell out to fontTools to read the result back (≈850ms),
+ * so 3-5s per test is the honest cost of the work, not a hang. Vitest's 5s
+ * default left no headroom at all: the suite passed on a fast machine and
+ * failed on a loaded CI runner, which is a stopwatch result rather than a
+ * behavioural one.
+ */
+export const FONT_SUITE_TIMEOUT = 60_000;
