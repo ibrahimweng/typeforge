@@ -90,25 +90,51 @@ describe("shiftCrossbar", () => {
   });
 });
 
-/** A stem with a curve springing from it partway up, as an arch does. */
+/**
+ * An arch, built the way a real n is.
+ *
+ * The left stem is a trunk running the full height, interrupted where the arch
+ * leaves it: an upright run from 800 to 1000 above the springing and another
+ * from 0 to 500 below it. The right stem exists only as the arch coming down,
+ * so its runs stop at the junctions. That difference is what separates a
+ * shoulder from a landing.
+ */
 const ARCH: Contour = {
   closed: true,
   nodes: [
     { point: { x: 0, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
     { point: { x: 0, y: 1000 }, handleIn: null, handleOut: null, type: "corner" },
     { point: { x: 200, y: 1000 }, handleIn: null, handleOut: null, type: "corner" },
-    // Springs from the stem here and curves away.
-    { point: { x: 200, y: 700 }, handleIn: null, handleOut: { x: 300, y: 900 }, type: "corner" },
-    { point: { x: 600, y: 900 }, handleIn: { x: 500, y: 950 }, handleOut: null, type: "corner" },
+    // Springs from the trunk here.
+    { point: { x: 200, y: 800 }, handleIn: null, handleOut: { x: 350, y: 1000 }, type: "corner" },
+    // Lands on the right stem, which starts here.
+    { point: { x: 600, y: 800 }, handleIn: { x: 450, y: 1000 }, handleOut: null, type: "corner" },
     { point: { x: 600, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+    { point: { x: 400, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+    { point: { x: 400, y: 600 }, handleIn: null, handleOut: { x: 350, y: 700 }, type: "corner" },
+    // The inner springing, back on the trunk.
+    { point: { x: 200, y: 500 }, handleIn: { x: 250, y: 700 }, handleOut: null, type: "corner" },
+    { point: { x: 200, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
   ],
 };
 
 describe("findShoulders", () => {
-  it("finds where a curve springs from an upright", () => {
+  it("finds where the arch springs from the trunk", () => {
     const shoulders = findShoulders([ARCH]);
-    expect(shoulders.length).toBeGreaterThan(0);
-    expect(shoulders.some((point) => Math.abs(point.y - 700) < 1)).toBe(true);
+    expect(shoulders.map((point) => point.x)).toEqual([200, 200]);
+    expect(shoulders.map((point) => point.y).sort((a, b) => a - b)).toEqual([500, 800]);
+  });
+
+  /**
+   * The other two junctions on this shape are where the arch comes down. On a
+   * real n those are the right stem, and moving them drags the far side of the
+   * letter about rather than changing the shoulder.
+   */
+  it("leaves out the junctions where the arch lands", () => {
+    const shoulders = findShoulders([ARCH]);
+    expect(shoulders).toHaveLength(2);
+    expect(shoulders.some((point) => point.x === 600)).toBe(false);
+    expect(shoulders.some((point) => point.x === 400)).toBe(false);
   });
 
   it("finds nothing on a letter with no straight stem", () => {
@@ -144,20 +170,27 @@ describe("findShoulders", () => {
 describe("shiftShoulders", () => {
   it("raises where the arch springs", () => {
     const moved = shiftShoulders([ARCH], 120);
-    const springing = moved[0].nodes.find((node) => Math.abs(node.point.x - 200) < 1 && node.point.y < 900);
-    expect(springing!.point.y).toBeCloseTo(820, 6);
+    expect(moved[0].nodes[3].point).toEqual({ x: 200, y: 920 });
+    expect(moved[0].nodes[8].point).toEqual({ x: 200, y: 620 });
   });
 
   it("carries the handle with the point so the curve keeps its shape", () => {
     const moved = shiftShoulders([ARCH], 120);
-    const springing = moved[0].nodes.find((node) => node.handleOut !== null)!;
-    expect(springing.handleOut!.y).toBeCloseTo(1020, 6);
+    expect(moved[0].nodes[3].handleOut).toEqual({ x: 350, y: 1120 });
   });
 
-  it("leaves the rest of the stem where it was", () => {
+  it("leaves the far side of the letter where it was", () => {
+    const moved = shiftShoulders([ARCH], 120);
+    // The right stem is where the arch lands, not where it springs.
+    expect(moved[0].nodes[4].point).toEqual({ x: 600, y: 800 });
+    expect(moved[0].nodes[7].point).toEqual({ x: 400, y: 600 });
+  });
+
+  it("leaves the rest of the trunk where it was", () => {
     const moved = shiftShoulders([ARCH], 120);
     expect(moved[0].nodes[0].point).toEqual({ x: 0, y: 0 });
     expect(moved[0].nodes[1].point).toEqual({ x: 0, y: 1000 });
+    expect(moved[0].nodes[2].point).toEqual({ x: 200, y: 1000 });
   });
 
   it("leaves a letter with no shoulder alone", () => {

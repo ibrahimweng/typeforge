@@ -14,10 +14,19 @@
  * of the letter rather than something crossing it, and moving them would
  * change its height.
  *
- * The shoulder is where an arch springs from a stem, found as the junction
- * between a straight upright edge and the curve leaving it. On DejaVu that
- * finds four such junctions on n, six on m, four on u, two on b, and none at
- * all on o, which has no straight stem for a curve to spring from.
+ * The shoulder is where an arch springs from a stem. That is a junction
+ * between a straight upright edge and the curve leaving it, but only half of
+ * those are shoulders: an n has four such junctions, two where the arch leaves
+ * the left stem and two where it comes down into the right one. Only the first
+ * pair is the shoulder, and moving the other pair drags the far side of the
+ * letter about instead.
+ *
+ * They are told apart by what the stem does past the junction. A shoulder sits
+ * partway up a stem that carries on above and below it -- on DejaVu's n the
+ * left stem runs from the baseline to 633, the arch leaves, and the stem
+ * resumes from 946 to the x-height. Where the arch lands, the stem simply
+ * stops: at x=1124 the only upright run is 0 to 676 and there is nothing above
+ * it, because that stem exists only as the arch coming down.
  */
 
 import { contourSegments, contoursBounds } from "./geometry";
@@ -112,13 +121,47 @@ export function shiftCrossbar(contours: Contour[], shift: number): Contour[] {
   }));
 }
 
+/** An upright run of a stem's edge. */
+interface UprightRun {
+  x: number;
+  low: number;
+  high: number;
+}
+
+/** How far apart in x two runs may be and still be the same stem edge. */
+const SAME_EDGE = 3;
+/** How far past a junction a stem has to carry on to count as carrying on. */
+const CARRIES_ON = 2;
+
+function uprightRuns(contours: Contour[]): UprightRun[] {
+  const runs: UprightRun[] = [];
+  for (const contour of contours) {
+    for (const segment of contourSegments(contour)) {
+      if (segment.kind !== "line") continue;
+      const dx = Math.abs(segment.to.x - segment.from.x);
+      const dy = Math.abs(segment.to.y - segment.from.y);
+      if (dy <= dx * 2 || dy === 0) continue;
+      runs.push({
+        x: (segment.from.x + segment.to.x) / 2,
+        low: Math.min(segment.from.y, segment.to.y),
+        high: Math.max(segment.from.y, segment.to.y),
+      });
+    }
+  }
+  return runs;
+}
+
 /**
  * Where arches spring from their stems.
  *
- * A shoulder shows up as a junction between a straight, near-upright edge and
- * a curve leaving it. Nothing has to know which letters have one.
+ * Only the junctions the arch leaves from, not the ones it lands on: a stem
+ * that carries on above and below the junction is a trunk the arch departs,
+ * while a stem that stops at the junction is one the arch created on its way
+ * down. Nothing has to know which letters have an arch.
  */
 export function findShoulders(contours: Contour[]): Vec2[] {
+  const runs = uprightRuns(contours);
+  if (runs.length === 0) return [];
   const junctions: Vec2[] = [];
 
   for (const contour of contours) {
@@ -138,7 +181,15 @@ export function findShoulders(contours: Contour[]): Vec2[] {
       // Upright, so this is a stem rather than the flat end of an arm.
       if (dy <= dx * 2) continue;
 
-      junctions.push({ ...here.to });
+      const point = here.to;
+      const onThisEdge = runs.filter((run) => Math.abs(run.x - point.x) <= SAME_EDGE);
+      const above = onThisEdge.some((run) => run.high > point.y + CARRIES_ON);
+      const below = onThisEdge.some((run) => run.low < point.y - CARRIES_ON);
+      // The stem carries on past the junction in both directions, so the arch
+      // is leaving it rather than arriving on it.
+      if (!above || !below) continue;
+
+      junctions.push({ ...point });
     }
   }
 
