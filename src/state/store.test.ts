@@ -10,6 +10,7 @@ function glyph(name: string): Glyph {
     advanceWidth: 500,
     contours: [],
     components: [],
+    anchors: [],
     params: {},
     dirty: false,
   };

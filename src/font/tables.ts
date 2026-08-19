@@ -85,6 +85,8 @@ export interface MaxpInput {
   numGlyphs: number;
   maxPoints: number;
   maxContours: number;
+  /** Largest number of references in any composite glyph. */
+  maxComponents?: number;
 }
 
 export function buildMaxp(input: MaxpInput): Uint8Array {
@@ -102,8 +104,10 @@ export function buildMaxp(input: MaxpInput): Uint8Array {
   writer.uint16(0); // maxInstructionDefs
   writer.uint16(0); // maxStackElements
   writer.uint16(0); // maxSizeOfInstructions
-  writer.uint16(0); // maxComponentElements
-  writer.uint16(0); // maxComponentDepth
+  writer.uint16(input.maxComponents ?? 0);
+  // One level of nesting is enough for an accent on a letter; deeper is rare
+  // and the value is advisory rather than a limit.
+  writer.uint16(input.maxComponents ? 2 : 0);
   return writer.toUint8Array();
 }
 

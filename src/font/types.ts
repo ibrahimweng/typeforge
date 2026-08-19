@@ -37,6 +37,27 @@ export interface Contour {
 }
 
 /**
+ * A named attachment point.
+ *
+ * A base letter carries an anchor such as `top`; a mark carries the matching
+ * entry anchor `_top`. Lining the two up is what positions an accent, and it is
+ * why moving the anchor on `a` moves the accent on every glyph built from it.
+ */
+export interface Anchor {
+  /** `top`, `bottom`, `center` on a base; the same name with a leading underscore on a mark. */
+  name: string;
+  x: number;
+  y: number;
+}
+
+/** True for the entry anchor on a mark, as opposed to an exit anchor on a base. */
+export const isMarkAnchor = (name: string): boolean => name.startsWith("_");
+
+/** The base-side name a mark anchor attaches to, or null if it is not a mark anchor. */
+export const baseAnchorName = (name: string): string | null =>
+  name.startsWith("_") ? name.slice(1) : null;
+
+/**
  * A component is a reference to another glyph, the mechanism that lets `á`
  * reuse the outlines of `a` and `acute`. TrueType calls these composite glyphs.
  */
@@ -55,6 +76,8 @@ export interface Glyph {
   advanceWidth: number;
   contours: Contour[];
   components: Component[];
+  /** Named attachment points, used to position marks on this glyph. */
+  anchors: Anchor[];
   /** Per-glyph overrides layered on top of the family parameters. */
   params: Partial<GlyphParams>;
   /** Set when the user has touched this glyph, used for "changed only" export. */

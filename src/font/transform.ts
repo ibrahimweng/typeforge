@@ -18,6 +18,7 @@ import {
   normalize,
   sub,
 } from "./geometry";
+import { resolveComponents } from "./composite";
 import { DEFAULT_PARAMS, type Contour, type Glyph, type GlyphNode, type GlyphParams, type Typeface, type Vec2 } from "./types";
 
 /** Merge family parameters with a glyph's overrides. */
@@ -45,10 +46,15 @@ export function paramsAreDefault(params: GlyphParams): boolean {
  * last so they act on the finished shape.
  */
 export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[] {
-  const params = effectiveParams(glyph, typeface);
-  if (paramsAreDefault(params)) return glyph.contours;
+  // Components first: a composite draws nothing of its own, so its outline is
+  // whatever its parts contribute. Parameters then apply to the finished shape,
+  // which keeps a family-wide change from being applied twice to a component.
+  const composed = resolveComponents(glyph, typeface);
 
-  let contours = glyph.contours.map(cloneContour);
+  const params = effectiveParams(glyph, typeface);
+  if (paramsAreDefault(params)) return composed;
+
+  let contours = composed.map(cloneContour);
   if (params.counterScale !== 1) contours = applyCounterScale(contours, params.counterScale);
   if (params.weight !== 0) contours = contours.map((contour) => applyWeight(contour, params.weight));
   if (params.cornerRadius > 0)

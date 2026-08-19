@@ -10,6 +10,7 @@
  * variations) exactly as they arrived.
  */
 
+import { readComposites } from "./composite";
 import { classifyNodes } from "./quadratic";
 import { readSfnt, SFNT_CFF } from "./sfnt";
 import {
@@ -139,10 +140,50 @@ export async function importFont(
       // opentype.js resolves composite glyphs into plain outlines, so by the
       // time we see them there are no components left to record.
       components: [],
+      anchors: [],
       params: {},
       dirty: false,
     });
     glyphIndex.set(name, i);
+  }
+
+  // opentype.js flattens composite glyphs into plain outlines, so `á` arrives
+  // as a drawing rather than as `a` plus `acute`. Recover the structure from
+  // the glyf table, and drop the flattened outline in favour of the parts.
+  const glyfTable = sfnt.tables.get("glyf");
+  const locaTable = sfnt.tables.get("loca");
+  const headTable = sfnt.tables.get("head");
+  if (glyfTable && locaTable && headTable && headTable.length >= 52) {
+    const indexToLocFormat = new DataView(
+      headTable.buffer,
+      headTable.byteOffset,
+      headTable.byteLength,
+    ).getInt16(50);
+    const names = glyphs.map((glyph) => glyph.name);
+    const { components, pointMatched } = readComposites(
+      glyfTable,
+      locaTable,
+      indexToLocFormat,
+      glyphs.length,
+      names,
+    );
+
+    for (const [index, list] of components) {
+      const glyph = glyphs[index];
+      if (!glyph) continue;
+      glyph.components = list;
+      // A TrueType composite carries no contours of its own; what opentype.js
+      // handed over was the flattened result, which the parts now supply.
+      glyph.contours = [];
+    }
+    if (components.size > 0) {
+      warnings.push(`${components.size.toLocaleString()} glyphs are built from components.`);
+    }
+    if (pointMatched > 0) {
+      warnings.push(
+        `${pointMatched} component${pointMatched === 1 ? " is" : "s are"} positioned by matching points rather than by offset, which is not modelled; they were placed at the origin.`,
+      );
+    }
   }
 
   const kerning = readKerning(font, glyphs);

@@ -533,6 +533,7 @@ export function cloneGlyph(glyph: Glyph): Glyph {
     unicodes: [...glyph.unicodes],
     advanceWidth: glyph.advanceWidth,
     components: glyph.components.map((component) => ({ ...component, transform: { ...component.transform } })),
+    anchors: glyph.anchors.map((anchor) => ({ ...anchor })),
     params: { ...glyph.params },
     dirty: glyph.dirty,
     contours: glyph.contours.map((contour) => ({

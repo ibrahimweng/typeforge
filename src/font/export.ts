@@ -22,9 +22,9 @@ import {
   type OutlineFormat,
 } from "./outline";
 import { removeOverlaps } from "./overlap";
-import { buildGlyfTables, splitGlyf, type GlyfBuildInput } from "./glyf";
+import { buildGlyfTables, splitGlyf, type CompositeRef, type GlyfBuildInput } from "./glyf";
 import { buildGposTable, buildKernTable, type ResolvedClassKern, type ResolvedPair } from "./kern";
-import { resolveGlyphContours } from "./transform";
+import { effectiveParams, paramsAreDefault, resolveGlyphContours } from "./transform";
 import { readSfnt, writeSfnt, SFNT_TRUETYPE, type SfntFont } from "./sfnt";
 import {
   buildCmap,
@@ -190,6 +190,7 @@ async function exportTrueType(
     contours: entry.contours,
     original: originalRecords[index],
     rebuild: !preserving || familyChanged || entry.glyph.dirty || !originalRecords[index],
+    composite: compositeRefsFor(entry.glyph, typeface),
   }));
 
   const built = buildGlyfTables(inputs, context.tolerance);
@@ -365,6 +366,29 @@ function applyKerning(
   if (gpos) tables.set("GPOS", gpos);
 }
 
+/**
+ * Whether a glyph can be written as a reference to others rather than as an
+ * outline of its own.
+ *
+ * Only a glyph that draws nothing itself qualifies, and only while no parameter
+ * is reshaping it. Parameters apply to the assembled letter, so a scaled `á`
+ * is not a scaled `a` beside a scaled accent at the original spacing; writing
+ * it as a reference would move the accent. In that case it is flattened, which
+ * is always correct if larger.
+ */
+function compositeRefsFor(glyph: Glyph, typeface: Typeface): CompositeRef[] | undefined {
+  if (glyph.components.length === 0 || glyph.contours.length > 0) return undefined;
+  if (!paramsAreDefault(effectiveParams(glyph, typeface))) return undefined;
+
+  const refs: CompositeRef[] = [];
+  for (const component of glyph.components) {
+    const index = typeface.glyphIndex.get(component.glyphName);
+    if (index === undefined) return undefined; // a missing part; flatten instead
+    refs.push({ glyphIndex: index, transform: component.transform });
+  }
+  return refs;
+}
+
 /** True when a family-wide parameter is set, which reshapes every glyph. */
 function hasFamilyEdits(typeface: Typeface): boolean {
   const p = typeface.params;
@@ -426,6 +450,7 @@ function buildBaselineTables(
       numGlyphs: typeface.glyphs.length,
       maxPoints: built.maxPoints,
       maxContours: built.maxContours,
+      maxComponents: built.maxComponents,
     }),
   );
   tables.set("cmap", buildCmap(mappings));

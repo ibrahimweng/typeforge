@@ -32,6 +32,10 @@ export interface FontToolsReport {
    * outline formats require a point at every extreme, so this should be zero.
    */
   interiorExtremes: number;
+  /** Glyphs stored as references to others rather than as their own outline. */
+  compositeGlyphs: number;
+  /** Component glyph names of a named glyph, for checking structure survived. */
+  componentsOf: Record<string, string[]>;
   /** The Windows clipping boundary, and the real extent of the outlines. */
   winAscent: number;
   winDescent: number;
@@ -47,7 +51,8 @@ from fontTools.ttLib import TTFont
 path = sys.argv[1]
 out = {"outlineFormat": "unknown", "tables": [], "numGlyphs": 0, "unitsPerEm": 0,
        "kernPairs": {}, "gposKernPairs": {}, "recompiles": False,
-       "interiorExtremes": 0, "winAscent": 0, "winDescent": 0,
+       "interiorExtremes": 0, "compositeGlyphs": 0, "componentsOf": {},
+       "winAscent": 0, "winDescent": 0,
        "yMax": 0, "yMin": 0}
 try:
     f = TTFont(path)
@@ -97,6 +102,11 @@ try:
     # missing extreme. Implied on-curve midpoints are expanded first.
     if "glyf" in f:
         glyf = f["glyf"]
+        for name in f.getGlyphOrder():
+            if glyf[name].isComposite():
+                out["compositeGlyphs"] += 1
+                if name in ("aacute", "agrave", "ccedilla", "Odieresis"):
+                    out["componentsOf"][name] = [c.glyphName for c in glyf[name].components]
         for name in f.getGlyphOrder()[:600]:
             g = glyf[name]
             if g.numberOfContours <= 0:

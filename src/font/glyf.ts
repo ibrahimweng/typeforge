@@ -8,10 +8,19 @@
  * one: a typical edit touches a handful of glyphs out of thousands.
  */
 
-import { contoursBounds } from "./geometry";
+import { contoursBounds, type Bounds } from "./geometry";
 import { contourToGlyfPoints, type GlyfPoint } from "./quadratic";
 import { ByteWriter } from "./sfnt";
 import type { Contour } from "./types";
+
+// Composite record flags, from the OpenType specification.
+const ARG_1_AND_2_ARE_WORDS = 0x0001;
+const ARGS_ARE_XY_VALUES = 0x0002;
+const WE_HAVE_A_SCALE = 0x0008;
+const MORE_COMPONENTS = 0x0020;
+const WE_HAVE_AN_X_AND_Y_SCALE = 0x0040;
+const WE_HAVE_A_TWO_BY_TWO = 0x0080;
+const ROUND_XY_TO_GRID = 0x0004;
 
 const ON_CURVE = 0x01;
 const X_SHORT = 0x02;
@@ -25,6 +34,21 @@ export interface GlyfBuildInput {
   /** Original bytes for this glyph, reused when `rebuild` is false. */
   original?: Uint8Array;
   rebuild: boolean;
+  /**
+   * Write this glyph as a reference to others rather than as an outline.
+   *
+   * Keeping a composite whole is what makes `á` stay a copy of `a` in the file:
+   * the outline is stored once, and a correction to the letter reaches every
+   * accented form of it. Flattening works too, and is the fallback wherever the
+   * arrangement cannot be expressed as a plain reference.
+   */
+  composite?: CompositeRef[];
+}
+
+export interface CompositeRef {
+  /** Index of the referenced glyph in the font. */
+  glyphIndex: number;
+  transform: { a: number; b: number; c: number; d: number; dx: number; dy: number };
 }
 
 export interface GlyfTables {
@@ -36,6 +60,8 @@ export interface GlyfTables {
   /** Largest point and contour counts, needed by `maxp`. */
   maxPoints: number;
   maxContours: number;
+  /** Largest number of references in any one composite, also needed by `maxp`. */
+  maxComponents: number;
 }
 
 export function buildGlyfTables(glyphs: GlyfBuildInput[], tolerance = 0.5): GlyfTables {
@@ -46,6 +72,7 @@ export function buildGlyfTables(glyphs: GlyfBuildInput[], tolerance = 0.5): Glyf
   let yMax = -Infinity;
   let maxPoints = 0;
   let maxContours = 0;
+  let maxComponents = 0;
 
   for (const glyph of glyphs) {
     if (!glyph.rebuild && glyph.original) {
@@ -63,6 +90,17 @@ export function buildGlyfTables(glyphs: GlyfBuildInput[], tolerance = 0.5): Glyf
         yMax = Math.max(yMax, view.getInt16(8));
         if (contourCount > 0) maxContours = Math.max(maxContours, contourCount);
       }
+      continue;
+    }
+
+    if (glyph.composite && glyph.composite.length > 0) {
+      const bounds = contoursBounds(glyph.contours);
+      records.push(encodeCompositeGlyph(glyph.composite, bounds));
+      xMin = Math.min(xMin, bounds.xMin);
+      yMin = Math.min(yMin, bounds.yMin);
+      xMax = Math.max(xMax, bounds.xMax);
+      yMax = Math.max(yMax, bounds.yMax);
+      maxComponents = Math.max(maxComponents, glyph.composite.length);
       continue;
     }
 
@@ -127,7 +165,72 @@ export function buildGlyfTables(glyphs: GlyfBuildInput[], tolerance = 0.5): Glyf
       : { xMin: 0, yMin: 0, xMax: 0, yMax: 0 },
     maxPoints,
     maxContours,
+    maxComponents,
   };
+}
+
+/**
+ * Encode a composite glyph record: a list of references, each with where the
+ * referenced outline goes.
+ *
+ * Offsets are written as words whenever they will not fit in a byte, and a
+ * transform is only written when there is one, so a plainly placed accent costs
+ * eight bytes rather than an outline.
+ */
+function encodeCompositeGlyph(components: CompositeRef[], bounds: Bounds): Uint8Array {
+  const writer = new ByteWriter();
+  writer.int16(-1); // negative contour count marks a composite
+  writer.int16(Math.floor(bounds.xMin));
+  writer.int16(Math.floor(bounds.yMin));
+  writer.int16(Math.ceil(bounds.xMax));
+  writer.int16(Math.ceil(bounds.yMax));
+
+  components.forEach((component, index) => {
+    const { a, b, c, d, dx, dy } = component.transform;
+    const roundedX = Math.round(dx);
+    const roundedY = Math.round(dy);
+
+    const identity = a === 1 && b === 0 && c === 0 && d === 1;
+    const evenScale = !identity && b === 0 && c === 0 && a === d;
+    const axisScale = !identity && !evenScale && b === 0 && c === 0;
+
+    let flags = ARGS_ARE_XY_VALUES | ROUND_XY_TO_GRID;
+    const needsWords = roundedX < -128 || roundedX > 127 || roundedY < -128 || roundedY > 127;
+    if (needsWords) flags |= ARG_1_AND_2_ARE_WORDS;
+    if (evenScale) flags |= WE_HAVE_A_SCALE;
+    else if (axisScale) flags |= WE_HAVE_AN_X_AND_Y_SCALE;
+    else if (!identity) flags |= WE_HAVE_A_TWO_BY_TWO;
+    if (index < components.length - 1) flags |= MORE_COMPONENTS;
+
+    writer.uint16(flags);
+    writer.uint16(component.glyphIndex);
+    if (needsWords) {
+      writer.int16(roundedX);
+      writer.int16(roundedY);
+    } else {
+      writer.uint8(roundedX & 0xff);
+      writer.uint8(roundedY & 0xff);
+    }
+
+    if (evenScale) {
+      writer.int16(toF2Dot14(a));
+    } else if (axisScale) {
+      writer.int16(toF2Dot14(a));
+      writer.int16(toF2Dot14(d));
+    } else if (!identity) {
+      writer.int16(toF2Dot14(a));
+      writer.int16(toF2Dot14(b));
+      writer.int16(toF2Dot14(c));
+      writer.int16(toF2Dot14(d));
+    }
+  });
+
+  return writer.toUint8Array();
+}
+
+/** Signed fixed point with 14 bits of fraction, clamped to what it can hold. */
+function toF2Dot14(value: number): number {
+  return Math.max(-32768, Math.min(32767, Math.round(value * 16384)));
 }
 
 /** Encode one simple (non-composite) glyph record. */

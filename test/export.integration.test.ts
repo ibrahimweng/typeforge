@@ -154,6 +154,32 @@ suite("export pipeline", () => {
     expect(report.winAscent).toBeGreaterThanOrEqual(raised);
   });
 
+  it("keeps accented letters as references rather than redrawing them", async () => {
+    const { typeface } = await importFont(source!, "DejaVuSans.ttf");
+    const result = await exportFont(typeface, { format: "ttf", fidelity: "rebuild", now: 0 });
+    const report = inspectFont(result.bytes);
+
+    expect(report.error).toBeUndefined();
+    expect(report.recompiles).toBe(true);
+    // DejaVu builds most of its accented set from parts, and so should we:
+    // storing `a` once means correcting it once.
+    expect(report.compositeGlyphs).toBeGreaterThan(2000);
+    expect(report.componentsOf["aacute"]).toEqual(["a", "acute"]);
+    expect(report.componentsOf["ccedilla"]).toEqual(["c", "cedilla"]);
+  });
+
+  it("flattens composites when a parameter reshapes the letters", async () => {
+    const { typeface } = await importFont(source!, "DejaVuSans.ttf");
+    // A parameter applies to the assembled letter, so a reference to the
+    // untransformed parts would put the accent in the wrong place.
+    typeface.params = { ...typeface.params, weight: 8 };
+
+    const result = await exportFont(typeface, { format: "ttf", fidelity: "rebuild", now: 0 });
+    const report = inspectFont(result.bytes);
+    expect(report.error).toBeUndefined();
+    expect(report.compositeGlyphs).toBe(0);
+  });
+
   it("writes an OpenType file with PostScript curves and kerning intact", async () => {
     const { typeface } = await importFont(source!, "DejaVuSans.ttf");
     // Keep the export quick: CFF encoding of 6000 glyphs is not what is under test.
