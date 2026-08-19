@@ -14,8 +14,6 @@
  * them.
  */
 
-import { Font as OpenTypeFont, Glyph as OpenTypeGlyph, Path as OpenTypePath } from "opentype.js";
-
 import { contoursBounds } from "./geometry";
 import { buildGlyfTables, splitGlyf, type GlyfBuildInput } from "./glyf";
 import { buildGposTable, buildKernTable, type ResolvedClassKern, type ResolvedPair } from "./kern";
@@ -67,7 +65,10 @@ export interface ExportResult {
   notes: string[];
 }
 
-export function exportFont(typeface: Typeface, options: ExportOptions): ExportResult {
+export async function exportFont(
+  typeface: Typeface,
+  options: ExportOptions,
+): Promise<ExportResult> {
   const notes: string[] = [];
   const tolerance = options.curveTolerance ?? 0.5;
   const includeKerning = options.includeKerning ?? true;
@@ -94,9 +95,11 @@ export function exportFont(typeface: Typeface, options: ExportOptions): ExportRe
     }
   }
 
+  // TrueType export uses only our own table writers. OpenType needs
+  // opentype.js for CFF encoding, which is fetched only when asked for.
   const bytes =
     options.format === "otf"
-      ? exportOpenType(typeface, { tolerance, includeKerning, notes })
+      ? await exportOpenType(typeface, { tolerance, includeKerning, notes })
       : exportTrueType(typeface, { tolerance, includeKerning, fidelity, now, notes });
 
   const base = `${typeface.meta.familyName}-${typeface.meta.styleName}`.replace(/\s+/g, "");
@@ -187,10 +190,15 @@ function exportTrueType(
   return writeSfnt(font);
 }
 
-function exportOpenType(
+async function exportOpenType(
   typeface: Typeface,
   context: { tolerance: number; includeKerning: boolean; notes: string[] },
-): Uint8Array {
+): Promise<Uint8Array> {
+  const {
+    Font: OpenTypeFont,
+    Glyph: OpenTypeGlyph,
+    Path: OpenTypePath,
+  } = await import("opentype.js");
   const resolved = resolvedGlyphs(typeface);
 
   const glyphs = resolved.map((entry) => {

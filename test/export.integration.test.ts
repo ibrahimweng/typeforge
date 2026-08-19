@@ -31,7 +31,7 @@ suite("export pipeline", () => {
     const { typeface } = await importFont(source!, "DejaVuSans.ttf");
     const before = inspectFont(source!);
 
-    const result = exportFont(typeface, { format: "ttf", fidelity: "preserve", now: 0 });
+    const result = await exportFont(typeface, { format: "ttf", fidelity: "preserve", now: 0 });
     const report = inspectFont(result.bytes);
 
     expect(report.error).toBeUndefined();
@@ -50,7 +50,7 @@ suite("export pipeline", () => {
 
   it("preserves layout and hinting tables the editor never models", async () => {
     const { typeface } = await importFont(source!, "DejaVuSans.ttf");
-    const result = exportFont(typeface, { format: "ttf", fidelity: "preserve", now: 0 });
+    const result = await exportFont(typeface, { format: "ttf", fidelity: "preserve", now: 0 });
     const report = inspectFont(result.bytes);
 
     // GSUB carries ligatures and alternates; cvt/fpgm/prep carry hinting.
@@ -62,7 +62,7 @@ suite("export pipeline", () => {
 
   it("drops unmodelled tables in a clean rebuild, as documented", async () => {
     const { typeface } = await importFont(source!, "DejaVuSans.ttf");
-    const result = exportFont(typeface, { format: "ttf", fidelity: "rebuild", now: 0 });
+    const result = await exportFont(typeface, { format: "ttf", fidelity: "rebuild", now: 0 });
     const report = inspectFont(result.bytes);
 
     expect(report.error).toBeUndefined();
@@ -79,7 +79,7 @@ suite("export pipeline", () => {
     capitalA.advanceWidth = original + 137;
     capitalA.dirty = true;
 
-    const result = exportFont(typeface, { format: "ttf", fidelity: "preserve", now: 0 });
+    const result = await exportFont(typeface, { format: "ttf", fidelity: "preserve", now: 0 });
     const { typeface: reimported } = await importFont(result.bytes, "roundtrip.ttf");
     const reimportedA = reimported.glyphs.find((glyph) => glyph.unicodes.includes(65))!;
     expect(reimportedA.advanceWidth).toBe(original + 137);
@@ -93,7 +93,7 @@ suite("export pipeline", () => {
     node.point = { ...movedTo };
     capitalA.dirty = true;
 
-    const result = exportFont(typeface, { format: "ttf", fidelity: "preserve", now: 0 });
+    const result = await exportFont(typeface, { format: "ttf", fidelity: "preserve", now: 0 });
     const { typeface: reimported } = await importFont(result.bytes, "roundtrip.ttf");
     const reimportedA = reimported.glyphs.find((glyph) => glyph.unicodes.includes(65))!;
 
@@ -114,7 +114,7 @@ suite("export pipeline", () => {
       (pair) => names.has(pair.left) && names.has(pair.right),
     );
 
-    const result = exportFont(typeface, { format: "otf", fidelity: "preserve", now: 0 });
+    const result = await exportFont(typeface, { format: "otf", fidelity: "preserve", now: 0 });
     const report = inspectFont(result.bytes);
 
     expect(report.error).toBeUndefined();

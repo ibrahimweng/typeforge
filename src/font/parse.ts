@@ -10,8 +10,6 @@
  * variations) exactly as they arrived.
  */
 
-import { parse as parseOpenType } from "opentype.js";
-
 import { classifyNodes } from "./quadratic";
 import { readSfnt, SFNT_CFF } from "./sfnt";
 import {
@@ -92,6 +90,9 @@ export async function importFont(
     fileName,
   };
 
+  // opentype.js is a few hundred kilobytes and is not needed until a font is
+  // actually opened, so it is fetched on demand rather than at start-up.
+  const { parse: parseOpenType } = await import("opentype.js");
   // opentype.js needs its own ArrayBuffer view of the bytes.
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
   const font = parseOpenType(buffer as ArrayBuffer);
