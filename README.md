@@ -23,8 +23,10 @@ reshape it. The metric lines a designer works against are always visible.
 
 **Kerning** is judged in the preview text rather than in a table. Click the gap
 between two letters and drag to tighten or open it; the line reflows as you go.
-Individual pairs and class kerning are both supported, and an individual pair
-overrides the class it belongs to.
+Alongside individual pairs there are kerning classes, where one entry covers
+every glyph on its left against every glyph on its right. An individual pair
+overrides the class it falls under, and the editor labels a value that came from
+a class so the two are never confused.
 
 **Spacing** is a table of sidebearings and advance widths, with a preview strip
 above showing the letters in their real rhythm. Sidebearings are measured from

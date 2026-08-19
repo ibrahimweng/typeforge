@@ -18,6 +18,7 @@ import {
   emptyTypeface,
   type Glyph,
   type GlyphParams,
+  type KernClass,
   type KernPair,
   type Typeface,
 } from "@/font/types";
@@ -371,6 +372,97 @@ class Store {
       typeface.kerning = [...typeface.kerning, { left, right, value }];
     }
     this.touch();
+  }
+
+  /**
+   * Create a kerning class seeded from a pair.
+   *
+   * Class kerning is how a font avoids storing a value for every combination:
+   * one entry covers every glyph on the left against every glyph on the right.
+   * Starting from a pair the designer already chose is the natural way in.
+   */
+  addKernClass(left: string, right: string, value: number): string {
+    const typeface = this.state.typeface;
+    if (!typeface) return "";
+    const id = `class-${typeface.kernClasses.length + 1}-${left}-${right}`;
+    const created: KernClass = {
+      id,
+      name: `${left} / ${right}`,
+      left: [left],
+      right: [right],
+      value,
+    };
+    const before = typeface.kernClasses;
+    const next = [...before, created];
+    typeface.kernClasses = next;
+    this.push({
+      label: "Add kerning class",
+      undo: () => {
+        typeface.kernClasses = before;
+      },
+      redo: () => {
+        typeface.kernClasses = next;
+      },
+    });
+    this.touch();
+    return id;
+  }
+
+  updateKernClass(id: string, patch: Partial<Omit<KernClass, "id">>): void {
+    const typeface = this.state.typeface;
+    if (!typeface) return;
+    const before = typeface.kernClasses;
+    const next = before.map((kernClass) =>
+      kernClass.id === id ? { ...kernClass, ...patch } : kernClass,
+    );
+    typeface.kernClasses = next;
+    this.push({
+      label: "Edit kerning class",
+      undo: () => {
+        typeface.kernClasses = before;
+      },
+      redo: () => {
+        typeface.kernClasses = next;
+      },
+    });
+    this.touch();
+  }
+
+  removeKernClass(id: string): void {
+    const typeface = this.state.typeface;
+    if (!typeface) return;
+    const before = typeface.kernClasses;
+    const next = before.filter((kernClass) => kernClass.id !== id);
+    typeface.kernClasses = next;
+    this.push({
+      label: "Remove kerning class",
+      undo: () => {
+        typeface.kernClasses = before;
+      },
+      redo: () => {
+        typeface.kernClasses = next;
+      },
+    });
+    this.touch();
+  }
+
+  /**
+   * The kerning that applies to a pair, individual value first.
+   *
+   * This mirrors how a shaper resolves it: the individual pair subtable is
+   * listed before the class subtable in GPOS, so a specific value overrides the
+   * class the pair belongs to.
+   */
+  resolvedKerning(left: string, right: string): { value: number; source: "pair" | "class" | "none" } {
+    const typeface = this.state.typeface;
+    if (!typeface) return { value: 0, source: "none" };
+    const pair = typeface.kerning.find((entry) => entry.left === left && entry.right === right);
+    if (pair) return { value: pair.value, source: "pair" };
+    const kernClass = typeface.kernClasses.find(
+      (entry) => entry.left.includes(left) && entry.right.includes(right),
+    );
+    if (kernClass) return { value: kernClass.value, source: "class" };
+    return { value: 0, source: "none" };
   }
 
   kerningFor(left: string, right: string): number {

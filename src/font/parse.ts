@@ -50,17 +50,34 @@ async function toSfntBytes(bytes: Uint8Array, format: FontFormat): Promise<Uint8
 
   const { Font, woff2 } = await import("fonteditor-core");
   if (format === "woff2") {
-    // The WOFF2 decoder is a WebAssembly module, loaded only when one turns up.
-    await woff2.init(undefined as never);
+    // The WOFF2 decoder is WebAssembly, initialised only when one turns up.
+    await woff2.init();
   }
-  const font = Font.create(bytes as never, {
+
+  // fonteditor-core reads through a DataView and so needs a real ArrayBuffer.
+  // Handing it the Uint8Array fails inside its reader with a message that does
+  // not point back here, so the conversion is done up front.
+  const buffer = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
+
+  // WOFF stores each table zlib-compressed and expects the caller to supply a
+  // synchronous inflate. fflate is a few kilobytes and works the same in the
+  // browser and in Node, where DecompressionStream would only be async.
+  const { unzlibSync } = await import("fflate");
+
+  const font = Font.create(buffer, {
     type: format,
     hinting: true,
     kerning: true,
-  } as never);
+    // The reader hands over a plain number array and expects one back, so
+    // convert either side of fflate, which works in typed arrays.
+    inflate: (deflated: number[]) => Array.from(unzlibSync(Uint8Array.from(deflated))),
+  });
   // Without `toBuffer` this hands back an ArrayBuffer, which is what we want in
   // the browser; the Node typings describe the Buffer variant instead.
-  const written = font.write({ type: "ttf" } as never) as unknown;
+  const written = font.write({ type: "ttf" }) as unknown;
   return new Uint8Array(written as ArrayBuffer);
 }
 

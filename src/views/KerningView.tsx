@@ -33,6 +33,7 @@ export function KerningView(): React.JSX.Element {
   const [selectedPair, setSelectedPair] = React.useState<{ left: string; right: string } | null>(null);
   const dragRef = React.useRef<{ startX: number; startValue: number } | null>(null);
   const [pairFilter, setPairFilter] = React.useState("");
+  const [sidebar, setSidebar] = React.useState<"pairs" | "classes">("pairs");
 
   React.useEffect(() => {
     const element = containerRef.current;
@@ -122,7 +123,9 @@ export function KerningView(): React.JSX.Element {
     );
   }
 
-  const currentValue = selectedPair ? store.kerningFor(selectedPair.left, selectedPair.right) : 0;
+  const resolved = selectedPair
+    ? store.resolvedKerning(selectedPair.left, selectedPair.right)
+    : { value: 0, source: "none" as const };
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -184,48 +187,73 @@ export function KerningView(): React.JSX.Element {
           <PairEditor
             left={selectedPair.left}
             right={selectedPair.right}
-            value={currentValue}
+            value={resolved.value}
+            source={resolved.source}
             unitsPerEm={typeface.unitsPerEm}
           />
         )}
       </div>
 
       <aside className="flex w-72 shrink-0 flex-col border-l border-border">
-        <div className="border-b border-border px-3 py-2.5">
-          <input
-            value={pairFilter}
-            onChange={(event) => setPairFilter(event.target.value)}
-            placeholder="Filter pairs"
-            className="h-7 w-full rounded-md border border-input bg-card px-2 text-2xs outline-none focus-visible:border-accent"
-            aria-label="Filter kerning pairs"
-          />
-          <p className="pt-2 text-2xs text-muted-foreground tabular-nums">
-            {typeface.kerning.length.toLocaleString()} pairs
-          </p>
-        </div>
-        <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
-          {pairs.map((pair) => (
+        <div className="flex gap-1 border-b border-border p-2">
+          {(["pairs", "classes"] as const).map((option) => (
             <button
-              key={`${pair.left}/${pair.right}`}
+              key={option}
               type="button"
-              onClick={() => setSelectedPair({ left: pair.left, right: pair.right })}
+              onClick={() => setSidebar(option)}
               className={cn(
-                "flex w-full items-center justify-between px-3 py-1.5 text-left text-2xs hover:bg-card",
-                selectedPair?.left === pair.left &&
-                  selectedPair?.right === pair.right &&
-                  "bg-card text-accent",
+                "flex-1 rounded-md px-2 py-1.5 text-2xs capitalize transition-colors",
+                sidebar === option
+                  ? "bg-card text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
-              <span className="truncate font-mono">
-                {pair.left} / {pair.right}
+              {option}
+              <span className="pl-1 tabular-nums opacity-60">
+                {option === "pairs" ? typeface.kerning.length : typeface.kernClasses.length}
               </span>
-              <span className="shrink-0 tabular-nums text-muted-foreground">{pair.value}</span>
             </button>
           ))}
-          {pairs.length === 0 && (
-            <p className="px-3 py-6 text-center text-2xs text-muted-foreground">No pairs yet.</p>
-          )}
         </div>
+
+        {sidebar === "pairs" ? (
+          <>
+            <div className="border-b border-border px-3 py-2.5">
+              <input
+                value={pairFilter}
+                onChange={(event) => setPairFilter(event.target.value)}
+                placeholder="Filter pairs"
+                className="h-7 w-full rounded-md border border-input bg-card px-2 text-2xs outline-none focus-visible:border-accent"
+                aria-label="Filter kerning pairs"
+              />
+            </div>
+            <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
+              {pairs.map((pair) => (
+                <button
+                  key={`${pair.left}/${pair.right}`}
+                  type="button"
+                  onClick={() => setSelectedPair({ left: pair.left, right: pair.right })}
+                  className={cn(
+                    "flex w-full items-center justify-between px-3 py-1.5 text-left text-2xs hover:bg-card",
+                    selectedPair?.left === pair.left &&
+                      selectedPair?.right === pair.right &&
+                      "bg-card text-accent",
+                  )}
+                >
+                  <span className="truncate font-mono">
+                    {pair.left} / {pair.right}
+                  </span>
+                  <span className="shrink-0 tabular-nums text-muted-foreground">{pair.value}</span>
+                </button>
+              ))}
+              {pairs.length === 0 && (
+                <p className="px-3 py-6 text-center text-2xs text-muted-foreground">No pairs yet.</p>
+              )}
+            </div>
+          </>
+        ) : (
+          <ClassList selected={selectedPair} />
+        )}
       </aside>
     </div>
   );
@@ -235,11 +263,14 @@ function PairEditor({
   left,
   right,
   value,
+  source,
   unitsPerEm,
 }: {
   left: string;
   right: string;
   value: number;
+  /** Where the value came from, so an inherited class value is not mistaken for a pair. */
+  source: "pair" | "class" | "none";
   unitsPerEm: number;
 }): React.JSX.Element {
   const [display, setDisplay] = React.useState(value);
@@ -283,6 +314,14 @@ function PairEditor({
         {perMille > 0 ? "+" : ""}
         {perMille}/1000 em
       </span>
+      {source === "class" && (
+        <span
+          className="rounded border border-inspect/50 px-1.5 py-0.5 text-2xs text-[var(--inspect)]"
+          title="This value comes from a class. Editing it here creates a pair that overrides the class."
+        >
+          from class
+        </span>
+      )}
       {value !== 0 && (
         <button
           type="button"
@@ -293,6 +332,130 @@ function PairEditor({
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * Kerning classes.
+ *
+ * One class covers every glyph on its left against every glyph on its right,
+ * which is how a real font expresses "all the round letters kern this way
+ * against all the straight ones" without storing thousands of pairs. Members
+ * are entered as glyph names because typing them is faster than clicking
+ * through a grid, and it makes a class easy to read back at a glance.
+ */
+function ClassList({
+  selected,
+}: {
+  selected: { left: string; right: string } | null;
+}): React.JSX.Element {
+  const state = useAppState();
+  const typeface = state.typeface;
+  if (!typeface) return <></>;
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="border-b border-border p-2">
+        <button
+          type="button"
+          disabled={!selected}
+          onClick={() => {
+            if (!selected) return;
+            store.addKernClass(
+              selected.left,
+              selected.right,
+              store.resolvedKerning(selected.left, selected.right).value || -20,
+            );
+          }}
+          className="w-full rounded-md border border-border px-2 py-1.5 text-2xs transition-colors hover:border-accent hover:text-foreground disabled:opacity-40"
+        >
+          {selected ? `New class from ${selected.left} / ${selected.right}` : "Select a pair first"}
+        </button>
+      </div>
+
+      <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
+        {typeface.kernClasses.map((kernClass) => (
+          <div key={kernClass.id} className="border-b border-border/40 p-2.5">
+            <div className="flex items-center justify-between pb-1.5">
+              <span className="truncate text-2xs text-foreground">{kernClass.name}</span>
+              <button
+                type="button"
+                onClick={() => store.removeKernClass(kernClass.id)}
+                className="shrink-0 text-2xs text-muted-foreground hover:text-destructive"
+              >
+                remove
+              </button>
+            </div>
+            <GlyphListInput
+              label="Left"
+              value={kernClass.left}
+              onCommit={(left) => store.updateKernClass(kernClass.id, { left })}
+            />
+            <GlyphListInput
+              label="Right"
+              value={kernClass.right}
+              onCommit={(right) => store.updateKernClass(kernClass.id, { right })}
+            />
+            <label className="flex items-center gap-2 pt-1.5">
+              <span className="w-10 shrink-0 text-2xs text-muted-foreground">Value</span>
+              <input
+                type="number"
+                value={kernClass.value}
+                onChange={(event) =>
+                  store.updateKernClass(kernClass.id, { value: Number(event.target.value) || 0 })
+                }
+                className="h-6 w-full rounded border border-input bg-card px-1.5 text-2xs tabular-nums outline-none focus-visible:border-accent"
+              />
+            </label>
+            <p className="pt-1.5 text-2xs text-muted-foreground tabular-nums">
+              {kernClass.left.length * kernClass.right.length} combinations
+            </p>
+          </div>
+        ))}
+        {typeface.kernClasses.length === 0 && (
+          <p className="px-3 py-6 text-center text-2xs leading-snug text-muted-foreground">
+            No classes yet. Select a pair in the preview, then create a class from it and add more
+            glyphs to either side.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Comma-separated glyph names, committed on blur so typing stays smooth. */
+function GlyphListInput({
+  label,
+  value,
+  onCommit,
+}: {
+  label: string;
+  value: string[];
+  onCommit: (next: string[]) => void;
+}): React.JSX.Element {
+  const [draft, setDraft] = React.useState(value.join(", "));
+  React.useEffect(() => setDraft(value.join(", ")), [value]);
+
+  return (
+    <label className="flex items-center gap-2 pb-1">
+      <span className="w-10 shrink-0 text-2xs text-muted-foreground">{label}</span>
+      <input
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => {
+          const next = draft
+            .split(",")
+            .map((name) => name.trim())
+            .filter(Boolean);
+          if (next.join(",") !== value.join(",")) onCommit(next);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.currentTarget.blur();
+        }}
+        placeholder="glyph names"
+        className="h-6 w-full rounded border border-input bg-card px-1.5 font-mono text-2xs outline-none focus-visible:border-accent"
+      />
+    </label>
   );
 }
 
@@ -313,7 +476,9 @@ function layoutText(typeface: Typeface | null, text: string): PlacedGlyph[] {
   for (const character of text) {
     const glyph = byCodepoint.get(character.codePointAt(0)!);
     if (!glyph) continue;
-    const kern = previous ? store.kerningFor(previous.name, glyph.name) : 0;
+    // Resolve through classes as well, so the preview shows what a text
+    // engine would actually do rather than only the individual pairs.
+    const kern = previous ? store.resolvedKerning(previous.name, glyph.name).value : 0;
     pen += kern;
     placed.push({ glyph, x: pen, kern });
     pen += resolveAdvanceWidth(glyph, typeface);
