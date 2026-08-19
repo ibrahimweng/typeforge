@@ -18,7 +18,8 @@ export function hasFontTools(): boolean {
 }
 
 export interface FontToolsReport {
-  sfntVersion: string;
+  /** "truetype" for glyf outlines, "cff" for PostScript outlines. */
+  outlineFormat: "truetype" | "cff" | "unknown";
   tables: string[];
   numGlyphs: number;
   unitsPerEm: number;
@@ -34,11 +35,13 @@ import json, sys
 from fontTools.ttLib import TTFont
 
 path = sys.argv[1]
-out = {"sfntVersion": "", "tables": [], "numGlyphs": 0, "unitsPerEm": 0,
+out = {"outlineFormat": "unknown", "tables": [], "numGlyphs": 0, "unitsPerEm": 0,
        "kernPairs": {}, "gposKernPairs": {}, "recompiles": False}
 try:
     f = TTFont(path)
-    out["sfntVersion"] = f.sfntVersion
+    # Report the outline flavour rather than the raw version tag, which is
+    # unprintable bytes for TrueType.
+    out["outlineFormat"] = "cff" if f.sfntVersion == "OTTO" else "truetype"
     out["tables"] = sorted(t for t in f.keys() if t != "GlyphOrder")
     out["numGlyphs"] = f["maxp"].numGlyphs
     out["unitsPerEm"] = f["head"].unitsPerEm
