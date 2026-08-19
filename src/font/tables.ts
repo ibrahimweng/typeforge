@@ -364,6 +364,14 @@ export function buildPost(italicAngle: number, unitsPerEm: number): Uint8Array {
 export interface Os2Input {
   metrics: VerticalMetrics;
   unitsPerEm: number;
+  /**
+   * The real vertical extent of the drawn outlines. On Windows the `usWin`
+   * fields are a clipping boundary rather than line spacing, so they have to
+   * enclose the tallest accented capital and the deepest descender or those
+   * glyphs are cut off.
+   */
+  outlineYMax: number;
+  outlineYMin: number;
   averageCharWidth: number;
   weightClass: number;
   widthClass: number;
@@ -409,8 +417,10 @@ export function buildOs2(input: Os2Input): Uint8Array {
   writer.int16(metrics.ascender);
   writer.int16(metrics.descender);
   writer.int16(metrics.lineGap);
-  writer.uint16(Math.max(0, metrics.ascender));
-  writer.uint16(Math.max(0, -metrics.descender));
+  // Clipping boundary: take whichever is taller, the typographic ascender or
+  // the tallest thing actually drawn. Same below the baseline.
+  writer.uint16(Math.max(0, metrics.ascender, input.outlineYMax));
+  writer.uint16(Math.max(0, -metrics.descender, -input.outlineYMin));
   writer.uint32(1); // ulCodePageRange1: Latin 1
   writer.uint32(0);
   writer.int16(metrics.xHeight);

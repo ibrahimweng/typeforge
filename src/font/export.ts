@@ -15,6 +15,7 @@
  */
 
 import { contoursBounds } from "./geometry";
+import { correctDirection, insertExtrema, type OutlineFormat } from "./outline";
 import { buildGlyfTables, splitGlyf, type GlyfBuildInput } from "./glyf";
 import { buildGposTable, buildKernTable, type ResolvedClassKern, type ResolvedPair } from "./kern";
 import { resolveGlyphContours } from "./transform";
@@ -112,12 +113,20 @@ export async function exportFont(
   };
 }
 
-/** Glyph outlines with the parametric stack applied, ready to encode. */
-function resolvedGlyphs(typeface: Typeface) {
-  return typeface.glyphs.map((glyph) => ({
-    glyph,
-    contours: resolveGlyphContours(glyph, typeface),
-  }));
+/**
+ * Glyph outlines with the parametric stack applied and corrected for the
+ * target format, ready to encode.
+ *
+ * Corrections run on a copy. What the designer drew is never modified: a point
+ * added at a curve's extreme, or a contour wound the other way, is a
+ * requirement of the file format rather than a change to the drawing.
+ */
+function resolvedGlyphs(typeface: Typeface, format: OutlineFormat) {
+  return typeface.glyphs.map((glyph) => {
+    const resolved = resolveGlyphContours(glyph, typeface);
+    const withExtrema = resolved.map(insertExtrema);
+    return { glyph, contours: correctDirection(withExtrema, format) };
+  });
 }
 
 function exportTrueType(
@@ -130,7 +139,7 @@ function exportTrueType(
     notes: string[];
   },
 ): Uint8Array {
-  const resolved = resolvedGlyphs(typeface);
+  const resolved = resolvedGlyphs(typeface, "truetype");
   const preserving = context.fidelity === "preserve" && typeface.source !== null;
 
   // In preserve mode an untouched glyph is copied rather than re-encoded, which
@@ -178,6 +187,7 @@ function exportTrueType(
     patchHead(tables, built.bounds, built.indexToLocFormat);
     patchHhea(tables, numberOfHMetrics);
     patchMaxp(tables, typeface.glyphs.length, built.maxPoints, built.maxContours);
+    patchWinMetrics(tables, built.bounds);
     // `post` version 2 lists glyph names against the old glyph order. We keep
     // the glyph order, so it stays valid and is left alone.
   } else {
@@ -199,7 +209,7 @@ async function exportOpenType(
     Glyph: OpenTypeGlyph,
     Path: OpenTypePath,
   } = await import("opentype.js");
-  const resolved = resolvedGlyphs(typeface);
+  const resolved = resolvedGlyphs(typeface, "cff");
 
   const glyphs = resolved.map((entry) => {
     const path = new OpenTypePath();
@@ -397,6 +407,8 @@ function buildBaselineTables(
     buildOs2({
       metrics: typeface.metrics,
       unitsPerEm: typeface.unitsPerEm,
+      outlineYMax: built.bounds.yMax,
+      outlineYMin: built.bounds.yMin,
       averageCharWidth: advances.length
         ? advances.reduce((sum, value) => sum + value, 0) / advances.length
         : 0,
@@ -434,6 +446,24 @@ function patchHhea(tables: Map<string, Uint8Array>, numberOfHMetrics: number): v
   const copy = new Uint8Array(hhea);
   new DataView(copy.buffer).setUint16(34, numberOfHMetrics);
   tables.set("hhea", copy);
+}
+
+/**
+ * Widen the Windows clipping boundary if editing has made glyphs taller or
+ * deeper than the imported font allowed for. Only ever widened: narrowing it
+ * would start clipping glyphs the original font rendered correctly.
+ */
+function patchWinMetrics(
+  tables: Map<string, Uint8Array>,
+  bounds: { yMin: number; yMax: number },
+): void {
+  const os2 = tables.get("OS/2");
+  if (!os2 || os2.length < 78) return;
+  const copy = new Uint8Array(os2);
+  const view = new DataView(copy.buffer);
+  view.setUint16(74, Math.max(view.getUint16(74), Math.max(0, bounds.yMax)));
+  view.setUint16(76, Math.max(view.getUint16(76), Math.max(0, -bounds.yMin)));
+  tables.set("OS/2", copy);
 }
 
 function patchMaxp(

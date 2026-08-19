@@ -134,7 +134,7 @@ export function contoursBounds(contours: Contour[]): Bounds {
 }
 
 /** Parameter values where a cubic reaches a horizontal or vertical extreme. */
-function cubicExtremeTs(from: Vec2, c1: Vec2, c2: Vec2, to: Vec2): number[] {
+export function cubicExtremeTs(from: Vec2, c1: Vec2, c2: Vec2, to: Vec2): number[] {
   const ts: number[] = [];
   for (const axis of ["x", "y"] as const) {
     // Derivative of a cubic is a quadratic: at^2 + bt + c

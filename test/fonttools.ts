@@ -27,6 +27,16 @@ export interface FontToolsReport {
   gposKernPairs: Record<string, number>;
   /** True when fontTools could recompile the font, which exercises every table it parsed. */
   recompiles: boolean;
+  /**
+   * Curve turns that fall inside a segment rather than on a point. Both
+   * outline formats require a point at every extreme, so this should be zero.
+   */
+  interiorExtremes: number;
+  /** The Windows clipping boundary, and the real extent of the outlines. */
+  winAscent: number;
+  winDescent: number;
+  yMax: number;
+  yMin: number;
   error?: string;
 }
 
@@ -36,7 +46,9 @@ from fontTools.ttLib import TTFont
 
 path = sys.argv[1]
 out = {"outlineFormat": "unknown", "tables": [], "numGlyphs": 0, "unitsPerEm": 0,
-       "kernPairs": {}, "gposKernPairs": {}, "recompiles": False}
+       "kernPairs": {}, "gposKernPairs": {}, "recompiles": False,
+       "interiorExtremes": 0, "winAscent": 0, "winDescent": 0,
+       "yMax": 0, "yMin": 0}
 try:
     f = TTFont(path)
     # Report the outline flavour rather than the raw version tag, which is
@@ -45,6 +57,11 @@ try:
     out["tables"] = sorted(t for t in f.keys() if t != "GlyphOrder")
     out["numGlyphs"] = f["maxp"].numGlyphs
     out["unitsPerEm"] = f["head"].unitsPerEm
+    out["yMax"] = f["head"].yMax
+    out["yMin"] = f["head"].yMin
+    if "OS/2" in f:
+        out["winAscent"] = f["OS/2"].usWinAscent
+        out["winDescent"] = f["OS/2"].usWinDescent
 
     if "kern" in f:
         for st in f["kern"].kernTables:
@@ -73,6 +90,48 @@ try:
                             val = getattr(rec.Value1, "XAdvance", 0)
                             if val:
                                 out["gposKernPairs"].setdefault("%s,%s" % (lg, rg), val)
+
+    # Count curve turns that land inside a segment instead of on a point.
+    # A quadratic through on-curve p0, control q, on-curve p2 turns at
+    # t = (p0 - q) / (p0 - 2q + p2); anything strictly inside (0,1) is a
+    # missing extreme. Implied on-curve midpoints are expanded first.
+    if "glyf" in f:
+        glyf = f["glyf"]
+        for name in f.getGlyphOrder()[:600]:
+            g = glyf[name]
+            if g.numberOfContours <= 0:
+                continue
+            coords, endPts, flags = g.getCoordinates(glyf)
+            coords = list(coords)
+            on_flags = [x & 1 for x in flags]
+            start = 0
+            for end in endPts:
+                pts = coords[start:end + 1]
+                ons = on_flags[start:end + 1]
+                start = end + 1
+                n = len(pts)
+                if n < 2:
+                    continue
+                expanded = []
+                for i in range(n):
+                    expanded.append((pts[i], ons[i]))
+                    if not ons[i] and not ons[(i + 1) % n]:
+                        nxt = pts[(i + 1) % n]
+                        expanded.append((((pts[i][0] + nxt[0]) / 2, (pts[i][1] + nxt[1]) / 2), 1))
+                m = len(expanded)
+                for i in range(m):
+                    point, is_on = expanded[i]
+                    if is_on:
+                        continue
+                    prev = expanded[(i - 1) % m][0]
+                    nxt = expanded[(i + 1) % m][0]
+                    for axis in (0, 1):
+                        denom = prev[axis] - 2 * point[axis] + nxt[axis]
+                        if abs(denom) < 1e-9:
+                            continue
+                        t = (prev[axis] - point[axis]) / denom
+                        if 1e-4 < t < 1 - 1e-4:
+                            out["interiorExtremes"] += 1
 
     # Recompiling forces fontTools to serialise every table it parsed, which is
     # the strongest check available that the file is structurally sound.

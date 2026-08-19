@@ -113,6 +113,47 @@ suite("export pipeline", () => {
     expect(landed).toBe(true);
   });
 
+  it("puts a point wherever a curve turns", async () => {
+    const { typeface } = await importFont(source!, "DejaVuSans.ttf");
+    // A family parameter forces every glyph through the rebuild path.
+    typeface.params = { ...typeface.params, weight: 8 };
+
+    const result = await exportFont(typeface, { format: "ttf", fidelity: "rebuild", now: 0 });
+    const report = inspectFont(result.bytes);
+
+    expect(report.error).toBeUndefined();
+    // Both outline formats require a point at every extreme. Rounding to whole
+    // units and fitting quadratics to cubics each nudge a control point past
+    // the turn, which used to leave over 1,700 of them adrift.
+    expect(report.interiorExtremes).toBe(0);
+  });
+
+  it("keeps the Windows clipping boundary clear of the tallest glyphs", async () => {
+    const { typeface } = await importFont(source!, "DejaVuSans.ttf");
+    const result = await exportFont(typeface, { format: "ttf", fidelity: "rebuild", now: 0 });
+    const report = inspectFont(result.bytes);
+
+    // On Windows these are not line spacing, they are where glyphs get cut off.
+    // Accented capitals reach well above the typographic ascender.
+    expect(report.winAscent).toBeGreaterThanOrEqual(report.yMax);
+    expect(report.winDescent).toBeGreaterThanOrEqual(-report.yMin);
+  });
+
+  it("widens the clipping boundary when an edit makes a glyph taller", async () => {
+    const { typeface } = await importFont(source!, "DejaVuSans.ttf");
+    const before = inspectFont(source!);
+
+    // Push one glyph far above anything else in the font.
+    const capitalA = typeface.glyphs.find((glyph) => glyph.unicodes.includes(65))!;
+    const raised = before.yMax + 400;
+    capitalA.contours[0].nodes[0].point = { x: 100, y: raised };
+    capitalA.dirty = true;
+
+    const result = await exportFont(typeface, { format: "ttf", fidelity: "preserve", now: 0 });
+    const report = inspectFont(result.bytes);
+    expect(report.winAscent).toBeGreaterThanOrEqual(raised);
+  });
+
   it("writes an OpenType file with PostScript curves and kerning intact", async () => {
     const { typeface } = await importFont(source!, "DejaVuSans.ttf");
     // Keep the export quick: CFF encoding of 6000 glyphs is not what is under test.
