@@ -6,16 +6,13 @@
  * WOFF2 needs a WebAssembly decoder that has to be initialised before use.
  */
 
-import { existsSync, readFileSync } from "node:fs";
-
 import { describe, expect, it } from "vitest";
 
 import { detectFormat, importFont } from "../src/font/parse";
+import { FONT_SUITE_TIMEOUT, loadWebFontFixtures } from "./fixtures";
 
-const WOFF = "/tmp/DejaVuSans.woff";
-const WOFF2 = "/tmp/DejaVuSans.woff2";
-const available = existsSync(WOFF) && existsSync(WOFF2);
-const suite = available ? describe : describe.skip;
+const fixtures = loadWebFontFixtures();
+const suite = fixtures ? describe : describe.skip;
 
 describe("detectFormat", () => {
   it("identifies formats from the leading bytes, not the file name", () => {
@@ -31,9 +28,9 @@ describe("detectFormat", () => {
   });
 });
 
-suite("web font import", () => {
+suite("web font import", { timeout: FONT_SUITE_TIMEOUT }, () => {
   it("reads a WOFF file", async () => {
-    const { typeface } = await importFont(new Uint8Array(readFileSync(WOFF)), "DejaVuSans.woff");
+    const { typeface } = await importFont(fixtures!.woff, "DejaVuSans.woff");
     expect(typeface.glyphs.length).toBeGreaterThan(1000);
     expect(typeface.meta.familyName).toBe("DejaVu Sans");
     const capitalA = typeface.glyphs.find((glyph) => glyph.unicodes.includes(65));
@@ -41,7 +38,7 @@ suite("web font import", () => {
   });
 
   it("reads a WOFF2 file, which needs its WebAssembly decoder", async () => {
-    const { typeface } = await importFont(new Uint8Array(readFileSync(WOFF2)), "DejaVuSans.woff2");
+    const { typeface } = await importFont(fixtures!.woff2, "DejaVuSans.woff2");
     expect(typeface.glyphs.length).toBeGreaterThan(1000);
     expect(typeface.meta.familyName).toBe("DejaVu Sans");
     const capitalA = typeface.glyphs.find((glyph) => glyph.unicodes.includes(65));
