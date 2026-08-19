@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import { exportFont } from "../src/font/export";
+import { resolveGlyphContours } from "../src/font/transform";
 import { importFont } from "../src/font/parse";
 import { FONT_SUITE_TIMEOUT, loadTestFont } from "./fixtures";
 import { hasFontTools, inspectFont } from "./fonttools";
@@ -239,6 +240,49 @@ suite("export pipeline", { timeout: FONT_SUITE_TIMEOUT }, () => {
     expect(report.error).toBeUndefined();
     expect(report.recompiles).toBe(true);
     expect(report.interiorExtremes).toBe(0);
+  });
+
+  /**
+   * Slabs are laid over the strokes rather than merged into them, so the export
+   * has to fuse them. Left overlapping, the join shows as a seam under the
+   * even-odd rule some renderers and print pipelines apply.
+   */
+  it("writes a valid font after putting slabs on every stroke end", async () => {
+    const { typeface } = await importFont(source!, "DejaVuSans.ttf");
+    const before = inspectFont(source!);
+    typeface.params = { ...typeface.params, slab: 90 };
+
+    const result = await exportFont(typeface, {
+      format: "ttf",
+      fidelity: "rebuild",
+      now: 0,
+      mergeOverlaps: true,
+    });
+    const report = inspectFont(result.bytes);
+
+    expect(report.error).toBeUndefined();
+    expect(report.recompiles).toBe(true);
+    expect(report.numGlyphs).toBe(before.numGlyphs);
+  });
+
+  it("makes the slabbed letters wider than the bare ones", async () => {
+    const { typeface } = await importFont(source!, "DejaVuSans.ttf");
+    const bare = resolveGlyphContours(
+      typeface.glyphs[typeface.glyphIndex.get("I")!],
+      typeface,
+    );
+    typeface.params = { ...typeface.params, slab: 90 };
+    const slabbed = resolveGlyphContours(
+      typeface.glyphs[typeface.glyphIndex.get("I")!],
+      typeface,
+    );
+
+    const width = (contours: ReturnType<typeof resolveGlyphContours>) => {
+      const xs = contours.flatMap((c) => c.nodes.map((n) => n.point.x));
+      return Math.max(...xs) - Math.min(...xs);
+    };
+    // An I is a bare stem; slabs at both ends have to widen it.
+    expect(width(slabbed)).toBeGreaterThan(width(bare) + 100);
   });
 
   it("leaves the font alone when the pixel grid is off", async () => {

@@ -114,6 +114,11 @@ export interface GlyphParams {
    * Zero leaves the outline alone.
    */
   pixelGrid: number;
+  /**
+   * How far a slab serif reaches past each stroke end, in font units. Zero
+   * leaves the stroke ends bare.
+   */
+  slab: number;
 }
 
 export const DEFAULT_PARAMS: GlyphParams = {
@@ -125,6 +130,7 @@ export const DEFAULT_PARAMS: GlyphParams = {
   counterScale: 1,
   tracking: 0,
   pixelGrid: 0,
+  slab: 0,
 };
 
 export interface VerticalMetrics {

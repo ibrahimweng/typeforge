@@ -20,6 +20,7 @@ import {
 import { resolveComponents } from "./composite";
 import { classifyContours } from "./outline";
 import { pixelate } from "./pixel";
+import { addSlabs } from "./slab";
 import { DEFAULT_PARAMS, type Contour, type Glyph, type GlyphNode, type GlyphParams, type Typeface, type Vec2 } from "./types";
 
 /** Merge family parameters with a glyph's overrides. */
@@ -36,7 +37,8 @@ export function paramsAreDefault(params: GlyphParams): boolean {
     params.xHeightScale === DEFAULT_PARAMS.xHeightScale &&
     params.counterScale === DEFAULT_PARAMS.counterScale &&
     params.tracking === DEFAULT_PARAMS.tracking &&
-    params.pixelGrid === DEFAULT_PARAMS.pixelGrid
+    params.pixelGrid === DEFAULT_PARAMS.pixelGrid &&
+    params.slab === DEFAULT_PARAMS.slab
   );
 }
 
@@ -66,6 +68,18 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
   if (params.width !== 1)
     contours = contours.map((contour) => applyHorizontalScale(contour, params.width));
   if (params.slant !== 0) contours = contours.map((contour) => applySlant(contour, params.slant));
+  // Slabs before quantising, so a slab serif can also be put on a grid, and
+  // after weight and width, so they are laid on the stroke ends as those
+  // finally stand.
+  if (params.slab > 0) {
+    contours = addSlabs(contours, {
+      projection: params.slab,
+      // A slab reaches further across the stroke than back along it; much
+      // thicker and it reads as a box on the end rather than a serif.
+      thickness: params.slab * 0.55,
+      maxWidth: typeface.unitsPerEm * 0.35,
+    });
+  }
   // Quantising comes last. It has to see the letter as it will finally be
   // drawn, or a stem that weight or width moved would land on a different cell
   // than the one the finished shape sits on.

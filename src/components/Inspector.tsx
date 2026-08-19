@@ -90,6 +90,15 @@ const PARAMS: ParamSpec[] = [
     step: 0.005,
   },
   {
+    key: "slab",
+    label: "Slab serifs",
+    hint: "Lays a bar across every flat stroke end, turning a sans into a slab. Round terminals are left alone.",
+    min: 0,
+    max: 0.1,
+    step: 0.001,
+    emRelative: true,
+  },
+  {
     key: "pixelGrid",
     label: "Pixel grid",
     hint: "Redraws every letter on a grid this many cells to the em. Zero leaves the curves alone.",

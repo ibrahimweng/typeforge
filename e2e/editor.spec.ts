@@ -19,6 +19,20 @@ const FONT_PATH = FONT_CANDIDATES.find((path) => existsSync(path));
 
 test.skip(!FONT_PATH, "needs a system font to open");
 
+/**
+ * Which slider drives a named family parameter.
+ *
+ * Read from the panel rather than counted against a list written here: adding
+ * a parameter shifts every slider after it, and a list kept in this file goes
+ * out of step silently, pointing a test at its neighbour.
+ */
+async function paramSlider(page: Page, label: string) {
+  const labels = await page.locator('aside span[class*="text-foreground"]').allTextContents();
+  const index = labels.indexOf(label);
+  expect(index, `no family parameter called ${label}`).toBeGreaterThanOrEqual(0);
+  return page.getByRole("slider").nth(index);
+}
+
 /** Open the test font through the file input the toolbar drives. */
 async function openFont(page: Page): Promise<void> {
   await page.setInputFiles('input[type="file"]', FONT_PATH!);
@@ -302,17 +316,9 @@ test("quantises the letters onto a pixel grid", async ({ page }) => {
   await page.getByRole("button", { name: "Glyph", exact: true }).click();
   await page.waitForTimeout(500);
 
-  // The control sits with the other family parameters, in the order they are
-  // declared, so its position is checked rather than assumed.
-  const labels = await page.locator("aside span").allTextContents();
-  const pixelIndex = labels.filter((text) =>
-    ["Corner radius", "Weight", "Middle space", "Width", "Slant", "x-height", "Pixel grid", "Tracking"].includes(text),
-  ).indexOf("Pixel grid");
-  expect(pixelIndex).toBeGreaterThanOrEqual(0);
-
   const inkBefore = await measureInk(page);
 
-  const slider = page.getByRole("slider").nth(pixelIndex);
+  const slider = await paramSlider(page, "Pixel grid");
   await slider.focus();
   // Up to a coarse grid, where the quantising is unmistakable.
   for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowRight");
@@ -322,5 +328,31 @@ test("quantises the letters onto a pixel grid", async ({ page }) => {
   // Squaring a letter off changes how much of the canvas it covers.
   expect(inkAfter).not.toBe(inkBefore);
   expect(inkAfter).toBeGreaterThan(0);
+  expect(errors).toEqual([]);
+});
+
+test("puts slab serifs on the stroke ends", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  await page.goto("/");
+  await openFont(page);
+
+  // The editor opens on A, whose sides are diagonal, so it has no flat stroke
+  // ends and correctly gets no slabs. H is all right angles.
+  await page.getByLabel("Search glyphs").fill("H");
+  await page.getByRole("button", { name: /^H$/ }).first().dblclick();
+  await page.waitForTimeout(600);
+
+  const inkBefore = await measureInk(page);
+
+  const slider = await paramSlider(page, "Slab serifs");
+  await slider.focus();
+  for (let i = 0; i < 45; i++) await page.keyboard.press("ArrowRight");
+  await page.waitForTimeout(900);
+
+  // Bars laid across the stroke ends cover more of the canvas.
+  const inkAfter = await measureInk(page);
+  expect(inkAfter).toBeGreaterThan(inkBefore);
   expect(errors).toEqual([]);
 });
