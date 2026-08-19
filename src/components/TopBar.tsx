@@ -13,6 +13,7 @@ const VIEWS: Array<{ id: ViewId; label: string }> = [
   { id: "glyph", label: "Glyph" },
   { id: "kerning", label: "Kerning" },
   { id: "metrics", label: "Spacing" },
+  { id: "report", label: "Checks" },
 ];
 
 const TOOLS: Array<{ id: ToolId; label: string; hint: string }> = [

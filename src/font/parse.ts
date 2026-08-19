@@ -204,8 +204,9 @@ export function commandsToContours(commands: readonly import("opentype.js").Path
         nodes.pop();
       }
     }
-    classifyNodes(nodes);
-    contours.push({ nodes, closed });
+    const merged = mergeCoincidentNodes(nodes, closed);
+    classifyNodes(merged);
+    contours.push({ nodes: merged, closed });
     nodes = [];
   };
 
@@ -266,6 +267,49 @@ export function commandsToContours(commands: readonly import("opentype.js").Path
   }
   pushContour(true);
   return contours;
+}
+
+/**
+ * Fold consecutive nodes that sit on the same point into one.
+ *
+ * A sharp corner arrives as a segment ending at a point and the next beginning
+ * at it, which reads back as two nodes in the same place with a zero-length
+ * segment between them. One node carrying both handles is the same shape,
+ * without the empty segment that outline checkers flag as a duplicate point.
+ */
+function mergeCoincidentNodes(nodes: GlyphNode[], closed: boolean): GlyphNode[] {
+  if (nodes.length < 2) return nodes;
+  const out: GlyphNode[] = [];
+
+  for (const node of nodes) {
+    const previous = out[out.length - 1];
+    if (
+      previous &&
+      Math.abs(previous.point.x - node.point.x) < 1e-6 &&
+      Math.abs(previous.point.y - node.point.y) < 1e-6
+    ) {
+      // Keep the handle arriving at the corner and the one leaving it.
+      previous.handleOut = node.handleOut ?? previous.handleOut;
+      if (!previous.handleIn) previous.handleIn = node.handleIn;
+      continue;
+    }
+    out.push(node);
+  }
+
+  // On a closed contour the last node can land back on the first, which is the
+  // same corner seen from both ends of the loop.
+  if (closed && out.length > 1) {
+    const first = out[0];
+    const last = out[out.length - 1];
+    if (
+      Math.abs(first.point.x - last.point.x) < 1e-6 &&
+      Math.abs(first.point.y - last.point.y) < 1e-6
+    ) {
+      first.handleIn = last.handleIn ?? first.handleIn;
+      out.pop();
+    }
+  }
+  return out;
 }
 
 /**

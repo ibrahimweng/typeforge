@@ -16,6 +16,7 @@ import { FontGridView } from "@/views/FontGridView";
 import { GlyphEditorView } from "@/views/GlyphEditorView";
 import { KerningView } from "@/views/KerningView";
 import { MetricsView } from "@/views/MetricsView";
+import { ReportView } from "@/views/ReportView";
 
 export function App(): React.JSX.Element {
   const state = useAppState();
@@ -65,6 +66,7 @@ export function App(): React.JSX.Element {
           {state.view === "glyph" && <GlyphEditorView />}
           {state.view === "kerning" && <KerningView />}
           {state.view === "metrics" && <MetricsView />}
+          {state.view === "report" && <ReportView />}
         </div>
         <Inspector />
       </div>

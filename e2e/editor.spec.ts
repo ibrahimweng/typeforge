@@ -82,7 +82,7 @@ test("moves through every view without errors", async ({ page }) => {
   await page.goto("/");
   await openFont(page);
 
-  for (const view of ["Glyph", "Kerning", "Spacing", "Font"]) {
+  for (const view of ["Glyph", "Kerning", "Spacing", "Checks", "Font"]) {
     await page.getByRole("button", { name: view, exact: true }).click();
     await page.waitForTimeout(400);
   }
@@ -107,6 +107,25 @@ test("a family parameter reshapes the glyphs on screen", async ({ page }) => {
   const inkAfter = await measureInk(page);
   // Adding weight thickens the strokes, so more pixels are covered.
   expect(inkAfter).toBeGreaterThan(inkBefore);
+});
+
+test("checks the font and reports what it finds", async ({ page }) => {
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Checks", exact: true }).click();
+
+  // The check runs on its own when the view opens.
+  await expect(page.getByText(/glyphs checked/)).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText(/errors?$|errors\b/).first()).toBeVisible();
+
+  // DejaVu really does carry stray one-point contours, so this is a true
+  // finding rather than a demonstration fixture.
+  await expect(page.getByText(/contour that draws nothing/)).toBeVisible();
+
+  // Every finding about a glyph offers a way into it.
+  const open = page.getByRole("button", { name: /^Open / }).first();
+  await open.click();
+  await expect(page.getByRole("button", { name: "Glyph", exact: true })).toBeVisible();
 });
 
 test("exports a TrueType file the browser can use as a font", async ({ page }) => {

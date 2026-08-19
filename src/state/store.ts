@@ -23,7 +23,7 @@ import {
   type Typeface,
 } from "@/font/types";
 
-export type ViewId = "grid" | "glyph" | "kerning" | "metrics";
+export type ViewId = "grid" | "glyph" | "kerning" | "metrics" | "report";
 export type ToolId = "select" | "pen";
 
 /** A node's address within a glyph, used for selection. */

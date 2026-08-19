@@ -1,0 +1,406 @@
+/**
+ * Checks a font against the things that quietly break it.
+ *
+ * Most font faults are invisible on the machine that made them and only show up
+ * on someone else's screen, in a print shop, or in a language the designer does
+ * not read. This is the same idea as FontBakery, the checker the type industry
+ * runs before shipping, reduced to what can be judged from the document model
+ * and reported while the work is still open.
+ *
+ * Every finding names a glyph where it can, so the report can be a way into the
+ * problem rather than only a list of them.
+ */
+
+import { contourArea, contoursBounds, contourSegments, distance } from "./geometry";
+import { directionIsCorrect, missingExtrema, type OutlineFormat } from "./outline";
+import { resolveGlyphContours } from "./transform";
+import type { Contour, Typeface, Vec2 } from "./types";
+
+export type Severity = "error" | "warning" | "info";
+
+export interface Finding {
+  /** Stable identifier for the check, so findings can be grouped and dismissed. */
+  check: string;
+  severity: Severity;
+  /** One line, in the designer's terms. */
+  title: string;
+  /** What is wrong and what it will cost. */
+  detail: string;
+  /** The glyph to open, when the finding is about one. */
+  glyph?: string;
+  /** How many glyphs share this finding, when it has been rolled up. */
+  count?: number;
+}
+
+export interface ValidateOptions {
+  /** Which winding convention to judge contour direction against. */
+  format?: OutlineFormat;
+  /** Cap on how many glyphs are examined, for responsiveness on huge fonts. */
+  limit?: number;
+}
+
+export interface ValidationReport {
+  findings: Finding[];
+  errors: number;
+  warnings: number;
+  /** Glyphs actually examined, which may be fewer than the font holds. */
+  examined: number;
+}
+
+export function validateTypeface(
+  typeface: Typeface,
+  options: ValidateOptions = {},
+): ValidationReport {
+  const format = options.format ?? "truetype";
+  const limit = options.limit ?? 5000;
+  const glyphs = typeface.glyphs.slice(0, limit);
+  const findings: Finding[] = [];
+
+  findings.push(...checkFontStructure(typeface));
+  findings.push(...checkVerticalMetrics(typeface, glyphs.length > 0 ? glyphs : typeface.glyphs));
+  findings.push(...checkGlyphs(typeface, glyphs, format));
+
+  const order: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
+  findings.sort((a, b) => order[a.severity] - order[b.severity] || a.check.localeCompare(b.check));
+
+  return {
+    findings,
+    errors: findings.filter((f) => f.severity === "error").length,
+    warnings: findings.filter((f) => f.severity === "warning").length,
+    examined: glyphs.length,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Font-level
+// ---------------------------------------------------------------------------
+
+function checkFontStructure(typeface: Typeface): Finding[] {
+  const findings: Finding[] = [];
+
+  const notdefIndex = typeface.glyphs.findIndex((glyph) => glyph.name === ".notdef");
+  if (notdefIndex === -1) {
+    findings.push({
+      check: "notdef-missing",
+      severity: "error",
+      title: "No .notdef glyph",
+      detail:
+        "Every font needs a .notdef glyph. It is what gets drawn for a character the font does not cover, and its absence is a validity error.",
+    });
+  } else if (notdefIndex !== 0) {
+    findings.push({
+      check: "notdef-position",
+      severity: "error",
+      title: ".notdef is not the first glyph",
+      detail: `.notdef must be glyph 0. It is currently at ${notdefIndex}, which some tools will reject outright.`,
+      glyph: ".notdef",
+    });
+  }
+
+  if (!typeface.meta.familyName.trim()) {
+    findings.push({
+      check: "family-name",
+      severity: "error",
+      title: "No family name",
+      detail: "The font has no family name, so it cannot be installed or chosen in a menu.",
+    });
+  }
+
+  // 1000 suits PostScript curves, 2048 suits TrueType. Powers of two matter for
+  // TrueType because hinting divides the em.
+  const em = typeface.unitsPerEm;
+  if (em < 16 || em > 16384) {
+    findings.push({
+      check: "units-per-em",
+      severity: "error",
+      title: `Units per em is ${em}`,
+      detail: "The value has to sit between 16 and 16384. Anything else is out of spec.",
+    });
+  }
+
+  // Two glyphs claiming the same codepoint: only one of them will ever be used.
+  const seen = new Map<number, string>();
+  const clashes: string[] = [];
+  for (const glyph of typeface.glyphs) {
+    for (const codepoint of glyph.unicodes) {
+      const owner = seen.get(codepoint);
+      if (owner) clashes.push(`U+${codepoint.toString(16).toUpperCase().padStart(4, "0")} (${owner} and ${glyph.name})`);
+      else seen.set(codepoint, glyph.name);
+    }
+  }
+  if (clashes.length > 0) {
+    findings.push({
+      check: "duplicate-codepoints",
+      severity: "error",
+      title: `${clashes.length} codepoint${clashes.length === 1 ? "" : "s"} mapped twice`,
+      detail: `Only one glyph can answer to a codepoint; the rest are unreachable. ${clashes.slice(0, 3).join(", ")}${clashes.length > 3 ? ", and more" : ""}.`,
+      count: clashes.length,
+    });
+  }
+
+  return findings;
+}
+
+// ---------------------------------------------------------------------------
+// Vertical metrics
+// ---------------------------------------------------------------------------
+
+function checkVerticalMetrics(typeface: Typeface, glyphs: Typeface["glyphs"]): Finding[] {
+  const findings: Finding[] = [];
+  const { ascender, descender, capHeight, xHeight, lineGap } = typeface.metrics;
+
+  if (descender > 0) {
+    findings.push({
+      check: "descender-sign",
+      severity: "error",
+      title: "Descender is positive",
+      detail: "The descender sits below the baseline, so it is written as a negative number.",
+    });
+  }
+  if (ascender <= 0) {
+    findings.push({
+      check: "ascender-sign",
+      severity: "error",
+      title: "Ascender is not positive",
+      detail: "The ascender sits above the baseline and must be greater than zero.",
+    });
+  }
+  if (xHeight > capHeight && capHeight > 0) {
+    findings.push({
+      check: "x-height-above-cap",
+      severity: "warning",
+      title: "x-height is taller than the cap height",
+      detail:
+        "Lowercase would stand taller than capitals. Possible in an unusual design, but usually a mistake in the numbers.",
+    });
+  }
+  if (lineGap !== 0) {
+    findings.push({
+      check: "line-gap",
+      severity: "warning",
+      title: `Line gap is ${lineGap}`,
+      detail:
+        "Line gap is read inconsistently across platforms. The usual advice is to keep it at zero and build any extra leading into the ascender and descender instead.",
+    });
+  }
+
+  // The tallest thing drawn, against the space the metrics claim for it.
+  let yMax = -Infinity;
+  let yMin = Infinity;
+  let tallest = "";
+  let deepest = "";
+  for (const glyph of glyphs) {
+    if (glyph.contours.length === 0) continue;
+    const bounds = contoursBounds(resolveGlyphContours(glyph, typeface));
+    if (bounds.yMax > yMax) {
+      yMax = bounds.yMax;
+      tallest = glyph.name;
+    }
+    if (bounds.yMin < yMin) {
+      yMin = bounds.yMin;
+      deepest = glyph.name;
+    }
+  }
+
+  if (Number.isFinite(yMax) && yMax > ascender) {
+    findings.push({
+      check: "outline-above-ascender",
+      severity: "info",
+      title: `${tallest} reaches above the ascender`,
+      detail: `It rises to ${Math.round(yMax)} against an ascender of ${ascender}. That is normal for accented capitals, and export widens the Windows clipping boundary to match so nothing is cut off.`,
+      glyph: tallest,
+    });
+  }
+  if (Number.isFinite(yMin) && yMin < descender) {
+    findings.push({
+      check: "outline-below-descender",
+      severity: "info",
+      title: `${deepest} reaches below the descender`,
+      detail: `It drops to ${Math.round(yMin)} against a descender of ${descender}.`,
+      glyph: deepest,
+    });
+  }
+
+  return findings;
+}
+
+// ---------------------------------------------------------------------------
+// Per glyph
+// ---------------------------------------------------------------------------
+
+function checkGlyphs(
+  typeface: Typeface,
+  glyphs: Typeface["glyphs"],
+  format: OutlineFormat,
+): Finding[] {
+  const findings: Finding[] = [];
+
+  const openContours: string[] = [];
+  const strayPoints: string[] = [];
+  const duplicatePoints: string[] = [];
+  const wrongDirection: string[] = [];
+  const missingPoints: string[] = [];
+  const negativeWidth: string[] = [];
+  const selfIntersecting: string[] = [];
+
+  for (const glyph of glyphs) {
+    const contours = resolveGlyphContours(glyph, typeface);
+
+    for (const contour of contours) {
+      if (!contour.closed && contour.nodes.length > 1) {
+        openContours.push(glyph.name);
+        break;
+      }
+    }
+    // Enclosing no area is the real test. A two-node contour with handles is
+    // a perfectly good ellipse, so counting nodes would flag sound drawings.
+    if (contours.some((contour) => contour.nodes.length > 0 && Math.abs(contourArea(contour)) < 1)) {
+      strayPoints.push(glyph.name);
+    }
+    if (contours.some(hasDuplicatePoints)) duplicatePoints.push(glyph.name);
+    if (contours.length > 0 && !directionIsCorrect(contours, format)) {
+      wrongDirection.push(glyph.name);
+    }
+    if (contours.some((contour) => missingExtrema(contour) > 0)) missingPoints.push(glyph.name);
+    // The stored value, not the resolved one: export clamps negatives to zero,
+    // so asking the resolved width would never report the problem.
+    if (glyph.advanceWidth < 0) negativeWidth.push(glyph.name);
+    if (contours.length > 0 && contoursIntersect(contours)) selfIntersecting.push(glyph.name);
+  }
+
+  const rollUp = (
+    names: string[],
+    check: string,
+    severity: Severity,
+    title: (n: number) => string,
+    detail: string,
+  ): void => {
+    if (names.length === 0) return;
+    findings.push({
+      check,
+      severity,
+      title: title(names.length),
+      detail: `${detail} First: ${names.slice(0, 5).join(", ")}${names.length > 5 ? `, and ${names.length - 5} more` : ""}.`,
+      glyph: names[0],
+      count: names.length,
+    });
+  };
+
+  rollUp(
+    negativeWidth,
+    "negative-advance",
+    "error",
+    (n) => `${n} glyph${n === 1 ? " has" : "s have"} a negative advance width`,
+    "Text would run backwards over itself.",
+  );
+  rollUp(
+    openContours,
+    "open-contour",
+    "error",
+    (n) => `${n} glyph${n === 1 ? " has" : "s have"} an unclosed contour`,
+    "An outline has to close for the fill to be defined. Open paths render unpredictably.",
+  );
+  rollUp(
+    strayPoints,
+    "stray-points",
+    "warning",
+    (n) => `${n} glyph${n === 1 ? " has" : "s have"} a contour that draws nothing`,
+    "A stray point or a collapsed path encloses no area. It adds weight to the file and some checkers reject it.",
+  );
+  rollUp(
+    duplicatePoints,
+    "duplicate-points",
+    "warning",
+    (n) => `${n} glyph${n === 1 ? " has" : "s have"} points on top of each other`,
+    "Two points in the same place add nothing and can confuse hinting and interpolation.",
+  );
+  rollUp(
+    wrongDirection,
+    "contour-direction",
+    "warning",
+    (n) => `${n} glyph${n === 1 ? " is" : "s are"} wound the wrong way`,
+    "Counters must run against the shape enclosing them or they fill in solid. Export corrects this, so this is about what you are drawing rather than what ships.",
+  );
+  rollUp(
+    missingPoints,
+    "missing-extrema",
+    "warning",
+    (n) => `${n} glyph${n === 1 ? " has" : "s have"} a curve turning between points`,
+    "Both outline formats want a point where a curve reaches its highest, lowest, leftmost or rightmost position. Export adds them, so this is about the drawing rather than the file.",
+  );
+  rollUp(
+    selfIntersecting,
+    "overlapping-contours",
+    "info",
+    (n) => `${n} glyph${n === 1 ? " has" : "s have"} overlapping contours`,
+    "Overlaps are a normal way to draw, but they have to be merged in the exported file or they can render as holes. Typeforge does not merge them yet.",
+  );
+
+  return findings;
+}
+
+function hasDuplicatePoints(contour: Contour): boolean {
+  const { nodes } = contour;
+  // A lone node would compare against itself through the wrap and always match.
+  // A contour that small is reported as drawing nothing instead.
+  if (nodes.length < 2) return false;
+  for (let i = 0; i < nodes.length; i++) {
+    const next = nodes[(i + 1) % nodes.length];
+    if (distance(nodes[i].point, next.point) < 1e-6) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether any two segments of a glyph cross.
+ *
+ * Curves are flattened first: the answer only needs to be good enough to raise
+ * the question, and an exact curve-curve intersection is far more work than the
+ * report warrants.
+ */
+function contoursIntersect(contours: Contour[]): boolean {
+  const segments: Array<[Vec2, Vec2]> = [];
+  for (const contour of contours) {
+    for (const segment of contourSegments(contour)) {
+      if (segment.kind === "line") {
+        segments.push([segment.from, segment.to]);
+      } else {
+        // Sample the curve coarsely; a crossing of any size shows up.
+        const steps = 6;
+        let previous = segment.from;
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          const u = 1 - t;
+          const point = {
+            x: u * u * u * segment.from.x + 3 * u * u * t * segment.c1.x + 3 * u * t * t * segment.c2.x + t * t * t * segment.to.x,
+            y: u * u * u * segment.from.y + 3 * u * u * t * segment.c1.y + 3 * u * t * t * segment.c2.y + t * t * t * segment.to.y,
+          };
+          segments.push([previous, point]);
+          previous = point;
+        }
+      }
+    }
+  }
+  if (segments.length > 600) return false; // too complex to be worth the sweep
+
+  for (let i = 0; i < segments.length; i++) {
+    for (let j = i + 2; j < segments.length; j++) {
+      // Neighbouring segments share an endpoint, which is not a crossing.
+      if (i === 0 && j === segments.length - 1) continue;
+      if (segmentsCross(segments[i], segments[j])) return true;
+    }
+  }
+  return false;
+}
+
+function segmentsCross([a, b]: [Vec2, Vec2], [c, d]: [Vec2, Vec2]): boolean {
+  const side = (p: Vec2, q: Vec2, r: Vec2): number =>
+    (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+
+  const d1 = side(a, b, c);
+  const d2 = side(a, b, d);
+  const d3 = side(c, d, a);
+  const d4 = side(c, d, b);
+  // Strict crossing only: touching at a shared endpoint does not count.
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
