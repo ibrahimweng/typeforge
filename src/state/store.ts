@@ -20,6 +20,7 @@ import {
   type ControlChange,
   type ControlReadings,
 } from "@/font/control";
+import { buildLinks, pointsThatMoved, propagateMoves, type LinkMap } from "@/font/link";
 import { importFont } from "@/font/parse";
 import { effectiveParams } from "@/font/transform";
 import {
@@ -89,6 +90,12 @@ class Store {
    * nothing.
    */
   private controlOutlines = new Map<string, Contour[]>();
+  /**
+   * Which points elsewhere follow each control letter's points, worked out once
+   * from the font as opened. Rebuilding these after every edit would relink a
+   * letter to wherever its points had just been dragged.
+   */
+  private controlLinks = new Map<string, LinkMap>();
 
   private state: AppState = {
     typeface: null,
@@ -280,16 +287,50 @@ class Store {
     if (index === undefined) return;
     const after = cloneGlyph(typeface.glyphs[index]);
 
-    // A control letter carries the family with it. Both halves belong to one
-    // history step: undoing the edit that moved the font has to move it back.
+    /*
+     * A control letter moves the rest of the font two ways, and they must not
+     * both charge for the same edit.
+     *
+     * Letters that are built on this one -- h is n with a taller stem, sharing
+     * fourteen of its sixteen points -- follow the shape exactly, point for
+     * point. Those are then held at neutral parameters, because they have
+     * already taken the edit in full and the parametric version of the same
+     * change would land on them a second time.
+     *
+     * Everything else follows the measured qualities instead, which is the
+     * honest description of a letter that was drawn separately.
+     */
+    const followers = new Set(this.followersOf(name));
+    const shapeBefore = new Map(
+      [...followers].map((follower) => {
+        const at = typeface.glyphIndex.get(follower);
+        return [follower, at === undefined ? null : cloneGlyph(typeface.glyphs[at])] as const;
+      }),
+    );
+
+    const links = this.controlLinks.get(name);
+    const moved = links ? propagateMoves(typeface, links, pointsThatMoved(before, after)) : [];
+
+    const shapeAfter = new Map(
+      [...followers].map((follower) => {
+        const at = typeface.glyphIndex.get(follower);
+        return [follower, at === undefined ? null : cloneGlyph(typeface.glyphs[at])] as const;
+      }),
+    );
+
     const paramsBefore = { ...typeface.params };
+    const pinned = [...(this.controlBaseline?.keys() ?? []), ...moved];
     const controlsBefore = new Map(
-      [...(this.controlBaseline?.keys() ?? [])].map((controlName) => {
-        const at = typeface.glyphIndex.get(controlName);
-        return [controlName, at === undefined ? {} : { ...typeface.glyphs[at].params }] as const;
+      pinned.map((pinnedName) => {
+        const at = typeface.glyphIndex.get(pinnedName);
+        return [pinnedName, at === undefined ? {} : { ...typeface.glyphs[at].params }] as const;
       }),
     );
     const changes = isControlGlyph(name) ? this.propagateFromControls() : [];
+    for (const follower of moved) {
+      const at = typeface.glyphIndex.get(follower);
+      if (at !== undefined) typeface.glyphs[at].params = { ...DEFAULT_PARAMS };
+    }
     const paramsAfter = { ...typeface.params };
     const controlsAfter = new Map(
       [...controlsBefore.keys()].map((controlName) => {
@@ -301,11 +342,16 @@ class Store {
     const restore = (
       params: GlyphParams,
       controls: ReadonlyMap<string, Partial<GlyphParams>>,
+      shapes: ReadonlyMap<string, Glyph | null>,
     ): void => {
       typeface.params = { ...params };
       for (const [controlName, controlParams] of controls) {
         const at = typeface.glyphIndex.get(controlName);
         if (at !== undefined) typeface.glyphs[at].params = { ...controlParams };
+      }
+      for (const [follower, shape] of shapes) {
+        const at = typeface.glyphIndex.get(follower);
+        if (at !== undefined && shape) typeface.glyphs[at] = cloneGlyph(shape);
       }
     };
 
@@ -313,11 +359,11 @@ class Store {
       label,
       undo: () => {
         typeface.glyphs[index] = cloneGlyph(before);
-        restore(paramsBefore, controlsBefore);
+        restore(paramsBefore, controlsBefore, shapeBefore);
       },
       redo: () => {
         typeface.glyphs[index] = cloneGlyph(after);
-        restore(paramsAfter, controlsAfter);
+        restore(paramsAfter, controlsAfter, shapeAfter);
       },
     });
     this.set({ lastDerivation: changes });
@@ -348,6 +394,22 @@ class Store {
       if (index === undefined) continue;
       this.controlOutlines.set(name, structuredClone(typeface.glyphs[index].contours));
     }
+
+    this.controlLinks = new Map();
+    for (const name of this.controlBaseline.keys()) {
+      this.controlLinks.set(name, buildLinks(typeface, name));
+    }
+  }
+
+  /** Glyph names that follow a control letter's shape point for point. */
+  followersOf(controlName: string): string[] {
+    const links = this.controlLinks.get(controlName);
+    if (!links) return [];
+    const names = new Set<string>();
+    for (const followers of links.values()) {
+      for (const address of followers) names.add(address.glyph);
+    }
+    return [...names].sort();
   }
 
   private propagateFromControls(): ControlChange[] {

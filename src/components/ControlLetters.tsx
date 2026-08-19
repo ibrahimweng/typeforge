@@ -30,6 +30,7 @@ function ControlThumb({ name }: { name: string }): React.JSX.Element {
   const glyph = store.glyph(name);
   const typeface = state.typeface;
   const selected = state.selectedGlyph === name;
+  const followers = glyph ? store.followersOf(name) : [];
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
@@ -58,19 +59,28 @@ function ControlThumb({ name }: { name: string }): React.JSX.Element {
   return (
     <button
       type="button"
-      title={`Open ${DISPLAY[name] ?? name}. Editing it moves the whole font.`}
+      title={
+        followers.length > 0
+          ? `Open ${DISPLAY[name] ?? name}. ${followers.length} letters are built on it point for point: ${followers.slice(0, 12).join(", ")}${followers.length > 12 ? "…" : ""}`
+          : `Open ${DISPLAY[name] ?? name}. Editing it moves the whole font.`
+      }
       onClick={() => {
         store.selectGlyph(name, { open: true });
         store.setView("glyph");
       }}
       className={cn(
-        "flex size-11 items-center justify-center rounded-md border transition-colors",
+        "relative flex size-11 items-center justify-center rounded-md border transition-colors",
         selected
           ? "border-[color:var(--accent)] bg-card"
           : "border-border hover:border-muted-foreground",
       )}
     >
       <canvas ref={canvasRef} style={{ width: 44, height: 44 }} />
+      {followers.length > 0 && (
+        <span className="pointer-events-none absolute -right-1 -top-1 rounded-full bg-[color:var(--inspect)] px-1 text-[9px] leading-[14px] text-white tabular-nums">
+          {followers.length}
+        </span>
+      )}
     </button>
   );
 }
@@ -87,7 +97,7 @@ export function ControlLetters(): React.JSX.Element | null {
   if (!state.typeface) return null;
 
   const present = CONTROL_GLYPHS.filter((name) => store.glyph(name) !== null).length;
-  const followers = state.typeface.glyphs.length - present;
+  const others = state.typeface.glyphs.length - present;
 
   return (
     <section className="border-b border-border p-3">
@@ -97,7 +107,9 @@ export function ControlLetters(): React.JSX.Element | null {
       </div>
       <p className="mb-2.5 text-2xs leading-relaxed text-muted-foreground">
         Draw these and the rest follows. Their stem, height and counter set the
-        family; {followers.toLocaleString()} other glyphs match them.
+        family; {others.toLocaleString()} other glyphs match them. A badge counts
+        the letters built on that one point for point, which take an edit exactly
+        rather than approximately.
       </p>
 
       {Object.entries(CONTROL_GROUPS).map(([group, names]) => (

@@ -130,9 +130,13 @@ describe("editing a control letter carries the family", () => {
   function seedWithOutlines(): void {
     seed(["n", "o", "p", "H"]);
     const typeface = store.getSnapshot().typeface!;
+    // Each letter stands in its own place. Giving them identical outlines would
+    // make every one of them a point-for-point copy of n, and so a shape
+    // follower, which is not what these tests are about.
+    const at: Record<string, number> = { n: 100, o: 400, p: 700, H: 1000 };
     for (const name of ["n", "o", "p", "H"]) {
       const index = typeface.glyphIndex.get(name)!;
-      typeface.glyphs[index].contours = [bar(100, 0, 180, 1100)];
+      typeface.glyphs[index].contours = [bar(at[name], 0, 180, 1100)];
       typeface.glyphs[index].advanceWidth = 600;
     }
     store.captureControlBaseline();
@@ -189,5 +193,104 @@ describe("editing a control letter carries the family", () => {
 
     expect(store.paramsFor("H").weight).toBe(before);
     expect(store.getSnapshot().lastDerivation).toEqual([]);
+  });
+});
+
+describe("letters built on a control letter follow its shape", () => {
+  function poly(points: Array<{ x: number; y: number }>) {
+    return {
+      closed: true,
+      nodes: points.map((point) => ({
+        point,
+        handleIn: null,
+        handleOut: null,
+        type: "corner" as const,
+      })),
+    };
+  }
+
+  /** n and h share three points; h's fourth is its own taller stem. */
+  const SHARED = [
+    { x: 0, y: 0 },
+    { x: 200, y: 0 },
+    { x: 200, y: 1100 },
+  ];
+
+  function seedLinked(): void {
+    seed(["n", "h", "z"]);
+    const typeface = store.getSnapshot().typeface!;
+    typeface.glyphs[typeface.glyphIndex.get("n")!].contours = [
+      poly([...SHARED, { x: 0, y: 1100 }]),
+    ];
+    typeface.glyphs[typeface.glyphIndex.get("h")!].contours = [
+      poly([...SHARED, { x: 0, y: 1550 }]),
+    ];
+    // Unrelated letter, standing nowhere near the others.
+    typeface.glyphs[typeface.glyphIndex.get("z")!].contours = [
+      poly([
+        { x: 800, y: 0 },
+        { x: 980, y: 0 },
+        { x: 980, y: 900 },
+        { x: 800, y: 900 },
+      ]),
+    ];
+    store.captureControlBaseline();
+  }
+
+  beforeEach(seedLinked);
+
+  it("knows which letters are built on n", () => {
+    expect(store.followersOf("n")).toEqual(["h"]);
+  });
+
+  it("moves h's point when the point it shares with n moves", () => {
+    const typeface = store.getSnapshot().typeface!;
+    const snapshot = store.snapshotGlyph("n")!;
+    const n = typeface.glyphs[typeface.glyphIndex.get("n")!];
+    n.contours[0].nodes[2].point = { x: 260, y: 1180 };
+    store.commitGlyphEdit("n", "Reshape n", snapshot);
+
+    const h = typeface.glyphs[typeface.glyphIndex.get("h")!];
+    expect(h.contours[0].nodes[2].point).toEqual({ x: 260, y: 1180 });
+  });
+
+  it("leaves h's own taller stem alone", () => {
+    const typeface = store.getSnapshot().typeface!;
+    const snapshot = store.snapshotGlyph("n")!;
+    const n = typeface.glyphs[typeface.glyphIndex.get("n")!];
+    n.contours[0].nodes[3].point = { x: 0, y: 1300 };
+    store.commitGlyphEdit("n", "Raise n's stem", snapshot);
+
+    const h = typeface.glyphs[typeface.glyphIndex.get("h")!];
+    expect(h.contours[0].nodes[3].point).toEqual({ x: 0, y: 1550 });
+  });
+
+  /**
+   * A letter that took the edit point for point must not then take the
+   * parametric version of the same edit on top of it.
+   */
+  it("holds a shape follower at neutral parameters so the edit lands once", () => {
+    const typeface = store.getSnapshot().typeface!;
+    const snapshot = store.snapshotGlyph("n")!;
+    const n = typeface.glyphs[typeface.glyphIndex.get("n")!];
+    n.contours[0].nodes[1].point = { x: 240, y: 0 };
+    n.contours[0].nodes[2].point = { x: 240, y: 1100 };
+    store.commitGlyphEdit("n", "Thicken n", snapshot);
+
+    expect(store.paramsFor("h").weight).toBe(0);
+    // z shares nothing, so it follows the family instead.
+    expect(store.paramsFor("z").weight).not.toBe(0);
+  });
+
+  it("puts the followers back on undo", () => {
+    const typeface = store.getSnapshot().typeface!;
+    const snapshot = store.snapshotGlyph("n")!;
+    const n = typeface.glyphs[typeface.glyphIndex.get("n")!];
+    n.contours[0].nodes[2].point = { x: 260, y: 1180 };
+    store.commitGlyphEdit("n", "Reshape n", snapshot);
+
+    store.undo();
+    const h = typeface.glyphs[typeface.glyphIndex.get("h")!];
+    expect(h.contours[0].nodes[2].point).toEqual({ x: 200, y: 1100 });
   });
 });
