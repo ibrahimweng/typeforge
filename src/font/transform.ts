@@ -12,13 +12,13 @@
 
 import {
   centroid,
-  contourContainsPoint,
   distance,
   isClockwise,
   normalize,
   sub,
 } from "./geometry";
 import { resolveComponents } from "./composite";
+import { classifyContours } from "./outline";
 import { DEFAULT_PARAMS, type Contour, type Glyph, type GlyphNode, type GlyphParams, type Typeface, type Vec2 } from "./types";
 
 /** Merge family parameters with a glyph's overrides. */
@@ -161,13 +161,21 @@ function applyWeight(contour: Contour, amount: number): Contour {
 function applyCounterScale(contours: Contour[], factor: number): Contour[] {
   if (contours.length < 2) return contours;
 
-  // A contour is a counter when it sits inside another one.
+  /*
+   * A contour is a counter when it is enclosed by an odd number of others.
+   *
+   * This used to ask only whether a contour's centroid fell inside some other
+   * contour, which cannot tell a counter from the shape around it: in an o the
+   * two contours are concentric, so the outer ring's centre sits inside the
+   * counter just as surely as the counter's centre sits inside the ring. Both
+   * were therefore scaled, and opening the counter of an o quietly scaled the
+   * whole letter instead -- leaving the counter exactly the same size relative
+   * to the letter, which is the one thing the control exists to change.
+   */
+  const outer = classifyContours(contours);
   return contours.map((contour, index) => {
+    if (outer[index]) return contour;
     const middle = centroid(contour);
-    const isCounter = contours.some(
-      (other, otherIndex) => otherIndex !== index && contourContainsPoint(other, middle),
-    );
-    if (!isCounter) return contour;
     return mapContour(contour, (point) => ({
       x: middle.x + (point.x - middle.x) * factor,
       y: middle.y + (point.y - middle.y) * factor,
