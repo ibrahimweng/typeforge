@@ -15,7 +15,13 @@
  */
 
 import { contoursBounds } from "./geometry";
-import { correctDirection, insertExtrema, type OutlineFormat } from "./outline";
+import {
+  contoursIntersect,
+  correctDirection,
+  insertExtrema,
+  type OutlineFormat,
+} from "./outline";
+import { removeOverlaps } from "./overlap";
 import { buildGlyfTables, splitGlyf, type GlyfBuildInput } from "./glyf";
 import { buildGposTable, buildKernTable, type ResolvedClassKern, type ResolvedPair } from "./kern";
 import { resolveGlyphContours } from "./transform";
@@ -53,6 +59,12 @@ export interface ExportOptions {
    */
   curveTolerance?: number;
   includeKerning?: boolean;
+  /**
+   * Merge contours that overlap. Designers draw overlapping pieces on purpose,
+   * but a font file cannot carry them: under the even-odd fill rule some
+   * renderers apply, the overlap drops out as a hole.
+   */
+  mergeOverlaps?: boolean;
   /** Timestamps written into `head`. Passed in so output is reproducible. */
   now?: number;
 }
@@ -73,6 +85,7 @@ export async function exportFont(
   const notes: string[] = [];
   const tolerance = options.curveTolerance ?? 0.5;
   const includeKerning = options.includeKerning ?? true;
+  const mergeOverlaps = options.mergeOverlaps ?? true;
   const now = options.now ?? Date.now();
 
   // A preserve export needs the original tables in the matching outline
@@ -100,8 +113,8 @@ export async function exportFont(
   // opentype.js for CFF encoding, which is fetched only when asked for.
   const bytes =
     options.format === "otf"
-      ? await exportOpenType(typeface, { tolerance, includeKerning, notes })
-      : exportTrueType(typeface, { tolerance, includeKerning, fidelity, now, notes });
+      ? await exportOpenType(typeface, { tolerance, includeKerning, notes, mergeOverlaps })
+      : await exportTrueType(typeface, { tolerance, includeKerning, fidelity, now, notes, mergeOverlaps });
 
   const base = `${typeface.meta.familyName}-${typeface.meta.styleName}`.replace(/\s+/g, "");
   return {
@@ -121,15 +134,30 @@ export async function exportFont(
  * added at a curve's extreme, or a contour wound the other way, is a
  * requirement of the file format rather than a change to the drawing.
  */
-function resolvedGlyphs(typeface: Typeface, format: OutlineFormat) {
-  return typeface.glyphs.map((glyph) => {
-    const resolved = resolveGlyphContours(glyph, typeface);
-    const withExtrema = resolved.map(insertExtrema);
-    return { glyph, contours: correctDirection(withExtrema, format) };
-  });
+async function resolvedGlyphs(
+  typeface: Typeface,
+  format: OutlineFormat,
+  mergeOverlaps: boolean,
+) {
+  const out: Array<{ glyph: Typeface["glyphs"][number]; contours: ReturnType<typeof resolveGlyphContours> }> = [];
+
+  for (const glyph of typeface.glyphs) {
+    let contours = resolveGlyphContours(glyph, typeface);
+
+    // Merging first, because it introduces points where contours crossed and
+    // those new curves need extremes of their own afterwards. The merge sorts
+    // out winding internally, so there is no need to set it beforehand.
+    if (mergeOverlaps && contours.length > 1 && contoursIntersect(contours)) {
+      contours = await removeOverlaps(contours);
+    }
+
+    contours = contours.map(insertExtrema);
+    out.push({ glyph, contours: correctDirection(contours, format) });
+  }
+  return out;
 }
 
-function exportTrueType(
+async function exportTrueType(
   typeface: Typeface,
   context: {
     tolerance: number;
@@ -137,9 +165,10 @@ function exportTrueType(
     fidelity: ExportFidelity;
     now: number;
     notes: string[];
+    mergeOverlaps: boolean;
   },
-): Uint8Array {
-  const resolved = resolvedGlyphs(typeface, "truetype");
+): Promise<Uint8Array> {
+  const resolved = await resolvedGlyphs(typeface, "truetype", context.mergeOverlaps);
   const preserving = context.fidelity === "preserve" && typeface.source !== null;
 
   // In preserve mode an untouched glyph is copied rather than re-encoded, which
@@ -202,14 +231,14 @@ function exportTrueType(
 
 async function exportOpenType(
   typeface: Typeface,
-  context: { tolerance: number; includeKerning: boolean; notes: string[] },
+  context: { tolerance: number; includeKerning: boolean; notes: string[]; mergeOverlaps: boolean },
 ): Promise<Uint8Array> {
   const {
     Font: OpenTypeFont,
     Glyph: OpenTypeGlyph,
     Path: OpenTypePath,
   } = await import("opentype.js");
-  const resolved = resolvedGlyphs(typeface, "cff");
+  const resolved = await resolvedGlyphs(typeface, "cff", context.mergeOverlaps);
 
   const glyphs = resolved.map((entry) => {
     const path = new OpenTypePath();

@@ -12,6 +12,7 @@
 import {
   contourArea,
   contoursBounds,
+  contourSegments,
   cubicExtremeTs,
   flattenContour,
   splitCubic,
@@ -290,3 +291,62 @@ function interiorPoint(polygon: Vec2[], box: Bounds): Vec2 {
   }
   return average;
 }
+
+// ---------------------------------------------------------------------------
+// Overlap detection
+// ---------------------------------------------------------------------------
+
+export /**
+ * Whether any two segments of a glyph cross.
+ *
+ * Curves are flattened first: the answer only needs to be good enough to raise
+ * the question, and an exact curve-curve intersection is far more work than the
+ * report warrants.
+ */
+function contoursIntersect(contours: Contour[]): boolean {
+  const segments: Array<[Vec2, Vec2]> = [];
+  for (const contour of contours) {
+    for (const segment of contourSegments(contour)) {
+      if (segment.kind === "line") {
+        segments.push([segment.from, segment.to]);
+      } else {
+        // Sample the curve coarsely; a crossing of any size shows up.
+        const steps = 6;
+        let previous = segment.from;
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          const u = 1 - t;
+          const point = {
+            x: u * u * u * segment.from.x + 3 * u * u * t * segment.c1.x + 3 * u * t * t * segment.c2.x + t * t * t * segment.to.x,
+            y: u * u * u * segment.from.y + 3 * u * u * t * segment.c1.y + 3 * u * t * t * segment.c2.y + t * t * t * segment.to.y,
+          };
+          segments.push([previous, point]);
+          previous = point;
+        }
+      }
+    }
+  }
+  if (segments.length > 600) return false; // too complex to be worth the sweep
+
+  for (let i = 0; i < segments.length; i++) {
+    for (let j = i + 2; j < segments.length; j++) {
+      // Neighbouring segments share an endpoint, which is not a crossing.
+      if (i === 0 && j === segments.length - 1) continue;
+      if (segmentsCross(segments[i], segments[j])) return true;
+    }
+  }
+  return false;
+}
+
+function segmentsCross([a, b]: [Vec2, Vec2], [c, d]: [Vec2, Vec2]): boolean {
+  const side = (p: Vec2, q: Vec2, r: Vec2): number =>
+    (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+
+  const d1 = side(a, b, c);
+  const d2 = side(a, b, d);
+  const d3 = side(c, d, a);
+  const d4 = side(c, d, b);
+  // Strict crossing only: touching at a shared endpoint does not count.
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+

@@ -21,6 +21,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
   const [format, setFormat] = React.useState<ExportFormat>("ttf");
   const [fidelity, setFidelity] = React.useState<ExportFidelity>("preserve");
   const [includeKerning, setIncludeKerning] = React.useState(true);
+  const [mergeOverlaps, setMergeOverlaps] = React.useState(true);
   const [working, setWorking] = React.useState(false);
   const [notes, setNotes] = React.useState<string[]>([]);
   const panelRef = React.useRef<HTMLDivElement>(null);
@@ -55,6 +56,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
         format,
         fidelity: preserveAvailable ? fidelity : "rebuild",
         includeKerning,
+        mergeOverlaps,
       });
 
       const url = URL.createObjectURL(toDownloadBlob(result));
@@ -133,20 +135,39 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
           />
         </Field>
 
-        <label className="flex cursor-pointer items-center gap-2 pb-4 text-xs-plus">
-          <input
-            type="checkbox"
-            checked={includeKerning}
-            onChange={(event) => setIncludeKerning(event.target.checked)}
-            className="size-3.5 accent-[var(--accent)]"
-          />
-          <span>
-            Include kerning
-            <span className="pl-1.5 text-2xs text-muted-foreground tabular-nums">
-              {typeface.kerning.length.toLocaleString()} pairs
+        <div className="grid gap-2 pb-4">
+          <label className="flex cursor-pointer items-center gap-2 text-xs-plus">
+            <input
+              type="checkbox"
+              checked={includeKerning}
+              onChange={(event) => setIncludeKerning(event.target.checked)}
+              className="size-3.5 accent-[var(--accent)]"
+            />
+            <span>
+              Include kerning
+              <span className="pl-1.5 text-2xs text-muted-foreground tabular-nums">
+                {typeface.kerning.length.toLocaleString()} pairs
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+
+          <label className="flex cursor-pointer items-start gap-2 text-xs-plus">
+            <input
+              type="checkbox"
+              checked={mergeOverlaps}
+              onChange={(event) => setMergeOverlaps(event.target.checked)}
+              className="mt-1 size-3.5 shrink-0 accent-[var(--accent)]"
+            />
+            <span>
+              Merge overlapping contours
+              <span className="block text-2xs leading-snug text-muted-foreground">
+                Drawing letters as overlapping pieces is normal, but a font file cannot carry
+                them: some renderers drop the overlap out as a hole. Turning this off writes your
+                contours exactly as drawn, and takes a few seconds less.
+              </span>
+            </span>
+          </label>
+        </div>
 
         {notes.length > 0 && (
           <ul className="mb-4 space-y-1 rounded-md border border-attention/40 bg-attention/10 p-2.5">
