@@ -128,6 +128,40 @@ test("checks the font and reports what it finds", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Glyph", exact: true })).toBeVisible();
 });
 
+test("shows how a letter is built and can build the accented set", async ({ page }) => {
+  await page.goto("/");
+  await openFont(page);
+
+  // Open an accented letter and see what it is made from.
+  await page.getByLabel("Search glyphs").fill("aacute");
+  await page.getByRole("button", { name: /^aacute|^á/ }).first().dblclick();
+  await page.getByRole("button", { name: "build", exact: true }).click();
+
+  await expect(page.getByRole("heading", { name: "Built from" })).toBeVisible();
+  // á is a plus acute, not a drawing of its own.
+  await expect(page.getByRole("button", { name: "a", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "acute", exact: true })).toBeVisible();
+
+  // The whole-font actions report what they did.
+  await page.getByRole("button", { name: "Read anchors from the font" }).click();
+  await expect(page.getByText(/Read anchors from \d+ letters/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Build accented glyphs" }).click();
+  // DejaVu already has its accented set, so nothing should be disturbed.
+  await expect(page.getByText(/already there|Built \d+ accented/)).toBeVisible();
+});
+
+test("a letter reports how many glyphs are built from it", async ({ page }) => {
+  await page.goto("/");
+  await openFont(page);
+  await page.getByLabel("Search glyphs").fill("a");
+  await page.getByRole("button", { name: "a", exact: true }).first().dblclick();
+  await page.getByRole("button", { name: "build", exact: true }).click();
+
+  await expect(page.getByRole("heading", { name: "Used by" })).toBeVisible();
+  await expect(page.getByText(/\d+ glyphs are built from a/)).toBeVisible();
+});
+
 test("exports a TrueType file the browser can use as a font", async ({ page }) => {
   await page.goto("/");
   await openFont(page);

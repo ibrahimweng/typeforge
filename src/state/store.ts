@@ -11,10 +11,13 @@
  * take on every drag.
  */
 
+import { buildAccents, deriveAnchors, suggestAnchors, looksLikeMark } from "@/font/accents";
+import { dependentsOf } from "@/font/composite";
 import { importFont } from "@/font/parse";
 import { effectiveParams } from "@/font/transform";
 import {
   DEFAULT_PARAMS,
+  type Anchor,
   emptyTypeface,
   type Glyph,
   type GlyphParams,
@@ -323,6 +326,159 @@ class Store {
     const index = typeface.glyphIndex.get(name);
     if (index === undefined) return { ...typeface.params };
     return effectiveParams(typeface.glyphs[index], typeface);
+  }
+
+  // --- anchors and components -------------------------------------------
+
+  /** Move an anchor, or add it if the glyph does not carry one by that name. */
+  setAnchor(glyphName: string, name: string, x: number, y: number): void {
+    const typeface = this.state.typeface;
+    if (!typeface) return;
+    const index = typeface.glyphIndex.get(glyphName);
+    if (index === undefined) return;
+
+    const glyph = typeface.glyphs[index];
+    const before = glyph.anchors.map((a) => ({ ...a }));
+    const existing = glyph.anchors.find((a) => a.name === name);
+    if (existing) {
+      existing.x = Math.round(x);
+      existing.y = Math.round(y);
+    } else {
+      glyph.anchors.push({ name, x: Math.round(x), y: Math.round(y) });
+    }
+    const after = glyph.anchors.map((a) => ({ ...a }));
+
+    this.push({
+      label: `Move ${name} anchor`,
+      undo: () => {
+        typeface.glyphs[index].anchors = before.map((a) => ({ ...a }));
+      },
+      redo: () => {
+        typeface.glyphs[index].anchors = after.map((a) => ({ ...a }));
+      },
+    });
+    this.touch();
+  }
+
+  /** Live anchor movement during a drag; history is recorded on release. */
+  setAnchorLive(glyphName: string, name: string, x: number, y: number): void {
+    const typeface = this.state.typeface;
+    if (!typeface) return;
+    const index = typeface.glyphIndex.get(glyphName);
+    if (index === undefined) return;
+    const glyph = typeface.glyphs[index];
+    const existing = glyph.anchors.find((a) => a.name === name);
+    if (existing) {
+      existing.x = Math.round(x);
+      existing.y = Math.round(y);
+    } else {
+      glyph.anchors.push({ name, x: Math.round(x), y: Math.round(y) });
+    }
+    this.touch();
+  }
+
+  removeAnchor(glyphName: string, name: string): void {
+    const typeface = this.state.typeface;
+    if (!typeface) return;
+    const index = typeface.glyphIndex.get(glyphName);
+    if (index === undefined) return;
+    const glyph = typeface.glyphs[index];
+    const before = glyph.anchors.map((a) => ({ ...a }));
+    const after = before.filter((a) => a.name !== name);
+    glyph.anchors = after.map((a) => ({ ...a }));
+    this.push({
+      label: `Remove ${name} anchor`,
+      undo: () => {
+        typeface.glyphs[index].anchors = before.map((a) => ({ ...a }));
+      },
+      redo: () => {
+        typeface.glyphs[index].anchors = after.map((a) => ({ ...a }));
+      },
+    });
+    this.touch();
+  }
+
+  anchorsFor(glyphName: string): Anchor[] {
+    return this.glyph(glyphName)?.anchors ?? [];
+  }
+
+  /** Put default anchors on a glyph, as a starting position to drag from. */
+  suggestAnchorsFor(glyphName: string): void {
+    const typeface = this.state.typeface;
+    const glyph = this.glyph(glyphName);
+    if (!typeface || !glyph) return;
+    const before = glyph.anchors.map((a) => ({ ...a }));
+    const after = suggestAnchors(glyph, typeface, looksLikeMark(glyph));
+    if (after.length === 0) return;
+
+    const index = typeface.glyphIndex.get(glyphName)!;
+    typeface.glyphs[index].anchors = after;
+    this.push({
+      label: "Suggest anchors",
+      undo: () => {
+        typeface.glyphs[index].anchors = before.map((a) => ({ ...a }));
+      },
+      redo: () => {
+        typeface.glyphs[index].anchors = after.map((a) => ({ ...a }));
+      },
+    });
+    this.touch();
+  }
+
+  /** Read anchor positions out of the composites the font already has. */
+  deriveAnchorsFromFont(): { bases: number; marks: number } {
+    const typeface = this.state.typeface;
+    if (!typeface) return { bases: 0, marks: 0 };
+    const before = typeface.glyphs.map((g) => g.anchors.map((a) => ({ ...a })));
+    const result = deriveAnchors(typeface);
+    const after = typeface.glyphs.map((g) => g.anchors.map((a) => ({ ...a })));
+
+    this.push({
+      label: "Read anchors from the font",
+      undo: () => {
+        typeface.glyphs.forEach((g, i) => (g.anchors = before[i].map((a) => ({ ...a }))));
+      },
+      redo: () => {
+        typeface.glyphs.forEach((g, i) => (g.anchors = after[i].map((a) => ({ ...a }))));
+      },
+    });
+    this.touch();
+    return result;
+  }
+
+  /** Build every accented letter the font has the parts for. */
+  buildAccentedGlyphs(overwrite = false): { built: string[]; skipped: number } {
+    const typeface = this.state.typeface;
+    if (!typeface) return { built: [], skipped: 0 };
+
+    const snapshot = typeface.glyphs.map(cloneGlyph);
+    const result = buildAccents(typeface, { overwriteDrawn: overwrite });
+    if (result.built.length === 0) return { built: [], skipped: result.skipped.length };
+
+    const after = typeface.glyphs.map(cloneGlyph);
+    this.push({
+      label: `Build ${result.built.length} accented glyphs`,
+      undo: () => {
+        typeface.glyphs = snapshot.map(cloneGlyph);
+      },
+      redo: () => {
+        typeface.glyphs = after.map(cloneGlyph);
+      },
+    });
+    this.touch();
+    return { built: result.built, skipped: result.skipped.length };
+  }
+
+  /** Glyphs that would change if this one were edited. */
+  dependents(glyphName: string): string[] {
+    const typeface = this.state.typeface;
+    return typeface ? dependentsOf(typeface, glyphName) : [];
+  }
+
+  removeComponent(glyphName: string, position: number): void {
+    this.editGlyph(glyphName, "Remove component", (glyph) => {
+      glyph.components.splice(position, 1);
+    });
   }
 
   // --- kerning ----------------------------------------------------------

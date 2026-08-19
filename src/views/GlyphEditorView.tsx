@@ -14,8 +14,9 @@ import * as React from "react";
 
 import { contourSegments, contoursToPath2D } from "@/font/geometry";
 import { classifyNodes } from "@/font/quadratic";
+import { resolveComponents } from "@/font/composite";
 import { resolveGlyphContours } from "@/font/transform";
-import type { Contour, Glyph, GlyphNode, Typeface, Vec2 } from "@/font/types";
+import type { Anchor, Contour, Glyph, GlyphNode, Typeface, Vec2 } from "@/font/types";
 import {
   applyView,
   prepareCanvas,
@@ -34,6 +35,7 @@ type Drag =
   | { kind: "node"; refs: NodeRef[]; start: Vec2; before: Glyph }
   | { kind: "handle"; ref: NodeRef; side: "in" | "out"; before: Glyph }
   | { kind: "marquee"; from: Vec2; to: Vec2; additive: boolean }
+  | { kind: "anchor"; name: string; before: Anchor[] }
   | { kind: "pan"; from: Vec2; startPan: Vec2 };
 
 export function GlyphEditorView(): React.JSX.Element {
@@ -92,20 +94,33 @@ export function GlyphEditorView(): React.JSX.Element {
 
     // Where parameters change the shape, show the result behind the outline
     // being edited so the effect of the family settings stays visible.
+    // What the components contribute is drawn but not offered for editing:
+    // those outlines belong to another glyph, and changing them there is what
+    // makes building letters from parts worth doing.
+    const composed = resolveComponents(glyph, typeface);
+    const fromComponents = composed.slice(glyph.contours.length);
+    if (fromComponents.length > 0) {
+      drawContours(context, fromComponents, view, {
+        fill: withAlpha(readToken("--inspect", "#9149f5"), 0.4),
+      });
+    }
+
     const resolved = resolveGlyphContours(glyph, typeface);
-    if (resolved !== glyph.contours) {
+    if (resolved !== composed) {
       drawContours(context, resolved, view, {
         fill: withAlpha(readToken("--accent", "#0c8ce9"), 0.22),
       });
     }
     drawContours(context, glyph.contours, view, {
-      fill: withAlpha(readToken("--glyph-fill", "#eeeeee"), resolved !== glyph.contours ? 0.5 : 0.92),
+      fill: withAlpha(readToken("--glyph-fill", "#eeeeee"), resolved !== composed ? 0.5 : 0.92),
     });
     drawNodes(context, glyph.contours, view, state.selectedNodes);
+    drawAnchors(context, glyph.anchors, view);
 
     const drag = dragRef.current;
     if (drag?.kind === "marquee") drawMarquee(context, drag);
   }, [typeface, glyph, view, size, state.selectedNodes, state.revision]);
+
 
   // --- interaction ------------------------------------------------------
 
@@ -127,6 +142,16 @@ export function GlyphEditorView(): React.JSX.Element {
 
     if (state.tool === "pen") {
       addPoint(glyph, view, canvasPoint);
+      return;
+    }
+
+    const anchorHit = hitTestAnchor(glyph, view, canvasPoint);
+    if (anchorHit) {
+      dragRef.current = {
+        kind: "anchor",
+        name: anchorHit,
+        before: glyph.anchors.map((anchor) => ({ ...anchor })),
+      };
       return;
     }
 
@@ -221,6 +246,15 @@ export function GlyphEditorView(): React.JSX.Element {
         });
         break;
       }
+      case "anchor": {
+        store.setAnchorLive(
+          glyph.name,
+          drag.name,
+          toFontX(view, canvasPoint.x),
+          toFontY(view, canvasPoint.y),
+        );
+        break;
+      }
       case "marquee": {
         drag.to = canvasPoint;
         forceRender();
@@ -234,7 +268,14 @@ export function GlyphEditorView(): React.JSX.Element {
     dragRef.current = null;
     if (!drag || !glyph) return;
 
-    if (drag.kind === "node") {
+    if (drag.kind === "anchor") {
+      const moved = glyph.anchors.find((anchor) => anchor.name === drag.name);
+      if (moved) {
+        const settled = { ...moved };
+        glyph.anchors = drag.before.map((anchor) => ({ ...anchor }));
+        store.setAnchor(glyph.name, drag.name, settled.x, settled.y);
+      }
+    } else if (drag.kind === "node") {
       store.commitGlyphEdit(glyph.name, "Move points", drag.before);
     } else if (drag.kind === "handle") {
       store.commitGlyphEdit(glyph.name, "Shape curve", drag.before);
@@ -474,6 +515,58 @@ function drawNodes(
     });
   });
   context.restore();
+}
+
+/**
+ * Anchors, drawn as a cross with its name beside it.
+ *
+ * They are deliberately not the same shape as an outline point: an anchor is
+ * not part of the letter, it is where another glyph attaches to it.
+ */
+function drawAnchors(
+  context: CanvasRenderingContext2D,
+  anchors: Anchor[],
+  view: GlyphView,
+): void {
+  if (anchors.length === 0) return;
+  const colour = readToken("--inspect", "#9149f5");
+
+  context.save();
+  context.font = "10px ui-monospace, monospace";
+  context.textBaseline = "middle";
+  for (const anchor of anchors) {
+    const point = toScreen(view, { x: anchor.x, y: anchor.y });
+    const arm = 6;
+
+    context.strokeStyle = colour;
+    context.lineWidth = 1.5;
+    context.beginPath();
+    context.moveTo(point.x - arm, point.y);
+    context.lineTo(point.x + arm, point.y);
+    context.moveTo(point.x, point.y - arm);
+    context.lineTo(point.x, point.y + arm);
+    context.stroke();
+
+    context.beginPath();
+    context.arc(point.x, point.y, 3, 0, Math.PI * 2);
+    context.strokeStyle = colour;
+    context.lineWidth = 1;
+    context.stroke();
+
+    context.fillStyle = colour;
+    context.fillText(anchor.name, point.x + arm + 3, point.y);
+  }
+  context.restore();
+}
+
+function hitTestAnchor(glyph: Glyph, view: GlyphView, canvasPoint: Vec2): string | null {
+  for (const anchor of glyph.anchors) {
+    const screen = toScreen(view, { x: anchor.x, y: anchor.y });
+    if (Math.hypot(screen.x - canvasPoint.x, screen.y - canvasPoint.y) <= HIT_RADIUS + 2) {
+      return anchor.name;
+    }
+  }
+  return null;
 }
 
 function drawMarquee(context: CanvasRenderingContext2D, drag: Extract<Drag, { kind: "marquee" }>): void {

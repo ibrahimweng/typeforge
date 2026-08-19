@@ -32,6 +32,19 @@ a class so the two are never confused.
 above showing the letters in their real rhythm. Sidebearings are measured from
 the outline, so they follow any parameter changes.
 
+**Build** is where a letter is put together from parts. `á` is not a drawing,
+it is `a` with `acute` above it, and the panel says how many glyphs are built
+from the letter you are looking at, so you know what an edit will reach. Anchors
+mark where a mark attaches: a letter carries `top`, a mark carries `_top`, and
+lining them up is what places the accent. Drag them in the editor.
+
+Which letter is made of which parts comes from Unicode's own decomposition
+rather than a list to maintain, so building covers Latin, Greek, Cyrillic and
+Vietnamese alike. Where an accent sits comes from the font itself: every
+composite it already carries is one observation of the offset between a letter
+and its mark, so anchors can be read back out of a font you import. Building
+never disturbs what is already there.
+
 **Parameters** reshape the whole typeface at once: corner radius, weight, middle
 space, width, slant, x-height and tracking. Any glyph can override any of them.
 
@@ -58,6 +71,14 @@ hinting instructions intact.
 **Only what this editor manages** writes a font from the outlines, spacing,
 kerning and names. Smaller and entirely predictable, at the cost of dropping
 those features.
+
+### Letters are stored once
+
+An accented letter is written to the file as a reference to its parts, not as a
+copy of them. Correcting the `a` corrects every accented form of it, in the file
+as well as in the editor. A parameter that reshapes letters forces flattening,
+because it applies to the assembled letter rather than to the parts, and a
+reference would leave the accent behind.
 
 ### Why the kerning tables are written by hand
 
@@ -95,6 +116,11 @@ src/font/     the font engine, independent of the interface
   tables.ts     head, hhea, maxp, hmtx, cmap, name, post, OS/2
   kern.ts       kern and GPOS writers
   quadratic.ts  cubic and quadratic conversion
+  composite.ts  letters built from other letters
+  accents.ts    recipes from Unicode, anchors, and building
+  validate.ts   the checks behind the Checks view
+  outline.ts    extremes, winding direction, crossings
+  overlap.ts    merging overlapping contours
   transform.ts  the parametric layer
   geometry.ts   vector and bezier maths
 src/state/    document state, undo and redo
