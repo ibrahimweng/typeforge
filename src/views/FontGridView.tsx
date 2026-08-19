@@ -13,6 +13,7 @@ import { enterStaggered } from "@/anim/motion";
 import { drawGlyph, fitEmSquare, formatCodepoint, glyphLabel, prepareCanvas, readToken } from "@/components/glyph-render";
 import type { Glyph, Typeface } from "@/font/types";
 import { store, useAppState } from "@/state/useStore";
+import { tile } from "@/components/controls";
 import { cn } from "@/ui/lib/utils";
 
 const CELL_SIZE = 104;
@@ -151,11 +152,14 @@ const GlyphCell = React.memo(function GlyphCell({
       }}
       onDoubleClick={() => store.selectGlyph(glyph.name, { open: true })}
       title={`${glyph.name}  ${formatCodepoint(glyph.unicodes[0])}`}
+      aria-current={active ? "true" : undefined}
+      aria-pressed={selected}
       className={cn(
-        "group relative flex flex-col items-center justify-between rounded-md border bg-card/40 pt-1 transition-colors",
-        "hover:border-accent/60 hover:bg-card",
-        active ? "border-accent bg-card" : "border-border/60",
-        selected && "ring-1 ring-accent/70",
+        "group relative flex flex-col items-center justify-between rounded-md border pt-1",
+        tile(active, "bg-card/40"),
+        // Picked out for a bulk action, which is a different thing from being
+        // the one open in the editor.
+        selected && "ring-2 ring-[color:var(--accent)]",
       )}
       style={{ height: CELL_SIZE }}
     >

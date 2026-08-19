@@ -382,3 +382,57 @@ test("moves the crossbar of a letter that has one", async ({ page }) => {
   expect(Math.abs(after - before) / before).toBeLessThan(0.25);
   expect(errors).toEqual([]);
 });
+
+test("the toolbar and panels say which option is selected", async ({ page }) => {
+  await page.goto("/");
+  await openFont(page);
+
+  // Exactly one view is selected at a time, and it says so rather than only
+  // looking different.
+  const grid = page.getByRole("button", { name: "Font", exact: true });
+  const spacing = page.getByRole("button", { name: "Spacing", exact: true });
+  await expect(grid).toHaveAttribute("aria-pressed", "true");
+  await expect(spacing).toHaveAttribute("aria-pressed", "false");
+
+  await spacing.click();
+  await expect(spacing).toHaveAttribute("aria-pressed", "true");
+  await expect(grid).toHaveAttribute("aria-pressed", "false");
+
+  // The inspector's own tabs behave the same way.
+  const family = page.getByRole("button", { name: "family", exact: true });
+  const build = page.getByRole("button", { name: "build", exact: true });
+  await expect(family).toHaveAttribute("aria-pressed", "true");
+  await build.click();
+  await expect(build).toHaveAttribute("aria-pressed", "true");
+  await expect(family).toHaveAttribute("aria-pressed", "false");
+
+  // The tools appear with the glyph view and track their own selection.
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  const select = page.getByRole("button", { name: "Select", exact: true });
+  const pen = page.getByRole("button", { name: "Pen", exact: true });
+  await expect(select).toHaveAttribute("aria-pressed", "true");
+  await pen.click();
+  await expect(pen).toHaveAttribute("aria-pressed", "true");
+  await expect(select).toHaveAttribute("aria-pressed", "false");
+});
+
+test("hovering a toolbar button changes it before you press", async ({ page }) => {
+  await page.goto("/");
+  await openFont(page);
+
+  const spacing = page.getByRole("button", { name: "Spacing", exact: true });
+  const background = () =>
+    spacing.evaluate((element) => getComputedStyle(element).backgroundColor);
+
+  // Park the pointer well away, then read the resting appearance.
+  await page.mouse.move(5, 300);
+  await page.waitForTimeout(150);
+  const resting = await background();
+
+  await spacing.hover();
+  await page.waitForTimeout(200);
+  const hovered = await background();
+
+  // An unselected tab has to react to the pointer, not just to the click.
+  expect(hovered).not.toBe(resting);
+});

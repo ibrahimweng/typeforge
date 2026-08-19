@@ -13,6 +13,7 @@ import { pulse } from "@/anim/motion";
 import { CONTROL_GLYPHS, CONTROL_GROUPS } from "@/font/control";
 import { drawGlyph, fitEmSquare, prepareCanvas, readToken } from "@/components/glyph-render";
 import { store, useAppState } from "@/state/useStore";
+import { tile } from "@/components/controls";
 import { cn } from "@/ui/lib/utils";
 
 const GROUP_LABELS: Record<string, string> = {
@@ -68,11 +69,10 @@ function ControlThumb({ name }: { name: string }): React.JSX.Element {
         store.selectGlyph(name, { open: true });
         store.setView("glyph");
       }}
+      aria-current={selected ? "true" : undefined}
       className={cn(
-        "relative flex size-11 items-center justify-center rounded-md border transition-colors",
-        selected
-          ? "border-[color:var(--accent)] bg-card"
-          : "border-border hover:border-muted-foreground",
+        "relative flex size-11 items-center justify-center rounded-md border",
+        tile(selected),
       )}
     >
       <canvas ref={canvasRef} style={{ width: 44, height: 44 }} />

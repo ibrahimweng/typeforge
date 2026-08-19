@@ -6,6 +6,13 @@
 import * as React from "react";
 
 import { store, useAppState, type ToolId, type ViewId } from "@/state/useStore";
+import {
+  OUTLINE_ACTION,
+  PRIMARY_ACTION,
+  SEGMENT_TRACK,
+  TOOLBAR_ACTION,
+  segment,
+} from "@/components/controls";
 import { cn } from "@/ui/lib/utils";
 
 const VIEWS: Array<{ id: ViewId; label: string }> = [
@@ -47,18 +54,14 @@ export function TopBar({
     <header className="flex h-11 shrink-0 items-center gap-3 border-b border-border px-3">
       <span className="text-xs-plus font-medium tracking-tight">Typeforge</span>
 
-      <div className="flex items-center gap-0.5 rounded-md bg-card/60 p-0.5">
+      <div className={SEGMENT_TRACK} role="group" aria-label="View">
         {VIEWS.map((view) => (
           <button
             key={view.id}
             type="button"
+            aria-pressed={state.view === view.id}
             onClick={() => store.setView(view.id)}
-            className={cn(
-              "rounded px-2.5 py-1 text-2xs transition-colors",
-              state.view === view.id
-                ? "bg-card text-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
+            className={segment(state.view === view.id)}
           >
             {view.label}
           </button>
@@ -66,19 +69,15 @@ export function TopBar({
       </div>
 
       {state.view === "glyph" && (
-        <div className="flex items-center gap-0.5 rounded-md bg-card/60 p-0.5">
+        <div className={SEGMENT_TRACK} role="group" aria-label="Tool">
           {TOOLS.map((tool) => (
             <button
               key={tool.id}
               type="button"
               title={tool.hint}
+              aria-pressed={state.tool === tool.id}
               onClick={() => store.setTool(tool.id)}
-              className={cn(
-                "rounded px-2.5 py-1 text-2xs transition-colors",
-                state.tool === tool.id
-                  ? "bg-card text-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
+              className={segment(state.tool === tool.id)}
             >
               {tool.label}
             </button>
@@ -92,7 +91,7 @@ export function TopBar({
           onClick={() => store.undo()}
           disabled={!state.canUndo}
           title="Undo (⌘Z)"
-          className="rounded px-2 py-1 text-2xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+          className={TOOLBAR_ACTION}
         >
           Undo
         </button>
@@ -101,7 +100,7 @@ export function TopBar({
           onClick={() => store.redo()}
           disabled={!state.canRedo}
           title="Redo (⇧⌘Z)"
-          className="rounded px-2 py-1 text-2xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+          className={TOOLBAR_ACTION}
         >
           Redo
         </button>
@@ -130,7 +129,7 @@ export function TopBar({
         <button
           type="button"
           onClick={onOpenFile}
-          className="rounded-md border border-border px-2.5 py-1 text-2xs transition-colors hover:border-muted-foreground"
+          className={OUTLINE_ACTION}
         >
           Open font
         </button>
@@ -138,7 +137,7 @@ export function TopBar({
           type="button"
           onClick={onExport}
           disabled={!state.typeface}
-          className="rounded-md bg-accent px-2.5 py-1 text-2xs text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+          className={PRIMARY_ACTION}
         >
           Export
         </button>

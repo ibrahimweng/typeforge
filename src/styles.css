@@ -20,6 +20,48 @@
   --radius-xl: 0.75rem;
 }
 
+/*
+ * Register the colour tokens with Tailwind.
+ *
+ * The tokens below are declared on :root as ordinary custom properties, which
+ * is enough for CSS that says var(--card) and not enough for a class that says
+ * bg-card. Tailwind only generates a colour utility for a name it knows from
+ * the theme, so without this every colour class in the app was inert: 59 uses
+ * of text-muted-foreground, 32 of border-border, 19 of bg-card, and every
+ * hover: variant of them, all matching no rule at all. Borders and body text
+ * still looked right because the base layer sets those directly, which is what
+ * made it easy to miss.
+ *
+ * "inline" because the values are references: the utility resolves to
+ * var(--card) rather than to a copy of its value, so a token changed at
+ * runtime still moves everything that uses it.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-link: var(--link);
+  --color-attention: var(--attention);
+  --color-attention-foreground: var(--attention-foreground);
+  --color-inspect: var(--inspect);
+}
+
 @custom-variant dark (&:where(.dark, .dark *));
 @custom-variant focus-visible (&:is([data-focus-visible-mode="keyboard"] *):focus-visible);
 

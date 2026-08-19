@@ -15,6 +15,7 @@ import * as React from "react";
 import { enterStaggered } from "@/anim/motion";
 import { CompositionPanel } from "@/components/CompositionPanel";
 import { ControlLetters } from "@/components/ControlLetters";
+import { segment } from "@/components/controls";
 import { DEFAULT_PARAMS, type GlyphParams } from "@/font/types";
 import { store, useAppState } from "@/state/useStore";
 // Imported from the control directly rather than through the UI barrel: the
@@ -167,19 +168,21 @@ export function Inspector(): React.JSX.Element {
 
   return (
     <aside className="toolcraft-panel-surface flex w-72 shrink-0 flex-col border-l border-border">
-      <div className="flex gap-1 border-b border-border p-2">
+      <div
+        className="flex gap-0.5 border-b border-border bg-card/60 p-1"
+        role="group"
+        aria-label="Inspector scope"
+      >
         {(["family", "glyph", "build"] as const).map((option) => (
           <button
             key={option}
             type="button"
+            aria-pressed={scope === option}
             onClick={() => setScope(option)}
             disabled={option === "glyph" && !glyph}
-            className={cn(
-              "min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-2xs capitalize transition-colors",
-              scope === option
-                ? "bg-card text-foreground"
-                : "text-muted-foreground hover:text-foreground",
-              option === "glyph" && !glyph && "opacity-40",
+            className={segment(
+              scope === option,
+              cn("min-w-0 flex-1 truncate capitalize", option === "glyph" && !glyph && "opacity-40"),
             )}
           >
             {option === "glyph" && glyph ? glyph.name : option}
