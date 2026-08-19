@@ -7,7 +7,7 @@
 
 import * as React from "react";
 
-import { switchView } from "@/anim/motion";
+import { attachPressFeedback, switchView } from "@/anim/motion";
 import { ExportDialog } from "@/components/ExportDialog";
 import { Inspector } from "@/components/Inspector";
 import { TopBar } from "@/components/TopBar";
@@ -25,6 +25,9 @@ export function App(): React.JSX.Element {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const stageRef = React.useRef<HTMLDivElement>(null);
   const previousView = React.useRef(state.view);
+
+  // One listener covers every control in the app, including any added later.
+  React.useEffect(() => attachPressFeedback(document.body), []);
 
   React.useEffect(() => {
     if (previousView.current !== state.view) {

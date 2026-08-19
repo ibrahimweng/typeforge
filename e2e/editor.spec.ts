@@ -213,3 +213,46 @@ async function measureInk(page: Page): Promise<number> {
     return count;
   });
 }
+
+test("the canvas says what a click would grab before you press", async ({ page }) => {
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await page.waitForTimeout(600);
+
+  const canvas = page.locator("canvas").first();
+  const box = (await canvas.boundingBox())!;
+
+  // Park the pointer on empty space well away from the letter, so the baseline
+  // is a canvas with nothing hovered.
+  await page.mouse.move(box.x + 12, box.y + 12);
+  await page.waitForTimeout(120);
+  await expect(canvas).toHaveClass(/cursor-default/);
+  const restingInk = await measureInk(page);
+
+  // Sweep for a point. Node positions depend on the outline, so rather than
+  // hardcoding a coordinate the test hunts for one the editor reports as
+  // grabbable, which is the same answer a click would get.
+  let foundGrabbable = false;
+  let hoveredInk = restingInk;
+  const step = 6;
+  for (let y = box.height * 0.2; y < box.height * 0.85 && !foundGrabbable; y += step) {
+    for (let x = box.width * 0.2; x < box.width * 0.85; x += step) {
+      await page.mouse.move(box.x + x, box.y + y);
+      const className = (await canvas.getAttribute("class")) ?? "";
+      if (className.includes("cursor-grab")) {
+        foundGrabbable = true;
+        await page.waitForTimeout(80);
+        hoveredInk = await measureInk(page);
+        break;
+      }
+    }
+  }
+
+  // The cursor has to change, otherwise the only way to discover what a click
+  // grabs is to click and find out.
+  expect(foundGrabbable).toBe(true);
+  // And it has to be visible on the canvas too, not just in the cursor: the
+  // hover ring is drawn into the scene, so it adds covered pixels.
+  expect(hoveredInk).toBeGreaterThan(restingInk);
+});

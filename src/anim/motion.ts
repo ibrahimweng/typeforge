@@ -147,8 +147,56 @@ export function refuse(target: Target): void {
   });
 }
 
-/** Remove any inline styles a finished animation left on an element. */
-export function cleanup(target: Target): void {
-  if (!usable(target)) return;
-  utils.cleanInlineStyles(target as never);
+/**
+ * Acknowledge a press.
+ *
+ * A short dip in scale, returning under its own easing. The dip is deliberately
+ * shallow: it should confirm the press landed, not make the control feel loose.
+ */
+export function press(target: Target): void {
+  if (!usable(target) || prefersReducedMotion()) return;
+  const animation = animate(target as never, {
+    scale: [{ to: 0.965, duration: DURATION.instant }, { to: 1, duration: DURATION.quick }],
+    ease: EASE.out,
+  });
+  // Dropped after the animation settles rather than from inside onComplete:
+  // cleanup pauses the animation to revert it, and doing that mid-completion
+  // throws. The press ends at scale 1, so what is left behind is an identity
+  // transform -- harmless to look at, but it creates a stacking context, so it
+  // is worth removing rather than leaving on every control that was ever
+  // clicked.
+  void animation.then(() => cleanup(animation));
+}
+
+/**
+ * Give every control in a subtree press feedback.
+ *
+ * Delegated from one listener rather than wired per control: with 25 buttons
+ * spread over seven files, anything opt-in gets forgotten the first time a
+ * button is added, and the gap is invisible until someone notices one control
+ * feels dead. Opt a control out with data-no-press.
+ *
+ * Returns a function that removes the listener.
+ */
+export function attachPressFeedback(root: HTMLElement): () => void {
+  const onPointerDown = (event: PointerEvent): void => {
+    const target = event.target as HTMLElement | null;
+    const control = target?.closest<HTMLElement>("button, [role='button']");
+    if (!control || control.hasAttribute("data-no-press")) return;
+    if (control.hasAttribute("disabled") || control.getAttribute("aria-disabled") === "true") return;
+    press(control);
+  };
+  root.addEventListener("pointerdown", onPointerDown);
+  return () => root.removeEventListener("pointerdown", onPointerDown);
+}
+
+/**
+ * Remove the inline styles a finished animation left on its targets.
+ *
+ * Takes the animation, not the element: cleanInlineStyles reads the targets off
+ * the animation and pauses it. This previously accepted an element, which type
+ * checked only because of a cast and threw the moment it was first called.
+ */
+export function cleanup(animation: { targets?: unknown }): void {
+  utils.cleanInlineStyles(animation as never);
 }

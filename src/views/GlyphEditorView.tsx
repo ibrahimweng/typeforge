@@ -31,6 +31,26 @@ import { nodeKey, store, useAppState, type NodeRef } from "@/state/useStore";
 const HIT_RADIUS = 7;
 const NODE_SIZE = 3.5;
 
+/**
+ * What the pointer is currently over.
+ *
+ * Resolved with the same tests, in the same order, that decide what a click
+ * grabs. If the two ever disagreed the highlight would be a lie: it would show
+ * one target and hand you another.
+ */
+type Hover =
+  | { kind: "anchor"; name: string }
+  | { kind: "handle"; ref: NodeRef; side: "in" | "out" }
+  | { kind: "node"; ref: NodeRef }
+  | null;
+
+function hoverKey(hover: Hover): string {
+  if (!hover) return "";
+  if (hover.kind === "anchor") return `anchor:${hover.name}`;
+  if (hover.kind === "handle") return `handle:${nodeKey(hover.ref)}:${hover.side}`;
+  return `node:${nodeKey(hover.ref)}`;
+}
+
 type Drag =
   | { kind: "node"; refs: NodeRef[]; start: Vec2; before: Glyph }
   | { kind: "handle"; ref: NodeRef; side: "in" | "out"; before: Glyph }
@@ -49,6 +69,7 @@ export function GlyphEditorView(): React.JSX.Element {
   const [zoom, setZoom] = React.useState(1);
   const [pan, setPan] = React.useState<Vec2>({ x: 0, y: 0 });
   const dragRef = React.useRef<Drag | null>(null);
+  const [hover, setHover] = React.useState<Hover>(null);
   const [, forceRender] = React.useReducer((n: number) => n + 1, 0);
 
   React.useEffect(() => {
@@ -114,12 +135,12 @@ export function GlyphEditorView(): React.JSX.Element {
     drawContours(context, glyph.contours, view, {
       fill: withAlpha(readToken("--glyph-fill", "#eeeeee"), resolved !== composed ? 0.5 : 0.92),
     });
-    drawNodes(context, glyph.contours, view, state.selectedNodes);
-    drawAnchors(context, glyph.anchors, view);
+    drawNodes(context, glyph.contours, view, state.selectedNodes, hover);
+    drawAnchors(context, glyph.anchors, view, hover);
 
     const drag = dragRef.current;
     if (drag?.kind === "marquee") drawMarquee(context, drag);
-  }, [typeface, glyph, view, size, state.selectedNodes, state.revision]);
+  }, [typeface, glyph, view, size, state.selectedNodes, state.revision, hover]);
 
 
   // --- interaction ------------------------------------------------------
@@ -196,9 +217,41 @@ export function GlyphEditorView(): React.JSX.Element {
     };
   };
 
+  /**
+   * Resolve what is under the pointer, in the priority a click uses.
+   *
+   * Only committed when the target actually changes. A pointer move fires
+   * dozens of times a second and every state change here repaints the whole
+   * canvas, so comparing first is what keeps hovering free.
+   */
+  const updateHover = (canvasPoint: Vec2): void => {
+    if (!glyph || state.tool === "pen") {
+      setHover((current) => (current === null ? current : null));
+      return;
+    }
+
+    const anchorHit = hitTestAnchor(glyph, view, canvasPoint);
+    const handleHit = anchorHit ? null : hitTestHandle(glyph, view, canvasPoint);
+    const nodeHit = anchorHit || handleHit ? null : hitTestNode(glyph, view, canvasPoint);
+
+    const next: Hover = anchorHit
+      ? { kind: "anchor", name: anchorHit }
+      : handleHit
+        ? { kind: "handle", ref: handleHit.ref, side: handleHit.side }
+        : nodeHit
+          ? { kind: "node", ref: nodeHit }
+          : null;
+
+    setHover((current) => (hoverKey(current) === hoverKey(next) ? current : next));
+  };
+
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     const drag = dragRef.current;
-    if (!drag || !glyph) return;
+    if (!drag) {
+      updateHover(pointerPosition(event));
+      return;
+    }
+    if (!glyph) return;
     const canvasPoint = pointerPosition(event);
 
     switch (drag.kind) {
@@ -359,11 +412,12 @@ export function GlyphEditorView(): React.JSX.Element {
       <canvas
         ref={canvasRef}
         style={{ width: size.width, height: size.height }}
-        className={state.tool === "pen" ? "cursor-crosshair" : "cursor-default"}
+        className={cursorFor(state.tool, hover)}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
+        onPointerLeave={() => setHover(null)}
         onWheel={(event) => {
           // Ctrl or command with the wheel zooms, matching every design tool.
           if (event.ctrlKey || event.metaKey) {
@@ -380,6 +434,17 @@ export function GlyphEditorView(): React.JSX.Element {
       </div>
     </div>
   );
+}
+
+/**
+ * The cursor says whether there is something to grab before you press.
+ *
+ * Without this the canvas looks identical whether the pointer is over a point
+ * or over empty space, so the only way to find out is to click and see.
+ */
+function cursorFor(tool: string, hover: Hover): string {
+  if (tool === "pen") return "cursor-crosshair";
+  return hover ? "cursor-grab" : "cursor-default";
 }
 
 // --- drawing ------------------------------------------------------------
@@ -452,6 +517,7 @@ function drawNodes(
   contours: Contour[],
   view: GlyphView,
   selected: ReadonlySet<string>,
+  hover: Hover,
 ): void {
   const onCurve = readToken("--node-on-curve", "#0c8ce9");
   const offCurve = readToken("--node-off-curve", "#9aa0ad");
@@ -499,6 +565,13 @@ function drawNodes(
         context.beginPath();
         context.arc(handlePoint.x, handlePoint.y, NODE_SIZE - 0.5, 0, Math.PI * 2);
         context.fill();
+
+        const handleHovered =
+          hover?.kind === "handle" &&
+          hover.ref.contour === contourIndex &&
+          hover.ref.node === nodeIndex &&
+          hover.side === _side;
+        if (handleHovered) drawHoverRing(context, handlePoint, NODE_SIZE + 2.5, offCurve);
       }
 
       // A smooth node is drawn round and a corner square, so the kind of point
@@ -511,6 +584,14 @@ function drawNodes(
       } else {
         const s = NODE_SIZE + 0.5;
         context.fillRect(point.x - s, point.y - s, s * 2, s * 2);
+      }
+
+      const nodeHovered =
+        hover?.kind === "node" &&
+        hover.ref.contour === contourIndex &&
+        hover.ref.node === nodeIndex;
+      if (nodeHovered) {
+        drawHoverRing(context, point, NODE_SIZE + 4, isSelected ? selectedColour : onCurve);
       }
     });
   });
@@ -527,6 +608,7 @@ function drawAnchors(
   context: CanvasRenderingContext2D,
   anchors: Anchor[],
   view: GlyphView,
+  hover: Hover,
 ): void {
   if (anchors.length === 0) return;
   const colour = readToken("--inspect", "#9149f5");
@@ -555,6 +637,10 @@ function drawAnchors(
 
     context.fillStyle = colour;
     context.fillText(anchor.name, point.x + arm + 3, point.y);
+
+    if (hover?.kind === "anchor" && hover.name === anchor.name) {
+      drawHoverRing(context, point, arm + 2, colour);
+    }
   }
   context.restore();
 }
@@ -567,6 +653,27 @@ function hitTestAnchor(glyph: Glyph, view: GlyphView, canvasPoint: Vec2): string
     }
   }
   return null;
+}
+
+/**
+ * The ring that marks what a click would grab.
+ *
+ * Drawn, not animated: this follows the pointer, so any easing would leave it
+ * trailing behind the thing it is meant to be pointing at.
+ */
+function drawHoverRing(
+  context: CanvasRenderingContext2D,
+  point: Vec2,
+  radius: number,
+  colour: string,
+): void {
+  context.save();
+  context.strokeStyle = withAlpha(colour, 0.9);
+  context.lineWidth = 1.5;
+  context.beginPath();
+  context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+  context.stroke();
+  context.restore();
 }
 
 function drawMarquee(context: CanvasRenderingContext2D, drag: Extract<Drag, { kind: "marquee" }>): void {

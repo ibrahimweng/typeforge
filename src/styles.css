@@ -85,6 +85,48 @@
   }
 }
 
+/*
+ * The instant layer of interaction feedback.
+ *
+ * anime.js handles the expressive part of a press, but it runs a frame later
+ * and is skipped entirely under reduced motion. These rules are what make a
+ * control feel connected the moment the pointer touches it, so feedback never
+ * depends on an animation getting to run.
+ *
+ * Deliberately not applied to the drawing canvas: hover there is drawn into the
+ * scene, because what you are pointing at is a point on a curve, not a box.
+ */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+    transition:
+      background-color 90ms ease-out,
+      border-color 90ms ease-out,
+      color 90ms ease-out,
+      opacity 90ms ease-out;
+  }
+
+  /* Sits under the anime.js dip, and carries the press on its own when that
+     animation is suppressed. */
+  button:not(:disabled):active,
+  [role="button"]:not([aria-disabled="true"]):active {
+    filter: brightness(0.92);
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
+  /* Keyboard users get the same certainty about what is focused that pointer
+     users get from hover. */
+  :focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--ring) 70%, transparent);
+    outline-offset: 2px;
+  }
+}
+
 html,
 body,
 #root {
