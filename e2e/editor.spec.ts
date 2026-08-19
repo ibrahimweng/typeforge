@@ -356,3 +356,29 @@ test("puts slab serifs on the stroke ends", async ({ page }) => {
   expect(inkAfter).toBeGreaterThan(inkBefore);
   expect(errors).toEqual([]);
 });
+
+test("moves the crossbar of a letter that has one", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  await page.goto("/");
+  await openFont(page);
+  // H has a crossbar; the letter the editor opens on does not necessarily.
+  await page.getByLabel("Search glyphs").fill("H");
+  await page.getByRole("button", { name: /^H$/ }).first().dblclick();
+  await page.waitForTimeout(600);
+
+  const before = await measureInk(page);
+
+  const slider = await paramSlider(page, "Crossbar");
+  await slider.focus();
+  for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowRight");
+  await page.waitForTimeout(900);
+
+  // The bar moves rather than growing, so the letter keeps roughly the same
+  // amount of ink while the drawing changes.
+  const after = await measureInk(page);
+  expect(after).toBeGreaterThan(0);
+  expect(Math.abs(after - before) / before).toBeLessThan(0.25);
+  expect(errors).toEqual([]);
+});

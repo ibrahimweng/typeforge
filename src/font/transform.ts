@@ -19,6 +19,7 @@ import {
 } from "./geometry";
 import { resolveComponents } from "./composite";
 import { classifyContours } from "./outline";
+import { shiftCrossbar, shiftShoulders } from "./anatomy";
 import { pixelate } from "./pixel";
 import { addSlabs } from "./slab";
 import { DEFAULT_PARAMS, type Contour, type Glyph, type GlyphNode, type GlyphParams, type Typeface, type Vec2 } from "./types";
@@ -38,7 +39,9 @@ export function paramsAreDefault(params: GlyphParams): boolean {
     params.counterScale === DEFAULT_PARAMS.counterScale &&
     params.tracking === DEFAULT_PARAMS.tracking &&
     params.pixelGrid === DEFAULT_PARAMS.pixelGrid &&
-    params.slab === DEFAULT_PARAMS.slab
+    params.slab === DEFAULT_PARAMS.slab &&
+    params.crossbar === DEFAULT_PARAMS.crossbar &&
+    params.shoulder === DEFAULT_PARAMS.shoulder
   );
 }
 
@@ -59,6 +62,11 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
   if (paramsAreDefault(params)) return composed;
 
   let contours = composed.map(cloneContour);
+  // The named parts move first, while the letter is still as it was drawn.
+  // Weight and width then apply to the adjusted shape rather than the other
+  // way round, which is the order a designer works in.
+  if (params.crossbar !== 0) contours = shiftCrossbar(contours, params.crossbar);
+  if (params.shoulder !== 0) contours = shiftShoulders(contours, params.shoulder);
   if (params.counterScale !== 1) contours = applyCounterScale(contours, params.counterScale);
   if (params.weight !== 0) contours = contours.map((contour) => applyWeight(contour, params.weight));
   if (params.cornerRadius > 0)

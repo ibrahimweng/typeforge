@@ -119,6 +119,17 @@ export interface GlyphParams {
    * leaves the stroke ends bare.
    */
   slab: number;
+  /**
+   * Raises or lowers the horizontal stroke crossing the middle of a letter --
+   * the bar of an H or A, the middle arm of an E, the eye of an e -- in font
+   * units.
+   */
+  crossbar: number;
+  /**
+   * Raises or lowers where an arch springs from its stem, in font units.
+   * Raising it squares the shoulder; lowering it opens the letter out.
+   */
+  shoulder: number;
 }
 
 export const DEFAULT_PARAMS: GlyphParams = {
@@ -131,6 +142,8 @@ export const DEFAULT_PARAMS: GlyphParams = {
   tracking: 0,
   pixelGrid: 0,
   slab: 0,
+  crossbar: 0,
+  shoulder: 0,
 };
 
 export interface VerticalMetrics {

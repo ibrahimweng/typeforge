@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { exportFont } from "../src/font/export";
 import { resolveGlyphContours } from "../src/font/transform";
+import { findCrossbar } from "../src/font/anatomy";
 import { importFont } from "../src/font/parse";
 import { FONT_SUITE_TIMEOUT, loadTestFont } from "./fixtures";
 import { hasFontTools, inspectFont } from "./fonttools";
@@ -283,6 +284,37 @@ suite("export pipeline", { timeout: FONT_SUITE_TIMEOUT }, () => {
     };
     // An I is a bare stem; slabs at both ends have to widen it.
     expect(width(slabbed)).toBeGreaterThan(width(bare) + 100);
+  });
+
+  it("moves the crossbar without changing how tall the letters are", async () => {
+    const { typeface } = await importFont(source!, "DejaVuSans.ttf");
+    const H = typeface.glyphs[typeface.glyphIndex.get("H")!];
+    const heightOf = (contours: ReturnType<typeof resolveGlyphContours>) => {
+      const ys = contours.flatMap((c) => c.nodes.map((n) => n.point.y));
+      return Math.max(...ys) - Math.min(...ys);
+    };
+    const before = resolveGlyphContours(H, typeface);
+    const barBefore = findCrossbar(before)!;
+
+    typeface.params = { ...typeface.params, crossbar: 150 };
+    const after = resolveGlyphContours(H, typeface);
+    const barAfter = findCrossbar(after)!;
+
+    expect(barAfter.bottom - barBefore.bottom).toBeCloseTo(150, 0);
+    expect(heightOf(after)).toBeCloseTo(heightOf(before), 0);
+  });
+
+  it("writes a valid font after moving the crossbar and shoulder", async () => {
+    const { typeface } = await importFont(source!, "DejaVuSans.ttf");
+    const before = inspectFont(source!);
+    typeface.params = { ...typeface.params, crossbar: 120, shoulder: -100 };
+
+    const result = await exportFont(typeface, { format: "ttf", fidelity: "rebuild", now: 0 });
+    const report = inspectFont(result.bytes);
+
+    expect(report.error).toBeUndefined();
+    expect(report.recompiles).toBe(true);
+    expect(report.numGlyphs).toBe(before.numGlyphs);
   });
 
   it("leaves the font alone when the pixel grid is off", async () => {
