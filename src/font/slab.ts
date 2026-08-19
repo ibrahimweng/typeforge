@@ -26,7 +26,7 @@
  * expects.
  */
 
-import { contourSegments, isClockwise, type Segment } from "./geometry";
+import { contourSegments, isClockwise, reverseContour, type Segment } from "./geometry";
 import type { Contour, GlyphNode, Vec2 } from "./types";
 
 export interface SlabOptions {
@@ -51,6 +51,8 @@ export interface Terminal {
   /** Unit vector pointing back into the stroke. */
   inward: Vec2;
   width: number;
+  /** Which way the contour this end belongs to is wound. */
+  clockwise: boolean;
 }
 
 function unit(from: Vec2, to: Vec2): { x: number; y: number; length: number } {
@@ -70,6 +72,8 @@ function chord(segment: Segment): { x: number; y: number; length: number } {
 const PERPENDICULAR_TOLERANCE = 0.26; // about 15 degrees
 /** How opposed the two sides of a stroke have to be. */
 const OPPOSITE_TOLERANCE = -0.9;
+/** How much longer than its stroke an end may measure and still count. */
+const END_SLACK = 1.25;
 
 /**
  * Find the stroke ends of one outline.
@@ -104,7 +108,14 @@ export function findTerminals(contours: Contour[], maxWidth: number): Terminal[]
       // the side. Comparing against the longer neighbour rather than both keeps
       // the top of an n's stem, where the arch springs away after only a short
       // run.
-      if (here.length >= Math.max(previous.length, next.length)) continue;
+      //
+      // The comparison is loose because it has to survive the other controls
+      // moving things about. On a real letter an end is a fifth the length of
+      // its stroke or less, so a little slack costs nothing -- but exactly at
+      // the boundary it decided whether a slab existed. Raising t's crossbar
+      // left 168 units of stem above it, just under the 185 the stem is wide,
+      // and the slab on the ascender vanished while the others stayed.
+      if (here.length > Math.max(previous.length, next.length) * END_SLACK) continue;
 
       // Both sides square to the end, and running opposite each other.
       if (Math.abs(here.x * previous.x + here.y * previous.y) > PERPENDICULAR_TOLERANCE) continue;
@@ -129,6 +140,7 @@ export function findTerminals(contours: Contour[], maxWidth: number): Terminal[]
         along: { x: here.x, y: here.y },
         inward: { x: inward.x / inwardLength, y: inward.y / inwardLength },
         width: here.length,
+        clockwise: convexSign === -1,
       });
     }
   }
@@ -170,7 +182,19 @@ export function addSlabs(contours: Contour[], options: SlabOptions): Contour[] {
       handleOut: null,
       type: "corner",
     }));
-    return { nodes, closed: true };
+    const slab: Contour = { nodes, closed: true };
+
+    /*
+     * Wind the bar the same way as the letter it belongs to.
+     *
+     * Which way round a contour runs decides whether it is ink or a hole, and
+     * emboldening reads it to know which way is outward. A bar wound against
+     * the letter got thinner as weight was added: an I with serifs measured 382
+     * units wide unweighted and 269 at weight 80, shrinking as it was asked to
+     * grow. It went unseen while slabs were added after the weight, and
+     * appeared the moment they were added before it.
+     */
+    return isClockwise(slab) === terminal.clockwise ? slab : reverseContour(slab);
   });
 
   return [...contours, ...slabs];

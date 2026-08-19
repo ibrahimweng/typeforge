@@ -154,8 +154,15 @@ function applyParams(contours: Contour[], params: GlyphParams, advance: number):
   return resolveGlyphContours(probe, host);
 }
 
-/** How many refinement passes to run, and how close counts as arrived. */
-const FIT_PASSES = 6;
+/**
+ * How many refinement passes to run, and how close counts as arrived.
+ *
+ * The loop stops as soon as nothing is moving, so a generous cap costs nothing
+ * on the letters that settle quickly. Weight closes a counter as well as
+ * thickening a stem, which ties it to the counter setting more tightly than
+ * six passes could resolve on a ring.
+ */
+const FIT_PASSES = 14;
 const FIT_TOLERANCE = 0.0005;
 
 /**

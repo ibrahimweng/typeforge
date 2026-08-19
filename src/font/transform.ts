@@ -67,18 +67,21 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
   // way round, which is the order a designer works in.
   if (params.crossbar !== 0) contours = shiftCrossbar(contours, params.crossbar);
   if (params.shoulder !== 0) contours = shiftShoulders(contours, params.shoulder);
-  if (params.counterScale !== 1) contours = applyCounterScale(contours, params.counterScale);
-  if (params.weight !== 0) contours = contours.map((contour) => applyWeight(contour, params.weight));
-  if (params.cornerRadius > 0)
-    contours = contours.map((contour) => applyCornerRadius(contour, params.cornerRadius));
-  if (params.xHeightScale !== 1)
-    contours = contours.map((contour) => applyVerticalScale(contour, params.xHeightScale));
-  if (params.width !== 1)
-    contours = contours.map((contour) => applyHorizontalScale(contour, params.width));
-  if (params.slant !== 0) contours = contours.map((contour) => applySlant(contour, params.slant));
-  // Slabs before quantising, so a slab serif can also be put on a grid, and
-  // after weight and width, so they are laid on the stroke ends as those
-  // finally stand.
+  /*
+   * Slabs go on while the letter is still as drawn, and are then carried
+   * through everything else with it.
+   *
+   * Adding them last meant deciding where the stroke ends were on a shape the
+   * other controls had already moved, and that decision is not stable: sweeping
+   * the weight slider took n and m from three stroke ends to none, and the
+   * x-height slider took a slab off t. Serifs appeared and vanished while
+   * dragging something else entirely.
+   *
+   * It was wrong the other way round as well. A slab pasted on at the end kept
+   * its size no matter how heavy the letter became, so a bold cut had the
+   * serifs of a light one. Put on first, they thicken with the stems, stretch
+   * with the width and lean with the slant, which is what they should do.
+   */
   if (params.slab > 0) {
     contours = addSlabs(contours, {
       projection: params.slab,
@@ -88,6 +91,23 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
       maxWidth: typeface.unitsPerEm * 0.35,
     });
   }
+  if (params.counterScale !== 1) contours = applyCounterScale(contours, params.counterScale);
+  if (params.weight !== 0) {
+    // Whether a contour is ink or a hole decides which way it has to move, and
+    // that cannot be read off its winding: DejaVu winds the outer contour of I
+    // clockwise and the outer contour of o the other way.
+    const outer = classifyContours(contours);
+    contours = contours.map((contour, index) =>
+      applyWeight(contour, params.weight, outer[index]),
+    );
+  }
+  if (params.cornerRadius > 0)
+    contours = contours.map((contour) => applyCornerRadius(contour, params.cornerRadius));
+  if (params.xHeightScale !== 1)
+    contours = contours.map((contour) => applyVerticalScale(contour, params.xHeightScale));
+  if (params.width !== 1)
+    contours = contours.map((contour) => applyHorizontalScale(contour, params.width));
+  if (params.slant !== 0) contours = contours.map((contour) => applySlant(contour, params.slant));
   // Quantising comes last. It has to see the letter as it will finally be
   // drawn, or a stem that weight or width moved would land on a different cell
   // than the one the finished shape sits on.
@@ -163,10 +183,27 @@ function applySlant(contour: Contour, degrees: number): Contour {
  * on every frame while a slider moves; at the magnitudes a designer uses for
  * weight it holds up.
  */
-function applyWeight(contour: Contour, amount: number): Contour {
+function applyWeight(contour: Contour, amount: number, isOuter: boolean): Contour {
   const nodes = contour.nodes;
   if (nodes.length < 2) return contour;
-  const sign = isClockwise(contour) ? 1 : -1;
+  /*
+   * Which way this contour has to move to add weight.
+   *
+   * The offset below is built as (tangent.y, -tangent.x), which leaves a
+   * counter-clockwise contour and enters a clockwise one, so a clockwise
+   * contour has to be negated. That much was simply inverted before, and every
+   * letter whose outer contour is wound clockwise -- which is the TrueType
+   * convention -- got thinner as the weight went up. On DejaVu the stem of an n
+   * measured 184 units at rest, 315 at weight -80 and 37 at weight +80, very
+   * nearly disappearing under a control labelled "positive is bolder".
+   *
+   * A hole then has to go the other way again: thickening the stroke around a
+   * counter means closing the counter, not opening it with the outline. Fixing
+   * only the winding left o unchanged at 206, 205, 204 units across the whole
+   * range, because its counter was growing exactly as fast as its outside.
+   */
+  const outward = isClockwise(contour) ? -1 : 1;
+  const sign = isOuter ? outward : -outward;
 
   const moved = nodes.map((node, index) => {
     const previous = nodes[(index - 1 + nodes.length) % nodes.length];

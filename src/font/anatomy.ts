@@ -103,21 +103,71 @@ export function findCrossbar(contours: Contour[]): Crossbar | null {
 /**
  * Move the crossbar up or down.
  *
- * Only the points inside the bar's own band move, so the stems it crosses stay
- * where they are and the letter keeps its height.
+ * Only the bar's own two edges move, and each end slides along whatever it is
+ * attached to, so the bar stays joined to the strokes it crosses. On an A,
+ * whose sides are diagonal, the ends travel along the diagonals rather than
+ * straight up, which is the difference between moving the bar and detaching
+ * it.
+ *
+ * Nothing moves at all unless every end sits on a straight segment. Selecting
+ * points by height alone was the first version of this, and it dragged
+ * whatever else happened to lie at that height: the bowl of an e lost three
+ * curve points to it, and B, P and R one each. A bar whose ends meet a curve
+ * is left alone rather than torn away from it.
  */
 export function shiftCrossbar(contours: Contour[], shift: number): Contour[] {
   if (shift === 0) return contours;
   const bar = findCrossbar(contours);
   if (!bar) return contours;
 
-  return contours.map((contour) => ({
+  // Where each node has to go. Empty means there was nothing safe to move.
+  const moves = new Map<string, Vec2>();
+
+  for (let ci = 0; ci < contours.length; ci++) {
+    const contour = contours[ci];
+    const segments = contourSegments(contour);
+    const count = contour.nodes.length;
+
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      if (segment.kind !== "line") continue;
+      if (!isHorizontal(segment.from, segment.to)) continue;
+      const y = (segment.from.y + segment.to.y) / 2;
+      const onBar =
+        Math.abs(y - bar.bottom) <= SAME_LEVEL || Math.abs(y - bar.top) <= SAME_LEVEL;
+      if (!onBar) continue;
+
+      // The two nodes this edge runs between, and the segment beyond each.
+      for (const [nodeIndex, neighbour] of [
+        [i, segments[(i - 1 + segments.length) % segments.length]],
+        [(i + 1) % count, segments[(i + 1) % segments.length]],
+      ] as const) {
+        // A bar whose end meets a curve cannot be slid without deforming it.
+        if (neighbour.kind !== "line") return contours;
+
+        const dx = neighbour.to.x - neighbour.from.x;
+        const dy = neighbour.to.y - neighbour.from.y;
+        // Slide along the attachment. A vertical edge gives no sideways travel;
+        // a diagonal one gives exactly enough to stay on it.
+        const alongX = Math.abs(dy) < 1e-6 ? 0 : (dx / dy) * shift;
+        const node = contour.nodes[nodeIndex];
+        moves.set(`${ci}:${nodeIndex}`, {
+          x: node.point.x + alongX,
+          y: node.point.y + shift,
+        });
+      }
+    }
+  }
+
+  if (moves.size === 0) return contours;
+
+  return contours.map((contour, ci) => ({
     closed: contour.closed,
-    nodes: contour.nodes.map((node) =>
-      node.point.y >= bar.bottom - SAME_LEVEL && node.point.y <= bar.top + SAME_LEVEL
-        ? moveNode(node, 0, shift)
-        : node,
-    ),
+    nodes: contour.nodes.map((node, ni) => {
+      const to = moves.get(`${ci}:${ni}`);
+      if (!to) return node;
+      return moveNode(node, to.x - node.point.x, to.y - node.point.y);
+    }),
   }));
 }
 
