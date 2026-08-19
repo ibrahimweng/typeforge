@@ -256,3 +256,39 @@ test("the canvas says what a click would grab before you press", async ({ page }
   // hover ring is drawn into the scene, so it adds covered pixels.
   expect(hoveredInk).toBeGreaterThan(restingInk);
 });
+
+test("shows the control letters and what an edit to one carried across", async ({ page }) => {
+  await page.goto("/");
+  await openFont(page);
+
+  // The panel names the letters that drive the font, and says how many follow.
+  await expect(page.getByText("Control letters")).toBeVisible();
+  await expect(page.getByText("Draw these and the rest follows", { exact: false })).toBeVisible();
+
+  // Opening one from the panel takes you into it.
+  await page.getByTitle(/^Open n\./).click();
+  await expect(page.getByRole("button", { name: "Glyph", exact: true })).toBeVisible();
+
+  // Drag a point on n, which is the gesture that moves the whole font.
+  const canvas = page.locator("canvas").first();
+  const box = (await canvas.boundingBox())!;
+  let grabbed = false;
+  for (let y = box.height * 0.25; y < box.height * 0.8 && !grabbed; y += 8) {
+    for (let x = box.width * 0.25; x < box.width * 0.8; x += 8) {
+      await page.mouse.move(box.x + x, box.y + y);
+      if (((await canvas.getAttribute("class")) ?? "").includes("cursor-grab")) {
+        await page.mouse.down();
+        await page.mouse.move(box.x + x + 40, box.y + y, { steps: 6 });
+        await page.mouse.up();
+        grabbed = true;
+        break;
+      }
+    }
+  }
+  expect(grabbed).toBe(true);
+
+  // Whatever it changed, the panel has to say so rather than moving the font
+  // silently.
+  await page.getByRole("button", { name: "family", exact: true }).click();
+  await expect(page.getByText("Last change carried across")).toBeVisible({ timeout: 15_000 });
+});

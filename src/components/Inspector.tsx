@@ -14,6 +14,7 @@ import * as React from "react";
 
 import { enterStaggered } from "@/anim/motion";
 import { CompositionPanel } from "@/components/CompositionPanel";
+import { ControlLetters } from "@/components/ControlLetters";
 import { DEFAULT_PARAMS, type GlyphParams } from "@/font/types";
 import { store, useAppState } from "@/state/useStore";
 // Imported from the control directly rather than through the UI barrel: the
@@ -155,7 +156,9 @@ export function Inspector(): React.JSX.Element {
           <CompositionPanel />
         </div>
       ) : (
-      <div ref={listRef} className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto p-3">
+      <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
+      {scope === "family" && <ControlLetters />}
+      <div ref={listRef} className="p-3">
         {PARAMS.map((spec) => {
           const scaleFactor = spec.emRelative ? typeface.unitsPerEm : 1;
           const value = resolved[spec.key];
@@ -229,6 +232,7 @@ export function Inspector(): React.JSX.Element {
         >
           Reset {scope === "glyph" ? "this glyph" : "all parameters"}
         </button>
+      </div>
       </div>
       )}
     </aside>
