@@ -1,0 +1,63 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 20 is the lowest version the project supports, 22 is current.
+        node: ['20', '22']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      # The export tests check their output against fontTools, the reference
+      # implementation, rather than against this project's own reader.
+      - name: Install fontTools
+        run: pip install --quiet fonttools brotli
+
+      # Tests read a font from the system and skip when none is present, so
+      # install one rather than let that coverage silently disappear.
+      - name: Install a test font
+        run: sudo apt-get install -y --no-install-recommends fonts-dejavu-core
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      - run: npm run build
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install a test font
+        run: sudo apt-get install -y --no-install-recommends fonts-dejavu-core
+
+      - run: npx playwright install --with-deps chromium
+
+      - run: npm run test:browser

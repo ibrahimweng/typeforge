@@ -111,22 +111,24 @@ The interface components in `src/ui/` come from Toolcraft and carry the
 Toolcraft Designer License, which does not permit selling this application as a
 product. Everything in `src/font/` is original work. See `NOTICE.md`.
 
-## Moving this into its own repository
+## Deploying
 
-Typeforge is self-contained: it has its own `package.json`, its own CI workflow,
-and no imports that reach outside `typeforge/`. Nothing in the Flutter app at
-the top level of this repository refers to it.
+The build is a static site, so any static host will serve it. There is no
+server, and nothing a font is loaded into leaves the browser.
 
-To split it out while keeping the history:
+On Vercel, importing this repository is enough: `vercel.json` sets the
+framework, the build command and the output directory, so no dashboard
+configuration is needed. Every path rewrites to `index.html` because the app
+runs on one page, and hashed asset files are marked immutable so repeat visits
+do not refetch them.
 
 ```bash
-git subtree split --prefix=typeforge -b typeforge-only
-# then, in a fresh clone of the new repository
-git pull <path-to-this-repo> typeforge-only
+npm run build   # produces dist/
+npm run preview # serves that build locally
 ```
 
-Afterwards, move `.github/workflows/typeforge.yml` to `.github/workflows/ci.yml`
-in the new repository and delete the `paths:` filters and the
-`working-directory: typeforge` default, since everything will be at the root.
+## Privacy
 
-This is the same route Beat Studio took out of this repository.
+Fonts are read and written entirely in the browser. Nothing is uploaded, and
+there is no backend to upload it to. That matters when the file you are editing
+is a licensed typeface.
