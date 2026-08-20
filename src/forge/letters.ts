@@ -29,11 +29,12 @@ import {
   bowlPoint,
   reversed,
   roundCorners,
+  shortened,
   spineEnd,
   spineStart,
 } from "./shapes";
 import { MITER_LIMIT, penReach, reachAlong } from "./sweep";
-import type { JoinKind, Spine, Stroke, Terminal } from "./types";
+import type { JoinKind, Spine, SpineSegment, Stroke, Terminal } from "./types";
 
 /**
  * A letter, as strokes plus how it should be spaced.
@@ -310,6 +311,49 @@ interface Frame {
    * got, and its feet came to rest seventy-nine units above the baseline.
    */
   reach: (direction: Vec2) => number;
+  /**
+   * Where to put a spine so that the ink lands on a line, rather than
+   * straddling it.
+   *
+   * A recipe wants to say "along the baseline" or "under the cap line", and
+   * what it means is the edge of the stroke, not its middle. Written as the
+   * middle -- which is what these all were -- every flat foot sat half a pen
+   * low and every flat top half a pen high, so an E hung below the line an H
+   * stood on and a T rose above the one a Z stopped at. The two are only the
+   * same when a stroke *ends* on the line, cut square, which is why the fault
+   * was invisible on every stem in the font and glaring on every bar.
+   *
+   * `sits` is a run resting on the line, `hangs` is one level with it from
+   * below. The share is the stroke's own width against the pen's, for the bars
+   * drawn lighter than the stems they cross.
+   */
+  sits: (line: number, share?: number) => number;
+  hangs: (line: number, share?: number) => number;
+  /**
+   * The same for a curve, which is allowed past its line and expected to be.
+   *
+   * A round shape stopped level with a flat one reads as short, so it is drawn
+   * a little over -- that is what the overshoot is for. `crest` is where the
+   * middle of a curve runs so its ink tops out an overshoot above a line;
+   * `dip` is the same underneath.
+   */
+  crest: (line: number) => number;
+  dip: (line: number) => number;
+  /** How wide a bar is against a stem, for the strokes drawn lighter. */
+  bar: number;
+  /**
+   * How far ink stands off a run lying along a line.
+   *
+   * Half the pen, for a pen that is round, and not otherwise: a nib with
+   * contrast held near the upright is narrow across a horizontal, and one held
+   * flat is at its widest there. Told half a width regardless, the arms of a Z
+   * on the serif face were set twenty units inside the two lines they were
+   * meant to touch -- correctly, for a pen the face does not have.
+   *
+   * The whole offset, not its length: an angled nib pushes a horizontal run
+   * sideways as well as up, and it is the up that decides where the line is.
+   */
+  upright: number;
   /** How the outside of an unrounded corner is finished. */
   join: JoinKind;
   /** The terminal this style puts on a stroke end. */
@@ -330,11 +374,23 @@ function frame(style: Style): Frame {
   const { metrics, pen } = style;
   const half = pen.weight / 2;
   const least = half * 1.06;
+  const upright = Math.abs(reachAlong(at(0, 1), penReach(pen)).y);
   // The bowl's own proportion and the face's width multiply: one says how a
   // bowl sits against its height, the other how wide the whole face runs.
   const wide = style.parts.bowl.width * metrics.width;
-  const bowlH = Math.max(metrics.xHeight / 2 + metrics.overshoot, least);
-  const capBowlH = Math.max(metrics.capHeight / 2 + metrics.overshoot, least);
+  /*
+   * Half the pen taken off, because a bowl is measured by its ink and drawn by
+   * its middle. A ring whose spine reaches the x-height is a letter whose ink
+   * reaches half a pen past it: at a display weight that put an o eighty-seven
+   * units over the line an n stopped at, which is five hundredths of the em
+   * where an overshoot of one or two is what the eye wants.
+   *
+   * What is left is a round letter exactly as tall as the x-height and its
+   * overshoot, at every weight -- and, at a width of one, exactly as wide,
+   * which is what a circle is.
+   */
+  const bowlH = Math.max(metrics.xHeight / 2 + metrics.overshoot - upright, least);
+  const capBowlH = Math.max(metrics.capHeight / 2 + metrics.overshoot - upright, least);
   return {
     style,
     half,
@@ -350,7 +406,19 @@ function frame(style: Style): Frame {
     ),
     bowl: Math.max(bowlH * wide, least),
     bowlH,
-    capBowl: Math.max(capBowlH * wide, least),
+    /*
+     * A width floor, which the height does not have.
+     *
+     * The height of a round capital is settled by the two lines it has to
+     * reach, and at a heavy weight that leaves very little between them --
+     * which is correct, and is what a heavy face looks like. Its width is not
+     * settled by anything, so left to follow the height down it took every
+     * letter measured against it with it, and the N, V and W came out with
+     * their two strokes closer together than the pen is wide. Below about a
+     * pen and three quarters there is no capital left to draw, so that is the
+     * floor, and a heavy cut widens rather than closing up.
+     */
+    capBowl: Math.max(capBowlH * wide, half * 1.7),
     capBowlH,
     square: style.parts.bowl.squareness,
     wide,
@@ -361,6 +429,12 @@ function frame(style: Style): Frame {
       const offset = reachAlong(direction, penReach(pen));
       return Math.hypot(offset.x, offset.y);
     },
+    sits: (line, share = 1) => line + upright * share,
+    hangs: (line, share = 1) => line - upright * share,
+    crest: (line) => line + metrics.overshoot - upright,
+    dip: (line) => line - metrics.overshoot + upright,
+    bar: style.parts.crossbar.weight,
+    upright,
     end: endFor(style),
     plain: { kind: style.parts.terminal.kind, angle: style.parts.terminal.angle },
   };
@@ -427,10 +501,98 @@ function thin(frame: Frame, spine: Spine, start: Terminal = BUTT, end: Terminal 
   return { spine, pen: { ...pen, weight: pen.weight * parts.crossbar.weight }, start, end };
 }
 
-/** A round letter is set slightly tighter, or it looks loose beside a flat one. */
+/**
+ * A round letter is set slightly tighter, or it looks loose beside a flat one.
+ *
+ * This is also where every stroke has its round ends pulled back, so that a
+ * recipe can go on writing where the letter stops rather than where its
+ * skeleton stops. Done to the whole set at once rather than inside `ink`,
+ * because an alternate letterform builds its strokes by hand and would
+ * otherwise be the one place the rule did not hold.
+ */
 function finish(frame: Frame, strokes: Stroke[], round = false): Recipe {
-  void frame;
-  return { strokes, round };
+  return { strokes: strokes.map((stroke) => capped(frame, stroke)), round };
+}
+
+/**
+ * A stroke with its spine pulled back from any straight end that finishes in a
+ * round cap, by exactly as far as that cap is going to reach.
+ *
+ * Only the round terminal needs it. A square cut stops where the spine stops;
+ * a slab draws its bar across the end and reaches sideways, not forwards; an
+ * angled cut slides one corner past and the other back, which is what a nib
+ * held at an angle does and is not a mistake to be corrected. A half-disc is
+ * the one that simply adds length.
+ *
+ * And only where the run arrives straight, for the same reason a serif only
+ * goes on a straight end: a stem stops on a line and its cap is measured
+ * against that line, while a curve's end is in mid-air and its cap is the curl
+ * the face is drawn with. Taken off a curve as well, the hook of an f lost the
+ * top of its own arc and came up short of the ascender the l beside it reached.
+ */
+function capped(frame: Frame, stroke: Stroke): Stroke {
+  const segments = stroke.spine.segments;
+  if (stroke.spine.closed || segments.length === 0) return stroke;
+  const first = segments[0];
+  const last = segments[segments.length - 1];
+  const leaning = (segment: SpineSegment, which: "start" | "end"): number => {
+    if (segment.kind !== "line") return 0;
+    const point = which === "start" ? segment.from : segment.to;
+    if (!stopsOnALine(frame, point)) return 0;
+    const steep = Math.abs(headingAt(segment, which).y);
+    /*
+     * Neither upright nor flat: an upright is already square to its line and a
+     * flat one lies along it, and it is only the ones in between that finish
+     * in a corner off the line they were meant to stop on.
+     *
+     * Upright means upright, not nearly. The arms of a v on a narrow face lean
+     * by about a sixth, which is enough to put their corners twenty units over
+     * the x-height and not enough to look like a diagonal, so a gate anywhere
+     * short of vertical let exactly the wrong ones through.
+     */
+    return steep > 0.35 && steep < 0.999 ? steep : 0;
+  };
+  const startLean = leaning(first, "start");
+  const endLean = leaning(last, "end");
+
+  const back = (terminal: Terminal, segment: SpineSegment, which: "start" | "end", lean: number): number => {
+    if (terminal.kind !== "round" || segment.kind !== "line") return 0;
+    // Far enough back that the far side of the cap lands on the line, which on
+    // a stroke arriving at an angle is further than the cap is deep.
+    return frame.reach(headingAt(segment, which)) / (lean > 0 ? lean : 1);
+  };
+  const fromStart = back(stroke.start, first, "start", startLean);
+  const fromEnd = back(stroke.end, last, "end", endLean);
+
+  const cut = (terminal: Terminal, lean: number): Terminal =>
+    lean > 0 && terminal.kind === "butt" ? { kind: "level" } : terminal;
+  const start = cut(stroke.start, startLean);
+  const end = cut(stroke.end, endLean);
+  if (fromStart <= 0 && fromEnd <= 0) return { ...stroke, start, end };
+  return { ...stroke, start, end, spine: shortened(stroke.spine, fromStart, fromEnd) };
+}
+
+/**
+ * Whether a stroke end was written on one of the lines the letter is drawn
+ * between, rather than stopping somewhere of its own.
+ *
+ * Asked exactly rather than loosely. Every recipe that means a line writes the
+ * line, so a rounding error of tolerance is enough -- and anything looser
+ * catches ends that did not mean it. Given a fifth of the pen, the question
+ * mark's neck, which leaves its bowl at thirty-five degrees below the middle,
+ * came out close enough to a low x-height to be cut level with it, and the
+ * letter folded where the two pieces no longer met.
+ */
+function stopsOnALine(f: Frame, point: Vec2): boolean {
+  return [0, f.x, f.cap, f.asc, f.desc].some((line) => Math.abs(point.y - line) < 1);
+}
+
+/** Which way a run is travelling where it begins or where it ends. */
+function headingAt(segment: SpineSegment, which: "start" | "end"): Vec2 {
+  if (segment.kind === "line") return towards(segment.from, segment.to);
+  const angle = which === "start" ? segment.startAngle : segment.endAngle;
+  const way = segment.endAngle >= segment.startAngle ? 1 : -1;
+  return at(-Math.sin(angle) * way, Math.cos(angle) * way);
 }
 
 // ---------------------------------------------------------------------------
@@ -589,6 +751,21 @@ function overhang(f: Frame, sinHalf: number, vertex: Vec2, before: Vec2, after: 
   return radius + half - radius / sinHalf;
 }
 
+/**
+ * The interior vertices of a run meant to reach every one of these points,
+ * which is what a chain with more than one corner needs.
+ *
+ * Solving each corner on its own passes it the *intended* position of its
+ * neighbours rather than where they actually ended up, and the two answers are
+ * not always close: how far ink reaches past a vertex falls off a cliff at the
+ * miter limit, from four half-pens to one. An M whose top corners sat either
+ * side of that cliff was told forty-six units and drawn a hundred and sixty,
+ * and its apexes stood a hundred and fourteen units above the cap line.
+ */
+function corners(f: Frame, tips: Vec2[]): Vec2[] {
+  return through(f, tips).slice(1, -1);
+}
+
 /** The one-corner case, which is most of them. */
 function corner(f: Frame, from: Vec2, tip: Vec2, to: Vec2): Vec2 {
   return through(f, [from, tip, to])[1];
@@ -671,12 +848,23 @@ function arch(frame: Frame, fromX: number, height: number): Stroke {
     Math.min(reach, height * (1 - frame.style.parts.shoulder.spring)),
   );
   const landing = fromX + reach * 2;
-  const top = height - radius;
+  /*
+   * The crest is where the spine goes, not where the letter reaches: the flat
+   * along the top of an arch is the side of a stroke, so the ink stands half a
+   * pen above it. Set half a pen down and the overshoot back up, and the
+   * shoulder of an n comes to rest exactly where the shoulder of an o does.
+   *
+   * Never below the radius, or the run down the far side would be asked to go
+   * upwards -- which only a pen wider than the x-height could ask for, but that
+   * is a setting the panel offers.
+   */
+  const crest = Math.max(frame.hangs(height) + frame.over, radius);
+  const top = crest - radius;
   return ink(
     frame,
     chain(
       turn(at(fromX + radius, top), radius, 180, 90),
-      straight(at(fromX + radius, height), at(landing - radius, height)),
+      straight(at(fromX + radius, crest), at(landing - radius, crest)),
       turn(at(landing - radius, top), radius, 90, 0),
       straight(at(landing, top), at(landing, 0)),
     ),
@@ -694,14 +882,17 @@ function trough(frame: Frame, fromX: number, height: number): Stroke {
     Math.min(reach, height * (1 - frame.style.parts.shoulder.spring)),
   );
   const rising = fromX + reach * 2;
+  // Half a pen up off the baseline and the overshoot back down, so the round
+  // bottom of a u finishes level with the round bottom of an o.
+  const floor = Math.min(frame.sits(0) - frame.over, height - radius);
   return ink(
     frame,
     chain(
-      straight(at(fromX, height), at(fromX, radius)),
-      turn(at(fromX + radius, radius), radius, 180, 270),
-      straight(at(fromX + radius, 0), at(rising - radius, 0)),
-      turn(at(rising - radius, radius), radius, 270, 360),
-      straight(at(rising, radius), at(rising, height)),
+      straight(at(fromX, height), at(fromX, floor + radius)),
+      turn(at(fromX + radius, floor + radius), radius, 180, 270),
+      straight(at(fromX + radius, floor), at(rising - radius, floor)),
+      turn(at(rising - radius, floor + radius), radius, 270, 360),
+      straight(at(rising, floor + radius), at(rising, height)),
     ),
     frame.end,
     frame.end,
@@ -729,16 +920,40 @@ function spine(frame: Frame, height: number, left: number): { stroke: Stroke } {
    * the letter reach a little past its x-height, which is what a display weight
    * asks for anyway. At a pen of two hundred and sixty units the old radius was
    * exactly half the pen, and the counter closed to nothing.
+   *
+   * The height asked for is the height of the ink, so the four radii span the
+   * pen's own width less than it: the two turns are the top and bottom of the
+   * letter and each of them carries half a pen past its own centre line. Both
+   * centres stay where they were -- the pair is symmetric about the middle of
+   * the letter, so taking the same off each end moves neither.
    */
-  const radius = Math.max(height / 4, frame.least);
+  const radius = Math.max((height + frame.over * 2 - frame.upright * 2) / 4, frame.least);
   const middle = left + bendWidth(frame, radius);
   const foot = height / 2 - radius * 2;
   const upper = at(middle, foot + radius * 3);
   const lower = at(middle, foot + radius);
+  /*
+   * And the two ends carried less far round the further the pen has to reach.
+   *
+   * Each half of an s is most of a circle -- two hundred and forty-five degrees
+   * of one -- and what is left inside it is a counter that closes as the pen
+   * widens. Measuring the letter by its ink rather than by its spine made the
+   * radius smaller by half a pen at each end, which was enough to take the
+   * heaviest of the bases under: the two ends met round the back and the s
+   * folded into itself.
+   *
+   * Opening the ends instead is what a heavy face does anyway, and it is the
+   * same fix the G already has. Measured in pen widths rather than in degrees,
+   * so a hairline keeps its long tight curl and a display weight lets go of it.
+   */
+  const open = ((frame.half * 0.6) / radius) * (180 / Math.PI);
   return {
     stroke: ink(
       frame,
-      chain(bend(frame, upper, radius, 25, 270), bend(frame, lower, radius, 90, -155)),
+      chain(
+        bend(frame, upper, radius, 25 + open, 270),
+        bend(frame, lower, radius, 90, -155 + open),
+      ),
       frame.end,
       frame.end,
     ),
@@ -766,6 +981,41 @@ function openBowl(
     f.end,
     f.end,
   );
+}
+
+/**
+ * The bar of an f or a t, hung from the x-height rather than centred on it.
+ *
+ * A bar is the side of a stroke, not the end of one, so the line it is meant
+ * to touch is the line its edge lands on. Written as the middle it sat half a
+ * bar high and cut the x-height in two.
+ */
+function crossbar(f: Frame, from: number, to: number): Stroke {
+  const height = f.hangs(f.x, f.bar);
+  return thin(f, straight(at(from, height), at(to, height)), f.end, f.end);
+}
+
+/**
+ * The heights of two arms facing each other, one hanging from a line and one
+ * standing on the baseline, as a Z and a z have.
+ *
+ * Held apart by at least what the pen can turn between, because a heavy enough
+ * cut leaves less room between the two lines than the pen is wide.
+ */
+function arms(f: Frame, line: number): [number, number] {
+  const middle = line / 2;
+  const gap = Math.max(f.hangs(line) - f.sits(0), f.least) / 2;
+  return [middle + gap, middle - gap];
+}
+
+/**
+ * An arm off a stem: the three of an E, the two of an F, the foot of an L.
+ *
+ * Square where it leaves the stem, because it is buried in ink that is already
+ * there, and finished with the face's own terminal at the far end.
+ */
+function arm(f: Frame, from: number, to: number, height: number): Stroke {
+  return thin(f, straight(at(from, height), at(to, height)), BUTT, f.end);
 }
 
 /** The same, cut square, for a bowl that runs into a stem rather than stopping. */
@@ -887,17 +1137,17 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(
           f,
           chain(
-            straight(at(stem, 0), at(stem, f.asc - radius - f.half)),
-            // Set down by half a pen so the ink stops at the ascender rather
-            // than starting there.
-            turn(at(stem - radius, f.asc - radius - f.half), radius, 0, 92),
+            straight(at(stem, 0), at(stem, f.crest(f.asc) - radius)),
+            // Set down by the pen's own reach across a horizontal, so the top
+            // of the hook lands on the ascender rather than setting off from it.
+            turn(at(stem - radius, f.crest(f.asc) - radius), radius, 0, 92),
           ),
           f.end,
           f.end,
         ),
         // Narrow enough to tell an f from a t, which is the only thing keeping
         // them apart once both have a bar at the x-height.
-        thin(f, straight(at(stem - f.arch * 0.5, f.x), at(stem + f.arch * 0.5, f.x)), f.end, f.end),
+        crossbar(f, stem - f.arch * 0.5, stem + f.arch * 0.5),
       ]);
   },
 
@@ -915,10 +1165,10 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(
           f,
           chain(
-            straight(at(stem, f.x), at(stem, f.desc + radius + f.half)),
-            // Set up by half a pen, so the ink stops at the descender rather
-            // than starting there.
-            turn(at(stem - radius, f.desc + radius + f.half), radius, 0, -95),
+            straight(at(stem, f.x), at(stem, f.dip(f.desc) + radius)),
+            // Set up by the pen's own reach across a horizontal, so the ink
+            // stops at the descender rather than starting there.
+            turn(at(stem - radius, f.dip(f.desc) + radius), radius, 0, -95),
           ),
           f.end,
           f.end,
@@ -955,10 +1205,10 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(
           f,
           chain(
-            straight(at(stem, f.x), at(stem, f.desc + radius + f.half)),
-            // Set up by half a pen, so the ink stops at the descender rather
-            // than starting there.
-            turn(at(stem - radius, f.desc + radius + f.half), radius, 0, -95),
+            straight(at(stem, f.x), at(stem, f.dip(f.desc) + radius)),
+            // Set up by the pen's own reach across a horizontal, so the ink
+            // stops at the descender rather than starting there.
+            turn(at(stem - radius, f.dip(f.desc) + radius), radius, 0, -95),
           ),
           f.end,
           f.end,
@@ -1043,13 +1293,40 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   r: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    const springAt = f.x * f.style.parts.shoulder.spring;
+    /*
+     * The same shoulder an n has, stopped where the n would have come down: an
+     * r is an n that gave up.
+     *
+     * Written as a half circle of the arch's own width it was not the same
+     * shoulder at all. A half circle stands as tall as it is half-wide, so on
+     * any face whose rhythm is wider than half its x-height the r rose past
+     * the n beside it -- seventy units past, on the plainest of the bases --
+     * and, being the only curve on a line of its own, it read as a fault in
+     * the x-height rather than a fault in the r.
+     */
+    const reach = f.arch;
+    const radius = Math.max(
+      f.half,
+      Math.min(reach, f.x * (1 - f.style.parts.shoulder.spring)),
+    );
+    const crest = Math.max(f.crest(f.x), radius);
+    const landing = stem + Math.max(reach, radius * 2);
     return finish(
       f,
       [
         ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
-        // The same arch as an n, stopped partway: an r is an n that gave up.
-        ink(f, turn(at(stem + f.arch, springAt), f.arch, 180, 60), BUTT, f.end),
+        ink(
+          f,
+          chain(
+            turn(at(stem + radius, crest - radius), radius, 180, 90),
+            straight(at(stem + radius, crest), at(landing - radius, crest)),
+            // Carried a little past the top, so the arm droops rather than
+            // stopping dead level, which is what tells an r from a bracket.
+            turn(at(landing - radius, crest - radius), radius, 90, 55),
+          ),
+          BUTT,
+          f.end,
+        ),
       ]);
   },
 
@@ -1080,13 +1357,13 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(
           f,
           chain(
-            straight(at(stem, f.asc * 0.78), at(stem, radius)),
-            turn(at(stem + radius, radius), radius, 180, 270),
+            straight(at(stem, f.asc * 0.78), at(stem, f.dip(0) + radius)),
+            turn(at(stem + radius, f.dip(0) + radius), radius, 180, 270),
           ),
           f.end,
           f.end,
         ),
-        thin(f, straight(at(stem - reach * 0.7, f.x), at(stem + reach, f.x)), f.end, f.end),
+        crossbar(f, stem - reach * 0.7, stem + reach),
       ]);
   },
 
@@ -1182,10 +1459,21 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const width = f.arch * 1.6;
     const left = f.edge;
-    const start = at(left, f.x);
-    const end = at(left + width, 0);
-    const upper = corner(f, start, at(left + width, f.x), at(left, 0));
-    const lower = corner(f, at(left + width, f.x), at(left, 0), end);
+    /*
+     * The two arms hang from the x-height and stand on the baseline, and the
+     * corners they turn into are given the point the ink should reach.
+     *
+     * Both halves of that matter. Written with the arms on the lines the z sat
+     * half a pen low and half a pen high at once; written with the arms right
+     * but the corners still at their own vertices, the far end of each arm
+     * would slope away from the line it started level with.
+     */
+    const [above, below] = arms(f, f.x);
+    const start = at(left, above);
+    const end = at(left + width, below);
+    const [across, back] = corners(f, [start, at(left + width, f.x), at(left, 0), end]);
+    const upper = at(across.x, start.y);
+    const lower = at(back.x, end.y);
     return finish(
       f,
       [
@@ -1202,7 +1490,17 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
 
   A: (style) => {
     const f = frame(style);
-    const half = f.capBowl * 0.86;
+    /*
+     * Never narrower than the pen, however narrow the face is set.
+     *
+     * A bowl is measured by its ink now, so at a heavy weight the round
+     * capitals are drawn much smaller than they used to be -- correctly, since
+     * their ink has to fit between the same two lines -- and everything sized
+     * against them came down with them. An A of a hundred and eighteen units
+     * either side of its apex, drawn with a pen of two hundred and sixty, has
+     * its two legs closer together than the pen is wide.
+     */
+    const half = Math.max(f.capBowl * 0.86, f.least);
     const left = f.edge;
     const middle = left + half;
     const foot = at(left, 0);
@@ -1232,8 +1530,13 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const stem = f.edge;
     const upper = f.cap * 0.56;
-    const upperR = (f.cap - upper) / 2 + f.half * 0.2;
-    const lowerR = upper / 2 + f.half * 0.2;
+    // Measured between where the ink has to reach rather than between the
+    // lines themselves, so the two bowls fill the capital exactly and the
+    // slight extra keeps them overlapping where they meet.
+    const top = f.crest(f.cap);
+    const base = f.dip(0);
+    const upperR = Math.max((top - upper) / 2 + f.half * 0.2, f.least);
+    const lowerR = Math.max((upper - base) / 2 + f.half * 0.2, f.least);
     /*
      * How far the bowls reach out, which is not the same as how tall they are.
      *
@@ -1248,8 +1551,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       f,
       [
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        belly(f, at(stem, f.cap - upperR), reach, upperR, -90, 90),
-        belly(f, at(stem, lowerR), reach, lowerR, -90, 90),
+        belly(f, at(stem, top - upperR), reach, upperR, -90, 90),
+        belly(f, at(stem, base + lowerR), reach, lowerR, -90, 90),
       ]);
   },
 
@@ -1262,7 +1565,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   D: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    const radius = Math.max(f.cap / 2, f.least);
+    const radius = Math.max((f.crest(f.cap) - f.dip(0)) / 2, f.least);
     return finish(
       f,
       [
@@ -1280,17 +1583,14 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       f,
       [
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        thin(f, straight(at(stem, f.cap), at(stem + reach, f.cap)), BUTT, f.end),
-        thin(
+        arm(f, stem, stem + reach, f.hangs(f.cap, f.bar)),
+        arm(
           f,
-          straight(
-            at(stem, f.cap * f.style.parts.crossbar.height),
-            at(stem + reach * 0.86, f.cap * f.style.parts.crossbar.height),
-          ),
-          BUTT,
-          f.end,
+          stem,
+          stem + reach * 0.86,
+          f.cap * f.style.parts.crossbar.height,
         ),
-        thin(f, straight(at(stem, 0), at(stem + reach, 0)), BUTT, f.end),
+        arm(f, stem, stem + reach, f.sits(0, f.bar)),
       ]);
   },
 
@@ -1302,15 +1602,12 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       f,
       [
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        thin(f, straight(at(stem, f.cap), at(stem + reach, f.cap)), BUTT, f.end),
-        thin(
+        arm(f, stem, stem + reach, f.hangs(f.cap, f.bar)),
+        arm(
           f,
-          straight(
-            at(stem, f.cap * f.style.parts.crossbar.height),
-            at(stem + reach * 0.86, f.cap * f.style.parts.crossbar.height),
-          ),
-          BUTT,
-          f.end,
+          stem,
+          stem + reach * 0.86,
+          f.cap * f.style.parts.crossbar.height,
         ),
       ]);
   },
@@ -1387,8 +1684,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(
           f,
           chain(
-            straight(at(stem, f.cap), at(stem, radius)),
-            turn(at(stem - radius, radius), radius, 0, -90),
+            straight(at(stem, f.cap), at(stem, f.dip(0) + radius)),
+            turn(at(stem - radius, f.dip(0) + radius), radius, 0, -90),
           ),
           f.end,
           f.end,
@@ -1423,23 +1720,35 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       f,
       [
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        thin(f, straight(at(stem, 0), at(stem + reach, 0)), BUTT, f.end),
+        arm(f, stem, stem + reach, f.sits(0, f.bar)),
       ]);
   },
 
   M: (style) => {
     const f = frame(style);
     const left = f.edge;
-    const width = f.capBowl * 1.7;
+    /*
+     * And wide enough that the vee is a vee.
+     *
+     * Every other letter narrows gracefully; an M does not, because its two
+     * diagonals meet the stems at a corner that sharpens as the letter closes
+     * up, and past a point the inside of that corner cannot be cut back inside
+     * the run it has to be cut back into.
+     */
+    const width = Math.max(f.capBowl * 1.7, f.half * 7);
     const middle = left + width / 2;
     const right = left + width;
     const dip = f.cap * 0.16;
     const into = stub(f);
     const start = at(left, f.cap - into);
     const end = at(right, f.cap - into);
-    const topLeft = corner(f, start, at(left, f.cap), at(middle, dip));
-    const vertex = corner(f, at(left, f.cap), at(middle, dip), at(right, f.cap));
-    const topRight = corner(f, at(middle, dip), at(right, f.cap), end);
+    const [topLeft, vertex, topRight] = corners(f, [
+      start,
+      at(left, f.cap),
+      at(middle, dip),
+      at(right, f.cap),
+      end,
+    ]);
     return finish(
       f,
       [
@@ -1464,8 +1773,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const into = stub(f);
     const start = at(left, f.cap - into);
     const end = at(right, into);
-    const top = corner(f, start, at(left, f.cap), at(right, 0));
-    const foot = corner(f, at(left, f.cap), at(right, 0), end);
+    const [top, foot] = corners(f, [start, at(left, f.cap), at(right, 0), end]);
     return finish(
       f,
       [
@@ -1489,7 +1797,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       f,
       [
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        belly(f, at(stem, f.cap - radius), radius * f.wide, radius, -90, 90),
+        belly(f, at(stem, f.crest(f.cap) - radius), radius * f.wide, radius, -90, 90),
       ]);
   },
 
@@ -1523,13 +1831,14 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const stem = f.edge;
     const radius = Math.max(f.cap * 0.27, f.least);
-    const junction = f.cap - radius * 2;
+    const eye = f.crest(f.cap) - radius;
+    const junction = eye - radius;
     const reach = stem + radius * 1.9;
     return finish(
       f,
       [
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        belly(f, at(stem, f.cap - radius), radius * f.wide, radius, -90, 90),
+        belly(f, at(stem, eye), radius * f.wide, radius, -90, 90),
         // From the stem's own centre-line, where the bowl lands, so the leg
         // grows out of the junction rather than starting beside it.
         ink(f, straight(at(stem, junction), at(reach, 0)), BUTT, f.end),
@@ -1550,7 +1859,15 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       f,
       [
         ink(f, straight(at(middle, 0), at(middle, f.cap)), f.end, BUTT),
-        thin(f, straight(at(middle - half, f.cap), at(middle + half, f.cap)), f.end, f.end),
+        thin(
+          f,
+          straight(
+            at(middle - half, f.hangs(f.cap, f.bar)),
+            at(middle + half, f.hangs(f.cap, f.bar)),
+          ),
+          f.end,
+          f.end,
+        ),
       ]);
   },
 
@@ -1635,8 +1952,12 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const width = f.capBowl * 1.4;
     const left = f.edge;
-    const start = at(left, f.cap);
-    const end = at(left + width, 0);
+    // Where the arms start is where their own edges lie, so the top one hangs
+    // from the cap line and the bottom one stands on the baseline; where they
+    // finish is a corner, and a corner is given the point the ink reaches.
+    const [above, below] = arms(f, f.cap);
+    const start = at(left, above);
+    const end = at(left + width, below);
     /*
      * One run, bar to diagonal to bar, rather than three that meet at points.
      *
@@ -1645,8 +1966,21 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
      * already thins a horizontal on any face with contrast. Two mechanisms were
      * doing the same job and only one of them can also turn a corner.
      */
-    const upper = corner(f, start, at(left + width, f.cap), at(left, 0));
-    const lower = corner(f, at(left + width, f.cap), at(left, 0), end);
+    /*
+     * Solved sideways only: how far in from the letter's edge the corner has to
+     * sit for its point to land there, but at the arm's own height rather than
+     * at whatever height the solver would have chosen.
+     *
+     * For an arm lying along a line the two are the same thing -- the outside
+     * of a mitred corner between a horizontal run and anything else is exactly
+     * the pen's own reach from the horizontal, which is the line -- so nothing
+     * is given up. What is avoided is a face where they are not the same: with
+     * the corners rounded off, solving for height as well lifted the far end of
+     * the top arm seventy units above the end it started level with.
+     */
+    const [across, back] = corners(f, [start, at(left + width, f.cap), at(left, 0), end]);
+    const upper = at(across.x, start.y);
+    const lower = at(back.x, end.y);
     return finish(
       f,
       [
@@ -1665,7 +1999,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const half = figureWidth(f) / 2;
     const centre = at(f.edge + half, f.cap / 2);
-    return finish(f, [ink(f, ring(f, centre, half, f.cap / 2))], true);
+    return finish(f, [ink(f, ring(f, centre, half, f.capBowlH))], true);
   },
 
   one: (style) => {
@@ -1676,7 +2010,12 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       [
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, BUTT),
         // The flag, which is what stops a one reading as a lowercase l.
-        ink(f, straight(at(stem - figureWidth(f) * 0.42, f.cap * 0.78), at(stem, f.cap)), f.end, BUTT),
+        ink(
+          f,
+          straight(at(stem - figureWidth(f) * 0.42, f.cap * 0.78), at(stem, f.hangs(f.cap))),
+          f.end,
+          BUTT,
+        ),
       ]);
   },
 
@@ -1685,7 +2024,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const width = figureWidth(f);
     const left = f.edge;
     const radius = Math.max(width / 2, f.least);
-    const centre = at(left + radius, f.cap - radius);
+    const centre = at(left + radius, f.crest(f.cap) - radius);
     /*
      * Over the top, then a straight run down to the baseline, then out along it.
      *
@@ -1700,8 +2039,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const over = bend(f, centre, radius, 190, leaves);
     return finish(f, [
       ink(f, over, f.end, BUTT),
-      ink(f, straight(spineEnd(over), at(left, 0)), BUTT, BUTT),
-      thin(f, straight(at(left, 0), at(left + width, 0)), BUTT, f.end),
+      ink(f, straight(spineEnd(over), at(left, f.sits(0))), BUTT, BUTT),
+      arm(f, left, left + width, f.sits(0, f.bar)),
     ]);
   },
 
@@ -1709,13 +2048,15 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const width = figureWidth(f);
     const left = f.edge;
-    const radius = f.cap / 4;
+    const top = f.crest(f.cap);
+    const base = f.dip(0);
+    const radius = Math.max((top - base) / 4, f.least);
     const middle = left + width - radius;
     return finish(
       f,
       [
-        ink(f, bend(f, at(middle, f.cap - radius), radius, 160, -90), f.end, BUTT),
-        ink(f, bend(f, at(middle, radius), radius, 90, -160), BUTT, f.end),
+        ink(f, bend(f, at(middle, top - radius), radius, 160, -90), f.end, BUTT),
+        ink(f, bend(f, at(middle, base + radius), radius, 90, -160), BUTT, f.end),
       ],
       true);
   },
@@ -1726,7 +2067,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const left = f.edge;
     const stem = left + width * 0.72;
     const bar = f.cap * 0.28;
-    const top = at(stem, f.cap);
+    const top = at(stem, f.hangs(f.cap));
     const end = at(left + width, bar);
     const meet = corner(f, top, at(left, bar), end);
     return finish(
@@ -1746,9 +2087,14 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     return finish(
       f,
       [
-        thin(f, straight(at(left, f.cap), at(left + width, f.cap)), f.end, f.end),
+        thin(
+          f,
+          straight(at(left, f.hangs(f.cap, f.bar)), at(left + width, f.hangs(f.cap, f.bar))),
+          f.end,
+          f.end,
+        ),
         ink(f, straight(at(left, f.cap), at(left, shoulder)), BUTT, BUTT),
-        ink(f, bend(f, at(left + radius, radius), radius, 100, -150), BUTT, f.end),
+        ink(f, bend(f, at(left + radius, f.dip(0) + radius), radius, 100, -150), BUTT, f.end),
       ]);
   },
 
@@ -1756,8 +2102,14 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const width = figureWidth(f);
     const left = f.edge;
-    const radius = Math.max(width / 2, f.least);
-    const centre = at(left + radius, radius);
+    /*
+     * Held so the bowl and the hood over it do not overlap: below that the run
+     * joining them is written from a point to one above it and the letter is
+     * drawn backwards through itself.
+     */
+    const radius = Math.max(Math.min(width / 2, (f.crest(f.cap) - f.dip(0)) / 2), f.least);
+    const centre = at(left + radius, f.dip(0) + radius);
+    const hood = Math.max(f.crest(f.cap) - radius, centre.y);
     return finish(
       f,
       [
@@ -1773,10 +2125,10 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(
           f,
           chain(
-            bend(f, at(centre.x, f.cap - radius), radius, 60, 180),
+            bend(f, at(centre.x, hood), radius, 60, 180),
             straight(
-              at(centre.x - bendWidth(f, radius), f.cap - radius),
-              at(centre.x - bendWidth(f, radius), radius),
+              at(centre.x - bendWidth(f, radius), hood),
+              at(centre.x - bendWidth(f, radius), centre.y),
             ),
           ),
           f.end,
@@ -1790,9 +2142,9 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const width = figureWidth(f);
     const left = f.edge;
-    const start = at(left, f.cap);
+    const start = at(left, f.hangs(f.cap));
     const end = at(left + width * 0.28, 0);
-    const meet = corner(f, start, at(left + width, f.cap), end);
+    const meet = at(corner(f, start, at(left + width, f.cap), end).x, start.y);
     return finish(
       f,
       [ink(f, chain(straight(start, meet), straight(meet, end)), f.end, f.end)]);
@@ -1802,13 +2154,16 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const width = figureWidth(f);
     const left = f.edge;
-    const lower = f.cap * 0.28;
-    const upper = f.cap - f.cap * 0.22;
+    // Where the two rings meet, with each of them filling what is left between
+    // that and the line its own half of the figure has to reach.
+    const waist = f.cap * 0.56;
+    const upper = Math.max((f.crest(f.cap) - waist) / 2, f.least);
+    const lower = Math.max((waist - f.dip(0)) / 2, f.least);
     return finish(
       f,
       [
-        ink(f, ring(f, at(left + width / 2, upper), bendWidth(f, f.cap * 0.22), Math.max(f.cap * 0.22, f.least))),
-        ink(f, ring(f, at(left + width / 2, lower), bendWidth(f, lower), Math.max(lower, f.least))),
+        ink(f, ring(f, at(left + width / 2, f.crest(f.cap) - upper), bendWidth(f, upper), upper)),
+        ink(f, ring(f, at(left + width / 2, f.dip(0) + lower), bendWidth(f, lower), lower)),
       ],
       true);
   },
@@ -1817,8 +2172,9 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const width = figureWidth(f);
     const left = f.edge;
-    const radius = Math.max(width / 2, f.least);
-    const centre = at(left + radius, f.cap - radius);
+    const radius = Math.max(Math.min(width / 2, (f.crest(f.cap) - f.dip(0)) / 2), f.least);
+    const centre = at(left + radius, f.crest(f.cap) - radius);
+    const foot = Math.min(f.dip(0) + radius, centre.y);
     return finish(
       f,
       [
@@ -1829,10 +2185,10 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
           f,
           chain(
             straight(
-              at(centre.x + bendWidth(f, radius), f.cap - radius),
-              at(centre.x + bendWidth(f, radius), radius),
+              at(centre.x + bendWidth(f, radius), centre.y),
+              at(centre.x + bendWidth(f, radius), foot),
             ),
-            bend(f, at(centre.x, radius), radius, 0, -120),
+            bend(f, at(centre.x, foot), radius, 0, -120),
           ),
           BUTT,
           f.end,
@@ -1897,7 +2253,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   question: (style) => {
     const f = frame(style);
     const radius = Math.max(figureWidth(f) * 0.42, f.least);
-    const centre = at(f.edge + radius, f.cap - radius);
+    const centre = at(f.edge + radius, f.crest(f.cap) - radius);
     const radiusDot = f.half * 0.95;
     return finish(
       f,
@@ -2040,7 +2396,17 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
       hint: "Cut across the apex instead of coming to a point, which is what a heavy face does to keep the top from going black.",
       build: (style) => {
         const f = frame(style);
-        const half = f.capBowl * 0.86;
+        /*
+     * Never narrower than the pen, however narrow the face is set.
+     *
+     * A bowl is measured by its ink now, so at a heavy weight the round
+     * capitals are drawn much smaller than they used to be -- correctly, since
+     * their ink has to fit between the same two lines -- and everything sized
+     * against them came down with them. An A of a hundred and eighteen units
+     * either side of its apex, drawn with a pen of two hundred and sixty, has
+     * its two legs closer together than the pen is wide.
+     */
+    const half = Math.max(f.capBowl * 0.86, f.least);
         const left = f.edge;
         const middle = left + half;
         const cut = f.capBowl * 0.34;
@@ -2068,7 +2434,15 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
       build: (style) => {
         const f = frame(style);
         const left = f.edge;
-        const width = f.capBowl * 1.7;
+        /*
+     * And wide enough that the vee is a vee.
+     *
+     * Every other letter narrows gracefully; an M does not, because its two
+     * diagonals meet the stems at a corner that sharpens as the letter closes
+     * up, and past a point the inside of that corner cannot be cut back inside
+     * the run it has to be cut back into.
+     */
+    const width = Math.max(f.capBowl * 1.7, f.half * 7);
         const middle = left + width / 2;
         const right = left + width;
         const into = stub(f);
@@ -2197,7 +2571,7 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const stem = f.edge + reach * 0.7;
         return finish(f, [
           ink(f, straight(at(stem, 0), at(stem, f.asc * 0.78)), f.end, f.end),
-          thin(f, straight(at(stem - reach * 0.7, f.x), at(stem + reach, f.x)), f.end, f.end),
+          crossbar(f, stem - reach * 0.7, stem + reach),
         ]);
       },
     },
@@ -2237,8 +2611,8 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
           ink(
             f,
             chain(
-              straight(at(stem, f.cap), at(stem, f.desc + radius + f.half)),
-              turn(at(stem - radius, f.desc + radius + f.half), radius, 0, -95),
+              straight(at(stem, f.cap), at(stem, f.dip(f.desc) + radius)),
+              turn(at(stem - radius, f.dip(f.desc) + radius), radius, 0, -95),
             ),
             f.end,
             f.end,
@@ -2258,8 +2632,8 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const radius = Math.max(f.arch * 0.66, f.least);
         const stem = f.edge + radius;
         const lower = Math.max(f.arch * 0.5, f.least);
-        const top = f.asc - radius - f.half;
-        const base = f.desc + lower + f.half;
+        const top = f.crest(f.asc) - radius;
+        const base = f.dip(f.desc) + lower;
         /*
          * Written from the top of the hook downwards, which is the direction
          * the whole run travels.
@@ -2280,7 +2654,7 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
             f.end,
             f.end,
           ),
-          thin(f, straight(at(stem - f.arch * 0.5, f.x), at(stem + f.arch * 0.5, f.x)), f.end, f.end),
+          crossbar(f, stem - f.arch * 0.5, stem + f.arch * 0.5),
         ]);
       },
     },
@@ -2298,8 +2672,13 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const flag = Math.max(width * 0.3, f.least);
         return finish(f, [
           ink(f, straight(at(stem, 0), at(stem, f.cap)), BUTT, f.end),
-          ink(f, straight(at(stem - flag, f.cap * 0.8), at(stem, f.cap)), f.end, BUTT),
-          thin(f, straight(at(stem - flag, 0), at(stem + flag, 0)), f.end, f.end),
+          ink(f, straight(at(stem - flag, f.cap * 0.8), at(stem, f.hangs(f.cap))), f.end, BUTT),
+          thin(
+            f,
+            straight(at(stem - flag, f.sits(0, f.bar)), at(stem + flag, f.sits(0, f.bar))),
+            f.end,
+            f.end,
+          ),
         ]);
       },
     },
@@ -2318,7 +2697,7 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const bar = f.cap * 0.28;
         return finish(f, [
           ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-          ink(f, straight(at(stem, f.cap), at(left, bar)), BUTT, f.end),
+          ink(f, straight(at(stem, f.hangs(f.cap)), at(left, bar)), BUTT, f.end),
           thin(f, straight(at(left, bar), at(left + width, bar)), BUTT, f.end),
         ]);
       },
@@ -2334,9 +2713,9 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const f = frame(style);
         const width = figureWidth(f);
         const left = f.edge;
-        const start = at(left, f.cap);
+        const start = at(left, f.hangs(f.cap));
         const end = at(left + width * 0.28, 0);
-        const meet = corner(f, start, at(left + width, f.cap), end);
+        const meet = at(corner(f, start, at(left + width, f.cap), end).x, start.y);
         const bar = f.cap * 0.42;
         return finish(f, [
           ink(f, chain(straight(start, meet), straight(meet, end)), f.end, f.end),
@@ -2358,7 +2737,10 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
       hint: "The middle carried to the full cap height so the two vees overlap, which is the older way of building a W.",
       build: (style) => {
         const f = frame(style);
-        const half = f.capBowl * 0.62;
+        // Never narrower than the pen can hold a vee open, for the same
+        // reason the A is not: the round capitals are measured by their ink
+        // now, so at a heavy weight everything sized against them comes down.
+        const half = Math.max(f.capBowl * 0.62, f.half * 1.6);
         const left = f.edge;
         const first = through(f, [
           at(left, f.cap),
@@ -2393,8 +2775,8 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
           ink(
             f,
             chain(
-              straight(at(stem, f.x), at(stem, f.desc + radius + f.half)),
-              turn(at(stem - radius, f.desc + radius + f.half), radius, 0, -150),
+              straight(at(stem, f.x), at(stem, f.dip(f.desc) + radius)),
+              turn(at(stem - radius, f.dip(f.desc) + radius), radius, 0, -150),
             ),
             f.end,
             f.end,

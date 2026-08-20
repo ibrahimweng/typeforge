@@ -577,6 +577,27 @@ function terminalNodes(
     return ellipseNodes(arc);
   }
 
+  if (terminal.kind === "level" && Math.abs(direction.y) > 1e-3) {
+    /*
+     * Both corners of the cut slid along the stroke until they are level with
+     * where it was meant to stop.
+     *
+     * The two are slid in opposite directions -- one back, one on -- which is
+     * why the sweep drops the side node each of them replaces rather than
+     * adding them to it. Added, the corner that slid back would be reached and
+     * then retraced, and a stroke that doubles over itself is a stroke that
+     * has crossed itself as far as anything measuring it can tell.
+     */
+    const onLine = (point: Vec2): Vec2 => {
+      const back = (point.y - at.y) / direction.y;
+      return { x: point.x - direction.x * back, y: at.y };
+    };
+    return [
+      { point: onLine(left), handleIn: null, handleOut: null, type: "corner" },
+      { point: onLine(right), handleIn: null, handleOut: null, type: "corner" },
+    ];
+  }
+
   if (terminal.kind === "angled" && terminal.angle) {
     // Slide the two corners in opposite directions along the stroke, which is
     // the cut a nib held at an angle leaves.
@@ -676,12 +697,32 @@ export function sweep(stroke: Stroke): Contour[] {
     reach,
   );
 
-  const nodes: GlyphNode[] = [
-    ...stitch(left),
-    ...endNodes,
-    ...stitch([...right].reverse().map(reverseOffset)),
-    ...startNodes,
-  ];
+  /*
+   * A level cut replaces the last node of each side rather than following it,
+   * because it is that node moved along the stroke rather than a shape added
+   * to the end of it.
+   */
+  let leftNodes = stitch(left);
+  let rightNodes = stitch([...right].reverse().map(reverseOffset));
+  const levelStart = stroke.start.kind === "level";
+  const levelEnd = stroke.end.kind === "level";
+  // Counted against what the sides started with, not against what is left of
+  // them: a stroke of one straight run has two nodes a side and both of them
+  // are replaced, which is right, and a rule applied one end at a time would
+  // have refused the second.
+  const replaced = (levelStart ? 1 : 0) + (levelEnd ? 1 : 0);
+  if (leftNodes.length >= replaced && rightNodes.length >= replaced) {
+    if (levelEnd) {
+      leftNodes = leftNodes.slice(0, -1);
+      rightNodes = rightNodes.slice(1);
+    }
+    if (levelStart) {
+      leftNodes = leftNodes.slice(1);
+      rightNodes = rightNodes.slice(0, -1);
+    }
+  }
+
+  const nodes: GlyphNode[] = [...leftNodes, ...endNodes, ...rightNodes, ...startNodes];
 
   return [facing({ nodes: dropRepeats(nodes), closed: true }, 1)];
 }

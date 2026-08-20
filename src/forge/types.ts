@@ -81,8 +81,15 @@ export interface Spine {
  * - `round` caps with a half-disc, for a soft display face.
  * - `angled` cuts across at an angle, as a broad nib leaves.
  * - `slab` squares off and then lays a bar across, which is a serif.
+ * - `level` cuts flat along a line, whatever angle the stroke arrives at.
+ *
+ * The last is not a style anybody picks. It is what a square cut means on a
+ * stroke that is meant to stop on a line and does not arrive square to it: the
+ * arms of a v, an x and a w all end at the x-height, and cut square to their
+ * own direction they finish in a corner that stands well above it. A designer
+ * cutting those by hand cuts them along the line, so that is what is drawn.
  */
-export type TerminalKind = "butt" | "round" | "angled" | "slab";
+export type TerminalKind = "butt" | "round" | "angled" | "slab" | "level";
 
 export interface Terminal {
   kind: TerminalKind;

@@ -26,10 +26,19 @@ describe("what has gone wrong", () => {
   });
 
   it("stays quiet on a heavy cut that still works", () => {
-    // A pen of 260 units on a 520 x-height is heavier than any of the bases and
-    // its counters are still fifty units across. Warning here would teach
-    // people to ignore the strip the warnings appear in.
-    expect(troubles(heavier(startFrom(SANS), 260))).toEqual([]);
+    /*
+     * A pen of a hundred and seventy-five units on a 520 x-height is as heavy
+     * as the display face on a narrower letter, and its counters are still a
+     * hundred and seventy units across. Warning here would teach people to
+     * ignore the strip the warnings appear in.
+     *
+     * This used to say two hundred and sixty. Once a round letter is drawn to
+     * fit between its own two lines rather than straddling them, a pen that
+     * heavy leaves twenty units of counter and the warning is telling the
+     * truth; the first thing to close is the figure eight, which has two rings
+     * to fit into one cap height.
+     */
+    expect(troubles(heavier(startFrom(SANS), 175))).toEqual([]);
   });
 
   it("notices a counter that has closed", () => {

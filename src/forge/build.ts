@@ -256,7 +256,7 @@ function serifsFor(stroke: Stroke, style: Style): Contour[] {
        * the foot of an L turns up. It falls out of one rule rather than a list
        * of letters, so a letter that gains an arm tomorrow gets it too.
        */
-      if (crossesALine(at, outward, side, tip, inner, style)) continue;
+      if (crossesALine(at, outward, side, tip, style)) continue;
       // Wound with the strokes it sits on, or the serif would cancel the stem
       // it is attached to rather than adding to it.
       const shape = wing(at, outward, side, inner, tip, thickness, bracket);
@@ -267,14 +267,7 @@ function serifsFor(stroke: Stroke, style: Style): Contour[] {
 }
 
 /** Whether this wing would reach past a line the stroke end is sitting on. */
-function crossesALine(
-  at: Vec2,
-  outward: Vec2,
-  side: number,
-  tip: number,
-  inner: number,
-  style: Style,
-): boolean {
+function crossesALine(at: Vec2, outward: Vec2, side: number, tip: number, style: Style): boolean {
   const { metrics } = style;
   const across = { x: -outward.y * side, y: outward.x * side };
   const far = at.y + across.y * tip;
@@ -292,12 +285,26 @@ function crossesALine(
     [metrics.capHeight, -1],
     [metrics.ascender, -1],
   ];
+  /*
+   * A wing is in the way when it leaves squarely across a line, which is what
+   * an arm lying along one does and what an upright standing on one does not.
+   *
+   * Asked instead as "does it reach past", the foot of every diagonal went as
+   * well, because a bar square to a leaning stroke always dips a little below
+   * the line the stroke stands on -- and a serif face that has lost the feet
+   * of its A, K, V and X has lost more than it gained. Asked as a distance
+   * from the line, it depended on how the serif was proportioned against the
+   * pen: the arms of an E sat exactly on the boundary and flickered.
+   *
+   * Which way the wing leaves does not depend on either, so that is what is
+   * asked. Eight tenths is a wing within about a third of a right angle to the
+   * line, which takes in every arm and no diagonal in the alphabet.
+   */
   return lines.some(
     ([line, inward]) =>
-      // The stroke ends on this line, and the wing sets off well past it. A
-      // wing that only dips below -- which the foot of a diagonal does simply
-      // by being at an angle -- is left alone.
-      Math.abs(at.y - line) < inner && (far - line) * inward < -inner,
+      Math.abs(at.y - line) < tip &&
+      Math.abs(across.y) > 0.8 &&
+      (far - line) * inward < 0,
   );
 }
 

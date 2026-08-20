@@ -166,7 +166,14 @@ describe("the character set", () => {
         const heightOf = (name: string): number => contoursBounds(drawLetter(name, style)!.contours).yMax;
         expect(heightOf("H")).toBeGreaterThan(heightOf("n"));
         expect(heightOf("l")).toBeGreaterThan(heightOf("H"));
-        expect(heightOf("o")).toBeGreaterThan(heightOf("n") - 1);
+        /*
+         * Within a few units, because a nib held at an angle puts a slight
+         * bulge on the outside of a turn: the offset of a circle swept by an
+         * ellipse is an ellipse, and a rotated one does not have its highest
+         * point where the circle does. It is two or three units on the marker
+         * face and nothing at all on a round pen.
+         */
+        expect(heightOf("o")).toBeGreaterThan(heightOf("n") - 4);
       });
     });
   }

@@ -27,7 +27,7 @@ import { contoursIntersect } from "@/font/outline";
 import { drawLetter, letterNames } from "./build";
 import { LETTERS, formsOf } from "./letters";
 import { METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS, type FieldControl } from "./parts";
-import { SANS, type Metrics, type Parts, type Style } from "./style";
+import { BASES, SANS, type Metrics, type Parts, type Style } from "./style";
 import type { Pen } from "./types";
 
 const NAMES = letterNames();
@@ -206,6 +206,41 @@ describe("alternates", () => {
         ).toBeGreaterThanOrEqual(bounds.xMax);
       }
     }
+  });
+});
+
+describe("every starting point, at every weight", () => {
+  /*
+   * The eight bases are eight different sets of decisions, and each of them
+   * reaches corners of the drawing the others never go near: a pen held at
+   * ninety degrees, corners rounded off wider than the counter, a letter leaned
+   * over. Driving the controls from the plainest of them, which is what the
+   * tests above do, leaves all of that unvisited.
+   *
+   * Run across the bases and their alternates as well, this found six letters
+   * that folded and had been folding for as long as the bases had existed --
+   * an M on the ribbon face at one weight, the same M's deep alternate on
+   * another, a crossed W on a narrow setting.
+   */
+  it("never folds, on any base, in any form", () => {
+    const wrong: string[] = [];
+    for (const base of BASES) {
+      for (const weight of [8, 40, 92, 150, 210, 260]) {
+        const style: Style = { ...base, pen: { ...base.pen, weight } };
+        for (const name of NAMES) {
+          for (const form of formsOf(name)) {
+            const drawn = drawLetter(name, style, form.id);
+            expect(drawn, `${name} would not draw on ${base.name}`).not.toBeNull();
+            for (const contour of drawn!.contours) {
+              if (contoursIntersect([contour])) {
+                wrong.push(`${name} / ${form.label} folds on ${base.name} at weight ${weight}`);
+              }
+            }
+          }
+        }
+      }
+    }
+    expect([...new Set(wrong)].slice(0, 8)).toEqual([]);
   });
 });
 

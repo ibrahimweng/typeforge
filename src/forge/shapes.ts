@@ -240,6 +240,82 @@ export function bowlPoint(
   return centre;
 }
 
+/**
+ * The same run with a little taken off each end.
+ *
+ * For the terminals that reach past where a run stops rather than closing it
+ * off. A round cap is a half-disc drawn about the last point of the spine, so
+ * a stroke written to the cap line has its ink half a pen above it -- which on
+ * a heavy face is most of a hundred units, and put the stems of an H that far
+ * over the bar of the T beside it. Pulling the spine back by exactly what the
+ * cap will add puts the far side of the disc on the line instead, which is
+ * where a rounded stem is meant to stop.
+ *
+ * Never more than nine tenths of the run, however wide the pen, or a short
+ * stroke would be asked to have negative length and come out inside out.
+ */
+export function shortened(spine: Spine, fromStart: number, fromEnd: number): Spine {
+  if (fromStart <= 0 && fromEnd <= 0) return spine;
+  const total = spine.segments.reduce((sum, segment) => sum + lengthOf(segment), 0);
+  if (total <= 0) return spine;
+  const room = total * 0.9;
+  const share = fromStart + fromEnd > room ? room / (fromStart + fromEnd) : 1;
+  let segments = spine.segments;
+  if (fromStart > 0) segments = trimmed(segments, fromStart * share);
+  if (fromEnd > 0) {
+    segments = trimmed(segments.slice().reverse().map(backwards), fromEnd * share)
+      .reverse()
+      .map(backwards);
+  }
+  return { segments, closed: false };
+}
+
+/** One piece walked the other way, so the same trimming does both ends. */
+function backwards(segment: SpineSegment): SpineSegment {
+  return segment.kind === "line"
+    ? { ...segment, from: segment.to, to: segment.from }
+    : {
+        ...segment,
+        startAngle: segment.endAngle,
+        endAngle: segment.startAngle,
+        sweepPositive: !segment.sweepPositive,
+      };
+}
+
+/** The pieces left after taking a length off the front of the run. */
+function trimmed(segments: SpineSegment[], distance: number): SpineSegment[] {
+  let left = distance;
+  const kept: SpineSegment[] = [];
+  for (const segment of segments) {
+    if (left <= 0) {
+      kept.push(segment);
+      continue;
+    }
+    const length = lengthOf(segment);
+    if (length <= left) {
+      left -= length;
+      continue;
+    }
+    const part = left / length;
+    left = 0;
+    if (segment.kind === "line") {
+      kept.push({
+        ...segment,
+        from: at(
+          segment.from.x + (segment.to.x - segment.from.x) * part,
+          segment.from.y + (segment.to.y - segment.from.y) * part,
+        ),
+      });
+    } else {
+      kept.push({
+        ...segment,
+        startAngle: segment.startAngle + (segment.endAngle - segment.startAngle) * part,
+      });
+    }
+  }
+  return kept.length > 0 ? kept : segments;
+}
+
 /** Where a run begins and where it ends, whichever kind of piece that is. */
 export function spineStart(spine: Spine): Vec2 {
   return segmentStart(spine.segments[0]);
