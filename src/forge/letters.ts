@@ -45,6 +45,40 @@ export interface Recipe {
 
 export type LetterName = string;
 
+/** The parts a letter can be built from, which are the things an edit lands on. */
+export type PartName = "slab" | "shoulder" | "bowl" | "terminal" | "crossbar";
+
+/*
+ * Which parts the letter being drawn has asked for.
+ *
+ * Kept here, next to the drawing, rather than in a table somewhere saying that
+ * an n has a shoulder and an H has a crossbar. A table is a second description
+ * of the alphabet and would go out of date the first time a letter changed --
+ * which has already happened twice in this file, once to the width of every
+ * letter and once to the size of every bowl.
+ *
+ * Drawing is synchronous and one letter at a time, so a single slot is enough;
+ * nothing else can be halfway through a letter while this one is being drawn.
+ */
+let recording: Set<PartName> | null = null;
+
+function uses(part: PartName): void {
+  recording?.add(part);
+}
+
+/** Draw something and report which parts it turned out to need. */
+export function recordPartsWhile(draw: () => unknown): Set<PartName> {
+  const found = new Set<PartName>();
+  const outer = recording;
+  recording = found;
+  try {
+    draw();
+  } finally {
+    recording = outer;
+  }
+  return found;
+}
+
 /** The figures, which are spaced as a set rather than one at a time. */
 export const FIGURES = [
   "zero",
@@ -201,12 +235,27 @@ function frame(style: Style): Frame {
     arch: (metrics.counterWidth + pen.weight) / 2,
     bowl: metrics.xHeight / 2 + metrics.overshoot,
     capBowl: metrics.capHeight / 2 + metrics.overshoot,
-    end: terminalFor(style),
+    end: endFor(style),
   };
+}
+
+/**
+ * The terminal this style puts on a stroke end, noting that the letter asked.
+ *
+ * A stroke end always has a terminal of some kind, so every letter with an open
+ * stroke reads that part; when serifs are on it reads the serif as well.
+ */
+function endFor(style: Style): Terminal {
+  uses("terminal");
+  if (style.parts.slab.on) uses("slab");
+  return terminalFor(style);
 }
 
 /** Draw a run with the style's own pen. */
 function ink(frame: Frame, spine: Spine, start: Terminal = BUTT, end: Terminal = BUTT): Stroke {
+  // A closed run is a bowl: an o, the belly of a b, the ring of a zero. Read off
+  // the shape rather than declared, so a letter that gains one is noticed.
+  if (spine.closed) uses("bowl");
   return { spine, pen: frame.style.pen, start, end };
 }
 
@@ -215,6 +264,7 @@ function ink(frame: Frame, spine: Spine, start: Terminal = BUTT, end: Terminal =
  * avoids looking heavier than the letter around it.
  */
 function thin(frame: Frame, spine: Spine, start: Terminal = BUTT, end: Terminal = BUTT): Stroke {
+  uses("crossbar");
   const { pen, parts } = frame.style;
   return { spine, pen: { ...pen, weight: pen.weight * parts.crossbar.weight }, start, end };
 }
@@ -277,6 +327,7 @@ function tail(frame: Frame, radius: number): Stroke {
  * which is why n, m, h and r all move together when it changes.
  */
 function arch(frame: Frame, fromX: number, height: number): Stroke {
+  uses("shoulder");
   /*
    * A quarter turn up, a flat run across the top, a quarter turn down.
    *
@@ -309,6 +360,7 @@ function arch(frame: Frame, fromX: number, height: number): Stroke {
 
 /** The other way up: down one side, round the bottom, up the other. */
 function trough(frame: Frame, fromX: number, height: number): Stroke {
+  uses("shoulder");
   const reach = frame.arch;
   const radius = Math.min(reach, height * (1 - frame.style.parts.shoulder.spring));
   const rising = fromX + reach * 2;
@@ -419,21 +471,28 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   e: (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
+    /*
+     * The eye, at whatever height the crossbar control says.
+     *
+     * The bowl then has to begin where the circle actually reaches that height
+     * rather than at its own middle, or the bar and the bowl part company. Set
+     * at half the x-height and nowhere else, an e was the second letter that
+     * looked like it had a crossbar and did not listen to the crossbar.
+     */
+    const eye = f.x * f.style.parts.crossbar.height;
+    const rise = Math.max(-0.85, Math.min(0.85, (eye - centre.y) / f.bowl));
+    const opens = (Math.asin(rise) * 180) / Math.PI;
     return finish(
       f,
       [
-        /*
-         * The bar, then the bowl starting from the bar's right-hand end and
-         * running the long way round to the open terminal below.
-         *
-         * The bar begins at the inside of the bowl's left wall rather than at
-         * its centre-line. Run to the centre-line it pokes out through the left
-         * of the letter and the e reads as a struck-through o.
-         */
-        thin(f, straight(at(centre.x - f.bowl + f.half, centre.y), at(centre.x + f.bowl, centre.y))),
-        ink(f, turn(centre, f.bowl, 0, 300), BUTT, f.end),
+        // The bar begins at the inside of the bowl's left wall. Run to the
+        // centre-line it pokes out through the left of the letter and the e
+        // reads as a struck-through o.
+        thin(f, straight(at(centre.x - f.bowl + f.half, eye), at(centre.x + f.bowl, eye))),
+        ink(f, turn(centre, f.bowl, opens, opens + 300), BUTT, f.end),
       ],
-      true);
+      true,
+    );
   },
 
   f: (style) => {
@@ -716,13 +775,22 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const half = f.capBowl * 0.86;
     const left = f.edge;
     const apex = left + half;
-    const bar = f.cap * 0.3;
+    /*
+     * The waist sits lower than a crossbar does on an H, but it is the same
+     * decision and has to move with it. Written as a fixed fraction it did not:
+     * the A quietly ignored the crossbar control, which is the one thing this
+     * whole idea cannot afford.
+     */
+    const bar = f.cap * f.style.parts.crossbar.height * 0.58;
+    // Where the diagonals actually are at that height, so the bar meets them
+    // rather than poking out either side.
+    const inset = (half * bar) / f.cap;
     return finish(
       f,
       [
         ink(f, straight(at(left, 0), at(apex, f.cap)), f.end, BUTT),
         ink(f, straight(at(apex, f.cap), at(apex + half, 0)), BUTT, f.end),
-        thin(f, straight(at(left + half * bar / f.cap * 2.2, bar), at(apex + half - half * bar / f.cap * 2.2, bar))),
+        thin(f, straight(at(left + inset, bar), at(apex + half - inset, bar))),
       ]);
   },
 
