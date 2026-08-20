@@ -99,20 +99,29 @@ export function TopBar({
     <header className="flex h-11 shrink-0 items-center gap-3 border-b border-border px-3">
       <span className="text-xs-plus font-medium tracking-tight">Typeforge</span>
 
-      {/* The three jobs this does, which are not three views of one document. */}
+      {/*
+        The three jobs this does, which are not three views of one document.
+
+        One word each rather than three. They were "Edit a font", "Draw a font"
+        and "Assemble a font", which read better and cost about a hundred and
+        thirty pixels of a toolbar that has none to spare: at thirteen hundred
+        wide the name of the open font was squeezed to nothing at all. The
+        group says what these are, and the longer phrasing is on the hover.
+      */}
       <div className={SEGMENT_TRACK} role="group" aria-label="Mode">
         {(
           [
-            ["edit", "Edit a font"],
-            ["forge", "Draw a font"],
-            ["assemble", "Assemble a font"],
-          ] as Array<[Mode, string]>
-        ).map(([id, label]) => (
+            ["edit", "Edit", "Edit a font somebody else made"],
+            ["forge", "Draw", "Draw a font from nothing"],
+            ["assemble", "Assemble", "Assemble a font from drawings"],
+          ] as Array<[Mode, string, string]>
+        ).map(([id, label, hint]) => (
           <button
             key={id}
             type="button"
             aria-pressed={mode === id}
             onClick={() => onMode(id)}
+            title={hint}
             className={segment(mode === id)}
           >
             {label}
@@ -173,13 +182,13 @@ export function TopBar({
       </div>
 
       {mode === "forge" && (
-        <span className="min-w-0 truncate text-2xs text-muted-foreground">
+        <span className="min-w-16 shrink truncate text-2xs text-muted-foreground">
           {forge.familyName}
           <span className="pl-1.5 opacity-60">{forge.forge.base}</span>
         </span>
       )}
       {mode === "assemble" && (
-        <span className="min-w-0 truncate text-2xs text-muted-foreground">
+        <span className="min-w-16 shrink truncate text-2xs text-muted-foreground">
           {assemble.familyName}
           <span className="pl-1.5 opacity-60">
             {assemble.assembly.pieces.length} drawing
@@ -188,7 +197,7 @@ export function TopBar({
         </span>
       )}
       {mode === "edit" && state.typeface && (
-        <span className="min-w-0 truncate text-2xs text-muted-foreground">
+        <span className="min-w-16 shrink truncate text-2xs text-muted-foreground">
           {state.typeface.meta.familyName}
           <span className="pl-1.5 opacity-60">{state.typeface.meta.styleName}</span>
         </span>
@@ -198,11 +207,17 @@ export function TopBar({
         {state.status && (
           <span
             className={cn(
-              "max-w-md truncate text-2xs",
+              // Capped tight and allowed to shrink. At twenty-eight rem this
+              // ran to three hundred and fifty pixels of "DejaVu Sans - 6,253
+              // glyphs" and pushed the Export button clean off the right-hand
+              // edge of a thirteen-hundred-wide window. The full text is on
+              // the hover; the first few words are all it needs to show.
+              "min-w-0 max-w-40 shrink truncate text-2xs",
               state.status.tone === "error" && "text-destructive",
               state.status.tone === "success" && "text-muted-foreground",
               state.status.tone === "info" && "text-muted-foreground",
             )}
+            title={state.status.message}
           >
             {state.status.message}
           </span>

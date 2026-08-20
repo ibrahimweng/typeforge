@@ -583,7 +583,7 @@ test("draws a font with no font open", async ({ page }) => {
   page.on("pageerror", (error) => errors.push(error.message));
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw a font" }).click();
+  await page.getByRole("button", { name: "Draw" }).click();
 
   // A letter on the stage, a specimen line, and the whole alphabet under it.
   await expect(page.locator("[data-forge-stage]")).toBeVisible();
@@ -598,7 +598,7 @@ test("draws a font with no font open", async ({ page }) => {
  */
 test("spreads one edit across the whole alphabet", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw a font" }).click();
+  await page.getByRole("button", { name: "Draw" }).click();
 
   const before = await page.locator('[data-forge-cell="b"] path').getAttribute("d");
   const alsoBefore = await page.locator('[data-forge-cell="H"] path').getAttribute("d");
@@ -614,7 +614,7 @@ test("spreads one edit across the whole alphabet", async ({ page }) => {
 
 test("says how many letters an edit will reach", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw a font" }).click();
+  await page.getByRole("button", { name: "Draw" }).click();
   const shoulder = page.locator('[data-forge-part="shoulder"]');
   await expect(shoulder).toBeVisible();
   await expect(shoulder.getByText(/\d+ letters/)).toBeVisible();
@@ -622,7 +622,7 @@ test("says how many letters an edit will reach", async ({ page }) => {
 
 test("offers every control whichever letter is open, and says which are here", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw a font" }).click();
+  await page.getByRole("button", { name: "Draw" }).click();
 
   /*
    * The panel used to show only the parts the open letter had, which read well
@@ -666,7 +666,7 @@ test("offers every control whichever letter is open, and says which are here", a
  */
 test("starts from any of the eight, and every one draws a different font", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw a font" }).click();
+  await page.getByRole("button", { name: "Draw" }).click();
 
   const seen = new Set<string>();
   for (const name of ["Sans", "Serif", "Display", "Geometric", "Ribbon", "Technical", "Fairground", "Marker"]) {
@@ -689,7 +689,7 @@ test("starts from any of the eight, and every one draws a different font", async
  */
 test("lets one letter hold its own version of a part", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw a font" }).click();
+  await page.getByRole("button", { name: "Draw" }).click();
   await page.locator('[data-forge-part="slab"]').getByRole("switch", { name: "Serifs" }).click();
 
   await page.locator('[data-forge-cell="p"]').click();
@@ -709,7 +709,7 @@ test("lets one letter hold its own version of a part", async ({ page }) => {
  */
 test("writes a font file the browser can use", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw a font" }).click();
+  await page.getByRole("button", { name: "Draw" }).click();
   await page.getByRole("button", { name: "Download", exact: true }).click();
 
   const dialog = page.getByRole("dialog", { name: "Download font" });
@@ -759,7 +759,7 @@ async function dragHandle(page: Page, id: string, dx: number, dy: number): Promi
 
 async function openForge(page: Page): Promise<void> {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw a font" }).click();
+  await page.getByRole("button", { name: "Draw" }).click();
   await expect(page.locator("[data-forge-stage]")).toBeVisible();
   await settle(page);
 }
@@ -1212,7 +1212,7 @@ const PILE = [
 
 async function openAssemble(page: Page): Promise<void> {
   await page.goto("/");
-  await page.getByRole("button", { name: "Assemble a font" }).click();
+  await page.getByRole("button", { name: "Assemble" }).click();
   await expect(page.locator("[data-assemble-empty]")).toBeVisible();
 }
 
