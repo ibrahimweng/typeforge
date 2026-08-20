@@ -65,12 +65,26 @@ export interface Metrics {
  * that bar.
  */
 export interface Parts {
+  /*
+   * The serif, measured in stem widths rather than in font units.
+   *
+   * A serif is a bar across the end of a stroke, and how large it looks is not
+   * how many units across it is -- it is how far it stands out past the stroke
+   * it is attached to. Held in units, the same numbers gave a bar two and a
+   * third times the width of the stem on the sans and a lip on the display,
+   * where the pen is nearly twice as wide. Turning serifs on at a heavy weight
+   * appeared to do almost nothing, and adding weight to a serifed face made its
+   * serifs quietly disappear into their own stems.
+   *
+   * A multiple of the stem holds across every weight and every base, and it is
+   * how a designer says it: this serif reaches out about two thirds of a stem.
+   */
   slab: {
     /** Off entirely for a sans. */
     on: boolean;
-    /** How far the bar reaches past the stroke on each side. */
+    /** How far the bar reaches past the stroke on each side, in stem widths. */
     projection: number;
-    /** How far it reaches back along the stroke. */
+    /** How far it reaches back along the stroke, in stem widths. */
     thickness: number;
     /** How much the inside corner is filleted: zero is a slab, more is a text serif. */
     bracket: number;
@@ -125,17 +139,27 @@ export interface Style {
   metrics: Metrics;
   pen: Pen;
   parts: Parts;
+  /** What kind of face this is, for the person choosing one. */
+  blurb?: string;
 }
 
-/** The terminal a stroke end wears under this style, slab included. */
+/**
+ * The terminal a stroke end wears under this style, slab included.
+ *
+ * Where the serif stops being a multiple of the stem and becomes a measurement.
+ * Everything below this point works in font units, so the one place that knows
+ * both the pen and the serif does the conversion, and nothing downstream has to
+ * carry the question.
+ */
 export function terminalFor(style: Style): Terminal {
   const { terminal, slab } = style.parts;
   if (!slab.on) return { kind: terminal.kind, angle: terminal.angle };
+  const stem = style.pen.weight;
   return {
     kind: "slab",
-    projection: slab.projection,
-    thickness: slab.thickness,
-    bracket: slab.bracket,
+    projection: slab.projection * stem,
+    thickness: slab.thickness * stem,
+    bracket: slab.bracket * stem,
   };
 }
 
@@ -157,6 +181,7 @@ const EM = 1000;
  */
 export const SANS: Style = {
   name: "Sans",
+  blurb: "The plain case. One thickness, flat ends, ordinary proportions.",
   metrics: {
     unitsPerEm: EM,
     xHeight: 520,
@@ -171,7 +196,7 @@ export const SANS: Style = {
   },
   pen: { weight: 92, contrast: 0, angle: 0 },
   parts: {
-    slab: { on: false, projection: 60, thickness: 40, bracket: 0 },
+    slab: { on: false, projection: 0.65, thickness: 0.43, bracket: 0 },
     shoulder: { spring: 0.62, reach: 1 },
     bowl: { width: 1, squareness: 0 },
     corner: { radius: 0, join: "miter" },
@@ -192,10 +217,11 @@ export const SANS: Style = {
 export const SERIF: Style = {
   ...SANS,
   name: "Serif",
+  blurb: "Contrast, an angled pen, and bracketed serifs.",
   pen: { weight: 96, contrast: 0.42, angle: 8 },
   parts: {
     ...SANS.parts,
-    slab: { on: true, projection: 44, thickness: 46, bracket: 22 },
+    slab: { on: true, projection: 0.46, thickness: 0.48, bracket: 0.23 },
     shoulder: { spring: 0.58, reach: 1 },
     terminal: { kind: "angled", angle: 12 },
   },
@@ -212,6 +238,7 @@ export const SERIF: Style = {
 export const DISPLAY: Style = {
   ...SANS,
   name: "Display",
+  blurb: "Heavy, round and tight. Made to be looked at rather than read.",
   metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 340, sidebearing: 40 },
   pen: { weight: 175, contrast: 0, angle: 0 },
   parts: {
@@ -223,4 +250,103 @@ export const DISPLAY: Style = {
   },
 };
 
-export const BASES: Style[] = [SANS, SERIF, DISPLAY];
+/*
+ * Places to start.
+ *
+ * Every one of these is the same skeletons with a different set of decisions
+ * over them -- there is not a single letter drawn for any of them -- and every
+ * control stays live afterwards. They exist because the controls that reach
+ * these shapes are not ones anybody would find by turning knobs: squareness
+ * takes a circle to a rectangle and there is no halfway house that suggests it,
+ * and a corner opened wide enough stops reading as a joint and starts reading
+ * as a bend. Somebody has to be shown that the range goes that far before it is
+ * worth their while exploring it.
+ */
+
+/** Geometric: circles, points, one thickness. */
+export const GEOMETRIC: Style = {
+  ...SANS,
+  name: "Geometric",
+  blurb: "Circles and points, one thickness throughout.",
+  metrics: { ...SANS.metrics, xHeight: 500, counterWidth: 380, sidebearing: 58 },
+  pen: { weight: 86, contrast: 0, angle: 0 },
+  parts: {
+    ...SANS.parts,
+    shoulder: { spring: 0.55, reach: 1 },
+    bowl: { width: 1, squareness: 0 },
+    corner: { radius: 0, join: "miter" },
+    terminal: { kind: "butt", angle: 0 },
+  },
+};
+
+/** Ribbon: one heavy stroke bent round, with the corners opened right out. */
+export const RIBBON: Style = {
+  ...SANS,
+  name: "Ribbon",
+  blurb: "One heavy stroke bent round. Corners opened until the joints disappear.",
+  metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 330, sidebearing: 46 },
+  pen: { weight: 150, contrast: 0, angle: 0 },
+  parts: {
+    ...SANS.parts,
+    shoulder: { spring: 0.4, reach: 1.05 },
+    bowl: { width: 1, squareness: 0.5 },
+    corner: { radius: 220, join: "round" },
+    terminal: { kind: "butt", angle: 0 },
+  },
+};
+
+/** Technical: squared off, narrow, corners just off the pen's limit. */
+export const TECHNICAL: Style = {
+  ...SANS,
+  name: "Technical",
+  blurb: "Squared off and narrow, with the corners just off the limit.",
+  metrics: { ...SANS.metrics, counterWidth: 300, sidebearing: 52, width: 0.9 },
+  pen: { weight: 78, contrast: 0, angle: 0 },
+  parts: {
+    ...SANS.parts,
+    shoulder: { spring: 0.78, reach: 0.82 },
+    bowl: { width: 0.82, squareness: 0.92 },
+    corner: { radius: 45, join: "round" },
+    terminal: { kind: "butt", angle: 0 },
+  },
+};
+
+/** Fairground: the pen turned a quarter, so the horizontals are the thick strokes. */
+export const FAIRGROUND: Style = {
+  ...SANS,
+  name: "Fairground",
+  blurb: "The pen turned a quarter, so the horizontals carry the weight.",
+  metrics: { ...SANS.metrics, sidebearing: 50 },
+  pen: { weight: 130, contrast: 0.62, angle: 90 },
+  parts: {
+    ...SANS.parts,
+    bowl: { width: 1.08, squareness: 0.15 },
+    terminal: { kind: "butt", angle: 0 },
+  },
+};
+
+/** Marker: leaned over, drawn with a flat pen held at an angle. */
+export const MARKER: Style = {
+  ...SANS,
+  name: "Marker",
+  blurb: "Leaned over, drawn with a flat pen held at an angle.",
+  metrics: { ...SANS.metrics, slant: 13, sidebearing: 48 },
+  pen: { weight: 118, contrast: 0.5, angle: -32 },
+  parts: {
+    ...SANS.parts,
+    bowl: { width: 0.95, squareness: 0.35 },
+    corner: { radius: 0, join: "bevel" },
+    terminal: { kind: "butt", angle: 0 },
+  },
+};
+
+export const BASES: Style[] = [
+  SANS,
+  SERIF,
+  DISPLAY,
+  GEOMETRIC,
+  RIBBON,
+  TECHNICAL,
+  FAIRGROUND,
+  MARKER,
+];

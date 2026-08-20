@@ -110,7 +110,7 @@ const rotate = (point: Vec2, angle: number): Vec2 => ({
 });
 
 /** The pen's reach in a given direction, resolved into the pen's own frame. */
-function reachAlong(direction: Vec2, reach: PenReach): Vec2 {
+export function reachAlong(direction: Vec2, reach: PenReach): Vec2 {
   const local = rotate(direction, -reach.angle);
   return rotate({ x: local.x * reach.across, y: local.y * reach.along }, reach.angle);
 }

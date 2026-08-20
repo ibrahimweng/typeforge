@@ -53,66 +53,15 @@ export interface PartSpec {
  *
  * The editor draws itself from this, and so does the help, so neither can come
  * to describe a control the tool does not have.
+ *
+ * The order is the order they appear in, and it runs from the decisions that
+ * change what kind of face this is down to the ones that adjust it. How square
+ * the bowls are and how far a corner is rounded are what separate a geometric
+ * face from a technical one from a ribbon; a serif and a crossbar are details
+ * on top of whichever of those has been chosen. Somebody who has just arrived
+ * should meet the first kind first.
  */
 export const PART_SPECS: PartSpec[] = [
-  {
-    name: "slab",
-    label: "Serif",
-    hint: "The bar laid across the end of a straight stroke. Turning it on is most of what separates a serif face from a sans; a curved terminal never takes one.",
-    controls: [
-      { key: "on", label: "Serifs", hint: "Off for a sans.", min: 0, max: 1, step: 1, toggle: true },
-      {
-        key: "projection",
-        label: "Reach",
-        hint: "How far the bar sticks out past the stroke on each side.",
-        min: 0,
-        max: 0.12,
-        step: 0.001,
-        emRelative: true,
-      },
-      {
-        key: "thickness",
-        label: "Depth",
-        hint: "How far the bar reaches back along the stroke.",
-        min: 0.005,
-        max: 0.1,
-        step: 0.001,
-        emRelative: true,
-      },
-      {
-        key: "bracket",
-        label: "Bracket",
-        hint: "How much the inside corner is hollowed out. Zero is a slab serif; opening it makes the serif look grown from the stem rather than stuck on it.",
-        min: 0,
-        max: 0.08,
-        step: 0.001,
-        emRelative: true,
-      },
-    ],
-  },
-  {
-    name: "shoulder",
-    label: "Shoulder",
-    hint: "Where an arch leaves its stem, and therefore how square the top of an n is. The single decision that most changes how a lowercase reads.",
-    controls: [
-      {
-        key: "spring",
-        label: "Springing",
-        hint: "High squares the shoulder off; low rounds the whole arch.",
-        min: 0.3,
-        max: 0.85,
-        step: 0.005,
-      },
-      {
-        key: "reach",
-        label: "Reach",
-        hint: "How far the arch carries over before it turns down.",
-        min: 0.7,
-        max: 1.3,
-        step: 0.005,
-      },
-    ],
-  },
   {
     name: "bowl",
     label: "Bowl",
@@ -165,6 +114,61 @@ export const PART_SPECS: PartSpec[] = [
           { value: "round", label: "Round", hint: "The pen itself, turned about the corner." },
           { value: "bevel", label: "Cut", hint: "Taken straight across." },
         ],
+      },
+    ],
+  },
+  {
+    name: "shoulder",
+    label: "Shoulder",
+    hint: "Where an arch leaves its stem, and therefore how square the top of an n is. The single decision that most changes how a lowercase reads.",
+    controls: [
+      {
+        key: "spring",
+        label: "Springing",
+        hint: "High squares the shoulder off; low rounds the whole arch.",
+        min: 0.3,
+        max: 0.85,
+        step: 0.005,
+      },
+      {
+        key: "reach",
+        label: "Reach",
+        hint: "How far the arch carries over before it turns down.",
+        min: 0.7,
+        max: 1.3,
+        step: 0.005,
+      },
+    ],
+  },
+  {
+    name: "slab",
+    label: "Serif",
+    hint: "The bar laid across the end of a straight stroke. Turning it on is most of what separates a serif face from a sans; a curved terminal never takes one.",
+    controls: [
+      { key: "on", label: "Serifs", hint: "Off for a sans.", min: 0, max: 1, step: 1, toggle: true },
+      {
+        key: "projection",
+        label: "Reach",
+        hint: "How far the bar sticks out past the stroke on each side, counted in stem widths. Two thirds of a stem is an ordinary text serif; past one it reads as a slab face.",
+        min: 0,
+        max: 1.5,
+        step: 0.01,
+      },
+      {
+        key: "thickness",
+        label: "Depth",
+        hint: "How far the bar reaches back along the stroke, counted in stem widths.",
+        min: 0.06,
+        max: 1,
+        step: 0.01,
+      },
+      {
+        key: "bracket",
+        label: "Bracket",
+        hint: "How much the inside corner is hollowed out. Zero is a slab serif; opening it makes the serif look grown from the stem rather than stuck on it.",
+        min: 0,
+        max: 0.8,
+        step: 0.01,
       },
     ],
   },
@@ -390,15 +394,16 @@ function takesSerif(letter: string, style: Style, form?: string): boolean {
 }
 
 function serifsForced(style: Style): Style {
-  const em = style.metrics.unitsPerEm;
   return {
     ...style,
     parts: {
       ...style.parts,
       slab: {
         on: true,
-        projection: Math.max(style.parts.slab.projection, em * 0.04),
-        thickness: Math.max(style.parts.slab.thickness, em * 0.03),
+        // Measured in stem widths, so a size that lands is a size that lands at
+        // every weight rather than at the one this was written against.
+        projection: Math.max(style.parts.slab.projection, 0.35),
+        thickness: Math.max(style.parts.slab.thickness, 0.25),
         bracket: style.parts.slab.bracket,
       },
     },

@@ -32,8 +32,8 @@ import {
   spineEnd,
   spineStart,
 } from "./shapes";
-import { MITER_LIMIT } from "./sweep";
-import type { Spine, Stroke, Terminal } from "./types";
+import { MITER_LIMIT, penReach, reachAlong } from "./sweep";
+import type { JoinKind, Spine, Stroke, Terminal } from "./types";
 
 /**
  * A letter, as strokes plus how it should be spaced.
@@ -298,6 +298,20 @@ interface Frame {
   least: number;
   /** How far a corner in a stroke is rounded off, in font units. */
   radius: number;
+  /**
+   * How far the pen reaches sideways from a stroke running in a given
+   * direction.
+   *
+   * Half the pen, for a pen that is round. A pen with contrast is not round: at
+   * an angle of ninety degrees it reaches its full width across a horizontal
+   * and a third of that across a vertical, so a corner between two steep arms
+   * is offset by far less than half a width. Told half a width regardless, the
+   * vee of a reverse-contrast w was placed for an overhang three times what it
+   * got, and its feet came to rest seventy-nine units above the baseline.
+   */
+  reach: (direction: Vec2) => number;
+  /** How the outside of an unrounded corner is finished. */
+  join: JoinKind;
   /** The terminal this style puts on a stroke end. */
   end: Terminal;
   /**
@@ -342,6 +356,11 @@ function frame(style: Style): Frame {
     wide,
     least,
     radius: style.parts.corner.radius,
+    join: style.parts.corner.join,
+    reach: (direction) => {
+      const offset = reachAlong(direction, penReach(pen));
+      return Math.hypot(offset.x, offset.y);
+    },
     end: endFor(style),
     plain: { kind: style.parts.terminal.kind, angle: style.parts.terminal.angle },
   };
@@ -525,7 +544,36 @@ function through(f: Frame, tips: Vec2[]): Vec2[] {
  * short of the baseline or through it.
  */
 function overhang(f: Frame, sinHalf: number, vertex: Vec2, before: Vec2, after: Vec2): number {
-  const point = f.half / Math.max(sinHalf, 1 / MITER_LIMIT);
+  // How far the two arms are actually offset, which is half the pen only when
+  // the pen is round.
+  const arms = [before, after].map((neighbour) => {
+    const along = towards(vertex, neighbour);
+    return f.reach(at(-along.y, along.x));
+  });
+  const half = (arms[0] + arms[1]) / 2;
+  /*
+   * How far the ink reaches past the vertex when the corner is left sharp, and
+   * it depends on how the sweep is going to finish it.
+   *
+   * A point carries out to where the two outer edges meet. A round join reaches
+   * only the pen itself, half a width from the vertex however sharp the corner
+   * is. A bevel takes the chord across that, which is nearer still. Assuming a
+   * point for all three placed the feet of a bevelled v ninety units above the
+   * baseline and the feet of a ribbon w a hundred and thirty-five, because the
+   * recipe was compensating for an overshoot the sweep was never going to
+   * produce.
+   *
+   * The miter limit is applied here the same way the sweep applies it, so the
+   * two agree about when a very sharp corner stops being carried to its point
+   * and gets rounded instead.
+   */
+  const mitred = half / Math.max(sinHalf, 1e-6);
+  const point =
+    f.join === "bevel"
+      ? half * sinHalf
+      : f.join === "round" || mitred > f.half * MITER_LIMIT
+        ? half
+        : mitred;
   if (f.radius <= 0) return point;
   const cosHalf = Math.sqrt(Math.max(0, 1 - sinHalf * sinHalf));
   const spare =
@@ -538,7 +586,7 @@ function overhang(f: Frame, sinHalf: number, vertex: Vec2, before: Vec2, after: 
   const wanted = Math.max(f.radius, f.half * 1.06);
   const radius = Math.min(wanted, (spare * sinHalf) / Math.max(cosHalf, 1e-6));
   if (radius < f.half * 1.06 * 0.999) return point;
-  return radius + f.half - radius / sinHalf;
+  return radius + half - radius / sinHalf;
 }
 
 /** The one-corner case, which is most of them. */
@@ -1062,28 +1110,30 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
 
   w: (style) => {
     const f = frame(style);
-    const half = f.arch * 0.72;
+    const half = f.arch * 0.68;
     const left = f.edge;
     const top = f.x;
-    const points = through(
-      f,
-      [0, 1, 2, 3, 4].map((step) => at(left + half * step, step % 2 === 0 ? top : 0)),
-    );
-    return finish(
-      f,
-      [
-        ink(
-          f,
-          chain(
-            straight(points[0], points[1]),
-            straight(points[1], points[2]),
-            straight(points[2], points[3]),
-            straight(points[3], points[4]),
-          ),
-          f.end,
-          f.end,
-        ),
-      ]);
+    /*
+     * Two vees, overlapping, rather than one run zigzagging four times.
+     *
+     * A single run has to satisfy three corners at once, and they pull against
+     * each other: the middle peak drops to put its ink on the x-height, which
+     * shortens the arms either side of it, which shrinks the rounding the two
+     * feet can take, which lifts them off the baseline. On a face with wide
+     * corners the feet came to rest ninety-nine units up, and no radius above a
+     * quarter of that ever brought them down again -- while a v, which has one
+     * corner and nothing to argue with, landed exactly on the line at every
+     * radius there is.
+     *
+     * Two vees is what a w is anyway, and each of them lands the way a v does.
+     */
+    const vee = (from: number): Stroke => {
+      const start = at(left + half * from, top);
+      const end = at(left + half * (from + 2), top);
+      const point = corner(f, start, at(left + half * (from + 1), 0), end);
+      return ink(f, chain(straight(start, point), straight(point, end)), f.end, f.end);
+    };
+    return finish(f, [vee(0), vee(1.72)]);
   },
 
   x: (style) => {
@@ -1524,28 +1574,30 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
 
   W: (style) => {
     const f = frame(style);
-    const half = f.capBowl * 0.7;
+    const half = f.capBowl * 0.66;
     const left = f.edge;
     const top = f.cap;
-    const points = through(
-      f,
-      [0, 1, 2, 3, 4].map((step) => at(left + half * step, step % 2 === 0 ? top : 0)),
-    );
-    return finish(
-      f,
-      [
-        ink(
-          f,
-          chain(
-            straight(points[0], points[1]),
-            straight(points[1], points[2]),
-            straight(points[2], points[3]),
-            straight(points[3], points[4]),
-          ),
-          f.end,
-          f.end,
-        ),
-      ]);
+    /*
+     * Two vees, overlapping, rather than one run zigzagging four times.
+     *
+     * A single run has to satisfy three corners at once, and they pull against
+     * each other: the middle peak drops to put its ink on the x-height, which
+     * shortens the arms either side of it, which shrinks the rounding the two
+     * feet can take, which lifts them off the baseline. On a face with wide
+     * corners the feet came to rest ninety-nine units up, and no radius above a
+     * quarter of that ever brought them down again -- while a v, which has one
+     * corner and nothing to argue with, landed exactly on the line at every
+     * radius there is.
+     *
+     * Two vees is what a w is anyway, and each of them lands the way a v does.
+     */
+    const vee = (from: number): Stroke => {
+      const start = at(left + half * from, top);
+      const end = at(left + half * (from + 2), top);
+      const point = corner(f, start, at(left + half * (from + 1), 0), end);
+      return ink(f, chain(straight(start, point), straight(point, end)), f.end, f.end);
+    };
+    return finish(f, [vee(0), vee(1.72)]);
   },
 
   X: (style) => {

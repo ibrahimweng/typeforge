@@ -17,13 +17,21 @@ import { describe, expect, it } from "vitest";
 import { contourArea, contoursBounds } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import { drawLetter, letterNames } from "./build";
-import { DISPLAY, SANS, SERIF, type Style } from "./style";
+import { BASES as STARTING_POINTS, DISPLAY, SANS, SERIF, type Style } from "./style";
 
-const BASES: Array<[string, Style]> = [
-  ["sans", SANS],
-  ["serif", SERIF],
-  ["display", DISPLAY],
-];
+/*
+ * Every place somebody can start, not only the three the alphabet was drawn
+ * against.
+ *
+ * A starting point is a set of decisions over these same skeletons, so if one
+ * of them can produce a letter that crosses itself then so can a person turning
+ * the controls to the same place -- and it is offered as a button, which makes
+ * it the likeliest place anybody will land.
+ */
+const BASES: Array<[string, Style]> = STARTING_POINTS.map((style) => [
+  style.name.toLowerCase(),
+  style,
+]);
 
 const LOWERCASE = "abcdefghijklmnopqrstuvwxyz".split("");
 const CAPITALS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");

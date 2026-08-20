@@ -620,18 +620,66 @@ test("says how many letters an edit will reach", async ({ page }) => {
   await expect(shoulder.getByText(/\d+ letters/)).toBeVisible();
 });
 
-test("offers only the parts the chosen letter actually has", async ({ page }) => {
+test("offers every control whichever letter is open, and says which are here", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Draw a font" }).click();
 
-  // n has a shoulder and no bowl.
-  await expect(page.locator('[data-forge-part="shoulder"]')).toBeVisible();
-  await expect(page.locator('[data-forge-part="bowl"]')).toHaveCount(0);
+  /*
+   * The panel used to show only the parts the open letter had, which read well
+   * and hid the two controls that change a face most. The application opens on
+   * n; squareness lives on an o and corner rounding lives on an A or a k, so
+   * neither was on screen, and there was no way to discover the tool could
+   * square a bowl without first guessing you should go and click a different
+   * letter.
+   */
+  const parts = ["bowl", "corner", "shoulder", "slab", "terminal", "crossbar"];
+  for (const part of parts) {
+    await expect(page.locator(`[data-forge-part="${part}"]`)).toBeVisible();
+  }
 
-  // o is the other way round.
+  // n has a shoulder and no bowl, and the panel says so rather than hiding it.
+  await expect(page.locator('[data-forge-part="shoulder"]')).toHaveAttribute(
+    "data-forge-part-here",
+    "yes",
+  );
+  await expect(page.locator('[data-forge-part="bowl"]')).toHaveAttribute(
+    "data-forge-part-here",
+    "no",
+  );
+
+  // o is the other way round, and nothing has moved on the screen.
   await page.locator('[data-forge-cell="o"]').click();
-  await expect(page.locator('[data-forge-part="bowl"]')).toBeVisible();
-  await expect(page.locator('[data-forge-part="shoulder"]')).toHaveCount(0);
+  await expect(page.locator('[data-forge-part="bowl"]')).toHaveAttribute(
+    "data-forge-part-here",
+    "yes",
+  );
+  await expect(page.locator('[data-forge-part="shoulder"]')).toHaveAttribute(
+    "data-forge-part-here",
+    "no",
+  );
+});
+
+/**
+ * The starting points exist because the controls that reach these shapes are
+ * not ones anybody finds by turning knobs: squareness takes a circle to a
+ * rectangle with no halfway house that suggests it.
+ */
+test("starts from any of the eight, and every one draws a different font", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Draw a font" }).click();
+
+  const seen = new Set<string>();
+  for (const name of ["Sans", "Serif", "Display", "Geometric", "Ribbon", "Technical", "Fairground", "Marker"]) {
+    await page.locator(`[data-forge-base="${name}"]`).click();
+    await expect
+      .poll(async () => {
+        const drawn = await page.locator('[data-forge-cell="o"] path').getAttribute("d");
+        return drawn && !seen.has(drawn);
+      })
+      .toBe(true);
+    seen.add((await page.locator('[data-forge-cell="o"] path').getAttribute("d"))!);
+  }
+  expect(seen.size).toBe(8);
 });
 
 /**

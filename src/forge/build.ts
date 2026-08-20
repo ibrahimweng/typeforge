@@ -111,13 +111,38 @@ function leaning(contours: Contour[], style: Style): Contour[] {
   const lean = Math.tan((degrees * Math.PI) / 180);
   const pivot = style.metrics.xHeight / 2;
   const move = (point: Vec2): Vec2 => ({ x: point.x + (point.y - pivot) * lean, y: point.y });
-  return contours.map((contour) => ({
+  const leant = contours.map((contour) => ({
     ...contour,
     nodes: contour.nodes.map((node) => ({
       ...node,
       point: move(node.point),
       handleIn: node.handleIn ? move(node.handleIn) : null,
       handleOut: node.handleOut ? move(node.handleOut) : null,
+    })),
+  }));
+
+  /*
+   * And nudged back inside its own left edge if the lean carried it out.
+   *
+   * Leaning about the waist keeps the middle of a letter where it was and
+   * swings the two ends in opposite directions, so anything reaching well below
+   * the baseline swings left -- a j at thirteen degrees crossed the origin and
+   * would have printed over whatever came before it. Only the letters that
+   * actually cross are moved, and each by exactly what it needs, which is what
+   * a slanted face wants anyway: its spacing is not its upright's spacing.
+   */
+  if (leant.length === 0) return leant;
+  const edge = style.metrics.sidebearing;
+  const shortfall = edge - contoursBounds(leant).xMin;
+  if (shortfall <= 0) return leant;
+  const shift = (point: Vec2): Vec2 => ({ x: point.x + shortfall, y: point.y });
+  return leant.map((contour) => ({
+    ...contour,
+    nodes: contour.nodes.map((node) => ({
+      ...node,
+      point: shift(node.point),
+      handleIn: node.handleIn ? shift(node.handleIn) : null,
+      handleOut: node.handleOut ? shift(node.handleOut) : null,
     })),
   }));
 }
@@ -217,6 +242,21 @@ function serifsFor(stroke: Stroke, style: Style): Contour[] {
     // to begin before the serif does.
     const bracket = Math.min(terminal.bracket ?? 0, thickness, tip - inner);
     for (const side of [1, -1]) {
+      /*
+       * A serif never crosses a line the stroke it belongs to is standing on.
+       *
+       * A serif is a bar across the end of a stroke, and on an upright it goes
+       * both ways: that is a foot. On an arm lying along the baseline it cannot,
+       * because one of its two wings would hang under the line the letter is
+       * standing on. The bottom arm of an E did exactly that -- two hundred
+       * units below the baseline on the display face -- and so did an L and a
+       * Z, while a T grew one above the cap height.
+       *
+       * Real serif faces have known this forever: the arms of a T turn down and
+       * the foot of an L turns up. It falls out of one rule rather than a list
+       * of letters, so a letter that gains an arm tomorrow gets it too.
+       */
+      if (crossesALine(at, outward, side, tip, inner, style)) continue;
       // Wound with the strokes it sits on, or the serif would cancel the stem
       // it is attached to rather than adding to it.
       const shape = wing(at, outward, side, inner, tip, thickness, bracket);
@@ -224,6 +264,41 @@ function serifsFor(stroke: Stroke, style: Style): Contour[] {
     }
   }
   return out;
+}
+
+/** Whether this wing would reach past a line the stroke end is sitting on. */
+function crossesALine(
+  at: Vec2,
+  outward: Vec2,
+  side: number,
+  tip: number,
+  inner: number,
+  style: Style,
+): boolean {
+  const { metrics } = style;
+  const across = { x: -outward.y * side, y: outward.x * side };
+  const far = at.y + across.y * tip;
+  /*
+   * Each line with the direction the letter lies in from it. Needed because
+   * a stroke ending exactly on a line is on neither side of it, so which way
+   * the wing is heading cannot be read off the line alone -- asked that way,
+   * both wings of every foot looked like they were crossing and every serif in
+   * the font disappeared.
+   */
+  const lines: Array<[number, number]> = [
+    [0, 1],
+    [metrics.descender, 1],
+    [metrics.xHeight, -1],
+    [metrics.capHeight, -1],
+    [metrics.ascender, -1],
+  ];
+  return lines.some(
+    ([line, inward]) =>
+      // The stroke ends on this line, and the wing sets off well past it. A
+      // wing that only dips below -- which the foot of a diagonal does simply
+      // by being at an angle -- is left alone.
+      Math.abs(at.y - line) < inner && (far - line) * inward < -inner,
+  );
 }
 
 /**

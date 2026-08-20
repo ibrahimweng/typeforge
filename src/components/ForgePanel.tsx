@@ -22,6 +22,7 @@ import { formOf, isException, partsOf, reach, styleFor } from "@/forge/document"
 import { formsOf } from "@/forge/letters";
 import {
   METRIC_CONTROLS,
+  PART_SPECS,
   PEN_CONTROLS,
   specFor,
   valuesOf,
@@ -38,7 +39,27 @@ export function ForgePanel(): React.JSX.Element {
   const state = useForge();
   const { forge, letter, scope } = state;
 
-  const parts = React.useMemo(() => partsOf(letter, forge), [letter, forge, state.revision]);
+  /*
+   * Every part the font has, not only the ones this letter happens to use.
+   *
+   * Showing the letter's own parts and nothing else was the original rule, and
+   * it read well: open an o and you are offered a bowl, open an n and you are
+   * offered a shoulder. What it cost was that the two controls which change a
+   * face most -- how square the bowls are, and how far a corner is rounded --
+   * were invisible on the letter the application opens on. Squareness lives on
+   * an o, rounding lives on an A or a k, and n has neither. There was no way to
+   * find out that the tool could square a bowl at all without first guessing
+   * that you should go and click on a different letter.
+   *
+   * So all of them are shown, the ones this letter uses first, and the rest
+   * marked as belonging to letters elsewhere. What each edit reaches is still
+   * said out loud on every part, which is the thing that actually needed
+   * saying.
+   */
+  const mine = React.useMemo(
+    () => new Set(partsOf(letter, forge)),
+    [letter, forge, state.revision],
+  );
   const held = isException(forge, letter);
 
   return (
@@ -48,15 +69,17 @@ export function ForgePanel(): React.JSX.Element {
     >
       <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
         <Section title="Start from">
-          <div className="flex gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
             {BASES.map((base) => (
               <button
                 key={base.name}
                 type="button"
                 onClick={() => forgeStore.startFromBase(base.name)}
                 aria-pressed={forge.base === base.name}
+                title={base.blurb}
+                data-forge-base={base.name}
                 className={cn(
-                  "flex-1 rounded-md border px-2 py-1.5 text-2xs transition-colors",
+                  "rounded-md border px-2 py-1.5 text-left text-2xs transition-colors",
                   forge.base === base.name
                     ? "border-[color:var(--accent)] bg-[color:color-mix(in_oklab,var(--accent)_12%,transparent)] text-foreground"
                     : "border-border text-muted-foreground hover:border-muted-foreground hover:bg-card",
@@ -67,7 +90,12 @@ export function ForgePanel(): React.JSX.Element {
             ))}
           </div>
           <p className="pt-2 text-2xs leading-snug text-muted-foreground">
-            Three sets of decisions over one set of skeletons. Picking one starts again from it.
+            {BASES.find((base) => base.name === forge.base)?.blurb}
+          </p>
+          <p className="pt-1.5 text-2xs leading-snug text-muted-foreground">
+            One set of skeletons, eight sets of decisions over it. Not one letter
+            is drawn differently between them, and every control below stays live
+            whichever you pick. Choosing one starts again from it.
           </p>
         </Section>
 
@@ -81,19 +109,6 @@ export function ForgePanel(): React.JSX.Element {
             />
           ))}
         </Section>
-
-        <Section title="Proportions">
-          {METRIC_CONTROLS.map((control) => (
-            <Field
-              key={control.key}
-              control={control}
-              value={(forge.style.metrics as unknown as Record<string, number>)[control.key]}
-              onChange={(next, phase) => forgeStore.changeMetrics({ [control.key]: next }, phase)}
-            />
-          ))}
-        </Section>
-
-        <Forms letter={letter} />
 
         <div className="border-b border-border p-3">
           <div className="mb-2 flex items-baseline justify-between">
@@ -134,15 +149,25 @@ export function ForgePanel(): React.JSX.Element {
           </p>
         </div>
 
-        {parts.length === 0 && (
-          <p className="p-3 text-2xs text-muted-foreground">
-            This glyph is drawn from the pen and the proportions alone; it has no named parts.
-          </p>
-        )}
-
-        {parts.map((part) => (
-          <Part key={part} part={part} />
+        {/* Always in the same order, whichever letter is open. A panel whose
+            controls move about as you click around is one nobody can learn. */}
+        {PART_SPECS.map((spec) => (
+          <Part key={spec.name} part={spec.name} mine={mine.has(spec.name)} />
         ))}
+
+        <Section title="Proportions">
+          {METRIC_CONTROLS.map((control) => (
+            <Field
+              key={control.key}
+              control={control}
+              value={(forge.style.metrics as unknown as Record<string, number>)[control.key]}
+              onChange={(next, phase) => forgeStore.changeMetrics({ [control.key]: next }, phase)}
+            />
+          ))}
+        </Section>
+
+        <Forms letter={letter} />
+
       </div>
     </aside>
   );
@@ -218,7 +243,7 @@ function Forms({ letter }: { letter: string }): React.JSX.Element | null {
 }
 
 /** One part, with what it reaches and the controls that change it. */
-function Part({ part }: { part: PartName }): React.JSX.Element | null {
+function Part({ part, mine }: { part: PartName; mine: boolean }): React.JSX.Element | null {
   const state = useForge();
   const spec = specFor(part);
   const { letters, held } = React.useMemo(
@@ -234,9 +259,16 @@ function Part({ part }: { part: PartName }): React.JSX.Element | null {
   const pinned = isException(state.forge, state.letter, part);
 
   return (
-    <section className="border-b border-border p-3" data-forge-part={part}>
+    <section
+      className="border-b border-border p-3"
+      data-forge-part={part}
+      data-forge-part-here={mine ? "yes" : "no"}
+    >
       <div className="flex items-baseline justify-between gap-2">
-        <h4 className="text-2xs font-medium">{spec.label}</h4>
+        <h4 className={cn("text-2xs font-medium", !mine && "text-muted-foreground")}>
+          {spec.label}
+          {!mine && <span className="pl-1.5 font-normal">· not in {state.letter}</span>}
+        </h4>
         {pinned ? (
           <button
             type="button"

@@ -210,30 +210,37 @@ export function handlesFor(letter: string, style: Style, form?: string): Handle[
     });
   }
 
-  // The serif, at the foot of the letter where one would be.
+  /*
+   * The serif, at the foot of the letter where one would be.
+   *
+   * Held in stem widths, so a drag measured in font units has to be divided by
+   * the stem to become a change in the value. Without that division a handle
+   * on a hairline face would run a hundred times faster than the pointer.
+   */
   if (has.has("slab") && parts.slab.on) {
+    const stem = Math.max(pen.weight, 1);
     handles.push({
       id: "slabReach",
       at: { x: bounds.xMin, y: metrics.unitsPerEm * 0.02 },
       axis: "x",
       label: "Serif reach",
-      hint: "How far the bar sticks out past the stroke.",
+      hint: "How far the bar sticks out past the stroke, in stem widths.",
       drive: { on: "part", part: "slab", key: "projection" },
       // Pulled left to make it longer, which is the direction the serif itself
       // grows on this side of the letter.
-      perUnit: -1,
+      perUnit: -1 / stem,
       value: parts.slab.projection,
       ...partRange("slab", "projection", em),
     });
     handles.push({
       id: "slabDepth",
-      at: { x: bounds.xMin + pen.weight * 0.5, y: parts.slab.thickness },
+      at: { x: bounds.xMin + pen.weight * 0.5, y: parts.slab.thickness * stem },
       axis: "y",
       label: "Serif depth",
-      hint: "How far the bar reaches back along the stroke.",
+      hint: "How far the bar reaches back along the stroke, in stem widths.",
       drive: { on: "part", part: "slab", key: "thickness" },
       value: parts.slab.thickness,
-      perUnit: 1,
+      perUnit: 1 / stem,
       ...partRange("slab", "thickness", em),
     });
   }
