@@ -205,6 +205,39 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
           </Section>
         ))}
 
+        <Section title="Drawing one letter yourself" half="drawn">
+          <p>
+            Some letter will not come out of a skeleton and a pen. Every font
+            has one -- an ampersand, a g, a piece of lettering that is the
+            reason you started -- and no arrangement of sliders reaches it. So
+            any letter can leave as an SVG, be drawn in whatever tool you draw
+            best in, and come back into the space it left.
+          </p>
+          <p>
+            The sheet carries the metrics as guides: the baseline, the
+            x-height, the cap height, the two sidebearings. They are there to
+            draw against and are ignored on the way back, so you can move them,
+            hide them or delete them without changing what returns. Everything
+            is in font units, so a coordinate that leaves is the coordinate
+            that arrives.
+          </p>
+          <p>
+            <Term>The letter keeps its advance.</Term> A drawing narrower than
+            what it replaces still sits in the same width, because the rhythm
+            of a font is not one letter's decision. Drop a sheet onto a
+            different letter than it was drawn for and it goes where you
+            dropped it, and says so.
+          </p>
+          <p>
+            What it costs is worth knowing before you spend it. A letter that
+            came in from outside is an outline rather than a description, so
+            nothing in the panel reaches it any more -- there is no pen behind
+            it to make heavier. It is marked in the alphabet, and one button
+            hands it back to the family, which draws it again from the
+            description it never stopped having.
+          </p>
+        </Section>
+
         <Section title="Why a slider sometimes stops">
           <p>
             Every letter has a limit. Thin a stroke past half its own width and its two sides pass

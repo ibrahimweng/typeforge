@@ -17,6 +17,7 @@
  */
 
 import { drawLetter, letterNames, type Drawn } from "./build";
+import type { Imported } from "./exchange";
 import { partsUsedBy, type PartName } from "./parts";
 import { BASES, type Parts, type Style } from "./style";
 
@@ -39,10 +40,56 @@ export interface Forge {
    * which every part still reaches, exactly as it reaches the default.
    */
   alternates: Record<string, string>;
+  /**
+   * Letters that are no longer drawn at all.
+   *
+   * The third kind of decision, and the only one that leaves the parametric
+   * system rather than moving within it. An exception and an alternate are
+   * both still descriptions -- turn a slider and they answer. An imported
+   * letter is an outline somebody drew, and there is nothing left to turn: the
+   * weight control cannot reach it, because there is no pen.
+   *
+   * That is a real cost and it is why this is kept separate and said out loud
+   * in the panel rather than folded in quietly. Putting a letter back under
+   * the family's control is one call, and then it is drawn again from the
+   * description it never stopped having.
+   */
+  imported: Record<string, Imported>;
 }
 
 export function startFrom(base: Style): Forge {
-  return { base: base.name, style: clone(base), exceptions: {}, alternates: { ...base.forms } };
+  return {
+    base: base.name,
+    style: clone(base),
+    exceptions: {},
+    alternates: { ...base.forms },
+    imported: {},
+  };
+}
+
+/**
+ * Put a letter somebody else drew into a slot.
+ *
+ * The advance comes in with it rather than being worked out from the outline,
+ * because the letter has to keep its place in the rhythm of the font. A drawn
+ * shape that is a little narrower than what it replaces should still sit in
+ * the same width, or the spacing table gains a hole nobody asked for.
+ */
+export function importLetter(forge: Forge, letter: string, outline: Imported): Forge {
+  return { ...forge, imported: { ...forge.imported, [letter]: outline } };
+}
+
+/** Put a letter back under the family's control, to be drawn again. */
+export function relinkLetter(forge: Forge, letter: string): Forge {
+  if (!(letter in forge.imported)) return forge;
+  const imported = { ...forge.imported };
+  delete imported[letter];
+  return { ...forge, imported };
+}
+
+/** Whether this letter is an outline rather than a description. */
+export function isImported(forge: Forge, letter: string): boolean {
+  return letter in forge.imported;
 }
 
 /** Draw this letter from a different skeleton, or put it back to the default. */
@@ -105,7 +152,14 @@ export function draw(letter: string, forge: Forge): Drawn | null {
     drawings.set(forge, kept);
   }
   if (kept.has(letter)) return kept.get(letter) ?? null;
-  const drawn = drawLetter(letter, styleFor(letter, forge), formOf(forge, letter));
+  // An imported letter is not drawn, so nothing below this line runs for it.
+  // It still goes through the cache, so that everything downstream -- the
+  // grid, the specimen, the checks, the exporters -- asks one question and
+  // gets one answer whichever kind of letter this is.
+  const outside = forge.imported[letter];
+  const drawn = outside
+    ? { contours: outside.contours, advanceWidth: outside.advanceWidth }
+    : drawLetter(letter, styleFor(letter, forge), formOf(forge, letter));
   kept.set(letter, drawn);
   return drawn;
 }

@@ -19,7 +19,7 @@ import * as React from "react";
 import { CoachMark } from "@/components/CoachMark";
 import { contoursToSvgPath } from "@/font/geometry";
 import { letterNames, skeletonOf } from "@/forge/build";
-import { draw, formOf, isException, partsOf, styleFor } from "@/forge/document";
+import { draw, formOf, isException, isImported, partsOf, styleFor } from "@/forge/document";
 import { handlesFor, valueAfter, type Handle } from "@/forge/handles";
 import { troubles } from "@/forge/health";
 import { segment, tile } from "@/components/controls";
@@ -82,16 +82,25 @@ function Stage({
     () => draw(letter, state.forge),
     [letter, state.forge, revision],
   );
+  /*
+   * A letter that came in from outside has neither.
+   *
+   * The recipe for it still exists and would still answer, which is the trap:
+   * the skeleton it returns is the skeleton of the letter this one replaced,
+   * and drawing that over somebody's own outline says the drawing is being
+   * governed by handles that do not touch it.
+   */
+  const outside = isImported(state.forge, letter);
   const handles = React.useMemo(
-    () => handlesFor(letter, state.forge.style, form),
-    [letter, state.forge, form, revision],
+    () => (outside ? [] : handlesFor(letter, state.forge.style, form)),
+    [letter, state.forge, form, outside, revision],
   );
   const bones = React.useMemo(
     () =>
-      state.showSkeleton
+      state.showSkeleton && !outside
         ? skeletonOf(letter, styleFor(letter, state.forge), form)
         : [],
-    [letter, state.forge, form, state.showSkeleton, revision],
+    [letter, state.forge, form, outside, state.showSkeleton, revision],
   );
   const { metrics } = state.forge.style;
 
@@ -537,6 +546,7 @@ function Alphabet({
           width: drawn?.advanceWidth ?? 0,
           held: isException(state.forge, name),
           shaped: Boolean(formOf(state.forge, name)),
+          outside: isImported(state.forge, name),
         };
       }),
     [names, state.forge, revision],
@@ -553,7 +563,13 @@ function Alphabet({
             type="button"
             onClick={() => forgeStore.select(cell.name)}
             aria-pressed={cell.name === selected}
-            title={cell.held ? `${cell.name}, holding its own version` : cell.name}
+            title={
+              cell.outside
+                ? `${cell.name}, your own drawing`
+                : cell.held
+                  ? `${cell.name}, holding its own version`
+                  : cell.name
+            }
             data-forge-cell={cell.name}
             className={tile(
               cell.name === selected,
@@ -587,6 +603,16 @@ function Alphabet({
                   "absolute bottom-1 right-1 size-1.5 rounded-[1px]",
                   "bg-[color:var(--accent)]",
                 )}
+              />
+            )}
+            {/* A letter that is no longer drawn at all is marked along the
+                foot rather than with a dot, because it is not a variation on
+                the family the way the other two are -- it has left it, and no
+                edit made here will reach it again until it comes back. */}
+            {cell.outside && (
+              <span
+                className="absolute inset-x-1.5 bottom-0.5 h-0.5 rounded-full bg-[color:var(--muted-foreground)]"
+                data-forge-outside={cell.name}
               />
             )}
           </button>

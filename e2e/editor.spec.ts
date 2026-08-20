@@ -981,6 +981,106 @@ test("draws one letter from another skeleton and leaves the rest alone", async (
   await expect.poll(a).not.toBe(doubled);
 });
 
+/**
+ * A setting that is on or off, rather than a quantity.
+ *
+ * Worth its own test because the panel draws these from a list, and the list
+ * gained a switch before the panel knew how to draw one. Handed to a slider,
+ * a setting with no number took the whole view down -- so the check is not
+ * only that the switch works, but that the view is still standing.
+ */
+test("offers the settings that are on or off as switches", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openForge(page);
+
+  const panel = page.getByRole("complementary", { name: "Forge" });
+  const oneWidth = panel.getByRole("switch", { name: "One width" });
+  await expect(oneWidth).toBeVisible();
+  await expect(oneWidth).toHaveAttribute("aria-checked", "false");
+
+  // Every letter on one advance: an i is as wide as an m afterwards, and was
+  // not before.
+  const advance = (letter: string) =>
+    page.locator(`[data-forge-cell="${letter}"] svg`).getAttribute("viewBox");
+  const narrow = await advance("i");
+  expect(narrow).not.toBe(await advance("m"));
+
+  await oneWidth.click();
+  await expect(oneWidth).toHaveAttribute("aria-checked", "true");
+  await expect.poll(() => advance("i")).toBe(await advance("m"));
+
+  await expect(page.locator("[data-forge-stage]")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+/**
+ * The escape hatch, end to end.
+ *
+ * Download the letter, change it outside the application, put it back, and
+ * check that what returns is the changed drawing sitting in the same slot --
+ * then hand it back to the family and check the drawn letter returns.
+ *
+ * Worth doing in a browser rather than against the model, because the two
+ * halves of this trip are a Blob download and a file input, and neither of
+ * those exists anywhere the unit tests run.
+ */
+test("takes a letter out as SVG, changes it, and puts it back", async ({ page }) => {
+  await openForge(page);
+  await page.locator('[data-forge-cell="a"]').click();
+
+  const drawn = () => page.locator('[data-forge-cell="a"] path').getAttribute("d");
+  const before = await drawn();
+
+  const download = await Promise.race([
+    page.waitForEvent("download", { timeout: 30_000 }),
+    page
+      .locator('[data-forge-send-svg="a"]')
+      .click()
+      .then(() => page.waitForEvent("download", { timeout: 30_000 })),
+  ]);
+  expect(download.suggestedFilename()).toBe("a.svg");
+
+  const sheet = readFileSync((await download.path())!, "utf8");
+  expect(sheet).toContain('data-typeforge-name="a"');
+
+  // Somebody has drawn something else. A triangle is enough: it is nothing
+  // the recipes would ever produce, so seeing it on the stage proves the
+  // drawing arrived rather than the letter being redrawn.
+  const wedge = sheet.replace(
+    /<path id="typeforge-ink"[^>]*\/>/,
+    '<path id="typeforge-ink" data-typeforge="ink" d="M100 700 L400 700 L400 300 Z"/>',
+  );
+  expect(wedge).not.toBe(sheet);
+
+  await page.setInputFiles('[data-forge-svg-input="a"]', {
+    name: "a.svg",
+    mimeType: "image/svg+xml",
+    buffer: Buffer.from(wedge),
+  });
+
+  // The letter is the drawing now, the panel says so, and the alphabet marks it.
+  await expect.poll(drawn).not.toBe(before);
+  await expect(page.locator('[data-forge-imported="a"]')).toBeVisible();
+  await expect(page.locator('[data-forge-outside="a"]')).toBeVisible();
+
+  // And nothing in the panel reaches it: the family still moves, this does not.
+  const weight = page.getByRole("slider", { name: "Weight" });
+  await weight.focus();
+  const wedged = await drawn();
+  const otherBefore = await page.locator('[data-forge-cell="n"] path').getAttribute("d");
+  for (let step = 0; step < 20; step++) await page.keyboard.press("ArrowRight");
+  await expect
+    .poll(() => page.locator('[data-forge-cell="n"] path').getAttribute("d"))
+    .not.toBe(otherBefore);
+  expect(await drawn()).toBe(wedged);
+
+  // Handing it back to the family draws it again.
+  await page.locator('[data-forge-redraw="a"]').click();
+  await expect(page.locator('[data-forge-imported="a"]')).toHaveCount(0);
+  await expect.poll(drawn).not.toBe(wedged);
+});
+
 test("zooms into the letter and back out again", async ({ page }) => {
   await openForge(page);
   const stage = page.locator("[data-forge-stage]");

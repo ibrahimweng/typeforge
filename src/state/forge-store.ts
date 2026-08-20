@@ -19,9 +19,12 @@ import {
   editMetrics,
   editPart,
   editPen,
+  importLetter,
+  relinkLetter,
   startFrom,
   type Forge,
 } from "@/forge/document";
+import { letterSvg, readLetterSvg, type Arrival } from "@/forge/exchange";
 import type { PartName } from "@/forge/parts";
 import { baseNamed } from "@/forge/document";
 import { SANS, type Metrics, type Parts, type Style } from "@/forge/style";
@@ -219,6 +222,47 @@ class ForgeStore {
 
   changeMetrics(patch: Partial<Metrics>, phase: Phase = "single"): void {
     this.commit(editMetrics(this.state.forge, patch), phase);
+  }
+
+  // --- the trip out and back ----------------------------------------------
+
+  /** This letter as an SVG sheet, with the metrics on it as guides. */
+  letterAsSvg(letter?: string): string | null {
+    return letterSvg(letter ?? this.state.letter, this.state.forge);
+  }
+
+  /**
+   * Read a sheet without taking it.
+   *
+   * Separate from taking it so the dialog can say what is about to happen --
+   * which letter this is for, and whether that is the letter it is being
+   * dropped onto -- before anything changes.
+   */
+  readSheet(text: string, into?: string): Arrival | null {
+    return readLetterSvg(text, this.state.forge, into);
+  }
+
+  /**
+   * Take a drawn letter into the font.
+   *
+   * Undoable like every other change, and it needs to be more than most: this
+   * is the one edit that replaces a description with an outline, and finding
+   * out you would rather have kept the description should cost one keystroke.
+   */
+  takeLetter(arrival: Arrival, from: string): void {
+    this.commit(
+      importLetter(this.state.forge, arrival.letter, {
+        contours: arrival.contours,
+        advanceWidth: arrival.advanceWidth,
+        from,
+      }),
+    );
+    this.set({ letter: arrival.letter });
+  }
+
+  /** Put an imported letter back under the family's control, to be drawn again. */
+  redrawLetter(letter?: string): void {
+    this.commit(relinkLetter(this.state.forge, letter ?? this.state.letter));
   }
 
   // --- history ------------------------------------------------------------

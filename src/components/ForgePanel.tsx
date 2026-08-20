@@ -19,6 +19,7 @@ import { segment } from "@/components/controls";
 import { contoursToSvgPath } from "@/font/geometry";
 import { drawLetter } from "@/forge/build";
 import { formOf, isException, partsOf, reach, styleFor } from "@/forge/document";
+import type { Imported } from "@/forge/exchange";
 import { formsOf } from "@/forge/letters";
 import {
   METRIC_CONTROLS,
@@ -127,7 +128,7 @@ export function ForgePanel(): React.JSX.Element {
               key={control.key}
               control={control}
               value={(forge.style.pen as unknown as Record<string, number>)[control.key]}
-              onChange={(next, phase) => forgeStore.changePen({ [control.key]: next }, phase)}
+              onChange={(next, phase) => forgeStore.changePen({ [control.key]: next } as never, phase)}
             />
           ))}
         </Section>
@@ -182,13 +183,15 @@ export function ForgePanel(): React.JSX.Element {
             <Field
               key={control.key}
               control={control}
-              value={(forge.style.metrics as unknown as Record<string, number>)[control.key]}
-              onChange={(next, phase) => forgeStore.changeMetrics({ [control.key]: next }, phase)}
+              value={(forge.style.metrics as unknown as Record<string, number | boolean>)[control.key]}
+              onChange={(next, phase) => forgeStore.changeMetrics({ [control.key]: next } as never, phase)}
             />
           ))}
         </Section>
 
         <Forms letter={letter} />
+
+        <Trip key={letter} letter={letter} />
 
       </div>
     </aside>
@@ -262,6 +265,136 @@ function Forms({ letter }: { letter: string }): React.JSX.Element | null {
       </p>
     </section>
   );
+}
+
+/**
+ * Taking one letter out of the system, and putting it back.
+ *
+ * The one thing a parametric font tool cannot do is the letter you have in
+ * your head that no arrangement of sliders reaches. So a letter can leave as a
+ * drawing, be worked on in whatever tool draws best, and come back into the
+ * space it left -- keeping its advance, so the rhythm of the font does not
+ * change under it.
+ *
+ * What it costs is said plainly rather than discovered later. A letter that
+ * came in from outside is an outline, not a description: the weight control
+ * cannot reach it and neither can the serif, because there is no pen. That is
+ * worth knowing before the next family-wide edit quietly misses it, and it is
+ * one button to undo.
+ */
+function Trip({ letter }: { letter: string }): React.JSX.Element {
+  const state = useForge();
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const [problem, setProblem] = React.useState<string | null>(null);
+  const [notice, setNotice] = React.useState<string | null>(null);
+  const outside: Imported | undefined = state.forge.imported[letter];
+
+  const send = (): void => {
+    const svg = forgeStore.letterAsSvg(letter);
+    if (!svg) return;
+    const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${nameForFile(letter)}.svg`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const receive = async (file: File | undefined): Promise<void> => {
+    setProblem(null);
+    setNotice(null);
+    if (!file) return;
+    const text = await file.text();
+    // Read before taking, so a file that turns out to be for a different
+    // letter can say so rather than land somewhere surprising.
+    const arrival = forgeStore.readSheet(text, letter);
+    if (!arrival) {
+      setProblem("Nothing in that file could be read as an outline.");
+      return;
+    }
+    forgeStore.takeLetter(arrival, file.name);
+    if (arrival.mismatched) {
+      setNotice(`That file was drawn for ${arrival.note?.name}. It has gone into ${letter}.`);
+    }
+  };
+
+  return (
+    <section className="border-b border-border p-3" data-forge-trip={letter}>
+      <h3 className="pb-2 text-2xs font-medium">Draw {letter} yourself</h3>
+      <div className="flex gap-1.5">
+        <button
+          type="button"
+          onClick={send}
+          data-forge-send-svg={letter}
+          className="flex-1 rounded-md border border-border px-2 py-1.5 text-2xs transition-colors hover:border-muted-foreground hover:bg-card"
+        >
+          Download SVG
+        </button>
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          data-forge-take-svg={letter}
+          className="flex-1 rounded-md border border-border px-2 py-1.5 text-2xs transition-colors hover:border-muted-foreground hover:bg-card"
+        >
+          Put one back
+        </button>
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".svg,image/svg+xml"
+        className="hidden"
+        data-forge-svg-input={letter}
+        onChange={(event) => {
+          void receive(event.target.files?.[0]);
+          event.target.value = "";
+        }}
+      />
+
+      {problem && (
+        <p className="pt-2 text-2xs leading-snug text-[color:var(--destructive)]">{problem}</p>
+      )}
+      {notice && <p className="pt-2 text-2xs leading-snug text-muted-foreground">{notice}</p>}
+
+      {outside ? (
+        <div className="pt-2" data-forge-imported={letter}>
+          <p className="text-2xs leading-snug text-muted-foreground">
+            {letter} is your drawing, from {outside.from}. It keeps its advance, and
+            nothing in this panel reaches it any more -- there is no pen behind
+            it to change.
+          </p>
+          <button
+            type="button"
+            onClick={() => forgeStore.redrawLetter(letter)}
+            data-forge-redraw={letter}
+            className="mt-1.5 w-full rounded-md border border-border px-2 py-1.5 text-2xs transition-colors hover:border-muted-foreground hover:bg-card"
+          >
+            Draw it from the family again
+          </button>
+        </div>
+      ) : (
+        <p className="pt-2 text-2xs leading-snug text-muted-foreground">
+          The sheet carries the baseline, the x-height and the sidebearings as
+          guides. Edit the black outline anywhere, and it comes back into this
+          letter's space at the width it left with.
+        </p>
+      )}
+    </section>
+  );
+}
+
+/**
+ * What the downloaded file is called.
+ *
+ * The names are already safe to write to disk -- the marks travel as `period`
+ * and `question` rather than as themselves -- so the only thing left to settle
+ * is case. A and a are different letters and would land in the same file on a
+ * filesystem that does not think so, which is most of them. An underscore
+ * after each capital is how the UFO format has always answered this, and
+ * somebody drawing type will have seen it before.
+ */
+function nameForFile(letter: string): string {
+  return letter.replace(/[A-Z]/g, (capital) => `${capital}_`);
 }
 
 /** One part, with what it reaches and the controls that change it. */
@@ -444,16 +577,52 @@ function Field({
   onChange,
 }: {
   control: FieldControl;
-  value: number;
-  onChange: (value: number, phase: Phase) => void;
+  /*
+   * Undefined is a real state, not a mistake to be asserted away.
+   *
+   * A control whose setting is optional has no value on a base that never set
+   * it, and the panel reads the style rather than a defaulted copy of it. The
+   * first optional setting to arrive found this out the hard way: fed to a
+   * slider, an absent value took the whole view down.
+   */
+  value: number | boolean | undefined;
+  onChange: (value: number | boolean, phase: Phase) => void;
 }): React.JSX.Element {
   const state = useForge();
   const scale = control.emRelative ? state.forge.style.metrics.unitsPerEm : 1;
+
+  if (control.toggle) {
+    const on = Boolean(value);
+    return (
+      <label className="flex items-center justify-between gap-2 py-1.5">
+        <span className="min-w-0 flex-1 text-2xs text-foreground">{control.label}</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={on}
+          aria-label={control.label}
+          onClick={() => onChange(!on, "single")}
+          className={cn(
+            "h-4 w-7 shrink-0 rounded-full transition-colors",
+            on ? "bg-[color:var(--accent)]" : "bg-card",
+          )}
+        >
+          <span
+            className={cn(
+              "block size-3 rounded-full bg-background transition-transform",
+              on ? "translate-x-3.5" : "translate-x-0.5",
+            )}
+          />
+        </button>
+      </label>
+    );
+  }
+
   return (
     <div className="py-1">
       <Slider
         name={control.label}
-        value={value}
+        value={Number(value ?? control.min * scale)}
         min={control.min * scale}
         max={control.max * scale}
         step={Math.max(control.step * scale, 0.001)}

@@ -288,6 +288,52 @@ describe("the one rule", () => {
   });
 });
 
+/**
+ * Every control has something to show, on every base.
+ *
+ * The panel reads the style straight rather than a copy with defaults filled
+ * in, which is right -- a control should show what the font actually says --
+ * and means an optional setting has no value on a base that never set one.
+ * That is fine for a toggle, which reads absence as off. It is not fine for a
+ * slider, and the first optional setting to arrive proved it: fed an undefined
+ * value, the slider threw while rendering and React unmounted the whole view,
+ * so drawing a font went from working to a blank screen.
+ *
+ * A test at the type level would not have caught it, because the panel reaches
+ * the value through an index into a record and an index into a record is
+ * always allowed to come back undefined.
+ *
+ * This is the data half of the rule: anything the panel will draw as a slider
+ * has a number on every base. The other half -- that a control declared as a
+ * toggle is actually drawn as one -- is a fact about the panel, so it is
+ * checked in the browser suite where the panel exists.
+ */
+describe("every control has a value to show", () => {
+  const controls: Array<[string, FieldControl[], (style: Style) => Record<string, unknown>]> = [
+    ["pen", PEN_CONTROLS, (style) => style.pen as unknown as Record<string, unknown>],
+    ["metrics", METRIC_CONTROLS, (style) => style.metrics as unknown as Record<string, unknown>],
+  ];
+
+  for (const [where, list, read] of controls) {
+    for (const control of list) {
+      it(`${where} / ${control.label}`, () => {
+        for (const base of BASES) {
+          const value = read(base)[control.key];
+          if (control.toggle) {
+            // A toggle is allowed to be missing: absent means off, and the
+            // panel draws a switch rather than a slider for it.
+            expect([undefined, true, false], `${base.name}`).toContain(value);
+          } else {
+            expect(typeof value, `${base.name} has no ${control.key}`).toBe("number");
+            expect(Number.isFinite(value as number), `${base.name}`).toBe(true);
+          }
+        }
+      });
+    }
+  }
+
+});
+
 describe("no control is decoration", () => {
   it("every control in the panel changes at least one letter", () => {
     const dead: string[] = [];
