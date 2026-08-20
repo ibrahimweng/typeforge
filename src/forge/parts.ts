@@ -188,6 +188,37 @@ export const PART_SPECS: PartSpec[] = [
     ],
   },
   {
+    name: "flare",
+    label: "Flare",
+    hint: "A stroke that swells as it reaches its own end. Flared at both ends a stem is waisted, which is how a face varies its weight along a stroke without the pen having to change width.",
+    controls: [
+      {
+        key: "spread",
+        label: "Spread",
+        hint: "How much wider the stroke gets at the very end, against the stem. Nought is no flare at all.",
+        min: 0,
+        max: 0.9,
+        step: 0.01,
+      },
+      {
+        key: "depth",
+        label: "Reach",
+        hint: "How far back along the stroke the swelling carries. Long enough and the stem never stops swelling, which is a waist.",
+        min: 0.15,
+        max: 3,
+        step: 0.05,
+      },
+      {
+        key: "curve",
+        label: "Hollow",
+        hint: "Nought leaves a straight wedge, which reads as something stuck on the end. Opening it out hollows the edge until the stroke looks like it swelled on its own.",
+        min: 0,
+        max: 1,
+        step: 0.01,
+      },
+    ],
+  },
+  {
     name: "wave",
     label: "Wave",
     hint: "Runs that undulate instead of running straight. Built from arcs, so a wavy stroke is as exact at a heavy weight as at a hairline, and a wave too deep for the pen flattens rather than folding.",

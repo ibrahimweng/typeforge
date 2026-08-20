@@ -58,7 +58,15 @@ export interface Recipe {
 export type LetterName = string;
 
 /** The parts a letter can be built from, which are the things an edit lands on. */
-export type PartName = "slab" | "shoulder" | "bowl" | "corner" | "terminal" | "crossbar" | "wave";
+export type PartName =
+  | "slab"
+  | "shoulder"
+  | "bowl"
+  | "corner"
+  | "terminal"
+  | "crossbar"
+  | "flare"
+  | "wave";
 
 /*
  * Which parts the letter being drawn has asked for.
@@ -467,6 +475,7 @@ function endFor(style: Style): Terminal {
  */
 function ink(frame: Frame, spine: Spine, start: Terminal = BUTT, end: Terminal = BUTT): Stroke {
   if (spine.closed) uses("bowl");
+  else if (frame.style.parts.flare.spread > 0) uses("flare");
   if (hasCorner(spine)) uses("corner");
   return {
     /*

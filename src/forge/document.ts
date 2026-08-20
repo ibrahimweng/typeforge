@@ -233,6 +233,7 @@ function clone(style: Style): Style {
       corner: { ...style.parts.corner },
       terminal: { ...style.parts.terminal },
       crossbar: { ...style.parts.crossbar },
+      flare: { ...style.parts.flare },
       wave: { ...style.parts.wave },
     },
   };

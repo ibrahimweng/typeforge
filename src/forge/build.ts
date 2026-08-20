@@ -84,6 +84,7 @@ export function drawLetter(name: string, style: Style, form?: string): Drawn | n
   const upright: Contour[] = [];
   for (const stroke of built.strokes) {
     upright.push(...sweep(stroke));
+    upright.push(...flaresFor(stroke, style));
     upright.push(...serifsFor(stroke, style));
   }
   const contours = insideTheEdge(leaning(upright, style), style);
@@ -197,6 +198,120 @@ function figureAdvance(style: Style): number {
   }
   figureCache.set(style, widest);
   return widest;
+}
+
+/**
+ * The flares on one stroke: the swelling where it arrives at its own end.
+ *
+ * Laid over the stroke rather than drawn into it, for the same reason a serif
+ * is. The sweep offsets a spine by a pen of one width, and that one width is
+ * what makes the offset exact -- a pen that changed width along the run would
+ * offset a line to something that is not a line and an arc to something that
+ * is not an arc, and every promise this half of the application makes would
+ * have to be given up to get one letter to swell.
+ *
+ * A shape overlapping the end says the same thing and costs nothing, and it
+ * works on a curved end as well as a straight one, which a serif cannot: a bar
+ * laid across a curve reads as snapped off, but a stroke that thickens as it
+ * arrives is just a stroke thickening.
+ */
+function flaresFor(stroke: Stroke, style: Style): Contour[] {
+  const { spread, depth, curve } = style.parts.flare;
+  if (spread <= 0 || depth <= 0 || stroke.spine.closed) return [];
+  const stem = style.pen.weight;
+  const out: Contour[] = [];
+  for (const [terminal, at, outward, straightEnd] of endsOf(stroke)) {
+    /*
+     * Only a straight end swells, which is the rule a serif follows too.
+     *
+     * On a curve the end faces whichever way the curve happened to be going,
+     * and a swelling laid across that reads as a spur flying off rather than
+     * as the stroke thickening -- the c, e, s, C, G and S all came out looking
+     * chipped. A curved terminal is finished by the terminal, which is what
+     * the terminal is for.
+     */
+    if (!straightEnd) continue;
+    // And only a real end. The arm of an E begins inside the stem and the eye
+    // of an e inside the bowl; swelling those puts the shape in the counter.
+    if (terminal.open !== true) continue;
+    // Cut level with a line, the swelling lies along that line as well, for
+    // the same reason and by the same measurement as a serif does.
+    const level = terminal.level === true && Math.abs(outward.y) > 1e-3;
+    const facing = level ? { x: 0, y: Math.sign(outward.y) } : outward;
+    const inner = level ? levelHalfWidth(stroke, outward) : penReach(stroke.pen).across;
+    const reach = spread * stem;
+    const back = depth * stem;
+    for (const side of [1, -1]) {
+      // A flare never crosses a line the stroke is standing on, which is the
+      // same rule a serif follows and for the same reason: one of its two
+      // sides would hang under the baseline the letter is standing on.
+      if (crossesALine(at, facing, side, inner + reach, style)) continue;
+      // Wound with the stroke it swells, or it would cancel the ink it is
+      // meant to be adding to and open a hole where the two overlap.
+      const shape = flare(at, facing, side, inner, reach, back, curve);
+      out.push(contourArea(shape) < 0 ? reverseContour(shape) : shape);
+    }
+  }
+  return out;
+}
+
+/**
+ * One side of a flare.
+ *
+ * Written in the stroke's own frame, like a serif wing: `across` runs out from
+ * the spine and `into` runs back up the stroke. The shape starts on the spine
+ * so that it is buried in ink at the inner edge and cannot leave a seam where
+ * it meets the stroke it belongs to.
+ *
+ * The hollow is a quarter ellipse rather than a quarter circle, because the
+ * two measurements it spans are independent: a flare can be shallow and wide
+ * or deep and narrow, and a circle would force it to be neither.
+ */
+function flare(
+  at: Vec2,
+  outward: Vec2,
+  side: number,
+  inner: number,
+  reach: number,
+  back: number,
+  curve: number,
+): Contour {
+  const across = { x: -outward.y * side, y: outward.x * side };
+  const into = { x: -outward.x, y: -outward.y };
+  const place = (u: number, v: number): Vec2 => ({
+    x: at.x + across.x * u + into.x * v,
+    y: at.y + across.y * u + into.y * v,
+  });
+  const tip = place(inner + reach, 0);
+  const meets = place(inner, back);
+  // A quarter ellipse at one, a straight wedge at nought, and the handles
+  // scaled between the two so the control reads as opening the edge out.
+  const pull = 0.5523 * curve;
+  return {
+    nodes: [
+      node(place(0, 0)),
+      {
+        point: tip,
+        handleIn: null,
+        handleOut: {
+          x: tip.x - across.x * reach * pull,
+          y: tip.y - across.y * reach * pull,
+        },
+        type: curve > 0 ? "tangent" : "corner",
+      },
+      {
+        point: meets,
+        handleIn: {
+          x: meets.x - into.x * back * pull,
+          y: meets.y - into.y * back * pull,
+        },
+        handleOut: null,
+        type: curve > 0 ? "tangent" : "corner",
+      },
+      node(place(0, back)),
+    ],
+    closed: true,
+  };
 }
 
 /**

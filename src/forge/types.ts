@@ -101,6 +101,22 @@ export interface Terminal {
    * `slab`. A round cap is dealt with by pulling the spine back instead.
    */
   level?: boolean;
+  /**
+   * Whether this is a real end of the letter rather than one buried inside
+   * another stroke.
+   *
+   * Half the stroke ends in the alphabet are not ends at all: the arm of an E
+   * starts inside the stem, the crossbar of an A starts and finishes inside
+   * its two diagonals, and the eye of an e runs into the bowl at both ends.
+   * They are cut square because nothing there is ever seen. Anything that adds
+   * shape to an end -- a flare, a ball -- has to know the difference, or it
+   * puts that shape inside the counter.
+   *
+   * A serif does not need to ask, because it only goes on the slab terminal
+   * the style names and the buried ends are plain cuts. Everything since has
+   * needed to.
+   */
+  open?: boolean;
   /** For `angled`, degrees away from square. Ignored otherwise. */
   angle?: number;
   /** For `slab`: how far the bar reaches past the stroke on each side. */

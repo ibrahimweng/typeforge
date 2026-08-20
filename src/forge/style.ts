@@ -134,6 +134,31 @@ export interface Parts {
     weight: number;
   };
   /**
+   * The flare: a stroke that widens as it arrives at its own end.
+   *
+   * The other way a face can vary its weight along a stroke. A pen of one
+   * width drawn along a skeleton gives a stroke of one width, which is the
+   * whole of what makes this construction exact -- so the widening is drawn as
+   * a shape laid over the end rather than by asking the pen to change its mind
+   * halfway along, and it is exact for the same reason a serif is.
+   *
+   * Flared at both ends, a stem is widest where it meets its lines and
+   * narrowest in the middle, which is what a waisted stem is. Hollow the
+   * flare's outer edge and it stops reading as a wedge stuck on the end and
+   * starts reading as the stroke itself swelling, which is the difference
+   * between a slab and the art-nouveau faces this was built for.
+   *
+   * Measured in stem widths, like the serif, so it holds at every weight.
+   */
+  flare: {
+    /** How much wider the stroke gets at its very end, in stem widths. */
+    spread: number;
+    /** How far back along the stroke the widening reaches, in stem widths. */
+    depth: number;
+    /** Nought is a straight wedge; one hollows it into a quarter ellipse. */
+    curve: number;
+  };
+  /**
    * The wave, for the faces whose strokes undulate rather than run straight.
    *
    * A family of its own rather than a decoration on top of one: a flat run gone
@@ -170,10 +195,11 @@ export interface Style {
  */
 export function terminalFor(style: Style): Terminal {
   const { terminal, slab } = style.parts;
-  if (!slab.on) return { kind: terminal.kind, angle: terminal.angle };
+  if (!slab.on) return { kind: terminal.kind, angle: terminal.angle, open: true };
   const stem = style.pen.weight;
   return {
     kind: "slab",
+    open: true,
     projection: slab.projection * stem,
     thickness: slab.thickness * stem,
     bracket: slab.bracket * stem,
@@ -219,6 +245,7 @@ export const SANS: Style = {
     corner: { radius: 0, join: "miter" },
     terminal: { kind: "butt", angle: 0 },
     crossbar: { height: 0.52, weight: 1 },
+    flare: { spread: 0, depth: 0.9, curve: 0.85 },
     wave: { length: 130, depth: 0, along: "flat" },
   },
 };
@@ -381,6 +408,28 @@ export const WAVY: Style = {
   },
 };
 
+/**
+ * Flared: condensed, with contrast, and every stroke swelling where it stops.
+ *
+ * The art-nouveau end of display. The letters are narrow and the pen has
+ * contrast, so the curves already thin where they turn; the flare then puts
+ * the weight back at the ends of every stem, hollowed enough that it reads as
+ * the stroke swelling rather than as a serif stuck on.
+ */
+export const FLARED: Style = {
+  ...SANS,
+  name: "Flared",
+  blurb: "Condensed and swelling at every stroke end, the art-nouveau way.",
+  metrics: { ...SANS.metrics, width: 0.78, capHeight: 740, xHeight: 500, sidebearing: 42 },
+  pen: { weight: 118, contrast: 0.34, angle: 0 },
+  parts: {
+    ...SANS.parts,
+    bowl: { width: 0.94, squareness: 0.1 },
+    corner: { radius: 0, join: "miter" },
+    flare: { spread: 0.3, depth: 1.1, curve: 0.95 },
+  },
+};
+
 export const BASES: Style[] = [
   SANS,
   SERIF,
@@ -391,4 +440,5 @@ export const BASES: Style[] = [
   FAIRGROUND,
   MARKER,
   WAVY,
+  FLARED,
 ];

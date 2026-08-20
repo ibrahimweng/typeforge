@@ -85,7 +85,11 @@ describe("which letters have which parts", () => {
     // if the serif face did not have serifs.
     const waving: Style = {
       ...SERIF,
-      parts: { ...SERIF.parts, wave: { ...SERIF.parts.wave, depth: 26 } },
+      parts: {
+        ...SERIF.parts,
+        wave: { ...SERIF.parts.wave, depth: 26 },
+        flare: { ...SERIF.parts.flare, spread: 0.4 },
+      },
     };
     for (const spec of PART_SPECS) {
       expect(lettersUsing(spec.name, waving).length, `nothing uses ${spec.name}`).toBeGreaterThan(0);
