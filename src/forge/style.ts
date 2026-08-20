@@ -15,7 +15,7 @@
  * overrides, which is the exception rather than the rule.
  */
 
-import type { Pen, Terminal, TerminalKind } from "./types";
+import type { JoinKind, Pen, Terminal, TerminalKind } from "./types";
 
 /** The heights and widths every letter is built against. */
 export interface Metrics {
@@ -68,8 +68,27 @@ export interface Parts {
     reach: number;
   };
   bowl: {
-    /** How round the enclosed shapes are: one is a circle, less is an oval. */
-    roundness: number;
+    /**
+     * How wide an enclosed shape is against its height. One is as wide as it is
+     * tall, which is a circle; less is an upright oval and more is a squat one.
+     */
+    width: number;
+    /**
+     * How square it is. Nought is round, one is as square as a stroke of this
+     * width can be asked to turn -- which is what separates a geometric face
+     * from a technical one, and is not reachable by adjusting a circle.
+     */
+    squareness: number;
+  };
+  corner: {
+    /**
+     * How far a corner in a stroke is rounded off, in font units. Nought leaves
+     * it a point. Opened far enough the whole letter reads as one ribbon bent
+     * round rather than as strokes joined together.
+     */
+    radius: number;
+    /** How the outside of a corner that is not rounded off is finished. */
+    join: JoinKind;
   };
   terminal: {
     kind: TerminalKind;
@@ -135,7 +154,8 @@ export const SANS: Style = {
   parts: {
     slab: { on: false, projection: 60, thickness: 40, bracket: 0 },
     shoulder: { spring: 0.62, reach: 1 },
-    bowl: { roundness: 1 },
+    bowl: { width: 1, squareness: 0 },
+    corner: { radius: 0, join: "miter" },
     terminal: { kind: "butt", angle: 0 },
     crossbar: { height: 0.52, weight: 1 },
   },
@@ -173,12 +193,13 @@ export const SERIF: Style = {
 export const DISPLAY: Style = {
   ...SANS,
   name: "Display",
-  metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 300, sidebearing: 40 },
-  pen: { weight: 190, contrast: 0, angle: 0 },
+  metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 340, sidebearing: 40 },
+  pen: { weight: 175, contrast: 0, angle: 0 },
   parts: {
     ...SANS.parts,
-    shoulder: { spring: 0.7, reach: 1 },
-    bowl: { roundness: 1 },
+    shoulder: { spring: 0.7, reach: 1.05 },
+    bowl: { width: 1.06, squareness: 0.2 },
+    corner: { radius: 0, join: "round" },
     terminal: { kind: "round", angle: 0 },
   },
 };

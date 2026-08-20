@@ -36,6 +36,8 @@ export interface PartControl {
   emRelative?: boolean;
   /** True for an on-or-off switch rather than a slider. */
   toggle?: boolean;
+  /** A choice between named shapes, rather than a number at all. */
+  options?: Array<{ value: string; label: string; hint: string }>;
 }
 
 export interface PartSpec {
@@ -114,15 +116,52 @@ export const PART_SPECS: PartSpec[] = [
   {
     name: "bowl",
     label: "Bowl",
-    hint: "The enclosed round shapes: o, the belly of a b, the ring of a zero.",
+    hint: "The enclosed shapes: o, the belly of a b, the ring of a zero, the right-hand side of a B or a D.",
     controls: [
       {
-        key: "roundness",
-        label: "Roundness",
-        hint: "One is a circle; less pulls the sides in towards an oval.",
-        min: 0.7,
-        max: 1.15,
+        key: "squareness",
+        label: "Squareness",
+        hint: "Nought is a circle. Turned up, the sides straighten and the corners tighten, until the o is a rectangle with rounded corners. This is the single control that separates a geometric face from a technical one, and there is no way to reach the second by adjusting a circle.",
+        min: 0,
+        max: 1,
+        step: 0.01,
+      },
+      {
+        key: "width",
+        label: "Width",
+        hint: "How wide a bowl is against its height. One is as wide as it is tall; less is an upright oval, more is a squat one.",
+        min: 0.55,
+        max: 1.45,
         step: 0.005,
+      },
+    ],
+  },
+  {
+    name: "corner",
+    label: "Corner",
+    hint: "Where a stroke changes direction: the apex of an A, the elbow of a k, the turns of a Z. Rounding these off far enough stops the letter reading as strokes joined together and starts it reading as one ribbon bent round.",
+    controls: [
+      {
+        key: "radius",
+        label: "Rounding",
+        hint: "How wide an arc the stroke turns through. Nought leaves a point. A stroke cannot turn tighter than half its own width without the inside of the turn folding, so anything under that is drawn at that.",
+        min: 0,
+        max: 0.3,
+        step: 0.002,
+        emRelative: true,
+      },
+      {
+        key: "join",
+        label: "Point",
+        hint: "How the outside of a corner that has not been rounded off is finished.",
+        min: 0,
+        max: 0,
+        step: 0,
+        options: [
+          { value: "miter", label: "Sharp", hint: "Carried out to where the two edges meet." },
+          { value: "round", label: "Round", hint: "The pen itself, turned about the corner." },
+          { value: "bevel", label: "Cut", hint: "Taken straight across." },
+        ],
       },
     ],
   },
@@ -249,6 +288,6 @@ function order(part: PartName): number {
 }
 
 /** A part's current value as a plain record, for reading a control out of it. */
-export function valuesOf(part: PartName, parts: Parts): Record<string, number | boolean> {
-  return parts[part] as unknown as Record<string, number | boolean>;
+export function valuesOf(part: PartName, parts: Parts): Record<string, number | boolean | string> {
+  return parts[part] as unknown as Record<string, number | boolean | string>;
 }

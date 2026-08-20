@@ -178,6 +178,7 @@ function clone(style: Style): Style {
       slab: { ...style.parts.slab },
       shoulder: { ...style.parts.shoulder },
       bowl: { ...style.parts.bowl },
+      corner: { ...style.parts.corner },
       terminal: { ...style.parts.terminal },
       crossbar: { ...style.parts.crossbar },
     },

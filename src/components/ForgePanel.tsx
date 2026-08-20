@@ -235,11 +235,42 @@ function Control({
 }: {
   part: PartName;
   control: PartControl;
-  values: Record<string, number | boolean>;
+  values: Record<string, number | boolean | string>;
 }): React.JSX.Element {
   const state = useForge();
   const em = state.forge.style.metrics.unitsPerEm;
   const scale = control.emRelative ? em : 1;
+
+  /*
+   * A choice between named shapes rather than a number.
+   *
+   * Drawn as a row rather than as a menu because there are three of them and
+   * the difference between them is a shape: put side by side they can be
+   * compared, and behind a menu they have to be remembered.
+   */
+  if (control.options) {
+    const chosen = String(values[control.key]);
+    return (
+      <div className="py-1">
+        <div className="pb-1 text-2xs text-foreground">{control.label}</div>
+        <div className="flex gap-0.5 rounded-md bg-card/60 p-0.5" role="group" aria-label={control.label}>
+          {control.options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              title={option.hint}
+              aria-pressed={chosen === option.value}
+              onClick={() => forgeStore.changePart(part, { [control.key]: option.value } as never)}
+              className={segment(chosen === option.value, "flex-1")}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">{control.hint}</p>
+      </div>
+    );
+  }
 
   if (control.toggle) {
     const on = Boolean(values[control.key]);

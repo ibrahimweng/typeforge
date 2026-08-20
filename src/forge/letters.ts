@@ -23,6 +23,7 @@
 import type { Vec2 } from "@/font/types";
 import type { Style } from "./style";
 import { terminalFor } from "./style";
+import { bowl, bowlBetween, reversed, roundCorners, spineEnd, spineStart } from "./shapes";
 import { MITER_LIMIT } from "./sweep";
 import type { Spine, Stroke, Terminal } from "./types";
 
@@ -47,7 +48,7 @@ export interface Recipe {
 export type LetterName = string;
 
 /** The parts a letter can be built from, which are the things an edit lands on. */
-export type PartName = "slab" | "shoulder" | "bowl" | "terminal" | "crossbar";
+export type PartName = "slab" | "shoulder" | "bowl" | "corner" | "terminal" | "crossbar";
 
 /*
  * Which parts the letter being drawn has asked for.
@@ -139,40 +140,47 @@ function pointOn(centre: Vec2, radius: number, degrees: number): Vec2 {
   return at(centre.x + radius * Math.cos(deg(degrees)), centre.y + radius * Math.sin(deg(degrees)));
 }
 
-function ring(centre: Vec2, radius: number): Spine {
-  return {
-    segments: [
-      { kind: "arc", centre, radius, startAngle: 0, endAngle: Math.PI * 2, sweepPositive: true },
-    ],
-    closed: true,
-  };
+/**
+ * A closed bowl: an o, the belly of a b, the ring of a zero.
+ *
+ * Round or square according to the style, and either way built from straight
+ * runs and circular arcs so it offsets exactly. A circle is the case where the
+ * corners are as round as the shape allows; pulling them in leaves flats along
+ * the sides, which is a different family of letter altogether and is not
+ * something a circle can be adjusted into.
+ *
+ * This is also how a figure zero has always been drawn here -- an o with its
+ * sides pulled in rather than a squashed circle -- because a squashed circle is
+ * an ellipse and an ellipse offsets to something that is not an ellipse. That
+ * construction is now the general case rather than a special one.
+ */
+function ring(f: Frame, centre: Vec2, halfWidth: number, halfHeight = halfWidth): Spine {
+  return bowl(centre, halfWidth, halfHeight, 1 - f.square, f.half);
 }
 
 /**
- * A closed oval, taller than it is wide: two half turns joined by two straight
- * runs.
+ * A turn that follows the squareness, for the curves that are really parts of a
+ * bowl: the halves of an S, the top of a two, the bowl of a five.
  *
- * A circle cannot be squashed here, because a squashed circle is an ellipse and
- * an ellipse offsets to something that is not an ellipse. Built this way the
- * shape is still only lines and arcs, so it offsets exactly like everything
- * else -- and it is how a figure zero is drawn anyway, which is as an o with
- * its sides pulled in rather than as a circle.
+ * `turn` above stays for the curves that are corners rather than bowls -- the
+ * shoulder of an arch, the hook of an f -- because those take their radius from
+ * a different decision and squaring them would be squaring the wrong thing.
+ *
+ * Angles read the way a recipe writes them: increasing is anticlockwise, and
+ * decreasing runs the other way round, which is drawn and then walked backwards
+ * so the ends stay where the recipe expects them.
  */
-function oval(centre: Vec2, halfWidth: number, halfHeight: number): Spine {
-  const straightRun = Math.max(0, halfHeight - halfWidth);
-  const top = centre.y + straightRun;
-  const bottom = centre.y - straightRun;
-  const left = centre.x - halfWidth;
-  const right = centre.x + halfWidth;
-  return {
-    segments: [
-      { kind: "line", from: at(right, bottom), to: at(right, top) },
-      { kind: "arc", centre: at(centre.x, top), radius: halfWidth, startAngle: 0, endAngle: Math.PI, sweepPositive: true },
-      { kind: "line", from: at(left, top), to: at(left, bottom) },
-      { kind: "arc", centre: at(centre.x, bottom), radius: halfWidth, startAngle: Math.PI, endAngle: Math.PI * 2, sweepPositive: true },
-    ],
-    closed: true,
-  };
+function bendWidth(f: Frame, radius: number): number {
+  return Math.max(radius * f.wide, f.least);
+}
+
+function bend(f: Frame, centre: Vec2, radius: number, fromDegrees: number, toDegrees: number): Spine {
+  const halfWidth = bendWidth(f, radius);
+  const roundness = 1 - f.square;
+  if (toDegrees >= fromDegrees) {
+    return bowlBetween(centre, halfWidth, radius, roundness, f.half, fromDegrees, toDegrees);
+  }
+  return reversed(bowlBetween(centre, halfWidth, radius, roundness, f.half, toDegrees, fromDegrees));
 }
 
 /** Join spines end to end into one stroke that turns as it goes. */
@@ -213,10 +221,37 @@ interface Frame {
    * ones.
    */
   arch: number;
-  /** Radius of a lowercase round letter, which fills the x-height. */
+  /**
+   * Half the width of a lowercase round letter.
+   *
+   * Width and height are separate numbers because a bowl need not be circular:
+   * the width control narrows or widens every enclosed shape without touching
+   * how tall it is, which is the difference between a condensed face and a
+   * wide one.
+   */
   bowl: number;
-  /** Radius of a capital round letter. */
+  /** Half the height of a lowercase round letter, which fills the x-height. */
+  bowlH: number;
+  /** Half the width of a capital round letter. */
   capBowl: number;
+  /** Half the height of one. */
+  capBowlH: number;
+  /** How square the bowls are: nought round, one as square as the pen allows. */
+  square: number;
+  /** How wide a bowl is against its height. */
+  wide: number;
+  /**
+   * The smallest half-measure any shape here may have.
+   *
+   * A shape narrower than the pen drawing it is not a narrow shape, it is one
+   * whose inner edge has passed through itself. Held at the frame rather than
+   * inside each shape, so that everything measuring itself against a bowl --
+   * where the stem of a b goes, where the straight below a six starts -- reads
+   * the same number the bowl was actually drawn at.
+   */
+  least: number;
+  /** How far a corner in a stroke is rounded off, in font units. */
+  radius: number;
   /** The terminal this style puts on a stroke end. */
   end: Terminal;
   /**
@@ -234,6 +269,10 @@ interface Frame {
 function frame(style: Style): Frame {
   const { metrics, pen } = style;
   const half = pen.weight / 2;
+  const least = half * 1.06;
+  const wide = style.parts.bowl.width;
+  const bowlH = Math.max(metrics.xHeight / 2 + metrics.overshoot, least);
+  const capBowlH = Math.max(metrics.capHeight / 2 + metrics.overshoot, least);
   return {
     style,
     half,
@@ -243,9 +282,15 @@ function frame(style: Style): Frame {
     asc: metrics.ascender,
     desc: metrics.descender,
     over: metrics.overshoot,
-    arch: (metrics.counterWidth + pen.weight) / 2,
-    bowl: metrics.xHeight / 2 + metrics.overshoot,
-    capBowl: metrics.capHeight / 2 + metrics.overshoot,
+    arch: Math.max(((metrics.counterWidth + pen.weight) / 2) * style.parts.shoulder.reach, least),
+    bowl: Math.max(bowlH * wide, least),
+    bowlH,
+    capBowl: Math.max(capBowlH * wide, least),
+    capBowlH,
+    square: style.parts.bowl.squareness,
+    wide,
+    least,
+    radius: style.parts.corner.radius,
     end: endFor(style),
     plain: { kind: style.parts.terminal.kind, angle: style.parts.terminal.angle },
   };
@@ -266,12 +311,40 @@ function endFor(style: Style): Terminal {
   return terminalFor(style);
 }
 
-/** Draw a run with the style's own pen. */
+/**
+ * Draw a run with the style's own pen.
+ *
+ * Which parts the letter turns out to need is read off the shape here rather
+ * than declared by the recipe. A closed run is a bowl; a run that changes
+ * direction between two straight pieces has a corner. Declared instead, the two
+ * would drift apart the first time a letter changed, which this file has
+ * already been bitten by twice.
+ */
 function ink(frame: Frame, spine: Spine, start: Terminal = BUTT, end: Terminal = BUTT): Stroke {
-  // A closed run is a bowl: an o, the belly of a b, the ring of a zero. Read off
-  // the shape rather than declared, so a letter that gains one is noticed.
   if (spine.closed) uses("bowl");
-  return { spine, pen: frame.style.pen, start, end };
+  if (hasCorner(spine)) uses("corner");
+  return {
+    spine: roundCorners(spine, frame.radius, frame.half),
+    pen: frame.style.pen,
+    start,
+    end,
+    join: frame.style.parts.corner.join,
+  };
+}
+
+/** Whether anything in this run turns between two straight pieces. */
+function hasCorner(spine: Spine): boolean {
+  const { segments } = spine;
+  const upTo = spine.closed ? segments.length : segments.length - 1;
+  for (let index = 0; index < upTo; index++) {
+    const before = segments[index];
+    const after = segments[(index + 1) % segments.length];
+    if (before.kind !== "line" || after.kind !== "line") continue;
+    const a = towards(before.from, before.to);
+    const b = towards(after.from, after.to);
+    if (Math.abs(a.x * b.y - a.y * b.x) > 1e-9) return true;
+  }
+  return false;
 }
 
 /**
@@ -310,7 +383,20 @@ function finish(frame: Frame, strokes: Stroke[], round = false): Recipe {
  * that is already there and never shows, while the corner it turns is the real
  * one.
  */
-const stub = (f: Frame): number => f.half * 5;
+const stub = (f: Frame): number =>
+  /*
+   * Long, and long for a reason. The inside of a corner is cut back to where
+   * the two offsets cross, and how far back that is grows without bound as the
+   * corner sharpens: half a pen divided by the tangent of half the angle. If
+   * the run is shorter than that the cut cannot be made and the crossing
+   * survives as a loop.
+   *
+   * At five half-pens a narrow M at a hairline weight came up fifteen units
+   * short of what its own top-left corner needed. A run along a stem has the
+   * whole stem to play with, so it takes a share of the letter's height and the
+   * question stops depending on the weight at all.
+   */
+  Math.max(f.half * 5, f.cap * 0.3);
 
 /**
  * Skeleton vertices for a run that should reach a given set of points.
@@ -337,21 +423,71 @@ const stub = (f: Frame): number => f.half * 5;
  */
 function through(f: Frame, tips: Vec2[]): Vec2[] {
   const points = tips.map((tip) => at(tip.x, tip.y));
-  const sharpest = 1 / MITER_LIMIT;
-  for (let pass = 0; pass < 24; pass++) {
+  for (let pass = 0; pass < 40; pass++) {
     for (let index = 1; index < tips.length - 1; index++) {
-      const a = towards(points[index], points[index - 1]);
-      const b = towards(points[index], points[index + 1]);
+      const before = points[index - 1];
+      const after = points[index + 1];
+      const a = towards(points[index], before);
+      const b = towards(points[index], after);
       const between = a.x * b.x + a.y * b.y;
-      // Kept no sharper than the sweep is willing to carry a point to, so the
-      // two agree about where the corner ends up.
-      const halfAngle = Math.max(Math.sqrt(Math.max(0, (1 - between) / 2)), sharpest);
+      // The true half-angle, not the one held back for the miter limit. A
+      // rounded corner has no miter limit, and handing it the clamped angle
+      // made it plan a rounding that the rounding itself then refused to do.
+      const halfAngle = Math.sqrt(Math.max(0, (1 - between) / 2));
       const bisector = towards(at(0, 0), at(a.x + b.x, a.y + b.y));
-      const reach = f.half / halfAngle;
-      points[index] = at(tips[index].x + bisector.x * reach, tips[index].y + bisector.y * reach);
+      /*
+       * Held to the length of the shorter arm, and moved half way each pass.
+       *
+       * Without both, this does not settle. A corner that has been rounded off
+       * reaches a different distance from a corner that has not, and near the
+       * radius where one becomes the other a vertex flips between the two
+       * answers: it moves out, which shortens its arms, which shortens the
+       * radius they can spare, which moves it back. Undamped, a w on a face
+       * with wide corners threw a spike four hundred units below the baseline.
+       */
+      const arm = Math.min(
+        Math.hypot(points[index].x - before.x, points[index].y - before.y),
+        Math.hypot(points[index].x - after.x, points[index].y - after.y),
+      );
+      const wanted = Math.max(-arm, Math.min(arm, overhang(f, halfAngle, points[index], before, after)));
+      const target = at(
+        tips[index].x + bisector.x * wanted,
+        tips[index].y + bisector.y * wanted,
+      );
+      points[index] = at(
+        (points[index].x + target.x) / 2,
+        (points[index].y + target.y) / 2,
+      );
     }
   }
   return points;
+}
+
+/**
+ * How far past its own vertex the ink at a corner reaches.
+ *
+ * A point carries out to where the two outer edges meet. A corner that has been
+ * rounded off does not: its outer edge is an arc of the radius plus half the
+ * pen, sitting further back, and once the radius is large enough the ink stops
+ * short of the vertex rather than passing it. So the two cases have different
+ * signs, and a letter drawn for one and displayed with the other is either
+ * short of the baseline or through it.
+ */
+function overhang(f: Frame, sinHalf: number, vertex: Vec2, before: Vec2, after: Vec2): number {
+  const point = f.half / Math.max(sinHalf, 1 / MITER_LIMIT);
+  if (f.radius <= 0) return point;
+  const cosHalf = Math.sqrt(Math.max(0, 1 - sinHalf * sinHalf));
+  const spare =
+    Math.min(
+      Math.hypot(vertex.x - before.x, vertex.y - before.y),
+      Math.hypot(vertex.x - after.x, vertex.y - after.y),
+    ) * 0.5;
+  // The same clamps the rounding itself applies, so the two agree about where
+  // the corner ends up rather than each assuming the other gave way.
+  const wanted = Math.max(f.radius, f.half * 1.06);
+  const radius = Math.min(wanted, (spare * sinHalf) / Math.max(cosHalf, 1e-6));
+  if (radius < f.half * 1.06 * 0.999) return point;
+  return radius + f.half - radius / sinHalf;
 }
 
 /** The one-corner case, which is most of them. */
@@ -429,7 +565,12 @@ function arch(frame: Frame, fromX: number, height: number): Stroke {
    * flat, which is a squared, industrial n; a low one rounds the whole thing.
    */
   const reach = frame.arch;
-  const radius = Math.min(reach, height * (1 - frame.style.parts.shoulder.spring));
+  // Never tighter than half the pen: below that the inside of the turn would
+  // pass through itself, which a high springing on a heavy face asks for.
+  const radius = Math.max(
+    frame.half,
+    Math.min(reach, height * (1 - frame.style.parts.shoulder.spring)),
+  );
   const landing = fromX + reach * 2;
   const top = height - radius;
   return ink(
@@ -449,7 +590,10 @@ function arch(frame: Frame, fromX: number, height: number): Stroke {
 function trough(frame: Frame, fromX: number, height: number): Stroke {
   uses("shoulder");
   const reach = frame.arch;
-  const radius = Math.min(reach, height * (1 - frame.style.parts.shoulder.spring));
+  const radius = Math.max(
+    frame.half,
+    Math.min(reach, height * (1 - frame.style.parts.shoulder.spring)),
+  );
   const rising = fromX + reach * 2;
   return ink(
     frame,
@@ -476,29 +620,70 @@ function trough(frame: Frame, fromX: number, height: number): Stroke {
  * should.
  */
 function spine(frame: Frame, height: number, left: number): { stroke: Stroke } {
-  const radius = height / 4;
-  const middle = left + radius;
-  const upper = at(middle, height - radius);
-  const lower = at(middle, radius);
+  /*
+   * Four radii from top to bottom, unless the pen will not go round one that
+   * small, in which case the s grows rather than closing up.
+   *
+   * The two turns have to stay tangent -- that is the whole construction -- so
+   * the radius cannot be raised on its own. Raising it and putting both centres
+   * back the same distance from a common middle keeps them touching and lets
+   * the letter reach a little past its x-height, which is what a display weight
+   * asks for anyway. At a pen of two hundred and sixty units the old radius was
+   * exactly half the pen, and the counter closed to nothing.
+   */
+  const radius = Math.max(height / 4, frame.least);
+  const middle = left + bendWidth(frame, radius);
+  const foot = height / 2 - radius * 2;
+  const upper = at(middle, foot + radius * 3);
+  const lower = at(middle, foot + radius);
   return {
     stroke: ink(
       frame,
-      chain(turn(upper, radius, 25, 270), turn(lower, radius, 90, -155)),
+      chain(bend(frame, upper, radius, 25, 270), bend(frame, lower, radius, 90, -155)),
       frame.end,
       frame.end,
     ),
   };
 }
 
-/** A c, a C, and the bowl of an e and a G: a ring with its right side open. */
+/**
+ * Part of a bowl: a c, a C, the belly of an e, the bowl of a G, the right-hand
+ * side of a B or a D.
+ *
+ * Cut along a ray from the centre at the angle asked for, so a c is missing the
+ * same share of its ring whether that ring is round or square.
+ */
 function openBowl(
-  frame: Frame,
+  f: Frame,
   centre: Vec2,
-  radius: number,
+  halfWidth: number,
+  halfHeight = halfWidth,
   fromDegrees = 55,
   toDegrees = 305,
 ): Stroke {
-  return ink(frame, turn(centre, radius, fromDegrees, toDegrees), frame.end, frame.end);
+  return ink(
+    f,
+    bowlBetween(centre, halfWidth, halfHeight, 1 - f.square, f.half, fromDegrees, toDegrees),
+    f.end,
+    f.end,
+  );
+}
+
+/** The same, cut square, for a bowl that runs into a stem rather than stopping. */
+function belly(
+  f: Frame,
+  centre: Vec2,
+  halfWidth: number,
+  halfHeight: number,
+  fromDegrees: number,
+  toDegrees: number,
+): Stroke {
+  return ink(
+    f,
+    bowlBetween(centre, halfWidth, halfHeight, 1 - f.square, f.half, fromDegrees, toDegrees),
+    BUTT,
+    BUTT,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -520,7 +705,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     return finish(
       f,
       [
-        ink(f, ring(centre, f.bowl)),
+        ink(f, ring(f, centre, f.bowl, f.bowlH)),
         ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
       ]);
   },
@@ -532,7 +717,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       f,
       [
         ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
-        ink(f, ring(at(stem + f.bowl, f.x / 2), f.bowl)),
+        ink(f, ring(f, at(stem + f.bowl, f.x / 2), f.bowl, f.bowlH)),
       ],
       true);
   },
@@ -540,7 +725,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   c: (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
-    return finish(f, [openBowl(f, centre, f.bowl)], true);
+    return finish(f, [openBowl(f, centre, f.bowl, f.bowlH)], true);
   },
 
   d: (style) => {
@@ -550,7 +735,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     return finish(
       f,
       [
-        ink(f, ring(centre, f.bowl)),
+        ink(f, ring(f, centre, f.bowl, f.bowlH)),
         ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
       ]);
   },
@@ -567,16 +752,24 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
      * looked like it had a crossbar and did not listen to the crossbar.
      */
     const eye = f.x * f.style.parts.crossbar.height;
-    const rise = Math.max(-0.85, Math.min(0.85, (eye - centre.y) / f.bowl));
+    const rise = Math.max(-0.85, Math.min(0.85, (eye - centre.y) / f.bowlH));
     const opens = (Math.asin(rise) * 180) / Math.PI;
+    const belt = bend(f, centre, f.bowlH, opens, opens + 300);
     return finish(
       f,
       [
-        // The bar begins at the inside of the bowl's left wall. Run to the
-        // centre-line it pokes out through the left of the letter and the e
-        // reads as a struck-through o.
-        thin(f, straight(at(centre.x - f.bowl + f.half, eye), at(centre.x + f.bowl, eye))),
-        ink(f, turn(centre, f.bowl, opens, opens + 300), BUTT, f.end),
+        /*
+         * The bar runs from inside the bowl's left wall to where the bowl
+         * itself starts, rather than to a width of its own.
+         *
+         * Taken to the centre-line it poked out through the left of the letter
+         * and the e read as a struck-through o. Taken to a fixed distance right
+         * it poked out of the other side the moment the bowl was squared, since
+         * a squared bowl at that height is not where a round one is. Measured
+         * off the bowl, it meets it whatever shape the bowl has been given.
+         */
+        thin(f, straight(at(centre.x - f.bowl + f.half, eye), spineStart(belt))),
+        ink(f, belt, BUTT, f.end),
       ],
       true,
     );
@@ -617,7 +810,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     return finish(
       f,
       [
-        ink(f, ring(centre, f.bowl)),
+        ink(f, ring(f, centre, f.bowl, f.bowlH)),
         // Down the right and round into the tail, which is one stroke so the
         // descender cannot part company with the bowl.
         ink(
@@ -721,7 +914,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   o: (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
-    return finish(f, [ink(f, ring(centre, f.bowl))], true);
+    return finish(f, [ink(f, ring(f, centre, f.bowl, f.bowlH))], true);
   },
 
   p: (style) => {
@@ -731,7 +924,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       f,
       [
         ink(f, straight(at(stem, f.desc), at(stem, f.x)), f.end, f.end),
-        ink(f, ring(at(stem + f.bowl, f.x / 2), f.bowl)),
+        ink(f, ring(f, at(stem + f.bowl, f.x / 2), f.bowl, f.bowlH)),
       ],
       true);
   },
@@ -743,7 +936,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     return finish(
       f,
       [
-        ink(f, ring(centre, f.bowl)),
+        ink(f, ring(f, centre, f.bowl, f.bowlH)),
         ink(f, straight(at(stem, f.desc), at(stem, f.x)), f.end, f.end),
       ]);
   },
@@ -921,19 +1114,29 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const upper = f.cap * 0.56;
     const upperR = (f.cap - upper) / 2 + f.half * 0.2;
     const lowerR = upper / 2 + f.half * 0.2;
+    /*
+     * How far the bowls reach out, which is not the same as how tall they are.
+     *
+     * Tied to their own height they came out barely wider than the stem, since
+     * a B's two bowls are each less than half the height of a D's one. A B is
+     * narrower than a D but nothing like half of it, so the reach is measured
+     * against the round capitals instead and both bowls share it, which is also
+     * what stops the upper one looking like a mistake beside the lower.
+     */
+    const reach = f.capBowl * 0.66;
     return finish(
       f,
       [
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        ink(f, turn(at(stem, f.cap - upperR), upperR, 90, -90), BUTT, BUTT),
-        ink(f, turn(at(stem, lowerR), lowerR, 90, -90), BUTT, BUTT),
+        belly(f, at(stem, f.cap - upperR), reach, upperR, -90, 90),
+        belly(f, at(stem, lowerR), reach, lowerR, -90, 90),
       ]);
   },
 
   C: (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.capBowl, f.cap / 2);
-    return finish(f, [openBowl(f, centre, f.capBowl)], true);
+    return finish(f, [openBowl(f, centre, f.capBowl, f.capBowlH)], true);
   },
 
   D: (style) => {
@@ -944,7 +1147,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       f,
       [
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        ink(f, turn(at(stem, f.cap / 2), radius, 90, -90), BUTT, BUTT),
+        belly(f, at(stem, f.cap / 2), radius * f.wide, radius, -90, 90),
       ],
       true);
   },
@@ -1005,7 +1208,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
          * where the eye expects it and leaves the aperture above, which is what
          * tells a G from a C at small sizes.
          */
-        openBowl(f, centre, f.capBowl, 32, 360),
+        openBowl(f, centre, f.capBowl, f.capBowlH, 32, 360),
         thin(f, straight(at(right, centre.y), at(right - f.capBowl * 0.55, centre.y)), BUTT, f.end),
       ],
       true);
@@ -1136,7 +1339,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   O: (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.capBowl, f.cap / 2);
-    return finish(f, [ink(f, ring(centre, f.capBowl))], true);
+    return finish(f, [ink(f, ring(f, centre, f.capBowl, f.capBowlH))], true);
   },
 
   P: (style) => {
@@ -1147,7 +1350,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       f,
       [
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        ink(f, turn(at(stem, f.cap - radius), radius, 90, -90), BUTT, BUTT),
+        belly(f, at(stem, f.cap - radius), radius * f.wide, radius, -90, 90),
       ]);
   },
 
@@ -1158,7 +1361,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     return finish(
       f,
       [
-        ink(f, ring(centre, f.capBowl)),
+        ink(f, ring(f, centre, f.capBowl, f.capBowlH)),
         // The tail leaves from inside the bowl and crosses its wall, which is
         // what makes it look attached rather than propped against the letter.
         ink(
@@ -1181,7 +1384,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       f,
       [
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        ink(f, turn(at(stem, f.cap - radius), radius, 90, -90), BUTT, BUTT),
+        belly(f, at(stem, f.cap - radius), radius * f.wide, radius, -90, 90),
         ink(f, straight(at(stem + f.half, junction), at(reach, 0)), BUTT, f.end),
       ]);
   },
@@ -1313,7 +1516,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const half = figureWidth(f) / 2;
     const centre = at(f.edge + half, f.cap / 2);
-    return finish(f, [ink(f, oval(centre, half, f.cap / 2))], true);
+    return finish(f, [ink(f, ring(f, centre, half, f.cap / 2))], true);
   },
 
   one: (style) => {
@@ -1345,9 +1548,10 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
      * simply overlap, which the letter is full of anyway.
      */
     const leaves = -22;
+    const over = bend(f, centre, radius, 190, leaves);
     return finish(f, [
-      ink(f, turn(centre, radius, 190, leaves), f.end, BUTT),
-      ink(f, straight(pointOn(centre, radius, leaves), at(left, 0)), BUTT, BUTT),
+      ink(f, over, f.end, BUTT),
+      ink(f, straight(spineEnd(over), at(left, 0)), BUTT, BUTT),
       thin(f, straight(at(left, 0), at(left + width, 0)), BUTT, f.end),
     ]);
   },
@@ -1361,8 +1565,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     return finish(
       f,
       [
-        ink(f, turn(at(middle, f.cap - radius), radius, 160, -90), f.end, BUTT),
-        ink(f, turn(at(middle, radius), radius, 90, -160), BUTT, f.end),
+        ink(f, bend(f, at(middle, f.cap - radius), radius, 160, -90), f.end, BUTT),
+        ink(f, bend(f, at(middle, radius), radius, 90, -160), BUTT, f.end),
       ],
       true);
   },
@@ -1395,7 +1599,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       [
         thin(f, straight(at(left, f.cap), at(left + width, f.cap)), f.end, f.end),
         ink(f, straight(at(left, f.cap), at(left, shoulder)), BUTT, BUTT),
-        ink(f, turn(at(left + radius, radius), radius, 100, -150), BUTT, f.end),
+        ink(f, bend(f, at(left + radius, radius), radius, 100, -150), BUTT, f.end),
       ]);
   },
 
@@ -1408,7 +1612,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     return finish(
       f,
       [
-        ink(f, ring(centre, radius)),
+        ink(f, ring(f, centre, bendWidth(f, radius), radius)),
         /*
          * The stroke that arrives at the bowl from the upper right, as one run:
          * over the top, then straight down the left to meet the ring.
@@ -1420,8 +1624,11 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(
           f,
           chain(
-            turn(at(centre.x, f.cap - radius), radius, 60, 180),
-            straight(at(centre.x - radius, f.cap - radius), at(centre.x - radius, radius)),
+            bend(f, at(centre.x, f.cap - radius), radius, 60, 180),
+            straight(
+              at(centre.x - bendWidth(f, radius), f.cap - radius),
+              at(centre.x - bendWidth(f, radius), radius),
+            ),
           ),
           f.end,
           BUTT,
@@ -1451,8 +1658,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     return finish(
       f,
       [
-        ink(f, ring(at(left + width / 2, upper), f.cap * 0.22)),
-        ink(f, ring(at(left + width / 2, lower), lower)),
+        ink(f, ring(f, at(left + width / 2, upper), bendWidth(f, f.cap * 0.22), Math.max(f.cap * 0.22, f.least))),
+        ink(f, ring(f, at(left + width / 2, lower), bendWidth(f, lower), Math.max(lower, f.least))),
       ],
       true);
   },
@@ -1466,14 +1673,17 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     return finish(
       f,
       [
-        ink(f, ring(centre, radius)),
+        ink(f, ring(f, centre, bendWidth(f, radius), radius)),
         // The mirror of a six: down the right from the bowl, then round the
         // bottom and away.
         ink(
           f,
           chain(
-            straight(at(centre.x + radius, f.cap - radius), at(centre.x + radius, radius)),
-            turn(at(centre.x, radius), radius, 0, -120),
+            straight(
+              at(centre.x + bendWidth(f, radius), f.cap - radius),
+              at(centre.x + bendWidth(f, radius), radius),
+            ),
+            bend(f, at(centre.x, radius), radius, 0, -120),
           ),
           BUTT,
           f.end,

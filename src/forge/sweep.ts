@@ -360,12 +360,15 @@ function offsetEnd(segment: OffsetSegment): Vec2 {
 }
 
 /**
- * Where two lines cross, as a point, or nothing if they run parallel.
+ * Where two lines cross, and how far along the first that is.
  *
- * Both are treated as infinite: at a corner the crossing is past the end of one
- * and before the start of the other, which is the whole reason it is wanted.
+ * `at` is nought at the first line's start and one at its end, so it says which
+ * side of a corner this is without anything having to be assumed. Both lines
+ * are treated as infinite: at the outside of a corner the crossing is past the
+ * end of one and before the start of the other, which is the whole reason it is
+ * wanted.
  */
-function crossingOf(a: OffsetLine, b: OffsetLine): Vec2 | null {
+function crossingOf(a: OffsetLine, b: OffsetLine): { point: Vec2; at: number } | null {
   const da = { x: a.to.x - a.from.x, y: a.to.y - a.from.y };
   const db = { x: b.to.x - b.from.x, y: b.to.y - b.from.y };
   const denominator = da.x * db.y - da.y * db.x;
@@ -373,25 +376,18 @@ function crossingOf(a: OffsetLine, b: OffsetLine): Vec2 | null {
   const dx = b.from.x - a.from.x;
   const dy = b.from.y - a.from.y;
   const t = (dx * db.y - dy * db.x) / denominator;
-  return { x: a.from.x + da.x * t, y: a.from.y + da.y * t };
+  return { point: { x: a.from.x + da.x * t, y: a.from.y + da.y * t }, at: t };
 }
 
 /**
  * The outside of a corner: the wedge the two offsets left between them.
  *
- * A miter carries both edges on to where they meet, which is what keeps the
- * apex of an A pointed. How far that is depends on how sharp the turn is, and
- * on a very sharp one it runs away -- a thirty degree apex puts the point
- * nearly four stem-widths out, and below that it grows without bound. Past the
- * limit it is cut off square instead, which is what a punchcutter does with a
- * very acute apex anyway.
- *
  * A round join needs no limit and cannot overshoot, because it is the pen
  * itself sitting at the corner: it is not an approximation of the swept
- * region's boundary, it is that boundary exactly.
+ * region's boundary, it is that boundary exactly. A bevel takes the chord
+ * across it. The miter is handled where the crossing is known, since that is
+ * the same crossing that cuts the inside of a corner.
  */
-export const MITER_LIMIT = 4;
-
 function outerJoin(
   before: OffsetSegment,
   after: OffsetSegment,
@@ -402,17 +398,6 @@ function outerJoin(
   const from = offsetEnd(before);
   const to = offsetStart(after);
   if (Math.hypot(from.x - to.x, from.y - to.y) < 1e-9) return [];
-
-  if (join === "miter" && before.kind === "line" && after.kind === "line") {
-    const point = crossingOf(before, after);
-    if (point && Math.hypot(point.x - at.x, point.y - at.y) <= reach.across * MITER_LIMIT) {
-      return [
-        { kind: "line", from, to: point },
-        { kind: "line", from: point, to },
-      ];
-    }
-  }
-
   if (join === "bevel") return [];
 
   /*
@@ -447,26 +432,14 @@ function outerJoin(
 }
 
 /**
- * The inside of a corner: the loop the two offsets made by crossing.
+ * How far a miter may be carried before it is given up on.
  *
- * Cut by moving both of them to the point where they cross, which for two
- * straight runs is exact. A crossing that lands further away than the runs are
- * long would eat a whole segment, so it is left alone -- the overlap then
- * survives into the outline, where it is invisible under the fill rule and is
- * fused by the export in any case.
+ * A stroke that nearly doubles back on itself meets its own other side a very
+ * long way off -- half a pen divided by the sine of half the angle, which grows
+ * without bound. Past this it is rounded instead, which is what a punchcutter
+ * does with a very acute join anyway.
  */
-function trimInner(before: OffsetSegment, after: OffsetSegment): void {
-  if (before.kind !== "line" || after.kind !== "line") return;
-  const point = crossingOf(before, after);
-  if (!point) return;
-  const reachesBack = Math.hypot(point.x - before.from.x, point.y - before.from.y);
-  const reachesOn = Math.hypot(point.x - after.to.x, point.y - after.to.y);
-  const beforeLength = Math.hypot(before.to.x - before.from.x, before.to.y - before.from.y);
-  const afterLength = Math.hypot(after.to.x - after.from.x, after.to.y - after.from.y);
-  if (reachesBack > beforeLength || reachesOn > afterLength) return;
-  before.to = point;
-  after.from = point;
-}
+export const MITER_LIMIT = 4;
 
 /**
  * One side of the whole spine, with its corners resolved.
@@ -484,29 +457,66 @@ function sideRun(
   closed: boolean,
 ): OffsetSegment[] {
   const offsets = segments.map((segment) => ({ ...offsetSegment(segment, side, reach) }));
-  const after = new Map<number, OffsetSegment[]>();
+  const filling = new Map<number, OffsetSegment[]>();
 
   for (const kink of kinksOf(segments, closed)) {
-    const outside = kink.turn > 0 ? side < 0 : side > 0;
-    if (outside) {
-      const filling = outerJoin(
-        offsets[kink.before],
-        offsets[kink.after],
-        kink.at,
-        reach,
-        join,
-      );
-      if (filling.length > 0) after.set(kink.before, filling);
-    } else {
-      trimInner(offsets[kink.before], offsets[kink.after]);
+    const before = offsets[kink.before];
+    const after = offsets[kink.after];
+
+    /*
+     * Which side of the corner this is, decided by where the two offsets cross
+     * rather than by which way the spine turned.
+     *
+     * The turn tells you which side is the outside for a round pen, and for a
+     * round pen that is enough. A pen with contrast reaches different distances
+     * in different directions, so the two offsets leaving one corner can sit
+     * five units and eighteen units away from it, and which of them is the one
+     * that overlaps stops following from the turn alone. A k drawn with a
+     * narrow pen held at an angle came out with a straight cut clean across it
+     * because the wrong side was chosen and then cut back.
+     *
+     * The crossing answers it directly. Before the end of the run: the two are
+     * overlapping and this is the inside, so cut both back to it. Past the end:
+     * they are pulling apart and this is the outside, so either carry them out
+     * to meet or fill the wedge some other way.
+     */
+    if (before.kind === "line" && after.kind === "line") {
+      const crossing = crossingOf(before, after);
+      if (crossing && crossing.at > 1e-9 && crossing.at < 1 - 1e-9) {
+        before.to = crossing.point;
+        after.from = crossing.point;
+        continue;
+      }
+      if (
+        crossing &&
+        crossing.at >= 1 - 1e-9 &&
+        join === "miter" &&
+        Math.hypot(crossing.point.x - kink.at.x, crossing.point.y - kink.at.y) <=
+          reach.across * MITER_LIMIT
+      ) {
+        before.to = crossing.point;
+        after.from = crossing.point;
+        continue;
+      }
+      if (crossing && crossing.at <= 1e-9) {
+        // The whole run is swallowed by the corner. Nothing can be cut back to
+        // a point behind where the run began, so the two are brought together
+        // at that point and the run gives up its length rather than its shape.
+        before.to = before.from;
+        after.from = before.from;
+        continue;
+      }
     }
+
+    const wedge = outerJoin(before, after, kink.at, reach, join === "miter" ? "round" : join);
+    if (wedge.length > 0) filling.set(kink.before, wedge);
   }
 
   const run: OffsetSegment[] = [];
   offsets.forEach((offset, index) => {
     run.push(offset);
-    const filling = after.get(index);
-    if (filling) run.push(...filling);
+    const wedge = filling.get(index);
+    if (wedge) run.push(...wedge);
   });
   return run;
 }
