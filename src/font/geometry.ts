@@ -323,6 +323,46 @@ export function flattenContour(contour: Contour, steps = 12): Vec2[] {
   return points;
 }
 
+/**
+ * How far a point can travel in one direction before it meets the outline.
+ *
+ * Used to know how much room a stroke has before its two sides run into each
+ * other. Measured against flattened contours rather than the curves themselves:
+ * this only has to bound a movement, and a polyline is exact enough for that
+ * while being cheap enough to do for every point of a glyph.
+ *
+ * Returns Infinity when nothing is in the way.
+ */
+export function rayHitDistance(polylines: Vec2[][], from: Vec2, direction: Vec2): number {
+  // Ignore hits on top of the starting point, which is the outline it sits on.
+  const MINIMUM = 1e-6;
+  let nearest = Infinity;
+
+  for (const points of polylines) {
+    for (let i = 0; i < points.length; i++) {
+      const a = points[i];
+      const b = points[(i + 1) % points.length];
+      const ex = b.x - a.x;
+      const ey = b.y - a.y;
+      const denominator = direction.x * ey - direction.y * ex;
+      if (Math.abs(denominator) < 1e-12) continue; // parallel
+
+      const dx = a.x - from.x;
+      const dy = a.y - from.y;
+      const t = (dx * ey - dy * ex) / denominator;
+      // How far along the edge the crossing falls. Dividing by the negated
+      // denominator here put this the wrong way round, which accepted crossings
+      // with the line behind each edge instead of with the edge itself: a point
+      // in clear air read as blocked four units away, and the counter of an o
+      // was refused permission to open at all.
+      const u = (dx * direction.y - dy * direction.x) / denominator;
+      if (t > MINIMUM && u >= 0 && u <= 1 && t < nearest) nearest = t;
+    }
+  }
+
+  return nearest;
+}
+
 export function centroid(contour: Contour): Vec2 {
   const points = flattenContour(contour, 8);
   if (points.length === 0) return { x: 0, y: 0 };

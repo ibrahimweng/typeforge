@@ -419,7 +419,12 @@ class Store {
 
     const outlineFor = (name: string) => this.controlOutlines.get(name) ?? null;
 
-    const { params, changes } = deriveParams(baseline, readControls(typeface), outlineFor);
+    const { params, changes } = deriveParams(
+      baseline,
+      readControls(typeface),
+      typeface.unitsPerEm,
+      outlineFor,
+    );
     if (changes.length === 0) return [];
 
     typeface.params = { ...typeface.params, ...params };

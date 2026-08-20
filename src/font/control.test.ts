@@ -34,10 +34,13 @@ function glyph(name: string, contours: Contour[], advanceWidth = 1000): Glyph {
   };
 }
 
+/** The em these fixtures are drawn on, as DejaVu and most TrueType faces are. */
+const EM = 2048;
+
 function typeface(glyphs: Glyph[]): Typeface {
   return {
     glyphs,
-    unitsPerEm: 2048,
+    unitsPerEm: EM,
     kerning: [],
     kernClasses: [],
     params: { ...DEFAULT_PARAMS },
@@ -77,14 +80,14 @@ describe("deriving family parameters from a control edit", () => {
   it("reports nothing when nothing moved", () => {
     const before = reading("n", [rect(100, 0, 180, 1100)]);
     const after = reading("n", [rect(100, 0, 180, 1100)]);
-    expect(deriveParams(before, after).params).toEqual({});
-    expect(deriveParams(before, after).changes).toEqual([]);
+    expect(deriveParams(before, after, EM).params).toEqual({});
+    expect(deriveParams(before, after, EM).changes).toEqual([]);
   });
 
   it("ignores a nudge too small to be a decision", () => {
     const before = reading("n", [rect(100, 0, 180, 1100)]);
     const after = reading("n", [rect(100, 0, 182, 1100)]);
-    expect(deriveParams(before, after).params.weight).toBeUndefined();
+    expect(deriveParams(before, after, EM).params.weight).toBeUndefined();
   });
 
   /**
@@ -100,7 +103,12 @@ describe("deriving family parameters from a control edit", () => {
    * same edit.
    */
   const roundTrip = (from: Contour[], to: Contour[], advance = 1000): void => {
-    const derived = deriveParams(reading("n", from, advance), reading("n", to, advance), () => from);
+    const derived = deriveParams(
+      reading("n", from, advance),
+      reading("n", to, advance),
+      EM,
+      () => from,
+    );
 
     const target = glyph("subject", from, advance);
     const family = typeface([target]);
@@ -170,6 +178,7 @@ describe("deriving family parameters from a control edit", () => {
     const derived = deriveParams(
       reading("n", [rect(100, 0, 180, 1000)]),
       reading("n", [rect(100, 0, 180, 1100)]),
+      EM,
     );
     expect(derived.changes.some((change) => change.quality === "height")).toBe(true);
   });
@@ -188,9 +197,10 @@ describe("deriving family parameters from a control edit", () => {
       ...reading("H", outlier),
     ]);
 
-    const combined = deriveParams(before, after, () => thin).params.weight!;
+    const combined = deriveParams(before, after, EM, () => thin).params.weight!;
     const each = [[rect(0, 0, 200, 1100)], [rect(0, 0, 204, 1100)], outlier].map(
-      (shape) => deriveParams(reading("n", thin), reading("n", shape), () => thin).params.weight!,
+      (shape) =>
+        deriveParams(reading("n", thin), reading("n", shape), EM, () => thin).params.weight!,
     );
     const middle = [...each].sort((a, b) => a - b)[1];
 
@@ -204,6 +214,7 @@ describe("deriving family parameters from a control edit", () => {
     const derived = deriveParams(
       reading("n", [rect(100, 0, 180, 1100)]),
       reading("n", [rect(90, 0, 200, 1100)]),
+      EM,
     );
     const stem = derived.changes.find((change) => change.quality === "stem");
     expect(stem?.glyph).toBe("n");

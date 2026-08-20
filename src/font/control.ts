@@ -105,7 +105,7 @@ export interface Derivation {
  */
 const WEIGHT_PROBE = 10;
 
-function stemPerWeightUnit(contours: Contour[]): number | null {
+function stemPerWeightUnit(contours: Contour[], unitsPerEm: number): number | null {
   const before = measureGlyph(contours, 0)?.stemWidth;
   if (before == null) return null;
 
@@ -122,6 +122,7 @@ function stemPerWeightUnit(contours: Contour[]): number | null {
   const host = {
     glyphs: [probe],
     params: { ...DEFAULT_PARAMS },
+    unitsPerEm,
   } as unknown as Typeface;
 
   const after = measureGlyph(resolveGlyphContours(probe, host), 0)?.stemWidth;
@@ -139,7 +140,12 @@ function median(values: number[]): number | null {
 }
 
 /** Run contours through the real parameter pipeline. */
-function applyParams(contours: Contour[], params: GlyphParams, advance: number): Contour[] {
+function applyParams(
+  contours: Contour[],
+  params: GlyphParams,
+  advance: number,
+  unitsPerEm: number,
+): Contour[] {
   const probe: Glyph = {
     name: "probe",
     unicodes: [],
@@ -150,7 +156,11 @@ function applyParams(contours: Contour[], params: GlyphParams, advance: number):
     params,
     dirty: false,
   };
-  const host = { glyphs: [probe], params: { ...DEFAULT_PARAMS } } as unknown as Typeface;
+  const host = {
+    glyphs: [probe],
+    params: { ...DEFAULT_PARAMS },
+    unitsPerEm,
+  } as unknown as Typeface;
   return resolveGlyphContours(probe, host);
 }
 
@@ -187,13 +197,14 @@ function fitParams(
   baseline: Contour[],
   target: GlyphMeasurements,
   advance: number,
+  unitsPerEm: number,
 ): Partial<GlyphParams> {
   const fitted: GlyphParams = { ...DEFAULT_PARAMS };
-  const rate = stemPerWeightUnit(baseline);
+  const rate = stemPerWeightUnit(baseline, unitsPerEm);
   const targetHeight = target.inkTop - target.inkBottom;
 
   for (let pass = 0; pass < FIT_PASSES; pass++) {
-    const current = measureGlyph(applyParams(baseline, fitted, advance), advance);
+    const current = measureGlyph(applyParams(baseline, fitted, advance, unitsPerEm), advance);
     if (!current) break;
     let moved = 0;
 
@@ -256,6 +267,14 @@ export function deriveParams(
   baseline: ControlReadings,
   current: ControlReadings,
   /**
+   * The em the font is drawn on. The fit runs candidate parameters through the
+   * real pipeline, and the pipeline sizes its stroke floor against the em, so a
+   * stand-in typeface without one turns every measurement into NaN -- which is
+   * how a stem asked to lose twenty units came back with a weight of minus two
+   * hundred.
+   */
+  unitsPerEm: number,
+  /**
    * The control letter's outline **as it was when the baseline was taken**, not
    * as it is now. The fit works by applying candidate parameters to the old
    * shape and comparing against the new measurements, so handing it the edited
@@ -311,7 +330,7 @@ export function deriveParams(
 
     if (!moved) continue;
     const outline = outlineFor(name);
-    if (outline) fits.push(fitParams(outline, after, before.advanceWidth));
+    if (outline) fits.push(fitParams(outline, after, before.advanceWidth, unitsPerEm));
   }
 
   const params: Partial<GlyphParams> = {};

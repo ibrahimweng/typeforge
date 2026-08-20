@@ -9,11 +9,12 @@
 import { describe, expect, it } from "vitest";
 
 import { findCrossbar } from "../src/font/anatomy";
-import { contoursBounds } from "../src/font/geometry";
+import { contourArea, contoursBounds } from "../src/font/geometry";
 import { measureGlyph } from "../src/font/measure";
+import { contoursIntersect } from "../src/font/outline";
 import { importFont } from "../src/font/parse";
 import { resolveGlyphContours } from "../src/font/transform";
-import { DEFAULT_PARAMS, type Typeface } from "../src/font/types";
+import { DEFAULT_PARAMS, type Contour, type Typeface } from "../src/font/types";
 import { FONT_SUITE_TIMEOUT, loadTestFont } from "./fixtures";
 
 const source = loadTestFont();
@@ -163,5 +164,140 @@ suite("controls used together", { timeout: FONT_SUITE_TIMEOUT }, () => {
     };
     expect(width(80)).toBeGreaterThan(width(0));
     expect(width(0)).toBeGreaterThan(width(-60));
+  });
+
+  /*
+   * The weight slider, end to end, on every letter and figure.
+   *
+   * Thinning past half a stroke's width sends its two sides through each other.
+   * Seven of the first ten letters tried failed that way at the light end --
+   * n, o, e, a, s, g and m all crossed themselves, with stems down to twenty
+   * units on a font whose stems are 184. The heavy end does the same thing to
+   * white space: the aperture of an s closed and came out the other side, two
+   * points ninety units apart ending up on top of each other.
+   *
+   * Each contour is checked on its own. Two contours that meet -- an ogonek
+   * touching the letter it hangs off, a serif laid over a stem -- is how a bold
+   * cut is drawn and how the export expects to receive it; a contour crossing
+   * itself is the letter coming apart.
+   */
+  const ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".split("");
+  // The ends of the slider, in ems, as the inspector offers them.
+  const LIGHTEST = -0.04;
+  const HEAVIEST = 0.06;
+
+  const folds = (contours: Contour[]): boolean =>
+    contours.some((contour) => contoursIntersect([contour]));
+
+  it("never lets a letter cross itself, wherever the weight slider is put", async () => {
+    const typeface = await open();
+    const em = typeface.unitsPerEm;
+    for (const name of ALPHABET) {
+      if (!typeface.glyphIndex.has(name)) continue;
+      for (const fraction of [-1, -0.75, -0.5, -0.25, 0.25, 0.5, 0.75, 1]) {
+        const weight = em * fraction * (fraction < 0 ? -LIGHTEST : HEAVIEST);
+        expect(folds(resolve(typeface, name, { weight })), `${name} at ${Math.round(weight)}`).toBe(
+          false,
+        );
+      }
+    }
+  });
+
+  it("never turns a shape inside out, wherever the weight slider is put", async () => {
+    const typeface = await open();
+    const em = typeface.unitsPerEm;
+    for (const name of ALPHABET) {
+      if (!typeface.glyphIndex.has(name)) continue;
+      const facing = resolve(typeface, name, {}).map((contour) => Math.sign(contourArea(contour)));
+      for (const fraction of [-1, -0.5, 0.5, 1]) {
+        const weight = em * fraction * (fraction < 0 ? -LIGHTEST : HEAVIEST);
+        const now = resolve(typeface, name, { weight }).map((contour) =>
+          Math.sign(contourArea(contour)),
+        );
+        expect(now, `${name} at ${Math.round(weight)}`).toEqual(facing);
+      }
+    }
+  });
+
+  /**
+   * Reaching the limit has to leave something to look at. A stroke stops at a
+   * width rather than at nothing, so the lightest setting is a hairline and not
+   * a gap.
+   */
+  it("leaves ink in every letter at the lightest setting", async () => {
+    const typeface = await open();
+    const floor = typeface.unitsPerEm * 0.012;
+    for (const name of ALPHABET) {
+      if (!typeface.glyphIndex.has(name)) continue;
+      const contours = resolve(typeface, name, { weight: typeface.unitsPerEm * LIGHTEST });
+      const stem = measureGlyph(contours, 0)?.stemWidth ?? 0;
+      expect(stem, `${name} vanished`).toBeGreaterThan(floor);
+    }
+  });
+
+  /**
+   * Holding a whole contour back for one bad corner is its own fault: it left
+   * a's stem at 241 units while every other letter reached 325, so one letter
+   * stopped getting bolder while the rest carried on. The restraint has to stay
+   * where it is needed.
+   */
+  it("goes on getting bolder to the end of the slider, letter by letter", async () => {
+    const typeface = await open();
+    const em = typeface.unitsPerEm;
+    for (const name of ["a", "n", "o", "H", "i", "g", "y"]) {
+      const stems = [0.25, 0.5, 0.75, 1].map(
+        (fraction) =>
+          measureGlyph(resolve(typeface, name, { weight: em * HEAVIEST * fraction }), 0)
+            ?.stemWidth ?? 0,
+      );
+      for (let step = 1; step < stems.length; step++) {
+        expect(stems[step], `${name} stopped growing at step ${step}`).toBeGreaterThan(
+          stems[step - 1],
+        );
+      }
+    }
+  });
+
+  /**
+   * Every control, over its whole range, has to produce numbers.
+   *
+   * The stroke floor is a fraction of the em, and the fit builds a stand-in
+   * typeface to try candidate parameters on. That stand-in had no em, so the
+   * floor came out as NaN and took every coordinate with it -- quietly, because
+   * a NaN outline still draws, just nowhere. A stem asked to lose twenty units
+   * came back with a weight of minus two hundred.
+   */
+  it("never produces a coordinate that is not a number", async () => {
+    const typeface = await open();
+    const em = typeface.unitsPerEm;
+    const sweeps: Array<[string, number[]]> = [
+      ["weight", [-0.04 * em, 0.06 * em]],
+      ["width", [0.6, 1.5]],
+      ["counterScale", [0.6, 1.4]],
+      ["xHeightScale", [0.8, 1.25]],
+      ["slant", [-20, 20]],
+      ["cornerRadius", [0.15 * em]],
+      ["slab", [0.1 * em]],
+      ["crossbar", [-0.08 * em, 0.08 * em]],
+      ["shoulder", [-0.08 * em, 0.08 * em]],
+      ["pixelGrid", [16, 64]],
+    ];
+    for (const [key, values] of sweeps) {
+      for (const value of values) {
+        for (const name of ["n", "o", "e", "a", "H", "t"]) {
+          for (const contour of resolve(typeface, name, { [key]: value })) {
+            for (const node of contour.nodes) {
+              for (const point of [node.point, node.handleIn, node.handleOut]) {
+                if (!point) continue;
+                expect(
+                  Number.isFinite(point.x) && Number.isFinite(point.y),
+                  `${name} lost a point to ${key}=${value}`,
+                ).toBe(true);
+              }
+            }
+          }
+        }
+      }
+    }
   });
 });

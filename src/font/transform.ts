@@ -12,13 +12,21 @@
 
 import {
   centroid,
+  contourArea,
+  contourSegments,
+  cubicAt,
+  cubicDerivativeAt,
   distance,
+  flattenContour,
   isClockwise,
+  lerp,
   normalize,
+  rayHitDistance,
   sub,
+  type Segment,
 } from "./geometry";
 import { resolveComponents } from "./composite";
-import { classifyContours } from "./outline";
+import { classifyContours, contoursIntersect } from "./outline";
 import { shiftCrossbar, shiftShoulders } from "./anatomy";
 import { pixelate } from "./pixel";
 import { addSlabs } from "./slab";
@@ -97,8 +105,11 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
     // that cannot be read off its winding: DejaVu winds the outer contour of I
     // clockwise and the outer contour of o the other way.
     const outer = classifyContours(contours);
+    // The letter as it stands, for measuring how much room each point has.
+    const obstacles = contours.map((contour) => flattenContour(contour, 8));
+    const floor = typeface.unitsPerEm * MIN_STROKE;
     contours = contours.map((contour, index) =>
-      applyWeight(contour, params.weight, outer[index]),
+      applyWeight(contour, params.weight, outer[index], obstacles, floor),
     );
   }
   if (params.cornerRadius > 0)
@@ -183,7 +194,21 @@ function applySlant(contour: Contour, degrees: number): Contour {
  * on every frame while a slider moves; at the magnitudes a designer uses for
  * weight it holds up.
  */
-function applyWeight(contour: Contour, amount: number, isOuter: boolean): Contour {
+/**
+ * The thinnest a stroke is allowed to become, as a fraction of the em.
+ *
+ * Somewhere for the ink to still be, rather than a mathematically valid
+ * nothing.
+ */
+const MIN_STROKE = 0.012;
+
+function applyWeight(
+  contour: Contour,
+  amount: number,
+  isOuter: boolean,
+  obstacles: Vec2[][],
+  floor: number,
+): Contour {
   const nodes = contour.nodes;
   if (nodes.length < 2) return contour;
   /*
@@ -205,22 +230,205 @@ function applyWeight(contour: Contour, amount: number, isOuter: boolean): Contou
   const outward = isClockwise(contour) ? -1 : 1;
   const sign = isOuter ? outward : -outward;
 
-  const moved = nodes.map((node, index) => {
-    const previous = nodes[(index - 1 + nodes.length) % nodes.length];
-    const next = nodes[(index + 1) % nodes.length];
+  // Where each point is going, and the furthest it may go before it runs into
+  // something. Both are worked out for the whole contour before anything moves,
+  // because the second pass below has to compare a point's allowance with its
+  // neighbours'.
+  const travels: Array<Vec2 | null> = [];
+  const limits: number[] = [];
+  const segments = contourSegments(contour);
+  if (segments.length !== nodes.length) return contour;
 
-    // Average the directions either side of the node so the normal follows the
-    // outline rather than one arbitrary segment.
-    const incoming = normalize(sub(node.point, previous.point));
-    const outgoing = normalize(sub(next.point, node.point));
-    const tangent = normalize({ x: incoming.x + outgoing.x, y: incoming.y + outgoing.y });
-    if (tangent.x === 0 && tangent.y === 0) return node;
+  for (let index = 0; index < nodes.length; index++) {
+    const node = nodes[index];
+    const before = segments[(index - 1 + segments.length) % segments.length];
+    const after = segments[index];
 
-    const offset = { x: tangent.y * amount * sign, y: -tangent.x * amount * sign };
-    return mapNode(node, (point) => ({ x: point.x + offset.x, y: point.y + offset.y }));
+    /*
+     * Which way this point faces.
+     *
+     * Taken from the curves either side of it rather than from the straight
+     * lines to its neighbours. On the bottom of an a's bowl the chord to the
+     * next point runs nowhere near the direction the outline is actually
+     * travelling, and a normal built from it leans back into the letter --
+     * which both pushed the point the wrong way and made the measurement below
+     * read the letter's own edge as an obstacle two units away.
+     */
+    const tangent = normalize({
+      x: segmentDirection(before, 1).x + segmentDirection(after, 0).x,
+      y: segmentDirection(before, 1).y + segmentDirection(after, 0).y,
+    });
+    if (tangent.x === 0 && tangent.y === 0) {
+      travels.push(null);
+      limits.push(0);
+      continue;
+    }
+    const travel = facing(tangent, sign, amount);
+
+    /*
+     * How far this point may actually travel.
+     *
+     * Offsetting every point by the same amount is fine until the space ahead
+     * of it runs out. Thinning past half a stroke's width sends its two sides
+     * through each other, which on DejaVu happened to seven of ten letters
+     * tested at the light end of the slider -- n, o, e, a, s, g and m all
+     * crossed themselves with stems down to twenty units. The same thing
+     * happens to white space at the heavy end: the aperture of an s closed and
+     * inverted, two points ninety units apart ending up on top of each other.
+     *
+     * So each point asks how much room lies ahead of it before it meets the
+     * outline again, whether that room is ink or paper. Both walls close at
+     * once, so half the gap is the most it may take, less the width that has to
+     * survive. Points in the tight places stop while the rest carry on, which
+     * is what keeps the letter looking like itself instead of pinching shut all
+     * over.
+     *
+     * The question is asked partway along the neighbouring curves as well as at
+     * the point itself, because a gap is usually at its narrowest between two
+     * points rather than on one: asking only at the points let the middle of a
+     * curve close while its ends still had room, and o, a and g went on
+     * crossing themselves with stems of 36 units against a floor of 25. Each
+     * sample uses the outline's direction where it stands rather than the
+     * node's, or the ray sets off at a slant and grazes the curve it started
+     * from -- which read as a wall three units away and froze eleven of the
+     * twenty points on a's outer contour while the six beside them moved the
+     * full amount, tearing the outline between them.
+     */
+    let room = rayHitDistance(obstacles, node.point, travel);
+    for (const [segment, along] of SAMPLES) {
+      const at = segment === "before" ? before : after;
+      const local = segmentDirection(at, along);
+      if (local.x === 0 && local.y === 0) continue;
+      room = Math.min(
+        room,
+        rayHitDistance(obstacles, pointOnSegment(at, along), facing(local, sign, amount)),
+      );
+    }
+
+    const allowed = Number.isFinite(room) ? Math.max(0, (room - floor) / 2) : Infinity;
+    travels.push(travel);
+    limits.push(Math.min(Math.abs(amount), allowed));
+  }
+
+  const build = (scaleAt: (index: number) => number): Contour => ({
+    closed: contour.closed,
+    nodes: nodes.map((node, index) => {
+      const travel = travels[index];
+      if (!travel) return node;
+      const magnitude = limits[index] * scaleAt(index);
+      if (magnitude === 0) return node;
+      const offset = { x: travel.x * magnitude, y: travel.y * magnitude };
+      return mapNode(node, (point) => ({ x: point.x + offset.x, y: point.y + offset.y }));
+    }),
   });
 
-  return { closed: contour.closed, nodes: moved };
+  const facingBefore = Math.sign(contourArea(contour));
+  const intact = (trial: Contour): boolean =>
+    // Turned inside out. A superscript minus is only forty units thick, and
+    // taking eighty off it did not cross anything -- it simply came out the
+    // other side, wound the wrong way, which makes ink into a hole.
+    Math.sign(contourArea(trial)) === facingBefore && !contoursIntersect([trial]);
+
+  const full = build(() => 1);
+  if (intact(full)) return full;
+  // The letter already crossed itself before anything moved -- some fonts ship
+  // outlines like that -- so there is nothing here to preserve.
+  if (contoursIntersect([contour])) return full;
+  return backOff(build, intact, nodes.length, contour);
+}
+
+/**
+ * Where the clearance is measured, besides at the node itself: partway along
+ * the curve arriving and partway along the one leaving.
+ */
+const SAMPLES: Array<[side: "before" | "after", t: number]> = [
+  ["before", 0.5],
+  ["before", 0.75],
+  ["after", 0.25],
+  ["after", 0.5],
+];
+
+/** A point partway along a drawn segment, straight or curved. */
+function pointOnSegment(segment: Segment, t: number): Vec2 {
+  return segment.kind === "line"
+    ? lerp(segment.from, segment.to, t)
+    : cubicAt(segment.from, segment.c1, segment.c2, segment.to, t);
+}
+
+/**
+ * Which way the outline is travelling partway along a segment.
+ *
+ * A cubic's derivative vanishes at an end whose handle sits on its own point,
+ * which is how a straight run is written; the chord stands in for it there.
+ */
+function segmentDirection(segment: Segment, t: number): Vec2 {
+  if (segment.kind === "line") return normalize(sub(segment.to, segment.from));
+  const derivative = cubicDerivativeAt(segment.from, segment.c1, segment.c2, segment.to, t);
+  const direction = normalize(derivative);
+  if (direction.x !== 0 || direction.y !== 0) return direction;
+  return normalize(sub(segment.to, segment.from));
+}
+
+/** The way ink moves for a given heading along the outline. */
+function facing(tangent: Vec2, sign: number, amount: number): Vec2 {
+  const direction = { x: tangent.y * sign, y: -tangent.x * sign };
+  return amount >= 0 ? direction : { x: -direction.x, y: -direction.y };
+}
+
+/** How finely the retreat below is searched. Five steps resolve a thirtieth. */
+const BACK_OFF_STEPS = 5;
+
+/**
+ * Retreat until the outline stops crossing itself, then let go again where it
+ * can.
+ *
+ * The measurement above stops a point before it reaches whatever is in front of
+ * it, and that covers the ordinary case -- a stem closing, a counter closing --
+ * but it cannot cover every shape, because from a single point a spike and a
+ * notch look the same. Both are two walls a short way apart; on a spike they
+ * must be allowed to move apart and on a notch they must not be allowed to
+ * meet. Told apart wrongly, y's tail folded over itself at full weight and so
+ * did the trap where an a's bowl meets its stem.
+ *
+ * So the result is checked rather than predicted. The whole movement is scaled
+ * back until the outline is sound, which is a guarantee instead of an estimate:
+ * a letter may run out of weight before the slider runs out of travel, but it
+ * cannot turn inside out.
+ *
+ * Holding the whole contour back for one bad corner costs too much, though --
+ * it left a's stem at 241 units while every other letter reached 325, so the
+ * one letter stopped getting bolder while the rest carried on. Each point is
+ * therefore offered its full movement back afterwards and keeps it if the
+ * outline survives, so the retreat ends up confined to the few points that
+ * caused it. Only a contour that actually failed pays for any of this.
+ */
+function backOff(
+  build: (scaleAt: (index: number) => number) => Contour,
+  intact: (trial: Contour) => boolean,
+  count: number,
+  original: Contour,
+): Contour {
+  let safe = 0;
+  let low = 0;
+  let high = 1;
+  for (let step = 0; step < BACK_OFF_STEPS; step++) {
+    const middle = (low + high) / 2;
+    if (intact(build(() => middle))) {
+      low = middle;
+      safe = middle;
+    } else {
+      high = middle;
+    }
+  }
+  if (safe === 0) return original;
+
+  const scales = new Array<number>(count).fill(safe);
+  const at = (index: number): number => scales[index];
+  for (let index = 0; index < count; index++) {
+    scales[index] = 1;
+    if (!intact(build(at))) scales[index] = safe;
+  }
+  return build(at);
 }
 
 /**
