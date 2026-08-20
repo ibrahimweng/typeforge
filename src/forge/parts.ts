@@ -76,6 +76,14 @@ export const PART_SPECS: PartSpec[] = [
         step: 0.01,
       },
       {
+        key: "aperture",
+        label: "Aperture",
+        hint: "How far open a c, C, S, G or e stands. Below one the two ends reach round toward each other until the letter is nearly closed, which is what a heavy display face does; it never closes further than the pen can clear.",
+        min: 0.25,
+        max: 1.8,
+        step: 0.01,
+      },
+      {
         key: "width",
         // Named apart from the face's own width, which is a different control
         // in a different section. Two sliders with one name is ambiguous in
@@ -184,6 +192,29 @@ export const PART_SPECS: PartSpec[] = [
         min: -30,
         max: 30,
         step: 0.5,
+      },
+    ],
+  },
+  {
+    name: "ball",
+    label: "Ball",
+    hint: "A disc finishing a stroke that stops in mid-air, as the c, e, a, r and S all do. Wider than the stroke, it throws the weight to the end, which is what a heavy poster face lives on.",
+    controls: [
+      {
+        key: "size",
+        label: "Size",
+        hint: "How wide the disc is against the stem. Nought leaves the stroke to stop on its own.",
+        min: 0,
+        max: 2.4,
+        step: 0.02,
+      },
+      {
+        key: "drop",
+        label: "Overhang",
+        hint: "How far past the end of the stroke the disc's middle sits, as a share of its own radius. Nought centres it on the end; further out and it hangs off like a drop.",
+        min: -0.6,
+        max: 1,
+        step: 0.02,
       },
     ],
   },

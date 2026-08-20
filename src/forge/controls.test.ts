@@ -318,7 +318,8 @@ describe("no control is decoration", () => {
         );
         const waving = withPart(withPart(plain, "wave", "depth", 26), "wave", "along", "both");
         const flaring = withPart(plain, "flare", "spread", 0.4);
-        const changed = [plain, waving, flaring].some((ready) =>
+        const balled = withPart(plain, "ball", "size", 1.2);
+        const changed = [plain, waving, flaring, balled].some((ready) =>
           NAMES.some((name) => {
             const before = drawLetter(name, withPart(ready, spec.name, control.key, low));
             const after = drawLetter(name, withPart(ready, spec.name, control.key, high));

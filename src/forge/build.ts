@@ -81,12 +81,7 @@ export function drawLetter(name: string, style: Style, form?: string): Drawn | n
   if (!recipe) return null;
   const built: Recipe = recipe(style);
 
-  const upright: Contour[] = [];
-  for (const stroke of built.strokes) {
-    upright.push(...sweep(stroke));
-    upright.push(...flaresFor(stroke, style));
-    upright.push(...serifsFor(stroke, style));
-  }
+  const upright = built.strokes.flatMap((stroke) => inkOf(stroke, style));
   const contours = insideTheEdge(leaning(upright, style), style);
   return { contours, advanceWidth: advanceFor(name, built, contours, style) };
 }
@@ -190,14 +185,138 @@ function figureAdvance(style: Style): number {
   let widest = 0;
   for (const name of FIGURES) {
     const built = LETTERS[name](style);
-    const contours = leaning(
-      built.strokes.flatMap((stroke) => [...sweep(stroke), ...serifsFor(stroke, style)]),
+    // Nudged inside its own left edge as well, which is what the letters
+    // themselves get. Measured without it, the widest figure came out narrower
+    // than the letter it was measuring, and the two ran past its own advance.
+    const contours = insideTheEdge(
+      leaning(
+        built.strokes.flatMap((stroke) => inkOf(stroke, style)),
+        style,
+      ),
       style,
     );
     widest = Math.max(widest, measure(built, contours, style));
   }
   figureCache.set(style, widest);
   return widest;
+}
+
+/**
+ * Every shape one stroke puts on the page: the swept stroke itself and
+ * whatever the face hangs off its ends.
+ *
+ * In one place because two callers need the same answer and had drifted: the
+ * figures are all set to the width of the widest of them, and that measurement
+ * swept the strokes and added the serifs but knew nothing about balls or
+ * flares. A four with a ball on its diagonal reached twenty units past the
+ * advance every figure had been given.
+ */
+function inkOf(stroke: Stroke, style: Style): Contour[] {
+  const swept = sweep(stroke);
+  return [
+    ...swept,
+    ...ballsFor(stroke, style, swept),
+    ...flaresFor(stroke, style),
+    ...serifsFor(stroke, style),
+  ];
+}
+
+/**
+ * The balls on one stroke: a disc closing off an end that stops in mid-air.
+ *
+ * Drawn as a stroke going nowhere with a round cap on each end, which is how
+ * every other disc in this application is drawn: a ring of no radius swept by
+ * a fat pen asks the inner offset for a negative radius, and an ellipse with a
+ * negative axis turns itself inside out.
+ *
+ * Only where the stroke stops in mid-air -- the terminals of a c, an e, an a,
+ * an r, an S. A stroke that stops on a line already has something finishing
+ * it, and a disc there reads as a blot rather than as a terminal; it would
+ * also hang past the line, which is the one thing every letter here is now
+ * careful not to do.
+ */
+function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
+  const { size, drop } = style.parts.ball;
+  if (size <= 0 || stroke.spine.closed || swept.length === 0) return [];
+  const radius = (size * style.pen.weight) / 2;
+  const band = contoursBounds(swept);
+  const out: Contour[] = [];
+  for (const [terminal, at, outward, straightEnd] of endsOf(stroke)) {
+    if (terminal.open !== true) continue;
+    /*
+     * A straight run that stops on a line is already finished by the line, and
+     * a disc there reads as a blot. A curve is asked differently: its end can
+     * sit near a line without lying along it -- the shoulder of an r stops just
+     * under the x-height travelling downwards -- so it is left to the holding
+     * below, which shrinks the disc to whatever room there is rather than
+     * refusing it outright.
+     */
+    if (straightEnd && onALine(stroke, at, outward, style)) continue;
+    /*
+     * And held inside the ink the stroke already made.
+     *
+     * A ball fattens an end; it does not make the letter taller. Left to sit
+     * where it liked, the disc on the top terminal of an s carried the letter
+     * twenty-three units over the x-height every other letter stops at -- the
+     * same fault the alignment pass exists to prevent, arriving on the end of
+     * a shape rather than on the end of a stroke.
+     *
+     * Held by shrinking rather than by moving, because moving cannot always
+     * do it: the terminal of an s faces down and to the right while the part
+     * of the disc that is in the way is its top, and pulling it back along the
+     * stroke lifts that top rather than lowering it.
+     */
+    const spare = (limit: number) => {
+      const lean = 1 + outward.y * drop;
+      return lean > 1e-6 ? (limit - at.y) / lean : Infinity;
+    };
+    const held = Math.min(radius, spare(band.yMax), spare(-band.yMin + 2 * at.y));
+    // Below a stroke's own width there is nothing of the ball left outside the
+    // stroke to see, and what is left reads as a lump rather than a terminal.
+    if (held < penReach(stroke.pen).across) continue;
+    const middle = {
+      x: at.x + outward.x * held * drop,
+      y: at.y + outward.y * held * drop,
+    };
+    out.push(
+      ...sweep({
+        spine: {
+          segments: [
+            {
+              kind: "line",
+              from: { x: middle.x - 0.5, y: middle.y },
+              to: { x: middle.x + 0.5, y: middle.y },
+            },
+          ],
+          closed: false,
+        },
+        pen: { ...style.pen, contrast: 0, weight: held * 2 },
+        start: { kind: "round" },
+        end: { kind: "round" },
+      }),
+    );
+  }
+  return out;
+}
+
+/**
+ * Whether a stroke's ink already reaches one of the lines the letter is drawn
+ * between, at the end being asked about.
+ *
+ * Asked of the ink rather than of the spine, because the two are only the same
+ * on an upright. The arm of an E finishes in mid-air as far as its spine is
+ * concerned -- there is nothing beyond it -- but its ink is lying along the cap
+ * line, and a disc put on that end reached eighty units above the line every
+ * other letter stops at.
+ */
+function onALine(stroke: Stroke, at: Vec2, outward: Vec2, style: Style): boolean {
+  const { metrics } = style;
+  const reaches = Math.abs(
+    reachAlong({ x: -outward.y, y: outward.x }, penReach(stroke.pen)).y,
+  );
+  return [0, metrics.xHeight, metrics.capHeight, metrics.ascender, metrics.descender].some(
+    (line) => Math.abs(at.y - line) <= reaches + 1,
+  );
 }
 
 /**

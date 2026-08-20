@@ -89,6 +89,7 @@ describe("which letters have which parts", () => {
         ...SERIF.parts,
         wave: { ...SERIF.parts.wave, depth: 26 },
         flare: { ...SERIF.parts.flare, spread: 0.4 },
+        ball: { ...SERIF.parts.ball, size: 1.2 },
       },
     };
     for (const spec of PART_SPECS) {

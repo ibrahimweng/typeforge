@@ -106,6 +106,17 @@ export interface Parts {
      */
     width: number;
     /**
+     * How far open the letters that are not closed stand: the c, the C, the S,
+     * the bowl of a G, the belly of an e.
+     *
+     * One is the ordinary opening. Below it the two ends reach round toward
+     * each other until the letter is nearly a ring with a slot in it, which is
+     * what the heavy poster faces of the seventies do and is most of why they
+     * read as one solid block of colour. It is held above what the pen can
+     * clear, so closing it too far flattens rather than fusing the letter shut.
+     */
+    aperture: number;
+    /**
      * How square it is. Nought is round, one is as square as a stroke of this
      * width can be asked to turn -- which is what separates a geometric face
      * from a technical one, and is not reachable by adjusting a circle.
@@ -132,6 +143,24 @@ export interface Parts {
     height: number;
     /** Thickness relative to the stems, so a bar can be lighter than a stem. */
     weight: number;
+  };
+  /**
+   * The ball: a disc finishing a stroke that has nothing else to finish it.
+   *
+   * The other half of what makes a heavy display face read the way it does. A
+   * stroke that simply stops leaves a blunt edge; one that ends in a disc
+   * wider than itself closes the shape off and throws the weight to the end,
+   * which beside a tight aperture is the whole of the seventies poster letter.
+   *
+   * Only where the stroke stops in mid-air. On a line there is already
+   * something finishing the stroke -- the line -- and a ball there reads as a
+   * blot rather than as a terminal.
+   */
+  ball: {
+    /** How wide the disc is against the stem. Nought is none. */
+    size: number;
+    /** How far past the end its middle sits, as a share of its own radius. */
+    drop: number;
   };
   /**
    * The flare: a stroke that widens as it arrives at its own end.
@@ -241,10 +270,11 @@ export const SANS: Style = {
   parts: {
     slab: { on: false, projection: 0.65, thickness: 0.43, bracket: 0 },
     shoulder: { spring: 0.62, reach: 1 },
-    bowl: { width: 1, squareness: 0 },
+    bowl: { width: 1, squareness: 0, aperture: 1 },
     corner: { radius: 0, join: "miter" },
     terminal: { kind: "butt", angle: 0 },
     crossbar: { height: 0.52, weight: 1 },
+    ball: { size: 0, drop: 0.45 },
     flare: { spread: 0, depth: 0.9, curve: 0.85 },
     wave: { length: 130, depth: 0, along: "flat" },
   },
@@ -289,7 +319,7 @@ export const DISPLAY: Style = {
   parts: {
     ...SANS.parts,
     shoulder: { spring: 0.7, reach: 1.05 },
-    bowl: { width: 1.06, squareness: 0.2 },
+    bowl: { width: 1.06, squareness: 0.2, aperture: 1 },
     corner: { radius: 0, join: "round" },
     terminal: { kind: "round", angle: 0 },
   },
@@ -318,7 +348,7 @@ export const GEOMETRIC: Style = {
   parts: {
     ...SANS.parts,
     shoulder: { spring: 0.55, reach: 1 },
-    bowl: { width: 1, squareness: 0 },
+    bowl: { width: 1, squareness: 0, aperture: 1 },
     corner: { radius: 0, join: "miter" },
     terminal: { kind: "butt", angle: 0 },
   },
@@ -334,7 +364,7 @@ export const RIBBON: Style = {
   parts: {
     ...SANS.parts,
     shoulder: { spring: 0.4, reach: 1.05 },
-    bowl: { width: 1, squareness: 0.5 },
+    bowl: { width: 1, squareness: 0.5, aperture: 1 },
     corner: { radius: 220, join: "round" },
     terminal: { kind: "butt", angle: 0 },
   },
@@ -350,7 +380,7 @@ export const TECHNICAL: Style = {
   parts: {
     ...SANS.parts,
     shoulder: { spring: 0.78, reach: 0.82 },
-    bowl: { width: 0.82, squareness: 0.92 },
+    bowl: { width: 0.82, squareness: 0.92, aperture: 1 },
     corner: { radius: 45, join: "round" },
     terminal: { kind: "butt", angle: 0 },
   },
@@ -365,7 +395,7 @@ export const FAIRGROUND: Style = {
   pen: { weight: 130, contrast: 0.62, angle: 90 },
   parts: {
     ...SANS.parts,
-    bowl: { width: 1.08, squareness: 0.15 },
+    bowl: { width: 1.08, squareness: 0.15, aperture: 1 },
     terminal: { kind: "butt", angle: 0 },
   },
 };
@@ -379,7 +409,7 @@ export const MARKER: Style = {
   pen: { weight: 118, contrast: 0.5, angle: -32 },
   parts: {
     ...SANS.parts,
-    bowl: { width: 0.95, squareness: 0.35 },
+    bowl: { width: 0.95, squareness: 0.35, aperture: 1 },
     corner: { radius: 0, join: "bevel" },
     terminal: { kind: "butt", angle: 0 },
   },
@@ -403,7 +433,7 @@ export const WAVY: Style = {
   parts: {
     ...SANS.parts,
     slab: { on: true, projection: 1.55, thickness: 0.52, bracket: 0 },
-    bowl: { width: 1.05, squareness: 0 },
+    bowl: { width: 1.05, squareness: 0, aperture: 1 },
     wave: { length: 152, depth: 34, along: "flat" },
   },
 };
@@ -424,9 +454,32 @@ export const FLARED: Style = {
   pen: { weight: 118, contrast: 0.34, angle: 0 },
   parts: {
     ...SANS.parts,
-    bowl: { width: 0.94, squareness: 0.1 },
+    bowl: { width: 0.94, squareness: 0.1, aperture: 1 },
     corner: { radius: 0, join: "miter" },
     flare: { spread: 0.3, depth: 1.1, curve: 0.95 },
+  },
+};
+
+/**
+ * Psychedelic: heavy, high contrast, nearly shut, with a ball on every end.
+ *
+ * The seventies poster letter. The weight and the contrast together mean the
+ * curves swell and vanish rather than holding one thickness, the apertures
+ * close until the c and the S are rings with a slot in them, and the balls
+ * throw what is left of the weight to the ends. Set tight, it reads as one
+ * block of colour with the words cut out of it, which is the point.
+ */
+export const PSYCHEDELIC: Style = {
+  ...SANS,
+  name: "Psychedelic",
+  blurb: "Heavy, swollen, nearly shut, with a ball on every open end.",
+  metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 300, sidebearing: 40, width: 1.04 },
+  pen: { weight: 168, contrast: 0.62, angle: 0 },
+  parts: {
+    ...SANS.parts,
+    bowl: { width: 1.02, squareness: 0.1, aperture: 0.42 },
+    shoulder: { spring: 0.72, reach: 1 },
+    ball: { size: 1.75, drop: 0.4 },
   },
 };
 
@@ -441,4 +494,5 @@ export const BASES: Style[] = [
   MARKER,
   WAVY,
   FLARED,
+  PSYCHEDELIC,
 ];

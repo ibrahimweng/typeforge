@@ -65,6 +65,7 @@ export type PartName =
   | "corner"
   | "terminal"
   | "crossbar"
+  | "ball"
   | "flare"
   | "wave";
 
@@ -475,7 +476,10 @@ function endFor(style: Style): Terminal {
  */
 function ink(frame: Frame, spine: Spine, start: Terminal = BUTT, end: Terminal = BUTT): Stroke {
   if (spine.closed) uses("bowl");
-  else if (frame.style.parts.flare.spread > 0) uses("flare");
+  else {
+    if (frame.style.parts.flare.spread > 0) uses("flare");
+    if (frame.style.parts.ball.size > 0) uses("ball");
+  }
   if (hasCorner(spine)) uses("corner");
   return {
     /*
@@ -1064,12 +1068,44 @@ function openBowl(
   fromDegrees = 55,
   toDegrees = 305,
 ): Stroke {
+  uses("bowl");
+  const [from, to] = opening(f, centre, halfHeight, fromDegrees, toDegrees);
   return ink(
     f,
-    bowlBetween(centre, halfWidth, halfHeight, 1 - f.square, f.half, fromDegrees, toDegrees),
+    bowlBetween(centre, halfWidth, halfHeight, 1 - f.square, f.half, from, to),
     f.end,
     f.end,
   );
+}
+
+/**
+ * The two angles a part-bowl runs between, with the style's aperture applied.
+ *
+ * Written in the recipes as the ordinary opening for that letter, because that
+ * is what a recipe knows: a c is open about a hundred and ten degrees and a G
+ * rather less. How far open the face wants them is a decision about the face,
+ * so it is applied here, to the gap rather than to the two angles -- the gap
+ * closes and opens about its own middle and the letter stays pointing the way
+ * it was drawn to point.
+ *
+ * Never closed past what the pen can clear. Two ends reaching round toward
+ * each other meet before their spines do, and a heavy face asked to close its
+ * c would fuse it into an o with a scar -- which is the same fault the G had
+ * before its aperture was measured in pen widths rather than in degrees.
+ */
+function opening(
+  f: Frame,
+  centre: Vec2,
+  halfHeight: number,
+  fromDegrees: number,
+  toDegrees: number,
+): [number, number] {
+  void centre;
+  const middle = (fromDegrees + 360 + toDegrees) / 2;
+  const half = (fromDegrees + 360 - toDegrees) / 2;
+  const clear = ((f.half * 2.4) / Math.max(halfHeight, f.least)) * (180 / Math.PI);
+  const wanted = Math.max(half * f.style.parts.bowl.aperture, clear);
+  return [middle + wanted - 360, middle - wanted];
 }
 
 /**
