@@ -82,8 +82,9 @@ export function drawLetter(name: string, style: Style, form?: string): Drawn | n
   const built: Recipe = recipe(style);
 
   const upright = built.strokes.flatMap((stroke) => inkOf(stroke, style));
-  const contours = insideTheEdge(leaning(upright, style), style);
-  return { contours, advanceWidth: advanceFor(name, built, contours, style) };
+  const drawn = insideTheEdge(leaning(upright, style), style);
+  if (style.metrics.monospaced) return centred(drawn, style);
+  return { contours: drawn, advanceWidth: advanceFor(name, built, drawn, style) };
 }
 
 /**
@@ -167,6 +168,64 @@ function advanceFor(name: string, recipe: Recipe, contours: Contour[], style: St
   if (recipe.width !== undefined) return recipe.width;
   if (FIGURES.includes(name)) return figureAdvance(style);
   return measure(recipe, contours, style);
+}
+
+/**
+ * A letter given the common advance, and moved to sit in the middle of it.
+ *
+ * The letters keep the widths they were drawn at. What changes is the space
+ * each one is put in, which is what a monospaced face is: the shapes are not
+ * squeezed or stretched to match, they are set in a column and centred there.
+ * An i in a space made for an m looks lost, and that is the honest answer
+ * rather than a fault to be hidden.
+ */
+function centred(contours: Contour[], style: Style): Drawn {
+  const advanceWidth = monoAdvance(style);
+  if (contours.length === 0) return { contours, advanceWidth };
+  const bounds = contoursBounds(contours);
+  const shift = (advanceWidth - bounds.xMin - bounds.xMax) / 2;
+  const move = (point: Vec2): Vec2 => ({ x: point.x + shift, y: point.y });
+  return {
+    advanceWidth,
+    contours: contours.map((contour) => ({
+      ...contour,
+      nodes: contour.nodes.map((node) => ({
+        ...node,
+        point: move(node.point),
+        handleIn: node.handleIn ? move(node.handleIn) : null,
+        handleOut: node.handleOut ? move(node.handleOut) : null,
+      })),
+    })),
+  };
+}
+
+/**
+ * The one advance a monospaced face gives every letter: the widest any of them
+ * needs, so nothing is ever cramped by its neighbours' spacing.
+ *
+ * Built from the recipes rather than by drawing the letters, for the same
+ * reason the figures' shared width is: drawing a letter is what asks for this
+ * number, and asking it back would not end.
+ */
+const monoCache = new WeakMap<Style, number>();
+
+function monoAdvance(style: Style): number {
+  const known = monoCache.get(style);
+  if (known !== undefined) return known;
+  let widest = 0;
+  for (const name of letterNames()) {
+    const built = LETTERS[name](style);
+    const contours = insideTheEdge(
+      leaning(
+        built.strokes.flatMap((stroke) => inkOf(stroke, style)),
+        style,
+      ),
+      style,
+    );
+    widest = Math.max(widest, measure(built, contours, style));
+  }
+  monoCache.set(style, widest);
+  return widest;
 }
 
 function measure(recipe: Recipe, contours: Contour[], style: Style): number {

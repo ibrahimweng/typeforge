@@ -331,6 +331,8 @@ export interface FieldControl {
   step: number;
   /** True when the range is a fraction of the em rather than a plain number. */
   emRelative?: boolean;
+  /** True when the only two useful values are on and off. */
+  toggle?: boolean;
 }
 
 export const PEN_CONTROLS: FieldControl[] = [
@@ -362,6 +364,15 @@ export const PEN_CONTROLS: FieldControl[] = [
 ];
 
 export const METRIC_CONTROLS: FieldControl[] = [
+  {
+    key: "monospaced",
+    label: "One width",
+    hint: "Every letter given the same advance, an i as much as an m. Not a decision about shape but about the space each shape is put in, which is why no other control reaches it.",
+    min: 0,
+    max: 1,
+    step: 1,
+    toggle: true,
+  },
   {
     key: "xHeight",
     label: "x-height",

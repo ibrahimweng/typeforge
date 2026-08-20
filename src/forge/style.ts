@@ -48,6 +48,16 @@ export interface Metrics {
    */
   width: number;
   /**
+   * Every letter given the same advance, an i as much as an m.
+   *
+   * A whole family of type that no amount of turning the other controls
+   * reaches, because it is not a decision about shape at all: it is a decision
+   * about the space each shape is put in. The letters keep the widths they
+   * were drawn at and are centred in a common one, which is what a monospaced
+   * face does and why its i has such long ears in the ones that draw them.
+   */
+  monospaced?: boolean;
+  /**
    * Degrees the whole letter leans, to the right when positive.
    *
    * Taken on the finished outline rather than on the skeleton. A shear is an
@@ -222,7 +232,53 @@ export interface Style {
   forms?: Record<string, string>;
   /** What kind of face this is, for the person choosing one. */
   blurb?: string;
+  /**
+   * Which family of type this face belongs to.
+   *
+   * Not a label for its own sake. A dozen starting points in one grid is a
+   * dozen guesses; the same dozen under four headings is a map of what kind of
+   * thing a typeface can be, and it says out loud that the difference between
+   * a grotesque and a didone is a set of numbers rather than a different
+   * program. It also shows the gaps: what is not here yet is exactly what the
+   * controls cannot reach yet.
+   */
+  family: Family;
 }
+
+/**
+ * The four kinds of type, which is as many as are worth telling apart here.
+ *
+ * The usual classifications -- Vox and its descendants -- split the text faces
+ * a dozen ways and then put everything else in a bin called "manual" or
+ * "decorative". That is the wrong shape for a tool: the interesting question
+ * is not which century a serif is from but which controls you reach for, and
+ * by that measure a didone and an old-style are near neighbours while a
+ * blackletter and a psychedelic poster face are not related at all.
+ */
+export type Family = "sans" | "serif" | "display" | "hand";
+
+export const FAMILIES: Array<{ id: Family; label: string; hint: string }> = [
+  {
+    id: "sans",
+    label: "Sans",
+    hint: "No serifs. What separates them is the shape of the bowls, how open the letters stand, and how even the weight is.",
+  },
+  {
+    id: "serif",
+    label: "Serif",
+    hint: "A bar across the end of each stroke. Its reach, its depth and how far it is bracketed are three numbers, and they are most of the difference between an old-style, a slab and a didone.",
+  },
+  {
+    id: "display",
+    label: "Display",
+    hint: "Made to be looked at rather than read. This is where the weight goes past what a text face would allow and where the wave, the flare and the ball live.",
+  },
+  {
+    id: "hand",
+    label: "Hand",
+    hint: "Faces that remember the tool that made them: a nib held at an angle, a brush, a marker. The lean and the contrast do most of the work.",
+  },
+];
 
 /**
  * The terminal a stroke end wears under this style, slab included.
@@ -263,6 +319,7 @@ const EM = 1000;
  */
 export const SANS: Style = {
   name: "Sans",
+  family: "sans",
   blurb: "The plain case. One thickness, flat ends, ordinary proportions.",
   metrics: {
     unitsPerEm: EM,
@@ -302,6 +359,7 @@ export const SANS: Style = {
 export const SERIF: Style = {
   ...SANS,
   name: "Serif",
+  family: "serif",
   blurb: "Contrast, an angled pen, and bracketed serifs.",
   pen: { weight: 96, contrast: 0.42, angle: 8 },
   parts: {
@@ -323,6 +381,7 @@ export const SERIF: Style = {
 export const DISPLAY: Style = {
   ...SANS,
   name: "Display",
+  family: "display",
   blurb: "Heavy, round and tight. Made to be looked at rather than read.",
   metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 340, sidebearing: 40 },
   pen: { weight: 175, contrast: 0, angle: 0 },
@@ -352,6 +411,7 @@ export const DISPLAY: Style = {
 export const GEOMETRIC: Style = {
   ...SANS,
   name: "Geometric",
+  family: "sans",
   blurb: "Circles and points, one thickness throughout.",
   metrics: { ...SANS.metrics, xHeight: 500, counterWidth: 380, sidebearing: 58 },
   pen: { weight: 86, contrast: 0, angle: 0 },
@@ -368,6 +428,7 @@ export const GEOMETRIC: Style = {
 export const RIBBON: Style = {
   ...SANS,
   name: "Ribbon",
+  family: "display",
   blurb: "One heavy stroke bent round. Corners opened until the joints disappear.",
   metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 330, sidebearing: 46 },
   pen: { weight: 150, contrast: 0, angle: 0 },
@@ -384,6 +445,7 @@ export const RIBBON: Style = {
 export const TECHNICAL: Style = {
   ...SANS,
   name: "Technical",
+  family: "display",
   blurb: "Squared off and narrow, with the corners just off the limit.",
   metrics: { ...SANS.metrics, counterWidth: 300, sidebearing: 52, width: 0.9 },
   pen: { weight: 78, contrast: 0, angle: 0 },
@@ -400,6 +462,7 @@ export const TECHNICAL: Style = {
 export const FAIRGROUND: Style = {
   ...SANS,
   name: "Fairground",
+  family: "display",
   blurb: "The pen turned a quarter, so the horizontals carry the weight.",
   metrics: { ...SANS.metrics, sidebearing: 50 },
   pen: { weight: 130, contrast: 0.62, angle: 90 },
@@ -414,6 +477,7 @@ export const FAIRGROUND: Style = {
 export const MARKER: Style = {
   ...SANS,
   name: "Marker",
+  family: "hand",
   blurb: "Leaned over, drawn with a flat pen held at an angle.",
   metrics: { ...SANS.metrics, slant: 13, sidebearing: 48 },
   pen: { weight: 118, contrast: 0.5, angle: -32 },
@@ -437,6 +501,7 @@ export const MARKER: Style = {
 export const WAVY: Style = {
   ...SANS,
   name: "Wavy",
+  family: "display",
   blurb: "Thin, wide, and rippling along every run that lies flat.",
   metrics: { ...SANS.metrics, width: 1.12, sidebearing: 44 },
   pen: { weight: 44, contrast: 0, angle: 0 },
@@ -459,6 +524,7 @@ export const WAVY: Style = {
 export const FLARED: Style = {
   ...SANS,
   name: "Flared",
+  family: "display",
   blurb: "Condensed and swelling at every stroke end, the art-nouveau way.",
   metrics: { ...SANS.metrics, width: 0.78, capHeight: 740, xHeight: 500, sidebearing: 42 },
   pen: { weight: 118, contrast: 0.34, angle: 0 },
@@ -482,6 +548,7 @@ export const FLARED: Style = {
 export const PSYCHEDELIC: Style = {
   ...SANS,
   name: "Psychedelic",
+  family: "display",
   blurb: "Heavy, swollen, nearly shut, with a ball on every open end.",
   metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 300, sidebearing: 40, width: 1.04 },
   pen: { weight: 168, contrast: 0.62, angle: 0 },
@@ -507,6 +574,7 @@ export const PSYCHEDELIC: Style = {
 export const BRUSH: Style = {
   ...SANS,
   name: "Brush",
+  family: "hand",
   blurb: "The signwriter's hand: leaned over, chisel-cut, drawn in cursive shapes.",
   metrics: {
     ...SANS.metrics,
@@ -531,14 +599,106 @@ export const BRUSH: Style = {
   forms: { g: "curled", f: "descending", y: "straight", l: "tailed" },
 };
 
+/**
+ * Grotesque: a sans that has closed up.
+ *
+ * The other end of the sans family from the geometric one, and the difference
+ * is almost entirely aperture and bowl. Where a humanist sans lets its c and
+ * its e stand open and its arches spring low, this closes the apertures,
+ * springs the shoulders high and squares the bowls a little. Nothing here is a
+ * different letter; it is the same skeletons with three numbers moved.
+ */
+export const GROTESQUE: Style = {
+  ...SANS,
+  name: "Grotesque",
+  family: "sans",
+  blurb: "A sans that has closed up: tight apertures, high shoulders, squared bowls.",
+  metrics: { ...SANS.metrics, xHeight: 535, width: 0.97, counterWidth: 318 },
+  pen: { weight: 104, contrast: 0.06, angle: 0 },
+  parts: {
+    ...SANS.parts,
+    bowl: { width: 0.97, squareness: 0.14, aperture: 0.62 },
+    shoulder: { spring: 0.74, reach: 1 },
+  },
+};
+
+/**
+ * Didone: the pen turned right down, and the serifs left as hairlines.
+ *
+ * Two numbers do all of it. Contrast near its limit makes the horizontals
+ * vanish beside the stems, and a serif with almost no depth and no bracket at
+ * all leaves a flat line across the end rather than a shape grown out of it.
+ * It is the most extreme thing the text controls reach without help from any
+ * of the display ones.
+ */
+export const DIDONE: Style = {
+  ...SANS,
+  name: "Didone",
+  family: "serif",
+  blurb: "Contrast at its limit and serifs left as unbracketed hairlines.",
+  metrics: { ...SANS.metrics, xHeight: 500, width: 0.98 },
+  pen: { weight: 118, contrast: 0.8, angle: 0 },
+  parts: {
+    ...SANS.parts,
+    slab: { on: true, projection: 0.54, thickness: 0.13, bracket: 0.02 },
+    bowl: { width: 0.96, squareness: 0, aperture: 0.9 },
+    crossbar: { height: 0.52, weight: 0.9 },
+  },
+};
+
+/**
+ * Slab: the serif taken the other way, to a bar as heavy as the stem.
+ *
+ * The same three serif numbers as the didone with two of them reversed --
+ * depth up near the stem's own width, bracket at nothing -- and the contrast
+ * taken out. What is left reads as a face built out of rectangles, which is
+ * what an Egyptian is.
+ */
+export const SLAB: Style = {
+  ...SANS,
+  name: "Slab",
+  family: "serif",
+  blurb: "Serifs as heavy as the stems, and no contrast to soften them.",
+  metrics: { ...SANS.metrics, xHeight: 528, width: 1.02, counterWidth: 340 },
+  pen: { weight: 112, contrast: 0.05, angle: 0 },
+  parts: {
+    ...SANS.parts,
+    slab: { on: true, projection: 0.6, thickness: 0.74, bracket: 0.04 },
+    bowl: { width: 1, squareness: 0.08, aperture: 0.78 },
+    shoulder: { spring: 0.66, reach: 1 },
+  },
+};
+
+/**
+ * Typewriter: one advance for every letter.
+ *
+ * Here to say that the monospaced face is a family of its own and to show what
+ * it costs -- an i in a space made for an m, an m squeezed into one made for
+ * an i -- rather than to be a good example of one. Slab serifs, because the
+ * ears they give a narrow letter are the traditional answer to that problem.
+ */
+export const TYPEWRITER: Style = {
+  ...SLAB,
+  name: "Typewriter",
+  family: "serif",
+  blurb: "One advance for every letter, wide or narrow, and serifs to fill it.",
+  metrics: { ...SLAB.metrics, monospaced: true, width: 0.95, sidebearing: 40 },
+  pen: { weight: 96, contrast: 0.04, angle: 0 },
+  parts: { ...SLAB.parts, slab: { on: true, projection: 0.72, thickness: 0.5, bracket: 0.06 } },
+};
+
 export const BASES: Style[] = [
   SANS,
+  GROTESQUE,
   SERIF,
   DISPLAY,
   GEOMETRIC,
   RIBBON,
   TECHNICAL,
   FAIRGROUND,
+  DIDONE,
+  SLAB,
+  TYPEWRITER,
   MARKER,
   WAVY,
   FLARED,

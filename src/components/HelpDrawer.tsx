@@ -17,6 +17,7 @@ import * as React from "react";
 import { PARAM_GROUPS, PARAMS } from "@/components/param-specs";
 import { OUTLINE_ACTION } from "@/components/controls";
 import { METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS } from "@/forge/parts";
+import { FAMILIES, type Family } from "@/forge/style";
 import { forgetTips, seenTipCount, subscribeToTips } from "@/help/tips";
 
 const VIEWS: Array<[string, string]> = [
@@ -26,6 +27,22 @@ const VIEWS: Array<[string, string]> = [
   ["Spacing", "The space either side of every letter, as a table you can read down."],
   ["Checks", "What is wrong with the font before anyone else finds out."],
 ];
+
+/*
+ * Which controls carry the differences inside a family.
+ *
+ * The family hints in style.ts say what a family is; this says where to pull to
+ * move between the faces within one, because "a serif" and "which three numbers
+ * make a slab a didone" are different questions and only the second one tells
+ * you what to touch.
+ */
+const FAMILY_CONTROLS: Record<Family, string> = {
+  sans: "Move within it with bowl squareness, aperture, shoulder springing and the pen's contrast: a grotesque is a tighter, squarer, more even sans, a geometric a rounder and wider one.",
+  serif: "Move within it with serif reach, depth and bracket, and with contrast. A slab is a thick serif barely bracketed; a didone is a thin one on a high-contrast pen; an old-style sits between them with the bracket up.",
+  display:
+    "Move within it with weight past what text would take, then with the parts a text face leaves off -- wave depth and wavelength, flare spread and hollow, ball size and overhang.",
+  hand: "Move within it with pen angle, contrast and slant. Those three say which tool is being remembered; the terminal cut says how it was lifted off the paper.",
+};
 
 const SHORTCUTS: Array<[string, string]> = [
   ["V", "Select tool"],
@@ -137,6 +154,29 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
             you changed is the serif, so every letter that wears one wears the new one. A letter
             told to keep its own version says so, and it is the only one that does. The one
             exception is the shape of a letter: choosing a two-storey a says nothing about the g.
+          </p>
+        </Section>
+
+        <Section title="The families of type" half="drawn">
+          <p>
+            Every base belongs to one of four families, and the gallery is grouped by them. A family
+            is not a lock: it says which handful of controls carries most of the difference between
+            the faces inside it, so you know where to start pulling.
+          </p>
+          <dl className="space-y-2">
+            {FAMILIES.map((family) => (
+              <div key={family.id}>
+                <dt className="text-2xs font-medium text-foreground">{family.label}</dt>
+                <dd className="text-2xs leading-snug text-muted-foreground">
+                  {family.hint} {FAMILY_CONTROLS[family.id]}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <p>
+            Nothing stops you crossing them. Serifs are a toggle, so a sans is a serif with the bar
+            switched off; the wave, the flare and the ball are parts like any other, and turning one
+            on inside a text face is how most display faces started.
           </p>
         </Section>
 

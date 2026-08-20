@@ -30,7 +30,7 @@ import {
   type PartControl,
   type PartName,
 } from "@/forge/parts";
-import { BASES } from "@/forge/style";
+import { BASES, FAMILIES } from "@/forge/style";
 import { forgeStore, useForge, type Phase } from "@/state/useForge";
 import { SliderControl as Slider } from "@/ui/components/controls/slider";
 import { cn } from "@/ui/lib/utils";
@@ -69,32 +69,54 @@ export function ForgePanel(): React.JSX.Element {
     >
       <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
         <Section title="Start from">
-          <div className="grid grid-cols-2 gap-1.5">
-            {BASES.map((base) => (
-              <button
-                key={base.name}
-                type="button"
-                onClick={() => forgeStore.startFromBase(base.name)}
-                aria-pressed={forge.base === base.name}
-                title={base.blurb}
-                data-forge-base={base.name}
-                className={cn(
-                  "rounded-md border px-2 py-1.5 text-left text-2xs transition-colors",
-                  forge.base === base.name
-                    ? "border-[color:var(--accent)] bg-[color:color-mix(in_oklab,var(--accent)_12%,transparent)] text-foreground"
-                    : "border-border text-muted-foreground hover:border-muted-foreground hover:bg-card",
-                )}
-              >
-                {base.name}
-              </button>
-            ))}
-          </div>
+          {/*
+            Under headings rather than in one grid. A dozen and a half starting
+            points in a single block is a dozen and a half guesses; the same
+            ones under four headings say what kind of thing a typeface can be,
+            and make it visible that the difference between a grotesque and a
+            didone is a set of numbers rather than a different program.
+          */}
+          {FAMILIES.map((family) => {
+            const members = BASES.filter((base) => base.family === family.id);
+            if (members.length === 0) return null;
+            return (
+              <div key={family.id} className="pb-2 last:pb-0">
+                <p
+                  className="pb-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground"
+                  title={family.hint}
+                  data-forge-family={family.id}
+                >
+                  {family.label}
+                </p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {members.map((base) => (
+                    <button
+                      key={base.name}
+                      type="button"
+                      onClick={() => forgeStore.startFromBase(base.name)}
+                      aria-pressed={forge.base === base.name}
+                      title={base.blurb}
+                      data-forge-base={base.name}
+                      className={cn(
+                        "rounded-md border px-2 py-1.5 text-left text-2xs transition-colors",
+                        forge.base === base.name
+                          ? "border-[color:var(--accent)] bg-[color:color-mix(in_oklab,var(--accent)_12%,transparent)] text-foreground"
+                          : "border-border text-muted-foreground hover:border-muted-foreground hover:bg-card",
+                      )}
+                    >
+                      {base.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
           <p className="pt-2 text-2xs leading-snug text-muted-foreground">
             {BASES.find((base) => base.name === forge.base)?.blurb}
           </p>
           <p className="pt-1.5 text-2xs leading-snug text-muted-foreground">
-            One set of skeletons, eight sets of decisions over it. Not one letter
-            is drawn differently between them, and every control below stays live
+            One set of skeletons under all of them. Not one letter is drawn
+            differently between these, and every control below stays live
             whichever you pick. Choosing one starts again from it.
           </p>
         </Section>
