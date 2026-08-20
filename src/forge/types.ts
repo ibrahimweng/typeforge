@@ -122,11 +122,24 @@ export interface Pen {
   angle: number;
 }
 
+/**
+ * How the outside of a corner is finished where a stroke changes direction.
+ *
+ * - `miter` carries both edges on until they meet, which keeps an apex sharp.
+ * - `round` turns the pen about the corner, which is exactly the boundary of
+ *   the swept region and can never overshoot.
+ * - `bevel` cuts straight across, which is what a very sharp miter falls back
+ *   to rather than growing a spike several stem-widths long.
+ */
+export type JoinKind = "miter" | "round" | "bevel";
+
 export interface Stroke {
   spine: Spine;
   pen: Pen;
   start: Terminal;
   end: Terminal;
+  /** How the outside of a corner is finished. Miter unless said otherwise. */
+  join?: JoinKind;
 }
 
 export const BUTT: Terminal = { kind: "butt" };

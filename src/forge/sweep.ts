@@ -31,7 +31,7 @@
 
 import { contourArea, reverseContour } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
-import type { Pen, Spine, SpineArc, SpineSegment, Stroke, Terminal } from "./types";
+import type { JoinKind, Pen, Spine, SpineArc, SpineSegment, Stroke, Terminal } from "./types";
 
 // ---------------------------------------------------------------------------
 // The pen's two half-widths
@@ -295,6 +295,223 @@ function stitch(segments: OffsetSegment[]): GlyphNode[] {
 }
 
 // ---------------------------------------------------------------------------
+// Corners
+// ---------------------------------------------------------------------------
+
+/*
+ * What happens where a stroke changes direction.
+ *
+ * Everything above assumes the spine runs smoothly, and for a bowl or an arch
+ * it does. A diagonal letter does not: an A turns through a hundred and twenty
+ * degrees at its apex, and at that turn the two offsets do two different
+ * things. On the outside of the turn they pull apart and leave a wedge of
+ * nothing; on the inside they cross each other and leave a loop.
+ *
+ * Neither was handled. The alphabet worked around it by drawing each diagonal
+ * as its own stroke, ending both square at the shared point -- which does not
+ * fill the wedge, it only stops the loop. At text weight the missing wedge is
+ * a fraction of a unit and nobody sees it. At a display weight of 190 units it
+ * is a notch you can put your thumb in, and it was in A, M, N, V, W, Y, Z, k,
+ * v, w, x, y and z: thirteen letters, every one of them visibly chipped.
+ *
+ * So the wedge is filled and the loop is cut, and the letters that used to be
+ * two strokes meeting at a point become one stroke that turns.
+ */
+
+/** Which way a corner turns, and where. */
+interface Kink {
+  /** The offset run before the corner. */
+  before: number;
+  /** The offset run after it. */
+  after: number;
+  at: Vec2;
+  /** Positive when the spine turns anticlockwise. */
+  turn: number;
+}
+
+/**
+ * Every place the spine changes direction.
+ *
+ * A join whose tangents agree is not a corner and is left alone -- which is
+ * most of them, since an arch and a bowl are built to run smoothly from one
+ * piece to the next.
+ */
+function kinksOf(segments: SpineSegment[], closed: boolean): Kink[] {
+  const found: Kink[] = [];
+  const upTo = closed ? segments.length : segments.length - 1;
+  for (let index = 0; index < upTo; index++) {
+    const next = (index + 1) % segments.length;
+    const leaving = tangents(segments[index]).end;
+    const arriving = tangents(segments[next]).start;
+    const turn = leaving.x * arriving.y - leaving.y * arriving.x;
+    const along = leaving.x * arriving.x + leaving.y * arriving.y;
+    if (Math.abs(turn) < 1e-9 && along > 0) continue;
+    found.push({ before: index, after: next, at: segmentEnd(segments[index]), turn });
+  }
+  return found;
+}
+
+function offsetStart(segment: OffsetSegment): Vec2 {
+  return segment.kind === "line" ? segment.from : ellipseAt(segment, segment.from);
+}
+
+function offsetEnd(segment: OffsetSegment): Vec2 {
+  return segment.kind === "line" ? segment.to : ellipseAt(segment, segment.to);
+}
+
+/**
+ * Where two lines cross, as a point, or nothing if they run parallel.
+ *
+ * Both are treated as infinite: at a corner the crossing is past the end of one
+ * and before the start of the other, which is the whole reason it is wanted.
+ */
+function crossingOf(a: OffsetLine, b: OffsetLine): Vec2 | null {
+  const da = { x: a.to.x - a.from.x, y: a.to.y - a.from.y };
+  const db = { x: b.to.x - b.from.x, y: b.to.y - b.from.y };
+  const denominator = da.x * db.y - da.y * db.x;
+  if (Math.abs(denominator) < 1e-12) return null;
+  const dx = b.from.x - a.from.x;
+  const dy = b.from.y - a.from.y;
+  const t = (dx * db.y - dy * db.x) / denominator;
+  return { x: a.from.x + da.x * t, y: a.from.y + da.y * t };
+}
+
+/**
+ * The outside of a corner: the wedge the two offsets left between them.
+ *
+ * A miter carries both edges on to where they meet, which is what keeps the
+ * apex of an A pointed. How far that is depends on how sharp the turn is, and
+ * on a very sharp one it runs away -- a thirty degree apex puts the point
+ * nearly four stem-widths out, and below that it grows without bound. Past the
+ * limit it is cut off square instead, which is what a punchcutter does with a
+ * very acute apex anyway.
+ *
+ * A round join needs no limit and cannot overshoot, because it is the pen
+ * itself sitting at the corner: it is not an approximation of the swept
+ * region's boundary, it is that boundary exactly.
+ */
+export const MITER_LIMIT = 4;
+
+function outerJoin(
+  before: OffsetSegment,
+  after: OffsetSegment,
+  at: Vec2,
+  reach: PenReach,
+  join: JoinKind,
+): OffsetSegment[] {
+  const from = offsetEnd(before);
+  const to = offsetStart(after);
+  if (Math.hypot(from.x - to.x, from.y - to.y) < 1e-9) return [];
+
+  if (join === "miter" && before.kind === "line" && after.kind === "line") {
+    const point = crossingOf(before, after);
+    if (point && Math.hypot(point.x - at.x, point.y - at.y) <= reach.across * MITER_LIMIT) {
+      return [
+        { kind: "line", from, to: point },
+        { kind: "line", from: point, to },
+      ];
+    }
+  }
+
+  if (join === "bevel") return [];
+
+  /*
+   * The pen, turned about the corner from one offset to the other.
+   *
+   * Read in the pen's own frame, because with contrast the pen is an ellipse
+   * and the angle that puts a point on it is not the angle that points at it.
+   * Dividing each coordinate by its own axis before taking the angle is what
+   * turns the second into the first.
+   */
+  const angleOf = (point: Vec2): number => {
+    const local = rotate({ x: point.x - at.x, y: point.y - at.y }, -reach.angle);
+    return Math.atan2(local.y / (reach.along || 1e-9), local.x / (reach.across || 1e-9));
+  };
+  let start = angleOf(from);
+  let finish = angleOf(to);
+  // The short way round. The long way would sweep the pen back through the
+  // stroke it just came out of.
+  while (finish - start > Math.PI) finish -= Math.PI * 2;
+  while (finish - start < -Math.PI) finish += Math.PI * 2;
+  return [
+    {
+      kind: "ellipse",
+      centre: at,
+      rx: reach.across,
+      ry: reach.along,
+      rotation: reach.angle,
+      from: start,
+      to: finish,
+    },
+  ];
+}
+
+/**
+ * The inside of a corner: the loop the two offsets made by crossing.
+ *
+ * Cut by moving both of them to the point where they cross, which for two
+ * straight runs is exact. A crossing that lands further away than the runs are
+ * long would eat a whole segment, so it is left alone -- the overlap then
+ * survives into the outline, where it is invisible under the fill rule and is
+ * fused by the export in any case.
+ */
+function trimInner(before: OffsetSegment, after: OffsetSegment): void {
+  if (before.kind !== "line" || after.kind !== "line") return;
+  const point = crossingOf(before, after);
+  if (!point) return;
+  const reachesBack = Math.hypot(point.x - before.from.x, point.y - before.from.y);
+  const reachesOn = Math.hypot(point.x - after.to.x, point.y - after.to.y);
+  const beforeLength = Math.hypot(before.to.x - before.from.x, before.to.y - before.from.y);
+  const afterLength = Math.hypot(after.to.x - after.from.x, after.to.y - after.from.y);
+  if (reachesBack > beforeLength || reachesOn > afterLength) return;
+  before.to = point;
+  after.from = point;
+}
+
+/**
+ * One side of the whole spine, with its corners resolved.
+ *
+ * Which side of a corner is the outside depends on which way the spine turns:
+ * travelling and turning anticlockwise, the left of the direction of travel is
+ * the inside of the turn. So one call handles both sides and neither has to
+ * know which one it is.
+ */
+function sideRun(
+  segments: SpineSegment[],
+  side: number,
+  reach: PenReach,
+  join: JoinKind,
+  closed: boolean,
+): OffsetSegment[] {
+  const offsets = segments.map((segment) => ({ ...offsetSegment(segment, side, reach) }));
+  const after = new Map<number, OffsetSegment[]>();
+
+  for (const kink of kinksOf(segments, closed)) {
+    const outside = kink.turn > 0 ? side < 0 : side > 0;
+    if (outside) {
+      const filling = outerJoin(
+        offsets[kink.before],
+        offsets[kink.after],
+        kink.at,
+        reach,
+        join,
+      );
+      if (filling.length > 0) after.set(kink.before, filling);
+    } else {
+      trimInner(offsets[kink.before], offsets[kink.after]);
+    }
+  }
+
+  const run: OffsetSegment[] = [];
+  offsets.forEach((offset, index) => {
+    run.push(offset);
+    const filling = after.get(index);
+    if (filling) run.push(...filling);
+  });
+  return run;
+}
+
+// ---------------------------------------------------------------------------
 // Terminals
 // ---------------------------------------------------------------------------
 
@@ -375,6 +592,28 @@ function terminalNodes(
 // ---------------------------------------------------------------------------
 
 /**
+ * The segments that actually go somewhere.
+ *
+ * A run of zero length is not a shape, it is a coordinate written twice, and
+ * its direction of travel is whatever the arithmetic happened to leave behind.
+ * The U had one: the flat across the bottom is what is left after the two
+ * corners have taken their radius, and on a face whose corners are as wide as
+ * the letter there is nothing left between them. It measured zero, its tangent
+ * came out as neither direction, and the corner test then read it as a turn in
+ * both directions at once and filled the wedge for a corner that was not there.
+ *
+ * It had been sitting in the alphabet all along doing no visible harm, because
+ * until there was corner handling nothing ever asked which way it pointed.
+ */
+function travelled(segments: SpineSegment[]): SpineSegment[] {
+  return segments.filter((segment) =>
+    segment.kind === "line"
+      ? Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y) > 1e-9
+      : segment.radius > 1e-9 && Math.abs(segment.endAngle - segment.startAngle) > 1e-9,
+  );
+}
+
+/**
  * Draw a stroke.
  *
  * An open stroke comes back as one contour: up the left side, across the far
@@ -384,11 +623,13 @@ function terminalNodes(
  */
 export function sweep(stroke: Stroke): Contour[] {
   const { spine, pen } = stroke;
-  if (spine.segments.length === 0) return [];
+  const segments = travelled(spine.segments);
+  if (segments.length === 0) return [];
   const reach = penReach(pen);
 
-  const left = spine.segments.map((segment) => offsetSegment(segment, 1, reach));
-  const right = spine.segments.map((segment) => offsetSegment(segment, -1, reach));
+  const join = stroke.join ?? "miter";
+  const left = sideRun(segments, 1, reach, join, spine.closed);
+  const right = sideRun(segments, -1, reach, join, spine.closed);
 
   if (spine.closed) {
     /*
@@ -417,8 +658,8 @@ export function sweep(stroke: Stroke): Contour[] {
     ];
   }
 
-  const last = spine.segments[spine.segments.length - 1];
-  const first = spine.segments[0];
+  const last = segments[segments.length - 1];
+  const first = segments[0];
   const endNodes = terminalNodes(
     stroke.end,
     segmentEnd(last),

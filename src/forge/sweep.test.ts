@@ -291,3 +291,104 @@ describe("weight, from hairline to the limit", () => {
     }
   });
 });
+
+describe("corners", () => {
+  /*
+   * A stroke that turns, which is what a diagonal letter is made of.
+   *
+   * The outside of a turn opens a wedge between the two offsets and the inside
+   * makes them cross. Both were unhandled, and the alphabet worked around it by
+   * drawing each diagonal separately and cutting both square at the shared
+   * point -- which stops the crossing without filling the wedge. At text weight
+   * that missing wedge is a fraction of a unit. At a display weight of 190 it
+   * was a notch in thirteen letters.
+   */
+  const bent = (turnTo: Vec2, join?: "miter" | "round" | "bevel"): Stroke => ({
+    spine: {
+      segments: [
+        { kind: "line", from: { x: 0, y: 0 }, to: { x: 200, y: 0 } },
+        { kind: "line", from: { x: 200, y: 0 }, to: turnTo },
+      ],
+      closed: false,
+    },
+    pen: MONOLINE,
+    start: { kind: "butt" },
+    end: { kind: "butt" },
+    join,
+  });
+
+  it("carries the outside of a right angle out to the corner", () => {
+    // Two hundred along and two hundred up, mitred: the outer corner is at
+    // (250, -50), half a pen beyond the turn in both directions.
+    const contour = sweep(bent({ x: 200, y: 200 }))[0];
+    const corner = contour.nodes.some(
+      (node) => Math.abs(node.point.x - 250) < 1e-6 && Math.abs(node.point.y + 50) < 1e-6,
+    );
+    expect(corner).toBe(true);
+  });
+
+  it("cuts less ink off the corner the sharper the join is", () => {
+    // A miter fills the whole wedge, a round join cuts it back to the pen's own
+    // arc, and a bevel takes the chord across that arc. Stated as an ordering
+    // because it is the one relation between the three that holds at every
+    // angle and every weight.
+    const ink = (join: "miter" | "round" | "bevel") =>
+      Math.abs(contourArea(sweep(bent({ x: 200, y: 200 }, join))[0]));
+    expect(ink("bevel")).toBeLessThan(ink("round"));
+    expect(ink("round")).toBeLessThan(ink("miter"));
+  });
+
+  it("does not leave a loop on the inside of a turn", () => {
+    for (const angle of [15, 30, 45, 60, 90, 120, 150]) {
+      const radians = (angle * Math.PI) / 180;
+      const contour = sweep(
+        bent({ x: 200 + 200 * Math.cos(radians), y: 200 * Math.sin(radians) }),
+      )[0];
+      expect(contoursIntersect([contour]), `a ${angle} degree turn crosses itself`).toBe(false);
+    }
+  });
+
+  it("falls back from a miter that would run away", () => {
+    /*
+     * A stroke that nearly doubles back on itself. The exact miter is where two
+     * almost-parallel lines meet, which here is twelve hundred units away --
+     * twenty-four pen widths of spike hanging off the side of the letter. Past
+     * the limit the corner is rounded instead, which is what a punchcutter does
+     * with a very acute join anyway.
+     */
+    const contour = sweep(bent({ x: 20, y: 15 }))[0];
+    expect(contoursBounds([contour]).xMax).toBeLessThan(260);
+  });
+
+  it("ignores a run that goes nowhere", () => {
+    /*
+     * A segment of zero length is a coordinate written twice, and its direction
+     * of travel is whatever the arithmetic left behind. The U had one -- the
+     * flat across its bottom, which is what remains after the two corners take
+     * their radius, and on a wide-cornered face nothing remains. It sat there
+     * harmlessly for as long as nothing asked which way it pointed, and the
+     * moment corners were handled it read as a turn in both directions at once.
+     */
+    const withNothing: Stroke = {
+      spine: {
+        segments: [
+          { kind: "line", from: { x: 0, y: 0 }, to: { x: 200, y: 0 } },
+          { kind: "line", from: { x: 200, y: 0 }, to: { x: 200, y: 0 } },
+          { kind: "line", from: { x: 200, y: 0 }, to: { x: 400, y: 0 } },
+        ],
+        closed: false,
+      },
+      pen: MONOLINE,
+      start: { kind: "butt" },
+      end: { kind: "butt" },
+    };
+    const straightThrough: Stroke = {
+      ...withNothing,
+      spine: { segments: [{ kind: "line", from: { x: 0, y: 0 }, to: { x: 400, y: 0 } }], closed: false },
+    };
+    expect(Math.abs(contourArea(sweep(withNothing)[0]))).toBeCloseTo(
+      Math.abs(contourArea(sweep(straightThrough)[0])),
+      6,
+    );
+  });
+});

@@ -23,6 +23,7 @@
 import type { Vec2 } from "@/font/types";
 import type { Style } from "./style";
 import { terminalFor } from "./style";
+import { MITER_LIMIT } from "./sweep";
 import type { Spine, Stroke, Terminal } from "./types";
 
 /**
@@ -292,6 +293,78 @@ function finish(frame: Frame, strokes: Stroke[], round = false): Recipe {
 // ---------------------------------------------------------------------------
 // Shapes that more than one letter is made of
 // ---------------------------------------------------------------------------
+
+/**
+ * How far a chained run carries on into the stem it meets.
+ *
+ * A letter such as an N is a stem, a diagonal and a stem, and the diagonal has
+ * to turn a real corner where it meets each of them: the outside of that corner
+ * is a wedge, and nothing else fills it. Turning a corner means the two are one
+ * run -- but then the stem's own ends are interior points of that run, and a
+ * serif cannot sit on an interior point, so a serifed N would lose two of its
+ * four.
+ *
+ * So the stems stay strokes in their own right and keep their serifs, and the
+ * diagonal carries a short way along each stem before it turns. That short run
+ * lies exactly on top of the stem it copies, so its square end is buried in ink
+ * that is already there and never shows, while the corner it turns is the real
+ * one.
+ */
+const stub = (f: Frame): number => f.half * 5;
+
+/**
+ * Skeleton vertices for a run that should reach a given set of points.
+ *
+ * A skeleton says where the middle of a stroke runs, and at a sharp corner the
+ * middle is not where the letter ends: the two outer edges carry on past it and
+ * meet somewhere further out. How far depends on how sharp the corner is --
+ * half the pen divided by the sine of half the angle -- and on a vee of sixty
+ * degrees that is a whole pen width.
+ *
+ * Which is why writing the vertex of a V at the baseline put its point a
+ * hundred and twenty units below it, and on the display face two hundred and
+ * fifty. The letters were not wrong about where their middles ran; they were
+ * being asked the wrong question. A designer does not put the middle of a
+ * stroke at the baseline, they put the point of the vee there.
+ *
+ * So this takes the points the ink should reach and returns the vertices that
+ * produce them. It has to be solved rather than calculated, because each vertex
+ * changes the angle at its neighbours: a w has four corners and moving the two
+ * feet up steepens the middle peak, which moves the peak, which changes the
+ * feet again. Worked out in one pass the feet came to rest sixty units above
+ * the baseline -- close enough to look almost right, which is the worst place
+ * for it to be.
+ */
+function through(f: Frame, tips: Vec2[]): Vec2[] {
+  const points = tips.map((tip) => at(tip.x, tip.y));
+  const sharpest = 1 / MITER_LIMIT;
+  for (let pass = 0; pass < 24; pass++) {
+    for (let index = 1; index < tips.length - 1; index++) {
+      const a = towards(points[index], points[index - 1]);
+      const b = towards(points[index], points[index + 1]);
+      const between = a.x * b.x + a.y * b.y;
+      // Kept no sharper than the sweep is willing to carry a point to, so the
+      // two agree about where the corner ends up.
+      const halfAngle = Math.max(Math.sqrt(Math.max(0, (1 - between) / 2)), sharpest);
+      const bisector = towards(at(0, 0), at(a.x + b.x, a.y + b.y));
+      const reach = f.half / halfAngle;
+      points[index] = at(tips[index].x + bisector.x * reach, tips[index].y + bisector.y * reach);
+    }
+  }
+  return points;
+}
+
+/** The one-corner case, which is most of them. */
+function corner(f: Frame, from: Vec2, tip: Vec2, to: Vec2): Vec2 {
+  return through(f, [from, tip, to])[1];
+}
+
+function towards(from: Vec2, to: Vec2): Vec2 {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy) || 1;
+  return at(dx / length, dy / length);
+}
 
 /**
  * A dot, as on an i or a full stop.
@@ -607,12 +680,14 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const stem = f.edge;
     const reach = stem + f.arch * 1.7;
     const junction = f.x * 0.42;
+    const arm = at(reach, f.x);
+    const leg = at(reach, 0);
+    const meet = corner(f, arm, at(stem + f.half, junction), leg);
     return finish(
       f,
       [
         ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
-        ink(f, straight(at(reach, f.x), at(stem, junction)), f.end, BUTT),
-        ink(f, straight(at(stem + f.half, junction + f.half), at(reach, 0)), BUTT, f.end),
+        ink(f, chain(straight(arm, meet), straight(meet, leg)), f.end, f.end),
       ]);
   },
 
@@ -714,25 +789,37 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const half = f.arch * 0.92;
     const left = f.edge;
     const middle = left + half;
+    const top = at(left, f.x);
+    const other = at(middle + half, f.x);
+    const point = corner(f, top, at(middle, 0), other);
     return finish(
       f,
-      [
-        ink(f, straight(at(left, f.x), at(middle, 0)), f.end, BUTT),
-        ink(f, straight(at(middle, 0), at(middle + half, f.x)), BUTT, f.end),
-      ]);
+      [ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end)]);
   },
 
   w: (style) => {
     const f = frame(style);
     const half = f.arch * 0.72;
     const left = f.edge;
+    const top = f.x;
+    const points = through(
+      f,
+      [0, 1, 2, 3, 4].map((step) => at(left + half * step, step % 2 === 0 ? top : 0)),
+    );
     return finish(
       f,
       [
-        ink(f, straight(at(left, f.x), at(left + half, 0)), f.end, BUTT),
-        ink(f, straight(at(left + half, 0), at(left + half * 2, f.x)), BUTT, f.end),
-        ink(f, straight(at(left + half * 2, f.x), at(left + half * 3, 0)), f.end, BUTT),
-        ink(f, straight(at(left + half * 3, 0), at(left + half * 4, f.x)), BUTT, f.end),
+        ink(
+          f,
+          chain(
+            straight(points[0], points[1]),
+            straight(points[1], points[2]),
+            straight(points[2], points[3]),
+            straight(points[3], points[4]),
+          ),
+          f.end,
+          f.end,
+        ),
       ]);
   },
 
@@ -756,10 +843,19 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     // How far down the right-hand diagonal has already come by the baseline,
     // so the tail leaves at the same angle it arrived on.
     const slope = (half * 2) / f.x;
+    // The left diagonal carries a little past where the two cross, so its
+    // square end is inside the other stroke rather than standing out of it.
+    const past = f.half * 1.1;
+    const drop = past / Math.hypot(1, f.x / half);
     return finish(
       f,
       [
-        ink(f, straight(at(left, f.x), at(middle, 0)), f.end, BUTT),
+        ink(
+          f,
+          straight(at(left, f.x), at(middle + (drop * half) / f.x, -drop)),
+          f.end,
+          BUTT,
+        ),
         ink(
           f,
           straight(at(middle + half, f.x), at(middle + half + slope * f.desc, f.desc)),
@@ -773,12 +869,19 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const width = f.arch * 1.6;
     const left = f.edge;
+    const start = at(left, f.x);
+    const end = at(left + width, 0);
+    const upper = corner(f, start, at(left + width, f.x), at(left, 0));
+    const lower = corner(f, at(left + width, f.x), at(left, 0), end);
     return finish(
       f,
       [
-        thin(f, straight(at(left, f.x), at(left + width, f.x)), f.end, f.end),
-        ink(f, straight(at(left + width, f.x), at(left, 0)), BUTT, BUTT),
-        thin(f, straight(at(left, 0), at(left + width, 0)), f.end, f.end),
+        ink(
+          f,
+          chain(straight(start, upper), straight(upper, lower), straight(lower, end)),
+          f.end,
+          f.end,
+        ),
       ]);
   },
 
@@ -788,7 +891,12 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const half = f.capBowl * 0.86;
     const left = f.edge;
-    const apex = left + half;
+    const middle = left + half;
+    const foot = at(left, 0);
+    const other = at(middle + half, 0);
+    // The apex is where the ink should reach; the skeleton's own vertex sits
+    // below it by however far the point of that angle carries.
+    const peak = corner(f, foot, at(middle, f.cap), other);
     /*
      * The waist sits lower than a crossbar does on an H, but it is the same
      * decision and has to move with it. Written as a fixed fraction it did not:
@@ -802,9 +910,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     return finish(
       f,
       [
-        ink(f, straight(at(left, 0), at(apex, f.cap)), f.end, BUTT),
-        ink(f, straight(at(apex, f.cap), at(apex + half, 0)), BUTT, f.end),
-        thin(f, straight(at(left + inset, bar), at(apex + half - inset, bar))),
+        ink(f, chain(straight(foot, peak), straight(peak, other)), f.end, f.end),
+        thin(f, straight(at(left + inset, bar), at(middle + half - inset, bar))),
       ]);
   },
 
@@ -952,12 +1059,17 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const stem = f.edge;
     const reach = stem + f.capBowl * 1.15;
     const junction = f.cap * 0.44;
+    const arm = at(reach, f.cap);
+    const leg = at(reach, 0);
+    // Arm and leg are one run meeting at the stem, so the corner between them
+    // is turned rather than left as two square ends. Its point is put on the
+    // stem's far edge, which is where a K's junction belongs.
+    const meet = corner(f, arm, at(stem + f.half, junction), leg);
     return finish(
       f,
       [
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        ink(f, straight(at(reach, f.cap), at(stem, junction)), f.end, BUTT),
-        ink(f, straight(at(stem + f.half, junction + f.half), at(reach, 0)), BUTT, f.end),
+        ink(f, chain(straight(arm, meet), straight(meet, leg)), f.end, f.end),
       ]);
   },
 
@@ -979,13 +1091,27 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const width = f.capBowl * 1.7;
     const middle = left + width / 2;
     const right = left + width;
+    const dip = f.cap * 0.16;
+    const into = stub(f);
+    const start = at(left, f.cap - into);
+    const end = at(right, f.cap - into);
+    const topLeft = corner(f, start, at(left, f.cap), at(middle, dip));
+    const vertex = corner(f, at(left, f.cap), at(middle, dip), at(right, f.cap));
+    const topRight = corner(f, at(middle, dip), at(right, f.cap), end);
     return finish(
       f,
       [
         ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
-        ink(f, straight(at(left, f.cap), at(middle, f.cap * 0.16)), BUTT, BUTT),
-        ink(f, straight(at(middle, f.cap * 0.16), at(right, f.cap)), BUTT, BUTT),
         ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
+        ink(
+          f,
+          chain(
+            straight(start, topLeft),
+            straight(topLeft, vertex),
+            straight(vertex, topRight),
+            straight(topRight, end),
+          ),
+        ),
       ]);
   },
 
@@ -993,12 +1119,17 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const left = f.edge;
     const right = left + f.capBowl * 1.35;
+    const into = stub(f);
+    const start = at(left, f.cap - into);
+    const end = at(right, into);
+    const top = corner(f, start, at(left, f.cap), at(right, 0));
+    const foot = corner(f, at(left, f.cap), at(right, 0), end);
     return finish(
       f,
       [
         ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
-        ink(f, straight(at(left, f.cap), at(right, 0)), BUTT, BUTT),
         ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
+        ink(f, chain(straight(start, top), straight(top, foot), straight(foot, end))),
       ]);
   },
 
@@ -1083,25 +1214,37 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const half = f.capBowl * 0.9;
     const left = f.edge;
     const middle = left + half;
+    const top = at(left, f.cap);
+    const other = at(middle + half, f.cap);
+    const point = corner(f, top, at(middle, 0), other);
     return finish(
       f,
-      [
-        ink(f, straight(at(left, f.cap), at(middle, 0)), f.end, BUTT),
-        ink(f, straight(at(middle, 0), at(middle + half, f.cap)), BUTT, f.end),
-      ]);
+      [ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end)]);
   },
 
   W: (style) => {
     const f = frame(style);
     const half = f.capBowl * 0.7;
     const left = f.edge;
+    const top = f.cap;
+    const points = through(
+      f,
+      [0, 1, 2, 3, 4].map((step) => at(left + half * step, step % 2 === 0 ? top : 0)),
+    );
     return finish(
       f,
       [
-        ink(f, straight(at(left, f.cap), at(left + half, 0)), f.end, BUTT),
-        ink(f, straight(at(left + half, 0), at(left + half * 2, f.cap)), BUTT, f.end),
-        ink(f, straight(at(left + half * 2, f.cap), at(left + half * 3, 0)), f.end, BUTT),
-        ink(f, straight(at(left + half * 3, 0), at(left + half * 4, f.cap)), BUTT, f.end),
+        ink(
+          f,
+          chain(
+            straight(points[0], points[1]),
+            straight(points[1], points[2]),
+            straight(points[2], points[3]),
+            straight(points[3], points[4]),
+          ),
+          f.end,
+          f.end,
+        ),
       ]);
   },
 
@@ -1123,12 +1266,16 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const left = f.edge;
     const middle = left + half;
     const junction = f.cap * 0.46;
+    const top = at(left, f.cap);
+    const other = at(middle + half, f.cap);
+    const point = corner(f, top, at(middle, junction), other);
     return finish(
       f,
       [
-        ink(f, straight(at(left, f.cap), at(middle, junction)), f.end, BUTT),
-        ink(f, straight(at(middle + half, f.cap), at(middle, junction)), f.end, BUTT),
-        ink(f, straight(at(middle, junction), at(middle, 0)), BUTT, f.end),
+        ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end),
+        // The stem stops at the vee's own vertex, where the ink is thickest, so
+        // its square top is buried rather than showing as a step.
+        ink(f, straight(at(middle, 0), point), f.end, BUTT),
       ]);
   },
 
@@ -1136,12 +1283,27 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const width = f.capBowl * 1.4;
     const left = f.edge;
+    const start = at(left, f.cap);
+    const end = at(left + width, 0);
+    /*
+     * One run, bar to diagonal to bar, rather than three that meet at points.
+     *
+     * The bars used to be drawn with the lighter crossbar pen, which is what a
+     * serif face wants -- but a Z has no crossbar, it has two arms, and the pen
+     * already thins a horizontal on any face with contrast. Two mechanisms were
+     * doing the same job and only one of them can also turn a corner.
+     */
+    const upper = corner(f, start, at(left + width, f.cap), at(left, 0));
+    const lower = corner(f, at(left + width, f.cap), at(left, 0), end);
     return finish(
       f,
       [
-        thin(f, straight(at(left, f.cap), at(left + width, f.cap)), f.end, f.end),
-        ink(f, straight(at(left + width, f.cap), at(left, 0)), BUTT, BUTT),
-        thin(f, straight(at(left, 0), at(left + width, 0)), f.end, f.end),
+        ink(
+          f,
+          chain(straight(start, upper), straight(upper, lower), straight(lower, end)),
+          f.end,
+          f.end,
+        ),
       ]);
   },
 
@@ -1211,12 +1373,14 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const left = f.edge;
     const stem = left + width * 0.72;
     const bar = f.cap * 0.28;
+    const top = at(stem, f.cap);
+    const end = at(left + width, bar);
+    const meet = corner(f, top, at(left, bar), end);
     return finish(
       f,
       [
-        ink(f, straight(at(stem, f.cap), at(left, bar)), BUTT, BUTT),
-        thin(f, straight(at(left, bar), at(left + width, bar)), f.end, f.end),
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+        ink(f, chain(straight(top, meet), straight(meet, end)), BUTT, f.end),
       ]);
   },
 
@@ -1270,12 +1434,12 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const width = figureWidth(f);
     const left = f.edge;
+    const start = at(left, f.cap);
+    const end = at(left + width * 0.28, 0);
+    const meet = corner(f, start, at(left + width, f.cap), end);
     return finish(
       f,
-      [
-        thin(f, straight(at(left, f.cap), at(left + width, f.cap)), f.end, BUTT),
-        ink(f, straight(at(left + width, f.cap), at(left + width * 0.28, 0)), BUTT, f.end),
-      ]);
+      [ink(f, chain(straight(start, meet), straight(meet, end)), f.end, f.end)]);
   },
 
   eight: (style) => {
