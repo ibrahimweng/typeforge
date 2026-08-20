@@ -238,6 +238,54 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
           </p>
         </Section>
 
+        <Section title="Assembling a font from artwork" half="assembled">
+          <p>
+            The third thing this does, and it starts from neither a font nor a
+            description. <Term>Assemble</Term> takes a pile of SVG drawings --
+            lettering, a logo alphabet, whatever was drawn wherever you draw --
+            and makes a font of them. Nothing is redrawn: the outlines that come
+            out are the outlines that went in.
+          </p>
+          <p>
+            What it supplies is everything artwork does not have. Which drawing
+            is which character, taken from the file names and shown so it can be
+            corrected. How big the letters are relative to each other. Where the
+            baseline is. How much white goes either side of each one, and which
+            pairs need pulling together.
+          </p>
+          <p>
+            <Term>The letters tell it where they belong.</Term> An H is as tall
+            as the caps are, an x is as tall as the lowercase is, a p hangs by
+            the descender: measure the ones whose height is known and the scale
+            and the baseline fall out. The ones that settle nothing -- a t stops
+            somewhere between two lines, an i is mostly its dot -- are placed by
+            what the others worked out, and marked, so you know which to look at
+            twice.
+          </p>
+          <p>
+            <Term>Spacing is measured by eye, not by box.</Term> Twenty-six
+            letters given the same white either side read as a ransom note,
+            because an H fills its box and an A does not. So each letter's
+            silhouette is sampled down its height and the sidebearing is
+            whatever makes the white come out even. A flat-sided letter gets the
+            full measure, a round one a little less, an A much less.
+          </p>
+          <p>
+            <Term>Kerning is measured where two letters come closest.</Term>
+            Which is why two round letters come out untouched -- they are
+            already as near each other as anything else is -- and an A beside a
+            V comes out pulled well in. The pairs it is weakest on are the ones
+            where a letter overhangs rather than leans away, a T beside an o
+            being the standing example, and the pair editor is there for exactly
+            those.
+          </p>
+          <p>
+            Every number it works out can be overruled, and the measured value
+            stays visible beside your version, so nothing is lost by trying
+            something.
+          </p>
+        </Section>
+
         <Section title="Why a slider sometimes stops">
           <p>
             Every letter has a limit. Thin a stroke past half its own width and its two sides pass
@@ -293,16 +341,16 @@ function Section({
   title: string;
   children: React.ReactNode;
   /*
-   * Which half of the application this section is about.
+   * Which of the three jobs this section is about.
    *
-   * The two halves both have a weight and both have a width, and they mean
-   * different things: one is a parameter laid over somebody else's outlines,
-   * the other is how wide the pen is. Marking the sections says which is which
-   * to anything reading the drawer, and keeps a check that every slider in the
-   * inspector is explained from being answered by a slider in the other half
-   * that happens to share a name.
+   * All three have a weight, a width and a spacing, and they mean different
+   * things: a parameter laid over somebody else's outlines, how wide the pen
+   * is, and how much white a measurement asked for. Marking the sections says
+   * which is which to anything reading the drawer, and keeps a check that
+   * every slider in a panel is explained from being answered by a section
+   * about a different job that happens to share a word.
    */
-  half?: "imported" | "drawn";
+  half?: "imported" | "drawn" | "assembled";
 }): React.JSX.Element {
   return (
     <section className="space-y-2" data-help-half={half}>

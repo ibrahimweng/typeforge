@@ -5,6 +5,8 @@
 
 import * as React from "react";
 
+import type { Mode } from "@/App";
+import { assembleStore, useAssemble } from "@/state/useAssemble";
 import { forgeStore, useForge } from "@/state/useForge";
 import { store, useAppState, type ToolId, type ViewId } from "@/state/useStore";
 import {
@@ -41,11 +43,12 @@ export function TopBar({
   onExport: () => void;
   onToggleHelp: () => void;
   helpOpen: boolean;
-  mode: "edit" | "forge";
-  onMode: (mode: "edit" | "forge") => void;
+  mode: Mode;
+  onMode: (mode: Mode) => void;
 }): React.JSX.Element {
   const state = useAppState();
   const forge = useForge();
+  const assemble = useAssemble();
 
   /*
    * Undo belongs to whichever document is in front.
@@ -63,12 +66,19 @@ export function TopBar({
           canUndo: forge.canUndo,
           canRedo: forge.canRedo,
         }
-      : {
-          undo: () => store.undo(),
-          redo: () => store.redo(),
-          canUndo: state.canUndo,
-          canRedo: state.canRedo,
-        };
+      : mode === "assemble"
+        ? {
+            undo: () => assembleStore.undo(),
+            redo: () => assembleStore.redo(),
+            canUndo: assemble.canUndo,
+            canRedo: assemble.canRedo,
+          }
+        : {
+            undo: () => store.undo(),
+            redo: () => store.redo(),
+            canUndo: state.canUndo,
+            canRedo: state.canRedo,
+          };
 
   // Single-key shortcuts for the tools, as in every drawing application.
   React.useEffect(() => {
@@ -87,27 +97,28 @@ export function TopBar({
     <header className="flex h-11 shrink-0 items-center gap-3 border-b border-border px-3">
       <span className="text-xs-plus font-medium tracking-tight">Typeforge</span>
 
-      {/* The two jobs this does, which are not two views of one document. */}
+      {/* The three jobs this does, which are not three views of one document. */}
       <div className={SEGMENT_TRACK} role="group" aria-label="Mode">
-        <button
-          type="button"
-          aria-pressed={mode === "edit"}
-          onClick={() => onMode("edit")}
-          className={segment(mode === "edit")}
-        >
-          Edit a font
-        </button>
-        <button
-          type="button"
-          aria-pressed={mode === "forge"}
-          onClick={() => onMode("forge")}
-          className={segment(mode === "forge")}
-        >
-          Draw a font
-        </button>
+        {(
+          [
+            ["edit", "Edit a font"],
+            ["forge", "Draw a font"],
+            ["assemble", "Assemble a font"],
+          ] as Array<[Mode, string]>
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={mode === id}
+            onClick={() => onMode(id)}
+            className={segment(mode === id)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
-      <div className={cn(SEGMENT_TRACK, mode === "forge" && "hidden")} role="group" aria-label="View">
+      <div className={cn(SEGMENT_TRACK, mode !== "edit" && "hidden")} role="group" aria-label="View">
         {VIEWS.map((view) => (
           <button
             key={view.id}
@@ -122,7 +133,7 @@ export function TopBar({
       </div>
 
       {state.view === "glyph" && (
-        <div className={cn(SEGMENT_TRACK, mode === "forge" && "hidden")} role="group" aria-label="Tool">
+        <div className={cn(SEGMENT_TRACK, mode !== "edit" && "hidden")} role="group" aria-label="Tool">
           {TOOLS.map((tool) => (
             <button
               key={tool.id}
@@ -159,18 +170,26 @@ export function TopBar({
         </button>
       </div>
 
-      {mode === "forge" ? (
+      {mode === "forge" && (
         <span className="min-w-0 truncate text-2xs text-muted-foreground">
           {forge.familyName}
           <span className="pl-1.5 opacity-60">{forge.forge.base}</span>
         </span>
-      ) : (
-        state.typeface && (
-          <span className="min-w-0 truncate text-2xs text-muted-foreground">
-            {state.typeface.meta.familyName}
-            <span className="pl-1.5 opacity-60">{state.typeface.meta.styleName}</span>
+      )}
+      {mode === "assemble" && (
+        <span className="min-w-0 truncate text-2xs text-muted-foreground">
+          {assemble.familyName}
+          <span className="pl-1.5 opacity-60">
+            {assemble.assembly.pieces.length} drawing
+            {assemble.assembly.pieces.length === 1 ? "" : "s"}
           </span>
-        )
+        </span>
+      )}
+      {mode === "edit" && state.typeface && (
+        <span className="min-w-0 truncate text-2xs text-muted-foreground">
+          {state.typeface.meta.familyName}
+          <span className="pl-1.5 opacity-60">{state.typeface.meta.styleName}</span>
+        </span>
       )}
 
       <div className="ml-auto flex items-center gap-2">
@@ -203,12 +222,16 @@ export function TopBar({
         <button
           type="button"
           onClick={onExport}
-          // A forged font is always ready to leave; an imported one needs to
-          // have been imported first.
-          disabled={mode === "edit" && !state.typeface}
+          // A drawn font is always ready to leave. An imported one needs to
+          // have been imported, and an assembled one needs something in the
+          // pile to assemble.
+          disabled={
+            (mode === "edit" && !state.typeface) ||
+            (mode === "assemble" && assemble.assembly.pieces.length === 0)
+          }
           className={PRIMARY_ACTION}
         >
-          {mode === "forge" ? "Download" : "Export"}
+          {mode === "edit" ? "Export" : "Download"}
         </button>
       </div>
     </header>

@@ -24,6 +24,7 @@ export type TipId =
   | "family"
   | "controls"
   | "forge"
+  | "assemble"
   | "export";
 
 export const TIPS: Record<TipId, string> = {
@@ -42,6 +43,8 @@ export const TIPS: Record<TipId, string> = {
     "Change one of these five letters and Typeforge works out what you meant — heavier, wider, taller — and applies it to the whole alphabet.",
   forge:
     "Nothing here came from another font. Pick a base, then change a part \u2014 a serif, a shoulder, a corner \u2014 and every letter that has that part follows; the panel says how many before you touch it. Turn on Skeleton to see what is being drawn, and type into the specimen line to judge it in a word.",
+  assemble:
+    "Every number in the panel was measured off your drawings, and every one can be overruled \u2014 the measured value stays beside your version. A letter underlined in the row below was placed from the rest of the set rather than by its own height, so those are the ones to check.",
   export:
     "Preserve keeps everything the original font carried and swaps in your outlines. Rebuild writes a clean file from what is on screen.",
 };
@@ -113,6 +116,7 @@ export function seenTipCount(): number {
 const ORDER: TipId[] = [
   "export",
   "forge",
+  "assemble",
   "grid",
   "glyph",
   "kerning",

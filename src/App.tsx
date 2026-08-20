@@ -8,34 +8,47 @@
 import * as React from "react";
 
 import { attachPressFeedback, switchView } from "@/anim/motion";
+import { AssembleExportDialog } from "@/components/AssembleExportDialog";
+import { AssemblePanel } from "@/components/AssemblePanel";
 import { ExportDialog } from "@/components/ExportDialog";
 import { ForgeExportDialog } from "@/components/ForgeExportDialog";
 import { ForgePanel } from "@/components/ForgePanel";
 import { HelpDrawer } from "@/components/HelpDrawer";
 import { Inspector } from "@/components/Inspector";
 import { TopBar } from "@/components/TopBar";
+import { assembleStore } from "@/state/useAssemble";
 import { store, useAppState } from "@/state/useStore";
 import { FontGridView } from "@/views/FontGridView";
 import { GlyphEditorView } from "@/views/GlyphEditorView";
 import { KerningView } from "@/views/KerningView";
 import { MetricsView } from "@/views/MetricsView";
+import { AssembleView } from "@/views/AssembleView";
 import { ForgeView } from "@/views/ForgeView";
 import { ReportView } from "@/views/ReportView";
+
+/** Which of the three jobs is in front. */
+export type Mode = "edit" | "forge" | "assemble";
 
 export function App(): React.JSX.Element {
   const state = useAppState();
   const [exporting, setExporting] = React.useState(false);
   const [helping, setHelping] = React.useState(false);
   /*
-   * Which half of the application is in front.
+   * Which of the three jobs is in front.
    *
-   * Two genuinely different jobs: reshaping a font somebody else drew, and
-   * drawing one from nothing. They share the engine underneath and almost
-   * nothing above it, so they are a switch rather than a view -- a font you
-   * opened and a font you are drawing are not two ways of looking at the same
-   * document.
+   * Genuinely different jobs, not three views of one document: reshaping a
+   * font somebody else made, drawing one from a description, and building one
+   * out of artwork that was never a font. They share the engine underneath and
+   * almost nothing above it, so they are a switch rather than a view.
+   *
+   * Assembling is the newest and the one that needed the clearest separation.
+   * It looks superficially like drawing -- letters on a stage, a specimen line
+   * -- and behaves nothing like it: there are no parts, no pen, and no way to
+   * change a letterform, because the letterforms arrived finished. Folding it
+   * into the drawing mode would have put a panel full of controls next to
+   * outlines that none of them reach.
    */
-  const [mode, setMode] = React.useState<"edit" | "forge">("edit");
+  const [mode, setMode] = React.useState<Mode>("edit");
   const [dragging, setDragging] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const stageRef = React.useRef<HTMLDivElement>(null);
@@ -58,6 +71,24 @@ export function App(): React.JSX.Element {
     await store.loadFont(bytes, file.name);
   }, []);
 
+  /*
+   * What a drop means depends on which job is in front.
+   *
+   * A font file dropped on the editor opens it. A pile of drawings dropped on
+   * the assembler joins the pile -- and it is a pile, so unlike everywhere
+   * else in this application the drop takes every file rather than the first.
+   */
+  const dropFiles = React.useCallback(
+    async (files: FileList | null) => {
+      if (mode === "assemble") {
+        await assembleStore.take([...(files ?? [])]);
+        return;
+      }
+      await openFiles(files);
+    },
+    [mode, openFiles],
+  );
+
   return (
     <div
       className="flex h-full flex-col"
@@ -73,7 +104,7 @@ export function App(): React.JSX.Element {
       onDrop={(event) => {
         event.preventDefault();
         setDragging(false);
-        void openFiles(event.dataTransfer.files);
+        void dropFiles(event.dataTransfer.files);
       }}
     >
       <TopBar
@@ -87,9 +118,9 @@ export function App(): React.JSX.Element {
 
       <div className="flex min-h-0 flex-1">
         <div ref={stageRef} className="flex min-w-0 flex-1 flex-col">
-          {mode === "forge" ? (
-            <ForgeView />
-          ) : (
+          {mode === "forge" && <ForgeView />}
+          {mode === "assemble" && <AssembleView />}
+          {mode === "edit" && (
             <>
               {state.view === "grid" && <FontGridView />}
               {state.view === "glyph" && <GlyphEditorView />}
@@ -99,7 +130,9 @@ export function App(): React.JSX.Element {
             </>
           )}
         </div>
-        {mode === "forge" ? <ForgePanel /> : <Inspector />}
+        {mode === "forge" && <ForgePanel />}
+        {mode === "assemble" && <AssemblePanel />}
+        {mode === "edit" && <Inspector />}
         {helping && <HelpDrawer onClose={() => setHelping(false)} />}
       </div>
 
@@ -117,7 +150,7 @@ export function App(): React.JSX.Element {
       {dragging && (
         <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-accent/10 backdrop-blur-[1px]">
           <p className="rounded-lg border border-accent bg-popover px-4 py-2.5 text-xs-plus">
-            Drop to open the font
+            {mode === "assemble" ? "Drop the drawings in" : "Drop to open the font"}
           </p>
         </div>
       )}
@@ -128,12 +161,11 @@ export function App(): React.JSX.Element {
         </div>
       )}
 
-      {exporting &&
-        (mode === "forge" ? (
-          <ForgeExportDialog onClose={() => setExporting(false)} />
-        ) : (
-          <ExportDialog onClose={() => setExporting(false)} />
-        ))}
+      {exporting && mode === "forge" && <ForgeExportDialog onClose={() => setExporting(false)} />}
+      {exporting && mode === "assemble" && (
+        <AssembleExportDialog onClose={() => setExporting(false)} />
+      )}
+      {exporting && mode === "edit" && <ExportDialog onClose={() => setExporting(false)} />}
     </div>
   );
 }

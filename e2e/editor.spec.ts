@@ -1014,6 +1014,165 @@ test("offers the settings that are on or off as switches", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+/*
+ * Assembling a font out of drawings.
+ *
+ * The drawings are made here rather than kept as fixtures, because what they
+ * are matters: a box of a known height and a wedge of the same height, drawn
+ * on one canvas with a baseline a hundred units up from the bottom. That makes
+ * every assertion below something with a right answer -- the box must land on
+ * the cap height, and the wedge must be given less white than the box.
+ */
+function drawing(inner: string, height = 800): { name: string; mimeType: string; buffer: Buffer } {
+  return {
+    name: "x.svg",
+    mimeType: "image/svg+xml",
+    buffer: Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 ${height}">${inner}</svg>`,
+    ),
+  };
+}
+
+/** A rectangle standing on the baseline, `tall` units high. */
+function bar(tall: number, wide = 300) {
+  return drawing(`<rect x="50" y="${700 - tall}" width="${wide}" height="${tall}"/>`);
+}
+
+/** A triangle standing on the baseline, like an A with no crossbar. */
+function point(tall: number, wide = 600) {
+  const top = 700 - tall;
+  return drawing(`<polygon points="${50 + wide / 2},${top} ${50 + wide},700 50,700"/>`);
+}
+
+/** The same triangle upside down, like a V. */
+function funnel(tall: number, wide = 600) {
+  const top = 700 - tall;
+  return drawing(`<polygon points="50,${top} ${50 + wide},${top} ${50 + wide / 2},700"/>`);
+}
+
+const PILE = [
+  { ...bar(400), name: "H_.svg" },
+  { ...bar(400, 120), name: "I_.svg" },
+  { ...point(400), name: "A_.svg" },
+  { ...funnel(400), name: "V_.svg" },
+  { ...bar(280), name: "x.svg" },
+];
+
+async function openAssemble(page: Page): Promise<void> {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Assemble a font" }).click();
+  await expect(page.locator("[data-assemble-empty]")).toBeVisible();
+}
+
+test("assembles a font from a pile of SVG drawings", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openAssemble(page);
+
+  await page.setInputFiles("[data-assemble-input]", PILE);
+
+  // Every file placed, from its name alone.
+  await expect(page.locator("[data-assemble-cell]")).toHaveCount(5);
+  for (const character of ["H", "I", "A", "V", "x"]) {
+    await expect(page.locator(`[data-assemble-cell="${character}"]`)).toBeVisible();
+  }
+  // They share a canvas height, so they are fitted against each other.
+  await expect(page.locator('[data-assemble-fit="together"]')).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(errors).toEqual([]);
+});
+
+test("gives a drawing that leans away less white than one that does not", async ({ page }) => {
+  await openAssemble(page);
+  await page.setInputFiles("[data-assemble-input]", PILE);
+  await expect(page.locator("[data-assemble-cell]")).toHaveCount(5);
+
+  /* The stage reports the letter's two sidebearings and its advance. */
+  const bearings = async (character: string): Promise<number[]> => {
+    await page.locator(`[data-assemble-cell="${character}"]`).click();
+    await expect(page.locator(`[data-assemble-stage="${character}"]`)).toBeVisible();
+    const text = (await page.locator("[data-assemble-stage] ~ p").innerText()).trim();
+    const numbers = text.match(/-?\d+/g) ?? [];
+    return numbers.slice(-3).map(Number);
+  };
+
+  const [flatLeft] = await bearings("H");
+  const [leaningLeft] = await bearings("A");
+  expect(leaningLeft).toBeLessThan(flatLeft);
+});
+
+test("takes a drawing whose name says nothing, once told what it is", async ({ page }) => {
+  await openAssemble(page);
+  await page.setInputFiles("[data-assemble-input]", [
+    ...PILE,
+    { ...bar(400, 200), name: "logo-final-v3.svg" },
+  ]);
+
+  // It came in, it is in the list, and it is not in the font.
+  await expect(page.locator("[data-assemble-trouble]")).toContainText("not placed");
+  await expect(page.locator("[data-assemble-cell]")).toHaveCount(5);
+
+  await page.locator('[data-assemble-map="logo-final-v3.svg"]').fill("E");
+  await expect(page.locator("[data-assemble-cell]")).toHaveCount(6);
+  await expect(page.locator('[data-assemble-cell="E"]')).toBeVisible();
+  await expect(page.locator("[data-assemble-trouble]")).toHaveCount(0);
+});
+
+test("kerns the pair that leans apart and leaves the flat pair alone", async ({ page }) => {
+  await openAssemble(page);
+  await page.setInputFiles("[data-assemble-input]", PILE);
+  await expect(page.locator("[data-assemble-cell]")).toHaveCount(5);
+
+  const kernOf = async (pair: string): Promise<number> => {
+    await page.locator("[data-assemble-pair-input]").fill(pair);
+    await expect(page.locator(`[data-assemble-pair="${pair}"]`)).toBeVisible();
+    // Exact, or this also matches the "Kerning" strength slider above it.
+    const slider = page.getByRole("slider", { name: "Kern", exact: true });
+    return Number(await slider.getAttribute("aria-valuenow"));
+  };
+
+  // Two flat-sided bars are already right.
+  expect(await kernOf("HI")).toBe(0);
+  // So is a wedge beside a bar: the wedge's foot comes right up to it, and
+  // where two letters already touch at their nearest point there is nothing
+  // to take out.
+  expect(await kernOf("AI")).toBe(0);
+  // Two wedges leaning apart are the case kerning exists for -- the white
+  // between them is wide at every row, the nearest included.
+  expect(await kernOf("AV")).toBeLessThan(0);
+  expect(await kernOf("VA")).toBeLessThan(0);
+});
+
+test("writes a real font out of the pile", async ({ page }) => {
+  await openAssemble(page);
+  await page.setInputFiles("[data-assemble-input]", PILE);
+  await expect(page.locator("[data-assemble-cell]")).toHaveCount(5);
+
+  await page.getByRole("button", { name: "Download" }).click();
+  await expect(page.getByRole("dialog", { name: "Download font" })).toBeVisible();
+
+  const download = await Promise.race([
+    page.waitForEvent("download", { timeout: 60_000 }),
+    page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Download" })
+      .click()
+      .then(() => page.waitForEvent("download", { timeout: 60_000 })),
+  ]);
+  const bytes = readFileSync((await download.path())!);
+  expect([...bytes.subarray(0, 4)]).toEqual([0, 1, 0, 0]);
+
+  // The strongest check available in a browser: ask it to parse the file.
+  const parsed = await page.evaluate(async (data) => {
+    const face = new FontFace("Assembled", new Uint8Array(data).buffer as ArrayBuffer);
+    await face.load();
+    return face.status;
+  }, [...bytes]);
+  expect(parsed).toBe("loaded");
+});
+
 /**
  * The escape hatch, end to end.
  *
