@@ -99,9 +99,10 @@ export function Inspector(): React.JSX.Element {
 
           return (
             <div key={spec.key} className="pb-3.5">
-              <div className="flex items-baseline justify-between pb-1">
-                <span className="text-2xs text-foreground">{spec.label}</span>
-                {overridden && (
+              {/* The label lives on the slider itself. This row is only here
+                  when there is something to say beside it. */}
+              {overridden && (
+                <div className="flex items-baseline justify-end pb-1">
                   <button
                     type="button"
                     onClick={() => glyphName && store.clearGlyphParam(glyphName, spec.key)}
@@ -110,10 +111,16 @@ export function Inspector(): React.JSX.Element {
                   >
                     reset
                   </button>
-                )}
-              </div>
+                </div>
+              )}
               <Slider
-                name={`${scope}-${spec.key}`}
+                /*
+                 * The slider prints this as its own label, so it has to be the
+                 * name of the control rather than an identifier. It had been
+                 * `family-cornerRadius`, which appeared under every heading in
+                 * the panel as though it meant something.
+                 */
+                name={spec.label}
                 value={value / scaleFactor}
                 min={spec.min}
                 max={spec.max}

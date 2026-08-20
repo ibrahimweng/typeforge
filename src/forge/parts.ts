@@ -181,9 +181,56 @@ export function specFor(part: PartName): PartSpec | undefined {
 export function partsUsedBy(letter: string, style: Style): PartName[] {
   const recipe = LETTERS[letter];
   if (!recipe) return [];
-  return [...recordPartsWhile(() => recipe(style))].sort(
-    (a, b) => order(a) - order(b),
-  );
+  const found = recordPartsWhile(() => recipe(style));
+  if (found.has("terminal") && takesSerif(letter, style)) found.add("slab");
+  return [...found].sort((a, b) => order(a) - order(b));
+}
+
+/**
+ * Whether a serif would land anywhere on this letter.
+ *
+ * A serif needs a straight stroke end wearing a serif terminal; a c, an s and
+ * an o have none, so no bar can be laid on them. The question is put to the
+ * strokes rather than to the finished outlines: the recipe is evaluated once,
+ * which is cheap, where drawing it twice and counting the pieces would have
+ * meant a thousand sweeps on every tick of a slider.
+ *
+ * The rule here has to say the same thing as the one in `serifsFor` that
+ * actually places the wings. If those two ever disagree, the panel will offer a
+ * control that changes nothing, or hide one that would.
+ *
+ * Asked with the serifs forced on and at a size that can land, whatever the
+ * font currently says, so the control is offered on a sans and at a reach of
+ * zero. Offered only when serifs were already on and already big enough, there
+ * was no way to switch them on at all.
+ */
+function takesSerif(letter: string, style: Style): boolean {
+  const recipe = LETTERS[letter];
+  if (!recipe) return false;
+  return recipe(serifsForced(style)).strokes.some((stroke) => {
+    const segments = stroke.spine.segments;
+    if (stroke.spine.closed || segments.length === 0) return false;
+    return (
+      (stroke.start.kind === "slab" && segments[0].kind === "line") ||
+      (stroke.end.kind === "slab" && segments[segments.length - 1].kind === "line")
+    );
+  });
+}
+
+function serifsForced(style: Style): Style {
+  const em = style.metrics.unitsPerEm;
+  return {
+    ...style,
+    parts: {
+      ...style.parts,
+      slab: {
+        on: true,
+        projection: Math.max(style.parts.slab.projection, em * 0.04),
+        thickness: Math.max(style.parts.slab.thickness, em * 0.03),
+        bracket: style.parts.slab.bracket,
+      },
+    },
+  };
 }
 
 /** Which letters an edit to this part will reach. */

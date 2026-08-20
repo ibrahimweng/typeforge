@@ -23,6 +23,7 @@ export type TipId =
   | "report"
   | "family"
   | "controls"
+  | "forge"
   | "export";
 
 export const TIPS: Record<TipId, string> = {
@@ -39,6 +40,8 @@ export const TIPS: Record<TipId, string> = {
     "These change every glyph at once. A single letter can overrule any of them from its own tab.",
   controls:
     "Change one of these five letters and Typeforge works out what you meant — heavier, wider, taller — and applies it to the whole alphabet.",
+  forge:
+    "Nothing here came from another font. Pick a base, then change a part \u2014 a serif, a shoulder, a crossbar \u2014 and every letter that has that part follows. The panel says how many before you touch it.",
   export:
     "Preserve keeps everything the original font carried and swaps in your outlines. Rebuild writes a clean file from what is on screen.",
 };
@@ -109,6 +112,7 @@ export function seenTipCount(): number {
  */
 const ORDER: TipId[] = [
   "export",
+  "forge",
   "grid",
   "glyph",
   "kerning",

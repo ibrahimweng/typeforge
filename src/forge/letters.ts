@@ -218,6 +218,16 @@ interface Frame {
   capBowl: number;
   /** The terminal this style puts on a stroke end. */
   end: Terminal;
+  /**
+   * The same terminal without the serif.
+   *
+   * For the marks a serif face leaves bare. A hyphen with a serif on each end
+   * is a tiny H, and quotes with them are two little I-beams; no serif face
+   * puts them there. Not simply a flat cut, though -- on a face whose strokes
+   * end round, a hyphen ends round too, so this follows the terminal and
+   * declines only the bar.
+   */
+  plain: Terminal;
 }
 
 function frame(style: Style): Frame {
@@ -236,18 +246,22 @@ function frame(style: Style): Frame {
     bowl: metrics.xHeight / 2 + metrics.overshoot,
     capBowl: metrics.capHeight / 2 + metrics.overshoot,
     end: endFor(style),
+    plain: { kind: style.parts.terminal.kind, angle: style.parts.terminal.angle },
   };
 }
 
 /**
  * The terminal this style puts on a stroke end, noting that the letter asked.
  *
- * A stroke end always has a terminal of some kind, so every letter with an open
- * stroke reads that part; when serifs are on it reads the serif as well.
+ * Only the terminal is recorded here. Whether the letter can also take a serif
+ * is not something the recipe knows -- a serif needs a straight stroke end, and
+ * this is called before anything is drawn -- so that is settled afterwards, by
+ * looking at what came out. Recording it here on the strength of the serif
+ * being switched on made the control appear only once the serifs already
+ * existed, which left no way to switch them on in the first place.
  */
 function endFor(style: Style): Terminal {
   uses("terminal");
-  if (style.parts.slab.on) uses("slab");
   return terminalFor(style);
 }
 
@@ -1376,7 +1390,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const width = f.arch * 0.7;
     return finish(
       f,
-      [thin(f, straight(at(f.edge, f.x * 0.46), at(f.edge + width, f.x * 0.46)), f.end, f.end)]);
+      [thin(f, straight(at(f.edge, f.x * 0.46), at(f.edge + width, f.x * 0.46)), f.plain, f.plain)]);
   },
 
   parenleft: (style) => {
@@ -1402,14 +1416,14 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const lean = f.arch * 0.75;
     return finish(
       f,
-      [ink(f, straight(at(f.edge, f.desc * 0.6), at(f.edge + lean, f.cap)), f.end, f.end)]);
+      [ink(f, straight(at(f.edge, f.desc * 0.6), at(f.edge + lean, f.cap)), f.plain, f.plain)]);
   },
 
   quotesingle: (style) => {
     const f = frame(style);
     return finish(
       f,
-      [ink(f, straight(at(f.edge, f.cap * 0.72), at(f.edge, f.cap)), f.end, f.end)]);
+      [ink(f, straight(at(f.edge, f.cap * 0.72), at(f.edge, f.cap)), f.plain, f.plain)]);
   },
 
   quotedbl: (style) => {
@@ -1418,8 +1432,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     return finish(
       f,
       [
-        ink(f, straight(at(f.edge, f.cap * 0.72), at(f.edge, f.cap)), f.end, f.end),
-        ink(f, straight(at(f.edge + gap, f.cap * 0.72), at(f.edge + gap, f.cap)), f.end, f.end),
+        ink(f, straight(at(f.edge, f.cap * 0.72), at(f.edge, f.cap)), f.plain, f.plain),
+        ink(f, straight(at(f.edge + gap, f.cap * 0.72), at(f.edge + gap, f.cap)), f.plain, f.plain),
       ]);
   },
 };

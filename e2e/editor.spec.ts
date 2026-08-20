@@ -20,20 +20,19 @@ const FONT_PATH = FONT_CANDIDATES.find((path) => existsSync(path));
 test.skip(!FONT_PATH, "needs a system font to open");
 
 /**
- * Which slider drives a named family parameter.
+ * The slider that drives a named family parameter.
  *
- * Read from the panel rather than counted against a list written here: adding
- * a parameter shifts every slider after it, and a list kept in this file goes
- * out of step silently, pointing a test at its neighbour.
+ * Found by the name it announces to a screen reader rather than by counting
+ * along the panel. The count went out of step whenever a parameter was added,
+ * silently pointing the test at the neighbouring control; and the label was
+ * being read out of a span that has since gone, because the slider draws its
+ * own. The accessible name is the one thing here that is meant to be stable.
  */
 async function paramSlider(page: Page, label: string) {
-  // Scoped to the inspector: the help drawer is an aside too, and it names
-  // every parameter in prose.
   const panel = page.getByRole("complementary", { name: "Parameters" });
-  const labels = await panel.locator('span[class*="text-foreground"]').allTextContents();
-  const index = labels.indexOf(label);
-  expect(index, `no family parameter called ${label}`).toBeGreaterThanOrEqual(0);
-  return panel.getByRole("slider").nth(index);
+  const slider = panel.getByRole("slider", { name: label });
+  await expect(slider, `no family parameter called ${label}`).toBeVisible();
+  return slider;
 }
 
 /** Open the test font through the file input the toolbar drives. */
@@ -535,9 +534,12 @@ test("explains every parameter the inspector actually offers", async ({ page }) 
   await openFont(page);
 
   const panel = page.getByRole("complementary", { name: "Parameters" });
-  const labels = await panel.locator('span[class*="text-foreground"]').allTextContents();
-  const sliderCount = await panel.getByRole("slider").count();
-  const parameters = labels.slice(0, sliderCount);
+  const sliders = panel.getByRole("slider");
+  const parameters: string[] = [];
+  for (let index = 0; index < (await sliders.count()); index++) {
+    const name = await sliders.nth(index).getAttribute("aria-label");
+    if (name) parameters.push(name);
+  }
   expect(parameters.length).toBeGreaterThan(5);
 
   await page.getByRole("button", { name: "Help", exact: true }).click();
@@ -564,4 +566,243 @@ test("can bring the tips back after they have been dismissed", async ({ page }) 
   await page.getByRole("button", { name: "Help", exact: true }).click();
   await page.getByRole("button", { name: "Show the tips again" }).click();
   await expect(gridTip).toBeVisible();
+});
+
+/**
+ * Drawing a font from nothing.
+ *
+ * This half of the application needs no font to be open, which is the whole
+ * point of it, so none of these tests touch the file input.
+ */
+test("draws a font with no font open", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Draw a font" }).click();
+
+  // A letter on the stage, a specimen line, and the whole alphabet under it.
+  await expect(page.locator("[data-forge-stage]")).toBeVisible();
+  await expect(page.getByRole("img", { name: "Specimen" })).toBeVisible();
+  expect(await page.locator("[data-forge-cell]").count()).toBeGreaterThan(60);
+  expect(errors).toEqual([]);
+});
+
+/**
+ * The behaviour the whole idea rests on, checked through the interface rather
+ * than through the model: turn the serifs on and watch the alphabet change.
+ */
+test("spreads one edit across the whole alphabet", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Draw a font" }).click();
+
+  const before = await page.locator('[data-forge-cell="b"] path').getAttribute("d");
+  const alsoBefore = await page.locator('[data-forge-cell="H"] path').getAttribute("d");
+
+  // The serif is a part of n, so its controls are on screen without hunting.
+  await page.locator('[data-forge-part="slab"]').getByRole("switch", { name: "Serifs" }).click();
+
+  await expect
+    .poll(() => page.locator('[data-forge-cell="b"] path').getAttribute("d"))
+    .not.toBe(before);
+  expect(await page.locator('[data-forge-cell="H"] path').getAttribute("d")).not.toBe(alsoBefore);
+});
+
+test("says how many letters an edit will reach", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Draw a font" }).click();
+  const shoulder = page.locator('[data-forge-part="shoulder"]');
+  await expect(shoulder).toBeVisible();
+  await expect(shoulder.getByText(/\d+ letters/)).toBeVisible();
+});
+
+test("offers only the parts the chosen letter actually has", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Draw a font" }).click();
+
+  // n has a shoulder and no bowl.
+  await expect(page.locator('[data-forge-part="shoulder"]')).toBeVisible();
+  await expect(page.locator('[data-forge-part="bowl"]')).toHaveCount(0);
+
+  // o is the other way round.
+  await page.locator('[data-forge-cell="o"]').click();
+  await expect(page.locator('[data-forge-part="bowl"]')).toBeVisible();
+  await expect(page.locator('[data-forge-part="shoulder"]')).toHaveCount(0);
+});
+
+/**
+ * A letter told to keep its own version keeps it, and is marked so it can be
+ * found again -- otherwise the only way back would be to remember which letter
+ * it was.
+ */
+test("lets one letter hold its own version of a part", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Draw a font" }).click();
+  await page.locator('[data-forge-part="slab"]').getByRole("switch", { name: "Serifs" }).click();
+
+  await page.locator('[data-forge-cell="p"]').click();
+  await page.getByRole("button", { name: "p alone" }).click();
+  const reach = page.locator('[data-forge-part="slab"]').getByRole("slider", { name: "Reach" });
+  await reach.focus();
+  for (let press = 0; press < 20; press++) await page.keyboard.press("ArrowRight");
+
+  await expect(page.locator('[data-forge-part="slab"]').getByText("held · release")).toBeVisible();
+  await page.getByRole("button", { name: "Whole font" }).click();
+  await expect(page.locator('[data-forge-cell="b"]')).toBeVisible();
+});
+
+/**
+ * The end of the road: a font drawn here has to come out as a file a browser
+ * will actually load, or none of the rest of it counts for anything.
+ */
+test("writes a font file the browser can use", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Draw a font" }).click();
+  await page.getByRole("button", { name: "Download", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Download font" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("textbox", { name: "Font name" }).fill("Forged Test");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download", { timeout: 90_000 }),
+    dialog.getByRole("button", { name: "Download" }).click(),
+  ]);
+  const path = await download.path();
+  expect(path).toBeTruthy();
+
+  const bytes = readFileSync(path!);
+  expect(bytes.byteLength).toBeGreaterThan(2000);
+
+  // The browser is the judge: if it accepts the bytes as a font and measures
+  // text with it, it is a font.
+  const measured = await page.evaluate(async (data) => {
+    const face = new FontFace("ForgedTest", new Uint8Array(data).buffer);
+    await face.load();
+    document.fonts.add(face);
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d")!;
+    context.font = "100px ForgedTest";
+    return context.measureText("Handgloves").width;
+  }, Array.from(bytes));
+  expect(measured).toBeGreaterThan(10);
+});
+
+/** Drag a handle across the stage by a number of screen pixels. */
+async function dragHandle(page: Page, id: string, dx: number, dy: number): Promise<void> {
+  const handle = page.locator(`[data-forge-handle="${id}"]`);
+  const box = (await handle.boundingBox())!;
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  for (let step = 1; step <= 10; step++) {
+    await page.mouse.move(x + (dx * step) / 10, y + (dy * step) / 10, { steps: 1 });
+  }
+  await page.mouse.up();
+}
+
+async function openForge(page: Page): Promise<void> {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Draw a font" }).click();
+  await expect(page.locator("[data-forge-stage]")).toBeVisible();
+  // Out of the way of the handles, which sit near the top of the stage.
+  await page
+    .locator("[data-coach-mark] button")
+    .click()
+    .catch(() => {});
+}
+
+/**
+ * Pulling the letter about.
+ *
+ * Every handle is bound to something the font has a name for, so a drag is the
+ * same edit the panel makes. Which means the test that matters is not that the
+ * letter under the pointer moved -- it is that the rest of the font moved with
+ * it.
+ */
+test("offers handles for the parts the letter has, and no others", async ({ page }) => {
+  await openForge(page);
+
+  const on = async (): Promise<string[]> =>
+    (await page.locator("[data-forge-handle]").evaluateAll((nodes) =>
+      nodes.map((node) => (node as HTMLElement).dataset.forgeHandle ?? ""),
+    )).sort();
+
+  // n has an arch, so it has a shoulder to pull and a rhythm to set.
+  expect(await on()).toContain("shoulder");
+  expect(await on()).toContain("counterWidth");
+
+  // o has neither.
+  await page.locator('[data-forge-cell="o"]').click();
+  expect(await on()).not.toContain("shoulder");
+  expect(await on()).toContain("weight");
+});
+
+test("pulls the weight out of one letter and every letter follows", async ({ page }) => {
+  await openForge(page);
+  const before = await page.locator('[data-forge-cell="o"] path').getAttribute("d");
+  const alsoBefore = await page.locator('[data-forge-cell="Z"] path').getAttribute("d");
+
+  await dragHandle(page, "weight", 50, 0);
+
+  await expect
+    .poll(() => page.locator('[data-forge-cell="o"] path').getAttribute("d"))
+    .not.toBe(before);
+  expect(await page.locator('[data-forge-cell="Z"] path').getAttribute("d")).not.toBe(alsoBefore);
+});
+
+test("moves the shoulder on every arched letter at once", async ({ page }) => {
+  await openForge(page);
+  const before = await page.locator('[data-forge-cell="m"] path').getAttribute("d");
+  const round = await page.locator('[data-forge-cell="o"] path').getAttribute("d");
+
+  await dragHandle(page, "shoulder", 0, -40);
+
+  await expect
+    .poll(() => page.locator('[data-forge-cell="m"] path').getAttribute("d"))
+    .not.toBe(before);
+  // An o has no shoulder, so it must be untouched.
+  expect(await page.locator('[data-forge-cell="o"] path').getAttribute("d")).toBe(round);
+});
+
+/**
+ * A drag is one thing that happened, so it is one thing to undo. Recorded as
+ * written it arrived as a run of changes, and taking one back moved the stem a
+ * few units and stopped.
+ */
+test("takes a whole drag back in one undo", async ({ page }) => {
+  await openForge(page);
+  const stage = page.locator("[data-forge-stage] path").first();
+  const before = await stage.getAttribute("d");
+
+  await dragHandle(page, "weight", 50, 0);
+  await expect.poll(() => stage.getAttribute("d")).not.toBe(before);
+
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect.poll(() => stage.getAttribute("d")).toBe(before);
+});
+
+/** A serif face leaves its hyphen, slash and quotes bare, as every serif face does. */
+test("keeps the serifs off the marks that never wear them", async ({ page }) => {
+  await openForge(page);
+  const bare = ["hyphen", "slash", "quotesingle", "quotedbl"];
+  const before: Record<string, string | null> = {};
+  for (const mark of [...bare, "l"]) {
+    before[mark] = await page.locator(`[data-forge-cell="${mark}"] path`).getAttribute("d");
+  }
+
+  await page.locator('[data-forge-part="slab"]').getByRole("switch", { name: "Serifs" }).click();
+
+  // The letters gained serifs...
+  await expect
+    .poll(() => page.locator('[data-forge-cell="l"] path').getAttribute("d"))
+    .not.toBe(before.l);
+  // ...and the marks did not.
+  for (const mark of bare) {
+    expect(
+      await page.locator(`[data-forge-cell="${mark}"] path`).getAttribute("d"),
+      `${mark} grew a serif`,
+    ).toBe(before[mark]);
+  }
 });

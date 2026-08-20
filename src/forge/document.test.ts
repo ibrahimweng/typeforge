@@ -59,12 +59,24 @@ describe("which letters have which parts", () => {
   });
 
   /**
-   * A sans has no serifs, so no letter reads that part. Turning them on is
-   * what brings sixty-odd letters into the serif's reach at once.
+   * The serif is offered wherever one could land, whether the face wears them
+   * or not -- switching them on is the whole reason anyone opens the control,
+   * and offering it only once they were already on left no way to do that.
    */
-  it("mentions the serif only on a face that has serifs", () => {
-    expect(lettersUsing("slab", SANS)).toHaveLength(0);
+  it("offers the serif on a sans as readily as on a serif", () => {
+    expect(lettersUsing("slab", SANS).length).toBeGreaterThan(40);
     expect(lettersUsing("slab", SERIF).length).toBeGreaterThan(40);
+  });
+
+  /**
+   * And withholds it from the letters a serif cannot sit on. A c, an s and an o
+   * have no straight stroke end, so there is nothing to lay a bar across; the
+   * answer comes from drawing them rather than from guessing at the recipe.
+   */
+  it("withholds the serif from letters with no straight stroke end", () => {
+    for (const letter of ["o", "O", "c", "s", "S", "zero", "period"]) {
+      expect(lettersUsing("slab", SERIF), `${letter} cannot take a serif`).not.toContain(letter);
+    }
   });
 
   it("finds every part described in the panel on some letter of a serif", () => {

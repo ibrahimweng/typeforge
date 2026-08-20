@@ -9,6 +9,8 @@ import * as React from "react";
 
 import { attachPressFeedback, switchView } from "@/anim/motion";
 import { ExportDialog } from "@/components/ExportDialog";
+import { ForgeExportDialog } from "@/components/ForgeExportDialog";
+import { ForgePanel } from "@/components/ForgePanel";
 import { HelpDrawer } from "@/components/HelpDrawer";
 import { Inspector } from "@/components/Inspector";
 import { TopBar } from "@/components/TopBar";
@@ -17,12 +19,23 @@ import { FontGridView } from "@/views/FontGridView";
 import { GlyphEditorView } from "@/views/GlyphEditorView";
 import { KerningView } from "@/views/KerningView";
 import { MetricsView } from "@/views/MetricsView";
+import { ForgeView } from "@/views/ForgeView";
 import { ReportView } from "@/views/ReportView";
 
 export function App(): React.JSX.Element {
   const state = useAppState();
   const [exporting, setExporting] = React.useState(false);
   const [helping, setHelping] = React.useState(false);
+  /*
+   * Which half of the application is in front.
+   *
+   * Two genuinely different jobs: reshaping a font somebody else drew, and
+   * drawing one from nothing. They share the engine underneath and almost
+   * nothing above it, so they are a switch rather than a view -- a font you
+   * opened and a font you are drawing are not two ways of looking at the same
+   * document.
+   */
+  const [mode, setMode] = React.useState<"edit" | "forge">("edit");
   const [dragging, setDragging] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const stageRef = React.useRef<HTMLDivElement>(null);
@@ -68,17 +81,25 @@ export function App(): React.JSX.Element {
         onExport={() => setExporting(true)}
         onToggleHelp={() => setHelping((open) => !open)}
         helpOpen={helping}
+        mode={mode}
+        onMode={setMode}
       />
 
       <div className="flex min-h-0 flex-1">
         <div ref={stageRef} className="flex min-w-0 flex-1 flex-col">
-          {state.view === "grid" && <FontGridView />}
-          {state.view === "glyph" && <GlyphEditorView />}
-          {state.view === "kerning" && <KerningView />}
-          {state.view === "metrics" && <MetricsView />}
-          {state.view === "report" && <ReportView />}
+          {mode === "forge" ? (
+            <ForgeView />
+          ) : (
+            <>
+              {state.view === "grid" && <FontGridView />}
+              {state.view === "glyph" && <GlyphEditorView />}
+              {state.view === "kerning" && <KerningView />}
+              {state.view === "metrics" && <MetricsView />}
+              {state.view === "report" && <ReportView />}
+            </>
+          )}
         </div>
-        <Inspector />
+        {mode === "forge" ? <ForgePanel /> : <Inspector />}
         {helping && <HelpDrawer onClose={() => setHelping(false)} />}
       </div>
 
@@ -107,7 +128,12 @@ export function App(): React.JSX.Element {
         </div>
       )}
 
-      {exporting && <ExportDialog onClose={() => setExporting(false)} />}
+      {exporting &&
+        (mode === "forge" ? (
+          <ForgeExportDialog onClose={() => setExporting(false)} />
+        ) : (
+          <ExportDialog onClose={() => setExporting(false)} />
+        ))}
     </div>
   );
 }
