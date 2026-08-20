@@ -128,8 +128,11 @@ export const PART_SPECS: PartSpec[] = [
       },
       {
         key: "width",
-        label: "Width",
-        hint: "How wide a bowl is against its height. One is as wide as it is tall; less is an upright oval, more is a squat one.",
+        // Named apart from the face's own width, which is a different control
+        // in a different section. Two sliders with one name is ambiguous in
+        // the panel and worse for anyone reading it out.
+        label: "Bowl width",
+        hint: "How wide a bowl is against its height, on top of the width of the face itself. One is as wide as it is tall; less is an upright oval, more is a squat one.",
         min: 0.55,
         max: 1.45,
         step: 0.005,
@@ -195,8 +198,9 @@ export const PART_SPECS: PartSpec[] = [
       },
       {
         key: "weight",
-        label: "Weight",
-        hint: "How heavy it is against the stems. Below one it stays lighter, which stops a bar looking heavier than the letter around it.",
+        // Not "Weight": the pen has one of those and it means something else.
+        label: "Thickness",
+        hint: "How heavy the bar is against the stems. Below one it stays lighter, which stops a bar looking heavier than the letter around it.",
         min: 0.5,
         max: 1.3,
         step: 0.005,

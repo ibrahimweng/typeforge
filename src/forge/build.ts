@@ -11,6 +11,7 @@
 import { contourArea, contoursBounds, reverseContour } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { FIGURES, LETTERS, recipeOf, type Recipe } from "./letters";
+import { alongSpine, spinePath } from "./shapes";
 import { penReach, sweep } from "./sweep";
 import type { Style } from "./style";
 import type { Stroke, Terminal } from "./types";
@@ -18,6 +19,42 @@ import type { Stroke, Terminal } from "./types";
 export interface Drawn {
   contours: Contour[];
   advanceWidth: number;
+}
+
+/** A stroke's centre-line and the pen along it, for drawing over the letter. */
+export interface Bone {
+  path: string;
+  /** Where the pen sits, and how wide it is there. */
+  pen: { at: Vec2; across: number; along: number; angle: number }[];
+}
+
+/**
+ * The skeleton of a letter.
+ *
+ * The point of showing it is that this half of the application is about
+ * skeletons and until now there was no way to look at one. A control that moves
+ * where an arch springs from is much easier to understand next to the line it
+ * moves than next to a number.
+ *
+ * Taken from the strokes rather than reconstructed, so what is drawn is the
+ * spine the sweep actually used -- corners rounded off, radii held at the pen's
+ * limit and all.
+ */
+export function skeletonOf(name: string, style: Style, form?: string): Bone[] {
+  const recipe = recipeOf(name, form);
+  if (!recipe) return [];
+  return recipe(style).strokes.map((stroke) => {
+    const reach = penReach(stroke.pen);
+    return {
+      path: spinePath(stroke.spine),
+      pen: alongSpine(stroke.spine, 6).map((where) => ({
+        at: where,
+        across: reach.across,
+        along: reach.along,
+        angle: (reach.angle * 180) / Math.PI,
+      })),
+    };
+  });
 }
 
 export function letterNames(): string[] {

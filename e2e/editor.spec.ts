@@ -546,8 +546,12 @@ test("explains every parameter the inspector actually offers", async ({ page }) 
   const help = page.getByRole("dialog", { name: "Help" });
   await expect(help).toBeVisible();
 
+  // Scoped to the half this panel belongs to. Both halves have a weight and a
+  // width and they mean different things, so an unscoped search would be
+  // answered by whichever section happened to come first.
+  const explained = help.locator('[data-help-half="imported"]');
   for (const label of parameters) {
-    await expect(help.getByText(label, { exact: true })).toBeVisible();
+    await expect(explained.getByText(label, { exact: true })).toBeVisible();
   }
 
   // And it closes on Escape, as every panel in the application does.
@@ -805,4 +809,118 @@ test("keeps the serifs off the marks that never wear them", async ({ page }) => 
       `${mark} grew a serif`,
     ).toBe(before[mark]);
   }
+});
+
+/**
+ * Seeing the thing being edited.
+ *
+ * This half of the application is about skeletons, and until the overlay
+ * existed there was no way to look at one. A control that moves where an arch
+ * springs from is far easier to understand next to the line it moves than next
+ * to a number.
+ */
+test("shows the skeleton the letter is grown from", async ({ page }) => {
+  await openForge(page);
+  const stage = page.locator("[data-forge-stage]");
+  const strokes = stage.locator("path[stroke]");
+  await expect(strokes).toHaveCount(0);
+
+  await page.locator("[data-forge-skeleton]").click();
+  await expect.poll(() => strokes.count()).toBeGreaterThan(0);
+
+  // And the ink steps back so the skeleton can be read against it.
+  await expect(stage.locator('path[fill="var(--foreground)"]')).toHaveAttribute("opacity", "0.32");
+
+  await page.locator("[data-forge-skeleton]").click();
+  await expect(strokes).toHaveCount(0);
+});
+
+/**
+ * The specimen is typed rather than fixed, because the word that shows the
+ * problem is different for every font and nobody can guess it in advance.
+ */
+test("sets the specimen in whatever is typed into it", async ({ page }) => {
+  await openForge(page);
+  const line = page.getByRole("img", { name: "Specimen" });
+  const before = await line.locator("path").count();
+
+  await page.locator("[data-forge-specimen]").fill("mmm");
+  await expect.poll(() => line.locator("path").count()).toBe(3);
+  expect(before).not.toBe(3);
+
+  // A character the font has no glyph for takes its space and draws nothing,
+  // so the words of a specimen line do not run together.
+  await page.locator("[data-forge-specimen]").fill("a a");
+  await expect.poll(() => line.locator("path").count()).toBe(2);
+});
+
+test("shows the specimen the other way up", async ({ page }) => {
+  await openForge(page);
+  const fill = page.getByRole("img", { name: "Specimen" }).locator("g");
+  await expect(fill).toHaveAttribute("fill", "var(--foreground)");
+  await page.locator("[data-forge-reverse]").click();
+  await expect(fill).toHaveAttribute("fill", "var(--canvas)");
+});
+
+/**
+ * Saying what has closed up while the slider that closed it is still under the
+ * hand, rather than leaving it to be found later.
+ */
+test("says which letters a setting has closed up", async ({ page }) => {
+  await openForge(page);
+  await expect(page.locator("[data-forge-warnings]")).toHaveCount(0);
+
+  // Heavy and condensed together, which is where the figures lose their holes.
+  const weight = page.getByRole("slider", { name: "Weight" });
+  await weight.focus();
+  for (let step = 0; step < 60; step++) await page.keyboard.press("ArrowRight");
+  const width = page.getByRole("slider", { name: "Width", exact: true });
+  await width.focus();
+  for (let step = 0; step < 90; step++) await page.keyboard.press("ArrowLeft");
+
+  const warnings = page.locator("[data-forge-warnings]");
+  await expect(warnings).toBeVisible();
+  await expect(warnings.getByText("Counters closing up")).toBeVisible();
+
+  // And the letters it names are a way of getting to them.
+  await warnings.getByRole("button", { name: "eight" }).click();
+  await expect(page.locator("[data-forge-stage]")).toHaveAttribute("data-forge-stage", "eight");
+});
+
+/**
+ * An alternate is a per-letter choice, which is the one decision here that does
+ * not reach the whole font. Everything else still reaches it.
+ */
+test("draws one letter from another skeleton and leaves the rest alone", async ({ page }) => {
+  await openForge(page);
+  await page.locator('[data-forge-cell="a"]').click();
+
+  const a = () => page.locator('[data-forge-cell="a"] path').getAttribute("d");
+  const o = () => page.locator('[data-forge-cell="o"] path').getAttribute("d");
+  const wasA = await a();
+  const wasO = await o();
+
+  await page.locator('[data-forge-forms="a"]').locator('[data-forge-form="double"]').click();
+  await expect.poll(a).not.toBe(wasA);
+  expect(await o()).toBe(wasO);
+
+  // The pen still reaches the letter that changed shape.
+  const weight = page.getByRole("slider", { name: "Weight" });
+  await weight.focus();
+  const doubled = await a();
+  for (let step = 0; step < 20; step++) await page.keyboard.press("ArrowRight");
+  await expect.poll(a).not.toBe(doubled);
+});
+
+test("zooms into the letter and back out again", async ({ page }) => {
+  await openForge(page);
+  const stage = page.locator("[data-forge-stage]");
+  const before = await stage.getAttribute("viewBox");
+
+  await stage.hover();
+  await page.mouse.wheel(0, -400);
+  await expect.poll(() => stage.getAttribute("viewBox")).not.toBe(before);
+
+  await page.getByRole("button", { name: /fit$/ }).click();
+  await expect.poll(() => stage.getAttribute("viewBox")).toBe(before);
 });

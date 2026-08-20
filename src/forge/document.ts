@@ -82,8 +82,32 @@ export function styleFor(letter: string, forge: Forge): Style {
   return { ...forge.style, parts: merged as unknown as Parts };
 }
 
+/**
+ * Drawings, kept for as long as the document they belong to is.
+ *
+ * A change to a slider redraws the alphabet strip, and then the warnings walk
+ * the same alphabet asking what closed up, and then the specimen line draws
+ * some of it again. That is the same work three times over for one movement of
+ * one control.
+ *
+ * Held on the document itself rather than on a key made out of its contents,
+ * because an edit returns a new document and the old one becomes unreachable --
+ * so the entries for it are collected without anything having to decide when a
+ * cache has gone stale. There is no stale state to get wrong: a document that
+ * still exists has not changed, and one that has changed is a different object.
+ */
+const drawings = new WeakMap<Forge, Map<string, Drawn | null>>();
+
 export function draw(letter: string, forge: Forge): Drawn | null {
-  return drawLetter(letter, styleFor(letter, forge), formOf(forge, letter));
+  let kept = drawings.get(forge);
+  if (!kept) {
+    kept = new Map();
+    drawings.set(forge, kept);
+  }
+  if (kept.has(letter)) return kept.get(letter) ?? null;
+  const drawn = drawLetter(letter, styleFor(letter, forge), formOf(forge, letter));
+  kept.set(letter, drawn);
+  return drawn;
 }
 
 /**

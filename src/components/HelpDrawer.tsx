@@ -16,6 +16,7 @@ import * as React from "react";
 
 import { PARAM_GROUPS, PARAMS } from "@/components/param-specs";
 import { OUTLINE_ACTION } from "@/components/controls";
+import { METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS } from "@/forge/parts";
 import { forgetTips, seenTipCount, subscribeToTips } from "@/help/tips";
 
 const VIEWS: Array<[string, string]> = [
@@ -100,7 +101,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
         </Section>
 
         {PARAM_GROUPS.map((group) => (
-          <Section key={group.title} title={group.title}>
+          <Section key={group.title} title={group.title} half="imported">
             <p>{group.blurb}</p>
             <dl className="space-y-2">
               {group.keys.map((key) => {
@@ -113,6 +114,53 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
                   </div>
                 );
               })}
+            </dl>
+          </Section>
+        ))}
+
+        <Section title="Drawing a font from nothing" half="drawn">
+          <p>
+            <Term>Draw a font</Term> is the other half. There is no font to open: a letter is
+            described by where its strokes run and how wide the pen is, and the outline is worked
+            out from that description every time it is needed. Nothing is traced from anything, so
+            what comes out is yours to use without crediting anyone.
+          </p>
+          <p>
+            That is also why nothing here can be spoilt by turning a control up. Weight is an input
+            to the drawing rather than a shove applied to a finished outline: ask for a heavier cut
+            and the letter is drawn again, thicker. One rule holds everywhere -- a stroke never
+            turns tighter than half its own width, and no shape is smaller than the pen drawing it.
+            Where a setting asks for less, the letter grows instead of closing up.
+          </p>
+          <p>
+            <Term>Every edit reaches the whole font.</Term> Draw the serif you want on a p and what
+            you changed is the serif, so every letter that wears one wears the new one. A letter
+            told to keep its own version says so, and it is the only one that does. The one
+            exception is the shape of a letter: choosing a two-storey a says nothing about the g.
+          </p>
+        </Section>
+
+        <Section title="The pen and the proportions" half="drawn">
+          <dl className="space-y-2">
+            {[...PEN_CONTROLS, ...METRIC_CONTROLS].map((control) => (
+              <div key={control.key}>
+                <dt className="text-2xs font-medium text-foreground">{control.label}</dt>
+                <dd className="text-2xs leading-snug text-muted-foreground">{control.hint}</dd>
+              </div>
+            ))}
+          </dl>
+        </Section>
+
+        {PART_SPECS.map((spec) => (
+          <Section key={spec.name} title={spec.label} half="drawn">
+            <p>{spec.hint}</p>
+            <dl className="space-y-2">
+              {spec.controls.map((control) => (
+                <div key={control.key}>
+                  <dt className="text-2xs font-medium text-foreground">{control.label}</dt>
+                  <dd className="text-2xs leading-snug text-muted-foreground">{control.hint}</dd>
+                </div>
+              ))}
             </dl>
           </Section>
         ))}
@@ -167,12 +215,24 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
 function Section({
   title,
   children,
+  half,
 }: {
   title: string;
   children: React.ReactNode;
+  /*
+   * Which half of the application this section is about.
+   *
+   * The two halves both have a weight and both have a width, and they mean
+   * different things: one is a parameter laid over somebody else's outlines,
+   * the other is how wide the pen is. Marking the sections says which is which
+   * to anything reading the drawer, and keeps a check that every slider in the
+   * inspector is explained from being answered by a slider in the other half
+   * that happens to share a name.
+   */
+  half?: "imported" | "drawn";
 }): React.JSX.Element {
   return (
-    <section className="space-y-2">
+    <section className="space-y-2" data-help-half={half}>
       <h3 className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
         {title}
       </h3>

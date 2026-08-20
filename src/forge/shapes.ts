@@ -470,3 +470,79 @@ function onArcAngle(arc: SpineArc, point: Vec2): number {
   while ((angle - arc.endAngle) * way > 0) angle -= TAU * way;
   return angle;
 }
+
+// ---------------------------------------------------------------------------
+// Showing a skeleton
+// ---------------------------------------------------------------------------
+
+/**
+ * A run written as an SVG path, for drawing the skeleton over the letter.
+ *
+ * Straight to arc commands rather than through beziers, because this is the one
+ * place where what is wanted is the spine exactly as it is described rather
+ * than an outline fitted to it. The sweep flag is written for a coordinate
+ * system with y running up, which is the one the letters are described in; the
+ * view flips it once, for everything at once.
+ */
+export function spinePath(spine: Spine): string {
+  const pieces: string[] = [];
+  let last: Vec2 | null = null;
+  for (const segment of spine.segments) {
+    const from = segmentStart(segment);
+    const to = segmentEnd(segment);
+    if (!last || Math.hypot(last.x - from.x, last.y - from.y) > 1e-6) {
+      pieces.push(`M ${round(from.x)} ${round(from.y)}`);
+    }
+    if (segment.kind === "line") {
+      pieces.push(`L ${round(to.x)} ${round(to.y)}`);
+    } else {
+      const turned = Math.abs(segment.endAngle - segment.startAngle);
+      const long = turned > Math.PI ? 1 : 0;
+      const way = segment.endAngle >= segment.startAngle ? 1 : 0;
+      // A full turn has nowhere to draw to, so it goes round in two halves.
+      if (turned >= Math.PI * 2 - 1e-9) {
+        const half = onArc(segment, segment.startAngle + Math.PI);
+        pieces.push(`A ${round(segment.radius)} ${round(segment.radius)} 0 0 ${way} ${round(half.x)} ${round(half.y)}`);
+        pieces.push(`A ${round(segment.radius)} ${round(segment.radius)} 0 0 ${way} ${round(to.x)} ${round(to.y)}`);
+      } else {
+        pieces.push(
+          `A ${round(segment.radius)} ${round(segment.radius)} 0 ${long} ${way} ${round(to.x)} ${round(to.y)}`,
+        );
+      }
+    }
+    last = to;
+  }
+  if (spine.closed) pieces.push("Z");
+  return pieces.join(" ");
+}
+
+/** Where the pen sits along a run, for showing what is drawing it. */
+export function alongSpine(spine: Spine, count: number): Vec2[] {
+  const lengths = spine.segments.map(lengthOf);
+  const total = lengths.reduce((sum, one) => sum + one, 0);
+  if (total <= 0) return [];
+  const out: Vec2[] = [];
+  for (let step = 0; step <= count; step++) {
+    let want = (total * step) / count;
+    for (let index = 0; index < spine.segments.length; index++) {
+      if (want > lengths[index] && index < spine.segments.length - 1) {
+        want -= lengths[index];
+        continue;
+      }
+      const segment = spine.segments[index];
+      const part = lengths[index] > 0 ? Math.min(1, want / lengths[index]) : 0;
+      out.push(
+        segment.kind === "line"
+          ? at(
+              segment.from.x + (segment.to.x - segment.from.x) * part,
+              segment.from.y + (segment.to.y - segment.from.y) * part,
+            )
+          : onArc(segment, segment.startAngle + (segment.endAngle - segment.startAngle) * part),
+      );
+      break;
+    }
+  }
+  return out;
+}
+
+const round = (value: number): string => (Math.round(value * 100) / 100).toString();

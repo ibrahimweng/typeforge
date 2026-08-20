@@ -41,7 +41,7 @@ export const TIPS: Record<TipId, string> = {
   controls:
     "Change one of these five letters and Typeforge works out what you meant — heavier, wider, taller — and applies it to the whole alphabet.",
   forge:
-    "Nothing here came from another font. Pick a base, then change a part \u2014 a serif, a shoulder, a crossbar \u2014 and every letter that has that part follows. The panel says how many before you touch it.",
+    "Nothing here came from another font. Pick a base, then change a part \u2014 a serif, a shoulder, a corner \u2014 and every letter that has that part follows; the panel says how many before you touch it. Turn on Skeleton to see what is being drawn, and type into the specimen line to judge it in a word.",
   export:
     "Preserve keeps everything the original font carried and swaps in your outlines. Rebuild writes a clean file from what is on screen.",
 };

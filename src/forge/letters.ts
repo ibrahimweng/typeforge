@@ -1014,8 +1014,11 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   t: (style) => {
     const f = frame(style);
     const radius = Math.max(f.arch * 0.42, f.least);
-    const stem = f.edge + f.arch * 0.35;
     const reach = f.arch * 0.7;
+    // Placed so the bar's left end lands on the sidebearing rather than through
+    // it. Set from the arch instead, a heavy t reached to within two units of
+    // the letter before it.
+    const stem = f.edge + reach * 0.7;
     return finish(
       f,
       [
@@ -2138,8 +2141,8 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
       hint: "Cut off square at the baseline, which is what a squared or technical face wants.",
       build: (style) => {
         const f = frame(style);
-        const stem = f.edge + f.arch * 0.35;
         const reach = f.arch * 0.7;
+        const stem = f.edge + reach * 0.7;
         return finish(f, [
           ink(f, straight(at(stem, 0), at(stem, f.asc * 0.78)), f.end, f.end),
           thin(f, straight(at(stem - reach * 0.7, f.x), at(stem + reach, f.x)), f.end, f.end),

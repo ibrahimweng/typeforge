@@ -46,6 +46,12 @@ export interface ForgeState {
   /** Whether an edit lands on the family or on this letter alone. */
   scope: Scope;
   familyName: string;
+  /** Whether the spine and the pen are drawn over the letter. */
+  showSkeleton: boolean;
+  /** What the specimen line is set in. */
+  specimen: string;
+  /** Whether the specimen is shown light on dark, which is how a display face gets judged. */
+  reversed: boolean;
   canUndo: boolean;
   canRedo: boolean;
   /** Bumped on every change, so views can memoise against it. */
@@ -60,6 +66,9 @@ class ForgeStore {
     letter: "n",
     scope: "family",
     familyName: "Untitled",
+    showSkeleton: false,
+    specimen: "Handgloves",
+    reversed: false,
     canUndo: false,
     canRedo: false,
     revision: 0,
@@ -137,6 +146,25 @@ class ForgeStore {
 
   setFamilyName(familyName: string): void {
     this.set({ familyName });
+  }
+
+  /*
+   * How the font is being looked at, rather than what it is.
+   *
+   * None of these go through the history. Undoing a change to the letters and
+   * finding the skeleton had switched itself back on would be undo doing
+   * something nobody asked for.
+   */
+  setShowSkeleton(showSkeleton: boolean): void {
+    this.set({ showSkeleton });
+  }
+
+  setSpecimen(specimen: string): void {
+    this.set({ specimen });
+  }
+
+  setReversed(reversed: boolean): void {
+    this.set({ reversed });
   }
 
   // --- the document -------------------------------------------------------
