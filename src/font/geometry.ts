@@ -376,6 +376,54 @@ export function centroid(contour: Contour): Vec2 {
 }
 
 /** Render contours into a Path2D for canvas drawing. */
+/**
+ * Where a straight line across a glyph passes through ink.
+ *
+ * The primitive behind every measurement made by looking at a letter rather
+ * than by being told about it: how thick a stem is, how wide a counter is,
+ * whether a stroke has a serif on the end of it. All of those are a question
+ * about what a ruler laid across the letter would meet, and this is the ruler.
+ *
+ * Runs come back in order and in pairs of edges, so a stem is one run and an
+ * n at mid-height is two with the counter between them. An odd number of
+ * crossings means the line grazed a tangent or clipped a corner exactly, and
+ * the last one is dropped rather than paired with nothing.
+ *
+ * Measured against flattened outlines. The answer feeds a width in font units
+ * where a unit is a thousandth of the type size, and solving cubics for a line
+ * that only has to be right to within a unit is work for nothing.
+ */
+export function inkRunsAt(
+  contours: Contour[],
+  at: number,
+  along: "x" | "y" = "y",
+  steps = 24,
+): Array<[number, number]> {
+  const crossings: number[] = [];
+  for (const contour of contours) {
+    const points = flattenContour(contour, steps);
+    for (let index = 0; index < points.length; index++) {
+      const a = points[index];
+      const b = points[(index + 1) % points.length];
+      // Scanning along y means a horizontal ruler and a crossing wherever the
+      // edge changes its y; along x it is the other way about.
+      const from = along === "y" ? a.y : a.x;
+      const to = along === "y" ? b.y : b.x;
+      if (from === to) continue;
+      if (at < Math.min(from, to) || at >= Math.max(from, to)) continue;
+      const t = (at - from) / (to - from);
+      crossings.push(along === "y" ? a.x + t * (b.x - a.x) : a.y + t * (b.y - a.y));
+    }
+  }
+  crossings.sort((first, second) => first - second);
+
+  const runs: Array<[number, number]> = [];
+  for (let index = 0; index + 1 < crossings.length; index += 2) {
+    runs.push([crossings[index], crossings[index + 1]]);
+  }
+  return runs;
+}
+
 export function contoursToPath2D(contours: Contour[]): Path2D {
   const path = new Path2D();
   for (const contour of contours) {

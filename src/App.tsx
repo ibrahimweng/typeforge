@@ -14,9 +14,11 @@ import { ExportDialog } from "@/components/ExportDialog";
 import { ForgeExportDialog } from "@/components/ForgeExportDialog";
 import { ForgePanel } from "@/components/ForgePanel";
 import { HelpDrawer } from "@/components/HelpDrawer";
+import { LibraryDialog } from "@/components/LibraryDialog";
 import { Inspector } from "@/components/Inspector";
 import { TopBar } from "@/components/TopBar";
 import { assembleStore } from "@/state/useAssemble";
+import { libraryStore } from "@/state/useLibrary";
 import { store, useAppState } from "@/state/useStore";
 import { FontGridView } from "@/views/FontGridView";
 import { GlyphEditorView } from "@/views/GlyphEditorView";
@@ -109,6 +111,7 @@ export function App(): React.JSX.Element {
     >
       <TopBar
         onOpenFile={() => inputRef.current?.click()}
+        onLibrary={() => void libraryStore.show()}
         onExport={() => setExporting(true)}
         onToggleHelp={() => setHelping((open) => !open)}
         helpOpen={helping}
@@ -160,6 +163,8 @@ export function App(): React.JSX.Element {
           <div className="h-full w-1/3 animate-pulse bg-accent" />
         </div>
       )}
+
+      <LibraryDialog mode={mode} onMode={setMode} />
 
       {exporting && mode === "forge" && <ForgeExportDialog onClose={() => setExporting(false)} />}
       {exporting && mode === "assemble" && (

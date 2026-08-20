@@ -17,6 +17,7 @@
 import * as React from "react";
 
 import { CoachMark } from "@/components/CoachMark";
+import { Reference } from "@/components/Reference";
 import { contoursToSvgPath } from "@/font/geometry";
 import { letterNames, skeletonOf } from "@/forge/build";
 import { draw, formOf, isException, isImported, partsOf, styleFor } from "@/forge/document";
@@ -24,6 +25,7 @@ import { handlesFor, valueAfter, type Handle } from "@/forge/handles";
 import { troubles } from "@/forge/health";
 import { segment, tile } from "@/components/controls";
 import { forgeStore, useForge, type Phase } from "@/state/useForge";
+import { useLibrary } from "@/state/useLibrary";
 import { cn } from "@/ui/lib/utils";
 
 export function ForgeView(): React.JSX.Element {
@@ -103,6 +105,7 @@ function Stage({
     [letter, state.forge, form, outside, state.showSkeleton, revision],
   );
   const { metrics } = state.forge.style;
+  const { reference } = useLibrary();
 
   if (!drawn) return <div className="flex-1" />;
 
@@ -238,6 +241,13 @@ function Stage({
               strokeWidth={unit * 0.5}
             />
           ))}
+
+          {/* Under the letter, so the letter stays the thing being looked at. */}
+          <Reference
+            loaded={reference}
+            character={letter}
+            unitsPerEm={metrics.unitsPerEm}
+          />
 
           <path
             d={contoursToSvgPath(drawn.contours)}

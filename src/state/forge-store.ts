@@ -186,6 +186,18 @@ class ForgeStore {
   }
 
   /**
+   * Start from a style worked out somewhere else.
+   *
+   * The library uses this: it measures a font, builds a style from the
+   * measurements, and hands it over. Undoable like starting from a base,
+   * because it is the same kind of act and can lose the same work.
+   */
+  startFromStyle(style: Style, base: string): void {
+    this.commit({ ...startFrom(style), base });
+    this.set({ familyName: style.name || this.state.familyName });
+  }
+
+  /**
    * Change a part.
    *
    * On the family by default, which is the whole point of the thing: the edit

@@ -286,6 +286,55 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
           </p>
         </Section>
 
+        <Section title="The font library" half="library">
+          <p>
+            Every family in the Google Fonts catalogue, reachable from the
+            toolbar in all three modes, and four things to do with one. They are
+            four different relationships, and they differ in exactly how much of
+            somebody else's typeface you end up carrying — so the library says
+            which is which rather than leaving it to be assumed.
+          </p>
+          <p>
+            <Term>Open it.</Term> Everything: outlines, spacing, kerning,
+            straight into the editor. Which is fine, because these are fonts
+            licensed to be taken and remade.
+          </p>
+          <p>
+            <Term>Show it behind your letters.</Term> Nothing at all. The
+            reference sits under the letter you are drawing, at the same body
+            size, and is gone the moment you put it down. It is the oldest way
+            of learning to draw type: where your bowl is heavier or your
+            shoulder springs later stops being a matter of opinion.
+          </p>
+          <p>
+            <Term>Borrow its spacing and kerning.</Term> Numbers about white,
+            and nothing drawn. A well-made text face has had months of work put
+            into how much room each letter is given and which pairs need
+            pulling together, and that work fits around your shapes as well as
+            it fitted around theirs. It arrives as an adjustment on top of what
+            Assemble measured, so one undo takes it back off.
+          </p>
+          <p>
+            <Term>Start a drawing from it.</Term> Its proportions — how tall the
+            lowercase stands against the capitals, how wide the pen was, how
+            much thinner the horizontals are, whether the strokes are serifed
+            and how far they reach — and then the letters are drawn from that
+            description by the same machinery that draws everything else here.
+            Not one of its curves comes across. That distinction is worth being
+            exact about: proportions are not protected and never have been, and
+            they are the reason there are five hundred grotesques that all look
+            like each other. Outlines are. So the numbers travel and the shapes
+            do not.
+          </p>
+          <p>
+            Everything the library says about a font is measured off its
+            outlines rather than read from its name or its metadata — which is
+            why it can tell a serif from a sans in a font that ships no glyph
+            names, and why it reads the lean of a face that declares itself
+            upright and is not.
+          </p>
+        </Section>
+
         <Section title="Why a slider sometimes stops">
           <p>
             Every letter has a limit. Thin a stroke past half its own width and its two sides pass
@@ -350,7 +399,7 @@ function Section({
    * every slider in a panel is explained from being answered by a section
    * about a different job that happens to share a word.
    */
-  half?: "imported" | "drawn" | "assembled";
+  half?: "imported" | "drawn" | "assembled" | "library";
 }): React.JSX.Element {
   return (
     <section className="space-y-2" data-help-half={half}>

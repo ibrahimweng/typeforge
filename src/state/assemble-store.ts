@@ -21,8 +21,11 @@ import {
   type Piece,
   type Tweak,
 } from "@/assemble/document";
+import { build } from "@/assemble/document";
 import type { FitMetrics, FitMode } from "@/assemble/fit";
 import type { SpacingSettings } from "@/assemble/spacing";
+import type { Typeface } from "@/font/types";
+import { adjustmentsFor, borrowFrom, kernsIn } from "@/library/borrow";
 
 export type Phase = "single" | "during" | "end";
 
@@ -163,6 +166,56 @@ class AssembleStore {
 
   setPairKern(left: string, right: string, value: number | null, phase: Phase = "single"): void {
     this.commit(setKern(this.state.assembly, left, right, value), phase);
+  }
+
+  /**
+   * Wear another font's rhythm.
+   *
+   * The spacing arrives as a target for the total white beside each letter,
+   * and the assembly has already measured how much of that its own drawing
+   * supplies -- so what gets stored is the difference, in the same place a
+   * person's own nudges go. Which means it can be undone in one keystroke and
+   * turned back into your own measurements by clearing the nudges, rather than
+   * being baked in somewhere it cannot be got out of.
+   *
+   * Only the letters both fonts have. A drawing of an ampersand gets nothing
+   * from a font that has no ampersand, and that is reported rather than passed
+   * over.
+   */
+  borrowFrom(typeface: Typeface): { letters: number; pairs: number } {
+    const assembly = this.state.assembly;
+    const assembled = build(assembly);
+    if (assembled.letters.length === 0) return { letters: 0, pairs: 0 };
+
+    const characters = assembled.letters.map((letter) => letter.character);
+    const borrowed = borrowFrom(typeface, characters);
+
+    // What the assembly's own measurement gave each letter, before any nudge,
+    // since the nudge is what is about to be replaced.
+    const own = new Map<string, { left: number; right: number }>();
+    for (const letter of assembled.letters) {
+      const nudge = assembly.tweaks[letter.character] ?? { left: 0, right: 0 };
+      own.set(letter.character, {
+        left: letter.bearings.left - nudge.left,
+        right: letter.bearings.right - nudge.right,
+      });
+    }
+
+    const em = assembly.metrics.unitsPerEm;
+    const adjustments = adjustmentsFor(borrowed, em, own);
+    const kerns = kernsIn(borrowed, em);
+
+    let next = assembly;
+    for (const adjustment of adjustments) {
+      next = tweak(next, adjustment.character, { left: adjustment.left, right: adjustment.right });
+    }
+    for (const [pair, value] of kerns) {
+      const [left, right] = pair.split(" ");
+      if (left && right) next = setKern(next, left, right, value);
+    }
+
+    this.commit(next);
+    return { letters: adjustments.length, pairs: kerns.size };
   }
 
   // --- history -------------------------------------------------------------

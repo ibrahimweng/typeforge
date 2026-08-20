@@ -33,6 +33,7 @@ const TOOLS: Array<{ id: ToolId; label: string; hint: string }> = [
 
 export function TopBar({
   onOpenFile,
+  onLibrary,
   onExport,
   onToggleHelp,
   helpOpen,
@@ -40,6 +41,7 @@ export function TopBar({
   onMode,
 }: {
   onOpenFile: () => void;
+  onLibrary: () => void;
   onExport: () => void;
   onToggleHelp: () => void;
   helpOpen: boolean;
@@ -213,6 +215,12 @@ export function TopBar({
           className={cn(TOOLBAR_ACTION, helpOpen && "bg-card text-foreground")}
         >
           Help
+        </button>
+        {/* Reachable from all three, because all three have something to do
+            with somebody else's font: open it, draw from its proportions,
+            borrow its spacing, or just put it behind your own letters. */}
+        <button type="button" onClick={onLibrary} data-open-library className={OUTLINE_ACTION}>
+          Library
         </button>
         {mode === "edit" && (
           <button type="button" onClick={onOpenFile} className={OUTLINE_ACTION}>

@@ -16,10 +16,12 @@
 import * as React from "react";
 
 import { CoachMark } from "@/components/CoachMark";
+import { Reference } from "@/components/Reference";
 import { build } from "@/assemble/document";
 import { contoursToSvgPath } from "@/font/geometry";
 import { tile } from "@/components/controls";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
+import { useLibrary } from "@/state/useLibrary";
 import { cn } from "@/ui/lib/utils";
 
 export function AssembleView(): React.JSX.Element {
@@ -101,6 +103,7 @@ function Stage(): React.JSX.Element {
     assembled.letters.find((candidate) => candidate.character === state.selected) ??
     assembled.letters[0];
   const { metrics } = state.assembly;
+  const { reference } = useLibrary();
 
   if (!letter) {
     return (
@@ -160,6 +163,12 @@ function Stage(): React.JSX.Element {
               opacity={0.5}
             />
           ))}
+
+          <Reference
+            loaded={reference}
+            character={letter.character}
+            unitsPerEm={metrics.unitsPerEm}
+          />
 
           <path d={contoursToSvgPath(letter.contours)} fill="var(--foreground)" fillRule="nonzero" />
         </g>

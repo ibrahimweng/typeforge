@@ -1015,6 +1015,158 @@ test("offers the settings that are on or off as switches", async ({ page }) => {
 });
 
 /*
+ * The font library.
+ *
+ * The two services it reaches are somebody else's, and a test that depends on
+ * them passing is a test that fails on a bad afternoon in a datacentre
+ * somewhere. So the catalogue is answered here and the font files are served
+ * out of the repository's own sample. What is being checked is this
+ * application: that the list appears, that choosing a family measures it, that
+ * the four things you can do with it do them, and that a service being down
+ * leaves a usable picker rather than an empty one.
+ */
+const CATALOGUE = [
+  { id: "inter", family: "Inter", category: "sans-serif", weights: [400, 700], styles: ["normal"], variable: true },
+  { id: "playfair-display", family: "Playfair Display", category: "serif", weights: [400], styles: ["normal"], variable: false },
+  { id: "roboto-mono", family: "Roboto Mono", category: "monospace", weights: [400], styles: ["normal"], variable: false },
+];
+
+/** Answer the catalogue, and serve the sample font for any file asked for. */
+async function stubLibrary(page: Page, options: { catalogue?: boolean } = {}): Promise<void> {
+  const bytes = readFileSync(FONT_PATH!);
+  await page.route("**://api.fontsource.org/**", async (route) => {
+    if (options.catalogue === false) {
+      await route.fulfill({ status: 503, contentType: "text/plain", body: "no" });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(CATALOGUE),
+    });
+  });
+  await page.route("**://fonts.googleapis.com/**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/css",
+      body: "@font-face{src:url(https://fonts.gstatic.com/s/x/v1/sample.ttf) format('truetype');}",
+    });
+  });
+  await page.route("**://fonts.gstatic.com/**", async (route) => {
+    await route.fulfill({ status: 200, contentType: "font/ttf", body: bytes });
+  });
+  await page.route("**://cdn.jsdelivr.net/**", async (route) => {
+    await route.fulfill({ status: 200, contentType: "font/ttf", body: bytes });
+  });
+}
+
+async function openLibrary(page: Page): Promise<void> {
+  await page.locator("[data-open-library]").click();
+  await expect(page.getByRole("dialog", { name: "Font library" })).toBeVisible();
+}
+
+test("lists the catalogue and measures what you choose", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await stubLibrary(page);
+  await openForge(page);
+  await openLibrary(page);
+
+  await expect(page.locator("[data-library-font]")).toHaveCount(CATALOGUE.length);
+  await expect(page.locator("[data-library-footer]")).toContainText("from Fontsource");
+
+  await page.locator('[data-library-font="playfair-display"]').click();
+  // Fetched, parsed and measured: the panel says what it is made of, and the
+  // sample is drawn from the font's own outlines.
+  await expect(page.locator("[data-library-measured]")).toBeVisible();
+  await expect(page.locator("[data-library-measured]")).toContainText("Contrast");
+  await expect(page.locator("[data-library-sample] path").first()).toBeVisible();
+  await expect(page.locator("[data-library-action]")).toHaveCount(4);
+  expect(errors).toEqual([]);
+});
+
+test("narrows the catalogue by name and by kind", async ({ page }) => {
+  await stubLibrary(page);
+  await openForge(page);
+  await openLibrary(page);
+
+  await page.locator("[data-library-search]").fill("play");
+  await expect(page.locator("[data-library-font]")).toHaveCount(1);
+
+  await page.locator("[data-library-search]").fill("");
+  await page.locator('[data-library-category="monospace"]').click();
+  await expect(page.locator("[data-library-font]")).toHaveCount(1);
+  await expect(page.locator('[data-library-font="roboto-mono"]')).toBeVisible();
+});
+
+test("still offers a list when the catalogue cannot be reached", async ({ page }) => {
+  await stubLibrary(page, { catalogue: false });
+  await openForge(page);
+  await openLibrary(page);
+
+  // Not empty, and it says why rather than looking broken.
+  await expect(page.locator("[data-library-footer]")).toContainText("built in");
+  expect(await page.locator("[data-library-font]").count()).toBeGreaterThan(20);
+});
+
+test("starts a drawing from a font's proportions", async ({ page }) => {
+  await stubLibrary(page);
+  await openForge(page);
+
+  const before = await page.locator('[data-forge-cell="n"] path').getAttribute("d");
+  await openLibrary(page);
+  await page.locator('[data-library-font="playfair-display"]').click();
+  await expect(page.locator("[data-library-measured]")).toBeVisible();
+  await page.locator('[data-library-action="seed"]').click();
+
+  // The dialog closes, the drawing changed, and the toolbar says where it came
+  // from. The letters are drawn from a description, so they are not the
+  // font's letters -- but they are its proportions.
+  await expect(page.getByRole("dialog", { name: "Font library" })).toBeHidden();
+  await expect.poll(() => page.locator('[data-forge-cell="n"] path').getAttribute("d")).not.toBe(before);
+  await expect(page.locator("header").first()).toContainText("My ");
+});
+
+test("shows a font behind your own letters, and puts it down again", async ({ page }) => {
+  await stubLibrary(page);
+  await openForge(page);
+  await openLibrary(page);
+  await page.locator('[data-library-font="inter"]').click();
+  await expect(page.locator("[data-library-measured]")).toBeVisible();
+
+  await page.locator('[data-library-action="reference"]').click();
+  await page.getByRole("button", { name: "Close the library" }).click();
+  await expect(page.locator("[data-reference]")).toBeVisible();
+
+  await openLibrary(page);
+  await page.locator('[data-library-action="reference"]').click();
+  await page.getByRole("button", { name: "Close the library" }).click();
+  await expect(page.locator("[data-reference]")).toHaveCount(0);
+});
+
+test("borrows a font's spacing onto a set of drawings", async ({ page }) => {
+  await stubLibrary(page);
+  await openAssemble(page);
+  await page.setInputFiles("[data-assemble-input]", PILE);
+  await expect(page.locator("[data-assemble-cell]")).toHaveCount(5);
+
+  const advanceOf = async (character: string): Promise<string | null> => {
+    await page.locator(`[data-assemble-cell="${character}"]`).click();
+    return page.locator(`[data-assemble-stage="${character}"] ~ p`).innerText();
+  };
+  const before = await advanceOf("H");
+
+  await openLibrary(page);
+  await page.locator('[data-library-font="inter"]').click();
+  await expect(page.locator("[data-library-measured]")).toBeVisible();
+  await page.locator('[data-library-action="borrow"]').click();
+  await expect(page.locator("[data-library-actions]")).toContainText("Took the spacing");
+  await page.getByRole("button", { name: "Close the library" }).click();
+
+  await expect.poll(() => advanceOf("H")).not.toBe(before);
+});
+
+/*
  * Assembling a font out of drawings.
  *
  * The drawings are made here rather than kept as fixtures, because what they

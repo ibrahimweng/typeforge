@@ -151,6 +151,32 @@ class Store {
 
   // --- document ---------------------------------------------------------
 
+  /**
+   * Take a typeface that has already been read.
+   *
+   * The library has parsed the file to measure it, and parsing a few thousand
+   * glyphs twice to put the same font on screen would be a second of nothing
+   * happening for no reason at all.
+   */
+  adopt(typeface: Typeface, fileName: string): void {
+    this.undoStack = [];
+    this.redoStack = [];
+    this.controlBaseline = readControls(typeface);
+    this.set({
+      typeface,
+      fileName,
+      selectedGlyph: firstLetterName(typeface),
+      selectedNodes: new Set(),
+      selectedGlyphs: new Set(),
+      busy: false,
+      status: {
+        message: `${typeface.meta.familyName} — ${typeface.glyphs.length.toLocaleString()} glyphs`,
+        tone: "success",
+      },
+    });
+    this.touch();
+  }
+
   async loadFont(bytes: Uint8Array, fileName: string): Promise<void> {
     this.set({ busy: true, status: { message: `Reading ${fileName}…`, tone: "info" } });
     try {
