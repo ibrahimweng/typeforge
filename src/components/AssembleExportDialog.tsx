@@ -131,11 +131,11 @@ export function AssembleExportDialog({ onClose }: { onClose: () => void }): Reac
           {assembled.letters.length} character{assembled.letters.length === 1 ? "" : "s"}, with{" "}
           {assembled.kerning.length} kerning pair
           {assembled.kerning.length === 1 ? "" : "s"}.
-          {assembled.unmapped.length > 0 &&
-            ` ${assembled.unmapped.length} drawing${
-              assembled.unmapped.length === 1 ? "" : "s"
+          {assembled.unplaced.length > 0 &&
+            ` ${assembled.unplaced.length} drawing${
+              assembled.unplaced.length === 1 ? "" : "s"
             } still without a character, and ${
-              assembled.unmapped.length === 1 ? "it" : "they"
+              assembled.unplaced.length === 1 ? "it" : "they"
             } will not be in the file.`}
         </p>
 

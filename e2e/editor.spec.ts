@@ -1147,11 +1147,11 @@ test("shows a font behind your own letters, and puts it down again", async ({ pa
 test("borrows a font's spacing onto a set of drawings", async ({ page }) => {
   await stubLibrary(page);
   await openAssemble(page);
-  await page.setInputFiles("[data-assemble-input]", PILE);
-  await expect(page.locator("[data-assemble-cell]")).toHaveCount(5);
+  await dropFolder(page, PILE);
+  await expect(page.locator('[data-assemble-filled="yes"]')).toHaveCount(5);
 
   const advanceOf = async (character: string): Promise<string | null> => {
-    await page.locator(`[data-assemble-cell="${character}"]`).click();
+    await page.locator(`[data-assemble-box="${character}"]`).click();
     return page.locator(`[data-assemble-stage="${character}"] ~ p`).innerText();
   };
   const before = await advanceOf("H");
@@ -1213,20 +1213,140 @@ const PILE = [
 async function openAssemble(page: Page): Promise<void> {
   await page.goto("/");
   await page.getByRole("button", { name: "Assemble" }).click();
-  await expect(page.locator("[data-assemble-empty]")).toBeVisible();
+  await expect(page.locator("[data-assemble-instructions]")).toBeVisible();
 }
+
+/** Put a drawing in a named box, as double-clicking it would. */
+async function fillBox(page: Page, character: string, file: { name: string; mimeType: string; buffer: Buffer }): Promise<void> {
+  await page.setInputFiles(`[data-assemble-box-input="${character}"]`, file);
+  await expect(page.locator(`[data-assemble-box="${character}"]`)).toHaveAttribute(
+    "data-assemble-filled",
+    "yes",
+  );
+}
+
+/** The bulk route, which still guesses characters from the file names. */
+async function dropFolder(page: Page, files: Array<{ name: string; mimeType: string; buffer: Buffer }>): Promise<void> {
+  await page.setInputFiles("[data-assemble-panel-input]", files);
+}
+
+/** Drag a file onto something, which no file input can stand in for. */
+async function dragOnto(
+  page: Page,
+  selector: string,
+  file: { name: string; mimeType: string; buffer: Buffer },
+): Promise<void> {
+  const transfer = await page.evaluateHandle(
+    ({ name, mimeType, text }) => {
+      const carried = new DataTransfer();
+      carried.items.add(new File([text], name, { type: mimeType }));
+      return carried;
+    },
+    { name: file.name, mimeType: file.mimeType, text: file.buffer.toString("utf8") },
+  );
+  const target = page.locator(selector);
+  await target.dispatchEvent("dragover", { dataTransfer: transfer });
+  await target.dispatchEvent("drop", { dataTransfer: transfer });
+}
+
+test("opens on a full set of empty boxes", async ({ page }) => {
+  await openAssemble(page);
+
+  // Every character the font will hold, waiting, and none of them filled.
+  await expect(page.locator("[data-assemble-box]")).toHaveCount(189);
+  await expect(page.locator("[data-assemble-placeholder]")).toHaveCount(189);
+  await expect(page.locator('[data-assemble-filled="yes"]')).toHaveCount(0);
+  await expect(page.locator("[data-assemble-group]")).toHaveCount(7);
+
+  // The faint ones are the characters themselves, not a stand-in mark.
+  await expect(page.locator('[data-assemble-placeholder="A"]')).toHaveText("A");
+  await expect(page.locator('[data-assemble-placeholder="7"]')).toHaveText("7");
+  await expect(page.locator('[data-assemble-placeholder="é"]')).toHaveText("é");
+});
+
+test("puts a drawing in the box that was chosen, whatever the file is called", async ({ page }) => {
+  await openAssemble(page);
+
+  // The file says H as loudly as a file can. The box says A, and the box wins.
+  await fillBox(page, "A", { ...bar(400), name: "H_.svg" });
+
+  await expect(page.locator('[data-assemble-filled="yes"]')).toHaveCount(1);
+  await expect(page.locator('[data-assemble-box="H"]')).toHaveAttribute(
+    "data-assemble-filled",
+    "no",
+  );
+  // And it is a drawing now: the box holds ink rather than the faint letter.
+  await expect(page.locator('[data-assemble-box="A"] path')).toBeVisible();
+  await expect(page.locator('[data-assemble-placeholder="A"]')).toHaveCount(0);
+  await expect(page.locator("[data-assemble-trouble]")).toHaveCount(0);
+});
+
+test("empties a box again", async ({ page }) => {
+  await openAssemble(page);
+  await fillBox(page, "Q", { ...bar(400), name: "anything.svg" });
+
+  // Filling a box opens it, and the box that is open offers its ×.
+  await expect(page.locator('[data-assemble-empty="Q"]')).toBeVisible();
+
+  // Open another and the first tucks its × away again, until pointed at.
+  await fillBox(page, "R", { ...bar(400), name: "another.svg" });
+  await expect(page.locator('[data-assemble-empty="Q"]')).toBeHidden();
+  await page.locator('[data-assemble-box="Q"]').hover();
+  await expect(page.locator('[data-assemble-empty="Q"]')).toBeVisible();
+
+  await page.locator('[data-assemble-empty="Q"]').click();
+
+  await expect(page.locator('[data-assemble-box="Q"]')).toHaveAttribute(
+    "data-assemble-filled",
+    "no",
+  );
+  await expect(page.locator('[data-assemble-placeholder="Q"]')).toHaveText("Q");
+  await expect(page.locator('[data-assemble-filled="yes"]')).toHaveCount(1);
+});
+
+test("takes a drawing dropped straight onto a box", async ({ page }) => {
+  await openAssemble(page);
+
+  await dragOnto(page, '[data-assemble-box="7"]', { ...bar(400), name: "V_.svg" });
+
+  // Dropped on the 7, so it is the 7 -- the V in the name reaches nothing.
+  await expect(page.locator('[data-assemble-box="7"]')).toHaveAttribute(
+    "data-assemble-filled",
+    "yes",
+  );
+  await expect(page.locator('[data-assemble-filled="yes"]')).toHaveCount(1);
+});
+
+test("replaces what is in a box without leaving the old drawing behind", async ({ page }) => {
+  await openAssemble(page);
+  await fillBox(page, "A", { ...bar(400), name: "first.svg" });
+  const first = await page.locator('[data-assemble-box="A"] path').getAttribute("d");
+
+  await page.setInputFiles('[data-assemble-box-input="A"]', {
+    ...point(400),
+    name: "second.svg",
+  });
+
+  await expect.poll(() => page.locator('[data-assemble-box="A"] path').getAttribute("d")).not.toBe(
+    first,
+  );
+  // One drawing in the slot, not two -- and nothing stranded in the list.
+  await expect(page.locator('[data-assemble-filled="yes"]')).toHaveCount(1);
+  await expect(page.locator("[data-assemble-list] li")).toHaveCount(1);
+  await expect(page.locator("[data-assemble-trouble]")).toHaveCount(0);
+});
 
 test("assembles a font from a pile of SVG drawings", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await openAssemble(page);
 
-  await page.setInputFiles("[data-assemble-input]", PILE);
+  await dropFolder(page, PILE);
 
   // Every file placed, from its name alone.
-  await expect(page.locator("[data-assemble-cell]")).toHaveCount(5);
+  await expect(page.locator('[data-assemble-filled="yes"]')).toHaveCount(5);
   for (const character of ["H", "I", "A", "V", "x"]) {
-    await expect(page.locator(`[data-assemble-cell="${character}"]`)).toBeVisible();
+    await expect(page.locator(`[data-assemble-box="${character}"]`)).toHaveAttribute("data-assemble-filled", "yes");
   }
   // They share a canvas height, so they are fitted against each other.
   await expect(page.locator('[data-assemble-fit="together"]')).toHaveAttribute(
@@ -1238,12 +1358,12 @@ test("assembles a font from a pile of SVG drawings", async ({ page }) => {
 
 test("gives a drawing that leans away less white than one that does not", async ({ page }) => {
   await openAssemble(page);
-  await page.setInputFiles("[data-assemble-input]", PILE);
-  await expect(page.locator("[data-assemble-cell]")).toHaveCount(5);
+  await dropFolder(page, PILE);
+  await expect(page.locator('[data-assemble-filled="yes"]')).toHaveCount(5);
 
   /* The stage reports the letter's two sidebearings and its advance. */
   const bearings = async (character: string): Promise<number[]> => {
-    await page.locator(`[data-assemble-cell="${character}"]`).click();
+    await page.locator(`[data-assemble-box="${character}"]`).click();
     await expect(page.locator(`[data-assemble-stage="${character}"]`)).toBeVisible();
     const text = (await page.locator("[data-assemble-stage] ~ p").innerText()).trim();
     const numbers = text.match(/-?\d+/g) ?? [];
@@ -1257,25 +1377,28 @@ test("gives a drawing that leans away less white than one that does not", async 
 
 test("takes a drawing whose name says nothing, once told what it is", async ({ page }) => {
   await openAssemble(page);
-  await page.setInputFiles("[data-assemble-input]", [
+  await dropFolder(page, [
     ...PILE,
     { ...bar(400, 200), name: "logo-final-v3.svg" },
   ]);
 
   // It came in, it is in the list, and it is not in the font.
   await expect(page.locator("[data-assemble-trouble]")).toContainText("not placed");
-  await expect(page.locator("[data-assemble-cell]")).toHaveCount(5);
+  await expect(page.locator('[data-assemble-filled="yes"]')).toHaveCount(5);
 
   await page.locator('[data-assemble-map="logo-final-v3.svg"]').fill("E");
-  await expect(page.locator("[data-assemble-cell]")).toHaveCount(6);
-  await expect(page.locator('[data-assemble-cell="E"]')).toBeVisible();
+  await expect(page.locator('[data-assemble-filled="yes"]')).toHaveCount(6);
+  await expect(page.locator('[data-assemble-box="E"]')).toHaveAttribute(
+    "data-assemble-filled",
+    "yes",
+  );
   await expect(page.locator("[data-assemble-trouble]")).toHaveCount(0);
 });
 
 test("kerns the pair that leans apart and leaves the flat pair alone", async ({ page }) => {
   await openAssemble(page);
-  await page.setInputFiles("[data-assemble-input]", PILE);
-  await expect(page.locator("[data-assemble-cell]")).toHaveCount(5);
+  await dropFolder(page, PILE);
+  await expect(page.locator('[data-assemble-filled="yes"]')).toHaveCount(5);
 
   const kernOf = async (pair: string): Promise<number> => {
     await page.locator("[data-assemble-pair-input]").fill(pair);
@@ -1299,8 +1422,8 @@ test("kerns the pair that leans apart and leaves the flat pair alone", async ({ 
 
 test("writes a real font out of the pile", async ({ page }) => {
   await openAssemble(page);
-  await page.setInputFiles("[data-assemble-input]", PILE);
-  await expect(page.locator("[data-assemble-cell]")).toHaveCount(5);
+  await dropFolder(page, PILE);
+  await expect(page.locator('[data-assemble-filled="yes"]')).toHaveCount(5);
 
   await page.getByRole("button", { name: "Download" }).click();
   await expect(page.getByRole("dialog", { name: "Download font" })).toBeVisible();

@@ -9,11 +9,14 @@
 import {
   addPieces,
   chooseFit,
+  clearSlot,
   editMetrics,
   editSpacing,
   emptyAssembly,
   mapPiece,
   pieceFrom,
+  pieceInto,
+  putInSlot,
   removePiece,
   setKern,
   tweak,
@@ -42,6 +45,8 @@ export interface AssembleState {
   revision: number;
   /** Set while files are being read. */
   reading: boolean;
+  /** Said when a file could not be read into the box it was chosen for. */
+  problem: string | null;
 }
 
 const HISTORY = 50;
@@ -56,6 +61,7 @@ class AssembleStore {
     canRedo: false,
     revision: 0,
     reading: false,
+    problem: null,
   };
 
   private past: Assembly[] = [];
@@ -124,13 +130,44 @@ class AssembleStore {
     return refused;
   }
 
-  drop(file: string): void {
-    this.commit(removePiece(this.state.assembly, file));
+  /**
+   * Read one file into one box.
+   *
+   * Nothing is guessed, because the box was chosen first. Returns whether the
+   * file held anything drawable, so the box can say so rather than sitting
+   * there looking as though nothing happened.
+   */
+  async takeInto(character: string, file: File): Promise<boolean> {
+    this.set({ reading: true, problem: null });
+    try {
+      const piece = pieceInto(character, file.name, await file.text());
+      if (!piece) {
+        this.set({ problem: `Nothing drawable in ${file.name}.` });
+        return false;
+      }
+      this.commit(putInSlot(this.state.assembly, piece));
+      this.set({ selected: character });
+      return true;
+    } catch {
+      this.set({ problem: `${file.name} could not be read.` });
+      return false;
+    } finally {
+      this.set({ reading: false });
+    }
+  }
+
+  /** Empty one box. */
+  empty(character: string): void {
+    this.commit(clearSlot(this.state.assembly, character));
+  }
+
+  drop(id: string): void {
+    this.commit(removePiece(this.state.assembly, id));
   }
 
   /** Say which character a drawing is for. */
-  map(file: string, character: string): void {
-    this.commit(mapPiece(this.state.assembly, file, character));
+  map(id: string, character: string): void {
+    this.commit(mapPiece(this.state.assembly, id, character));
     if (character) this.set({ selected: character });
   }
 

@@ -18,47 +18,13 @@ import { correctDirection } from "@/font/outline";
 import { removeOverlaps } from "@/font/overlap";
 import { DEFAULT_PARAMS, emptyTypeface, type Glyph, type Typeface } from "@/font/types";
 import { build, type Assembly } from "./document";
+import { glyphNameFor } from "./slots";
 
 export interface AssembleExportOptions {
   familyName: string;
   styleName: string;
   /** Fuse the overlapping contours. Off is for looking at the pieces. */
   merge: boolean;
-}
-
-/** The name a character goes under in a font file. */
-const NAMES: Record<string, string> = {
-  " ": "space",
-  "!": "exclam",
-  '"': "quotedbl",
-  "'": "quotesingle",
-  "(": "parenleft",
-  ")": "parenright",
-  ",": "comma",
-  "-": "hyphen",
-  ".": "period",
-  "/": "slash",
-  "0": "zero",
-  "1": "one",
-  "2": "two",
-  "3": "three",
-  "4": "four",
-  "5": "five",
-  "6": "six",
-  "7": "seven",
-  "8": "eight",
-  "9": "nine",
-  ":": "colon",
-  ";": "semicolon",
-  "?": "question",
-};
-
-export function glyphNameFor(character: string): string {
-  const named = NAMES[character];
-  if (named) return named;
-  if (/^[A-Za-z]$/.test(character)) return character;
-  const code = character.codePointAt(0);
-  return code === undefined ? "unknown" : `uni${code.toString(16).toUpperCase().padStart(4, "0")}`;
 }
 
 export async function toTypeface(

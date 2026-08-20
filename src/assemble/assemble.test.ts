@@ -27,12 +27,16 @@ import {
   guessCharacter,
   mapPiece,
   pieceFrom,
+  clearSlot,
+  pieceInto,
+  putInSlot,
   setKern,
   tweak,
   type Assembly,
   type Piece,
 } from "./document";
 import { expectationFor, detectFit } from "./fit";
+import { glyphNameFor, SLOTS, SLOT_GROUPS, slotFor, slotsIn } from "./slots";
 import { DEFAULT_SPACING, silhouetteOf, insetOf } from "./spacing";
 import { toTypeface } from "./typeface";
 import { draw, startFrom } from "@/forge/document";
@@ -87,7 +91,13 @@ function wedge(x: number, y: number, width: number, height: number): Contour {
 }
 
 function piece(file: string, character: string, contours: Contour[], viewWidth = 600, viewHeight = 800): Piece {
-  return { file, character, contours, viewBox: { x: 0, y: 0, width: viewWidth, height: viewHeight } };
+  return {
+    id: file,
+    file,
+    character,
+    contours,
+    viewBox: { x: 0, y: 0, width: viewWidth, height: viewHeight },
+  };
 }
 
 function from(pieces: Piece[], patch: Partial<Assembly> = {}): Assembly {
@@ -471,7 +481,7 @@ describe("the pile itself", () => {
       piece("H_.svg", "H", [box(0, 0, 300, 700)]),
       piece("mystery.svg", "", [box(0, 0, 300, 700)]),
     ]);
-    expect(build(assembly).unmapped).toEqual(["mystery.svg"]);
+    expect(build(assembly).unplaced.map((piece) => piece.file)).toEqual(["mystery.svg"]);
   });
 
   it("says when two files claim the same character", () => {
@@ -500,7 +510,7 @@ describe("the pile itself", () => {
     const assembly = from([piece("mystery.svg", "", [box(0, 0, 300, 700)])]);
     const named = mapPiece(assembly, "mystery.svg", "H");
     expect(build(named).letters[0].character).toBe("H");
-    expect(build(named).unmapped).toEqual([]);
+    expect(build(named).unplaced).toEqual([]);
   });
 
   it("nudges one letter's white without touching any other", () => {
@@ -524,10 +534,10 @@ describe("the pile itself", () => {
   });
 
   it("has nothing to build from an empty pile", () => {
-    const { letters, kerning, unmapped, clashes } = build(emptyAssembly());
+    const { letters, kerning, unplaced, clashes } = build(emptyAssembly());
     expect(letters).toEqual([]);
     expect(kerning).toEqual([]);
-    expect(unmapped).toEqual([]);
+    expect(unplaced).toEqual([]);
     expect(clashes).toEqual([]);
   });
 });
@@ -738,3 +748,113 @@ function spanOf(metrics: {
     overshoot: metrics.overshoot,
   };
 }
+
+/**
+ * The boxes, and putting a drawing in one.
+ *
+ * The thing being checked is that choosing the box decides the character and
+ * nothing else gets a vote -- not the file name, not what the file says about
+ * itself. Somebody who has just pointed at a box has been clear enough.
+ */
+describe("a box per character", () => {
+  it("has one for every letter, figure and mark", () => {
+    expect(SLOTS.length).toBeGreaterThan(180);
+    for (const character of "ABCXYZabcxyz0189") {
+      expect(slotFor(character), character).toBeDefined();
+    }
+    for (const character of "!@#$%^&*()[]{};:'\",.<>/?\\|`~-_=+") {
+      expect(slotFor(character), character).toBeDefined();
+    }
+    for (const character of "ÁÉÍÓÚÑÜÇáéíóúñüçßÆØåæø") {
+      expect(slotFor(character), character).toBeDefined();
+    }
+  });
+
+  it("leaves out the two characters that have no shape", () => {
+    // A non-breaking space and a soft hyphen. A box nobody can fill is a box
+    // that only ever reads as unfinished.
+    expect(slotFor(" ")).toBeUndefined();
+    expect(slotFor("­")).toBeUndefined();
+  });
+
+  it("names each one the way a font file does", () => {
+    expect(glyphNameFor("A")).toBe("A");
+    expect(glyphNameFor(".")).toBe("period");
+    expect(glyphNameFor("&")).toBe("ampersand");
+    expect(glyphNameFor("#")).toBe("numbersign");
+    expect(glyphNameFor("é")).toBe("eacute");
+    expect(glyphNameFor("Ñ")).toBe("Ntilde");
+    expect(glyphNameFor("ß")).toBe("germandbls");
+    expect(glyphNameFor("¿")).toBe("questiondown");
+  });
+
+  it("gives every box a distinct name", () => {
+    const names = SLOTS.map((slot) => slot.name);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it("puts every box in exactly one group", () => {
+    const counted = SLOT_GROUPS.reduce((total, group) => total + slotsIn(group).length, 0);
+    expect(counted).toBe(SLOTS.length);
+  });
+});
+
+describe("filling a box", () => {
+  const drawing = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 800">
+    <rect x="50" y="300" width="300" height="400"/></svg>`;
+
+  it("takes the character from the box, not from the file", () => {
+    // A file whose name says one thing, dropped on a box that says another.
+    const piece = pieceInto("Q", "definitely-an-a.svg", drawing)!;
+    expect(piece.character).toBe("Q");
+  });
+
+  it("takes the character from the box even when the file names itself", () => {
+    const sheet = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1000"
+      data-typeforge="glyph" data-typeforge-name="g" data-typeforge-advance="500"
+      data-typeforge-upm="1000" data-typeforge-top="750">
+      <path d="M0 0 L100 0 L100 100 Z"/></svg>`;
+    expect(pieceInto("W", "g.svg", sheet)!.character).toBe("W");
+  });
+
+  it("says nothing came of a file with no drawing in it", () => {
+    expect(pieceInto("A", "empty.svg", "<svg xmlns='http://www.w3.org/2000/svg'></svg>")).toBeNull();
+  });
+
+  it("replaces what was in the box before", () => {
+    let assembly = putInSlot(emptyAssembly(), pieceInto("A", "first.svg", drawing)!);
+    assembly = putInSlot(assembly, pieceInto("A", "second.svg", drawing)!);
+    expect(assembly.pieces).toHaveLength(1);
+    expect(assembly.pieces[0].file).toBe("second.svg");
+  });
+
+  it("replaces it even when the two files share a name", () => {
+    // Two drawings both exported as `artwork.svg`, for two different letters.
+    // Keyed by the file they would have been the same drawing.
+    let assembly = putInSlot(emptyAssembly(), pieceInto("A", "artwork.svg", drawing)!);
+    assembly = putInSlot(assembly, pieceInto("B", "artwork.svg", drawing)!);
+    expect(assembly.pieces).toHaveLength(2);
+    expect(build(assembly).letters.map((letter) => letter.character).sort()).toEqual(["A", "B"]);
+  });
+
+  it("empties one box and leaves the rest alone", () => {
+    let assembly = putInSlot(emptyAssembly(), pieceInto("A", "a.svg", drawing)!);
+    assembly = putInSlot(assembly, pieceInto("B", "b.svg", drawing)!);
+    const after = clearSlot(assembly, "A");
+    expect(build(after).letters.map((letter) => letter.character)).toEqual(["B"]);
+  });
+
+  it("changes nothing about the assembly it came from", () => {
+    const before = putInSlot(emptyAssembly(), pieceInto("A", "a.svg", drawing)!);
+    const after = putInSlot(before, pieceInto("B", "b.svg", drawing)!);
+    expect(before.pieces).toHaveLength(1);
+    expect(after.pieces).toHaveLength(2);
+  });
+
+  it("takes a drawing dropped in a heap the other way, by its name", () => {
+    // The second way in is still there, and still guesses -- which is right,
+    // because nobody pointed at anything.
+    const assembly = addPieces(emptyAssembly(), [pieceFrom("R_.svg", drawing)!]);
+    expect(build(assembly).letters[0].character).toBe("R");
+  });
+});

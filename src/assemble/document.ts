@@ -35,7 +35,18 @@ import {
 
 /** One drawing that came in, in the coordinates it came in with. */
 export interface Piece {
-  /** The file it arrived in. Its identity: two files may fill the same slot. */
+  /**
+   * What this drawing is, as far as the pile is concerned.
+   *
+   * Not the file name, and the difference is the point. A drawing chosen for a
+   * particular box is that box's drawing however the file was called, and
+   * choosing a second one for it replaces the first -- so its identity is the
+   * slot. A drawing that arrived in a heap has no slot yet, so its identity is
+   * the file it came in, which is what makes dropping a corrected export over
+   * the top do what it looks like it does.
+   */
+  id: string;
+  /** The file it arrived in, for saying where it came from. */
   file: string;
   /** Which character it fills. Empty until it is given one. */
   character: string;
@@ -167,10 +178,59 @@ export function pieceFrom(file: string, text: string): Piece | null {
   const drawing = readSvg(text);
   if (drawing.contours.length === 0) return null;
   return {
+    id: file,
     file,
     character: drawing.note?.name?.length === 1 ? drawing.note.name : guessCharacter(file),
     contours: drawing.contours,
     viewBox: drawing.viewBox,
+  };
+}
+
+/**
+ * Read a file for a box that was chosen first.
+ *
+ * Nothing is guessed. The character is not read off the file name, or off
+ * whatever the file says about itself, because you already said which box this
+ * is for by clicking it -- and a guess that disagrees with what somebody just
+ * pointed at is a guess that has no business winning.
+ */
+export function pieceInto(character: string, file: string, text: string): Piece | null {
+  const drawing = readSvg(text);
+  if (drawing.contours.length === 0) return null;
+  return {
+    id: `slot:${character}`,
+    file,
+    character,
+    contours: drawing.contours,
+    viewBox: drawing.viewBox,
+  };
+}
+
+/**
+ * Put a drawing in a box, replacing whatever was there.
+ *
+ * By the box rather than by the file, so choosing a second drawing for the
+ * same letter swaps it out -- which is what filling a box twice looks like it
+ * should do, and what dropping two differently named files on it would
+ * otherwise fail to do.
+ */
+export function putInSlot(assembly: Assembly, piece: Piece): Assembly {
+  const pieces = assembly.pieces.filter(
+    (existing) => existing.id !== piece.id && existing.character !== piece.character,
+  );
+  pieces.push(piece);
+  return {
+    ...assembly,
+    pieces,
+    fit: assembly.fitChosen ? assembly.fit : detectFit(pieces.map((each) => each.viewBox)),
+  };
+}
+
+/** Empty one box, leaving the rest of the pile alone. */
+export function clearSlot(assembly: Assembly, character: string): Assembly {
+  return {
+    ...assembly,
+    pieces: assembly.pieces.filter((piece) => piece.character !== character),
   };
 }
 
@@ -182,9 +242,9 @@ export function pieceFrom(file: string, text: string): Piece | null {
  */
 export function addPieces(assembly: Assembly, incoming: Piece[]): Assembly {
   if (incoming.length === 0) return assembly;
-  const byFile = new Map(assembly.pieces.map((piece) => [piece.file, piece]));
-  for (const piece of incoming) byFile.set(piece.file, piece);
-  const pieces = [...byFile.values()];
+  const byId = new Map(assembly.pieces.map((piece) => [piece.id, piece]));
+  for (const piece of incoming) byId.set(piece.id, piece);
+  const pieces = [...byId.values()];
   return {
     ...assembly,
     pieces,
@@ -194,17 +254,15 @@ export function addPieces(assembly: Assembly, incoming: Piece[]): Assembly {
   };
 }
 
-export function removePiece(assembly: Assembly, file: string): Assembly {
-  return { ...assembly, pieces: assembly.pieces.filter((piece) => piece.file !== file) };
+export function removePiece(assembly: Assembly, id: string): Assembly {
+  return { ...assembly, pieces: assembly.pieces.filter((piece) => piece.id !== id) };
 }
 
 /** Say which character a drawing is for. */
-export function mapPiece(assembly: Assembly, file: string, character: string): Assembly {
+export function mapPiece(assembly: Assembly, id: string, character: string): Assembly {
   return {
     ...assembly,
-    pieces: assembly.pieces.map((piece) =>
-      piece.file === file ? { ...piece, character } : piece,
-    ),
+    pieces: assembly.pieces.map((piece) => (piece.id === id ? { ...piece, character } : piece)),
   };
 }
 
@@ -253,6 +311,8 @@ export function setKern(
 /** One character, fitted, spaced, and ready to look at or write out. */
 export interface Assembled {
   character: string;
+  /** The pile's name for the drawing, for removing or replacing it. */
+  id: string;
   file: string;
   contours: Contour[];
   advanceWidth: number;
@@ -266,8 +326,8 @@ export interface Assembled {
 export interface Built {
   letters: Assembled[];
   kerning: KernPair[];
-  /** Files that have not been told which character they are. */
-  unmapped: string[];
+  /** Drawings that have arrived without a box to go in. */
+  unplaced: Piece[];
   /** Characters more than one file claims. */
   clashes: string[];
 }
@@ -286,9 +346,7 @@ export function build(assembly: Assembly): Built {
   if (kept) return kept;
 
   const mapped = assembly.pieces.filter((piece) => piece.character !== "");
-  const unmapped = assembly.pieces
-    .filter((piece) => piece.character === "")
-    .map((piece) => piece.file);
+  const unplaced = assembly.pieces.filter((piece) => piece.character === "");
 
   // First file wins a contested character, and the rest are named rather than
   // dropped silently: two files both called "a" is a mistake somebody wants
@@ -327,6 +385,7 @@ export function build(assembly: Assembly): Built {
     placed.push({ character: piece.character, silhouette, spaced: bearings });
     letters.push({
       character: piece.character,
+      id: piece.id,
       file: piece.file,
       // Shifted so the letter's own ink starts at its left sidebearing, which
       // is what an advance is measured from. Until this point a drawing has
@@ -342,7 +401,7 @@ export function build(assembly: Assembly): Built {
   const measuredKerns = kernPairs(placed, assembly.spacing, assembly.metrics);
   const kerning = withHandKerns(measuredKerns, assembly.kerns);
 
-  const result: Built = { letters, kerning, unmapped, clashes };
+  const result: Built = { letters, kerning, unplaced, clashes };
   built.set(assembly, result);
   return result;
 }

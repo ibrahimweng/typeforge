@@ -44,7 +44,7 @@ export const TIPS: Record<TipId, string> = {
   forge:
     "Nothing here came from another font. Pick a base, then change a part \u2014 a serif, a shoulder, a corner \u2014 and every letter that has that part follows; the panel says how many before you touch it. Turn on Skeleton to see what is being drawn, and type into the specimen line to judge it in a word.",
   assemble:
-    "Every number in the panel was measured off your drawings, and every one can be overruled \u2014 the measured value stays beside your version. A letter underlined in the row below was placed from the rest of the set rather than by its own height, so those are the ones to check.",
+    "Double-click any box and choose the drawing that goes in it \u2014 whatever the file is called, it goes where you pointed. Every number in the panel is then measured off your drawings and can be overruled, with the measured value kept beside your version.",
   export:
     "Preserve keeps everything the original font carried and swaps in your outlines. Rebuild writes a clean file from what is on screen.",
 };

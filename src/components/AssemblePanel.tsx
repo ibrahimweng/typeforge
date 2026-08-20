@@ -95,7 +95,14 @@ function Section({
   );
 }
 
-/** What came in, and which character each drawing is for. */
+/**
+ * What is in the pile, and which box each drawing sits in.
+ *
+ * Mostly a way of correcting the second route in. A drawing chosen for a
+ * particular box already knows what it is; a heap dropped in at once had its
+ * characters guessed from the file names, and the guesses that came out empty
+ * are the rows worth looking at here.
+ */
 function Files(): React.JSX.Element {
   const state = useAssemble();
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -114,7 +121,7 @@ function Files(): React.JSX.Element {
           data-assemble-add
           className="flex-1 rounded-md border border-border px-2 py-1.5 text-2xs transition-colors hover:border-muted-foreground hover:bg-card"
         >
-          {state.reading ? "Reading…" : "Add SVG files"}
+          {state.reading ? "Reading…" : "Add a folder at once"}
         </button>
       </div>
       <input
@@ -138,21 +145,24 @@ function Files(): React.JSX.Element {
 
       {state.assembly.pieces.length === 0 ? (
         <p className="pt-2 text-2xs leading-snug text-muted-foreground">
-          One file per character. The name is enough for Typeforge to place most
-          of them: <code>a.svg</code>, <code>A_.svg</code>, <code>period.svg</code>,{" "}
-          <code>uni0041.svg</code>.
+          The ordinary way in is to double-click a box and choose its drawing.
+          This is the shortcut for a folder you have already exported: names it
+          recognises — <code>a.svg</code>, <code>A_.svg</code>,{" "}
+          <code>period.svg</code>, <code>uni0041.svg</code> — go straight into
+          their boxes, and anything it cannot name is listed here to place by
+          hand.
         </p>
       ) : (
         <ul className="max-h-56 space-y-1 overflow-y-auto pt-2" data-assemble-list>
           {state.assembly.pieces.map((piece) => (
-            <li key={piece.file} className="flex items-center gap-1.5">
+            <li key={piece.id} className="flex items-center gap-1.5">
               <input
                 value={piece.character}
                 onChange={(event) =>
-                  assembleStore.map(piece.file, [...event.target.value][0] ?? "")
+                  assembleStore.map(piece.id, [...event.target.value][0] ?? "")
                 }
                 aria-label={`Character for ${piece.file}`}
-                data-assemble-map={piece.file}
+                data-assemble-map={piece.id}
                 placeholder="?"
                 className={cn(
                   "w-8 shrink-0 rounded border bg-transparent px-1 py-0.5 text-center text-2xs outline-none",
@@ -166,9 +176,9 @@ function Files(): React.JSX.Element {
               </span>
               <button
                 type="button"
-                onClick={() => assembleStore.drop(piece.file)}
+                onClick={() => assembleStore.drop(piece.id)}
                 aria-label={`Remove ${piece.file}`}
-                data-assemble-drop={piece.file}
+                data-assemble-drop={piece.id}
                 className="shrink-0 rounded px-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
               >
                 ×
