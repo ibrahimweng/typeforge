@@ -13,7 +13,8 @@ import { enterStaggered } from "@/anim/motion";
 import { drawGlyph, fitEmSquare, formatCodepoint, glyphLabel, prepareCanvas, readToken } from "@/components/glyph-render";
 import type { Glyph, Typeface } from "@/font/types";
 import { store, useAppState } from "@/state/useStore";
-import { tile } from "@/components/controls";
+import { PRIMARY_ACTION, tile } from "@/components/controls";
+import { CoachMark } from "@/components/CoachMark";
 import { cn } from "@/ui/lib/utils";
 
 const CELL_SIZE = 104;
@@ -55,6 +56,7 @@ export function FontGridView(): React.JSX.Element {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <CoachMark id="grid" />
       <div className="flex items-center gap-3 border-b border-border px-4 py-2.5">
         <input
           value={state.search}
@@ -199,6 +201,14 @@ function filterGlyphs(typeface: Typeface | null, search: string): Glyph[] {
   });
 }
 
+/**
+ * What there is to look at before a font is open.
+ *
+ * Which used to be nothing but an instruction to go and find a file. Someone
+ * arriving to see what this is should be able to see it, so there is a font
+ * here to open; the sample makes the difference between reading about a weight
+ * slider and moving one.
+ */
 function EmptyState(): React.JSX.Element {
   const ref = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
@@ -210,6 +220,13 @@ function EmptyState(): React.JSX.Element {
       <p className="max-w-sm text-xs-plus text-muted-foreground">
         Drop a TrueType, OpenType, WOFF or WOFF2 file anywhere in this window, or use Open font in
         the toolbar.
+      </p>
+      <button type="button" onClick={() => void store.loadSample()} className={PRIMARY_ACTION}>
+        Try the sample font
+      </button>
+      <p className="max-w-sm text-2xs text-muted-foreground">
+        A small Latin face to take the controls for a run. Nothing is uploaded — every font you open
+        stays in this browser.
       </p>
     </div>
   );

@@ -14,8 +14,10 @@ import * as React from "react";
 
 import { enterStaggered } from "@/anim/motion";
 import { CompositionPanel } from "@/components/CompositionPanel";
+import { CoachMark } from "@/components/CoachMark";
 import { ControlLetters } from "@/components/ControlLetters";
 import { segment } from "@/components/controls";
+import { PARAMS } from "@/components/param-specs";
 import { DEFAULT_PARAMS, type GlyphParams } from "@/font/types";
 import { store, useAppState } from "@/state/useStore";
 // Imported from the control directly rather than through the UI barrel: the
@@ -24,118 +26,6 @@ import { SliderControl as Slider } from "@/ui/components/controls/slider";
 import { cn } from "@/ui/lib/utils";
 
 type Scope = "family" | "glyph" | "build";
-
-interface ParamSpec {
-  key: keyof GlyphParams;
-  label: string;
-  /** What the control does, in the terms a designer would use. */
-  hint: string;
-  min: number;
-  max: number;
-  step: number;
-  unit?: string;
-  /** Whether the range is in font units and should scale with the em size. */
-  emRelative?: boolean;
-}
-
-const PARAMS: ParamSpec[] = [
-  {
-    key: "cornerRadius",
-    label: "Corner radius",
-    hint: "Rounds sharp corners. Stem ends and serif joints soften first.",
-    min: 0,
-    max: 0.15,
-    step: 0.001,
-    emRelative: true,
-  },
-  {
-    key: "weight",
-    label: "Weight",
-    hint: "Thickens or thins every stroke. Negative values lighten.",
-    min: -0.04,
-    max: 0.06,
-    step: 0.0005,
-    emRelative: true,
-  },
-  {
-    key: "counterScale",
-    label: "Middle space",
-    hint: "Opens or closes the enclosed space inside letters such as o, e and a.",
-    min: 0.6,
-    max: 1.4,
-    step: 0.005,
-  },
-  {
-    key: "width",
-    label: "Width",
-    hint: "Stretches or condenses letterforms horizontally.",
-    min: 0.6,
-    max: 1.5,
-    step: 0.005,
-  },
-  {
-    key: "slant",
-    label: "Slant",
-    hint: "Shears the letters about the baseline, making an oblique.",
-    min: -20,
-    max: 20,
-    step: 0.5,
-    unit: "°",
-  },
-  {
-    key: "xHeightScale",
-    label: "x-height",
-    hint: "Scales everything above the baseline. Descenders stay put.",
-    min: 0.8,
-    max: 1.25,
-    step: 0.005,
-  },
-  {
-    key: "crossbar",
-    label: "Crossbar",
-    hint: "Raises or lowers the stroke crossing the middle: the bar of H and A, the middle arm of E, the eye of e.",
-    min: -0.08,
-    max: 0.08,
-    step: 0.001,
-    emRelative: true,
-  },
-  {
-    key: "shoulder",
-    label: "Shoulder",
-    hint: "Moves where an arch springs from its stem. Up squares the shoulder of n and m; down opens them out.",
-    min: -0.08,
-    max: 0.08,
-    step: 0.001,
-    emRelative: true,
-  },
-  {
-    key: "slab",
-    label: "Slab serifs",
-    hint: "Lays a bar across every flat stroke end, turning a sans into a slab. Round terminals are left alone.",
-    min: 0,
-    max: 0.1,
-    step: 0.001,
-    emRelative: true,
-  },
-  {
-    key: "pixelGrid",
-    label: "Pixel grid",
-    hint: "Redraws every letter on a grid this many cells to the em. Zero leaves the curves alone.",
-    min: 0,
-    max: 64,
-    step: 1,
-    unit: " px/em",
-  },
-  {
-    key: "tracking",
-    label: "Tracking",
-    hint: "Adds space either side of every glyph, loosening the whole setting.",
-    min: -0.05,
-    max: 0.1,
-    step: 0.001,
-    emRelative: true,
-  },
-];
 
 export function Inspector(): React.JSX.Element {
   const state = useAppState();
@@ -155,7 +45,7 @@ export function Inspector(): React.JSX.Element {
 
   if (!typeface) {
     return (
-      <aside className="w-72 shrink-0 border-l border-border p-4">
+      <aside aria-label="Parameters" className="w-72 shrink-0 border-l border-border p-4">
         <p className="text-2xs text-muted-foreground">
           Parameters appear once a font is open.
         </p>
@@ -167,7 +57,10 @@ export function Inspector(): React.JSX.Element {
   const resolved = editingGlyph && glyphName ? store.paramsFor(glyphName) : typeface.params;
 
   return (
-    <aside className="toolcraft-panel-surface flex w-72 shrink-0 flex-col border-l border-border">
+    <aside
+      aria-label="Parameters"
+      className="toolcraft-panel-surface flex w-72 shrink-0 flex-col border-l border-border"
+    >
       <div
         className="flex gap-0.5 border-b border-border bg-card/60 p-1"
         role="group"
@@ -197,6 +90,7 @@ export function Inspector(): React.JSX.Element {
       ) : (
       <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
       {scope === "family" && <ControlLetters />}
+      {scope === "family" && <CoachMark id="family" />}
       <div ref={listRef} className="p-3">
         {PARAMS.map((spec) => {
           const scaleFactor = spec.emRelative ? typeface.unitsPerEm : 1;

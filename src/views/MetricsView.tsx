@@ -12,6 +12,7 @@ import * as React from "react";
 import { contoursBounds } from "@/font/geometry";
 import { resolveAdvanceWidth, resolveGlyphContours } from "@/font/transform";
 import { drawGlyph, glyphLabel, prepareCanvas, type GlyphView } from "@/components/glyph-render";
+import { CoachMark } from "@/components/CoachMark";
 import type { Glyph, Typeface } from "@/font/types";
 import { store, useAppState } from "@/state/useStore";
 import { cn } from "@/ui/lib/utils";
@@ -62,6 +63,7 @@ export function MetricsView(): React.JSX.Element {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <CoachMark id="metrics" />
       <SpacingPreview typeface={typeface} revision={state.revision} text={state.previewText} />
 
       <div className="flex items-center gap-3 border-y border-border px-4 py-2.5">

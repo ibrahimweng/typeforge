@@ -31,9 +31,13 @@ const TOOLS: Array<{ id: ToolId; label: string; hint: string }> = [
 export function TopBar({
   onOpenFile,
   onExport,
+  onToggleHelp,
+  helpOpen,
 }: {
   onOpenFile: () => void;
   onExport: () => void;
+  onToggleHelp: () => void;
+  helpOpen: boolean;
 }): React.JSX.Element {
   const state = useAppState();
 
@@ -126,6 +130,15 @@ export function TopBar({
             {state.status.message}
           </span>
         )}
+        <button
+          type="button"
+          onClick={onToggleHelp}
+          aria-pressed={helpOpen}
+          title="How Typeforge works"
+          className={cn(TOOLBAR_ACTION, helpOpen && "bg-card text-foreground")}
+        >
+          Help
+        </button>
         <button
           type="button"
           onClick={onOpenFile}

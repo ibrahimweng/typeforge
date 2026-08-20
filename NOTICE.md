@@ -27,7 +27,18 @@ elsewhere in the app are ordinary open-source packages.
 
 - **anime.js** v4 — MIT.
 
+## The bundled sample font
+
+`src/assets/typeforge-sample.ttf` is a subset of **DejaVu Sans**, distributed
+under the Bitstream Vera Fonts Copyright. That licence permits modification and
+redistribution provided the result is renamed to a name containing neither
+"Bitstream" nor "Vera", and provided the notice travels with it. The font is
+renamed to *Typeforge Sample* and the notice is in `LICENSE-sample-font.txt`.
+
+`scripts/build-sample-font.py` rebuilds the file from a DejaVu Sans on the host,
+so what is committed is reproducible rather than a binary of unclear origin.
+
 ## Test fonts
 
-Tests read a font from the host system and skip when none is found. No font
-binaries are committed to this repository.
+Tests read a font from the host system and skip when none is found. The sample
+above is the only font binary in this repository.

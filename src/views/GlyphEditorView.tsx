@@ -26,6 +26,7 @@ import {
   type GlyphView,
 } from "@/components/glyph-render";
 import { nodeKey, store, useAppState, type NodeRef } from "@/state/useStore";
+import { CoachMark } from "@/components/CoachMark";
 
 /** How close a click has to land, in screen pixels, to grab a node. */
 const HIT_RADIUS = 7;
@@ -408,29 +409,32 @@ export function GlyphEditorView(): React.JSX.Element {
   }
 
   return (
-    <div ref={containerRef} className="relative min-h-0 flex-1 overflow-hidden bg-[var(--canvas)]">
-      <canvas
-        ref={canvasRef}
-        style={{ width: size.width, height: size.height }}
-        className={cursorFor(state.tool, hover)}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
-        onPointerLeave={() => setHover(null)}
-        onWheel={(event) => {
-          // Ctrl or command with the wheel zooms, matching every design tool.
-          if (event.ctrlKey || event.metaKey) {
-            setZoom((current) => clamp(current * (event.deltaY < 0 ? 1.1 : 0.9), 0.1, 24));
-          } else {
-            setPan((current) => ({ x: current.x - event.deltaX, y: current.y - event.deltaY }));
-          }
-        }}
-      />
-      <div className="pointer-events-none absolute bottom-3 left-3 flex gap-3 text-2xs text-muted-foreground tabular-nums">
-        <span>{glyph.name}</span>
-        <span>{Math.round(zoom * 100)}%</span>
-        {state.selectedNodes.size > 0 && <span>{state.selectedNodes.size} points</span>}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <CoachMark id="glyph" />
+      <div ref={containerRef} className="relative min-h-0 flex-1 overflow-hidden bg-[var(--canvas)]">
+        <canvas
+          ref={canvasRef}
+          style={{ width: size.width, height: size.height }}
+          className={cursorFor(state.tool, hover)}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onPointerLeave={() => setHover(null)}
+          onWheel={(event) => {
+            // Ctrl or command with the wheel zooms, matching every design tool.
+            if (event.ctrlKey || event.metaKey) {
+              setZoom((current) => clamp(current * (event.deltaY < 0 ? 1.1 : 0.9), 0.1, 24));
+            } else {
+              setPan((current) => ({ x: current.x - event.deltaX, y: current.y - event.deltaY }));
+            }
+          }}
+        />
+        <div className="pointer-events-none absolute bottom-3 left-3 flex gap-3 text-2xs text-muted-foreground tabular-nums">
+          <span>{glyph.name}</span>
+          <span>{Math.round(zoom * 100)}%</span>
+          {state.selectedNodes.size > 0 && <span>{state.selectedNodes.size} points</span>}
+        </div>
       </div>
     </div>
   );

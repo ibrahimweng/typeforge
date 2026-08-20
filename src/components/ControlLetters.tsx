@@ -10,6 +10,7 @@
 import * as React from "react";
 
 import { pulse } from "@/anim/motion";
+import { CoachMark } from "@/components/CoachMark";
 import { CONTROL_GLYPHS, CONTROL_GROUPS } from "@/font/control";
 import { drawGlyph, fitEmSquare, prepareCanvas, readToken } from "@/components/glyph-render";
 import { store, useAppState } from "@/state/useStore";
@@ -100,7 +101,9 @@ export function ControlLetters(): React.JSX.Element | null {
   const others = state.typeface.glyphs.length - present;
 
   return (
-    <section className="border-b border-border p-3">
+    <>
+      <CoachMark id="controls" />
+      <section className="border-b border-border p-3">
       <div className="mb-2 flex items-baseline justify-between">
         <h3 className="text-2xs font-medium">Control letters</h3>
         <span className="text-2xs text-muted-foreground">{present} of {CONTROL_GLYPHS.length}</span>
@@ -146,6 +149,7 @@ export function ControlLetters(): React.JSX.Element | null {
           </ul>
         </div>
       )}
-    </section>
+      </section>
+    </>
   );
 }

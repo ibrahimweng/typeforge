@@ -10,6 +10,7 @@
 import * as React from "react";
 
 import { enter, refuse } from "@/anim/motion";
+import { CoachMark } from "@/components/CoachMark";
 import { exportFont, toDownloadBlob, type ExportFidelity, type ExportFormat } from "@/font/export";
 import { store, useAppState } from "@/state/useStore";
 import { cn } from "@/ui/lib/utils";
@@ -97,6 +98,8 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
         aria-label="Export font"
       >
         <h2 className="pb-4 text-sm font-medium">Export font</h2>
+
+        <CoachMark id="export" className="-mx-5 mb-4 border-t border-border" />
 
         <Field label="Format">
           <Choice

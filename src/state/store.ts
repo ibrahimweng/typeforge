@@ -34,6 +34,15 @@ import {
   type KernPair,
   type Typeface,
 } from "@/font/types";
+/**
+ * The bundled sample, as a URL rather than as bytes: Vite emits it as a hashed
+ * asset the browser caches like any other, instead of inlining 47KB of font
+ * into the JavaScript everybody downloads whether they use it or not.
+ */
+import sampleFontUrl from "@/assets/typeforge-sample.ttf?url";
+
+/** What the sample is called once it is open, as any other file would be. */
+const SAMPLE_FILE_NAME = "TypeforgeSample-Regular.ttf";
 
 export type ViewId = "grid" | "glyph" | "kerning" | "metrics" | "report";
 export type ToolId = "select" | "pen";
@@ -172,6 +181,32 @@ class Store {
         busy: false,
         status: {
           message: error instanceof Error ? error.message : "That font could not be read.",
+          tone: "error",
+        },
+      });
+    }
+  }
+
+  /**
+   * Open the font that ships with the tool.
+   *
+   * Nothing in Typeforge does anything until a font is open, so without this
+   * the first thing it asks of someone who has just arrived is that they go and
+   * find a .ttf on their disk. The sample is a subset of DejaVu Sans, renamed
+   * as its licence requires; see LICENSE-sample-font.txt.
+   */
+  async loadSample(): Promise<void> {
+    this.set({ busy: true, status: { message: "Opening the sample…", tone: "info" } });
+    try {
+      const response = await fetch(sampleFontUrl);
+      if (!response.ok) throw new Error(`The sample font could not be read (${response.status}).`);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      await this.loadFont(bytes, SAMPLE_FILE_NAME);
+    } catch (error) {
+      this.set({
+        busy: false,
+        status: {
+          message: error instanceof Error ? error.message : "The sample font could not be read.",
           tone: "error",
         },
       });

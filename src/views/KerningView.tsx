@@ -12,6 +12,7 @@ import { tweenNumber } from "@/anim/motion";
 import { drawGlyph, prepareCanvas, readToken, type GlyphView } from "@/components/glyph-render";
 import { resolveAdvanceWidth } from "@/font/transform";
 import type { Glyph, Typeface } from "@/font/types";
+import { CoachMark } from "@/components/CoachMark";
 import { store, useAppState } from "@/state/useStore";
 import { cn } from "@/ui/lib/utils";
 
@@ -130,6 +131,7 @@ export function KerningView(): React.JSX.Element {
   return (
     <div className="flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
+        <CoachMark id="kerning" />
         <div className="flex items-center gap-3 border-b border-border px-4 py-2.5">
           <input
             value={state.previewText}

@@ -27,10 +27,13 @@ test.skip(!FONT_PATH, "needs a system font to open");
  * out of step silently, pointing a test at its neighbour.
  */
 async function paramSlider(page: Page, label: string) {
-  const labels = await page.locator('aside span[class*="text-foreground"]').allTextContents();
+  // Scoped to the inspector: the help drawer is an aside too, and it names
+  // every parameter in prose.
+  const panel = page.getByRole("complementary", { name: "Parameters" });
+  const labels = await panel.locator('span[class*="text-foreground"]').allTextContents();
   const index = labels.indexOf(label);
   expect(index, `no family parameter called ${label}`).toBeGreaterThanOrEqual(0);
-  return page.getByRole("slider").nth(index);
+  return panel.getByRole("slider").nth(index);
 }
 
 /** Open the test font through the file input the toolbar drives. */
@@ -283,16 +286,30 @@ test("shows the control letters and what an edit to one carried across", async (
   await page.getByTitle(/^Open n\./).click();
   await expect(page.getByRole("button", { name: "Glyph", exact: true })).toBeVisible();
 
-  // Drag a point on n, which is the gesture that moves the whole font.
+  /*
+   * Drag a point on n upwards, which is the gesture that moves the whole font.
+   *
+   * Upwards, and from the top of the letter down, on purpose. This used to
+   * grab whichever point it met first scanning from the middle and pull it
+   * sideways, and then assert that the family had moved -- which is a coin
+   * toss, because it need not have. The stem reading is the median span across
+   * a fan of rays, and n has two stems: moving one wall of one of them can
+   * leave the median exactly where it was, and reporting nothing is then the
+   * right answer rather than a fault. Raising the top of the arch changes the
+   * letter's height, which nothing else can absorb.
+   */
   const canvas = page.locator("canvas").first();
   const box = (await canvas.boundingBox())!;
+  // Proportional to the canvas: the letter is drawn to fit, so a fixed number
+  // of screen pixels is a different number of font units on a shorter window.
+  const dragBy = box.height * 0.1;
   let grabbed = false;
-  for (let y = box.height * 0.25; y < box.height * 0.8 && !grabbed; y += 8) {
-    for (let x = box.width * 0.25; x < box.width * 0.8; x += 8) {
+  for (let y = box.height * 0.15; y < box.height * 0.7 && !grabbed; y += 6) {
+    for (let x = box.width * 0.3; x < box.width * 0.7; x += 6) {
       await page.mouse.move(box.x + x, box.y + y);
       if (((await canvas.getAttribute("class")) ?? "").includes("cursor-grab")) {
         await page.mouse.down();
-        await page.mouse.move(box.x + x + 40, box.y + y, { steps: 6 });
+        await page.mouse.move(box.x + x, box.y + y - dragBy, { steps: 6 });
         await page.mouse.up();
         grabbed = true;
         break;
@@ -435,4 +452,116 @@ test("hovering a toolbar button changes it before you press", async ({ page }) =
 
   // An unselected tab has to react to the pointer, not just to the click.
   expect(hovered).not.toBe(resting);
+});
+
+/**
+ * Someone arriving with no font of their own.
+ *
+ * The tool does nothing at all until a font is open, so without a sample the
+ * first thing it asks of a visitor is that they go and find a .ttf. This is the
+ * path most people will take on their first visit and it has to work without
+ * anything else being set up -- note that this test never touches the file
+ * input.
+ */
+test("opens the sample font without a file of your own", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Try the sample font" }).click();
+
+  await expect(page.getByText("Typeforge Sample", { exact: false }).first()).toBeVisible({
+    timeout: 45_000,
+  });
+  // A real font, drawn: the grid fills with glyph cells.
+  await expect(page.locator("canvas").first()).toBeVisible();
+  expect(await page.locator("canvas").count()).toBeGreaterThan(20);
+
+  /*
+   * The control letters have to be there.
+   *
+   * Which is a check on how the sample is built, not on the application.
+   * Subsetting a font drops its glyph names by default, renaming every glyph to
+   * glyph37 and writing a post table with nothing in it -- and the control
+   * letters are found by name, so the panel read "0 of 7" and the one feature
+   * the sample exists to demonstrate did nothing at all. It looked fine.
+   */
+  await expect(page.getByText("7 of 7")).toBeVisible();
+
+  // And the controls work on it, which is the whole point of shipping one.
+  const weight = await paramSlider(page, "Weight");
+  await weight.focus();
+  for (let press = 0; press < 12; press++) await page.keyboard.press("ArrowRight");
+  expect(errors).toEqual([]);
+});
+
+/**
+ * The tips: shown once, where they apply, then gone.
+ *
+ * The thing worth testing is the "then gone" -- a tip that reappears on every
+ * visit stops being help and becomes furniture.
+ */
+test("introduces each view once and then stays out of the way", async ({ page }) => {
+  await page.goto("/");
+  await openFont(page);
+
+  const gridTip = page.locator("[data-coach-mark=grid]");
+  await expect(gridTip).toBeVisible();
+
+  await gridTip.getByRole("button", { name: "Got it" }).click();
+  await expect(gridTip).toBeHidden();
+
+  // Somewhere else and back: it does not return.
+  await page.getByRole("button", { name: "Kerning", exact: true }).click();
+  await expect(page.locator("[data-coach-mark=kerning]")).toBeVisible();
+  await page.getByRole("button", { name: "Font", exact: true }).click();
+  await expect(gridTip).toBeHidden();
+
+  // Nor after a reload, which is what the remembering is for.
+  await page.reload();
+  await openFont(page);
+  await expect(gridTip).toBeHidden();
+});
+
+/**
+ * The help drawer.
+ *
+ * Its parameter section is generated from the same list the inspector draws its
+ * sliders from, so the check that matters is that the two agree: every slider
+ * on screen is explained, and nothing is explained that is not there.
+ */
+test("explains every parameter the inspector actually offers", async ({ page }) => {
+  await page.goto("/");
+  await openFont(page);
+
+  const panel = page.getByRole("complementary", { name: "Parameters" });
+  const labels = await panel.locator('span[class*="text-foreground"]').allTextContents();
+  const sliderCount = await panel.getByRole("slider").count();
+  const parameters = labels.slice(0, sliderCount);
+  expect(parameters.length).toBeGreaterThan(5);
+
+  await page.getByRole("button", { name: "Help", exact: true }).click();
+  const help = page.getByRole("dialog", { name: "Help" });
+  await expect(help).toBeVisible();
+
+  for (const label of parameters) {
+    await expect(help.getByText(label, { exact: true })).toBeVisible();
+  }
+
+  // And it closes on Escape, as every panel in the application does.
+  await page.keyboard.press("Escape");
+  await expect(help).toBeHidden();
+});
+
+test("can bring the tips back after they have been dismissed", async ({ page }) => {
+  await page.goto("/");
+  await openFont(page);
+
+  const gridTip = page.locator("[data-coach-mark=grid]");
+  await gridTip.getByRole("button", { name: "Got it" }).click();
+  await expect(gridTip).toBeHidden();
+
+  await page.getByRole("button", { name: "Help", exact: true }).click();
+  await page.getByRole("button", { name: "Show the tips again" }).click();
+  await expect(gridTip).toBeVisible();
 });

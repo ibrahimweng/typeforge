@@ -9,6 +9,7 @@ import * as React from "react";
 
 import { attachPressFeedback, switchView } from "@/anim/motion";
 import { ExportDialog } from "@/components/ExportDialog";
+import { HelpDrawer } from "@/components/HelpDrawer";
 import { Inspector } from "@/components/Inspector";
 import { TopBar } from "@/components/TopBar";
 import { store, useAppState } from "@/state/useStore";
@@ -21,6 +22,7 @@ import { ReportView } from "@/views/ReportView";
 export function App(): React.JSX.Element {
   const state = useAppState();
   const [exporting, setExporting] = React.useState(false);
+  const [helping, setHelping] = React.useState(false);
   const [dragging, setDragging] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const stageRef = React.useRef<HTMLDivElement>(null);
@@ -61,7 +63,12 @@ export function App(): React.JSX.Element {
         void openFiles(event.dataTransfer.files);
       }}
     >
-      <TopBar onOpenFile={() => inputRef.current?.click()} onExport={() => setExporting(true)} />
+      <TopBar
+        onOpenFile={() => inputRef.current?.click()}
+        onExport={() => setExporting(true)}
+        onToggleHelp={() => setHelping((open) => !open)}
+        helpOpen={helping}
+      />
 
       <div className="flex min-h-0 flex-1">
         <div ref={stageRef} className="flex min-w-0 flex-1 flex-col">
@@ -72,6 +79,7 @@ export function App(): React.JSX.Element {
           {state.view === "report" && <ReportView />}
         </div>
         <Inspector />
+        {helping && <HelpDrawer onClose={() => setHelping(false)} />}
       </div>
 
       <input

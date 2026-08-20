@@ -12,6 +12,7 @@
 import * as React from "react";
 
 import { enterStaggered } from "@/anim/motion";
+import { CoachMark } from "@/components/CoachMark";
 import { validateTypeface, type Finding, type Severity, type ValidationReport } from "@/font/validate";
 import { store, useAppState } from "@/state/useStore";
 import { cn } from "@/ui/lib/utils";
@@ -62,6 +63,7 @@ export function ReportView(): React.JSX.Element {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <CoachMark id="report" />
       <div className="flex items-center gap-3 border-b border-border px-4 py-2.5">
         {report && (
           <>

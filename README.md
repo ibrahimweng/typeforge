@@ -48,6 +48,26 @@ never disturbs what is already there.
 **Parameters** reshape the whole typeface at once: corner radius, weight, middle
 space, width, slant, x-height and tracking. Any glyph can override any of them.
 
+## Finding your way around
+
+There is a sample font in the toolbar's empty state, so the tool can be tried
+without going and finding a `.ttf` first. It is a subset of DejaVu Sans, renamed
+as that font's licence requires, and it keeps its glyph names — which matters,
+because the control letters are found by name, and a subset that has dropped
+them leaves the feature the sample exists to demonstrate reading "0 of 7".
+
+Help sits in a drawer behind the toolbar's **Help** button rather than on a page
+of its own, because most of what needs explaining is a control and a control is
+easier to understand while you can still see it move. Its parameter section is
+generated from the same list the inspector draws its sliders from, so it cannot
+come to describe a control that is no longer there.
+
+The rest is one-line tips, shown the first time you arrive somewhere and then
+never again. Only one shows at a time — opening a font for the first time
+mounts three, and three tinted boxes arriving together is clutter rather than
+help. Dismissals are remembered in `localStorage`, and the help drawer brings
+them all back.
+
 ## Parameters are not destructive
 
 Parameters sit on top of the drawn outlines and are re-evaluated on every render
@@ -136,6 +156,13 @@ src/ui/       the Toolcraft component kit, see NOTICE.md
 The interface components in `src/ui/` come from Toolcraft and carry the
 Toolcraft Designer License, which does not permit selling this application as a
 product. Everything in `src/font/` is original work. See `NOTICE.md`.
+
+The bundled sample font is a subset of DejaVu Sans under the Bitstream Vera
+licence, which permits modification and redistribution provided the result is
+renamed away from "Bitstream" and "Vera" and carries the notice. Both are done;
+the notice is in `LICENSE-sample-font.txt`, and `scripts/build-sample-font.py`
+rebuilds the file from a local DejaVu so the derivation is reproducible rather
+than a binary of unclear origin.
 
 ## Deploying
 
