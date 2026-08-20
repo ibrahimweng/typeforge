@@ -23,7 +23,15 @@
 import type { Vec2 } from "@/font/types";
 import type { Style } from "./style";
 import { terminalFor } from "./style";
-import { bowl, bowlBetween, reversed, roundCorners, spineEnd, spineStart } from "./shapes";
+import {
+  bowl,
+  bowlBetween,
+  bowlPoint,
+  reversed,
+  roundCorners,
+  spineEnd,
+  spineStart,
+} from "./shapes";
 import { MITER_LIMIT } from "./sweep";
 import type { Spine, Stroke, Terminal } from "./types";
 
@@ -784,7 +792,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     // Big enough to read as a hook rather than a curl, small enough that the
     // letter does not turn into a walking stick.
-    const radius = Math.max(f.arch * 0.55, f.least);
+    const radius = Math.max(f.arch * 0.66, f.least);
     const stem = f.edge + radius;
     return finish(
       f,
@@ -967,12 +975,28 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
 
   t: (style) => {
     const f = frame(style);
+    const radius = Math.max(f.arch * 0.42, f.least);
     const stem = f.edge + f.arch * 0.35;
     const reach = f.arch * 0.7;
     return finish(
       f,
       [
-        ink(f, straight(at(stem, 0), at(stem, f.asc * 0.78)), f.end, f.end),
+        /*
+         * Down the stem and out along the baseline, as one run.
+         *
+         * Without the foot a t is a cross: a vertical and a bar, identical to
+         * an f with the hook taken off, and at a heavy weight the two were
+         * telling themselves apart by the width of the bar alone.
+         */
+        ink(
+          f,
+          chain(
+            straight(at(stem, f.asc * 0.78), at(stem, radius)),
+            turn(at(stem + radius, radius), radius, 180, 270),
+          ),
+          f.end,
+          f.end,
+        ),
         thin(f, straight(at(stem - reach * 0.7, f.x), at(stem + reach, f.x)), f.end, f.end),
       ]);
   },
@@ -1128,7 +1152,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
      * against the round capitals instead and both bowls share it, which is also
      * what stops the upper one looking like a mistake beside the lower.
      */
-    const reach = f.capBowl * 0.66;
+    const reach = f.capBowl * 0.84;
     return finish(
       f,
       [
@@ -1204,17 +1228,36 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const centre = at(f.edge + f.capBowl, f.cap / 2);
     const right = centre.x + f.capBowl;
+    /*
+     * A G is a C carried round almost the whole way and then turned back into
+     * itself, and how far past the turn it goes depends on the weight.
+     *
+     * Ending the bowl level with its own centre put its square end exactly
+     * where the bar's top edge is, so the bar stood half a pen proud of it and
+     * the step read as a chip out of the letter. Carried on until the bowl is
+     * half a pen above its centre, the bar's whole width is inside ink that is
+     * already there. Chaining the two instead would be neater still, but the
+     * corner between an arc and a straight run has no closed form to cut it
+     * back to, and the letter folded.
+     */
+    const past = (Math.asin(Math.min(1, f.half / f.capBowlH)) * 180) / Math.PI;
+    /*
+     * And the aperture is opened far enough for the two ends to clear.
+     *
+     * A gap of thirty-two degrees is a gap of a hundred and seventy units on a
+     * bowl this size, and the display weight's pen is a hundred and seventy-
+     * five: the two ends of the stroke ran into each other and the G closed
+     * itself into an O with a scar. A heavy face opens its apertures for
+     * exactly this reason, so the opening is measured in pen widths rather than
+     * in degrees.
+     */
+    const clear = (((f.half * 2.4) / f.capBowlH) * 180) / Math.PI;
+    const opens = Math.max(32, past + clear);
     return finish(
       f,
       [
-        /*
-         * A G is a C carried round almost the whole way and then turned back
-         * into itself. Ending the bowl level with its own centre puts the bar
-         * where the eye expects it and leaves the aperture above, which is what
-         * tells a G from a C at small sizes.
-         */
-        openBowl(f, centre, f.capBowl, f.capBowlH, 32, 360),
-        thin(f, straight(at(right, centre.y), at(right - f.capBowl * 0.55, centre.y)), BUTT, f.end),
+        openBowl(f, centre, f.capBowl, f.capBowlH, opens, 360 + past),
+        ink(f, straight(at(right, centre.y), at(right - f.capBowl * 0.55, centre.y)), BUTT, f.end),
       ],
       true);
   },
@@ -1362,16 +1405,22 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   Q: (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.capBowl, f.cap / 2);
-    const tail = f.capBowl * 0.55;
+    /*
+     * The tail leaves the bowl's own centre-line and carries on outwards.
+     *
+     * Started inside the bowl it crossed the counter, and a stroke laid across
+     * a counter is filled in: the Q came out with a bar through its hole. Begun
+     * on the wall itself there is nothing to cross -- it grows out of the
+     * stroke, which is what a tail does.
+     */
+    const leaves = bowlPoint(centre, f.capBowl, f.capBowlH, 1 - f.square, f.half, -52);
     return finish(
       f,
       [
         ink(f, ring(f, centre, f.capBowl, f.capBowlH)),
-        // The tail leaves from inside the bowl and crosses its wall, which is
-        // what makes it look attached rather than propped against the letter.
         ink(
           f,
-          straight(at(centre.x + tail * 0.35, f.cap * 0.3), at(centre.x + f.capBowl * 0.95, -f.cap * 0.13)),
+          straight(leaves, at(centre.x + f.capBowl * 1.02, -f.cap * 0.15)),
           BUTT,
           f.end,
         ),
@@ -1384,13 +1433,15 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const stem = f.edge;
     const radius = Math.max(f.cap * 0.27, f.least);
     const junction = f.cap - radius * 2;
-    const reach = stem + radius * 1.5;
+    const reach = stem + radius * 1.9;
     return finish(
       f,
       [
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
         belly(f, at(stem, f.cap - radius), radius * f.wide, radius, -90, 90),
-        ink(f, straight(at(stem + f.half, junction), at(reach, 0)), BUTT, f.end),
+        // From the stem's own centre-line, where the bowl lands, so the leg
+        // grows out of the junction rather than starting beside it.
+        ink(f, straight(at(stem, junction), at(reach, 0)), BUTT, f.end),
       ]);
   },
 

@@ -208,6 +208,38 @@ function hasLength(segment: SpineSegment): boolean {
     : segment.radius > 1e-9;
 }
 
+/**
+ * A point on a bowl's own centre-line, in a given direction from its middle.
+ *
+ * For the things that have to leave a bowl from somewhere on it -- the tail of
+ * a Q, the leg of an R -- and have to leave from the same place whether the
+ * bowl is round or square. Written in terms of the shape rather than of a
+ * radius, because on a squared bowl there is no radius to use.
+ */
+export function bowlPoint(
+  centre: Vec2,
+  halfWidth: number,
+  halfHeight: number,
+  roundness: number,
+  penHalf: number,
+  degrees: number,
+): Vec2 {
+  const [width, height] = holds(halfWidth, halfHeight, penHalf);
+  const loop = bowlSegments(centre, width, height, bowlRadius(width, height, roundness, penHalf));
+  const wanted = ((degrees % 360) + 360) % 360;
+  for (const segment of loop) {
+    const from = angleOf(centre, segmentStart(segment));
+    let to = angleOf(centre, segmentEnd(segment));
+    if (to <= from) to += 360;
+    const reading = wanted < from ? wanted + 360 : wanted;
+    if (reading >= from && reading <= to) {
+      const point = hit(segment, centre, degrees);
+      if (point) return point;
+    }
+  }
+  return centre;
+}
+
 /** Where a run begins and where it ends, whichever kind of piece that is. */
 export function spineStart(spine: Spine): Vec2 {
   return segmentStart(spine.segments[0]);
