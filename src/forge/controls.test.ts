@@ -22,10 +22,10 @@
 
 import { describe, expect, it } from "vitest";
 
-import { contoursToSvgPath } from "@/font/geometry";
+import { contoursBounds, contoursToSvgPath } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import { drawLetter, letterNames } from "./build";
-import { LETTERS } from "./letters";
+import { LETTERS, formsOf } from "./letters";
 import { METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS, type FieldControl } from "./parts";
 import { SANS, type Metrics, type Parts, type Style } from "./style";
 import type { Pen } from "./types";
@@ -134,6 +134,76 @@ describe("no control can spoil a letter", () => {
             }
           }
         }
+      }
+    }
+  });
+});
+
+describe("alternates", () => {
+  /*
+   * An alternate is a different skeleton, so it gets the same treatment as the
+   * default: it has to survive the pen at every weight it might be drawn with,
+   * and it has to be a different shape from the one it is offered beside. A
+   * chooser whose second option draws the first letter again is worse than no
+   * chooser -- it is a promise of variety that is not there.
+   */
+  it("never folds, at any weight", () => {
+    for (const name of NAMES) {
+      for (const form of formsOf(name)) {
+        for (const weight of [12, 92, 190, 260]) {
+          for (const squareness of [0, 1]) {
+            const style = withPart(
+              withPart({ ...SANS, pen: { ...SANS.pen, weight } }, "slab", "on", true),
+              "bowl",
+              "squareness",
+              squareness,
+            );
+            const drawn = drawLetter(name, style, form.id);
+            expect(drawn, `${name} / ${form.label} would not draw`).not.toBeNull();
+            for (const contour of drawn!.contours) {
+              expect(
+                contoursIntersect([contour]),
+                `${name} / ${form.label} folds at weight ${weight}, squareness ${squareness}`,
+              ).toBe(false);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it("draws something different from the letter it is offered beside", () => {
+    const same: string[] = [];
+    for (const name of NAMES) {
+      const forms = formsOf(name);
+      const drawings = forms.map((form) => contoursToSvgPath(drawLetter(name, SANS, form.id)!.contours));
+      for (let index = 1; index < forms.length; index++) {
+        for (let earlier = 0; earlier < index; earlier++) {
+          if (drawings[index] === drawings[earlier]) {
+            same.push(`${name}: ${forms[index].label} draws the same as ${forms[earlier].label}`);
+          }
+        }
+      }
+    }
+    expect(same).toEqual([]);
+  });
+
+  it("still stands on the baseline and inside the line", () => {
+    for (const name of NAMES) {
+      for (const form of formsOf(name)) {
+        const drawn = drawLetter(name, SANS, form.id)!;
+        const bounds = contoursBounds(drawn.contours);
+        expect(bounds.yMax, `${name} / ${form.label} rises above the ascender`).toBeLessThanOrEqual(
+          SANS.metrics.ascender + SANS.metrics.overshoot + SANS.pen.weight,
+        );
+        expect(bounds.yMin, `${name} / ${form.label} sinks below the descender`).toBeGreaterThanOrEqual(
+          SANS.metrics.descender - SANS.metrics.overshoot - SANS.pen.weight,
+        );
+        expect(bounds.xMin, `${name} / ${form.label} starts left of the origin`).toBeGreaterThan(-1);
+        expect(
+          drawn.advanceWidth,
+          `${name} / ${form.label} is wider than its own advance`,
+        ).toBeGreaterThanOrEqual(bounds.xMax);
       }
     }
   });

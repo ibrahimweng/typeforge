@@ -30,10 +30,32 @@ export interface Forge {
   style: Style;
   /** Letters that have been told otherwise, and only those. */
   exceptions: Record<string, Overrides>;
+  /**
+   * Letters drawn from a different skeleton, and only those.
+   *
+   * Kept apart from the exceptions because it is a different kind of decision.
+   * An exception says this letter keeps its own version of a part the rest of
+   * the font shares. An alternate says this letter is a different shape --
+   * which every part still reaches, exactly as it reaches the default.
+   */
+  alternates: Record<string, string>;
 }
 
 export function startFrom(base: Style): Forge {
-  return { base: base.name, style: clone(base), exceptions: {} };
+  return { base: base.name, style: clone(base), exceptions: {}, alternates: {} };
+}
+
+/** Draw this letter from a different skeleton, or put it back to the default. */
+export function chooseForm(forge: Forge, letter: string, form: string): Forge {
+  const alternates = { ...forge.alternates };
+  if (form) alternates[letter] = form;
+  else delete alternates[letter];
+  return { ...forge, alternates };
+}
+
+/** Which form a letter is drawn in. */
+export function formOf(forge: Forge, letter: string): string {
+  return forge.alternates[letter] ?? "";
 }
 
 export function baseNamed(name: string): Style | undefined {
@@ -61,7 +83,7 @@ export function styleFor(letter: string, forge: Forge): Style {
 }
 
 export function draw(letter: string, forge: Forge): Drawn | null {
-  return drawLetter(letter, styleFor(letter, forge));
+  return drawLetter(letter, styleFor(letter, forge), formOf(forge, letter));
 }
 
 /**
@@ -162,10 +184,16 @@ export function partsOf(letter: string, forge: Forge): PartName[] {
     forStyle = new Map();
     partsCache.set(style, forStyle);
   }
-  const known = forStyle.get(letter);
+  // Keyed by the form as well as the letter: a double-storey a is a different
+  // skeleton and may want a different set of parts from a single-storey one, so
+  // a cache that only knew the letter would answer for whichever was asked
+  // first and go on answering that after the form had changed.
+  const form = formOf(forge, letter);
+  const key = `${letter}\u0000${form}`;
+  const known = forStyle.get(key);
   if (known) return known;
-  const found = partsUsedBy(letter, style);
-  forStyle.set(letter, found);
+  const found = partsUsedBy(letter, style, form);
+  forStyle.set(key, found);
   return found;
 }
 

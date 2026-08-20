@@ -10,7 +10,7 @@
 
 import { contourArea, contoursBounds, reverseContour } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
-import { FIGURES, LETTERS, type Recipe } from "./letters";
+import { FIGURES, LETTERS, recipeOf, type Recipe } from "./letters";
 import { penReach, sweep } from "./sweep";
 import type { Style } from "./style";
 import type { Stroke, Terminal } from "./types";
@@ -31,9 +31,16 @@ export function canDraw(name: string): boolean {
 /** A round letter is set a little tighter, or it looks loose beside a flat one. */
 const ROUND_TIGHTENING = 0.82;
 
-/** Draw one letter. */
-export function drawLetter(name: string, style: Style): Drawn | null {
-  const recipe = LETTERS[name];
+/**
+ * Draw one letter, in whichever form has been chosen for it.
+ *
+ * The form changes which skeleton is used and nothing else. The pen, the
+ * proportions and every named part are applied to an alternate exactly as they
+ * are to the default, so a font with a flat-topped A still has one weight, one
+ * shoulder and one serif.
+ */
+export function drawLetter(name: string, style: Style, form?: string): Drawn | null {
+  const recipe = recipeOf(name, form);
   if (!recipe) return null;
   const built: Recipe = recipe(style);
 

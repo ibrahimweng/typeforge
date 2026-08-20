@@ -17,7 +17,7 @@ import * as React from "react";
 import { CoachMark } from "@/components/CoachMark";
 import { contoursToSvgPath } from "@/font/geometry";
 import { letterNames } from "@/forge/build";
-import { draw, isException, partsOf } from "@/forge/document";
+import { draw, formOf, isException, partsOf } from "@/forge/document";
 import { handlesFor, valueAfter, type Handle } from "@/forge/handles";
 import { tile } from "@/components/controls";
 import { forgeStore, useForge, type Phase } from "@/state/useForge";
@@ -76,7 +76,7 @@ function Stage({
     [letter, state.forge, revision],
   );
   const handles = React.useMemo(
-    () => handlesFor(letter, state.forge.style),
+    () => handlesFor(letter, state.forge.style, formOf(state.forge, letter)),
     [letter, state.forge, revision],
   );
   const { metrics } = state.forge.style;

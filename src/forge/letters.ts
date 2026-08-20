@@ -191,6 +191,44 @@ function bend(f: Frame, centre: Vec2, radius: number, fromDegrees: number, toDeg
   return reversed(bowlBetween(centre, halfWidth, radius, roundness, f.half, toDegrees, fromDegrees));
 }
 
+/**
+ * A single arc from one point to another, bowed out by a fraction of the
+ * straight line between them.
+ *
+ * For the curves a recipe wants to describe by where they start and finish
+ * rather than by a centre and two angles -- the swung leg of an R, a tail. It
+ * is one arc, so there is no join in it to get wrong: a chain is a journey and
+ * every piece has to leave where the last one arrived, which is easy to write
+ * incorrectly and produces a stroke with a jump in it rather than a curve.
+ *
+ * Bowing to the left of the direction travelled when the fraction is positive.
+ */
+function bow(f: Frame, from: Vec2, to: Vec2, amount: number): Spine {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const chord = Math.hypot(dx, dy);
+  if (chord < 1e-9) return straight(from, to);
+  const side = amount < 0 ? -1 : 1;
+  // How far the middle of the arc stands off the straight line, held so the
+  // radius it implies is never tighter than the pen will go round.
+  const rise = Math.max(Math.abs(amount) * chord, 1e-6);
+  const radius = Math.max((chord * chord) / (8 * rise) + rise / 2, f.least);
+  const middle = at((from.x + to.x) / 2, (from.y + to.y) / 2);
+  const left = at((-dy / chord) * side, (dx / chord) * side);
+  const back = Math.sqrt(Math.max(0, radius * radius - (chord * chord) / 4));
+  const centre = at(middle.x - left.x * back, middle.y - left.y * back);
+  const startAngle = Math.atan2(from.y - centre.y, from.x - centre.x);
+  let sweep = Math.atan2(to.y - centre.y, to.x - centre.x) - startAngle;
+  while (sweep > Math.PI) sweep -= Math.PI * 2;
+  while (sweep < -Math.PI) sweep += Math.PI * 2;
+  return {
+    segments: [
+      { kind: "arc", centre, radius, startAngle, endAngle: startAngle + sweep, sweepPositive: sweep > 0 },
+    ],
+    closed: false,
+  };
+}
+
 /** Join spines end to end into one stroke that turns as it goes. */
 function chain(...spines: Spine[]): Spine {
   return { segments: spines.flatMap((spine) => spine.segments), closed: false };
@@ -1877,4 +1915,464 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
  */
 function figureWidth(frame: Frame): number {
   return Math.max(frame.cap * 0.62 * frame.style.metrics.width, frame.least * 2);
+}
+
+// ---------------------------------------------------------------------------
+// Alternates
+// ---------------------------------------------------------------------------
+
+/**
+ * Other ways of drawing the same letter.
+ *
+ * Not everything about a typeface is a number. Whether an a has one storey or
+ * two, whether an A comes to a point or is cut flat across, whether a Q's tail
+ * hangs below the bowl or crosses it -- these are decisions with no in-between,
+ * and no slider reaches them. A face that can only be adjusted is a face that
+ * can only ever be a variation on the one it started as.
+ *
+ * A choice here belongs to the letter rather than to the font, which is the one
+ * place this half of the application is deliberately not family-wide: choosing
+ * a double-storey a says nothing about the g. Everything else still reaches it.
+ * The alternate is a different skeleton, and the pen, the proportions and every
+ * named part are applied to it exactly as they are to the default -- so a font
+ * with a flat-topped A still has one weight, one shoulder and one serif.
+ */
+export interface Alternate {
+  id: string;
+  label: string;
+  /** What it is, for the button's tooltip. */
+  hint: string;
+  build: (style: Style) => Recipe;
+}
+
+export const ALTERNATES: Record<LetterName, Alternate[]> = {
+  a: [
+    {
+      id: "double",
+      label: "Two storey",
+      hint: "A bowl with an arched top over it, which is what most text faces use.",
+      build: (style) => {
+        const f = frame(style);
+        const bowlHeight = Math.max(f.x * 0.31, f.least);
+        const bowlWidth = Math.max(bowlHeight * f.wide, f.least);
+        const centre = at(f.edge + bowlWidth, bowlHeight);
+        const stem = centre.x + bowlWidth;
+        // How far over the top reaches before it turns down, held so it can
+        // never ask the pen to turn tighter than it goes round.
+        const over = Math.max(Math.min(bowlWidth, f.x - bowlHeight * 2), f.least);
+        return finish(f, [
+          ink(f, ring(f, centre, bowlWidth, bowlHeight)),
+          // Stem and arch as one run, so the turn at the top is a turn rather
+          // than two square ends meeting.
+          ink(
+            f,
+            chain(
+              straight(at(stem, 0), at(stem, f.x - over)),
+              turn(at(stem - over, f.x - over), over, 0, 135),
+            ),
+            f.end,
+            f.end,
+          ),
+        ]);
+      },
+    },
+  ],
+
+  A: [
+    {
+      id: "flat",
+      label: "Flat top",
+      hint: "Cut across the apex instead of coming to a point, which is what a heavy face does to keep the top from going black.",
+      build: (style) => {
+        const f = frame(style);
+        const half = f.capBowl * 0.86;
+        const left = f.edge;
+        const middle = left + half;
+        const cut = f.capBowl * 0.34;
+        const bar = f.cap * f.style.parts.crossbar.height * 0.58;
+        const inset = (half * bar) / f.cap;
+        // Where the two diagonals would be at the height the top is cut.
+        const rise = f.cap;
+        const leftFoot = at(left, 0);
+        const rightFoot = at(middle + half, 0);
+        return finish(f, [
+          ink(f, straight(leftFoot, at(middle - cut / 2, rise)), f.end, f.end),
+          ink(f, straight(rightFoot, at(middle + cut / 2, rise)), f.end, f.end),
+          thin(f, straight(at(middle - cut / 2, rise), at(middle + cut / 2, rise))),
+          thin(f, straight(at(left + inset, bar), at(middle + half - inset, bar))),
+        ]);
+      },
+    },
+  ],
+
+  M: [
+    {
+      id: "deep",
+      label: "Vertex down",
+      hint: "The middle carried all the way to the baseline, which widens the two counters and squares the letter off.",
+      build: (style) => {
+        const f = frame(style);
+        const left = f.edge;
+        const width = f.capBowl * 1.7;
+        const middle = left + width / 2;
+        const right = left + width;
+        const into = stub(f);
+        const start = at(left, f.cap - into);
+        const end = at(right, f.cap - into);
+        const points = through(f, [
+          start,
+          at(left, f.cap),
+          at(middle, 0),
+          at(right, f.cap),
+          end,
+        ]);
+        return finish(f, [
+          ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
+          ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
+          ink(
+            f,
+            chain(
+              straight(points[0], points[1]),
+              straight(points[1], points[2]),
+              straight(points[2], points[3]),
+              straight(points[3], points[4]),
+            ),
+          ),
+        ]);
+      },
+    },
+  ],
+
+  R: [
+    {
+      id: "curved",
+      label: "Curved leg",
+      hint: "The leg swung out from under the bowl rather than run straight to the corner.",
+      build: (style) => {
+        const f = frame(style);
+        const stem = f.edge;
+        const radius = Math.max(f.cap * 0.27, f.least);
+        const junction = f.cap - radius * 2;
+        const legRadius = Math.max(junction * 0.62, f.least);
+        return finish(f, [
+          ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+          belly(f, at(stem, f.cap - radius), radius * f.wide, radius, -90, 90),
+          // One arc from the junction to the foot, bowed out to the right.
+          ink(f, bow(f, at(stem, junction), at(stem + legRadius * 1.5, 0), 0.14), BUTT, f.end),
+        ]);
+      },
+    },
+  ],
+
+  Q: [
+    {
+      id: "under",
+      label: "Tail below",
+      hint: "The tail hung under the bowl instead of crossing its wall, which is what a geometric face usually does.",
+      build: (style) => {
+        const f = frame(style);
+        const centre = at(f.edge + f.capBowl, f.cap / 2);
+        const leaves = bowlPoint(centre, f.capBowl, f.capBowlH, 1 - f.square, f.half, -80);
+        return finish(
+          f,
+          [
+            ink(f, ring(f, centre, f.capBowl, f.capBowlH)),
+            ink(
+              f,
+              straight(leaves, at(leaves.x + f.capBowl * 0.62, -f.cap * 0.16)),
+              BUTT,
+              f.end,
+            ),
+          ],
+          true,
+        );
+      },
+    },
+  ],
+
+  G: [
+    {
+      id: "bare",
+      label: "No bar",
+      hint: "A G with nothing turned back into it: a C with its end cut level. The cleanest of the geometric Gs.",
+      build: (style) => {
+        const f = frame(style);
+        const centre = at(f.edge + f.capBowl, f.cap / 2);
+        const clear = (((f.half * 2.4) / f.capBowlH) * 180) / Math.PI;
+        return finish(
+          f,
+          [openBowl(f, centre, f.capBowl, f.capBowlH, Math.max(32, clear), 360)],
+          true,
+        );
+      },
+    },
+  ],
+
+  l: [
+    {
+      id: "tailed",
+      label: "With a tail",
+      hint: "Turned out at the foot, which stops an l reading as a figure one.",
+      build: (style) => {
+        const f = frame(style);
+        const radius = Math.max(f.arch * 0.42, f.least);
+        return finish(f, [
+          ink(
+            f,
+            chain(
+              straight(at(f.edge, f.asc), at(f.edge, radius)),
+              turn(at(f.edge + radius, radius), radius, 180, 270),
+            ),
+            f.end,
+            f.end,
+          ),
+        ]);
+      },
+    },
+  ],
+
+  t: [
+    {
+      id: "straight",
+      label: "No foot",
+      hint: "Cut off square at the baseline, which is what a squared or technical face wants.",
+      build: (style) => {
+        const f = frame(style);
+        const stem = f.edge + f.arch * 0.35;
+        const reach = f.arch * 0.7;
+        return finish(f, [
+          ink(f, straight(at(stem, 0), at(stem, f.asc * 0.78)), f.end, f.end),
+          thin(f, straight(at(stem - reach * 0.7, f.x), at(stem + reach, f.x)), f.end, f.end),
+        ]);
+      },
+    },
+  ],
+
+  y: [
+    {
+      id: "straight",
+      label: "Straight tail",
+      hint: "A vee with the right arm carried straight down past the baseline, rather than the tail leaving at its own angle.",
+      build: (style) => {
+        const f = frame(style);
+        const half = f.arch * 0.92;
+        const left = f.edge;
+        const middle = left + half;
+        const top = at(left, f.x);
+        const other = at(middle + half, f.x);
+        const point = corner(f, top, at(middle, 0), other);
+        return finish(f, [
+          ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end),
+          ink(f, straight(point, at(point.x, f.desc)), BUTT, f.end),
+        ]);
+      },
+    },
+  ],
+
+  J: [
+    {
+      id: "descending",
+      label: "Below the line",
+      hint: "The hook carried under the baseline, which is what an old-style or a display face does with a J.",
+      build: (style) => {
+        const f = frame(style);
+        const radius = Math.max(f.capBowl * 0.55, f.least);
+        const stem = f.edge + radius;
+        return finish(f, [
+          ink(
+            f,
+            chain(
+              straight(at(stem, f.cap), at(stem, f.desc + radius + f.half)),
+              turn(at(stem - radius, f.desc + radius + f.half), radius, 0, -95),
+            ),
+            f.end,
+            f.end,
+          ),
+        ]);
+      },
+    },
+  ],
+
+  f: [
+    {
+      id: "descending",
+      label: "With a descender",
+      hint: "An f that carries below the baseline, as an italic or a display face does.",
+      build: (style) => {
+        const f = frame(style);
+        const radius = Math.max(f.arch * 0.66, f.least);
+        const stem = f.edge + radius;
+        const lower = Math.max(f.arch * 0.5, f.least);
+        const top = f.asc - radius - f.half;
+        const base = f.desc + lower + f.half;
+        /*
+         * Written from the top of the hook downwards, which is the direction
+         * the whole run travels.
+         *
+         * Written the other way up it read as three pieces that happened to be
+         * listed together: the first turn ended nowhere near where the straight
+         * began, the chain had a jump in it, and the letter folded. A chain is
+         * a journey, and every piece has to leave where the last one arrived.
+         */
+        return finish(f, [
+          ink(
+            f,
+            chain(
+              turn(at(stem - radius, top), radius, 92, 0),
+              straight(at(stem, top), at(stem, base)),
+              turn(at(stem - lower, base), lower, 0, -95),
+            ),
+            f.end,
+            f.end,
+          ),
+          thin(f, straight(at(stem - f.arch * 0.5, f.x), at(stem + f.arch * 0.5, f.x)), f.end, f.end),
+        ]);
+      },
+    },
+  ],
+
+  one: [
+    {
+      id: "footed",
+      label: "With a foot",
+      hint: "A bar across the base, which stops a one leaning on the letters either side of it.",
+      build: (style) => {
+        const f = frame(style);
+        const width = figureWidth(f);
+        const stem = f.edge + width * 0.46;
+        const flag = Math.max(width * 0.3, f.least);
+        return finish(f, [
+          ink(f, straight(at(stem, 0), at(stem, f.cap)), BUTT, f.end),
+          ink(f, straight(at(stem - flag, f.cap * 0.8), at(stem, f.cap)), f.end, BUTT),
+          thin(f, straight(at(stem - flag, 0), at(stem + flag, 0)), f.end, f.end),
+        ]);
+      },
+    },
+  ],
+
+  four: [
+    {
+      id: "open",
+      label: "Open",
+      hint: "The diagonal stopping at the bar rather than closing the counter, which reads more clearly at a small size.",
+      build: (style) => {
+        const f = frame(style);
+        const width = figureWidth(f);
+        const left = f.edge;
+        const stem = left + width * 0.72;
+        const bar = f.cap * 0.28;
+        return finish(f, [
+          ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+          ink(f, straight(at(stem, f.cap), at(left, bar)), BUTT, f.end),
+          thin(f, straight(at(left, bar), at(left + width, bar)), BUTT, f.end),
+        ]);
+      },
+    },
+  ],
+
+  seven: [
+    {
+      id: "barred",
+      label: "Barred",
+      hint: "A bar across the middle, which is how a seven is written where it would otherwise be read as a one.",
+      build: (style) => {
+        const f = frame(style);
+        const width = figureWidth(f);
+        const left = f.edge;
+        const start = at(left, f.cap);
+        const end = at(left + width * 0.28, 0);
+        const meet = corner(f, start, at(left + width, f.cap), end);
+        const bar = f.cap * 0.42;
+        return finish(f, [
+          ink(f, chain(straight(start, meet), straight(meet, end)), f.end, f.end),
+          thin(
+            f,
+            straight(at(left + width * 0.18, bar), at(left + width * 0.78, bar)),
+            f.end,
+            f.end,
+          ),
+        ]);
+      },
+    },
+  ],
+
+  W: [
+    {
+      id: "crossed",
+      label: "Crossed",
+      hint: "The middle carried to the full cap height so the two vees overlap, which is the older way of building a W.",
+      build: (style) => {
+        const f = frame(style);
+        const half = f.capBowl * 0.62;
+        const left = f.edge;
+        const first = through(f, [
+          at(left, f.cap),
+          at(left + half, 0),
+          at(left + half * 2.4, f.cap),
+        ]);
+        const second = through(f, [
+          at(left + half * 1.2, f.cap),
+          at(left + half * 2.2, 0),
+          at(left + half * 3.2, f.cap),
+        ]);
+        return finish(f, [
+          ink(f, chain(straight(first[0], first[1]), straight(first[1], first[2])), f.end, f.end),
+          ink(f, chain(straight(second[0], second[1]), straight(second[1], second[2])), f.end, f.end),
+        ]);
+      },
+    },
+  ],
+
+  g: [
+    {
+      id: "curled",
+      label: "Curled tail",
+      hint: "The descender carried further round, which is warmer than a straight hook and is what a display face tends to want.",
+      build: (style) => {
+        const f = frame(style);
+        const centre = at(f.edge + f.bowl, f.x / 2);
+        const stem = centre.x + f.bowl;
+        const radius = Math.max(f.arch * 0.95, f.least);
+        return finish(f, [
+          ink(f, ring(f, centre, f.bowl, f.bowlH)),
+          ink(
+            f,
+            chain(
+              straight(at(stem, f.x), at(stem, f.desc + radius + f.half)),
+              turn(at(stem - radius, f.desc + radius + f.half), radius, 0, -150),
+            ),
+            f.end,
+            f.end,
+          ),
+        ]);
+      },
+    },
+  ],
+};
+
+/**
+ * Every way this letter can be drawn, the default one first.
+ *
+ * The default has no identifier of its own: a letter that has never been given
+ * an alternate is not carrying a choice, it is simply itself.
+ */
+export function formsOf(name: LetterName): Array<{ id: string; label: string; hint: string }> {
+  const others = ALTERNATES[name] ?? [];
+  if (others.length === 0) return [];
+  return [
+    { id: "", label: "Default", hint: "The letter as this face draws it." },
+    ...others.map(({ id, label, hint }) => ({ id, label, hint })),
+  ];
+}
+
+/** The recipe for a letter, in whichever form has been chosen. */
+export function recipeOf(
+  name: LetterName,
+  form?: string,
+): ((style: Style) => Recipe) | undefined {
+  if (form) {
+    const chosen = ALTERNATES[name]?.find((alternate) => alternate.id === form);
+    if (chosen) return chosen.build;
+  }
+  return LETTERS[name];
 }

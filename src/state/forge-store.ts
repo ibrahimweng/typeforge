@@ -14,6 +14,7 @@
  */
 
 import {
+  chooseForm,
   clearException,
   editMetrics,
   editPart,
@@ -163,6 +164,18 @@ class ForgeStore {
   changePart(part: PartName, patch: Partial<Parts[PartName]>, phase: Phase = "single"): void {
     const { forge, scope, letter } = this.state;
     this.commit(editPart(forge, part, patch, scope === "letter" ? letter : undefined), phase);
+  }
+
+  /**
+   * Draw this letter from a different skeleton.
+   *
+   * The one decision here that belongs to a letter rather than to the font.
+   * Choosing a double-storey a says nothing about the g, and everything else --
+   * the pen, the proportions, every named part -- still reaches it.
+   */
+  chooseAlternate(form: string): void {
+    const { forge, letter } = this.state;
+    this.commit(chooseForm(forge, letter, form));
   }
 
   /** Put this letter back on the family's terms. */

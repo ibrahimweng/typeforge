@@ -87,14 +87,16 @@ export interface Handle {
  * has no crossbar, so neither is offered one. Which parts a letter has is
  * already known, so this asks rather than guesses.
  */
-export function handlesFor(letter: string, style: Style): Handle[] {
-  const drawn = drawLetter(letter, style);
+export function handlesFor(letter: string, style: Style, form?: string): Handle[] {
+  const drawn = drawLetter(letter, style, form);
   if (!drawn || drawn.contours.length === 0) return [];
 
   const bounds = contoursBounds(drawn.contours);
   const { metrics, pen, parts } = style;
   const em = metrics.unitsPerEm;
-  const has = new Set(partsUsedBy(letter, style));
+  // Asked of the form actually on the stage: a handle placed for a skeleton
+  // that is not the one being looked at would sit somewhere the letter is not.
+  const has = new Set(partsUsedBy(letter, style, form));
   const handles: Handle[] = [];
 
   /*

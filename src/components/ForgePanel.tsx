@@ -16,7 +16,10 @@
 import * as React from "react";
 
 import { segment } from "@/components/controls";
-import { isException, partsOf, reach } from "@/forge/document";
+import { contoursToSvgPath } from "@/font/geometry";
+import { drawLetter } from "@/forge/build";
+import { formOf, isException, partsOf, reach, styleFor } from "@/forge/document";
+import { formsOf } from "@/forge/letters";
 import {
   METRIC_CONTROLS,
   PEN_CONTROLS,
@@ -90,6 +93,8 @@ export function ForgePanel(): React.JSX.Element {
           ))}
         </Section>
 
+        <Forms letter={letter} />
+
         <div className="border-b border-border p-3">
           <div className="mb-2 flex items-baseline justify-between">
             <h3 className="text-2xs font-medium">Parts of {letter}</h3>
@@ -140,6 +145,75 @@ export function ForgePanel(): React.JSX.Element {
         ))}
       </div>
     </aside>
+  );
+}
+
+/**
+ * The other ways this letter can be drawn.
+ *
+ * Shown as the shapes themselves rather than as their names, because the
+ * difference between a one-storey a and a two-storey one is a shape and nobody
+ * reads "two storey" and sees it. Each thumbnail is the letter drawn with the
+ * font as it stands, so what is being compared is this font's version of each
+ * rather than a picture of the idea.
+ *
+ * Only appears on letters that have another form. Most do not, and a row of
+ * one option would be a control that cannot be used.
+ */
+function Forms({ letter }: { letter: string }): React.JSX.Element | null {
+  const state = useForge();
+  const forms = React.useMemo(() => formsOf(letter), [letter]);
+  const chosen = formOf(state.forge, letter);
+
+  const drawings = React.useMemo(
+    () =>
+      forms.map((form) => {
+        const drawn = drawLetter(letter, styleFor(letter, state.forge), form.id);
+        return { ...form, d: drawn ? contoursToSvgPath(drawn.contours) : "", width: drawn?.advanceWidth ?? 1 };
+      }),
+    [forms, letter, state.forge, state.revision],
+  );
+
+  if (forms.length === 0) return null;
+  const { metrics } = state.forge.style;
+
+  return (
+    <section className="border-b border-border p-3" data-forge-forms={letter}>
+      <h3 className="pb-2 text-2xs font-medium">Shape of {letter}</h3>
+      <div className="flex flex-wrap gap-1.5">
+        {drawings.map((form) => (
+          <button
+            key={form.id || "default"}
+            type="button"
+            title={`${form.label}: ${form.hint}`}
+            aria-pressed={chosen === form.id}
+            aria-label={form.label}
+            onClick={() => forgeStore.chooseAlternate(form.id)}
+            data-forge-form={form.id || "default"}
+            className={cn(
+              "flex size-12 items-center justify-center rounded-md border transition-colors",
+              chosen === form.id
+                ? "border-[color:var(--accent)] bg-[color:color-mix(in_oklab,var(--accent)_12%,transparent)]"
+                : "border-border hover:border-muted-foreground hover:bg-card",
+            )}
+          >
+            <svg
+              viewBox={`0 ${-metrics.ascender} ${Math.max(form.width, 1)} ${metrics.ascender - metrics.descender}`}
+              className="h-8 w-8"
+              aria-hidden
+            >
+              <g transform="scale(1,-1)">
+                <path d={form.d} fill="var(--foreground)" fillRule="nonzero" />
+              </g>
+            </svg>
+          </button>
+        ))}
+      </div>
+      <p className="pt-2 text-2xs leading-snug text-muted-foreground">
+        A different skeleton for this letter alone. The pen, the proportions and
+        every part still reach it.
+      </p>
+    </section>
   );
 }
 

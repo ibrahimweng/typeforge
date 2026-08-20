@@ -17,7 +17,7 @@
  * those.
  */
 
-import { LETTERS, recordPartsWhile, type PartName } from "./letters";
+import { LETTERS, recipeOf, recordPartsWhile, type PartName } from "./letters";
 import type { Parts, Style } from "./style";
 
 export type { PartName };
@@ -346,11 +346,11 @@ export function specFor(part: PartName): PartSpec | undefined {
  * down twice, so a letter that gains a crossbar tomorrow starts offering the
  * crossbar controls without anyone remembering to say so.
  */
-export function partsUsedBy(letter: string, style: Style): PartName[] {
-  const recipe = LETTERS[letter];
+export function partsUsedBy(letter: string, style: Style, form?: string): PartName[] {
+  const recipe = recipeOf(letter, form);
   if (!recipe) return [];
   const found = recordPartsWhile(() => recipe(style));
-  if (found.has("terminal") && takesSerif(letter, style)) found.add("slab");
+  if (found.has("terminal") && takesSerif(letter, style, form)) found.add("slab");
   return [...found].sort((a, b) => order(a) - order(b));
 }
 
@@ -372,8 +372,8 @@ export function partsUsedBy(letter: string, style: Style): PartName[] {
  * zero. Offered only when serifs were already on and already big enough, there
  * was no way to switch them on at all.
  */
-function takesSerif(letter: string, style: Style): boolean {
-  const recipe = LETTERS[letter];
+function takesSerif(letter: string, style: Style, form?: string): boolean {
+  const recipe = recipeOf(letter, form);
   if (!recipe) return false;
   return recipe(serifsForced(style)).strokes.some((stroke) => {
     const segments = stroke.spine.segments;
