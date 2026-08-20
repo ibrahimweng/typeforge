@@ -83,8 +83,68 @@ export type PartName =
  */
 let recording: Set<PartName> | null = null;
 
+/*
+ * The same question asked of one run rather than of the whole letter.
+ *
+ * Which parts a letter has is enough to decide what the panel offers. It is not
+ * enough to say what somebody just pointed at: an n has a shoulder and a
+ * terminal, and pressing its stem is about neither. So the parts are also
+ * collected per run, drained onto each run as it is inked.
+ *
+ * That works because of the order things happen in. A recipe builds a spine --
+ * calling `arch`, which says it is using the shoulder -- and inks it
+ * immediately; nothing else can be halfway through a run in between, for the
+ * same reason a single slot is enough above. What is collected when `ink`
+ * returns is exactly what that run asked for.
+ *
+ * Held against the stroke object rather than inside it, so the geometry stays
+ * geometry: a stroke is a spine and a pen, and which named decision produced it
+ * is a fact about the drawing rather than a property of the shape. Weak, so it
+ * goes when the strokes do -- and they are built fresh on every draw.
+ */
+let pending: PartName[] = [];
+const STROKE_PARTS = new WeakMap<Stroke, PartName[]>();
+
 function uses(part: PartName): void {
   recording?.add(part);
+  pending.push(part);
+}
+
+/**
+ * A part the letter reads without any one run being about it.
+ *
+ * The terminal is settled once for the whole letter, before a single run
+ * exists. Collected as a run's own part it would land on whichever run happened
+ * to be inked first, which is a run picked by the order the recipe was written
+ * in rather than by anything to do with terminals.
+ */
+function usesThroughout(part: PartName): void {
+  recording?.add(part);
+}
+
+/** Note what this run turned out to be built from, and start the next one. */
+function remember(stroke: Stroke): Stroke {
+  STROKE_PARTS.set(stroke, pending);
+  pending = [];
+  return stroke;
+}
+
+/** Which named parts one run of a letter was built from. */
+export function partsOfStroke(stroke: Stroke): PartName[] {
+  return STROKE_PARTS.get(stroke) ?? [];
+}
+
+/**
+ * A stroke rebuilt from another one keeps what the first one said.
+ *
+ * Anything that adjusts a run after it is inked -- pulling a spine back from a
+ * round cap, and whatever comes next -- returns a fresh object, and without
+ * this the note made while it was drawn would be dropped on the floor. It is
+ * still the same run of the same letter.
+ */
+function inherit(from: Stroke, to: Stroke): Stroke {
+  if (to !== from) STROKE_PARTS.set(to, partsOfStroke(from));
+  return to;
 }
 
 /** Draw something and report which parts it turned out to need. */
@@ -461,7 +521,7 @@ function frame(style: Style): Frame {
  * existed, which left no way to switch them on in the first place.
  */
 function endFor(style: Style): Terminal {
-  uses("terminal");
+  usesThroughout("terminal");
   return terminalFor(style);
 }
 
@@ -481,7 +541,10 @@ function ink(frame: Frame, spine: Spine, start: Terminal = BUTT, end: Terminal =
     if (frame.style.parts.ball.size > 0) uses("ball");
   }
   if (hasCorner(spine)) uses("corner");
-  return {
+  // The style's own terminal, rather than a plain cut buried inside another
+  // stroke: a run wearing one is a run the terminal controls are about.
+  if (start === frame.end || end === frame.end) uses("terminal");
+  return remember({
     /*
      * Waved after the corners are rounded, not before. Rounding a corner is a
      * conversation between two straight runs, and a run that has already gone
@@ -493,7 +556,7 @@ function ink(frame: Frame, spine: Spine, start: Terminal = BUTT, end: Terminal =
     start,
     end,
     join: frame.style.parts.corner.join,
-  };
+  });
 }
 
 /** Whether anything in this run turns between two straight pieces. */
@@ -519,14 +582,15 @@ function thin(frame: Frame, spine: Spine, start: Terminal = BUTT, end: Terminal 
   uses("crossbar");
   const { pen, parts } = frame.style;
   const weight = pen.weight * parts.crossbar.weight;
+  if (start === frame.end || end === frame.end) uses("terminal");
   // Waved against its own width rather than the font's stem, or a bar lighter
   // than the stems would be allowed a deeper wave than it can turn through.
-  return {
+  return remember({
     spine: rippled(frame, spine, weight / 2),
     pen: { ...pen, weight },
     start,
     end,
-  };
+  });
 }
 
 /**
@@ -661,8 +725,13 @@ function capped(frame: Frame, stroke: Stroke): Stroke {
       : terminal;
   const start = cut(stroke.start, startLean);
   const end = cut(stroke.end, endLean);
-  if (fromStart <= 0 && fromEnd <= 0) return { ...stroke, start, end };
-  return { ...stroke, start, end, spine: shortened(stroke.spine, fromStart, fromEnd) };
+  if (fromStart <= 0 && fromEnd <= 0) return inherit(stroke, { ...stroke, start, end });
+  return inherit(stroke, {
+    ...stroke,
+    start,
+    end,
+    spine: shortened(stroke.spine, fromStart, fromEnd),
+  });
 }
 
 /**
@@ -2932,9 +3001,20 @@ export function recipeOf(
   name: LetterName,
   form?: string,
 ): ((style: Style) => Recipe) | undefined {
-  if (form) {
-    const chosen = ALTERNATES[name]?.find((alternate) => alternate.id === form);
-    if (chosen) return chosen.build;
-  }
-  return LETTERS[name];
+  const build = form
+    ? (ALTERNATES[name]?.find((alternate) => alternate.id === form)?.build ?? LETTERS[name])
+    : LETTERS[name];
+  if (!build) return undefined;
+  /*
+   * Every letter starts with nothing collected.
+   *
+   * A recipe that builds a spine and thinks better of it leaves what that spine
+   * said behind, and without this it would be handed to the next run inked --
+   * which might be the next run of the next letter. One line, and the run-level
+   * collection cannot leak across a boundary it was never meant to cross.
+   */
+  return (style: Style) => {
+    pending = [];
+    return build(style);
+  };
 }

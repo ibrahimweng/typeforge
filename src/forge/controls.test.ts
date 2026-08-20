@@ -28,6 +28,37 @@ import { drawLetter, letterNames } from "./build";
 import { LETTERS, formsOf } from "./letters";
 import { METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS, type FieldControl } from "./parts";
 import { BASES, SANS, type Metrics, type Parts, type Style } from "./style";
+
+/*
+ * A base is a starting point, and the panel has to be able to show one.
+ *
+ * A control whose range does not cover the base it opens on is a slider pinned
+ * at its end showing a value it cannot express, and the first touch of it
+ * changes a font nobody edited. One base was drawn outside its control this
+ * way and it took a test of something else to notice.
+ */
+describe("the bases sit inside their own controls", () => {
+  it("every base, every control", () => {
+    const outside: string[] = [];
+    for (const base of BASES) {
+      const em = base.metrics.unitsPerEm;
+      const check = (where: string, control: FieldControl, value: unknown) => {
+        if (typeof value !== "number") return;
+        const scale = control.emRelative ? em : 1;
+        if (value < control.min * scale - 1e-9 || value > control.max * scale + 1e-9) {
+          outside.push(`${base.name} ${where}.${control.key} = ${value}`);
+        }
+      };
+      for (const control of PEN_CONTROLS) check("pen", control, (base.pen as unknown as Record<string, unknown>)[control.key]);
+      for (const control of METRIC_CONTROLS) check("metrics", control, (base.metrics as unknown as Record<string, unknown>)[control.key]);
+      for (const spec of PART_SPECS) {
+        const values = (base.parts as unknown as Record<string, Record<string, unknown>>)[spec.name];
+        for (const control of spec.controls) check(spec.name, control as FieldControl, values?.[control.key]);
+      }
+    }
+    expect(outside).toEqual([]);
+  });
+});
 import type { Pen } from "./types";
 
 const NAMES = letterNames();

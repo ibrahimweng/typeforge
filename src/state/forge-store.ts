@@ -57,6 +57,15 @@ export interface ForgeState {
   reversed: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  /**
+   * The control the panel has been asked to show, named as a drive.
+   *
+   * Set by pressing a spot on the letter, which is a way of finding a control
+   * by pointing at what it does rather than by reading forty labels. The count
+   * beside it is bumped on every ask, so pressing the same spot twice takes the
+   * panel back there instead of doing nothing the second time.
+   */
+  focus: { id: string; asked: number } | null;
   /** Bumped on every change, so views can memoise against it. */
   revision: number;
 }
@@ -74,6 +83,7 @@ class ForgeStore {
     reversed: false,
     canUndo: false,
     canRedo: false,
+    focus: null,
     revision: 0,
   };
 
@@ -145,6 +155,11 @@ class ForgeStore {
 
   setScope(scope: Scope): void {
     this.set({ scope });
+  }
+
+  /** Ask the panel to show one control, and to say which one it is showing. */
+  showControl(id: string): void {
+    this.set({ focus: { id, asked: (this.state.focus?.asked ?? 0) + 1 } });
   }
 
   setFamilyName(familyName: string): void {

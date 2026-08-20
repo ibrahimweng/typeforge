@@ -159,7 +159,10 @@ export const PART_SPECS: PartSpec[] = [
         label: "Reach",
         hint: "How far the bar sticks out past the stroke on each side, counted in stem widths. Two thirds of a stem is an ordinary text serif; past one it reads as a slab face.",
         min: 0,
-        max: 1.5,
+        // Far enough to hold every base. The Wavy face is drawn at 1.55, and
+        // with the top of this at 1.5 its slider opened pinned at the end and
+        // silently shortened the serifs of a font nobody had edited yet.
+        max: 1.6,
         step: 0.01,
       },
       {

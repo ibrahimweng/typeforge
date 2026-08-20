@@ -20,9 +20,10 @@ import { CoachMark } from "@/components/CoachMark";
 import { Reference } from "@/components/Reference";
 import { contoursToSvgPath } from "@/font/geometry";
 import { letterNames, skeletonOf } from "@/forge/build";
-import { draw, formOf, isException, isImported, partsOf, styleFor } from "@/forge/document";
+import { draw, formOf, isException, isImported, partsOf, reach, styleFor } from "@/forge/document";
 import { handlesFor, valueAfter, type Handle } from "@/forge/handles";
 import { troubles } from "@/forge/health";
+import { driveId, valueOf, whatGoverns, type Governing } from "@/forge/probe";
 import { segment, tile } from "@/components/controls";
 import { forgeStore, useForge, type Phase } from "@/state/useForge";
 import { useLibrary } from "@/state/useLibrary";
@@ -78,6 +79,15 @@ function Stage({
   const svgRef = React.useRef<SVGSVGElement>(null);
   const [held, setHeld] = React.useState<string | null>(null);
   const [view, setView] = React.useState({ zoom: 1, x: 0, y: 0 });
+  /*
+   * The handle put there by pressing a spot, and what was said about it.
+   *
+   * Kept here rather than in the document because it is a question that was
+   * asked, not a change that was made: undoing an edit should not take a handle
+   * away, and it does not belong in a file anybody exports.
+   */
+  const [found, setFound] = React.useState<Governing | null>(null);
+  const [missed, setMissed] = React.useState(false);
 
   const form = formOf(state.forge, letter);
   const drawn = React.useMemo(
@@ -104,6 +114,54 @@ function Stage({
         : [],
     [letter, state.forge, form, outside, state.showSkeleton, revision],
   );
+
+  // A handle found on one letter means nothing on the next one.
+  React.useEffect(() => {
+    setFound(null);
+    setMissed(false);
+  }, [letter, form, outside]);
+
+  /*
+   * How far an edit through this handle would carry.
+   *
+   * The point of pressing a spot is to change the font, and the thing worth
+   * knowing before pulling is how much of it moves. A part says how many
+   * letters have it; the pen and the proportions are read by all of them.
+   */
+  const carries = React.useMemo(() => {
+    const drive = found?.handle.drive;
+    if (!drive) return "";
+    if (drive.on !== "part") return "every letter";
+    const { letters } = reach(state.forge, drive.part);
+    return `${letters.length} ${letters.length === 1 ? "letter" : "letters"}`;
+  }, [found, state.forge, revision]);
+
+  /*
+   * The found handle, with its value read afresh.
+   *
+   * Where it sits, which way it pulls and how fast were all measured when the
+   * spot was pressed and do not change. What it is currently set to does, on
+   * every drag and every touch of the panel -- and a handle holding the value
+   * from when it was made would start its second drag from the first one's
+   * beginning and throw away everything in between.
+   */
+  const probed = React.useMemo<Handle | null>(() => {
+    if (!found) return null;
+    const style = styleFor(letter, state.forge);
+    return { ...found.handle, value: valueOf(style, found.handle.drive) };
+  }, [found, letter, state.forge, revision]);
+
+  /*
+   * The hand-placed handles, less any that would say the same thing twice.
+   *
+   * A press on the bar of an H finds the crossbar, and the crossbar already has
+   * a handle of its own sitting in the middle of the letter. Two dots driving
+   * one number, a stem apart, is a question about which of them is the real
+   * one.
+   */
+  const standing = probed
+    ? handles.filter((handle) => driveId(handle.drive) !== driveId(probed.drive))
+    : handles;
   const { metrics } = state.forge.style;
   const { reference } = useLibrary();
 
@@ -157,6 +215,42 @@ function Stage({
     window.addEventListener("pointerup", done);
   };
 
+  /** Where a pointer is, in the units the letter is drawn in. */
+  const spotOf = (event: React.MouseEvent): { x: number; y: number } | null => {
+    const svg = svgRef.current;
+    const screen = svg?.getScreenCTM();
+    if (!svg || !screen) return null;
+    // Through the browser's own matrix rather than by arithmetic on the box:
+    // the drawing is fitted into whatever room it was given, and working the
+    // fit out again by hand is a second copy of a sum the browser has already
+    // done and will keep doing correctly.
+    const inside = new DOMPoint(event.clientX, event.clientY).matrixTransform(screen.inverse());
+    // The letter is drawn inside a flip, because font y runs up.
+    return { x: inside.x, y: -inside.y };
+  };
+
+  /*
+   * Press a spot, and get whatever is behind it.
+   *
+   * The other way to reach a control is to read the panel, which means knowing
+   * that the curve where an arch leaves its stem is called the shoulder. This
+   * way round asks for none of that: point at the part of the letter you want
+   * to change, and the control that changes it comes to you -- as a handle on
+   * the edge you pressed, and as the panel scrolled to the row it lives on.
+   *
+   * A letter that came in from outside is not drawn from a skeleton, so there
+   * is nothing behind any of it and it is not asked.
+   */
+  const probe = (event: React.MouseEvent) => {
+    if (outside) return;
+    const spot = spotOf(event);
+    if (!spot) return;
+    const governing = whatGoverns(letter, styleFor(letter, state.forge), spot, form);
+    setFound(governing);
+    setMissed(governing === null);
+    if (governing) forgeStore.showControl(driveId(governing.handle.drive));
+  };
+
   /*
    * A drag, in font units.
    *
@@ -201,7 +295,7 @@ function Stage({
   const viewBox = `${left} ${-top + view.y} ${width / view.zoom} ${height / view.zoom}`;
 
   return (
-    <div className="relative flex min-h-0 flex-[3] items-center justify-center bg-[var(--canvas)] px-6">
+    <div className="relative flex min-h-0 flex-[3] select-none items-center justify-center bg-[var(--canvas)] px-6">
       <svg
         ref={svgRef}
         viewBox={viewBox}
@@ -210,6 +304,7 @@ function Stage({
         aria-label={`The letter ${letter}`}
         data-forge-stage={letter}
         onWheel={wheel}
+        onDoubleClick={probe}
       >
         {/* Somewhere to grab that is not the letter, for panning. */}
         <rect
@@ -289,7 +384,7 @@ function Stage({
             </g>
           ))}
 
-          {handles.map((handle) => (
+          {standing.map((handle) => (
             <g key={handle.id}>
               {handle.guide && (
                 <line
@@ -311,6 +406,13 @@ function Stage({
                 stroke="var(--canvas)"
                 strokeWidth={unit * 1.2}
                 onPointerDown={startDrag(handle)}
+                /* Pressing a handle is asking about the handle, not about the
+                   letter underneath it -- so the panel is sent to its control
+                   rather than the spot being read for whatever else is there. */
+                onDoubleClick={(event) => {
+                  event.stopPropagation();
+                  forgeStore.showControl(driveId(handle.drive));
+                }}
                 data-forge-handle={handle.id}
                 className={cn(
                   "transition-[r]",
@@ -321,6 +423,44 @@ function Stage({
               </circle>
             </g>
           ))}
+          {/*
+            The handle the press put there.
+
+            Drawn larger and with a ring, because it is the answer to a question
+            somebody just asked and the standing handles are not. The line
+            through it says which way it pulls, which a dot on its own does not.
+          */}
+          {probed && (
+            <g data-forge-probed={driveId(probed.drive)}>
+              <line
+                x1={probed.axis === "x" ? probed.at.x - unit * 14 : probed.at.x}
+                y1={probed.axis === "x" ? probed.at.y : probed.at.y - unit * 14}
+                x2={probed.axis === "x" ? probed.at.x + unit * 14 : probed.at.x}
+                y2={probed.axis === "x" ? probed.at.y : probed.at.y + unit * 14}
+                stroke="var(--accent)"
+                strokeWidth={unit * 1.1}
+                strokeLinecap="round"
+                opacity={0.75}
+              />
+              <circle
+                cx={probed.at.x}
+                cy={probed.at.y}
+                r={unit * (held === probed.id ? 7 : 5.5)}
+                fill="var(--accent)"
+                stroke="var(--canvas)"
+                strokeWidth={unit * 1.6}
+                onPointerDown={startDrag(probed)}
+                onDoubleClick={(event) => event.stopPropagation()}
+                data-forge-handle={probed.id}
+                className={cn(
+                  "transition-[r]",
+                  probed.axis === "x" ? "cursor-ew-resize" : "cursor-ns-resize",
+                )}
+              >
+                <title>{`${probed.label}: ${probed.hint}`}</title>
+              </circle>
+            </g>
+          )}
         </g>
       </svg>
 
@@ -360,7 +500,33 @@ function Stage({
           happening rather than after it. */}
       {held && (
         <div className="pointer-events-none absolute right-4 top-3 rounded bg-card px-2 py-1 text-2xs text-foreground">
-          {handles.find((handle) => handle.id === held)?.label}
+          {[...standing, ...(probed ? [probed] : [])].find((handle) => handle.id === held)?.label}
+        </div>
+      )}
+
+      {/*
+        What the press found, in the words the panel uses for it.
+
+        Worth saying out loud rather than leaving to the dot that appeared:
+        somebody who presses the arch of an n and gets a handle has learnt where
+        to drag, and somebody who is told it is the shoulder has learnt what the
+        thing is called and can find it again from the panel tomorrow.
+      */}
+      {!held && found && probed && (
+        <div
+          className="pointer-events-none absolute bottom-3 right-4 max-w-64 rounded bg-card px-2 py-1 text-2xs text-muted-foreground"
+          data-forge-found={driveId(probed.drive)}
+        >
+          <span className="text-foreground">{probed.label}</span>
+          {` · reaches ${carries}`}
+        </div>
+      )}
+      {!held && missed && (
+        <div
+          className="pointer-events-none absolute bottom-3 right-4 max-w-64 rounded bg-card px-2 py-1 text-2xs text-muted-foreground"
+          data-forge-found="nothing"
+        >
+          Nothing shapes that spot. Press an edge of the letter.
         </div>
       )}
     </div>

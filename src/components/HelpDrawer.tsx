@@ -155,6 +155,16 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
             told to keep its own version says so, and it is the only one that does. The one
             exception is the shape of a letter: choosing a two-storey a says nothing about the g.
           </p>
+          <p>
+            <Term>Double-click any edge of the letter</Term> to find the control behind it without
+            knowing what it is called. Press the curve where an arch leaves its stem and you get the
+            shoulder; press the side of a stem and you get the weight; press the foot of a serifed l
+            and you get the serif. A handle appears where you pressed, the panel scrolls to the row
+            that control lives on, and the drag reaches the whole font like every other edit. Which
+            control is behind a spot is measured rather than looked up: each candidate is nudged,
+            the letter is drawn again, and the one that moves the place you pressed wins -- which is
+            also how the handle knows how fast to follow your pointer.
+          </p>
         </Section>
 
         <Section title="The families of type" half="drawn">

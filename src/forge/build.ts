@@ -10,7 +10,14 @@
 
 import { contourArea, contoursBounds, reverseContour } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
-import { FIGURES, LETTERS, recipeOf, type Recipe } from "./letters";
+import {
+  FIGURES,
+  LETTERS,
+  partsOfStroke,
+  recipeOf,
+  type PartName,
+  type Recipe,
+} from "./letters";
 import { alongSpine, spinePath, wavy } from "./shapes";
 import { penReach, reachAlong, sweep } from "./sweep";
 import type { Style } from "./style";
@@ -77,14 +84,116 @@ const ROUND_TIGHTENING = 0.82;
  * shoulder and one serif.
  */
 export function drawLetter(name: string, style: Style, form?: string): Drawn | null {
+  const made = makeLetter(name, style, form);
+  return made ? { contours: made.contours, advanceWidth: made.advanceWidth } : null;
+}
+
+/** One run of a letter: its ink, and the named decisions it was built from. */
+export interface Run {
+  contours: Contour[];
+  parts: PartName[];
+}
+
+export interface Made extends Drawn {
+  /** The letter taken apart again, in the order it was drawn. */
+  runs: Run[];
+  /**
+   * How far sideways the finished drawing was moved.
+   *
+   * Kept so that a question about the shape can be asked without the answer
+   * depending on where the letter came to rest: making a stem heavier pushes
+   * its left flank out and then slides the whole letter back by the same
+   * amount, and on the page that flank never moves at all.
+   */
+  slide: number;
+}
+
+/**
+ * The letter, and each of its runs kept separately.
+ *
+ * Everything done to the drawing after the strokes are swept -- the lean, the
+ * nudge back inside the sidebearing, the centring a monospaced face does -- is
+ * one shear and one slide applied to the whole letter. So they are worked out
+ * once from the letter as a whole and then applied to each run as well, which
+ * is why a run's ink lands exactly where that part of the letter is rather than
+ * somewhere near it.
+ *
+ * Splitting the sweep by run costs nothing: it was already one sweep per stroke
+ * and this only declines to pour them into the same bucket.
+ */
+export function makeLetter(name: string, style: Style, form?: string): Made | null {
   const recipe = recipeOf(name, form);
   if (!recipe) return null;
   const built: Recipe = recipe(style);
 
-  const upright = built.strokes.flatMap((stroke) => inkOf(stroke, style));
-  const drawn = insideTheEdge(leaning(upright, style), style);
-  if (style.metrics.monospaced) return centred(drawn, style);
-  return { contours: drawn, advanceWidth: advanceFor(name, built, drawn, style) };
+  const inked = built.strokes.map((stroke) => inkOf(stroke, style));
+  const lean = leanOf(style);
+  const pivot = style.metrics.xHeight / 2;
+
+  const leant = sheared(inked.flat(), lean, pivot);
+  // Only the letters that actually cross are moved, and each by exactly what
+  // it needs.
+  const shortfall = leant.length > 0
+    ? Math.max(0, style.metrics.sidebearing - contoursBounds(leant).xMin)
+    : 0;
+  const placed = slid(leant, shortfall);
+
+  let advanceWidth: number;
+  /*
+   * A monospaced letter keeps the width it was drawn at and is moved to sit in
+   * the middle of the common advance. The shapes are not squeezed or stretched
+   * to match: they are set in a column and centred there, which is what a
+   * monospaced face is. An i in a space made for an m looks lost, and that is
+   * the honest answer rather than a fault to be hidden.
+   */
+  let centring = 0;
+  if (style.metrics.monospaced) {
+    advanceWidth = monoAdvance(style);
+    if (placed.length > 0) {
+      const bounds = contoursBounds(placed);
+      centring = (advanceWidth - bounds.xMin - bounds.xMax) / 2;
+    }
+  } else {
+    advanceWidth = advanceFor(name, built, placed, style);
+  }
+
+  const slide = shortfall + centring;
+  return {
+    advanceWidth,
+    slide,
+    contours: slid(placed, centring),
+    runs: inked.map((contours, index) => ({
+      contours: slid(sheared(contours, lean, pivot), slide),
+      parts: partsOfStroke(built.strokes[index]),
+    })),
+  };
+}
+
+/** How far a letter leans, as a shear rather than as an angle. */
+function leanOf(style: Style): number {
+  return style.metrics.slant ? Math.tan((style.metrics.slant * Math.PI) / 180) : 0;
+}
+
+function moved(contours: Contour[], move: (point: Vec2) => Vec2): Contour[] {
+  return contours.map((contour) => ({
+    ...contour,
+    nodes: contour.nodes.map((node) => ({
+      ...node,
+      point: move(node.point),
+      handleIn: node.handleIn ? move(node.handleIn) : null,
+      handleOut: node.handleOut ? move(node.handleOut) : null,
+    })),
+  }));
+}
+
+function sheared(contours: Contour[], lean: number, pivot: number): Contour[] {
+  if (!lean) return contours;
+  return moved(contours, (point) => ({ x: point.x + (point.y - pivot) * lean, y: point.y }));
+}
+
+function slid(contours: Contour[], by: number): Contour[] {
+  if (by === 0) return contours;
+  return moved(contours, (point) => ({ x: point.x + by, y: point.y }));
 }
 
 /**
@@ -168,35 +277,6 @@ function advanceFor(name: string, recipe: Recipe, contours: Contour[], style: St
   if (recipe.width !== undefined) return recipe.width;
   if (FIGURES.includes(name)) return figureAdvance(style);
   return measure(recipe, contours, style);
-}
-
-/**
- * A letter given the common advance, and moved to sit in the middle of it.
- *
- * The letters keep the widths they were drawn at. What changes is the space
- * each one is put in, which is what a monospaced face is: the shapes are not
- * squeezed or stretched to match, they are set in a column and centred there.
- * An i in a space made for an m looks lost, and that is the honest answer
- * rather than a fault to be hidden.
- */
-function centred(contours: Contour[], style: Style): Drawn {
-  const advanceWidth = monoAdvance(style);
-  if (contours.length === 0) return { contours, advanceWidth };
-  const bounds = contoursBounds(contours);
-  const shift = (advanceWidth - bounds.xMin - bounds.xMax) / 2;
-  const move = (point: Vec2): Vec2 => ({ x: point.x + shift, y: point.y });
-  return {
-    advanceWidth,
-    contours: contours.map((contour) => ({
-      ...contour,
-      nodes: contour.nodes.map((node) => ({
-        ...node,
-        point: move(node.point),
-        handleIn: node.handleIn ? move(node.handleIn) : null,
-        handleOut: node.handleOut ? move(node.handleOut) : null,
-      })),
-    })),
-  };
 }
 
 /**

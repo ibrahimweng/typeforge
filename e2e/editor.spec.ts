@@ -757,6 +757,26 @@ async function dragHandle(page: Page, id: string, dx: number, dy: number): Promi
   await page.mouse.up();
 }
 
+/**
+ * Double-click a spot on the letter, given where that spot is in font units.
+ *
+ * Through the browser's own matrix rather than by working out where the letter
+ * landed: the drawing is fitted into whatever room the window gave it, and a
+ * second copy of that sum in the tests would be a second thing to keep right.
+ */
+async function pressSpot(page: Page, x: number, y: number): Promise<void> {
+  const at = await page.evaluate(([fx, fy]) => {
+    const svg = document.querySelector("[data-forge-stage]") as SVGSVGElement | null;
+    const screen = svg?.getScreenCTM();
+    if (!svg || !screen) return null;
+    // The letter is drawn inside a flip, because font y runs up.
+    const spot = new DOMPoint(fx, -fy).matrixTransform(screen);
+    return { x: spot.x, y: spot.y };
+  }, [x, y]);
+  if (!at) throw new Error("no stage to press");
+  await page.mouse.dblclick(at.x, at.y);
+}
+
 async function openForge(page: Page): Promise<void> {
   await page.goto("/");
   await page.getByRole("button", { name: "Draw" }).click();
@@ -810,6 +830,72 @@ test("offers handles for the parts the letter has, and no others", async ({ page
   await page.locator('[data-forge-cell="o"]').click();
   expect(await on()).not.toContain("shoulder");
   expect(await on()).toContain("weight");
+});
+
+/*
+ * Pressing a spot instead of reading the panel.
+ *
+ * The panel has forty controls in it and knowing that the curve where an arch
+ * leaves its stem is called the shoulder is most of what it takes to find the
+ * right one. Pressing the curve asks for none of that -- so what these check is
+ * that the answer is the one a person would give, that it arrives in both
+ * places at once, and that pulling it still moves the whole font.
+ */
+test("double-clicking the arch of an n opens the shoulder", async ({ page }) => {
+  await openForge(page);
+
+  // The outside of the curve, where the arch leaves the stem.
+  await pressSpot(page, 110, 447);
+
+  // A handle on the edge that was pressed.
+  await expect(page.locator('[data-forge-probed="part:shoulder:spring"]')).toBeVisible();
+  // Said in the words the panel uses, with how far a pull would carry.
+  await expect(page.locator("[data-forge-found]")).toContainText("Springing");
+  await expect(page.locator("[data-forge-found]")).toContainText("reaches");
+  // And the panel is on that control, marked and scrolled to.
+  const row = page.locator('[data-forge-control="part:shoulder:spring"]');
+  await expect(row).toBeInViewport();
+  await expect(row).toHaveClass(/ring-1/);
+});
+
+test("double-clicking the bar of an H opens the crossbar, and pulling it moves the font", async ({
+  page,
+}) => {
+  await openForge(page);
+  await page.locator('[data-forge-cell="H"]').click();
+  await settle(page);
+
+  const before = {
+    H: await page.locator('[data-forge-cell="H"] path').getAttribute("d"),
+    E: await page.locator('[data-forge-cell="E"] path').getAttribute("d"),
+    o: await page.locator('[data-forge-cell="o"] path').getAttribute("d"),
+  };
+
+  // Just above the middle of the letter, which is where the bar is.
+  await pressSpot(page, 332, 397);
+  await expect(page.locator('[data-forge-probed="part:crossbar:height"]')).toBeVisible();
+
+  await dragHandle(page, "part:crossbar:height", 0, -40);
+
+  // The letter it was pulled on, and the other letters with a bar.
+  await expect
+    .poll(() => page.locator('[data-forge-cell="H"] path').getAttribute("d"))
+    .not.toBe(before.H);
+  await expect
+    .poll(() => page.locator('[data-forge-cell="E"] path').getAttribute("d"))
+    .not.toBe(before.E);
+  // And not the ones without: an o has no bar to move.
+  expect(await page.locator('[data-forge-cell="o"] path').getAttribute("d")).toBe(before.o);
+});
+
+test("says so when nothing shapes the spot", async ({ page }) => {
+  await openForge(page);
+
+  // The middle of the counter of an n, which is a hole rather than an edge.
+  await pressSpot(page, 350, 250);
+
+  await expect(page.locator('[data-forge-found="nothing"]')).toBeVisible();
+  await expect(page.locator("[data-forge-probed]")).toHaveCount(0);
 });
 
 test("pulls the weight out of one letter and every letter follows", async ({ page }) => {

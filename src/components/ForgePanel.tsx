@@ -126,6 +126,7 @@ export function ForgePanel(): React.JSX.Element {
           {PEN_CONTROLS.map((control) => (
             <Field
               key={control.key}
+              on="pen"
               control={control}
               value={(forge.style.pen as unknown as Record<string, number>)[control.key]}
               onChange={(next, phase) => forgeStore.changePen({ [control.key]: next } as never, phase)}
@@ -182,6 +183,7 @@ export function ForgePanel(): React.JSX.Element {
           {METRIC_CONTROLS.map((control) => (
             <Field
               key={control.key}
+              on="metrics"
               control={control}
               value={(forge.style.metrics as unknown as Record<string, number | boolean>)[control.key]}
               onChange={(next, phase) => forgeStore.changeMetrics({ [control.key]: next } as never, phase)}
@@ -462,6 +464,8 @@ function Control({
   const state = useForge();
   const em = state.forge.style.metrics.unitsPerEm;
   const scale = control.emRelative ? em : 1;
+  const id = `part:${part}:${control.key}`;
+  const { ref, shown } = useShown(id);
 
   /*
    * A choice between named shapes rather than a number.
@@ -525,7 +529,7 @@ function Control({
 
   const value = Number(values[control.key] ?? 0);
   return (
-    <div className="py-1">
+    <div className={cn("py-1", shown && SHOWN)} ref={ref} data-forge-control={id}>
       {/* The slider draws its own label from `name`, so there is no second one
           here; passing an identifier instead showed people "slab-projection". */}
       <Slider
@@ -547,6 +551,40 @@ function Control({
     </div>
   );
 }
+
+/**
+ * Bring a control into view when the letter is asked about it.
+ *
+ * Pressing a spot on the drawing names a control, and a name is no use if the
+ * control it names is forty rows down a scrolling panel. So the row is scrolled
+ * to, marked for a moment so it can be found by eye among its neighbours, and
+ * its slider is given the keyboard -- which makes the arrow keys work on the
+ * thing that was just pressed, and is the fastest way to nudge a number.
+ *
+ * Keyed on how many times the question has been asked rather than on which
+ * control was named, or pressing the same spot twice would scroll once.
+ */
+function useShown(id: string): {
+  ref: React.RefObject<HTMLDivElement | null>;
+  shown: boolean;
+} {
+  const state = useForge();
+  const ref = React.useRef<HTMLDivElement>(null);
+  const mine = state.focus?.id === id;
+  const asked = mine ? state.focus?.asked : null;
+
+  React.useEffect(() => {
+    if (!mine || !ref.current) return;
+    ref.current.scrollIntoView({ block: "center", behavior: "smooth" });
+    const slider = ref.current.querySelector<HTMLElement>('[role="slider"]');
+    slider?.focus({ preventScroll: true });
+  }, [mine, asked]);
+
+  return { ref, shown: mine };
+}
+
+/** How a row marks itself while it is the one being pointed at. */
+const SHOWN = "-mx-1 rounded-md px-1 ring-1 ring-[color:var(--accent)]";
 
 function Section({
   title,
@@ -575,8 +613,11 @@ function Field({
   control,
   value,
   onChange,
+  on,
 }: {
   control: FieldControl;
+  /** Which half of the style this control lives in, for naming it. */
+  on: "pen" | "metrics";
   /*
    * Undefined is a real state, not a mistake to be asserted away.
    *
@@ -590,27 +631,33 @@ function Field({
 }): React.JSX.Element {
   const state = useForge();
   const scale = control.emRelative ? state.forge.style.metrics.unitsPerEm : 1;
+  const id = `${on}:${control.key}`;
+  const { ref, shown } = useShown(id);
 
   if (control.toggle) {
-    const on = Boolean(value);
+    const switched = Boolean(value);
     return (
-      <label className="flex items-center justify-between gap-2 py-1.5">
+      <label
+        className={cn("flex items-center justify-between gap-2 py-1.5", shown && SHOWN)}
+        ref={ref as unknown as React.RefObject<HTMLLabelElement>}
+        data-forge-control={id}
+      >
         <span className="min-w-0 flex-1 text-2xs text-foreground">{control.label}</span>
         <button
           type="button"
           role="switch"
-          aria-checked={on}
+          aria-checked={switched}
           aria-label={control.label}
-          onClick={() => onChange(!on, "single")}
+          onClick={() => onChange(!switched, "single")}
           className={cn(
             "h-4 w-7 shrink-0 rounded-full transition-colors",
-            on ? "bg-[color:var(--accent)]" : "bg-card",
+            switched ? "bg-[color:var(--accent)]" : "bg-card",
           )}
         >
           <span
             className={cn(
               "block size-3 rounded-full bg-background transition-transform",
-              on ? "translate-x-3.5" : "translate-x-0.5",
+              switched ? "translate-x-3.5" : "translate-x-0.5",
             )}
           />
         </button>
@@ -619,7 +666,7 @@ function Field({
   }
 
   return (
-    <div className="py-1">
+    <div className={cn("py-1", shown && SHOWN)} ref={ref} data-forge-control={id}>
       <Slider
         name={control.label}
         value={Number(value ?? control.min * scale)}

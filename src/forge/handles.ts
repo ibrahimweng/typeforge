@@ -25,7 +25,14 @@
 import { contoursBounds } from "@/font/geometry";
 import type { Vec2 } from "@/font/types";
 import { drawLetter } from "./build";
-import { METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS, partsUsedBy, type FieldControl } from "./parts";
+import {
+  METRIC_CONTROLS,
+  PART_SPECS,
+  PEN_CONTROLS,
+  partsUsedBy,
+  type FieldControl,
+  type PartName,
+} from "./parts";
 import type { Style } from "./style";
 
 /**
@@ -50,7 +57,15 @@ function partRange(part: string, key: string, em: number): { min: number; max: n
   return { min: control.min * scale, max: control.max * scale };
 }
 
-/** What a handle changes when it moves. */
+/**
+ * What a handle changes when it moves.
+ *
+ * Written out rather than left as a part name and a string, because these are
+ * the handles this file places by hand and a typo in one of them is a handle
+ * that silently drives nothing. The wider form below is for the handles found
+ * by measurement, which cannot be checked this way -- what they name is
+ * whatever the panel offered, so it is right by construction.
+ */
 export type Drive =
   | { on: "pen"; key: "weight" }
   | { on: "metrics"; key: "xHeight" | "capHeight" | "counterWidth" | "sidebearing" | "width" | "slant" }
@@ -59,6 +74,12 @@ export type Drive =
   | { on: "part"; part: "slab"; key: "projection" | "thickness" }
   | { on: "part"; part: "bowl"; key: "squareness" }
   | { on: "part"; part: "corner"; key: "radius" };
+
+/** Any control at all, for a handle that was found rather than placed. */
+export type AnyDrive =
+  | { on: "pen"; key: string }
+  | { on: "metrics"; key: string }
+  | { on: "part"; part: PartName; key: string };
 
 export interface Handle {
   id: string;
@@ -69,7 +90,7 @@ export interface Handle {
   label: string;
   /** What it does, said in the terms the panel uses. */
   hint: string;
-  drive: Drive;
+  drive: AnyDrive;
   /** The value it currently stands for. */
   value: number;
   /** How much the value changes per font unit dragged. */
