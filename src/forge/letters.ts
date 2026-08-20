@@ -539,7 +539,27 @@ function capped(frame: Frame, stroke: Stroke): Stroke {
     if (segment.kind !== "line") return 0;
     const point = which === "start" ? segment.from : segment.to;
     if (!stopsOnALine(frame, point)) return 0;
-    const steep = Math.abs(headingAt(segment, which).y);
+    const heading = headingAt(segment, which);
+    /*
+     * And only where the run has the length to be slid along.
+     *
+     * Levelling a cut carries one of its two corners back up the stroke, and
+     * how far depends on how much the stroke leans. Carried past the far end of
+     * the run it belongs to, the corner lands behind the piece before it and
+     * the stroke is drawn through itself -- which the leg of a k at a heavy
+     * weight and a wide corner asked for, at a slide of a hundred and four per
+     * cent of its own run.
+     *
+     * Four fifths rather than the whole of it, because the side of a stroke is
+     * shorter than its spine wherever a corner has been cut back into it, and
+     * it is the side the corner actually slides along. The legitimate cases sit
+     * at about six tenths, so there is room between the two.
+     */
+    const offset = reachAlong(at(-heading.y, heading.x), penReach(frame.style.pen));
+    const slide = Math.abs(offset.y / (heading.y || 1e-9));
+    const run = Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y);
+    if (slide > run * 0.8) return 0;
+    const steep = Math.abs(heading.y);
     /*
      * Neither upright nor flat: an upright is already square to its line and a
      * flat one lies along it, and it is only the ones in between that finish
@@ -564,8 +584,14 @@ function capped(frame: Frame, stroke: Stroke): Stroke {
   const fromStart = back(stroke.start, first, "start", startLean);
   const fromEnd = back(stroke.end, last, "end", endLean);
 
+  /*
+   * A square cut and a serif alike, because both of them are the same promise
+   * -- that the letter stops here -- made in two different shapes.
+   */
   const cut = (terminal: Terminal, lean: number): Terminal =>
-    lean > 0 && terminal.kind === "butt" ? { kind: "level" } : terminal;
+    lean > 0 && (terminal.kind === "butt" || terminal.kind === "slab")
+      ? { ...terminal, level: true }
+      : terminal;
   const start = cut(stroke.start, startLean);
   const end = cut(stroke.end, endLean);
   if (fromStart <= 0 && fromEnd <= 0) return { ...stroke, start, end };

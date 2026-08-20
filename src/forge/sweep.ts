@@ -577,7 +577,7 @@ function terminalNodes(
     return ellipseNodes(arc);
   }
 
-  if (terminal.kind === "level" && Math.abs(direction.y) > 1e-3) {
+  if (terminal.level && Math.abs(direction.y) > 1e-3) {
     /*
      * Both corners of the cut slid along the stroke until they are level with
      * where it was meant to stop.
@@ -704,8 +704,8 @@ export function sweep(stroke: Stroke): Contour[] {
    */
   let leftNodes = stitch(left);
   let rightNodes = stitch([...right].reverse().map(reverseOffset));
-  const levelStart = stroke.start.kind === "level";
-  const levelEnd = stroke.end.kind === "level";
+  const levelStart = stroke.start.level === true && stroke.start.kind !== "round";
+  const levelEnd = stroke.end.level === true && stroke.end.kind !== "round";
   // Counted against what the sides started with, not against what is left of
   // them: a stroke of one straight run has two nodes a side and both of them
   // are replaced, which is right, and a rule applied one end at a time would

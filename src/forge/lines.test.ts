@@ -89,6 +89,33 @@ describe("the letters stand on their lines", () => {
         }
       });
 
+      it("stops a diagonal on its line as squarely as an upright", () => {
+        /*
+         * The ends of the arms and legs, which are terminals like any other and
+         * were the last thing in the alphabet not to know it.
+         *
+         * A square cut is square to the stroke, so on a leaning one it finishes
+         * in a corner off the line; a serif is a bar across the end, so on a
+         * leaning one it leans off with it. Both are cut along the line now, and
+         * both had to be: on the serif face the wings alone put the feet of the
+         * A, K, R, V, W, X and Y between forty and seventy units under the
+         * baseline the H stood on.
+         *
+         * The points -- an A's apex, a v's vee -- are not measured here. Those
+         * are corners rather than terminals, placed by solving where the ink
+         * will reach, and what is left in them is the solver's own residue.
+         */
+        for (const name of ["V", "W", "X", "Y", "v", "w", "x", "y"]) {
+          expect(
+            Math.abs(topOf(name, style) - (name === name.toUpperCase() ? capHeight : xHeight)),
+            `${name} does not stop its arms on the line`,
+          ).toBeLessThan(slack);
+        }
+        for (const name of ["K", "R", "X", "Z", "k", "x", "z"]) {
+          expect(Math.abs(footOf(name, style)), `${name} does not stand on the baseline`).toBeLessThan(slack);
+        }
+      });
+
       it("never puts a share of the pen between a letter and its line", () => {
         /*
          * The fault this whole file exists for, stated at its widest: whatever

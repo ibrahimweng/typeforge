@@ -12,7 +12,7 @@ import { contourArea, contoursBounds, reverseContour } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { FIGURES, LETTERS, recipeOf, type Recipe } from "./letters";
 import { alongSpine, spinePath } from "./shapes";
-import { penReach, sweep } from "./sweep";
+import { penReach, reachAlong, sweep } from "./sweep";
 import type { Style } from "./style";
 import type { Stroke, Terminal } from "./types";
 
@@ -86,7 +86,7 @@ export function drawLetter(name: string, style: Style, form?: string): Drawn | n
     upright.push(...sweep(stroke));
     upright.push(...serifsFor(stroke, style));
   }
-  const contours = leaning(upright, style);
+  const contours = insideTheEdge(leaning(upright, style), style);
   return { contours, advanceWidth: advanceFor(name, built, contours, style) };
 }
 
@@ -121,22 +121,31 @@ function leaning(contours: Contour[], style: Style): Contour[] {
     })),
   }));
 
-  /*
-   * And nudged back inside its own left edge if the lean carried it out.
-   *
-   * Leaning about the waist keeps the middle of a letter where it was and
-   * swings the two ends in opposite directions, so anything reaching well below
-   * the baseline swings left -- a j at thirteen degrees crossed the origin and
-   * would have printed over whatever came before it. Only the letters that
-   * actually cross are moved, and each by exactly what it needs, which is what
-   * a slanted face wants anyway: its spacing is not its upright's spacing.
-   */
-  if (leant.length === 0) return leant;
-  const edge = style.metrics.sidebearing;
-  const shortfall = edge - contoursBounds(leant).xMin;
-  if (shortfall <= 0) return leant;
+  return leant;
+}
+
+/**
+ * The letter nudged back inside its own left edge, if anything on it reaches
+ * out past the space it was given.
+ *
+ * Two things do. Leaning about the waist keeps the middle of a letter where it
+ * was and swings the two ends in opposite directions, so anything reaching well
+ * below the baseline swings left -- a j at thirteen degrees crossed the origin
+ * and would have printed over whatever came before it. And a serif laid along a
+ * line is as wide as the stroke is across that line, which on a diagonal is
+ * wider than the stroke itself: the foot of an x on the serif face reached past
+ * its own sidebearing.
+ *
+ * Only the letters that actually cross are moved, and each by exactly what it
+ * needs. The advance is measured off the drawing afterwards, so the letter
+ * keeps its spacing rather than losing it on the other side.
+ */
+function insideTheEdge(contours: Contour[], style: Style): Contour[] {
+  if (contours.length === 0) return contours;
+  const shortfall = style.metrics.sidebearing - contoursBounds(contours).xMin;
+  if (shortfall <= 0) return contours;
   const shift = (point: Vec2): Vec2 => ({ x: point.x + shortfall, y: point.y });
-  return leant.map((contour) => ({
+  return contours.map((contour) => ({
     ...contour,
     nodes: contour.nodes.map((node) => ({
       ...node,
@@ -235,8 +244,32 @@ function serifsFor(stroke: Stroke, style: Style): Contour[] {
      * The wing still starts at the edge of the stroke it is on, or it would
      * float clear of a thin one.
      */
-    const inner = penReach(stroke.pen).across;
-    const tip = reference + projection;
+    /*
+     * A serif on a stroke that stops on a line lies along that line, whichever
+     * way the stroke came in.
+     *
+     * A bar square to a leaning stroke leans with it, so on a serif face the
+     * feet of the A, K, R, V, W, X and Y and the arms of the v, w, x and y all
+     * finished forty to seventy units past the line the stroke stopped on --
+     * which is the same fault as the one the letters themselves had, arriving
+     * by a different route. Turned flat, they sit on the line exactly, and the
+     * letter reads as one thing again.
+     *
+     * The wing is worked out in whatever frame it is drawn in, so all that
+     * changes is which way is out and how wide the stroke is measured to be:
+     * a band crossing a line at an angle is wider across that line than it is
+     * across itself.
+     */
+    const level = terminal.level === true && Math.abs(outward.y) > 1e-3;
+    const facing = level ? { x: 0, y: Math.sign(outward.y) } : outward;
+    const inner = level
+      ? levelHalfWidth(stroke, outward)
+      : penReach(stroke.pen).across;
+    // The font's own stem, or this stroke's edge if that is further out, and
+    // the projection beyond it. Measured from the stem so that every serif in
+    // the face is the same size, and from the stroke where the stroke is the
+    // wider of the two, or the wing would begin inside the ink it sits on.
+    const tip = Math.max(reference, inner) + projection;
     if (tip <= inner) continue;
     // Never fillet more than the wing is deep or wide, or the curve would have
     // to begin before the serif does.
@@ -256,10 +289,10 @@ function serifsFor(stroke: Stroke, style: Style): Contour[] {
        * the foot of an L turns up. It falls out of one rule rather than a list
        * of letters, so a letter that gains an arm tomorrow gets it too.
        */
-      if (crossesALine(at, outward, side, tip, style)) continue;
+      if (crossesALine(at, facing, side, tip, style)) continue;
       // Wound with the strokes it sits on, or the serif would cancel the stem
       // it is attached to rather than adding to it.
-      const shape = wing(at, outward, side, inner, tip, thickness, bracket);
+      const shape = wing(at, facing, side, inner, tip, thickness, bracket);
       out.push(contourArea(shape) < 0 ? reverseContour(shape) : shape);
     }
   }
@@ -306,6 +339,21 @@ function crossesALine(at: Vec2, outward: Vec2, side: number, tip: number, style:
       Math.abs(across.y) > 0.8 &&
       (far - line) * inward < 0,
   );
+}
+
+/**
+ * How far a stroke cut level with a line reaches either side of its own end,
+ * measured along that line.
+ *
+ * Not half the pen: a band crossing a line at an angle covers more of the line
+ * than it does of itself, and it is the line the serif is being laid along. The
+ * two ends of the cut are the stroke's own two edges slid along it until they
+ * are level, which is exactly what the sweep draws, so the serif starts where
+ * the ink stops rather than a little inside or outside it.
+ */
+function levelHalfWidth(stroke: Stroke, outward: Vec2): number {
+  const shift = reachAlong({ x: -outward.y, y: outward.x }, penReach(stroke.pen));
+  return Math.abs(shift.x - (outward.x * shift.y) / outward.y);
 }
 
 /**
