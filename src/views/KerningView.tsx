@@ -8,6 +8,17 @@
 
 import * as React from "react";
 
+/**
+ * How many rows either list draws.
+ *
+ * Both lists are read by scanning the first few, and a real font has far more
+ * than a few: eleven thousand pairs and twelve hundred classes is an ordinary
+ * text face. Sorted so the ones worth seeing are the ones drawn, and what is
+ * left out is said rather than quietly dropped -- all of it is exported either
+ * way.
+ */
+const MOST_ROWS = 400;
+
 import { tweenNumber } from "@/anim/motion";
 import { drawGlyph, prepareCanvas, readToken, type GlyphView } from "@/components/glyph-render";
 import { resolveAdvanceWidth } from "@/font/transform";
@@ -113,8 +124,9 @@ export function KerningView(): React.JSX.Element {
             pair.left.toLowerCase().includes(query) || pair.right.toLowerCase().includes(query),
         )
       : typeface.kerning;
-    return [...list].sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, 400);
+    return [...list].sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, MOST_ROWS);
   }, [typeface, pairFilter, state.revision]);
+
 
   if (!typeface) {
     return (
@@ -353,6 +365,24 @@ function ClassList({
 }): React.JSX.Element {
   const state = useAppState();
   const typeface = state.typeface;
+
+  /*
+   * The classes, biggest first, and only as many as are worth drawing.
+   *
+   * A font's class kerning is not a handful of rules: opening Inter gives
+   * twelve hundred of them, and every row here is two text fields, a number
+   * field and a join of a few dozen glyph names. Drawing the lot is several
+   * thousand form elements for a panel nobody scrolls to the end of, so the
+   * ones covering the most pairs come first and the rest are counted rather
+   * than built.
+   */
+  const classes = React.useMemo(() => {
+    if (!typeface) return [];
+    return [...typeface.kernClasses]
+      .sort((a, b) => b.left.length * b.right.length - a.left.length * a.right.length)
+      .slice(0, MOST_ROWS);
+  }, [typeface, state.revision]);
+
   if (!typeface) return <></>;
 
   return (
@@ -376,7 +406,7 @@ function ClassList({
       </div>
 
       <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
-        {typeface.kernClasses.map((kernClass) => (
+        {classes.map((kernClass) => (
           <div key={kernClass.id} className="border-b border-border/40 p-2.5">
             <div className="flex items-center justify-between pb-1.5">
               <span className="truncate text-2xs text-foreground">{kernClass.name}</span>
@@ -414,6 +444,12 @@ function ClassList({
             </p>
           </div>
         ))}
+        {classes.length < typeface.kernClasses.length && (
+          <p className="px-3 py-2 text-2xs text-muted-foreground">
+            {(typeface.kernClasses.length - classes.length).toLocaleString()} more, not shown. All
+            of them are exported.
+          </p>
+        )}
         {typeface.kernClasses.length === 0 && (
           <p className="px-3 py-6 text-center text-2xs leading-snug text-muted-foreground">
             No classes yet. Select a pair in the preview, then create a class from it and add more

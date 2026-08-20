@@ -29,13 +29,39 @@ import type { KernClass, KernPair } from "./types";
 // What comes out
 // ---------------------------------------------------------------------------
 
-/** Kerning as the font stores it, in glyph ids. */
+/**
+ * Kerning as the font stores it, in glyph ids.
+ *
+ * The nesting is the format's and it carries meaning, so it is kept rather
+ * than flattened. A feature names several lookups and every one of them is
+ * applied, so their adjustments add up. A lookup holds several subtables and
+ * only the first that matches is used, so their order decides which value a
+ * pair gets. Flattening either of those loses kerning: a real font puts its
+ * individual pairs in one subtable and its class grid in the next, precisely
+ * so the specific pair wins over the class default.
+ */
 export interface GposKerning {
-  /** Pairs written out one at a time. Rare, but legal and still used. */
-  pairs: Array<{ left: number; right: number; value: number }>;
-  /** The grid of left classes against right classes, which is nearly all of it. */
-  grids: KernGrid[];
+  /** In order. Every one is applied, and their adjustments add up. */
+  lookups: KernLookup[];
 }
+
+export interface KernLookup {
+  /** In order. The first that matches decides, and the rest are not consulted. */
+  subtables: KernSubtable[];
+}
+
+/**
+ * A subtable, and what it takes for one to match.
+ *
+ * The two kinds differ in that, and the difference is the whole reason the
+ * order works. A list of pairs matches only when it holds the exact pair, so a
+ * left glyph it knows nothing useful about falls through to the next subtable.
+ * A grid matches on the left glyph alone, so once a glyph is covered the
+ * lookup is finished with it whether the cell holds a value or a zero.
+ */
+export type KernSubtable =
+  | { kind: "pairs"; values: Map<number, Map<number, number>> }
+  | ({ kind: "grid" } & KernGrid);
 
 export interface KernGrid {
   /** Glyph ids in each left class, by class number. */
@@ -69,27 +95,29 @@ export interface KernGrid {
  * kerning is a far better outcome than refusing the file.
  */
 export function readGposKerning(table: Uint8Array): GposKerning {
-  const empty: GposKerning = { pairs: [], grids: [] };
+  const empty: GposKerning = { lookups: [] };
   try {
     const view = new DataView(table.buffer, table.byteOffset, table.byteLength);
     if (table.byteLength < 10) return empty;
 
-    const scriptListOffset = view.getUint16(4);
     const featureListOffset = view.getUint16(6);
     const lookupListOffset = view.getUint16(8);
-    void scriptListOffset;
 
     const wanted = kerningLookups(view, featureListOffset);
     if (wanted.size === 0) return empty;
 
-    const result: GposKerning = { pairs: [], grids: [] };
+    const lookups: KernLookup[] = [];
     const lookupCount = view.getUint16(lookupListOffset);
-    for (const index of wanted) {
+    // In index order, because that is the order they are applied in and the
+    // order decides what a pair ends up with.
+    for (const index of [...wanted].sort((a, b) => a - b)) {
       if (index >= lookupCount) continue;
       const lookupOffset = lookupListOffset + view.getUint16(lookupListOffset + 2 + index * 2);
-      readLookup(view, lookupOffset, result);
+      const subtables: KernSubtable[] = [];
+      readLookup(view, lookupOffset, subtables);
+      if (subtables.length > 0) lookups.push({ subtables });
     }
-    return result;
+    return { lookups };
   } catch {
     return empty;
   }
@@ -128,23 +156,19 @@ function kerningLookups(view: DataView, featureListOffset: number): Set<number> 
 const PAIR_POS = 2;
 const EXTENSION = 9;
 
-function readLookup(view: DataView, offset: number, into: GposKerning, depth = 0): void {
-  // An extension may only wrap a real lookup, never another extension, so one
-  // level of unwrapping is all a valid font can need. The guard is for the
-  // ones that are not valid.
-  if (depth > 4) return;
-
+function readLookup(view: DataView, offset: number, into: KernSubtable[]): void {
   const type = view.getUint16(offset);
-  const flag = view.getUint16(offset + 2);
   const subtableCount = view.getUint16(offset + 4);
-  const markFiltering = (flag & 0x0010) !== 0 ? 2 : 0;
-  void markFiltering;
 
   for (let index = 0; index < subtableCount; index++) {
     const subtable = offset + view.getUint16(offset + 6 + index * 2);
     if (type === PAIR_POS) {
       readPairPos(view, subtable, into);
     } else if (type === EXTENSION) {
+      // An extension wraps one real lookup so a large table can use 32-bit
+      // offsets. Only a pair-positioning one is of any interest here; the
+      // chained contextual kerning some faces also carry has nowhere to go in
+      // this application and is passed over.
       const wrappedType = view.getUint16(subtable + 2);
       const wrapped = subtable + view.getUint32(subtable + 4);
       if (wrappedType === PAIR_POS) readPairPos(view, wrapped, into);
@@ -175,7 +199,7 @@ function xAdvance(view: DataView, at: number, format: number): number {
   return view.getInt16(at + ahead);
 }
 
-function readPairPos(view: DataView, offset: number, into: GposKerning): void {
+function readPairPos(view: DataView, offset: number, into: KernSubtable[]): void {
   const format = view.getUint16(offset);
   const coverageOffset = offset + view.getUint16(offset + 2);
   const valueFormat1 = view.getUint16(offset + 4);
@@ -186,18 +210,20 @@ function readPairPos(view: DataView, offset: number, into: GposKerning): void {
   if (format === 1) {
     const covered = readCoverage(view, coverageOffset);
     const pairSetCount = view.getUint16(offset + 8);
+    const values = new Map<number, Map<number, number>>();
     for (let index = 0; index < pairSetCount && index < covered.length; index++) {
       const left = covered[index];
       const pairSet = offset + view.getUint16(offset + 10 + index * 2);
       const pairCount = view.getUint16(pairSet);
       const stride = 2 + size1 + size2;
+      const row = new Map<number, number>();
       for (let slot = 0; slot < pairCount; slot++) {
         const record = pairSet + 2 + slot * stride;
-        const right = view.getUint16(record);
-        const value = xAdvance(view, record + 2, valueFormat1);
-        if (value !== 0) into.pairs.push({ left, right, value });
+        row.set(view.getUint16(record), xAdvance(view, record + 2, valueFormat1));
       }
+      if (row.size > 0) values.set(left, row);
     }
+    if (values.size > 0) into.push({ kind: "pairs", values });
     return;
   }
 
@@ -224,7 +250,8 @@ function readPairPos(view: DataView, offset: number, into: GposKerning): void {
   }
   if (cells.size === 0) return;
 
-  into.grids.push({
+  into.push({
+    kind: "grid",
     left: byClass(leftOf),
     right: byClass(rightOf),
     cells,
@@ -304,19 +331,63 @@ function readClassDef(view: DataView, offset: number): Map<number, number> {
  * The cheap way to use a grid, and the one the library wants: borrowing the
  * rhythm of a face for an alphabet means asking about a few thousand pairs,
  * not unfolding a table that stands for millions.
+ *
+ * The two loops are the format's own rule and not an implementation detail.
+ * Every lookup gets a say and their answers add up; inside a lookup the first
+ * subtable that matches is the only one consulted. Checked against HarfBuzz on
+ * four faces and eighty pairs, which is the only way to be sure of a rule of
+ * this kind.
  */
 export function kernBetween(kerning: GposKerning, left: number, right: number): number {
-  for (const pair of kerning.pairs) {
-    if (pair.left === left && pair.right === right) return pair.value;
+  let total = 0;
+  for (const lookup of kerning.lookups) {
+    for (const subtable of lookup.subtables) {
+      if (subtable.kind === "pairs") {
+        // A list of pairs only matches when it holds this exact pair. A left
+        // glyph it has nothing to say about falls through to the next
+        // subtable, which is what lets a class grid stand behind it.
+        const value = subtable.values.get(left)?.get(right);
+        if (value === undefined) continue;
+        total += value;
+        break;
+      }
+      // A grid matches on the left glyph alone. Class zero is "anything
+      // else", so a glyph with no class of its own still kerns -- but only if
+      // this subtable was written for it, which is what coverage says.
+      if (!subtable.covered.has(left)) continue;
+      total +=
+        subtable.cells.get(
+          `${subtable.leftOf.get(left) ?? 0},${subtable.rightOf.get(right) ?? 0}`,
+        ) ?? 0;
+      break;
+    }
   }
-  for (const grid of kerning.grids) {
-    // Class zero is "anything else", so a glyph with no class of its own still
-    // kerns -- but only if this subtable was written for it in the first place.
-    if (!grid.covered.has(left)) continue;
-    const value = grid.cells.get(`${grid.leftOf.get(left) ?? 0},${grid.rightOf.get(right) ?? 0}`);
-    if (value !== undefined && value !== 0) return value;
+  return total;
+}
+
+/**
+ * Every individual pair the font wrote out, with the lookup it was written in.
+ *
+ * The lookup matters as much as the value. A pair in one lookup and a class
+ * covering the same pair in another are two adjustments that add up; put the
+ * pair in the same lookup as the class and it overrides it instead. Writing
+ * them all back into one lookup applied a font's kerning twice over.
+ */
+export function writtenPairs(
+  kerning: GposKerning,
+): Array<{ left: number; right: number; value: number; group: number }> {
+  const out: Array<{ left: number; right: number; value: number; group: number }> = [];
+  for (const [group, lookup] of kerning.lookups.entries()) {
+    for (const subtable of lookup.subtables) {
+      if (subtable.kind !== "pairs") continue;
+      for (const [left, row] of subtable.values) {
+        for (const [right, value] of row) {
+          if (value !== 0) out.push({ left, right, value, group });
+        }
+      }
+    }
   }
-  return 0;
+  return out;
 }
 
 /** Every non-zero pair among a limited set of glyphs. */
@@ -352,7 +423,8 @@ export function toKernClasses(
   const classes: KernClass[] = [];
   let serial = 0;
 
-  for (const grid of kerning.grids) {
+  for (const [index, lookup] of kerning.lookups.entries()) {
+  for (const grid of lookup.subtables.filter((s) => s.kind === "grid")) {
     const named = new Map<number, string[]>();
     const namesFor = (side: "left" | "right", klass: number): string[] => {
       const key = side === "left" ? klass : klass + 0x10000;
@@ -379,8 +451,16 @@ export function toKernClasses(
       const left = namesFor("left", first);
       const right = namesFor("right", second);
       if (left.length === 0 || right.length === 0) continue;
-      classes.push({ id: `gpos-${serial++}`, name: `${first}/${second}`, left, right, value });
+      classes.push({
+        id: `gpos-${serial++}`,
+        name: `${first}/${second}`,
+        left,
+        right,
+        value,
+        group: index,
+      });
     }
+  }
   }
   return classes;
 }

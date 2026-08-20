@@ -78,9 +78,20 @@ try:
     if "GPOS" in f:
         gpos = f["GPOS"].table
         for lookup in (gpos.LookupList.Lookup if gpos.LookupList else []):
-            if lookup.LookupType != 2:
+            # Type 9 wraps a real lookup so a large table can use wide offsets.
+            # Every font of any size uses it, so a reader that skips it sees no
+            # kerning at all in most of the fonts there are.
+            if lookup.LookupType not in (2, 9):
                 continue
+            subs = []
             for sub in lookup.SubTable:
+                if lookup.LookupType == 9:
+                    if sub.ExtensionLookupType != 2:
+                        continue
+                    subs.append(sub.ExtSubTable)
+                else:
+                    subs.append(sub)
+            for sub in subs:
                 if sub.Format == 1:
                     for first, pairset in zip(sub.Coverage.glyphs, sub.PairSet):
                         for rec in pairset.PairValueRecord:
@@ -154,6 +165,53 @@ except Exception as exc:
 
 print(json.dumps(out))
 `;
+
+/**
+ * What a shaper actually does with a font.
+ *
+ * fontTools reads the tables; HarfBuzz is the thing that lays out text with
+ * them, and it is the only witness that settles what a pair really kerns by.
+ * The rules that decide -- which subtable answers first, whether two lookups
+ * add up or override -- are exactly the kind that can be read confidently off
+ * the specification and still be got wrong, so they are asked of the
+ * implementation the whole world uses instead.
+ */
+const SHAPE = String.raw`
+import json, sys
+import uharfbuzz as hb
+
+path, pairs = sys.argv[1], json.loads(sys.argv[2])
+font = hb.Font(hb.Face(open(path, "rb").read()))
+
+def advance(text, kern):
+    buf = hb.Buffer()
+    buf.add_str(text)
+    buf.guess_segment_properties()
+    hb.shape(font, buf, {"kern": kern})
+    return buf.glyph_positions[0].x_advance
+
+print(json.dumps({p: advance(p, True) - advance(p, False) for p in pairs}))
+`;
+
+export function hasHarfbuzz(): boolean {
+  return spawnSync("python3", ["-c", "import uharfbuzz"], { encoding: "utf8" }).status === 0;
+}
+
+/** What each pair is kerned by, as the shaper sees it. */
+export function shapeKerning(bytes: Uint8Array, pairs: string[]): Record<string, number> {
+  const dir = mkdtempSync(join(tmpdir(), "typeforge-"));
+  const fontPath = join(dir, "font.bin");
+  writeFileSync(fontPath, bytes);
+
+  const result = spawnSync("python3", ["-c", SHAPE, fontPath, JSON.stringify(pairs)], {
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (result.status !== 0) {
+    throw new Error(`HarfBuzz shaping failed: ${result.stderr || result.stdout}`);
+  }
+  return JSON.parse(result.stdout) as Record<string, number>;
+}
 
 export function inspectFont(bytes: Uint8Array): FontToolsReport {
   const dir = mkdtempSync(join(tmpdir(), "typeforge-"));

@@ -11,6 +11,7 @@
  */
 
 import { readComposites } from "./composite";
+import { readGposKerning, toKernClasses, writtenPairs } from "./gpos";
 import { classifyNodes } from "./quadratic";
 import { readSfnt, SFNT_CFF } from "./sfnt";
 import {
@@ -18,6 +19,7 @@ import {
   type Contour,
   type Glyph,
   type GlyphNode,
+  type KernClass,
   type KernPair,
   type SourceFont,
   type Typeface,
@@ -186,9 +188,14 @@ export async function importFont(
     }
   }
 
-  const kerning = readKerning(font, glyphs);
-  if (kerning.length > 0) {
-    warnings.push(`Read ${kerning.length.toLocaleString()} kerning pairs.`);
+  const { kerning, kernClasses } = readAllKerning(font, glyphs, source);
+  if (kerning.length > 0 || kernClasses.length > 0) {
+    const parts: string[] = [];
+    if (kerning.length > 0) parts.push(`${kerning.length.toLocaleString()} kerning pairs`);
+    if (kernClasses.length > 0) {
+      parts.push(`${kernClasses.length.toLocaleString()} class kerning rules`);
+    }
+    warnings.push(`Read ${parts.join(" and ")}.`);
   }
 
   const os2 = (font.tables.os2 ?? {}) as Record<string, number>;
@@ -215,7 +222,7 @@ export async function importFont(
     glyphs,
     glyphIndex,
     kerning,
-    kernClasses: [],
+    kernClasses,
     params: { ...DEFAULT_PARAMS },
     source,
   };
@@ -360,6 +367,51 @@ function mergeCoincidentNodes(nodes: GlyphNode[], closed: boolean): GlyphNode[] 
  * from GPOS as well as the legacy table. Its `getKerningValue` helper looks only
  * at the legacy table and returns zero for a GPOS-only font, so it is not used.
  */
+/**
+ * Everything the font says about kerning.
+ *
+ * Two readers, and the second is not an optimisation. opentype.js surfaces
+ * only kerning written pair by pair, and no font made this century writes it
+ * that way -- a face with a thousand glyphs has far too many useful pairs to
+ * list, so it groups them into classes and stores a grid. Inter, Roboto, Lora
+ * and Playfair between them carry two hundred kilobytes of that and gave up
+ * nought pairs through the first reader alone, which meant opening a real font
+ * read every outline correctly and quietly threw its spacing away.
+ *
+ * The two are merged with the pairs winning, because that is what the font
+ * means: inside a lookup the individual pairs are written ahead of the grid so
+ * that a pair with an opinion of its own overrides the class it falls into.
+ */
+function readAllKerning(
+  font: import("opentype.js").Font,
+  glyphs: Glyph[],
+  source: SourceFont | null,
+): { kerning: KernPair[]; kernClasses: KernClass[] } {
+  const kerning = readKerning(font, glyphs);
+
+  const table = source?.tables.get("GPOS");
+  if (!table) return { kerning, kernClasses: [] };
+
+  const gpos = readGposKerning(table);
+  const nameOf = (glyph: number): string | undefined => glyphs[glyph]?.name;
+  const kernClasses = toKernClasses(gpos, nameOf);
+
+  // The pairs the font wrote out one at a time, which opentype.js may have
+  // found already; a set of what is there keeps them from arriving twice.
+  const already = new Set(kerning.map((pair) => `${pair.left}\u0000${pair.right}`));
+  for (const pair of writtenPairs(gpos)) {
+    const left = nameOf(pair.left);
+    const right = nameOf(pair.right);
+    if (!left || !right) continue;
+    const key = `${left}\u0000${right}`;
+    if (already.has(key)) continue;
+    already.add(key);
+    kerning.push({ left, right, value: pair.value, group: pair.group });
+  }
+
+  return { kerning, kernClasses };
+}
+
 function readKerning(font: import("opentype.js").Font, glyphs: Glyph[]): KernPair[] {
   const pairs: KernPair[] = [];
   for (const [key, value] of Object.entries(font.kerningPairs ?? {})) {

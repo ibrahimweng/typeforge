@@ -169,6 +169,16 @@ export interface KernPair {
   left: string;
   right: string;
   value: number;
+  /**
+   * Which lookup this belongs to, for pairs read out of a font.
+   *
+   * The same grouping the classes carry, and needed for the same reason. A
+   * pair written in one lookup and a class covering it in another are two
+   * adjustments that add up; move the pair into the other lookup and it
+   * overrides the class instead, which is a different font. Absent on pairs
+   * made here, which all go in one lookup together.
+   */
+  group?: number;
 }
 
 /**
@@ -182,6 +192,19 @@ export interface KernClass {
   left: string[];
   right: string[];
   value: number;
+  /**
+   * Which lookup this belongs to, for classes read out of a font.
+   *
+   * A font's kerning is several lookups and every one of them is applied, so
+   * two classes that disagree about the same pair are not a contradiction --
+   * they are two adjustments that add up. Two classes in the *same* lookup
+   * that disagree are a contradiction, because only the first is ever
+   * consulted. Keeping the grouping is what lets an imported font be written
+   * back out meaning what it meant.
+   *
+   * Absent on classes made here, which all go in one lookup together.
+   */
+  group?: number;
 }
 
 /**

@@ -326,7 +326,9 @@ function applyKerning(
     if (pair.value === 0) continue;
     const left = idFor(pair.left);
     const right = idFor(pair.right);
-    if (left !== null && right !== null) pairs.push({ left, right, value: pair.value });
+    if (left !== null && right !== null) {
+      pairs.push({ left, right, value: pair.value, group: pair.group });
+    }
   }
 
   const classKerns: ResolvedClassKern[] = [];
@@ -335,17 +337,37 @@ function applyKerning(
     const left = kernClass.left.map(idFor).filter((id): id is number => id !== null);
     const right = kernClass.right.map(idFor).filter((id): id is number => id !== null);
     if (left.length > 0 && right.length > 0) {
-      classKerns.push({ left, right, value: kernClass.value });
+      classKerns.push({ left, right, value: kernClass.value, group: kernClass.group });
     }
   }
 
-  // The legacy table cannot express classes, so class kerning is expanded into
-  // individual pairs for it. GPOS keeps the compact form.
+  /*
+   * The legacy table cannot express classes, so class kerning is expanded into
+   * individual pairs for it. GPOS keeps the compact form.
+   *
+   * Two things about how, both of which matter on a real font. The pairs
+   * already written out are held in a set rather than scanned for, because a
+   * font's classes stand for a few hundred thousand pairs and asking a list of
+   * eleven thousand about each of them is five billion comparisons and a
+   * browser that stops answering. And the expansion stops at the cap rather
+   * than running to the end and throwing the remainder away, since a format 0
+   * subtable addresses its pairs with sixteen-bit offsets and cannot hold more
+   * than this however many are offered.
+   */
+  const MOST_LEGACY_PAIRS = 10920;
+  const seen = new Set<number>();
+  for (const pair of pairs) seen.add(pair.left * 65536 + pair.right);
+
   const flattened = [...pairs];
+  let offered = pairs.length;
   for (const kernClass of classKerns) {
     for (const left of kernClass.left) {
       for (const right of kernClass.right) {
-        if (!pairs.some((pair) => pair.left === left && pair.right === right)) {
+        const key = left * 65536 + right;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        offered++;
+        if (flattened.length < MOST_LEGACY_PAIRS) {
           flattened.push({ left, right, value: kernClass.value });
         }
       }
@@ -356,9 +378,9 @@ function applyKerning(
   if (kern) tables.set("kern", kern);
   else tables.delete("kern");
 
-  if (flattened.length > 10920) {
+  if (offered > MOST_LEGACY_PAIRS) {
     notes.push(
-      `The legacy kern table holds the first 10,920 pairs of ${flattened.length.toLocaleString()}; GPOS carries them all.`,
+      `The legacy kern table holds ${MOST_LEGACY_PAIRS.toLocaleString()} pairs of ${offered.toLocaleString()}; GPOS carries them all.`,
     );
   }
 
