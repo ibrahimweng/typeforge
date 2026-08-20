@@ -270,7 +270,9 @@ function frame(style: Style): Frame {
   const { metrics, pen } = style;
   const half = pen.weight / 2;
   const least = half * 1.06;
-  const wide = style.parts.bowl.width;
+  // The bowl's own proportion and the face's width multiply: one says how a
+  // bowl sits against its height, the other how wide the whole face runs.
+  const wide = style.parts.bowl.width * metrics.width;
   const bowlH = Math.max(metrics.xHeight / 2 + metrics.overshoot, least);
   const capBowlH = Math.max(metrics.capHeight / 2 + metrics.overshoot, least);
   return {
@@ -282,7 +284,10 @@ function frame(style: Style): Frame {
     asc: metrics.ascender,
     desc: metrics.descender,
     over: metrics.overshoot,
-    arch: Math.max(((metrics.counterWidth + pen.weight) / 2) * style.parts.shoulder.reach, least),
+    arch: Math.max(
+      ((metrics.counterWidth + pen.weight) / 2) * style.parts.shoulder.reach * metrics.width,
+      least,
+    ),
     bowl: Math.max(bowlH * wide, least),
     bowlH,
     capBowl: Math.max(capBowlH * wide, least),
@@ -779,7 +784,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     // Big enough to read as a hook rather than a curl, small enough that the
     // letter does not turn into a walking stick.
-    const radius = f.arch * 0.55;
+    const radius = Math.max(f.arch * 0.55, f.least);
     const stem = f.edge + radius;
     return finish(
       f,
@@ -806,7 +811,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
     const stem = centre.x + f.bowl;
-    const radius = f.arch * 0.7;
+    const radius = Math.max(f.arch * 0.7, f.least);
     return finish(
       f,
       [
@@ -848,7 +853,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
 
   j: (style) => {
     const f = frame(style);
-    const radius = f.arch * 0.62;
+    const radius = Math.max(f.arch * 0.62, f.least);
     const stem = f.edge + radius;
     return finish(
       f,
@@ -1142,7 +1147,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   D: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    const radius = f.cap / 2;
+    const radius = Math.max(f.cap / 2, f.least);
     return finish(
       f,
       [
@@ -1240,7 +1245,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
 
   J: (style) => {
     const f = frame(style);
-    const radius = f.capBowl * 0.55;
+    const radius = Math.max(f.capBowl * 0.55, f.least);
     const stem = f.edge + radius;
     return finish(
       f,
@@ -1345,7 +1350,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   P: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    const radius = f.cap * 0.27;
+    const radius = Math.max(f.cap * 0.27, f.least);
     return finish(
       f,
       [
@@ -1377,7 +1382,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   R: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    const radius = f.cap * 0.27;
+    const radius = Math.max(f.cap * 0.27, f.least);
     const junction = f.cap - radius * 2;
     const reach = stem + radius * 1.5;
     return finish(
@@ -1535,7 +1540,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const width = figureWidth(f);
     const left = f.edge;
-    const radius = width / 2;
+    const radius = Math.max(width / 2, f.least);
     const centre = at(left + radius, f.cap - radius);
     /*
      * Over the top, then a straight run down to the baseline, then out along it.
@@ -1593,7 +1598,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const width = figureWidth(f);
     const left = f.edge;
     const shoulder = f.cap * 0.56;
-    const radius = Math.min(shoulder, width / 2);
+    const radius = Math.max(Math.min(shoulder, width / 2), f.least);
     return finish(
       f,
       [
@@ -1607,7 +1612,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const width = figureWidth(f);
     const left = f.edge;
-    const radius = width / 2;
+    const radius = Math.max(width / 2, f.least);
     const centre = at(left + radius, radius);
     return finish(
       f,
@@ -1668,7 +1673,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const width = figureWidth(f);
     const left = f.edge;
-    const radius = width / 2;
+    const radius = Math.max(width / 2, f.least);
     const centre = at(left + radius, f.cap - radius);
     return finish(
       f,
@@ -1747,7 +1752,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
 
   question: (style) => {
     const f = frame(style);
-    const radius = figureWidth(f) * 0.42;
+    const radius = Math.max(figureWidth(f) * 0.42, f.least);
     const centre = at(f.edge + radius, f.cap - radius);
     const radiusDot = f.half * 0.95;
     return finish(
@@ -1769,7 +1774,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
 
   parenleft: (style) => {
     const f = frame(style);
-    const radius = f.cap * 0.72;
+    const radius = Math.max(f.cap * 0.72, f.least);
     const centre = at(f.edge + radius, f.cap * 0.4);
     return finish(
       f,
@@ -1778,7 +1783,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
 
   parenright: (style) => {
     const f = frame(style);
-    const radius = f.cap * 0.72;
+    const radius = Math.max(f.cap * 0.72, f.least);
     const centre = at(f.edge - radius + f.arch * 0.32, f.cap * 0.4);
     return finish(
       f,
@@ -1820,5 +1825,5 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
  * each other at that one width.
  */
 function figureWidth(frame: Frame): number {
-  return frame.cap * 0.62;
+  return Math.max(frame.cap * 0.62 * frame.style.metrics.width, frame.least * 2);
 }

@@ -17,7 +17,15 @@ import * as React from "react";
 
 import { segment } from "@/components/controls";
 import { isException, partsOf, reach } from "@/forge/document";
-import { specFor, valuesOf, type PartControl, type PartName } from "@/forge/parts";
+import {
+  METRIC_CONTROLS,
+  PEN_CONTROLS,
+  specFor,
+  valuesOf,
+  type FieldControl,
+  type PartControl,
+  type PartName,
+} from "@/forge/parts";
 import { BASES } from "@/forge/style";
 import { forgeStore, useForge, type Phase } from "@/state/useForge";
 import { SliderControl as Slider } from "@/ui/components/controls/slider";
@@ -61,72 +69,25 @@ export function ForgePanel(): React.JSX.Element {
         </Section>
 
         <Section title="The pen">
-          <Numeric
-            label="Weight"
-            hint="How wide the pen is. Every letter is redrawn at the new width rather than pushed outwards, so this cannot fold a stroke however far it goes."
-            value={forge.style.pen.weight}
-            min={forge.style.metrics.unitsPerEm * 0.01}
-            max={forge.style.metrics.unitsPerEm * 0.26}
-            step={1}
-            onChange={(weight, phase) => forgeStore.changePen({ weight }, phase)}
-          />
-          <Numeric
-            label="Contrast"
-            hint="How much thinner the strokes running across the pen are. Zero is monolinear, which is a sans; more is what gives a serif its thick and thin."
-            value={forge.style.pen.contrast}
-            min={0}
-            max={0.85}
-            step={0.01}
-            onChange={(contrast, phase) => forgeStore.changePen({ contrast }, phase)}
-          />
-          <Numeric
-            label="Pen angle"
-            hint="Which way the pen is broadest, as a nib is held."
-            value={forge.style.pen.angle}
-            min={-40}
-            max={40}
-            step={0.5}
-            onChange={(angle, phase) => forgeStore.changePen({ angle }, phase)}
-          />
+          {PEN_CONTROLS.map((control) => (
+            <Field
+              key={control.key}
+              control={control}
+              value={(forge.style.pen as unknown as Record<string, number>)[control.key]}
+              onChange={(next, phase) => forgeStore.changePen({ [control.key]: next }, phase)}
+            />
+          ))}
         </Section>
 
         <Section title="Proportions">
-          <Numeric
-            label="x-height"
-            hint="How tall the lowercase is. Most of reading happens here, so it does more for the character of a face than almost anything else."
-            value={forge.style.metrics.xHeight}
-            min={forge.style.metrics.unitsPerEm * 0.3}
-            max={forge.style.metrics.unitsPerEm * 0.68}
-            step={1}
-            onChange={(xHeight, phase) => forgeStore.changeMetrics({ xHeight }, phase)}
-          />
-          <Numeric
-            label="Cap height"
-            hint="How tall the capitals are."
-            value={forge.style.metrics.capHeight}
-            min={forge.style.metrics.unitsPerEm * 0.5}
-            max={forge.style.metrics.unitsPerEm * 0.85}
-            step={1}
-            onChange={(capHeight, phase) => forgeStore.changeMetrics({ capHeight }, phase)}
-          />
-          <Numeric
-            label="Rhythm"
-            hint="The width inside an n, which sets how wide everything with two uprights runs. The round letters are as wide as they are tall and do not read it."
-            value={forge.style.metrics.counterWidth}
-            min={forge.style.metrics.unitsPerEm * 0.15}
-            max={forge.style.metrics.unitsPerEm * 0.6}
-            step={1}
-            onChange={(counterWidth, phase) => forgeStore.changeMetrics({ counterWidth }, phase)}
-          />
-          <Numeric
-            label="Spacing"
-            hint="White space either side of every letter."
-            value={forge.style.metrics.sidebearing}
-            min={0}
-            max={forge.style.metrics.unitsPerEm * 0.2}
-            step={1}
-            onChange={(sidebearing, phase) => forgeStore.changeMetrics({ sidebearing }, phase)}
-          />
+          {METRIC_CONTROLS.map((control) => (
+            <Field
+              key={control.key}
+              control={control}
+              value={(forge.style.metrics as unknown as Record<string, number>)[control.key]}
+              onChange={(next, phase) => forgeStore.changeMetrics({ [control.key]: next }, phase)}
+            />
+          ))}
         </Section>
 
         <div className="border-b border-border p-3">
@@ -341,38 +302,39 @@ function Section({
   );
 }
 
-/** A plain number with a slider, for the pen and the proportions. */
-function Numeric({
-  label,
-  hint,
+/**
+ * One control on the pen or the proportions, drawn from its own description.
+ *
+ * The panel used to write these out by hand, which is how two of them came to
+ * exist in the panel and nowhere else. Generated from the same table the tests
+ * read, a control that changes nothing is a failing test rather than a slider
+ * somebody drags and puts back.
+ */
+function Field({
+  control,
   value,
-  min,
-  max,
-  step,
   onChange,
 }: {
-  label: string;
-  hint: string;
+  control: FieldControl;
   value: number;
-  min: number;
-  max: number;
-  step: number;
   onChange: (value: number, phase: Phase) => void;
 }): React.JSX.Element {
+  const state = useForge();
+  const scale = control.emRelative ? state.forge.style.metrics.unitsPerEm : 1;
   return (
     <div className="py-1">
       <Slider
-        name={label}
+        name={control.label}
         value={value}
-        min={min}
-        max={max}
-        step={step}
+        min={control.min * scale}
+        max={control.max * scale}
+        step={Math.max(control.step * scale, 0.001)}
         showFill
         onValueChange={(next: number, meta?: { history?: string }) =>
           onChange(next, meta?.history === "merge" ? "during" : "end")
         }
       />
-      <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">{hint}</p>
+      <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">{control.hint}</p>
     </div>
   );
 }

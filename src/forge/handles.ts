@@ -25,16 +25,40 @@
 import { contoursBounds } from "@/font/geometry";
 import type { Vec2 } from "@/font/types";
 import { drawLetter } from "./build";
-import { partsUsedBy } from "./parts";
+import { METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS, partsUsedBy, type FieldControl } from "./parts";
 import type { Style } from "./style";
+
+/**
+ * The range a handle may be pulled through, taken from the control it drives.
+ *
+ * Written out here as well, the two drifted: the panel opened the pen's angle
+ * to a half turn and the handle for it stayed at forty degrees, so the same
+ * decision had two different limits depending on which way you reached it.
+ */
+function rangeOf(controls: FieldControl[], key: string, em: number): { min: number; max: number } {
+  const control = controls.find((candidate) => candidate.key === key);
+  if (!control) return { min: -Infinity, max: Infinity };
+  const scale = control.emRelative ? em : 1;
+  return { min: control.min * scale, max: control.max * scale };
+}
+
+function partRange(part: string, key: string, em: number): { min: number; max: number } {
+  const spec = PART_SPECS.find((candidate) => candidate.name === part);
+  const control = spec?.controls.find((candidate) => candidate.key === key);
+  if (!control) return { min: -Infinity, max: Infinity };
+  const scale = control.emRelative ? em : 1;
+  return { min: control.min * scale, max: control.max * scale };
+}
 
 /** What a handle changes when it moves. */
 export type Drive =
   | { on: "pen"; key: "weight" }
-  | { on: "metrics"; key: "xHeight" | "capHeight" | "counterWidth" | "sidebearing" }
+  | { on: "metrics"; key: "xHeight" | "capHeight" | "counterWidth" | "sidebearing" | "width" | "slant" }
   | { on: "part"; part: "shoulder"; key: "spring" }
   | { on: "part"; part: "crossbar"; key: "height" }
-  | { on: "part"; part: "slab"; key: "projection" | "thickness" };
+  | { on: "part"; part: "slab"; key: "projection" | "thickness" }
+  | { on: "part"; part: "bowl"; key: "squareness" }
+  | { on: "part"; part: "corner"; key: "radius" };
 
 export interface Handle {
   id: string;
@@ -90,8 +114,7 @@ export function handlesFor(letter: string, style: Style): Handle[] {
     drive: { on: "pen", key: "weight" },
     value: pen.weight,
     perUnit: 1,
-    min: em * 0.01,
-    max: em * 0.26,
+    ...rangeOf(PEN_CONTROLS, "weight", em),
     guide: {
       from: { x: bounds.xMin, y: bounds.yMin + (bounds.yMax - bounds.yMin) * 0.33 },
       to: { x: bounds.xMin + pen.weight, y: bounds.yMin + (bounds.yMax - bounds.yMin) * 0.33 },
@@ -109,8 +132,7 @@ export function handlesFor(letter: string, style: Style): Handle[] {
     drive: { on: "metrics", key: "xHeight" },
     value: metrics.xHeight,
     perUnit: 1,
-    min: em * 0.3,
-    max: em * 0.68,
+    ...rangeOf(METRIC_CONTROLS, "xHeight", em),
     guide: { from: { x: 0, y: metrics.xHeight }, to: { x: rail, y: metrics.xHeight } },
   });
   handles.push({
@@ -122,8 +144,7 @@ export function handlesFor(letter: string, style: Style): Handle[] {
     drive: { on: "metrics", key: "capHeight" },
     value: metrics.capHeight,
     perUnit: 1,
-    min: em * 0.5,
-    max: em * 0.85,
+    ...rangeOf(METRIC_CONTROLS, "capHeight", em),
     guide: { from: { x: 0, y: metrics.capHeight }, to: { x: rail, y: metrics.capHeight } },
   });
 
@@ -145,8 +166,7 @@ export function handlesFor(letter: string, style: Style): Handle[] {
       drive: { on: "metrics", key: "counterWidth" },
       value: metrics.counterWidth,
       perUnit: 1,
-      min: em * 0.15,
-      max: em * 0.6,
+      ...rangeOf(METRIC_CONTROLS, "counterWidth", em),
     });
 
     /*
@@ -167,8 +187,7 @@ export function handlesFor(letter: string, style: Style): Handle[] {
       drive: { on: "part", part: "shoulder", key: "spring" },
       value: parts.shoulder.spring,
       perUnit: 1 / height,
-      min: 0.3,
-      max: 0.85,
+      ...partRange("shoulder", "spring", em),
     });
   }
 
@@ -184,8 +203,7 @@ export function handlesFor(letter: string, style: Style): Handle[] {
       drive: { on: "part", part: "crossbar", key: "height" },
       value: parts.crossbar.height,
       perUnit: 1 / height,
-      min: 0.3,
-      max: 0.72,
+      ...partRange("crossbar", "height", em),
       guide: { from: { x: bounds.xMin, y: bar }, to: { x: bounds.xMax, y: bar } },
     });
   }
@@ -203,8 +221,7 @@ export function handlesFor(letter: string, style: Style): Handle[] {
       // grows on this side of the letter.
       perUnit: -1,
       value: parts.slab.projection,
-      min: 0,
-      max: em * 0.12,
+      ...partRange("slab", "projection", em),
     });
     handles.push({
       id: "slabDepth",
@@ -215,8 +232,44 @@ export function handlesFor(letter: string, style: Style): Handle[] {
       drive: { on: "part", part: "slab", key: "thickness" },
       value: parts.slab.thickness,
       perUnit: 1,
-      min: em * 0.005,
-      max: em * 0.1,
+      ...partRange("slab", "thickness", em),
+    });
+  }
+
+  /*
+   * How square the bowls are, pulled at the side of one.
+   *
+   * On the shoulder of the bowl rather than at its widest point: the widest
+   * point does not move as a circle squares off, so a handle there would sit
+   * still while the letter changed under it.
+   */
+  if (has.has("bowl")) {
+    const top = bounds.yMin + (bounds.yMax - bounds.yMin) * 0.82;
+    handles.push({
+      id: "squareness",
+      at: { x: bounds.xMax, y: top },
+      axis: "x",
+      label: "Squareness",
+      hint: "Nought is a circle; pulled out, the sides straighten into a rounded rectangle.",
+      drive: { on: "part", part: "bowl", key: "squareness" },
+      value: parts.bowl.squareness,
+      // A full pull across the bowl takes it from round to square.
+      perUnit: 1 / Math.max(bounds.xMax - bounds.xMin, 1),
+      ...partRange("bowl", "squareness", em),
+    });
+  }
+
+  if (has.has("corner")) {
+    handles.push({
+      id: "cornerRadius",
+      at: { x: bounds.xMin + em * 0.02 + parts.corner.radius, y: bounds.yMax },
+      axis: "x",
+      label: "Corner",
+      hint: "How wide an arc a corner turns through. Far enough and the letter reads as one ribbon bent round.",
+      drive: { on: "part", part: "corner", key: "radius" },
+      value: parts.corner.radius,
+      perUnit: 1,
+      ...partRange("corner", "radius", em),
     });
   }
 

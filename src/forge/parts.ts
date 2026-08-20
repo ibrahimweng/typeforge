@@ -205,6 +205,135 @@ export const PART_SPECS: PartSpec[] = [
   },
 ];
 
+/**
+ * The pen and the proportions, as controls rather than as a list in the panel.
+ *
+ * Written here for the same reason the parts are: a control that the panel
+ * knows about and the drawing does not looks exactly like a control that works.
+ * Two shipped that way. Kept in one table, the test that drives every control
+ * from one end to the other covers these as well.
+ */
+export interface FieldControl {
+  key: string;
+  label: string;
+  hint: string;
+  min: number;
+  max: number;
+  step: number;
+  /** True when the range is a fraction of the em rather than a plain number. */
+  emRelative?: boolean;
+}
+
+export const PEN_CONTROLS: FieldControl[] = [
+  {
+    key: "weight",
+    label: "Weight",
+    hint: "How wide the pen is. Every letter is redrawn at the new width rather than pushed outwards, so this cannot fold a stroke however far it goes.",
+    min: 0.01,
+    max: 0.26,
+    step: 0.001,
+    emRelative: true,
+  },
+  {
+    key: "contrast",
+    label: "Contrast",
+    hint: "How much thinner the strokes running across the pen are. Nought is monolinear, which is a sans; more is what gives a serif its thick and thin.",
+    min: 0,
+    max: 0.9,
+    step: 0.01,
+  },
+  {
+    key: "angle",
+    label: "Pen angle",
+    hint: "Which way the pen is broadest, as a nib is held. Past sixty degrees the horizontals become the thick strokes and the verticals the thin ones, which is reverse contrast and is most of what makes a face look like a fairground poster.",
+    min: -90,
+    max: 90,
+    step: 1,
+  },
+];
+
+export const METRIC_CONTROLS: FieldControl[] = [
+  {
+    key: "xHeight",
+    label: "x-height",
+    hint: "How tall the lowercase is. Most of reading happens here, so it does more for the character of a face than almost anything else.",
+    min: 0.3,
+    max: 0.68,
+    step: 0.001,
+    emRelative: true,
+  },
+  {
+    key: "capHeight",
+    label: "Cap height",
+    hint: "How tall the capitals are.",
+    min: 0.5,
+    max: 0.85,
+    step: 0.001,
+    emRelative: true,
+  },
+  {
+    key: "ascender",
+    label: "Ascender",
+    hint: "How far a b, a d and an l reach above the x-height.",
+    min: 0.52,
+    max: 0.95,
+    step: 0.001,
+    emRelative: true,
+  },
+  {
+    key: "descender",
+    label: "Descender",
+    hint: "How far a p, a g and a y reach below the baseline.",
+    min: -0.35,
+    max: -0.04,
+    step: 0.001,
+    emRelative: true,
+  },
+  {
+    key: "width",
+    label: "Width",
+    hint: "How wide the whole face runs. The strokes keep their thickness, which is what makes this a width rather than a scale: condensed and extended, not small and large.",
+    min: 0.6,
+    max: 1.5,
+    step: 0.005,
+  },
+  {
+    key: "counterWidth",
+    label: "Rhythm",
+    hint: "The width inside an n, which sets how wide everything with two uprights runs. The round letters are as wide as they are tall and do not read it.",
+    min: 0.15,
+    max: 0.6,
+    step: 0.001,
+    emRelative: true,
+  },
+  {
+    key: "slant",
+    label: "Slant",
+    hint: "How far the whole letter leans. Taken on the finished outline, which is exact -- leaning the skeleton instead would turn every arc into an ellipse and the offsets would stop being exact at every weight but one.",
+    min: -30,
+    max: 30,
+    step: 0.5,
+  },
+  {
+    key: "overshoot",
+    label: "Overshoot",
+    hint: "How far a round letter reaches past a flat one so the two look level. Set to nought, an o sits in a hollow between an n and an h.",
+    min: 0,
+    max: 0.05,
+    step: 0.001,
+    emRelative: true,
+  },
+  {
+    key: "sidebearing",
+    label: "Spacing",
+    hint: "White space either side of every letter.",
+    min: 0,
+    max: 0.2,
+    step: 0.001,
+    emRelative: true,
+  },
+];
+
 export function specFor(part: PartName): PartSpec | undefined {
   return PART_SPECS.find((spec) => spec.name === part);
 }

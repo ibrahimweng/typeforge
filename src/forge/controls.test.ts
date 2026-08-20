@@ -25,8 +25,10 @@ import { describe, expect, it } from "vitest";
 import { contoursToSvgPath } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import { drawLetter, letterNames } from "./build";
-import { PART_SPECS } from "./parts";
-import { SANS, type Parts, type Style } from "./style";
+import { LETTERS } from "./letters";
+import { METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS, type FieldControl } from "./parts";
+import { SANS, type Metrics, type Parts, type Style } from "./style";
+import type { Pen } from "./types";
 
 const NAMES = letterNames();
 
@@ -35,6 +37,13 @@ function withPart(style: Style, part: string, key: string, value: number | boole
   const parts = { ...style.parts } as unknown as Record<string, Record<string, unknown>>;
   parts[part] = { ...parts[part], [key]: value };
   return { ...style, parts: parts as unknown as Parts };
+}
+
+/** The style with one field of the pen or the metrics set. */
+function withField(style: Style, where: "pen" | "metrics", key: string, value: number): Style {
+  return where === "pen"
+    ? { ...style, pen: { ...style.pen, [key]: value } as Pen }
+    : { ...style, metrics: { ...style.metrics, [key]: value } as Metrics };
 }
 
 /** The three interesting places on a control, plus whatever it starts at. */
@@ -82,6 +91,35 @@ describe("no control can spoil a letter", () => {
     }
   }
 
+  for (const [where, controls] of [
+    ["pen", PEN_CONTROLS],
+    ["metrics", METRIC_CONTROLS],
+  ] as Array<["pen" | "metrics", FieldControl[]]>) {
+    for (const control of controls) {
+      it(`${where} / ${control.label}`, () => {
+        const scale = control.emRelative ? SANS.metrics.unitsPerEm : 1;
+        for (const value of stops(control.min * scale, control.max * scale)) {
+          for (const weight of [12, 92, 190, 260]) {
+            const style = withField(
+              withPart({ ...SANS, pen: { ...SANS.pen, weight } }, "slab", "on", true),
+              where,
+              control.key,
+              value,
+            );
+            for (const name of NAMES) {
+              for (const contour of drawLetter(name, style)!.contours) {
+                expect(
+                  contoursIntersect([contour]),
+                  `${name} folds at ${where}.${control.key} = ${value}, weight ${weight}`,
+                ).toBe(false);
+              }
+            }
+          }
+        }
+      });
+    }
+  }
+
   it("the pen, from hairline to the limit and back to front", () => {
     for (const weight of [8, 40, 92, 150, 210, 260]) {
       for (const contrast of [0, 0.45, 0.9]) {
@@ -98,6 +136,50 @@ describe("no control can spoil a letter", () => {
         }
       }
     }
+  });
+});
+
+describe("the one rule", () => {
+  /*
+   * Stated directly rather than inferred from the damage.
+   *
+   * Everything in this half of the application rests on a stroke never turning
+   * tighter than half its own width. Checking for folded outlines finds the
+   * cases where that was broken, but only after the fold, and only if the fold
+   * happens to be one the crossing test can see. Checking the skeletons finds
+   * it at the source: a question mark at a narrow width and a heavy weight had
+   * a turn of a hundred and sixteen units drawn with a pen of two hundred and
+   * sixty, and it was the skeleton that was wrong, not the sweep.
+   */
+  it("no stroke ever turns tighter than half its own pen", () => {
+    const wrong: string[] = [];
+    for (const weight of [12, 92, 190, 260]) {
+      for (const width of [0.6, 1, 1.5]) {
+        for (const squareness of [0, 1]) {
+          const style = withPart(
+            withField({ ...SANS, pen: { ...SANS.pen, weight } }, "metrics", "width", width),
+            "bowl",
+            "squareness",
+            squareness,
+          );
+          for (const name of NAMES) {
+            for (const stroke of LETTERS[name](style).strokes) {
+              const least = stroke.pen.weight / 2;
+              for (const segment of stroke.spine.segments) {
+                if (segment.kind !== "arc") continue;
+                if (segment.radius < least * 0.999) {
+                  wrong.push(
+                    `${name} turns through ${segment.radius.toFixed(1)} with a pen of ` +
+                      `${stroke.pen.weight.toFixed(1)} (weight ${weight}, width ${width}, squareness ${squareness})`,
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    expect(wrong.slice(0, 8)).toEqual([]);
   });
 });
 
@@ -130,6 +212,24 @@ describe("no control is decoration", () => {
           );
         });
         if (!changed) dead.push(`${spec.name}.${control.key} (${spec.label} / ${control.label})`);
+      }
+    }
+
+    for (const [where, controls] of [
+      ["pen", PEN_CONTROLS],
+      ["metrics", METRIC_CONTROLS],
+    ] as Array<["pen" | "metrics", FieldControl[]]>) {
+      for (const control of controls) {
+        const scale = control.emRelative ? SANS.metrics.unitsPerEm : 1;
+        const changed = NAMES.some((name) => {
+          const before = drawLetter(name, withField(SANS, where, control.key, control.min * scale));
+          const after = drawLetter(name, withField(SANS, where, control.key, control.max * scale));
+          return (
+            contoursToSvgPath(before!.contours) !== contoursToSvgPath(after!.contours) ||
+            before!.advanceWidth !== after!.advanceWidth
+          );
+        });
+        if (!changed) dead.push(`${where}.${control.key} (${control.label})`);
       }
     }
     expect(dead).toEqual([]);

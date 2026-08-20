@@ -658,14 +658,7 @@ export function sweep(stroke: Stroke): Contour[] {
     const other: Contour = { nodes: closeRing(stitch(right)), closed: true };
     const [outside, inside] =
       Math.abs(contourArea(one)) >= Math.abs(contourArea(other)) ? [one, other] : [other, one];
-    // The counter has to run against the outside, or it reads as a second piece
-    // of ink rather than as a hole.
-    return [
-      outside,
-      Math.sign(contourArea(inside)) === Math.sign(contourArea(outside))
-        ? reverseContour(inside)
-        : inside,
-    ];
+    return [facing(outside, 1), facing(inside, -1)];
   }
 
   const last = segments[segments.length - 1];
@@ -690,7 +683,33 @@ export function sweep(stroke: Stroke): Contour[] {
     ...startNodes,
   ];
 
-  return [{ nodes: dropRepeats(nodes), closed: true }];
+  return [facing({ nodes: dropRepeats(nodes), closed: true }, 1)];
+}
+
+/**
+ * A contour wound the way the rest of the letter is wound.
+ *
+ * This matters more than it sounds. A letter is drawn as overlapping strokes --
+ * the stem of a b and the bowl of a b are two of them, and they are meant to
+ * overlap -- and overlapping shapes are filled by the nonzero rule, which adds
+ * up how many times the outline wraps a point. Two shapes wound the same way
+ * add. Two wound opposite ways cancel, and where they overlap a hole opens.
+ *
+ * Which way a swept stroke came out wound was whichever way its spine happened
+ * to be written: a stem drawn upwards and a bowl drawn anticlockwise wound
+ * against each other. On a face with round bowls the stem meets the bowl at a
+ * single point and there is no overlap to cancel, so nothing showed for as long
+ * as every bowl was a circle. Squared or narrowed, the bowl gains a flat side
+ * that lies along the stem, the overlap becomes an area, and a black slot opens
+ * straight down the middle of the letter.
+ *
+ * The export never saw it, because it fuses everything before writing a file.
+ * Only the thing on the screen was wrong, which is the half a designer looks at.
+ */
+function facing(contour: Contour, want: number): Contour {
+  const area = contourArea(contour);
+  if (area === 0) return contour;
+  return Math.sign(area) === want ? contour : reverseContour(contour);
 }
 
 /** A ring's first and last node are the same point; keep one. */

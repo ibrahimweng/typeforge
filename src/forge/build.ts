@@ -8,7 +8,7 @@
  * boolean geometry on every keystroke to gain nothing anyone can see.
  */
 
-import { contoursBounds } from "@/font/geometry";
+import { contourArea, contoursBounds, reverseContour } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { FIGURES, LETTERS, type Recipe } from "./letters";
 import { penReach, sweep } from "./sweep";
@@ -37,12 +37,45 @@ export function drawLetter(name: string, style: Style): Drawn | null {
   if (!recipe) return null;
   const built: Recipe = recipe(style);
 
-  const contours: Contour[] = [];
+  const upright: Contour[] = [];
   for (const stroke of built.strokes) {
-    contours.push(...sweep(stroke));
-    contours.push(...serifsFor(stroke, style));
+    upright.push(...sweep(stroke));
+    upright.push(...serifsFor(stroke, style));
   }
+  const contours = leaning(upright, style);
   return { contours, advanceWidth: advanceFor(name, built, contours, style) };
+}
+
+/**
+ * The letter, leaned over.
+ *
+ * Done to the finished outline rather than to the skeleton, and that is the
+ * whole reason it is exact. A shear is an affine map, an affine map takes a
+ * cubic to a cubic with no error at all, so a slanted face is as accurate as an
+ * upright one. Slanting the skeleton instead would turn every circular arc into
+ * an ellipse, and an ellipse does not offset to an ellipse -- the offsets would
+ * have to be sampled and refitted, and the promise that a heavy cut is the same
+ * construction as a light one rather than a pushed-about version of it would be
+ * gone.
+ *
+ * Pivoted at the middle of the lowercase, so a letter leans about its own waist
+ * instead of swinging out of its space from the baseline.
+ */
+function leaning(contours: Contour[], style: Style): Contour[] {
+  const degrees = style.metrics.slant;
+  if (!degrees) return contours;
+  const lean = Math.tan((degrees * Math.PI) / 180);
+  const pivot = style.metrics.xHeight / 2;
+  const move = (point: Vec2): Vec2 => ({ x: point.x + (point.y - pivot) * lean, y: point.y });
+  return contours.map((contour) => ({
+    ...contour,
+    nodes: contour.nodes.map((node) => ({
+      ...node,
+      point: move(node.point),
+      handleIn: node.handleIn ? move(node.handleIn) : null,
+      handleOut: node.handleOut ? move(node.handleOut) : null,
+    })),
+  }));
 }
 
 /**
@@ -68,6 +101,8 @@ function measure(recipe: Recipe, contours: Contour[], style: Style): number {
   return contoursBounds(contours).xMax + trailing;
 }
 
+/** The figures are all drawn at the same width, so they need the same lean. */
+
 const figureCache = new WeakMap<Style, number>();
 
 function figureAdvance(style: Style): number {
@@ -76,10 +111,10 @@ function figureAdvance(style: Style): number {
   let widest = 0;
   for (const name of FIGURES) {
     const built = LETTERS[name](style);
-    const contours = built.strokes.flatMap((stroke) => [
-      ...sweep(stroke),
-      ...serifsFor(stroke, style),
-    ]);
+    const contours = leaning(
+      built.strokes.flatMap((stroke) => [...sweep(stroke), ...serifsFor(stroke, style)]),
+      style,
+    );
     widest = Math.max(widest, measure(built, contours, style));
   }
   figureCache.set(style, widest);
@@ -138,7 +173,10 @@ function serifsFor(stroke: Stroke, style: Style): Contour[] {
     // to begin before the serif does.
     const bracket = Math.min(terminal.bracket ?? 0, thickness, tip - inner);
     for (const side of [1, -1]) {
-      out.push(wing(at, outward, side, inner, tip, thickness, bracket));
+      // Wound with the strokes it sits on, or the serif would cancel the stem
+      // it is attached to rather than adding to it.
+      const shape = wing(at, outward, side, inner, tip, thickness, bracket);
+      out.push(contourArea(shape) < 0 ? reverseContour(shape) : shape);
     }
   }
   return out;

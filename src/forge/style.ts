@@ -38,6 +38,23 @@ export interface Metrics {
   counterWidth: number;
   /** White space left either side of a letter. */
   sidebearing: number;
+  /**
+   * How wide every letter runs, as a multiple.
+   *
+   * Applied to the horizontal measures a letter is built from and to nothing
+   * else, so the face condenses or extends without the strokes changing
+   * thickness -- which is the difference between a width and a scale.
+   */
+  width: number;
+  /**
+   * Degrees the whole letter leans, to the right when positive.
+   *
+   * Taken on the finished outline rather than on the skeleton. A shear is an
+   * affine map and an affine map takes a cubic to a cubic exactly, so this
+   * costs nothing in accuracy -- where slanting the skeleton would turn every
+   * circular arc into an ellipse and the offsets would stop being exact.
+   */
+  slant: number;
 }
 
 /**
@@ -149,6 +166,8 @@ export const SANS: Style = {
     overshoot: 10,
     counterWidth: 370,
     sidebearing: 55,
+    width: 1,
+    slant: 0,
   },
   pen: { weight: 92, contrast: 0, angle: 0 },
   parts: {
