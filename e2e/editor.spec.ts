@@ -743,6 +743,9 @@ test("writes a font file the browser can use", async ({ page }) => {
 /** Drag a handle across the stage by a number of screen pixels. */
 async function dragHandle(page: Page, id: string, dx: number, dy: number): Promise<void> {
   const handle = page.locator(`[data-forge-handle="${id}"]`);
+  // Hovering first waits for the thing to be there and to stop moving, so the
+  // box measured is the box that is still under the pointer a moment later.
+  await handle.hover();
   const box = (await handle.boundingBox())!;
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
@@ -758,11 +761,29 @@ async function openForge(page: Page): Promise<void> {
   await page.goto("/");
   await page.getByRole("button", { name: "Draw a font" }).click();
   await expect(page.locator("[data-forge-stage]")).toBeVisible();
-  // Out of the way of the handles, which sit near the top of the stage.
-  await page
-    .locator("[data-coach-mark] button")
-    .click()
-    .catch(() => {});
+  await settle(page);
+}
+
+/**
+ * Wait for the first-run tip to be gone, not merely clicked.
+ *
+ * The tip is a row rather than an overlay, so dismissing it takes a line of
+ * height out of the page and everything under it moves up -- and it does that a
+ * hundred and fifty milliseconds after the click, once the fade has finished,
+ * which is deliberate so a row of content does not jump under the pointer
+ * mid-click.
+ *
+ * Clicking and carrying straight on meant a drag could measure where a handle
+ * was, have the layout legitimately move under it, and then press forty pixels
+ * below the thing it meant to press. Nothing changed, the test asked why, and
+ * the answer had nothing to do with dragging. It never showed up on a fast
+ * machine and failed twice in a row on a slow one.
+ */
+async function settle(page: Page): Promise<void> {
+  const mark = page.locator("[data-coach-mark]");
+  if ((await mark.count()) === 0) return;
+  await mark.getByRole("button", { name: "Got it" }).click();
+  await expect(mark).toHaveCount(0);
 }
 
 /**
