@@ -320,10 +320,21 @@ function terminalNodes(
   const right = { x: at.x - shift.x, y: at.y - shift.y };
 
   if (terminal.kind === "round") {
-    // A half turn of the pen itself, which with contrast is a half ellipse.
+    /*
+     * A half turn of the pen itself, which with contrast is a half ellipse.
+     *
+     * The starting angle has to be read in the pen's own frame, which means
+     * turning the offset back by the pen's angle -- back, not forward. Turned
+     * the wrong way the cap starts somewhere else on the ellipse and does not
+     * meet the sides it is supposed to join, and the stroke crosses itself. It
+     * showed up only on a face whose pen is held at an angle, because at zero
+     * the two are the same.
+     */
+    const dx = left.x - at.x;
+    const dy = left.y - at.y;
     const fromAngle = Math.atan2(
-      (left.y - at.y) * Math.cos(reach.angle) - (left.x - at.x) * -Math.sin(reach.angle),
-      (left.x - at.x) * Math.cos(reach.angle) + (left.y - at.y) * Math.sin(reach.angle),
+      -dx * Math.sin(reach.angle) + dy * Math.cos(reach.angle),
+      dx * Math.cos(reach.angle) + dy * Math.sin(reach.angle),
     );
     const arc: OffsetEllipse = {
       kind: "ellipse",

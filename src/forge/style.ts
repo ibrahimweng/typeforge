@@ -28,7 +28,13 @@ export interface Metrics {
   descender: number;
   /** How far the round letters overshoot the flat ones, so they look level. */
   overshoot: number;
-  /** Width of the inside of a lowercase n, which sets the rhythm of the font. */
+  /**
+   * Width of the inside of a lowercase n, which sets the rhythm of the font.
+   *
+   * The round letters do not read it: an o is as wide as it is tall, because it
+   * is round and it fills the x-height. This is what everything with two
+   * uprights is spaced by.
+   */
   counterWidth: number;
   /** White space left either side of a letter. */
   sidebearing: number;
@@ -122,7 +128,7 @@ export const SANS: Style = {
     ascender: 750,
     descender: -210,
     overshoot: 10,
-    counterWidth: 300,
+    counterWidth: 370,
     sidebearing: 55,
   },
   pen: { weight: 92, contrast: 0, angle: 0 },
@@ -150,7 +156,7 @@ export const SERIF: Style = {
   pen: { weight: 96, contrast: 0.42, angle: 8 },
   parts: {
     ...SANS.parts,
-    slab: { on: true, projection: 52, thickness: 34, bracket: 26 },
+    slab: { on: true, projection: 44, thickness: 46, bracket: 22 },
     shoulder: { spring: 0.58, reach: 1 },
     terminal: { kind: "angled", angle: 12 },
   },
@@ -167,7 +173,7 @@ export const SERIF: Style = {
 export const DISPLAY: Style = {
   ...SANS,
   name: "Display",
-  metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 250, sidebearing: 40 },
+  metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 300, sidebearing: 40 },
   pen: { weight: 190, contrast: 0, angle: 0 },
   parts: {
     ...SANS.parts,
