@@ -15,6 +15,7 @@
  * overrides, which is the exception rather than the rule.
  */
 
+import type { WaveAlong } from "./shapes";
 import type { JoinKind, Pen, Terminal, TerminalKind } from "./types";
 
 /** The heights and widths every letter is built against. */
@@ -132,6 +133,22 @@ export interface Parts {
     /** Thickness relative to the stems, so a bar can be lighter than a stem. */
     weight: number;
   };
+  /**
+   * The wave, for the faces whose strokes undulate rather than run straight.
+   *
+   * A family of its own rather than a decoration on top of one: a flat run gone
+   * wavy is a different letter, not a wobbled version of the old one, and the
+   * whole rhythm of the face changes with it. Drawn as arcs, so it offsets
+   * exactly like everything else here and holds at every weight.
+   */
+  wave: {
+    /** How long one full crest and trough is, in font units. */
+    length: number;
+    /** How far it swings either side of the run, in font units. */
+    depth: number;
+    /** Which runs undulate: the flat ones, the upright ones, or all of them. */
+    along: WaveAlong;
+  };
 }
 
 export interface Style {
@@ -202,6 +219,7 @@ export const SANS: Style = {
     corner: { radius: 0, join: "miter" },
     terminal: { kind: "butt", angle: 0 },
     crossbar: { height: 0.52, weight: 1 },
+    wave: { length: 130, depth: 0, along: "flat" },
   },
 };
 
@@ -340,6 +358,29 @@ export const MARKER: Style = {
   },
 };
 
+/**
+ * Wavy: thin, wide, and undulating along every flat run.
+ *
+ * The one base whose letters are not made of straight lines at all where they
+ * lie flat. A light monoline with long serifs gives the wave something to
+ * happen along -- the arms of an E, the foot of an L, the bar of an H -- and
+ * the stems stay upright so the letter still reads as a letter rather than as
+ * a ribbon.
+ */
+export const WAVY: Style = {
+  ...SANS,
+  name: "Wavy",
+  blurb: "Thin, wide, and rippling along every run that lies flat.",
+  metrics: { ...SANS.metrics, width: 1.12, sidebearing: 44 },
+  pen: { weight: 44, contrast: 0, angle: 0 },
+  parts: {
+    ...SANS.parts,
+    slab: { on: true, projection: 1.55, thickness: 0.52, bracket: 0 },
+    bowl: { width: 1.05, squareness: 0 },
+    wave: { length: 152, depth: 34, along: "flat" },
+  },
+};
+
 export const BASES: Style[] = [
   SANS,
   SERIF,
@@ -349,4 +390,5 @@ export const BASES: Style[] = [
   TECHNICAL,
   FAIRGROUND,
   MARKER,
+  WAVY,
 ];

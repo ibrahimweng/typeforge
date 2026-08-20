@@ -300,22 +300,32 @@ describe("no control is decoration", () => {
             ? [false, true]
             : [control.min * scale, control.max * scale];
 
-        // Serifs forced on and a corner in play, so a control that only shows
-        // under those conditions is not written off as doing nothing.
-        const ready = withPart(
+        /*
+         * Serifs forced on and a corner in play, so a control that only shows
+         * under those conditions is not written off as doing nothing -- and
+         * tried both with the wave running and without it, because the two
+         * conditions are not compatible. A wavelength means nothing at a depth
+         * of nought; a serif's bracket means nothing on a face that undulates,
+         * where the bar is swept along a spine rather than drawn as a shape
+         * with a fillet in it.
+         */
+        const plain = withPart(
           withPart(SANS, "slab", "on", true),
           "terminal",
           "kind",
           "angled",
         );
-        const changed = NAMES.some((name) => {
-          const before = drawLetter(name, withPart(ready, spec.name, control.key, low));
-          const after = drawLetter(name, withPart(ready, spec.name, control.key, high));
-          return (
-            contoursToSvgPath(before!.contours) !== contoursToSvgPath(after!.contours) ||
-            before!.advanceWidth !== after!.advanceWidth
-          );
-        });
+        const waving = withPart(withPart(plain, "wave", "depth", 26), "wave", "along", "both");
+        const changed = [plain, waving].some((ready) =>
+          NAMES.some((name) => {
+            const before = drawLetter(name, withPart(ready, spec.name, control.key, low));
+            const after = drawLetter(name, withPart(ready, spec.name, control.key, high));
+            return (
+              contoursToSvgPath(before!.contours) !== contoursToSvgPath(after!.contours) ||
+              before!.advanceWidth !== after!.advanceWidth
+            );
+          }),
+        );
         if (!changed) dead.push(`${spec.name}.${control.key} (${spec.label} / ${control.label})`);
       }
     }

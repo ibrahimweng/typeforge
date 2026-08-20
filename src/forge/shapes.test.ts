@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 
 import { contourArea, contoursBounds } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
-import { bowl, bowlBetween, bowlRadius, roundCorners } from "./shapes";
+import { bowl, bowlBetween, bowlRadius, roundCorners, wavy } from "./shapes";
 import { sweep } from "./sweep";
 import type { Pen, Spine, Stroke } from "./types";
 
@@ -187,6 +187,119 @@ describe("rounding a corner", () => {
           pen: { ...MONOLINE, weight },
         });
         expect(contoursIntersect(contours), `radius ${radius} at weight ${weight}`).toBe(false);
+      }
+    }
+  });
+});
+
+describe("a wave", () => {
+  const run: Spine = {
+    segments: [{ kind: "line", from: { x: 0, y: 300 }, to: { x: 800, y: 300 } }],
+    closed: false,
+  };
+  const ends = (segment: (typeof run)["segments"][number]) =>
+    segment.kind === "line"
+      ? [segment.from, segment.to]
+      : [
+          {
+            x: segment.centre.x + segment.radius * Math.cos(segment.startAngle),
+            y: segment.centre.y + segment.radius * Math.sin(segment.startAngle),
+          },
+          {
+            x: segment.centre.x + segment.radius * Math.cos(segment.endAngle),
+            y: segment.centre.y + segment.radius * Math.sin(segment.endAngle),
+          },
+        ];
+  /** Which way a piece is travelling where it starts and where it stops. */
+  const ways = (segment: (typeof run)["segments"][number]) => {
+    if (segment.kind === "line") {
+      const dx = segment.to.x - segment.from.x;
+      const dy = segment.to.y - segment.from.y;
+      const length = Math.hypot(dx, dy) || 1;
+      return [
+        { x: dx / length, y: dy / length },
+        { x: dx / length, y: dy / length },
+      ];
+    }
+    const way = segment.endAngle >= segment.startAngle ? 1 : -1;
+    return [segment.startAngle, segment.endAngle].map((angle) => ({
+      x: -Math.sin(angle) * way,
+      y: Math.cos(angle) * way,
+    }));
+  };
+
+  it("begins and ends exactly where the straight run did", () => {
+    const waved = wavy(run, 200, 40, 40, "flat");
+    const first = ends(waved.segments[0])[0];
+    const last = ends(waved.segments[waved.segments.length - 1])[1];
+    expect(first.x).toBeCloseTo(0, 6);
+    expect(first.y).toBeCloseTo(300, 6);
+    expect(last.x).toBeCloseTo(800, 6);
+    expect(last.y).toBeCloseTo(300, 6);
+  });
+
+  it("never leaves a gap or a kink between one piece and the next", () => {
+    /*
+     * Both halves matter. A gap is a stroke in two pieces; a kink is a corner,
+     * and the sweep cuts a corner back by crossing the two offsets -- which
+     * where a line meets an arc are a line and an ellipse, with no closed form
+     * to cross. So the wave has to arrive at its straight stub travelling the
+     * way the stub travels, and the first attempt, which met it at a right
+     * angle, folded every letter it was applied to.
+     */
+    for (const depth of [5, 20, 40, 80, 160]) {
+      const waved = wavy(run, 200, depth, 40, "flat");
+      for (let index = 1; index < waved.segments.length; index++) {
+        const before = waved.segments[index - 1];
+        const after = waved.segments[index];
+        const [, leaves] = ends(before);
+        const [arrives] = ends(after);
+        expect(Math.hypot(leaves.x - arrives.x, leaves.y - arrives.y), `gap at ${index}, depth ${depth}`)
+          .toBeLessThan(1e-6);
+        const [, going] = ways(before);
+        const [coming] = ways(after);
+        expect(going.x * coming.x + going.y * coming.y, `kink at ${index}, depth ${depth}`)
+          .toBeCloseTo(1, 5);
+      }
+    }
+  });
+
+  it("holds every arc at half the pen, however deep it is asked to go", () => {
+    for (const penHalf of [10, 40, 90, 130]) {
+      for (const depth of [10, 60, 200]) {
+        for (const segment of wavy(run, 160, depth, penHalf, "flat").segments) {
+          if (segment.kind !== "arc") continue;
+          expect(segment.radius, `pen ${penHalf}, depth ${depth}`).toBeGreaterThanOrEqual(penHalf * 1.06 - 1e-6);
+        }
+      }
+    }
+  });
+
+  it("leaves a straight piece at each end for a terminal to sit on", () => {
+    const waved = wavy(run, 200, 40, 40, "flat");
+    expect(waved.segments[0].kind).toBe("line");
+    expect(waved.segments[waved.segments.length - 1].kind).toBe("line");
+  });
+
+  it("only touches the runs it was pointed at", () => {
+    const upright: Spine = {
+      segments: [{ kind: "line", from: { x: 0, y: 0 }, to: { x: 0, y: 700 } }],
+      closed: false,
+    };
+    expect(wavy(upright, 200, 40, 40, "flat").segments).toHaveLength(1);
+    expect(wavy(upright, 200, 40, 40, "upright").segments.length).toBeGreaterThan(1);
+    expect(wavy(run, 200, 40, 40, "upright").segments).toHaveLength(1);
+    expect(wavy(run, 200, 40, 40, "off").segments).toHaveLength(1);
+  });
+
+  it("draws a stroke that does not cross itself at any weight", () => {
+    for (const weight of [16, 80, 160, 240]) {
+      for (const depth of [10, 45, 120]) {
+        const contours = sweep({
+          ...drawn(wavy(run, 190, depth, weight / 2, "flat")),
+          pen: { ...MONOLINE, weight },
+        });
+        expect(contoursIntersect(contours), `weight ${weight}, depth ${depth}`).toBe(false);
       }
     }
   });

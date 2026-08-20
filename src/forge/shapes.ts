@@ -31,7 +31,7 @@
  */
 
 import type { Vec2 } from "@/font/types";
-import type { Spine, SpineArc, SpineSegment } from "./types";
+import type { Spine, SpineArc, SpineLine, SpineSegment } from "./types";
 
 const at = (x: number, y: number): Vec2 => ({ x, y });
 const TAU = Math.PI * 2;
@@ -238,6 +238,275 @@ export function bowlPoint(
     }
   }
   return centre;
+}
+
+/**
+ * Which runs a wave is applied to, read off the direction they travel.
+ *
+ * Not every one of them, because a wave is a decision about a kind of stroke
+ * rather than about a letter: an undulating baseline is a set of flat runs
+ * gone wavy while the stems stay straight, and a rippled stem is the other way
+ * about. Told to do both, everything in the letter moves at once, which is a
+ * different face again.
+ */
+export type WaveAlong = "off" | "flat" | "upright" | "both";
+
+/**
+ * A straight run redrawn as a wave.
+ *
+ * Built from circular arcs rather than from a sine, and that is the whole
+ * reason it can be here at all. A sine offsets to something that is not a
+ * sine, so a wavy stroke drawn that way would have to be sampled and refitted
+ * and would stop being exact at any weight but the one it was fitted at. A
+ * chain of arcs, each turning the same amount and each turning the other way
+ * from the one before, is tangent-continuous where they meet, looks like a
+ * wave, and offsets to another chain of arcs.
+ *
+ * Whole periods across the run, always. A wave that stops halfway through its
+ * last crest lands its endpoint somewhere other than where the recipe put it,
+ * and the letter comes apart at the joins; asked for a wavelength that does not
+ * divide the run, the nearest one that does is used instead. So the two ends
+ * stay exactly where they were and only the middle moves.
+ *
+ * The one rule holds here too: the arcs are held at half the pen, which caps
+ * how deep a wave of a given length can go. Past that the wave flattens rather
+ * than folding, so a heavy weight with a short wavelength quietly stops waving
+ * instead of tearing.
+ */
+export function wavy(
+  spine: Spine,
+  wavelength: number,
+  depth: number,
+  penHalf: number,
+  along: WaveAlong,
+  inward: (from: Vec2, to: Vec2) => number = () => 1,
+): Spine {
+  if (along === "off" || depth <= 0 || wavelength <= 0) return spine;
+  const count = spine.segments.length;
+  return {
+    closed: spine.closed,
+    segments: spine.segments.flatMap((segment, index) => {
+      if (segment.kind !== "line" || !rides(segment, along)) return [segment];
+      const before = index > 0 ? spine.segments[index - 1] : spine.closed ? spine.segments[count - 1] : null;
+      const after =
+        index < count - 1 ? spine.segments[index + 1] : spine.closed ? spine.segments[0] : null;
+      return ripple(
+        segment,
+        wavelength,
+        depth,
+        penHalf,
+        keeps(segment, before, penHalf, "start"),
+        keeps(segment, after, penHalf, "end"),
+        inward(segment.from, segment.to) >= 0 ? 1 : -1,
+      );
+    }),
+  };
+}
+
+/**
+ * How much of a run has to be left straight at one end for the corner there to
+ * survive.
+ *
+ * The sweep cuts the inside of a corner back to where the two offsets cross,
+ * and how far back that is grows without bound as the corner sharpens: half a
+ * pen over the tangent of half the angle. If the straight run is shorter than
+ * that, the cut cannot be made and the crossing survives as a loop. Waving a z
+ * end to end left its arms with nine units of straight where the corner into
+ * the diagonal needed ten, and the letter folded at a hairline weight.
+ *
+ * A run that carries straight on into its neighbour, or into an arc it is
+ * tangent to, needs nothing: the angle is a straight line and the cut is zero.
+ * A free end needs only enough to sit a terminal or a serif on.
+ */
+function keeps(
+  segment: SpineLine,
+  neighbour: SpineSegment | null,
+  penHalf: number,
+  which: "start" | "end",
+): number {
+  const least = penHalf * 1.5;
+  if (!neighbour) return least;
+  const mine = heading(segment, which === "start" ? "into" : "outOf");
+  const theirs = heading(neighbour, which === "start" ? "outOf" : "into");
+  const between = mine.x * theirs.x + mine.y * theirs.y;
+  const sinHalf = Math.sqrt(Math.max(0, (1 - between) / 2));
+  const cosHalf = Math.sqrt(Math.max(0, (1 + between) / 2));
+  if (sinHalf < 1e-6) return least;
+  // A fifth over what the cut needs, and half a pen on top, so the crossing
+  // lands inside the straight rather than exactly at the end of it.
+  return Math.max(least, (penHalf * cosHalf) / sinHalf + penHalf * 0.5);
+}
+
+/**
+ * Which way a piece points at one of its ends, taken as leaving that end.
+ *
+ * Both are measured leaving the corner rather than travelling through it, so
+ * two pieces that carry straight on point exactly opposite ways and the angle
+ * between them is a straight line.
+ */
+function heading(segment: SpineSegment, sense: "into" | "outOf"): Vec2 {
+  if (segment.kind === "line") {
+    const from = sense === "into" ? segment.to : segment.from;
+    const to = sense === "into" ? segment.from : segment.to;
+    return towards(from, to);
+  }
+  const angle = sense === "into" ? segment.endAngle : segment.startAngle;
+  const way = (segment.endAngle >= segment.startAngle ? 1 : -1) * (sense === "into" ? 1 : -1);
+  return at(-Math.sin(angle) * way, Math.cos(angle) * way);
+}
+
+/** Whether a run travels the way this wave is meant to be applied. */
+function rides(segment: SpineLine, along: WaveAlong): boolean {
+  if (along === "both") return true;
+  const dx = segment.to.x - segment.from.x;
+  const dy = segment.to.y - segment.from.y;
+  const length = Math.hypot(dx, dy);
+  if (length < 1e-9) return false;
+  // Within thirty degrees of the line it is being called flat or upright
+  // against, so a slightly leaning arm still counts as an arm.
+  const steep = Math.abs(dy) / length;
+  return along === "flat" ? steep <= 0.5 : steep >= 0.866;
+}
+
+/**
+ * One straight run, as a chain of arcs that alternate which way they bend.
+ *
+ * The wave rides on one side of the run rather than swinging either side of
+ * it, and that is forced rather than chosen. A chain of arcs meeting
+ * tangentially can only leave the line it starts on at a turning point of its
+ * own -- an arc that sets off along the line is already at its own crest -- so
+ * a wave whose two ends are on the line, and tangent to it, has the line as one
+ * of its extremes. Which is what a scalloped bar is, and is what the face this
+ * was built for actually does: the foot of its B touches the baseline between
+ * each hump rather than crossing it.
+ *
+ * Leaving tangentially is the part that cannot be given up. The sweep cuts a
+ * corner back by crossing the two offsets, and where a straight run meets an
+ * arc those are a line and an ellipse -- no closed form, and the letter folds.
+ * Meeting the straight stub at the same angle it is travelling means there is
+ * no corner there to cut.
+ */
+function ripple(
+  segment: SpineLine,
+  wavelength: number,
+  depth: number,
+  penHalf: number,
+  keepStart: number,
+  keepEnd: number,
+  first: number,
+): SpineSegment[] {
+  const dx = segment.to.x - segment.from.x;
+  const dy = segment.to.y - segment.from.y;
+  const whole = Math.hypot(dx, dy);
+  if (whole < 1e-9) return [segment];
+
+  /*
+   * A straight stub left at each end, and the wave taken through the middle.
+   *
+   * Everything a stroke does at its ends is a conversation with a straight
+   * run: a serif is a bar across one, a square cut is square to one, and a
+   * corner is two of them meeting. Waved end to end, a letter loses all three
+   * at once -- switching the wave on took every serif off the serif face,
+   * because a serif goes on a straight end and there were none left.
+   *
+   * How long each stub has to be is the corner's business rather than the
+   * wave's, so it is worked out from the neighbour and handed in. Never more
+   * than two fifths of the run apiece, or there would be nothing left to wave.
+   */
+  const opening = Math.min(keepStart, whole * 0.4);
+  const closing = Math.min(keepEnd, whole * 0.4);
+  const span = whole - opening - closing;
+  if (span < penHalf * 2) return [segment];
+
+  /*
+   * The wave is a half arc, some number of whole ones, and a half arc back.
+   *
+   * The two halves are what let it leave the line along the line and return to
+   * it the same way. The whole ones in between each carry the stroke from one
+   * side of its own turn to the other, so they alternate, and there has to be
+   * an odd number of them for the last half to arrive travelling the right way
+   * to come back down. A period is two of them.
+   */
+  const wanted = Math.max(1, (2 * span) / wavelength - 1);
+  const wholeArcs = Math.max(1, Math.round((wanted - 1) / 2) * 2 + 1);
+  const length = (2 * span) / (wholeArcs + 1);
+
+  /*
+   * How far each arc turns, worked out from how deep the wave is asked to be.
+   *
+   * Depth here is the whole swing, crest to line, which is twice what one arc
+   * rises over its own half period. Both that and the half period fall out of
+   * the turn, and dividing one by the other loses the radius and leaves the
+   * tangent of half of it.
+   */
+  let turn = 2 * Math.atan((2 * depth) / length);
+  /*
+   * A quarter turn a side and no more, which is a wave of half circles.
+   *
+   * Past that the centre of the arc crosses to the other side of its own chord
+   * and the arc curls back on itself rather than bulging.
+   */
+  turn = Math.min(turn, Math.PI / 2);
+  // Then held so no arc turns tighter than half the pen, which is the same
+  // rule everything else here is held to, and caps the depth rather than the
+  // wave.
+  const most = length / (4 * penHalf * CLEARANCE);
+  if (most < 1) turn = Math.min(turn, Math.asin(most));
+  // Under about a degree there is no wave left to draw, and a chain of arcs
+  // that flat is a slower way of writing a straight line.
+  if (turn < 0.02) return [segment];
+
+  const radius = length / (4 * Math.sin(turn));
+  const along = at(dx / whole, dy / whole);
+  const opens = at(segment.from.x + along.x * opening, segment.from.y + along.y * opening);
+
+  const out: SpineSegment[] = [{ kind: "line", from: segment.from, to: opens }];
+  /*
+   * Walked rather than placed: each arc leaves where the last one arrived and
+   * turns the other way, which is the whole of what makes it a wave. Only the
+   * centre has to be worked out, and it is always a right angle from the way
+   * the stroke is travelling.
+   */
+  let where = opens;
+  let heading = along;
+  for (let index = 0; index < wholeArcs + 2; index++) {
+    // The first and last are halves; everything between is a whole.
+    const sweep = index === 0 || index === wholeArcs + 1 ? turn : turn * 2;
+    // The first bends toward the side the wave rides on, and every one after
+    // it bends back the other way.
+    const side = (index % 2 === 0 ? 1 : -1) * first;
+    /*
+     * The centre is a right angle from the way the stroke is travelling now,
+     * not from the way the run travels.
+     *
+     * They are the same only for the first arc. By the second the stroke has
+     * already turned, and measuring the centre off the run instead left every
+     * junction after the first with a kink in it exactly the size of one turn.
+     */
+    const normal = at(-heading.y, heading.x);
+    const centre = at(where.x + normal.x * side * radius, where.y + normal.y * side * radius);
+    const startAngle = Math.atan2(where.y - centre.y, where.x - centre.x);
+    const endAngle = startAngle + side * sweep;
+    out.push({
+      kind: "arc",
+      centre,
+      radius,
+      startAngle,
+      endAngle,
+      sweepPositive: endAngle > startAngle,
+    });
+    where = at(
+      centre.x + radius * Math.cos(endAngle),
+      centre.y + radius * Math.sin(endAngle),
+    );
+    const turned = side * sweep;
+    heading = at(
+      heading.x * Math.cos(turned) - heading.y * Math.sin(turned),
+      heading.x * Math.sin(turned) + heading.y * Math.cos(turned),
+    );
+  }
+  out.push({ kind: "line", from: where, to: segment.to });
+  return out;
 }
 
 /**

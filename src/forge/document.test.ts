@@ -29,7 +29,7 @@ import {
   type Forge,
 } from "./document";
 import { lettersUsing, partsUsedBy, PART_SPECS } from "./parts";
-import { DISPLAY, SANS, SERIF } from "./style";
+import { DISPLAY, SANS, SERIF, type Style } from "./style";
 
 /** What a letter actually looks like, as a string that can be compared. */
 const shapeOf = (letter: string, forge: Forge): string => {
@@ -80,8 +80,15 @@ describe("which letters have which parts", () => {
   });
 
   it("finds every part described in the panel on some letter of a serif", () => {
+    // With the wave switched on, because a part nobody has asked for is a part
+    // no letter uses -- which is true of it and would be true of the serif too
+    // if the serif face did not have serifs.
+    const waving: Style = {
+      ...SERIF,
+      parts: { ...SERIF.parts, wave: { ...SERIF.parts.wave, depth: 26 } },
+    };
     for (const spec of PART_SPECS) {
-      expect(lettersUsing(spec.name, SERIF).length, `nothing uses ${spec.name}`).toBeGreaterThan(0);
+      expect(lettersUsing(spec.name, waving).length, `nothing uses ${spec.name}`).toBeGreaterThan(0);
     }
   });
 });

@@ -11,7 +11,7 @@
 import { contourArea, contoursBounds, reverseContour } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { FIGURES, LETTERS, recipeOf, type Recipe } from "./letters";
-import { alongSpine, spinePath } from "./shapes";
+import { alongSpine, spinePath, wavy } from "./shapes";
 import { penReach, reachAlong, sweep } from "./sweep";
 import type { Style } from "./style";
 import type { Stroke, Terminal } from "./types";
@@ -290,10 +290,26 @@ function serifsFor(stroke: Stroke, style: Style): Contour[] {
        * of letters, so a letter that gains an arm tomorrow gets it too.
        */
       if (crossesALine(at, facing, side, tip, style)) continue;
-      // Wound with the strokes it sits on, or the serif would cancel the stem
-      // it is attached to rather than adding to it.
-      const shape = wing(at, facing, side, inner, tip, thickness, bracket);
-      out.push(contourArea(shape) < 0 ? reverseContour(shape) : shape);
+      /*
+       * A face that undulates undulates here too, and the only way to say that
+       * is to draw the bar as a stroke rather than as a shape.
+       *
+       * A serif is a bar across the end of a stroke. Drawn as a wing -- the
+       * part that sticks out, with a fillet where it meets the stem -- it is a
+       * shape, and a shape has no spine for a wave to run along. So on a face
+       * with a wave the bar is swept like anything else, which costs it the
+       * bracket and gains it everything the sweep can do. Which is the trade a
+       * wavy face wants: the letters it is drawn for have unbracketed serifs,
+       * and what they do have is feet that ripple.
+       */
+      const shape: Contour[] = waving(style)
+        ? sweptWing(stroke, style, at, facing, side, inner, tip, thickness)
+        : [wing(at, facing, side, inner, tip, thickness, bracket)];
+      for (const piece of shape) {
+        // Wound with the strokes it sits on, or the serif would cancel the stem
+        // it is attached to rather than adding to it.
+        out.push(contourArea(piece) < 0 ? reverseContour(piece) : piece);
+      }
     }
   }
   return out;
@@ -339,6 +355,58 @@ function crossesALine(at: Vec2, outward: Vec2, side: number, tip: number, style:
       Math.abs(across.y) > 0.8 &&
       (far - line) * inward < 0,
   );
+}
+
+/** Whether this face has a wave for a flat run to follow. */
+function waving(style: Style): boolean {
+  const { depth, along } = style.parts.wave;
+  return depth > 0 && (along === "flat" || along === "both");
+}
+
+/**
+ * One wing of a serif, swept rather than drawn.
+ *
+ * The bar runs out along the line from the middle of the stroke it belongs to,
+ * lying wholly on the inside so it can never cross the line the stroke is
+ * standing on. Its inner end is buried in the stroke, which is why it can be a
+ * plain square cut: there is nothing there to see.
+ *
+ * Both wings of a foot are built travelling the same way, so both take their
+ * wave to the same side and the two halves of the foot are mirror images
+ * rather than a wave with a step in the middle of it.
+ */
+function sweptWing(
+  stroke: Stroke,
+  style: Style,
+  at: Vec2,
+  outward: Vec2,
+  side: number,
+  inner: number,
+  tip: number,
+  thickness: number,
+): Contour[] {
+  const into = { x: -outward.x, y: -outward.y };
+  // Travelling so that the left of the way it goes is the inside of the
+  // letter, because that is the side the wave rides on.
+  const along = { x: into.y, y: -into.x };
+  const middle = { x: at.x + into.x * (thickness / 2), y: at.y + into.y * (thickness / 2) };
+  const reach = Math.max(tip, inner + 1);
+  const from = side > 0 ? middle : { x: middle.x - along.x * reach, y: middle.y - along.y * reach };
+  const to = side > 0 ? { x: middle.x + along.x * reach, y: middle.y + along.y * reach } : middle;
+  const { length, depth, along: where } = style.parts.wave;
+  const spine = wavy(
+    { segments: [{ kind: "line", from, to }], closed: false },
+    length,
+    depth,
+    thickness / 2,
+    where,
+  );
+  return sweep({
+    spine,
+    pen: { ...stroke.pen, contrast: 0, weight: thickness },
+    start: { kind: "butt" },
+    end: { kind: "butt" },
+  });
 }
 
 /**

@@ -32,6 +32,7 @@ import {
   shortened,
   spineEnd,
   spineStart,
+  wavy,
 } from "./shapes";
 import { MITER_LIMIT, penReach, reachAlong } from "./sweep";
 import type { JoinKind, Spine, SpineSegment, Stroke, Terminal } from "./types";
@@ -57,7 +58,7 @@ export interface Recipe {
 export type LetterName = string;
 
 /** The parts a letter can be built from, which are the things an edit lands on. */
-export type PartName = "slab" | "shoulder" | "bowl" | "corner" | "terminal" | "crossbar";
+export type PartName = "slab" | "shoulder" | "bowl" | "corner" | "terminal" | "crossbar" | "wave";
 
 /*
  * Which parts the letter being drawn has asked for.
@@ -468,7 +469,13 @@ function ink(frame: Frame, spine: Spine, start: Terminal = BUTT, end: Terminal =
   if (spine.closed) uses("bowl");
   if (hasCorner(spine)) uses("corner");
   return {
-    spine: roundCorners(spine, frame.radius, frame.half),
+    /*
+     * Waved after the corners are rounded, not before. Rounding a corner is a
+     * conversation between two straight runs, and a run that has already gone
+     * wavy is no longer straight -- asked in the other order, a face with both
+     * turned up quietly lost every corner it had.
+     */
+    spine: rippled(frame, roundCorners(spine, frame.radius, frame.half)),
     pen: frame.style.pen,
     start,
     end,
@@ -498,7 +505,54 @@ function hasCorner(spine: Spine): boolean {
 function thin(frame: Frame, spine: Spine, start: Terminal = BUTT, end: Terminal = BUTT): Stroke {
   uses("crossbar");
   const { pen, parts } = frame.style;
-  return { spine, pen: { ...pen, weight: pen.weight * parts.crossbar.weight }, start, end };
+  const weight = pen.weight * parts.crossbar.weight;
+  // Waved against its own width rather than the font's stem, or a bar lighter
+  // than the stems would be allowed a deeper wave than it can turn through.
+  return {
+    spine: rippled(frame, spine, weight / 2),
+    pen: { ...pen, weight },
+    start,
+    end,
+  };
+}
+
+/**
+ * A run put through the style's wave, if it has one.
+ *
+ * Here rather than inside every recipe because a wave is a decision about the
+ * face and not about the letter: whatever the recipe drew, if this face
+ * undulates then that is what undulates, and a letter added tomorrow gets it
+ * without being told.
+ */
+function rippled(frame: Frame, spine: Spine, half = frame.half): Spine {
+  const { length, depth, along } = frame.style.parts.wave;
+  if (along === "off" || depth <= 0) return spine;
+  const waved = wavy(spine, length, depth, half, along, (from, to) => inward(frame, from, to));
+  if (waved.segments !== spine.segments) uses("wave");
+  return waved;
+}
+
+/**
+ * Which side of a run its wave should ride on.
+ *
+ * A wave built from arcs that meet tangentially rides on one side of the run
+ * rather than swinging either side of it, so which side is a decision, and
+ * there is only one right answer: the side the letter is on. The top arm of an
+ * E is written to the cap line, and a wave riding up off it puts the arm above
+ * the line every other letter stops at -- which is the fault the whole
+ * alignment pass existed to remove, walking back in through a new door.
+ *
+ * A run that is not flat keeps the side the wave was built to ride, because
+ * there is no line under it to be carried past.
+ */
+function inward(f: Frame, from: Vec2, to: Vec2): number {
+  const rise = to.y - from.y;
+  const run = to.x - from.x;
+  if (Math.abs(rise) > Math.abs(run)) return 1;
+  // The left of the way a run travels is up when it travels rightwards.
+  const leftIsUp = run >= 0;
+  const wantsUp = (from.y + to.y) / 2 < f.cap / 2;
+  return wantsUp === leftIsUp ? 1 : -1;
 }
 
 /**
