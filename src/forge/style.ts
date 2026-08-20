@@ -210,6 +210,16 @@ export interface Style {
   metrics: Metrics;
   pen: Pen;
   parts: Parts;
+  /**
+   * Letters this face would rather draw from a different skeleton.
+   *
+   * A base is a set of decisions, and which shape an a or a g is happens to be
+   * one of them: a brush script wants the single-storey a and the curled g
+   * that a text face does not. The alternates already exist and are already
+   * offered letter by letter -- this only says which ones a face starts with,
+   * and every one of them can still be changed afterwards like any other.
+   */
+  forms?: Record<string, string>;
   /** What kind of face this is, for the person choosing one. */
   blurb?: string;
 }
@@ -483,6 +493,44 @@ export const PSYCHEDELIC: Style = {
   },
 };
 
+/**
+ * Brush: leaned over, cut with a chisel brush, and drawn in cursive shapes.
+ *
+ * The signwriter's hand. A flat brush held at an angle gives strokes that
+ * swell and vanish as they turn, the lean carries them along the line, and the
+ * cuts at the ends are angled because that is the shape the brush leaves when
+ * it lifts. What separates it from a slanted sans is the letterforms rather
+ * than the pen, which is why this is the first base to say which ones it
+ * wants: the curled g, the f that carries below the line, the straight y and
+ * the l with a tail are all hands rather than types.
+ */
+export const BRUSH: Style = {
+  ...SANS,
+  name: "Brush",
+  blurb: "The signwriter's hand: leaned over, chisel-cut, drawn in cursive shapes.",
+  metrics: {
+    ...SANS.metrics,
+    slant: 15,
+    xHeight: 505,
+    capHeight: 700,
+    ascender: 765,
+    descender: -235,
+    sidebearing: 34,
+    width: 0.93,
+    counterWidth: 300,
+  },
+  pen: { weight: 132, contrast: 0.66, angle: -17 },
+  parts: {
+    ...SANS.parts,
+    bowl: { width: 0.94, squareness: 0.28, aperture: 0.86 },
+    shoulder: { spring: 0.5, reach: 0.96 },
+    corner: { radius: 0, join: "miter" },
+    terminal: { kind: "butt", angle: 0 },
+    flare: { spread: 0.14, depth: 1.1, curve: 0.7 },
+  },
+  forms: { g: "curled", f: "descending", y: "straight", l: "tailed" },
+};
+
 export const BASES: Style[] = [
   SANS,
   SERIF,
@@ -495,4 +543,5 @@ export const BASES: Style[] = [
   WAVY,
   FLARED,
   PSYCHEDELIC,
+  BRUSH,
 ];

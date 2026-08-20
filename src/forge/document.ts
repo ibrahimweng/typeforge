@@ -42,7 +42,7 @@ export interface Forge {
 }
 
 export function startFrom(base: Style): Forge {
-  return { base: base.name, style: clone(base), exceptions: {}, alternates: {} };
+  return { base: base.name, style: clone(base), exceptions: {}, alternates: { ...base.forms } };
 }
 
 /** Draw this letter from a different skeleton, or put it back to the default. */
