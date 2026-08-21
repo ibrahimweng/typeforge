@@ -162,6 +162,26 @@ class ForgeStore {
     this.set({ focus: { id, asked: (this.state.focus?.asked ?? 0) + 1 } });
   }
 
+  /**
+   * The drawn half, for writing down and for putting back.
+   *
+   * Restoring goes through the same commit the editing does, so the document
+   * that comes back can be undone away from -- which is what somebody expects
+   * after opening the wrong file.
+   */
+  snapshot(): { forge: Forge; familyName: string; specimen: string } {
+    return {
+      forge: this.state.forge,
+      familyName: this.state.familyName,
+      specimen: this.state.specimen,
+    };
+  }
+
+  restore(saved: { forge: Forge; familyName: string; specimen: string }): void {
+    this.commit(saved.forge, "single");
+    this.set({ familyName: saved.familyName, specimen: saved.specimen, focus: null });
+  }
+
   setFamilyName(familyName: string): void {
     this.set({ familyName });
   }

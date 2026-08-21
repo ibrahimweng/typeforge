@@ -76,6 +76,34 @@ ago is still a live control rather than damage that has to be undone. A glyph's
 own value wins over the family value, which is what lets you round an entire
 typeface and then tell one letter to stay sharp.
 
+## Keeping your work
+
+**Save** writes a `.typeforge` file: the session as it stands, in every half of
+the application at once. It is a description rather than a picture — the drawn
+half is its style and the handful of letters told to differ from it, and an
+imported font is the file you opened plus the glyphs you have actually touched.
+That last one is why it is a format and not a dump of the application: a font is
+six thousand glyphs, and writing all of them out to record that you moved two
+would be fifty megabytes describing fifty bytes of work.
+
+**Open** takes one back. It is the same button that opens a font, and the same
+drop target: what arrives is identified from its own first bytes rather than
+from its name, so it does not matter which of the two you are bringing in or
+what the browser called it on the way down. Opening a project puts back only the
+halves the file actually holds, so a drawing does not wipe a font you had open
+beside it.
+
+Alongside that, the session is written down as you go — into IndexedDB, a second
+after you stop moving, and again when the tab is hidden. Closing the browser and
+coming back lands you where you left off, in the half you were in, with nothing
+to have remembered to do. If this browser will not keep anything — a private
+window, storage switched off — the toolbar says so where you can see it rather
+than letting you find out afterwards.
+
+Exporting is a different thing again, and the buttons are separate for a reason:
+a font is for other people to use and cannot be opened back up into the work
+that made it.
+
 ## Export
 
 Two formats, and a choice about how much of the original font to carry forward.
@@ -144,6 +172,7 @@ src/font/     the font engine, independent of the interface
   transform.ts  the parametric layer
   geometry.ts   vector and bezier maths
 src/state/    document state, undo and redo
+src/project/  the saved document: the file format, and keeping it in the browser
 src/views/    font, glyph, kerning and spacing views
 src/anim/     motion, built on anime.js
 src/ui/       the Toolcraft component kit, see NOTICE.md
@@ -185,3 +214,8 @@ npm run preview # serves that build locally
 Fonts are read and written entirely in the browser. Nothing is uploaded, and
 there is no backend to upload it to. That matters when the file you are editing
 is a licensed typeface.
+
+The session kept between visits is kept in the same place — IndexedDB, in your
+own browser, on your own machine. It includes the font you opened, so clearing
+the site's data is all it takes to remove it, and a shared machine keeps it for
+whoever uses that browser profile.

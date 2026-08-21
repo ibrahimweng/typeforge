@@ -175,6 +175,25 @@ class AssembleStore {
     this.set({ selected: character });
   }
 
+  /** The assembled half, for writing down and for putting back. */
+  snapshot(): { assembly: Assembly; familyName: string; specimen: string } {
+    return {
+      assembly: this.state.assembly,
+      familyName: this.state.familyName,
+      specimen: this.state.specimen,
+    };
+  }
+
+  restore(saved: { assembly: Assembly; familyName: string; specimen: string }): void {
+    this.commit(saved.assembly, "single");
+    this.set({
+      familyName: saved.familyName,
+      specimen: saved.specimen,
+      problem: null,
+      selected: saved.assembly.pieces.find((piece) => piece.character)?.character ?? "",
+    });
+  }
+
   setFamilyName(familyName: string): void {
     this.set({ familyName });
   }

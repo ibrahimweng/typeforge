@@ -31,6 +31,15 @@ const TOOLS: Array<{ id: ToolId; label: string; hint: string }> = [
   { id: "pen", label: "Pen", hint: "Add points to an outline (P)" },
 ];
 
+/** Whether the work is being written down between visits. */
+export type Keeping = "kept" | "off" | "unknown";
+
+const KEEPING: Record<Keeping, string> = {
+  kept: "Save this project to a file. Your work is also kept in this browser.",
+  off: "Save this project to a file. This browser is not keeping your work.",
+  unknown: "Save this project to a file.",
+};
+
 export function TopBar({
   onOpenFile,
   onLibrary,
@@ -39,6 +48,8 @@ export function TopBar({
   helpOpen,
   mode,
   onMode,
+  onSave,
+  keeping,
 }: {
   onOpenFile: () => void;
   onLibrary: () => void;
@@ -47,6 +58,9 @@ export function TopBar({
   helpOpen: boolean;
   mode: Mode;
   onMode: (mode: Mode) => void;
+  onSave: () => void;
+  /** Whether the work is being kept between visits, for saying so. */
+  keeping: Keeping;
 }): React.JSX.Element {
   const state = useAppState();
   const forge = useForge();
@@ -96,7 +110,18 @@ export function TopBar({
   }, []);
 
   return (
-    <header className="flex h-11 shrink-0 items-center gap-3 border-b border-border px-3">
+    /*
+      Wraps rather than spills.
+
+      Every control in here is fixed-width and there are now three groups of
+      them, so below about twelve hundred pixels the row is longer than the
+      window -- and a flex row that will not wrap does not hide its overflow, it
+      puts it past the right-hand edge where nothing can reach it. Export was
+      the first thing over the side, which is the one button somebody came here
+      to press. A second line at a narrow window is a smaller cost than a
+      missing button, and at any ordinary width nothing moves.
+    */
+    <header className="flex min-h-11 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-3 py-1">
       <span className="text-xs-plus font-medium tracking-tight">Typeforge</span>
 
       {/*
@@ -222,6 +247,20 @@ export function TopBar({
             {state.status.message}
           </span>
         )}
+        {/*
+          Said once, quietly, and only when it is worth saying.
+
+          "Kept" is the ordinary state and needs no announcement -- it is on the
+          Save button's hover. What has to be visible is the other one: a
+          private window, or storage switched off, means the work is not being
+          kept and somebody should know that before they spend an afternoon in
+          here rather than afterwards.
+        */}
+        {keeping === "off" && (
+          <span className="shrink-0 text-2xs text-destructive" data-keeping="off">
+            Not kept — save a file
+          </span>
+        )}
         <button
           type="button"
           onClick={onToggleHelp}
@@ -237,11 +276,45 @@ export function TopBar({
         <button type="button" onClick={onLibrary} data-open-library className={OUTLINE_ACTION}>
           Library
         </button>
-        {mode === "edit" && (
-          <button type="button" onClick={onOpenFile} className={OUTLINE_ACTION}>
-            Open font
-          </button>
-        )}
+        {/*
+          One door in, whatever is being brought through it.
+
+          There were nearly two: a font opens here, and a saved project is also
+          a thing somebody opens, so the toolbar was about to carry "Open font"
+          next to "Open" and leave anybody to work out which was which. What
+          arrives is identified from its own first bytes rather than from its
+          name or from which button was pressed, so one button does both -- and
+          it is here in every mode, because a project can be a drawing or a
+          pile of drawings as easily as a font.
+        */}
+        <button
+          type="button"
+          onClick={onOpenFile}
+          title="Open a font or a saved Typeforge project"
+          data-open-file
+          className={OUTLINE_ACTION}
+        >
+          Open
+        </button>
+        {/*
+          The work itself, as against the font that comes out of it.
+
+          Kept separate from Export, because they are not two names for one
+          thing: Export writes a font for other people to use and cannot be
+          opened again, and this writes what you were doing so you can carry on
+          doing it. Calling both of them "save" is how a tool ends up with
+          somebody's afternoon inside a .ttf they cannot get back out.
+        */}
+        <button
+          type="button"
+          onClick={onSave}
+          title={KEEPING[keeping]}
+          data-save-project
+          data-keeping={keeping}
+          className={OUTLINE_ACTION}
+        >
+          Save
+        </button>
         <button
           type="button"
           onClick={onExport}

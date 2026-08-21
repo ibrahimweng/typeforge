@@ -181,6 +181,10 @@ const GlyphCell = React.memo(function GlyphCell({
       title={`${glyph.name}  ${formatCodepoint(glyph.unicodes[0])}`}
       aria-current={active ? "true" : undefined}
       aria-pressed={selected}
+      data-glyph-cell={glyph.name}
+      // The same thing the dot in the corner says, in a form something other
+      // than an eye can read.
+      data-glyph-changed={glyph.dirty ? "yes" : "no"}
       className={cn(
         "group relative flex flex-col items-center justify-between rounded-md border pt-1",
         tile(active, "bg-card/40"),
@@ -243,8 +247,8 @@ function EmptyState(): React.JSX.Element {
     <div ref={ref} className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
       <h2 className="text-sm font-medium text-foreground">No font open</h2>
       <p className="max-w-sm text-xs-plus text-muted-foreground">
-        Drop a TrueType, OpenType, WOFF or WOFF2 file anywhere in this window, or use Open font in
-        the toolbar.
+        Drop a TrueType, OpenType, WOFF or WOFF2 file anywhere in this window, or use Open in the
+        toolbar. Open takes a saved Typeforge project too.
       </p>
       <button type="button" onClick={() => void store.loadSample()} className={PRIMARY_ACTION}>
         Try the sample font

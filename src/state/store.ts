@@ -11,6 +11,7 @@
  * take on every drag.
  */
 
+import { applyEdits, fromBase64, type EditedProject } from "@/project/format";
 import { buildAccents, deriveAnchors, suggestAnchors, looksLikeMark } from "@/font/accents";
 import { dependentsOf } from "@/font/composite";
 import {
@@ -171,6 +172,44 @@ class Store {
       busy: false,
       status: {
         message: `${typeface.meta.familyName} — ${typeface.glyphs.length.toLocaleString()} glyphs`,
+        tone: "success",
+      },
+    });
+    this.touch();
+  }
+
+  /** Say something in the toolbar, for anything that has no view of its own. */
+  say(message: string, tone: "info" | "error" | "success" = "success"): void {
+    this.set({ status: { message, tone } });
+  }
+
+  /** The edited half, for writing down. */
+  snapshot(): { typeface: Typeface; fileName: string } | undefined {
+    const { typeface, fileName } = this.state;
+    return typeface ? { typeface, fileName } : undefined;
+  }
+
+  /**
+   * Put a saved font back.
+   *
+   * The file is read again from its own bytes and the saved glyphs are laid
+   * over the top, rather than the whole document being restored from the
+   * document. That keeps the source tables -- the hinting, the colour, the
+   * variations, everything "preserve" export hands back untouched -- which a
+   * document made of glyphs would have quietly thrown away.
+   */
+  async restore(saved: EditedProject): Promise<void> {
+    await this.loadFont(fromBase64(saved.font), saved.fileName);
+    const { typeface } = this.state;
+    if (!typeface) return;
+    applyEdits(typeface, saved);
+    this.undoStack = [];
+    this.redoStack = [];
+    this.set({
+      status: {
+        message: `${typeface.meta.familyName} — ${saved.glyphs.length.toLocaleString()} ${
+          saved.glyphs.length === 1 ? "glyph" : "glyphs"
+        } of your own`,
         tone: "success",
       },
     });
@@ -529,6 +568,17 @@ class Store {
     if (index === undefined) return;
     const glyph = typeface.glyphs[index];
     glyph.params = { ...glyph.params, [key]: value };
+    /*
+     * Touched, and it has to say so.
+     *
+     * An override is a change to the letter as surely as dragging a point is,
+     * and two things downstream ask this rather than looking at the outline. A
+     * "preserve" export writes the original bytes for any glyph that has not
+     * been touched, which meant an override was quietly dropped from the file
+     * -- the one place it would never be noticed, since the letter is right on
+     * screen the whole time. The grid's own "changed" mark reads it too.
+     */
+    glyph.dirty = true;
     this.touch();
   }
 
@@ -543,6 +593,9 @@ class Store {
     delete next[key];
     const before = glyph.params;
     glyph.params = next;
+    // Still touched: going back to the family's value is a decision too, and
+    // the glyph has to be rebuilt to show it.
+    glyph.dirty = true;
     this.push({
       label: `Reset ${key}`,
       undo: () => {

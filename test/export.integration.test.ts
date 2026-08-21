@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { exportFont } from "../src/font/export";
 import { resolveGlyphContours } from "../src/font/transform";
+import { contoursBounds } from "../src/font/geometry";
 import { findCrossbar } from "../src/font/anatomy";
 import { importFont } from "../src/font/parse";
 import { FONT_SUITE_TIMEOUT, loadTestFont } from "./fixtures";
@@ -57,6 +58,47 @@ suite("export pipeline", { timeout: FONT_SUITE_TIMEOUT }, () => {
     // is exactly what both font libraries lose on their own.
     expect(Object.keys(report.gposKernPairs).length).toBeGreaterThan(2000);
     expect(report.gposKernPairs["A,V"]).toBe(-131);
+  });
+
+  /*
+   * A per-glyph override has to reach the file.
+   *
+   * "Preserve" writes the original bytes back for any glyph nobody has touched,
+   * which is what keeps the hinting -- and it decides "touched" from a flag on
+   * the glyph rather than by comparing outlines. Setting an override did not
+   * raise that flag, so the letter was right on screen the whole time and wrong
+   * in every file exported: the one place the mistake could not be seen.
+   */
+  it("carries a single glyph's own override into a preserving export", async () => {
+    const { typeface } = await importFont(source!, "DejaVuSans.ttf");
+    const index = typeface.glyphIndex.get("A")!;
+    const glyph = typeface.glyphs[index];
+
+    const plain = await exportFont(typeface, { format: "ttf", fidelity: "preserve", now: 0 });
+
+    // The same edit the inspector makes: an override on this letter and on
+    // nothing else, with the family left exactly as it was.
+    glyph.params = { ...glyph.params, weight: 40 };
+    glyph.dirty = true;
+
+    const edited = await exportFont(typeface, { format: "ttf", fidelity: "preserve", now: 0 });
+    expect(inspectFont(edited.bytes).error).toBeUndefined();
+
+    /*
+     * Read back out, because that is the only question worth asking. The bytes
+     * differing would prove a timestamp moved; what has to be true is that the
+     * A in the file is the A that was on screen.
+     */
+    const written = (await importFont(edited.bytes, "edited.ttf")).typeface;
+    const untouched = (await importFont(plain.bytes, "plain.ttf")).typeface;
+    const boundsOf = (font: typeof written, name: string) =>
+      contoursBounds(font.glyphs[font.glyphIndex.get(name)!].contours);
+
+    expect(boundsOf(written, "A"), "the A went out unchanged").not.toEqual(
+      boundsOf(untouched, "A"),
+    );
+    // And its neighbours were left alone, which is what preserving means.
+    expect(boundsOf(written, "B")).toEqual(boundsOf(untouched, "B"));
   });
 
   it("preserves layout and hinting tables the editor never models", async () => {

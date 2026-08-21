@@ -39,7 +39,7 @@ async function paramSlider(page: Page, label: string) {
 
 /** Open the test font through the file input the toolbar drives. */
 async function openFont(page: Page): Promise<void> {
-  await page.setInputFiles('input[type="file"]', FONT_PATH!);
+  await page.setInputFiles("[data-open-input]", FONT_PATH!);
   // The toolbar reports the family once parsing finishes.
   await expect(page.getByText("DejaVu Sans", { exact: false }).first()).toBeVisible({
     timeout: 45_000,
@@ -54,7 +54,9 @@ test("loads with no console errors and prompts for a font", async ({ page }) => 
   page.on("pageerror", (error) => errors.push(error.message));
 
   await page.goto("/");
-  await expect(page.getByText("Typeforge")).toBeVisible();
+  // The wordmark itself, not the word wherever it appears -- the empty state
+  // mentions the project format by name, and matching loosely picked up both.
+  await expect(page.getByText("Typeforge", { exact: true })).toBeVisible();
   await expect(page.getByText("No font open")).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -93,7 +95,7 @@ test("opens a WOFF2, which is what the web serves", async ({ page }) => {
   expect(readFileSync(woff2Path).subarray(0, 4).toString("latin1")).toBe("wOF2");
 
   await page.goto("/");
-  await page.setInputFiles('input[type="file"]', woff2Path);
+  await page.setInputFiles("[data-open-input]", woff2Path);
 
   // The whole font, unpacked and drawn: the same count the TrueType of it
   // gives, since a WOFF2 is that file compressed and nothing else.
@@ -164,7 +166,7 @@ test("opens a second font as quickly as the first", async ({ page }) => {
   await expect(page.getByText("6,253 glyphs", { exact: true })).toBeVisible();
 
   const started = Date.now();
-  await page.setInputFiles('input[type="file"]', FONT_PATH!);
+  await page.setInputFiles("[data-open-input]", FONT_PATH!);
   await expect(page.getByText("6,253 glyphs", { exact: true })).toBeVisible({ timeout: 120_000 });
   expect(Date.now() - started, "the second open took long enough to look broken").toBeLessThan(
     30_000,
@@ -523,6 +525,39 @@ test("the toolbar and panels say which option is selected", async ({ page }) => 
   await expect(pen).toHaveAttribute("aria-pressed", "true");
   await expect(select).toHaveAttribute("aria-pressed", "false");
 });
+
+/*
+ * Nothing in the toolbar is allowed off the side.
+ *
+ * Every control in it is fixed-width, and a flex row that will not wrap does
+ * not hide what does not fit -- it puts it past the right-hand edge, where
+ * there is no scrollbar and no way to reach it. It has happened twice: once
+ * when the modes were called "Edit a font", "Draw a font" and "Assemble a
+ * font", and once when the status message was allowed twenty-eight rem. Both
+ * times the button that went over the side was Export.
+ *
+ * Checked in edit mode, which carries the most: the modes, the five views, undo
+ * and redo, the open font's name, the status, and four actions.
+ */
+for (const width of [1440, 1280, 1152, 1024]) {
+  test(`keeps every toolbar button on screen at ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/");
+    await openFont(page);
+    await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+    const over = await page.evaluate((edge) => {
+      const names: string[] = [];
+      for (const button of document.querySelectorAll("header button")) {
+        const box = button.getBoundingClientRect();
+        // Half a pixel of slack, for a sub-pixel layout that rounds outwards.
+        if (box.right > edge + 0.5 || box.left < -0.5) names.push(button.textContent?.trim() ?? "?");
+      }
+      return names;
+    }, width);
+    expect(over, `off the side at ${width}`).toEqual([]);
+  });
+}
 
 test("hovering a toolbar button changes it before you press", async ({ page }) => {
   await page.goto("/");
@@ -1764,4 +1799,280 @@ test("zooms into the letter and back out again", async ({ page }) => {
 
   await page.getByRole("button", { name: /fit$/ }).click();
   await expect.poll(() => stage.getAttribute("viewBox")).toBe(before);
+});
+
+/**
+ * Keeping the work.
+ *
+ * The two halves of this are not the same promise. A file is portable and
+ * deliberate -- it answers "I want this on my other machine". Autosave is
+ * neither, and answers the thing nobody plans for: the tab closed, the laptop
+ * slept, the browser updated itself overnight. Only the second one can be
+ * checked by reloading, and only the first can be checked by walking into a
+ * browser that has never seen this person before, so both are here.
+ */
+
+/** The n in the alphabet, as its own outline. */
+function drawnN(page: Page): Promise<string | null> {
+  return page.locator('[data-forge-cell="n"] path').first().getAttribute("d");
+}
+
+/**
+ * The session as the browser has it written down.
+ *
+ * Read out of IndexedDB rather than waited for with a timer, because the write
+ * is on a pause after the last edit and a timer would either be flaky or be
+ * slow. This asks the actual question -- is it kept yet.
+ */
+function keptHalves(page: Page): Promise<string[]> {
+  return page.evaluate(
+    () =>
+      new Promise<string[]>((resolve) => {
+        const request = indexedDB.open("typeforge", 1);
+        request.onerror = () => resolve([]);
+        request.onsuccess = () => {
+          const database = request.result;
+          const get = database.transaction("session", "readonly").objectStore("session").get("current");
+          get.onerror = () => {
+            database.close();
+            resolve([]);
+          };
+          get.onsuccess = () => {
+            database.close();
+            const project = get.result as Record<string, unknown> | undefined;
+            if (!project) {
+              resolve([]);
+              return;
+            }
+            resolve(["draw", "assemble", "edit"].filter((half) => project[half]));
+          };
+        };
+      }),
+  );
+}
+
+test("picks the drawing back up after the tab has been closed", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openForge(page);
+
+  const plain = await drawnN(page);
+  await page.locator('[data-forge-part="slab"]').getByRole("switch", { name: "Serifs" }).click();
+  await expect.poll(() => drawnN(page)).not.toBe(plain);
+  const serifed = await drawnN(page);
+
+  // The toolbar says this browser is keeping things, which is what the rest of
+  // the test rests on -- and what somebody is told when it is not.
+  await expect(page.locator("[data-save-project]")).toHaveAttribute("data-keeping", "kept");
+  await expect(page.locator('[data-keeping="off"]')).toHaveCount(0);
+  await expect.poll(() => keptHalves(page)).toContain("draw");
+
+  await page.reload();
+
+  // Back in Draw, on the same letters, without anybody asking for either.
+  await expect(page.locator("[data-forge-stage]")).toBeVisible();
+  await expect.poll(() => drawnN(page)).toBe(serifed);
+  await expect(
+    page.locator('[data-forge-part="slab"]').getByRole("switch", { name: "Serifs" }),
+  ).toHaveAttribute("aria-checked", "true");
+  expect(errors).toEqual([]);
+});
+
+test("keeps an opened font and the letters changed in it", async ({ page }) => {
+  await page.goto("/");
+  await openFont(page);
+
+  /*
+   * An override on one glyph: the narrowest thing the format has to carry.
+   *
+   * A font is six thousand glyphs and the document keeps the touched ones, so
+   * this is the case where the saving and the losing look identical until the
+   * reload -- and it is the case that was actually broken, since setting an
+   * override never marked the letter as touched at all.
+   */
+  await page.locator('[data-glyph-cell="A"]').click();
+  const panel = page.getByRole("complementary", { name: "Parameters" });
+  await panel.getByRole("button", { name: "A", exact: true }).click();
+  const weight = panel.getByRole("slider", { name: "Weight" });
+  await weight.focus();
+  for (let press = 0; press < 10; press++) await page.keyboard.press("ArrowRight");
+  await expect(page.locator('[data-glyph-cell="A"]')).toHaveAttribute("data-glyph-changed", "yes");
+  await expect.poll(() => keptHalves(page), { timeout: 30_000 }).toContain("edit");
+
+  await page.reload();
+
+  // The file is read again from its own bytes, so this takes as long as opening
+  // it did -- but it comes back, and it comes back edited.
+  await expect(page.getByText("DejaVu Sans", { exact: false }).first()).toBeVisible({
+    timeout: 45_000,
+  });
+  await expect(page.locator('[data-glyph-cell="A"]')).toHaveAttribute("data-glyph-changed", "yes");
+});
+
+test("saves the work to a file, and opens it in a browser that has never seen it", async ({
+  page,
+  browser,
+}) => {
+  await openForge(page);
+  await page.locator('[data-forge-part="slab"]').getByRole("switch", { name: "Serifs" }).click();
+  const serifed = await drawnN(page);
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("[data-save-project]").click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/\.typeforge$/);
+  /*
+   * Kept under a name that lies about it.
+   *
+   * One button takes both a font and a project, and which it is comes from the
+   * file's first bytes rather than from what it is called -- so the harder case
+   * is the one saved here: a project wearing a font's extension, which a check
+   * on the name would open as a font and fail on.
+   */
+  const saved = join(tmpdir(), "not-really-a.ttf");
+  await download.saveAs(saved);
+
+  /*
+   * A context of its own, which is the point.
+   *
+   * Nothing is kept in it and nothing is shared with the page above, so the
+   * file is the only way the work can have travelled -- which is the claim a
+   * Save button makes and the one that is worth checking.
+   */
+  const elsewhere = await browser.newContext();
+  const other = await elsewhere.newPage();
+  await other.goto("/");
+  await other.getByRole("button", { name: "Draw" }).click();
+  await settle(other);
+  expect(await drawnN(other), "the fresh browser already had the work").not.toBe(serifed);
+
+  const [chooser] = await Promise.all([
+    other.waitForEvent("filechooser"),
+    other.locator("[data-open-file]").click(),
+  ]);
+  await chooser.setFiles(saved);
+
+  await expect.poll(() => drawnN(other)).toBe(serifed);
+  await elsewhere.close();
+});
+
+test("carries the assembled drawings into the file too", async ({ page, browser }) => {
+  await openAssemble(page);
+  await fillBox(page, "A", { ...point(400), name: "A_.svg" });
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("[data-save-project]").click(),
+  ]);
+  const saved = join(tmpdir(), download.suggestedFilename());
+  await download.saveAs(saved);
+
+  const elsewhere = await browser.newContext();
+  const other = await elsewhere.newPage();
+  await other.goto("/");
+  const [chooser] = await Promise.all([
+    other.waitForEvent("filechooser"),
+    other.locator("[data-open-file]").click(),
+  ]);
+  await chooser.setFiles(saved);
+
+  // Opened straight into the half it was saved from, with the box still full.
+  await expect(other.locator('[data-assemble-box="A"]')).toHaveAttribute(
+    "data-assemble-filled",
+    "yes",
+  );
+  await expect(other.locator('[data-assemble-filled="yes"]')).toHaveCount(1);
+  await elsewhere.close();
+});
+
+/*
+ * A file picker takes whatever it is pointed at.
+ *
+ * So a holiday photo, a package.json and a truncated download all arrive at
+ * this button, and each has to be turned away with a sentence rather than
+ * half-read over the top of somebody's afternoon. The sentence names both
+ * things the button accepts, because by the time it is said the file is
+ * neither, and "could not be read" would leave somebody guessing which of the
+ * two they had meant to bring.
+ */
+test("turns away a file that is neither a font nor a project", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openForge(page);
+  const before = await drawnN(page);
+
+  for (const file of [
+    { name: "holiday.json", mimeType: "application/json", buffer: Buffer.from('{"hello":"world"}') },
+    { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("not json at all") },
+  ]) {
+    const [chooser] = await Promise.all([
+      page.waitForEvent("filechooser"),
+      page.locator("[data-open-file]").click(),
+    ]);
+    await chooser.setFiles(file);
+    await expect(
+      page.getByText(`${file.name} is not a font or a Typeforge project.`),
+    ).toBeVisible();
+  }
+
+  expect(await drawnN(page), "a refused file still changed the drawing").toBe(before);
+  expect(errors).toEqual([]);
+});
+
+/*
+ * The kept session is not a file somebody chose, so nobody is standing over it
+ * when it goes wrong -- it is read on the way in, before anything is on screen.
+ * A document that will not come back has to be a sentence and a working tool,
+ * not a blank page, and it has to leave the next edit somewhere to go.
+ */
+test("comes up anyway when what was kept will not come back", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  // Loaded once so the database exists, then spoiled, then arrived at again --
+  // which is the order it would happen in for real, a version at a time.
+  await page.goto("/");
+  await expect(page.locator("[data-save-project]")).toHaveAttribute("data-keeping", "kept");
+
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const request = indexedDB.open("typeforge", 1);
+        request.onerror = () => reject(new Error("no database"));
+        request.onsuccess = () => {
+          const database = request.result;
+          const transaction = database.transaction("session", "readwrite");
+          // Ours by every check the door makes, and unreadable behind it: the
+          // font is not base64 and turning it back into bytes throws.
+          transaction.objectStore("session").put(
+            {
+              typeforge: 1,
+              saved: new Date().toISOString(),
+              mode: "edit",
+              edit: { fileName: "Broken.ttf", font: "not base64 !!!", glyphs: [] },
+            },
+            "current",
+          );
+          transaction.oncomplete = () => {
+            database.close();
+            resolve();
+          };
+          transaction.onerror = () => {
+            database.close();
+            reject(new Error("could not write"));
+          };
+        };
+      }),
+  );
+
+  await page.reload();
+  await expect(page.getByText("Could not pick up where you left off.")).toBeVisible();
+
+  // Working, and writing again, so the next thing done is not lost as well.
+  await page.getByRole("button", { name: "Draw" }).click();
+  await settle(page);
+  await page.locator('[data-forge-part="slab"]').getByRole("switch", { name: "Serifs" }).click();
+  await expect.poll(() => keptHalves(page)).toContain("draw");
+  expect(errors).toEqual([]);
 });

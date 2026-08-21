@@ -17,7 +17,13 @@ import { HelpDrawer } from "@/components/HelpDrawer";
 import { LibraryDialog } from "@/components/LibraryDialog";
 import { Inspector } from "@/components/Inspector";
 import { TopBar } from "@/components/TopBar";
-import { assembleStore } from "@/state/useAssemble";
+import { assembleStore, useAssemble } from "@/state/useAssemble";
+import { useForge } from "@/state/useForge";
+import { detectFormat } from "@/font/parse";
+import { describe, readProject } from "@/project/format";
+import { keeper as makeKeeper, kept } from "@/project/keep";
+import { fileNameFor, restore, session } from "@/project/session";
+import type { Keeping } from "@/components/TopBar";
 import { libraryStore } from "@/state/useLibrary";
 import { store, useAppState } from "@/state/useStore";
 import { FontGridView } from "@/views/FontGridView";
@@ -33,6 +39,8 @@ export type Mode = "edit" | "forge" | "assemble";
 
 export function App(): React.JSX.Element {
   const state = useAppState();
+  const forge = useForge();
+  const assemble = useAssemble();
   const [exporting, setExporting] = React.useState(false);
   const [helping, setHelping] = React.useState(false);
   /*
@@ -52,12 +60,138 @@ export function App(): React.JSX.Element {
    */
   const [mode, setMode] = React.useState<Mode>("edit");
   const [dragging, setDragging] = React.useState(false);
+  const [keeping, setKeeping] = React.useState<Keeping>("unknown");
   const inputRef = React.useRef<HTMLInputElement>(null);
   const stageRef = React.useRef<HTMLDivElement>(null);
   const previousView = React.useRef(state.view);
 
   // One listener covers every control in the app, including any added later.
   React.useEffect(() => attachPressFeedback(document.body), []);
+
+  /*
+   * The work, kept between visits.
+   *
+   * Nothing used to be. Closing the tab lost the afternoon with no prompt, and
+   * for a tool somebody draws a typeface in that is the fault that costs most:
+   * everything else costs time, and this one costs the drawing.
+   *
+   * What comes back is put back before anything is drawn, so arriving looks
+   * like never having left rather than like a font appearing a moment later.
+   */
+  const keeper = React.useRef(makeKeeper()).current;
+  const restoring = React.useRef(true);
+
+  React.useEffect(() => {
+    let live = true;
+    void (async () => {
+      // Named apart from the `mode` on screen: this is the one the document
+      // asked for, and it is what gets written back even if putting it back
+      // went wrong.
+      let was: Mode = "edit";
+      try {
+        const saved = await kept();
+        if (!live) return;
+        if (saved) {
+          was = saved.mode;
+          const back = await restore(saved);
+          if (!live) return;
+          setMode(back.mode);
+          if (back.halves.length > 0) {
+            store.say(`Picked up where you left off — ${back.halves.join(", ")}.`);
+          }
+        }
+      } catch {
+        /*
+         * A kept session that will not come back is a bad half-hour, not a
+         * broken tool. Whatever is in there is left alone rather than deleted
+         * -- a font that failed to parse today because of a bug is a font that
+         * parses tomorrow -- and the next edit writes over it anyway.
+         */
+        if (live) store.say("Could not pick up where you left off.", "error");
+      } finally {
+        if (live) {
+          // Whether this browser will keep anything is not a question with an
+          // answer until something has been written, so it is asked by writing.
+          setKeeping((await keeper.now(() => session(was))) ? "kept" : "off");
+        }
+        restoring.current = false;
+      }
+    })();
+    return () => {
+      live = false;
+      keeper.stop();
+    };
+  }, [keeper]);
+
+  /*
+   * Written down once the drawing stops changing.
+   *
+   * Every store bumps a revision on every edit, so watching those catches
+   * everything without any of them having to know this exists. The guard is for
+   * the moment of restoring: putting a document back is itself a change, and
+   * without it the first thing a restored session does is save itself again.
+   */
+  const revisions = `${state.revision}:${forge.revision}:${assemble.revision}:${mode}`;
+  React.useEffect(() => {
+    if (restoring.current) return;
+    keeper.soon(() => session(mode));
+  }, [revisions, keeper, mode]);
+
+  /*
+   * And written down on the way out, without waiting for the pause.
+   *
+   * The pause is what keeps a drag from serialising a font a hundred times a
+   * second, but it also means the last second of work is still only in memory
+   * -- and the last second of work is exactly what somebody has just done when
+   * they close the tab. Hiding the page flushes it.
+   *
+   * `visibilitychange` rather than `beforeunload`: it is the one every browser
+   * fires on the ways a tab actually goes away, including being swapped out on
+   * a phone, and it does not offer to keep anybody here with a dialog. The
+   * write is asked for and not waited on, since there may be nothing left to
+   * wait with; that is a better last second than none.
+   */
+  React.useEffect(() => {
+    const flush = () => {
+      if (document.visibilityState === "hidden" && !restoring.current) {
+        void keeper.now(() => session(mode));
+      }
+    };
+    document.addEventListener("visibilitychange", flush);
+    return () => document.removeEventListener("visibilitychange", flush);
+  }, [keeper, mode]);
+
+  const saveProject = React.useCallback(() => {
+    const project = session(mode);
+    const blob = new Blob([JSON.stringify(project)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileNameFor(project);
+    link.click();
+    // Given back after the click rather than immediately: revoked too early,
+    // Safari has already thrown the download away.
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    store.say(`Saved ${fileNameFor(project)} — ${describe(project)}.`);
+  }, [mode]);
+
+  const openProject = React.useCallback(async (file: File, bytes: Uint8Array) => {
+    let project = null;
+    try {
+      project = readProject(JSON.parse(new TextDecoder().decode(bytes)));
+    } catch {
+      project = null;
+    }
+    if (!project) {
+      // Said as the two things it could have been, since by here it is neither
+      // and "could not be read" leaves somebody guessing which one they missed.
+      store.say(`${file.name} is not a font or a Typeforge project.`, "error");
+      return;
+    }
+    const back = await restore(project);
+    setMode(back.mode);
+    store.say(`Opened ${file.name} — ${back.halves.join(", ") || "nothing in it"}.`);
+  }, []);
 
   React.useEffect(() => {
     if (previousView.current !== state.view) {
@@ -66,12 +200,29 @@ export function App(): React.JSX.Element {
     }
   }, [state.view]);
 
-  const openFiles = React.useCallback(async (files: FileList | null) => {
-    const file = files?.[0];
-    if (!file) return;
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    await store.loadFont(bytes, file.name);
-  }, []);
+  /*
+   * Whatever was brought in, opened as what it is.
+   *
+   * A font and a saved project both arrive through this one door -- the button,
+   * and the whole window as a drop target -- and which of the two it is comes
+   * from the first four bytes rather than from the file's name. Names are the
+   * wrong witness: browsers rename downloads, people rename files, and a
+   * project saved as "Bakerloo.typeforge" is as likely to reach here called
+   * "Bakerloo (1).typeforge" or nothing recognisable at all.
+   */
+  const openFiles = React.useCallback(
+    async (files: FileList | null) => {
+      const file = files?.[0];
+      if (!file) return;
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (detectFormat(bytes) !== "unknown") {
+        await store.loadFont(bytes, file.name);
+        return;
+      }
+      await openProject(file, bytes);
+    },
+    [openProject],
+  );
 
   /*
    * What a drop means depends on which job is in front.
@@ -82,8 +233,14 @@ export function App(): React.JSX.Element {
    */
   const dropFiles = React.useCallback(
     async (files: FileList | null) => {
-      if (mode === "assemble") {
-        await assembleStore.take([...(files ?? [])]);
+      // A pile of drawings is what this half is for, so that is where a drop
+      // goes -- unless it is one saved project, which is a thing somebody drags
+      // in from wherever they keep their work and should not have to be in the
+      // right half of the application to do.
+      const dropped = [...(files ?? [])];
+      const project = dropped.length === 1 && dropped[0].name.endsWith(".typeforge");
+      if (mode === "assemble" && !project) {
+        await assembleStore.take(dropped);
         return;
       }
       await openFiles(files);
@@ -117,6 +274,8 @@ export function App(): React.JSX.Element {
         helpOpen={helping}
         mode={mode}
         onMode={setMode}
+        onSave={saveProject}
+        keeping={keeping}
       />
 
       <div className="flex min-h-0 flex-1">
@@ -142,8 +301,9 @@ export function App(): React.JSX.Element {
       <input
         ref={inputRef}
         type="file"
-        accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2"
+        accept=".ttf,.otf,.woff,.woff2,.typeforge,font/ttf,font/otf,font/woff,font/woff2,application/json"
         className="hidden"
+        data-open-input
         onChange={(event) => {
           void openFiles(event.target.files);
           event.target.value = "";
