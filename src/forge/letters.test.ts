@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
 
 import { contourArea, contoursBounds } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
-import { drawLetter, letterNames } from "./build";
+import { builtFrom, drawLetter, letterNames } from "./build";
 import { BASES as STARTING_POINTS, DISPLAY, SANS, SERIF, type Style } from "./style";
 
 /*
@@ -100,13 +100,24 @@ describe("the character set", () => {
        * long way round by mistake, shows up here as ink where a font has none.
        */
       it("keeps every letter inside the line", () => {
-        const { ascender, descender, unitsPerEm } = style.metrics;
+        const { ascender, descender, unitsPerEm, capHeight } = style.metrics;
         for (const name of letterNames()) {
           const drawn = drawLetter(name, style)!;
           if (drawn.contours.length === 0) continue;
           const bounds = contoursBounds(drawn.contours);
-          expect(bounds.yMax, `${name} rises above the ascender`).toBeLessThanOrEqual(
-            ascender + style.pen.weight,
+          /*
+           * An accented letter stands taller than the ascender, and is meant
+           * to: that is where the accent goes, and every text face in the world
+           * puts it there. What it may not do is stand so far above the line
+           * that it fouls the one before it, so it is held to a ceiling of its
+           * own rather than let off entirely -- a third again over the capitals
+           * is about where a text face keeps its own.
+           */
+          const ceiling = builtFrom(name)
+            ? capHeight * 1.4 + style.pen.weight
+            : ascender + style.pen.weight;
+          expect(bounds.yMax, `${name} rises too far above the line`).toBeLessThanOrEqual(
+            ceiling,
           );
           expect(bounds.yMin, `${name} falls below the descender`).toBeGreaterThanOrEqual(
             descender - style.pen.weight,

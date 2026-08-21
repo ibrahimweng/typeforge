@@ -18,6 +18,7 @@ import {
   type PartName,
   type Recipe,
 } from "./letters";
+import { accentsFor, gapFor, hangsBelow, isCapital, type Parts } from "./accents";
 import { alongSpine, spinePath, wavy } from "./shapes";
 import { penReach, reachAlong, sweep } from "./sweep";
 import type { Style } from "./style";
@@ -64,12 +65,27 @@ export function skeletonOf(name: string, style: Style, form?: string): Bone[] {
   });
 }
 
+/**
+ * The letters this font can draw: the ones with recipes, and the accented ones
+ * those recipes can be built into.
+ *
+ * The second set is not written down anywhere. It is whatever Unicode says can
+ * be decomposed into parts that happen to be drawn, so drawing a new mark
+ * tomorrow adds every letter that uses it without anybody listing them.
+ */
+const DRAWN = new Set(Object.keys(LETTERS));
+
 export function letterNames(): string[] {
-  return Object.keys(LETTERS);
+  return [...DRAWN, ...accentsFor(DRAWN).keys()];
 }
 
 export function canDraw(name: string): boolean {
-  return name in LETTERS;
+  return DRAWN.has(name) || accentsFor(DRAWN).has(name);
+}
+
+/** What an accented letter is built from, or nothing if it is drawn outright. */
+export function builtFrom(name: string): Parts | null {
+  return DRAWN.has(name) ? null : (accentsFor(DRAWN).get(name) ?? null);
 }
 
 /** A round letter is set a little tighter, or it looks loose beside a flat one. */
@@ -122,6 +138,9 @@ export interface Made extends Drawn {
  * and this only declines to pour them into the same bucket.
  */
 export function makeLetter(name: string, style: Style, form?: string): Made | null {
+  const parts = builtFrom(name);
+  if (parts) return marked(parts, style, form);
+
   const recipe = recipeOf(name, form);
   if (!recipe) return null;
   const built: Recipe = recipe(style);
@@ -167,6 +186,95 @@ export function makeLetter(name: string, style: Style, form?: string): Made | nu
       parts: partsOfStroke(built.strokes[index]),
     })),
   };
+}
+
+/**
+ * A letter with its marks on it.
+ *
+ * The two are drawn separately and then one is moved onto the other, and where
+ * it lands is read off the drawings rather than stated: the mark is centred on
+ * the middle of the letter's ink and stood on top of it. Measuring rather than
+ * declaring is what makes this hold as the font changes -- lean the face over
+ * and the letter's ink leans with it, so the middle moves and the accent
+ * follows, without a rule anywhere saying that accents lean.
+ *
+ * The runs travel too, so everything downstream still works on an accented
+ * letter: the skeleton draws, the probe finds the shoulder of an `ñ` under the
+ * pointer, and pressing the tilde finds whatever governs the tilde.
+ */
+function marked(parts: Parts, style: Style, form?: string): Made | null {
+  const base = makeLetter(parts.base, style, form);
+  if (!base || base.contours.length === 0) return null;
+
+  const em = style.metrics.unitsPerEm;
+  const gap = gapFor(em, isCapital(parts.base));
+  const runs = [...base.runs];
+  const contours = [...base.contours];
+
+  for (const markName of parts.marks) {
+    const mark = makeLetter(markName, style);
+    if (!mark || mark.contours.length === 0) return null;
+
+    // Measured against everything placed so far, so a second mark stacks on
+    // the first rather than landing on top of it.
+    const under = contoursBounds(contours);
+    const over = contoursBounds(mark.contours);
+    const below = hangsBelow(markName);
+
+    const move = {
+      x: (under.xMin + under.xMax) / 2 - (over.xMin + over.xMax) / 2,
+      y: below ? under.yMin - over.yMax - gap : under.yMax - over.yMin + gap,
+    };
+    const shifted = shoved(mark.contours, move);
+    contours.push(...shifted);
+    runs.push(
+      ...mark.runs.map((run) => ({ parts: run.parts, contours: shoved(run.contours, move) })),
+    );
+  }
+
+  /*
+   * Room made for a mark that reaches past the letter under it.
+   *
+   * An accent is centred on its letter and is often wider than one: the acute
+   * on an `Í` hangs a long way past a stem, and on the letter's own spacing it
+   * hung outside the letter's own left edge and printed over whatever came
+   * before it. So the same nudge every letter gets is applied again to the pair
+   * -- inside the sidebearing on the left, and enough advance to clear it on
+   * the right.
+   *
+   * Only the narrow letters move. An accent over an `O` reaches nowhere near
+   * the edges, so `Ó` is spaced exactly as `O` is, which is what keeps a word
+   * with one accent in it from limping.
+   */
+  const bounds = contoursBounds(contours);
+  const { sidebearing } = style.metrics;
+  const shortfall = Math.max(0, sidebearing - bounds.xMin);
+  const placed = shortfall > 0 ? shoved(contours, { x: shortfall, y: 0 }) : contours;
+  const spaced =
+    shortfall > 0
+      ? runs.map((run) => ({ parts: run.parts, contours: shoved(run.contours, { x: shortfall, y: 0 }) }))
+      : runs;
+
+  /*
+   * Widened by exactly what the mark hangs over, and by nothing else.
+   *
+   * Measured against the letter's own edge rather than against its advance,
+   * because a round letter is deliberately set tighter than its ink plus a
+   * sidebearing -- so measuring against the advance widened every `Ó` by the
+   * amount the `O` had been tightened by, and a word with one accent in it
+   * limped.
+   */
+  const overhang = Math.max(0, bounds.xMax - contoursBounds(base.contours).xMax);
+  return {
+    advanceWidth: base.advanceWidth + shortfall + overhang,
+    slide: base.slide + shortfall,
+    contours: placed,
+    runs: spaced,
+  };
+}
+
+function shoved(contours: Contour[], by: Vec2): Contour[] {
+  return moved(contours, (point) => ({ x: point.x + by.x, y: point.y + by.y }));
 }
 
 /** How far a letter leans, as a shear rather than as an angle. */
@@ -293,7 +401,10 @@ function monoAdvance(style: Style): number {
   const known = monoCache.get(style);
   if (known !== undefined) return known;
   let widest = 0;
-  for (const name of letterNames()) {
+  // The drawn letters only. An accented one is its base with a mark set over
+  // it and carries the base's advance, so it cannot be the widest thing here
+  // -- and it has no recipe of its own to ask.
+  for (const name of DRAWN) {
     const built = LETTERS[name](style);
     const contours = insideTheEdge(
       leaning(

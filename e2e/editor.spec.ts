@@ -654,6 +654,66 @@ test("draws a font with no font open", async ({ page }) => {
  * The behaviour the whole idea rests on, checked through the interface rather
  * than through the model: turn the serifs on and watch the alphabet change.
  */
+/**
+ * The accented letters, end to end.
+ *
+ * Checked through the interface and then through the file, because the two can
+ * disagree: a letter can be in the grid and still be missing from the font, and
+ * a font can carry a glyph nothing maps to. The last assertion is the one that
+ * matters -- the browser is asked to set accented text in the exported font and
+ * to say how wide it came out, which nothing but a real, complete font can do.
+ */
+test("draws the accented letters and writes them into the font", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openForge(page);
+
+  // In the alphabet, with the letters that are not a letter and a mark.
+  for (const name of ["eacute", "Ntilde", "aring", "ccedilla", "oslash", "germandbls", "AE"]) {
+    await expect(page.locator(`[data-forge-cell="${name}"]`)).toBeVisible();
+  }
+
+  // And in a line of type, which is where somebody would notice them missing.
+  await page.locator('input[value="Handgloves"]').fill("Ångström café Ærø");
+  const line = page.getByRole("img", { name: "Specimen" });
+  await expect.poll(() => line.locator("path").count()).toBe(15);
+
+  const download = await Promise.race([
+    page.waitForEvent("download", { timeout: 90_000 }),
+    page
+      .getByRole("button", { name: "Download", exact: true })
+      .click()
+      .then(() =>
+        page
+          .getByRole("dialog")
+          .getByRole("button", { name: "Download", exact: true })
+          .click()
+          .then(() => page.waitForEvent("download", { timeout: 90_000 })),
+      ),
+  ]);
+  const bytes = readFileSync((await download.path())!);
+
+  const measured = await page.evaluate(async (data) => {
+    const face = new FontFace("Accented", new Uint8Array(data).buffer as ArrayBuffer);
+    await face.load();
+    document.fonts.add(face);
+    const context = document.createElement("canvas").getContext("2d")!;
+    context.font = "100px Accented";
+    const width = (text: string) => context.measureText(text).width;
+    return {
+      // A character the font has no glyph for, to measure the others against.
+      blank: width("\uFFFF"),
+      accented: ["é", "ñ", "å", "ç", "ø", "ß", "æ", "þ", "í"].map(width),
+    };
+  }, [...bytes]);
+
+  for (const width of measured.accented) {
+    expect(width).toBeGreaterThan(0);
+    expect(Math.abs(width - measured.blank)).toBeGreaterThan(0.5);
+  }
+  expect(errors).toEqual([]);
+});
+
 test("spreads one edit across the whole alphabet", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Draw" }).click();

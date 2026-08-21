@@ -19,7 +19,8 @@ import * as React from "react";
 import { CoachMark } from "@/components/CoachMark";
 import { Reference } from "@/components/Reference";
 import { contoursToSvgPath } from "@/font/geometry";
-import { letterNames, skeletonOf } from "@/forge/build";
+import { canDraw, letterNames, skeletonOf } from "@/forge/build";
+import { accentedNameFor } from "@/forge/accents";
 import { draw, formOf, isException, isImported, partsOf, reach, styleFor } from "@/forge/document";
 import { handlesFor, valueAfter, type Handle } from "@/forge/handles";
 import { troubles } from "@/forge/health";
@@ -654,9 +655,19 @@ const NAMED: Record<string, string> = {
   '"': "quotedbl",
 };
 
+/**
+ * Which letter draws a character, for setting a line of type in the specimen.
+ *
+ * The accented letters are asked for by codepoint rather than listed, because
+ * they are built rather than drawn and the list of them is not written down
+ * anywhere. Without this the specimen quietly dropped them: typing
+ * "Ångström café" set "ngstr m caf", which reads as a font that cannot draw
+ * those letters rather than as a specimen that cannot find them.
+ */
 function nameOf(character: string): string | null {
   if (/[A-Za-z]/.test(character)) return character;
-  return NAMED[character] ?? null;
+  const named = NAMED[character] ?? accentedNameFor(character.codePointAt(0) ?? -1);
+  return named && canDraw(named) ? named : null;
 }
 
 /**

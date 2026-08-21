@@ -15,6 +15,7 @@
  * it is the last thing that happens before the letters leave.
  */
 
+import { codepointOfAccented } from "./accents";
 import { correctDirection } from "@/font/outline";
 import { removeOverlaps } from "@/font/overlap";
 import {
@@ -59,9 +60,37 @@ const CODEPOINTS: Record<string, number> = {
   question: 0x3f,
 };
 
+/*
+ * The rest of them, worked out rather than listed.
+ *
+ * Latin-1 is a run of consecutive codepoints and the names for it are already
+ * written down, in the file that builds the accented letters. Copying them here
+ * would be the same hundred names twice, and the second copy is the one that
+ * goes wrong.
+ */
+const MARK_CODEPOINTS: Record<string, number> = {
+  // The marks that Latin-1 also carries as characters in their own right.
+  dieresis: 0xa8,
+  macron: 0xaf,
+  acute: 0xb4,
+  cedilla: 0xb8,
+  // The rest are combining, and are given the combining codepoints so a shaper
+  // can use them on letters this font never precomposed.
+  grave: 0x0300,
+  circumflex: 0x0302,
+  tilde: 0x0303,
+  breve: 0x0306,
+  dotaccent: 0x0307,
+  ring: 0x030a,
+  caron: 0x030c,
+  // Dotless forms, which an accented i is built on and which text can use.
+  dotlessi: 0x0131,
+  dotlessj: 0x0237,
+};
+
 export function codepointFor(name: string): number | null {
   if (name.length === 1) return name.codePointAt(0) ?? null;
-  return CODEPOINTS[name] ?? null;
+  return CODEPOINTS[name] ?? MARK_CODEPOINTS[name] ?? codepointOfAccented(name) ?? null;
 }
 
 export interface ForgeExportOptions {

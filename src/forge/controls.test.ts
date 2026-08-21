@@ -24,7 +24,7 @@ import { describe, expect, it } from "vitest";
 
 import { contoursBounds, contoursToSvgPath } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
-import { drawLetter, letterNames } from "./build";
+import { builtFrom, drawLetter, letterNames } from "./build";
 import { LETTERS, formsOf } from "./letters";
 import { METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS, type FieldControl } from "./parts";
 import { BASES, SANS, type Metrics, type Parts, type Style } from "./style";
@@ -62,6 +62,15 @@ describe("the bases sit inside their own controls", () => {
 import type { Pen } from "./types";
 
 const NAMES = letterNames();
+
+/*
+ * The letters with strokes of their own.
+ *
+ * An accented letter has none: it is a letter and a mark, both of which are in
+ * this list already, so asking it for its strokes asks for something that was
+ * never drawn -- and checking its geometry would check the same two runs twice.
+ */
+const DRAWN_NAMES = NAMES.filter((name) => !builtFrom(name));
 
 /** The style with one part's field set to a value. */
 function withPart(style: Style, part: string, key: string, value: number | boolean | string): Style {
@@ -298,7 +307,7 @@ describe("the one rule", () => {
             "squareness",
             squareness,
           );
-          for (const name of NAMES) {
+          for (const name of DRAWN_NAMES) {
             for (const stroke of LETTERS[name](style).strokes) {
               const least = stroke.pen.weight / 2;
               for (const segment of stroke.spine.segments) {

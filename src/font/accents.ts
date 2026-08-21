@@ -23,7 +23,7 @@ import type { Anchor, Component, Glyph, Typeface } from "./types";
  * spacing one typographers have used since metal type (`acute`, U+00B4). Both
  * are looked for, since real fonts are split between the two conventions.
  */
-const MARK_NAMES: Record<number, string[]> = {
+export const MARK_NAMES: Record<number, string[]> = {
   0x0300: ["gravecomb", "grave"],
   0x0301: ["acutecomb", "acute"],
   0x0302: ["circumflexcomb", "circumflex"],

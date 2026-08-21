@@ -15,7 +15,7 @@
 import { describe, expect, it } from "vitest";
 
 import { contoursToSvgPath } from "@/font/geometry";
-import { letterNames } from "./build";
+import { builtFrom, letterNames } from "./build";
 import {
   clearException,
   draw,
@@ -126,7 +126,28 @@ describe("editing a part", () => {
     const before = startFrom(SANS);
     const after = editPart(before, "shoulder", { spring: 0.8 });
     const changed = moved(before, after);
-    expect(changed.sort()).toEqual(["h", "m", "n", "r", "u", "U"].sort());
+
+    const arched = ["h", "m", "n", "r", "u", "U"];
+    for (const letter of arched) {
+      expect(changed, `${letter} did not follow the shoulder`).toContain(letter);
+    }
+    for (const letter of ["o", "l", "i", "E", "s"]) {
+      expect(changed, `${letter} has no arch and should not have moved`).not.toContain(letter);
+    }
+
+    /*
+     * And the accented letters built on those, which is the whole point of
+     * building them rather than drawing them: an edit to the shoulder reaches
+     * `ú` because `ú` is a `u`, without anybody listing it anywhere. Everything
+     * that moved is either an arched letter or built on one -- a check that
+     * still holds when a letter gains an arch tomorrow.
+     */
+    for (const letter of changed) {
+      const built = builtFrom(letter);
+      const source = built ? built.base : letter;
+      expect(arched, `${letter} moved but has no arch`).toContain(source);
+    }
+    expect(changed).toContain("Uacute");
   });
 
   it("moves the crossbar on every letter whose bar can move", () => {

@@ -21,7 +21,7 @@
 
 import { contourArea, contoursBounds } from "@/font/geometry";
 import type { Contour } from "@/font/types";
-import { letterNames } from "./build";
+import { builtFrom, letterNames } from "./build";
 import { draw, type Forge } from "./document";
 
 export interface Trouble {
@@ -53,6 +53,9 @@ export function troubles(forge: Forge): Trouble[] {
   const touching: string[] = [];
 
   const ceiling = forge.style.metrics.ascender + forge.style.pen.weight;
+  // What an accented letter is allowed, which is more: a third again over the
+  // capitals is about where a text face keeps its own.
+  const capped = forge.style.metrics.capHeight * 1.4 + forge.style.pen.weight;
   const floor = forge.style.metrics.descender - forge.style.pen.weight;
 
   for (const letter of letterNames()) {
@@ -76,7 +79,15 @@ export function troubles(forge: Forge): Trouble[] {
     }
 
     const bounds = contoursBounds(drawn.contours);
-    if (bounds.yMax > ceiling || bounds.yMin < floor) overflowing.push(letter);
+    /*
+     * An accented letter stands above the ascender because that is where its
+     * accent goes, so it is measured against a ceiling of its own rather than
+     * reported as a fault. Without this every font ever drawn here opened with
+     * twenty complaints about letters that were exactly right, which is the
+     * fastest way to teach somebody to stop reading the warnings.
+     */
+    const roof = builtFrom(letter) ? capped : ceiling;
+    if (bounds.yMax > roof || bounds.yMin < floor) overflowing.push(letter);
     if (bounds.xMin < em * 0.005) touching.push(letter);
   }
 

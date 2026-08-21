@@ -16,7 +16,7 @@
  * how to reverse an edit.
  */
 
-import { drawLetter, letterNames, type Drawn } from "./build";
+import { builtFrom, drawLetter, letterNames, type Drawn } from "./build";
 import type { Imported } from "./exchange";
 import { partsUsedBy, type PartName } from "./parts";
 import { BASES, type Parts, type Style } from "./style";
@@ -95,14 +95,25 @@ export function isImported(forge: Forge, letter: string): boolean {
 /** Draw this letter from a different skeleton, or put it back to the default. */
 export function chooseForm(forge: Forge, letter: string, form: string): Forge {
   const alternates = { ...forge.alternates };
+  // Asked of an accented letter, the choice lands on the letter underneath it.
+  const built = builtFrom(letter);
+  if (built) letter = built.base;
   if (form) alternates[letter] = form;
   else delete alternates[letter];
   return { ...forge, alternates };
 }
 
-/** Which form a letter is drawn in. */
+/**
+ * Which form a letter is drawn in.
+ *
+ * An accented letter reads its base's answer rather than keeping one of its
+ * own. Choosing a single-storey a is a decision about the a, and an `á` that
+ * carried on with the other one would be the same letter twice in one font.
+ */
 export function formOf(forge: Forge, letter: string): string {
-  return forge.alternates[letter] ?? "";
+  const built = builtFrom(letter);
+  const asked = built ? built.base : letter;
+  return forge.alternates[asked] ?? "";
 }
 
 export function baseNamed(name: string): Style | undefined {

@@ -952,6 +952,87 @@ function towards(from: Vec2, to: Vec2): Vec2 {
  * The one unit of length left in it is what gives the caps a direction to face;
  * at a thousand units to the em it is a fifth of the rounding.
  */
+/**
+ * The room a mark is drawn in.
+ *
+ * One box for all of them, so an acute and a circumflex on the same font are
+ * the same size and sit at the same height -- which is what makes a set of
+ * accents look like a set rather than like several people's work.
+ *
+ * Measured off the font rather than fixed. The width comes from the bowl, so a
+ * condensed face gets narrow accents and a wide one broad ones; the height
+ * comes from the room between the x-height and the ascender, which is exactly
+ * the space an accent has to live in before it starts fouling the line above.
+ * A gap is left under it: an accent resting directly on the letter reads as
+ * part of the letter, and the eye needs the daylight to tell them apart.
+ */
+interface MarkBox {
+  /** The middle of the mark, across. */
+  cx: number;
+  /** Half its width. */
+  w: number;
+  /** Where it stands, and how high it reaches. */
+  foot: number;
+  top: number;
+}
+
+/**
+ * The frame a mark is drawn in, which is the font's own unless the font is too
+ * heavy for one.
+ *
+ * A mark cannot be shorter than the pen that draws it. On a display face whose
+ * stems are a seventh of the em, and whose tall x-height leaves almost nothing
+ * between it and the ascender, that floor is higher than the whole space the
+ * accent has -- so the accent stood half an em above the cap line, not because
+ * it was drawn large but because it could not be drawn small.
+ *
+ * Lightening the pen is what a designer does about that, and every heavy face
+ * with an accent in it has done it. Text weights are left exactly as they are:
+ * the limit only bites where the alternative is an accent that does not fit.
+ */
+function markFrame(style: Style): Frame {
+  const f = frame(style);
+  const room = Math.max(f.asc - f.x, style.metrics.unitsPerEm * 0.1);
+  const most = room * 0.42;
+  if (style.pen.weight <= most) return f;
+  return frame({ ...style, pen: { ...style.pen, weight: most } });
+}
+
+/**
+ * How a mark's stroke ends.
+ *
+ * The face's own, where a short run can carry it. An angled cut slides one
+ * corner of the end forward and the other back, by an amount set by the pen
+ * rather than by the run -- and on a stroke a hundred units long that is most
+ * of the stroke, so the two ends met in the middle and the acute of the serif
+ * face folded through itself. A round cap is safe at any length, being a
+ * half-disc; a square one always is. A serif is not offered at all: the bar of
+ * one is wider than an accent is long.
+ */
+function markEnd(f: Frame): Terminal {
+  return f.plain.kind === "round" ? f.plain : BUTT;
+}
+
+function markBox(f: Frame): MarkBox {
+  const room = Math.max(f.asc - f.x, f.style.metrics.unitsPerEm * 0.1);
+  const w = Math.max(f.bowl * 0.42, f.half * 1.1);
+  /*
+   * Sized by the ink it leaves, not by where its spine runs.
+   *
+   * A spine is swept by the pen, so the mark reaches half a pen past each end
+   * of it -- and further still at the apex of a circumflex, where the two
+   * edges are carried on to meet. Sized by the spine, the accents came out
+   * half as tall again as they were meant to be and an accented capital stood
+   * at one and a half times the cap height. Taking the pen off first aims at
+   * the height that will actually be there, and it adapts: a heavy face has
+   * chunky accents, and they are not also tall ones.
+   */
+  const ink = room * 0.72;
+  const height = Math.max(ink - f.half * 2, f.half * 0.55);
+  const foot = f.x + room * 0.13;
+  return { cx: f.edge + w, w, foot, top: foot + Math.min(height, w * 1.7) };
+}
+
 function dot(frame: Frame, centre: Vec2, radius: number): Stroke {
   const round: Terminal = { kind: "round" };
   return {
@@ -1389,6 +1470,19 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       ]);
   },
 
+  /*
+   * The i and j without their dots.
+   *
+   * An accent over an i does not stack on the dot, it takes the dot's place --
+   * two marks above one letter is not what `í` is. So the dotted letter cannot
+   * be the base for the accented one, and every font that has an accented i
+   * carries these for exactly this reason.
+   */
+  dotlessi: (style) => {
+    const f = frame(style);
+    return finish(f, [ink(f, straight(at(f.edge, 0), at(f.edge, f.x)), f.end, f.end)]);
+  },
+
   j: (style) => {
     const f = frame(style);
     const radius = Math.max(f.arch * 0.62, f.least);
@@ -1409,6 +1503,23 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ),
         dot(f, at(stem, f.x + f.half * 1.5 + f.half * 0.55), f.half * 0.55),
       ]);
+  },
+
+  dotlessj: (style) => {
+    const f = frame(style);
+    const radius = Math.max(f.arch * 0.62, f.least);
+    const stem = f.edge + radius;
+    return finish(f, [
+      ink(
+        f,
+        chain(
+          straight(at(stem, f.x), at(stem, f.dip(f.desc) + radius)),
+          turn(at(stem - radius, f.dip(f.desc) + radius), radius, 0, -95),
+        ),
+        f.end,
+        f.end,
+      ),
+    ]);
   },
 
   k: (style) => {
@@ -2508,6 +2619,400 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(f, straight(at(f.edge, f.cap * 0.72), at(f.edge, f.cap)), f.plain, f.plain),
         ink(f, straight(at(f.edge + gap, f.cap * 0.72), at(f.edge + gap, f.cap)), f.plain, f.plain),
       ]);
+  },
+
+  // -------------------------------------------------------------------------
+  // The letters that are not a letter with a mark on it
+  // -------------------------------------------------------------------------
+  //
+  // Nine of the Latin-1 set do not decompose into anything: Unicode has no
+  // parts to offer for an ash, a slashed o, an eth, a thorn or an eszett, so
+  // they are drawn like any other letter. Without them a font cannot set
+  // Danish, Norwegian, Icelandic or German, which is most of the point of
+  // having the accented set at all.
+
+  /** An A and an E sharing a stroke, which is what an ash is. */
+  AE: (style) => {
+    const f = frame(style);
+    const apex = f.edge + f.capBowl * 0.62;
+    const stem = apex;
+    const reach = f.capBowl * 1.1;
+    const [, low] = arms(f, f.cap);
+    return finish(f, [
+      // The A's one diagonal, from the foot out to the shared upright.
+      ink(f, straight(at(f.edge, 0), at(apex, f.cap)), f.end, BUTT),
+      ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+      arm(f, stem, stem + reach, f.hangs(f.cap, f.bar)),
+      arm(f, stem, stem + reach * 0.86, f.cap * f.style.parts.crossbar.height),
+      arm(f, stem, stem + reach, f.sits(0, f.bar)),
+      // The crossbar of the A half, which meets the diagonal partway down.
+      thin(f, straight(at(f.edge + f.capBowl * 0.22, low), at(stem, low)), BUTT, BUTT),
+    ]);
+  },
+
+  ae: (style) => {
+    const f = frame(style);
+    // Two bowls side by side in the room one and a bit would take, so the pair
+    // reads as one letter rather than as an a that has run into an e.
+    const bowl = Math.max(f.bowl * 0.68, f.least);
+    const first = at(f.edge + bowl, f.x / 2);
+    const second = at(first.x + bowl * 2, f.x / 2);
+
+    // The e half, drawn the way the e itself is: the eye at whatever height the
+    // crossbar says, and the bowl opened from where the circle reaches it.
+    const eye = f.x * f.style.parts.crossbar.height;
+    const rise = Math.max(-0.85, Math.min(0.85, (eye - second.y) / f.bowlH));
+    const opens = (Math.asin(rise) * 180) / Math.PI;
+    const belt = bend(f, second, f.bowlH, opens, opens + 300);
+
+    return finish(
+      f,
+      [
+        // Open at the top, where the a half runs into the e half. Closed, the
+        // two read as an o and an e rather than as one letter.
+        openBowl(f, first, bowl, f.bowlH, -80, 150),
+        thin(f, straight(at(second.x - bowl + f.half, eye), spineStart(belt))),
+        ink(f, belt, BUTT, f.end),
+      ],
+      true);
+  },
+
+  /** An O with a stroke through it, which is a letter in its own right. */
+  Oslash: (style) => {
+    const f = frame(style);
+    const centre = at(f.edge + f.capBowl, f.cap / 2);
+    const outX = f.capBowl + f.half * 1.1;
+    const outY = f.capBowlH + f.half * 1.1;
+    return finish(
+      f,
+      [
+        ink(f, ring(f, centre, f.capBowl, f.capBowlH)),
+        ink(
+          f,
+          straight(at(centre.x - outX, centre.y - outY), at(centre.x + outX, centre.y + outY)),
+          f.plain,
+          f.plain,
+        ),
+      ],
+      true);
+  },
+
+  oslash: (style) => {
+    const f = frame(style);
+    const centre = at(f.edge + f.bowl, f.x / 2);
+    const outX = f.bowl + f.half * 1.1;
+    const outY = f.bowlH + f.half * 1.1;
+    return finish(
+      f,
+      [
+        ink(f, ring(f, centre, f.bowl, f.bowlH)),
+        ink(
+          f,
+          straight(at(centre.x - outX, centre.y - outY), at(centre.x + outX, centre.y + outY)),
+          f.plain,
+          f.plain,
+        ),
+      ],
+      true);
+  },
+
+  /** A D with a bar laid across its stem. */
+  Eth: (style) => {
+    const f = frame(style);
+    const stem = f.edge;
+    const radius = Math.max((f.crest(f.cap) - f.dip(0)) / 2, f.least);
+    const bar = f.cap * f.style.parts.crossbar.height;
+    return finish(
+      f,
+      [
+        ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+        belly(f, at(stem, f.cap / 2), radius * f.wide, radius, -90, 90),
+        thin(f, straight(at(stem - f.half * 1.6, bar), at(stem + f.half * 2.2, bar)), f.plain, BUTT),
+      ],
+      true);
+  },
+
+  /** A bowl with a stroke rising off it, crossed by a bar. */
+  eth: (style) => {
+    const f = frame(style);
+    const centre = at(f.edge + f.bowl, f.x / 2);
+    const top = f.crest(f.asc);
+    // Up and to the left, off the bowl's right shoulder.
+    const from = at(centre.x + f.bowl * 0.8, f.x * 0.62);
+    const to = at(centre.x - f.bowl * 0.35, top);
+    // The bar lies across that stroke rather than flat, which is what tells an
+    // eth from a d with something above it.
+    const along = { x: to.x - from.x, y: to.y - from.y };
+    const length = Math.max(Math.hypot(along.x, along.y), 1);
+    const across = { x: -along.y / length, y: along.x / length };
+    const middle = at(from.x + along.x * 0.5, from.y + along.y * 0.5);
+    const reach = Math.max(f.bowl * 0.46, f.half * 1.4);
+    return finish(
+      f,
+      [
+        ink(f, ring(f, centre, f.bowl, f.bowlH)),
+        ink(f, straight(from, to), BUTT, f.plain),
+        thin(
+          f,
+          straight(
+            at(middle.x - across.x * reach, middle.y - across.y * reach),
+            at(middle.x + across.x * reach, middle.y + across.y * reach),
+          ),
+          f.plain,
+          f.plain,
+        ),
+      ],
+      true);
+  },
+
+  /** A stem with the bowl in the middle rather than at the top. */
+  Thorn: (style) => {
+    const f = frame(style);
+    const stem = f.edge;
+    const radius = Math.max(f.cap * 0.22, f.least);
+    return finish(
+      f,
+      [
+        ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+        belly(f, at(stem, f.cap * 0.54), radius * f.wide, radius, -90, 90),
+      ]);
+  },
+
+  thorn: (style) => {
+    const f = frame(style);
+    const stem = f.edge;
+    return finish(
+      f,
+      [
+        ink(f, straight(at(stem, f.dip(f.desc)), at(stem, f.asc)), f.end, f.end),
+        ink(f, ring(f, at(stem + f.bowl, f.x / 2), f.bowl, f.bowlH)),
+      ],
+      true);
+  },
+
+  /**
+   * The eszett: a tall stroke with a bowl over it and a second one below, the
+   * lower of the two left open at its foot the way an eszett always is.
+   */
+  germandbls: (style) => {
+    const f = frame(style);
+    const stem = f.edge;
+    const top = f.crest(f.asc);
+    const base = f.dip(0);
+    const waist = base + (top - base) * 0.44;
+    const upperR = Math.max((top - waist) / 2 + f.half * 0.2, f.least);
+    const lowerR = Math.max((waist - base) / 2 + f.half * 0.2, f.least);
+    const reach = Math.max(f.bowl * 0.86, f.least);
+    return finish(
+      f,
+      [
+        ink(f, straight(at(stem, 0), at(stem, top - upperR)), f.end, BUTT),
+        belly(f, at(stem, top - upperR), reach, upperR, -90, 90),
+        // Opened at the bottom left rather than closed back onto the stem.
+        belly(f, at(stem, base + lowerR), reach, lowerR, -35, 90),
+      ]);
+  },
+
+  // -------------------------------------------------------------------------
+  // The marks
+  // -------------------------------------------------------------------------
+  //
+  // Drawn with the font's own pen, so an accent on a heavy face is heavy and an
+  // accent on a slanted one leans with the letters. That is the whole reason
+  // for drawing them here rather than shipping a set of fixed shapes: a tilde
+  // that stayed the same while the face around it changed would look borrowed
+  // from another font, which is exactly what it would be.
+  //
+  // Each one stands on its own above the x-height. Where it ends up on a letter
+  // is settled later, by lining its foot up with the top of the letter it goes
+  // on -- so these only have to be the right shape, not in the right place.
+
+  grave: (style) => {
+    const f = markFrame(style);
+    const m = markBox(f);
+    return finish(f, [
+      ink(f, straight(at(m.cx - m.w, m.top), at(m.cx + m.w, m.foot)), markEnd(f), markEnd(f)),
+    ]);
+  },
+
+  acute: (style) => {
+    const f = markFrame(style);
+    const m = markBox(f);
+    return finish(f, [
+      ink(f, straight(at(m.cx - m.w, m.foot), at(m.cx + m.w, m.top)), markEnd(f), markEnd(f)),
+    ]);
+  },
+
+  circumflex: (style) => {
+    const f = markFrame(style);
+    const m = markBox(f);
+    // One run with a corner in it rather than two strokes meeting, so the apex
+    // is joined the way every other corner in the font is -- and rounds off
+    // with them when the face asks for that.
+    return finish(f, [
+      ink(
+        f,
+        chain(
+          straight(at(m.cx - m.w, m.foot), at(m.cx, m.top)),
+          straight(at(m.cx, m.top), at(m.cx + m.w, m.foot)),
+        ),
+        markEnd(f),
+        markEnd(f),
+      ),
+    ]);
+  },
+
+  caron: (style) => {
+    const f = markFrame(style);
+    const m = markBox(f);
+    // The circumflex the other way up, which is what a caron is.
+    return finish(f, [
+      ink(
+        f,
+        chain(
+          straight(at(m.cx - m.w, m.top), at(m.cx, m.foot)),
+          straight(at(m.cx, m.foot), at(m.cx + m.w, m.top)),
+        ),
+        markEnd(f),
+        markEnd(f),
+      ),
+    ]);
+  },
+
+  /*
+   * A tilde: over a hump and down into a dip.
+   *
+   * Two half-turns that meet where both are heading straight down, so the wave
+   * is tangent-continuous and the sweep has no kink in it. Circular, like
+   * everything else here, which fixes the proportion: the run is four radii
+   * across and two tall. That is a fair tilde and not an accident -- a flatter
+   * one would have to be elliptical, and an ellipse does not offset to an
+   * ellipse, so it would be the one shape in the font whose weight was
+   * approximate.
+   */
+  tilde: (style) => {
+    const f = markFrame(style);
+    const m = markBox(f);
+    const radius = Math.max(m.w / 2, f.least);
+    const middle = (m.foot + m.top) / 2;
+    return finish(f, [
+      ink(
+        f,
+        chain(
+          turn(at(m.cx - radius, middle), radius, 180, 0),
+          turn(at(m.cx + radius, middle), radius, 180, 360),
+        ),
+        markEnd(f),
+        markEnd(f),
+      ),
+    ]);
+  },
+
+  dieresis: (style) => {
+    const f = markFrame(style);
+    const m = markBox(f);
+    const radius = f.half * 0.95;
+    const height = m.foot + (m.top - m.foot) * 0.5;
+    // Set apart by the width of the mark, so the pair reads as two dots rather
+    // than as a smudge at a heavy weight or as two separate marks at a light one.
+    return finish(f, [
+      dot(f, at(m.cx - m.w * 0.5, height), radius),
+      dot(f, at(m.cx + m.w * 0.5, height), radius),
+    ]);
+  },
+
+  dotaccent: (style) => {
+    const f = markFrame(style);
+    const m = markBox(f);
+    const radius = f.half * 0.95;
+    return finish(f, [dot(f, at(m.cx, m.foot + (m.top - m.foot) * 0.5), radius)]);
+  },
+
+  macron: (style) => {
+    const f = markFrame(style);
+    const m = markBox(f);
+    const height = m.foot + (m.top - m.foot) * 0.45;
+    return finish(f, [
+      ink(f, straight(at(m.cx - m.w, height), at(m.cx + m.w, height)), markEnd(f), markEnd(f)),
+    ]);
+  },
+
+  ring: (style) => {
+    const f = markFrame(style);
+    const m = markBox(f);
+    /*
+     * Drawn lighter than the stems, and wide enough to have a hole in it.
+     *
+     * A ring is the one mark whose whole job is the white inside it, and a
+     * small shape drawn with the font's full pen has almost none: at a text
+     * weight it came out a disc with a pinhole. Lightening the pen is what a
+     * designer does here, and it is what every face with an angstrom in it
+     * does.
+     *
+     * As round as the face is, though. A technical font squares its bowls, and
+     * the ring on an angstrom is a bowl like any other.
+     */
+    const pen = { ...f.style.pen, weight: f.style.pen.weight * 0.62 };
+    /*
+     * Held inside the mark box like every other mark, but never turned tighter
+     * than the pen drawing it. Taken from the width alone it outgrew the box on
+     * a wide face and put the ring of an Aring half an em over the cap line;
+     * held to the box alone it closed up, because what a ring is is the white
+     * inside it and there was almost none left.
+     */
+    const radius = Math.max(
+      Math.min(m.w * 0.82, (m.top - m.foot) / 2),
+      pen.weight,
+    );
+    const centre = at(m.cx, m.foot + radius + pen.weight / 2);
+    return finish(f, [{ spine: ring(f, centre, radius), pen, start: BUTT, end: BUTT }], true);
+  },
+
+  breve: (style) => {
+    const f = markFrame(style);
+    const m = markBox(f);
+    // A cup: the bottom half of a turn, opening upwards. Lighter than the
+    // stems for the same reason the ring is -- what it is is the curve, and a
+    // full-weight pen on a shape this small fills the curve in.
+    const pen = { ...f.style.pen, weight: f.style.pen.weight * 0.82 };
+    const radius = Math.max(Math.min(m.w * 0.9, m.top - m.foot), pen.weight * 0.7);
+    return finish(f, [
+      { spine: turn(at(m.cx, m.top), radius, 180, 360), pen, start: BUTT, end: BUTT },
+    ]);
+  },
+
+  /*
+   * A cedilla, which hangs under the letter rather than sitting over it.
+   *
+   * Drawn below the baseline for the same reason the others are drawn above the
+   * x-height: it is put where it belongs afterwards, by lining its head up with
+   * the foot of the letter, so what matters here is only its shape.
+   */
+  cedilla: (style) => {
+    const f = markFrame(style);
+    const m = markBox(f);
+    /*
+     * Down off the letter, then curling away.
+     *
+     * Sized against the x-height and the pen rather than against the descender,
+     * which is a number a face is free to set to almost nothing -- and when one
+     * did, the hook was asked to turn through a radius larger than the run it
+     * was turning in and folded through itself. Both pieces are a whole radius
+     * long and the radius is never below what the pen can turn through, so
+     * there is no setting at which this can close up.
+     */
+    const radius = Math.max(f.x * 0.15, f.least);
+    return finish(f, [
+      ink(
+        f,
+        chain(
+          straight(at(m.cx, 0), at(m.cx, -radius)),
+          turn(at(m.cx - radius, -radius), radius, 0, -95),
+        ),
+        BUTT,
+        markEnd(f),
+      ),
+    ]);
   },
 };
 
