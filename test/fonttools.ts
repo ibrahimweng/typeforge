@@ -36,6 +36,14 @@ export interface FontToolsReport {
   compositeGlyphs: number;
   /** Component glyph names of a named glyph, for checking structure survived. */
   componentsOf: Record<string, string[]>;
+  /**
+   * How many closed contours each glyph has, read out of the file.
+   *
+   * The only way to ask, from outside, whether a cut is really in the font
+   * rather than only on the screen: an H drawn in one piece is one contour,
+   * and an H with two bands through it is three.
+   */
+  contoursOf: Record<string, number>;
   /** The Windows clipping boundary, and the real extent of the outlines. */
   winAscent: number;
   winDescent: number;
@@ -57,6 +65,7 @@ path = sys.argv[1]
 out = {"outlineFormat": "unknown", "tables": [], "numGlyphs": 0, "unitsPerEm": 0,
        "kernPairs": {}, "gposKernPairs": {}, "recompiles": False,
        "interiorExtremes": 0, "compositeGlyphs": 0, "componentsOf": {},
+       "contoursOf": {},
        "winAscent": 0, "winDescent": 0,
        "yMax": 0, "yMin": 0,
        "names": {}, "weightClass": 0, "isBold": False}
@@ -123,6 +132,19 @@ try:
     # A quadratic through on-curve p0, control q, on-curve p2 turns at
     # t = (p0 - q) / (p0 - 2q + p2); anything strictly inside (0,1) is a
     # missing extreme. Implied on-curve midpoints are expanded first.
+    # How many closed contours each glyph has, from whichever outline table
+    # this font carries. Counted through a pen so the two formats answer the
+    # same question the same way.
+    from fontTools.pens.recordingPen import RecordingPen
+    glyphs = f.getGlyphSet()
+    for name in f.getGlyphOrder():
+        pen = RecordingPen()
+        try:
+            glyphs[name].draw(pen)
+        except Exception:
+            continue
+        out["contoursOf"][name] = sum(1 for op, _ in pen.value if op == "closePath")
+
     if "glyf" in f:
         glyf = f["glyf"]
         for name in f.getGlyphOrder():

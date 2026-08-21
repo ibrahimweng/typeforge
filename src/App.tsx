@@ -18,7 +18,8 @@ import { LibraryDialog } from "@/components/LibraryDialog";
 import { Inspector } from "@/components/Inspector";
 import { TopBar } from "@/components/TopBar";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
-import { useForge } from "@/state/useForge";
+import { forgeStore, useForge } from "@/state/useForge";
+import { ready as readyToCut } from "@/font/boolean";
 import { detectFormat } from "@/font/parse";
 import { describe, readProject } from "@/project/format";
 import { keeper as makeKeeper, kept } from "@/project/keep";
@@ -67,6 +68,30 @@ export function App(): React.JSX.Element {
 
   // One listener covers every control in the app, including any added later.
   React.useEffect(() => attachPressFeedback(document.body), []);
+
+  /*
+   * The boolean library, fetched before anything needs it.
+   *
+   * Cutting a letter is boolean geometry and boolean geometry is a few hundred
+   * kilobytes, which is not something to load before the application has
+   * appeared. It is also not something a letter can wait for: a letter is
+   * drawn during a render, forty times a second while a slider moves, and
+   * there is nowhere in that to await a download.
+   *
+   * So it is fetched once, in the background, and until it lands a letter with
+   * slots through it is drawn without them -- which is an honest answer for a
+   * moment rather than a wrong one for ever. When it arrives the drawing is
+   * asked to happen again.
+   */
+  React.useEffect(() => {
+    let live = true;
+    void readyToCut().then(() => {
+      if (live) forgeStore.refresh();
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   /*
    * The work, kept between visits.

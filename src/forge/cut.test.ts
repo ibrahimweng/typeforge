@@ -240,20 +240,35 @@ describe("measured in stems", () => {
     const cuts = cutWith((one) => {
       one.slot = { on: true, count: 3, width: 0.3, angle: 0, inset: 0.1 };
     });
-    // Measured on an I, which is one stem and nothing else. On an H the middle
-    // band lands on the crossbar, and a crossbar is not a stem: how wide it
-    // runs is a decision about the rhythm of the font rather than about the
-    // pen, so it does not follow the weight and it spoils the sum.
-    const inStems = (style: Style): number => {
-      const stem = style.pen.weight;
-      const gone =
-        ink(unite(drawn("I", style).contours, "winding")) - ink(drawn("I", style, cuts).contours);
-      return gone / (stem * stem);
+    /*
+     * Measured as the gap the band leaves in the letter, rather than as the
+     * ink it took away.
+     *
+     * The ink is not the same sum at both weights, and correctly so: the
+     * bands sit at heights the whole font agrees on, so a band near the foot
+     * of the font hangs below a capital I at a heavy weight and part of it
+     * cuts nothing. What is promised is the band, and the band is what the
+     * letter reports back -- the distance from the end of one piece to the
+     * start of the next.
+     */
+    const gapsIn = (style: Style): number[] => {
+      const runs = drawn("I", style, cuts)
+        .contours.map((contour) => {
+          const ys = contour.nodes.map((node) => node.point.y);
+          return [Math.min(...ys), Math.max(...ys)] as const;
+        })
+        // Slivers left where a band overhangs the end of the letter are not
+        // pieces, and the gap either side of one is not a slot.
+        .filter(([low, high]) => high - low > style.pen.weight * 0.1)
+        .sort((one, other) => one[0] - other[0]);
+      return runs.slice(1).map(([low], at) => low - runs[at][1]);
     };
-    const thin = inStems(light);
-    const heavy = inStems(bold);
-    expect(thin).toBeGreaterThan(0.5);
-    expect(Math.abs(thin - heavy) / thin).toBeLessThan(0.05);
+
+    for (const style of [light, bold]) {
+      const gaps = gapsIn(style);
+      expect(gaps.length).toBeGreaterThan(0);
+      for (const gap of gaps) expect(gap / style.pen.weight).toBeCloseTo(0.3, 2);
+    }
   });
 
   it("grooves the same share of a letter at any weight", () => {

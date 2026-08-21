@@ -20,7 +20,8 @@
  */
 
 import type { Assembly } from "@/assemble/document";
-import { baseNamed, familyOf, startFrom, whole, type Forge } from "@/forge/document";
+import { anyCut } from "@/forge/cut";
+import { baseNamed, cutsOf, familyOf, startFrom, whole, type Forge } from "@/forge/document";
 import type { Glyph, GlyphParams, KernClass, KernPair, Typeface } from "@/font/types";
 
 /** Which half of the application was open. */
@@ -192,7 +193,12 @@ function hasDrawing(drawn: DrawnProject): boolean {
     // Compared against the base as it ships rather than against a copy taken at
     // the start, so a session that changed one slider and put it back reads as
     // untouched -- which it is.
-    (started !== undefined && JSON.stringify(forge.style) !== JSON.stringify(started))
+    (started !== undefined && JSON.stringify(forge.style) !== JSON.stringify(started)) ||
+    // A cut is work of exactly the same kind, and the kind most easily lost:
+    // a face with slots through it is nothing but its cuts, and a base with
+    // nothing else touched would have been thrown away as an empty document.
+    anyCut(cutsOf(forge)) ||
+    Object.keys(forge.cutExceptions ?? {}).length > 0
   );
 }
 

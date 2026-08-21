@@ -18,15 +18,29 @@ import * as React from "react";
 import { segment } from "@/components/controls";
 import { contoursToSvgPath } from "@/font/geometry";
 import { drawLetter } from "@/forge/build";
-import { formOf, isException, partsOf, reach, styleFor } from "@/forge/document";
+import type { Cuts } from "@/forge/cut";
+import {
+  cutsFor,
+  cutsHeldBy,
+  cutsOf,
+  formOf,
+  isCutException,
+  isException,
+  partsOf,
+  reach,
+  styleFor,
+} from "@/forge/document";
 import type { Imported } from "@/forge/exchange";
 import { formsOf } from "@/forge/letters";
 import {
+  CUT_SPECS,
   METRIC_CONTROLS,
   PART_SPECS,
   PEN_CONTROLS,
+  cutValuesOf,
   specFor,
   valuesOf,
+  type CutSpec,
   type FieldControl,
   type PartControl,
   type PartName,
@@ -191,12 +205,143 @@ export function ForgePanel(): React.JSX.Element {
           ))}
         </Section>
 
+        <Cuts />
+
         <Forms letter={letter} />
 
         <Trip key={letter} letter={letter} />
 
       </div>
     </aside>
+  );
+}
+
+/**
+ * What is taken out of the letters after they are drawn.
+ *
+ * A second layer with its own heading rather than six more parts, because it
+ * is a different kind of decision and saying so is most of what makes it
+ * usable. Everything above describes how a stroke is made; everything here
+ * happens to the letter once it has been. The two stay separable, which is why
+ * turning the weight up on a face full of slots redraws the letters heavier
+ * and cuts the same slots through them.
+ *
+ * Each cut is a switch with its own settings folded underneath it, so the
+ * panel is six rows until somebody wants more than six rows. A control that is
+ * off has nothing worth reading.
+ */
+function Cuts(): React.JSX.Element {
+  const state = useForge();
+  const { forge, letter, scope } = state;
+  /*
+   * In letter scope this shows what the letter actually has, rather than what
+   * the font has -- which is where this parts company with the rows above.
+   *
+   * The difference is in how the two are used. A part exception is rare and
+   * starts from the family's value, so showing the family's value is showing
+   * what the first drag moves away from. A cut exception is the ordinary way
+   * to deal with the letter that has nowhere to put the third slot, and it
+   * gets adjusted again; showing the font's value there would be showing a
+   * number this letter is not cut by.
+   */
+  const cuts = scope === "letter" ? cutsFor(letter, forge) : cutsOf(forge);
+  const held = cutsHeldBy(forge, letter);
+
+  return (
+    <section className="border-b border-border p-3" data-forge-cuts>
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-2xs font-medium">Cut</h3>
+        {held.length > 0 && (
+          <button
+            type="button"
+            onClick={() => forgeStore.releaseCut()}
+            data-forge-release-cuts
+            className="shrink-0 text-2xs text-[color:var(--accent)] transition-opacity hover:opacity-70"
+          >
+            {letter} holds {held.length} · release
+          </button>
+        )}
+      </div>
+      <p className="pt-1 text-2xs leading-snug text-muted-foreground">
+        Taken out after the letter is drawn, so every control above still
+        reaches it. Sizes are in stem widths, which is what keeps a cut meaning
+        the same thing at every weight.
+      </p>
+      <p className="pt-1 text-2xs leading-snug text-muted-foreground">
+        {scope === "family"
+          ? "Cutting the whole font."
+          : `Cutting ${letter} alone. The rest of the font keeps its own.`}
+      </p>
+
+      {CUT_SPECS.map((spec) => (
+        <Cutting key={spec.name} spec={spec} cuts={cuts} />
+      ))}
+    </section>
+  );
+}
+
+/** One cut: a switch, and its settings once it is on. */
+function Cutting({
+  spec,
+  cuts,
+}: {
+  spec: CutSpec;
+  cuts: Cuts;
+}): React.JSX.Element {
+  const state = useForge();
+  const values = cutValuesOf(spec.name, cuts);
+  const on = Boolean(values.on);
+  const pinned = isCutException(state.forge, state.letter, spec.name);
+
+  return (
+    <div className="border-t border-border pt-2 first-of-type:mt-2" data-forge-cut={spec.name}>
+      <label className="flex items-center justify-between gap-2">
+        <span className="min-w-0 flex-1 text-2xs font-medium text-foreground">{spec.label}</span>
+        {pinned && (
+          <button
+            type="button"
+            onClick={() => forgeStore.releaseCut(spec.name)}
+            className="shrink-0 text-2xs text-[color:var(--accent)] transition-opacity hover:opacity-70"
+          >
+            held
+          </button>
+        )}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={on}
+          aria-label={spec.label}
+          data-forge-cut-switch={spec.name}
+          onClick={() => forgeStore.changeCut(spec.name, { on: !on } as never)}
+          className={cn(
+            "h-4 w-7 shrink-0 rounded-full transition-colors",
+            on ? "bg-[color:var(--accent)]" : "bg-card",
+          )}
+        >
+          <span
+            className={cn(
+              "block size-3 rounded-full bg-background transition-transform",
+              on ? "translate-x-3.5" : "translate-x-0.5",
+            )}
+          />
+        </button>
+      </label>
+      <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">{spec.hint}</p>
+
+      {on && (
+        <div className="pt-1">
+          {spec.controls.map((control) => (
+            <Control
+              key={control.key}
+              id={`cut:${spec.name}:${control.key}`}
+              control={control}
+              values={values}
+              onChange={(patch, phase) => forgeStore.changeCut(spec.name, patch as never, phase)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -220,7 +365,14 @@ function Forms({ letter }: { letter: string }): React.JSX.Element | null {
   const drawings = React.useMemo(
     () =>
       forms.map((form) => {
-        const drawn = drawLetter(letter, styleFor(letter, state.forge), form.id);
+        // Cut as the rest of the font is, so what is being compared is this
+        // font's version of each shape rather than a picture of the idea.
+        const drawn = drawLetter(
+          letter,
+          styleFor(letter, state.forge),
+          form.id,
+          cutsFor(letter, state.forge),
+        );
         return { ...form, d: drawn ? contoursToSvgPath(drawn.contours) : "", width: drawn?.advanceWidth ?? 1 };
       }),
     [forms, letter, state.forge, state.revision],
@@ -445,26 +597,42 @@ function Part({ part, mine }: { part: PartName; mine: boolean }): React.JSX.Elem
 
       <div className="pt-2">
         {spec.controls.map((control) => (
-          <Control key={control.key} part={part} control={control} values={values} />
+          <Control
+            key={control.key}
+            id={`part:${part}:${control.key}`}
+            control={control}
+            values={values}
+            onChange={(patch, phase) => forgeStore.changePart(part, patch as never, phase)}
+          />
         ))}
       </div>
     </section>
   );
 }
 
+/**
+ * One editable number, switch or choice, drawn from its own description.
+ *
+ * Told where to send a change rather than knowing: the same control row serves
+ * the parts and the cuts, which are edited through different calls and are
+ * otherwise described identically. Writing it twice would have meant two rows
+ * that drift apart, and the one that drifts is the one nobody is looking at.
+ */
 function Control({
-  part,
+  id,
   control,
   values,
+  onChange,
 }: {
-  part: PartName;
+  /** Names this control for the panel to scroll to when the letter is asked. */
+  id: string;
   control: PartControl;
   values: Record<string, number | boolean | string>;
+  onChange: (patch: Record<string, number | boolean | string>, phase: Phase) => void;
 }): React.JSX.Element {
   const state = useForge();
   const em = state.forge.style.metrics.unitsPerEm;
   const scale = control.emRelative ? em : 1;
-  const id = `part:${part}:${control.key}`;
   const { ref, shown } = useShown(id);
 
   /*
@@ -486,7 +654,7 @@ function Control({
               type="button"
               title={option.hint}
               aria-pressed={chosen === option.value}
-              onClick={() => forgeStore.changePart(part, { [control.key]: option.value } as never)}
+              onClick={() => onChange({ [control.key]: option.value }, "single")}
               className={segment(chosen === option.value, "flex-1")}
             >
               {option.label}
@@ -508,9 +676,7 @@ function Control({
           role="switch"
           aria-checked={on}
           aria-label={control.label}
-          onClick={() =>
-            forgeStore.changePart(part, { [control.key]: !on } as never)
-          }
+          onClick={() => onChange({ [control.key]: !on }, "single")}
           className={cn(
             "h-4 w-7 shrink-0 rounded-full transition-colors",
             on ? "bg-[color:var(--accent)]" : "bg-card",
@@ -540,9 +706,8 @@ function Control({
         step={control.step}
         showFill
         onValueChange={(next: number, meta?: { history?: string }) =>
-          forgeStore.changePart(
-            part,
-            { [control.key]: next * scale } as never,
+          onChange(
+            { [control.key]: next * scale },
             meta?.history === "merge" ? "during" : "end",
           )
         }

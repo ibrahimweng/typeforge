@@ -25,7 +25,7 @@
  * for and is why it is asked on the way in to every operation.
  */
 
-import { contourArea } from "./geometry";
+import { contourArea, contoursBounds } from "./geometry";
 import { classifyContours } from "./outline";
 import type { Contour, GlyphNode, Vec2 } from "./types";
 
@@ -153,7 +153,18 @@ export function subtract(from: Contour[], tool: Contour[], roles: Roles = "nesti
 
   clear(paper);
   const subject = compoundOf(paper, from, roles);
-  const knife = fuse(compoundOf(paper, cutting, roles));
+  /*
+   * The tool is fused only when its own pieces touch.
+   *
+   * They often do, on purpose: a comb of teeth cut deeper than its own pitch,
+   * a field of slots laid across a letter at an angle, four cuts made into one
+   * knife. Just as often they do not -- and a fuse is another whole boolean,
+   * which on a face with everything switched on is one more than the cut
+   * itself. Whether any two pieces of the tool overlap at all is a question
+   * about rectangles, and answering it costs nothing.
+   */
+  const raw = compoundOf(paper, cutting, roles);
+  const knife = touching(cutting) ? fuse(raw) : raw;
 
   const cut = subject.subtract(knife);
   const result = contoursOf(cut);
@@ -231,6 +242,27 @@ function clear(paper: PaperScope): void {
  */
 function fuse(item: paper.PathItem): paper.PathItem {
   return (item as unknown as { unite(): paper.PathItem }).unite();
+}
+
+/**
+ * Whether any two of these shapes' boxes overlap.
+ *
+ * A box test rather than a real one: it is allowed to say yes when the answer
+ * is no, because the only cost of that is fusing something that did not need
+ * it. Saying no when the answer is yes would be a wrong drawing, and boxes
+ * never do that.
+ */
+function touching(contours: Contour[]): boolean {
+  if (contours.length < 2) return false;
+  const boxes = contours.map((contour) => contoursBounds([contour]));
+  for (let one = 0; one < boxes.length; one++) {
+    for (let other = one + 1; other < boxes.length; other++) {
+      const a = boxes[one];
+      const b = boxes[other];
+      if (a.xMin < b.xMax && b.xMin < a.xMax && a.yMin < b.yMax && b.yMin < a.yMax) return true;
+    }
+  }
+  return false;
 }
 
 function compoundOf(

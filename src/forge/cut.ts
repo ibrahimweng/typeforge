@@ -163,6 +163,22 @@ export function anyCut(cuts: Cuts | undefined): boolean {
 // Doing it
 // ---------------------------------------------------------------------------
 
+/** A letter that has been through the cuts, and what they did to it. */
+export interface Cutting {
+  contours: Contour[];
+  /**
+   * How many separate pieces the letter came out in, and how many it went in
+   * as, when anything was cut at all.
+   *
+   * Reported rather than judged. A stencil face is letters in pieces and that
+   * is the whole point of it; an `e` that has quietly fallen in half while the
+   * rest of the font is fine is a fault. Nothing here can tell those apart,
+   * and the person turning the slider can tell them apart instantly -- so the
+   * count goes to the warnings and the decision stays where it belongs.
+   */
+  cut?: { pieces: number; was: number };
+}
+
 /**
  * The letter with the cuts taken out of it.
  *
@@ -180,20 +196,43 @@ export function anyCut(cuts: Cuts | undefined): boolean {
  * The chamfer goes last because it is the only one that reads the letter's
  * corners, and every cut before it makes more.
  */
-export function cutInk(ink: Contour[], strokes: Stroke[], style: Style, cuts: Cuts): Contour[] {
-  if (!anyCut(cuts) || ink.length === 0 || !loaded()) return ink;
+export function cutInk(ink: Contour[], strokes: Stroke[], style: Style, cuts: Cuts): Cutting {
+  if (!anyCut(cuts) || ink.length === 0 || !loaded()) return { contours: ink };
 
   let shape = unite(ink, "winding");
   const stem = Math.max(style.pen.weight, 1);
+  // Counted here rather than anywhere else, because here it is free: the
+  // letter has just been fused, and counting its pieces is reading the
+  // contours it already has rather than doing the geometry again.
+  const was = pieces(shape);
 
   if (cuts.motif.on) shape = motifCut(shape, cuts.motif, stem);
-  if (cuts.inline.on) shape = take(shape, inlineTool(strokes, cuts.inline, stem));
-  if (cuts.slot.on) shape = take(shape, slotTool(contoursBounds(shape), cuts.slot, stem));
-  if (cuts.tooth.on) shape = take(shape, toothTool(contoursBounds(shape), cuts.tooth, stem, style));
-  if (cuts.split.on) shape = take(shape, splitTool(strokes, cuts.split, stem));
+
+  /*
+   * Four of the six are one subtraction between them.
+   *
+   * A boolean is the expensive thing here by a long way -- the tools are a
+   * handful of triangles and rectangles, and taking them out of a letter costs
+   * more than working out where they go. Four of the cuts are plain
+   * subtractions that do not read the letter after each other, so they are one
+   * knife made of four sets of pieces and one cut, rather than four of each.
+   *
+   * The two that are left out cannot join in. The counter motif goes first
+   * because it is the only one that reads the letter's holes, and every cut
+   * after it makes more. The chamfer goes last because it is the only one that
+   * reads the letter's corners, and every cut before it makes more.
+   */
+  const bounds = contoursBounds(shape);
+  const knife: Contour[] = [];
+  if (cuts.inline.on) knife.push(...inlineTool(strokes, cuts.inline, stem));
+  if (cuts.slot.on) knife.push(...slotTool(bounds, cuts.slot, stem, style));
+  if (cuts.tooth.on) knife.push(...toothTool(bounds, cuts.tooth, stem, style));
+  if (cuts.split.on) knife.push(...splitTool(strokes, cuts.split, stem));
+  shape = take(shape, knife);
+
   if (cuts.chamfer.on) shape = take(shape, chamferTool(shape, cuts.chamfer, stem));
 
-  return shape;
+  return { contours: shape, cut: { pieces: pieces(shape), was } };
 }
 
 /**
@@ -218,30 +257,39 @@ function take(shape: Contour[], tool: Contour[]): Contour[] {
 // ---------------------------------------------------------------------------
 
 /**
- * Bands across the letter.
+ * Bands across the letter, at heights the whole font agrees on.
+ *
+ * Set against the font's own vertical extent rather than against each letter's
+ * bounds, which is the difference between a face and a decoration. Measured
+ * per letter, the bands landed at different heights on an H and an o and a
+ * comma, so they never lined up across a word -- and a full stop, being one
+ * stem tall, was handed two bands of its own and came back as three crumbs.
+ * Measured against the font, every letter is cut at the same heights, a word
+ * reads as one striped block, and the letters too short to reach a band are
+ * simply not cut.
  *
  * Each band is drawn long enough to cross the letter whatever angle it is
  * turned to, and turned about the middle of the letter rather than about its
- * own end, so raising the angle pivots the whole field instead of swinging it
- * off the letter.
+ * own end, so raising the angle pivots the field instead of swinging it off
+ * the letter. Angled, they cannot line up across a word: a letter is drawn
+ * without knowing where in the line it will stand, so there is no shared
+ * origin for the angle to turn about. Square, they always do.
  */
-function slotTool(bounds: Bounds, slot: Cuts["slot"], stem: number): Contour[] {
-  const height = bounds.yMax - bounds.yMin;
+function slotTool(bounds: Bounds, slot: Cuts["slot"], stem: number, style: Style): Contour[] {
+  const { ascender, descender } = style.metrics;
+  const height = ascender - descender;
   const count = Math.max(1, Math.round(slot.count));
   const thickness = slot.width * stem;
   if (height <= 0 || thickness <= 0) return [];
 
-  // The field the bands are spread through, with the ends of the letter left
-  // alone: a slot through the very top of an o is a nick out of its rim.
+  // The field the bands are spread through, with the ends of the font left
+  // alone: a slot through the very top of an l is a nick out of its head.
   const clear = Math.min(Math.max(slot.inset, 0), 0.45) * height;
-  const from = bounds.yMin + clear;
+  const from = descender + clear;
   const room = height - clear * 2;
   if (room <= 0) return [];
 
-  const centre = {
-    x: (bounds.xMin + bounds.xMax) / 2,
-    y: (bounds.yMin + bounds.yMax) / 2,
-  };
+  const centre = { x: (bounds.xMin + bounds.xMax) / 2, y: (ascender + descender) / 2 };
   // Long enough that a band turned to any angle still crosses the letter.
   const reach = Math.hypot(bounds.xMax - bounds.xMin, height);
   const turn = (slot.angle * Math.PI) / 180;

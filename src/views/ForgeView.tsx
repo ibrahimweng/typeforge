@@ -49,8 +49,11 @@ export function ForgeView(): React.JSX.Element {
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Stage letter={letter} revision={state.revision} parts={parts} />
         <Specimen revision={state.revision} />
-        <Warnings revision={state.revision} />
-        <Alphabet names={names} selected={letter} revision={state.revision} />
+        <Warnings revision={state.settledRevision} />
+        {/* Both of these read the whole alphabet, so both follow the settled
+            document rather than the live one: they catch up when a drag ends
+            instead of holding it up. */}
+        <Alphabet names={names} selected={letter} revision={state.settledRevision} />
       </div>
     </div>
   );
@@ -701,7 +704,10 @@ function nameOf(character: string): string | null {
  */
 function Warnings({ revision }: { revision: number }): React.JSX.Element | null {
   const state = useForge();
-  const found = React.useMemo(() => familyTroubles(state.forge), [state.forge, revision]);
+  const found = React.useMemo(
+    () => familyTroubles(state.settled),
+    [state.settled, revision],
+  );
   if (found.length === 0) return null;
   return (
     <div className="shrink-0 border-b border-border px-4 py-2" data-forge-warnings>
@@ -746,17 +752,17 @@ function Alphabet({
   const cells = React.useMemo(
     () =>
       names.map((name) => {
-        const drawn = draw(name, state.forge);
+        const drawn = draw(name, state.settled);
         return {
           name,
           d: drawn ? contoursToSvgPath(drawn.contours) : "",
           width: drawn?.advanceWidth ?? 0,
-          held: isException(state.forge, name),
-          shaped: Boolean(formOf(state.forge, name)),
-          outside: isImported(state.forge, name),
+          held: isException(state.settled, name),
+          shaped: Boolean(formOf(state.settled, name)),
+          outside: isImported(state.settled, name),
         };
       }),
-    [names, state.forge, revision],
+    [names, state.settled, revision],
   );
 
   const { metrics } = state.forge.style;

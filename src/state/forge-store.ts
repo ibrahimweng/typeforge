@@ -15,7 +15,9 @@
 
 import {
   chooseForm,
+  clearCutException,
   clearException,
+  editCut,
   editMetrics,
   editPart,
   editPen,
@@ -26,6 +28,7 @@ import {
   startFrom,
   type Forge,
 } from "@/forge/document";
+import type { CutName, Cuts } from "@/forge/cut";
 import type { Family } from "@/forge/family";
 import { letterSvg, readLetterSvg, type Arrival } from "@/forge/exchange";
 import type { PartName } from "@/forge/parts";
@@ -47,6 +50,23 @@ export type Phase = "single" | "during" | "end";
 
 export interface ForgeState {
   forge: Forge;
+  /**
+   * The document as it was when the last gesture finished.
+   *
+   * There for the two things that read the whole alphabet -- the grid of every
+   * glyph, and the warnings, which measure every letter at every weight. Both
+   * are worth having and neither is worth having forty times a second: with
+   * the cuts switched on, redrawing two hundred glyphs is most of a second of
+   * boolean geometry, and a slider that has to wait for it is a slider nobody
+   * can aim.
+   *
+   * So they follow this instead, and it stands still while a drag is in
+   * flight. What moves under the hand is the letter on the stage, the specimen
+   * line and the panel, which are a dozen glyphs between them and can be drawn
+   * every frame; the grid and the warnings catch up the moment the drag ends.
+   * The alternative is not a livelier grid, it is a slider that jumps.
+   */
+  settled: Forge;
   /** The letter open in the large view. */
   letter: string;
   /** Whether an edit lands on the family or on this letter alone. */
@@ -71,6 +91,8 @@ export interface ForgeState {
   focus: { id: string; asked: number } | null;
   /** Bumped on every change, so views can memoise against it. */
   revision: number;
+  /** The same, for `settled`: bumped only when a gesture has finished. */
+  settledRevision: number;
 }
 
 const HISTORY = 50;
@@ -78,6 +100,7 @@ const HISTORY = 50;
 class ForgeStore {
   private state: ForgeState = {
     forge: startFrom(SANS),
+    settled: startFrom(SANS),
     letter: "n",
     scope: "family",
     familyName: "Untitled",
@@ -88,6 +111,7 @@ class ForgeStore {
     canRedo: false,
     focus: null,
     revision: 0,
+    settledRevision: 0,
   };
 
   private past: Forge[] = [];
@@ -108,6 +132,23 @@ class ForgeStore {
 
   /** Whether a drag is open, and therefore whether the next change folds in. */
   private gestureOpen = false;
+
+  /**
+   * The trailing catch-up, so the grid is never left behind.
+   *
+   * `settled` waits for a control to say its gesture has ended, and not every
+   * control says so: a slider driven from the keyboard sends a run of changes
+   * and nothing after the last of them, because there is no last one until
+   * somebody stops pressing the key. Waiting on a signal that may not come is
+   * how a view ends up quietly showing a font from a minute ago.
+   *
+   * So there are two ways to settle and either is enough: the gesture ends, or
+   * the changes stop. A sixth of a second is longer than the gap between two
+   * frames of a drag and shorter than anyone waiting for a grid to catch up.
+   */
+  private catchUp: ReturnType<typeof setTimeout> | null = null;
+
+  private static readonly QUIET = 160;
 
   /**
    * Record the document as it was, then move to a new one.
@@ -131,8 +172,18 @@ class ForgeStore {
       this.future = [];
     }
     this.gestureOpen = phase === "during";
+    const resting = phase !== "during";
+    if (this.catchUp !== null) clearTimeout(this.catchUp);
+    this.catchUp = resting
+      ? null
+      : setTimeout(() => {
+          this.catchUp = null;
+          if (this.state.settled !== this.state.forge) this.settle();
+        }, ForgeStore.QUIET);
     this.set({
       forge: next,
+      settled: resting ? next : this.state.settled,
+      settledRevision: this.state.settledRevision + (resting ? 1 : 0),
       canUndo: true,
       canRedo: false,
       revision: this.state.revision + 1,
@@ -148,6 +199,19 @@ class ForgeStore {
    */
   endGesture(): void {
     this.gestureOpen = false;
+    if (this.catchUp !== null) {
+      clearTimeout(this.catchUp);
+      this.catchUp = null;
+    }
+    if (this.state.settled !== this.state.forge) this.settle();
+  }
+
+  /** Let whatever was waiting for the drag to finish catch up. */
+  private settle(): void {
+    this.set({
+      settled: this.state.forge,
+      settledRevision: this.state.settledRevision + 1,
+    });
   }
 
   // --- what is being looked at -------------------------------------------
@@ -299,10 +363,53 @@ class ForgeStore {
     this.commit(chooseForm(forge, letter, form));
   }
 
-  /** Put this letter back on the family's terms. */
+  /**
+   * Put this letter back on the family's terms.
+   *
+   * With nothing named that means everything: the parts it holds its own
+   * version of and the cuts alike. Somebody pressing "rejoin the family" is
+   * saying this letter should stop being special, and leaving half of what
+   * made it special in place would be answering a different question.
+   */
   rejoinFamily(part?: PartName): void {
     const { forge, letter } = this.state;
-    this.commit(clearException(forge, letter, part));
+    const parts = clearException(forge, letter, part);
+    this.commit(part === undefined ? clearCutException(parts, letter) : parts);
+  }
+
+  /**
+   * Change what is taken out of the letters.
+   *
+   * On the whole font by default, because a face is cut one way. In letter
+   * scope it makes this letter an exception, for the one that has nowhere to
+   * put the third slot.
+   */
+  changeCut(name: CutName, patch: Partial<Cuts[CutName]>, phase: Phase = "single"): void {
+    const { forge, scope, letter } = this.state;
+    this.commit(editCut(forge, name, patch, scope === "letter" ? letter : undefined), phase);
+  }
+
+  /** Cut this letter the way the rest of the font is cut. */
+  releaseCut(name?: CutName): void {
+    const { forge, letter } = this.state;
+    this.commit(clearCutException(forge, letter, name));
+  }
+
+  /**
+   * Say that something outside the document has changed what it can draw.
+   *
+   * There is one such thing: the boolean library the cuts are made of arrives
+   * after the application does, and until it has, a letter with slots through
+   * it is drawn without them. Bumping the revision is what asks every view to
+   * draw again once it is there. Deliberately not a commit -- nothing about
+   * the document changed, and finding a step in the undo history for a
+   * download that finished would be undo doing something nobody asked for.
+   */
+  refresh(): void {
+    this.set({
+      revision: this.state.revision + 1,
+      settledRevision: this.state.settledRevision + 1,
+    });
   }
 
   /** The pen reaches every letter; there are no exceptions to be had from it. */
@@ -363,6 +470,8 @@ class ForgeStore {
     this.future.push(this.state.forge);
     this.set({
       forge: previous,
+      settled: previous,
+      settledRevision: this.state.settledRevision + 1,
       canUndo: this.past.length > 0,
       canRedo: true,
       revision: this.state.revision + 1,
@@ -375,6 +484,8 @@ class ForgeStore {
     this.past.push(this.state.forge);
     this.set({
       forge: next,
+      settled: next,
+      settledRevision: this.state.settledRevision + 1,
       canUndo: true,
       canRedo: this.future.length > 0,
       revision: this.state.revision + 1,

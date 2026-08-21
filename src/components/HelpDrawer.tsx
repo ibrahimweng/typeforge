@@ -16,7 +16,7 @@ import * as React from "react";
 
 import { PARAM_GROUPS, PARAMS } from "@/components/param-specs";
 import { OUTLINE_ACTION } from "@/components/controls";
-import { METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS } from "@/forge/parts";
+import { CUT_SPECS, METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS } from "@/forge/parts";
 import { FAMILIES, type Family } from "@/forge/style";
 import { forgetTips, seenTipCount, subscribeToTips } from "@/help/tips";
 
@@ -202,6 +202,52 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
         </Section>
 
         {PART_SPECS.map((spec) => (
+          <Section key={spec.name} title={spec.label} half="drawn">
+            <p>{spec.hint}</p>
+            <dl className="space-y-2">
+              {spec.controls.map((control) => (
+                <div key={control.key}>
+                  <dt className="text-2xs font-medium text-foreground">{control.label}</dt>
+                  <dd className="text-2xs leading-snug text-muted-foreground">{control.hint}</dd>
+                </div>
+              ))}
+            </dl>
+          </Section>
+        ))}
+
+        <Section title="Cutting" half="drawn">
+          <p>
+            Everything above adds ink: a spine is drawn and a pen is swept
+            along it. That reaches a great many typefaces and it cannot reach
+            the ones whose character is in what has been taken away -- a slot
+            through a stem, a saw along an edge, a groove down the middle of
+            every stroke, a counter that is a diamond rather than a hole. None
+            of those is a shape a pen makes, at any weight or any angle.
+          </p>
+          <p>
+            So the cuts are a second layer, and they run after the first. The
+            strokes are swept exactly as they always were, fused into one
+            shape, and then material is taken out of that shape.{" "}
+            <Term>Every control above still reaches the result:</Term> turn the
+            weight up on a face full of slots and the letters are redrawn
+            heavier with the same slots cut through them.
+          </p>
+          <p>
+            Sizes are in stem widths rather than in units, for the reason the
+            serif learned the hard way: a slot forty units across is a groove
+            on a display face and a letter in two halves on a hairline. In
+            stems it means the same thing everywhere, so a whole family cut
+            from one description stays cut the same way at every weight.
+          </p>
+          <p>
+            A cut can sever a letter, and sometimes that is the point -- a
+            stencil face is letters in pieces. The warnings say when it has
+            happened and to which letters, so it is a decision rather than a
+            surprise.
+          </p>
+        </Section>
+
+        {CUT_SPECS.map((spec) => (
           <Section key={spec.name} title={spec.label} half="drawn">
             <p>{spec.hint}</p>
             <dl className="space-y-2">

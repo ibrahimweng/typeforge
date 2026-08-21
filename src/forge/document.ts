@@ -17,6 +17,7 @@
  */
 
 import { decidedBy, drawLetter, letterNames, type Drawn } from "./build";
+import { CUT_NAMES, noCuts, type CutName, type Cuts } from "./cut";
 import type { Imported } from "./exchange";
 import { weightClassOf, weightedStyle, type Family } from "./family";
 import { partsUsedBy, type PartName } from "./parts";
@@ -24,6 +25,9 @@ import { BASES, type Parts, type Style } from "./style";
 
 /** A letter that has been told to differ, and in what. */
 export type Overrides = Partial<{ [K in keyof Parts]: Partial<Parts[K]> }>;
+
+/** The same, for the cuts: a letter that is cut differently from the rest. */
+export type CutOverrides = Partial<{ [K in keyof Cuts]: Partial<Cuts[K]> }>;
 
 export interface Forge {
   /** Which base this started from, for saying so and for starting again. */
@@ -57,6 +61,26 @@ export interface Forge {
    */
   imported: Record<string, Imported>;
   /**
+   * What is taken out of every letter after it has been drawn.
+   *
+   * Kept here rather than on the style because it is not a decision about the
+   * pen. Everything in the style describes how a stroke is made; a cut is what
+   * happens to the letter afterwards, and the two stay separable -- which is
+   * why turning the weight up on a face full of slots redraws the letters
+   * heavier and cuts the same slots through them.
+   *
+   * Optional because documents saved before there were cuts do not have it.
+   */
+  cuts?: Cuts;
+  /**
+   * Letters cut differently from the rest, and only those.
+   *
+   * The same kind of decision as an exception to a part, and kept the same
+   * way: this letter keeps its own version of one cut, and every other letter
+   * and every other cut carry on reading the font's.
+   */
+  cutExceptions?: Record<string, CutOverrides>;
+  /**
    * The weights this typeface has, and which of them is the one on screen.
    *
    * The style above describes one weight. Everything else in the family is
@@ -80,7 +104,13 @@ const ALONE: Family = { drawn: 400, also: [] };
  * use.
  */
 export function whole(forge: Forge): Forge {
-  return forge.family ? forge : { ...forge, family: { ...ALONE } };
+  if (forge.family && forge.cuts) return forge;
+  return {
+    ...forge,
+    family: forge.family ?? { ...ALONE },
+    cuts: forge.cuts ?? noCuts(),
+    cutExceptions: forge.cutExceptions ?? {},
+  };
 }
 
 /** The weights of this document, which is at least the one being drawn. */
@@ -109,6 +139,8 @@ export function startFrom(base: Style): Forge {
     exceptions: {},
     alternates: { ...base.forms },
     imported: {},
+    cuts: noCuts(),
+    cutExceptions: {},
     // Asked rather than assumed. A face is whatever weight its own stem says
     // it is, and half the bases here are not a Regular.
     family: { drawn: weightClassOf(base), also: [] },
@@ -172,6 +204,101 @@ export function baseNamed(name: string): Style | undefined {
   return BASES.find((style) => style.name === name);
 }
 
+/** What is taken out of every letter, unless a letter says otherwise. */
+export function cutsOf(forge: Forge): Cuts {
+  return forge.cuts ?? noCuts();
+}
+
+/**
+ * What is taken out of one letter.
+ *
+ * The font's, unless this letter is an exception, in which case the font's
+ * with that letter's differences laid over it. The same shape `styleFor` has,
+ * and for the same reason: a letter says how it differs, not what it is.
+ */
+export function cutsFor(letter: string, forge: Forge): Cuts {
+  const exception = forge.cutExceptions?.[letter];
+  const cuts = cutsOf(forge);
+  if (!exception) return cuts;
+
+  const merged: Record<string, unknown> = { ...cuts };
+  for (const [name, patch] of Object.entries(exception)) {
+    merged[name] = { ...(merged[name] as object), ...patch };
+  }
+  return merged as unknown as Cuts;
+}
+
+/**
+ * Change a cut.
+ *
+ * With no letter named the change is to the whole font, which is the ordinary
+ * case: a face is cut one way. Naming a letter makes that letter an exception,
+ * for the letter that needs one slot fewer because it has nowhere to put it.
+ */
+export function editCut(
+  forge: Forge,
+  name: CutName,
+  patch: Partial<Cuts[CutName]>,
+  letter?: string,
+): Forge {
+  if (letter === undefined) {
+    return { ...forge, cuts: { ...cutsOf(forge), [name]: { ...cutsOf(forge)[name], ...patch } } };
+  }
+  const existing = forge.cutExceptions?.[letter] ?? {};
+  return {
+    ...forge,
+    cutExceptions: {
+      ...forge.cutExceptions,
+      [letter]: { ...existing, [name]: { ...(existing[name] ?? {}), ...patch } },
+    },
+  };
+}
+
+/** Cut this letter the way the rest of the font is cut. */
+export function clearCutException(forge: Forge, letter: string, name?: CutName): Forge {
+  const existing = forge.cutExceptions?.[letter];
+  if (!existing) return forge;
+
+  const cutExceptions = { ...forge.cutExceptions };
+  if (name === undefined) {
+    delete cutExceptions[letter];
+  } else {
+    const remaining = { ...existing };
+    delete remaining[name];
+    if (Object.keys(remaining).length === 0) delete cutExceptions[letter];
+    else cutExceptions[letter] = remaining;
+  }
+  return { ...forge, cutExceptions };
+}
+
+export function isCutException(forge: Forge, letter: string, name?: CutName): boolean {
+  const exception = forge.cutExceptions?.[letter];
+  if (!exception) return false;
+  return name === undefined ? true : exception[name] !== undefined;
+}
+
+/**
+ * What a change to this cut is about to reach, in letters.
+ *
+ * Said before the edit, as it is for the parts. A cut lands on every letter in
+ * the font rather than on the ones that happen to have a part, so what this
+ * mostly reports is how many letters are holding their own version.
+ */
+export function cutReach(forge: Forge, name: CutName): { letters: string[]; held: string[] } {
+  const letters: string[] = [];
+  const held: string[] = [];
+  for (const letter of letterNames()) {
+    if (isCutException(forge, letter, name)) held.push(letter);
+    else letters.push(letter);
+  }
+  return { letters, held };
+}
+
+/** Every cut that some letter has been told to differ in. */
+export function cutsHeldBy(forge: Forge, letter: string): CutName[] {
+  return CUT_NAMES.filter((name) => isCutException(forge, letter, name));
+}
+
 /**
  * The style one letter is drawn with.
  *
@@ -222,7 +349,7 @@ export function draw(letter: string, forge: Forge): Drawn | null {
   const outside = forge.imported[letter];
   const drawn = outside
     ? { contours: outside.contours, advanceWidth: outside.advanceWidth }
-    : drawLetter(letter, styleFor(letter, forge), formOf(forge, letter));
+    : drawLetter(letter, styleFor(letter, forge), formOf(forge, letter), cutsFor(letter, forge));
   kept.set(letter, drawn);
   return drawn;
 }

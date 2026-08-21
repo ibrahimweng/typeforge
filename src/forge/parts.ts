@@ -17,10 +17,12 @@
  * those.
  */
 
+import type { CutName, Cuts } from "./cut";
 import { LETTERS, recipeOf, recordPartsWhile, type PartName } from "./letters";
 import type { Parts, Style } from "./style";
 
 export type { PartName };
+export type { CutName };
 
 /** One editable number on a part. */
 export interface PartControl {
@@ -543,4 +545,196 @@ function order(part: PartName): number {
 /** A part's current value as a plain record, for reading a control out of it. */
 export function valuesOf(part: PartName, parts: Parts): Record<string, number | boolean | string> {
   return parts[part] as unknown as Record<string, number | boolean | string>;
+}
+
+// ---------------------------------------------------------------------------
+// The cuts
+// ---------------------------------------------------------------------------
+
+/**
+ * Every cut and everything about it that can be changed.
+ *
+ * Kept beside the parts and in the same shape, so the panel draws both from
+ * one description and neither can come to offer a control the tool does not
+ * have. A cut is not a part -- it does not belong to a letter, and it happens
+ * after the drawing rather than during it -- so it has its own list rather
+ * than a seventh entry in that one.
+ */
+export interface CutSpec {
+  name: CutName;
+  label: string;
+  /** What it does, in the terms a designer would use. */
+  hint: string;
+  controls: PartControl[];
+}
+
+export const CUT_SPECS: CutSpec[] = [
+  {
+    name: "slot",
+    label: "Slots",
+    hint: "Bands cut clean across the letter. The move that reads at any size, and the one that turns a face into a poster.",
+    controls: [
+      {
+        key: "count",
+        label: "How many",
+        hint: "Spread evenly down the font, at heights every letter agrees on, so a word reads as one striped block rather than as letters each cut to their own rhythm.",
+        min: 1,
+        max: 8,
+        step: 1,
+      },
+      {
+        key: "width",
+        label: "Thickness",
+        hint: "How thick each band is, in stem widths. Held in stems so the same setting means the same thing at every weight.",
+        min: 0.05,
+        max: 1.2,
+        step: 0.01,
+      },
+      {
+        key: "angle",
+        label: "Angle",
+        hint: "Degrees the bands lean, turned about the middle of the letter. Off square they stop reading as rules across a page and start reading as a letter that has been sliced.",
+        min: -60,
+        max: 60,
+        step: 1,
+      },
+      {
+        key: "inset",
+        label: "Room at the ends",
+        hint: "How much of the font's height is left uncut top and bottom. A band through the very top of an l is a nick out of its head.",
+        min: 0,
+        max: 0.45,
+        step: 0.01,
+      },
+    ],
+  },
+  {
+    name: "tooth",
+    label: "Saw",
+    hint: "A row of notches run along one edge of the letter. Cut as a comb across the whole letter rather than fitted to its outline, which is what a saw does.",
+    controls: [
+      {
+        key: "pitch",
+        label: "Spacing",
+        hint: "From one tooth to the next, as a share of the x-height. The one size here that is not in stems: how fine a saw looks is how many teeth run down a letter, and a letter is the same height at every weight.",
+        min: 0.03,
+        max: 0.5,
+        step: 0.005,
+      },
+      {
+        key: "depth",
+        label: "Depth",
+        hint: "How far each notch reaches in, in stem widths.",
+        min: 0.05,
+        max: 1.2,
+        step: 0.01,
+      },
+      {
+        key: "edge",
+        label: "Which edge",
+        hint: "Where the saw runs.",
+        min: 0,
+        max: 0,
+        step: 0,
+        options: [
+          { value: "left", label: "Left", hint: "Down the left flank of every letter." },
+          { value: "right", label: "Right", hint: "Down the right flank." },
+          { value: "both", label: "Both", hint: "Down both, which reads as a letter torn rather than cut." },
+          { value: "top", label: "Top", hint: "Across the top." },
+          { value: "bottom", label: "Foot", hint: "Across the foot." },
+        ],
+      },
+    ],
+  },
+  {
+    name: "inline",
+    label: "Inline",
+    hint: "A groove down the middle of every stroke: the same skeleton swept again with a much thinner pen, and taken away. It follows the letter exactly because it is the letter.",
+    controls: [
+      {
+        key: "width",
+        label: "Width",
+        hint: "How wide the groove is, as a share of the stem.",
+        min: 0.05,
+        max: 0.85,
+        step: 0.01,
+      },
+      {
+        key: "inset",
+        label: "Held back",
+        hint: "How far short of each stroke end it stops, in stem widths. At nothing it breaks out through the terminals, which is an outline face rather than an inline one.",
+        min: 0,
+        max: 1.5,
+        step: 0.01,
+      },
+    ],
+  },
+  {
+    name: "motif",
+    label: "Counters",
+    hint: "The hole inside a letter, replaced by a shape. Every counter in the font at once, so an o and a B and an a agree.",
+    controls: [
+      {
+        key: "shape",
+        label: "Shape",
+        hint: "What goes in the hole.",
+        min: 0,
+        max: 0,
+        step: 0,
+        options: [
+          { value: "diamond", label: "Diamond", hint: "Points at the top, bottom and sides of the counter." },
+          { value: "triangle", label: "Triangle", hint: "Flat foot, point at the top." },
+          { value: "square", label: "Square", hint: "The counter's own box, which reads as a technical face." },
+          { value: "slot", label: "Bar", hint: "A wide, shallow slot: nearly a closed letter with a nick in it." },
+        ],
+      },
+      {
+        key: "size",
+        label: "Size",
+        hint: "Against the hole it replaces. One fills it; below that the letter gains ink and closes up; above it the counter opens out.",
+        min: 0.2,
+        max: 1.25,
+        step: 0.01,
+      },
+    ],
+  },
+  {
+    name: "split",
+    label: "Breaks",
+    hint: "A gap wherever two strokes run into each other, which is what makes a stencil. The shorter stroke gives way: the arm of an E leaves the stem, and the stem carries on.",
+    controls: [
+      {
+        key: "size",
+        label: "Gap",
+        hint: "How wide the break is, in stem widths.",
+        min: 0.1,
+        max: 2,
+        step: 0.01,
+      },
+    ],
+  },
+  {
+    name: "chamfer",
+    label: "Chamfer",
+    hint: "Corners cut off square. Applied last, so it finds the corners the other cuts made as well as the ones the letter was drawn with.",
+    controls: [
+      {
+        key: "size",
+        label: "Size",
+        hint: "How far back along each edge the cut starts, in stem widths. Never more than a share of the shorter edge, so a chamfer cannot reach past its own corner and take the next one with it.",
+        min: 0.05,
+        max: 2,
+        step: 0.01,
+      },
+    ],
+  },
+];
+
+export function cutSpecFor(name: CutName): CutSpec | undefined {
+  return CUT_SPECS.find((spec) => spec.name === name);
+}
+
+/** A cut's current values as a plain record, for reading a control out of it. */
+export function cutValuesOf(name: CutName, cuts: Cuts): Record<string, number | boolean | string> {
+  return cuts[name] as unknown as Record<string, number | boolean | string>;
 }

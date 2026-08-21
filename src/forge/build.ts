@@ -29,6 +29,12 @@ import type { Stroke, Terminal } from "./types";
 export interface Drawn {
   contours: Contour[];
   advanceWidth: number;
+  /**
+   * What the cuts did, when there were any: how many pieces the letter is in
+   * now, and how many it was in before. Absent on a letter nothing was cut
+   * out of, which is what "nothing to say" looks like.
+   */
+  cut?: { pieces: number; was: number };
 }
 
 /** A stroke's centre-line and the pen along it, for drawing over the letter. */
@@ -122,7 +128,9 @@ export function drawLetter(
   cuts?: Cuts,
 ): Drawn | null {
   const made = makeLetter(name, style, form, cuts);
-  return made ? { contours: made.contours, advanceWidth: made.advanceWidth } : null;
+  return made
+    ? { contours: made.contours, advanceWidth: made.advanceWidth, cut: made.cut }
+    : null;
 }
 
 /** One run of a letter: its ink, and the named decisions it was built from. */
@@ -188,9 +196,10 @@ export function makeLetter(
    * keeps the advance of the letter it replaced.
    */
   const solid = sheared(inked.flat(), lean, pivot);
-  const cut = anyCut(cuts)
-    ? sheared(cutInk(inked.flat(), built.strokes, style, cuts as Cuts), lean, pivot)
-    : solid;
+  const cutting = anyCut(cuts)
+    ? cutInk(inked.flat(), built.strokes, style, cuts as Cuts)
+    : null;
+  const cut = cutting ? sheared(cutting.contours, lean, pivot) : solid;
 
   // Only the letters that actually cross are moved, and each by exactly what
   // it needs.
@@ -223,6 +232,7 @@ export function makeLetter(
   return {
     advanceWidth,
     slide,
+    cut: cutting?.cut,
     contours: slid(placed, centring),
     runs: inked.map((contours, index) => ({
       contours: slid(sheared(contours, lean, pivot), slide),
@@ -311,6 +321,15 @@ function marked(parts: Parts, style: Style, form?: string, cuts?: Cuts): Made | 
   return {
     advanceWidth: base.advanceWidth + shortfall + overhang,
     slide: base.slide + shortfall,
+    /*
+     * The base's count, and the marks left out of it.
+     *
+     * A mark is drawn solid: an acute is a stroke a few units long and a slot
+     * through one is a fault rather than a decision. So the accents add a
+     * piece each to what is on the page and nothing to what the cuts did,
+     * which is what this count is for.
+     */
+    cut: base.cut,
     contours: placed,
     runs: spaced,
   };

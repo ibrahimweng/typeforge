@@ -16,6 +16,7 @@
  */
 
 import { codepointOfAccented } from "./accents";
+import { ready as readyToCut } from "@/font/boolean";
 import { correctDirection } from "@/font/outline";
 import { removeOverlaps } from "@/font/overlap";
 import {
@@ -25,7 +26,8 @@ import {
   type Typeface,
 } from "@/font/types";
 import { letterNames } from "./build";
-import { draw, type Forge } from "./document";
+import { anyCut } from "./cut";
+import { cutsOf, draw, type Forge } from "./document";
 
 /**
  * What each drawn glyph is called in Unicode.
@@ -193,6 +195,15 @@ export async function toTypeface(
   forge: Forge,
   options: ForgeExportOptions,
 ): Promise<Typeface> {
+  /*
+   * The library the cuts are made of, before a single letter is drawn.
+   *
+   * Everywhere else a letter that arrives uncut for one frame is nothing worth
+   * mentioning. Here it would be a font file with the cuts missing from it,
+   * which is the one place this cannot be allowed to happen quietly.
+   */
+  if (anyCut(cutsOf(forge))) await readyToCut();
+
   const { metrics } = forge.style;
   const typeface = emptyTypeface();
   typeface.meta = {

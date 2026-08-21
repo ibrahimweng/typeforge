@@ -50,6 +50,9 @@ const TIGHT = 0.045;
 /** Said in one place, because the family check looks for it by name. */
 const CLOSING = "Counters closing up";
 
+/** Above this many letters, a list of them stops being something to act on. */
+const MANY = 12;
+
 /**
  * The whole typeface, weight by weight.
  *
@@ -99,6 +102,8 @@ export function troubles(forge: Forge): Trouble[] {
   const closing: Array<{ letter: string; room: number }> = [];
   const overflowing: string[] = [];
   const touching: string[] = [];
+  const inPieces: string[] = [];
+  const erased: string[] = [];
 
   const ceiling = forge.style.metrics.ascender + forge.style.pen.weight;
   // What an accented letter is allowed, which is more: a third again over the
@@ -108,7 +113,26 @@ export function troubles(forge: Forge): Trouble[] {
 
   for (const letter of letterNames()) {
     const drawn = draw(letter, forge);
-    if (!drawn || drawn.contours.length === 0) continue;
+    if (!drawn) continue;
+    /*
+     * A letter cut away to nothing.
+     *
+     * Always a fault, and the only thing here that is: every other complaint
+     * is about a letter that has gone somewhere extreme on purpose, and this
+     * one is a hole in the alphabet with nothing in the settings to say which
+     * letter it happened to.
+     *
+     * Asked of the cut rather than of the outline, because a letter with no
+     * ink is not by itself unusual -- the space has none and is exactly right.
+     * What is wrong is ink that was there before the cut and is not there
+     * after it, which is the one thing the count can say and an empty outline
+     * cannot.
+     */
+    if (drawn.contours.length === 0) {
+      if (drawn.cut && drawn.cut.was > 0) erased.push(letter);
+      continue;
+    }
+    if (drawn.cut && drawn.cut.pieces > drawn.cut.was) inPieces.push(letter);
 
     /*
      * A counter is a contour wound against the ink, which is now true by
@@ -140,6 +164,33 @@ export function troubles(forge: Forge): Trouble[] {
   }
 
   const found: Trouble[] = [];
+  if (erased.length > 0) {
+    found.push({
+      what: "Cut away to nothing",
+      letters: erased,
+      fix: "A thinner slot, a shallower saw, or a smaller counter shape. This is the one cut that leaves a hole in the alphabet.",
+    });
+  }
+  if (inPieces.length > 0) {
+    /*
+     * Said, and not judged.
+     *
+     * Letters in pieces is what a stencil is, so this is not a fault -- and
+     * whether it was meant is a thing the count answers at a glance and this
+     * file could never answer at all. Forty letters in pieces is a stencil.
+     * Two letters in pieces, in a font where nothing else moved, is the cut
+     * that went through something it should not have.
+     */
+    found.push({
+      what: `${inPieces.length} ${inPieces.length === 1 ? "letter is" : "letters are"} cut into pieces`,
+      // Named one by one while there are few enough for the names to be worth
+      // reading, and counted once there are not. A handful is a list to go and
+      // look at; most of the alphabet is a fact about the font, and fourteen
+      // arbitrary letters off the front of it are not a way in to anything.
+      letters: inPieces.length <= MANY ? inPieces : [],
+      fix: "Which is what a stencil is. If it was not meant: a narrower gap, a thinner slot, or more room at the ends.",
+    });
+  }
   if (closing.length > 0) {
     closing.sort((one, other) => one.room - other.room);
     found.push({
