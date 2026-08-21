@@ -93,8 +93,7 @@ export function FontGridView(): React.JSX.Element {
             {visible.map((glyph) => (
               <GlyphCell
                 key={glyph.name}
-                glyph={glyph}
-                typeface={typeface}
+                name={glyph.name}
                 revision={state.revision}
                 active={state.selectedGlyph === glyph.name}
                 selected={state.selectedGlyphs.has(glyph.name)}
@@ -112,26 +111,48 @@ export function FontGridView(): React.JSX.Element {
   );
 }
 
+/*
+ * A cell is told which letter it is and when the font last changed, and goes
+ * and gets the rest itself.
+ *
+ * It used to be handed the glyph and the whole typeface. That reads well and is
+ * cheap in production, and in development it costs two minutes: React's
+ * performance track diffs a component's previous props against its next ones to
+ * show what changed, and where the two differ it walks in and writes out what
+ * it finds. A typeface is six thousand glyphs of outlines, there are eighty
+ * cells on screen, and every one of them was handed the same font -- so opening
+ * a second font, or reloading into one, froze the tab solid for the length of
+ * that walk. Props a component does not need are not free.
+ */
 interface GlyphCellProps {
-  glyph: Glyph;
-  typeface: Typeface;
+  /** Which glyph, by name. The font itself is fetched, not passed. */
+  name: string;
+  /** Bumped whenever the font changes, which is what redraws the cell. */
   revision: number;
   active: boolean;
   selected: boolean;
 }
 
 const GlyphCell = React.memo(function GlyphCell({
-  glyph,
-  typeface,
+  name,
   revision,
   active,
   selected,
-}: GlyphCellProps): React.JSX.Element {
+}: GlyphCellProps): React.JSX.Element | null {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  /*
+   * Read rather than subscribed to. The revision above is the subscription --
+   * it arrives from the view, which does subscribe -- and this is the document
+   * that revision refers to. Eighty cells each holding their own subscription
+   * would re-render eighty times for a keystroke in the search box.
+   */
+  const typeface = store.getSnapshot().typeface;
+  const at = typeface?.glyphIndex.get(name);
+  const glyph = typeface && at !== undefined ? typeface.glyphs[at] : undefined;
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !typeface || !glyph) return;
     const size = CELL_SIZE;
     const context = prepareCanvas(canvas, size, size - 20);
     if (!context) return;
@@ -140,6 +161,10 @@ const GlyphCell = React.memo(function GlyphCell({
       fill: readToken("--glyph-fill", "#eeeeee"),
     });
   }, [glyph, typeface, revision]);
+
+  // A name with nothing behind it means the font changed under the row while
+  // it was on screen; the next render has the right letters in it.
+  if (!glyph) return null;
 
   return (
     <button

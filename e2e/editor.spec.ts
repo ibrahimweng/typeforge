@@ -137,6 +137,40 @@ test("opens a font and fills the grid with drawn glyphs", async ({ page }) => {
   await expect(page.getByText("6,253 glyphs", { exact: true })).toBeVisible();
 });
 
+/*
+ * Opening a second font must not cost more than opening the first.
+ *
+ * It cost two minutes. React's development performance track diffs a
+ * component's previous props against its next ones and writes out whatever
+ * differs, and every cell in the grid was handed the whole typeface -- six
+ * thousand glyphs of outlines, eighty times over, the moment there was an
+ * earlier font to compare against. Nothing was wrong with the font or the
+ * parsing, so nothing in the suite noticed: the tab simply stopped.
+ *
+ * The number below is not a claim about speed. Opening a font is well under a
+ * second and this allows thirty, which is the difference between "the machine
+ * is slow today" and "the interface has stopped".
+ */
+test("opens a second font as quickly as the first", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.goto("/");
+  await openFont(page);
+
+  // Away and back, so the cells on screen have an earlier font behind them --
+  // a freshly mounted cell has nothing to be diffed against and is never slow.
+  await page.getByRole("button", { name: "Kerning", exact: true }).click();
+  await page.getByRole("button", { name: "Spacing", exact: true }).click();
+  await page.getByRole("button", { name: "Font", exact: true }).click();
+  await expect(page.getByText("6,253 glyphs", { exact: true })).toBeVisible();
+
+  const started = Date.now();
+  await page.setInputFiles('input[type="file"]', FONT_PATH!);
+  await expect(page.getByText("6,253 glyphs", { exact: true })).toBeVisible({ timeout: 120_000 });
+  expect(Date.now() - started, "the second open took long enough to look broken").toBeLessThan(
+    30_000,
+  );
+});
+
 test("searches the grid by typing a letter", async ({ page }) => {
   await page.goto("/");
   await openFont(page);

@@ -13,7 +13,7 @@ import { contoursBounds } from "@/font/geometry";
 import { resolveAdvanceWidth, resolveGlyphContours } from "@/font/transform";
 import { drawGlyph, glyphLabel, prepareCanvas, type GlyphView } from "@/components/glyph-render";
 import { CoachMark } from "@/components/CoachMark";
-import type { Glyph, Typeface } from "@/font/types";
+import type { Glyph } from "@/font/types";
 import { store, useAppState } from "@/state/useStore";
 import { cn } from "@/ui/lib/utils";
 
@@ -64,7 +64,7 @@ export function MetricsView(): React.JSX.Element {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <CoachMark id="metrics" />
-      <SpacingPreview typeface={typeface} revision={state.revision} text={state.previewText} />
+      <SpacingPreview revision={state.revision} text={state.previewText} />
 
       <div className="flex items-center gap-3 border-y border-border px-4 py-2.5">
         <input
@@ -193,16 +193,23 @@ function SidebearingInput({
   );
 }
 
-/** The preview strip: letters at their real spacing, kerning included. */
+/**
+ * The preview strip: letters at their real spacing, kerning included.
+ *
+ * The font is fetched rather than passed, for the reason the glyph cells are:
+ * React's development performance track diffs a component's props against the
+ * previous ones and walks into whatever differs, so a typeface handed down as a
+ * prop is six thousand glyphs of outlines written out on every font change.
+ */
 function SpacingPreview({
-  typeface,
   revision,
   text,
 }: {
-  typeface: Typeface;
+  /** Bumped whenever the font changes, which is what redraws the strip. */
   revision: number;
   text: string;
 }): React.JSX.Element {
+  const typeface = store.getSnapshot().typeface;
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [size, setSize] = React.useState({ width: 900, height: 120 });
@@ -220,7 +227,7 @@ function SpacingPreview({
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !typeface) return;
     const context = prepareCanvas(canvas, size.width, size.height);
     if (!context) return;
 
