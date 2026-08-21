@@ -17,16 +17,34 @@ import * as React from "react";
 
 import { segment } from "@/components/controls";
 import { contoursToSvgPath } from "@/font/geometry";
+import { filled, FILL_KINDS } from "@/forge/kit";
 import { drawLetter } from "@/forge/build";
-import { formOf, isException, partsOf, reach, styleFor } from "@/forge/document";
+import { FROM_SKELETON, type Cuts } from "@/forge/cut";
+import {
+  cutsFor,
+  cutsHeldBy,
+  cutsOf,
+  formOf,
+  isCutException,
+  isException,
+  isImported,
+  kitOf,
+  partsOf,
+  reach,
+  styleFor,
+  tilesFor,
+} from "@/forge/document";
 import type { Imported } from "@/forge/exchange";
 import { formsOf } from "@/forge/letters";
 import {
+  CUT_SPECS,
   METRIC_CONTROLS,
   PART_SPECS,
   PEN_CONTROLS,
+  cutValuesOf,
   specFor,
   valuesOf,
+  type CutSpec,
   type FieldControl,
   type PartControl,
   type PartName,
@@ -191,12 +209,443 @@ export function ForgePanel(): React.JSX.Element {
           ))}
         </Section>
 
+        <KitPanel />
+
+        <Cuts />
+
         <Forms letter={letter} />
 
         <Trip key={letter} letter={letter} />
 
       </div>
     </aside>
+  );
+}
+
+/**
+ * Letters built on a grid, out of a small set of parts.
+ *
+ * A different construction rather than a different setting, so it is one
+ * switch and everything under it belongs to it. What it does not change is
+ * worth saying out loud in the panel: the pen still draws these letters, so
+ * weight and contrast and terminals all still reach them, and the cuts still
+ * cut them.
+ */
+function KitPanel(): React.JSX.Element {
+  const state = useForge();
+  const { forge, letter } = state;
+  const kit = kitOf(forge);
+  const tiles = tilesFor(forge, letter);
+  const laid = Object.keys(kit.glyphs).length;
+
+  return (
+    <section className="border-b border-border p-3" data-forge-kit>
+      <label className="flex items-center justify-between gap-2">
+        <span className="min-w-0 flex-1 text-2xs font-medium text-foreground">Build on a grid</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={kit.on}
+          aria-label="Build on a grid"
+          data-forge-kit-switch
+          onClick={() => forgeStore.useKit(!kit.on)}
+          className={cn(
+            "h-4 w-7 shrink-0 rounded-full transition-colors",
+            kit.on ? "bg-[color:var(--accent)]" : "bg-card",
+          )}
+        >
+          <span
+            className={cn(
+              "block size-3 rounded-full bg-background transition-transform",
+              kit.on ? "translate-x-3.5" : "translate-x-0.5",
+            )}
+          />
+        </button>
+      </label>
+      <p className="pt-1 text-2xs leading-snug text-muted-foreground">
+        Every letter assembled from the same few parts on the same grid. The pen
+        still draws them, so weight, contrast and terminals all still reach
+        them, and the cuts still cut them.
+      </p>
+
+      {kit.on && (
+        <>
+          <p className="pt-2 text-2xs leading-snug text-muted-foreground">
+            Press a spot on a cell's edge to send a stroke out through it.
+            Double-click the middle of a cell to fill it in. {laid}{" "}
+            {laid === 1 ? "letter is" : "letters are"} laid out.
+          </p>
+
+          {GRID_CONTROLS.map((control) => (
+            <div className="py-1" key={control.key}>
+              <Slider
+                name={control.label}
+                value={Number((kit.grid as unknown as Record<string, number>)[control.key])}
+                min={control.min}
+                max={control.max}
+                step={control.step}
+                showFill
+                onValueChange={(next: number, meta?: { history?: string }) =>
+                  forgeStore.changeGrid(
+                    { [control.key]: next } as never,
+                    meta?.history === "merge" ? "during" : "end",
+                  )
+                }
+              />
+              <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">{control.hint}</p>
+            </div>
+          ))}
+
+          <div className="py-1">
+            <Slider
+              name="Roundness"
+              value={kit.roundness}
+              min={0}
+              max={1}
+              step={0.01}
+              showFill
+              onValueChange={(next: number, meta?: { history?: string }) =>
+                forgeStore.changeRoundness(next, meta?.history === "merge" ? "during" : "end")
+              }
+            />
+            <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">
+              How a turn inside a cell is taken: nothing is a square corner, one
+              is a quarter of a circle touching both edges. Held above what the
+              pen can bend through, so asking for rounder than it can go leaves
+              the corner square rather than folding it.
+            </p>
+          </div>
+
+          <Palette />
+
+          {tiles && (
+            <div className="py-1">
+              <Slider
+                name={`Cells across ${letter}`}
+                value={tiles.columns}
+                min={1}
+                max={12}
+                step={1}
+                showFill
+                onValueChange={(next: number, meta?: { history?: string }) =>
+                  forgeStore.changeColumns(next, meta?.history === "merge" ? "during" : "end")
+                }
+              />
+              <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">
+                What this letter is spaced by. Cells are square, so this is its
+                width and its rhythm at once.
+              </p>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-1.5 pt-2">
+            <button
+              type="button"
+              onClick={() => forgeStore.layOutLetters(false)}
+              data-forge-kit-relay
+              className="flex-1 rounded-md border border-border px-2 py-1.5 text-2xs transition-colors hover:border-muted-foreground hover:bg-card"
+            >
+              Lay {letter} out again
+            </button>
+            <button
+              type="button"
+              onClick={() => forgeStore.clearLetter()}
+              data-forge-kit-clear
+              className="flex-1 rounded-md border border-border px-2 py-1.5 text-2xs transition-colors hover:border-muted-foreground hover:bg-card"
+            >
+              Empty {letter}
+            </button>
+            <button
+              type="button"
+              onClick={() => forgeStore.layOutLetters(true)}
+              data-forge-kit-relay-all
+              className="w-full rounded-md border border-border px-2 py-1.5 text-2xs transition-colors hover:border-muted-foreground hover:bg-card"
+            >
+              Lay the whole font out again
+            </button>
+          </div>
+          <p className="pt-2 text-2xs leading-snug text-muted-foreground">
+            Laying out reads the skeletons this font already has and puts them
+            on the grid. It is an approximation and is meant to be: a stem lands
+            exactly, a shoulder lands on the nearest eight places a stroke can
+            leave a square. Every cell of it is one press to change.
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
+
+/**
+ * The shapes a press on a cell puts down.
+ *
+ * Drawn from the same geometry that fills the cell, so what is in the palette
+ * is exactly what lands -- a picture of a tile redrawn by hand in the panel is
+ * a picture that goes out of date the first time the tile changes.
+ *
+ * The eraser is the first one and is where it starts, so a stray press on the
+ * stage cannot quietly fill a cell in. Turning is one button rather than four
+ * copies of every shape: five shapes and a turn is a row anybody can read, and
+ * twenty tiles is a menu.
+ */
+function Palette(): React.JSX.Element {
+  const state = useForge();
+  const chosen = state.fill;
+  const turn = chosen?.turn ?? 0;
+  const box = { xMin: 0, yMin: 0, xMax: 1, yMax: 1 };
+
+  return (
+    <div className="pt-2" data-forge-fills>
+      <div className="flex items-baseline justify-between gap-2 pb-1">
+        <span className="text-2xs text-foreground">Fill a cell</span>
+        <button
+          type="button"
+          onClick={() => chosen && forgeStore.chooseFill({ ...chosen, turn: (turn + 1) % 4 })}
+          disabled={!chosen}
+          data-forge-fill-turn
+          className="shrink-0 text-2xs text-[color:var(--accent)] transition-opacity hover:opacity-70 disabled:opacity-30"
+        >
+          Turn
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          aria-pressed={chosen === null}
+          aria-label="Erase"
+          title="Erase: press a cell to take its shape out"
+          onClick={() => forgeStore.chooseFill(null)}
+          data-forge-fill="none"
+          className={cn(
+            "flex size-9 items-center justify-center rounded-md border text-2xs transition-colors",
+            chosen === null
+              ? "border-[color:var(--accent)] bg-[color:color-mix(in_oklab,var(--accent)_12%,transparent)] text-foreground"
+              : "border-border text-muted-foreground hover:border-muted-foreground hover:bg-card",
+          )}
+        >
+          None
+        </button>
+        {FILL_KINDS.map((kind) => {
+          const fill = { kind, turn };
+          const on = chosen?.kind === kind;
+          return (
+            <button
+              key={kind}
+              type="button"
+              aria-pressed={on}
+              aria-label={kind}
+              title={FILL_HINTS[kind]}
+              onClick={() => forgeStore.chooseFill(fill)}
+              data-forge-fill={kind}
+              className={cn(
+                "flex size-9 items-center justify-center rounded-md border transition-colors",
+                on
+                  ? "border-[color:var(--accent)] bg-[color:color-mix(in_oklab,var(--accent)_12%,transparent)]"
+                  : "border-border hover:border-muted-foreground hover:bg-card",
+              )}
+            >
+              <svg viewBox="0 0 1 1" className="size-5" aria-hidden>
+                <g transform="translate(0,1) scale(1,-1)">
+                  <path d={contoursToSvgPath(filled(fill, box), 4)} fill="var(--foreground)" />
+                </g>
+              </svg>
+            </button>
+          );
+        })}
+      </div>
+      <p className="pt-1 text-2xs leading-snug text-muted-foreground">
+        {chosen
+          ? `Press a cell to put a ${chosen.kind} in it, and press it again to take it out.`
+          : "Press a cell to take whatever shape is in it out. Choose a shape to put one in."}
+      </p>
+    </div>
+  );
+}
+
+const FILL_HINTS: Record<string, string> = {
+  full: "The whole cell. What a heavy grid face is mostly made of.",
+  pie: "A quarter disc about one corner. Four of them round a shared corner make a circle.",
+  bite: "The cell with that quarter taken out, which is what turns a block into the inside of a C.",
+  half: "The cell cut across the middle.",
+  wedge: "The cell cut corner to corner.",
+};
+
+/** The grid itself, counted in cells rather than measured in units. */
+const GRID_CONTROLS = [
+  {
+    key: "rows",
+    label: "Rows to the cap height",
+    hint: "What sets the size of a cell, and with it how coarse the whole alphabet is. Fewer rows is a blockier face built from bigger parts.",
+    min: 2,
+    max: 12,
+    step: 1,
+  },
+  {
+    key: "below",
+    label: "Rows below the baseline",
+    hint: "How far the grid reaches down, for the descenders.",
+    min: 0,
+    max: 5,
+    step: 1,
+  },
+  {
+    key: "above",
+    label: "Rows above the cap",
+    hint: "How far it reaches up, for the ascenders and the accents.",
+    min: 0,
+    max: 5,
+    step: 1,
+  },
+];
+
+/**
+ * What is taken out of the letters after they are drawn.
+ *
+ * A second layer with its own heading rather than six more parts, because it
+ * is a different kind of decision and saying so is most of what makes it
+ * usable. Everything above describes how a stroke is made; everything here
+ * happens to the letter once it has been. The two stay separable, which is why
+ * turning the weight up on a face full of slots redraws the letters heavier
+ * and cuts the same slots through them.
+ *
+ * Each cut is a switch with its own settings folded underneath it, so the
+ * panel is six rows until somebody wants more than six rows. A control that is
+ * off has nothing worth reading.
+ */
+function Cuts(): React.JSX.Element {
+  const state = useForge();
+  const { forge, letter, scope } = state;
+  /*
+   * In letter scope this shows what the letter actually has, rather than what
+   * the font has -- which is where this parts company with the rows above.
+   *
+   * The difference is in how the two are used. A part exception is rare and
+   * starts from the family's value, so showing the family's value is showing
+   * what the first drag moves away from. A cut exception is the ordinary way
+   * to deal with the letter that has nowhere to put the third slot, and it
+   * gets adjusted again; showing the font's value there would be showing a
+   * number this letter is not cut by.
+   */
+  const cuts = scope === "letter" ? cutsFor(letter, forge) : cutsOf(forge);
+  const held = cutsHeldBy(forge, letter);
+
+  return (
+    <section className="border-b border-border p-3" data-forge-cuts>
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-2xs font-medium">Cut</h3>
+        {held.length > 0 && (
+          <button
+            type="button"
+            onClick={() => forgeStore.releaseCut()}
+            data-forge-release-cuts
+            className="shrink-0 text-2xs text-[color:var(--accent)] transition-opacity hover:opacity-70"
+          >
+            {letter} holds {held.length} · release
+          </button>
+        )}
+      </div>
+      <p className="pt-1 text-2xs leading-snug text-muted-foreground">
+        Taken out after the letter is drawn, so every control above still
+        reaches it. Sizes are in stem widths, which is what keeps a cut meaning
+        the same thing at every weight.
+      </p>
+      <p className="pt-1 text-2xs leading-snug text-muted-foreground">
+        {scope === "family"
+          ? "Cutting the whole font."
+          : `Cutting ${letter} alone. The rest of the font keeps its own.`}
+      </p>
+
+      {CUT_SPECS.map((spec) => (
+        <Cutting key={spec.name} spec={spec} cuts={cuts} />
+      ))}
+    </section>
+  );
+}
+
+/** One cut: a switch, and its settings once it is on. */
+function Cutting({
+  spec,
+  cuts,
+}: {
+  spec: CutSpec;
+  cuts: Cuts;
+}): React.JSX.Element {
+  const state = useForge();
+  const values = cutValuesOf(spec.name, cuts);
+  const on = Boolean(values.on);
+  const pinned = isCutException(state.forge, state.letter, spec.name);
+  // The control still works -- it is a decision about the font -- but on this
+  // letter it will do nothing, and that is worth knowing here rather than
+  // after staring at the drawing.
+  const unreachable =
+    FROM_SKELETON.has(spec.name) && on && isImported(state.forge, state.letter);
+
+  return (
+    <div className="border-t border-border pt-2 first-of-type:mt-2" data-forge-cut={spec.name}>
+      {/*
+        A row, not a label.
+        *
+        * It was a <label> wrapping the name, the "own" badge and the switch,
+        * which reads well and does the wrong thing: a click on any button
+        * inside a label is forwarded to the label's own control as well, so
+        * pressing "own" to give a letter back to the font released it and then
+        * immediately toggled the switch, putting the exception straight back.
+        * Both handlers fired on one press. The switch names itself with
+        * aria-label, so the label element was buying nothing to begin with.
+      */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 flex-1 text-2xs font-medium text-foreground">{spec.label}</span>
+        {pinned && (
+          <button
+            type="button"
+            onClick={() => forgeStore.releaseCut(spec.name)}
+            className="shrink-0 text-2xs text-[color:var(--accent)] transition-opacity hover:opacity-70"
+          >
+            held
+          </button>
+        )}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={on}
+          aria-label={spec.label}
+          data-forge-cut-switch={spec.name}
+          onClick={() => forgeStore.changeCut(spec.name, { on: !on } as never)}
+          className={cn(
+            "h-4 w-7 shrink-0 rounded-full transition-colors",
+            on ? "bg-[color:var(--accent)]" : "bg-card",
+          )}
+        >
+          <span
+            className={cn(
+              "block size-3 rounded-full bg-background transition-transform",
+              on ? "translate-x-3.5" : "translate-x-0.5",
+            )}
+          />
+        </button>
+      </div>
+      <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">{spec.hint}</p>
+      {unreachable && (
+        <p className="pt-0.5 text-2xs leading-snug text-[color:var(--accent)]">
+          Not on {state.letter}: this one is made out of the skeleton, and your
+          drawing has none. The rest of the font still gets it.
+        </p>
+      )}
+
+      {on && (
+        <div className="pt-1">
+          {spec.controls.map((control) => (
+            <Control
+              key={control.key}
+              id={`cut:${spec.name}:${control.key}`}
+              control={control}
+              values={values}
+              onChange={(patch, phase) => forgeStore.changeCut(spec.name, patch as never, phase)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -220,7 +669,14 @@ function Forms({ letter }: { letter: string }): React.JSX.Element | null {
   const drawings = React.useMemo(
     () =>
       forms.map((form) => {
-        const drawn = drawLetter(letter, styleFor(letter, state.forge), form.id);
+        // Cut as the rest of the font is, so what is being compared is this
+        // font's version of each shape rather than a picture of the idea.
+        const drawn = drawLetter(
+          letter,
+          styleFor(letter, state.forge),
+          form.id,
+          cutsFor(letter, state.forge),
+        );
         return { ...form, d: drawn ? contoursToSvgPath(drawn.contours) : "", width: drawn?.advanceWidth ?? 1 };
       }),
     [forms, letter, state.forge, state.revision],
@@ -361,9 +817,12 @@ function Trip({ letter }: { letter: string }): React.JSX.Element {
       {outside ? (
         <div className="pt-2" data-forge-imported={letter}>
           <p className="text-2xs leading-snug text-muted-foreground">
-            {letter} is your drawing, from {outside.from}. It keeps its advance, and
-            nothing in this panel reaches it any more -- there is no pen behind
-            it to change.
+            {letter} is your drawing, from {outside.from}. It keeps its advance,
+            and nothing above reaches it any more -- there is no pen behind it
+            to change. The cuts still do: a slot or a saw is taken out of
+            whatever the letter is, so your drawing is cut with the rest of the
+            font. The two made out of the skeleton -- the inline and the breaks
+            -- are the exception, because your drawing has no skeleton.
           </p>
           <button
             type="button"
@@ -445,26 +904,42 @@ function Part({ part, mine }: { part: PartName; mine: boolean }): React.JSX.Elem
 
       <div className="pt-2">
         {spec.controls.map((control) => (
-          <Control key={control.key} part={part} control={control} values={values} />
+          <Control
+            key={control.key}
+            id={`part:${part}:${control.key}`}
+            control={control}
+            values={values}
+            onChange={(patch, phase) => forgeStore.changePart(part, patch as never, phase)}
+          />
         ))}
       </div>
     </section>
   );
 }
 
+/**
+ * One editable number, switch or choice, drawn from its own description.
+ *
+ * Told where to send a change rather than knowing: the same control row serves
+ * the parts and the cuts, which are edited through different calls and are
+ * otherwise described identically. Writing it twice would have meant two rows
+ * that drift apart, and the one that drifts is the one nobody is looking at.
+ */
 function Control({
-  part,
+  id,
   control,
   values,
+  onChange,
 }: {
-  part: PartName;
+  /** Names this control for the panel to scroll to when the letter is asked. */
+  id: string;
   control: PartControl;
   values: Record<string, number | boolean | string>;
+  onChange: (patch: Record<string, number | boolean | string>, phase: Phase) => void;
 }): React.JSX.Element {
   const state = useForge();
   const em = state.forge.style.metrics.unitsPerEm;
   const scale = control.emRelative ? em : 1;
-  const id = `part:${part}:${control.key}`;
   const { ref, shown } = useShown(id);
 
   /*
@@ -486,7 +961,7 @@ function Control({
               type="button"
               title={option.hint}
               aria-pressed={chosen === option.value}
-              onClick={() => forgeStore.changePart(part, { [control.key]: option.value } as never)}
+              onClick={() => onChange({ [control.key]: option.value }, "single")}
               className={segment(chosen === option.value, "flex-1")}
             >
               {option.label}
@@ -508,9 +983,7 @@ function Control({
           role="switch"
           aria-checked={on}
           aria-label={control.label}
-          onClick={() =>
-            forgeStore.changePart(part, { [control.key]: !on } as never)
-          }
+          onClick={() => onChange({ [control.key]: !on }, "single")}
           className={cn(
             "h-4 w-7 shrink-0 rounded-full transition-colors",
             on ? "bg-[color:var(--accent)]" : "bg-card",
@@ -540,9 +1013,8 @@ function Control({
         step={control.step}
         showFill
         onValueChange={(next: number, meta?: { history?: string }) =>
-          forgeStore.changePart(
-            part,
-            { [control.key]: next * scale } as never,
+          onChange(
+            { [control.key]: next * scale },
             meta?.history === "merge" ? "during" : "end",
           )
         }

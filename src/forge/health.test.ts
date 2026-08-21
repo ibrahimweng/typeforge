@@ -7,8 +7,10 @@
  * noticed.
  */
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
+import { ready } from "@/font/boolean";
+import { noCuts, type Cuts } from "./cut";
 import { startFrom, type Forge } from "./document";
 import { troubles } from "./health";
 import { DISPLAY, SANS, SERIF } from "./style";
@@ -92,5 +94,65 @@ describe("what has gone wrong", () => {
       return troubles(forge).reduce((total, one) => total + one.letters.length, 0);
     };
     expect(count(0.6)).toBeGreaterThan(count(1));
+  });
+});
+
+describe("what a cut did", () => {
+  const withCuts = (forge: Forge, patch: (cuts: Cuts) => void): Forge => {
+    const cuts = noCuts();
+    patch(cuts);
+    return { ...forge, cuts };
+  };
+
+  beforeAll(async () => {
+    await ready();
+  });
+
+  it("says nothing when nothing has been cut", () => {
+    const cut = withCuts(startFrom(SANS), () => {});
+    expect(troubles(cut)).toEqual([]);
+  });
+
+  it("counts the letters a break has taken apart", () => {
+    const stencil = withCuts(startFrom(SANS), (cuts) => { cuts.split.on = true; });
+    const said = troubles(stencil).find((one) => one.what.includes("cut into pieces"));
+    expect(said).toBeDefined();
+    // Every letter with two strokes running into each other, which is most of
+    // the alphabet -- and the number is what tells somebody this is a stencil
+    // rather than an accident. Past a dozen the names are not listed, because
+    // fourteen arbitrary letters off the front of the alphabet are not a way
+    // in to anything.
+    expect(Number(said!.what.split(" ")[0])).toBeGreaterThan(20);
+    expect(said!.letters).toEqual([]);
+  });
+
+  it("names them while there are few enough for names to help", () => {
+    // One letter cut apart, and the rest of the font left alone.
+    const forge = startFrom(SANS);
+    const nearly = {
+      ...forge,
+      cuts: noCuts(),
+      cutExceptions: { E: { split: { on: true } } },
+    };
+    const said = troubles(nearly).find((one) => one.what.includes("cut into pieces"));
+    expect(said).toBeDefined();
+    expect(said!.letters).toEqual(["E"]);
+  });
+
+  it("does not call the space a letter cut away to nothing", () => {
+    // It has no ink and never had any, which is exactly right for a space.
+    const cut = withCuts(startFrom(SANS), (cuts) => { cuts.slot.on = true; });
+    const gone = troubles(cut).find((one) => one.what === "Cut away to nothing");
+    expect(gone?.letters ?? []).not.toContain("space");
+  });
+
+  it("says when a cut has taken a letter away entirely", () => {
+    const eaten = withCuts(startFrom(SANS), (cuts) => {
+      // One band twenty stems thick, which is taller than any letter here.
+      cuts.slot = { on: true, count: 1, width: 20, angle: 0, inset: 0 };
+    });
+    const gone = troubles(eaten).find((one) => one.what === "Cut away to nothing");
+    expect(gone).toBeDefined();
+    expect(gone!.letters.length).toBeGreaterThan(0);
   });
 });

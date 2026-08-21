@@ -14,7 +14,8 @@
 
 import * as React from "react";
 
-import { build, kernKey } from "@/assemble/document";
+import { build, cutHeldBy, cutsFor, cutsOrNone, kernKey } from "@/assemble/document";
+import { CutPanel } from "@/components/CutPanel";
 import { segment } from "@/components/controls";
 import { contoursToSvgPath } from "@/font/geometry";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
@@ -71,10 +72,91 @@ export function AssemblePanel(): React.JSX.Element {
         <Fit />
         <Lines />
         <Spacing />
+        <Cutting />
         <Letter />
         <Pair />
       </div>
     </aside>
+  );
+}
+
+/**
+ * Cutting a pile of drawings.
+ *
+ * The same panel and the same description as the other two halves. What is
+ * different here is only what a cut can be measured against: nothing in the
+ * pile was drawn with a pen that could be asked how thick a stem is, so it is
+ * measured off the drawings once they have all been fitted to the same
+ * metrics -- see `build`.
+ *
+ * The selected drawing is cut its own way rather than the pile's, which is the
+ * same exception the other two offer and is worth more here than anywhere:
+ * a pile is drawings from different hands, and the one that has nowhere to put
+ * the third slot is the ordinary case rather than the odd one.
+ */
+function Cutting(): React.JSX.Element {
+  const state = useAssemble();
+  const { assembly, selected } = state;
+  /*
+   * Whose cuts are being changed, asked rather than assumed.
+   *
+   * It used to follow whatever drawing was selected, and a drawing always is:
+   * so the first press of the Slots switch cut one letter and left the other
+   * twenty-five alone, which is neither what it looks like nor what anybody
+   * wants first. The pile is the default and the letter is a decision, which
+   * is the way round the drawn side has it too.
+   */
+  const [scope, setScope] = React.useState<"pile" | "one">("pile");
+  const has = assembly.pieces.some((piece) => piece.character === selected);
+  const one = scope === "one" && selected !== "" && has;
+  const cuts = one ? cutsFor(selected, assembly) ?? cutsOrNone(assembly) : cutsOrNone(assembly);
+
+  return (
+    <>
+      <div className="border-b border-border px-3 pt-3">
+        <div className="flex gap-0.5 rounded-md bg-card/60 p-0.5" role="group" aria-label="Cut scope">
+          <button
+            type="button"
+            aria-pressed={scope === "pile"}
+            onClick={() => setScope("pile")}
+            data-cut-scope="pile"
+            className={segment(scope === "pile", "flex-1")}
+          >
+            Whole pile
+          </button>
+          <button
+            type="button"
+            aria-pressed={scope === "one"}
+            disabled={!has}
+            onClick={() => setScope("one")}
+            data-cut-scope="one"
+            className={segment(scope === "one", cn("flex-1", !has && "opacity-40"))}
+          >
+            {has ? selected : "One drawing"}
+          </button>
+        </div>
+      </div>
+      <CutPanel
+        tag="assemble"
+        cuts={cuts}
+        onChange={(name, patch, phase) => {
+          if (one) assembleStore.changeOneCut(selected, name, patch as never, phase);
+          else assembleStore.changeCut(name, patch as never, phase);
+        }}
+        unitsPerEm={assembly.metrics.unitsPerEm}
+        scopeNote={
+          one
+            ? `Cutting ${selected} alone. The rest of the pile keeps its own.`
+            : "Cutting every drawing in the pile."
+        }
+        reach={
+          "Nothing here: this one is made out of the skeleton a letter was drawn " +
+          "from, and a drawing that arrived as an outline has none."
+        }
+        heldNote={(name) => (one && cutHeldBy(assembly, selected, name) ? "own" : null)}
+        onRelease={() => one && assembleStore.cutLikeTheRest(selected)}
+      />
+    </>
   );
 }
 

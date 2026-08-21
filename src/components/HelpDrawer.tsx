@@ -16,7 +16,7 @@ import * as React from "react";
 
 import { PARAM_GROUPS, PARAMS } from "@/components/param-specs";
 import { OUTLINE_ACTION } from "@/components/controls";
-import { METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS } from "@/forge/parts";
+import { CUT_SPECS, METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS } from "@/forge/parts";
 import { FAMILIES, type Family } from "@/forge/style";
 import { forgetTips, seenTipCount, subscribeToTips } from "@/help/tips";
 
@@ -215,6 +215,159 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
           </Section>
         ))}
 
+        <Section title="Building on a grid" half="drawn">
+          <p>
+            The third way to make a letter here, and it exists because the
+            other two cannot reach a whole family of type. A skeleton and a pen
+            give you a letter whose strokes go where a hand would take them;
+            cutting takes material out of one. Neither describes a face whose
+            letters are assembled out of a handful of shapes repeated on a grid
+            -- the kind designed as a system first and an alphabet second,
+            where what makes it a typeface is that every letter is made of the
+            same few parts.
+          </p>
+          <p>
+            <Term>A cell holds the places ink runs to.</Term> Eight of them:
+            the middle of each edge and each corner, which between them cover
+            every direction a stroke leaves a square in. Press one to send a
+            stroke out through it. Two facing each other are a run straight
+            through; two on the same edge are a run along it; anything else
+            turns through the middle. Double-click the middle of a cell to fill
+            it in outright.
+          </p>
+          <p>
+            It is not a second drawing program, which is the point.{" "}
+            <Term>The pen still draws these letters</Term>, so weight,
+            contrast, pen angle and terminals all still reach them, the family
+            still has every weight, and the cuts still cut them. Turn the
+            weight up on a font built from cells and it gets heavier, because
+            the cells were never the ink -- they are where the ink runs.
+          </p>
+          <p>
+            Switching it on lays the whole alphabet onto the grid from the
+            skeletons this font already has, because a hundred and ninety
+            glyphs placed cell by cell is not a workflow anybody finishes. What
+            arrives is an approximation and is meant to be: a stem lands on the
+            grid exactly, a shoulder lands on the nearest places a stroke is
+            allowed to leave a square, and a diagonal is re-routed to run at
+            one of the eight angles a grid has. Every cell of it is one press
+            to change, and any letter can be laid out again or emptied.
+          </p>
+        </Section>
+
+        <Section title="Cutting" half="drawn">
+          <p>
+            Everything above adds ink: a spine is drawn and a pen is swept
+            along it. That reaches a great many typefaces and it cannot reach
+            the ones whose character is in what has been taken away -- a slot
+            through a stem, a saw along an edge, a groove down the middle of
+            every stroke, a counter that is a diamond rather than a hole. None
+            of those is a shape a pen makes, at any weight or any angle.
+          </p>
+          <p>
+            So the cuts are a second layer, and they run after the first. The
+            strokes are swept exactly as they always were, fused into one
+            shape, and then material is taken out of that shape.{" "}
+            <Term>Every control above still reaches the result:</Term> turn the
+            weight up on a face full of slots and the letters are redrawn
+            heavier with the same slots cut through them.
+          </p>
+          <p>
+            Sizes are in stem widths rather than in units, for the reason the
+            serif learned the hard way: a slot forty units across is a groove
+            on a display face and a letter in two halves on a hairline. In
+            stems it means the same thing everywhere, so a whole family cut
+            from one description stays cut the same way at every weight.
+          </p>
+          <p>
+            A cut can sever a letter, and sometimes that is the point -- a
+            stencil face is letters in pieces. The warnings say when it has
+            happened and to which letters, so it is a decision rather than a
+            surprise.
+          </p>
+          <p>
+            <Term>All three halves of this application cut.</Term> A font you
+            opened is cut from its Parameters panel and a pile of drawings from
+            its own; the description is the same one, and so is everything
+            above about stem widths and about a cut being a decision you can
+            take back. What differs is what a cut has to work with. A face
+            drawn here knows how thick its stems are, because a pen drew them;
+            a font and a pile do not, so it is measured off their own letters
+            -- ruled across an I or an l or an H, whichever they have. And two
+            of the six are made out of the skeleton a letter was drawn from: an
+            outline out of a file has none, so the groove and the break do
+            nothing there and say so on the control rather than leaving you to
+            work it out from a drawing that did not change.
+          </p>
+        </Section>
+
+        {CUT_SPECS.map((spec) => (
+          <Section key={spec.name} title={spec.label} half="drawn">
+            <p>{spec.hint}</p>
+            <dl className="space-y-2">
+              {spec.controls.map((control) => (
+                <div key={control.key}>
+                  <dt className="text-2xs font-medium text-foreground">{control.label}</dt>
+                  <dd className="text-2xs leading-snug text-muted-foreground">{control.hint}</dd>
+                </div>
+              ))}
+            </dl>
+          </Section>
+        ))}
+
+        <Section title="Where the counter shapes come from" half="drawn">
+          <p>
+            The shapes a counter can be replaced with are geometric primitives,
+            named for what they are: a diamond, a lozenge, a chevron, an
+            hourglass, a comb, a nested diamond.{" "}
+            <Term>That is a decision, not only a convenience.</Term>
+          </p>
+          <p>
+            Those figures turn up in geometric ornament everywhere there is
+            any, and belong exclusively to nobody. The symbol sets a face like
+            this is often reached for alongside are not like that.{" "}
+            <Term>Adinkra</Term> symbols carry proverbs and concepts, are protected
+            as heritage under Ghanaian law, and have been mass-produced abroad
+            since the 1990s with nothing going back to the people whose symbols
+            they are -- and no international law that would let Ghana stop it.{" "}
+            <Term>Bògòlanfini</Term> motifs are read in combination, and
+            together give expression to a proverb, a song or an event.{" "}
+            <Term>Nsibidi</Term>, <Term>Tifinagh</Term> and the{" "}
+            <Term>Ge'ez</Term> script are writing systems; the last two are in
+            daily use today. A living alphabet used as a hole in somebody
+            else's letter is not a motif.
+          </p>
+          <p>
+            So none of them ships here as a shape to pick off a menu, and this
+            tool does not offer a preset with a continent's name on it. What it
+            offers is the geometry, and the note that if you are working from a
+            particular tradition, the right thing is to go to it directly --
+            and, where the work is somebody's rather than everybody's, to name
+            them. Esther Mahlangu is the reason Ndebele wall painting is known
+            outside South Africa, and hers is the rare case where a tradition's
+            geometry travelled with its author's name attached to it. And going
+            directly is worth it on the craft alone: Shoowa cut-pile cloth
+            builds its patterns by combining a handful of figures, and the
+            published analyses draw each design out from its basic motif --
+            which is the same move this tool makes with cells and counters,
+            done better and centuries earlier.
+          </p>
+          <p>
+            Worth reading, and where these notes come from: Boatema Boateng,{" "}
+            <em>The Copyright Thing Doesn't Work Here: Adinkra and Kente Cloth
+            and Intellectual Property in Ghana</em> (University of Minnesota
+            Press, 2011); J. Janewa OseiTutu, "Harmonizing Cultural IP across
+            Borders: Fashionable Bags &amp; Ghanaian Adinkra Symbols"{" "}
+            (<em>Akron Law Review</em> 51, 2017); the Metropolitan Museum of
+            Art's catalogue entry for a Bamana bògòlanfini, which is where the
+            reading of the motifs above comes from; Georges Meurant,{" "}
+            <em>Shoowa Design: African Textiles from the Kingdom of Kuba</em>{" "}
+            (Thames &amp; Hudson, 1986); and, on Mahlangu, "Esther Mahlangu:
+            how the famous South African artist keeps her Ndebele culture
+            alive" in <em>The Conversation</em>.
+          </p>
+        </Section>
+
         <Section title="Drawing one letter yourself" half="drawn">
           <p>
             Some letter will not come out of a skeleton and a pen. Every font
@@ -241,10 +394,27 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
           <p>
             What it costs is worth knowing before you spend it. A letter that
             came in from outside is an outline rather than a description, so
-            nothing in the panel reaches it any more -- there is no pen behind
+            the pen and the parts no longer reach it -- there is nothing behind
             it to make heavier. It is marked in the alphabet, and one button
             hands it back to the family, which draws it again from the
             description it never stopped having.
+          </p>
+          <p>
+            <Term>The cuts still reach it.</Term> A slot, a saw, a chamfer and
+            a counter shape are taken out of whatever the letter is, so your
+            drawing is cut with the rest of the font and at the same heights --
+            which is what stops the one letter you drew by hand sitting solid
+            in the middle of a striped word. The two made out of the skeleton,
+            the inline and the breaks, are the exception: your drawing has no
+            skeleton for them to follow, so they leave it alone and the panel
+            says so while you are looking at it.
+          </p>
+          <p>
+            What goes out on the sheet is the letter before any of that. Send a
+            slotted n out and the slots would arrive as part of the outline,
+            and the font would then cut fresh slots through the ones already
+            there. The sheet carries the solid letter, so a cut stays a
+            description and goes on applying to whatever comes back.
           </p>
         </Section>
 

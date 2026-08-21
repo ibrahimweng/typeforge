@@ -19,7 +19,7 @@
 
 import { glyphSvg, readSvg, svgToFontUnits, type SvgGuide, type SvgNote } from "@/font/svg";
 import type { Contour } from "@/font/types";
-import { draw, type Forge } from "./document";
+import { solid, type Forge } from "./document";
 
 /** A letter that came in from outside and is no longer drawn from a skeleton. */
 export interface Imported {
@@ -47,9 +47,18 @@ export function guidesFor(forge: Forge): SvgGuide[] {
   ];
 }
 
-/** One letter as an SVG sheet, ready to be opened anywhere. */
+/**
+ * One letter as an SVG sheet, ready to be opened anywhere.
+ *
+ * The solid letter, with whatever the font cuts out of it left in. What leaves
+ * has to be the letter the cuts are applied to rather than the letter after
+ * them: export a slotted n and the slots arrive in the file as part of the
+ * outline, and the font then cuts fresh slots through the ones already there.
+ * Sending the solid letter keeps the cut a description, so it goes on applying
+ * to whatever comes back.
+ */
 export function letterSvg(letter: string, forge: Forge): string | null {
-  const drawn = draw(letter, forge);
+  const drawn = solid(letter, forge);
   if (!drawn) return null;
   const { metrics } = forge.style;
   return glyphSvg({
@@ -91,7 +100,7 @@ export function readLetterSvg(text: string, forge: Forge, into?: string): Arriva
   if (!letter) return null;
 
   const { metrics } = forge.style;
-  const existing = draw(letter, forge);
+  const existing = solid(letter, forge);
   const { contours, advanceWidth } = svgToFontUnits(drawing, {
     top: metrics.ascender,
     bottom: metrics.descender,

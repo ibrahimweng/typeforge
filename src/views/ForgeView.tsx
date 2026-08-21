@@ -20,10 +20,29 @@ import { CoachMark } from "@/components/CoachMark";
 import { Reference } from "@/components/Reference";
 import { contoursToSvgPath } from "@/font/geometry";
 import { letterNames, skeletonOf } from "@/forge/build";
+import {
+  cellBox,
+  cellKey,
+  PORTS,
+  portAt,
+  rowsOf,
+  unitOf,
+} from "@/forge/kit";
 import { familyOf, weighted, type Forge } from "@/forge/document";
 import { nameOfWeight, weightsOf } from "@/forge/family";
 import { codepointsFor } from "@/forge/typeface";
-import { draw, formOf, isException, isImported, partsOf, reach, styleFor } from "@/forge/document";
+import {
+  draw,
+  formOf,
+  isException,
+  isImported,
+  isLaidOut,
+  kitOf,
+  partsOf,
+  reach,
+  styleFor,
+  tilesFor,
+} from "@/forge/document";
 import { handlesFor, valueAfter, type Handle } from "@/forge/handles";
 import { familyTroubles } from "@/forge/health";
 import { driveId, valueOf, whatGoverns, type Governing } from "@/forge/probe";
@@ -49,8 +68,11 @@ export function ForgeView(): React.JSX.Element {
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Stage letter={letter} revision={state.revision} parts={parts} />
         <Specimen revision={state.revision} />
-        <Warnings revision={state.revision} />
-        <Alphabet names={names} selected={letter} revision={state.revision} />
+        <Warnings revision={state.settledRevision} />
+        {/* Both of these read the whole alphabet, so both follow the settled
+            document rather than the live one: they catch up when a drag ends
+            instead of holding it up. */}
+        <Alphabet names={names} selected={letter} revision={state.settledRevision} />
       </div>
     </div>
   );
@@ -93,6 +115,7 @@ function Stage({
   const [missed, setMissed] = React.useState(false);
 
   const form = formOf(state.forge, letter);
+  const kitOn = Boolean(state.forge.kit?.on);
   const drawn = React.useMemo(
     () => draw(letter, state.forge),
     [letter, state.forge, revision],
@@ -106,23 +129,32 @@ function Stage({
    * governed by handles that do not touch it.
    */
   const outside = isImported(state.forge, letter);
+  /*
+   * Neither a handle nor a skeleton belongs on a letter built from cells.
+   *
+   * The recipe would still answer, and that is the trap it shares with an
+   * imported letter: what it returns is the skeleton of the letter this one
+   * replaced, and drawing it over the cells says the drawing is governed by
+   * handles that do not touch it.
+   */
+  const own = outside || (kitOn && isLaidOut(state.forge, letter));
   const handles = React.useMemo(
-    () => (outside ? [] : handlesFor(letter, state.forge.style, form)),
-    [letter, state.forge, form, outside, revision],
+    () => (own ? [] : handlesFor(letter, state.forge.style, form)),
+    [letter, state.forge, form, own, revision],
   );
   const bones = React.useMemo(
     () =>
-      state.showSkeleton && !outside
+      state.showSkeleton && !own
         ? skeletonOf(letter, styleFor(letter, state.forge), form)
         : [],
-    [letter, state.forge, form, outside, state.showSkeleton, revision],
+    [letter, state.forge, form, own, state.showSkeleton, revision],
   );
 
   // A handle found on one letter means nothing on the next one.
   React.useEffect(() => {
     setFound(null);
     setMissed(false);
-  }, [letter, form, outside]);
+  }, [letter, form, own]);
 
   /*
    * How far an edit through this handle would carry.
@@ -241,11 +273,12 @@ function Stage({
    * to change, and the control that changes it comes to you -- as a handle on
    * the edge you pressed, and as the panel scrolled to the row it lives on.
    *
-   * A letter that came in from outside is not drawn from a skeleton, so there
-   * is nothing behind any of it and it is not asked.
+   * A letter that came in from outside, or that is built from cells, is not
+   * drawn from a skeleton -- so there is nothing behind any of it and it is
+   * not asked.
    */
   const probe = (event: React.MouseEvent) => {
-    if (outside) return;
+    if (own) return;
     const spot = spotOf(event);
     if (!spot) return;
     const governing = whatGoverns(letter, styleFor(letter, state.forge), spot, form);
@@ -386,6 +419,9 @@ function Stage({
               />
             </g>
           ))}
+
+          {/* The cells, over the ink, because the ink is what they made. */}
+          {kitOn && <Cells letter={letter} scale={unit} />}
 
           {standing.map((handle) => (
             <g key={handle.id}>
@@ -691,6 +727,98 @@ function nameOf(character: string): string | null {
 
 
 /**
+ * The grid, over the letter, with every place a stroke can leave a cell.
+ *
+ * The whole of the editing, and deliberately one thing rather than nine. A
+ * cell is a set of places ink runs to, so there is one gesture -- press the
+ * spot where you want the stroke to leave -- and every letterform on the grid
+ * is some arrangement of having used it. There is no tile menu to learn and no
+ * shape to pick out of a row: the shape is a consequence.
+ *
+ * Only the cell under the pointer shows all eight. Two hundred and fifty-six
+ * dots over a letter is not an editor, it is a screen door, and the ones that
+ * matter -- the ports that are on -- are invisible among them.
+ */
+function Cells({ letter, scale }: { letter: string; scale: number }): React.JSX.Element | null {
+  const state = useForge();
+  const [over, setOver] = React.useState<string | null>(null);
+  const kit = kitOf(state.forge);
+  const style = styleFor(letter, state.forge);
+  const tiles = tilesFor(state.forge, letter);
+
+  const unit = unitOf(style, kit.grid);
+  const left = style.metrics.sidebearing;
+  const rows = rowsOf(kit.grid);
+  // One column past the letter, so it can be made wider by using it.
+  const columns = (tiles?.columns ?? 1) + 1;
+
+  return (
+    <g data-forge-cells={letter}>
+      {rows.map((row) =>
+        Array.from({ length: columns }, (_, column) => {
+          const key = cellKey(column, row);
+          const box = cellBox(column, row, unit, left);
+          const cell = tiles?.cells[key];
+          const showing = over === key;
+          return (
+            <g key={key}>
+              <rect
+                x={box.xMin}
+                y={box.yMin}
+                width={unit}
+                height={unit}
+                fill={cell?.fill ? "var(--accent)" : "transparent"}
+                fillOpacity={cell?.fill ? 0.14 : 1}
+                stroke="var(--accent)"
+                strokeWidth={scale * (showing ? 0.9 : 0.4)}
+                strokeOpacity={showing ? 0.5 : 0.22}
+                onPointerEnter={() => setOver(key)}
+                onPointerLeave={() => setOver((was) => (was === key ? null : was))}
+                /* Pressing a cell stamps whatever shape is chosen in the
+                   panel into it, and pressing it again takes it out. One
+                   gesture for both, so there is no eraser to go and find. */
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  forgeStore.stampFill(key, state.fill ?? undefined);
+                }}
+                data-forge-cell-box={key}
+                className="cursor-crosshair"
+              />
+              {PORTS.map((port) => {
+                const at = portAt(port, box);
+                const on = cell?.ports.includes(port) ?? false;
+                if (!on && !showing) return null;
+                return (
+                  <circle
+                    key={port}
+                    cx={at.x}
+                    cy={at.y}
+                    r={scale * (on ? 3.4 : 2.4)}
+                    fill={on ? "var(--accent)" : "var(--canvas)"}
+                    stroke="var(--accent)"
+                    strokeWidth={scale * 0.8}
+                    strokeOpacity={on ? 1 : 0.6}
+                    onPointerEnter={() => setOver(key)}
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      forgeStore.togglePort(key, port);
+                    }}
+                    data-forge-port={`${key}:${port}`}
+                    className="cursor-pointer"
+                  >
+                    <title>{`${port} of ${key}`}</title>
+                  </circle>
+                );
+              })}
+            </g>
+          );
+        }),
+      )}
+    </g>
+  );
+}
+
+/**
  * What has closed up, and where.
  *
  * The letters here cannot fold, but they can be pushed somewhere nobody meant:
@@ -701,7 +829,10 @@ function nameOf(character: string): string | null {
  */
 function Warnings({ revision }: { revision: number }): React.JSX.Element | null {
   const state = useForge();
-  const found = React.useMemo(() => familyTroubles(state.forge), [state.forge, revision]);
+  const found = React.useMemo(
+    () => familyTroubles(state.settled),
+    [state.settled, revision],
+  );
   if (found.length === 0) return null;
   return (
     <div className="shrink-0 border-b border-border px-4 py-2" data-forge-warnings>
@@ -746,17 +877,17 @@ function Alphabet({
   const cells = React.useMemo(
     () =>
       names.map((name) => {
-        const drawn = draw(name, state.forge);
+        const drawn = draw(name, state.settled);
         return {
           name,
           d: drawn ? contoursToSvgPath(drawn.contours) : "",
           width: drawn?.advanceWidth ?? 0,
-          held: isException(state.forge, name),
-          shaped: Boolean(formOf(state.forge, name)),
-          outside: isImported(state.forge, name),
+          held: isException(state.settled, name),
+          shaped: Boolean(formOf(state.settled, name)),
+          outside: isImported(state.settled, name),
         };
       }),
-    [names, state.forge, revision],
+    [names, state.settled, revision],
   );
 
   const { metrics } = state.forge.style;

@@ -12,11 +12,22 @@
  * place is left completely alone.
  */
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+
+import { ready } from "@/font/boolean";
 
 import { contoursToSvgPath } from "@/font/geometry";
 import { decidedBy, letterNames } from "./build";
+import { anyCut } from "./cut";
 import {
+  clearCutException,
+  cutsFor,
+  cutsHeldBy,
+  cutsOf,
+  editCut,
+  isCutException,
+  weighted,
+  whole,
   clearException,
   draw,
   editPart,
@@ -277,5 +288,81 @@ describe("starting a document", () => {
     // ask for them, so the controls do not move about between letters.
     const order = PART_SPECS.map((spec) => spec.name);
     expect([...parts].sort((a, b) => order.indexOf(a) - order.indexOf(b))).toEqual(parts);
+  });
+});
+
+/**
+ * The cuts, checked the same way as the parts: on the letters.
+ *
+ * Same promise, and it has the same two halves. Turning on a slot reaches every
+ * letter in the font, and a letter told to keep its own cutting keeps it.
+ */
+describe("cutting", () => {
+  beforeAll(async () => {
+    await ready();
+  });
+
+  const shapeOf = (letter: string, forge: Forge): string =>
+    contoursToSvgPath(draw(letter, forge)?.contours ?? []);
+
+  it("starts with nothing cut", () => {
+    const forge = startFrom(SANS);
+    expect(anyCut(cutsOf(forge))).toBe(false);
+    for (const letter of "AEHOan") {
+      expect(shapeOf(letter, forge)).toBe(shapeOf(letter, { ...forge, cuts: undefined }));
+    }
+  });
+
+  it("reaches every letter when it is the font that is cut", () => {
+    const before = startFrom(SANS);
+    const after = editCut(before, "slot", { on: true });
+    for (const letter of "AEHOKRanos") {
+      expect(shapeOf(letter, after), letter).not.toBe(shapeOf(letter, before));
+    }
+  });
+
+  it("reaches one letter when it is the letter that is cut", () => {
+    const before = editCut(startFrom(SANS), "slot", { on: true });
+    // Three bands on the H alone; the rest of the font keeps its two.
+    const after = editCut(before, "slot", { count: 5 }, "H");
+
+    expect(shapeOf("H", after)).not.toBe(shapeOf("H", before));
+    for (const letter of "AEOKRanos") {
+      expect(shapeOf(letter, after), letter).toBe(shapeOf(letter, before));
+    }
+    expect(cutsFor("H", after).slot.count).toBe(5);
+    expect(cutsOf(after).slot.count).toBe(2);
+    // And the fields it did not name still come from the font.
+    expect(cutsFor("H", after).slot.width).toBe(cutsOf(after).slot.width);
+  });
+
+  it("says which letters are holding their own, and lets them go", () => {
+    const held = editCut(editCut(startFrom(SANS), "slot", { on: true }), "slot", { count: 5 }, "H");
+    expect(isCutException(held, "H", "slot")).toBe(true);
+    expect(isCutException(held, "E", "slot")).toBe(false);
+    expect(cutsHeldBy(held, "H")).toEqual(["slot"]);
+
+    const released = clearCutException(held, "H");
+    expect(isCutException(released, "H")).toBe(false);
+    expect(shapeOf("H", released)).toBe(shapeOf("H", editCut(startFrom(SANS), "slot", { on: true })));
+  });
+
+  it("fills the cuts in on a document saved before there were any", () => {
+    // Everything written by a version of this that had no cut layer.
+    const old = { ...startFrom(SANS), cuts: undefined, cutExceptions: undefined };
+    const filled = whole(old);
+    expect(anyCut(filled.cuts)).toBe(false);
+    expect(filled.cutExceptions).toEqual({});
+    expect(shapeOf("H", old)).toBe(shapeOf("H", filled));
+  });
+
+  it("carries the cuts to every weight of the family", () => {
+    // A cut is a description, so the Bold is cut the same way as the Regular
+    // -- and because the sizes are in stems, cut to the same proportions.
+    const cut = editCut(startFrom(SANS), "slot", { on: true });
+    const bold = weighted({ ...cut, family: { drawn: 400, also: [700] } }, 700);
+    expect(anyCut(cutsOf(bold))).toBe(true);
+    expect(shapeOf("H", bold)).not.toBe(shapeOf("H", cut));
+    expect(draw("H", bold)!.cut!.pieces).toBe(draw("H", cut)!.cut!.pieces);
   });
 });

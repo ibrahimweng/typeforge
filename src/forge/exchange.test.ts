@@ -7,17 +7,21 @@
  * back under the family's control puts it back exactly.
  */
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
-import { contoursBounds } from "@/font/geometry";
+import { ready } from "@/font/boolean";
+
+import { contoursBounds, contoursToSvgPath } from "@/font/geometry";
 import { readSvg } from "@/font/svg";
 import {
   draw,
+  editCut,
   importLetter,
   isImported,
   relinkLetter,
   startFrom,
   editPen,
+  type Forge,
 } from "./document";
 import { guidesFor, letterSvg, readLetterSvg } from "./exchange";
 import { troubles } from "./health";
@@ -233,5 +237,83 @@ describe("a letter that is no longer drawn", () => {
     expect(glyph).toBeDefined();
     expect(glyph!.contours.length).toBeGreaterThan(0);
     expect(glyph!.advanceWidth).toBe(draw("a", forge)!.advanceWidth);
+  });
+});
+
+/**
+ * The cuts, on a letter the family did not draw.
+ *
+ * An imported letter used to pass straight through them, and the effect was a
+ * font that disagreed with itself: slots across every letter but the one
+ * somebody had drawn by hand, which sat in the middle of the word solid.
+ */
+describe("cutting a letter that came in from outside", () => {
+  beforeAll(async () => {
+    await ready();
+  });
+
+  const taken = (letter = "a", forge = startFrom(SANS)) => {
+    const arrival = roundTrip(letter, forge);
+    return importLetter(forge, letter, {
+      contours: arrival.contours,
+      advanceWidth: arrival.advanceWidth,
+      from: `${letter}.svg`,
+    });
+  };
+
+  const slotted = (forge: Forge) => editCut(forge, "slot", { on: true });
+  const path = (letter: string, forge: Forge) =>
+    contoursToSvgPath(draw(letter, forge)?.contours ?? []);
+
+  it("cuts it with the rest of the font", () => {
+    const outside = taken("a");
+    const before = path("a", outside);
+    const after = slotted(outside);
+
+    expect(path("a", after)).not.toBe(before);
+    expect(draw("a", after)!.cut!.pieces).toBeGreaterThan(1);
+    // And it is cut like the letters around it, not left behind by them.
+    expect(draw("n", after)!.cut!.pieces).toBeGreaterThan(1);
+  });
+
+  it("leaves it the width it arrived with", () => {
+    const outside = taken("a");
+    expect(draw("a", slotted(outside))!.advanceWidth).toBe(draw("a", outside)!.advanceWidth);
+  });
+
+  it("cannot reach it with the two made out of the skeleton", () => {
+    const outside = taken("a");
+    const before = path("a", outside);
+    for (const name of ["inline", "split"] as const) {
+      const after = editCut(outside, name, { on: true });
+      // Nothing happens to the drawing, and nothing goes wrong either.
+      expect(path("a", after), name).toBe(before);
+      // While the letters that do have a skeleton are cut as usual.
+      expect(path("n", after), name).not.toBe(path("n", outside));
+    }
+  });
+
+  it("counts its pieces in the warnings like any other letter", () => {
+    const outside = slotted(taken("a"));
+    const said = troubles(outside).find((one) => one.what.includes("cut into pieces"));
+    expect(said).toBeDefined();
+    expect(Number(said!.what.split(" ")[0])).toBeGreaterThan(1);
+  });
+
+  it("sends the solid letter out to be drawn on, not the cut one", () => {
+    /*
+     * Otherwise the cut stops being a description. Export a slotted n and the
+     * slots arrive in the file as part of the outline; bring it back and the
+     * font cuts fresh slots through the ones already there, and the second
+     * trip does it again.
+     */
+    const cut = slotted(startFrom(SANS));
+    const sheet = letterSvg("n", cut) as string;
+    const plain = letterSvg("n", startFrom(SANS)) as string;
+    expect(sheet).toBe(plain);
+
+    // So a letter that goes out and comes straight back is cut once, not twice.
+    const back = taken("n", cut);
+    expect(draw("n", back)!.cut!.pieces).toBe(draw("n", cut)!.cut!.pieces);
   });
 });

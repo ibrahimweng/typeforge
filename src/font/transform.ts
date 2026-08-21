@@ -30,11 +30,60 @@ import { classifyContours, contoursIntersect } from "./outline";
 import { shiftCrossbar, shiftShoulders } from "./anatomy";
 import { pixelate } from "./pixel";
 import { addSlabs } from "./slab";
+import { anyCut, type Cuts } from "./cuts";
+import { cutInk, type CutScale } from "@/forge/cut";
+import { measuredStem } from "./stem";
 import { DEFAULT_PARAMS, type Contour, type Glyph, type GlyphNode, type GlyphParams, type Typeface, type Vec2 } from "./types";
 
 /** Merge family parameters with a glyph's overrides. */
 export function effectiveParams(glyph: Glyph, typeface: Typeface): GlyphParams {
   return { ...DEFAULT_PARAMS, ...typeface.params, ...glyph.params };
+}
+
+/**
+ * How this glyph is cut: its own way if it says so, the font's way otherwise.
+ *
+ * An exception rather than an override, unlike every numeric parameter above.
+ * Half a font's cuts merged with half a letter's own is not a description
+ * anybody wrote, so a letter either goes along with the font or is cut its
+ * own way.
+ */
+export function effectiveCuts(glyph: Glyph, typeface: Typeface): Cuts | undefined {
+  return glyph.cuts ?? typeface.cuts;
+}
+
+/** Whether anything anywhere in the font is switched on. */
+export function anythingCut(typeface: Typeface): boolean {
+  if (anyCut(typeface.cuts)) return true;
+  return typeface.glyphs.some((glyph) => anyCut(glyph.cuts));
+}
+
+/**
+ * The stem of the font, measured once and kept.
+ *
+ * Held against the typeface object rather than recomputed, because every glyph
+ * being cut asks the same question and the answer is a property of the font.
+ * A new typeface object -- which is what every edit produces here -- measures
+ * again, which is what makes the stem follow a font the weight slider has
+ * made heavier.
+ */
+const stems = new WeakMap<Typeface, number>();
+
+export function cutScaleOf(typeface: Typeface): CutScale {
+  let stem = stems.get(typeface);
+  if (stem === undefined) {
+    stem = measuredStem(
+      typeface.glyphs.map((glyph) => ({ name: glyph.name, contours: glyph.contours })),
+      { xHeight: typeface.metrics.xHeight, unitsPerEm: typeface.unitsPerEm },
+    );
+    stems.set(typeface, stem);
+  }
+  return {
+    stem,
+    ascender: typeface.metrics.ascender,
+    descender: typeface.metrics.descender,
+    xHeight: typeface.metrics.xHeight,
+  };
 }
 
 export function paramsAreDefault(params: GlyphParams): boolean {
@@ -67,7 +116,8 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
   const composed = resolveComponents(glyph, typeface);
 
   const params = effectiveParams(glyph, typeface);
-  if (paramsAreDefault(params)) return composed;
+  const cuts = effectiveCuts(glyph, typeface);
+  if (paramsAreDefault(params) && !anyCut(cuts)) return composed;
 
   let contours = composed.map(cloneContour);
   // The named parts move first, while the letter is still as it was drawn.
@@ -114,6 +164,25 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
   }
   if (params.cornerRadius > 0)
     contours = contours.map((contour) => applyCornerRadius(contour, params.cornerRadius));
+  /*
+   * The cuts go on once the letter is the shape it is going to be, and before
+   * anything turns or squashes it.
+   *
+   * After the shape controls, because a slot is a third of a stem wide and the
+   * weight slider is what decides how wide a stem is -- cut first, the same
+   * setting would be a nick on the Black and a severed letter on the Light.
+   * Before the slant, because a band cut square and then sheared leans with
+   * the letter, which is what a cut through a leaning letter looks like; cut
+   * after the shear it would stand upright in a leaning face. And before the
+   * pixel grid, which has to see the letter exactly as it will finally be
+   * drawn or it quantises a shape that no longer exists.
+   *
+   * Nesting rather than winding, because these outlines came off a font file
+   * or a pen tool and nothing here has promised which way a counter is wound.
+   */
+  if (cuts && anyCut(cuts)) {
+    contours = cutInk(contours, [], cutScaleOf(typeface), cuts, "nesting").contours;
+  }
   if (params.xHeightScale !== 1)
     contours = contours.map((contour) => applyVerticalScale(contour, params.xHeightScale));
   if (params.width !== 1)

@@ -15,7 +15,9 @@
 
 import {
   chooseForm,
+  clearCutException,
   clearException,
+  editCut,
   editMetrics,
   editPart,
   editPen,
@@ -25,6 +27,18 @@ import {
   setFamily,
   startFrom,
   type Forge,
+} from "@/forge/document";
+import type { CutName, Cuts } from "@/forge/cut";
+import type { Fill, Grid, Port } from "@/forge/kit";
+import {
+  clearTiles,
+  editGrid,
+  editRoundness,
+  layOut,
+  setColumns,
+  stampFill,
+  togglePort,
+  useKit,
 } from "@/forge/document";
 import type { Family } from "@/forge/family";
 import { letterSvg, readLetterSvg, type Arrival } from "@/forge/exchange";
@@ -47,6 +61,23 @@ export type Phase = "single" | "during" | "end";
 
 export interface ForgeState {
   forge: Forge;
+  /**
+   * The document as it was when the last gesture finished.
+   *
+   * There for the two things that read the whole alphabet -- the grid of every
+   * glyph, and the warnings, which measure every letter at every weight. Both
+   * are worth having and neither is worth having forty times a second: with
+   * the cuts switched on, redrawing two hundred glyphs is most of a second of
+   * boolean geometry, and a slider that has to wait for it is a slider nobody
+   * can aim.
+   *
+   * So they follow this instead, and it stands still while a drag is in
+   * flight. What moves under the hand is the letter on the stage, the specimen
+   * line and the panel, which are a dozen glyphs between them and can be drawn
+   * every frame; the grid and the warnings catch up the moment the drag ends.
+   * The alternative is not a livelier grid, it is a slider that jumps.
+   */
+  settled: Forge;
   /** The letter open in the large view. */
   letter: string;
   /** Whether an edit lands on the family or on this letter alone. */
@@ -54,6 +85,20 @@ export interface ForgeState {
   familyName: string;
   /** Whether the spine and the pen are drawn over the letter. */
   showSkeleton: boolean;
+  /**
+   * The shape a press on a cell puts down, when the letters are built on a
+   * grid.
+   *
+   * A choice about the tool rather than about the font, so it is kept here and
+   * not in the document: undoing a letter should not put a different shape in
+   * your hand, and which shape was selected does not belong in a file anybody
+   * exports.
+   *
+   * Nothing chosen means a press clears whatever is in the cell, which is the
+   * eraser -- and is the state it starts in, so a stray press on the stage
+   * cannot quietly fill a cell in.
+   */
+  fill: Fill | null;
   /** What the specimen line is set in. */
   specimen: string;
   /** Whether the specimen is shown light on dark, which is how a display face gets judged. */
@@ -71,6 +116,8 @@ export interface ForgeState {
   focus: { id: string; asked: number } | null;
   /** Bumped on every change, so views can memoise against it. */
   revision: number;
+  /** The same, for `settled`: bumped only when a gesture has finished. */
+  settledRevision: number;
 }
 
 const HISTORY = 50;
@@ -78,16 +125,19 @@ const HISTORY = 50;
 class ForgeStore {
   private state: ForgeState = {
     forge: startFrom(SANS),
+    settled: startFrom(SANS),
     letter: "n",
     scope: "family",
     familyName: "Untitled",
     showSkeleton: false,
+    fill: null,
     specimen: "Handgloves",
     reversed: false,
     canUndo: false,
     canRedo: false,
     focus: null,
     revision: 0,
+    settledRevision: 0,
   };
 
   private past: Forge[] = [];
@@ -108,6 +158,23 @@ class ForgeStore {
 
   /** Whether a drag is open, and therefore whether the next change folds in. */
   private gestureOpen = false;
+
+  /**
+   * The trailing catch-up, so the grid is never left behind.
+   *
+   * `settled` waits for a control to say its gesture has ended, and not every
+   * control says so: a slider driven from the keyboard sends a run of changes
+   * and nothing after the last of them, because there is no last one until
+   * somebody stops pressing the key. Waiting on a signal that may not come is
+   * how a view ends up quietly showing a font from a minute ago.
+   *
+   * So there are two ways to settle and either is enough: the gesture ends, or
+   * the changes stop. A sixth of a second is longer than the gap between two
+   * frames of a drag and shorter than anyone waiting for a grid to catch up.
+   */
+  private catchUp: ReturnType<typeof setTimeout> | null = null;
+
+  private static readonly QUIET = 160;
 
   /**
    * Record the document as it was, then move to a new one.
@@ -131,8 +198,18 @@ class ForgeStore {
       this.future = [];
     }
     this.gestureOpen = phase === "during";
+    const resting = phase !== "during";
+    if (this.catchUp !== null) clearTimeout(this.catchUp);
+    this.catchUp = resting
+      ? null
+      : setTimeout(() => {
+          this.catchUp = null;
+          if (this.state.settled !== this.state.forge) this.settle();
+        }, ForgeStore.QUIET);
     this.set({
       forge: next,
+      settled: resting ? next : this.state.settled,
+      settledRevision: this.state.settledRevision + (resting ? 1 : 0),
       canUndo: true,
       canRedo: false,
       revision: this.state.revision + 1,
@@ -148,6 +225,19 @@ class ForgeStore {
    */
   endGesture(): void {
     this.gestureOpen = false;
+    if (this.catchUp !== null) {
+      clearTimeout(this.catchUp);
+      this.catchUp = null;
+    }
+    if (this.state.settled !== this.state.forge) this.settle();
+  }
+
+  /** Let whatever was waiting for the drag to finish catch up. */
+  private settle(): void {
+    this.set({
+      settled: this.state.forge,
+      settledRevision: this.state.settledRevision + 1,
+    });
   }
 
   // --- what is being looked at -------------------------------------------
@@ -240,6 +330,11 @@ class ForgeStore {
     this.set({ showSkeleton });
   }
 
+  /** Choose the shape a press on a cell puts down. Nothing chosen is the eraser. */
+  chooseFill(fill: Fill | null): void {
+    this.set({ fill });
+  }
+
   setSpecimen(specimen: string): void {
     this.set({ specimen });
   }
@@ -299,10 +394,106 @@ class ForgeStore {
     this.commit(chooseForm(forge, letter, form));
   }
 
-  /** Put this letter back on the family's terms. */
+  /**
+   * Put this letter back on the family's terms.
+   *
+   * With nothing named that means everything: the parts it holds its own
+   * version of and the cuts alike. Somebody pressing "rejoin the family" is
+   * saying this letter should stop being special, and leaving half of what
+   * made it special in place would be answering a different question.
+   */
   rejoinFamily(part?: PartName): void {
     const { forge, letter } = this.state;
-    this.commit(clearException(forge, letter, part));
+    const parts = clearException(forge, letter, part);
+    this.commit(part === undefined ? clearCutException(parts, letter) : parts);
+  }
+
+  /**
+   * Change what is taken out of the letters.
+   *
+   * On the whole font by default, because a face is cut one way. In letter
+   * scope it makes this letter an exception, for the one that has nowhere to
+   * put the third slot.
+   */
+  changeCut(name: CutName, patch: Partial<Cuts[CutName]>, phase: Phase = "single"): void {
+    const { forge, scope, letter } = this.state;
+    this.commit(editCut(forge, name, patch, scope === "letter" ? letter : undefined), phase);
+  }
+
+  /** Cut this letter the way the rest of the font is cut. */
+  releaseCut(name?: CutName): void {
+    const { forge, letter } = this.state;
+    this.commit(clearCutException(forge, letter, name));
+  }
+
+  // --- the kit -----------------------------------------------------------
+
+  /**
+   * Build the letters from cells, or go back to drawing them.
+   *
+   * Switching on lays the alphabet out from the skeletons the font already has,
+   * unless it has been laid out before -- so the first press gives a whole
+   * font on the grid to argue with rather than an empty sheet, and the second
+   * one does not throw away an afternoon of cell editing.
+   */
+  useKit(on: boolean): void {
+    const { forge } = this.state;
+    const laid = Object.keys(forge.kit?.glyphs ?? {}).length > 0;
+    this.commit(useKit(on && !laid ? layOut(forge) : forge, on));
+  }
+
+  changeGrid(patch: Partial<Grid>, phase: Phase = "single"): void {
+    this.commit(editGrid(this.state.forge, patch), phase);
+  }
+
+  changeRoundness(roundness: number, phase: Phase = "single"): void {
+    this.commit(editRoundness(this.state.forge, roundness), phase);
+  }
+
+  /** Turn one place on one cell's boundary on or off. */
+  togglePort(key: string, port: Port): void {
+    this.commit(togglePort(this.state.forge, this.state.letter, key, port));
+  }
+
+  /**
+   * Put a filled shape in a cell, or take it out again.
+   *
+   * Stamping the shape a cell already has clears it, so one gesture both
+   * places and removes and there is no eraser to go and find.
+   */
+  stampFill(key: string, fill?: Fill): void {
+    this.commit(stampFill(this.state.forge, this.state.letter, key, fill));
+  }
+
+  changeColumns(columns: number, phase: Phase = "single"): void {
+    this.commit(setColumns(this.state.forge, this.state.letter, columns), phase);
+  }
+
+  /** Put this letter back to what its skeleton says, or lay the whole font out. */
+  layOutLetters(all = false): void {
+    this.commit(layOut(this.state.forge, all ? undefined : [this.state.letter]));
+  }
+
+  /** Empty this letter's cells, to start it again from nothing. */
+  clearLetter(): void {
+    this.commit(clearTiles(this.state.forge, this.state.letter));
+  }
+
+  /**
+   * Say that something outside the document has changed what it can draw.
+   *
+   * There is one such thing: the boolean library the cuts are made of arrives
+   * after the application does, and until it has, a letter with slots through
+   * it is drawn without them. Bumping the revision is what asks every view to
+   * draw again once it is there. Deliberately not a commit -- nothing about
+   * the document changed, and finding a step in the undo history for a
+   * download that finished would be undo doing something nobody asked for.
+   */
+  refresh(): void {
+    this.set({
+      revision: this.state.revision + 1,
+      settledRevision: this.state.settledRevision + 1,
+    });
   }
 
   /** The pen reaches every letter; there are no exceptions to be had from it. */
@@ -363,6 +554,8 @@ class ForgeStore {
     this.future.push(this.state.forge);
     this.set({
       forge: previous,
+      settled: previous,
+      settledRevision: this.state.settledRevision + 1,
       canUndo: this.past.length > 0,
       canRedo: true,
       revision: this.state.revision + 1,
@@ -375,6 +568,8 @@ class ForgeStore {
     this.past.push(this.state.forge);
     this.set({
       forge: next,
+      settled: next,
+      settledRevision: this.state.settledRevision + 1,
       canUndo: true,
       canRedo: this.future.length > 0,
       revision: this.state.revision + 1,

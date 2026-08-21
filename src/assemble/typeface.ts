@@ -17,7 +17,8 @@
 import { correctDirection } from "@/font/outline";
 import { removeOverlaps } from "@/font/overlap";
 import { DEFAULT_PARAMS, emptyTypeface, type Glyph, type Typeface } from "@/font/types";
-import { build, type Assembly } from "./document";
+import { ready as readyToCut } from "@/font/boolean";
+import { anythingCut, build, type Assembly } from "./document";
 import { glyphNameFor } from "./slots";
 
 export interface AssembleExportOptions {
@@ -32,6 +33,9 @@ export async function toTypeface(
   options: AssembleExportOptions,
 ): Promise<Typeface> {
   const { metrics } = assembly;
+  // Before build(), which is where the cutting happens and which keeps its
+  // answer: a pile built once without the library would stay uncut.
+  if (anythingCut(assembly)) await readyToCut();
   const assembled = build(assembly);
 
   const typeface = emptyTypeface();

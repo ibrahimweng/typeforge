@@ -8,6 +8,8 @@
  * approximation on export (see `quadratic.ts`).
  */
 
+import type { Cuts } from "./cuts";
+
 export interface Vec2 {
   x: number;
   y: number;
@@ -80,6 +82,18 @@ export interface Glyph {
   anchors: Anchor[];
   /** Per-glyph overrides layered on top of the family parameters. */
   params: Partial<GlyphParams>;
+  /**
+   * This glyph's own cuts, standing in for the font's rather than adding to
+   * them.
+   *
+   * An exception rather than an override, which is the difference between a
+   * cut and every parameter above it. Parameters are numbers and layering one
+   * over another means something; cuts are a set of switched-on operations,
+   * and half a font's cuts plus half a letter's own is not a description
+   * anybody wrote. So a letter either goes along with the font or is cut its
+   * own way, and the panel says which.
+   */
+  cuts?: Cuts;
   /** Set when the user has touched this glyph, used for "changed only" export. */
   dirty: boolean;
 }
@@ -237,6 +251,8 @@ export interface Typeface {
   unitsPerEm: number;
   metrics: VerticalMetrics;
   glyphs: Glyph[];
+  /** How the whole font is cut. Undefined is the same as nothing switched on. */
+  cuts?: Cuts;
   /** Glyph name to index in `glyphs`, kept in sync by the store. */
   glyphIndex: Map<string, number>;
   kerning: KernPair[];

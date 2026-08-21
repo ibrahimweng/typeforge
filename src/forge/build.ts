@@ -20,6 +20,8 @@ import {
   type Recipe,
 } from "./letters";
 import { accentsFor, gapFor, hangsBelow, isCapital, type Parts } from "./accents";
+import { cutInk, reaches, scaleOf, type Cuts } from "./cut";
+import { assemble, hasTiles, type Kit } from "./kit";
 import { alongSpine, spinePath, wavy } from "./shapes";
 import { penReach, reachAlong, sweep } from "./sweep";
 import type { Style } from "./style";
@@ -28,6 +30,12 @@ import type { Stroke, Terminal } from "./types";
 export interface Drawn {
   contours: Contour[];
   advanceWidth: number;
+  /**
+   * What the cuts did, when there were any: how many pieces the letter is in
+   * now, and how many it was in before. Absent on a letter nothing was cut
+   * out of, which is what "nothing to say" looks like.
+   */
+  cut?: { pieces: number; was: number };
 }
 
 /** A stroke's centre-line and the pen along it, for drawing over the letter. */
@@ -114,9 +122,17 @@ const ROUND_TIGHTENING = 0.82;
  * are to the default, so a font with a flat-topped A still has one weight, one
  * shoulder and one serif.
  */
-export function drawLetter(name: string, style: Style, form?: string): Drawn | null {
-  const made = makeLetter(name, style, form);
-  return made ? { contours: made.contours, advanceWidth: made.advanceWidth } : null;
+export function drawLetter(
+  name: string,
+  style: Style,
+  form?: string,
+  cuts?: Cuts,
+  kit?: Kit,
+): Drawn | null {
+  const made = makeLetter(name, style, form, cuts, kit);
+  return made
+    ? { contours: made.contours, advanceWidth: made.advanceWidth, cut: made.cut }
+    : null;
 }
 
 /** One run of a letter: its ink, and the named decisions it was built from. */
@@ -152,25 +168,66 @@ export interface Made extends Drawn {
  * Splitting the sweep by run costs nothing: it was already one sweep per stroke
  * and this only declines to pour them into the same bucket.
  */
-export function makeLetter(name: string, style: Style, form?: string): Made | null {
+export function makeLetter(
+  name: string,
+  style: Style,
+  form?: string,
+  cuts?: Cuts,
+  kit?: Kit,
+): Made | null {
   const parts = builtFrom(name);
-  if (parts) return marked(parts, style, form);
+  if (parts) return marked(parts, style, form, cuts, kit);
 
-  const recipe = recipeOf(name, form);
-  if (!recipe) return null;
-  const built: Recipe = recipe(style);
+  /*
+   * Laid out on a grid, or drawn from a skeleton.
+   *
+   * A letter the kit has not been given cells for is still drawn from its
+   * recipe, so a kit that covers the capitals and nothing else is a font with
+   * capitals on the grid rather than a font with holes in it. Which one a
+   * letter is comes out here and nowhere else: everything after this point --
+   * the ink, the lean, the spacing, the cuts -- is the same either way.
+   */
+  const laid = kit?.on && hasTiles(kit, name) ? assemble(kit.glyphs[name], style, kit) : null;
+  const recipe = laid ? null : recipeOf(name, form);
+  if (!laid && !recipe) return null;
+  const built: Recipe | null = recipe ? recipe(style) : null;
+  const strokes = laid ? laid.strokes : built!.strokes;
 
-  const inked = built.strokes.map((stroke) => inkOf(stroke, style));
+  const inked = strokes.map((stroke) => inkOf(stroke, style));
+  // Cells filled in outright are ink rather than a path for it, so they join
+  // the drawing as their own run.
+  if (laid && laid.blocks.length > 0) inked.push(laid.blocks);
   const lean = leanOf(style);
   const pivot = style.metrics.xHeight / 2;
 
-  const leant = sheared(inked.flat(), lean, pivot);
+  /*
+   * Where the letter sits, and how much room it is given, are read off the
+   * uncut drawing.
+   *
+   * A cut takes ink away and so it moves the letter's edges, and a letter
+   * placed by its edges would shuffle sideways and change width every time a
+   * saw tooth landed near one of them. Nobody cutting slots through a font
+   * means to respace it. So the solid letter decides the spacing, exactly as
+   * it did before there were cuts, and the cut one is what gets drawn in that
+   * space -- which is the same promise an imported letter is given when it
+   * keeps the advance of the letter it replaced.
+   */
+  const solid = sheared(inked.flat(), lean, pivot);
+  // Asked of this letter's own strokes rather than of the settings, so a
+  // letter nothing can reach -- a space, which has no ink -- is not put through
+  // the machinery to come back as what it already was.
+  const cutting = reaches(cuts, strokes)
+    ? cutInk(inked.flat(), strokes, scaleOf(style), cuts as Cuts)
+    : null;
+  const cut = cutting ? sheared(cutting.contours, lean, pivot) : solid;
+
   // Only the letters that actually cross are moved, and each by exactly what
   // it needs.
-  const shortfall = leant.length > 0
-    ? Math.max(0, style.metrics.sidebearing - contoursBounds(leant).xMin)
+  const shortfall = solid.length > 0
+    ? Math.max(0, style.metrics.sidebearing - contoursBounds(solid).xMin)
     : 0;
-  const placed = slid(leant, shortfall);
+  const placed = slid(cut, shortfall);
+  const placedSolid = solid === cut ? placed : slid(solid, shortfall);
 
   let advanceWidth: number;
   /*
@@ -183,22 +240,29 @@ export function makeLetter(name: string, style: Style, form?: string): Made | nu
   let centring = 0;
   if (style.metrics.monospaced) {
     advanceWidth = monoAdvance(style);
-    if (placed.length > 0) {
-      const bounds = contoursBounds(placed);
+    if (placedSolid.length > 0) {
+      const bounds = contoursBounds(placedSolid);
       centring = (advanceWidth - bounds.xMin - bounds.xMax) / 2;
     }
+  } else if (laid) {
+    // A letter on a grid is as wide as its cells. Working it out from the ink
+    // instead would give two letters of the same width different advances
+    // because one of them happens to have an empty column down its side.
+    advanceWidth = laid.advanceWidth;
   } else {
-    advanceWidth = advanceFor(name, built, placed, style);
+    advanceWidth = advanceFor(name, built!, placedSolid, style);
   }
 
   const slide = shortfall + centring;
   return {
     advanceWidth,
     slide,
+    cut: cutting?.cut,
     contours: slid(placed, centring),
     runs: inked.map((contours, index) => ({
       contours: slid(sheared(contours, lean, pivot), slide),
-      parts: partsOfStroke(built.strokes[index]),
+      // A cell has no named part behind it: what it is, is where it is.
+      parts: built && index < built.strokes.length ? partsOfStroke(built.strokes[index]) : [],
     })),
   };
 }
@@ -217,8 +281,8 @@ export function makeLetter(name: string, style: Style, form?: string): Made | nu
  * letter: the skeleton draws, the probe finds the shoulder of an `ñ` under the
  * pointer, and pressing the tilde finds whatever governs the tilde.
  */
-function marked(parts: Parts, style: Style, form?: string): Made | null {
-  const base = makeLetter(parts.base, style, form);
+function marked(parts: Parts, style: Style, form?: string, cuts?: Cuts, kit?: Kit): Made | null {
+  const base = makeLetter(parts.base, style, form, cuts, kit);
   if (!base || base.contours.length === 0) return null;
 
   const em = style.metrics.unitsPerEm;
@@ -283,6 +347,15 @@ function marked(parts: Parts, style: Style, form?: string): Made | null {
   return {
     advanceWidth: base.advanceWidth + shortfall + overhang,
     slide: base.slide + shortfall,
+    /*
+     * The base's count, and the marks left out of it.
+     *
+     * A mark is drawn solid: an acute is a stroke a few units long and a slot
+     * through one is a fault rather than a decision. So the accents add a
+     * piece each to what is on the page and nothing to what the cuts did,
+     * which is what this count is for.
+     */
+    cut: base.cut,
     contours: placed,
     runs: spaced,
   };

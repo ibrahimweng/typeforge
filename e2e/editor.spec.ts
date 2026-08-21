@@ -1430,6 +1430,227 @@ test("offers the settings that are on or off as switches", async ({ page }) => {
 });
 
 /*
+ * Cutting.
+ *
+ * The one thing here that takes material away rather than adding it, and the
+ * one that needs a browser to be believed: the geometry is fetched after the
+ * application has started, so a letter is drawn uncut for a moment and then
+ * again with its slots. A test that only asked the store would pass whether or
+ * not that second drawing ever arrived.
+ */
+test("cuts every letter in the font, and says what it did", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openForge(page);
+
+  const panel = page.getByRole("complementary", { name: "Forge" });
+  const slots = panel.getByRole("switch", { name: "Slots" });
+  await expect(slots).toHaveAttribute("aria-checked", "false");
+  // Nothing is cut to begin with, so nothing is said about it.
+  await expect(page.locator("[data-forge-warnings]")).toHaveCount(0);
+
+  const outline = (letter: string) =>
+    page.locator(`[data-forge-cell="${letter}"] path`).getAttribute("d");
+  const whole = await outline("H");
+
+  await slots.click();
+  await expect(slots).toHaveAttribute("aria-checked", "true");
+
+  // The letter is drawn again, in pieces. Polled rather than awaited once,
+  // because the library it needs is still on its way when the switch is
+  // pressed and the first drawing after it is the uncut one.
+  await expect.poll(() => outline("H")).not.toBe(whole);
+  await expect.poll(async () => ((await outline("H")) ?? "").split("Z").length).toBeGreaterThan(3);
+
+  // And the warning strip says so, in a count rather than in a list: most of
+  // the alphabet is in pieces, which is what tells somebody this is a stencil
+  // rather than an accident.
+  const warnings = page.locator("[data-forge-warnings]");
+  await expect(warnings).toContainText("cut into pieces");
+
+  // The controls only appear once the cut is on, so the panel is six rows
+  // until somebody wants more than six rows.
+  await expect(panel.locator('[data-forge-control="cut:slot:width"]')).toBeVisible();
+
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(slots).toHaveAttribute("aria-checked", "false");
+  await expect.poll(() => outline("H")).toBe(whole);
+  await expect(page.locator("[data-forge-warnings]")).toHaveCount(0);
+
+  expect(errors).toEqual([]);
+});
+
+test("cuts one letter differently from the rest", async ({ page }) => {
+  await openForge(page);
+  const panel = page.getByRole("complementary", { name: "Forge" });
+  await panel.getByRole("switch", { name: "Slots" }).click();
+
+  const outline = (letter: string) =>
+    page.locator(`[data-forge-cell="${letter}"] path`).getAttribute("d");
+  await expect.poll(async () => ((await outline("H")) ?? "").split("Z").length).toBeGreaterThan(3);
+  const before = { H: await outline("H"), o: await outline("o") };
+
+  // In letter scope the switch lands on this letter alone.
+  await page.locator('[data-forge-cell="H"]').click();
+  await panel.getByRole("button", { name: "H alone" }).click();
+  await panel.getByRole("switch", { name: "Slots" }).click();
+
+  await expect.poll(() => outline("H")).not.toBe(before.H);
+  expect(await outline("o")).toBe(before.o);
+  // And the panel says the letter is holding its own, with a way to let it go.
+  await expect(panel.locator("[data-forge-release-cuts]")).toBeVisible();
+
+  await panel.locator("[data-forge-release-cuts]").click();
+  await expect.poll(() => outline("H")).toBe(before.H);
+});
+
+test("cuts a letter somebody drew, with the rest of the font", async ({ page }) => {
+  await openForge(page);
+  await page.locator('[data-forge-cell="a"]').click();
+
+  // Put a shape into the a that no recipe would ever draw, so what is on the
+  // stage afterwards can only be the drawing.
+  const download = await Promise.all([
+    page.waitForEvent("download", { timeout: 30_000 }),
+    page.locator('[data-forge-send-svg="a"]').click(),
+  ]).then(([one]) => one);
+  const sheet = readFileSync((await download.path())!, "utf8");
+  const wedge = sheet.replace(
+    /<path id="typeforge-ink"[^>]*\/>/,
+    '<path id="typeforge-ink" data-typeforge="ink" d="M100 700 L500 700 L500 100 L100 100 Z"/>',
+  );
+  await page.setInputFiles('[data-forge-svg-input="a"]', {
+    name: "a.svg",
+    mimeType: "image/svg+xml",
+    buffer: Buffer.from(wedge),
+  });
+  await expect(page.locator('[data-forge-imported="a"]')).toBeVisible();
+
+  const drawn = () => page.locator('[data-forge-cell="a"] path').getAttribute("d");
+  const solid = await drawn();
+
+  const panel = page.getByRole("complementary", { name: "Forge" });
+  await panel.getByRole("switch", { name: "Slots" }).click();
+
+  // The drawing is cut with everything else, rather than sitting solid in the
+  // middle of a striped word.
+  await expect.poll(drawn).not.toBe(solid);
+  await expect.poll(async () => ((await drawn()) ?? "").split("Z").length).toBeGreaterThan(2);
+
+  // The two made out of the skeleton cannot reach it, and say so where it can
+  // be read rather than leaving it to be noticed.
+  const slotted = await drawn();
+  await panel.getByRole("switch", { name: "Breaks" }).click();
+  await expect(panel.getByText(/this one is made out of the skeleton/)).toBeVisible();
+  await expect.poll(drawn).toBe(slotted);
+});
+
+/*
+ * Building on a grid.
+ *
+ * The third way to make a letter here, and the one that most needs a browser
+ * to be believed: it is an editor before it is a setting. Switching it on has
+ * to put a whole alphabet on the grid, the grid has to appear over the letter,
+ * and pressing one place on one cell has to change that letter and nothing
+ * else.
+ */
+test("builds the alphabet on a grid, and edits it a cell at a time", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openForge(page);
+
+  const panel = page.getByRole("complementary", { name: "Forge" });
+  const grid = panel.getByRole("switch", { name: "Build on a grid" });
+  await expect(grid).toHaveAttribute("aria-checked", "false");
+  // No grid over the letter until there is one to show.
+  await expect(page.locator("[data-forge-cells]")).toHaveCount(0);
+
+  const outline = (letter: string) =>
+    page.locator(`[data-forge-cell="${letter}"] path`).getAttribute("d");
+  const drawn = { H: await outline("H"), o: await outline("o") };
+
+  await grid.click();
+  await expect(grid).toHaveAttribute("aria-checked", "true");
+
+  // The whole alphabet is laid out, not just the letter on the stage.
+  await expect.poll(() => outline("H")).not.toBe(drawn.H);
+  await expect.poll(() => outline("o")).not.toBe(drawn.o);
+  await expect(page.locator("[data-forge-cells]")).toBeVisible();
+  await expect(panel).toContainText(/\d+ letters are laid out/);
+
+  // The handles are gone: nothing behind a letter built from cells for them to
+  // pull, and a handle that moves nothing is worse than no handle.
+  await expect(page.locator("[data-forge-handle]")).toHaveCount(0);
+
+  // One press on one place on one cell changes that letter and no other.
+  const letter = await page.locator("[data-forge-stage]").getAttribute("data-forge-stage");
+  const before = { own: await outline(letter!), other: await outline("o") };
+  const port = page.locator("[data-forge-port]").first();
+  await expect(port).toBeVisible();
+  await port.click({ force: true });
+  await expect.poll(() => outline(letter!)).not.toBe(before.own);
+  expect(await outline("o")).toBe(before.other);
+
+  // And it is one undo, like every other edit here.
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect.poll(() => outline(letter!)).toBe(before.own);
+
+  expect(errors).toEqual([]);
+});
+
+test("puts a letter back on the grid, and empties it", async ({ page }) => {
+  await openForge(page);
+  const panel = page.getByRole("complementary", { name: "Forge" });
+  await panel.getByRole("switch", { name: "Build on a grid" }).click();
+
+  const outline = () => page.locator('[data-forge-cell="n"] path').getAttribute("d");
+  await expect(page.locator("[data-forge-cells]")).toBeVisible();
+  const laid = await outline();
+
+  await panel.locator("[data-forge-kit-clear]").click();
+  // Emptied, the letter has no cells -- so it falls back to its own skeleton
+  // rather than leaving a hole in the alphabet.
+  await expect.poll(outline).not.toBe(laid);
+
+  await panel.locator("[data-forge-kit-relay]").click();
+  await expect.poll(outline).toBe(laid);
+});
+
+test("stamps filled shapes into cells, and takes them out again", async ({ page }) => {
+  await openForge(page);
+  const panel = page.getByRole("complementary", { name: "Forge" });
+  await panel.getByRole("switch", { name: "Build on a grid" }).click();
+  await expect(page.locator("[data-forge-cells]")).toBeVisible();
+
+  // Start from an empty letter, so what appears can only be what was stamped.
+  await panel.locator("[data-forge-kit-clear]").click();
+  const outline = () => page.locator('[data-forge-cell="n"] path').getAttribute("d");
+  const empty = await outline();
+
+  // Nothing is chosen to begin with, which is the eraser: a press on the stage
+  // cannot quietly fill a cell in.
+  await expect(panel.locator('[data-forge-fill="none"]')).toHaveAttribute("aria-pressed", "true");
+
+  await panel.locator('[data-forge-fill="pie"]').click();
+  await expect(panel.locator('[data-forge-fill="pie"]')).toHaveAttribute("aria-pressed", "true");
+
+  const cell = page.locator('[data-forge-cell-box="0,0"]');
+  await cell.click({ force: true });
+  await expect.poll(outline).not.toBe(empty);
+  const stamped = await outline();
+
+  // Turning changes which way the shape faces, and stamps a different tile.
+  await panel.locator("[data-forge-fill-turn]").click();
+  await cell.click({ force: true });
+  await expect.poll(outline).not.toBe(stamped);
+
+  // And pressing a cell with the shape it already has takes it out, so there
+  // is no eraser to go and find.
+  await cell.click({ force: true });
+  await expect.poll(outline).toBe(empty);
+});
+
+/*
  * The font library.
  *
  * The two services it reaches are somebody else's, and a test that depends on
@@ -1768,6 +1989,84 @@ test("assembles a font from a pile of SVG drawings", async ({ page }) => {
     "aria-pressed",
     "true",
   );
+  expect(errors).toEqual([]);
+});
+
+
+test("cuts a font it did not draw, and lets one letter keep out of it", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  await openFont(page);
+
+  const panel = page.locator('[data-cut-panel="edit"]');
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText("Cutting the whole font.");
+
+  /*
+   * Counted off the canvas the grid draws on, because that is the only place
+   * that answers the actual question -- whether what is on the screen is the
+   * cut letter. A model that has been cut and a grid still drawing the file's
+   * own outlines would pass every other check in this suite.
+   */
+  const inkInCell = async (): Promise<number> =>
+    page.evaluate(() => {
+      const cell = document.querySelector('[data-glyph-cell="H"] canvas') as HTMLCanvasElement;
+      const context = cell?.getContext("2d");
+      if (!context) return -1;
+      const { data } = context.getImageData(0, 0, cell.width, cell.height);
+      let lit = 0;
+      for (let at = 3; at < data.length; at += 4) if (data[at] > 8) lit++;
+      return lit;
+    });
+
+  const whole = await inkInCell();
+  expect(whole).toBeGreaterThan(0);
+
+  await panel.locator('[data-cut-switch="slot"]').click();
+  await expect(panel.locator('[data-cut-switch="slot"]')).toHaveAttribute("aria-checked", "true");
+  // Bands taken out of the letter leave less of it lit than there was.
+  await expect.poll(inkInCell, { timeout: 20_000 }).toBeLessThan(whole * 0.97);
+
+  // The two made out of a skeleton say so rather than doing nothing quietly.
+  await panel.locator('[data-cut-switch="inline"]').click();
+  await expect(panel).toContainText("made out of the skeleton");
+
+  expect(errors).toEqual([]);
+});
+
+test("cuts a pile of drawings, and one drawing its own way", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openAssemble(page);
+  await dropFolder(page, PILE);
+  await expect(page.locator('[data-assemble-filled="yes"]')).toHaveCount(5);
+
+  const panel = page.locator('[data-cut-panel="assemble"]');
+  await expect(panel).toBeVisible();
+  // The pile is what a cut reaches by default. Following the selected drawing
+  // instead would cut one letter and leave the rest, which is neither what it
+  // looks like nor what anybody wants first.
+  await expect(panel).toContainText("Cutting every drawing in the pile.");
+
+  await panel.locator('[data-cut-switch="slot"]').click();
+  await expect(panel.locator('[data-cut-switch="slot"]')).toHaveAttribute("aria-checked", "true");
+
+  // Now take one drawing out of the pile's cuts and give it its own.
+  await page.locator('[data-cut-scope="one"]').click();
+  await expect(panel).toContainText("alone. The rest of the pile keeps its own.");
+  await panel.locator('[data-cut-switch="tooth"]').click();
+
+  // Only the operation that was actually changed is marked as held: taking a
+  // letter out starts it as a copy, and marking all six would say it had been
+  // cut its own way six times over.
+  await expect(panel.locator('[data-cut-release="tooth"]')).toBeVisible();
+  await expect(panel.locator('[data-cut-release="slot"]')).toHaveCount(0);
+
+  // And it can be put back to being cut like the rest.
+  await panel.locator('[data-cut-release="tooth"]').click();
+  await expect(panel.locator('[data-cut-release="tooth"]')).toHaveCount(0);
+
   expect(errors).toEqual([]);
 });
 

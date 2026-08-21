@@ -17,6 +17,19 @@
  */
 
 import { decidedBy, drawLetter, letterNames, type Drawn } from "./build";
+import { anyCut, cutInk, CUT_NAMES, noCuts, scaleOf, type CutName, type Cuts } from "./cut";
+import {
+  emptyKit,
+  hasTiles,
+  seedTiles,
+  type Cell,
+  type Fill,
+  type Grid,
+  type Kit,
+  type Port,
+  type Tiles,
+} from "./kit";
+import { recipeOf } from "./letters";
 import type { Imported } from "./exchange";
 import { weightClassOf, weightedStyle, type Family } from "./family";
 import { partsUsedBy, type PartName } from "./parts";
@@ -24,6 +37,9 @@ import { BASES, type Parts, type Style } from "./style";
 
 /** A letter that has been told to differ, and in what. */
 export type Overrides = Partial<{ [K in keyof Parts]: Partial<Parts[K]> }>;
+
+/** The same, for the cuts: a letter that is cut differently from the rest. */
+export type CutOverrides = Partial<{ [K in keyof Cuts]: Partial<Cuts[K]> }>;
 
 export interface Forge {
   /** Which base this started from, for saying so and for starting again. */
@@ -57,6 +73,38 @@ export interface Forge {
    */
   imported: Record<string, Imported>;
   /**
+   * What is taken out of every letter after it has been drawn.
+   *
+   * Kept here rather than on the style because it is not a decision about the
+   * pen. Everything in the style describes how a stroke is made; a cut is what
+   * happens to the letter afterwards, and the two stay separable -- which is
+   * why turning the weight up on a face full of slots redraws the letters
+   * heavier and cuts the same slots through them.
+   *
+   * Optional because documents saved before there were cuts do not have it.
+   */
+  cuts?: Cuts;
+  /**
+   * Letters cut differently from the rest, and only those.
+   *
+   * The same kind of decision as an exception to a part, and kept the same
+   * way: this letter keeps its own version of one cut, and every other letter
+   * and every other cut carry on reading the font's.
+   */
+  cutExceptions?: Record<string, CutOverrides>;
+  /**
+   * Letters built on a grid out of a small set of parts, rather than drawn.
+   *
+   * The third way to make a letter here, and the only one that is a different
+   * construction rather than a different setting -- so it is kept whole and
+   * apart, and switched on and off in one place. A letter the kit has no cells
+   * for is still drawn from its recipe, which is what lets a kit cover the
+   * capitals and leave the rest of the font alone.
+   *
+   * Optional because documents saved before there was a kit do not have one.
+   */
+  kit?: Kit;
+  /**
    * The weights this typeface has, and which of them is the one on screen.
    *
    * The style above describes one weight. Everything else in the family is
@@ -80,7 +128,14 @@ const ALONE: Family = { drawn: 400, also: [] };
  * use.
  */
 export function whole(forge: Forge): Forge {
-  return forge.family ? forge : { ...forge, family: { ...ALONE } };
+  if (forge.family && forge.cuts && forge.kit) return forge;
+  return {
+    ...forge,
+    family: forge.family ?? { ...ALONE },
+    cuts: forge.cuts ?? noCuts(),
+    cutExceptions: forge.cutExceptions ?? {},
+    kit: forge.kit ?? emptyKit(),
+  };
 }
 
 /** The weights of this document, which is at least the one being drawn. */
@@ -109,6 +164,9 @@ export function startFrom(base: Style): Forge {
     exceptions: {},
     alternates: { ...base.forms },
     imported: {},
+    cuts: noCuts(),
+    cutExceptions: {},
+    kit: emptyKit(),
     // Asked rather than assumed. A face is whatever weight its own stem says
     // it is, and half the bases here are not a Regular.
     family: { drawn: weightClassOf(base), also: [] },
@@ -172,6 +230,253 @@ export function baseNamed(name: string): Style | undefined {
   return BASES.find((style) => style.name === name);
 }
 
+/** What is taken out of every letter, unless a letter says otherwise. */
+export function cutsOf(forge: Forge): Cuts {
+  return forge.cuts ?? noCuts();
+}
+
+/**
+ * What is taken out of one letter.
+ *
+ * The font's, unless this letter is an exception, in which case the font's
+ * with that letter's differences laid over it. The same shape `styleFor` has,
+ * and for the same reason: a letter says how it differs, not what it is.
+ */
+export function cutsFor(letter: string, forge: Forge): Cuts {
+  const exception = forge.cutExceptions?.[letter];
+  const cuts = cutsOf(forge);
+  if (!exception) return cuts;
+
+  const merged: Record<string, unknown> = { ...cuts };
+  for (const [name, patch] of Object.entries(exception)) {
+    merged[name] = { ...(merged[name] as object), ...patch };
+  }
+  return merged as unknown as Cuts;
+}
+
+/**
+ * Change a cut.
+ *
+ * With no letter named the change is to the whole font, which is the ordinary
+ * case: a face is cut one way. Naming a letter makes that letter an exception,
+ * for the letter that needs one slot fewer because it has nowhere to put it.
+ */
+export function editCut(
+  forge: Forge,
+  name: CutName,
+  patch: Partial<Cuts[CutName]>,
+  letter?: string,
+): Forge {
+  if (letter === undefined) {
+    return { ...forge, cuts: { ...cutsOf(forge), [name]: { ...cutsOf(forge)[name], ...patch } } };
+  }
+  const existing = forge.cutExceptions?.[letter] ?? {};
+  return {
+    ...forge,
+    cutExceptions: {
+      ...forge.cutExceptions,
+      [letter]: { ...existing, [name]: { ...(existing[name] ?? {}), ...patch } },
+    },
+  };
+}
+
+/** Cut this letter the way the rest of the font is cut. */
+export function clearCutException(forge: Forge, letter: string, name?: CutName): Forge {
+  const existing = forge.cutExceptions?.[letter];
+  if (!existing) return forge;
+
+  const cutExceptions = { ...forge.cutExceptions };
+  if (name === undefined) {
+    delete cutExceptions[letter];
+  } else {
+    const remaining = { ...existing };
+    delete remaining[name];
+    if (Object.keys(remaining).length === 0) delete cutExceptions[letter];
+    else cutExceptions[letter] = remaining;
+  }
+  return { ...forge, cutExceptions };
+}
+
+export function isCutException(forge: Forge, letter: string, name?: CutName): boolean {
+  const exception = forge.cutExceptions?.[letter];
+  if (!exception) return false;
+  return name === undefined ? true : exception[name] !== undefined;
+}
+
+/**
+ * What a change to this cut is about to reach, in letters.
+ *
+ * Said before the edit, as it is for the parts. A cut lands on every letter in
+ * the font rather than on the ones that happen to have a part, so what this
+ * mostly reports is how many letters are holding their own version.
+ */
+export function cutReach(forge: Forge, name: CutName): { letters: string[]; held: string[] } {
+  const letters: string[] = [];
+  const held: string[] = [];
+  for (const letter of letterNames()) {
+    if (isCutException(forge, letter, name)) held.push(letter);
+    else letters.push(letter);
+  }
+  return { letters, held };
+}
+
+/**
+ * Whether this document takes anything out of anything.
+ *
+ * The font's own cuts, and the letters that hold their own. Asked in one place
+ * because the two callers would otherwise carry half the rule each, and the
+ * half that gets left out is the exceptions: a font with nothing cut font-wide
+ * and one letter slotted on its own is still a font with a cut in it, and it
+ * is exactly the case a check on the font's own settings sails past.
+ */
+export function anythingCut(forge: Forge): boolean {
+  if (anyCut(cutsOf(forge))) return true;
+  return Object.values(forge.cutExceptions ?? {}).some((held) =>
+    Object.values(held).some((patch) => patch?.on),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The kit
+// ---------------------------------------------------------------------------
+
+export function kitOf(forge: Forge): Kit {
+  return forge.kit ?? emptyKit();
+}
+
+/** Whether this letter is built from cells rather than drawn from a skeleton. */
+export function isLaidOut(forge: Forge, letter: string): boolean {
+  const kit = kitOf(forge);
+  return kit.on && hasTiles(kit, letter);
+}
+
+/** The cells one letter is built from, or nothing if it has not been laid out. */
+export function tilesFor(forge: Forge, letter: string): Tiles | undefined {
+  return kitOf(forge).glyphs[letter];
+}
+
+function withKit(forge: Forge, patch: Partial<Kit>): Forge {
+  return { ...forge, kit: { ...kitOf(forge), ...patch } };
+}
+
+/** Build the letters from cells, or go back to drawing them. */
+export function useKit(forge: Forge, on: boolean): Forge {
+  return withKit(forge, { on });
+}
+
+export function editGrid(forge: Forge, patch: Partial<Grid>): Forge {
+  return withKit(forge, { grid: { ...kitOf(forge).grid, ...patch } });
+}
+
+export function editRoundness(forge: Forge, roundness: number): Forge {
+  return withKit(forge, { roundness });
+}
+
+/**
+ * Turn one place on one cell's boundary on or off.
+ *
+ * The whole of the editing, and deliberately: a cell is a set of places ink
+ * runs to, so there is one thing to change and every letterform on the grid is
+ * some arrangement of having changed it. No tile menu to learn, no shape to
+ * pick from a row of nine -- press the spot where you want the stroke to leave.
+ */
+export function togglePort(forge: Forge, letter: string, key: string, port: Port): Forge {
+  const kit = kitOf(forge);
+  const tiles = kit.glyphs[letter] ?? { columns: 1, cells: {} };
+  const cell: Cell = tiles.cells[key] ?? { ports: [] };
+  const ports = cell.ports.includes(port)
+    ? cell.ports.filter((one) => one !== port)
+    : [...cell.ports, port];
+
+  const cells = { ...tiles.cells };
+  if (ports.length === 0 && !cell.fill) delete cells[key];
+  else cells[key] = { ...cell, ports };
+
+  return withKit(forge, {
+    glyphs: { ...kit.glyphs, [letter]: { ...tiles, columns: widthFor(tiles, cells), cells } },
+  });
+}
+
+/**
+ * Put a filled shape in a cell, or take it out again.
+ *
+ * Stamping the same shape onto a cell that already has it clears it, so one
+ * gesture both places and removes and there is no eraser to find. Passing
+ * nothing clears whatever is there.
+ */
+export function stampFill(forge: Forge, letter: string, key: string, fill?: Fill): Forge {
+  const kit = kitOf(forge);
+  const tiles = kit.glyphs[letter] ?? { columns: 1, cells: {} };
+  const cell: Cell = tiles.cells[key] ?? { ports: [] };
+  const same =
+    cell.fill !== undefined && fill !== undefined
+      ? cell.fill.kind === fill.kind && cell.fill.turn === fill.turn
+      : false;
+  const next = same || fill === undefined ? undefined : fill;
+
+  const cells = { ...tiles.cells };
+  if (!next && cell.ports.length === 0) delete cells[key];
+  else cells[key] = { ports: cell.ports, ...(next ? { fill: next } : {}) };
+
+  return withKit(forge, {
+    glyphs: { ...kit.glyphs, [letter]: { ...tiles, columns: widthFor(tiles, cells), cells } },
+  });
+}
+
+/** How wide a letter is once a cell has been added past its right-hand edge. */
+function widthFor(tiles: Tiles, cells: Record<string, Cell>): number {
+  let widest = 1;
+  for (const key of Object.keys(cells)) {
+    const column = Number(key.split(",")[0]);
+    if (Number.isFinite(column)) widest = Math.max(widest, column + 1);
+  }
+  return Math.max(widest, Math.min(tiles.columns, widest));
+}
+
+/** How many cells wide a letter stands. Its own decision, and its spacing. */
+export function setColumns(forge: Forge, letter: string, columns: number): Forge {
+  const kit = kitOf(forge);
+  const tiles = kit.glyphs[letter];
+  if (!tiles) return forge;
+  return withKit(forge, {
+    glyphs: { ...kit.glyphs, [letter]: { ...tiles, columns: Math.max(1, Math.round(columns)) } },
+  });
+}
+
+/** Empty a letter's cells, to start it again from nothing. */
+export function clearTiles(forge: Forge, letter: string): Forge {
+  const kit = kitOf(forge);
+  if (!(letter in kit.glyphs)) return forge;
+  const glyphs = { ...kit.glyphs };
+  delete glyphs[letter];
+  return withKit(forge, { glyphs });
+}
+
+/**
+ * Lay letters onto the grid from the skeletons the font already has.
+ *
+ * With no letters named it does the lot, which is how a kit starts: an
+ * alphabet to argue with rather than an empty sheet. Named, it puts one letter
+ * back to what the skeleton says, which is the undo for a cell editor.
+ */
+export function layOut(forge: Forge, letters?: string[]): Forge {
+  const kit = kitOf(forge);
+  const glyphs = { ...kit.glyphs };
+  for (const letter of letters ?? letterNames()) {
+    const recipe = recipeOf(letter, formOf(forge, letter));
+    if (!recipe) continue;
+    const tiles = seedTiles(recipe(styleFor(letter, forge)).strokes, styleFor(letter, forge), kit);
+    if (tiles) glyphs[letter] = tiles;
+    else delete glyphs[letter];
+  }
+  return withKit(forge, { glyphs });
+}
+
+/** Every cut that some letter has been told to differ in. */
+export function cutsHeldBy(forge: Forge, letter: string): CutName[] {
+  return CUT_NAMES.filter((name) => isCutException(forge, letter, name));
+}
+
 /**
  * The style one letter is drawn with.
  *
@@ -207,24 +512,97 @@ export function styleFor(letter: string, forge: Forge): Style {
  * still exists has not changed, and one that has changed is a different object.
  */
 const drawings = new WeakMap<Forge, Map<string, Drawn | null>>();
+const solids = new WeakMap<Forge, Map<string, Drawn | null>>();
 
-export function draw(letter: string, forge: Forge): Drawn | null {
-  let kept = drawings.get(forge);
+function remembered(
+  where: WeakMap<Forge, Map<string, Drawn | null>>,
+  forge: Forge,
+  letter: string,
+  make: () => Drawn | null,
+): Drawn | null {
+  let kept = where.get(forge);
   if (!kept) {
     kept = new Map();
-    drawings.set(forge, kept);
+    where.set(forge, kept);
   }
   if (kept.has(letter)) return kept.get(letter) ?? null;
-  // An imported letter is not drawn, so nothing below this line runs for it.
-  // It still goes through the cache, so that everything downstream -- the
-  // grid, the specimen, the checks, the exporters -- asks one question and
-  // gets one answer whichever kind of letter this is.
-  const outside = forge.imported[letter];
-  const drawn = outside
-    ? { contours: outside.contours, advanceWidth: outside.advanceWidth }
-    : drawLetter(letter, styleFor(letter, forge), formOf(forge, letter));
+  const drawn = make();
   kept.set(letter, drawn);
   return drawn;
+}
+
+/**
+ * A letter as the font has it: drawn, or brought in from outside, and in
+ * either case with whatever the font takes out of it taken out.
+ *
+ * Everything downstream -- the grid, the specimen, the checks, the exporters --
+ * asks this one question and gets one answer whichever kind of letter it is.
+ */
+export function draw(letter: string, forge: Forge): Drawn | null {
+  return remembered(drawings, forge, letter, () => {
+    const outside = forge.imported[letter];
+    if (!outside) {
+      return drawLetter(
+        letter,
+        styleFor(letter, forge),
+        formOf(forge, letter),
+        cutsFor(letter, forge),
+        forge.kit,
+      );
+    }
+
+    /*
+     * A letter somebody drew elsewhere is still cut.
+     *
+     * It used to pass straight through, and the effect was a font that
+     * disagreed with itself: slots across every letter but the ampersand,
+     * which sat in the middle of the word solid. A cut is a decision about the
+     * font, and a letter that has joined the font is in it.
+     *
+     * Four of the six reach it. The other two are made out of the skeleton --
+     * a groove is the spine swept again, a break is where two spines meet --
+     * and there is no skeleton here, so they do nothing. Said in the panel
+     * rather than left to be discovered.
+     *
+     * Measured against the font's own pen, because the letter has none: a slot
+     * through the ampersand is the thickness a slot is in this font.
+     *
+     * And the shape is read rather than the winding believed. Everything swept
+     * here winds its counters against its ink on purpose; an outline that
+     * arrived from a drawing program has whatever winding that program left,
+     * and taking it at its word turns a counter into a piece of ink.
+     */
+    const cutting = cutInk(outside.contours, [], scaleOf(forge.style), cutsFor(letter, forge), "nesting");
+    return {
+      contours: cutting.contours,
+      // The advance it arrived with, whatever the cut did to its edges -- the
+      // same promise every drawn letter is given.
+      advanceWidth: outside.advanceWidth,
+      cut: cutting.cut,
+    };
+  });
+}
+
+/**
+ * The same letter with nothing taken out of it.
+ *
+ * For the trip out to a drawing program and back. What leaves has to be the
+ * letter the cuts are applied *to*, not the letter after them: hand somebody a
+ * slotted n to edit and the slots come back baked into the outline, and then
+ * the font cuts fresh slots through the ones already there.
+ *
+ * So the sheet carries the solid letter, the drawing that returns replaces the
+ * solid letter, and the cuts go on carrying on -- which is the whole point of
+ * their being a description rather than an edit.
+ */
+export function solid(letter: string, forge: Forge): Drawn | null {
+  if (!anythingCut(forge)) return draw(letter, forge);
+  return remembered(solids, forge, letter, () => {
+    const outside = forge.imported[letter];
+    return outside
+      ? { contours: outside.contours, advanceWidth: outside.advanceWidth }
+      : drawLetter(letter, styleFor(letter, forge), formOf(forge, letter), undefined, forge.kit);
+  });
 }
 
 /**

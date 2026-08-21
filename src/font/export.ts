@@ -24,7 +24,8 @@ import {
 import { removeOverlaps } from "./overlap";
 import { buildGlyfTables, splitGlyf, type CompositeRef, type GlyfBuildInput } from "./glyf";
 import { buildGposTable, buildKernTable, type ResolvedClassKern, type ResolvedPair } from "./kern";
-import { effectiveParams, paramsAreDefault, resolveGlyphContours } from "./transform";
+import { anythingCut, effectiveParams, paramsAreDefault, resolveGlyphContours } from "./transform";
+import { ready as readyToCut } from "./boolean";
 import { readSfnt, writeSfnt, SFNT_TRUETYPE, type SfntFont } from "./sfnt";
 import {
   buildCmap,
@@ -83,6 +84,16 @@ export async function exportFont(
   typeface: Typeface,
   options: ExportOptions,
 ): Promise<ExportResult> {
+  /*
+   * The boolean library, before a single outline is resolved.
+   *
+   * A cut that is not ready is skipped rather than waited for, which is the
+   * right answer for a screen -- an uncut letter for a moment is a letter --
+   * and exactly the wrong one for a file, which is written once and kept. So
+   * the wait happens here, where there is somewhere to wait.
+   */
+  if (anythingCut(typeface)) await readyToCut();
+
   const notes: string[] = [];
   const tolerance = options.curveTolerance ?? 0.5;
   const includeKerning = options.includeKerning ?? true;
