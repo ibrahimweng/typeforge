@@ -726,6 +726,16 @@ function towards(from: Vec2, to: Vec2): Vec2 {
   return at(dx / length, dy / length);
 }
 
+/**
+ * How far a spine runs, end to end.
+ *
+ * Beside `alongSpine`, which measures the same way, so a point taken at a
+ * fraction of this is the point that fraction along.
+ */
+export function spineLength(spine: Spine): number {
+  return spine.segments.reduce((total, segment) => total + lengthOf(segment), 0);
+}
+
 function lengthOf(segment: SpineSegment): number {
   return segment.kind === "line"
     ? Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y)

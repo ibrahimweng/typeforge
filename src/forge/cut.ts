@@ -25,7 +25,7 @@
 import { intersect, loaded, pieces, subtract, unite, type Roles } from "@/font/boolean";
 import { contourArea, contoursBounds, type Bounds } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
-import { alongSpine } from "./shapes";
+import { alongSpine, spineLength } from "./shapes";
 import { sweep } from "./sweep";
 import type { Style } from "./style";
 import type { Spine, SpineSegment, Stroke } from "./types";
@@ -774,10 +774,6 @@ function angleBetween(arriving: Vec2, leaving: Vec2): number {
  * the amount asked for disappears, which is the right answer: a groove that
  * cannot fit inside its own stroke should not be drawn at all.
  */
-function spineLength(spine: Spine): number {
-  return spine.segments.reduce((total, segment) => total + lengthOf(segment), 0);
-}
-
 /**
  * The stretch of a spine between two distances along it.
  *
