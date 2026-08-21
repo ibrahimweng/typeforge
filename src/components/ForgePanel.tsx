@@ -27,9 +27,11 @@ import {
   isCutException,
   isException,
   isImported,
+  kitOf,
   partsOf,
   reach,
   styleFor,
+  tilesFor,
 } from "@/forge/document";
 import type { Imported } from "@/forge/exchange";
 import { formsOf } from "@/forge/letters";
@@ -206,6 +208,8 @@ export function ForgePanel(): React.JSX.Element {
           ))}
         </Section>
 
+        <KitPanel />
+
         <Cuts />
 
         <Forms letter={letter} />
@@ -216,6 +220,186 @@ export function ForgePanel(): React.JSX.Element {
     </aside>
   );
 }
+
+/**
+ * Letters built on a grid, out of a small set of parts.
+ *
+ * A different construction rather than a different setting, so it is one
+ * switch and everything under it belongs to it. What it does not change is
+ * worth saying out loud in the panel: the pen still draws these letters, so
+ * weight and contrast and terminals all still reach them, and the cuts still
+ * cut them.
+ */
+function KitPanel(): React.JSX.Element {
+  const state = useForge();
+  const { forge, letter } = state;
+  const kit = kitOf(forge);
+  const tiles = tilesFor(forge, letter);
+  const laid = Object.keys(kit.glyphs).length;
+
+  return (
+    <section className="border-b border-border p-3" data-forge-kit>
+      <label className="flex items-center justify-between gap-2">
+        <span className="min-w-0 flex-1 text-2xs font-medium text-foreground">Build on a grid</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={kit.on}
+          aria-label="Build on a grid"
+          data-forge-kit-switch
+          onClick={() => forgeStore.useKit(!kit.on)}
+          className={cn(
+            "h-4 w-7 shrink-0 rounded-full transition-colors",
+            kit.on ? "bg-[color:var(--accent)]" : "bg-card",
+          )}
+        >
+          <span
+            className={cn(
+              "block size-3 rounded-full bg-background transition-transform",
+              kit.on ? "translate-x-3.5" : "translate-x-0.5",
+            )}
+          />
+        </button>
+      </label>
+      <p className="pt-1 text-2xs leading-snug text-muted-foreground">
+        Every letter assembled from the same few parts on the same grid. The pen
+        still draws them, so weight, contrast and terminals all still reach
+        them, and the cuts still cut them.
+      </p>
+
+      {kit.on && (
+        <>
+          <p className="pt-2 text-2xs leading-snug text-muted-foreground">
+            Press a spot on a cell's edge to send a stroke out through it.
+            Double-click the middle of a cell to fill it in. {laid}{" "}
+            {laid === 1 ? "letter is" : "letters are"} laid out.
+          </p>
+
+          {GRID_CONTROLS.map((control) => (
+            <div className="py-1" key={control.key}>
+              <Slider
+                name={control.label}
+                value={Number((kit.grid as unknown as Record<string, number>)[control.key])}
+                min={control.min}
+                max={control.max}
+                step={control.step}
+                showFill
+                onValueChange={(next: number, meta?: { history?: string }) =>
+                  forgeStore.changeGrid(
+                    { [control.key]: next } as never,
+                    meta?.history === "merge" ? "during" : "end",
+                  )
+                }
+              />
+              <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">{control.hint}</p>
+            </div>
+          ))}
+
+          <div className="py-1">
+            <Slider
+              name="Roundness"
+              value={kit.roundness}
+              min={0}
+              max={1}
+              step={0.01}
+              showFill
+              onValueChange={(next: number, meta?: { history?: string }) =>
+                forgeStore.changeRoundness(next, meta?.history === "merge" ? "during" : "end")
+              }
+            />
+            <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">
+              How a turn inside a cell is taken: nothing is a square corner, one
+              is a quarter of a circle touching both edges. Held above what the
+              pen can bend through, so asking for rounder than it can go leaves
+              the corner square rather than folding it.
+            </p>
+          </div>
+
+          {tiles && (
+            <div className="py-1">
+              <Slider
+                name={`Cells across ${letter}`}
+                value={tiles.columns}
+                min={1}
+                max={12}
+                step={1}
+                showFill
+                onValueChange={(next: number, meta?: { history?: string }) =>
+                  forgeStore.changeColumns(next, meta?.history === "merge" ? "during" : "end")
+                }
+              />
+              <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">
+                What this letter is spaced by. Cells are square, so this is its
+                width and its rhythm at once.
+              </p>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-1.5 pt-2">
+            <button
+              type="button"
+              onClick={() => forgeStore.layOutLetters(false)}
+              data-forge-kit-relay
+              className="flex-1 rounded-md border border-border px-2 py-1.5 text-2xs transition-colors hover:border-muted-foreground hover:bg-card"
+            >
+              Lay {letter} out again
+            </button>
+            <button
+              type="button"
+              onClick={() => forgeStore.clearLetter()}
+              data-forge-kit-clear
+              className="flex-1 rounded-md border border-border px-2 py-1.5 text-2xs transition-colors hover:border-muted-foreground hover:bg-card"
+            >
+              Empty {letter}
+            </button>
+            <button
+              type="button"
+              onClick={() => forgeStore.layOutLetters(true)}
+              data-forge-kit-relay-all
+              className="w-full rounded-md border border-border px-2 py-1.5 text-2xs transition-colors hover:border-muted-foreground hover:bg-card"
+            >
+              Lay the whole font out again
+            </button>
+          </div>
+          <p className="pt-2 text-2xs leading-snug text-muted-foreground">
+            Laying out reads the skeletons this font already has and puts them
+            on the grid. It is an approximation and is meant to be: a stem lands
+            exactly, a shoulder lands on the nearest eight places a stroke can
+            leave a square. Every cell of it is one press to change.
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
+
+/** The grid itself, counted in cells rather than measured in units. */
+const GRID_CONTROLS = [
+  {
+    key: "rows",
+    label: "Rows to the cap height",
+    hint: "What sets the size of a cell, and with it how coarse the whole alphabet is. Fewer rows is a blockier face built from bigger parts.",
+    min: 2,
+    max: 12,
+    step: 1,
+  },
+  {
+    key: "below",
+    label: "Rows below the baseline",
+    hint: "How far the grid reaches down, for the descenders.",
+    min: 0,
+    max: 5,
+    step: 1,
+  },
+  {
+    key: "above",
+    label: "Rows above the cap",
+    hint: "How far it reaches up, for the ascenders and the accents.",
+    min: 0,
+    max: 5,
+    step: 1,
+  },
+];
 
 /**
  * What is taken out of the letters after they are drawn.

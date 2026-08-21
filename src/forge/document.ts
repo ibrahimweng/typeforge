@@ -18,6 +18,8 @@
 
 import { decidedBy, drawLetter, letterNames, type Drawn } from "./build";
 import { anyCut, cutInk, CUT_NAMES, noCuts, type CutName, type Cuts } from "./cut";
+import { emptyKit, hasTiles, seedTiles, type Cell, type Grid, type Kit, type Port, type Tiles } from "./kit";
+import { recipeOf } from "./letters";
 import type { Imported } from "./exchange";
 import { weightClassOf, weightedStyle, type Family } from "./family";
 import { partsUsedBy, type PartName } from "./parts";
@@ -81,6 +83,18 @@ export interface Forge {
    */
   cutExceptions?: Record<string, CutOverrides>;
   /**
+   * Letters built on a grid out of a small set of parts, rather than drawn.
+   *
+   * The third way to make a letter here, and the only one that is a different
+   * construction rather than a different setting -- so it is kept whole and
+   * apart, and switched on and off in one place. A letter the kit has no cells
+   * for is still drawn from its recipe, which is what lets a kit cover the
+   * capitals and leave the rest of the font alone.
+   *
+   * Optional because documents saved before there was a kit do not have one.
+   */
+  kit?: Kit;
+  /**
    * The weights this typeface has, and which of them is the one on screen.
    *
    * The style above describes one weight. Everything else in the family is
@@ -104,12 +118,13 @@ const ALONE: Family = { drawn: 400, also: [] };
  * use.
  */
 export function whole(forge: Forge): Forge {
-  if (forge.family && forge.cuts) return forge;
+  if (forge.family && forge.cuts && forge.kit) return forge;
   return {
     ...forge,
     family: forge.family ?? { ...ALONE },
     cuts: forge.cuts ?? noCuts(),
     cutExceptions: forge.cutExceptions ?? {},
+    kit: forge.kit ?? emptyKit(),
   };
 }
 
@@ -141,6 +156,7 @@ export function startFrom(base: Style): Forge {
     imported: {},
     cuts: noCuts(),
     cutExceptions: {},
+    kit: emptyKit(),
     // Asked rather than assumed. A face is whatever weight its own stem says
     // it is, and half the bases here are not a Regular.
     family: { drawn: weightClassOf(base), also: [] },
@@ -310,6 +326,132 @@ export function anythingCut(forge: Forge): boolean {
   );
 }
 
+// ---------------------------------------------------------------------------
+// The kit
+// ---------------------------------------------------------------------------
+
+export function kitOf(forge: Forge): Kit {
+  return forge.kit ?? emptyKit();
+}
+
+/** Whether this letter is built from cells rather than drawn from a skeleton. */
+export function isLaidOut(forge: Forge, letter: string): boolean {
+  const kit = kitOf(forge);
+  return kit.on && hasTiles(kit, letter);
+}
+
+/** The cells one letter is built from, or nothing if it has not been laid out. */
+export function tilesFor(forge: Forge, letter: string): Tiles | undefined {
+  return kitOf(forge).glyphs[letter];
+}
+
+function withKit(forge: Forge, patch: Partial<Kit>): Forge {
+  return { ...forge, kit: { ...kitOf(forge), ...patch } };
+}
+
+/** Build the letters from cells, or go back to drawing them. */
+export function useKit(forge: Forge, on: boolean): Forge {
+  return withKit(forge, { on });
+}
+
+export function editGrid(forge: Forge, patch: Partial<Grid>): Forge {
+  return withKit(forge, { grid: { ...kitOf(forge).grid, ...patch } });
+}
+
+export function editRoundness(forge: Forge, roundness: number): Forge {
+  return withKit(forge, { roundness });
+}
+
+/**
+ * Turn one place on one cell's boundary on or off.
+ *
+ * The whole of the editing, and deliberately: a cell is a set of places ink
+ * runs to, so there is one thing to change and every letterform on the grid is
+ * some arrangement of having changed it. No tile menu to learn, no shape to
+ * pick from a row of nine -- press the spot where you want the stroke to leave.
+ */
+export function togglePort(forge: Forge, letter: string, key: string, port: Port): Forge {
+  const kit = kitOf(forge);
+  const tiles = kit.glyphs[letter] ?? { columns: 1, cells: {} };
+  const cell: Cell = tiles.cells[key] ?? { ports: [] };
+  const ports = cell.ports.includes(port)
+    ? cell.ports.filter((one) => one !== port)
+    : [...cell.ports, port];
+
+  const cells = { ...tiles.cells };
+  if (ports.length === 0 && !cell.solid) delete cells[key];
+  else cells[key] = { ...cell, ports };
+
+  return withKit(forge, {
+    glyphs: { ...kit.glyphs, [letter]: { ...tiles, columns: widthFor(tiles, cells), cells } },
+  });
+}
+
+/** Fill one cell in outright, or empty it again. */
+export function toggleSolid(forge: Forge, letter: string, key: string): Forge {
+  const kit = kitOf(forge);
+  const tiles = kit.glyphs[letter] ?? { columns: 1, cells: {} };
+  const cell: Cell = tiles.cells[key] ?? { ports: [] };
+  const solid = !cell.solid;
+
+  const cells = { ...tiles.cells };
+  if (!solid && cell.ports.length === 0) delete cells[key];
+  else cells[key] = { ...cell, solid };
+
+  return withKit(forge, {
+    glyphs: { ...kit.glyphs, [letter]: { ...tiles, columns: widthFor(tiles, cells), cells } },
+  });
+}
+
+/** How wide a letter is once a cell has been added past its right-hand edge. */
+function widthFor(tiles: Tiles, cells: Record<string, Cell>): number {
+  let widest = 1;
+  for (const key of Object.keys(cells)) {
+    const column = Number(key.split(",")[0]);
+    if (Number.isFinite(column)) widest = Math.max(widest, column + 1);
+  }
+  return Math.max(widest, Math.min(tiles.columns, widest));
+}
+
+/** How many cells wide a letter stands. Its own decision, and its spacing. */
+export function setColumns(forge: Forge, letter: string, columns: number): Forge {
+  const kit = kitOf(forge);
+  const tiles = kit.glyphs[letter];
+  if (!tiles) return forge;
+  return withKit(forge, {
+    glyphs: { ...kit.glyphs, [letter]: { ...tiles, columns: Math.max(1, Math.round(columns)) } },
+  });
+}
+
+/** Empty a letter's cells, to start it again from nothing. */
+export function clearTiles(forge: Forge, letter: string): Forge {
+  const kit = kitOf(forge);
+  if (!(letter in kit.glyphs)) return forge;
+  const glyphs = { ...kit.glyphs };
+  delete glyphs[letter];
+  return withKit(forge, { glyphs });
+}
+
+/**
+ * Lay letters onto the grid from the skeletons the font already has.
+ *
+ * With no letters named it does the lot, which is how a kit starts: an
+ * alphabet to argue with rather than an empty sheet. Named, it puts one letter
+ * back to what the skeleton says, which is the undo for a cell editor.
+ */
+export function layOut(forge: Forge, letters?: string[]): Forge {
+  const kit = kitOf(forge);
+  const glyphs = { ...kit.glyphs };
+  for (const letter of letters ?? letterNames()) {
+    const recipe = recipeOf(letter, formOf(forge, letter));
+    if (!recipe) continue;
+    const tiles = seedTiles(recipe(styleFor(letter, forge)).strokes, styleFor(letter, forge), kit);
+    if (tiles) glyphs[letter] = tiles;
+    else delete glyphs[letter];
+  }
+  return withKit(forge, { glyphs });
+}
+
 /** Every cut that some letter has been told to differ in. */
 export function cutsHeldBy(forge: Forge, letter: string): CutName[] {
   return CUT_NAMES.filter((name) => isCutException(forge, letter, name));
@@ -380,7 +522,13 @@ export function draw(letter: string, forge: Forge): Drawn | null {
   return remembered(drawings, forge, letter, () => {
     const outside = forge.imported[letter];
     if (!outside) {
-      return drawLetter(letter, styleFor(letter, forge), formOf(forge, letter), cutsFor(letter, forge));
+      return drawLetter(
+        letter,
+        styleFor(letter, forge),
+        formOf(forge, letter),
+        cutsFor(letter, forge),
+        forge.kit,
+      );
     }
 
     /*
@@ -433,7 +581,7 @@ export function solid(letter: string, forge: Forge): Drawn | null {
     const outside = forge.imported[letter];
     return outside
       ? { contours: outside.contours, advanceWidth: outside.advanceWidth }
-      : drawLetter(letter, styleFor(letter, forge), formOf(forge, letter));
+      : drawLetter(letter, styleFor(letter, forge), formOf(forge, letter), undefined, forge.kit);
   });
 }
 

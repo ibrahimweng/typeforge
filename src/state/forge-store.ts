@@ -29,6 +29,17 @@ import {
   type Forge,
 } from "@/forge/document";
 import type { CutName, Cuts } from "@/forge/cut";
+import type { Grid, Port } from "@/forge/kit";
+import {
+  clearTiles,
+  editGrid,
+  editRoundness,
+  layOut,
+  setColumns,
+  toggleSolid,
+  togglePort,
+  useKit,
+} from "@/forge/document";
 import type { Family } from "@/forge/family";
 import { letterSvg, readLetterSvg, type Arrival } from "@/forge/exchange";
 import type { PartName } from "@/forge/parts";
@@ -393,6 +404,54 @@ class ForgeStore {
   releaseCut(name?: CutName): void {
     const { forge, letter } = this.state;
     this.commit(clearCutException(forge, letter, name));
+  }
+
+  // --- the kit -----------------------------------------------------------
+
+  /**
+   * Build the letters from cells, or go back to drawing them.
+   *
+   * Switching on lays the alphabet out from the skeletons the font already has,
+   * unless it has been laid out before -- so the first press gives a whole
+   * font on the grid to argue with rather than an empty sheet, and the second
+   * one does not throw away an afternoon of cell editing.
+   */
+  useKit(on: boolean): void {
+    const { forge } = this.state;
+    const laid = Object.keys(forge.kit?.glyphs ?? {}).length > 0;
+    this.commit(useKit(on && !laid ? layOut(forge) : forge, on));
+  }
+
+  changeGrid(patch: Partial<Grid>, phase: Phase = "single"): void {
+    this.commit(editGrid(this.state.forge, patch), phase);
+  }
+
+  changeRoundness(roundness: number, phase: Phase = "single"): void {
+    this.commit(editRoundness(this.state.forge, roundness), phase);
+  }
+
+  /** Turn one place on one cell's boundary on or off. */
+  togglePort(key: string, port: Port): void {
+    this.commit(togglePort(this.state.forge, this.state.letter, key, port));
+  }
+
+  /** Fill one cell in outright, or empty it again. */
+  toggleSolid(key: string): void {
+    this.commit(toggleSolid(this.state.forge, this.state.letter, key));
+  }
+
+  changeColumns(columns: number, phase: Phase = "single"): void {
+    this.commit(setColumns(this.state.forge, this.state.letter, columns), phase);
+  }
+
+  /** Put this letter back to what its skeleton says, or lay the whole font out. */
+  layOutLetters(all = false): void {
+    this.commit(layOut(this.state.forge, all ? undefined : [this.state.letter]));
+  }
+
+  /** Empty this letter's cells, to start it again from nothing. */
+  clearLetter(): void {
+    this.commit(clearTiles(this.state.forge, this.state.letter));
   }
 
   /**

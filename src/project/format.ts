@@ -198,7 +198,10 @@ function hasDrawing(drawn: DrawnProject): boolean {
     // a face with slots through it is nothing but its cuts, and a base with
     // nothing else touched would have been thrown away as an empty document.
     anyCut(cutsOf(forge)) ||
-    Object.keys(forge.cutExceptions ?? {}).length > 0
+    Object.keys(forge.cutExceptions ?? {}).length > 0 ||
+    // A font laid out on a grid is nothing but its cells, and a document with
+    // an afternoon of them in it would have been thrown away as empty.
+    Object.keys(forge.kit?.glyphs ?? {}).length > 0
   );
 }
 

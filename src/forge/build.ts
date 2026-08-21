@@ -21,6 +21,7 @@ import {
 } from "./letters";
 import { accentsFor, gapFor, hangsBelow, isCapital, type Parts } from "./accents";
 import { cutInk, reaches, type Cuts } from "./cut";
+import { assemble, hasTiles, type Kit } from "./kit";
 import { alongSpine, spinePath, wavy } from "./shapes";
 import { penReach, reachAlong, sweep } from "./sweep";
 import type { Style } from "./style";
@@ -126,8 +127,9 @@ export function drawLetter(
   style: Style,
   form?: string,
   cuts?: Cuts,
+  kit?: Kit,
 ): Drawn | null {
-  const made = makeLetter(name, style, form, cuts);
+  const made = makeLetter(name, style, form, cuts, kit);
   return made
     ? { contours: made.contours, advanceWidth: made.advanceWidth, cut: made.cut }
     : null;
@@ -171,15 +173,30 @@ export function makeLetter(
   style: Style,
   form?: string,
   cuts?: Cuts,
+  kit?: Kit,
 ): Made | null {
   const parts = builtFrom(name);
-  if (parts) return marked(parts, style, form, cuts);
+  if (parts) return marked(parts, style, form, cuts, kit);
 
-  const recipe = recipeOf(name, form);
-  if (!recipe) return null;
-  const built: Recipe = recipe(style);
+  /*
+   * Laid out on a grid, or drawn from a skeleton.
+   *
+   * A letter the kit has not been given cells for is still drawn from its
+   * recipe, so a kit that covers the capitals and nothing else is a font with
+   * capitals on the grid rather than a font with holes in it. Which one a
+   * letter is comes out here and nowhere else: everything after this point --
+   * the ink, the lean, the spacing, the cuts -- is the same either way.
+   */
+  const laid = kit?.on && hasTiles(kit, name) ? assemble(kit.glyphs[name], style, kit) : null;
+  const recipe = laid ? null : recipeOf(name, form);
+  if (!laid && !recipe) return null;
+  const built: Recipe | null = recipe ? recipe(style) : null;
+  const strokes = laid ? laid.strokes : built!.strokes;
 
-  const inked = built.strokes.map((stroke) => inkOf(stroke, style));
+  const inked = strokes.map((stroke) => inkOf(stroke, style));
+  // Cells filled in outright are ink rather than a path for it, so they join
+  // the drawing as their own run.
+  if (laid && laid.blocks.length > 0) inked.push(laid.blocks);
   const lean = leanOf(style);
   const pivot = style.metrics.xHeight / 2;
 
@@ -199,8 +216,8 @@ export function makeLetter(
   // Asked of this letter's own strokes rather than of the settings, so a
   // letter nothing can reach -- a space, which has no ink -- is not put through
   // the machinery to come back as what it already was.
-  const cutting = reaches(cuts, built.strokes)
-    ? cutInk(inked.flat(), built.strokes, style, cuts as Cuts)
+  const cutting = reaches(cuts, strokes)
+    ? cutInk(inked.flat(), strokes, style, cuts as Cuts)
     : null;
   const cut = cutting ? sheared(cutting.contours, lean, pivot) : solid;
 
@@ -227,8 +244,13 @@ export function makeLetter(
       const bounds = contoursBounds(placedSolid);
       centring = (advanceWidth - bounds.xMin - bounds.xMax) / 2;
     }
+  } else if (laid) {
+    // A letter on a grid is as wide as its cells. Working it out from the ink
+    // instead would give two letters of the same width different advances
+    // because one of them happens to have an empty column down its side.
+    advanceWidth = laid.advanceWidth;
   } else {
-    advanceWidth = advanceFor(name, built, placedSolid, style);
+    advanceWidth = advanceFor(name, built!, placedSolid, style);
   }
 
   const slide = shortfall + centring;
@@ -239,7 +261,8 @@ export function makeLetter(
     contours: slid(placed, centring),
     runs: inked.map((contours, index) => ({
       contours: slid(sheared(contours, lean, pivot), slide),
-      parts: partsOfStroke(built.strokes[index]),
+      // A cell has no named part behind it: what it is, is where it is.
+      parts: built && index < built.strokes.length ? partsOfStroke(built.strokes[index]) : [],
     })),
   };
 }
@@ -258,8 +281,8 @@ export function makeLetter(
  * letter: the skeleton draws, the probe finds the shoulder of an `ñ` under the
  * pointer, and pressing the tilde finds whatever governs the tilde.
  */
-function marked(parts: Parts, style: Style, form?: string, cuts?: Cuts): Made | null {
-  const base = makeLetter(parts.base, style, form, cuts);
+function marked(parts: Parts, style: Style, form?: string, cuts?: Cuts, kit?: Kit): Made | null {
+  const base = makeLetter(parts.base, style, form, cuts, kit);
   if (!base || base.contours.length === 0) return null;
 
   const em = style.metrics.unitsPerEm;

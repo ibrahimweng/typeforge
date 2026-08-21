@@ -215,6 +215,46 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
           </Section>
         ))}
 
+        <Section title="Building on a grid" half="drawn">
+          <p>
+            The third way to make a letter here, and it exists because the
+            other two cannot reach a whole family of type. A skeleton and a pen
+            give you a letter whose strokes go where a hand would take them;
+            cutting takes material out of one. Neither describes a face whose
+            letters are assembled out of a handful of shapes repeated on a grid
+            -- the kind designed as a system first and an alphabet second,
+            where what makes it a typeface is that every letter is made of the
+            same few parts.
+          </p>
+          <p>
+            <Term>A cell holds the places ink runs to.</Term> Eight of them:
+            the middle of each edge and each corner, which between them cover
+            every direction a stroke leaves a square in. Press one to send a
+            stroke out through it. Two facing each other are a run straight
+            through; two on the same edge are a run along it; anything else
+            turns through the middle. Double-click the middle of a cell to fill
+            it in outright.
+          </p>
+          <p>
+            It is not a second drawing program, which is the point.{" "}
+            <Term>The pen still draws these letters</Term>, so weight,
+            contrast, pen angle and terminals all still reach them, the family
+            still has every weight, and the cuts still cut them. Turn the
+            weight up on a font built from cells and it gets heavier, because
+            the cells were never the ink -- they are where the ink runs.
+          </p>
+          <p>
+            Switching it on lays the whole alphabet onto the grid from the
+            skeletons this font already has, because a hundred and ninety
+            glyphs placed cell by cell is not a workflow anybody finishes. What
+            arrives is an approximation and is meant to be: a stem lands on the
+            grid exactly, a shoulder lands on the nearest places a stroke is
+            allowed to leave a square, and a diagonal is re-routed to run at
+            one of the eight angles a grid has. Every cell of it is one press
+            to change, and any letter can be laid out again or emptied.
+          </p>
+        </Section>
+
         <Section title="Cutting" half="drawn">
           <p>
             Everything above adds ink: a spine is drawn and a pen is swept

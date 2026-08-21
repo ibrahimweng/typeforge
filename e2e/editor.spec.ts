@@ -1546,6 +1546,77 @@ test("cuts a letter somebody drew, with the rest of the font", async ({ page }) 
 });
 
 /*
+ * Building on a grid.
+ *
+ * The third way to make a letter here, and the one that most needs a browser
+ * to be believed: it is an editor before it is a setting. Switching it on has
+ * to put a whole alphabet on the grid, the grid has to appear over the letter,
+ * and pressing one place on one cell has to change that letter and nothing
+ * else.
+ */
+test("builds the alphabet on a grid, and edits it a cell at a time", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openForge(page);
+
+  const panel = page.getByRole("complementary", { name: "Forge" });
+  const grid = panel.getByRole("switch", { name: "Build on a grid" });
+  await expect(grid).toHaveAttribute("aria-checked", "false");
+  // No grid over the letter until there is one to show.
+  await expect(page.locator("[data-forge-cells]")).toHaveCount(0);
+
+  const outline = (letter: string) =>
+    page.locator(`[data-forge-cell="${letter}"] path`).getAttribute("d");
+  const drawn = { H: await outline("H"), o: await outline("o") };
+
+  await grid.click();
+  await expect(grid).toHaveAttribute("aria-checked", "true");
+
+  // The whole alphabet is laid out, not just the letter on the stage.
+  await expect.poll(() => outline("H")).not.toBe(drawn.H);
+  await expect.poll(() => outline("o")).not.toBe(drawn.o);
+  await expect(page.locator("[data-forge-cells]")).toBeVisible();
+  await expect(panel).toContainText(/\d+ letters are laid out/);
+
+  // The handles are gone: nothing behind a letter built from cells for them to
+  // pull, and a handle that moves nothing is worse than no handle.
+  await expect(page.locator("[data-forge-handle]")).toHaveCount(0);
+
+  // One press on one place on one cell changes that letter and no other.
+  const letter = await page.locator("[data-forge-stage]").getAttribute("data-forge-stage");
+  const before = { own: await outline(letter!), other: await outline("o") };
+  const port = page.locator("[data-forge-port]").first();
+  await expect(port).toBeVisible();
+  await port.click({ force: true });
+  await expect.poll(() => outline(letter!)).not.toBe(before.own);
+  expect(await outline("o")).toBe(before.other);
+
+  // And it is one undo, like every other edit here.
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect.poll(() => outline(letter!)).toBe(before.own);
+
+  expect(errors).toEqual([]);
+});
+
+test("puts a letter back on the grid, and empties it", async ({ page }) => {
+  await openForge(page);
+  const panel = page.getByRole("complementary", { name: "Forge" });
+  await panel.getByRole("switch", { name: "Build on a grid" }).click();
+
+  const outline = () => page.locator('[data-forge-cell="n"] path').getAttribute("d");
+  await expect(page.locator("[data-forge-cells]")).toBeVisible();
+  const laid = await outline();
+
+  await panel.locator("[data-forge-kit-clear]").click();
+  // Emptied, the letter has no cells -- so it falls back to its own skeleton
+  // rather than leaving a hole in the alphabet.
+  await expect.poll(outline).not.toBe(laid);
+
+  await panel.locator("[data-forge-kit-relay]").click();
+  await expect.poll(outline).toBe(laid);
+});
+
+/*
  * The font library.
  *
  * The two services it reaches are somebody else's, and a test that depends on

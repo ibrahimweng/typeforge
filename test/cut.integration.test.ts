@@ -11,7 +11,14 @@
 import { describe, expect, it } from "vitest";
 
 import { deliver } from "../src/forge/deliver";
-import { editCut, importLetter, startFrom, type Forge } from "../src/forge/document";
+import {
+  editCut,
+  importLetter,
+  layOut,
+  startFrom,
+  useKit,
+  type Forge,
+} from "../src/forge/document";
 import { letterSvg, readLetterSvg } from "../src/forge/exchange";
 import { SANS } from "../src/forge/style";
 import { FONT_SUITE_TIMEOUT } from "./fixtures";
@@ -115,5 +122,42 @@ describe("a letter drawn elsewhere, cut with the rest", { timeout: FONT_SUITE_TI
     const plain = inspectFont((await deliver(own, { familyName: "One", format: "ttf" })).bytes);
     expect(read.contoursOf.g).toBeGreaterThan(plain.contoursOf.g);
     expect(read.contoursOf.n).toBe(plain.contoursOf.n);
+  });
+});
+
+describe("a font built on a grid", { timeout: FONT_SUITE_TIMEOUT }, () => {
+  const laid = (): Forge => useKit(layOut(startFrom(SANS)), true);
+
+  it("writes letters made of cells into a real font file", async () => {
+    const written = await deliver(laid(), { familyName: "Grid", format: "ttf" });
+    const read = inspectFont(written.bytes);
+    expect(read.recompiles).toBe(true);
+    expect(read.interiorExtremes).toBe(0);
+    // Every letter still arrives, and with ink in it.
+    for (const name of ["H", "O", "n", "o"]) {
+      expect(read.contoursOf[name], name).toBeGreaterThan(0);
+    }
+  });
+
+  it("still answers to the pen, so the family still has weights", async () => {
+    const kit = laid();
+    const light = await deliver(
+      { ...kit, style: { ...kit.style, pen: { ...kit.style.pen, weight: 40 } } },
+      { familyName: "Grid", format: "ttf" },
+    );
+    const heavy = await deliver(
+      { ...kit, style: { ...kit.style, pen: { ...kit.style.pen, weight: 150 } } },
+      { familyName: "Grid", format: "ttf" },
+    );
+    // The same cells, drawn with a wider pen: a heavier font, not a different one.
+    expect(heavy.bytes.length).not.toBe(light.bytes.length);
+    for (const one of [light, heavy]) expect(inspectFont(one.bytes).recompiles).toBe(true);
+  });
+
+  it("cuts a letter built from cells like any other", async () => {
+    const slotted = editCut(laid(), "slot", { on: true });
+    const plain = inspectFont((await deliver(laid(), { familyName: "Grid", format: "ttf" })).bytes);
+    const cut = inspectFont((await deliver(slotted, { familyName: "Grid", format: "ttf" })).bytes);
+    expect(cut.contoursOf.H).toBeGreaterThan(plain.contoursOf.H);
   });
 });
