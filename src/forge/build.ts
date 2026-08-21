@@ -20,6 +20,7 @@ import {
   type Recipe,
 } from "./letters";
 import { accentsFor, gapFor, hangsBelow, isCapital, type Parts } from "./accents";
+import { anyCut, cutInk, type Cuts } from "./cut";
 import { alongSpine, spinePath, wavy } from "./shapes";
 import { penReach, reachAlong, sweep } from "./sweep";
 import type { Style } from "./style";
@@ -114,8 +115,13 @@ const ROUND_TIGHTENING = 0.82;
  * are to the default, so a font with a flat-topped A still has one weight, one
  * shoulder and one serif.
  */
-export function drawLetter(name: string, style: Style, form?: string): Drawn | null {
-  const made = makeLetter(name, style, form);
+export function drawLetter(
+  name: string,
+  style: Style,
+  form?: string,
+  cuts?: Cuts,
+): Drawn | null {
+  const made = makeLetter(name, style, form, cuts);
   return made ? { contours: made.contours, advanceWidth: made.advanceWidth } : null;
 }
 
@@ -152,9 +158,14 @@ export interface Made extends Drawn {
  * Splitting the sweep by run costs nothing: it was already one sweep per stroke
  * and this only declines to pour them into the same bucket.
  */
-export function makeLetter(name: string, style: Style, form?: string): Made | null {
+export function makeLetter(
+  name: string,
+  style: Style,
+  form?: string,
+  cuts?: Cuts,
+): Made | null {
   const parts = builtFrom(name);
-  if (parts) return marked(parts, style, form);
+  if (parts) return marked(parts, style, form, cuts);
 
   const recipe = recipeOf(name, form);
   if (!recipe) return null;
@@ -164,13 +175,30 @@ export function makeLetter(name: string, style: Style, form?: string): Made | nu
   const lean = leanOf(style);
   const pivot = style.metrics.xHeight / 2;
 
-  const leant = sheared(inked.flat(), lean, pivot);
+  /*
+   * Where the letter sits, and how much room it is given, are read off the
+   * uncut drawing.
+   *
+   * A cut takes ink away and so it moves the letter's edges, and a letter
+   * placed by its edges would shuffle sideways and change width every time a
+   * saw tooth landed near one of them. Nobody cutting slots through a font
+   * means to respace it. So the solid letter decides the spacing, exactly as
+   * it did before there were cuts, and the cut one is what gets drawn in that
+   * space -- which is the same promise an imported letter is given when it
+   * keeps the advance of the letter it replaced.
+   */
+  const solid = sheared(inked.flat(), lean, pivot);
+  const cut = anyCut(cuts)
+    ? sheared(cutInk(inked.flat(), built.strokes, style, cuts as Cuts), lean, pivot)
+    : solid;
+
   // Only the letters that actually cross are moved, and each by exactly what
   // it needs.
-  const shortfall = leant.length > 0
-    ? Math.max(0, style.metrics.sidebearing - contoursBounds(leant).xMin)
+  const shortfall = solid.length > 0
+    ? Math.max(0, style.metrics.sidebearing - contoursBounds(solid).xMin)
     : 0;
-  const placed = slid(leant, shortfall);
+  const placed = slid(cut, shortfall);
+  const placedSolid = solid === cut ? placed : slid(solid, shortfall);
 
   let advanceWidth: number;
   /*
@@ -183,12 +211,12 @@ export function makeLetter(name: string, style: Style, form?: string): Made | nu
   let centring = 0;
   if (style.metrics.monospaced) {
     advanceWidth = monoAdvance(style);
-    if (placed.length > 0) {
-      const bounds = contoursBounds(placed);
+    if (placedSolid.length > 0) {
+      const bounds = contoursBounds(placedSolid);
       centring = (advanceWidth - bounds.xMin - bounds.xMax) / 2;
     }
   } else {
-    advanceWidth = advanceFor(name, built, placed, style);
+    advanceWidth = advanceFor(name, built, placedSolid, style);
   }
 
   const slide = shortfall + centring;
@@ -217,8 +245,8 @@ export function makeLetter(name: string, style: Style, form?: string): Made | nu
  * letter: the skeleton draws, the probe finds the shoulder of an `ñ` under the
  * pointer, and pressing the tilde finds whatever governs the tilde.
  */
-function marked(parts: Parts, style: Style, form?: string): Made | null {
-  const base = makeLetter(parts.base, style, form);
+function marked(parts: Parts, style: Style, form?: string, cuts?: Cuts): Made | null {
+  const base = makeLetter(parts.base, style, form, cuts);
   if (!base || base.contours.length === 0) return null;
 
   const em = style.metrics.unitsPerEm;
