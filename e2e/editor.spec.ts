@@ -1504,6 +1504,47 @@ test("cuts one letter differently from the rest", async ({ page }) => {
   await expect.poll(() => outline("H")).toBe(before.H);
 });
 
+test("cuts a letter somebody drew, with the rest of the font", async ({ page }) => {
+  await openForge(page);
+  await page.locator('[data-forge-cell="a"]').click();
+
+  // Put a shape into the a that no recipe would ever draw, so what is on the
+  // stage afterwards can only be the drawing.
+  const download = await Promise.all([
+    page.waitForEvent("download", { timeout: 30_000 }),
+    page.locator('[data-forge-send-svg="a"]').click(),
+  ]).then(([one]) => one);
+  const sheet = readFileSync((await download.path())!, "utf8");
+  const wedge = sheet.replace(
+    /<path id="typeforge-ink"[^>]*\/>/,
+    '<path id="typeforge-ink" data-typeforge="ink" d="M100 700 L500 700 L500 100 L100 100 Z"/>',
+  );
+  await page.setInputFiles('[data-forge-svg-input="a"]', {
+    name: "a.svg",
+    mimeType: "image/svg+xml",
+    buffer: Buffer.from(wedge),
+  });
+  await expect(page.locator('[data-forge-imported="a"]')).toBeVisible();
+
+  const drawn = () => page.locator('[data-forge-cell="a"] path').getAttribute("d");
+  const solid = await drawn();
+
+  const panel = page.getByRole("complementary", { name: "Forge" });
+  await panel.getByRole("switch", { name: "Slots" }).click();
+
+  // The drawing is cut with everything else, rather than sitting solid in the
+  // middle of a striped word.
+  await expect.poll(drawn).not.toBe(solid);
+  await expect.poll(async () => ((await drawn()) ?? "").split("Z").length).toBeGreaterThan(2);
+
+  // The two made out of the skeleton cannot reach it, and say so where it can
+  // be read rather than leaving it to be noticed.
+  const slotted = await drawn();
+  await panel.getByRole("switch", { name: "Breaks" }).click();
+  await expect(panel.getByText(/this one is made out of the skeleton/)).toBeVisible();
+  await expect.poll(drawn).toBe(slotted);
+});
+
 /*
  * The font library.
  *

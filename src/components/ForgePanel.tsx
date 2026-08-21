@@ -18,7 +18,7 @@ import * as React from "react";
 import { segment } from "@/components/controls";
 import { contoursToSvgPath } from "@/font/geometry";
 import { drawLetter } from "@/forge/build";
-import type { Cuts } from "@/forge/cut";
+import { FROM_SKELETON, type Cuts } from "@/forge/cut";
 import {
   cutsFor,
   cutsHeldBy,
@@ -26,6 +26,7 @@ import {
   formOf,
   isCutException,
   isException,
+  isImported,
   partsOf,
   reach,
   styleFor,
@@ -292,6 +293,11 @@ function Cutting({
   const values = cutValuesOf(spec.name, cuts);
   const on = Boolean(values.on);
   const pinned = isCutException(state.forge, state.letter, spec.name);
+  // The control still works -- it is a decision about the font -- but on this
+  // letter it will do nothing, and that is worth knowing here rather than
+  // after staring at the drawing.
+  const unreachable =
+    FROM_SKELETON.has(spec.name) && on && isImported(state.forge, state.letter);
 
   return (
     <div className="border-t border-border pt-2 first-of-type:mt-2" data-forge-cut={spec.name}>
@@ -327,6 +333,12 @@ function Cutting({
         </button>
       </label>
       <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">{spec.hint}</p>
+      {unreachable && (
+        <p className="pt-0.5 text-2xs leading-snug text-[color:var(--accent)]">
+          Not on {state.letter}: this one is made out of the skeleton, and your
+          drawing has none. The rest of the font still gets it.
+        </p>
+      )}
 
       {on && (
         <div className="pt-1">
@@ -513,9 +525,12 @@ function Trip({ letter }: { letter: string }): React.JSX.Element {
       {outside ? (
         <div className="pt-2" data-forge-imported={letter}>
           <p className="text-2xs leading-snug text-muted-foreground">
-            {letter} is your drawing, from {outside.from}. It keeps its advance, and
-            nothing in this panel reaches it any more -- there is no pen behind
-            it to change.
+            {letter} is your drawing, from {outside.from}. It keeps its advance,
+            and nothing above reaches it any more -- there is no pen behind it
+            to change. The cuts still do: a slot or a saw is taken out of
+            whatever the letter is, so your drawing is cut with the rest of the
+            font. The two made out of the skeleton -- the inline and the breaks
+            -- are the exception, because your drawing has no skeleton.
           </p>
           <button
             type="button"

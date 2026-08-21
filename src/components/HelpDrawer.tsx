@@ -287,10 +287,27 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
           <p>
             What it costs is worth knowing before you spend it. A letter that
             came in from outside is an outline rather than a description, so
-            nothing in the panel reaches it any more -- there is no pen behind
+            the pen and the parts no longer reach it -- there is nothing behind
             it to make heavier. It is marked in the alphabet, and one button
             hands it back to the family, which draws it again from the
             description it never stopped having.
+          </p>
+          <p>
+            <Term>The cuts still reach it.</Term> A slot, a saw, a chamfer and
+            a counter shape are taken out of whatever the letter is, so your
+            drawing is cut with the rest of the font and at the same heights --
+            which is what stops the one letter you drew by hand sitting solid
+            in the middle of a striped word. The two made out of the skeleton,
+            the inline and the breaks, are the exception: your drawing has no
+            skeleton for them to follow, so they leave it alone and the panel
+            says so while you are looking at it.
+          </p>
+          <p>
+            What goes out on the sheet is the letter before any of that. Send a
+            slotted n out and the slots would arrive as part of the outline,
+            and the font would then cut fresh slots through the ones already
+            there. The sheet carries the solid letter, so a cut stays a
+            description and goes on applying to whatever comes back.
           </p>
         </Section>
 

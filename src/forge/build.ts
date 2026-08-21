@@ -20,7 +20,7 @@ import {
   type Recipe,
 } from "./letters";
 import { accentsFor, gapFor, hangsBelow, isCapital, type Parts } from "./accents";
-import { anyCut, cutInk, type Cuts } from "./cut";
+import { cutInk, reaches, type Cuts } from "./cut";
 import { alongSpine, spinePath, wavy } from "./shapes";
 import { penReach, reachAlong, sweep } from "./sweep";
 import type { Style } from "./style";
@@ -196,7 +196,10 @@ export function makeLetter(
    * keeps the advance of the letter it replaced.
    */
   const solid = sheared(inked.flat(), lean, pivot);
-  const cutting = anyCut(cuts)
+  // Asked of this letter's own strokes rather than of the settings, so a
+  // letter nothing can reach -- a space, which has no ink -- is not put through
+  // the machinery to come back as what it already was.
+  const cutting = reaches(cuts, built.strokes)
     ? cutInk(inked.flat(), built.strokes, style, cuts as Cuts)
     : null;
   const cut = cutting ? sheared(cutting.contours, lean, pivot) : solid;

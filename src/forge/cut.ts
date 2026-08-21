@@ -22,7 +22,7 @@
  * way at every weight.
  */
 
-import { intersect, loaded, pieces, subtract, unite } from "@/font/boolean";
+import { intersect, loaded, pieces, subtract, unite, type Roles } from "@/font/boolean";
 import { contourArea, contoursBounds, type Bounds } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { alongSpine } from "./shapes";
@@ -99,6 +99,10 @@ export interface Cuts {
    * the crossing. Which stroke gives way is the whole difference between a
    * letter that has been taken apart and a letter with a chip out of it: the
    * arm of an E leaves the stem, the stem carries on.
+   *
+   * The other one that cannot reach an imported letter: without spines there
+   * is nothing to find a join in, and an outline alone does not say which of
+   * the two shapes crossing at a corner was the arm.
    */
   split: {
     on: boolean;
@@ -112,6 +116,10 @@ export interface Cuts {
    * away. Which is why it follows the letter exactly and costs almost nothing
    * to work out -- the hard part, where the middle of a stroke runs, is the
    * thing this half of the application already knows.
+   *
+   * It is also why this is one of the two that cannot reach a letter somebody
+   * drew elsewhere: an imported outline has no middle to run down. Nothing
+   * happens rather than something wrong, and the panel says so.
    */
   inline: {
     on: boolean;
@@ -154,9 +162,37 @@ export type CutName = keyof Cuts;
 
 export const CUT_NAMES: CutName[] = ["slot", "tooth", "inline", "motif", "split", "chamfer"];
 
-/** Whether anything is switched on, which is what decides if the letter is fused at all. */
+/**
+ * The two cuts made out of the skeleton rather than out of the outline.
+ *
+ * A groove is the spine swept again; a break is where two spines meet. Both
+ * need to know how the letter was built, so neither can reach a letter that
+ * arrived as an outline from somewhere else.
+ *
+ * Named here rather than in the panel that mentions it, because it is a fact
+ * about the operation and not about how it is described. The panel reads this.
+ */
+export const FROM_SKELETON = new Set<CutName>(["inline", "split"]);
+
+/** Whether anything is switched on. */
 export function anyCut(cuts: Cuts | undefined): boolean {
   return cuts !== undefined && CUT_NAMES.some((name) => cuts[name].on);
+}
+
+/**
+ * Whether any of the cuts that are on can do anything to this ink.
+ *
+ * Which is not the same question, and the difference is a whole boolean. An
+ * imported letter with only the inline switched on is reached by nothing: the
+ * groove needs a skeleton and there is none. Fusing it anyway would leave the
+ * drawing identical and its outline rewritten, which is work done to no end
+ * and a letter that reports itself as having changed when it has not.
+ */
+export function reaches(cuts: Cuts | undefined, strokes: Stroke[]): boolean {
+  if (cuts === undefined) return false;
+  return CUT_NAMES.some(
+    (name) => cuts[name].on && (strokes.length > 0 || !FROM_SKELETON.has(name)),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -191,15 +227,27 @@ export interface Cutting {
  * wrong one: an uncut letter for a moment is a letter, and a letter cut with a
  * tool that is not there is not.
  *
+ * `roles` says whether the ink can be believed about which of its contours are
+ * counters. Anything swept here can: the sweep winds a counter against the ink
+ * on purpose. A letter somebody drew elsewhere and brought in cannot, so its
+ * shape is read instead -- see `Roles`. It only matters for the first fuse,
+ * because everything after it comes back out of the boolean correctly wound.
+ *
  * The order is not arbitrary. The counter motif goes first because it is the
  * only one that reads the letter's holes, and every cut after it makes more.
  * The chamfer goes last because it is the only one that reads the letter's
  * corners, and every cut before it makes more.
  */
-export function cutInk(ink: Contour[], strokes: Stroke[], style: Style, cuts: Cuts): Cutting {
-  if (!anyCut(cuts) || ink.length === 0 || !loaded()) return { contours: ink };
+export function cutInk(
+  ink: Contour[],
+  strokes: Stroke[],
+  style: Style,
+  cuts: Cuts,
+  roles: Roles = "winding",
+): Cutting {
+  if (!reaches(cuts, strokes) || ink.length === 0 || !loaded()) return { contours: ink };
 
-  let shape = unite(ink, "winding");
+  let shape = unite(ink, roles);
   const stem = Math.max(style.pen.weight, 1);
   // Counted here rather than anywhere else, because here it is free: the
   // letter has just been fused, and counting its pieces is reading the

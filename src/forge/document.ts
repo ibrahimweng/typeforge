@@ -17,7 +17,7 @@
  */
 
 import { decidedBy, drawLetter, letterNames, type Drawn } from "./build";
-import { CUT_NAMES, noCuts, type CutName, type Cuts } from "./cut";
+import { anyCut, cutInk, CUT_NAMES, noCuts, type CutName, type Cuts } from "./cut";
 import type { Imported } from "./exchange";
 import { weightClassOf, weightedStyle, type Family } from "./family";
 import { partsUsedBy, type PartName } from "./parts";
@@ -294,6 +294,22 @@ export function cutReach(forge: Forge, name: CutName): { letters: string[]; held
   return { letters, held };
 }
 
+/**
+ * Whether this document takes anything out of anything.
+ *
+ * The font's own cuts, and the letters that hold their own. Asked in one place
+ * because the two callers would otherwise carry half the rule each, and the
+ * half that gets left out is the exceptions: a font with nothing cut font-wide
+ * and one letter slotted on its own is still a font with a cut in it, and it
+ * is exactly the case a check on the font's own settings sails past.
+ */
+export function anythingCut(forge: Forge): boolean {
+  if (anyCut(cutsOf(forge))) return true;
+  return Object.values(forge.cutExceptions ?? {}).some((held) =>
+    Object.values(held).some((patch) => patch?.on),
+  );
+}
+
 /** Every cut that some letter has been told to differ in. */
 export function cutsHeldBy(forge: Forge, letter: string): CutName[] {
   return CUT_NAMES.filter((name) => isCutException(forge, letter, name));
@@ -334,24 +350,91 @@ export function styleFor(letter: string, forge: Forge): Style {
  * still exists has not changed, and one that has changed is a different object.
  */
 const drawings = new WeakMap<Forge, Map<string, Drawn | null>>();
+const solids = new WeakMap<Forge, Map<string, Drawn | null>>();
 
-export function draw(letter: string, forge: Forge): Drawn | null {
-  let kept = drawings.get(forge);
+function remembered(
+  where: WeakMap<Forge, Map<string, Drawn | null>>,
+  forge: Forge,
+  letter: string,
+  make: () => Drawn | null,
+): Drawn | null {
+  let kept = where.get(forge);
   if (!kept) {
     kept = new Map();
-    drawings.set(forge, kept);
+    where.set(forge, kept);
   }
   if (kept.has(letter)) return kept.get(letter) ?? null;
-  // An imported letter is not drawn, so nothing below this line runs for it.
-  // It still goes through the cache, so that everything downstream -- the
-  // grid, the specimen, the checks, the exporters -- asks one question and
-  // gets one answer whichever kind of letter this is.
-  const outside = forge.imported[letter];
-  const drawn = outside
-    ? { contours: outside.contours, advanceWidth: outside.advanceWidth }
-    : drawLetter(letter, styleFor(letter, forge), formOf(forge, letter), cutsFor(letter, forge));
+  const drawn = make();
   kept.set(letter, drawn);
   return drawn;
+}
+
+/**
+ * A letter as the font has it: drawn, or brought in from outside, and in
+ * either case with whatever the font takes out of it taken out.
+ *
+ * Everything downstream -- the grid, the specimen, the checks, the exporters --
+ * asks this one question and gets one answer whichever kind of letter it is.
+ */
+export function draw(letter: string, forge: Forge): Drawn | null {
+  return remembered(drawings, forge, letter, () => {
+    const outside = forge.imported[letter];
+    if (!outside) {
+      return drawLetter(letter, styleFor(letter, forge), formOf(forge, letter), cutsFor(letter, forge));
+    }
+
+    /*
+     * A letter somebody drew elsewhere is still cut.
+     *
+     * It used to pass straight through, and the effect was a font that
+     * disagreed with itself: slots across every letter but the ampersand,
+     * which sat in the middle of the word solid. A cut is a decision about the
+     * font, and a letter that has joined the font is in it.
+     *
+     * Four of the six reach it. The other two are made out of the skeleton --
+     * a groove is the spine swept again, a break is where two spines meet --
+     * and there is no skeleton here, so they do nothing. Said in the panel
+     * rather than left to be discovered.
+     *
+     * Measured against the font's own pen, because the letter has none: a slot
+     * through the ampersand is the thickness a slot is in this font.
+     *
+     * And the shape is read rather than the winding believed. Everything swept
+     * here winds its counters against its ink on purpose; an outline that
+     * arrived from a drawing program has whatever winding that program left,
+     * and taking it at its word turns a counter into a piece of ink.
+     */
+    const cutting = cutInk(outside.contours, [], forge.style, cutsFor(letter, forge), "nesting");
+    return {
+      contours: cutting.contours,
+      // The advance it arrived with, whatever the cut did to its edges -- the
+      // same promise every drawn letter is given.
+      advanceWidth: outside.advanceWidth,
+      cut: cutting.cut,
+    };
+  });
+}
+
+/**
+ * The same letter with nothing taken out of it.
+ *
+ * For the trip out to a drawing program and back. What leaves has to be the
+ * letter the cuts are applied *to*, not the letter after them: hand somebody a
+ * slotted n to edit and the slots come back baked into the outline, and then
+ * the font cuts fresh slots through the ones already there.
+ *
+ * So the sheet carries the solid letter, the drawing that returns replaces the
+ * solid letter, and the cuts go on carrying on -- which is the whole point of
+ * their being a description rather than an edit.
+ */
+export function solid(letter: string, forge: Forge): Drawn | null {
+  if (!anythingCut(forge)) return draw(letter, forge);
+  return remembered(solids, forge, letter, () => {
+    const outside = forge.imported[letter];
+    return outside
+      ? { contours: outside.contours, advanceWidth: outside.advanceWidth }
+      : drawLetter(letter, styleFor(letter, forge), formOf(forge, letter));
+  });
 }
 
 /**

@@ -26,8 +26,7 @@ import {
   type Typeface,
 } from "@/font/types";
 import { letterNames } from "./build";
-import { anyCut } from "./cut";
-import { cutsOf, draw, type Forge } from "./document";
+import { anythingCut, draw, type Forge } from "./document";
 
 /**
  * What each drawn glyph is called in Unicode.
@@ -201,8 +200,11 @@ export async function toTypeface(
    * Everywhere else a letter that arrives uncut for one frame is nothing worth
    * mentioning. Here it would be a font file with the cuts missing from it,
    * which is the one place this cannot be allowed to happen quietly.
+   *
+   * The letters that hold their own cutting count, which is why the question
+   * is asked of the document rather than of its settings.
    */
-  if (anyCut(cutsOf(forge))) await readyToCut();
+  if (anythingCut(forge)) await readyToCut();
 
   const { metrics } = forge.style;
   const typeface = emptyTypeface();

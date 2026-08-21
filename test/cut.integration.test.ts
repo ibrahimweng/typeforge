@@ -11,7 +11,8 @@
 import { describe, expect, it } from "vitest";
 
 import { deliver } from "../src/forge/deliver";
-import { editCut, startFrom } from "../src/forge/document";
+import { editCut, importLetter, startFrom, type Forge } from "../src/forge/document";
+import { letterSvg, readLetterSvg } from "../src/forge/exchange";
 import { SANS } from "../src/forge/style";
 import { FONT_SUITE_TIMEOUT } from "./fixtures";
 import { inspectFont } from "./fonttools";
@@ -75,5 +76,44 @@ describe("a cut font, read from outside", { timeout: FONT_SUITE_TIMEOUT }, () =>
       { familyName: "Cut", format: "ttf" },
     );
     expect(inspectFont(regular.bytes).contoursOf.H).toBe(5);
+  });
+});
+
+describe("a letter drawn elsewhere, cut with the rest", { timeout: FONT_SUITE_TIMEOUT }, () => {
+  /** Take a letter out, flatten its curves so it is visibly somebody's drawing, put it back. */
+  function handDrawn(forge: Forge, letter: string): Forge {
+    const arrival = readLetterSvg(letterSvg(letter, forge) as string, forge);
+    if (!arrival) throw new Error("no sheet");
+    return importLetter(forge, letter, {
+      contours: arrival.contours.map((contour) => ({
+        ...contour,
+        nodes: contour.nodes.map((node) => ({ ...node, handleIn: null, handleOut: null })),
+      })),
+      advanceWidth: arrival.advanceWidth,
+      from: `${letter}.svg`,
+    });
+  }
+
+  it("writes the slots into it too", async () => {
+    const own = handDrawn(startFrom(SANS), "g");
+    const before = inspectFont(
+      (await deliver(own, { familyName: "Own", format: "ttf" })).bytes,
+    );
+    const cut = inspectFont(
+      (await deliver(editCut(own, "slot", { on: true }), { familyName: "Own", format: "ttf" })).bytes,
+    );
+    expect(cut.contoursOf.g).toBeGreaterThan(before.contoursOf.g);
+    expect(cut.recompiles).toBe(true);
+  });
+
+  it("waits for the geometry even when only one letter is cut", async () => {
+    // Nothing cut font-wide, one letter slotted on its own. A check on the
+    // font's own settings would sail past this and write the letter solid.
+    const own = handDrawn(startFrom(SANS), "g");
+    const alone = editCut(own, "slot", { on: true }, "g");
+    const read = inspectFont((await deliver(alone, { familyName: "One", format: "ttf" })).bytes);
+    const plain = inspectFont((await deliver(own, { familyName: "One", format: "ttf" })).bytes);
+    expect(read.contoursOf.g).toBeGreaterThan(plain.contoursOf.g);
+    expect(read.contoursOf.n).toBe(plain.contoursOf.n);
   });
 });
