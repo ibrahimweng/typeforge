@@ -20,7 +20,7 @@ import {
   type Recipe,
 } from "./letters";
 import { accentsFor, gapFor, hangsBelow, isCapital, type Parts } from "./accents";
-import { cutInk, reaches, type Cuts } from "./cut";
+import { cutInk, reaches, scaleOf, type Cuts } from "./cut";
 import { assemble, hasTiles, type Kit } from "./kit";
 import { alongSpine, spinePath, wavy } from "./shapes";
 import { penReach, reachAlong, sweep } from "./sweep";
@@ -217,7 +217,7 @@ export function makeLetter(
   // letter nothing can reach -- a space, which has no ink -- is not put through
   // the machinery to come back as what it already was.
   const cutting = reaches(cuts, strokes)
-    ? cutInk(inked.flat(), strokes, style, cuts as Cuts)
+    ? cutInk(inked.flat(), strokes, scaleOf(style), cuts as Cuts)
     : null;
   const cut = cutting ? sheared(cutting.contours, lean, pivot) : solid;
 

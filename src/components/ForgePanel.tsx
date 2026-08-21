@@ -582,7 +582,18 @@ function Cutting({
 
   return (
     <div className="border-t border-border pt-2 first-of-type:mt-2" data-forge-cut={spec.name}>
-      <label className="flex items-center justify-between gap-2">
+      {/*
+        A row, not a label.
+        *
+        * It was a <label> wrapping the name, the "own" badge and the switch,
+        * which reads well and does the wrong thing: a click on any button
+        * inside a label is forwarded to the label's own control as well, so
+        * pressing "own" to give a letter back to the font released it and then
+        * immediately toggled the switch, putting the exception straight back.
+        * Both handlers fired on one press. The switch names itself with
+        * aria-label, so the label element was buying nothing to begin with.
+      */}
+      <div className="flex items-center justify-between gap-2">
         <span className="min-w-0 flex-1 text-2xs font-medium text-foreground">{spec.label}</span>
         {pinned && (
           <button
@@ -612,7 +623,7 @@ function Cutting({
             )}
           />
         </button>
-      </label>
+      </div>
       <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">{spec.hint}</p>
       {unreachable && (
         <p className="pt-0.5 text-2xs leading-snug text-[color:var(--accent)]">

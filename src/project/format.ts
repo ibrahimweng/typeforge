@@ -22,6 +22,7 @@
 import type { Assembly } from "@/assemble/document";
 import { anyCut } from "@/forge/cut";
 import { baseNamed, cutsOf, familyOf, startFrom, whole, type Forge } from "@/forge/document";
+import type { Cuts } from "@/font/cuts";
 import type { Glyph, GlyphParams, KernClass, KernPair, Typeface } from "@/font/types";
 
 /** Which half of the application was open. */
@@ -74,6 +75,14 @@ export interface EditedProject {
   meta: Typeface["meta"];
   metrics: Typeface["metrics"];
   params: GlyphParams;
+  /**
+   * How the whole font is cut.
+   *
+   * A letter's own cuts ride along inside the glyph it belongs to, because a
+   * letter cut its own way is a touched letter and touched letters are saved
+   * whole. Only the font-wide description needs a place of its own.
+   */
+  cuts?: Cuts;
   kerning: KernPair[];
   kernClasses: KernClass[];
   /** Only the glyphs that have been touched. */
@@ -213,6 +222,7 @@ function toEdited(typeface: Typeface, fileName: string): EditedProject | undefin
     meta: typeface.meta,
     metrics: typeface.metrics,
     params: typeface.params,
+    cuts: typeface.cuts,
     kerning: typeface.kerning,
     kernClasses: typeface.kernClasses,
     glyphs: typeface.glyphs.filter((glyph) => glyph.dirty),
@@ -276,6 +286,7 @@ export function applyEdits(typeface: Typeface, saved: EditedProject): Typeface {
   typeface.meta = saved.meta;
   typeface.metrics = saved.metrics;
   typeface.params = saved.params;
+  typeface.cuts = saved.cuts;
   typeface.kerning = saved.kerning;
   typeface.kernClasses = saved.kernClasses;
 

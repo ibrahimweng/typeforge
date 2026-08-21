@@ -81,12 +81,17 @@ export function App(): React.JSX.Element {
    * So it is fetched once, in the background, and until it lands a letter with
    * slots through it is drawn without them -- which is an honest answer for a
    * moment rather than a wrong one for ever. When it arrives the drawing is
-   * asked to happen again.
+   * asked to happen again -- in all three halves of the application, because
+   * a font somebody opened and a pile of drawings somebody dropped are cut by
+   * the same library and were drawn without it for the same moment.
    */
   React.useEffect(() => {
     let live = true;
     void readyToCut().then(() => {
-      if (live) forgeStore.refresh();
+      if (!live) return;
+      forgeStore.refresh();
+      store.refresh();
+      assembleStore.refresh();
     });
     return () => {
       live = false;

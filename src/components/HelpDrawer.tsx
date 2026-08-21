@@ -285,6 +285,20 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
             happened and to which letters, so it is a decision rather than a
             surprise.
           </p>
+          <p>
+            <Term>All three halves of this application cut.</Term> A font you
+            opened is cut from its Parameters panel and a pile of drawings from
+            its own; the description is the same one, and so is everything
+            above about stem widths and about a cut being a decision you can
+            take back. What differs is what a cut has to work with. A face
+            drawn here knows how thick its stems are, because a pen drew them;
+            a font and a pile do not, so it is measured off their own letters
+            -- ruled across an I or an l or an H, whichever they have. And two
+            of the six are made out of the skeleton a letter was drawn from: an
+            outline out of a file has none, so the groove and the break do
+            nothing there and say so on the control rather than leaving you to
+            work it out from a drawing that did not change.
+          </p>
         </Section>
 
         {CUT_SPECS.map((spec) => (

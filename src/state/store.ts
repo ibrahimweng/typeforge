@@ -25,6 +25,13 @@ import { buildLinks, pointsThatMoved, propagateMoves, type LinkMap } from "@/fon
 import { importFont } from "@/font/parse";
 import { effectiveParams } from "@/font/transform";
 import {
+  noCuts,
+  NO_CUTS,
+  sameCut,
+  type CutName,
+  type Cuts,
+} from "@/font/cuts";
+import {
   DEFAULT_PARAMS,
   type Anchor,
   emptyTypeface,
@@ -606,6 +613,123 @@ class Store {
       },
     });
     this.touch();
+  }
+
+  // -------------------------------------------------------------------------
+  // Cutting
+  // -------------------------------------------------------------------------
+
+  /*
+   * Cuts are not parameters, and they are kept apart on purpose.
+   *
+   * A parameter is a number and a glyph's own value layers over the family's.
+   * A cut is a set of switched-on operations, and half the font's cuts merged
+   * with half a letter's own is not a description anybody wrote -- so a letter
+   * either goes along with the font or is cut its own way, and these say which.
+   */
+
+  /** Change one operation of the font's cuts. */
+  changeCut(name: CutName, patch: Partial<Cuts[CutName]>): void {
+    const typeface = this.state.typeface;
+    if (!typeface) return;
+    const cuts = typeface.cuts ?? noCuts();
+    typeface.cuts = { ...cuts, [name]: { ...cuts[name], ...patch } } as Cuts;
+    this.touch();
+  }
+
+  /** Record one history entry for a finished cut gesture. */
+  commitCuts(label: string, before: Cuts | undefined): void {
+    const typeface = this.state.typeface;
+    if (!typeface) return;
+    const after = typeface.cuts;
+    this.push({
+      label,
+      undo: () => {
+        typeface.cuts = before;
+      },
+      redo: () => {
+        typeface.cuts = after;
+      },
+    });
+    this.touch();
+  }
+
+  /** Change one operation of a letter's own cuts, taking it out of the font's. */
+  changeGlyphCut(name: string, cut: CutName, patch: Partial<Cuts[CutName]>): void {
+    const typeface = this.state.typeface;
+    if (!typeface) return;
+    const index = typeface.glyphIndex.get(name);
+    if (index === undefined) return;
+    const glyph = typeface.glyphs[index];
+    // Starting from the font's, so the first change to one operation keeps the
+    // rest of what the letter was already showing rather than clearing it.
+    const cuts = glyph.cuts ?? typeface.cuts ?? noCuts();
+    glyph.cuts = { ...cuts, [cut]: { ...cuts[cut], ...patch } } as Cuts;
+    // Touched, for the same reasons an override is: a "preserve" export writes
+    // the original bytes for any glyph nobody has touched.
+    glyph.dirty = true;
+    this.touch();
+  }
+
+  /** Put a letter back to being cut like the rest of the font. */
+  cutLikeTheRest(name: string): void {
+    const typeface = this.state.typeface;
+    if (!typeface) return;
+    const index = typeface.glyphIndex.get(name);
+    if (index === undefined) return;
+    const glyph = typeface.glyphs[index];
+    if (!glyph.cuts) return;
+    const before = glyph.cuts;
+    glyph.cuts = undefined;
+    glyph.dirty = true;
+    this.push({
+      label: `Cut ${name} like the rest`,
+      undo: () => {
+        typeface.glyphs[index].cuts = before;
+      },
+      redo: () => {
+        typeface.glyphs[index].cuts = undefined;
+      },
+    });
+    this.touch();
+  }
+
+  /** How a letter is cut, whether that is its own way or the font's. */
+  cutsFor(name: string): Cuts {
+    const typeface = this.state.typeface;
+    if (!typeface) return noCuts();
+    const index = typeface.glyphIndex.get(name);
+    const glyph = index === undefined ? undefined : typeface.glyphs[index];
+    return glyph?.cuts ?? typeface.cuts ?? noCuts();
+  }
+
+  /** Whether this letter is cut its own way rather than the font's. */
+  isCutException(name: string): boolean {
+    const typeface = this.state.typeface;
+    if (!typeface) return false;
+    const index = typeface.glyphIndex.get(name);
+    return index !== undefined && typeface.glyphs[index].cuts !== undefined;
+  }
+
+  /** Whether this letter's own cuts say something different about one operation. */
+  cutHeldBy(name: string, cut: CutName): boolean {
+    const typeface = this.state.typeface;
+    if (!typeface) return false;
+    const index = typeface.glyphIndex.get(name);
+    const own = index === undefined ? undefined : typeface.glyphs[index].cuts;
+    if (!own) return false;
+    return !sameCut(own[cut], (typeface.cuts ?? NO_CUTS)[cut]);
+  }
+
+  /**
+   * Redraw everything, for when the boolean library arrives after the font.
+   *
+   * The letters on screen are correct without it -- a cut that cannot be made
+   * is not made -- so nothing is wrong until it lands, and then everything
+   * has to be asked again.
+   */
+  refresh(): void {
+    if (this.state.typeface) this.touch();
   }
 
   /** Copy the resolved parameters of a glyph, for the inspector to display. */

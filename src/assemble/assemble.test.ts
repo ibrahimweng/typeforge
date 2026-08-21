@@ -14,9 +14,11 @@
  * difference visible: a box, a disc and a wedge.
  */
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
-import { contoursBounds } from "@/font/geometry";
+import { ready } from "@/font/boolean";
+import { noCuts, type CutName, type Cuts } from "@/font/cuts";
+import { contourArea, contoursBounds } from "@/font/geometry";
 import type { Contour } from "@/font/types";
 import {
   addPieces,
@@ -28,6 +30,10 @@ import {
   mapPiece,
   pieceFrom,
   clearSlot,
+  cutHeldBy,
+  cutLikeTheRest,
+  cutOneWay,
+  editCuts,
   pieceInto,
   putInSlot,
   setKern,
@@ -103,6 +109,143 @@ function piece(file: string, character: string, contours: Contour[], viewWidth =
 function from(pieces: Piece[], patch: Partial<Assembly> = {}): Assembly {
   return { ...addPieces(emptyAssembly(), pieces), ...patch };
 }
+
+
+describe("cutting a pile of drawings", () => {
+  beforeAll(async () => {
+    await ready();
+  });
+
+  /*
+   * An I that is one stem, an H that is two and a bar, and an O that is a
+   * ring. Rectangles again, for the same reason as everywhere else here: a
+   * shape with a right answer that can be written down.
+   */
+  const pile = (): Assembly =>
+    from([
+      piece("I.svg", "I", [box(240, 100, 120, 600)]),
+      piece("H.svg", "H", [box(120, 100, 120, 600), box(240, 350, 120, 100), box(360, 100, 120, 600)]),
+      piece("O.svg", "O", [box(120, 100, 360, 600), box(200, 180, 200, 440)]),
+    ]);
+
+  const cutWith = (patch: (cuts: Cuts) => void): Cuts => {
+    const cuts = noCuts();
+    patch(cuts);
+    return cuts;
+  };
+
+  const inkOf = (assembly: Assembly, character: string): number => {
+    const letter = build(assembly).letters.find((one) => one.character === character);
+    if (!letter) throw new Error(`${character} was not built`);
+    return Math.abs(letter.contours.reduce((total, one) => total + contourArea(one), 0));
+  };
+
+  it("takes ink out of every drawing in the pile", () => {
+    const plain = pile();
+    const cut = editCuts(plain, cutWith((one) => { one.slot.on = true; }));
+    for (const character of ["I", "H", "O"]) {
+      expect(inkOf(cut, character), character).toBeLessThan(inkOf(plain, character));
+    }
+  });
+
+  it("spaces the drawing before it is cut, so switching a cut on reflows nothing", () => {
+    /*
+     * A slot takes ink out of a letter's silhouette, and a narrower silhouette
+     * asks for less space either side. Measured after the cut, switching the
+     * slots on would respace the whole font -- every word reflowing because of
+     * a decision about how the letters look.
+     */
+    const plain = build(pile()).letters;
+    const cut = build(editCuts(pile(), cutWith((one) => { one.slot.on = true; }))).letters;
+    // The letters really were cut, or the rest of this proves only that
+    // nothing happened at all.
+    expect(inkOf(editCuts(pile(), cutWith((one) => { one.slot.on = true; })), "H"))
+      .toBeLessThan(inkOf(pile(), "H"));
+    for (const was of plain) {
+      const now = cut.find((one) => one.character === was.character)!;
+      expect(now.advanceWidth, was.character).toBeCloseTo(was.advanceWidth, 6);
+      expect(now.bearings.left, was.character).toBeCloseTo(was.bearings.left, 6);
+    }
+  });
+
+  it("measures the stem after the drawings are fitted, not as they arrived", () => {
+    /*
+     * A pile is drawings from different programs and one can arrive ten times
+     * the size of another. Only after the fit are they all in the same units,
+     * so a stem read before it would be a number in whatever the file used --
+     * and the same pile drawn twice as large would cut itself twice as deep.
+     */
+    const small = pile();
+    const large = from(
+      small.pieces.map((one) => ({
+        ...one,
+        contours: one.contours.map((contour) => ({
+          ...contour,
+          nodes: contour.nodes.map((node) => ({
+            ...node,
+            point: { x: node.point.x * 10, y: node.point.y * 10 },
+          })),
+        })),
+        viewBox: { x: 0, y: 0, width: 6000, height: 8000 },
+      })),
+    );
+    const cuts = cutWith((one) => { one.slot.on = true; });
+    const share = (assembly: Assembly): number =>
+      1 - inkOf(editCuts(assembly, cuts), "H") / inkOf(assembly, "H");
+    // A real share of the letter, not two zeroes agreeing with each other.
+    expect(share(small)).toBeGreaterThan(0.02);
+    expect(share(large)).toBeCloseTo(share(small), 2);
+  });
+
+  it("lets one drawing be cut its own way instead of the pile's", () => {
+    const plain = pile();
+    const cuts = cutWith((one) => { one.slot.on = true; });
+    const mixed = cutOneWay(editCuts(plain, cuts), "H", noCuts());
+
+    // An exception standing in for the pile's rather than adding to them.
+    expect(inkOf(mixed, "H")).toBeCloseTo(inkOf(plain, "H"), 6);
+    expect(inkOf(mixed, "I")).toBeLessThan(inkOf(plain, "I"));
+
+    const back = cutLikeTheRest(mixed, "H");
+    expect(inkOf(back, "H")).toBeLessThan(inkOf(plain, "H"));
+  });
+
+  it("marks only the operation a drawing actually holds its own version of", () => {
+    /*
+     * Taking a letter out of the pile's cuts starts it as a copy of them, so
+     * on that moment all six still agree. Marking every one of them as held
+     * would say the drawing had been cut its own way six times over when
+     * nothing had been changed at all.
+     */
+    const cuts = cutWith((one) => { one.slot.on = true; });
+    const copied = cutOneWay(editCuts(pile(), cuts), "H", { ...noCuts(), slot: { ...cuts.slot } });
+    const names: CutName[] = ["slot", "tooth", "chamfer", "split", "inline", "motif"];
+    expect(names.filter((name) => cutHeldBy(copied, "H", name))).toEqual([]);
+
+    const changed = cutOneWay(copied, "H", cutWith((one) => {
+      one.slot.on = true;
+      one.tooth.on = true;
+    }));
+    expect(changed.cutExceptions!.H.tooth.on).toBe(true);
+    expect(cutHeldBy(changed, "H", "tooth")).toBe(true);
+    expect(cutHeldBy(changed, "H", "slot")).toBe(false);
+  });
+
+  it("does nothing with the two that are made out of a skeleton", () => {
+    const plain = pile();
+    const cut = editCuts(plain, cutWith((one) => {
+      one.inline.on = true;
+      one.split.on = true;
+    }));
+    // A drawing that arrived as an outline has no spine to sweep again and no
+    // join to find, so the honest answer is the drawing unchanged.
+    expect(inkOf(cut, "H")).toBeCloseTo(inkOf(plain, "H"), 6);
+    // And the same pile with a cut that does reach an outline is changed, so
+    // what is being shown is these two declining rather than nothing working.
+    expect(inkOf(editCuts(plain, cutWith((one) => { one.slot.on = true; })), "H"))
+      .toBeLessThan(inkOf(plain, "H"));
+  });
+});
 
 describe("guessing which character a file is for", () => {
   it("reads the plain ones", () => {

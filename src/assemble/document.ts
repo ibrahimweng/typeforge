@@ -19,7 +19,10 @@
  * matter of keeping the previous value.
  */
 
+import { anyCut, noCuts, NO_CUTS, sameCut, type CutName, type Cuts } from "@/font/cuts";
 import { contoursBounds } from "@/font/geometry";
+import { measuredStem } from "@/font/stem";
+import { cutInk } from "@/forge/cut";
 import { readSvg, type SvgBox } from "@/font/svg";
 import type { Contour, KernPair } from "@/font/types";
 import { detectFit, fitted, placements, type FitMetrics, type FitMode, type Placement } from "./fit";
@@ -72,6 +75,16 @@ export interface Assembly {
   tweaks: Record<string, Tweak>;
   /** Kerning changed by hand, by "left right", overriding what was measured. */
   kerns: Record<string, number>;
+  /** How the whole pile is cut. Undefined is the same as nothing switched on. */
+  cuts?: Cuts;
+  /**
+   * Drawings cut their own way rather than the pile's, by character.
+   *
+   * An exception rather than an addition: a drawing either goes along with the
+   * pile or is cut its own way. Half the pile's cuts merged with half a
+   * letter's own is not a description anybody wrote.
+   */
+  cutExceptions?: Record<string, Cuts>;
 }
 
 export const DEFAULT_METRICS: FitMetrics = {
@@ -94,6 +107,51 @@ export function emptyAssembly(): Assembly {
     tweaks: {},
     kerns: {},
   };
+}
+
+/** How one character is cut: its own way if it says so, the pile's otherwise. */
+export function cutsFor(character: string, assembly: Assembly): Cuts | undefined {
+  return assembly.cutExceptions?.[character] ?? assembly.cuts;
+}
+
+/** Whether anything anywhere in the pile is switched on. */
+export function anythingCut(assembly: Assembly): boolean {
+  if (anyCut(assembly.cuts)) return true;
+  return Object.values(assembly.cutExceptions ?? {}).some((cuts) => anyCut(cuts));
+}
+
+export function editCuts(assembly: Assembly, cuts: Cuts | undefined): Assembly {
+  return { ...assembly, cuts };
+}
+
+export function cutOneWay(assembly: Assembly, character: string, cuts: Cuts): Assembly {
+  return {
+    ...assembly,
+    cutExceptions: { ...assembly.cutExceptions, [character]: cuts },
+  };
+}
+
+export function cutLikeTheRest(assembly: Assembly, character: string): Assembly {
+  if (!assembly.cutExceptions?.[character]) return assembly;
+  const rest = { ...assembly.cutExceptions };
+  delete rest[character];
+  return { ...assembly, cutExceptions: rest };
+}
+
+export function isCutException(assembly: Assembly, character: string): boolean {
+  return assembly.cutExceptions?.[character] !== undefined;
+}
+
+/** Whether this character's own cuts say something different about one operation. */
+export function cutHeldBy(assembly: Assembly, character: string, name: CutName): boolean {
+  const own = assembly.cutExceptions?.[character];
+  if (!own) return false;
+  return !sameCut(own[name], (assembly.cuts ?? NO_CUTS)[name]);
+}
+
+/** A pile with nothing taken out of it, for a panel to start from. */
+export function cutsOrNone(assembly: Assembly): Cuts {
+  return assembly.cuts ?? noCuts();
 }
 
 // ---------------------------------------------------------------------------
@@ -367,9 +425,48 @@ export function build(assembly: Assembly): Built {
   const placed: Placed[] = [];
   const letters: Assembled[] = [];
 
+  /*
+   * Fitted first, all of them, before anything is cut.
+   *
+   * A cut is described in stem widths, and the stem has to be measured off the
+   * drawings -- nothing here was drawn with a pen that could be asked. But a
+   * pile of SVGs arrives at whatever size the program that made them used, and
+   * one drawing in the pile can be ten times another. Only after the fit are
+   * they all in the same units, so only after the fit is there a stem to
+   * measure.
+   */
+  const shapes = new Map<string, Contour[]>();
   for (const piece of chosen) {
     const placement = where.get(piece.character) ?? { scale: 1, shift: 0, measured: false };
-    const contours = fitted(piece.contours, placement);
+    shapes.set(piece.character, fitted(piece.contours, placement));
+  }
+  const cutting = anythingCut(assembly);
+  const scale = cutting
+    ? {
+        stem: measuredStem(
+          [...shapes].map(([character, contours]) => ({ name: character, contours })),
+          assembly.metrics,
+        ),
+        ascender: assembly.metrics.ascender,
+        descender: assembly.metrics.descender,
+        xHeight: assembly.metrics.xHeight,
+      }
+    : null;
+
+  for (const piece of chosen) {
+    const placement = where.get(piece.character) ?? { scale: 1, shift: 0, measured: false };
+    const contours = shapes.get(piece.character) ?? fitted(piece.contours, placement);
+    /*
+     * Spacing is measured on the letter before it is cut, and that is the
+     * whole point of doing it in this order.
+     *
+     * A slot through a letter takes ink out of its silhouette, and a narrower
+     * silhouette asks for less space either side. Measured after the cut,
+     * switching the slots on would respace the entire font -- every word would
+     * reflow because of a decision about how the letters look. So the letter
+     * is spaced as the solid shape it was drawn as, and the cuts are taken out
+     * of what gets handed on. It is the same rule the drawn side follows.
+     */
     const silhouette = silhouetteOf(contours, assembly.metrics);
     const measuredSpace = spaceOne(silhouette, assembly.spacing, assembly.metrics);
 
@@ -390,7 +487,16 @@ export function build(assembly: Assembly): Built {
       // Shifted so the letter's own ink starts at its left sidebearing, which
       // is what an advance is measured from. Until this point a drawing has
       // been wherever its file put it.
-      contours: shifted(contours, bearings.left),
+      //
+      // Nesting rather than winding: these outlines came out of somebody
+      // else's program and nothing has promised which way a counter is wound.
+      contours: shifted(
+        scale
+          ? cutInk(contours, [], scale, cutsFor(piece.character, assembly) ?? noCuts(), "nesting")
+              .contours
+          : contours,
+        bearings.left,
+      ),
       advanceWidth: bearings.advanceWidth,
       bearings,
       placement,

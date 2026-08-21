@@ -18,6 +18,8 @@ import { CoachMark } from "@/components/CoachMark";
 import { ControlLetters } from "@/components/ControlLetters";
 import { segment } from "@/components/controls";
 import { PARAMS } from "@/components/param-specs";
+import { CutPanel } from "@/components/CutPanel";
+import { noCuts, type CutName, type Cuts } from "@/font/cuts";
 import { DEFAULT_PARAMS, type GlyphParams } from "@/font/types";
 import { store, useAppState } from "@/state/useStore";
 // Imported from the control directly rather than through the UI barrel: the
@@ -156,7 +158,11 @@ export function Inspector(): React.JSX.Element {
             </div>
           );
         })}
+      </div>
 
+      <Cutting scope={scope} glyphName={glyphName} />
+
+      <div className="p-3">
         <button
           type="button"
           onClick={() => {
@@ -176,5 +182,68 @@ export function Inspector(): React.JSX.Element {
       </div>
       )}
     </aside>
+  );
+}
+
+/**
+ * Cutting an opened font.
+ *
+ * The same panel the drawn side has, on the same description -- what differs
+ * is only that these outlines came out of a file. Two of the six cuts are made
+ * out of a skeleton and a file has none, so they are switched on and say so
+ * rather than quietly doing nothing.
+ */
+function Cutting({
+  scope,
+  glyphName,
+}: {
+  scope: Scope;
+  glyphName: string | null;
+}): React.JSX.Element | null {
+  const state = useAppState();
+  const typeface = state.typeface;
+  if (!typeface || scope === "build") return null;
+
+  const one = scope === "glyph" && glyphName !== null;
+  /*
+   * In glyph scope this shows what the letter actually has rather than what
+   * the font has, which is where cuts part company with the rows above.
+   *
+   * A parameter override is rare and starts from the family's value, so
+   * showing the family's is showing what the first drag moves away from. A cut
+   * exception is the ordinary way to deal with the letter that has nowhere to
+   * put the third slot, and showing the font's value there would be showing a
+   * number this letter is not cut by.
+   */
+  const cuts: Cuts = one ? store.cutsFor(glyphName) : typeface.cuts ?? noCuts();
+  const held = one ? (name: CutName) => store.cutHeldBy(glyphName, name) : null;
+
+  const change = (name: CutName, patch: Record<string, unknown>): void => {
+    if (one) store.changeGlyphCut(glyphName, name, patch as never);
+    else {
+      const before = typeface.cuts;
+      store.changeCut(name, patch as never);
+      store.commitCuts(`Cut ${name}`, before);
+    }
+  };
+
+  return (
+    <CutPanel
+      tag="edit"
+      cuts={cuts}
+      onChange={change}
+      unitsPerEm={typeface.unitsPerEm}
+      scopeNote={
+        one
+          ? `Cutting ${glyphName} alone. The rest of the font keeps its own.`
+          : "Cutting the whole font."
+      }
+      reach={
+        "Nothing here: this one is made out of the skeleton a letter was drawn " +
+        "from, and a letter out of a font file has none."
+      }
+      heldNote={(name) => (held?.(name) ? "own" : null)}
+      onRelease={() => glyphName && store.cutLikeTheRest(glyphName)}
+    />
   );
 }

@@ -18,6 +18,11 @@ import {
   pieceInto,
   putInSlot,
   removePiece,
+  cutLikeTheRest,
+  cutOneWay,
+  cutsFor,
+  cutsOrNone,
+  editCuts,
   setKern,
   tweak,
   type Assembly,
@@ -25,6 +30,7 @@ import {
   type Tweak,
 } from "@/assemble/document";
 import { build } from "@/assemble/document";
+import type { CutName, Cuts } from "@/font/cuts";
 import type { FitMetrics, FitMode } from "@/assemble/fit";
 import type { SpacingSettings } from "@/assemble/spacing";
 import type { Typeface } from "@/font/types";
@@ -218,6 +224,56 @@ class AssembleStore {
 
   nudge(character: string, patch: Partial<Tweak>, phase: Phase = "single"): void {
     this.commit(tweak(this.state.assembly, character, patch), phase);
+  }
+
+  /*
+   * Cutting.
+   *
+   * A drawing either goes along with the pile or is cut its own way -- an
+   * exception rather than a layer, because half the pile's cuts merged with
+   * half a drawing's own is not a description anybody wrote.
+   */
+
+  changeCut(name: CutName, patch: Partial<Cuts[CutName]>, phase: Phase = "single"): void {
+    const cuts = cutsOrNone(this.state.assembly);
+    this.commit(
+      editCuts(this.state.assembly, { ...cuts, [name]: { ...cuts[name], ...patch } } as Cuts),
+      phase,
+    );
+  }
+
+  changeOneCut(
+    character: string,
+    name: CutName,
+    patch: Partial<Cuts[CutName]>,
+    phase: Phase = "single",
+  ): void {
+    // Starting from however this character is cut now, so changing one
+    // operation keeps the rest of what it was already showing.
+    const cuts = cutsFor(character, this.state.assembly) ?? cutsOrNone(this.state.assembly);
+    this.commit(
+      cutOneWay(this.state.assembly, character, {
+        ...cuts,
+        [name]: { ...cuts[name], ...patch },
+      } as Cuts),
+      phase,
+    );
+  }
+
+  /** Put one drawing back to being cut like the rest of the pile. */
+  cutLikeTheRest(character: string): void {
+    this.commit(cutLikeTheRest(this.state.assembly, character));
+  }
+
+  /**
+   * Rebuild, for when the boolean library arrives after the drawings.
+   *
+   * `build` keeps its answer against the assembly it was given, so a pile
+   * built before the library landed would stay uncut however many times it was
+   * asked. A new object is a new question.
+   */
+  refresh(): void {
+    this.set({ assembly: { ...this.state.assembly }, revision: this.state.revision + 1 });
   }
 
   setPairKern(left: string, right: string, value: number | null, phase: Phase = "single"): void {

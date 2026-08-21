@@ -25,7 +25,7 @@
  * for and is why it is asked on the way in to every operation.
  */
 
-import { contourArea, contoursBounds } from "./geometry";
+import { contourArea, contoursBounds, reverseContour } from "./geometry";
 import { classifyContours } from "./outline";
 import type { Contour, GlyphNode, Vec2 } from "./types";
 
@@ -110,7 +110,25 @@ export type Roles = "nesting" | "winding";
 export function unite(contours: Contour[], roles: Roles = "nesting"): Contour[] {
   const paper = need();
   const drawable = contours.filter((contour) => contour.nodes.length >= 2);
-  if (drawable.length < 2) return contours;
+  /*
+   * One shape is already its own union -- but it still has to come back wound
+   * the way everything downstream of a fuse is entitled to expect, which is
+   * what this function promises and what the short way out used to skip.
+   *
+   * A lone contour is the outside of the letter, because there is nothing else
+   * for it to be inside of. Handed back as it arrived it kept whatever winding
+   * the file it came from used, and DejaVu winds the outer contour of H
+   * clockwise -- so the counter motif, which finds counters by their winding,
+   * read the whole letter as a hole, found no ink to keep, and subtracted the
+   * H into nothing. Under `winding` the caller has promised the roles are
+   * already right and is left alone.
+   */
+  if (drawable.length < 2) {
+    if (roles === "winding") return contours;
+    return contours.map((contour) =>
+      contour.nodes.length >= 2 && contourArea(contour) < 0 ? reverseContour(contour) : contour,
+    );
+  }
 
   clear(paper);
   /*

@@ -1992,6 +1992,84 @@ test("assembles a font from a pile of SVG drawings", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+
+test("cuts a font it did not draw, and lets one letter keep out of it", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  await openFont(page);
+
+  const panel = page.locator('[data-cut-panel="edit"]');
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText("Cutting the whole font.");
+
+  /*
+   * Counted off the canvas the grid draws on, because that is the only place
+   * that answers the actual question -- whether what is on the screen is the
+   * cut letter. A model that has been cut and a grid still drawing the file's
+   * own outlines would pass every other check in this suite.
+   */
+  const inkInCell = async (): Promise<number> =>
+    page.evaluate(() => {
+      const cell = document.querySelector('[data-glyph-cell="H"] canvas') as HTMLCanvasElement;
+      const context = cell?.getContext("2d");
+      if (!context) return -1;
+      const { data } = context.getImageData(0, 0, cell.width, cell.height);
+      let lit = 0;
+      for (let at = 3; at < data.length; at += 4) if (data[at] > 8) lit++;
+      return lit;
+    });
+
+  const whole = await inkInCell();
+  expect(whole).toBeGreaterThan(0);
+
+  await panel.locator('[data-cut-switch="slot"]').click();
+  await expect(panel.locator('[data-cut-switch="slot"]')).toHaveAttribute("aria-checked", "true");
+  // Bands taken out of the letter leave less of it lit than there was.
+  await expect.poll(inkInCell, { timeout: 20_000 }).toBeLessThan(whole * 0.97);
+
+  // The two made out of a skeleton say so rather than doing nothing quietly.
+  await panel.locator('[data-cut-switch="inline"]').click();
+  await expect(panel).toContainText("made out of the skeleton");
+
+  expect(errors).toEqual([]);
+});
+
+test("cuts a pile of drawings, and one drawing its own way", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openAssemble(page);
+  await dropFolder(page, PILE);
+  await expect(page.locator('[data-assemble-filled="yes"]')).toHaveCount(5);
+
+  const panel = page.locator('[data-cut-panel="assemble"]');
+  await expect(panel).toBeVisible();
+  // The pile is what a cut reaches by default. Following the selected drawing
+  // instead would cut one letter and leave the rest, which is neither what it
+  // looks like nor what anybody wants first.
+  await expect(panel).toContainText("Cutting every drawing in the pile.");
+
+  await panel.locator('[data-cut-switch="slot"]').click();
+  await expect(panel.locator('[data-cut-switch="slot"]')).toHaveAttribute("aria-checked", "true");
+
+  // Now take one drawing out of the pile's cuts and give it its own.
+  await page.locator('[data-cut-scope="one"]').click();
+  await expect(panel).toContainText("alone. The rest of the pile keeps its own.");
+  await panel.locator('[data-cut-switch="tooth"]').click();
+
+  // Only the operation that was actually changed is marked as held: taking a
+  // letter out starts it as a copy, and marking all six would say it had been
+  // cut its own way six times over.
+  await expect(panel.locator('[data-cut-release="tooth"]')).toBeVisible();
+  await expect(panel.locator('[data-cut-release="slot"]')).toHaveCount(0);
+
+  // And it can be put back to being cut like the rest.
+  await panel.locator('[data-cut-release="tooth"]').click();
+  await expect(panel.locator('[data-cut-release="tooth"]')).toHaveCount(0);
+
+  expect(errors).toEqual([]);
+});
+
 test("gives a drawing that leans away less white than one that does not", async ({ page }) => {
   await openAssemble(page);
   await dropFolder(page, PILE);

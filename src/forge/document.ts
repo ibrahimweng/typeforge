@@ -17,7 +17,7 @@
  */
 
 import { decidedBy, drawLetter, letterNames, type Drawn } from "./build";
-import { anyCut, cutInk, CUT_NAMES, noCuts, type CutName, type Cuts } from "./cut";
+import { anyCut, cutInk, CUT_NAMES, noCuts, scaleOf, type CutName, type Cuts } from "./cut";
 import {
   emptyKit,
   hasTiles,
@@ -572,7 +572,7 @@ export function draw(letter: string, forge: Forge): Drawn | null {
      * arrived from a drawing program has whatever winding that program left,
      * and taking it at its word turns a counter into a piece of ink.
      */
-    const cutting = cutInk(outside.contours, [], forge.style, cutsFor(letter, forge), "nesting");
+    const cutting = cutInk(outside.contours, [], scaleOf(forge.style), cutsFor(letter, forge), "nesting");
     return {
       contours: cutting.contours,
       // The advance it arrived with, whatever the cut did to its edges -- the
