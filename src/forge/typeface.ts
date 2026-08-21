@@ -58,6 +58,67 @@ const CODEPOINTS: Record<string, number> = {
   colon: 0x3a,
   semicolon: 0x3b,
   question: 0x3f,
+
+  // The symbols. Named as the type world names them, so a file written here
+  // has a `sterling` and an `asciitilde` where every other font has one.
+  numbersign: 0x23,
+  dollar: 0x24,
+  percent: 0x25,
+  ampersand: 0x26,
+  asterisk: 0x2a,
+  plus: 0x2b,
+  less: 0x3c,
+  equal: 0x3d,
+  greater: 0x3e,
+  at: 0x40,
+  bracketleft: 0x5b,
+  backslash: 0x5c,
+  bracketright: 0x5d,
+  asciicircum: 0x5e,
+  underscore: 0x5f,
+  braceleft: 0x7b,
+  bar: 0x7c,
+  braceright: 0x7d,
+  asciitilde: 0x7e,
+  exclamdown: 0xa1,
+  cent: 0xa2,
+  sterling: 0xa3,
+  currency: 0xa4,
+  yen: 0xa5,
+  brokenbar: 0xa6,
+  section: 0xa7,
+  copyright: 0xa9,
+  ordfeminine: 0xaa,
+  guillemotleft: 0xab,
+  logicalnot: 0xac,
+  registered: 0xae,
+  degree: 0xb0,
+  plusminus: 0xb1,
+  twosuperior: 0xb2,
+  threesuperior: 0xb3,
+  mu: 0xb5,
+  paragraph: 0xb6,
+  periodcentered: 0xb7,
+  onesuperior: 0xb9,
+  ordmasculine: 0xba,
+  guillemotright: 0xbb,
+  onequarter: 0xbc,
+  onehalf: 0xbd,
+  threequarters: 0xbe,
+  questiondown: 0xbf,
+  multiply: 0xd7,
+  divide: 0xf7,
+};
+
+/**
+ * The glyphs that answer to more than one character.
+ *
+ * A spacing grave and a combining one are the same tick at the same height, and
+ * every font that carries both draws it once. Drawn twice here it would be two
+ * glyphs to keep in step, and the day the accent changed one of them would not.
+ */
+const ALSO: Record<string, number[]> = {
+  grave: [0x0060],
 };
 
 /*
@@ -88,9 +149,18 @@ const MARK_CODEPOINTS: Record<string, number> = {
   dotlessj: 0x0237,
 };
 
+/** Every character this glyph is the drawing of. */
+export function codepointsFor(name: string): number[] {
+  if (name.length === 1) {
+    const one = name.codePointAt(0);
+    return one === undefined ? [] : [one];
+  }
+  const first = CODEPOINTS[name] ?? MARK_CODEPOINTS[name] ?? codepointOfAccented(name) ?? null;
+  return first === null ? (ALSO[name] ?? []) : [first, ...(ALSO[name] ?? [])];
+}
+
 export function codepointFor(name: string): number | null {
-  if (name.length === 1) return name.codePointAt(0) ?? null;
-  return CODEPOINTS[name] ?? MARK_CODEPOINTS[name] ?? codepointOfAccented(name) ?? null;
+  return codepointsFor(name)[0] ?? null;
 }
 
 export interface ForgeExportOptions {
@@ -147,10 +217,9 @@ export async function toTypeface(
     if (options.merge && contours.length > 1) {
       contours = correctDirection(await removeOverlaps(correctDirection(contours, "truetype")), "truetype");
     }
-    const codepoint = codepointFor(name);
     glyphs.push({
       name,
-      unicodes: codepoint === null ? [] : [codepoint],
+      unicodes: codepointsFor(name),
       advanceWidth: drawn.advanceWidth,
       contours,
       components: [],

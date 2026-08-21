@@ -19,8 +19,8 @@ import * as React from "react";
 import { CoachMark } from "@/components/CoachMark";
 import { Reference } from "@/components/Reference";
 import { contoursToSvgPath } from "@/font/geometry";
-import { canDraw, letterNames, skeletonOf } from "@/forge/build";
-import { accentedNameFor } from "@/forge/accents";
+import { letterNames, skeletonOf } from "@/forge/build";
+import { codepointsFor } from "@/forge/typeface";
 import { draw, formOf, isException, isImported, partsOf, reach, styleFor } from "@/forge/document";
 import { handlesFor, valueAfter, type Handle } from "@/forge/handles";
 import { troubles } from "@/forge/health";
@@ -565,6 +565,12 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
         x += state.forge.style.metrics.unitsPerEm * 0.26;
         continue;
       }
+      if (drawn.contours.length === 0) {
+        // A space, which the font does have a glyph for and does have a width
+        // for -- so it gets that width rather than the guess above.
+        x += drawn.advanceWidth;
+        continue;
+      }
       pieces.push({ d: contoursToSvgPath(drawn.contours), x });
       x += drawn.advanceWidth;
     }
@@ -625,50 +631,27 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
 }
 
 /**
- * What the font calls a typed character.
- *
- * The glyphs are named rather than keyed by character, because a full stop
- * cannot be a property called ".".
- */
-const NAMED: Record<string, string> = {
-  "0": "zero",
-  "1": "one",
-  "2": "two",
-  "3": "three",
-  "4": "four",
-  "5": "five",
-  "6": "six",
-  "7": "seven",
-  "8": "eight",
-  "9": "nine",
-  ".": "period",
-  ",": "comma",
-  ":": "colon",
-  ";": "semicolon",
-  "!": "exclam",
-  "?": "question",
-  "-": "hyphen",
-  "(": "parenleft",
-  ")": "parenright",
-  "/": "slash",
-  "'": "quotesingle",
-  '"': "quotedbl",
-};
-
-/**
  * Which letter draws a character, for setting a line of type in the specimen.
  *
- * The accented letters are asked for by codepoint rather than listed, because
- * they are built rather than drawn and the list of them is not written down
- * anywhere. Without this the specimen quietly dropped them: typing
- * "Ångström café" set "ngstr m caf", which reads as a font that cannot draw
- * those letters rather than as a specimen that cannot find them.
+ * Read back off the characters the font already answers to, rather than from a
+ * list kept beside them. There was such a list: two dozen marks somebody had
+ * thought of, and it had already had to learn the accented letters once. Every
+ * symbol added since would have had to be typed into it a second time, and
+ * until somebody did, the specimen would set a line with holes in it and read
+ * as a font that could not draw them.
  */
-function nameOf(character: string): string | null {
-  if (/[A-Za-z]/.test(character)) return character;
-  const named = NAMED[character] ?? accentedNameFor(character.codePointAt(0) ?? -1);
-  return named && canDraw(named) ? named : null;
+const BY_CHARACTER = new Map<string, string>();
+for (const name of letterNames()) {
+  for (const codepoint of codepointsFor(name)) {
+    const character = String.fromCodePoint(codepoint);
+    if (!BY_CHARACTER.has(character)) BY_CHARACTER.set(character, name);
+  }
 }
+
+function nameOf(character: string): string | null {
+  return BY_CHARACTER.get(character) ?? null;
+}
+
 
 /**
  * What has closed up, and where.

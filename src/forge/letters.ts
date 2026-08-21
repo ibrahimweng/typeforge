@@ -105,6 +105,31 @@ let recording: Set<PartName> | null = null;
 let pending: PartName[] = [];
 const STROKE_PARTS = new WeakMap<Stroke, PartName[]>();
 
+/*
+ * Which letterform the letter inside a symbol is drawn in.
+ *
+ * A single slot, for the reason the collected parts above are: drawing is
+ * synchronous and one letter at a time, so nothing else can be halfway through
+ * a symbol while this one is being built.
+ */
+let borrowing: string | undefined;
+
+/**
+ * Which letter a symbol is drawn out of, noted as the symbol is declared.
+ *
+ * Not a table beside the recipes saying that a cent is a c. It is the same
+ * fact, read back off the recipe that says it, so the two cannot come apart --
+ * which three tables in this file already have.
+ *
+ * What it is for is ownership of a decision. An ª is the a of this font set
+ * small, so which a it is belongs to the a: choosing the single-storey one and
+ * finding a two-storey ordinal beside it would be the same letter drawn twice
+ * in one font, which is exactly what the accented letters already avoid by
+ * reading their base's answer rather than keeping one of their own.
+ */
+const BEHIND = new WeakMap<(style: Style) => Recipe, LetterName>();
+
+
 function uses(part: PartName): void {
   recording?.add(part);
   pending.push(part);
@@ -274,7 +299,7 @@ function bend(f: Frame, centre: Vec2, radius: number, fromDegrees: number, toDeg
  *
  * Bowing to the left of the direction travelled when the fraction is positive.
  */
-function bow(f: Frame, from: Vec2, to: Vec2, amount: number): Spine {
+function bowed(f: Frame, from: Vec2, to: Vec2, amount: number): Spine {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const chord = Math.hypot(dx, dy);
@@ -999,17 +1024,20 @@ function markFrame(style: Style): Frame {
 }
 
 /**
- * How a mark's stroke ends.
+ * How a short run ends.
  *
- * The face's own, where a short run can carry it. An angled cut slides one
- * corner of the end forward and the other back, by an amount set by the pen
+ * The face's own, where a run has the length to carry it. An angled cut slides
+ * one corner of the end forward and the other back, by an amount set by the pen
  * rather than by the run -- and on a stroke a hundred units long that is most
  * of the stroke, so the two ends met in the middle and the acute of the serif
- * face folded through itself. A round cap is safe at any length, being a
- * half-disc; a square one always is. A serif is not offered at all: the bar of
- * one is wider than an accent is long.
+ * face folded through itself. The arms of a multiply sign did the same. A round
+ * cap is safe at any length, being a half-disc; a square one always is. A serif
+ * is not offered at all: the bar of one is wider than an accent is long.
+ *
+ * For the accents and for the signs, which is every run in the font too short
+ * to be cut at an angle.
  */
-function markEnd(f: Frame): Terminal {
+function shortEnd(f: Frame): Terminal {
   return f.plain.kind === "round" ? f.plain : BUTT;
 }
 
@@ -2574,7 +2602,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const width = f.arch * 0.7;
     return finish(
       f,
-      [thin(f, straight(at(f.edge, f.x * 0.46), at(f.edge + width, f.x * 0.46)), f.plain, f.plain)]);
+      [thin(f, straight(at(f.edge, axis(f)), at(f.edge + width, axis(f))), f.plain, f.plain)]);
   },
 
   parenleft: (style) => {
@@ -2620,6 +2648,663 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(f, straight(at(f.edge + gap, f.cap * 0.72), at(f.edge + gap, f.cap)), f.plain, f.plain),
       ]);
   },
+
+  // --- symbols -----------------------------------------------------------
+  //
+  // The rest of what a font needs, and the part that is usually a second
+  // typeface hiding inside the first: symbols get drawn once, by hand, at one
+  // weight, and then the letters move on without them. Everything below is
+  // built out of the same pen and the same frame as the alphabet, so weight,
+  // width, slant, corner rounding, squareness and the wave reach all of it --
+  // and several of them are not drawn at all, but are a letter this font
+  // already has, turned over or set small.
+
+  /*
+   * The arithmetic, on one line and at one width.
+   *
+   * A plus, a minus, an equals and a division sign that do not sit on the same
+   * line do not read as arithmetic, and ones of different widths will not stack
+   * into a column. Both are settled here rather than glyph by glyph: `axis` is
+   * the height, and it is the height the hyphen already used, and the width
+   * comes from the figures so a sum lines up under the numbers it is about.
+   */
+
+  plus: (style) => {
+    const f = frame(style);
+    const w = signWidth(f);
+    const y = axis(f);
+    const half = w / 2;
+    return finish(
+      f,
+      [
+        thin(f, straight(at(f.edge, y), at(f.edge + w, y)), f.plain, f.plain),
+        thin(f, straight(at(f.edge + half, y - half), at(f.edge + half, y + half)), shortEnd(f), shortEnd(f)),
+      ]);
+  },
+
+  equal: (style) => {
+    const f = frame(style);
+    const w = signWidth(f);
+    const gap = signGap(f);
+    return finish(
+      f,
+      [
+        thin(f, straight(at(f.edge, axis(f) - gap), at(f.edge + w, axis(f) - gap)), f.plain, f.plain),
+        thin(f, straight(at(f.edge, axis(f) + gap), at(f.edge + w, axis(f) + gap)), f.plain, f.plain),
+      ]);
+  },
+
+  multiply: (style) => {
+    const f = frame(style);
+    const w = signWidth(f) * 0.82;
+    const y = axis(f);
+    const half = w / 2;
+    return finish(
+      f,
+      [
+        thin(f, straight(at(f.edge, y - half), at(f.edge + w, y + half)), shortEnd(f), shortEnd(f)),
+        thin(f, straight(at(f.edge, y + half), at(f.edge + w, y - half)), shortEnd(f), shortEnd(f)),
+      ]);
+  },
+
+  /*
+   * The two dots stand off the bar by their own daylight, not by a fraction of
+   * the sign's width. Set at a fixed share of it, a heavy face put both dots
+   * inside the bar and the whole mark came out as one thick plus.
+   */
+  divide: (style) => {
+    const f = frame(style);
+    const w = signWidth(f);
+    const y = axis(f);
+    const radius = f.half * 0.85;
+    const reach = (f.style.pen.weight * f.bar) / 2 + signGap(f) * 0.85 + radius;
+    return finish(
+      f,
+      [
+        thin(f, straight(at(f.edge, y), at(f.edge + w, y)), f.plain, f.plain),
+        dot(f, at(f.edge + w / 2, y + reach), radius),
+        dot(f, at(f.edge + w / 2, y - reach), radius),
+      ]);
+  },
+
+  /*
+   * Set the two apart by their own bars rather than by half a pen.
+   *
+   * A plus over a rule is only a plus-or-minus if the two are read as separate
+   * marks, and on a heavy face half a pen of daylight between them is none at
+   * all: the two fuse into one block. The gap is a share of the bar drawing
+   * them, which holds at every weight.
+   */
+  plusminus: (style) => {
+    const f = frame(style);
+    const w = signWidth(f);
+    const bar = f.style.pen.weight * f.bar;
+    const under = axis(f) - signWidth(f) * 0.5 - bar * 1.15;
+    const y = axis(f) + bar * 0.35;
+    const half = w / 2;
+    return finish(
+      f,
+      [
+        thin(f, straight(at(f.edge, y), at(f.edge + w, y)), f.plain, f.plain),
+        thin(f, straight(at(f.edge + half, y - half * 0.86), at(f.edge + half, y + half * 0.86)), shortEnd(f), shortEnd(f)),
+        thin(f, straight(at(f.edge, under), at(f.edge + w, under)), f.plain, f.plain),
+      ]);
+  },
+
+  less: (style) => {
+    const f = frame(style);
+    const w = signWidth(f) * 0.9;
+    const y = axis(f);
+    const rise = w * 0.78;
+    return finish(
+      f,
+      [
+        bent(
+          f,
+          chain(
+            straight(at(f.edge + w, y + rise), at(f.edge, y)),
+            straight(at(f.edge, y), at(f.edge + w, y - rise)),
+          ),
+        ),
+      ]);
+  },
+
+  greater: (style) => {
+    const f = frame(style);
+    const w = signWidth(f) * 0.9;
+    const y = axis(f);
+    const rise = w * 0.78;
+    return finish(
+      f,
+      [
+        bent(
+          f,
+          chain(
+            straight(at(f.edge, y + rise), at(f.edge + w, y)),
+            straight(at(f.edge + w, y), at(f.edge, y - rise)),
+          ),
+        ),
+      ]);
+  },
+
+  logicalnot: (style) => {
+    const f = frame(style);
+    const w = signWidth(f);
+    const y = axis(f) + signWidth(f) * 0.32;
+    return finish(
+      f,
+      [
+        bent(
+          f,
+          chain(
+            straight(at(f.edge, y), at(f.edge + w, y)),
+            straight(at(f.edge + w, y), at(f.edge + w, y - w * 0.36)),
+          ),
+        ),
+      ]);
+  },
+
+  underscore: (style) => {
+    const f = frame(style);
+    const w = f.arch * 1.45;
+    const y = f.desc * 0.42;
+    return finish(f, [thin(f, straight(at(f.edge, y), at(f.edge + w, y)), f.plain, f.plain)]);
+  },
+
+  bar: (style) => {
+    const f = frame(style);
+    const { foot, head } = tall(f);
+    // Straight to the line, not half a pen short of it: a run cut square across
+    // its own direction stops where its spine stops, and only the runs that lie
+    // along a line have to be set back from it.
+    return finish(f, [ink(f, straight(at(f.edge, foot), at(f.edge, head)), f.plain, f.plain)]);
+  },
+
+  /*
+   * A broken bar is one bar with a piece taken out of the middle, and the piece
+   * is as wide as the bar: any narrower and it fills in at a display weight,
+   * any wider and it reads as two marks rather than one interrupted.
+   */
+  brokenbar: (style) => {
+    const f = frame(style);
+    const { foot, head } = tall(f);
+    const middle = (foot + head) / 2;
+    const gap = Math.max(f.style.pen.weight, (head - foot) * 0.11);
+    return finish(
+      f,
+      [
+        ink(f, straight(at(f.edge, foot), at(f.edge, middle - gap / 2)), f.plain, f.plain),
+        ink(f, straight(at(f.edge, middle + gap / 2), at(f.edge, head)), f.plain, f.plain),
+      ]);
+  },
+
+  bracketleft: (style) => {
+    const f = frame(style);
+    const w = f.arch * 0.52;
+    const { foot, head } = tall(f);
+    return finish(
+      f,
+      [
+        ink(
+          f,
+          chain(
+            straight(at(f.edge + w, f.hangs(head)), at(f.edge, f.hangs(head))),
+            straight(at(f.edge, f.hangs(head)), at(f.edge, f.sits(foot))),
+            straight(at(f.edge, f.sits(foot)), at(f.edge + w, f.sits(foot))),
+          ),
+          shortEnd(f),
+          shortEnd(f),
+        ),
+      ]);
+  },
+
+  bracketright: (style) => {
+    const f = frame(style);
+    const w = f.arch * 0.52;
+    const { foot, head } = tall(f);
+    return finish(
+      f,
+      [
+        ink(
+          f,
+          chain(
+            straight(at(f.edge, f.hangs(head)), at(f.edge + w, f.hangs(head))),
+            straight(at(f.edge + w, f.hangs(head)), at(f.edge + w, f.sits(foot))),
+            straight(at(f.edge + w, f.sits(foot)), at(f.edge, f.sits(foot))),
+          ),
+          shortEnd(f),
+          shortEnd(f),
+        ),
+      ]);
+  },
+
+  backslash: (style) => {
+    const f = frame(style);
+    const lean = f.arch * 0.75;
+    return finish(
+      f,
+      [ink(f, straight(at(f.edge, f.cap), at(f.edge + lean, f.desc * 0.6)), f.plain, f.plain)]);
+  },
+
+  /*
+   * A caret is wide against its height, and it has to be: the point is a corner
+   * between two runs, and the taller and narrower it gets the sharper that
+   * corner is, until the inside of the turn comes back through the stroke. On a
+   * condensed face at a display weight it did exactly that.
+   */
+  asciicircum: (style) => {
+    const f = frame(style);
+    const rise = f.cap * 0.32;
+    const w = Math.max(signWidth(f), rise * 1.55, barHalf(f) * 5);
+    const foot = f.cap * 0.56;
+    // Short of the cap line, because a corner carried out to a miter reaches
+    // past both the runs that make it -- and a flared face reaches further.
+    const head = Math.min(foot + rise, f.cap * 0.92);
+    return finish(
+      f,
+      [
+        bent(
+          f,
+          chain(
+            straight(at(f.edge, foot), at(f.edge + w / 2, f.hangs(head))),
+            straight(at(f.edge + w / 2, f.hangs(head)), at(f.edge + w, foot)),
+          ),
+        ),
+      ]);
+  },
+
+  /*
+   * The two bars of a hash lean, because upright ones read as a window frame
+   * rather than as a mark -- and they lean by the same amount whatever the face
+   * is doing, since a slanted face slants the whole thing again on top.
+   */
+  numbersign: (style) => {
+    const f = frame(style);
+    const foot = f.x * -0.06;
+    const head = f.cap * 0.92;
+    const lean = (head - foot) * 0.14;
+    /*
+     * Four runs held apart by their own width rather than by a share of the
+     * sign's, and the sign as wide as that spacing turns out to need.
+     *
+     * Set at a fraction of a fixed width, a hash on a display face was four
+     * bars with less than a bar between them: they fused, and what came out was
+     * a single lozenge of ink. Spacing first and width second means a heavy
+     * face draws a wide hash, which is what a heavy face does.
+     */
+    const down = Math.max(f.style.pen.weight * f.bar * 1.85, signWidth(f) * 0.36);
+    const across = Math.max(f.style.pen.weight * f.bar * 1.7, f.x * 0.3);
+    const w = down + Math.max(down * 0.62, lean + f.style.pen.weight * f.bar);
+    const middle = axis(f) + f.x * 0.04;
+    return finish(
+      f,
+      [
+        ...[middle - across / 2, middle + across / 2].map((y) =>
+          thin(f, straight(at(f.edge, y), at(f.edge + w, y)), f.plain, f.plain),
+        ),
+        ...[(w - down) / 2, (w + down) / 2].map((x) =>
+          thin(f, straight(at(f.edge + x - lean / 2, foot), at(f.edge + x + lean / 2, head)), shortEnd(f), shortEnd(f)),
+        ),
+      ]);
+  },
+
+  /*
+   * The symbols that are a letter this font already draws.
+   *
+   * A cent is a c with a bar through it, an ordinal is a small a, a superior
+   * figure is a small figure, and a Spanish opening mark is the closing one
+   * turned over. Drawn again here rather than borrowed, each would be a second
+   * a and a second c inside the same font -- and the day somebody chose the
+   * single-storey a, one of the two would quietly stay behind.
+   */
+
+  cent: outOf("c", (f, c) => {
+    const centre = f.edge + f.bowl;
+    const over = f.x * 0.22;
+    return joined(
+      f,
+      c(),
+      [ink(f, straight(at(centre, -over), at(centre, f.x + over)), shortEnd(f), shortEnd(f))],
+      true,
+    );
+  }),
+
+  dollar: outOf("S", (f, s) => {
+    // Where the s runs, worked out the way the s works it out, so the bar goes
+    // through the middle of the letter rather than near it.
+    const radius = Math.max((f.cap + f.over * 2 - f.upright * 2) / 4, f.least);
+    const centre = f.edge + bendWidth(f, radius);
+    // How far the bar stands out past the letter, kept modest: a wavy face
+    // adds its own swing on top and the two together reached over the line.
+    const over = f.cap * 0.075;
+    return joined(
+      f,
+      s(),
+      [ink(f, straight(at(centre, -over), at(centre, f.cap + over)), shortEnd(f), shortEnd(f))],
+      true,
+    );
+  }),
+
+  /*
+   * A yen is a Y with its stem crossed. The bars reach the full width of the
+   * letter, sit below where the vee closes, and stand apart by their own
+   * weight rather than by a share of the cap height -- which on a display face
+   * put them within a bar of each other, where they fused into one.
+   *
+   * And there are two of them only where two will fit. A heavy face carries
+   * its vee most of the way down to the junction and leaves barely a stem
+   * below it; asked for two bars anyway, the upper one landed in the vee and
+   * the lower one under the baseline. One bar is a yen as surely as two are,
+   * and it is what a heavy face has room to draw.
+   */
+  yen: outOf("Y", (f, y) => {
+    const drawn = y();
+    const across = spread(drawn);
+    const bar = f.style.pen.weight * f.bar;
+    const junction = f.cap * 0.46;
+    const top = junction - f.style.pen.weight * 0.85 - bar / 2;
+    const step = Math.max(bar * 2.3, f.cap * 0.12);
+    const rows = top - step > f.cap * 0.11 ? [top, top - step] : [top * 0.62];
+    return joined(
+      f,
+      drawn,
+      rows.map((row) =>
+        thin(f, straight(at(across.xMin, row), at(across.xMax, row)), f.plain, f.plain),
+      ),
+    );
+  }),
+
+  /** A u whose first stem carries on below the line, which is what a mu is. */
+  mu: outOf("u", (f, u) =>
+    joined(f, u(), [
+      ink(f, straight(at(f.edge, f.desc * 0.86), at(f.edge, f.x * 0.5)), f.end, BUTT),
+    ]),
+  ),
+
+  exclamdown: outOf("exclam", (f) => turnedDown(f, "exclam")),
+  questiondown: outOf("question", (f) => turnedDown(f, "question")),
+
+  ordfeminine: outOf("a", (f) => ordinal(f, "a")),
+  ordmasculine: outOf("o", (f) => ordinal(f, "o")),
+
+  onesuperior: outOf("one", (f) => superior(f, "one")),
+  twosuperior: outOf("two", (f) => superior(f, "two")),
+  threesuperior: outOf("three", (f) => superior(f, "three")),
+
+  /*
+   * The fractions, which are the figures again at two heights with a stroke
+   * between them.
+   *
+   * Two letters go into each of these and `outOf` names one, so the numerator
+   * is the one whose letterform they follow. It is the half a reader looks at.
+   */
+  onequarter: outOf("one", (f) => fraction(f, "one", "four")),
+  onehalf: outOf("one", (f) => fraction(f, "one", "two")),
+  threequarters: outOf("three", (f) => fraction(f, "three", "four")),
+
+  /*
+   * A tilde as wide as a sign, built the way the accent above a letter is: two
+   * half turns, one over and one under. The same shape at a different size and
+   * on a different line, which is why it is not drawn again from scratch.
+   */
+  asciitilde: (style) => {
+    const f = frame(style);
+    // Held above what the bar drawing it can turn round, which is not the same
+    // number as what the stem can: a face whose bars are heavier than its stems
+    // asked this arc for a radius narrower than its own pen.
+    const radius = Math.max((signWidth(f) * 1.06) / 4, barHalf(f) * 1.12);
+    const y = axis(f);
+    return finish(f, [
+      thin(
+        f,
+        chain(
+          turn(at(f.edge + radius, y), radius, 180, 0),
+          turn(at(f.edge + radius * 3, y), radius, 180, 360),
+        ),
+        shortEnd(f),
+        shortEnd(f),
+      ),
+    ]);
+  },
+
+  /** Five spokes from one middle, which is what keeps it from reading as a star. */
+  asterisk: (style) => {
+    const f = frame(style);
+    const reach = Math.max(f.cap * 0.2, f.style.pen.weight * f.bar * 1.3);
+    const centre = at(f.edge + reach, f.cap - reach * 1.05);
+    return finish(
+      f,
+      [90, 162, 234, 306, 18].map((degrees) =>
+        thin(f, straight(centre, pointOn(centre, reach, degrees)), BUTT, shortEnd(f)),
+      ),
+    );
+  },
+
+  /*
+   * Two rings and the stroke between them. The rings are held to a size the pen
+   * can keep a counter at, and the sign widens to suit rather than closing up.
+   */
+  percent: (style) => {
+    const f = frame(style);
+    const radius = Math.max(f.cap * 0.155, f.half * 2.05);
+    const w = Math.max(f.cap * 0.86 * f.style.metrics.width, radius * 4.3);
+    const lean = w * 0.62;
+    const bar = f.edge + (w - lean) / 2;
+    return finish(
+      f,
+      [
+        ink(f, ring(f, at(f.edge + radius, f.cap - radius), radius, radius)),
+        ink(
+          f,
+          straight(at(bar, f.dip(0)), at(bar + lean, f.crest(f.cap))),
+          shortEnd(f),
+          shortEnd(f),
+        ),
+        ink(f, ring(f, at(f.edge + w - radius, radius), radius, radius)),
+      ],
+      true,
+    );
+  },
+
+  /*
+   * A brace: two long curves either side of a spur that points away from the
+   * text. Four arcs bowed off their chords rather than one chain of turns,
+   * because a brace changes direction three times and an offset carried round
+   * a turn that sharp goes through itself.
+   */
+  braceleft: (style) => brace(frame(style), 1),
+  braceright: (style) => brace(frame(style), -1),
+
+  /*
+   * A pound is an L drawn the wrong way round with a bar through it: a hooked
+   * head, a stem down to the line, a foot along it, and the crossbar that says
+   * which currency it is.
+   */
+  sterling: (style) => {
+    const f = frame(style);
+    const w = figureWidth(f) * 1.05;
+    const hook = Math.max(w * 0.29, f.least);
+    const stem = f.edge + hook * 1.5;
+    const head = f.crest(f.cap) - hook;
+    /*
+     * The hook and the stem are two runs that overlap rather than one chain.
+     * Chained, the arc comes down the left and the stem sets off from where the
+     * recipe thought the arc ended -- and half a unit of daylight between them
+     * is a kink the sweep turns into a crossed stroke. The figure two learned
+     * the same thing.
+     */
+    const over = bend(f, at(stem, head), hook, 20, 180);
+    return finish(f, [
+      ink(f, over, f.end, BUTT),
+      ink(f, straight(spineEnd(over), at(spineEnd(over).x, f.sits(0))), BUTT, BUTT),
+      arm(f, f.edge, f.edge + w, f.sits(0, f.bar)),
+      thin(
+        f,
+        straight(at(f.edge + w * 0.03, f.x * 0.62), at(f.edge + w * 0.72, f.x * 0.62)),
+        f.plain,
+        f.plain,
+      ),
+    ]);
+  },
+
+  /** A ring with four spokes off its corners, which is the old currency mark. */
+  currency: (style) => {
+    const f = frame(style);
+    const radius = Math.max(f.cap * 0.2, f.half * 2.1);
+    const centre = at(f.edge + radius, axis(f) + f.cap * 0.16);
+    const spoke = radius * 0.62;
+    return finish(
+      f,
+      [
+        ink(f, ring(f, centre, radius, radius)),
+        ...[45, 135, 225, 315].map((degrees) =>
+          thin(
+            f,
+            straight(pointOn(centre, radius * 0.86, degrees), pointOn(centre, radius + spoke, degrees)),
+            BUTT,
+            shortEnd(f),
+          ),
+        ),
+      ],
+      true,
+    );
+  },
+
+  /*
+   * A section mark is an s over an s, offset by half and sharing the middle.
+   * Drawn out of the same construction the letter uses, so it thickens, leans,
+   * squares and waves with the rest of the font rather than beside it.
+   */
+  section: (style) => {
+    const f = frame(style);
+    const height = f.cap * 0.62;
+    const step = height * 0.53;
+    const upper = spine(f, height, f.edge).stroke;
+    const lower = spine(f, height, f.edge).stroke;
+    return {
+      strokes: [
+        shovedStroke(finish(f, [upper]).strokes[0], 0, f.cap - height + f.desc * 0.06),
+        shovedStroke(finish(f, [lower]).strokes[0], 0, f.cap - height - step + f.desc * 0.06),
+      ],
+      round: true,
+    };
+  },
+
+  copyright: (style) => enclosed(frame(style), "C"),
+  registered: (style) => enclosed(frame(style), "R"),
+
+  /*
+   * A pilcrow: a filled bowl with two stems hanging off it. The bowl is solid
+   * rather than a counter, so it is drawn as what it is -- one run of a pen
+   * wide enough to fill it -- rather than as a ring somebody then has to fill.
+   */
+  paragraph: (style) => {
+    const f = frame(style);
+    const thick = f.cap * 0.5;
+    const middle = f.cap - thick / 2;
+    const round: Terminal = { kind: "round" };
+    // The bowl hangs off the first stem and the second stands clear of it by
+    // its own width, so a heavy face reads as two stems rather than as one.
+    const bowl = Math.max(thick * 0.82, f.style.pen.weight * 1.7);
+    const first = f.edge + bowl;
+    const second = first + Math.max(f.style.pen.weight * 2.3, f.cap * 0.16);
+    const foot = f.desc * 0.62;
+    return finish(f, [
+      {
+        spine: straight(at(f.edge + thick / 2, middle), at(first, middle)),
+        pen: { ...f.style.pen, contrast: 0, weight: thick },
+        start: round,
+        end: BUTT,
+      },
+      ink(f, straight(at(first, foot), at(first, f.hangs(f.cap))), f.end, BUTT),
+      ink(f, straight(at(second, foot), at(second, f.hangs(f.cap))), f.end, BUTT),
+    ]);
+  },
+
+  /*
+   * An at sign: the ring somebody already knows, with a small bowl and its stem
+   * inside. The inner pair is the a of this font in miniature in everything but
+   * name -- a bowl and an upright beside it -- and it is drawn at the same
+   * weight as the ring around it, which is what keeps the mark even in colour.
+   */
+  at: (style) => {
+    const f = frame(style);
+    /*
+     * The inner bowl is sized first and the ring is grown to hold it.
+     *
+     * Sized as a share of the ring instead, a display weight left it a hair
+     * over the pen drawing it and the little a inside came out as a disc with a
+     * dimple. The bowl is the part that has to stay open, so it is the part
+     * that sets the size, and the mark gets larger rather than filling in.
+     */
+    const inner = Math.max(f.capBowlH * 0.38, f.half * 2.35);
+    const outer = Math.max(f.capBowlH * 0.94, inner + f.style.pen.weight * 1.55);
+    const centre = at(f.edge + outer, f.cap * 0.46);
+    const stem = centre.x + bendWidth(f, inner);
+    return finish(
+      f,
+      [
+        ink(f, bend(f, centre, outer, -38, 252), shortEnd(f), shortEnd(f)),
+        ink(f, ring(f, centre, inner, inner)),
+        ink(
+          f,
+          straight(at(stem, centre.y - inner), at(stem, centre.y + inner * 0.15)),
+          BUTT,
+          shortEnd(f),
+        ),
+      ],
+      true,
+    );
+  },
+
+  /*
+   * The ampersand, which is the one mark in a font that is not a shape anybody
+   * can name. It is drawn here as what it came from: a small loop above a
+   * larger one, joined down the left, with the leg crossing out to the right.
+   */
+  ampersand: (style) => {
+    const f = frame(style);
+    const topR = Math.max(f.cap * 0.155, f.least);
+    const botR = Math.max(f.cap * 0.245, f.least);
+    const top = at(f.edge + bendWidth(f, topR) + f.cap * 0.06, f.crest(f.cap) - topR);
+    const bottom = at(f.edge + bendWidth(f, botR), f.dip(0) + botR);
+    const loop = bend(f, top, topR, -34, 250);
+    const belly = bend(f, bottom, botR, 108, 336);
+    const leg = at(bottom.x + botR * 2.1, f.cap * 0.5);
+    return finish(
+      f,
+      [
+        ink(f, loop, f.end, BUTT),
+        ink(f, straight(spineEnd(loop), spineStart(belly)), BUTT, BUTT),
+        ink(f, belly, BUTT, BUTT),
+        ink(f, straight(spineEnd(belly), leg), BUTT, f.end),
+        ink(f, straight(spineStart(loop), at(leg.x * 0.88, f.dip(0) + botR * 0.55)), BUTT, BUTT),
+      ],
+      true,
+    );
+  },
+
+  periodcentered: (style) => {
+    const f = frame(style);
+    const radius = f.half * 0.95;
+    return finish(f, [dot(f, at(f.edge, axis(f)), radius)]);
+  },
+
+  degree: (style) => {
+    const f = frame(style);
+    // Wide enough to keep a counter at any weight: a ring less than about two
+    // pens across is a disc with a dimple in it.
+    const radius = Math.max(f.cap * 0.15, f.half * 2);
+    const centre = at(f.edge + radius, f.cap - radius);
+    return finish(f, [ink(f, ring(f, centre, radius, radius))], true);
+  },
+
+  /*
+   * The guillemets: two chevrons each, held apart by their own weight so a
+   * heavy face does not run them into one arrowhead.
+   */
+  guillemotleft: (style) => chevrons(frame(style), -1),
+  guillemotright: (style) => chevrons(frame(style), 1),
 
   // -------------------------------------------------------------------------
   // The letters that are not a letter with a mark on it
@@ -2831,7 +3516,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = markFrame(style);
     const m = markBox(f);
     return finish(f, [
-      ink(f, straight(at(m.cx - m.w, m.top), at(m.cx + m.w, m.foot)), markEnd(f), markEnd(f)),
+      ink(f, straight(at(m.cx - m.w, m.top), at(m.cx + m.w, m.foot)), shortEnd(f), shortEnd(f)),
     ]);
   },
 
@@ -2839,7 +3524,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = markFrame(style);
     const m = markBox(f);
     return finish(f, [
-      ink(f, straight(at(m.cx - m.w, m.foot), at(m.cx + m.w, m.top)), markEnd(f), markEnd(f)),
+      ink(f, straight(at(m.cx - m.w, m.foot), at(m.cx + m.w, m.top)), shortEnd(f), shortEnd(f)),
     ]);
   },
 
@@ -2856,8 +3541,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
           straight(at(m.cx - m.w, m.foot), at(m.cx, m.top)),
           straight(at(m.cx, m.top), at(m.cx + m.w, m.foot)),
         ),
-        markEnd(f),
-        markEnd(f),
+        shortEnd(f),
+        shortEnd(f),
       ),
     ]);
   },
@@ -2873,8 +3558,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
           straight(at(m.cx - m.w, m.top), at(m.cx, m.foot)),
           straight(at(m.cx, m.foot), at(m.cx + m.w, m.top)),
         ),
-        markEnd(f),
-        markEnd(f),
+        shortEnd(f),
+        shortEnd(f),
       ),
     ]);
   },
@@ -2902,8 +3587,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
           turn(at(m.cx - radius, middle), radius, 180, 0),
           turn(at(m.cx + radius, middle), radius, 180, 360),
         ),
-        markEnd(f),
-        markEnd(f),
+        shortEnd(f),
+        shortEnd(f),
       ),
     ]);
   },
@@ -2933,7 +3618,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const m = markBox(f);
     const height = m.foot + (m.top - m.foot) * 0.45;
     return finish(f, [
-      ink(f, straight(at(m.cx - m.w, height), at(m.cx + m.w, height)), markEnd(f), markEnd(f)),
+      ink(f, straight(at(m.cx - m.w, height), at(m.cx + m.w, height)), shortEnd(f), shortEnd(f)),
     ]);
   },
 
@@ -3010,7 +3695,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
           turn(at(m.cx - radius, -radius), radius, 0, -95),
         ),
         BUTT,
-        markEnd(f),
+        shortEnd(f),
       ),
     ]);
   },
@@ -3025,6 +3710,535 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
  */
 function figureWidth(frame: Frame): number {
   return Math.max(frame.cap * 0.62 * frame.style.metrics.width, frame.least * 2);
+}
+
+// ---------------------------------------------------------------------------
+// The signs
+// ---------------------------------------------------------------------------
+
+/**
+ * The line the arithmetic is built on.
+ *
+ * One height for all of them, because a plus, an equals and a division sign
+ * that do not line up with each other do not read as arithmetic at all. It is
+ * the height the hyphen already sat at, which is where a minus belongs and
+ * therefore where the rest of them belong too.
+ */
+function axis(f: Frame): number {
+  return f.x * 0.46;
+}
+
+/**
+ * How wide a sign is drawn.
+ *
+ * From the figures, so a column of sums lines up under the numbers it is about.
+ * A little inside their width, because a figure fills its advance and a sign
+ * wants air around it.
+ */
+function signWidth(f: Frame): number {
+  return figureWidth(f) * 0.84;
+}
+
+/**
+ * How far the upright marks run above and below the line.
+ *
+ * A bar, a broken bar, a bracket and a brace are one family and have to be one
+ * height, or a line of code sets four different sizes of the same idea. They
+ * take the whole of the ascender and the whole of the descender, which is what
+ * a bracket is for -- something has to be tall enough to hold a line of type
+ * between two of them.
+ */
+function tall(f: Frame): { foot: number; head: number } {
+  return { foot: f.desc, head: f.asc };
+}
+
+/** Half the width of a bar, which is what the signs drawn as bars turn at. */
+function barHalf(f: Frame): number {
+  return (f.style.pen.weight * f.bar) / 2;
+}
+
+/**
+ * Half the daylight between the two bars of an equals sign.
+ *
+ * A share of the bar drawing them rather than a fixed distance: at a display
+ * weight a gap of a few units is no gap, and the two bars fuse into one.
+ */
+function signGap(f: Frame): number {
+  return Math.max(f.style.pen.weight * f.bar * 1.15, f.x * 0.075);
+}
+
+/**
+ * A symbol built out of a letter this font already draws.
+ *
+ * The borrowed strokes arrive finished -- that letter's own recipe has already
+ * pulled its round ends back -- so what the builder adds is what goes through
+ * `finish`, and `joined` below is how the two halves are put together.
+ */
+function outOf(
+  letter: LetterName,
+  build: (f: Frame, borrowed: () => Stroke[]) => Recipe,
+): (style: Style) => Recipe {
+  // Asked for rather than handed over, because half of these want the letter
+  // at a size of their own and would otherwise draw it once to throw away and
+  // once to use.
+  const made = (style: Style): Recipe =>
+    build(frame(style), () => recipeOf(letter, borrowing)!(style).strokes);
+  BEHIND.set(made, letter);
+  return made;
+}
+
+/** Which letter a symbol is drawn out of, or nothing if it is its own drawing. */
+export function letterBehind(name: LetterName): LetterName | null {
+  const build = LETTERS[name];
+  return (build && BEHIND.get(build)) ?? null;
+}
+
+/** A recipe of strokes already finished and some that are not yet. */
+function joined(f: Frame, done: Stroke[], fresh: Stroke[], round = false): Recipe {
+  return { strokes: [...done, ...finish(f, fresh).strokes], round };
+}
+
+/**
+ * The same face, drawn at a fraction of its size.
+ *
+ * For the superior figures, the ordinals and the two halves of a fraction,
+ * which are not new shapes: they are figures and letters this font already has,
+ * set small. Drawn by re-reading the whole style at a smaller size rather than
+ * by shrinking a finished outline, because shrinking an outline shrinks its
+ * strokes with it -- and a figure at six tenths with strokes at six tenths is
+ * not a small figure, it is a light one sitting beside the text it belongs to.
+ *
+ * The pen comes down by less than the letter does, which is what a designer
+ * cutting superiors by hand does and for the same reason.
+ *
+ * The two measures kept in font units rather than in stem widths -- how far a
+ * corner is rounded off, and how long the wave is -- come down as well. Left
+ * alone, a superior figure on a rounded face was one corner, and on a wavy one
+ * a single crest half its own height.
+ */
+function sized(style: Style, fraction: number, penShare = fraction ** 0.62): Style {
+  const m = style.metrics;
+  const { corner, wave } = style.parts;
+  /*
+   * And never a pen too wide for the size it is being drawn at.
+   *
+   * The share above deliberately takes less off the pen than off the letter, so
+   * that a superior figure holds its colour beside the text rather than fading
+   * into it. Carried far enough that stops being legibility and starts being a
+   * blot: on a short cap height at a display weight the small figures of a
+   * fraction folded through themselves. A pen under about four tenths of the
+   * height it is drawing is the limit, and it only ever binds where the full
+   * size letter was already at the edge of what it could carry.
+   */
+  const weight = Math.min(style.pen.weight * penShare, m.capHeight * fraction * 0.42);
+  return {
+    ...style,
+    metrics: {
+      ...m,
+      xHeight: m.xHeight * fraction,
+      capHeight: m.capHeight * fraction,
+      ascender: m.ascender * fraction,
+      descender: m.descender * fraction,
+      overshoot: m.overshoot * fraction,
+      counterWidth: m.counterWidth * fraction,
+      sidebearing: m.sidebearing * fraction,
+    },
+    pen: { ...style.pen, weight },
+    parts: {
+      ...style.parts,
+      corner: { ...corner, radius: corner.radius * fraction },
+      wave: { ...wave, length: wave.length * fraction, depth: wave.depth * fraction },
+    },
+  };
+}
+
+/**
+ * What a set of runs covers, worked out from the skeleton and the pen.
+ *
+ * Not from the finished outline: sweeping is what happens to these afterwards,
+ * and this file is the description that goes into it. A spine plus the pen's
+ * reach is what a recipe can know, and it is enough to stand one piece of a
+ * symbol beside another -- how wide the whole thing ends up is measured off the
+ * real ink later, by whatever asks for its advance.
+ *
+ * Placed by a declared width instead, the fractions came apart: a small figure
+ * is held to a floor at a heavy weight and grows wider than the width it was
+ * asked for, so a display face drew its numerator straight through the stroke
+ * that was meant to be beside it.
+ */
+function spread(strokes: Stroke[]): { xMin: number; xMax: number; yMin: number; yMax: number } {
+  let xMin = Infinity;
+  let xMax = -Infinity;
+  let yMin = Infinity;
+  let yMax = -Infinity;
+  const see = (point: Vec2, reach: number): void => {
+    xMin = Math.min(xMin, point.x - reach);
+    xMax = Math.max(xMax, point.x + reach);
+    yMin = Math.min(yMin, point.y - reach);
+    yMax = Math.max(yMax, point.y + reach);
+  };
+  const round = (centre: Vec2, radius: number, angle: number): Vec2 =>
+    at(centre.x + radius * Math.cos(angle), centre.y + radius * Math.sin(angle));
+
+  for (const stroke of strokes) {
+    const reach = stroke.pen.weight / 2;
+    for (const segment of stroke.spine.segments) {
+      if (segment.kind === "line") {
+        see(segment.from, reach);
+        see(segment.to, reach);
+        continue;
+      }
+      const { centre, radius, startAngle, endAngle } = segment;
+      see(round(centre, radius, startAngle), reach);
+      see(round(centre, radius, endAngle), reach);
+      // And the four points where a circle is furthest out along an axis, for
+      // whichever of them this arc actually passes through.
+      for (let quarter = 0; quarter < 4; quarter++) {
+        const angle = (quarter * Math.PI) / 2;
+        if (passesThrough(angle, startAngle, endAngle)) see(round(centre, radius, angle), reach);
+      }
+    }
+  }
+  return { xMin, xMax, yMin, yMax };
+}
+
+/** Whether an arc running from one angle to another goes past a third. */
+function passesThrough(angle: number, from: number, to: number): boolean {
+  const whole = Math.PI * 2;
+  const span = to - from;
+  const along = (((angle - from) % whole) + whole) % whole;
+  return span >= 0 ? along <= span : along - whole >= span;
+}
+
+/** The same run somewhere else on the page. */
+function shoveSpine(spine: Spine, dx: number, dy: number): Spine {
+  return {
+    closed: spine.closed,
+    segments: spine.segments.map((segment) =>
+      segment.kind === "line"
+        ? {
+            kind: "line",
+            from: at(segment.from.x + dx, segment.from.y + dy),
+            to: at(segment.to.x + dx, segment.to.y + dy),
+          }
+        : { ...segment, centre: at(segment.centre.x + dx, segment.centre.y + dy) },
+    ),
+  };
+}
+
+/**
+ * The same run turned half a turn about a point.
+ *
+ * Half a turn and no other, which is what an upside-down question mark is and
+ * is the only rotation the alphabet has any use for. It is also the only one
+ * that is honest about the pen without further thought: a nib is an ellipse,
+ * and an ellipse turned half a turn is the same ellipse -- so the mark turns
+ * over and the tool that drew it does not have to be turned with it.
+ */
+function turnSpine(spine: Spine, about: Vec2): Spine {
+  const over = (point: Vec2) => at(about.x * 2 - point.x, about.y * 2 - point.y);
+  return {
+    closed: spine.closed,
+    segments: spine.segments.map((segment) =>
+      segment.kind === "line"
+        ? { kind: "line", from: over(segment.from), to: over(segment.to) }
+        : {
+            ...segment,
+            centre: over(segment.centre),
+            startAngle: segment.startAngle + Math.PI,
+            endAngle: segment.endAngle + Math.PI,
+          },
+    ),
+  };
+}
+
+/** A stroke moved, keeping its pen, its ends and what it was built from. */
+function shovedStroke(stroke: Stroke, dx: number, dy: number): Stroke {
+  return inherit(stroke, { ...stroke, spine: shoveSpine(stroke.spine, dx, dy) });
+}
+
+function turnedStroke(stroke: Stroke, about: Vec2): Stroke {
+  return inherit(stroke, { ...stroke, spine: turnSpine(stroke.spine, about) });
+}
+
+/**
+ * A letter of this font, drawn small and stood where it is wanted.
+ *
+ * `left` is where its ink begins and `foot` is the line it stands on, so a
+ * superior figure is the same figure with a line of its own further up the page.
+ */
+function setSmall(
+  style: Style,
+  name: LetterName,
+  fraction: number,
+  left: number,
+  foot: number,
+  penShare?: number,
+): Stroke[] {
+  const little = sized(style, fraction, penShare);
+  const strokes = recipeOf(name, borrowing)!(little).strokes;
+  return strokes.map((stroke) => shovedStroke(stroke, left - little.metrics.sidebearing, foot));
+}
+
+/**
+ * A mark turned over, to open a sentence rather than close one.
+ *
+ * Drawn again at a height that fits and then turned, rather than turned where
+ * it stands. A question mark is as tall as a capital, and a capital's worth of
+ * ink hung from the x-height reaches further below the line than any font has
+ * room for -- so what is turned is the same mark drawn to the room there is.
+ * The pen is not reduced with it: an upside-down question mark that is lighter
+ * than the one closing the sentence reads as a different mark.
+ */
+function turnedDown(f: Frame, name: LetterName): Recipe {
+  const floor = f.desc * 0.82;
+  const fits = Math.min(1, (f.x - floor) / f.cap);
+  const about = at(f.edge, f.x / 2);
+  const strokes = recipeOf(name, borrowing)!(sized(f.style, fits, 1)).strokes;
+  return { strokes: strokes.map((stroke) => turnedStroke(stroke, about)) };
+}
+
+/**
+ * An ordinal: the letter, small, hung from the cap line.
+ *
+ * Without the rule underneath it that older faces draw. It is a nineteenth
+ * century habit that modern text faces have dropped, and a rule under a letter
+ * this small closes up at any weight worth the name.
+ */
+function ordinal(f: Frame, name: LetterName): Recipe {
+  const share = 0.62;
+  return { strokes: setSmall(f.style, name, share, f.edge, f.cap - f.x * share) };
+}
+
+/** A superior figure: the figure, small, with its head at the cap line. */
+function superior(f: Frame, name: LetterName): Recipe {
+  const share = 0.6;
+  return { strokes: setSmall(f.style, name, share, f.edge, f.cap * (1 - share)) };
+}
+
+/**
+ * A fraction: two figures of this font at two heights, and a stroke between.
+ *
+ * The numerator hangs from the cap line and the denominator stands on the
+ * baseline, which is what puts the daylight between them -- a fraction whose
+ * halves are level reads as two figures with a slash in the middle.
+ */
+function fraction(f: Frame, over: LetterName, under: LetterName): Recipe {
+  const share = 0.58;
+  const gap = f.style.pen.weight * 0.34;
+  const numerator = setSmall(f.style, over, share, f.edge, f.cap * (1 - share));
+  const lean = figureWidth(frame(sized(f.style, share))) * 0.72;
+  // Each piece stood beside what the last one actually covers, rather than
+  // beside the width it was asked for. The two are not the same on a heavy
+  // face, where a small figure is held wider than its design width.
+  const bar = spread(numerator).xMax + gap;
+  const stroke = finish(f, [
+    ink(f, straight(at(bar, f.desc * 0.14), at(bar + lean, f.cap)), shortEnd(f), shortEnd(f)),
+  ]).strokes;
+  return {
+    strokes: [
+      ...numerator,
+      ...stroke,
+      ...setSmall(f.style, under, share, spread(stroke).xMax + gap, 0),
+    ],
+  };
+}
+
+/**
+ * The same frame with its corners rounded no harder than the runs can give.
+ *
+ * A corner is rounded by cutting the two runs that meet at it and putting an
+ * arc between, so a radius larger than the runs are long has nothing left to
+ * cut. Every letter in the alphabet has runs the height of a capital and never
+ * meets the limit; a brace has four corners inside two thirds of an em, and on
+ * the face whose corners are rounded by two hundred and twenty units it drew
+ * itself inside out.
+ */
+function gentler(f: Frame, shortest: number): Frame {
+  /*
+   * And no rounding at all where even the smallest there is would not fit.
+   *
+   * A corner is never cut smaller than the pen can turn round -- asking for
+   * less than that would leave an arc the stroke's own inside could not follow
+   * -- so on runs shorter than the pen is wide there is no rounding to be had,
+   * only a bite taken further back than the run is long. A corner left sharp is
+   * what a face that heavy has anyway.
+   */
+  const wanted = Math.min(f.radius, shortest * 0.42);
+  const radius = wanted >= f.half * 1.06 ? wanted : 0;
+  if (radius >= f.radius) return f;
+  const { corner } = f.style.parts;
+  return frame({ ...f.style, parts: { ...f.style.parts, corner: { ...corner, radius } } });
+}
+
+/**
+ * A brace, facing whichever way it is asked to.
+ *
+ * Two quarter turns at the ends, two straight runs, and a spur in the middle
+ * that points away from the text. The spur is drawn as a shallow vee rather
+ * than as a curve that turns back on itself: a curve arriving horizontally and
+ * leaving horizontally the other way is a reversal, and an offset carried round
+ * a reversal comes back through the stroke it belongs to -- which is what every
+ * base in the file did when it was drawn that way. A vee is a corner, the sweep
+ * has always known what to do with corners, and a face that rounds its corners
+ * rounds this one into the curve a brace is usually drawn with.
+ */
+function brace(f: Frame, facing: 1 | -1): Recipe {
+  const w = Math.max(f.arch * 0.62, f.style.pen.weight * 1.5);
+  const lines = tall(f);
+  // The hooks end with the pen lying along the line, so they are set back from
+  // it by what the pen reaches sideways there.
+  const foot = f.sits(lines.foot);
+  const head = f.hangs(lines.head);
+  const middle = (foot + head) / 2;
+  const room = head - middle;
+  /*
+   * The hook's radius is held above what the pen can turn round, and otherwise
+   * takes what the height allows.
+   *
+   * Taken as half the brace's width -- which is what it was, so that the arcs
+   * landed exactly on the vertical runs -- a heavy pen made a wide brace, a
+   * wide brace made a large radius, and the two hooks between them ate the
+   * whole height: the runs came out thirteen units long and the sweep drew the
+   * stroke through itself. The radius decides where the runs are instead, which
+   * is the same construction with the dependency the other way round.
+   */
+  const radius = Math.max(Math.min(w * 0.5, room * 0.34), f.half);
+  /*
+   * The straight runs get what is left, and they get it first.
+   *
+   * A run between two corners has to be longer than the pen is wide, or the
+   * inside of the first turn is still coming back as the second one starts and
+   * the stroke crosses itself. Given to the spur first, a display weight left
+   * the run at nothing and every brace in the file folded; given to the run
+   * first, the spur simply gets shallower as the pen gets heavier, which is
+   * what a heavy brace looks like anyway.
+   */
+  const reach = Math.max(
+    Math.min((w - radius) * 0.95, room - radius - f.half * 1.35),
+    Math.min(f.half * 0.3, (room - radius) * 0.4),
+  );
+  /*
+   * And the spur reaches out only as far as its own point stays open.
+   *
+   * How deep it goes and how tall it is are the two sides of the corner at the
+   * point, and the inside of that corner needs about a pen's half-width of run
+   * on each leg to close: any sharper, or any shorter, and it comes back
+   * through the stroke. Written out, that is the depth below -- so a heavy pen
+   * flattens the spur toward a bracket rather than folding the brace, and a
+   * text weight never comes near the limit.
+   */
+  const spare = f.half * f.half - 0.64 * reach * reach;
+  const deepest = spare <= 0 ? Infinity : (0.8 * reach * reach) / Math.sqrt(spare);
+  /*
+   * The spur reaches out only as far as the vee can stay open.
+   *
+   * How deep it goes and how tall it is are the two sides of the corner at the
+   * point, and a corner much sharper than a right angle is a reversal by
+   * another name: the inside of the turn folds back through the stroke. So the
+   * depth follows the height rather than the width, and a brace with no room
+   * to be deep is a shallow brace instead of a broken one.
+   */
+  const depth = Math.min(w - radius, reach * 1.7, deepest);
+  // The two ends and the spur, which swap sides with the brace.
+  const stem = f.edge + (facing > 0 ? depth : radius);
+  const back = stem + (facing > 0 ? radius : -radius);
+  const spur = stem - depth * facing;
+  // Rounded by no more than the shortest piece here can give up.
+  const gentle = gentler(f, Math.min(room - radius - reach, Math.hypot(depth, reach)));
+  return finish(f, [
+    ink(
+      gentle,
+      chain(
+        turn(at(back, head - radius), radius, 90, facing > 0 ? 180 : 0),
+        straight(at(stem, head - radius), at(stem, middle + reach)),
+        straight(at(stem, middle + reach), at(spur, middle)),
+        straight(at(spur, middle), at(stem, middle - reach)),
+        straight(at(stem, middle - reach), at(stem, foot + radius)),
+        turn(at(back, foot + radius), radius, facing > 0 ? 180 : 0, facing > 0 ? 270 : -90),
+      ),
+      shortEnd(f),
+      shortEnd(f),
+    ),
+  ]);
+}
+
+/**
+ * A letter of this font inside a ring, which is what a copyright mark is.
+ *
+ * The letter is measured and then centred on what was measured, rather than
+ * placed at a fraction of the ring's width: a C on a heavy face is held wider
+ * than its design width, and centred on that width it sat against the inside of
+ * its own ring.
+ */
+function enclosed(f: Frame, name: LetterName): Recipe {
+  const radius = Math.max(f.capBowlH * 0.92, f.half * 2.6);
+  const centre = at(f.edge + radius, f.cap * 0.48);
+  const light = frame({
+    ...f.style,
+    pen: { ...f.style.pen, weight: f.style.pen.weight * Math.min(1, f.bar * 1.15) },
+  });
+  const ring = ink(light, bowl(centre, radius, radius, 1 - f.square, light.half));
+  // Two thirds of the ring across, which is the room there is once the ring
+  // itself and a little daylight are taken off the inside.
+  const share = ((radius - light.half) * 1.25) / f.cap;
+  const letter = setSmall(f.style, name, share, f.edge, 0, Math.min(1, f.bar * 1.2));
+  const box = spread(letter);
+  return {
+    strokes: [
+      ...finish(f, [ring]).strokes,
+      ...letter.map((stroke) =>
+        shovedStroke(
+          stroke,
+          centre.x - (box.xMin + box.xMax) / 2,
+          centre.y - (box.yMin + box.yMax) / 2,
+        ),
+      ),
+    ],
+    round: true,
+  };
+}
+
+/**
+ * A guillemet: two chevrons pointing the same way.
+ *
+ * Held apart by their own weight rather than by a share of the mark's width,
+ * or a heavy face runs the two into a single arrowhead.
+ */
+function chevrons(f: Frame, facing: 1 | -1): Recipe {
+  const w = signWidth(f) * 0.42;
+  const rise = w * 1.05;
+  const y = axis(f);
+  const step = Math.max(w * 0.92, f.style.pen.weight * f.bar * 2.1);
+  const one = (left: number): Stroke => {
+    const back = facing > 0 ? left : left + w;
+    const tip = facing > 0 ? left + w : left;
+    return bent(
+      f,
+      chain(
+        straight(at(back, y + rise), at(tip, y)),
+        straight(at(tip, y), at(back, y - rise)),
+      ),
+    );
+  };
+  return finish(f, [one(f.edge), one(f.edge + step)]);
+}
+
+/**
+ * A sign that turns a corner, drawn at the weight of a bar.
+ *
+ * `thin` is for a bar that runs straight -- a crossbar, a hyphen -- and does
+ * not round its corners, because a straight run has none to round. The signs
+ * that bend do have one, and they bend at the weight of a bar rather than of a
+ * stem: a less-than drawn with the stem is a wedge of ink sitting beside
+ * arithmetic drawn at half its weight.
+ */
+function bent(f: Frame, spine: Spine): Stroke {
+  if (hasCorner(spine)) uses("corner");
+  const half = (f.style.pen.weight * f.bar) / 2;
+  // A short end, for the reason every sign has one: these runs are too short
+  // to be cut at an angle without the two corners meeting in the middle.
+  return thin(f, roundCorners(spine, f.radius, half), shortEnd(f), shortEnd(f));
 }
 
 // ---------------------------------------------------------------------------
@@ -3186,7 +4400,7 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
           ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
           belly(f, at(stem, f.cap - radius), radius * f.wide, radius, -90, 90),
           // One arc from the junction to the foot, bowed out to the right.
-          ink(f, bow(f, at(stem, junction), at(stem + legRadius * 1.5, 0), 0.14), BUTT, f.end),
+          ink(f, bowed(f, at(stem, junction), at(stem + legRadius * 1.5, 0), 0.14), BUTT, f.end),
         ]);
       },
     },
@@ -3520,6 +4734,9 @@ export function recipeOf(
    */
   return (style: Style) => {
     pending = [];
+    // Carried so that a symbol built out of a letter draws the same letter the
+    // font does: an ordinal on a font with the single-storey a is that a.
+    borrowing = form;
     return build(style);
   };
 }

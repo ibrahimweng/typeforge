@@ -783,6 +783,69 @@ test("draws the accented letters and writes them into the font", async ({ page }
   expect(errors).toEqual([]);
 });
 
+/**
+ * The symbols, end to end.
+ *
+ * The half of a character set nobody notices until they set a line of real text
+ * in the font they just made: no ampersand, no at sign, no brackets, no
+ * currency, no arithmetic. Checked in the grid, then in a line of type, and
+ * then in the file -- because the three can disagree, and the file is the one
+ * that decides whether the font is usable.
+ */
+test("draws the symbols and writes them into the font", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openForge(page);
+
+  // Every character the other half offers a box for, which is the whole set.
+  expect(await page.locator("[data-forge-cell]").count()).toBeGreaterThanOrEqual(189);
+  for (const name of ["ampersand", "at", "sterling", "braceleft", "onehalf", "questiondown", "mu"]) {
+    await expect(page.locator(`[data-forge-cell="${name}"]`)).toBeVisible();
+  }
+
+  // And in a line of type, which is where somebody would notice them missing:
+  // the specimen draws one outline per character it can find and nothing at all
+  // for the ones it cannot.
+  await page.locator('input[value="Handgloves"]').fill("& @ £ ½ ¿ ~ § ¶");
+  const line = page.getByRole("img", { name: "Specimen" });
+  await expect.poll(() => line.locator("path").count()).toBe(8);
+
+  const download = await Promise.race([
+    page.waitForEvent("download", { timeout: 90_000 }),
+    page
+      .getByRole("button", { name: "Download", exact: true })
+      .click()
+      .then(() =>
+        page
+          .getByRole("dialog")
+          .getByRole("button", { name: "Download", exact: true })
+          .click()
+          .then(() => page.waitForEvent("download", { timeout: 90_000 })),
+      ),
+  ]);
+  const bytes = readFileSync((await download.path())!);
+
+  const measured = await page.evaluate(async (data) => {
+    const face = new FontFace("Symbols", new Uint8Array(data).buffer as ArrayBuffer);
+    await face.load();
+    document.fonts.add(face);
+    const context = document.createElement("canvas").getContext("2d")!;
+    context.font = "100px Symbols";
+    const width = (text: string) => context.measureText(text).width;
+    return {
+      // A character the font has no glyph for, to measure the others against.
+      blank: width("\uFFFF"),
+      symbols: "&@£½¿~§¶#%*+<=>[]{}|©®°±²µ·»¼×÷".split("").map((one) => [one, width(one)] as const),
+    };
+  }, [...bytes]);
+
+  const missing = measured.symbols
+    .filter(([, width]) => width === 0 || Math.abs(width - measured.blank) < 0.5)
+    .map(([character]) => character);
+  expect(missing.join(" "), "the font went out without these").toBe("");
+  expect(errors).toEqual([]);
+});
+
 test("spreads one edit across the whole alphabet", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Draw" }).click();

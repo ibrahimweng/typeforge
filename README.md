@@ -48,6 +48,22 @@ never disturbs what is already there.
 **Parameters** reshape the whole typeface at once: corner radius, weight, middle
 space, width, slant, x-height and tracking. Any glyph can override any of them.
 
+**Draw** is the other half of the application, and needs no font to start from.
+A letter is a skeleton — where its strokes run — swept by a pen, so weight is an
+input to the drawing rather than a shove applied to a finished outline: ask for
+a heavier cut and the letter is drawn again, thicker. It cannot fold, because
+nothing moved.
+
+It draws the whole Latin-1 set: the letters, the figures, the accented forms of
+every European language that uses the alphabet, and the symbols — the ampersand,
+the at sign, the currency marks, the brackets and braces, the arithmetic, the
+fractions. All of it from the same pen and the same proportions, so one edit
+reaches all of it. Several of the symbols are not separate drawings at all: a
+cent is the c of this font with a bar through it, an ordinal is its a set small,
+an upside-down question mark is the question mark turned over, and a ½ is the
+figures it is made of — so changing the a changes the ordinal, and there is no
+second copy anywhere to fall behind.
+
 ## Finding your way around
 
 There is a sample font in the toolbar's empty state, so the tool can be tried
@@ -146,6 +162,15 @@ single awkward pair can override the class it belongs to.
 npm test
 ```
 
+The drawn letters have a sheet of their own, because a test can say a glyph is
+*built* like one — no stroke crossing itself, nothing off the line, the figures
+all one width — and nothing but an eye can say it looks like an ampersand:
+
+```bash
+npx vite-node scripts/sheet.ts ampersand at percent
+SHEET_BASES=Sans,Display CELL=120 npx vite-node scripts/sheet.ts braceleft
+```
+
 Exports are checked against **fontTools**, the reference implementation used
 across the type industry, rather than against this project's own reader. The
 tests import a real font, edit it, export it, and confirm that fontTools can
@@ -172,6 +197,12 @@ src/font/     the font engine, independent of the interface
   transform.ts  the parametric layer
   geometry.ts   vector and bezier maths
 src/state/    document state, undo and redo
+src/forge/    the skeleton-and-pen engine behind Draw
+  letters.ts    where the strokes of every character run
+  style.ts      the pen, the proportions and the named parts
+  sweep.ts      the pen carried along a spine
+  accents.ts    the accented letters, from Unicode's own decomposition
+src/assemble/ the pile of drawings behind Assemble
 src/project/  the saved document: the file format, and keeping it in the browser
 src/views/    font, glyph, kerning and spacing views
 src/anim/     motion, built on anime.js

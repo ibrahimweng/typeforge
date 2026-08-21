@@ -13,6 +13,7 @@ import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import {
   FIGURES,
   LETTERS,
+  letterBehind,
   partsOfStroke,
   recipeOf,
   type PartName,
@@ -86,6 +87,20 @@ export function canDraw(name: string): boolean {
 /** What an accented letter is built from, or nothing if it is drawn outright. */
 export function builtFrom(name: string): Parts | null {
   return DRAWN.has(name) ? null : (accentsFor(DRAWN).get(name) ?? null);
+}
+
+export { letterBehind } from "./letters";
+
+/**
+ * Which letter owns the decisions a glyph is drawn with.
+ *
+ * Itself, for most of them. An accented letter reads its base, and a symbol
+ * built out of a letter reads that letter -- so choosing the single-storey a
+ * lands on the a whether it was asked for on the a, on an á, or on an ª, and
+ * all three follow.
+ */
+export function decidedBy(name: string): string {
+  return builtFrom(name)?.base ?? letterBehind(name) ?? name;
 }
 
 /** A round letter is set a little tighter, or it looks loose beside a flat one. */

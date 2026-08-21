@@ -15,7 +15,7 @@
 import { describe, expect, it } from "vitest";
 
 import { contoursToSvgPath } from "@/font/geometry";
-import { builtFrom, letterNames } from "./build";
+import { decidedBy, letterNames } from "./build";
 import {
   clearException,
   draw,
@@ -136,16 +136,15 @@ describe("editing a part", () => {
     }
 
     /*
-     * And the accented letters built on those, which is the whole point of
-     * building them rather than drawing them: an edit to the shoulder reaches
-     * `ú` because `ú` is a `u`, without anybody listing it anywhere. Everything
-     * that moved is either an arched letter or built on one -- a check that
-     * still holds when a letter gains an arch tomorrow.
+     * And everything built on those, which is the whole point of building them
+     * rather than drawing them: an edit to the shoulder reaches `ú` because
+     * `ú` is a `u`, and reaches `µ` for the same reason, without anybody
+     * listing either anywhere. What is checked is the rule -- everything that
+     * moved is an arched letter or is drawn out of one -- so it still holds
+     * when a letter gains an arch tomorrow, or a symbol borrows one.
      */
     for (const letter of changed) {
-      const built = builtFrom(letter);
-      const source = built ? built.base : letter;
-      expect(arched, `${letter} moved but has no arch`).toContain(source);
+      expect(arched, `${letter} moved but has no arch`).toContain(decidedBy(letter));
     }
     expect(changed).toContain("Uacute");
   });

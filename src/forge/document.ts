@@ -16,7 +16,7 @@
  * how to reverse an edit.
  */
 
-import { builtFrom, drawLetter, letterNames, type Drawn } from "./build";
+import { decidedBy, drawLetter, letterNames, type Drawn } from "./build";
 import type { Imported } from "./exchange";
 import { partsUsedBy, type PartName } from "./parts";
 import { BASES, type Parts, type Style } from "./style";
@@ -95,11 +95,11 @@ export function isImported(forge: Forge, letter: string): boolean {
 /** Draw this letter from a different skeleton, or put it back to the default. */
 export function chooseForm(forge: Forge, letter: string, form: string): Forge {
   const alternates = { ...forge.alternates };
-  // Asked of an accented letter, the choice lands on the letter underneath it.
-  const built = builtFrom(letter);
-  if (built) letter = built.base;
-  if (form) alternates[letter] = form;
-  else delete alternates[letter];
+  // Asked of an accented letter or of a symbol built out of one, the choice
+  // lands on the letter underneath.
+  const owner = decidedBy(letter);
+  if (form) alternates[owner] = form;
+  else delete alternates[owner];
   return { ...forge, alternates };
 }
 
@@ -107,13 +107,12 @@ export function chooseForm(forge: Forge, letter: string, form: string): Forge {
  * Which form a letter is drawn in.
  *
  * An accented letter reads its base's answer rather than keeping one of its
- * own. Choosing a single-storey a is a decision about the a, and an `á` that
- * carried on with the other one would be the same letter twice in one font.
+ * own, and so does a symbol built out of a letter. Choosing a single-storey a
+ * is a decision about the a, and an `á` or an `ª` that carried on with the
+ * other one would be the same letter twice in one font.
  */
 export function formOf(forge: Forge, letter: string): string {
-  const built = builtFrom(letter);
-  const asked = built ? built.base : letter;
-  return forge.alternates[asked] ?? "";
+  return forge.alternates[decidedBy(letter)] ?? "";
 }
 
 export function baseNamed(name: string): Style | undefined {
