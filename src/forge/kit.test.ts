@@ -269,6 +269,117 @@ describe("laying an alphabet on the grid", () => {
     }
   });
 
+  /** Every cell a letter uses, sorted so a diagonal reads as one. */
+  const cellsOf = (tiles: Tiles): Array<{ column: number; row: number; ports: Port[] }> =>
+    Object.entries(tiles.cells).map(([key, cell]) => {
+      const [column, row] = key.split(",").map(Number);
+      return { column, row, ports: cell.ports };
+    });
+
+  it("sends a stem through the doors it crosses, not the ones it runs beside", () => {
+    /*
+     * The right stem of an M sits a fifth of a cell in from that cell's west
+     * edge. Asked which of the eight ports each end lay nearest, both answered
+     * with a western corner -- sw and nw -- and two ports on the same edge are
+     * drawn as a line along that edge. The stems survived that by luck, being
+     * upright either way; the apex of the vee came back n and nw, which is a
+     * bar straight across the top of the cell where the point of the M should
+     * be, and the letter read as an H.
+     *
+     * A port is where a stroke crosses a boundary, so only the boundary it
+     * crossed can name it.
+     */
+    const tiles = seed("M");
+    const columns = new Set(cellsOf(tiles).map((cell) => cell.column));
+    const outer = [Math.min(...columns), Math.max(...columns)];
+    for (const column of outer) {
+      const stem = cellsOf(tiles).filter((cell) => cell.column === column);
+      expect(stem.length, `column ${column}`).toBeGreaterThan(2);
+      // A stem runs up the middle of its cells: never in or out by a side it
+      // does not cross.
+      for (const cell of stem) {
+        expect(cell.ports.includes("e") || cell.ports.includes("w"), `${column},${cell.row}`).toBe(
+          false,
+        );
+      }
+    }
+  });
+
+  it("takes a diagonal across cells corner to corner rather than in steps", () => {
+    /*
+     * The route runs on a lattice of half cells, and a diagonal step is half a
+     * cell too -- so half the time the run lands on the middles of the edges
+     * instead of the corners, and from there each boundary is crossed on its
+     * own: across, then up, then across. A clean diagonal came back as a
+     * staircase of elbows, which is what took the crossing out of an X.
+     */
+    const tiles = seed("X");
+    const corners = cellsOf(tiles).filter((cell) =>
+      cell.ports.some((port) => port.length === 2),
+    );
+    expect(corners.length).toBeGreaterThan(4);
+
+    // The crossing itself: one cell that both strokes pass through, so it has
+    // ports on more than one pair of opposite corners.
+    const crossing = cellsOf(tiles).filter(
+      (cell) =>
+        cell.ports.filter((port) => port.length === 2).length >= 4,
+    );
+    expect(crossing.length, "the X has to cross somewhere").toBeGreaterThan(0);
+  });
+
+  it("crosses an X in the middle rather than at one end of it", () => {
+    /*
+     * What was left over after the diagonal used to be spent entirely at the
+     * end of the stroke, so that a leg arrived at its foot upright. It did --
+     * and two strokes that mirror each other are drawn from opposite ends, so
+     * the tail landed at the top of one and the bottom of the other, and the
+     * two legs met near a corner of the letter or not at all.
+     *
+     * Not a claim that the two halves are mirror images cell for cell: the
+     * letter is three and a half cells wide, and half a cell cannot be split
+     * evenly between two ends. The claim is that the crossing is in the middle
+     * of the letter, which is the part that was wrong.
+     */
+    const tiles = seed("X");
+    const cells = cellsOf(tiles);
+    const crossing = cells.filter(
+      (cell) => cell.ports.filter((port) => port.length === 2).length >= 4,
+    );
+    expect(crossing.length, "the X has to cross").toBeGreaterThan(0);
+
+    const columns = cells.map((cell) => cell.column);
+    const rows = cells.map((cell) => cell.row);
+    const middleColumn = (Math.min(...columns) + Math.max(...columns)) / 2;
+    const middleRow = (Math.min(...rows) + Math.max(...rows)) / 2;
+    for (const cell of crossing) {
+      expect(Math.abs(cell.column - middleColumn)).toBeLessThanOrEqual(1);
+      expect(Math.abs(cell.row - middleRow)).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("keeps a bowl turning rather than boxing it in", () => {
+    /*
+     * A guard rather than a bug caught: the bowls were round before any of
+     * this, and deciding the side by the boundary crossed is what nearly took
+     * that away.
+     *
+     * Which side a stroke leaves by is the boundary it crossed and nothing
+     * else. Which of the three doors on that side is where along it the stroke
+     * went through -- and that is the half that makes a curve look like one. A
+     * bowl crosses the top of a cell's east edge rather than the middle of it,
+     * and taken from the middle every O and G and g in the alphabet came back
+     * a box.
+     */
+    for (const letter of ["O", "G", "o", "g"]) {
+      const tiles = seed(letter);
+      const corners = cellsOf(tiles).filter((cell) =>
+        cell.ports.some((port) => port.length === 2),
+      );
+      expect(corners.length, `${letter} has to turn somewhere`).toBeGreaterThan(2);
+    }
+  });
+
   it("leaves no cell stranded on its own", () => {
     /*
      * A cell whose ink touches nothing else is a speck beside the letter, and
