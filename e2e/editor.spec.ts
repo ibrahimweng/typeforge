@@ -7,7 +7,9 @@
  * browser is a real font.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
 
@@ -54,6 +56,62 @@ test("loads with no console errors and prompts for a font", async ({ page }) => 
   await page.goto("/");
   await expect(page.getByText("Typeforge")).toBeVisible();
   await expect(page.getByText("No font open")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+/**
+ * Opening a WOFF2.
+ *
+ * Worth a test of its own rather than folding into the one above, because the
+ * two arrive by different routes: a TrueType file is read straight off, and a
+ * WOFF2 has to be unpacked by a WebAssembly decoder first. That decoder has to
+ * be told where its own `.wasm` lives, and when it is not it fails with a
+ * message naming neither WOFF2 nor the font -- so every compressed font, which
+ * is to say every font the library fetches, failed to open while a suite full
+ * of TrueType tests stayed green.
+ *
+ * The file is made here rather than kept as a fixture, so what is opened is a
+ * real WOFF2 produced by the same encoder rather than a blob nobody can check.
+ */
+test("opens a WOFF2, which is what the web serves", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  const woff2Path = join(tmpdir(), "typeforge-sample.woff2");
+  if (!existsSync(woff2Path)) {
+    const { Font, woff2 } = await import("fonteditor-core");
+    await woff2.init();
+    const ttf = readFileSync(FONT_PATH!);
+    const font = Font.create(
+      ttf.buffer.slice(ttf.byteOffset, ttf.byteOffset + ttf.byteLength) as ArrayBuffer,
+      { type: "ttf", hinting: true },
+    );
+    writeFileSync(woff2Path, new Uint8Array(font.write({ type: "woff2", hinting: true })));
+  }
+  // The magic every WOFF2 starts with, so a broken fixture fails here and not
+  // as a mystery in the application.
+  expect(readFileSync(woff2Path).subarray(0, 4).toString("latin1")).toBe("wOF2");
+
+  await page.goto("/");
+  await page.setInputFiles('input[type="file"]', woff2Path);
+
+  // The whole font, unpacked and drawn: the same count the TrueType of it
+  // gives, since a WOFF2 is that file compressed and nothing else.
+  await expect(page.getByText("6,253 glyphs", { exact: true })).toBeVisible({ timeout: 60_000 });
+
+  // Cells are canvases, so check that one has ink rather than trusting that
+  // the element exists -- an empty grid would pass every other assertion here.
+  const painted = await page.evaluate(() => {
+    const canvases = [...document.querySelectorAll("canvas")];
+    return canvases.some((canvas) => {
+      const context = canvas.getContext("2d");
+      if (!context || canvas.width === 0) return false;
+      const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+      for (let i = 3; i < data.length; i += 4) if (data[i] > 0) return true;
+      return false;
+    });
+  });
+  expect(painted).toBe(true);
   expect(errors).toEqual([]);
 });
 

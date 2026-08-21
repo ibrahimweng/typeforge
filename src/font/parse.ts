@@ -53,8 +53,28 @@ async function toSfntBytes(bytes: Uint8Array, format: FontFormat): Promise<Uint8
 
   const { Font, woff2 } = await import("fonteditor-core");
   if (format === "woff2") {
-    // The WOFF2 decoder is WebAssembly, initialised only when one turns up.
-    await woff2.init();
+    /*
+     * The WOFF2 decoder is WebAssembly, initialised only when one turns up.
+     *
+     * It has to be told where its own `.wasm` file is, and the reason is worth
+     * writing down because the failure is nothing like the cause. In a browser
+     * the decoder installs a `locateFile` hook that answers every request for a
+     * `.wasm` with whatever was passed to `init` -- so calling `init()` with
+     * nothing answers `undefined`, and the path is then handed to a check that
+     * calls `.startsWith` on it. What reaches the screen is "Cannot read
+     * properties of undefined (reading 'startsWith')", which names neither
+     * WOFF2 nor this file, and every WOFF2 font fails: which is to say every
+     * font Google Fonts serves, and the whole library with it.
+     *
+     * The file is served as our own asset rather than imported from the
+     * package, because the package does not export it -- its `exports` map
+     * offers `./lib/*` and nothing else, so a bundler asked for it refuses.
+     * Built from the base URL so it is found under a sub-path deployment as
+     * well as at a root. A test keeps the copy identical to the installed
+     * package's, so an upgrade that changes the decoder cannot leave a stale
+     * one behind. Node resolves the file itself and ignores this argument.
+     */
+    await woff2.init(`${import.meta.env.BASE_URL}woff2.wasm`);
   }
 
   // fonteditor-core reads through a DataView and so needs a real ArrayBuffer.
