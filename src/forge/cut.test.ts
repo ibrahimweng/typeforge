@@ -1,10 +1,10 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { ready, unite } from "@/font/boolean";
-import { contourArea, contoursBounds } from "@/font/geometry";
+import { contourArea, contoursBounds, contoursToSvgPath } from "@/font/geometry";
 import type { Contour } from "@/font/types";
 import { drawLetter } from "./build";
-import { anyCut, noCuts, piecesOf, type Cuts } from "./cut";
+import { anyCut, noCuts, piecesOf, type Cuts, type MotifShape } from "./cut";
 import { weightedStyle } from "./family";
 import { BASES, type Style } from "./style";
 
@@ -202,6 +202,97 @@ describe("motif", () => {
     expect(hole!.nodes.length).toBe(4);
     // And it is smaller than the counter it replaced, so the letter gains ink.
     expect(ink(after)).toBeGreaterThan(ink(before) * 0.99);
+  });
+
+  it("offers a geometric vocabulary, and every shape of it lands", () => {
+    /*
+     * Named for what they are, which is a decision rather than a convenience.
+     * A diamond, a lozenge and a chevron are figures that turn up in geometric
+     * ornament everywhere there is any and belong exclusively to nobody; the
+     * symbol sets a face like this is often reached for alongside carry
+     * meaning, and two of them are living alphabets. None of those is in here.
+     */
+    const shapes: MotifShape[] = [
+      "diamond",
+      "lozenge",
+      "nested",
+      "triangle",
+      "hourglass",
+      "chevron",
+      "bars",
+      "square",
+      "slot",
+      "dot",
+      "ring",
+    ];
+    const round = drawn("o", sans).contours;
+    for (const shape of shapes) {
+      const cuts = cutWith((one) => { one.motif = { on: true, shape, size: 1 }; });
+      const after = drawn("o", sans, cuts).contours;
+      // The counter is still a hole, and it is a different hole.
+      expect(after.some((contour) => contourArea(contour) < 0), shape).toBe(true);
+      expect(contoursToSvgPath(after), shape).not.toBe(contoursToSvgPath(round));
+      // And nothing has burst out of the letter.
+      const box = contoursBounds(after);
+      const was = contoursBounds(round);
+      for (const edge of ["xMin", "xMax", "yMin", "yMax"] as const) {
+        expect(box[edge], `${shape} ${edge}`).toBeCloseTo(was[edge], 3);
+      }
+    }
+  });
+
+  it("cuts more than one hole where the shape is more than one piece", () => {
+    const count = (shape: MotifShape): number =>
+      drawn("o", sans, cutWith((one) => { one.motif = { on: true, shape, size: 1 }; }))
+        .contours.filter((contour) => contourArea(contour) < 0).length;
+    // Two triangles meeting at their points, and three bars.
+    expect(count("hourglass")).toBe(2);
+    expect(count("bars")).toBe(3);
+    expect(count("diamond")).toBe(1);
+    // A diamond inside a diamond is one hole with an island of ink in it, so
+    // the letter gains a piece rather than a second hole.
+    expect(count("nested")).toBe(1);
+    expect(piecesOf(drawn("o", sans, cutWith((one) => { one.motif = { on: true, shape: "nested", size: 1 }; })).contours)).toBe(2);
+  });
+
+  it("keeps every shape inside the counter, on the roundest and thinnest faces", () => {
+    /*
+     * The shapes are laid out in the box the counter fits inside, and a box is
+     * bigger than the thing it bounds wherever that thing is round. Drawn
+     * straight into that box, the corners of a square land out in the stroke
+     * of an O rather than in its counter, and subtracting them there cuts the
+     * O into four arcs. Five of the eleven shapes have corners like that, and
+     * before they were fitted to the counter every one of them severed a
+     * letter on the faces below -- a Didone O went to pieces under six of them.
+     *
+     * Counted rather than eyeballed, because a severed O still looks like an O
+     * on a page until the letters are set close and the pieces drift.
+     */
+    const shapes: MotifShape[] = [
+      "diamond", "lozenge", "nested", "triangle", "hourglass", "chevron",
+      "bars", "square", "slot", "dot", "ring",
+    ];
+    const letters = ["O", "o", "Q", "D", "b", "d", "p", "q", "B", "e", "a", "g", "P", "R"];
+    // The round one, the thin one, and the one whose strokes wobble.
+    const faces = ["Geometric", "Didone", "Wavy"].map(
+      (name) => BASES.find((base) => base.name === name)!,
+    );
+    // Two counters, so the shapes that stand an island in one stand two here.
+    const counters: Record<string, number> = { B: 2, g: 2 };
+
+    const severed: string[] = [];
+    for (const face of faces) {
+      for (const letter of letters) {
+        const whole = piecesOf(drawn(letter, face).contours);
+        for (const shape of shapes) {
+          const islands = shape === "nested" || shape === "ring" ? counters[letter] ?? 1 : 0;
+          const cuts = cutWith((one) => { one.motif = { on: true, shape, size: 1 }; });
+          const after = piecesOf(drawn(letter, face, cuts).contours);
+          if (after > whole + islands) severed.push(`${face.name} ${letter} ${shape}`);
+        }
+      }
+    }
+    expect(severed).toEqual([]);
   });
 
   it("leaves a letter with no counter alone", () => {

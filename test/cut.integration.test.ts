@@ -20,6 +20,7 @@ import {
   type Forge,
 } from "../src/forge/document";
 import { letterSvg, readLetterSvg } from "../src/forge/exchange";
+import type { MotifShape } from "../src/forge/cut";
 import { SANS } from "../src/forge/style";
 import { FONT_SUITE_TIMEOUT } from "./fixtures";
 import { inspectFont } from "./fonttools";
@@ -67,6 +68,44 @@ describe("a cut font, read from outside", { timeout: FONT_SUITE_TIMEOUT }, () =>
     // which the piece count cannot see and the outline can.
     expect(read.contoursOf.o).toBe(2);
     expect(read.recompiles).toBe(true);
+  });
+
+  it("keeps the island in a nested counter solid, and the hole around it hollow", async () => {
+    /*
+     * Every other counter shape is one hole. This one is a hole with a piece
+     * of ink standing in the middle of it, which is the only place in the
+     * whole font where a contour sits two deep. Wind that island the way the
+     * hole around it is wound and it does not come out wrong, it does not come
+     * out at all: the boolean reads the two diamonds as one region and fuses
+     * them, and what should be a face with a dot in every counter ships as a
+     * face with a plain diamond. So both are asked here -- the piece count,
+     * and then the ink, which is the half that would catch a winding that
+     * survived as far as the file.
+     */
+    const ink = async (shape: MotifShape): Promise<number> => {
+      const forge = editCut(startFrom(SANS), "motif", { on: true, shape });
+      const written = await deliver(forge, { familyName: "Nested", format: "ttf" });
+      return Math.abs(inspectFont(written.bytes).inkOf.o);
+    };
+    const plain = await deliver(startFrom(SANS), { familyName: "Plain", format: "ttf" });
+    const round = inspectFont(plain.bytes);
+    const nested = await deliver(
+      editCut(startFrom(SANS), "motif", { on: true, shape: "nested" }),
+      { familyName: "Nested", format: "ttf" },
+    );
+
+    // The bowl, the diamond hole, and the diamond standing inside it.
+    expect(inspectFont(nested.bytes).contoursOf.o).toBe(3);
+
+    // A diamond takes less out of the bowl than the round counter did, and the
+    // island puts some of it back -- so the ink rises twice over. Wind the
+    // island the way the hole is wound and it would subtract instead, which
+    // lands it below the plain diamond and fails here.
+    const hollow = Math.abs(round.inkOf.o);
+    const diamond = await ink("diamond");
+    const island = await ink("nested");
+    expect(diamond).toBeGreaterThan(hollow);
+    expect(island).toBeGreaterThan(diamond);
   });
 
   it("carries the cuts through every weight of a family", async () => {

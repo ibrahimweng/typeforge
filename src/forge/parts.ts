@@ -683,7 +683,12 @@ export const CUT_SPECS: CutSpec[] = [
         step: 0,
         options: [
           { value: "diamond", label: "Diamond", hint: "Points at the top, bottom and sides of the counter." },
+          { value: "lozenge", label: "Lozenge", hint: "The same figure drawn tall and narrow, which is what most woven and painted geometry uses where a square diamond would read as a hole." },
+          { value: "nested", label: "Nested", hint: "A diamond with a diamond in it: a counter that is neither open nor closed." },
           { value: "triangle", label: "Triangle", hint: "Flat foot, point at the top." },
+          { value: "hourglass", label: "Hourglass", hint: "Two triangles meeting at their points." },
+          { value: "chevron", label: "Chevron", hint: "A band bent to a point, which gives a counter a direction the letter did not have." },
+          { value: "bars", label: "Comb", hint: "Three bars: a counter cut into stripes rather than replaced by a figure." },
           { value: "square", label: "Square", hint: "The counter's own box, which reads as a technical face." },
           { value: "slot", label: "Bar", hint: "A wide, shallow slot: nearly a closed letter with a nick in it." },
           { value: "dot", label: "Dot", hint: "A small disc in the middle, so the letter closes to a ring with a point in it." },

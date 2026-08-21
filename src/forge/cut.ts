@@ -23,7 +23,14 @@
  */
 
 import { intersect, loaded, pieces, subtract, unite, type Roles } from "@/font/boolean";
-import { contourArea, contoursBounds, reverseContour, type Bounds } from "@/font/geometry";
+import {
+  contourArea,
+  contoursBounds,
+  flattenContour,
+  rayHitDistance,
+  reverseContour,
+  type Bounds,
+} from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { alongSpine, spineLength } from "./shapes";
 import { sweep } from "./sweep";
@@ -38,7 +45,31 @@ import type { Spine, SpineSegment, Stroke } from "./types";
 export type Edge = "left" | "right" | "both" | "top" | "bottom";
 
 /** What a counter is replaced with. */
-export type MotifShape = "diamond" | "triangle" | "square" | "slot" | "dot" | "ring";
+/**
+ * The shapes a counter can be replaced with.
+ *
+ * Geometric primitives, named for what they are. That is a decision and not
+ * only a convenience -- see the note on where these forms recur, in the help.
+ * A lozenge, a chevron and a nested diamond are figures that turn up in
+ * geometric ornament everywhere there is any, and belong exclusively to
+ * nobody; the symbol sets that a face like this is often reached for alongside
+ * -- Adinkra, Nsibidi, Tifinagh -- are not that. Each of those carries
+ * meaning, some of them are living scripts, and one of them has a documented
+ * history of being mass-produced abroad with nothing going back to the people
+ * whose symbols they are. None of them is in here, and the help says why.
+ */
+export type MotifShape =
+  | "diamond"
+  | "lozenge"
+  | "nested"
+  | "triangle"
+  | "hourglass"
+  | "chevron"
+  | "bars"
+  | "square"
+  | "slot"
+  | "dot"
+  | "ring";
 
 export interface Cuts {
   /**
@@ -673,13 +704,72 @@ function motifCut(shape: Contour[], motif: Cuts["motif"], stem: number): Contour
 
   const shapes: Contour[] = [];
   for (const hole of replacing) {
-    const drawn = motifShape(motif.shape, contoursBounds([hole]), size);
+    const box = contoursBounds([hole]);
+    const middle = { x: (box.xMin + box.xMax) / 2, y: (box.yMin + box.yMax) / 2 };
+    // Drawn at full size and then held to the counter, so that size 1 means
+    // the shape fills the counter rather than the counter's box.
+    const full = motifShape(motif.shape, box, 1);
+    const drawn = scaleAbout(full, middle, size * roomInCounter(full, hole, middle));
     // Held inside the letter, so a motif larger than the hole opens the
     // counter out rather than bursting through the side of the letter.
     shapes.push(...(size > 1 ? intersect(drawn, solid, "winding") : drawn));
   }
   const filled = [...solid, ...kept];
   return shapes.length === 0 ? filled : subtract(filled, shapes, "winding");
+}
+
+/**
+ * How far a motif drawn in the counter's box can be scaled before it leaves
+ * the counter.
+ *
+ * Every shape here is laid out in the box the counter fits inside, and a box
+ * is bigger than the thing it bounds wherever that thing is round. The corners
+ * of a square drawn in an O's box are not in the O's counter at all, they are
+ * out in the stroke -- and subtracting them there does not make a counter, it
+ * cuts the O into four arcs. Five of the eleven shapes have corners like that,
+ * and on the thinner bases every one of them severed the letter.
+ *
+ * So each of the shape's own points is cast back at the counter from the
+ * middle, and the shape is held to the tightest answer. A diamond comes back
+ * unchanged, because its points sit at the middles of the edges, which is
+ * exactly where a round counter reaches furthest; a square comes back at about
+ * a 1/sqrt(2) of its box, which is the largest square that fits in a circle.
+ */
+function roomInCounter(drawn: Contour[], hole: Contour, middle: Vec2): number {
+  const edge = [flattenContour(hole, 24)];
+  let room = 1;
+  for (const contour of drawn) {
+    for (const point of flattenContour(contour, 6)) {
+      const reach = Math.hypot(point.x - middle.x, point.y - middle.y);
+      if (reach < 1e-6) continue;
+      const wall = rayHitDistance(edge, middle, {
+        x: (point.x - middle.x) / reach,
+        y: (point.y - middle.y) / reach,
+      });
+      if (!Number.isFinite(wall)) continue;
+      // A hair inside, so the subtraction does not shave the stroke it touches.
+      room = Math.min(room, (wall * 0.995) / reach);
+    }
+  }
+  return room;
+}
+
+/** Every point and handle moved towards or away from one place. */
+function scaleAbout(contours: Contour[], middle: Vec2, by: number): Contour[] {
+  if (Math.abs(by - 1) < 1e-9) return contours;
+  const move = (point: Vec2): Vec2 => ({
+    x: middle.x + (point.x - middle.x) * by,
+    y: middle.y + (point.y - middle.y) * by,
+  });
+  return contours.map((contour) => ({
+    ...contour,
+    nodes: contour.nodes.map((node) => ({
+      ...node,
+      point: move(node.point),
+      handleIn: node.handleIn ? move(node.handleIn) : null,
+      handleOut: node.handleOut ? move(node.handleOut) : null,
+    })),
+  }));
 }
 
 function motifShape(shape: MotifShape, box: Bounds, size: number): Contour[] {
@@ -689,14 +779,51 @@ function motifShape(shape: MotifShape, box: Bounds, size: number): Contour[] {
 
   switch (shape) {
     case "diamond":
+      return [rhombus(middle, wide, tall)];
+    case "lozenge":
+      // The same figure drawn tall and narrow, which is what most woven and
+      // painted geometry uses where a square diamond would read as a hole.
+      return [rhombus(middle, wide * 0.5, tall)];
+    case "nested":
+      // A diamond with a diamond in it: the counter becomes two outlines, one
+      // inside the other, which is the commonest way a geometric face gets a
+      // counter that is neither open nor closed.
+      return [rhombus(middle, wide, tall), reverseContour(rhombus(middle, wide * 0.42, tall * 0.42))];
+    case "hourglass":
+      // Two triangles meeting at their points. Two shapes rather than one,
+      // because drawn as a single outline it would cross itself in the middle
+      // and the fill rule would empty one half of it.
       return [
         poly([
-          { x: middle.x, y: middle.y - tall },
-          { x: middle.x + wide, y: middle.y },
-          { x: middle.x, y: middle.y + tall },
-          { x: middle.x - wide, y: middle.y },
+          { x: middle.x - wide, y: middle.y + tall },
+          { x: middle.x + wide, y: middle.y + tall },
+          { x: middle.x, y: middle.y },
+        ]),
+        poly([
+          { x: middle.x - wide, y: middle.y - tall },
+          { x: middle.x + wide, y: middle.y - tall },
+          { x: middle.x, y: middle.y },
         ]),
       ];
+    case "chevron":
+      return [
+        poly([
+          { x: middle.x - wide, y: middle.y + tall },
+          { x: middle.x, y: middle.y - tall * 0.35 },
+          { x: middle.x + wide, y: middle.y + tall },
+          { x: middle.x + wide, y: middle.y + tall * 0.3 },
+          { x: middle.x, y: middle.y - tall },
+          { x: middle.x - wide, y: middle.y + tall * 0.3 },
+        ]),
+      ];
+    case "bars": {
+      // A comb of three, which reads as a counter cut into stripes rather than
+      // replaced by a figure.
+      const thick = (tall * 2) / 7;
+      return [-1, 0, 1].map((step) =>
+        rect(middle.x - wide, middle.y + step * thick * 2 - thick / 2, wide * 2, thick),
+      );
+    }
     case "triangle":
       return [
         poly([
@@ -723,6 +850,16 @@ function motifShape(shape: MotifShape, box: Bounds, size: number): Contour[] {
         reverseContour(disc(middle, wide * 0.36, tall * 0.36)),
       ];
   }
+}
+
+/** A diamond on its point, which every other four-sided motif here is a version of. */
+function rhombus(middle: Vec2, wide: number, tall: number): Contour {
+  return poly([
+    { x: middle.x, y: middle.y - tall },
+    { x: middle.x + wide, y: middle.y },
+    { x: middle.x, y: middle.y + tall },
+    { x: middle.x - wide, y: middle.y },
+  ]);
 }
 
 /**

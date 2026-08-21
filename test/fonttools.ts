@@ -44,6 +44,15 @@ export interface FontToolsReport {
    * and an H with two bands through it is three.
    */
   contoursOf: Record<string, number>;
+  /**
+   * The signed area of each glyph, measured by fontTools' own pen.
+   *
+   * The piece count cannot tell a hole from a solid, so it cannot tell whether
+   * a contour inside another one was wound to cut ink away or to put it back.
+   * This can: an outline whose windings disagree with its nesting comes out
+   * with the wrong amount of ink in it, whichever way the format winds.
+   */
+  inkOf: Record<string, number>;
   /** The Windows clipping boundary, and the real extent of the outlines. */
   winAscent: number;
   winDescent: number;
@@ -65,7 +74,7 @@ path = sys.argv[1]
 out = {"outlineFormat": "unknown", "tables": [], "numGlyphs": 0, "unitsPerEm": 0,
        "kernPairs": {}, "gposKernPairs": {}, "recompiles": False,
        "interiorExtremes": 0, "compositeGlyphs": 0, "componentsOf": {},
-       "contoursOf": {},
+       "contoursOf": {}, "inkOf": {},
        "winAscent": 0, "winDescent": 0,
        "yMax": 0, "yMin": 0,
        "names": {}, "weightClass": 0, "isBold": False}
@@ -136,6 +145,7 @@ try:
     # this font carries. Counted through a pen so the two formats answer the
     # same question the same way.
     from fontTools.pens.recordingPen import RecordingPen
+    from fontTools.pens.areaPen import AreaPen
     glyphs = f.getGlyphSet()
     for name in f.getGlyphOrder():
         pen = RecordingPen()
@@ -144,6 +154,12 @@ try:
         except Exception:
             continue
         out["contoursOf"][name] = sum(1 for op, _ in pen.value if op == "closePath")
+        area = AreaPen(glyphs)
+        try:
+            glyphs[name].draw(area)
+        except Exception:
+            continue
+        out["inkOf"][name] = area.value
 
     if "glyf" in f:
         glyf = f["glyf"]

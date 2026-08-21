@@ -301,6 +301,59 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
           </Section>
         ))}
 
+        <Section title="Where the counter shapes come from" half="drawn">
+          <p>
+            The shapes a counter can be replaced with are geometric primitives,
+            named for what they are: a diamond, a lozenge, a chevron, an
+            hourglass, a comb, a nested diamond.{" "}
+            <Term>That is a decision, not only a convenience.</Term>
+          </p>
+          <p>
+            Those figures turn up in geometric ornament everywhere there is
+            any, and belong exclusively to nobody. The symbol sets a face like
+            this is often reached for alongside are not like that.{" "}
+            <Term>Adinkra</Term> symbols carry proverbs and concepts, are protected
+            as heritage under Ghanaian law, and have been mass-produced abroad
+            since the 1990s with nothing going back to the people whose symbols
+            they are -- and no international law that would let Ghana stop it.{" "}
+            <Term>Bògòlanfini</Term> motifs are read in combination, and
+            together give expression to a proverb, a song or an event.{" "}
+            <Term>Nsibidi</Term>, <Term>Tifinagh</Term> and the{" "}
+            <Term>Ge'ez</Term> script are writing systems; the last two are in
+            daily use today. A living alphabet used as a hole in somebody
+            else's letter is not a motif.
+          </p>
+          <p>
+            So none of them ships here as a shape to pick off a menu, and this
+            tool does not offer a preset with a continent's name on it. What it
+            offers is the geometry, and the note that if you are working from a
+            particular tradition, the right thing is to go to it directly --
+            and, where the work is somebody's rather than everybody's, to name
+            them. Esther Mahlangu is the reason Ndebele wall painting is known
+            outside South Africa, and hers is the rare case where a tradition's
+            geometry travelled with its author's name attached to it. And going
+            directly is worth it on the craft alone: Shoowa cut-pile cloth
+            builds its patterns by combining a handful of figures, and the
+            published analyses draw each design out from its basic motif --
+            which is the same move this tool makes with cells and counters,
+            done better and centuries earlier.
+          </p>
+          <p>
+            Worth reading, and where these notes come from: Boatema Boateng,{" "}
+            <em>The Copyright Thing Doesn't Work Here: Adinkra and Kente Cloth
+            and Intellectual Property in Ghana</em> (University of Minnesota
+            Press, 2011); J. Janewa OseiTutu, "Harmonizing Cultural IP across
+            Borders: Fashionable Bags &amp; Ghanaian Adinkra Symbols"{" "}
+            (<em>Akron Law Review</em> 51, 2017); the Metropolitan Museum of
+            Art's catalogue entry for a Bamana bògòlanfini, which is where the
+            reading of the motifs above comes from; Georges Meurant,{" "}
+            <em>Shoowa Design: African Textiles from the Kingdom of Kuba</em>{" "}
+            (Thames &amp; Hudson, 1986); and, on Mahlangu, "Esther Mahlangu:
+            how the famous South African artist keeps her Ndebele culture
+            alive" in <em>The Conversation</em>.
+          </p>
+        </Section>
+
         <Section title="Drawing one letter yourself" half="drawn">
           <p>
             Some letter will not come out of a skeleton and a pen. Every font
