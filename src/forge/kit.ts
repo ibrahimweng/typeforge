@@ -813,8 +813,21 @@ export function seedTiles(strokes: Stroke[], style: Style, kit: Kit): Tiles | nu
    * Ports pointing at a neighbour that is not there.
    *
    * Left in, each is drawn as a stub reaching for a cell that was dropped, and
-   * the letter arrives with crumbs around it. The ends of strokes are spared,
-   * because the tip of an arm points at nothing on purpose.
+   * the letter arrives with crumbs around it. The ends of strokes are mostly
+   * spared, because the tip of an arm points at nothing on purpose.
+   *
+   * Mostly, because a stroke does not only end at the edge of a letter. Both
+   * bowls of a B begin on its stem and set off east, and a start faces back
+   * the way the stroke came -- so each of them asked for a west port in a cell
+   * that is already the stem, and the B grew three stubs down its left side
+   * reaching for nothing. The bowl is joined to the stem by being in the same
+   * cell as it; there is nothing out there to reach for.
+   *
+   * A tip and a junction are told apart by what else is in the cell. Where a
+   * stroke ends on its own -- the tip of an arm, the foot of a stem -- the
+   * cell holds that stroke and nothing else, so there is at most one other
+   * port. Where it ends on another stroke, that stroke is passing through, and
+   * a stroke passing through leaves two.
    */
   const has = (column: number, row: number, port: Port): boolean =>
     found.get(cellKey(column, row))?.has(port) ?? false;
@@ -824,8 +837,13 @@ export function seedTiles(strokes: Stroke[], style: Style, kit: Kit): Tiles | nu
     const [column, row] = key.split(",").map(Number);
     const kept = PORTS.filter((port) => {
       if (!ports.has(port)) return false;
-      if (ports.get(port)) return true;
-      return MEETS[port].some((step) => has(column + step.column, row + step.row, step.port));
+      const reaches = MEETS[port].some((step) =>
+        has(column + step.column, row + step.row, step.port),
+      );
+      if (reaches) return true;
+      // An end, pointing at nothing: kept only where it is the letter's own
+      // tip rather than the place one stroke runs into another.
+      return ports.get(port) === true && ports.size <= 2;
     });
     if (kept.length > 0) cells[key] = { ports: kept };
   }

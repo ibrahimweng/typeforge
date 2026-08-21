@@ -380,6 +380,35 @@ describe("laying an alphabet on the grid", () => {
     }
   });
 
+  it("tells the tip of a stroke from the place one runs into another", () => {
+    /*
+     * A start faces back the way the stroke came, and not every stroke starts
+     * at the edge of its letter. Both bowls of a B begin on its stem and set
+     * off east, so each asked for a west port in a cell that is already the
+     * stem -- and the B grew three stubs down its left side reaching for
+     * nothing. The bowl is joined to the stem by being in the same cell as it.
+     *
+     * The tips have to survive, though: the arm of an E points east at nothing
+     * on purpose, and so does the foot of a stem.
+     */
+    const bee = seed("B");
+    const stem = cellsOf(bee).filter((cell) => cell.column === 0);
+    expect(stem.length).toBeGreaterThan(3);
+    for (const cell of stem) {
+      expect(cell.ports.includes("w"), `B at 0,${cell.row} reaches west out of the letter`).toBe(
+        false,
+      );
+    }
+
+    // The E keeps all three of its arms, each ending in a port that points at
+    // nothing because that is where the letter stops.
+    const ee = seed("E");
+    const tips = cellsOf(ee).filter(
+      (cell) => cell.ports.includes("e") && !cell.ports.includes("w"),
+    );
+    expect(tips.length, "an E has three arms").toBeGreaterThanOrEqual(3);
+  });
+
   it("leaves no cell stranded on its own", () => {
     /*
      * A cell whose ink touches nothing else is a speck beside the letter, and

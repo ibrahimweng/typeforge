@@ -28,7 +28,14 @@ await ready();
 const cell = Number(process.env.CELL ?? 150);
 const text = process.argv[2] ?? "MWXYmwxynvzk";
 const style = BASES.find((b) => b.name === (process.env.BASE ?? "Sans"))!;
-const kit: Kit = { on: true, grid: GRID, roundness: 0.5, glyphs: {} };
+// The grid itself is worth varying: how much of a letter survives is mostly a
+// question of how many cells it has to say it in.
+const kit: Kit = {
+  on: true,
+  grid: { ...GRID, rows: Number(process.env.ROWS ?? GRID.rows) },
+  roundness: 0.5,
+  glyphs: {},
+};
 const unit = unitOf(style, kit.grid);
 const left = style.metrics.sidebearing;
 
