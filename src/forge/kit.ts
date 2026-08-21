@@ -737,7 +737,7 @@ export function seedTiles(strokes: Stroke[], style: Style, kit: Kit): Tiles | nu
      * had wandered across a corner, and every one of them was drawn as a spoke
      * to the middle -- so a shoulder came back as a burst of splinters.
      */
-    const visits: Array<{ where: Where; from: Vec2; to: Vec2 }> = [];
+    const visits: Array<{ cell: Where; at: Vec2 }> = [];
     /*
      * The ends belong to the cell the stroke runs through, not to the one it
      * stops on the edge of. A stem finishing exactly on the cap height sits on
@@ -755,21 +755,55 @@ export function seedTiles(strokes: Stroke[], style: Style, kit: Kit): Tiles | nu
         x: (walk[step - 1].x + walk[step].x) / 2,
         y: (walk[step - 1].y + walk[step].y) / 2,
       };
-      visits.push({ where, from: entered, to: crossing });
+      visits.push({ cell: where, at: entered });
       where = next;
       entered = crossing;
     }
-    visits.push({ where, from: entered, to: walk[walk.length - 1] });
+    visits.push({ cell: where, at: entered });
+
+    /*
+     * Which door the stroke came in by, and which it went out by.
+     *
+     * Read off the cells themselves rather than off the crossing point, and
+     * that is the whole of what was wrong with the diagonals. It used to take
+     * the crossing and ask which of the eight ports it lay nearest, which is a
+     * different question and quietly the wrong one: the right stem of an M
+     * runs a fifth of a cell in from that cell's west edge, so both its ends
+     * came out nearer the western corners than the middle of the edge it
+     * actually crossed, and a plain vertical stem was recorded as sw-to-nw.
+     * Both of those sit on the same edge, so it was drawn as a line along the
+     * edge -- and where the same thing happened at the apex of the M's vee the
+     * two ports came back n and nw, which is a bar straight across the top of
+     * the cell where the point of the letter should be.
+     *
+     * A port is where a stroke crosses a boundary, so the boundary it crossed
+     * is what decides it. Stepping to the next cell east leaves by the east
+     * door however close to a corner the crossing happened to fall, and only a
+     * step that changes both column and row -- a real diagonal -- is a corner.
+     */
+    const first = heading(walk[0], walk[1]);
+    const last = heading(walk[walk.length - 2], walk[walk.length - 1]);
 
     visits.forEach((visit, at) => {
-      const box = cellBox(visit.where.column, visit.where.row, unit, left);
-      const from = nearestPort(visit.from, box);
-      const to = nearestPort(visit.to, box);
-      // In and out by the same door is a stroke grazing a corner rather than
-      // running through the cell. Drawn, it is a speck beside the letter.
+      const cell = visit.cell;
+      const box = cellBox(cell.column, cell.row, unit, left);
+      // The two genuine ends have no neighbour to face, so they take the
+      // direction the stroke itself is travelling: a stem's foot points down
+      // because that is the way the stroke leaves it.
+      const from =
+        at === 0
+          ? compass(-first.x, -first.y)
+          : portCrossing(cell, visits[at - 1].cell, visit.at, box);
+      const to =
+        at === visits.length - 1
+          ? compass(last.x, last.y)
+          : portCrossing(cell, visits[at + 1].cell, visits[at + 1].at, box);
+      // In and out by the same door is a stroke dipping into the cell and
+      // coming back rather than running through it. Drawn, it is a speck
+      // beside the letter.
       if (from === to) return;
-      add(visit.where, from, at === 0);
-      add(visit.where, to, at === visits.length - 1);
+      add(cell, from, at === 0);
+      add(cell, to, at === visits.length - 1);
     });
   }
 
@@ -779,8 +813,21 @@ export function seedTiles(strokes: Stroke[], style: Style, kit: Kit): Tiles | nu
    * Ports pointing at a neighbour that is not there.
    *
    * Left in, each is drawn as a stub reaching for a cell that was dropped, and
-   * the letter arrives with crumbs around it. The ends of strokes are spared,
-   * because the tip of an arm points at nothing on purpose.
+   * the letter arrives with crumbs around it. The ends of strokes are mostly
+   * spared, because the tip of an arm points at nothing on purpose.
+   *
+   * Mostly, because a stroke does not only end at the edge of a letter. Both
+   * bowls of a B begin on its stem and set off east, and a start faces back
+   * the way the stroke came -- so each of them asked for a west port in a cell
+   * that is already the stem, and the B grew three stubs down its left side
+   * reaching for nothing. The bowl is joined to the stem by being in the same
+   * cell as it; there is nothing out there to reach for.
+   *
+   * A tip and a junction are told apart by what else is in the cell. Where a
+   * stroke ends on its own -- the tip of an arm, the foot of a stem -- the
+   * cell holds that stroke and nothing else, so there is at most one other
+   * port. Where it ends on another stroke, that stroke is passing through, and
+   * a stroke passing through leaves two.
    */
   const has = (column: number, row: number, port: Port): boolean =>
     found.get(cellKey(column, row))?.has(port) ?? false;
@@ -790,8 +837,13 @@ export function seedTiles(strokes: Stroke[], style: Style, kit: Kit): Tiles | nu
     const [column, row] = key.split(",").map(Number);
     const kept = PORTS.filter((port) => {
       if (!ports.has(port)) return false;
-      if (ports.get(port)) return true;
-      return MEETS[port].some((step) => has(column + step.column, row + step.row, step.port));
+      const reaches = MEETS[port].some((step) =>
+        has(column + step.column, row + step.row, step.port),
+      );
+      if (reaches) return true;
+      // An end, pointing at nothing: kept only where it is the letter's own
+      // tip rather than the place one stroke runs into another.
+      return ports.get(port) === true && ports.size <= 2;
     });
     if (kept.length > 0) cells[key] = { ports: kept };
   }
@@ -862,16 +914,94 @@ function octilinear(from: Vec2, to: Vec2, unit: number, left: number): Vec2[] {
   const up = finish.j - start.j;
   if (across === 0 && up === 0) return [pointOf(start, step, left), pointOf(finish, step, left)];
 
-  const slant = Math.min(Math.abs(across), Math.abs(up));
-  const corner = {
-    i: start.i + Math.sign(across) * slant,
-    j: start.j + Math.sign(up) * slant,
+  /*
+   * A diagonal has to cross both boundaries at once, or it is not a diagonal.
+   *
+   * The lattice is half a cell, so a diagonal step is half a cell too -- and
+   * half the time that lands the run on the middles of the edges rather than
+   * on the corners. From there the cells are entered one boundary at a time,
+   * across and then up and then across, and what was drawn as a clean diagonal
+   * comes back as a staircase of elbows: it is what took the crossing out of
+   * an X and left the two halves of a w unjoined.
+   *
+   * Whether it happens depends on where the run began and which way it leans,
+   * which is a parity argument that is easy to get backwards. So it is asked
+   * rather than worked out: take the first step and see whether the cell
+   * changed in both axes. If it did not, the run starts half a cell along its
+   * shorter side instead, which puts it back on the corners -- and half a cell
+   * is inside the rounding the route has already done to both its ends.
+   */
+  let from_ = start;
+  let across_ = across;
+  let up_ = up;
+  if (across !== 0 && up !== 0) {
+    const stepped = { i: from_.i + Math.sign(across_), j: from_.j + Math.sign(up_) };
+    if (!crossesBoth(from_, stepped)) {
+      from_ =
+        Math.abs(across_) <= Math.abs(up_)
+          ? { i: from_.i + Math.sign(across_), j: from_.j }
+          : { i: from_.i, j: from_.j + Math.sign(up_) };
+      across_ = finish.i - from_.i;
+      up_ = finish.j - from_.j;
+    }
+  }
+
+  /*
+   * And it has to be a whole number of cells, for the same reason.
+   *
+   * Seven half-steps of diagonal is three cells and a half, and the half at
+   * the end crosses one boundary on its own -- one elbow, at the point of the
+   * letter where it shows most. What is left over is spent square, which is
+   * what the rest of the route does with it anyway.
+   */
+  const reach = Math.min(Math.abs(across_), Math.abs(up_));
+  const slant = reach - (reach % 2);
+
+  /*
+   * What is left over is spent half before the diagonal and half after it.
+   *
+   * All of it used to go after, so that a stroke arrived at its foot upright.
+   * It does -- and it also made every diagonal in the alphabet lopsided,
+   * because two strokes that mirror each other are drawn from opposite ends:
+   * the tail landed at the top of one and the bottom of the other, and an X
+   * came back with one arm longer than the other and no crossing in the
+   * middle. Split, a stroke and its mirror come back as mirrors, and both
+   * still arrive upright at both ends.
+   */
+  /*
+   * What is left over is spent half before the diagonal and half after it.
+   *
+   * All of it used to go after, so that a stroke arrived at its foot upright.
+   * It does -- and it also made every diagonal in the alphabet lopsided,
+   * because two strokes that mirror each other are drawn from opposite ends:
+   * the tail landed at the top of one and the bottom of the other, and an X
+   * came back with one arm longer than the other and no crossing in the
+   * middle. Split, a stroke and its mirror come back as mirrors, and both
+   * still arrive upright at both ends.
+   */
+  const leftX = Math.abs(across_) - slant;
+  const leftY = Math.abs(up_) - slant;
+  const opening = {
+    i: from_.i + Math.sign(across_) * Math.floor(leftX / 2),
+    j: from_.j + Math.sign(up_) * Math.floor(leftY / 2),
   };
-  const route = [start, corner, finish].map((one) => pointOf(one, step, left));
+  const corner = {
+    i: opening.i + Math.sign(across_) * slant,
+    j: opening.j + Math.sign(up_) * slant,
+  };
+  const route = [start, from_, opening, corner, finish].map((one) => pointOf(one, step, left));
   // Two of the three coincide whenever the run is purely square or purely
   // diagonal, which is most of an alphabet.
   return route.filter(
     (one, at) => at === 0 || Math.hypot(one.x - route[at - 1].x, one.y - route[at - 1].y) > 1e-6,
+  );
+}
+
+/** Whether a step between two lattice points leaves one cell for its diagonal neighbour. */
+function crossesBoth(from: { i: number; j: number }, to: { i: number; j: number }): boolean {
+  return (
+    Math.floor(from.i / 2) !== Math.floor(to.i / 2) &&
+    Math.floor(from.j / 2) !== Math.floor(to.j / 2)
   );
 }
 
@@ -916,17 +1046,56 @@ const pointOf = (lattice: { i: number; j: number }, step: number, left: number):
   y: lattice.j * step,
 });
 
-/** Which of a cell's eight ports a point is closest to. */
-function nearestPort(point: Vec2, box: Bounds): Port {
-  let best: Port = "n";
-  let closest = Infinity;
-  for (const port of PORTS) {
-    const at = portAt(port, box);
-    const away = (at.x - point.x) ** 2 + (at.y - point.y) ** 2;
-    if (away < closest) {
-      closest = away;
-      best = port;
-    }
-  }
-  return best;
+/** The eight directions a grid has, by the octant they fall in. */
+const COMPASS: Port[] = ["e", "ne", "n", "nw", "w", "sw", "s", "se"];
+
+/** Which way a direction points, snapped to the eight a grid has. */
+function compass(x: number, y: number): Port {
+  if (x === 0 && y === 0) return "n";
+  const octant = Math.round(Math.atan2(y, x) / (Math.PI / 4));
+  return COMPASS[((octant % 8) + 8) % 8];
 }
+
+/**
+ * Which door of `cell` a stroke used on its way to or from `neighbour`.
+ *
+ * The side is decided by the neighbour and nothing else, which is the half
+ * that has to be exact: a step east leaves by an eastern door however close to
+ * a corner the crossing fell, and a stroke that never crosses the west
+ * boundary never gets a western door.
+ *
+ * Which of the three doors on that side is decided by where along it the
+ * stroke actually went through, and that is the half that makes a curve look
+ * like one. A bowl crosses the top of a cell's east edge rather than the
+ * middle of it, and drawn from the corner it keeps turning; drawn from the
+ * middle of the edge it comes back a flat side, which is what turned every O
+ * and G and g in the alphabet into a box.
+ *
+ * Signed rather than subtracted, so a walk that somehow skipped a cell still
+ * names a door this cell actually has rather than a direction two cells away.
+ */
+function portCrossing(cell: Where, neighbour: Where, at: Vec2, box: Bounds): Port {
+  const across = Math.sign(neighbour.column - cell.column);
+  const up = Math.sign(neighbour.row - cell.row);
+  // A step that changes both is a corner, and there is nothing to choose.
+  if (across !== 0 && up !== 0) return compass(across, up);
+
+  // How far along the side the stroke went through, from its low end.
+  const along =
+    across !== 0
+      ? (at.y - box.yMin) / (box.yMax - box.yMin)
+      : (at.x - box.xMin) / (box.xMax - box.xMin);
+  const lean = along < CORNER ? -1 : along > 1 - CORNER ? 1 : 0;
+  return across !== 0 ? compass(across, lean) : compass(lean, up);
+}
+
+/**
+ * How near a corner a crossing has to be to count as one.
+ *
+ * A third leaves the middle third of every side to the middle door, which is
+ * where anything running straight through goes. Wider and a stem a little off
+ * centre starts leaving by a corner; narrower and the bowls stop turning.
+ */
+const CORNER = 1 / 3;
+
+const heading = (from: Vec2, to: Vec2): Vec2 => ({ x: to.x - from.x, y: to.y - from.y });
