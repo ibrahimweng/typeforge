@@ -18,7 +18,17 @@
 
 import { decidedBy, drawLetter, letterNames, type Drawn } from "./build";
 import { anyCut, cutInk, CUT_NAMES, noCuts, type CutName, type Cuts } from "./cut";
-import { emptyKit, hasTiles, seedTiles, type Cell, type Grid, type Kit, type Port, type Tiles } from "./kit";
+import {
+  emptyKit,
+  hasTiles,
+  seedTiles,
+  type Cell,
+  type Fill,
+  type Grid,
+  type Kit,
+  type Port,
+  type Tiles,
+} from "./kit";
 import { recipeOf } from "./letters";
 import type { Imported } from "./exchange";
 import { weightClassOf, weightedStyle, type Family } from "./family";
@@ -379,7 +389,7 @@ export function togglePort(forge: Forge, letter: string, key: string, port: Port
     : [...cell.ports, port];
 
   const cells = { ...tiles.cells };
-  if (ports.length === 0 && !cell.solid) delete cells[key];
+  if (ports.length === 0 && !cell.fill) delete cells[key];
   else cells[key] = { ...cell, ports };
 
   return withKit(forge, {
@@ -387,16 +397,26 @@ export function togglePort(forge: Forge, letter: string, key: string, port: Port
   });
 }
 
-/** Fill one cell in outright, or empty it again. */
-export function toggleSolid(forge: Forge, letter: string, key: string): Forge {
+/**
+ * Put a filled shape in a cell, or take it out again.
+ *
+ * Stamping the same shape onto a cell that already has it clears it, so one
+ * gesture both places and removes and there is no eraser to find. Passing
+ * nothing clears whatever is there.
+ */
+export function stampFill(forge: Forge, letter: string, key: string, fill?: Fill): Forge {
   const kit = kitOf(forge);
   const tiles = kit.glyphs[letter] ?? { columns: 1, cells: {} };
   const cell: Cell = tiles.cells[key] ?? { ports: [] };
-  const solid = !cell.solid;
+  const same =
+    cell.fill !== undefined && fill !== undefined
+      ? cell.fill.kind === fill.kind && cell.fill.turn === fill.turn
+      : false;
+  const next = same || fill === undefined ? undefined : fill;
 
   const cells = { ...tiles.cells };
-  if (!solid && cell.ports.length === 0) delete cells[key];
-  else cells[key] = { ...cell, solid };
+  if (!next && cell.ports.length === 0) delete cells[key];
+  else cells[key] = { ports: cell.ports, ...(next ? { fill: next } : {}) };
 
   return withKit(forge, {
     glyphs: { ...kit.glyphs, [letter]: { ...tiles, columns: widthFor(tiles, cells), cells } },

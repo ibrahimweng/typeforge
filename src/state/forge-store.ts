@@ -29,14 +29,14 @@ import {
   type Forge,
 } from "@/forge/document";
 import type { CutName, Cuts } from "@/forge/cut";
-import type { Grid, Port } from "@/forge/kit";
+import type { Fill, Grid, Port } from "@/forge/kit";
 import {
   clearTiles,
   editGrid,
   editRoundness,
   layOut,
   setColumns,
-  toggleSolid,
+  stampFill,
   togglePort,
   useKit,
 } from "@/forge/document";
@@ -85,6 +85,20 @@ export interface ForgeState {
   familyName: string;
   /** Whether the spine and the pen are drawn over the letter. */
   showSkeleton: boolean;
+  /**
+   * The shape a press on a cell puts down, when the letters are built on a
+   * grid.
+   *
+   * A choice about the tool rather than about the font, so it is kept here and
+   * not in the document: undoing a letter should not put a different shape in
+   * your hand, and which shape was selected does not belong in a file anybody
+   * exports.
+   *
+   * Nothing chosen means a press clears whatever is in the cell, which is the
+   * eraser -- and is the state it starts in, so a stray press on the stage
+   * cannot quietly fill a cell in.
+   */
+  fill: Fill | null;
   /** What the specimen line is set in. */
   specimen: string;
   /** Whether the specimen is shown light on dark, which is how a display face gets judged. */
@@ -116,6 +130,7 @@ class ForgeStore {
     scope: "family",
     familyName: "Untitled",
     showSkeleton: false,
+    fill: null,
     specimen: "Handgloves",
     reversed: false,
     canUndo: false,
@@ -315,6 +330,11 @@ class ForgeStore {
     this.set({ showSkeleton });
   }
 
+  /** Choose the shape a press on a cell puts down. Nothing chosen is the eraser. */
+  chooseFill(fill: Fill | null): void {
+    this.set({ fill });
+  }
+
   setSpecimen(specimen: string): void {
     this.set({ specimen });
   }
@@ -435,9 +455,14 @@ class ForgeStore {
     this.commit(togglePort(this.state.forge, this.state.letter, key, port));
   }
 
-  /** Fill one cell in outright, or empty it again. */
-  toggleSolid(key: string): void {
-    this.commit(toggleSolid(this.state.forge, this.state.letter, key));
+  /**
+   * Put a filled shape in a cell, or take it out again.
+   *
+   * Stamping the shape a cell already has clears it, so one gesture both
+   * places and removes and there is no eraser to go and find.
+   */
+  stampFill(key: string, fill?: Fill): void {
+    this.commit(stampFill(this.state.forge, this.state.letter, key, fill));
   }
 
   changeColumns(columns: number, phase: Phase = "single"): void {

@@ -686,6 +686,8 @@ export const CUT_SPECS: CutSpec[] = [
           { value: "triangle", label: "Triangle", hint: "Flat foot, point at the top." },
           { value: "square", label: "Square", hint: "The counter's own box, which reads as a technical face." },
           { value: "slot", label: "Bar", hint: "A wide, shallow slot: nearly a closed letter with a nick in it." },
+          { value: "dot", label: "Dot", hint: "A small disc in the middle, so the letter closes to a ring with a point in it." },
+          { value: "ring", label: "Ring", hint: "A ring inside the counter, so the letter reads as one circle inside another." },
         ],
       },
       {

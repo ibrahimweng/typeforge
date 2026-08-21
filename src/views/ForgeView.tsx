@@ -767,18 +767,19 @@ function Cells({ letter, scale }: { letter: string; scale: number }): React.JSX.
                 y={box.yMin}
                 width={unit}
                 height={unit}
-                fill={cell?.solid ? "var(--accent)" : "transparent"}
-                fillOpacity={cell?.solid ? 0.18 : 1}
+                fill={cell?.fill ? "var(--accent)" : "transparent"}
+                fillOpacity={cell?.fill ? 0.14 : 1}
                 stroke="var(--accent)"
                 strokeWidth={scale * (showing ? 0.9 : 0.4)}
                 strokeOpacity={showing ? 0.5 : 0.22}
                 onPointerEnter={() => setOver(key)}
                 onPointerLeave={() => setOver((was) => (was === key ? null : was))}
-                /* The middle of a cell fills it in, which is the one thing a
-                   set of ports cannot say. */
-                onDoubleClick={(event) => {
+                /* Pressing a cell stamps whatever shape is chosen in the
+                   panel into it, and pressing it again takes it out. One
+                   gesture for both, so there is no eraser to go and find. */
+                onPointerDown={(event) => {
                   event.stopPropagation();
-                  forgeStore.toggleSolid(key);
+                  forgeStore.stampFill(key, state.fill ?? undefined);
                 }}
                 data-forge-cell-box={key}
                 className="cursor-crosshair"

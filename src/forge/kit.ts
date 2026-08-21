@@ -21,7 +21,7 @@
  * tiles were never the ink. They are where the ink runs.
  */
 
-import { contoursBounds, type Bounds } from "@/font/geometry";
+import { contourArea, contoursBounds, type Bounds } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { alongSpine, spineLength } from "./shapes";
 import type { Style } from "./style";
@@ -95,11 +95,42 @@ const MEETS: Record<Port, Array<{ column: number; row: number; port: Port }>> = 
   ],
 };
 
+/**
+ * A shape that fills part of a cell, rather than a stroke running across it.
+ *
+ * The other half of what a grid alphabet is made of, and the half a set of
+ * ports cannot say. A stroke has a width and two ends; the quarter disc that
+ * makes the shoulder of a heavy grid letter has neither -- it is a piece of
+ * ink shaped like a quarter of a circle, and four of them are a full round
+ * counter with nothing swept anywhere.
+ *
+ * - `full` fills the cell.
+ * - `pie` is a quarter disc about one corner, of the cell's own radius. Four
+ *   of them about a shared corner make a circle.
+ * - `bite` is the cell with that quarter taken out, which is the shape that
+ *   turns a square block into the inside of a C.
+ * - `half` is the cell cut across the middle.
+ * - `wedge` is the cell cut corner to corner.
+ *
+ * `turn` is quarter turns anticlockwise, so one shape and a number stand in
+ * for four tiles -- and a row of four in a palette is a row nobody has to
+ * learn.
+ */
+export type FillKind = "full" | "pie" | "bite" | "half" | "wedge";
+
+export interface Fill {
+  kind: FillKind;
+  /** Quarter turns anticlockwise, 0 to 3. */
+  turn: number;
+}
+
+export const FILL_KINDS: FillKind[] = ["full", "pie", "bite", "half", "wedge"];
+
 export interface Cell {
   /** Which places on the boundary ink runs to. Nothing here is an empty cell. */
   ports: Port[];
-  /** The whole cell filled in, whatever its ports say. */
-  solid?: boolean;
+  /** A shape filling part of the cell, alongside whatever its ports say. */
+  fill?: Fill;
 }
 
 /** One letter, as cells. */
@@ -245,7 +276,7 @@ export function assemble(tiles: Tiles, style: Style, kit: Kit): Assembled {
     if (!Number.isFinite(column) || !Number.isFinite(row)) continue;
     const box = cellBox(column, row, unit, left);
 
-    if (cell.solid) blocks.push(square(box));
+    if (cell.fill) blocks.push(...filled(cell.fill, box));
     if (cell.ports.length === 0) continue;
 
     const open = (port: Port): boolean => !continues(tiles, column, row, port);
@@ -471,23 +502,128 @@ function towards(from: Vec2, to: Vec2): Vec2 | null {
   return away < 1e-9 ? null : { x: (to.x - from.x) / away, y: (to.y - from.y) / away };
 }
 
-const node = (x: number, y: number): GlyphNode => ({
-  point: { x, y },
+/**
+ * The ink a filled cell puts down.
+ *
+ * Drawn as an outline rather than swept, because it is not a stroke: it has no
+ * width to be given and no ends to finish. Which is the whole reason the fills
+ * exist beside the ports rather than instead of them -- a grid alphabet is
+ * usually some of each, and a face made only of strokes cannot be heavy the
+ * way a face made of blocks is.
+ */
+export function filled(fill: Fill, box: Bounds): Contour[] {
+  const turn = ((Math.round(fill.turn) % 4) + 4) % 4;
+  // The four corners, anticlockwise from the bottom left, rotated so that one
+  // description serves all four turns.
+  const corners: Vec2[] = [
+    { x: box.xMin, y: box.yMin },
+    { x: box.xMax, y: box.yMin },
+    { x: box.xMax, y: box.yMax },
+    { x: box.xMin, y: box.yMax },
+  ];
+  const at = (index: number): Vec2 => corners[(index + turn) % 4];
+  const middle = (one: Vec2, other: Vec2): Vec2 => ({
+    x: (one.x + other.x) / 2,
+    y: (one.y + other.y) / 2,
+  });
+  const radius = box.xMax - box.xMin;
+
+  switch (fill.kind) {
+    case "full":
+      return [poly([at(0), at(1), at(2), at(3)])];
+    case "wedge":
+      // The corner it turns about, and the two beside it.
+      return [poly([at(0), at(1), at(3)])];
+    case "half":
+      return [poly([at(0), at(1), middle(at(1), at(2)), middle(at(0), at(3))])];
+    case "pie":
+      // A quarter disc about corner 0, bulging out to the two corners beside
+      // it. The arc is the second of the three sides.
+      return [arced([at(0), at(1), at(3)], 1, at(0), radius)];
+    case "bite":
+      // The same quarter taken out instead of put in: the three other corners,
+      // and the arc coming back round the missing one.
+      return [arced([at(1), at(2), at(3)], 2, at(0), radius)];
+  }
+}
+
+/**
+ * A polygon with one of its sides bent into a quarter arc.
+ *
+ * `bendAt` is the side that curves, named by the node it leaves. Both of that
+ * side's handles are set, which is the part that is easy to get wrong and
+ * invisible until it is drawn: give a cubic only the handle it arrives by and
+ * it is not a flatter arc, it is very nearly the straight line between the two
+ * points. Four quarter discs meant to be a circle came out a diamond with the
+ * corners knocked off, which looked enough like a decision to survive a while.
+ */
+function arced(points: Vec2[], bendAt: number, centre: Vec2, radius: number): Contour {
+  const flat = poly(points);
+  // `poly` may have reversed the winding, so the side is found by its points
+  // rather than by its index.
+  const from = points[bendAt];
+  const to = points[(bendAt + 1) % points.length];
+  const start = flat.nodes.findIndex((one) => one.point === from);
+  const finish = flat.nodes.findIndex((one) => one.point === to);
+  if (start < 0 || finish < 0) return flat;
+
+  const reach = KAPPA * radius;
+  const spin = (point: Vec2, way: number): Vec2 => {
+    const out = { x: point.x - centre.x, y: point.y - centre.y };
+    return { x: (-out.y / radius) * way, y: (out.x / radius) * way };
+  };
+  const one = { x: (from.x - centre.x) / radius, y: (from.y - centre.y) / radius };
+  const other = { x: (to.x - centre.x) / radius, y: (to.y - centre.y) / radius };
+  // Which way round the short way is.
+  const way = one.x * other.y - one.y * other.x >= 0 ? 1 : -1;
+  const leaving = spin(from, way);
+  const arriving = spin(to, way);
+
+  const nodes = flat.nodes.map((one_, index) => {
+    if (index === start) {
+      return {
+        ...one_,
+        handleOut: { x: from.x + leaving.x * reach, y: from.y + leaving.y * reach },
+      };
+    }
+    if (index === finish) {
+      return {
+        ...one_,
+        handleIn: { x: to.x - arriving.x * reach, y: to.y - arriving.y * reach },
+      };
+    }
+    return one_;
+  });
+  return { ...flat, nodes };
+}
+
+/**
+ * A quarter of a circle as one cubic is off by about a part in a thousand of
+ * the radius, which at a cell of a hundred and forty units is a fifth of a
+ * unit and below anything a font file records.
+ */
+const KAPPA = 0.5522847498;
+
+const node = (point: Vec2): GlyphNode => ({
+  point,
   handleIn: null,
   handleOut: null,
   type: "corner",
 });
 
+/** A polygon, wound as ink so everything downstream reads it as solid. */
+function poly(points: Vec2[]): Contour {
+  const contour: Contour = { nodes: points.map(node), closed: true };
+  return contourArea(contour) >= 0 ? contour : { ...contour, nodes: [...contour.nodes].reverse() };
+}
+
 function square(box: Bounds): Contour {
-  return {
-    closed: true,
-    nodes: [
-      node(box.xMin, box.yMin),
-      node(box.xMax, box.yMin),
-      node(box.xMax, box.yMax),
-      node(box.xMin, box.yMax),
-    ],
-  };
+  return poly([
+    { x: box.xMin, y: box.yMin },
+    { x: box.xMax, y: box.yMin },
+    { x: box.xMax, y: box.yMax },
+    { x: box.xMin, y: box.yMax },
+  ]);
 }
 
 /** Whether a letter has been laid out at all. */

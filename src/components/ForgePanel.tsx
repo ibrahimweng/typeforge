@@ -17,6 +17,7 @@ import * as React from "react";
 
 import { segment } from "@/components/controls";
 import { contoursToSvgPath } from "@/font/geometry";
+import { filled, FILL_KINDS } from "@/forge/kit";
 import { drawLetter } from "@/forge/build";
 import { FROM_SKELETON, type Cuts } from "@/forge/cut";
 import {
@@ -315,6 +316,8 @@ function KitPanel(): React.JSX.Element {
             </p>
           </div>
 
+          <Palette />
+
           {tiles && (
             <div className="py-1">
               <Slider
@@ -372,6 +375,100 @@ function KitPanel(): React.JSX.Element {
     </section>
   );
 }
+
+/**
+ * The shapes a press on a cell puts down.
+ *
+ * Drawn from the same geometry that fills the cell, so what is in the palette
+ * is exactly what lands -- a picture of a tile redrawn by hand in the panel is
+ * a picture that goes out of date the first time the tile changes.
+ *
+ * The eraser is the first one and is where it starts, so a stray press on the
+ * stage cannot quietly fill a cell in. Turning is one button rather than four
+ * copies of every shape: five shapes and a turn is a row anybody can read, and
+ * twenty tiles is a menu.
+ */
+function Palette(): React.JSX.Element {
+  const state = useForge();
+  const chosen = state.fill;
+  const turn = chosen?.turn ?? 0;
+  const box = { xMin: 0, yMin: 0, xMax: 1, yMax: 1 };
+
+  return (
+    <div className="pt-2" data-forge-fills>
+      <div className="flex items-baseline justify-between gap-2 pb-1">
+        <span className="text-2xs text-foreground">Fill a cell</span>
+        <button
+          type="button"
+          onClick={() => chosen && forgeStore.chooseFill({ ...chosen, turn: (turn + 1) % 4 })}
+          disabled={!chosen}
+          data-forge-fill-turn
+          className="shrink-0 text-2xs text-[color:var(--accent)] transition-opacity hover:opacity-70 disabled:opacity-30"
+        >
+          Turn
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          aria-pressed={chosen === null}
+          aria-label="Erase"
+          title="Erase: press a cell to take its shape out"
+          onClick={() => forgeStore.chooseFill(null)}
+          data-forge-fill="none"
+          className={cn(
+            "flex size-9 items-center justify-center rounded-md border text-2xs transition-colors",
+            chosen === null
+              ? "border-[color:var(--accent)] bg-[color:color-mix(in_oklab,var(--accent)_12%,transparent)] text-foreground"
+              : "border-border text-muted-foreground hover:border-muted-foreground hover:bg-card",
+          )}
+        >
+          None
+        </button>
+        {FILL_KINDS.map((kind) => {
+          const fill = { kind, turn };
+          const on = chosen?.kind === kind;
+          return (
+            <button
+              key={kind}
+              type="button"
+              aria-pressed={on}
+              aria-label={kind}
+              title={FILL_HINTS[kind]}
+              onClick={() => forgeStore.chooseFill(fill)}
+              data-forge-fill={kind}
+              className={cn(
+                "flex size-9 items-center justify-center rounded-md border transition-colors",
+                on
+                  ? "border-[color:var(--accent)] bg-[color:color-mix(in_oklab,var(--accent)_12%,transparent)]"
+                  : "border-border hover:border-muted-foreground hover:bg-card",
+              )}
+            >
+              <svg viewBox="0 0 1 1" className="size-5" aria-hidden>
+                <g transform="translate(0,1) scale(1,-1)">
+                  <path d={contoursToSvgPath(filled(fill, box), 4)} fill="var(--foreground)" />
+                </g>
+              </svg>
+            </button>
+          );
+        })}
+      </div>
+      <p className="pt-1 text-2xs leading-snug text-muted-foreground">
+        {chosen
+          ? `Press a cell to put a ${chosen.kind} in it, and press it again to take it out.`
+          : "Press a cell to take whatever shape is in it out. Choose a shape to put one in."}
+      </p>
+    </div>
+  );
+}
+
+const FILL_HINTS: Record<string, string> = {
+  full: "The whole cell. What a heavy grid face is mostly made of.",
+  pie: "A quarter disc about one corner. Four of them round a shared corner make a circle.",
+  bite: "The cell with that quarter taken out, which is what turns a block into the inside of a C.",
+  half: "The cell cut across the middle.",
+  wedge: "The cell cut corner to corner.",
+};
 
 /** The grid itself, counted in cells rather than measured in units. */
 const GRID_CONTROLS = [

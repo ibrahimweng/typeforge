@@ -23,7 +23,7 @@
  */
 
 import { intersect, loaded, pieces, subtract, unite, type Roles } from "@/font/boolean";
-import { contourArea, contoursBounds, type Bounds } from "@/font/geometry";
+import { contourArea, contoursBounds, reverseContour, type Bounds } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { alongSpine, spineLength } from "./shapes";
 import { sweep } from "./sweep";
@@ -38,7 +38,7 @@ import type { Spine, SpineSegment, Stroke } from "./types";
 export type Edge = "left" | "right" | "both" | "top" | "bottom";
 
 /** What a counter is replaced with. */
-export type MotifShape = "diamond" | "triangle" | "square" | "slot";
+export type MotifShape = "diamond" | "triangle" | "square" | "slot" | "dot" | "ring";
 
 export interface Cuts {
   /**
@@ -709,7 +709,49 @@ function motifShape(shape: MotifShape, box: Bounds, size: number): Contour[] {
       return [rect(middle.x - wide, middle.y - tall, wide * 2, tall * 2)];
     case "slot":
       return [rect(middle.x - wide, middle.y - tall * 0.34, wide * 2, tall * 0.68)];
+    case "dot":
+      // A small disc in the middle of the counter, so the letter closes up to
+      // a ring with a point in it -- which is most of what an inline face and
+      // a geometric display face have in common.
+      return [disc(middle, wide * 0.42, tall * 0.42)];
+    case "ring":
+      // A disc with a hole: the counter becomes two rings, one inside the
+      // other. Drawn as one shape and its own counter, so it stays a hole
+      // rather than becoming a blot when the letter is fused.
+      return [
+        disc(middle, wide * 0.72, tall * 0.72),
+        reverseContour(disc(middle, wide * 0.36, tall * 0.36)),
+      ];
   }
+}
+
+/**
+ * An ellipse, as four cubics.
+ *
+ * A quarter of a circle written as one cubic is off by about a part in a
+ * thousand of the radius, which on a counter of two hundred units is a fifth
+ * of a unit -- below anything a font file records.
+ */
+const KAPPA = 0.5522847498;
+
+function disc(middle: Vec2, wide: number, tall: number): Contour {
+  const across = wide * KAPPA;
+  const up = tall * KAPPA;
+  const at = (x: number, y: number, inX: number, inY: number, outX: number, outY: number): GlyphNode => ({
+    point: { x, y },
+    handleIn: { x: x + inX, y: y + inY },
+    handleOut: { x: x + outX, y: y + outY },
+    type: "smooth",
+  });
+  return {
+    closed: true,
+    nodes: [
+      at(middle.x + wide, middle.y, 0, -up, 0, up),
+      at(middle.x, middle.y + tall, across, 0, -across, 0),
+      at(middle.x - wide, middle.y, 0, up, 0, -up),
+      at(middle.x, middle.y - tall, -across, 0, across, 0),
+    ],
+  };
 }
 
 // ---------------------------------------------------------------------------

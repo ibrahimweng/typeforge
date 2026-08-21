@@ -1616,6 +1616,40 @@ test("puts a letter back on the grid, and empties it", async ({ page }) => {
   await expect.poll(outline).toBe(laid);
 });
 
+test("stamps filled shapes into cells, and takes them out again", async ({ page }) => {
+  await openForge(page);
+  const panel = page.getByRole("complementary", { name: "Forge" });
+  await panel.getByRole("switch", { name: "Build on a grid" }).click();
+  await expect(page.locator("[data-forge-cells]")).toBeVisible();
+
+  // Start from an empty letter, so what appears can only be what was stamped.
+  await panel.locator("[data-forge-kit-clear]").click();
+  const outline = () => page.locator('[data-forge-cell="n"] path').getAttribute("d");
+  const empty = await outline();
+
+  // Nothing is chosen to begin with, which is the eraser: a press on the stage
+  // cannot quietly fill a cell in.
+  await expect(panel.locator('[data-forge-fill="none"]')).toHaveAttribute("aria-pressed", "true");
+
+  await panel.locator('[data-forge-fill="pie"]').click();
+  await expect(panel.locator('[data-forge-fill="pie"]')).toHaveAttribute("aria-pressed", "true");
+
+  const cell = page.locator('[data-forge-cell-box="0,0"]');
+  await cell.click({ force: true });
+  await expect.poll(outline).not.toBe(empty);
+  const stamped = await outline();
+
+  // Turning changes which way the shape faces, and stamps a different tile.
+  await panel.locator("[data-forge-fill-turn]").click();
+  await cell.click({ force: true });
+  await expect.poll(outline).not.toBe(stamped);
+
+  // And pressing a cell with the shape it already has takes it out, so there
+  // is no eraser to go and find.
+  await cell.click({ force: true });
+  await expect.poll(outline).toBe(empty);
+});
+
 /*
  * The font library.
  *

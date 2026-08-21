@@ -1,17 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { contoursBounds } from "@/font/geometry";
+import { contourArea, contoursBounds } from "@/font/geometry";
 import {
   assemble,
   cellBox,
   cellKey,
   emptyKit,
+  filled,
+  FILL_KINDS,
   portAt,
   PORTS,
   rowsOf,
   seedTiles,
   unitOf,
   type Kit,
+  type Fill,
   type Port,
   type Tiles,
 } from "./kit";
@@ -21,9 +24,9 @@ import { sweep } from "./sweep";
 
 const kitWith = (patch: Partial<Kit> = {}): Kit => ({ ...emptyKit(), ...patch });
 
-const oneCell = (ports: Port[], solid?: boolean): Tiles => ({
+const oneCell = (ports: Port[], fill?: Fill): Tiles => ({
   columns: 1,
-  cells: { [cellKey(0, 0)]: { ports, solid } },
+  cells: { [cellKey(0, 0)]: { ports, ...(fill ? { fill } : {}) } },
 });
 
 describe("the grid", () => {
@@ -103,7 +106,7 @@ describe("drawing a cell", () => {
   });
 
   it("fills a cell told to be solid", () => {
-    const made = assemble(oneCell([], true), SANS, kit);
+    const made = assemble(oneCell([], { kind: "full", turn: 0 }), SANS, kit);
     expect(made.blocks).toHaveLength(1);
     const unit = unitOf(SANS, kit.grid);
     const box = contoursBounds(made.blocks);
@@ -115,6 +118,89 @@ describe("drawing a cell", () => {
     const unit = unitOf(SANS, kit.grid);
     const made = assemble({ columns: 4, cells: {} }, SANS, kit);
     expect(made.advanceWidth).toBeCloseTo(4 * unit + SANS.metrics.sidebearing * 2, 6);
+  });
+});
+
+describe("filling a cell", () => {
+  const kit = kitWith();
+  const unit = unitOf(SANS, kit.grid);
+  const box = { xMin: 0, yMin: 0, xMax: unit, yMax: unit };
+  const area = (contours: ReturnType<typeof filled>): number =>
+    Math.abs(contours.reduce((total, one) => total + contourArea(one), 0));
+
+  /*
+   * How far off a true circle a quarter arc written as one cubic is.
+   *
+   * A known and constant error, and small: a fifth of a percent of the area,
+   * which on a cell of a hundred and forty units is a fifth of a unit at the
+   * widest point of the arc -- below anything a font file records. Stated as a
+   * share rather than as a number of decimal places, because the number of
+   * decimal places that happens to pass depends on how big the cell is.
+   */
+  const NEARLY = 0.002;
+  const near = (measured: number, exact: number, what: string): void => {
+    expect(Math.abs(measured - exact) / exact, what).toBeLessThan(NEARLY);
+  };
+
+  it("puts down the shape it says, at the size of the cell", () => {
+    expect(area(filled({ kind: "full", turn: 0 }, box))).toBeCloseTo(unit * unit, 3);
+    expect(area(filled({ kind: "half", turn: 0 }, box))).toBeCloseTo((unit * unit) / 2, 3);
+    expect(area(filled({ kind: "wedge", turn: 0 }, box))).toBeCloseTo((unit * unit) / 2, 3);
+    // A quarter disc of the cell's own radius.
+    near(area(filled({ kind: "pie", turn: 0 }, box)), (Math.PI * unit * unit) / 4, "pie");
+  });
+
+  it("takes out exactly what it puts in", () => {
+    // The bite is the cell without the pie, so the two are the whole cell.
+    for (const turn of [0, 1, 2, 3]) {
+      const both =
+        area(filled({ kind: "pie", turn }, box)) + area(filled({ kind: "bite", turn }, box));
+      near(both, unit * unit, `turn ${turn}`);
+    }
+  });
+
+  it("makes a circle out of four quarters about a shared corner", () => {
+    /*
+     * The reason the quarter disc is a tile at all. Four cells meeting at a
+     * corner, each holding the quarter nearest it, are one disc of the block's
+     * own width -- which is how a grid alphabet gets a round letter without
+     * anything being swept anywhere.
+     */
+    const round: Tiles = {
+      columns: 2,
+      cells: {
+        [cellKey(0, 0)]: { ports: [], fill: { kind: "pie", turn: 2 } },
+        [cellKey(1, 0)]: { ports: [], fill: { kind: "pie", turn: 3 } },
+        [cellKey(0, 1)]: { ports: [], fill: { kind: "pie", turn: 1 } },
+        [cellKey(1, 1)]: { ports: [], fill: { kind: "pie", turn: 0 } },
+      },
+    };
+    const made = assemble(round, SANS, kit);
+    expect(made.blocks).toHaveLength(4);
+    near(area(made.blocks), Math.PI * unit * unit, "circle");
+
+    // And it is round: as wide as it is tall, and both are the block's width.
+    const bounds = contoursBounds(made.blocks);
+    expect(bounds.xMax - bounds.xMin).toBeCloseTo(unit * 2, 3);
+    expect(bounds.yMax - bounds.yMin).toBeCloseTo(unit * 2, 3);
+  });
+
+  it("turns a shape without changing how much of it there is", () => {
+    for (const kind of FILL_KINDS) {
+      const upright = filled({ kind, turn: 0 }, box);
+      for (const turn of [1, 2, 3]) near(area(filled({ kind, turn }, box)), area(upright), `${kind} ${turn}`);
+    }
+  });
+
+  it("fills and strokes the same cell at once", () => {
+    // A block with a stroke leaving it is one cell, not a choice between two.
+    const tiles: Tiles = {
+      columns: 1,
+      cells: { [cellKey(0, 0)]: { ports: ["n", "s"], fill: { kind: "full", turn: 0 } } },
+    };
+    const made = assemble(tiles, SANS, kit);
+    expect(made.blocks).toHaveLength(1);
+    expect(made.strokes).toHaveLength(1);
   });
 });
 
