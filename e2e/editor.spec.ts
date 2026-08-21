@@ -1430,6 +1430,81 @@ test("offers the settings that are on or off as switches", async ({ page }) => {
 });
 
 /*
+ * Cutting.
+ *
+ * The one thing here that takes material away rather than adding it, and the
+ * one that needs a browser to be believed: the geometry is fetched after the
+ * application has started, so a letter is drawn uncut for a moment and then
+ * again with its slots. A test that only asked the store would pass whether or
+ * not that second drawing ever arrived.
+ */
+test("cuts every letter in the font, and says what it did", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openForge(page);
+
+  const panel = page.getByRole("complementary", { name: "Forge" });
+  const slots = panel.getByRole("switch", { name: "Slots" });
+  await expect(slots).toHaveAttribute("aria-checked", "false");
+  // Nothing is cut to begin with, so nothing is said about it.
+  await expect(page.locator("[data-forge-warnings]")).toHaveCount(0);
+
+  const outline = (letter: string) =>
+    page.locator(`[data-forge-cell="${letter}"] path`).getAttribute("d");
+  const whole = await outline("H");
+
+  await slots.click();
+  await expect(slots).toHaveAttribute("aria-checked", "true");
+
+  // The letter is drawn again, in pieces. Polled rather than awaited once,
+  // because the library it needs is still on its way when the switch is
+  // pressed and the first drawing after it is the uncut one.
+  await expect.poll(() => outline("H")).not.toBe(whole);
+  await expect.poll(async () => ((await outline("H")) ?? "").split("Z").length).toBeGreaterThan(3);
+
+  // And the warning strip says so, in a count rather than in a list: most of
+  // the alphabet is in pieces, which is what tells somebody this is a stencil
+  // rather than an accident.
+  const warnings = page.locator("[data-forge-warnings]");
+  await expect(warnings).toContainText("cut into pieces");
+
+  // The controls only appear once the cut is on, so the panel is six rows
+  // until somebody wants more than six rows.
+  await expect(panel.locator('[data-forge-control="cut:slot:width"]')).toBeVisible();
+
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(slots).toHaveAttribute("aria-checked", "false");
+  await expect.poll(() => outline("H")).toBe(whole);
+  await expect(page.locator("[data-forge-warnings]")).toHaveCount(0);
+
+  expect(errors).toEqual([]);
+});
+
+test("cuts one letter differently from the rest", async ({ page }) => {
+  await openForge(page);
+  const panel = page.getByRole("complementary", { name: "Forge" });
+  await panel.getByRole("switch", { name: "Slots" }).click();
+
+  const outline = (letter: string) =>
+    page.locator(`[data-forge-cell="${letter}"] path`).getAttribute("d");
+  await expect.poll(async () => ((await outline("H")) ?? "").split("Z").length).toBeGreaterThan(3);
+  const before = { H: await outline("H"), o: await outline("o") };
+
+  // In letter scope the switch lands on this letter alone.
+  await page.locator('[data-forge-cell="H"]').click();
+  await panel.getByRole("button", { name: "H alone" }).click();
+  await panel.getByRole("switch", { name: "Slots" }).click();
+
+  await expect.poll(() => outline("H")).not.toBe(before.H);
+  expect(await outline("o")).toBe(before.o);
+  // And the panel says the letter is holding its own, with a way to let it go.
+  await expect(panel.locator("[data-forge-release-cuts]")).toBeVisible();
+
+  await panel.locator("[data-forge-release-cuts]").click();
+  await expect.poll(() => outline("H")).toBe(before.H);
+});
+
+/*
  * The font library.
  *
  * The two services it reaches are somebody else's, and a test that depends on
