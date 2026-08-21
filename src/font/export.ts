@@ -35,6 +35,7 @@ import {
   buildName,
   buildOs2,
   buildPost,
+  familyNames,
 } from "./tables";
 import type { Glyph, Typeface } from "./types";
 
@@ -439,7 +440,17 @@ function buildBaselineTables(
 
   const advances = typeface.glyphs.map((glyph) => glyph.advanceWidth);
   const isItalic = /italic|oblique/i.test(typeface.meta.styleName);
-  const isBold = /bold/i.test(typeface.meta.styleName);
+  /*
+   * The bold bit means "this is the bold of its family", not "this is heavy".
+   *
+   * Read off the word in the style name -- which is what it was -- every one of
+   * ExtraBold, SemiBold and Bold set it, so a family of nine had three faces
+   * all claiming to be the one a word processor should reach for when somebody
+   * presses the bold button. It is the face whose old-scheme style name is
+   * Bold, and there is exactly one of those per family.
+   */
+  const named = familyNames(typeface.meta);
+  const isBold = named.styleName === "Bold" || named.styleName === "Bold Italic";
 
   tables.set(
     "head",
@@ -487,7 +498,7 @@ function buildBaselineTables(
       averageCharWidth: advances.length
         ? advances.reduce((sum, value) => sum + value, 0) / advances.length
         : 0,
-      weightClass: isBold ? 700 : 400,
+      weightClass: typeface.meta.weightClass,
       widthClass: 5,
       isItalic,
       isBold,

@@ -7,6 +7,7 @@
  * browser is a real font.
  */
 
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -844,6 +845,84 @@ test("draws the symbols and writes them into the font", async ({ page }) => {
     .map(([character]) => character);
   expect(missing.join(" "), "the font went out without these").toBe("");
   expect(errors).toEqual([]);
+});
+
+/**
+ * A family rather than a font.
+ *
+ * The application drew one weight, which is a specimen rather than something
+ * anybody can typeset with: a text face with no bold cannot emphasise a word.
+ * Checked through the interface -- the specimen gains a line per weight, so
+ * what is promised is also what is shown -- and then in the file, because a
+ * zip of nine fonts that a font menu will not group is nine fonts and not a
+ * family.
+ */
+test("draws a family and downloads every weight of it", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openForge(page);
+
+  // One weight to begin with: one line of specimen and no labels beside it.
+  await expect(page.locator("[data-forge-specimen-line]")).toHaveCount(1);
+  await expect(page.locator("[data-forge-weight-label]")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Download", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator('[data-weight="400"]')).toHaveAttribute("data-weight-on", "yes");
+  await expect(dialog.locator('[data-weight="700"]')).toHaveAttribute("data-weight-on", "no");
+
+  await dialog.locator('[data-weight="300"]').click();
+  await dialog.locator('[data-weight="700"]').click();
+  await expect(dialog.locator("[data-download-family]")).toHaveText("Download 3");
+  await expect(dialog.locator("[data-weight-note]")).toContainText("3 weights");
+
+  // The specimen says so too, which is the point of showing it there.
+  await expect(page.locator("[data-forge-specimen-line]")).toHaveCount(3);
+  await expect(page.locator('[data-forge-weight-label="700"]')).toHaveText("Bold");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download", { timeout: 120_000 }),
+    dialog.locator("[data-download-family]").click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("Untitled.zip");
+  const saved = join(tmpdir(), "family.zip");
+  await download.saveAs(saved);
+
+  /*
+   * Opened by something that is not this application. A zip written and read
+   * by the same code is a zip that agrees with itself; the one that matters is
+   * the one on the machine it lands on.
+   */
+  const listed = execFileSync("python3", [
+    "-c",
+    "import zipfile,sys;print('\\n'.join(sorted(n.filename for n in zipfile.ZipFile(sys.argv[1]).infolist())))",
+    saved,
+  ])
+    .toString()
+    .trim()
+    .split("\n");
+  expect(listed).toEqual([
+    "Untitled-Bold.ttf",
+    "Untitled-Light.ttf",
+    "Untitled-Regular.ttf",
+  ]);
+  expect(errors).toEqual([]);
+});
+
+/**
+ * The weight a drawing already is.
+ *
+ * Half the faces offered here are not a Regular, and calling one a Regular and
+ * asking for a Bold of it is asking for a stem half again as wide as the one
+ * that was already closing the counters. The display face is read as a Bold
+ * when it is chosen, so its family runs downward from where it actually is.
+ */
+test("knows the display face is already a bold", async ({ page }) => {
+  await openForge(page);
+  await page.getByRole("button", { name: "Display", exact: true }).click();
+  await page.getByRole("button", { name: "Download", exact: true }).click();
+  await expect(page.getByRole("dialog").locator("[data-drawn-weight]")).toHaveValue("700");
+  await expect(page.getByRole("dialog").locator('[data-weight="700"]')).toBeDisabled();
 });
 
 test("spreads one edit across the whole alphabet", async ({ page }) => {

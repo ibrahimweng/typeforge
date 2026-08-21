@@ -19,11 +19,14 @@ import {
   editMetrics,
   editPart,
   editPen,
+  familyOf,
   importLetter,
   relinkLetter,
+  setFamily,
   startFrom,
   type Forge,
 } from "@/forge/document";
+import type { Family } from "@/forge/family";
 import { letterSvg, readLetterSvg, type Arrival } from "@/forge/exchange";
 import type { PartName } from "@/forge/parts";
 import { baseNamed } from "@/forge/document";
@@ -184,6 +187,46 @@ class ForgeStore {
 
   setFamilyName(familyName: string): void {
     this.set({ familyName });
+  }
+
+  /**
+   * Which weights the typeface has.
+   *
+   * Undoable like any other change to the document, because it is one: turning
+   * the Black off throws away a member of the family, and somebody who did it
+   * by mistake should be able to take it back the way they take back
+   * everything else here.
+   */
+  setFamily(family: Family): void {
+    this.commit(setFamily(this.state.forge, family));
+  }
+
+  /** Add or remove one weight, leaving the one on screen alone. */
+  toggleWeight(weight: number): void {
+    const family = familyOf(this.state.forge);
+    if (weight === family.drawn) return;
+    const also = family.also.includes(weight)
+      ? family.also.filter((one) => one !== weight)
+      : [...family.also, weight];
+    this.commit(setFamily(this.state.forge, { ...family, also }));
+  }
+
+  /**
+   * Say which weight the drawing on screen is.
+   *
+   * Not a change to the letters -- the same pen draws the same shapes -- but a
+   * change to what the rest of the family is worked out from, so the whole set
+   * moves. A face drawn as its Black has a light family below it and no heavy
+   * one above, which is what a display family usually is.
+   */
+  setDrawnWeight(weight: number): void {
+    const family = familyOf(this.state.forge);
+    this.commit(
+      setFamily(this.state.forge, {
+        drawn: weight,
+        also: family.also.filter((one) => one !== weight),
+      }),
+    );
   }
 
   /*

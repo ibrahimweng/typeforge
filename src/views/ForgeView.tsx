@@ -20,10 +20,12 @@ import { CoachMark } from "@/components/CoachMark";
 import { Reference } from "@/components/Reference";
 import { contoursToSvgPath } from "@/font/geometry";
 import { letterNames, skeletonOf } from "@/forge/build";
+import { familyOf, weighted, type Forge } from "@/forge/document";
+import { nameOfWeight, weightsOf } from "@/forge/family";
 import { codepointsFor } from "@/forge/typeface";
 import { draw, formOf, isException, isImported, partsOf, reach, styleFor } from "@/forge/document";
 import { handlesFor, valueAfter, type Handle } from "@/forge/handles";
-import { troubles } from "@/forge/health";
+import { familyTroubles } from "@/forge/health";
 import { driveId, valueOf, whatGoverns, type Governing } from "@/forge/probe";
 import { segment, tile } from "@/components/controls";
 import { forgeStore, useForge, type Phase } from "@/state/useForge";
@@ -542,41 +544,60 @@ function apply(handle: Handle, value: number, phase: Phase): void {
   else forgeStore.changePart(drive.part, { [drive.key]: value } as never, phase);
 }
 
+/** One line of the specimen, set in one weight of the family. */
+function setLine(forge: Forge, text: string): { pieces: Array<{ d: string; x: number }>; width: number } {
+  let x = 0;
+  const pieces: Array<{ d: string; x: number }> = [];
+  for (const character of text) {
+    const name = nameOf(character);
+    const drawn = name ? draw(name, forge) : null;
+    if (!drawn) {
+      // Anything the font has no glyph for still takes its space, or the
+      // words in a specimen line would run together.
+      x += forge.style.metrics.unitsPerEm * 0.26;
+      continue;
+    }
+    if (drawn.contours.length === 0) {
+      // A space, which the font does have a glyph for and does have a width
+      // for -- so it gets that width rather than the guess above.
+      x += drawn.advanceWidth;
+      continue;
+    }
+    pieces.push({ d: contoursToSvgPath(drawn.contours), x });
+    x += drawn.advanceWidth;
+  }
+  return { pieces, width: x };
+}
+
 /**
- * A line of type at reading size.
+ * A line of type at reading size, in every weight the typeface has.
  *
  * Set from the drawing rather than from an exported font, so it follows every
  * change immediately instead of waiting for a file to be written. Typed rather
  * than fixed, and reversible, because a heavy face looks lighter on a dark
  * ground than on a light one and that is the difference a display face is
  * usually being chosen for.
+ *
+ * A family is shown as a family. Nine weights described in a dialog and never
+ * seen is a promise; nine lines one under another is the thing itself, and it
+ * is the only way to find out that the Black has closed up or the Thin has
+ * disappeared before the files are written.
  */
 function Specimen({ revision }: { revision: number }): React.JSX.Element {
   const state = useForge();
-  const line = React.useMemo(() => {
-    let x = 0;
-    const pieces: Array<{ d: string; x: number }> = [];
-    for (const character of state.specimen) {
-      const name = nameOf(character);
-      const drawn = name ? draw(name, state.forge) : null;
-      if (!drawn) {
-        // Anything the font has no glyph for still takes its space, or the
-        // words in a specimen line would run together.
-        x += state.forge.style.metrics.unitsPerEm * 0.26;
-        continue;
-      }
-      if (drawn.contours.length === 0) {
-        // A space, which the font does have a glyph for and does have a width
-        // for -- so it gets that width rather than the guess above.
-        x += drawn.advanceWidth;
-        continue;
-      }
-      pieces.push({ d: contoursToSvgPath(drawn.contours), x });
-      x += drawn.advanceWidth;
-    }
-    return { pieces, width: x };
-  }, [state.forge, state.specimen, revision]);
-
+  const weights = weightsOf(familyOf(state.forge));
+  const lines = React.useMemo(
+    () =>
+      weights.map((weight) => ({
+        weight,
+        name: nameOfWeight(weight),
+        drawn: weight === familyOf(state.forge).drawn,
+        ...setLine(weighted(state.forge, weight), state.specimen),
+      })),
+    // The forge and the text are what the lines are made of; the revision is
+    // how everything else here knows a part moved underneath them.
+    [state.forge, state.specimen, revision, weights.join()],
+  );
   const { metrics } = state.forge.style;
 
   return (
@@ -597,24 +618,40 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
           "text-foreground outline-none focus:border-[color:var(--accent)]",
         )}
       />
-      <div className="flex min-w-0 flex-1 items-center justify-center overflow-hidden">
-        {line.width > 0 && (
-          <svg
-            viewBox={`0 ${-metrics.ascender} ${line.width} ${metrics.ascender - metrics.descender}`}
-            className="h-16 w-auto max-w-full"
-            role="img"
-            aria-label="Specimen"
-          >
-            <g
-              transform="scale(1,-1)"
-              fill={state.reversed ? "var(--canvas)" : "var(--foreground)"}
-              fillRule="nonzero"
-            >
-              {line.pieces.map((piece, index) => (
-                <path key={index} d={piece.d} transform={`translate(${piece.x} 0)`} />
-              ))}
-            </g>
-          </svg>
+      <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 overflow-hidden">
+        {lines.map((one) =>
+          one.width > 0 ? (
+            <div key={one.weight} className="flex w-full min-w-0 items-center gap-2">
+              {lines.length > 1 && (
+                <span
+                  className={cn(
+                    "w-16 shrink-0 truncate text-right text-2xs tabular-nums",
+                    state.reversed ? "text-[color:var(--canvas)] opacity-60" : "text-muted-foreground",
+                  )}
+                  data-forge-weight-label={one.weight}
+                >
+                  {one.name}
+                </span>
+              )}
+              <svg
+                viewBox={`0 ${-metrics.ascender} ${one.width} ${metrics.ascender - metrics.descender}`}
+                className={cn("w-auto max-w-full", lines.length > 1 ? "h-7" : "h-16")}
+                role="img"
+                aria-label={lines.length > 1 ? `Specimen ${one.name}` : "Specimen"}
+                data-forge-specimen-line={one.weight}
+              >
+                <g
+                  transform="scale(1,-1)"
+                  fill={state.reversed ? "var(--canvas)" : "var(--foreground)"}
+                  fillRule="nonzero"
+                >
+                  {one.pieces.map((piece, index) => (
+                    <path key={index} d={piece.d} transform={`translate(${piece.x} 0)`} />
+                  ))}
+                </g>
+              </svg>
+            </div>
+          ) : null,
         )}
       </div>
       <button
@@ -664,7 +701,7 @@ function nameOf(character: string): string | null {
  */
 function Warnings({ revision }: { revision: number }): React.JSX.Element | null {
   const state = useForge();
-  const found = React.useMemo(() => troubles(state.forge), [state.forge, revision]);
+  const found = React.useMemo(() => familyTroubles(state.forge), [state.forge, revision]);
   if (found.length === 0) return null;
   return (
     <div className="shrink-0 border-b border-border px-4 py-2" data-forge-warnings>

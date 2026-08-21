@@ -167,6 +167,14 @@ export interface ForgeExportOptions {
   familyName: string;
   styleName: string;
   /**
+   * How heavy this member of the family is, from 100 to 900.
+   *
+   * Said rather than guessed from the style name, because the file has to
+   * carry it and a name is not a number: a font menu sorts a family by this
+   * and by nothing else.
+   */
+  weightClass?: number;
+  /**
    * Fuse the overlapping strokes.
    *
    * On for anything leaving the application. Off is for looking at the pieces,
@@ -191,6 +199,7 @@ export async function toTypeface(
     ...typeface.meta,
     familyName: options.familyName,
     styleName: options.styleName,
+    weightClass: options.weightClass ?? 400,
     // Said plainly in the file itself, because it is the reason this half of
     // the application exists.
     copyright: `${options.familyName}. Drawn from a skeleton; not derived from any existing typeface.`,

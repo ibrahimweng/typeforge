@@ -284,7 +284,7 @@ function buildCmapFormat12(mappings: Array<{ codepoint: number; glyphId: number 
 }
 
 /** Name IDs from the OpenType specification. */
-const NAME_IDS: Array<[number, keyof FontMeta | "fullName" | "postScriptName"]> = [
+const NAME_IDS: Array<[number, string]> = [
   [0, "copyright"],
   [1, "familyName"],
   [2, "styleName"],
@@ -294,22 +294,82 @@ const NAME_IDS: Array<[number, keyof FontMeta | "fullName" | "postScriptName"]> 
   [8, "manufacturer"],
   [9, "designer"],
   [13, "license"],
+  [16, "typographicFamily"],
+  [17, "typographicStyle"],
 ];
 
+/*
+ * The four style names a family may put in name ID 2, and no others.
+ *
+ * This is not a stylistic preference, it is what the operating systems will
+ * accept. Name IDs 1 and 2 date from a time when a family had at most four
+ * members, and every system still reads them that way: a family whose ID 2
+ * says "SemiBold" is a family the font menu will not group, or will group and
+ * then be unable to choose bold within.
+ */
+const RIBBI = new Set(["Regular", "Italic", "Bold", "Bold Italic"]);
+
+/**
+ * What a font calls itself, in both the old scheme and the new one.
+ *
+ * A family of nine weights cannot be described by name IDs 1 and 2 alone --
+ * they only hold four styles between them -- so anything outside those four
+ * says its real name in IDs 16 and 17 and gives the old pair something they can
+ * hold: a family of its own, with "Regular" as its style. That is how Light,
+ * Medium and Black have been shipped since the nineties, and it is why a font
+ * menu can show one family with nine weights under it rather than nine
+ * families with one weight each.
+ */
+export function familyNames(meta: FontMeta): {
+  familyName: string;
+  styleName: string;
+  typographicFamily: string;
+  typographicStyle: string;
+} {
+  const style = meta.styleName.trim() || "Regular";
+  if (RIBBI.has(style)) {
+    return {
+      familyName: meta.familyName,
+      styleName: style,
+      typographicFamily: "",
+      typographicStyle: "",
+    };
+  }
+  /*
+   * The italic of an outlying weight keeps its slope in the old pair.
+   *
+   * "SemiBold Italic" has to become a family called "Family SemiBold" whose
+   * style is "Italic", not one whose style is "Regular" -- or the system has
+   * no way to know the face is slanted and will synthesise a second slant on
+   * top of the one that is already drawn.
+   */
+  const italic = /\bitalic\b|\boblique\b/i.test(style);
+  const stem = style.replace(/\s*\b(italic|oblique)\b\s*/gi, " ").trim();
+  return {
+    familyName: `${meta.familyName} ${stem}`.trim(),
+    styleName: italic ? "Italic" : "Regular",
+    typographicFamily: meta.familyName,
+    typographicStyle: style,
+  };
+}
+
 export function buildName(meta: FontMeta): Uint8Array {
+  const named = familyNames(meta);
   const fullName = `${meta.familyName} ${meta.styleName}`.trim();
   const postScriptName = sanitisePostScriptName(`${meta.familyName}-${meta.styleName}`);
 
   const values: Record<string, string> = {
     copyright: meta.copyright,
-    familyName: meta.familyName,
-    styleName: meta.styleName,
+    familyName: named.familyName,
+    styleName: named.styleName,
     fullName,
     version: meta.version.startsWith("Version") ? meta.version : `Version ${meta.version}`,
     postScriptName,
     manufacturer: meta.manufacturer,
     designer: meta.designer,
     license: meta.license,
+    typographicFamily: named.typographicFamily,
+    typographicStyle: named.typographicStyle,
   };
 
   const entries = NAME_IDS.map(([id, key]) => ({ id, value: values[key] ?? "" })).filter(

@@ -162,6 +162,16 @@ export interface FontMeta {
   manufacturer: string;
   copyright: string;
   license: string;
+  /**
+   * How heavy this font is, from 100 to 900, as every font file says.
+   *
+   * It used to be worked out from the style name -- seven hundred if the word
+   * "bold" appeared in it, four hundred otherwise -- which is fine for a font
+   * that comes on its own and useless for a family. A Light and a Black and a
+   * Medium all read as four hundred, so a word processor offered nine faces
+   * with nothing to sort them by and picked whichever it saw first for bold.
+   */
+  weightClass: number;
 }
 
 /** A kerning adjustment between two glyphs, in font units. Negative pulls together. */
@@ -240,6 +250,7 @@ export function emptyTypeface(): Typeface {
     meta: {
       familyName: "Untitled",
       styleName: "Regular",
+      weightClass: 400,
       version: "1.000",
       designer: "",
       manufacturer: "",

@@ -20,7 +20,7 @@
  */
 
 import type { Assembly } from "@/assemble/document";
-import { baseNamed, type Forge } from "@/forge/document";
+import { baseNamed, familyOf, startFrom, whole, type Forge } from "@/forge/document";
 import type { Glyph, GlyphParams, KernClass, KernPair, Typeface } from "@/font/types";
 
 /** Which half of the application was open. */
@@ -179,6 +179,13 @@ function hasDrawing(drawn: DrawnProject): boolean {
     Object.keys(forge.exceptions).length > 0 ||
     Object.keys(forge.imported).length > 0 ||
     drawn.familyName !== "Untitled" ||
+    // Asking for a second weight, or saying that what is drawn is the Black
+    // rather than the Regular, is a decision about the typeface and one nobody
+    // would want to make twice. Compared against what starting from this base
+    // would have given, because half the bases are not a Regular and arriving
+    // at one is not an edit.
+    (started !== undefined &&
+      JSON.stringify(familyOf(forge)) !== JSON.stringify(familyOf(startFrom(started)))) ||
     // A base comes with its own choice of letterforms, so an alternate only
     // counts as work when it differs from the one the base asked for.
     JSON.stringify(forge.alternates) !== JSON.stringify(started?.forms ?? {}) ||
@@ -225,7 +232,11 @@ export function readProject(raw: unknown): Project | null {
     typeforge: FORMAT,
     saved: typeof project.saved === "string" ? project.saved : new Date(0).toISOString(),
     mode: project.mode,
-    draw: project.draw?.forge ? project.draw : undefined,
+    // Filled in on the way through, so a document written before a field
+    // existed reads as though it always had one.
+    draw: project.draw?.forge
+      ? { ...project.draw, forge: whole(project.draw.forge) }
+      : undefined,
     assemble: project.assemble?.assembly ? project.assemble : undefined,
     edit: project.edit?.font ? project.edit : undefined,
   };

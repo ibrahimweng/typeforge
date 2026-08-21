@@ -221,6 +221,19 @@ export async function importFont(
   const os2 = (font.tables.os2 ?? {}) as Record<string, number>;
   const hhea = (font.tables.hhea ?? {}) as Record<string, number>;
 
+  /*
+   * A weight this application understands, from whatever the file said.
+   *
+   * The specification says 1 to 1000 and the world says 100 to 900 in
+   * hundreds. Fonts in the wild carry both, and a few carry the old scale of
+   * 1 to 9 -- so those are multiplied up rather than read as a hairline.
+   */
+  function weightClassOf(value: number | undefined): number {
+    if (!value || !Number.isFinite(value)) return 400;
+    const scaled = value <= 9 ? value * 100 : value;
+    return Math.min(1000, Math.max(1, Math.round(scaled)));
+  }
+
   const typeface: Typeface = {
     meta: {
       familyName: readName(font, "fontFamily") || stripExtension(fileName),
@@ -230,6 +243,8 @@ export async function importFont(
       manufacturer: readName(font, "manufacturer"),
       copyright: readName(font, "copyright"),
       license: readName(font, "license"),
+      // What the file itself says, rather than what its style name looks like.
+      weightClass: weightClassOf(os2.usWeightClass),
     },
     unitsPerEm,
     metrics: {

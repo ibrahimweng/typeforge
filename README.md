@@ -64,6 +64,23 @@ an upside-down question mark is the question mark turned over, and a ½ is the
 figures it is made of — so changing the a changes the ordinal, and there is no
 second copy anywhere to fall behind.
 
+And it draws a **family**, not a font. Pick any of the nine weights and each is
+worked out from the one on screen: the stem in proportion to the number, the
+counters giving back four fifths of what the stems gain, the round letters
+widening with the flat ones, and the spacing left exactly where it was. Those
+are not invented figures — six families that ship with most Linux machines were
+measured for them, and `src/forge/family.test.ts` measures them again. The
+specimen shows every weight at once, because nine weights described in a dialog
+are a promise and nine lines one under another are the thing itself; and the
+warnings strip names any weight whose counters have closed before the files are
+written.
+
+Which weight the drawing *is* is asked rather than assumed, because half the
+faces here are not a Regular: a stem a third of the x-height is somebody's Bold,
+and called a Regular and given a Bold of its own it is asked for a weight that
+cannot exist. The tool reads it off the stem when you start and lets you correct
+it.
+
 ## Finding your way around
 
 There is a sample font in the toolbar's empty state, so the tool can be tried
@@ -123,6 +140,12 @@ that made it.
 ## Export
 
 Two formats, and a choice about how much of the original font to carry forward.
+A drawn family comes out as one zip of one font per weight, named and numbered
+so a font menu groups them under a single name — which takes more than sharing a
+name string. The old name IDs 1 and 2 hold four styles between them and no more,
+so anything outside Regular, Bold, Italic and Bold Italic says its real name in
+IDs 16 and 17, carries its own `usWeightClass`, and leaves the bold bit to the
+one face that is actually the Bold.
 
 **TrueType** writes `glyf` outlines directly. **OpenType** re-encodes the curves
 as PostScript, which is always a rebuild.
@@ -196,12 +219,15 @@ src/font/     the font engine, independent of the interface
   overlap.ts    merging overlapping contours
   transform.ts  the parametric layer
   geometry.ts   vector and bezier maths
+  zip.ts        several files as one download
 src/state/    document state, undo and redo
 src/forge/    the skeleton-and-pen engine behind Draw
   letters.ts    where the strokes of every character run
   style.ts      the pen, the proportions and the named parts
   sweep.ts      the pen carried along a spine
   accents.ts    the accented letters, from Unicode's own decomposition
+  family.ts     the nine weights, and what changes between them
+  deliver.ts    every weight drawn and written out as one download
 src/assemble/ the pile of drawings behind Assemble
 src/project/  the saved document: the file format, and keeping it in the browser
 src/views/    font, glyph, kerning and spacing views

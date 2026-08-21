@@ -22,7 +22,8 @@
 import { contourArea, contoursBounds } from "@/font/geometry";
 import type { Contour } from "@/font/types";
 import { builtFrom, letterNames } from "./build";
-import { draw, type Forge } from "./document";
+import { draw, familyOf, weighted, type Forge } from "./document";
+import { nameOfWeight, weightsOf } from "./family";
 
 export interface Trouble {
   /** What has gone wrong, in one line. */
@@ -45,6 +46,53 @@ export interface Trouble {
  * a heavy cut that works and speaks up on one that has stopped.
  */
 const TIGHT = 0.045;
+
+/** Said in one place, because the family check looks for it by name. */
+const CLOSING = "Counters closing up";
+
+/**
+ * The whole typeface, weight by weight.
+ *
+ * A family's Regular can be perfect and its Black unusable, and the Black is
+ * the one nobody is looking at while they draw. Every weight is measured, and
+ * the ones that have closed up are named by their own names rather than by
+ * their letters -- "the Black and the ExtraBold" is what somebody can act on;
+ * a list of forty letters from a weight they have not seen is not.
+ */
+export function familyTroubles(forge: Forge): Trouble[] {
+  const family = familyOf(forge);
+  const weights = weightsOf(family);
+  const found = troubles(forge);
+  if (weights.length < 2) return found;
+
+  const closed: string[] = [];
+  const letters = new Set<string>();
+  for (const weight of weights) {
+    if (weight === family.drawn) continue;
+    const gone = troubles(weighted(forge, weight));
+    const tight = gone.find((one) => one.what === CLOSING);
+    if (!tight) continue;
+    closed.push(nameOfWeight(weight));
+    for (const letter of tight.letters) letters.add(letter);
+  }
+  if (closed.length > 0) {
+    found.push({
+      // Named for the weights rather than for the letters, because the letters
+      // are the same ones every time and the weight is the thing to act on.
+      what: `${said(closed)} ${closed.length === 1 ? "closes" : "close"} up`,
+      letters: [...letters],
+      fix: "Take those out, or say the drawing is heavier than a Regular, which moves the whole family down with it.",
+    });
+  }
+  return found;
+}
+
+/** A list of names as somebody would read it out, to start a sentence with. */
+function said(names: string[]): string {
+  const the = names.map((name, at) => `${at === 0 ? "The" : "the"} ${name}`);
+  if (the.length === 1) return the[0];
+  return `${the.slice(0, -1).join(", ")} and ${the[the.length - 1]}`;
+}
 
 export function troubles(forge: Forge): Trouble[] {
   const em = forge.style.metrics.unitsPerEm;
@@ -95,7 +143,7 @@ export function troubles(forge: Forge): Trouble[] {
   if (closing.length > 0) {
     closing.sort((one, other) => one.room - other.room);
     found.push({
-      what: "Counters closing up",
+      what: CLOSING,
       letters: [...new Set(closing.map((one) => one.letter))],
       fix: "Lighter, wider, or a taller x-height.",
     });

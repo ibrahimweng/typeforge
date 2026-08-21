@@ -113,7 +113,7 @@ describe("measuring a font by looking at it", () => {
   it("says nothing rather than guessing when the letters are missing", () => {
     const bare: Typeface = {
       ...({} as Typeface),
-      meta: { familyName: "Bare", styleName: "", version: "", designer: "", manufacturer: "", copyright: "", license: "" },
+      meta: { familyName: "Bare", styleName: "", version: "", designer: "", manufacturer: "", copyright: "", license: "", weightClass: 400 },
       unitsPerEm: 1000,
       metrics: { ascender: 750, descender: -250, capHeight: 700, xHeight: 500, lineGap: 0 },
       glyphs: [],

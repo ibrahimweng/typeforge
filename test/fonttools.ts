@@ -41,6 +41,11 @@ export interface FontToolsReport {
   winDescent: number;
   yMax: number;
   yMin: number;
+  /** The name table, by ID, which is what a font menu reads. */
+  names: Record<string, string>;
+  /** What OS/2 says this face weighs, and whether it claims to be the bold. */
+  weightClass: number;
+  isBold: boolean;
   error?: string;
 }
 
@@ -53,7 +58,8 @@ out = {"outlineFormat": "unknown", "tables": [], "numGlyphs": 0, "unitsPerEm": 0
        "kernPairs": {}, "gposKernPairs": {}, "recompiles": False,
        "interiorExtremes": 0, "compositeGlyphs": 0, "componentsOf": {},
        "winAscent": 0, "winDescent": 0,
-       "yMax": 0, "yMin": 0}
+       "yMax": 0, "yMin": 0,
+       "names": {}, "weightClass": 0, "isBold": False}
 try:
     f = TTFont(path)
     # Report the outline flavour rather than the raw version tag, which is
@@ -67,6 +73,12 @@ try:
     if "OS/2" in f:
         out["winAscent"] = f["OS/2"].usWinAscent
         out["winDescent"] = f["OS/2"].usWinDescent
+        out["weightClass"] = f["OS/2"].usWeightClass
+        out["isBold"] = bool(f["OS/2"].fsSelection & 0x20)
+
+    if "name" in f:
+        for rec in f["name"].names:
+            out["names"].setdefault(str(rec.nameID), rec.toUnicode())
 
     if "kern" in f:
         for st in f["kern"].kernTables:

@@ -18,6 +18,7 @@
 
 import { decidedBy, drawLetter, letterNames, type Drawn } from "./build";
 import type { Imported } from "./exchange";
+import { weightClassOf, weightedStyle, type Family } from "./family";
 import { partsUsedBy, type PartName } from "./parts";
 import { BASES, type Parts, type Style } from "./style";
 
@@ -55,6 +56,50 @@ export interface Forge {
    * description it never stopped having.
    */
   imported: Record<string, Imported>;
+  /**
+   * The weights this typeface has, and which of them is the one on screen.
+   *
+   * The style above describes one weight. Everything else in the family is
+   * worked out from it, so there is nothing here to keep in step: this says
+   * only which weights exist, and `family.ts` says what each of them is.
+   *
+   * Optional because documents saved before there were families do not have
+   * it. `whole` below fills it in, so nothing downstream has to ask twice.
+   */
+  family?: Family;
+}
+
+const ALONE: Family = { drawn: 400, also: [] };
+
+/**
+ * A document with everything a current one has.
+ *
+ * Somewhere to put the filling-in that a format gains over time, so that the
+ * rest of the application can read a field without wondering whether the file
+ * it came out of predates it. One place to look, rather than a `??` at every
+ * use.
+ */
+export function whole(forge: Forge): Forge {
+  return forge.family ? forge : { ...forge, family: { ...ALONE } };
+}
+
+/** The weights of this document, which is at least the one being drawn. */
+export function familyOf(forge: Forge): Family {
+  return forge.family ?? ALONE;
+}
+
+/**
+ * The same document at another weight.
+ *
+ * The letters told to differ come along, because an exception says this letter
+ * keeps its own version of a part -- and a part is a shape, not a weight. A p
+ * with its own serif reach has that reach in the Bold too, which is what
+ * somebody who set it meant.
+ */
+export function weighted(forge: Forge, wanted: number): Forge {
+  const family = familyOf(forge);
+  if (wanted === family.drawn) return forge;
+  return { ...forge, style: weightedStyle(forge.style, family.drawn, wanted) };
 }
 
 export function startFrom(base: Style): Forge {
@@ -64,7 +109,15 @@ export function startFrom(base: Style): Forge {
     exceptions: {},
     alternates: { ...base.forms },
     imported: {},
+    // Asked rather than assumed. A face is whatever weight its own stem says
+    // it is, and half the bases here are not a Regular.
+    family: { drawn: weightClassOf(base), also: [] },
   };
+}
+
+/** Say which weights the typeface has. The one being drawn is always one. */
+export function setFamily(forge: Forge, family: Family): Forge {
+  return { ...forge, family: { drawn: family.drawn, also: [...new Set(family.also)].sort((a, b) => a - b) } };
 }
 
 /**
