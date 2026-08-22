@@ -32,7 +32,7 @@ import {
   type Bounds,
 } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
-import { alongSpine, spineLength } from "./shapes";
+import { alongSpine, spineEnd, spineLength, spineStart } from "./shapes";
 import { sweep } from "./sweep";
 import type { Style } from "./style";
 import type { Spine, SpineSegment, Stroke } from "./types";
@@ -376,7 +376,7 @@ function splitTool(strokes: Stroke[], split: Cuts["split"], stem: number): Conto
   const samples = strokes.map((stroke) => alongSpine(stroke.spine, SAMPLES));
   const lengths = strokes.map((stroke) => spineLength(stroke.spine));
 
-  const found: Array<{ stroke: number; at: number }> = [];
+  const found: Array<{ stroke: number; at: number; way: number }> = [];
   for (let one = 0; one < samples.length; one++) {
     for (let other = one + 1; other < samples.length; other++) {
       let closest = Infinity;
@@ -397,18 +397,42 @@ function splitTool(strokes: Stroke[], split: Cuts["split"], stem: number): Conto
        *
        * A ring never does: an o is one closed stroke, and cutting it is
        * cutting the letter in half where cutting the tail that meets it is a
-       * break. Otherwise the shorter one gives way, which is the arm leaving
-       * its stem rather than the stem leaving its arm.
+       * break.
+       *
+       * Otherwise it is whichever of them meets the other at its own end. That
+       * is what an arm leaving a stem is: the arm stops there and the stem
+       * goes past. It used to be whichever was shorter, which says the same
+       * thing on a text face and the opposite on a heavy one -- the stem of a
+       * Display B is 545 units long and the bowl that wraps round it is 667,
+       * so the stem was the shorter of the two and the break was cut through
+       * the backbone of the letter. The B came back reading as a 5.
        */
       const rings = [strokes[one].spine.closed, strokes[other].spine.closed];
+      const ends = [atItsEnd(where[0]), atItsEnd(where[1])];
+      /*
+       * Both at their own ends is a tie, and the commonest one in the
+       * alphabet: the lower bowl of a B starts where its stem starts. Length
+       * used to settle it and settles it backwards on a heavy face, so what
+       * settles it is which of the two bends. A stem is drawn straight and a
+       * bowl is drawn round, and it is the bowl that leaves.
+       */
+      const bends = [arcsIn(strokes[one]), arcsIn(strokes[other])];
       const gives =
         rings[0] !== rings[1]
           ? rings[0]
             ? other
             : one
-          : lengths[one] <= lengths[other]
-            ? one
-            : other;
+          : ends[0] !== ends[1]
+            ? ends[0] < ends[1]
+              ? one
+              : other
+            : bends[0] !== bends[1]
+              ? bends[0] > bends[1]
+                ? one
+                : other
+              : lengths[one] <= lengths[other]
+                ? one
+                : other;
       const keeps = gives === one ? other : one;
       const index = gives === one ? where[0] : where[1];
 
@@ -426,7 +450,11 @@ function splitTool(strokes: Stroke[], split: Cuts["split"], stem: number): Conto
       // joined at both ends gets a gap inside each stem rather than two gaps
       // in the same place.
       const way = index < SAMPLES / 2 ? 1 : -1;
-      found.push({ stroke: gives, at: (index / SAMPLES) * lengths[gives] + way * clear });
+      found.push({
+        stroke: gives,
+        at: (index / SAMPLES) * lengths[gives] + way * clear,
+        way,
+      });
     }
   }
 
@@ -452,26 +480,111 @@ function splitTool(strokes: Stroke[], split: Cuts["split"], stem: number): Conto
    * both crosses the stroke and stays on it. A piece of the spine cannot
    * miss, because it is the stroke.
    */
-  return kept.flatMap(({ stroke, at }) => {
+  return kept.flatMap(({ stroke, at, way }) => {
     const giving = strokes[stroke];
     const total = lengths[stroke];
-    const from = Math.max(0, at - gap / 2);
-    const to = Math.min(total, at + gap / 2);
+
+    /*
+     * The gap has to leave a stroke on both sides of it, or it is not a break.
+     *
+     * Sizes here are multiples of the font's stem, which is what keeps one
+     * description meaning the same thing at every weight -- and the length of
+     * an arm is not a multiple of the stem. On a Display face the arm of an E
+     * is 209 units long and the stem it leaves is 175 wide, so clearing that
+     * stem put the gap 71% of the way along the arm and the gap itself ran to
+     * 89% of it: the arm came back as a stub on the stem and a crumb floating
+     * where its terminal had been. The same setting on the text face cuts at
+     * 15% and leaves the arm whole.
+     *
+     * So the break is held inside the stroke it is cutting. It stays at least
+     * a gap's width from the far end, and if there is not room for that it
+     * gives up rather than eating the terminal -- an arm too short to break is
+     * an arm that stays whole, which is a letter somebody can still read.
+     */
+    // How much stroke has to survive past the gap, on the side away from the
+    // join: enough to still read as a terminal rather than as a crumb.
+    const spare = gap * 0.75;
+    const lowest = way > 0 ? gap / 2 : spare + gap / 2;
+    const highest = way > 0 ? total - spare - gap / 2 : total - gap / 2;
+    if (highest < lowest) return [];
+    const held = Math.min(Math.max(at, lowest), highest);
+
+    const from = Math.max(0, held - gap / 2);
+    const to = Math.min(total, held + gap / 2);
     if (to - from <= 0) return [];
     const piece = spineBetween(giving.spine, from, to);
     if (piece.segments.length === 0) return [];
-    return sweep({
-      spine: piece,
-      pen: { weight: giving.pen.weight * 1.35, contrast: giving.pen.contrast, angle: giving.pen.angle },
-      start: { kind: "butt" },
-      end: { kind: "butt" },
-      join: "round",
-    });
+
+    /*
+     * A band straight across the stroke, square to it where it is being cut.
+     *
+     * It used to be the piece of spine itself, swept with a pen a little wider
+     * than the stroke's own -- which follows the letter exactly and cannot
+     * miss, and which turns itself inside out as soon as the stroke bends
+     * tightly. A band swept along an arc has an inner edge of the arc's radius
+     * less half the pen, so a pen approaching twice the radius collapses that
+     * edge to a point: the bowl of a Display B turns at a radius of 128 and
+     * the stroke alone is 175 wide, so there is no pen that both crosses the
+     * stroke and stays a band. What came out was a fan -- a pie slice, narrow
+     * at the counter and splayed across the outside of the letter -- and that
+     * is the wedge that made a Display B read as a 5.
+     *
+     * Straight across, the cut is the same width all the way through however
+     * tightly the stroke turns. It is only as long as it has to be to cross
+     * the stroke, so where the letter curves away from it inside that length
+     * it leaves the ink rather than reaching for it.
+     */
+    const middle = alongSpine(piece, 2);
+    const centre = middle[Math.floor(middle.length / 2)] ?? spineStart(piece);
+    const ends = [spineStart(piece), spineEnd(piece)];
+    const run = { x: ends[1].x - ends[0].x, y: ends[1].y - ends[0].y };
+    const along = Math.hypot(run.x, run.y);
+    if (along < 1e-6) return [];
+    const heading = { x: run.x / along, y: run.y / along };
+    // Far enough to cross the stroke and its joins, and no further.
+    const reach = giving.pen.weight * 0.75;
+    const across = { x: -heading.y, y: heading.x };
+    const half = gap / 2;
+    return [
+      poly([
+        {
+          x: centre.x - heading.x * half - across.x * reach,
+          y: centre.y - heading.y * half - across.y * reach,
+        },
+        {
+          x: centre.x + heading.x * half - across.x * reach,
+          y: centre.y + heading.y * half - across.y * reach,
+        },
+        {
+          x: centre.x + heading.x * half + across.x * reach,
+          y: centre.y + heading.y * half + across.y * reach,
+        },
+        {
+          x: centre.x - heading.x * half + across.x * reach,
+          y: centre.y - heading.y * half + across.y * reach,
+        },
+      ]),
+    ];
   });
 }
 
 /** How finely a spine is sampled when looking for where two of them meet. */
 const SAMPLES = 24;
+
+/**
+ * How near its own end a stroke meets the other one, as a share of its length.
+ *
+ * Zero at either end and a half in the middle. It is what tells an arm from
+ * the stem it leaves: the arm stops at the join and the stem runs past it.
+ */
+function atItsEnd(index: number): number {
+  return Math.min(index, SAMPLES - index) / SAMPLES;
+}
+
+/** How much of a stroke is drawn round rather than straight. */
+function arcsIn(stroke: Stroke): number {
+  return stroke.spine.segments.filter((segment) => segment.kind === "arc").length;
+}
 
 /**
  * The corners of the letter, cut off square.

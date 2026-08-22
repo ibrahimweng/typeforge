@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { ready, unite } from "@/font/boolean";
-import { contourArea, contoursBounds, contoursToSvgPath } from "@/font/geometry";
+import { contourArea, contoursBounds, contoursToSvgPath, inkRunsAt } from "@/font/geometry";
 import type { Contour } from "@/font/types";
 import { drawLetter } from "./build";
 import { anyCut, noCuts, piecesOf, type Cuts, type MotifShape } from "./cut";
@@ -166,6 +166,35 @@ describe("split", () => {
     const cuts = cutWith((one) => { one.split.on = true; });
     expect(piecesOf(drawn("E", sans, cuts).contours)).toBeGreaterThan(1);
     expect(piecesOf(drawn("H", sans, cuts).contours)).toBeGreaterThan(1);
+  });
+
+  it("breaks the stroke that ends on another, not the one it ends on", () => {
+    /*
+     * Whichever was shorter used to give way, which says "the arm leaves its
+     * stem" on a text face and the opposite on a heavy one: the stem of a
+     * Display B is 545 units long and the bowl wrapping round it is 667, so
+     * the stem was the shorter of the two and the break went through the
+     * backbone of the letter. It came back reading as a 5.
+     *
+     * The stem is what has to survive, so it is checked directly: ink all the
+     * way up the left of the letter, at every height a stem should be at.
+     */
+    const cuts = cutWith((one) => { one.split.on = true; });
+    for (const letter of ["B", "P", "R"]) {
+      const whole = drawn(letter, display).contours;
+      const cut = drawn(letter, display, cuts).contours;
+      const box = contoursBounds(whole);
+      // A hand's width in from the left edge, which is inside the stem on
+      // every one of these and outside every bowl.
+      const stemAt = box.xMin + display.pen.weight * 0.5;
+      for (const share of [0.15, 0.35, 0.5, 0.65, 0.85]) {
+        const height = box.yMin + (box.yMax - box.yMin) * share;
+        const runs = inkRunsAt(cut, height).filter(
+          ([from, to]) => from <= stemAt && to >= stemAt,
+        );
+        expect(runs.length, `${letter} has no stem at ${Math.round(share * 100)}%`).toBe(1);
+      }
+    }
   });
 
   it("leaves a letter drawn in one stroke alone", () => {
