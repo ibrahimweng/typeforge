@@ -236,18 +236,13 @@ describe("letters in one piece", () => {
   /*
    * The ones still coming apart, named rather than tolerated.
    *
-   * Each is a stroke meeting another stroke end-on at its edge -- the bowl of
-   * a Didone b against its stem, the tail of a Marker q -- which is the same
+   * All four are a bowl meeting its stem end-on at the edge, which is the same
    * fault as the serifs and the K junction and wants the same kind of fix, one
    * letter at a time. Written out so that fixing one of them fails this test
    * and asks for the list to be shortened, and so that a face that comes apart
    * somewhere new fails it too.
    */
-  const known = [
-    "Brush b", "Brush k", "Brush w",
-    "Didone Q", "Didone b", "Didone p",
-    "Flared b", "Marker q",
-  ];
+  const known = ["Brush b", "Didone Q", "Didone b", "Flared b"];
 
   it("draws every letter of every face as one solid, bar the ones written down", async () => {
     const { ready } = await import("@/font/boolean");
