@@ -1795,9 +1795,6 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const half = f.arch * 0.92;
     const left = f.edge;
     const middle = left + half;
-    // How far down the right-hand diagonal has already come by the baseline,
-    // so the tail leaves at the same angle it arrived on.
-    const slope = (half * 2) / f.x;
     // The left diagonal carries a little past where the two cross, so its
     // square end is inside the other stroke rather than standing out of it.
     const past = f.half * 1.1;
@@ -1811,9 +1808,24 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
           f.end,
           BUTT,
         ),
+        /*
+         * One straight run: down from the x-height, through the apex the left
+         * diagonal ends at, and on into the descender at the angle it arrived
+         * on. That is what it always meant to be, and it was not: reckoned
+         * from the wrong slope it reached the baseline four tenths of an arm
+         * to the right of the apex, so the two diagonals of the vee crossed
+         * nowhere near each other.
+         *
+         * A fat enough pen covered the miss and nothing showed. Measured
+         * across the sixteen faces the arms overlapped by four units on
+         * Geometric, five on Marker, six on Serif and seven on Sans -- held
+         * together by luck -- while Fairground missed by thirty-five and drew
+         * a broken vee, and Wavy missed by forty-four and lost its left
+         * diagonal altogether when the letter was fused.
+         */
         ink(
           f,
-          straight(at(middle + half, f.x), at(middle + half + slope * f.desc, f.desc)),
+          straight(at(middle + half, f.x), at(middle + (half * f.desc) / f.x, f.desc)),
           f.end,
           f.end,
         ),
@@ -2306,9 +2318,22 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       f,
       [
         ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end),
-        // The stem stops at the vee's own vertex, where the ink is thickest, so
-        // its square top is buried rather than showing as a step.
-        ink(f, straight(at(middle, 0), point), f.end, BUTT),
+        /*
+         * The stem runs up past the vee's vertex, so its square top is buried
+         * rather than showing as a step.
+         *
+         * Past the vertex, not up to the corner the chain turns on: those are
+         * not the same place. The sweep rounds the join, and on a face that
+         * rounds it hard the ink stops well above the corner -- ninety units
+         * above it on Ribbon, which left the stem floating clear below a vee
+         * that read as a U, and eighteen on Technical.
+         *
+         * Half a pen above the vertex is inside the ink on any face. The two
+         * arms are still overlapping each other there, and go on doing so
+         * until they have risen a pen's half-width times `cap - junction` over
+         * `half`, which on every face here is a good deal more.
+         */
+        ink(f, straight(at(middle, 0), at(middle, junction + f.half * 0.5)), f.end, BUTT),
       ]);
   },
 

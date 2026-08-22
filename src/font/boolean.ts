@@ -208,19 +208,29 @@ export function unite(
    * unreduced, and folding it one at a time would be work for nothing.
    *
    * There is a third way it fails, and it is the quietest: it comes back
-   * holding nothing. A union cannot have less ink in it than the shapes it was
-   * given, so an answer with none is not an answer. The w of a Brush face --
-   * two vees overlapping by a quarter of an arm, each with its flares -- fused
-   * to a single contour of exactly zero area, and the letter was simply not
-   * there: blank on the page, blank in the file, and not even reported broken,
-   * because one contour of nothing counts as one piece to anything counting
-   * pieces. Measured as a share of the largest shape rather than as an
-   * absolute, so it means the same at any size: a hundredth is far below
-   * anything real, an O being the leanest letter there is against its own
-   * outer disc and even that keeping a third.
+   * holding almost nothing. The w of a Brush face -- two vees overlapping by a
+   * quarter of an arm, each with its flares -- fused to a single contour of
+   * exactly zero area, and the letter was simply not there: blank on the page,
+   * blank in the file, and not even reported broken, because one contour of
+   * nothing counts as one piece to anything counting pieces.
+   *
+   * Judged against the ink it was handed rather than against a fixed size, so
+   * it means the same at any scale. Fusing always loses some, because the
+   * shapes overlap and the overlaps were counted twice going in -- but not
+   * much: over the 3,136 drawings the sixteen faces make, the leanest honest
+   * answer keeps 55% of what it was given and three quarters keep 89% or more.
+   * Eighteen were coming back under half. Seventeen of those kept a sixth or
+   * less -- Wavy's A, AE, V and x and every accented A built on them, Flared's
+   * accented E, Brush's p and its accented y -- and were blank or a crumb.
+   *
+   * Half sits above all of that, closer to the honest end than the gap alone
+   * would ask for, and deliberately. Answering yes when the union was fine
+   * costs a fold that is then thrown away for being no better; answering no
+   * when it was not is a letter quietly missing from the font. The margin
+   * belongs on the side where being wrong is only slow.
    */
-  const most = drawable.reduce((big, one) => Math.max(big, Math.abs(contourArea(one))), 0);
-  const vanished = most > 0 && Math.abs(inkIn(result)) < most * 0.01;
+  const handed = Math.abs(inkIn(drawable));
+  const vanished = handed > 0 && Math.abs(inkIn(result)) < handed * 0.5;
   const gaveUp =
     result.length === 0 ||
     vanished ||

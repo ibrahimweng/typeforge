@@ -178,7 +178,15 @@ describe("how hard unite works at joining", () => {
       rect(20, 0, 60, 12),
       rect(0, 90, 60, 10),
     ];
-    expect(pieces(unite(serifedE, "winding"))).toBe(2);
+    /*
+     * Both answers, because this E is not merely left unjoined: what comes
+     * back has lost most of the ink that went in, and that is caught whoever
+     * is asking. It used to be two pieces under `enough` and one under
+     * `whole`, and the difference between the two is still what the parameter
+     * is for -- it decides how hard to work at a union that came back whole
+     * but in several solids, which is the ordinary case and not this one.
+     */
+    expect(pieces(unite(serifedE, "winding"))).toBe(1);
     expect(pieces(unite(serifedE, "winding", "whole"))).toBe(1);
   });
 
