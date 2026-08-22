@@ -25,7 +25,13 @@
  * for and is why it is asked on the way in to every operation.
  */
 
-import { contourArea, contoursBounds, flattenContour, reverseContour } from "./geometry";
+import {
+  contourArea,
+  contourContainsPoint,
+  contoursBounds,
+  flattenContour,
+  reverseContour,
+} from "./geometry";
 import { classifyContours } from "./outline";
 import type { Contour, GlyphNode, Vec2 } from "./types";
 
@@ -167,7 +173,7 @@ export function unite(
    * `fuse` below is that union.
    */
   const fused = fuse(compoundOf(paper, drawable, roles));
-  const result = contoursOf(fused);
+  const result = withoutStrayHoles(contoursOf(fused));
   clear(paper);
 
   /*
@@ -249,7 +255,7 @@ export function unite(
    * than growing with the count, or a drawing of two hundred shapes would have
    * its last shape moved two whole units.
    */
-  const nudged = contoursOf(fuse(compoundOf(paper, nudgeApart(drawable), roles)));
+  const nudged = withoutStrayHoles(contoursOf(fuse(compoundOf(paper, nudgeApart(drawable), roles))));
   clear(paper);
   // Judged by the same test that called the first answer a failure, rather
   // than by a fresh rule invented for the comparison. A rule of its own has to
@@ -433,6 +439,54 @@ function nudgeApart(contours: Contour[]): Contour[] {
         handleOut: move(node.handleOut),
       })),
     };
+  });
+}
+
+/**
+ * A union's answer without the holes that are inside nothing.
+ *
+ * A hole is a hole in something. One that encloses no ink and sits inside no
+ * shape is not a counter and not a piece -- it is what the boolean left behind
+ * where two edges nearly met, and paper leaves a few: a thin lens above the
+ * bowl of a Brush b, a pair of chips where the flares of a Flared b run into
+ * the stem. Small enough to see nothing on the page, and counted as pieces by
+ * anything that reads the answer by nesting rather than by winding, which is
+ * how three faces reported a b broken in two that draws perfectly.
+ *
+ * Only the fuse's own output is judged this way, where the winding is the
+ * union's and is meant to say outer or counter outright. A contour arriving
+ * from a file says no such thing and is never handed here.
+ */
+function withoutStrayHoles(contours: Contour[]): Contour[] {
+  const solids = contours.filter((contour) => contourArea(contour) > 0);
+  if (solids.length === 0) return contours;
+  return contours.filter((contour) => {
+    if (contourArea(contour) >= 0) return true;
+    /*
+     * All of a real counter lies inside the shape it is a counter of, and both
+     * halves of that are needed to say so.
+     *
+     * Its points have to be inside, which one point cannot establish: the lens
+     * over the bowl of a Brush b has a point in the letter and a point out of
+     * it. And its box has to be inside, which the points cannot establish
+     * either: the chip under the bowl of a Flared b is three points all lying
+     * on the baseline with the curve between them bulging twenty units below
+     * the letter, so every point of it is inside a shape it is mostly outside.
+     *
+     * The box test never turns away a real counter, because a shape inside
+     * another shape has its box inside that shape's box as well.
+     */
+    const box = contoursBounds([contour]);
+    return solids.some((solid) => {
+      const around = contoursBounds([solid]);
+      return (
+        box.xMin >= around.xMin &&
+        box.xMax <= around.xMax &&
+        box.yMin >= around.yMin &&
+        box.yMax <= around.yMax &&
+        contour.nodes.every((node) => contourContainsPoint(solid, node.point))
+      );
+    });
   });
 }
 

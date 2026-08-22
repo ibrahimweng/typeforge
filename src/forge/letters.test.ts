@@ -227,24 +227,18 @@ describe("one skeleton, three faces", () => {
  * edge. A break cut takes a piece away, and the piece it takes is one that was
  * never joined on: a Flared L lost its serif, a Fairground k lost its whole
  * leg. So the count is asserted rather than looked at.
+ *
+ * There were a hundred and forty-four of these, the worst of them in twelve
+ * pieces, and this used to carry a written list of the ones still failing. The
+ * list is empty now, so the claim is the plain one: every letter of every face
+ * is one solid.
  */
 describe("letters in one piece", () => {
   // i and j are two pieces because a dot is a piece, and so are the letters
   // that carry one. What is left is every letter that should be one solid.
   const solid = letterNames().filter((name) => /^[A-Za-z]$/.test(name) && name !== "i" && name !== "j");
 
-  /*
-   * The ones still coming apart, named rather than tolerated.
-   *
-   * All four are a bowl meeting its stem end-on at the edge, which is the same
-   * fault as the serifs and the K junction and wants the same kind of fix, one
-   * letter at a time. Written out so that fixing one of them fails this test
-   * and asks for the list to be shortened, and so that a face that comes apart
-   * somewhere new fails it too.
-   */
-  const known = ["Brush b", "Didone Q", "Didone b", "Flared b"];
-
-  it("draws every letter of every face as one solid, bar the ones written down", async () => {
+  it("draws every letter of every face as one solid", async () => {
     const { ready } = await import("@/font/boolean");
     const { piecesOf } = await import("./cut");
     await ready();
@@ -257,7 +251,7 @@ describe("letters in one piece", () => {
         if (piecesOf(drawn.contours) > 1) apart.push(`${style.name} ${name}`);
       }
     }
-    expect(apart.sort()).toEqual(known);
+    expect(apart).toEqual([]);
   }, 60_000);
 
   it("keeps the ink it was handed when a drawing is fused", async () => {

@@ -1108,9 +1108,19 @@ function wing(
     y: at.y + across.y * u + into.y * v,
   });
 
-  // Started inside the stroke rather than at its edge, so the two overlap and
-  // a union can join them. Never further in than the spine itself.
-  const held = Math.max(0, inner - thickness * SERIF_BITE);
+  /*
+   * Started inside the stroke rather than at its edge, so the two overlap and
+   * a union can join them. Never further in than the spine itself.
+   *
+   * Bitten against whichever is thicker, the wing or the stroke it sits on.
+   * A share of the wing alone is the same thing on a face with no contrast,
+   * where the two are much of a size -- but on a Didone the tail is fifty
+   * units of half-width and the serif across it is fifteen, so a third of the
+   * serif bought five units of overlap where the stroke had fifty to give. Too
+   * thin for the union to find, and the lower wing of the Q's tail came away
+   * and hung under the letter as a loose bar.
+   */
+  const held = Math.max(0, inner - Math.max(thickness, inner) * SERIF_BITE);
 
   const nodes: GlyphNode[] = [
     node(place(held, 0)),
