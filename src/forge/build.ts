@@ -695,7 +695,7 @@ function flaresFor(stroke: Stroke, style: Style): Contour[] {
     // the same reason and by the same measurement as a serif does.
     const level = terminal.level === true && Math.abs(outward.y) > 1e-3;
     const facing = level ? { x: 0, y: Math.sign(outward.y) } : outward;
-    const inner = level ? levelHalfWidth(stroke, outward) : penReach(stroke.pen).across;
+    const inner = level ? levelHalfWidth(stroke, outward) : halfWidthAcross(stroke, outward);
     const reach = spread * stem;
     const back = depth * stem;
     for (const side of [1, -1]) {
@@ -836,7 +836,7 @@ function serifsFor(stroke: Stroke, style: Style): Contour[] {
     const facing = level ? { x: 0, y: Math.sign(outward.y) } : outward;
     const inner = level
       ? levelHalfWidth(stroke, outward)
-      : penReach(stroke.pen).across;
+      : halfWidthAcross(stroke, outward);
     // The font's own stem, or this stroke's edge if that is further out, and
     // the projection beyond it. Measured from the stem so that every serif in
     // the face is the same size, and from the stroke where the stroke is the
@@ -982,6 +982,28 @@ function sweptWing(
 }
 
 /**
+ * How thick a stroke really is at the end being serifed, measured across the
+ * way it is travelling.
+ *
+ * Not `penReach(pen).across`, which is the pen at its widest and so is the
+ * answer only for a stroke running the one way the pen is widest across. A
+ * contrast pen is an ellipse: the arms of an E run the narrow way, and asked
+ * for the wide answer the serif on an arm began nineteen units outside the ink
+ * it belonged to and floated there. The letter looked right -- a serif a hair
+ * clear of an arm reads as attached at text size -- until a cut was made and
+ * the arm serifs turned out to be four loose shapes, which is what left a
+ * Serif E in six pieces and a Serif F in four.
+ *
+ * The pen's own support in that direction is the honest answer, and it agrees
+ * with the old one wherever the old one was right: on a stroke running the
+ * pen's wide way, or on any face with no contrast at all.
+ */
+function halfWidthAcross(stroke: Stroke, outward: Vec2): number {
+  const shift = reachAlong({ x: -outward.y, y: outward.x }, penReach(stroke.pen));
+  return Math.hypot(shift.x, shift.y);
+}
+
+/**
  * How far a stroke cut level with a line reaches either side of its own end,
  * measured along that line.
  *
@@ -1043,6 +1065,26 @@ function tangentOnArc(angle: number, sweepPositive: boolean, way: number): Vec2 
 const node = (point: Vec2): GlyphNode => ({ point, handleIn: null, handleOut: null, type: "corner" });
 
 /**
+ * How far a serif reaches back into the stroke it is laid on.
+ *
+ * A serif is a separate shape unioned in afterwards, which is how one is drawn
+ * by hand -- and a shape that begins exactly at the edge of the stroke touches
+ * it along a line and overlaps it nowhere. Two shapes that share an edge and
+ * no area are two shapes: a union cannot join them, so a serif H came back as
+ * nine separate solids rather than one letter, and every boolean after that
+ * was free to take a serif off. Cutting a Flared L erased it, because the
+ * break took the only piece and the rest had never been attached.
+ *
+ * It reads as one letter either way -- abutting shapes leave no seam under a
+ * non-zero fill -- so this was invisible until something asked the letter how
+ * many pieces it was in.
+ *
+ * A share of the wing's own thickness rather than a fixed distance, so it
+ * scales with the face and stays well inside the ink at every weight.
+ */
+const SERIF_BITE = 0.35;
+
+/**
  * One wing of a serif.
  *
  * Worked out in the stroke's own frame -- `across` runs along the end of the
@@ -1066,8 +1108,12 @@ function wing(
     y: at.y + across.y * u + into.y * v,
   });
 
+  // Started inside the stroke rather than at its edge, so the two overlap and
+  // a union can join them. Never further in than the spine itself.
+  const held = Math.max(0, inner - thickness * SERIF_BITE);
+
   const nodes: GlyphNode[] = [
-    node(place(inner, 0)),
+    node(place(held, 0)),
     node(place(tip, 0)),
     node(place(tip, thickness)),
   ];
@@ -1080,7 +1126,7 @@ function wing(
      * stem rather than stuck on it.
      */
     const corner = place(inner + bracket, thickness);
-    const meet = place(inner, thickness + bracket);
+    const meet = place(held, thickness + bracket);
     const handle = 0.5523 * bracket;
     nodes.push({
       point: corner,
@@ -1101,7 +1147,7 @@ function wing(
       type: "tangent",
     });
   } else {
-    nodes.push(node(place(inner, thickness)));
+    nodes.push(node(place(held, thickness)));
   }
 
   return { nodes, closed: true };

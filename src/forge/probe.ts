@@ -252,7 +252,22 @@ function around(before: Vec2[], after: Vec2[], at: Vec2, here: number): Reading 
    * outnumber the tip and the answer comes out two or three times too slow --
    * a handle that lags the pointer by a factor nobody would guess at.
    */
-  const moving = seen.filter((one) => one.moved >= most * SHARE);
+  const fast = seen.filter((one) => one.moved >= most * SHARE);
+  /*
+   * And only what is moving the same way as the fastest of them.
+   *
+   * Moving is not enough, because a neighbourhood can hold two edges that both
+   * move and move against each other. At the foot of a slabbed l the tip
+   * travels out as the slab reaches further, while the shoulder where the slab
+   * runs into the stem reads as travelling back in. Both clear the threshold
+   * above, and averaging the two signed shifts gives a speed that is neither:
+   * six points, five of them going one way, came out a third short, and a
+   * handle a third short is a handle that overshoots the pointer by a third.
+   */
+  const lead = fast.reduce((best, one) => (one.moved > best.moved ? one : best), fast[0]);
+  const moving = fast.filter(
+    (one) => one.shift.x * lead.shift.x + one.shift.y * lead.shift.y > 0,
+  );
   let shiftX = 0;
   let shiftY = 0;
   let total = 0;

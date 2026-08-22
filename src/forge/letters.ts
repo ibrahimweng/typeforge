@@ -958,6 +958,38 @@ function corner(f: Frame, from: Vec2, tip: Vec2, to: Vec2): Vec2 {
   return through(f, [from, tip, to])[1];
 }
 
+/**
+ * Where the vee of a K meets its stem.
+ *
+ * Aimed at the stem's far edge, which is where a K's junction belongs. The
+ * trouble is that the point is then rounded, and `corner` pulls a turn back
+ * along its own bisector -- further on a face with a large corner radius --
+ * so the rounded apex can land outside the stem altogether. On Fairground the
+ * vee finished forty-seven units clear of it, which is exactly what a k with
+ * a gap in it looks like, and on Psychedelic six.
+ *
+ * Even where it landed on the edge the two shapes only touched, along a line
+ * and over no area, so the union had nothing to join: eleven of the sixteen
+ * faces drew their k and K as two separate solids. That reads as one letter
+ * until something asks -- and a break cut took the vee off a k that had never
+ * been attached to its stem.
+ *
+ * So the apex is asked for, and asked for again further in when the first
+ * answer came back too far out, correcting by the miss itself. A face that
+ * rounds nothing is left where it was; a face that rounds a lot moves exactly
+ * as far as it needs. Giving every face the worst face's allowance instead
+ * would swing the arms of a Sans k by a tenth of its x-height.
+ */
+function junction(f: Frame, arm: Vec2, stem: number, height: number, leg: Vec2): Vec2 {
+  // Far enough past the edge to overlap rather than touch. A quarter of the
+  // stem is well inside the ink at every weight and hidden by it.
+  const inside = stem + f.half - f.half * 0.5;
+  const asked = at(stem + f.half, height);
+  const meet = corner(f, arm, asked, leg);
+  if (meet.x <= inside) return meet;
+  return corner(f, arm, at(asked.x - (meet.x - inside), height), leg);
+}
+
 function towards(from: Vec2, to: Vec2): Vec2 {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
@@ -1554,10 +1586,10 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const stem = f.edge;
     const reach = stem + f.arch * 1.7;
-    const junction = f.x * 0.42;
+    const waist = f.x * 0.42;
     const arm = at(reach, f.x);
     const leg = at(reach, 0);
-    const meet = corner(f, arm, at(stem + f.half, junction), leg);
+    const meet = junction(f, arm, stem, waist, leg);
     return finish(
       f,
       [
@@ -2030,13 +2062,12 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const stem = f.edge;
     const reach = stem + f.capBowl * 1.15;
-    const junction = f.cap * 0.44;
+    const waist = f.cap * 0.44;
     const arm = at(reach, f.cap);
     const leg = at(reach, 0);
     // Arm and leg are one run meeting at the stem, so the corner between them
-    // is turned rather than left as two square ends. Its point is put on the
-    // stem's far edge, which is where a K's junction belongs.
-    const meet = corner(f, arm, at(stem + f.half, junction), leg);
+    // is turned rather than left as two square ends.
+    const meet = junction(f, arm, stem, waist, leg);
     return finish(
       f,
       [

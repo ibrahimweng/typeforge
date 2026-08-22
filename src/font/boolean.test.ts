@@ -98,6 +98,25 @@ describe("pieces", () => {
     expect(pieces([rect(0, 0, 10, 10), rect(50, 50, 10, 10)])).toBe(2);
     expect(pieces([])).toBe(0);
   });
+
+  it("does not count a crumb with no width in it", () => {
+    /*
+     * A boolean leaves hairs behind. Two edges lying along the same line come
+     * back with a loop between them a hundredth of a unit wide, and counted as
+     * a piece that is a letter reported broken that is whole -- a Didone W
+     * fused to itself and produced one of thirteen square units, which was
+     * enough to warn that a cut had severed a letter nobody had cut.
+     *
+     * A full stop is small too, and is a piece. What separates them is not
+     * size but whether there is any room inside: the hair is a hundredth of a
+     * unit thick and the full stop is forty.
+     */
+    // Standing outside the shape, where nesting has to call it a piece or a
+    // hole and there is nothing enclosing it to make it a hole.
+    const hair = rect(120, 10, 80, 0.01);
+    expect(pieces([rect(0, 0, 100, 100), hair])).toBe(1);
+    expect(pieces([rect(0, 0, 100, 100), rect(120, 0, 40, 40)])).toBe(2);
+  });
 });
 
 describe("unite", () => {
@@ -125,5 +144,50 @@ describe("unite", () => {
     const areas = merged.map(contourArea);
     expect(areas.some((area) => area > 0)).toBe(true);
     expect(areas.some((area) => area < 0)).toBe(true);
+  });
+});
+
+describe("how hard unite works at joining", () => {
+  /*
+   * Handed several shapes at once the union sometimes gives up, and gives up
+   * differently depending on what it was given: sometimes nothing at all comes
+   * back, sometimes every shape comes back unjoined. Folded in one at a time
+   * it succeeds, because every step is one shape against one shape -- but that
+   * is a boolean per shape, and the whole alphabet comes through here on every
+   * frame.
+   *
+   * So who is asking decides how much to pay. The export wants a set that does
+   * not overlap and is happy with shapes that abut, because a font file is.
+   * The cut layer is about to ask the letter how many pieces it is in and take
+   * one of them away, so it needs the letter to arrive as one.
+   */
+  it("gives a caller that needs one solid one solid", () => {
+    /*
+     * An E: a stem, three arms, and a serif across the foot and the head. Six
+     * shapes that all overlap something, four of them cut level with y=0 --
+     * and handed all six at once the union comes back with two of them still
+     * apart. It is not that they fail to meet: the foot serif overlaps the
+     * stem by most of its own area. Several edges lying along one line is
+     * simply a case the library does not survive.
+     */
+    const serifedE = [
+      rect(20, 0, 20, 100),
+      rect(0, 0, 60, 10),
+      rect(20, 88, 60, 12),
+      rect(20, 44, 50, 12),
+      rect(20, 0, 60, 12),
+      rect(0, 90, 60, 10),
+    ];
+    expect(pieces(unite(serifedE, "winding"))).toBe(2);
+    expect(pieces(unite(serifedE, "winding", "whole"))).toBe(1);
+  });
+
+  it("leaves shapes that really are apart alone, however hard it is asked", () => {
+    // Working harder is not licence to invent a join. An i is two pieces under
+    // either answer, or every dotted letter in the font would report as one
+    // and the check for a severed letter would never fire.
+    const dotted = [rect(40, 0, 20, 100), rect(40, 120, 20, 20)];
+    expect(pieces(unite(dotted, "winding", "whole"))).toBe(2);
+    expect(pieces(unite(dotted, "winding"))).toBe(2);
   });
 });

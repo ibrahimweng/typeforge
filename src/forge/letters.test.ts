@@ -213,3 +213,90 @@ describe("one skeleton, three faces", () => {
     expect(pieces(DISPLAY)).toBe(pieces(SANS));
   });
 });
+
+/**
+ * Whether a letter is one piece of ink or several.
+ *
+ * A letter here is drawn as overlapping pieces -- a serif is a bar laid on a
+ * stem, the vee of a K is a run laid against one -- and where two of them only
+ * touch, along a line and over no area, they are two shapes and not one. On a
+ * page that is invisible: abutting shapes leave no seam under a non-zero fill,
+ * so eleven faces drew their k with the leg unattached and nobody could see it.
+ *
+ * It stops being invisible the moment anything asks the letter about its own
+ * edge. A break cut takes a piece away, and the piece it takes is one that was
+ * never joined on: a Flared L lost its serif, a Fairground k lost its whole
+ * leg. So the count is asserted rather than looked at.
+ */
+describe("letters in one piece", () => {
+  // i and j are two pieces because a dot is a piece, and so are the letters
+  // that carry one. What is left is every letter that should be one solid.
+  const solid = letterNames().filter((name) => /^[A-Za-z]$/.test(name) && name !== "i" && name !== "j");
+
+  /*
+   * The ones still coming apart, named rather than tolerated.
+   *
+   * Each is a stroke meeting another stroke end-on at its edge -- the tail of
+   * a Ribbon Y under its vee, the bowl of a Didone b against its stem -- which
+   * is the same fault as the serifs and the K junction and wants the same kind
+   * of fix, one letter at a time. Written out so that fixing one of them fails
+   * this test and asks for the list to be shortened, and so that a face that
+   * comes apart somewhere new fails it too.
+   */
+  const known = [
+    "Brush b", "Brush d", "Brush k", "Brush p", "Brush w", "Brush y",
+    "Didone Q", "Didone b", "Didone p",
+    "Fairground y", "Flared b", "Marker q",
+    "Ribbon Y", "Technical Y", "Wavy y",
+  ];
+
+  it("draws every letter of every face as one solid, bar the ones written down", async () => {
+    const { ready } = await import("@/font/boolean");
+    const { piecesOf } = await import("./cut");
+    await ready();
+
+    const apart: string[] = [];
+    for (const style of STARTING_POINTS) {
+      for (const name of solid) {
+        const drawn = drawLetter(name, style);
+        if (!drawn || drawn.contours.length === 0) continue;
+        if (piecesOf(drawn.contours) > 1) apart.push(`${style.name} ${name}`);
+      }
+    }
+    expect(apart.sort()).toEqual(known);
+  }, 60_000);
+
+  it("draws every letter of every face with ink in it", async () => {
+    /*
+     * The other way a letter can fail this, and the quieter one.
+     *
+     * Counting pieces cannot see a letter that is not there: a union that came
+     * back holding a single contour of no area is one piece by any count, and
+     * the w of the Brush face was exactly that -- blank on the page, blank in
+     * the exported file, and reported as a letter in one piece the whole time.
+     */
+    const { ready, unite } = await import("@/font/boolean");
+    await ready();
+
+    const blank: string[] = [];
+    for (const style of STARTING_POINTS) {
+      for (const name of solid) {
+        const drawn = drawLetter(name, style);
+        if (!drawn || drawn.contours.length === 0) continue;
+        // Measured after the fuse, which is where it went missing and is what
+        // the cut layer and the export both work from. On the canvas the loose
+        // strokes still fill, so the letter looked fine until it was cut.
+        const fused = unite(drawn.contours, "winding", "whole");
+        const ink = Math.abs(fused.reduce((total, one) => total + contourArea(one), 0));
+        // Against the letter's own box rather than against a number of units,
+        // so it means the same on every face. The lightest hairline still
+        // fills a good few per cent of the space it stands in; a hundredth of
+        // one per cent is a union that came back with nothing.
+        const box = contoursBounds(drawn.contours);
+        const room = (box.xMax - box.xMin) * (box.yMax - box.yMin);
+        if (room > 0 && ink < room * 0.0001) blank.push(`${style.name} ${name}`);
+      }
+    }
+    expect(blank).toEqual([]);
+  }, 60_000);
+});

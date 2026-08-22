@@ -165,7 +165,7 @@ export function cutInk(
 ): Cutting {
   if (!reaches(cuts, strokes) || ink.length === 0 || !loaded()) return { contours: ink };
 
-  let shape = unite(ink, roles);
+  let shape = unite(ink, roles, "whole");
   const stem = Math.max(scale.stem, 1);
   // Counted here rather than anywhere else, because here it is free: the
   // letter has just been fused, and counting its pieces is reading the
@@ -211,7 +211,7 @@ export function cutInk(
 export function piecesOf(ink: Contour[]): number {
   if (ink.length === 0) return 0;
   if (!loaded()) return pieces(ink);
-  return pieces(unite(ink, "winding"));
+  return pieces(unite(ink, "winding", "whole"));
 }
 
 function take(shape: Contour[], tool: Contour[]): Contour[] {

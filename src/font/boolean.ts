@@ -25,7 +25,7 @@
  * for and is why it is asked on the way in to every operation.
  */
 
-import { contourArea, contoursBounds, reverseContour } from "./geometry";
+import { contourArea, contoursBounds, flattenContour, reverseContour } from "./geometry";
 import { classifyContours } from "./outline";
 import type { Contour, GlyphNode, Vec2 } from "./types";
 
@@ -92,6 +92,34 @@ export async function loadPaper(): Promise<PaperScope> {
 export type Roles = "nesting" | "winding";
 
 /**
+ * How hard to work at joining, which is not the same question for everybody.
+ *
+ * `enough` retries only where the union achieved nothing at all. That is what
+ * the export wants: a font file is happy to carry shapes that abut, and all it
+ * needs back is a set that does not overlap. Paying more there put two minutes
+ * on writing a font.
+ *
+ * `whole` retries wherever the answer came back in more than one solid, which
+ * is what the cut layer wants, because it is about to ask the letter how many
+ * pieces it is in and take one of them away. A letter that is really one piece
+ * has to come back as one piece, or a break takes off a serif that was never
+ * attached and nothing notices.
+ */
+export type Join = "enough" | "whole";
+
+/**
+ * How many shapes a letter drawn from strokes runs to.
+ *
+ * The fold below costs a boolean per shape per round, which is worth paying
+ * for a letter and not for a drawing. A serifed E is twelve shapes and a Brush
+ * k is ten; a letter quantised to a pixel grid is hundreds, and it is not
+ * fragmented -- it is a mosaic, and meant to be. Folding those cost two
+ * minutes a font on export and bought nothing, because a file is happy to
+ * carry shapes that abut.
+ */
+const A_LETTERS_WORTH = 24;
+
+/**
  * Fuse overlapping shapes into one, keeping counters as holes.
  *
  * The first thing any cut needs, though not for the reason it first appears.
@@ -107,7 +135,11 @@ export type Roles = "nesting" | "winding";
  * Fusing is what turns a heap of strokes into a shape with an outline, and
  * everything after it reads that outline.
  */
-export function unite(contours: Contour[], roles: Roles = "nesting"): Contour[] {
+export function unite(
+  contours: Contour[],
+  roles: Roles = "nesting",
+  join: Join = "enough",
+): Contour[] {
   const paper = need();
   const drawable = contours.filter((contour) => contour.nodes.length >= 2);
   /*
@@ -149,7 +181,117 @@ export function unite(contours: Contour[], roles: Roles = "nesting"): Contour[] 
   const fused = fuse(compoundOf(paper, drawable, roles));
   const result = contoursOf(fused);
   clear(paper);
-  return result.length > 0 ? result : contours;
+
+  /*
+   * Handed every shape at once, the union sometimes gives up.
+   *
+   * Where several shapes have edges lying exactly along one line -- which on a
+   * letter is wherever pieces are cut level with the baseline or the cap
+   * height -- it can come back with nothing at all, or with as many shapes as
+   * it was given and none of them joined. It is not that they fail to overlap:
+   * the bottom arm of a Flared E overlaps its stem by most of its own area.
+   * Four paths sharing a collinear edge on y=0 is simply a case the library
+   * does not survive, and handing back the shapes unjoined is what left a
+   * Flared E as twelve separate solids and a Serif H as nine. The letter looks
+   * right either way -- abutting shapes leave no seam under a non-zero fill --
+   * so it went unnoticed until a cut took one of the pieces away and the rest
+   * turned out never to have been attached.
+   *
+   * Folded in one at a time it succeeds, because every step is one shape
+   * against one shape. That is the fallback rather than the rule because the
+   * whole alphabet comes through here on every frame, and paying a boolean per
+   * shape for the letters that do not need it is exactly the cost this half of
+   * the application was built to avoid.
+   *
+   * Only worth retrying where the shapes really do meet: a letter that is
+   * genuinely in pieces -- the dot and the stem of an i -- also comes back
+   * unreduced, and folding it one at a time would be work for nothing.
+   *
+   * There is a third way it fails, and it is the quietest: it comes back
+   * holding nothing. A union cannot have less ink in it than the shapes it was
+   * given, so an answer with none is not an answer. The w of a Brush face --
+   * two vees overlapping by a quarter of an arm, each with its flares -- fused
+   * to a single contour of exactly zero area, and the letter was simply not
+   * there: blank on the page, blank in the file, and not even reported broken,
+   * because one contour of nothing counts as one piece to anything counting
+   * pieces. Measured as a share of the largest shape rather than as an
+   * absolute, so it means the same at any size: a hundredth is far below
+   * anything real, an O being the leanest letter there is against its own
+   * outer disc and even that keeping a third.
+   */
+  const most = drawable.reduce((big, one) => Math.max(big, Math.abs(contourArea(one))), 0);
+  const vanished = most > 0 && Math.abs(inkIn(result)) < most * 0.01;
+  const gaveUp =
+    result.length === 0 ||
+    vanished ||
+    (join === "whole" ? solidsIn(result) > 1 : result.length >= drawable.length);
+  if (!gaveUp || drawable.length > A_LETTERS_WORTH || !touching(drawable)) {
+    return result.length > 0 ? result : contours;
+  }
+
+  /*
+   * Folded in passes rather than in one sweep, because the order matters.
+   *
+   * A shape only merges into what has been folded so far, and the pieces of a
+   * letter do not arrive in the order they touch each other in: the flare on
+   * the foot of a Brush k is handed over before the leg it swells, so folding
+   * it early leaves it stranded against a blob it does not reach yet. Whatever
+   * fails to join is kept back and offered again once more has been folded in,
+   * until a whole pass joins nothing -- which is the honest end, because those
+   * really are separate pieces.
+   */
+  let folded: Contour[] = [drawable[0]];
+  // Solids, not shapes. Merging never leaves more solids than it found, while
+  // shapes alone cannot tell joining from enclosing: the bowl of an e closes
+  // against its bar and makes an eye, so the count goes up by one on exactly
+  // the step that worked. Read that as a failure and the bowl is set aside
+  // and never offered again, which broke an e on five faces and a B on three.
+  let solids = 1;
+  let waiting = drawable.slice(1);
+  /*
+   * Two rounds of that, not as many as it takes.
+   *
+   * Offering everything again after every join is a boolean per shape per
+   * round, and a letter of a dozen pieces that joins one a round pays a
+   * hundred and forty of them -- which is how a font of slabbed ends went
+   * from seconds to over a minute. One retry is where nearly all of the good
+   * comes from; what has not joined after that is folded in as it comes,
+   * which is the plain fold and gets the rest.
+   */
+  for (let round = 0; round < 2 && waiting.length > 0; round++) {
+    const stuck: Contour[] = [];
+    let joined = false;
+    for (const piece of waiting) {
+      clear(paper);
+      const step = contoursOf(fuse(compoundOf(paper, [...folded, piece], roles)));
+      clear(paper);
+      const grew = solidsIn(step);
+      if (step.length > 0 && grew <= solids) {
+        folded = step;
+        solids = grew;
+        joined = true;
+      } else {
+        stuck.push(piece);
+      }
+    }
+    waiting = stuck;
+    if (!joined) break;
+  }
+
+  // Whatever is left is taken as it comes: a step that grows the count is
+  // still worth keeping, because the shape after it may join what this one
+  // could not. Held back instead, an a on two faces and an X on one stayed
+  // in pieces that this catches.
+  for (const piece of waiting) {
+    clear(paper);
+    const step = contoursOf(fuse(compoundOf(paper, [...folded, piece], roles)));
+    clear(paper);
+    folded = step.length > 0 ? step : [...folded, piece];
+  }
+  // Whichever came back in fewer pieces, except that an answer holding no ink
+  // loses to one that does however few pieces it is in.
+  if (result.length === 0 || vanished) return folded;
+  return folded.length < result.length ? folded : result;
 }
 
 /**
@@ -222,9 +364,40 @@ export function intersect(a: Contour[], b: Contour[], roles: Roles = "nesting"):
  * and a hole is not.
  */
 export function pieces(contours: Contour[]): number {
-  const drawable = contours.filter((contour) => contour.nodes.length >= 3);
+  const drawable = contours
+    .filter((contour) => contour.nodes.length >= 3)
+    .filter((contour) => !aSliver(contour));
   if (drawable.length === 0) return 0;
   return classifyContours(drawable).filter(Boolean).length;
+}
+
+/**
+ * Whether a contour is too thin to be a piece of anything.
+ *
+ * A boolean leaves crumbs. Where two edges lie along the same line the answer
+ * comes back with a hair-width loop in it -- a Didone W fused to itself and a
+ * contour of thirteen square units fell out, a Brush b managed one -- and
+ * counted as a piece those are a letter reported broken that is not, which is
+ * a warning that cries wolf on a font nobody has cut yet.
+ *
+ * Measured as thickness rather than as area, because area alone cannot tell a
+ * crumb from a small letter: a full stop is small and solid, and a hair along
+ * the side of a stem is not small at all. Area over perimeter is what a shape
+ * has room for inside itself, and it separates the two by a hundredfold --
+ * a tenth of a unit for the crumbs above against twelve for the dot of an i.
+ * Half a unit is a twentieth of the width of the thinnest hairline anyone
+ * draws, so nothing anybody meant to draw is thrown away here.
+ */
+function aSliver(contour: Contour): boolean {
+  const walk = flattenContour(contour, 8);
+  let edge = 0;
+  for (let index = 0; index < walk.length; index++) {
+    const from = walk[index];
+    const to = walk[(index + 1) % walk.length];
+    edge += Math.hypot(to.x - from.x, to.y - from.y);
+  }
+  if (edge <= 0) return true;
+  return Math.abs(contourArea(contour)) / edge < 0.5;
 }
 
 // ---------------------------------------------------------------------------
@@ -260,6 +433,25 @@ function clear(paper: PaperScope): void {
  */
 function fuse(item: paper.PathItem): paper.PathItem {
   return (item as unknown as { unite(): paper.PathItem }).unite();
+}
+
+/** What these contours add up to, a hole counting against the ink it is in. */
+function inkIn(contours: Contour[]): number {
+  return contours.reduce((total, contour) => total + contourArea(contour), 0);
+}
+
+/**
+ * How many separate solids these contours make, counters not counted.
+ *
+ * The difference matters twice over, and getting it wrong costs in both
+ * directions. A union that comes back as an outline and a counter has not
+ * failed -- that is what an O looks like -- and reading two contours as two
+ * pieces sent every letter with a hole in it down the slow path, which put two
+ * minutes on exporting a slabbed font. The same distinction decides whether a
+ * shape has just joined what came before or is standing on its own.
+ */
+function solidsIn(contours: Contour[]): number {
+  return contours.filter((contour) => contourArea(contour) >= 0).length;
 }
 
 /**
