@@ -120,6 +120,10 @@ const CODEPOINTS: Record<string, number> = {
  */
 const ALSO: Record<string, number[]> = {
   grave: [0x0060],
+  // Romanian's comma-below T, which is the same drawing as the one Extended-A
+  // names for a comma and draws with one. Two characters, one glyph.
+  Tcommaaccent: [0x021a],
+  tcommaaccent: [0x021b],
 };
 
 /*
@@ -145,6 +149,16 @@ const MARK_CODEPOINTS: Record<string, number> = {
   dotaccent: 0x0307,
   ring: 0x030a,
   caron: 0x030c,
+  /*
+   * The three that Latin Extended-A brought with it. Two have a character of
+   * their own in the spacing-modifier block and are given it, the same way the
+   * Latin-1 marks above are; the comma below has none, so it takes the
+   * combining codepoint and nothing else.
+   */
+  ogonek: 0x02db,
+  hungarumlaut: 0x02dd,
+  commaaccent: 0x0326,
+  commaturnedabove: 0x0312,
   // Dotless forms, which an accented i is built on and which text can use.
   dotlessi: 0x0131,
   dotlessj: 0x0237,

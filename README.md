@@ -54,15 +54,26 @@ input to the drawing rather than a shove applied to a finished outline: ask for
 a heavier cut and the letter is drawn again, thicker. It cannot fold, because
 nothing moved.
 
-It draws the whole Latin-1 set: the letters, the figures, the accented forms of
-every European language that uses the alphabet, and the symbols — the ampersand,
-the at sign, the currency marks, the brackets and braces, the arithmetic, the
-fractions. All of it from the same pen and the same proportions, so one edit
-reaches all of it. Several of the symbols are not separate drawings at all: a
-cent is the c of this font with a bar through it, an ordinal is its a set small,
-an upside-down question mark is the question mark turned over, and a ½ is the
-figures it is made of — so changing the a changes the ordinal, and there is no
-second copy anywhere to fall behind.
+It draws Latin-1 and Latin Extended-A: three hundred and eighteen glyphs
+carrying three hundred and twenty characters — the letters, the figures, the
+accented forms, and the symbols: the ampersand, the at sign, the currency marks,
+the brackets and braces, the arithmetic, the fractions. That is Polish, Czech,
+Slovak, Hungarian, Turkish, Latvian, Lithuanian, Romanian, Croatian, Maltese,
+Welsh, Esperanto and Māori as well as the western European languages Latin-1
+stops at, and there is a test that sets a sentence of each and fails on a
+missing letter rather than on a missing codepoint. What is still out is the
+handful of Extended-A characters Unicode gives no decomposition and this has not
+yet drawn: the ligatures Œ and Ĳ, the eng, the barred T, the l with a middle
+dot, the kra, the long s. Greek and Cyrillic are not drawn at all.
+
+All of it comes from the same pen and the same proportions, so one edit reaches
+all of it — and most of it is not a separate drawing at all. A cent is the c of
+this font with a bar through it, an ordinal is its a set small, an upside-down
+question mark is the question mark turned over, a ½ is the figures it is made of
+— and every one of the two hundred accented letters is its own base wearing its
+own mark, read off Unicode's decomposition rather than listed anywhere. So
+changing the a changes the ordinal and the á and the ą and the ā, and there is
+no second copy anywhere to fall behind.
 
 And it draws a **family**, not a font. Pick any of the nine weights and each is
 worked out from the one on screen: the stem in proportion to the number, the

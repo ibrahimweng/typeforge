@@ -35,6 +35,8 @@ export const MARK_NAMES: Record<number, string[]> = {
   0x030a: ["ringcomb", "ring"],
   0x030b: ["hungarumlautcomb", "hungarumlaut"],
   0x030c: ["caroncomb", "caron"],
+  0x0312: ["commaturnedabovecomb", "commaturnedabove"],
+  0x0326: ["commaaccentcomb", "commaaccent"],
   0x0327: ["cedillacomb", "cedilla"],
   0x0328: ["ogonekcomb", "ogonek"],
   0x031b: ["horncomb", "horn"],
