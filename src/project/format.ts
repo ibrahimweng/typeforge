@@ -21,7 +21,16 @@
 
 import type { Assembly } from "@/assemble/document";
 import { anyCut } from "@/forge/cut";
-import { baseNamed, cutsOf, familyOf, startFrom, whole, type Forge } from "@/forge/document";
+import { anyCast, type Cast } from "@/font/cast";
+import {
+  baseNamed,
+  castOf,
+  cutsOf,
+  familyOf,
+  startFrom,
+  whole,
+  type Forge,
+} from "@/forge/document";
 import type { Cuts } from "@/font/cuts";
 import type { Glyph, GlyphParams, KernClass, KernPair, Typeface } from "@/font/types";
 
@@ -83,6 +92,8 @@ export interface EditedProject {
    * whole. Only the font-wide description needs a place of its own.
    */
   cuts?: Cuts;
+  /** And what is put on it, kept the same way and for the same reason. */
+  cast?: Cast;
   kerning: KernPair[];
   kernClasses: KernClass[];
   /** Only the glyphs that have been touched. */
@@ -208,6 +219,9 @@ function hasDrawing(drawn: DrawnProject): boolean {
     // nothing else touched would have been thrown away as an empty document.
     anyCut(cutsOf(forge)) ||
     Object.keys(forge.cutExceptions ?? {}).length > 0 ||
+    // And a cast, for the same reason: a face is often nothing but its shadow.
+    anyCast(castOf(forge)) ||
+    Object.keys(forge.castExceptions ?? {}).length > 0 ||
     // A font laid out on a grid is nothing but its cells, and a document with
     // an afternoon of them in it would have been thrown away as empty.
     Object.keys(forge.kit?.glyphs ?? {}).length > 0
@@ -223,6 +237,7 @@ function toEdited(typeface: Typeface, fileName: string): EditedProject | undefin
     metrics: typeface.metrics,
     params: typeface.params,
     cuts: typeface.cuts,
+    cast: typeface.cast,
     kerning: typeface.kerning,
     kernClasses: typeface.kernClasses,
     glyphs: typeface.glyphs.filter((glyph) => glyph.dirty),
@@ -287,6 +302,7 @@ export function applyEdits(typeface: Typeface, saved: EditedProject): Typeface {
   typeface.metrics = saved.metrics;
   typeface.params = saved.params;
   typeface.cuts = saved.cuts;
+  typeface.cast = saved.cast;
   typeface.kerning = saved.kerning;
   typeface.kernClasses = saved.kernClasses;
 

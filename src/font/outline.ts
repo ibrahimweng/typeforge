@@ -165,7 +165,41 @@ export function missingExtrema(contour: Contour): number {
 // ---------------------------------------------------------------------------
 
 /**
- * Decide which contours are outer shapes and which are counters.
+ * How a contour's role -- solid or counter -- is worked out on the way in.
+ *
+ * `nesting` counts how many contours enclose this one and calls it a counter
+ * if that number is odd. It needs nothing of the caller, which is why an
+ * outline that arrived from a file has to use it: that font's winding was
+ * rewritten to suit whatever format it was written in, so the contours no
+ * longer say what they are and the shape has to be read instead.
+ *
+ * It is also wrong wherever a piece of a letter sits inside another piece
+ * without being a hole in it. A letter drawn as overlapping strokes does that
+ * constantly -- the foot of a stem inside the serif laid across it, so the
+ * foot is punched out of its own serif; the stem of an a lying across the
+ * bowl, so the counter is enclosed twice and fills in solid.
+ *
+ * `winding` takes each contour at its word: ink runs one way, counters run the
+ * other. The sweep guarantees exactly that, so anything drawn here can say so
+ * and be believed, and pieces sitting inside pieces stop being a question.
+ */
+export type Roles = "nesting" | "winding";
+
+/**
+ * Which of these contours are solids, read whichever way the caller asks.
+ *
+ * The one place the two readings above are turned into an answer, so that
+ * everything that has to know -- the booleans, the direction the outlines are
+ * written in, the measurements -- agrees about it.
+ */
+export function outersIn(contours: Contour[], roles: Roles): boolean[] {
+  return roles === "winding"
+    ? contours.map((contour) => contourArea(contour) >= 0)
+    : classifyContours(contours);
+}
+
+/**
+ * Decide which contours are outer shapes and which are counters, by nesting.
  *
  * A contour enclosed by an odd number of others is a counter. Nesting is used
  * rather than size so that a shape inside a counter, such as the middle of a
@@ -192,8 +226,12 @@ export function classifyContours(contours: Contour[]): boolean[] {
  * contours clockwise, PostScript puts them counter-clockwise. Getting this
  * wrong fills counters in solid.
  */
-export function correctDirection(contours: Contour[], format: OutlineFormat): Contour[] {
-  const isOuter = classifyContours(contours);
+export function correctDirection(
+  contours: Contour[],
+  format: OutlineFormat,
+  roles: Roles = "nesting",
+): Contour[] {
+  const isOuter = outersIn(contours, roles);
   // Signed area is negative for a clockwise contour in font coordinates.
   const outerShouldBeClockwise = format === "truetype";
 
@@ -217,8 +255,12 @@ function reverse(contour: Contour): Contour {
 }
 
 /** Whether every contour is wound as the format requires. */
-export function directionIsCorrect(contours: Contour[], format: OutlineFormat): boolean {
-  const isOuter = classifyContours(contours);
+export function directionIsCorrect(
+  contours: Contour[],
+  format: OutlineFormat,
+  roles: Roles = "nesting",
+): boolean {
+  const isOuter = outersIn(contours, roles);
   const outerShouldBeClockwise = format === "truetype";
   return contours.every((contour, index) => {
     if (contour.nodes.length < 3) return true;
@@ -326,13 +368,28 @@ function contoursIntersect(contours: Contour[]): boolean {
       }
     }
   }
-  if (segments.length > 600) return false; // too complex to be worth the sweep
+  /*
+   * Without the ones that go nowhere, and this matters more than it sounds.
+   *
+   * A segment of no length cannot cross anything -- but leaving it in the list
+   * moves everything after it along by one, and the sweep below skips
+   * neighbours by counting places rather than by asking whether they touch. So
+   * the two segments either side of it stop looking like neighbours, and two
+   * segments that merely meet get compared as though they were strangers. They
+   * meet at a point that agrees to about fifteen digits and not to all of
+   * them, which is enough for a strict crossing test to say yes, and the c of
+   * every face was reported folded on itself where its terminal is cut.
+   */
+  const going = segments.filter(
+    ([from, to]) => Math.hypot(to.x - from.x, to.y - from.y) > 1e-9,
+  );
+  if (going.length > 600) return false; // too complex to be worth the sweep
 
-  for (let i = 0; i < segments.length; i++) {
-    for (let j = i + 2; j < segments.length; j++) {
+  for (let i = 0; i < going.length; i++) {
+    for (let j = i + 2; j < going.length; j++) {
       // Neighbouring segments share an endpoint, which is not a crossing.
-      if (i === 0 && j === segments.length - 1) continue;
-      if (segmentsCross(segments[i], segments[j])) return true;
+      if (i === 0 && j === going.length - 1) continue;
+      if (segmentsCross(going[i], going[j])) return true;
     }
   }
   return false;

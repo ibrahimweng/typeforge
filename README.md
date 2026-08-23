@@ -54,15 +54,26 @@ input to the drawing rather than a shove applied to a finished outline: ask for
 a heavier cut and the letter is drawn again, thicker. It cannot fold, because
 nothing moved.
 
-It draws the whole Latin-1 set: the letters, the figures, the accented forms of
-every European language that uses the alphabet, and the symbols — the ampersand,
-the at sign, the currency marks, the brackets and braces, the arithmetic, the
-fractions. All of it from the same pen and the same proportions, so one edit
-reaches all of it. Several of the symbols are not separate drawings at all: a
-cent is the c of this font with a bar through it, an ordinal is its a set small,
-an upside-down question mark is the question mark turned over, and a ½ is the
-figures it is made of — so changing the a changes the ordinal, and there is no
-second copy anywhere to fall behind.
+It draws Latin-1 and Latin Extended-A: three hundred and eighteen glyphs
+carrying three hundred and twenty characters — the letters, the figures, the
+accented forms, and the symbols: the ampersand, the at sign, the currency marks,
+the brackets and braces, the arithmetic, the fractions. That is Polish, Czech,
+Slovak, Hungarian, Turkish, Latvian, Lithuanian, Romanian, Croatian, Maltese,
+Welsh, Esperanto and Māori as well as the western European languages Latin-1
+stops at, and there is a test that sets a sentence of each and fails on a
+missing letter rather than on a missing codepoint. What is still out is the
+handful of Extended-A characters Unicode gives no decomposition and this has not
+yet drawn: the ligatures Œ and Ĳ, the eng, the barred T, the l with a middle
+dot, the kra, the long s. Greek and Cyrillic are not drawn at all.
+
+All of it comes from the same pen and the same proportions, so one edit reaches
+all of it — and most of it is not a separate drawing at all. A cent is the c of
+this font with a bar through it, an ordinal is its a set small, an upside-down
+question mark is the question mark turned over, a ½ is the figures it is made of
+— and every one of the two hundred accented letters is its own base wearing its
+own mark, read off Unicode's decomposition rather than listed anywhere. So
+changing the a changes the ordinal and the á and the ą and the ā, and there is
+no second copy anywhere to fall behind.
 
 And it draws a **family**, not a font. Pick any of the nine weights and each is
 worked out from the one on screen: the stem in proportion to the number, the
@@ -150,6 +161,31 @@ one face that is actually the Bold.
 **TrueType** writes `glyf` outlines directly. **OpenType** re-encodes the curves
 as PostScript, which is always a rebuild.
 
+**Variable** writes the whole family into one file with a weight slider from one
+end of it to the other, and it works here for a reason that has nothing to do
+with the file format: every weight is the same skeleton swept with a wider pen,
+so the same strokes are drawn in the same order at every weight and the movement
+between two of them is a list of points that moved. Drawn by hand, that
+correspondence is what a designer spends the time on.
+
+It took two things the drawing engine was not doing. Nothing is fused: a union
+re-points an outline, and where a letter's strokes meet differently as the pen
+widens the fused outlines stop matching — 187 of a Sans's 196 letters line up as
+drawn and 125 once fused — so the strokes are left overlapping and the file says
+so, which is what the overlap flag in `glyf` is for and what every variable font
+does. And a bowl now keeps the runs between its corners even where the corners
+have taken all the length out of them, because the number of nodes in a letter
+follows the number of pieces in its spine: a bowl exactly as wide as it is tall
+is a circle and has none of them, so an o was coming out seven nodes at a Thin,
+four at a Regular and six at a Bold for a shape that is the same shape all the
+way along.
+
+Twenty glyphs still follow the axis only part of the way, and they are the ones
+genuinely drawn differently at the ends of it — a c whose aperture closes at the
+Black, a G that changes construction. Those hold their shape over the stretch
+they cannot follow rather than being interpolated into something that is neither
+drawing, and the export says which they are.
+
 **Everything from the original** keeps every table this editor does not model,
 so ligatures, contextual alternates, colour layers and hinting survive. Glyphs
 you never touched are copied across byte for byte, which is what keeps their
@@ -212,6 +248,7 @@ src/font/     the font engine, independent of the interface
   tables.ts     head, hhea, maxp, hmtx, cmap, name, post, OS/2
   kern.ts       kern and GPOS writers
   quadratic.ts  cubic and quadratic conversion
+  variable.ts   fvar, gvar and STAT: one file, every weight
   composite.ts  letters built from other letters
   accents.ts    recipes from Unicode, anchors, and building
   validate.ts   the checks behind the Checks view
@@ -228,6 +265,7 @@ src/forge/    the skeleton-and-pen engine behind Draw
   accents.ts    the accented letters, from Unicode's own decomposition
   family.ts     the nine weights, and what changes between them
   deliver.ts    every weight drawn and written out as one download
+  shapes.ts     bowls, bends and the runs a letter is described with
 src/assemble/ the pile of drawings behind Assemble
 src/project/  the saved document: the file format, and keeping it in the browser
 src/views/    font, glyph, kerning and spacing views

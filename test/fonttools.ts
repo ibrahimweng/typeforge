@@ -263,6 +263,94 @@ export function shapeKerning(bytes: Uint8Array, pairs: string[]): Record<string,
   return JSON.parse(result.stdout) as Record<string, number>;
 }
 
+/**
+ * What a varying font says about itself, and what it draws when asked.
+ *
+ * Separate from the report above because it asks fontTools to do something
+ * rather than to read something: instancing a variable font at a position
+ * exercises every part of the movement -- the regions, the deltas, the
+ * packing -- and produces outlines that can be held up against the separate
+ * files the same drawings make. Nothing short of that catches a region that is
+ * written to the file perfectly and means the wrong thing.
+ */
+export interface VariableReport {
+  axes: Array<{ tag: string; name: string; min: number; default: number; max: number }>;
+  instances: Array<{ name: string; at: Record<string, number> }>;
+  statAxes: string[];
+  /** How many glyphs carry any movement at all. */
+  movingGlyphs: number;
+  recompiles: boolean;
+  /**
+   * How much ink each named glyph holds, at each position asked for.
+   *
+   * Ink rather than width, because a width says only how far a letter reaches
+   * and two quite different letters reach the same distance. Signed area
+   * measured by fontTools' own pen answers the question actually being asked:
+   * is this the same drawing as the one in the separate file?
+   */
+  inkAt: Record<string, Record<string, number>>;
+  error?: string;
+}
+
+const INSTANCE = String.raw`
+import json, sys
+from fontTools.ttLib import TTFont
+from fontTools.varLib.instancer import instantiateVariableFont
+import io
+
+path, glyphs, wants = sys.argv[1], json.loads(sys.argv[2]), json.loads(sys.argv[3])
+out = {"axes": [], "instances": [], "statAxes": [], "movingGlyphs": 0,
+       "recompiles": False, "inkAt": {}}
+try:
+    f = TTFont(path)
+    names = f["name"]
+    for a in f["fvar"].axes:
+        out["axes"].append({"tag": a.axisTag, "name": names.getDebugName(a.axisNameID) or "",
+                            "min": a.minValue, "default": a.defaultValue, "max": a.maxValue})
+    for i in f["fvar"].instances:
+        out["instances"].append({"name": names.getDebugName(i.subfamilyNameID) or "",
+                                 "at": i.coordinates})
+    out["statAxes"] = [a.AxisTag for a in f["STAT"].table.DesignAxisRecord.Axis]
+    out["movingGlyphs"] = sum(1 for v in f["gvar"].variations.values() if v)
+    buffer = io.BytesIO()
+    f.save(buffer)
+    out["recompiles"] = len(buffer.getvalue()) > 0
+
+    from fontTools.pens.areaPen import AreaPen
+    for want in wants:
+        v = TTFont(path)
+        instantiateVariableFont(v, want, inplace=True)
+        drawings = v.getGlyphSet()
+        key = ",".join(f"{k}={v2}" for k, v2 in sorted(want.items()))
+        out["inkAt"][key] = {}
+        for name in glyphs:
+            area = AreaPen(drawings)
+            drawings[name].draw(area)
+            out["inkAt"][key][name] = area.value
+except Exception as error:
+    out["error"] = f"{type(error).__name__}: {error}"
+print(json.dumps(out))
+`;
+
+export function inspectVariable(
+  bytes: Uint8Array,
+  glyphs: string[],
+  positions: Array<Record<string, number>>,
+): VariableReport {
+  const dir = mkdtempSync(join(tmpdir(), "typeforge-"));
+  const fontPath = join(dir, "font.bin");
+  writeFileSync(fontPath, bytes);
+  const result = spawnSync(
+    "python3",
+    ["-c", INSTANCE, fontPath, JSON.stringify(glyphs), JSON.stringify(positions)],
+    { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (result.status !== 0) {
+    throw new Error(`fontTools instancing failed: ${result.stderr || result.stdout}`);
+  }
+  return JSON.parse(result.stdout) as VariableReport;
+}
+
 export function inspectFont(bytes: Uint8Array): FontToolsReport {
   const dir = mkdtempSync(join(tmpdir(), "typeforge-"));
   const fontPath = join(dir, "font.bin");

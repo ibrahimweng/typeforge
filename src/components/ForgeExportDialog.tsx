@@ -25,7 +25,16 @@ import { cn } from "@/ui/lib/utils";
 
 export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.JSX.Element {
   const state = useForge();
-  const [format, setFormat] = React.useState<ExportFormat>("ttf");
+  /*
+   * Three choices rather than two, and the third is not a format.
+   *
+   * A variable font is a TrueType file; what makes it one is that the whole
+   * family is inside it with the differences stored alongside. But that is not
+   * how anybody picks one -- they pick the kind of file they want -- so it sits
+   * beside the two formats and is turned into a format and a flag here.
+   */
+  const [kind, setKind] = React.useState<"ttf" | "otf" | "variable">("ttf");
+  const format: ExportFormat = kind === "otf" ? "otf" : "ttf";
   const [working, setWorking] = React.useState(false);
   const [problem, setProblem] = React.useState<string | null>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
@@ -44,6 +53,11 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
 
   const family = familyOf(state.forge);
   const weights = weightsOf(family);
+  // A variable font of one weight is a font, so the choice steps back to a
+  // plain one rather than being refused at the moment somebody presses it.
+  React.useEffect(() => {
+    if (kind === "variable" && weights.length < 2) setKind("ttf");
+  }, [kind, weights.length]);
 
   const download = async (): Promise<void> => {
     setWorking(true);
@@ -52,6 +66,7 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
       const written = await deliver(state.forge, {
         familyName: state.familyName || "Untitled",
         format,
+        variable: kind === "variable",
       });
       const url = URL.createObjectURL(
         new Blob([written.bytes as BlobPart], {
@@ -172,27 +187,40 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
         <p className="pb-4 pt-1 text-2xs leading-snug text-muted-foreground" data-weight-note>
           {weights.length === 1
             ? "One weight. Add another and the whole family is drawn from this one — the stems in proportion to the number, the counters giving back four fifths of what the stems gain, the spacing left alone."
-            : `${weights.length} weights, downloaded together as a zip. They install as one family.`}
+            : kind === "variable"
+              ? `${weights.length} weights in one file, and every weight between them: the file carries the ends and works out the rest.`
+              : `${weights.length} weights, downloaded together as a zip. They install as one family.`}
         </p>
 
         <span className="text-2xs text-muted-foreground">Format</span>
         <div className="flex gap-2 pb-4 pt-1.5">
           {(
             [
-              ["ttf", "TrueType", "The widest support, and what most systems expect."],
-              ["otf", "OpenType", "Cubic curves, as this font is drawn in."],
-            ] as Array<[ExportFormat, string, string]>
-          ).map(([id, label, note]) => (
+              ["ttf", "TrueType", "The widest support, and what most systems expect.", true],
+              ["otf", "OpenType", "Cubic curves, as this font is drawn in.", true],
+              [
+                "variable",
+                "Variable",
+                weights.length > 1
+                  ? "One file with a weight slider from end to end."
+                  : "Needs more than one weight.",
+                weights.length > 1,
+              ],
+            ] as Array<["ttf" | "otf" | "variable", string, string, boolean]>
+          ).map(([id, label, note, allowed]) => (
             <button
               key={id}
               type="button"
-              onClick={() => setFormat(id)}
-              aria-pressed={format === id}
+              onClick={() => setKind(id)}
+              disabled={!allowed}
+              aria-pressed={kind === id}
+              data-format={id}
               className={cn(
                 "flex-1 rounded-md border p-2.5 text-left transition-colors",
-                format === id
+                kind === id
                   ? "border-[color:var(--accent)] bg-[color:color-mix(in_oklab,var(--accent)_10%,transparent)]"
                   : "border-border hover:border-muted-foreground hover:bg-card",
+                !allowed && "cursor-default opacity-50 hover:border-border hover:bg-transparent",
               )}
             >
               <span className="block text-2xs font-medium text-foreground">{label}</span>

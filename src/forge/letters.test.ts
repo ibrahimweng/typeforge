@@ -227,30 +227,18 @@ describe("one skeleton, three faces", () => {
  * edge. A break cut takes a piece away, and the piece it takes is one that was
  * never joined on: a Flared L lost its serif, a Fairground k lost its whole
  * leg. So the count is asserted rather than looked at.
+ *
+ * There were a hundred and forty-four of these, the worst of them in twelve
+ * pieces, and this used to carry a written list of the ones still failing. The
+ * list is empty now, so the claim is the plain one: every letter of every face
+ * is one solid.
  */
 describe("letters in one piece", () => {
   // i and j are two pieces because a dot is a piece, and so are the letters
   // that carry one. What is left is every letter that should be one solid.
   const solid = letterNames().filter((name) => /^[A-Za-z]$/.test(name) && name !== "i" && name !== "j");
 
-  /*
-   * The ones still coming apart, named rather than tolerated.
-   *
-   * Each is a stroke meeting another stroke end-on at its edge -- the tail of
-   * a Ribbon Y under its vee, the bowl of a Didone b against its stem -- which
-   * is the same fault as the serifs and the K junction and wants the same kind
-   * of fix, one letter at a time. Written out so that fixing one of them fails
-   * this test and asks for the list to be shortened, and so that a face that
-   * comes apart somewhere new fails it too.
-   */
-  const known = [
-    "Brush b", "Brush d", "Brush k", "Brush p", "Brush w", "Brush y",
-    "Didone Q", "Didone b", "Didone p",
-    "Fairground y", "Flared b", "Marker q",
-    "Ribbon Y", "Technical Y", "Wavy y",
-  ];
-
-  it("draws every letter of every face as one solid, bar the ones written down", async () => {
+  it("draws every letter of every face as one solid", async () => {
     const { ready } = await import("@/font/boolean");
     const { piecesOf } = await import("./cut");
     await ready();
@@ -263,40 +251,51 @@ describe("letters in one piece", () => {
         if (piecesOf(drawn.contours) > 1) apart.push(`${style.name} ${name}`);
       }
     }
-    expect(apart.sort()).toEqual(known);
+    expect(apart).toEqual([]);
   }, 60_000);
 
-  it("draws every letter of every face with ink in it", async () => {
+  it("keeps the ink it was handed when a drawing is fused", async () => {
     /*
-     * The other way a letter can fail this, and the quieter one.
+     * The other way a drawing can fail, and the quieter one.
      *
-     * Counting pieces cannot see a letter that is not there: a union that came
-     * back holding a single contour of no area is one piece by any count, and
-     * the w of the Brush face was exactly that -- blank on the page, blank in
-     * the exported file, and reported as a letter in one piece the whole time.
+     * Counting pieces cannot see a letter that is not there. A union that came
+     * back holding one contour of no area is one piece by any count, and the w
+     * of the Brush face was exactly that: blank on the page, blank in the
+     * exported file, and reported as being in one piece the whole time. Nor is
+     * it always all of the ink -- the A of the Wavy face kept one and a half
+     * per cent of its own and read as two crumbs, which counts as one piece
+     * just as happily.
+     *
+     * So what is asserted is the ink, against the ink the fuse was handed.
+     * Some loss is honest, because the shapes overlap and the overlaps go in
+     * counted twice; across the 3,136 drawings the sixteen faces make, the
+     * leanest keeps 55% of what it was given and three quarters keep 89% or
+     * more. Two fifths is below every one of those and well above the
+     * eighteen that were failing, seventeen of which kept a sixth or less.
+     *
+     * Every drawing, not only the fifty-two letters. Most of what was being
+     * lost was not a letter: Wavy's A, AE, V and x went, and with them every
+     * accented A built on them, along with Flared's accented E and Brush's p
+     * and accented y.
      */
     const { ready, unite } = await import("@/font/boolean");
     await ready();
 
-    const blank: string[] = [];
+    const lost: string[] = [];
     for (const style of STARTING_POINTS) {
-      for (const name of solid) {
+      for (const name of letterNames()) {
         const drawn = drawLetter(name, style);
         if (!drawn || drawn.contours.length === 0) continue;
-        // Measured after the fuse, which is where it went missing and is what
+        const handed = Math.abs(drawn.contours.reduce((total, one) => total + contourArea(one), 0));
+        if (handed <= 0) continue;
+        // Measured after the fuse, which is where it goes missing and is what
         // the cut layer and the export both work from. On the canvas the loose
-        // strokes still fill, so the letter looked fine until it was cut.
+        // strokes still fill, so the drawing looked right until it was cut.
         const fused = unite(drawn.contours, "winding", "whole");
-        const ink = Math.abs(fused.reduce((total, one) => total + contourArea(one), 0));
-        // Against the letter's own box rather than against a number of units,
-        // so it means the same on every face. The lightest hairline still
-        // fills a good few per cent of the space it stands in; a hundredth of
-        // one per cent is a union that came back with nothing.
-        const box = contoursBounds(drawn.contours);
-        const room = (box.xMax - box.xMin) * (box.yMax - box.yMin);
-        if (room > 0 && ink < room * 0.0001) blank.push(`${style.name} ${name}`);
+        const kept = Math.abs(fused.reduce((total, one) => total + contourArea(one), 0));
+        if (kept < handed * 0.4) lost.push(`${style.name} ${name}`);
       }
     }
-    expect(blank).toEqual([]);
-  }, 60_000);
+    expect(lost).toEqual([]);
+  }, 120_000);
 });

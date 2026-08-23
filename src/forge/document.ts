@@ -17,7 +17,9 @@
  */
 
 import { decidedBy, drawLetter, letterNames, type Drawn } from "./build";
-import { anyCut, cutInk, CUT_NAMES, noCuts, scaleOf, type CutName, type Cuts } from "./cut";
+import { anyCast, CAST_NAMES, noCast, sameCast, type Cast, type CastName } from "./cast";
+import { anyCut, CUT_NAMES, noCuts, scaleOf, type CutName, type Cuts } from "./cut";
+import { shapedInk } from "./layers";
 import {
   emptyKit,
   hasTiles,
@@ -40,6 +42,9 @@ export type Overrides = Partial<{ [K in keyof Parts]: Partial<Parts[K]> }>;
 
 /** The same, for the cuts: a letter that is cut differently from the rest. */
 export type CutOverrides = Partial<{ [K in keyof Cuts]: Partial<Cuts[K]> }>;
+
+/** The same for the cast, minus the order, which is never a letter's own. */
+export type CastOverrides = Partial<{ [K in CastName]: Partial<Cast[K]> }>;
 
 export interface Forge {
   /** Which base this started from, for saying so and for starting again. */
@@ -85,6 +90,15 @@ export interface Forge {
    */
   cuts?: Cuts;
   /**
+   * What is put on every letter.
+   *
+   * Beside the cuts and on the same terms: a description re-read every time a
+   * letter is drawn, so a heavier face throws the same shadow off its heavier
+   * letters. Optional for the same reason -- documents saved before there was
+   * a cast do not have one.
+   */
+  cast?: Cast;
+  /**
    * Letters cut differently from the rest, and only those.
    *
    * The same kind of decision as an exception to a part, and kept the same
@@ -92,6 +106,8 @@ export interface Forge {
    * and every other cut carry on reading the font's.
    */
   cutExceptions?: Record<string, CutOverrides>;
+  /** Letters cast differently from the rest, on the same terms. */
+  castExceptions?: Record<string, CastOverrides>;
   /**
    * Letters built on a grid out of a small set of parts, rather than drawn.
    *
@@ -128,11 +144,12 @@ const ALONE: Family = { drawn: 400, also: [] };
  * use.
  */
 export function whole(forge: Forge): Forge {
-  if (forge.family && forge.cuts && forge.kit) return forge;
+  if (forge.family && forge.cuts && forge.kit && forge.cast) return forge;
   return {
     ...forge,
     family: forge.family ?? { ...ALONE },
     cuts: forge.cuts ?? noCuts(),
+    cast: forge.cast ?? noCast(),
     cutExceptions: forge.cutExceptions ?? {},
     kit: forge.kit ?? emptyKit(),
   };
@@ -165,6 +182,7 @@ export function startFrom(base: Style): Forge {
     alternates: { ...base.forms },
     imported: {},
     cuts: noCuts(),
+    cast: noCast(),
     cutExceptions: {},
     kit: emptyKit(),
     // Asked rather than assumed. A face is whatever weight its own stem says
@@ -254,6 +272,69 @@ export function cutsFor(letter: string, forge: Forge): Cuts {
   return merged as unknown as Cuts;
 }
 
+export function castOf(forge: Forge): Cast {
+  return forge.cast ?? noCast();
+}
+
+/** What is put on one letter: the font's, with that letter's differences over it. */
+export function castFor(letter: string, forge: Forge): Cast {
+  const exception = forge.castExceptions?.[letter];
+  const cast = castOf(forge);
+  if (!exception) return cast;
+
+  const merged: Record<string, unknown> = { ...cast };
+  for (const [name, patch] of Object.entries(exception)) {
+    merged[name] = typeof patch === "object" ? { ...(merged[name] as object), ...patch } : patch;
+  }
+  return merged as unknown as Cast;
+}
+
+/** Change something in the cast, for the font or for one letter. */
+export function editCast(
+  forge: Forge,
+  name: CastName,
+  patch: Partial<Cast[CastName]>,
+  letter?: string,
+): Forge {
+  if (letter === undefined) {
+    return { ...forge, cast: { ...castOf(forge), [name]: { ...castOf(forge)[name], ...patch } } };
+  }
+  const existing = forge.castExceptions?.[letter] ?? {};
+  return {
+    ...forge,
+    castExceptions: {
+      ...forge.castExceptions,
+      [letter]: { ...existing, [name]: { ...(existing[name] ?? {}), ...patch } },
+    },
+  };
+}
+
+/** Which way round the two layers go. A decision about the font, never a letter. */
+export function setCastOrder(forge: Forge, order: Cast["order"]): Forge {
+  return { ...forge, cast: { ...castOf(forge), order } };
+}
+
+/** The operations this letter holds its own version of. */
+export function castHeldBy(forge: Forge, letter: string): CastName[] {
+  const own = forge.castExceptions?.[letter];
+  if (!own) return [];
+  const mine = castFor(letter, forge);
+  const font = castOf(forge);
+  return CAST_NAMES.filter((name) => name in own && !sameCast(mine[name], font[name]));
+}
+
+/** Give a letter back to the font's cast. */
+export function releaseCast(forge: Forge, letter: string, name: CastName): Forge {
+  const own = forge.castExceptions?.[letter];
+  if (!own || !(name in own)) return forge;
+  const rest = { ...own };
+  delete rest[name];
+  const exceptions = { ...forge.castExceptions };
+  if (Object.keys(rest).length === 0) delete exceptions[letter];
+  else exceptions[letter] = rest;
+  return { ...forge, castExceptions: exceptions };
+}
+
 /**
  * Change a cut.
  *
@@ -330,7 +411,7 @@ export function cutReach(forge: Forge, name: CutName): { letters: string[]; held
  * is exactly the case a check on the font's own settings sails past.
  */
 export function anythingCut(forge: Forge): boolean {
-  if (anyCut(cutsOf(forge))) return true;
+  if (anyCut(cutsOf(forge)) || anyCast(castOf(forge))) return true;
   return Object.values(forge.cutExceptions ?? {}).some((held) =>
     Object.values(held).some((patch) => patch?.on),
   );
@@ -548,6 +629,7 @@ export function draw(letter: string, forge: Forge): Drawn | null {
         formOf(forge, letter),
         cutsFor(letter, forge),
         forge.kit,
+        castFor(letter, forge),
       );
     }
 
@@ -572,7 +654,14 @@ export function draw(letter: string, forge: Forge): Drawn | null {
      * arrived from a drawing program has whatever winding that program left,
      * and taking it at its word turns a counter into a piece of ink.
      */
-    const cutting = cutInk(outside.contours, [], scaleOf(forge.style), cutsFor(letter, forge), "nesting");
+    const cutting = shapedInk(
+      outside.contours,
+      [],
+      scaleOf(forge.style),
+      cutsFor(letter, forge),
+      castFor(letter, forge),
+      "nesting",
+    );
     return {
       contours: cutting.contours,
       // The advance it arrived with, whatever the cut did to its edges -- the

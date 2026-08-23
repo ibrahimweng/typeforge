@@ -19,9 +19,14 @@ import {
   putInSlot,
   removePiece,
   cutLikeTheRest,
+  castFor,
+  castLikeTheRest as castLikeRest,
+  castOneWay,
+  castOrNone,
   cutOneWay,
   cutsFor,
   cutsOrNone,
+  editCast,
   editCuts,
   setKern,
   tweak,
@@ -30,6 +35,7 @@ import {
   type Tweak,
 } from "@/assemble/document";
 import { build } from "@/assemble/document";
+import type { Cast, CastName } from "@/font/cast";
 import type { CutName, Cuts } from "@/font/cuts";
 import type { FitMetrics, FitMode } from "@/assemble/fit";
 import type { SpacingSettings } from "@/assemble/spacing";
@@ -263,6 +269,42 @@ class AssembleStore {
   /** Put one drawing back to being cut like the rest of the pile. */
   cutLikeTheRest(character: string): void {
     this.commit(cutLikeTheRest(this.state.assembly, character));
+  }
+
+  /* The same three again for the cast, on the same terms throughout. */
+
+  changeCast(name: CastName, patch: Partial<Cast[CastName]>, phase: Phase = "single"): void {
+    const cast = castOrNone(this.state.assembly);
+    this.commit(
+      editCast(this.state.assembly, { ...cast, [name]: { ...cast[name], ...patch } } as Cast),
+      phase,
+    );
+  }
+
+  changeOneCast(
+    character: string,
+    name: CastName,
+    patch: Partial<Cast[CastName]>,
+    phase: Phase = "single",
+  ): void {
+    const cast = castFor(character, this.state.assembly) ?? castOrNone(this.state.assembly);
+    this.commit(
+      castOneWay(this.state.assembly, character, {
+        ...cast,
+        [name]: { ...cast[name], ...patch },
+      } as Cast),
+      phase,
+    );
+  }
+
+  castLikeTheRest(character: string): void {
+    this.commit(castLikeRest(this.state.assembly, character));
+  }
+
+  /** Which way round the two layers go. A decision about the pile, never one drawing. */
+  changeCastOrder(order: Cast["order"]): void {
+    const cast = castOrNone(this.state.assembly);
+    this.commit(editCast(this.state.assembly, { ...cast, order }));
   }
 
   /**

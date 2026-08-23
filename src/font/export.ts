@@ -20,9 +20,19 @@ import {
   correctDirection,
   insertExtrema,
   type OutlineFormat,
+  type Roles,
 } from "./outline";
 import { removeOverlaps } from "./overlap";
 import { buildGlyfTables, splitGlyf, type CompositeRef, type GlyfBuildInput } from "./glyf";
+import {
+  buildFvar,
+  buildGvar,
+  buildStat,
+  PIECES_PER_CURVE,
+  type Axis,
+  type Instance,
+  type Master,
+} from "./variable";
 import { buildGposTable, buildKernTable, type ResolvedClassKern, type ResolvedPair } from "./kern";
 import { anythingCut, effectiveParams, paramsAreDefault, resolveGlyphContours } from "./transform";
 import { ready as readyToCut } from "./boolean";
@@ -67,8 +77,40 @@ export interface ExportOptions {
    * renderers apply, the overlap drops out as a hole.
    */
   mergeOverlaps?: boolean;
+  /**
+   * How this typeface's contours say which of them are counters.
+   *
+   * `nesting` by default, because a font that arrived from a file promised
+   * nothing. A typeface built by the forge states it by winding and should say
+   * so: worked out by nesting instead, a stem lying across a bowl reads as
+   * enclosed by it, and the counter -- inside bowl and stem both -- reads as
+   * solid and fills in.
+   */
+  roles?: Roles;
   /** Timestamps written into `head`. Passed in so output is reproducible. */
   now?: number;
+  /**
+   * Write a font that varies, and the masters to build the variation from.
+   *
+   * TrueType only: the movement is stored in `gvar`, which describes points in
+   * a `glyf` table and has no counterpart for the PostScript outlines an OTF
+   * carries. Asked for on an OTF it is refused rather than ignored.
+   */
+  variable?: VariableOptions;
+}
+
+export interface VariableOptions {
+  axes: Axis[];
+  instances: Instance[];
+  /**
+   * The font drawn again at each end of each axis, and where each one sits.
+   *
+   * The typeface being exported is the default master and is not in here; these
+   * are the others. Every one of them has to have the same glyphs in the same
+   * order, which is true by construction because they are the same font drawn
+   * with a different setting.
+   */
+  masters: Array<{ at: Record<string, number>; typeface: Typeface }>;
 }
 
 export interface ExportResult {
@@ -95,9 +137,16 @@ export async function exportFont(
   if (anythingCut(typeface)) await readyToCut();
 
   const notes: string[] = [];
+  if (options.variable && options.format === "otf") {
+    notes.push(
+      "A varying font has to be a TTF. The movement is stored in a table that " +
+        "describes points in TrueType outlines, and an OTF does not have them.",
+    );
+  }
   const tolerance = options.curveTolerance ?? 0.5;
   const includeKerning = options.includeKerning ?? true;
   const mergeOverlaps = options.mergeOverlaps ?? true;
+  const roles = options.roles ?? "nesting";
   const now = options.now ?? Date.now();
 
   // A preserve export needs the original tables in the matching outline
@@ -125,8 +174,17 @@ export async function exportFont(
   // opentype.js for CFF encoding, which is fetched only when asked for.
   const bytes =
     options.format === "otf"
-      ? await exportOpenType(typeface, { tolerance, includeKerning, notes, mergeOverlaps })
-      : await exportTrueType(typeface, { tolerance, includeKerning, fidelity, now, notes, mergeOverlaps });
+      ? await exportOpenType(typeface, { tolerance, includeKerning, notes, mergeOverlaps, roles })
+      : await exportTrueType(typeface, {
+          tolerance,
+          includeKerning,
+          fidelity,
+          now,
+          notes,
+          mergeOverlaps,
+          roles,
+          variable: options.variable,
+        });
 
   const base = `${typeface.meta.familyName}-${typeface.meta.styleName}`.replace(/\s+/g, "");
   return {
@@ -150,6 +208,7 @@ async function resolvedGlyphs(
   typeface: Typeface,
   format: OutlineFormat,
   mergeOverlaps: boolean,
+  roles: Roles = "nesting",
 ) {
   const out: Array<{ glyph: Typeface["glyphs"][number]; contours: ReturnType<typeof resolveGlyphContours> }> = [];
 
@@ -159,14 +218,68 @@ async function resolvedGlyphs(
     // Merging first, because it introduces points where contours crossed and
     // those new curves need extremes of their own afterwards. The merge sorts
     // out winding internally, so there is no need to set it beforehand.
+    let merged = false;
     if (mergeOverlaps && contours.length > 1 && contoursIntersect(contours)) {
-      contours = await removeOverlaps(contours);
+      contours = await removeOverlaps(contours, roles);
+      merged = true;
     }
 
     contours = contours.map(insertExtrema);
-    out.push({ glyph, contours: correctDirection(contours, format) });
+    /*
+     * A merged glyph states its roles by winding whoever was asked on the way
+     * in, because that is what a union answers with. One that was not merged
+     * -- because nothing overlapped, or because nothing is being merged at all
+     * -- still says whatever the caller said it says.
+     */
+    out.push({
+      glyph,
+      contours: correctDirection(contours, format, merged ? "winding" : roles),
+    });
   }
   return out;
+}
+
+/**
+ * One master, reduced to the points it would have written.
+ *
+ * Put through the same builder as the default, with the same tolerance and the
+ * same fixed splitting, because a delta is the difference between two point
+ * lists and the two have to have been made the same way. Everything else the
+ * builder produces is thrown away.
+ */
+async function masterOf(
+  at: Record<string, number>,
+  typeface: Typeface,
+  context: { tolerance: number; mergeOverlaps: boolean; roles: Roles },
+  shape: GlyfBuildInput[],
+): Promise<Master> {
+  const resolved = await resolvedGlyphs(typeface, "truetype", context.mergeOverlaps, context.roles);
+  const built = buildGlyfTables(
+    resolved.map((entry, index) => ({
+      contours: entry.contours,
+      // Rebuilt without exception: a master copied through from an original
+      // file would hand back no points, and a point list that is not there is
+      // not the same as one that has not moved.
+      rebuild: true,
+      composite: shape[index]?.composite,
+    })),
+    context.tolerance,
+    PIECES_PER_CURVE,
+    !context.mergeOverlaps,
+  );
+  return {
+    at,
+    glyphs: built.points.map((points, index) => {
+      const bounds = contoursBounds(resolved[index].contours);
+      const drawn = resolved[index].contours.some((contour) => contour.nodes.length > 0);
+      return {
+        points,
+        advanceWidth: resolved[index].glyph.advanceWidth,
+        leftSideBearing: drawn ? Math.round(bounds.xMin) : 0,
+        xMin: bounds.xMin,
+      };
+    }),
+  };
 }
 
 async function exportTrueType(
@@ -178,9 +291,11 @@ async function exportTrueType(
     now: number;
     notes: string[];
     mergeOverlaps: boolean;
+    roles: Roles;
+    variable?: VariableOptions;
   },
 ): Promise<Uint8Array> {
-  const resolved = await resolvedGlyphs(typeface, "truetype", context.mergeOverlaps);
+  const resolved = await resolvedGlyphs(typeface, "truetype", context.mergeOverlaps, context.roles);
   const preserving = context.fidelity === "preserve" && typeface.source !== null;
 
   // In preserve mode an untouched glyph is copied rather than re-encoded, which
@@ -205,7 +320,14 @@ async function exportTrueType(
     composite: compositeRefsFor(entry.glyph, typeface),
   }));
 
-  const built = buildGlyfTables(inputs, context.tolerance);
+  const varying = context.variable;
+  const invented: Array<{ id: number; value: string }> = [];
+  const built = buildGlyfTables(
+    inputs,
+    context.tolerance,
+    varying ? PIECES_PER_CURVE : undefined,
+    !context.mergeOverlaps,
+  );
 
   const metrics = resolved.map((entry) => {
     const bounds = contoursBounds(entry.contours);
@@ -225,6 +347,71 @@ async function exportTrueType(
   tables.set("loca", built.loca);
   tables.set("hmtx", hmtx);
 
+  /*
+   * The sliders, and how every point answers them.
+   *
+   * The masters are the same font drawn again with one setting moved, so the
+   * deltas are a subtraction. What makes it work at all is that the points line
+   * up between them, which is not free -- see `variable.ts` for what had to be
+   * measured and what had to change before it was true.
+   */
+  if (varying && varying.axes.length > 0) {
+    const mine: Master = {
+      at: {},
+      glyphs: built.points.map((points, index) => ({
+        points,
+        advanceWidth: metrics[index].advanceWidth,
+        leftSideBearing: metrics[index].leftSideBearing,
+        xMin: contoursBounds(resolved[index].contours).xMin,
+      })),
+    };
+
+    const others: Master[] = [];
+    for (const master of varying.masters) {
+      others.push(await masterOf(master.at, master.typeface, context, inputs));
+    }
+
+    const { gvar, unvarying } = buildGvar(varying.axes, mine, others);
+    // Two name ids for every axis and instance, taken from 256 upwards, which
+    // is where the format says a font may invent its own.
+    const axisNameIds = varying.axes.map((_, index) => 256 + index);
+    const instanceNameIds = varying.instances.map(
+      (_, index) => 256 + varying.axes.length + index,
+    );
+    for (const [index, axis] of varying.axes.entries()) {
+      invented.push({ id: axisNameIds[index], value: axis.label });
+    }
+    for (const [index, instance] of varying.instances.entries()) {
+      invented.push({ id: instanceNameIds[index], value: instance.label });
+    }
+    tables.set("fvar", buildFvar(varying.axes, varying.instances, axisNameIds, instanceNameIds));
+    tables.set("gvar", gvar);
+    tables.set("STAT", buildStat(varying.axes, axisNameIds));
+
+    if (unvarying.length > 0) {
+      const named = unvarying
+        .slice(0, 8)
+        .map((index) => typeface.glyphs[index]?.name ?? String(index));
+      /*
+       * Said as what happens rather than as what failed, because what happens
+       * is not that the letter stops moving. A letter follows every master it
+       * lines up with and holds its shape over the stretch of the axis it does
+       * not -- so an e whose Thin is drawn with a node the others have not got
+       * follows the axis from the Regular up to the Black and holds the
+       * Regular below it, which is a great deal better than standing still and
+       * is worth being accurate about.
+       */
+      context.notes.push(
+        `${unvarying.length} ${unvarying.length === 1 ? "glyph follows" : "glyphs follow"} ` +
+          `the axis only part of the way, holding shape over the rest of it, because ` +
+          `${unvarying.length === 1 ? "it is" : "they are"} ` +
+          `drawn differently at some weights: ${named.join(", ")}` +
+          (unvarying.length > 8 ? ", and others" : "") +
+          ".",
+      );
+    }
+  }
+
   if (preserving) {
     patchHead(tables, built.bounds, built.indexToLocFormat);
     patchHhea(tables, numberOfHMetrics);
@@ -233,7 +420,7 @@ async function exportTrueType(
     // `post` version 2 lists glyph names against the old glyph order. We keep
     // the glyph order, so it stays valid and is left alone.
   } else {
-    buildBaselineTables(tables, typeface, built, numberOfHMetrics, context.now);
+    buildBaselineTables(tables, typeface, built, numberOfHMetrics, context.now, invented);
   }
 
   applyKerning(tables, typeface, context.includeKerning, context.notes);
@@ -244,14 +431,20 @@ async function exportTrueType(
 
 async function exportOpenType(
   typeface: Typeface,
-  context: { tolerance: number; includeKerning: boolean; notes: string[]; mergeOverlaps: boolean },
+  context: {
+    tolerance: number;
+    includeKerning: boolean;
+    notes: string[];
+    mergeOverlaps: boolean;
+    roles: Roles;
+  },
 ): Promise<Uint8Array> {
   const {
     Font: OpenTypeFont,
     Glyph: OpenTypeGlyph,
     Path: OpenTypePath,
   } = await import("opentype.js");
-  const resolved = await resolvedGlyphs(typeface, "cff", context.mergeOverlaps);
+  const resolved = await resolvedGlyphs(typeface, "cff", context.mergeOverlaps, context.roles);
 
   const glyphs = resolved.map((entry) => {
     const path = new OpenTypePath();
@@ -442,6 +635,8 @@ function buildBaselineTables(
   built: ReturnType<typeof buildGlyfTables>,
   numberOfHMetrics: number,
   now: number,
+  /** Names the font invented for its own axes and instances, if it has any. */
+  invented: Array<{ id: number; value: string }> = [],
 ): void {
   const mappings: Array<{ codepoint: number; glyphId: number }> = [];
   typeface.glyphs.forEach((glyph, index) => {
@@ -497,7 +692,7 @@ function buildBaselineTables(
     }),
   );
   tables.set("cmap", buildCmap(mappings));
-  tables.set("name", buildName(typeface.meta));
+  tables.set("name", buildName(typeface.meta, invented));
   tables.set("post", buildPost(isItalic ? -12 : 0, typeface.unitsPerEm));
   tables.set(
     "OS/2",

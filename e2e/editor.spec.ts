@@ -1470,7 +1470,7 @@ test("cuts every letter in the font, and says what it did", async ({ page }) => 
 
   // The controls only appear once the cut is on, so the panel is six rows
   // until somebody wants more than six rows.
-  await expect(panel.locator('[data-forge-control="cut:slot:width"]')).toBeVisible();
+  await expect(panel.locator('[data-cut-control="slot:width"]')).toBeVisible();
 
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(slots).toHaveAttribute("aria-checked", "false");

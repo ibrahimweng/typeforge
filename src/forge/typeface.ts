@@ -120,6 +120,10 @@ const CODEPOINTS: Record<string, number> = {
  */
 const ALSO: Record<string, number[]> = {
   grave: [0x0060],
+  // Romanian's comma-below T, which is the same drawing as the one Extended-A
+  // names for a comma and draws with one. Two characters, one glyph.
+  Tcommaaccent: [0x021a],
+  tcommaaccent: [0x021b],
 };
 
 /*
@@ -145,6 +149,16 @@ const MARK_CODEPOINTS: Record<string, number> = {
   dotaccent: 0x0307,
   ring: 0x030a,
   caron: 0x030c,
+  /*
+   * The three that Latin Extended-A brought with it. Two have a character of
+   * their own in the spacing-modifier block and are given it, the same way the
+   * Latin-1 marks above are; the comma below has none, so it takes the
+   * combining codepoint and nothing else.
+   */
+  ogonek: 0x02db,
+  hungarumlaut: 0x02dd,
+  commaaccent: 0x0326,
+  commaturnedabove: 0x0312,
   // Dotless forms, which an accented i is built on and which text can use.
   dotlessi: 0x0131,
   dotlessj: 0x0237,
@@ -237,7 +251,21 @@ export async function toTypeface(
     if (!drawn) continue;
     let contours = drawn.contours;
     if (options.merge && contours.length > 1) {
-      contours = correctDirection(await removeOverlaps(correctDirection(contours, "truetype")), "truetype");
+      /*
+       * Believed rather than guessed at, and set afterwards rather than
+       * before. A letter out of the pen already says which of its contours is
+       * a counter, by which way round the sweep drew it -- so the fuse is told
+       * `winding` and reads it. Told to work it out by nesting instead it
+       * filled the counter of the single-storey a, because that counter sits
+       * inside the ring and inside the stem laid across it, and two is even.
+       *
+       * Nothing sets the direction on the way in any more either. Nesting is
+       * exactly as unreliable there, and on overlapping strokes it is worse
+       * than unreliable: with no counter to be inside anything, an x is two
+       * bars crossing and which of them counts as enclosed by the other moves
+       * about with the weight.
+       */
+      contours = correctDirection(await removeOverlaps(contours, "winding"), "truetype");
     }
     glyphs.push({
       name,

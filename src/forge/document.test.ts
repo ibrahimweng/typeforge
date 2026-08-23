@@ -138,7 +138,9 @@ describe("editing a part", () => {
     const after = editPart(before, "shoulder", { spring: 0.8 });
     const changed = moved(before, after);
 
-    const arched = ["h", "m", "n", "r", "u", "U"];
+    // `hbar` is the h with a bar laid across it and is drawn rather than built,
+    // so it is its own letter to `decidedBy` and has to be named here.
+    const arched = ["h", "hbar", "m", "n", "r", "u", "U"];
     for (const letter of arched) {
       expect(changed, `${letter} did not follow the shoulder`).toContain(letter);
     }

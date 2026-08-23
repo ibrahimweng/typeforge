@@ -17,6 +17,7 @@
  * those.
  */
 
+import type { Cast, CastName } from "./cast";
 import type { CutName, Cuts } from "./cut";
 import { LETTERS, recipeOf, recordPartsWhile, type PartName } from "./letters";
 import type { Parts, Style } from "./style";
@@ -744,4 +745,99 @@ export function cutSpecFor(name: CutName): CutSpec | undefined {
 /** A cut's current values as a plain record, for reading a control out of it. */
 export function cutValuesOf(name: CutName, cuts: Cuts): Record<string, number | boolean | string> {
   return cuts[name] as unknown as Record<string, number | boolean | string>;
+}
+
+/**
+ * The cast, described the same way and kept beside the cuts.
+ *
+ * Deliberately the same shape as `CutSpec`, so the panel that draws one draws
+ * the other and neither can come to offer a control the tool does not have.
+ * The only thing here that has no counterpart there is the order, which is not
+ * an operation and is drawn by the panel itself.
+ */
+export interface CastSpec {
+  name: CastName;
+  label: string;
+  hint: string;
+  controls: PartControl[];
+}
+
+export const CAST_SPECS: CastSpec[] = [
+  {
+    name: "extrude",
+    label: "Shadow",
+    hint: "The letter thrown along a line, and everything it passes through filled in. What wood type and signwriting have done for as long as either has existed.",
+    controls: [
+      {
+        key: "distance",
+        label: "How far",
+        hint: "How far the shadow reaches, in stem widths. Held in stems so the same setting means the same thing at every weight.",
+        min: 0,
+        max: 6,
+        step: 0.05,
+      },
+      {
+        key: "angle",
+        label: "Which way",
+        hint: "Degrees anticlockwise from due right, so nought throws it to the right and -45 down and to the right, which is where a light above and behind the letter would put it.",
+        min: -180,
+        max: 180,
+        step: 1,
+      },
+    ],
+  },
+  {
+    name: "outline",
+    label: "Rim",
+    hint: "The letter grown outwards all round. On its own that is a heavier letter; grown after a slot has been cut, the slot narrows and its ends round over, which no weight setting can do.",
+    controls: [
+      {
+        key: "width",
+        label: "Thickness",
+        hint: "How far out the rim reaches, in stem widths. It closes the counters as it opens the outside, so on a light face half a stem will fill the eye of an e.",
+        min: 0,
+        max: 0.8,
+        step: 0.01,
+      },
+    ],
+  },
+  {
+    name: "spur",
+    label: "Points",
+    hint: "Corners drawn out to a point instead of cut off. The chamfer's opposite, found the same way, so the two agree about what a corner is.",
+    controls: [
+      {
+        key: "size",
+        label: "Reach",
+        hint: "How far past the corner the point reaches, in stem widths. Its base is drawn back along both edges, so what is added is a wedge with a width to it rather than a hair on a single point.",
+        min: 0,
+        max: 1.5,
+        step: 0.01,
+      },
+    ],
+  },
+  {
+    name: "weld",
+    label: "Fillets",
+    hint: "Ink piled into the corner wherever two strokes run into each other, which is what a brush does when it changes direction without lifting. The break's opposite, and it finds the same places.",
+    controls: [
+      {
+        key: "size",
+        label: "Size",
+        hint: "How far the fill reaches from the join, in stem widths. Buried in ink on every side that is already ink, so it shows only where there was a notch.",
+        min: 0,
+        max: 1.5,
+        step: 0.01,
+      },
+    ],
+  },
+];
+
+export function castSpecFor(name: CastName): CastSpec | undefined {
+  return CAST_SPECS.find((spec) => spec.name === name);
+}
+
+/** One operation's current values as a plain record, for reading a control out. */
+export function castValuesOf(name: CastName, cast: Cast): Record<string, number | boolean | string> {
+  return cast[name] as unknown as Record<string, number | boolean | string>;
 }

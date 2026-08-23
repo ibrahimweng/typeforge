@@ -20,7 +20,9 @@ import {
   type Recipe,
 } from "./letters";
 import { accentsFor, gapFor, hangsBelow, isCapital, type Parts } from "./accents";
-import { cutInk, reaches, scaleOf, type Cuts } from "./cut";
+import { reachesCast, type Cast } from "./cast";
+import { reaches, scaleOf, type Cuts } from "./cut";
+import { shapedInk } from "./layers";
 import { assemble, hasTiles, type Kit } from "./kit";
 import { alongSpine, spinePath, wavy } from "./shapes";
 import { penReach, reachAlong, sweep } from "./sweep";
@@ -128,8 +130,9 @@ export function drawLetter(
   form?: string,
   cuts?: Cuts,
   kit?: Kit,
+  cast?: Cast,
 ): Drawn | null {
-  const made = makeLetter(name, style, form, cuts, kit);
+  const made = makeLetter(name, style, form, cuts, kit, cast);
   return made
     ? { contours: made.contours, advanceWidth: made.advanceWidth, cut: made.cut }
     : null;
@@ -174,9 +177,13 @@ export function makeLetter(
   form?: string,
   cuts?: Cuts,
   kit?: Kit,
+  // Last rather than beside the cuts it belongs with, because every one of the
+  // eighty-odd places that draw a letter passes these by position and only
+  // three of them pass a cut at all.
+  cast?: Cast,
 ): Made | null {
   const parts = builtFrom(name);
-  if (parts) return marked(parts, style, form, cuts, kit);
+  if (parts) return marked(parts, style, form, cuts, kit, cast);
 
   /*
    * Laid out on a grid, or drawn from a skeleton.
@@ -216,8 +223,8 @@ export function makeLetter(
   // Asked of this letter's own strokes rather than of the settings, so a
   // letter nothing can reach -- a space, which has no ink -- is not put through
   // the machinery to come back as what it already was.
-  const cutting = reaches(cuts, strokes)
-    ? cutInk(inked.flat(), strokes, scaleOf(style), cuts as Cuts)
+  const cutting = reaches(cuts, strokes) || reachesCast(cast, strokes)
+    ? shapedInk(inked.flat(), strokes, scaleOf(style), cuts, cast)
     : null;
   const cut = cutting ? sheared(cutting.contours, lean, pivot) : solid;
 
@@ -281,8 +288,15 @@ export function makeLetter(
  * letter: the skeleton draws, the probe finds the shoulder of an `ñ` under the
  * pointer, and pressing the tilde finds whatever governs the tilde.
  */
-function marked(parts: Parts, style: Style, form?: string, cuts?: Cuts, kit?: Kit): Made | null {
-  const base = makeLetter(parts.base, style, form, cuts, kit);
+function marked(
+  parts: Parts,
+  style: Style,
+  form?: string,
+  cuts?: Cuts,
+  kit?: Kit,
+  cast?: Cast,
+): Made | null {
+  const base = makeLetter(parts.base, style, form, cuts, kit, cast);
   if (!base || base.contours.length === 0) return null;
 
   const em = style.metrics.unitsPerEm;
@@ -1108,9 +1122,19 @@ function wing(
     y: at.y + across.y * u + into.y * v,
   });
 
-  // Started inside the stroke rather than at its edge, so the two overlap and
-  // a union can join them. Never further in than the spine itself.
-  const held = Math.max(0, inner - thickness * SERIF_BITE);
+  /*
+   * Started inside the stroke rather than at its edge, so the two overlap and
+   * a union can join them. Never further in than the spine itself.
+   *
+   * Bitten against whichever is thicker, the wing or the stroke it sits on.
+   * A share of the wing alone is the same thing on a face with no contrast,
+   * where the two are much of a size -- but on a Didone the tail is fifty
+   * units of half-width and the serif across it is fifteen, so a third of the
+   * serif bought five units of overlap where the stroke had fifty to give. Too
+   * thin for the union to find, and the lower wing of the Q's tail came away
+   * and hung under the letter as a loose bar.
+   */
+  const held = Math.max(0, inner - Math.max(thickness, inner) * SERIF_BITE);
 
   const nodes: GlyphNode[] = [
     node(place(held, 0)),

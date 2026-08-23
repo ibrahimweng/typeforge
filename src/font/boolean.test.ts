@@ -66,7 +66,14 @@ describe("subtract", () => {
     const cut = [...subtract([stem], [slot]), ...subtract([serif], [slot])];
     const apart = unite(cut, "winding");
     const together = subtract(unite([stem, serif], "winding"), [slot]);
-    expect(Math.abs(ink(apart))).toBeCloseTo(Math.abs(ink(together)), 3);
+    /*
+     * To a hundredth of a unit of area rather than to a thousandth, because a
+     * union grows every shape it is handed outward by a hair before joining
+     * them -- see `nudgeApart` -- so an area comes back bigger by about its own
+     * perimeter times that hair. The two sides here are fused a different
+     * number of times, so they collect a different number of hairs.
+     */
+    expect(Math.abs(ink(apart))).toBeCloseTo(Math.abs(ink(together)), 1);
   });
 });
 
@@ -133,8 +140,9 @@ describe("unite", () => {
     const foot = rect(40, 2, 20, 8);
     const serif = rect(20, 0, 60, 12);
 
-    expect(Math.abs(ink(unite([serif, foot])))).toBeCloseTo(60 * 12 - 20 * 8, 3);
-    expect(Math.abs(ink(unite([serif, foot], "winding")))).toBeCloseTo(60 * 12, 3);
+    // A hundredth of a unit of area, for the hair the union grows each shape by.
+    expect(Math.abs(ink(unite([serif, foot])))).toBeCloseTo(60 * 12 - 20 * 8, 1);
+    expect(Math.abs(ink(unite([serif, foot], "winding")))).toBeCloseTo(60 * 12, 1);
   });
 
   it("still keeps a real counter as a hole when reading the winding", () => {
@@ -178,7 +186,15 @@ describe("how hard unite works at joining", () => {
       rect(20, 0, 60, 12),
       rect(0, 90, 60, 10),
     ];
-    expect(pieces(unite(serifedE, "winding"))).toBe(2);
+    /*
+     * Both answers, because this E is not merely left unjoined: what comes
+     * back has lost most of the ink that went in, and that is caught whoever
+     * is asking. It used to be two pieces under `enough` and one under
+     * `whole`, and the difference between the two is still what the parameter
+     * is for -- it decides how hard to work at a union that came back whole
+     * but in several solids, which is the ordinary case and not this one.
+     */
+    expect(pieces(unite(serifedE, "winding"))).toBe(1);
     expect(pieces(unite(serifedE, "winding", "whole"))).toBe(1);
   });
 

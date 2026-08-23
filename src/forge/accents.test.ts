@@ -269,3 +269,50 @@ describe("a slanted face", () => {
     expect(leant.mark - leant.foot).toBeGreaterThan(still.mark - still.foot);
   });
 });
+
+/**
+ * What the font can actually set.
+ *
+ * A count of glyphs says nothing -- what somebody wants to know is whether it
+ * sets their language, and the answer to that is a sentence of their language
+ * with every character in it. So each of these is a pangram or near enough,
+ * and the claim is that not one letter of it is missing.
+ *
+ * They are the languages Latin Extended-A is for, and until it was reached
+ * this font set none of them. The list is deliberately not a list of
+ * codepoints: a codepoint that draws a blank box passes a codepoint test.
+ */
+describe("the languages it sets", () => {
+  const sentences: Array<[string, string]> = [
+    ["Polish", "Zażółć gęślą jaźń ŁÓDŹ Władysław"],
+    ["Czech", "Příliš žluťoučký kůň úpěl ďábelské ódy"],
+    ["Slovak", "Kŕdeľ ďatľov učí koňa žrať kôru"],
+    ["Hungarian", "Árvíztűrő tükörfúrógép ŐSZ ÜDVÖZÖLJÜK"],
+    ["Turkish", "Pijamalı hasta yağız şoföre çabucak güvendi İĞÜŞÖÇ"],
+    ["Latvian", "Ģērbies ķepuraini šķērsām nūjā ĀĒĪŪŅĻŖ"],
+    ["Lithuanian", "Įlinkdama fechtuotojo špaga sublykčiojusi"],
+    ["Romanian", "Șoseaua Țăndărei ăîâșț"],
+    ["Croatian", "Gojazni đačić s biciklom drži ĐAKOVO"],
+    ["Maltese", "Ħobż Ħamrun ħabib ĊĠŻ"],
+    ["Welsh", "Ŵy â bŷs Sŵn Ŷd"],
+    ["Esperanto", "Eĥoŝanĝo ĉiuĵaŭde ĈĜĤĴŜŬ"],
+    ["Māori", "Whakatōhea ā ē ī ō ū"],
+  ];
+
+  for (const [language, sentence] of sentences) {
+    it(`sets ${language}`, () => {
+      const missing = [...sentence]
+        .filter((character) => character !== " ")
+        .filter((character) => {
+          const code = character.codePointAt(0)!;
+          const name = code < 0x80 ? character : (accentedNameFor(code) ?? character);
+          if (!canDraw(name)) return true;
+          // Drawn is not the same as drawn with something in it: a name that
+          // resolves to a recipe returning nothing would pass the line above.
+          const drawn = drawLetter(name, SANS);
+          return !drawn || drawn.contours.length === 0;
+        });
+      expect(missing).toEqual([]);
+    });
+  }
+});

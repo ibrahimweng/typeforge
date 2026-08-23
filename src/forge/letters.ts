@@ -1325,6 +1325,25 @@ function opening(
  * to touch is the line its edge lands on. Written as the middle it sat half a
  * bar high and cut the x-height in two.
  */
+/**
+ * The short bar through the stem of a Polish l, leaning.
+ *
+ * Leaning rather than level, because a level one is a crossbar and reads as a
+ * t: the lean is the whole of what makes it a slash. Sized and angled off the
+ * stem so it holds at any weight, and drawn with the same thin pen as every
+ * other bar in the font.
+ */
+function slash(f: Frame, stem: number, height: number): Stroke {
+  const reach = Math.max(f.half * 2.1, f.least);
+  const rise = reach * 0.85;
+  return thin(
+    f,
+    straight(at(stem - reach, height - rise), at(stem + reach, height + rise)),
+    f.plain,
+    f.plain,
+  );
+}
+
 function crossbar(f: Frame, from: number, to: number): Stroke {
   const height = f.hangs(f.x, f.bar);
   return thin(f, straight(at(from, height), at(to, height)), f.end, f.end);
@@ -1795,9 +1814,6 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const half = f.arch * 0.92;
     const left = f.edge;
     const middle = left + half;
-    // How far down the right-hand diagonal has already come by the baseline,
-    // so the tail leaves at the same angle it arrived on.
-    const slope = (half * 2) / f.x;
     // The left diagonal carries a little past where the two cross, so its
     // square end is inside the other stroke rather than standing out of it.
     const past = f.half * 1.1;
@@ -1811,9 +1827,24 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
           f.end,
           BUTT,
         ),
+        /*
+         * One straight run: down from the x-height, through the apex the left
+         * diagonal ends at, and on into the descender at the angle it arrived
+         * on. That is what it always meant to be, and it was not: reckoned
+         * from the wrong slope it reached the baseline four tenths of an arm
+         * to the right of the apex, so the two diagonals of the vee crossed
+         * nowhere near each other.
+         *
+         * A fat enough pen covered the miss and nothing showed. Measured
+         * across the sixteen faces the arms overlapped by four units on
+         * Geometric, five on Marker, six on Serif and seven on Sans -- held
+         * together by luck -- while Fairground missed by thirty-five and drew
+         * a broken vee, and Wavy missed by forty-four and lost its left
+         * diagonal altogether when the letter was fused.
+         */
         ink(
           f,
-          straight(at(middle + half, f.x), at(middle + half + slope * f.desc, f.desc)),
+          straight(at(middle + half, f.x), at(middle + (half * f.desc) / f.x, f.desc)),
           f.end,
           f.end,
         ),
@@ -2306,9 +2337,22 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       f,
       [
         ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end),
-        // The stem stops at the vee's own vertex, where the ink is thickest, so
-        // its square top is buried rather than showing as a step.
-        ink(f, straight(at(middle, 0), point), f.end, BUTT),
+        /*
+         * The stem runs up past the vee's vertex, so its square top is buried
+         * rather than showing as a step.
+         *
+         * Past the vertex, not up to the corner the chain turns on: those are
+         * not the same place. The sweep rounds the join, and on a face that
+         * rounds it hard the ink stops well above the corner -- ninety units
+         * above it on Ribbon, which left the stem floating clear below a vee
+         * that read as a U, and eighteen on Technical.
+         *
+         * Half a pen above the vertex is inside the ink on any face. The two
+         * arms are still overlapping each other there, and go on doing so
+         * until they have risen a pen's half-width times `cap - junction` over
+         * `half`, which on every face here is a good deal more.
+         */
+        ink(f, straight(at(middle, 0), at(middle, junction + f.half * 0.5)), f.end, BUTT),
       ]);
   },
 
@@ -3433,6 +3477,89 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   },
 
   /** A D with a bar laid across its stem. */
+  /*
+   * The letters with a stroke through them, which is one idea six times over.
+   *
+   * A Polish l, a Croatian d, a Maltese h: the letter as it is already drawn,
+   * with a short bar laid across its stem. Nothing about the letter changes, so
+   * a face that squares its stems or leans them squares and leans these too,
+   * and the bar is drawn with the same thin pen the crossbar of an H uses --
+   * it is the same thing, in the same font, and should not be a second decision.
+   *
+   * Unicode gives none of them a decomposition, so unlike the hundred accented
+   * letters these cannot be built out of parts and have to be drawn. They are
+   * here rather than left out because a Polish that cannot set l is not Polish.
+   */
+  Lslash: (style) => {
+    const f = frame(style);
+    const stem = f.edge;
+    const reach = f.capBowl * 1.05;
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+      arm(f, stem, stem + reach, f.sits(0, f.bar)),
+      slash(f, stem, f.cap * 0.5),
+    ]);
+  },
+
+  lslash: (style) => {
+    const f = frame(style);
+    return finish(f, [
+      ink(f, straight(at(f.edge, 0), at(f.edge, f.asc)), f.end, f.end),
+      slash(f, f.edge, f.asc * 0.55),
+    ]);
+  },
+
+  /*
+   * The same drawing as the Eth, which is what it is: two characters that
+   * Unicode keeps apart because they are different letters in different
+   * languages, and every font draws with one shape.
+   */
+  Dcroat: (style) => LETTERS.Eth(style),
+
+  dcroat: (style) => {
+    const f = frame(style);
+    const centre = at(f.edge + f.bowl, f.x / 2);
+    const stem = centre.x + f.bowl;
+    const bar = f.x + (f.asc - f.x) * 0.55;
+    return finish(f, [
+      ink(f, ring(f, centre, f.bowl, f.bowlH)),
+      ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
+      thin(f, straight(at(stem - f.half * 2.2, bar), at(stem + f.half * 2.2, bar)), f.plain, f.plain),
+    ]);
+  },
+
+  Hbar: (style) => {
+    const f = frame(style);
+    const left = f.edge;
+    const right = left + f.style.metrics.counterWidth + f.style.pen.weight;
+    const bar = f.cap * f.style.parts.crossbar.height;
+    // Across both stems and out past the left of them, which is what tells an
+    // H-bar from an H at a glance.
+    const high = f.cap - (f.cap - bar) * 0.35;
+    return finish(f, [
+      ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
+      ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
+      thin(f, straight(at(left, bar), at(right, bar)), BUTT, BUTT),
+      thin(
+        f,
+        straight(at(left - f.half * 2, high), at(right + f.half * 2, high)),
+        f.plain,
+        f.plain,
+      ),
+    ]);
+  },
+
+  hbar: (style) => {
+    const f = frame(style);
+    const stem = f.edge;
+    const bar = f.x + (f.asc - f.x) * 0.55;
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
+      arch(f, stem, f.x),
+      thin(f, straight(at(stem - f.half * 2.2, bar), at(stem + f.half * 2.2, bar)), f.plain, f.plain),
+    ]);
+  },
+
   Eth: (style) => {
     const f = frame(style);
     const stem = f.edge;
@@ -3698,39 +3825,147 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   },
 
   /*
+   * Two acutes side by side, which is what a double acute is.
+   *
+   * Hungarian's own accent, and Unicode calls it by that name. Drawn as two
+   * of the acute already here rather than as its own shape, at the same slope,
+   * so a face that gives its accents a flatter angle gives this one the same
+   * flatter angle. Narrower than one acute each, or the pair reaches half again
+   * as wide as every other mark in the font and an o with one on stops looking
+   * like the o beside it.
+   */
+  hungarumlaut: (style) => {
+    const f = markFrame(style);
+    const m = markBox(f);
+    const wide = m.w * 0.44;
+    const apart = m.w * 0.62;
+    return finish(
+      f,
+      [-1, 1].map((side) =>
+        ink(
+          f,
+          straight(
+            at(m.cx + side * apart - wide, m.foot),
+            at(m.cx + side * apart + wide, m.top),
+          ),
+          shortEnd(f),
+          shortEnd(f),
+        ),
+      ),
+    );
+  },
+
+  /*
+   * An ogonek: the little tail under a Polish a.
+   *
+   * The cedilla pointed the other way, and that is not a shortcut -- it is
+   * what the two are. One hooks away from the letter to the left and the other
+   * to the right, and everything else about them is the same decision: how far
+   * below the foot they hang, how tight the turn is, how the end is cut. Built
+   * from the same run so a face that squares its cedilla squares this too.
+   */
+  ogonek: (style) => hook(style, 1),
+
+  /*
+   * A comma below, which is not a cedilla however often it is set as one.
+   *
+   * Latvian and Romanian want a comma under the letter, and Unicode gives
+   * those letters the cedilla in their decomposition anyway -- which is a
+   * fact about the encoding rather than about the shape, and is why the glyphs
+   * are named `commaaccent` and not `cedilla`. Set with a cedilla they are
+   * wrong in the way that a reader of the language notices and nobody else
+   * does.
+   *
+   * The comma already drawn, turned upside down and hung under the letter,
+   * because that is what a comma below is.
+   */
+  commaaccent: (style) => {
+    const f = markFrame(style);
+    const m = markBox(f);
+    /*
+     * Hung as deep as the cedilla and no deeper. Sized against the x-height
+     * and the pen, as the cedilla is, rather than against the descender, which
+     * a face may set to almost nothing -- and reaching a fixed number of its
+     * own widths below the line put a Sans gcommaaccent eighty units under the
+     * descender, which is a letter that hangs out of its own line.
+     */
+    const drop = Math.max(f.x * 0.15, f.least) * 2;
+    const radius = Math.max(f.half * 0.8, f.least * 0.5);
+    const top = at(m.cx + radius * 0.4, -radius * 0.2);
+    return finish(f, [
+      {
+        spine: straight(top, at(top.x - radius * 0.5, -drop)),
+        pen: { ...f.style.pen, contrast: 0, weight: radius * 1.7 },
+        start: { kind: "round" },
+        end: { kind: "round" },
+      },
+    ]);
+  },
+
+  /*
+   * The comma the other way up, sitting over the letter.
+   *
+   * For the g and nothing else. A comma below goes below, except on a letter
+   * that is already using the room below -- and the only one of those that
+   * takes the mark is the g, whose descender reaches the bottom of the line
+   * before the mark has started. Every font that has a ģ puts the comma over
+   * it instead, turned, and this is that.
+   */
+  commaturnedabove: (style) => {
+    const f = markFrame(style);
+    const m = markBox(f);
+    const radius = Math.max(f.half * 0.8, f.least * 0.5);
+    const foot = at(m.cx - radius * 0.4, m.foot + radius * 0.2);
+    return finish(f, [
+      {
+        spine: straight(foot, at(foot.x + radius * 0.5, m.foot + (m.top - m.foot) * 0.9)),
+        pen: { ...f.style.pen, contrast: 0, weight: radius * 1.7 },
+        start: { kind: "round" },
+        end: { kind: "round" },
+      },
+    ]);
+  },
+
+  /*
    * A cedilla, which hangs under the letter rather than sitting over it.
    *
    * Drawn below the baseline for the same reason the others are drawn above the
    * x-height: it is put where it belongs afterwards, by lining its head up with
    * the foot of the letter, so what matters here is only its shape.
    */
-  cedilla: (style) => {
-    const f = markFrame(style);
-    const m = markBox(f);
-    /*
-     * Down off the letter, then curling away.
-     *
-     * Sized against the x-height and the pen rather than against the descender,
-     * which is a number a face is free to set to almost nothing -- and when one
-     * did, the hook was asked to turn through a radius larger than the run it
-     * was turning in and folded through itself. Both pieces are a whole radius
-     * long and the radius is never below what the pen can turn through, so
-     * there is no setting at which this can close up.
-     */
-    const radius = Math.max(f.x * 0.15, f.least);
-    return finish(f, [
-      ink(
-        f,
-        chain(
-          straight(at(m.cx, 0), at(m.cx, -radius)),
-          turn(at(m.cx - radius, -radius), radius, 0, -95),
-        ),
-        BUTT,
-        shortEnd(f),
-      ),
-    ]);
-  },
+  cedilla: (style) => hook(style, -1),
 };
+
+/**
+ * Down off the letter, then curling away to one side.
+ *
+ * The cedilla and the ogonek, which are the same run hooking opposite ways.
+ * `side` is -1 for the cedilla and 1 for the ogonek.
+ *
+ * Sized against the x-height and the pen rather than against the descender,
+ * which is a number a face is free to set to almost nothing -- and when one
+ * did, the hook was asked to turn through a radius larger than the run it was
+ * turning in and folded through itself. Both pieces are a whole radius long and
+ * the radius is never below what the pen can turn through, so there is no
+ * setting at which this can close up.
+ */
+function hook(style: Style, side: number): Recipe {
+  const f = markFrame(style);
+  const m = markBox(f);
+  const radius = Math.max(f.x * 0.15, f.least);
+  const from = side < 0 ? 0 : 180;
+  return finish(f, [
+    ink(
+      f,
+      chain(
+        straight(at(m.cx, 0), at(m.cx, -radius)),
+        turn(at(m.cx + side * radius, -radius), radius, from, from + side * 95),
+      ),
+      BUTT,
+      shortEnd(f),
+    ),
+  ]);
+}
 
 /**
  * How wide a figure is.

@@ -31,6 +31,7 @@ import {
   type CutName,
   type Cuts,
 } from "@/font/cuts";
+import { noCast, NO_CAST, sameCast, type Cast, type CastName } from "@/font/cast";
 import {
   DEFAULT_PARAMS,
   type Anchor,
@@ -692,6 +693,92 @@ class Store {
       },
     });
     this.touch();
+  }
+
+  /* The same set again for the cast, on the same terms throughout. */
+
+  changeCast(name: CastName, patch: Partial<Cast[CastName]>): void {
+    const typeface = this.state.typeface;
+    if (!typeface) return;
+    const cast = typeface.cast ?? noCast();
+    typeface.cast = { ...cast, [name]: { ...cast[name], ...patch } } as Cast;
+    this.touch();
+  }
+
+  commitCast(label: string, before: Cast | undefined): void {
+    const typeface = this.state.typeface;
+    if (!typeface) return;
+    const after = typeface.cast;
+    this.push({
+      label,
+      undo: () => {
+        typeface.cast = before;
+      },
+      redo: () => {
+        typeface.cast = after;
+      },
+    });
+    this.touch();
+  }
+
+  changeGlyphCast(name: string, operation: CastName, patch: Partial<Cast[CastName]>): void {
+    const typeface = this.state.typeface;
+    if (!typeface) return;
+    const index = typeface.glyphIndex.get(name);
+    if (index === undefined) return;
+    const glyph = typeface.glyphs[index];
+    const cast = glyph.cast ?? typeface.cast ?? noCast();
+    glyph.cast = { ...cast, [operation]: { ...cast[operation], ...patch } } as Cast;
+    glyph.dirty = true;
+    this.touch();
+  }
+
+  castLikeTheRest(name: string): void {
+    const typeface = this.state.typeface;
+    if (!typeface) return;
+    const index = typeface.glyphIndex.get(name);
+    if (index === undefined) return;
+    const glyph = typeface.glyphs[index];
+    if (!glyph.cast) return;
+    const before = glyph.cast;
+    glyph.cast = undefined;
+    glyph.dirty = true;
+    this.push({
+      label: `Cast ${name} like the rest`,
+      undo: () => {
+        typeface.glyphs[index].cast = before;
+      },
+      redo: () => {
+        typeface.glyphs[index].cast = undefined;
+      },
+    });
+    this.touch();
+  }
+
+  castFor(name: string): Cast {
+    const typeface = this.state.typeface;
+    if (!typeface) return noCast();
+    const index = typeface.glyphIndex.get(name);
+    const own = index === undefined ? undefined : typeface.glyphs[index].cast;
+    return own ?? typeface.cast ?? noCast();
+  }
+
+  castHeldBy(name: string, operation: CastName): boolean {
+    const typeface = this.state.typeface;
+    if (!typeface) return false;
+    const index = typeface.glyphIndex.get(name);
+    const own = index === undefined ? undefined : typeface.glyphs[index].cast;
+    if (!own) return false;
+    return !sameCast(own[operation], (typeface.cast ?? NO_CAST)[operation]);
+  }
+
+  /** Which way round the two layers go. A decision about the font, never a letter. */
+  changeCastOrder(order: Cast["order"]): void {
+    const typeface = this.state.typeface;
+    if (!typeface) return;
+    const before = typeface.cast;
+    typeface.cast = { ...(typeface.cast ?? noCast()), order };
+    this.commitCast("Which shaping goes first", before);
   }
 
   /** How a letter is cut, whether that is its own way or the font's. */

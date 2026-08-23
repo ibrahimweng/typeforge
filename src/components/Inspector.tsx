@@ -18,6 +18,7 @@ import { CoachMark } from "@/components/CoachMark";
 import { ControlLetters } from "@/components/ControlLetters";
 import { segment } from "@/components/controls";
 import { PARAMS } from "@/components/param-specs";
+import { noCast, type Cast, type CastName } from "@/font/cast";
 import { CutPanel } from "@/components/CutPanel";
 import { noCuts, type CutName, type Cuts } from "@/font/cuts";
 import { DEFAULT_PARAMS, type GlyphParams } from "@/font/types";
@@ -227,23 +228,101 @@ function Cutting({
     }
   };
 
+  const cast: Cast = one ? store.castFor(glyphName) : typeface.cast ?? noCast();
+  const castHeld = one ? (name: CastName) => store.castHeldBy(glyphName, name) : null;
+  const changeCast = (name: CastName, patch: Record<string, unknown>): void => {
+    if (one) store.changeGlyphCast(glyphName, name, patch as never);
+    else {
+      const before = typeface.cast;
+      store.changeCast(name, patch as never);
+      store.commitCast(`Cast ${name}`, before);
+    }
+  };
+
   return (
-    <CutPanel
-      tag="edit"
-      cuts={cuts}
-      onChange={change}
-      unitsPerEm={typeface.unitsPerEm}
-      scopeNote={
-        one
-          ? `Cutting ${glyphName} alone. The rest of the font keeps its own.`
-          : "Cutting the whole font."
-      }
-      reach={
-        "Nothing here: this one is made out of the skeleton a letter was drawn " +
-        "from, and a letter out of a font file has none."
-      }
-      heldNote={(name) => (held?.(name) ? "own" : null)}
-      onRelease={() => glyphName && store.cutLikeTheRest(glyphName)}
-    />
+    <>
+      <CutPanel
+        tag="edit"
+        cuts={cuts}
+        onChange={change}
+        unitsPerEm={typeface.unitsPerEm}
+        scopeNote={
+          one
+            ? `Cutting ${glyphName} alone. The rest of the font keeps its own.`
+            : "Cutting the whole font."
+        }
+        reach={
+          "Nothing here: this one is made out of the skeleton a letter was drawn " +
+          "from, and a letter out of a font file has none."
+        }
+        heldNote={(name) => (held?.(name) ? "own" : null)}
+        onRelease={() => glyphName && store.cutLikeTheRest(glyphName)}
+      />
+      <CutPanel
+        layer="cast"
+        tag="edit-cast"
+        cuts={cast}
+        onChange={changeCast}
+        unitsPerEm={typeface.unitsPerEm}
+        scopeNote={
+          one
+            ? `Casting ${glyphName} alone. The rest of the font keeps its own.`
+            : "Casting the whole font."
+        }
+        reach={
+          "Nothing here: this one is made out of the skeleton a letter was drawn " +
+          "from, and a letter out of a font file has none."
+        }
+        heldNote={(name) => (castHeld?.(name) ? "own" : null)}
+        onRelease={() => glyphName && store.castLikeTheRest(glyphName)}
+        footer={<CastOrder order={cast.order} onChange={(next) => store.changeCastOrder(next)} />}
+      />
+    </>
+  );
+}
+
+/**
+ * Which of the two shaping layers goes first.
+ *
+ * Not an operation -- no switch, draws nothing on its own -- so it sits under
+ * the rows rather than among them, and it is never a letter's own.
+ */
+export function CastOrder({
+  order,
+  onChange,
+}: {
+  order: Cast["order"];
+  onChange: (order: Cast["order"]) => void;
+}): React.JSX.Element {
+  return (
+    <div className="border-t border-border pt-2" data-cast-order-picker>
+      <div className="pb-1 text-2xs font-medium text-foreground">Which goes first</div>
+      <div className="flex gap-0.5 rounded-md bg-card/60 p-0.5" role="group" aria-label="Which goes first">
+        <button
+          type="button"
+          aria-pressed={order === "after"}
+          data-cast-order="after"
+          onClick={() => onChange("after")}
+          className={segment(order === "after", "flex-1")}
+        >
+          Cut, then cast
+        </button>
+        <button
+          type="button"
+          aria-pressed={order === "before"}
+          data-cast-order="before"
+          onClick={() => onChange("before")}
+          className={segment(order === "before", "flex-1")}
+        >
+          Cast, then cut
+        </button>
+      </div>
+      <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">
+        Cut first and the shadow is thrown by the letter as it now is, so a slot
+        through the face shows as a slot through the shadow. Cast first and the
+        two are one block for the cut to slice, which can put a band across the
+        shadow where the face has none.
+      </p>
+    </div>
   );
 }

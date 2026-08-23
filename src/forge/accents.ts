@@ -90,16 +90,31 @@ export function accentsFor(drawable: ReadonlySet<string>): Map<string, Parts> {
   if (kept) return kept;
 
   const recipes = new Map<string, Parts>();
-  // Latin-1, which is the set a font needs to leave English behind. Everything
-  // past it decomposes the same way and would be built the same way; what
-  // stops it is having the marks drawn, not anything here.
-  for (let code = 0xc0; code <= 0xff; code++) {
+  /*
+   * Latin-1 and Latin Extended-A: English, then the rest of Europe.
+   *
+   * Everything in both decomposes the same way and is built the same way. What
+   * stops a character being built is not having the base drawn or not having
+   * the mark drawn, and anything that runs out is simply skipped -- so a mark
+   * drawn tomorrow adds every letter that uses it without a line being changed
+   * here.
+   */
+  const wanted = [
+    ...Array.from({ length: 0x17f - 0xc0 + 1 }, (_, index) => 0xc0 + index),
+    0x0218,
+    0x0219,
+    0x021a,
+    0x021b,
+  ];
+  for (const code of wanted) {
     const decomposed = decomposeCodepoint(code);
     if (!decomposed) continue;
 
     const found = nameForCodepoint(decomposed.base, drawable);
     if (!found) continue;
-    const marks = decomposed.marks.map((mark) => nameForCodepoint(mark, drawable));
+    const marks = decomposed.marks
+      .map((mark) => nameForCodepoint(mark, drawable))
+      .map((mark, index) => below(code, decomposed.marks[index], mark, drawable));
     if (marks.some((mark) => mark === null)) continue;
 
     /*
@@ -124,6 +139,36 @@ export function accentsFor(drawable: ReadonlySet<string>): Map<string, Parts> {
   return recipes;
 }
 
+/**
+ * A comma under the letter where the name says there is one.
+ *
+ * Unicode decomposes the Latvian and Romanian letters with the cedilla, which
+ * is a fact about the encoding rather than about the shape: the glyphs are
+ * named `commaaccent` because a comma is what belongs there, and set with a
+ * cedilla they are wrong in the way a reader of the language notices at once.
+ *
+ * Asked of the name rather than of a list of letters, so it is the same
+ * decision the naming already made.
+ */
+function below(
+  code: number,
+  mark: number,
+  found: string | null,
+  drawable: ReadonlySet<string>,
+): string | null {
+  if (mark !== 0x0327 || found === null) return found;
+  const name = accentedNameFor(code);
+  if (!name?.toLowerCase().includes("commaaccent")) return found;
+  /*
+   * Over the g rather than under it, turned, which is what every font with a
+   * ģ does. The room below a g is where its descender already is, so a mark
+   * hung from the foot of one starts at the bottom of the line and goes on
+   * from there.
+   */
+  const wanted = name === "gcommaaccent" ? "commaturnedabove" : "commaaccent";
+  return drawable.has(wanted) ? wanted : null;
+}
+
 /*
  * What the font world calls each of them.
  *
@@ -143,13 +188,79 @@ oslash ugrave uacute ucircumflex udieresis yacute thorn ydieresis`
   .split(/\s+/)
   .filter(Boolean);
 
+/*
+ * And Latin Extended-A, which is where the rest of Europe is.
+ *
+ * Latin-1 sets the languages of the western edge and stops: no Polish, no
+ * Czech, no Hungarian, no Turkish, no Latvian, no Lithuanian, no Croatian, no
+ * Romanian, no Welsh, no Maltese. Ninety-six of these hundred and twenty-eight
+ * are the letters already drawn under the marks already drawn, so what was
+ * keeping them out was the number this list used to stop at.
+ *
+ * Written out in Unicode's order, one name per character, so the index into it
+ * is the codepoint. Nineteen of them have no decomposition and are not built
+ * here -- the crossed d and h, the Polish l, the ligatures, the eng -- but they
+ * are named anyway, because the name is the same fact whoever draws it.
+ */
+const LATIN_A_NAMES = `Amacron amacron Abreve abreve Aogonek aogonek
+Cacute cacute Ccircumflex ccircumflex Cdotaccent cdotaccent Ccaron ccaron
+Dcaron dcaron Dcroat dcroat
+Emacron emacron Ebreve ebreve Edotaccent edotaccent Eogonek eogonek Ecaron ecaron
+Gcircumflex gcircumflex Gbreve gbreve Gdotaccent gdotaccent Gcommaaccent gcommaaccent
+Hcircumflex hcircumflex Hbar hbar
+Itilde itilde Imacron imacron Ibreve ibreve Iogonek iogonek Idotaccent dotlessi
+IJ ij Jcircumflex jcircumflex
+Kcommaaccent kcommaaccent kgreenlandic
+Lacute lacute Lcommaaccent lcommaaccent Lcaron lcaron Ldot ldot Lslash lslash
+Nacute nacute Ncommaaccent ncommaaccent Ncaron ncaron napostrophe Eng eng
+Omacron omacron Obreve obreve Ohungarumlaut ohungarumlaut OE oe
+Racute racute Rcommaaccent rcommaaccent Rcaron rcaron
+Sacute sacute Scircumflex scircumflex Scedilla scedilla Scaron scaron
+Tcommaaccent tcommaaccent Tcaron tcaron Tbar tbar
+Utilde utilde Umacron umacron Ubreve ubreve Uring uring Uhungarumlaut uhungarumlaut
+Uogonek uogonek
+Wcircumflex wcircumflex Ycircumflex ycircumflex Ydieresis
+Zacute zacute Zdotaccent zdotaccent Zcaron zcaron longs`
+  .split(/\s+/)
+  .filter(Boolean);
+
+/*
+ * And four out of Latin Extended-B, for Romanian.
+ *
+ * Romanian's s and t take a comma below, and Unicode gives them characters of
+ * their own out here because the ones back in Extended-A take a cedilla and
+ * are Turkish. The two pairs are genuinely different letters in different
+ * languages, and a font that has only the cedilla pair sets Romanian the way
+ * everybody's did for twenty years and nobody in Romania liked.
+ *
+ * The T is the same drawing either way -- Extended-A's is named for the comma
+ * and drawn with one -- so it takes the second codepoint rather than a second
+ * glyph. The S is not: the cedilla one is Turkish and stays as it is.
+ */
+const EXTENDED_B_NAMES: Record<number, string> = {
+  0x0218: "Scommaaccent",
+  0x0219: "scommaaccent",
+  0x021a: "Tcommaaccent",
+  0x021b: "tcommaaccent",
+};
+
 export function accentedNameFor(codepoint: number): string | null {
-  if (codepoint < 0xc0 || codepoint > 0xff) return null;
-  return LATIN1_NAMES[codepoint - 0xc0] ?? null;
+  if (codepoint >= 0xc0 && codepoint <= 0xff) return LATIN1_NAMES[codepoint - 0xc0] ?? null;
+  if (codepoint >= 0x100 && codepoint <= 0x17f) return LATIN_A_NAMES[codepoint - 0x100] ?? null;
+  return EXTENDED_B_NAMES[codepoint] ?? null;
 }
 
 /** The codepoint an accented letter is drawn for. */
-const BY_NAME = new Map(LATIN1_NAMES.map((name, index) => [name, 0xc0 + index]));
+const BY_NAME = new Map<string, number>([
+  // Extended-B first, so the two names that appear in both keep the codepoint
+  // Extended-A gave them: a T named for a comma is the Extended-A character
+  // and carries the Extended-B one as a second, which is what `ALSO` says.
+  ...Object.entries(EXTENDED_B_NAMES).map(
+    ([code, name]) => [name, Number(code)] as [string, number],
+  ),
+  ...LATIN1_NAMES.map((name, index) => [name, 0xc0 + index] as [string, number]),
+  ...LATIN_A_NAMES.map((name, index) => [name, 0x100 + index] as [string, number]),
+]);
 
 export function codepointOfAccented(name: string): number | null {
   return BY_NAME.get(name) ?? null;

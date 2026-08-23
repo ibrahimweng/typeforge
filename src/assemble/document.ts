@@ -19,10 +19,11 @@
  * matter of keeping the previous value.
  */
 
+import { anyCast, noCast, NO_CAST, sameCast, type Cast, type CastName } from "@/font/cast";
 import { anyCut, noCuts, NO_CUTS, sameCut, type CutName, type Cuts } from "@/font/cuts";
 import { contoursBounds } from "@/font/geometry";
 import { measuredStem } from "@/font/stem";
-import { cutInk } from "@/forge/cut";
+import { shapedInk } from "@/forge/layers";
 import { readSvg, type SvgBox } from "@/font/svg";
 import type { Contour, KernPair } from "@/font/types";
 import { detectFit, fitted, placements, type FitMetrics, type FitMode, type Placement } from "./fit";
@@ -85,6 +86,10 @@ export interface Assembly {
    * letter's own is not a description anybody wrote.
    */
   cutExceptions?: Record<string, Cuts>;
+  /** What is put on the whole pile, on the same terms as the cuts. */
+  cast?: Cast;
+  /** Drawings cast their own way rather than the pile's, by character. */
+  castExceptions?: Record<string, Cast>;
 }
 
 export const DEFAULT_METRICS: FitMetrics = {
@@ -152,6 +157,45 @@ export function cutHeldBy(assembly: Assembly, character: string, name: CutName):
 /** A pile with nothing taken out of it, for a panel to start from. */
 export function cutsOrNone(assembly: Assembly): Cuts {
   return assembly.cuts ?? noCuts();
+}
+
+/** And the same set again for the cast, on the same terms throughout. */
+export function castFor(character: string, assembly: Assembly): Cast | undefined {
+  return assembly.castExceptions?.[character] ?? assembly.cast;
+}
+
+export function anythingCast(assembly: Assembly): boolean {
+  if (anyCast(assembly.cast)) return true;
+  return Object.values(assembly.castExceptions ?? {}).some((cast) => anyCast(cast));
+}
+
+export function editCast(assembly: Assembly, cast: Cast | undefined): Assembly {
+  return { ...assembly, cast };
+}
+
+export function castOneWay(assembly: Assembly, character: string, cast: Cast): Assembly {
+  return { ...assembly, castExceptions: { ...assembly.castExceptions, [character]: cast } };
+}
+
+export function castLikeTheRest(assembly: Assembly, character: string): Assembly {
+  if (!assembly.castExceptions?.[character]) return assembly;
+  const rest = { ...assembly.castExceptions };
+  delete rest[character];
+  return { ...assembly, castExceptions: rest };
+}
+
+export function isCastException(assembly: Assembly, character: string): boolean {
+  return assembly.castExceptions?.[character] !== undefined;
+}
+
+export function castHeldBy(assembly: Assembly, character: string, name: CastName): boolean {
+  const own = assembly.castExceptions?.[character];
+  if (!own) return false;
+  return !sameCast(own[name], (assembly.cast ?? NO_CAST)[name]);
+}
+
+export function castOrNone(assembly: Assembly): Cast {
+  return assembly.cast ?? noCast();
 }
 
 // ---------------------------------------------------------------------------
@@ -492,8 +536,14 @@ export function build(assembly: Assembly): Built {
       // else's program and nothing has promised which way a counter is wound.
       contours: shifted(
         scale
-          ? cutInk(contours, [], scale, cutsFor(piece.character, assembly) ?? noCuts(), "nesting")
-              .contours
+          ? shapedInk(
+              contours,
+              [],
+              scale,
+              cutsFor(piece.character, assembly),
+              castFor(piece.character, assembly),
+              "nesting",
+            ).contours
           : contours,
         bearings.left,
       ),
