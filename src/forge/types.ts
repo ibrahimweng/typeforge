@@ -59,6 +59,19 @@ export interface SpineArc {
   endAngle: number;
   /** Anticlockwise from start to end when true. */
   sweepPositive: boolean;
+  /**
+   * Cut into this many pieces rather than as few as the sweep needs.
+   *
+   * An arc becomes quarter turns at most, so how many nodes it comes to is
+   * `ceil(sweep / 90 degrees)` -- right for a turn the letter decides on, and
+   * wrong for one the pen decides on. A tail that hooks only where there is
+   * room to hook is the second kind: it turns a hundred and five degrees at the
+   * Regular and not at all at the Black, which is three nodes against two, and
+   * two weights drawn with different nodes cannot be joined into one variable
+   * font. Pinning it says the turn is always drawn in the same pieces, and a
+   * turn of nothing is drawn in those same pieces stood on one spot.
+   */
+  pieces?: number;
 }
 
 export type SpineSegment = SpineLine | SpineArc;

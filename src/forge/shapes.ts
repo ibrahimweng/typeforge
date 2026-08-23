@@ -930,6 +930,28 @@ export function roundCorners(spine: Spine, radius: number, penHalf: number): Spi
     });
   }
 
+  /*
+   * A run shortened to nothing by its corners is dropped, and that is where the
+   * weight axis is still losing letters on a face with round corners.
+   *
+   * Whether a run survives is a question about the pen -- the corners either
+   * side of it eat back by a radius held at or above half the pen -- so the
+   * same letter comes off with one piece more at the Thin than at the Black,
+   * and two weights drawn with different points cannot be joined into one
+   * variable font. Keeping every run instead, so the count is the same at both,
+   * was tried and measured: the Ribbon went from 167 letters left standing to
+   * 88 and the Technical from 95 to 77, which is most of the way.
+   *
+   * It is not here because of what it does to ten of them. A run of no length
+   * offsets to a shape of no area, and fusing the strokes afterwards turns that
+   * into a contour of its own: two four-by-four slivers on the Ribbon `w` at
+   * the Black, which nobody would see, and on the `six` a hole a hundred and
+   * ninety units across in the middle of the letter, which everybody would.
+   * The point of following the axis is that the letters look right at every
+   * weight, so a fix that buys the axis with a hole in a `six` is not a fix.
+   * Whoever picks this up: the win is real and the thing in the way is the
+   * fusing, not the sweep.
+   */
   runs.forEach((segment, index) => {
     out.push(segment);
     const arc = inserts.get(index);
