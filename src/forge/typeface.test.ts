@@ -194,4 +194,34 @@ describe("the weight axis, and the letters that cannot follow it", () => {
     // And the note the export shows says so rather than saying nothing.
     expect(delivered.notes.join(" ")).toContain("follow the axis only part of the way");
   }, 300_000);
+
+  /*
+   * And a ceiling for the faces that round their corners, which is where this
+   * goes wrong worst.
+   *
+   * The Sans is named letter by letter because it is short enough to read. On
+   * a face with a corner radius it is not: a rounded corner eats back into the
+   * runs either side of it by a radius the pen sets, so how many pieces a run
+   * comes off the pen in is a question about the weight, and the Ribbon left
+   * 166 letters standing against the Sans's 11. Held to a number rather than a
+   * list because the list is eighty names long and nobody would read it, and
+   * because what matters is the direction: a name coming off is progress, and
+   * this is here so that a name going back on is noticed.
+   *
+   * Measured at 28 and 30. A little over each, the same way the cast layer's
+   * point budget is set, and nothing like room for it to double.
+   */
+  it("keeps the faces that round their corners on the axis too", async () => {
+    for (const [name, most] of [
+      ["Ribbon", 33],
+      ["Technical", 35],
+    ] as const) {
+      const base = BASES.find((one) => one.name === name)!;
+      const forge = { ...startFrom(base), family: { drawn: 400, also: [100, 700, 900] } };
+      const delivered = await deliver(forge, { familyName: name, format: "ttf", variable: true });
+      expect(delivered.held.length, `${name} leaves ${delivered.held.length} standing`).toBeLessThan(
+        most,
+      );
+    }
+  }, 600_000);
 });

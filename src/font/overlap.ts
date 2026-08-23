@@ -12,7 +12,7 @@
  * contours, wait for the library, get contours back.
  */
 
-import { ready, unite, type Roles } from "./boolean";
+import { ready, settled, unite, type Roles } from "./boolean";
 import type { Contour } from "./types";
 
 /**
@@ -44,5 +44,9 @@ export async function removeOverlaps(
 ): Promise<Contour[]> {
   if (contours.filter((contour) => contour.nodes.length >= 2).length < 2) return contours;
   await ready();
-  return unite(contours, roles);
+  // Settled first: the drawings carry points written twice on purpose, so that
+  // two weights can be joined into one variable font, and a boolean library
+  // handed one of those gives a different answer to the same shape. See
+  // `settled`.
+  return unite(settled(contours), roles);
 }
