@@ -20,7 +20,9 @@ import {
   type Recipe,
 } from "./letters";
 import { accentsFor, gapFor, hangsBelow, isCapital, type Parts } from "./accents";
-import { cutInk, reaches, scaleOf, type Cuts } from "./cut";
+import { reachesCast, type Cast } from "./cast";
+import { reaches, scaleOf, type Cuts } from "./cut";
+import { shapedInk } from "./layers";
 import { assemble, hasTiles, type Kit } from "./kit";
 import { alongSpine, spinePath, wavy } from "./shapes";
 import { penReach, reachAlong, sweep } from "./sweep";
@@ -128,8 +130,9 @@ export function drawLetter(
   form?: string,
   cuts?: Cuts,
   kit?: Kit,
+  cast?: Cast,
 ): Drawn | null {
-  const made = makeLetter(name, style, form, cuts, kit);
+  const made = makeLetter(name, style, form, cuts, kit, cast);
   return made
     ? { contours: made.contours, advanceWidth: made.advanceWidth, cut: made.cut }
     : null;
@@ -174,9 +177,13 @@ export function makeLetter(
   form?: string,
   cuts?: Cuts,
   kit?: Kit,
+  // Last rather than beside the cuts it belongs with, because every one of the
+  // eighty-odd places that draw a letter passes these by position and only
+  // three of them pass a cut at all.
+  cast?: Cast,
 ): Made | null {
   const parts = builtFrom(name);
-  if (parts) return marked(parts, style, form, cuts, kit);
+  if (parts) return marked(parts, style, form, cuts, kit, cast);
 
   /*
    * Laid out on a grid, or drawn from a skeleton.
@@ -216,8 +223,8 @@ export function makeLetter(
   // Asked of this letter's own strokes rather than of the settings, so a
   // letter nothing can reach -- a space, which has no ink -- is not put through
   // the machinery to come back as what it already was.
-  const cutting = reaches(cuts, strokes)
-    ? cutInk(inked.flat(), strokes, scaleOf(style), cuts as Cuts)
+  const cutting = reaches(cuts, strokes) || reachesCast(cast, strokes)
+    ? shapedInk(inked.flat(), strokes, scaleOf(style), cuts, cast)
     : null;
   const cut = cutting ? sheared(cutting.contours, lean, pivot) : solid;
 
@@ -281,8 +288,15 @@ export function makeLetter(
  * letter: the skeleton draws, the probe finds the shoulder of an `ñ` under the
  * pointer, and pressing the tilde finds whatever governs the tilde.
  */
-function marked(parts: Parts, style: Style, form?: string, cuts?: Cuts, kit?: Kit): Made | null {
-  const base = makeLetter(parts.base, style, form, cuts, kit);
+function marked(
+  parts: Parts,
+  style: Style,
+  form?: string,
+  cuts?: Cuts,
+  kit?: Kit,
+  cast?: Cast,
+): Made | null {
+  const base = makeLetter(parts.base, style, form, cuts, kit, cast);
   if (!base || base.contours.length === 0) return null;
 
   const em = style.metrics.unitsPerEm;

@@ -30,8 +30,10 @@ import { classifyContours, contoursIntersect } from "./outline";
 import { shiftCrossbar, shiftShoulders } from "./anatomy";
 import { pixelate } from "./pixel";
 import { addSlabs } from "./slab";
+import { anyCast, type Cast } from "./cast";
 import { anyCut, type Cuts } from "./cuts";
-import { cutInk, type CutScale } from "@/forge/cut";
+import type { CutScale } from "@/forge/cut";
+import { shapedInk } from "@/forge/layers";
 import { measuredStem } from "./stem";
 import { DEFAULT_PARAMS, type Contour, type Glyph, type GlyphNode, type GlyphParams, type Typeface, type Vec2 } from "./types";
 
@@ -52,10 +54,15 @@ export function effectiveCuts(glyph: Glyph, typeface: Typeface): Cuts | undefine
   return glyph.cuts ?? typeface.cuts;
 }
 
+/** And the same for the cast, on the same terms and for the same reason. */
+export function effectiveCast(glyph: Glyph, typeface: Typeface): Cast | undefined {
+  return glyph.cast ?? typeface.cast;
+}
+
 /** Whether anything anywhere in the font is switched on. */
 export function anythingCut(typeface: Typeface): boolean {
-  if (anyCut(typeface.cuts)) return true;
-  return typeface.glyphs.some((glyph) => anyCut(glyph.cuts));
+  if (anyCut(typeface.cuts) || anyCast(typeface.cast)) return true;
+  return typeface.glyphs.some((glyph) => anyCut(glyph.cuts) || anyCast(glyph.cast));
 }
 
 /**
@@ -117,7 +124,8 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
 
   const params = effectiveParams(glyph, typeface);
   const cuts = effectiveCuts(glyph, typeface);
-  if (paramsAreDefault(params) && !anyCut(cuts)) return composed;
+  const cast = effectiveCast(glyph, typeface);
+  if (paramsAreDefault(params) && !anyCut(cuts) && !anyCast(cast)) return composed;
 
   let contours = composed.map(cloneContour);
   // The named parts move first, while the letter is still as it was drawn.
@@ -165,8 +173,8 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
   if (params.cornerRadius > 0)
     contours = contours.map((contour) => applyCornerRadius(contour, params.cornerRadius));
   /*
-   * The cuts go on once the letter is the shape it is going to be, and before
-   * anything turns or squashes it.
+   * The cuts and the cast go on once the letter is the shape it is going to
+   * be, and before anything turns or squashes it.
    *
    * After the shape controls, because a slot is a third of a stem wide and the
    * weight slider is what decides how wide a stem is -- cut first, the same
@@ -180,8 +188,8 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
    * Nesting rather than winding, because these outlines came off a font file
    * or a pen tool and nothing here has promised which way a counter is wound.
    */
-  if (cuts && anyCut(cuts)) {
-    contours = cutInk(contours, [], cutScaleOf(typeface), cuts, "nesting").contours;
+  if (anyCut(cuts) || anyCast(cast)) {
+    contours = shapedInk(contours, [], cutScaleOf(typeface), cuts, cast, "nesting").contours;
   }
   if (params.xHeightScale !== 1)
     contours = contours.map((contour) => applyVerticalScale(contour, params.xHeightScale));

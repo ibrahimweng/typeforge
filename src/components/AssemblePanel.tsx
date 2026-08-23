@@ -14,8 +14,18 @@
 
 import * as React from "react";
 
-import { build, cutHeldBy, cutsFor, cutsOrNone, kernKey } from "@/assemble/document";
+import {
+  build,
+  castFor,
+  castHeldBy,
+  castOrNone,
+  cutHeldBy,
+  cutsFor,
+  cutsOrNone,
+  kernKey,
+} from "@/assemble/document";
 import { CutPanel } from "@/components/CutPanel";
+import { CastOrder } from "@/components/Inspector";
 import { segment } from "@/components/controls";
 import { contoursToSvgPath } from "@/font/geometry";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
@@ -155,6 +165,33 @@ function Cutting(): React.JSX.Element {
         }
         heldNote={(name) => (one && cutHeldBy(assembly, selected, name) ? "own" : null)}
         onRelease={() => one && assembleStore.cutLikeTheRest(selected)}
+      />
+      <CutPanel
+        layer="cast"
+        tag="assemble-cast"
+        cuts={one ? castFor(selected, assembly) ?? castOrNone(assembly) : castOrNone(assembly)}
+        onChange={(name, patch, phase) => {
+          if (one) assembleStore.changeOneCast(selected, name, patch as never, phase);
+          else assembleStore.changeCast(name, patch as never, phase);
+        }}
+        unitsPerEm={assembly.metrics.unitsPerEm}
+        scopeNote={
+          one
+            ? `Casting ${selected} alone. The rest of the pile keeps its own.`
+            : "Casting every drawing in the pile."
+        }
+        reach={
+          "Nothing here: this one is made out of the skeleton a letter was drawn " +
+          "from, and a drawing that arrived as an outline has none."
+        }
+        heldNote={(name) => (one && castHeldBy(assembly, selected, name) ? "own" : null)}
+        onRelease={() => one && assembleStore.castLikeTheRest(selected)}
+        footer={
+          <CastOrder
+            order={castOrNone(assembly).order}
+            onChange={(next) => assembleStore.changeCastOrder(next)}
+          />
+        }
       />
     </>
   );

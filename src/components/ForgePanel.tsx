@@ -20,7 +20,11 @@ import { contoursToSvgPath } from "@/font/geometry";
 import { filled, FILL_KINDS } from "@/forge/kit";
 import { drawLetter } from "@/forge/build";
 import { FROM_SKELETON, type Cuts } from "@/forge/cut";
+import { CutPanel } from "@/components/CutPanel";
 import {
+  castFor,
+  castHeldBy,
+  castOf,
   cutsFor,
   cutsHeldBy,
   cutsOf,
@@ -212,6 +216,8 @@ export function ForgePanel(): React.JSX.Element {
         <KitPanel />
 
         <Cuts />
+
+        <Cast />
 
         <Forms letter={letter} />
 
@@ -512,6 +518,74 @@ const GRID_CONTROLS = [
  * panel is six rows until somebody wants more than six rows. A control that is
  * off has nothing worth reading.
  */
+/**
+ * What is put on the letters, and which way round the two layers go.
+ *
+ * Drawn by the shared panel rather than by a copy of the rows above, because a
+ * cast is described in exactly the shape a cut is and there is nothing here to
+ * make a second set of rows out of.
+ *
+ * The order is not an operation -- it has no switch and draws nothing on its
+ * own -- so it goes under them rather than among them, and it is never a
+ * letter's own: one letter whose shadow is thrown by the cut face while the
+ * rest are cut through their shadows is not a decision anybody makes on
+ * purpose.
+ */
+function Cast(): React.JSX.Element {
+  const { forge, letter, scope } = useForge();
+  const cast = scope === "letter" ? castFor(letter, forge) : castOf(forge);
+  const held = castHeldBy(forge, letter);
+  const order = castOf(forge).order;
+
+  return (
+    <CutPanel
+      layer="cast"
+      tag="forge-cast"
+      cuts={cast}
+      onChange={(name, patch, phase) => forgeStore.changeCast(name, patch as never, phase)}
+      unitsPerEm={forge.style.metrics.unitsPerEm}
+      scopeNote={
+        scope === "family"
+          ? "Casting the whole font."
+          : `Casting ${letter} alone. The rest of the font keeps its own.`
+      }
+      heldNote={(name) => (scope === "letter" && held.includes(name) ? "own" : null)}
+      onRelease={(name) => forgeStore.releaseCast(name)}
+      footer={
+        <div className="border-t border-border pt-2" data-forge-cast-order>
+          <div className="pb-1 text-2xs font-medium text-foreground">Which goes first</div>
+          <div className="flex gap-0.5 rounded-md bg-card/60 p-0.5" role="group" aria-label="Which goes first">
+            <button
+              type="button"
+              aria-pressed={order === "after"}
+              data-cast-order="after"
+              onClick={() => forgeStore.changeCastOrder("after")}
+              className={segment(order === "after", "flex-1")}
+            >
+              Cut, then cast
+            </button>
+            <button
+              type="button"
+              aria-pressed={order === "before"}
+              data-cast-order="before"
+              onClick={() => forgeStore.changeCastOrder("before")}
+              className={segment(order === "before", "flex-1")}
+            >
+              Cast, then cut
+            </button>
+          </div>
+          <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">
+            Cut first and the shadow is thrown by the letter as it now is, so a
+            slot through the face shows as a slot through the shadow. Cast first
+            and the two are one block for the cut to slice, which can put a band
+            across the shadow where the face has none.
+          </p>
+        </div>
+      }
+    />
+  );
+}
+
 function Cuts(): React.JSX.Element {
   const state = useForge();
   const { forge, letter, scope } = state;

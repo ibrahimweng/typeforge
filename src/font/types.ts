@@ -8,6 +8,7 @@
  * approximation on export (see `quadratic.ts`).
  */
 
+import type { Cast } from "./cast";
 import type { Cuts } from "./cuts";
 
 export interface Vec2 {
@@ -94,6 +95,8 @@ export interface Glyph {
    * own way, and the panel says which.
    */
   cuts?: Cuts;
+  /** This glyph's own cast, standing in for the font's on the same terms. */
+  cast?: Cast;
   /** Set when the user has touched this glyph, used for "changed only" export. */
   dirty: boolean;
 }
@@ -253,6 +256,8 @@ export interface Typeface {
   glyphs: Glyph[];
   /** How the whole font is cut. Undefined is the same as nothing switched on. */
   cuts?: Cuts;
+  /** What is put on the whole font, on the same terms. */
+  cast?: Cast;
   /** Glyph name to index in `glyphs`, kept in sync by the store. */
   glyphIndex: Map<string, number>;
   kerning: KernPair[];

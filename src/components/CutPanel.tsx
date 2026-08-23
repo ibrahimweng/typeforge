@@ -1,11 +1,17 @@
 /**
- * The Cut panel, wherever a letter is being cut.
+ * The Cut and Cast panels, wherever a letter is being shaped.
  *
- * There are three halves of this application that can cut a letter -- a face
+ * There are three halves of this application that can shape a letter -- a face
  * drawn here, a font somebody opened, and a pile of drawings somebody made
- * elsewhere -- and the panel is the same in all three, because the cuts are.
- * So it takes the cuts and a way to change them rather than reaching for a
- * store, and each half hands it its own.
+ * elsewhere -- and the panel is the same in all three, because the operations
+ * are. So it takes the description and a way to change it rather than reaching
+ * for a store, and each half hands it its own.
+ *
+ * And one panel draws both layers rather than two panels drawing one each. A
+ * cast is described in exactly the shape a cut is -- named operations, each
+ * with a switch and a few numbered controls, sized in stem widths -- so the
+ * only things that differ between them are the list of operations, where the
+ * values are read from, and the words at the top. Those are arguments.
  *
  * What differs between them is only what a cut can reach. Two of the six are
  * made out of the skeleton, and a letter that arrived as an outline has none;
@@ -17,68 +23,111 @@ import * as React from "react";
 
 import { segment } from "@/components/controls";
 import { SliderControl as Slider } from "@/ui/components/controls/slider";
+import { FROM_SKELETON as CAST_FROM_SKELETON, type Cast, type CastName } from "@/font/cast";
 import { FROM_SKELETON, type CutName, type Cuts } from "@/font/cuts";
-import { CUT_SPECS, cutValuesOf, type CutSpec, type PartControl } from "@/forge/parts";
+import {
+  CAST_SPECS,
+  CUT_SPECS,
+  castValuesOf,
+  cutValuesOf,
+  type CastSpec,
+  type CutSpec,
+  type PartControl,
+} from "@/forge/parts";
 import { cn } from "@/ui/lib/utils";
 
 /** Whether a change is one of a run or the end of one, for the undo stack. */
 export type Phase = "single" | "during" | "end";
 
-export interface CutPanelProps {
-  /** The cuts as they stand, which is what the controls show. */
-  cuts: Cuts;
-  onChange: (name: CutName, patch: Record<string, unknown>, phase: Phase) => void;
+/** One operation as the panel needs to see it, whichever layer it came from. */
+type Named = { name: string; label: string; hint: string; controls: PartControl[] };
+
+/** What both layers ask for. */
+interface Common {
   /** Em size, for any control measured as a share of it. */
   unitsPerEm: number;
-  /** What is being cut, in the words of this half: "the whole font", "A alone". */
+  /** What is being shaped, in the words of this half: "the whole font", "A alone". */
   scopeNote: string;
   /**
-   * Why a skeleton cut will do nothing here, or null when it will.
+   * Why a skeleton operation will do nothing here, or null when it will.
    *
    * A sentence rather than a flag, because the reason differs: in one half the
    * letter was imported into a drawn font, in another there was never a
    * skeleton to begin with.
    */
   reach?: string | null;
-  /** Shown against an operation this letter holds its own version of. */
-  heldNote?: (name: CutName) => string | null;
-  onRelease?: (name: CutName) => void;
   /** Marks the panel for tests and for the tour to find. */
   tag?: string;
+  /** Drawn under the operations, for anything the layer has that is not one. */
+  footer?: React.ReactNode;
 }
 
-export function CutPanel({
-  cuts,
-  onChange,
-  unitsPerEm,
-  scopeNote,
-  reach = null,
-  heldNote,
-  onRelease,
-  tag = "cuts",
-}: CutPanelProps): React.JSX.Element {
+/**
+ * Typed per layer, so a caller cannot hand the cast panel a cut's name.
+ *
+ * The two are the same panel and the same code path -- the only things that
+ * differ are which operations are listed, where their values are read from,
+ * and the words at the top. Inside, the pair is widened once and handled as
+ * one; at the edge it stays two, because that is where the mistakes would be.
+ */
+export type CutPanelProps =
+  | (Common & {
+      layer?: "cut";
+      cuts: Cuts;
+      onChange: (name: CutName, patch: Record<string, unknown>, phase: Phase) => void;
+      /** Shown against an operation this letter holds its own version of. */
+      heldNote?: (name: CutName) => string | null;
+      onRelease?: (name: CutName) => void;
+    })
+  | (Common & {
+      layer: "cast";
+      cuts: Cast;
+      onChange: (name: CastName, patch: Record<string, unknown>, phase: Phase) => void;
+      heldNote?: (name: CastName) => string | null;
+      onRelease?: (name: CastName) => void;
+    });
+
+export function CutPanel(props: CutPanelProps): React.JSX.Element {
+  const { cuts, unitsPerEm, scopeNote, reach = null, tag = "cuts", layer = "cut", footer } = props;
+  // Widened once, here, so everything below is written for one panel rather
+  // than for two that happen to look alike.
+  const onChange = props.onChange as (
+    name: string,
+    patch: Record<string, unknown>,
+    phase: Phase,
+  ) => void;
+  const heldNote = props.heldNote as ((name: string) => string | null) | undefined;
+  const onRelease = props.onRelease as ((name: string) => void) | undefined;
+  const cast = layer === "cast";
+  const specs: Named[] = cast ? (CAST_SPECS as CastSpec[]) : (CUT_SPECS as CutSpec[]);
+  const skeleton: ReadonlySet<string> = cast ? CAST_FROM_SKELETON : FROM_SKELETON;
+  const values = cast ? castValuesOf : cutValuesOf;
+
   return (
     <section className="border-b border-border p-3" data-cut-panel={tag}>
-      <h3 className="text-2xs font-medium">Cut</h3>
+      <h3 className="text-2xs font-medium">{cast ? "Cast" : "Cut"}</h3>
       <p className="pt-1 text-2xs leading-snug text-muted-foreground">
-        Taken out after the letter is drawn, so everything above still reaches
-        it. Sizes are in stem widths, which is what keeps a cut meaning the same
-        thing at every weight.
+        {cast
+          ? "Put on after the letter is drawn, so everything above still reaches it. Sizes are in stem widths, which is what keeps a shadow meaning the same thing at every weight."
+          : "Taken out after the letter is drawn, so everything above still reaches it. Sizes are in stem widths, which is what keeps a cut meaning the same thing at every weight."}
       </p>
       <p className="pt-1 text-2xs leading-snug text-muted-foreground">{scopeNote}</p>
 
-      {CUT_SPECS.map((spec) => (
+      {specs.map((spec) => (
         <CutRow
           key={spec.name}
           spec={spec}
-          cuts={cuts}
+          cuts={cuts as unknown as Record<string, unknown>}
           onChange={onChange}
           unitsPerEm={unitsPerEm}
           reach={reach}
+          fromSkeleton={skeleton}
+          valuesOf={values as (name: string, from: never) => Record<string, number | boolean | string>}
           held={heldNote?.(spec.name) ?? null}
           onRelease={onRelease}
         />
       ))}
+      {footer}
     </section>
   );
 }
@@ -90,23 +139,27 @@ function CutRow({
   onChange,
   unitsPerEm,
   reach,
+  fromSkeleton,
+  valuesOf,
   held,
   onRelease,
 }: {
-  spec: CutSpec;
-  cuts: Cuts;
-  onChange: CutPanelProps["onChange"];
+  spec: Named;
+  cuts: Record<string, unknown>;
+  onChange: (name: string, patch: Record<string, unknown>, phase: Phase) => void;
   unitsPerEm: number;
   reach: string | null;
+  fromSkeleton: ReadonlySet<string>;
+  valuesOf: (name: string, from: never) => Record<string, number | boolean | string>;
   held: string | null;
-  onRelease?: (name: CutName) => void;
+  onRelease?: (name: string) => void;
 }): React.JSX.Element {
-  const values = cutValuesOf(spec.name, cuts);
+  const values = valuesOf(spec.name, cuts as never);
   const on = Boolean(values.on);
   // The control still works -- it is a decision about the whole font -- but on
   // this letter it will do nothing, and that is worth knowing here rather than
   // after staring at a drawing that did not change.
-  const unreachable = reach !== null && on && FROM_SKELETON.has(spec.name);
+  const unreachable = reach !== null && on && fromSkeleton.has(spec.name);
 
   return (
     <div className="border-t border-border pt-2 first-of-type:mt-2" data-cut={spec.name}>

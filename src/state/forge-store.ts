@@ -13,11 +13,15 @@
  * how to undo a slider.
  */
 
+import type { Cast, CastName } from "@/font/cast";
 import {
   chooseForm,
   clearCutException,
   clearException,
+  editCast,
   editCut,
+  releaseCast as giveCastBack,
+  setCastOrder,
   editMetrics,
   editPart,
   editPen,
@@ -424,6 +428,29 @@ class ForgeStore {
   releaseCut(name?: CutName): void {
     const { forge, letter } = this.state;
     this.commit(clearCutException(forge, letter, name));
+  }
+
+  /** Change what is put on the letters, on the same terms as the cuts. */
+  changeCast(name: CastName, patch: Partial<Cast[CastName]>, phase: Phase = "single"): void {
+    const { forge, scope, letter } = this.state;
+    this.commit(editCast(forge, name, patch, scope === "letter" ? letter : undefined), phase);
+  }
+
+  /** Cast this letter the way the rest of the font is cast. */
+  releaseCast(name?: CastName): void {
+    const { forge, letter } = this.state;
+    this.commit(name === undefined ? forge : giveCastBack(forge, letter, name));
+  }
+
+  /**
+   * Which way round the two layers go.
+   *
+   * Never a letter's own. One letter whose shadow is thrown by the cut face
+   * while the rest are cut through their shadows is not a decision anybody
+   * makes on purpose, and the panel does not offer it.
+   */
+  changeCastOrder(order: Cast["order"]): void {
+    this.commit(setCastOrder(this.state.forge, order));
   }
 
   // --- the kit -----------------------------------------------------------

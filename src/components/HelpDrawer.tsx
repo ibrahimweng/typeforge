@@ -16,7 +16,7 @@ import * as React from "react";
 
 import { PARAM_GROUPS, PARAMS } from "@/components/param-specs";
 import { OUTLINE_ACTION } from "@/components/controls";
-import { CUT_SPECS, METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS } from "@/forge/parts";
+import { CAST_SPECS, CUT_SPECS, METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS } from "@/forge/parts";
 import { FAMILIES, type Family } from "@/forge/style";
 import { forgetTips, seenTipCount, subscribeToTips } from "@/help/tips";
 
@@ -300,6 +300,65 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
             work it out from a drawing that did not change.
           </p>
         </Section>
+
+        <Section title="Casting" half="drawn">
+          <p>
+            The cut layer's other half, pointed the other way. A cut takes ink
+            out of the letter after it is drawn; a cast puts ink on. Between
+            them they reach the moves that belong to the letter as a whole
+            rather than to any stroke in it -- a block shadow thrown off it, a
+            rim grown all round it, a point built out of every corner, a join
+            filled in.
+          </p>
+          <p>
+            Four operations, each the opposite of one of the cuts.{" "}
+            <Term>The shadow</Term> against the slots,{" "}
+            <Term>the rim</Term> against the groove,{" "}
+            <Term>the points</Term> against the chamfer, and{" "}
+            <Term>the fillets</Term> against the break. Sizes are in stem
+            widths for the same reason and by the same argument: a shadow forty
+            units long is a hint on a display face and a doubling on a
+            hairline.
+          </p>
+          <p>
+            <Term>Which layer goes first is yours to say,</Term> because the
+            two orders are two different pictures. Cut first and the shadow is
+            thrown by the letter as it now is, so a slot through the face shows
+            as a slot through the shadow -- an object with a shadow behind it.
+            Cast first and the face and its shadow are one block for the cut to
+            slice, which can put a band across the shadow where the face has
+            none.
+          </p>
+          <p>
+            A cast never changes how much room a letter takes. That is the same
+            promise a cut makes and for the same reason: a shadow that respaced
+            the font would reflow every word in it the moment you turned the
+            slider. Shadows overlap into the letter beside them, which is what
+            block-shadow lettering has always done.
+          </p>
+          <p>
+            <Term>The rim closes counters as it opens the outside,</Term> which
+            is what growing a shape does rather than a fault to be found later:
+            on a light face half a stem of rim will fill the eye of an e. And
+            the fillets are the one operation here made out of the skeleton a
+            letter was drawn from, so like the groove and the break they do
+            nothing to a letter that arrived as an outline, and say so.
+          </p>
+        </Section>
+
+        {CAST_SPECS.map((spec) => (
+          <Section key={spec.name} title={spec.label} half="drawn">
+            <p>{spec.hint}</p>
+            <dl className="space-y-2">
+              {spec.controls.map((control) => (
+                <div key={control.key}>
+                  <dt className="text-2xs font-medium text-foreground">{control.label}</dt>
+                  <dd className="text-2xs leading-snug text-muted-foreground">{control.hint}</dd>
+                </div>
+              ))}
+            </dl>
+          </Section>
+        ))}
 
         {CUT_SPECS.map((spec) => (
           <Section key={spec.name} title={spec.label} half="drawn">
