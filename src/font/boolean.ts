@@ -118,6 +118,70 @@ export type Join = "enough" | "whole";
  * Fusing is what turns a heap of strokes into a shape with an outline, and
  * everything after it reads that outline.
  */
+/**
+ * Whether a contour goes anywhere between two nodes.
+ *
+ * Only when the two points are one point and neither handle leaves it. A curve
+ * that comes back to where it started is not nothing -- a loop is a shape --
+ * so both ends of the question have to be asked.
+ */
+function goesNowhere(from: GlyphNode, to: GlyphNode): boolean {
+  const still = (handle: Vec2 | null, point: Vec2) =>
+    handle === null || (Math.abs(handle.x - point.x) < 1e-9 && Math.abs(handle.y - point.y) < 1e-9);
+  return (
+    Math.abs(to.point.x - from.point.x) < 1e-9 &&
+    Math.abs(to.point.y - from.point.y) < 1e-9 &&
+    still(from.handleOut, from.point) &&
+    still(to.handleIn, to.point)
+  );
+}
+
+/**
+ * The same shapes with the points that are written twice taken out.
+ *
+ * A point written twice is not part of a shape -- the outline arrives and does
+ * not leave -- but it is very much part of what a boolean library makes of one.
+ * The drawings here carry such points on purpose: a bowl holds the sides its
+ * own shape does not need so that the same shape has the same number of nodes
+ * however round it is, a run cut out of one holds the pieces it does not reach,
+ * and a corner holds a wedge whether or not it turns. All of that is so two
+ * weights can be joined into one variable font, which needs them drawn with the
+ * same points.
+ *
+ * Handed those points, the fuse gives a different answer to the same shape.
+ * A Ribbon `six` at the Black is three contours either way, with the same three
+ * areas to the unit -- and fused it came back a letter with a hundred and
+ * ninety unit hole through the middle of it, because twelve of the twenty-two
+ * nodes in its tail were the same node twice. Which is not a rounding
+ * disagreement to be tolerated; it is the library being handed something that
+ * is not a shape.
+ *
+ * Applied by `removeOverlaps`, which is the fuse a font is written through, and
+ * not inside `unite` itself. Every boolean here would be the tidier place for
+ * it and it is the wrong one: the cast layer's shadow builds its shape out of
+ * pieces that meet at a point, and settled first it came back with the counter
+ * of an `o` closed up at one throw in six. The letters keep their doubled
+ * points everywhere else, which is where they are needed.
+ */
+export function settled(contours: Contour[]): Contour[] {
+  return contours.map((contour) => {
+    if (contour.nodes.length < 3) return contour;
+    const kept: GlyphNode[] = [];
+    for (const node of contour.nodes) {
+      const last = kept[kept.length - 1];
+      // The later node's handle out, so the curve leaving is the one that left.
+      if (last && goesNowhere(last, node)) last.handleOut = node.handleOut;
+      else kept.push({ ...node });
+    }
+    // And a closed contour can come back to rest on the node it started from.
+    while (contour.closed && kept.length > 2 && goesNowhere(kept[kept.length - 1], kept[0])) {
+      kept[0].handleIn = kept[kept.length - 1].handleIn;
+      kept.pop();
+    }
+    return kept.length === contour.nodes.length ? contour : { ...contour, nodes: kept };
+  });
+}
+
 export function unite(
   contours: Contour[],
   roles: Roles = "nesting",

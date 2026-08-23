@@ -694,6 +694,16 @@ function ripple(
       startAngle,
       endAngle,
       sweepPositive: endAngle > startAngle,
+      /*
+       * A half arc in one piece and a whole one in two, always.
+       *
+       * How far each arc of a wave turns is worked out from how deep the wave
+       * is asked to be and then held back so no arc turns tighter than half the
+       * pen -- so the turn moves with the weight, and `ceil(sweep / 90 degrees)`
+       * steps up as it passes a right angle. A whole arc turns twice what a half
+       * one does and can reach a half turn, so two pieces covers it.
+       */
+      pieces: index === 0 || index === wholeArcs + 1 ? 1 : 2,
     });
     where = at(
       centre.x + radius * Math.cos(endAngle),
@@ -927,6 +937,18 @@ export function roundCorners(spine: Spine, radius: number, penHalf: number): Spi
       startAngle,
       endAngle: startAngle + sweep,
       sweepPositive: sweep > 0,
+      /*
+       * Always two pieces, whatever it turns through.
+       *
+       * An arc becomes quarter turns at most, so how many nodes it comes to
+       * steps up as its sweep passes each right angle -- and this sweep is the
+       * angle the two arms leave between them, which moves with the pen because
+       * where a run's vertex sits does. A Ribbon `circumflex` came off with ten
+       * nodes at the Thin and eight at the Regular, its apex cut in two pieces
+       * at one and one at the other, and took every letter that wears a
+       * circumflex or a caron off the weight axis with it.
+       */
+      pieces: 2,
     });
   }
 
@@ -957,7 +979,7 @@ export function roundCorners(spine: Spine, radius: number, penHalf: number): Spi
     const arc = inserts.get(index);
     if (arc) out.push(arc);
   });
-  return { segments: out.filter(hasLength), closed: spine.closed };
+  return { segments: out, closed: spine.closed };
 }
 
 // ---------------------------------------------------------------------------
