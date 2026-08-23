@@ -120,6 +120,16 @@ export interface ExportResult {
   fileName: string;
   /** Notes worth showing the user, such as features that could not be carried over. */
   notes: string[];
+  /**
+   * Glyphs that follow a variable axis only part of the way.
+   *
+   * Named rather than counted because the number on its own says nothing about
+   * how much it matters: a `c` whose Black is drawn with four nodes fewer than
+   * its Bold renders six per cent light at the end of the axis, and a `G` that
+   * agrees with no master at all renders at the Regular from one end to the
+   * other. Empty on anything but a variable font.
+   */
+  held: string[];
 }
 
 export async function exportFont(
@@ -137,6 +147,7 @@ export async function exportFont(
   if (anythingCut(typeface)) await readyToCut();
 
   const notes: string[] = [];
+  const held: string[] = [];
   if (options.variable && options.format === "otf") {
     notes.push(
       "A varying font has to be a TTF. The movement is stored in a table that " +
@@ -181,6 +192,7 @@ export async function exportFont(
           fidelity,
           now,
           notes,
+          held,
           mergeOverlaps,
           roles,
           variable: options.variable,
@@ -193,6 +205,7 @@ export async function exportFont(
     fidelity,
     fileName: `${base || "Untitled"}.${options.format}`,
     notes,
+    held,
   };
 }
 
@@ -290,6 +303,7 @@ async function exportTrueType(
     fidelity: ExportFidelity;
     now: number;
     notes: string[];
+    held: string[];
     mergeOverlaps: boolean;
     roles: Roles;
     variable?: VariableOptions;
@@ -389,22 +403,27 @@ async function exportTrueType(
     tables.set("STAT", buildStat(varying.axes, axisNameIds));
 
     if (unvarying.length > 0) {
-      const named = unvarying
-        .slice(0, 8)
-        .map((index) => typeface.glyphs[index]?.name ?? String(index));
+      context.held.push(
+        ...unvarying.map((index) => typeface.glyphs[index]?.name ?? String(index)),
+      );
+      const named = context.held.slice(0, 8);
       /*
-       * Said as what happens rather than as what failed, because what happens
-       * is not that the letter stops moving. A letter follows every master it
-       * lines up with and holds its shape over the stretch of the axis it does
-       * not -- so an e whose Thin is drawn with a node the others have not got
-       * follows the axis from the Regular up to the Black and holds the
-       * Regular below it, which is a great deal better than standing still and
-       * is worth being accurate about.
+       * Said as the weight rather than as the shape, because the weight is what
+       * somebody setting a word in this font will see.
+       *
+       * "Holds its shape" is true and reads as a nicety. What it means is that
+       * the letter is drawn at the weight of the nearest master it agrees with
+       * and left there: a `G` that agrees with none of them is a Regular `G` in
+       * a Black word, which is nearly three times the ink it should have and
+       * the first thing anyone notices. Six per cent, which is what the `c`
+       * costs at the far end, is a different thing entirely, and a note that
+       * describes both the same way is no use for telling them apart.
        */
       context.notes.push(
         `${unvarying.length} ${unvarying.length === 1 ? "glyph follows" : "glyphs follow"} ` +
-          `the axis only part of the way, holding shape over the rest of it, because ` +
-          `${unvarying.length === 1 ? "it is" : "they are"} ` +
+          `the axis only part of the way and ${unvarying.length === 1 ? "is" : "are"} set at ` +
+          `the weight of the nearest one ${unvarying.length === 1 ? "it agrees" : "they agree"} ` +
+          `with over the rest of it, because ${unvarying.length === 1 ? "it is" : "they are"} ` +
           `drawn differently at some weights: ${named.join(", ")}` +
           (unvarying.length > 8 ? ", and others" : "") +
           ".",

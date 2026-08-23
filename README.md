@@ -54,17 +54,17 @@ input to the drawing rather than a shove applied to a finished outline: ask for
 a heavier cut and the letter is drawn again, thicker. It cannot fold, because
 nothing moved.
 
-It draws Latin-1 and Latin Extended-A: three hundred and eighteen glyphs
-carrying three hundred and twenty characters — the letters, the figures, the
-accented forms, and the symbols: the ampersand, the at sign, the currency marks,
-the brackets and braces, the arithmetic, the fractions. That is Polish, Czech,
-Slovak, Hungarian, Turkish, Latvian, Lithuanian, Romanian, Croatian, Maltese,
-Welsh, Esperanto and Māori as well as the western European languages Latin-1
-stops at, and there is a test that sets a sentence of each and fails on a
-missing letter rather than on a missing codepoint. What is still out is the
-handful of Extended-A characters Unicode gives no decomposition and this has not
-yet drawn: the ligatures Œ and Ĳ, the eng, the barred T, the l with a middle
-dot, the kra, the long s. Greek and Cyrillic are not drawn at all.
+It draws Latin-1 and the whole of Latin Extended-A: three hundred and
+thirty-one glyphs carrying three hundred and thirty-three characters — the
+letters, the figures, the accented forms, and the symbols: the ampersand, the at
+sign, the currency marks, the brackets and braces, the arithmetic, the
+fractions. That is Polish, Czech, Slovak, Hungarian, Turkish, Latvian,
+Lithuanian, Romanian, Croatian, Maltese, Welsh, Esperanto, Māori, French,
+Catalan, Dutch and Northern Sámi as well as the western European languages
+Latin-1 stops at, and there is a test that sets a sentence of each and fails on
+a missing letter rather than on a missing codepoint. Nothing in Extended-A is
+left undrawn, down to the Greenlandic kra and the long s that nobody types.
+Greek and Cyrillic are not drawn at all.
 
 All of it comes from the same pen and the same proportions, so one edit reaches
 all of it — and most of it is not a separate drawing at all. A cent is the c of
@@ -180,11 +180,15 @@ is a circle and has none of them, so an o was coming out seven nodes at a Thin,
 four at a Regular and six at a Bold for a shape that is the same shape all the
 way along.
 
-Twenty glyphs still follow the axis only part of the way, and they are the ones
-genuinely drawn differently at the ends of it — a c whose aperture closes at the
-Black, a G that changes construction. Those hold their shape over the stretch
-they cannot follow rather than being interpolated into something that is neither
-drawing, and the export says which they are.
+Eleven glyphs still follow the axis only part of the way, and a glyph that
+cannot follow it is set at the weight of the nearest master it agrees with —
+which is not a nicety about shape. A `G` that agrees with no master is a Regular
+`G` in a Black word. Thirty-three of them were, and twenty-two came off the list
+when a bowl run started carrying the pieces it does not reach; what is left is
+nine letters drawn differently rather than counted differently, an `M` whose
+vertex crosses the miter limit and a `yen` with two bars at a hairline among
+them. The export names them rather than counting them, because six per cent at
+the end of the axis and three hundred are not the same thing.
 
 **Everything from the original** keeps every table this editor does not model,
 so ligatures, contextual alternates, colour layers and hinting survive. Glyphs

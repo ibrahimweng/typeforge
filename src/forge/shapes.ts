@@ -148,9 +148,14 @@ export function bowlBetween(
   const at: number[] = [angleOf(centre, segmentStart(loop[0]))];
   for (const span of spans) at.push(at[at.length - 1] + span);
 
-  const kept: SpineSegment[] = [];
-  // Two laps, so a run that crosses the seam the loop happens to start at is
-  // not cut in half by it.
+  /*
+   * Every piece the loop has, at every place the walk could put it.
+   *
+   * Two laps, so a run that crosses the seam the loop happens to start at is
+   * not cut in half by it -- and now also so that a piece the run does not
+   * reach has a place on both sides of it to be put back into.
+   */
+  const walk: Array<{ index: number; piece: SpineSegment | null }> = [];
   for (let lap = 0; lap < 2; lap++) {
     for (let index = 0; index < loop.length; index++) {
       const segment = loop[index];
@@ -169,17 +174,144 @@ export function bowlBetween(
        */
       if (from === ends) {
         const room = span < 360 ? from <= finish : from < finish;
-        if (from >= start && room) kept.push(segment);
+        const inside = from >= start && room;
+        walk.push({ index, piece: inside ? segment : null });
         continue;
       }
-      if (ends <= start || from >= finish) continue;
+      if (ends <= start || from >= finish) {
+        walk.push({ index, piece: null });
+        continue;
+      }
       let piece: SpineSegment | null = segment;
       if (from < start) piece = cutBefore(piece, centre, start);
       if (piece && ends > finish) piece = cutAfter(piece, centre, finish);
-      if (piece) kept.push(piece);
+      walk.push({ index, piece });
     }
   }
-  return { segments: kept, closed: false };
+
+  const first = walk.findIndex((slot) => slot.piece);
+  if (first < 0) return { segments: [], closed: false };
+  let last = first;
+  while (last + 1 < walk.length && walk[last + 1].piece) last++;
+
+  /*
+   * The pieces the run does not reach, put back with no length in them.
+   *
+   * A run is cut out of the same nine pieces however far round it goes, and how
+   * many of them it lands on is not fixed. An `e` at a hairline starts partway
+   * along a side and at a text weight one piece further on, partway through the
+   * corner after it -- the same shape, seven pieces instead of eight, and every
+   * node in the list one place out from the same node in the other. So the `e`
+   * came back sixteen nodes at the Regular and eighteen at the Thin, and a
+   * weight axis cannot move between the two: it has to leave the letter
+   * standing at whichever weight it was drawn at, which is a Regular `e` in a
+   * Thin word and nearly four times the ink it should have.
+   *
+   * So every piece is emitted, and a piece the run does not reach is emitted
+   * where the run stops rather than where it sits. Which end it goes to is the
+   * end the walk puts it nearer, which is what keeps a piece in the same place
+   * in the list however far the run reaches.
+   */
+  const head = segmentStart(walk[first].piece!);
+  const tail = segmentEnd(walk[last].piece!);
+
+  /*
+   * Which way the run faces where it stops.
+   *
+   * A line of no length has no direction of its own and takes its neighbours',
+   * which the sweep already does. An arc of no length does have one -- it is
+   * the angle it sits at -- and that angle is what the pen offsets along, so an
+   * arc standing in for a corner the run never reached has to be given the
+   * angle the run faces rather than the angle that corner faces. Given its own,
+   * the pen put its node a whole reach off to one side: the `c` at the Black
+   * kept its area to the unit and grew a hundred and three units of bounds and
+   * advance out of a node with no ink on it.
+   */
+  const facing = (piece: SpineSegment, end: "start" | "end"): Vec2 | null => {
+    if (piece.kind === "arc") {
+      if (piece.radius < 1e-9) return null;
+      const angle = end === "start" ? piece.startAngle : piece.endAngle;
+      return { x: Math.cos(angle), y: Math.sin(angle) };
+    }
+    const dx = piece.to.x - piece.from.x;
+    const dy = piece.to.y - piece.from.y;
+    const length = Math.hypot(dx, dy);
+    if (length < 1e-9) return null;
+    // Anticlockwise, the left of travel is the inside of the bowl, so the
+    // outward normal -- the one an arc's own angle points along -- is the right.
+    return { x: dy / length, y: -dx / length };
+  };
+
+  /*
+   * Read off the first piece of the run that has any length to be read.
+   *
+   * The pieces of a bowl that measure nothing are exactly the ones a bowl of
+   * this shape does not need -- a side of no length between two corners that
+   * meet -- and they are as likely to be at the front of a run as anywhere. A
+   * `D` at a hairline starts on one, and a direction read off it is no
+   * direction at all: every corner the run had not reached collapsed onto the
+   * bowl's own centre and took a tenth of the letter's ink with it.
+   */
+  const along = (from: number, step: number, end: "start" | "end"): Vec2 => {
+    for (let slot = from; slot >= first && slot <= last; slot += step) {
+      const found = facing(walk[slot].piece!, end);
+      if (found) return found;
+    }
+    return { x: 1, y: 0 };
+  };
+
+  /*
+   * A piece of no length, and of its own kind: a corner is an arc and sweeps to
+   * a node carrying handles, a side is a line and sweeps to a plain corner, and
+   * a list that agrees on how many nodes it has and disagrees on which of them
+   * are curves is no more use than one that disagrees on both.
+   */
+  const stall = (where: Vec2, out: Vec2, like: SpineSegment): SpineSegment => {
+    if (like.kind === "line") return { kind: "line", from: where, to: where };
+    const angle = Math.atan2(out.y, out.x);
+    return {
+      kind: "arc",
+      centre: { x: where.x - like.radius * out.x, y: where.y - like.radius * out.y },
+      radius: like.radius,
+      startAngle: angle,
+      endAngle: angle,
+      sweepPositive: like.sweepPositive,
+    };
+  };
+
+  const outHead = along(first, 1, "start");
+  const outTail = along(last, -1, "end");
+
+  const chosen = new Map<number, SpineSegment>();
+  for (let index = 0; index < loop.length; index++) {
+    if (walk.slice(first, last + 1).some((slot) => slot.index === index)) continue;
+    // Of the two places the walk offers this piece, the one nearer the run.
+    let where = -1;
+    let nearest = Infinity;
+    for (let slot = 0; slot < walk.length; slot++) {
+      if (walk[slot].index !== index) continue;
+      const gap = slot < first ? first - slot : slot - last;
+      if (gap < nearest) {
+        nearest = gap;
+        where = slot;
+      }
+    }
+    chosen.set(
+      where,
+      where < first ? stall(head, outHead, loop[index]) : stall(tail, outTail, loop[index]),
+    );
+  }
+
+  const segments: SpineSegment[] = [];
+  for (let slot = 0; slot < walk.length; slot++) {
+    if (slot >= first && slot <= last) {
+      if (walk[slot].piece) segments.push(walk[slot].piece!);
+      continue;
+    }
+    const stalled = chosen.get(slot);
+    if (stalled) segments.push(stalled);
+  }
+  return { segments, closed: false };
 }
 
 /**
@@ -260,11 +392,20 @@ function bowlSegments(
   return segments;
 }
 
-/** Whether a segment goes anywhere at all. */
-function hasLength(segment: SpineSegment): boolean {
+/**
+ * Whether a segment goes anywhere at all.
+ *
+ * An arc needs both a radius and a turn. Asked only for the radius, an arc that
+ * begins and ends at the same angle -- which is how a run carries a corner it
+ * does not reach -- answered that it went somewhere, and everything that asks a
+ * run which piece it starts on got that one: a Slab `c` at its heaviest read
+ * its first piece as a curve, and a curve gets no serif, so it lost both of
+ * them.
+ */
+export function hasLength(segment: SpineSegment): boolean {
   return segment.kind === "line"
     ? Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y) > 1e-9
-    : segment.radius > 1e-9;
+    : segment.radius > 1e-9 && Math.abs(segment.endAngle - segment.startAngle) > 1e-9;
 }
 
 /**
@@ -645,6 +786,29 @@ function trimmed(segments: SpineSegment[], distance: number): SpineSegment[] {
 }
 
 /** Where a run begins and where it ends, whichever kind of piece that is. */
+/**
+ * The first and last pieces of a run that go anywhere.
+ *
+ * A spine carries pieces of no length on purpose. A bowl holds the sides its
+ * own shape does not need so that the same shape has the same number of nodes
+ * however round it is, and a run cut out of a bowl holds the pieces it does not
+ * reach for the same reason -- which means a run can begin and end on a piece
+ * that is a coordinate written twice.
+ *
+ * Anything that asks a run which way it starts, or whether it starts straight,
+ * has to ask a piece that has a direction to give. Asked of the piece that
+ * happens to be first, a Slab `c` sized both its serifs on nothing and came out
+ * wearing two specks the size of a point.
+ */
+export function endPieces(spine: Spine): { first: SpineSegment; last: SpineSegment } | null {
+  const segments = spine.segments;
+  if (segments.length === 0) return null;
+  const going = segments.filter(hasLength);
+  return going.length > 0
+    ? { first: going[0], last: going[going.length - 1] }
+    : { first: segments[0], last: segments[segments.length - 1] };
+}
+
 export function spineStart(spine: Spine): Vec2 {
   return segmentStart(spine.segments[0]);
 }

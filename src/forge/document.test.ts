@@ -138,9 +138,11 @@ describe("editing a part", () => {
     const after = editPart(before, "shoulder", { spring: 0.8 });
     const changed = moved(before, after);
 
-    // `hbar` is the h with a bar laid across it and is drawn rather than built,
-    // so it is its own letter to `decidedBy` and has to be named here.
-    const arched = ["h", "hbar", "m", "n", "r", "u", "U"];
+    // `hbar`, `eng` and `napostrophe` are all drawn rather than built -- an h
+    // with a bar laid across it, an n whose leg carries on below the line, and
+    // an n with an apostrophe in front of it -- so each is its own letter to
+    // `decidedBy` and has to be named here.
+    const arched = ["h", "hbar", "m", "n", "r", "u", "U", "eng", "napostrophe"];
     for (const letter of arched) {
       expect(changed, `${letter} did not follow the shoulder`).toContain(letter);
     }

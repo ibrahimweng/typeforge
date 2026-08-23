@@ -446,6 +446,36 @@ function offLine(from: Vec2, point: Vec2, to: Vec2): number {
  * This grows the counters closed as well as the outside out, which is what
  * growing a shape does and is worth knowing before turning it up: on a light
  * face a rim of half a stem will fill the eye of an e.
+ *
+ * It is still the expensive one, and the reason is worth writing down because
+ * four ways of making it cheaper have been tried and none of them worked.
+ *
+ * Each round leaves a notch at every convex corner -- that is exactly what the
+ * approximate sweep gets wrong -- and every notch is points the next round
+ * doubles. A Flared `k` goes into the first round at 42 points and comes out of
+ * the eighth at 348, and the last two rounds cost more than the first six
+ * together. The rim alone is about 90ms on that letter and all four operations
+ * together about 185ms, which is the worst of the letters measured.
+ *
+ * What does not help. The exact sweep below cannot be used, because it lays a
+ * band along every edge and by the fourth round the shape it is banding has
+ * hundreds of curved edges: paper runs out of stack. Splitting each round into
+ * four shorter moves, which should converge on the exact answer, runs out of
+ * stack the same way and where it survives it disagrees with itself -- one
+ * letter grew 35% more, another 12% less. Rejoining curves in the tidy recovers
+ * nothing: a union cuts a curve where two boundaries cross, and a crossing is a
+ * real corner, so the pieces are not two halves of one curve and the point
+ * count comes back the same to the point. Taking the eight directions in a
+ * spread order rather than in a fan is worse by more than a factor of ten,
+ * because consecutive near-parallel moves are what keeps the shape simple.
+ *
+ * What would work is not a tuning: it is `S + P = S union (every edge + P)`,
+ * where each edge's own region is built directly from the sixteen-gon's
+ * supporting vertex as the tangent turns, and the pieces are folded the way the
+ * shadow folds its bands. That is exact, and the shape it hands back is the
+ * shape rather than the shape with notches in it. It is a piece of work rather
+ * than an edit, and the test below holds the point count still until somebody
+ * does it.
  */
 function outlined(shape: Contour[], width: number): Contour[] {
   if (width <= 0) return shape;

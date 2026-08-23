@@ -22,6 +22,7 @@ import { ready } from "@/font/boolean";
 import { contourArea, contoursBounds } from "@/font/geometry";
 import type { Contour } from "@/font/types";
 import { drawLetter, letterNames } from "./build";
+import { LETTERS } from "./letters";
 import { castInk, noCast, type Cast } from "./cast";
 import { piecesOf, scaleOf } from "./cut";
 import { shapedInk } from "./layers";
@@ -47,6 +48,19 @@ const put = (letter: string, one: Cast, style = SANS): Contour[] => {
 };
 
 const plain = (letter: string, style = SANS): Contour[] => drawLetter(letter, style)!.contours;
+
+/*
+ * What the cast layer is allowed to leave behind, on the letter that leaves
+ * behind the most of it.
+ *
+ * Measured rather than chosen: a Flared `k` is 42 points, comes out of the rim
+ * at 348 and out of all four operations at 286 -- fewer, because a shadow under
+ * the rim fills in the notches the rim would otherwise have left. A sixth over
+ * each is room for a boolean library that resolves a crossing a hair
+ * differently, and nothing like room for the operation to start leaving twice
+ * as much.
+ */
+const POINT_BUDGET = { rim: 406, everything: 334 };
 
 describe("the shadow", () => {
   it("reaches as far as it is thrown, and no further", () => {
@@ -220,6 +234,44 @@ describe("the rim", () => {
       last = now;
     }
   });
+
+  /**
+   * And how many points it leaves, which is the cost of the operation written
+   * where a test can see it.
+   *
+   * The rim grows the letter by a sixteen-sided figure in eight passes, and
+   * each pass leaves a notch at every convex corner that the next one doubles.
+   * Those points are what the operation after the rim pays for, what the file
+   * carries, and what makes the rim the slow one -- so the number is the thing
+   * to hold still. It is not a good number. `outlined` says what would make it
+   * a good one and what has already been tried and does not; until somebody
+   * does that, this stops it quietly getting worse.
+   */
+  it("leaves no more points behind than it already does", () => {
+    const flared = BASES.find((one) => one.name === "Flared")!;
+    const points = (contours: Contour[]) =>
+      contours.reduce((total, one) => total + one.nodes.length, 0);
+
+    const drawn = drawLetter("k", flared)!;
+    expect(points(drawn.contours)).toBeLessThan(60);
+
+    const rim = put("k", cast((one) => { one.outline = { on: true, width: 0.4 }; }), flared);
+    expect(points(rim)).toBeLessThan(POINT_BUDGET.rim);
+
+    const everything = castInk(
+      drawn.contours,
+      LETTERS.k(flared).strokes,
+      scaleOf(flared),
+      cast((one) => {
+        one.outline = { on: true, width: 0.4 };
+        one.extrude = { on: true, distance: 0.6, angle: -45 };
+        one.spur = { ...one.spur, on: true };
+        one.weld = { ...one.weld, on: true };
+      }),
+      "winding",
+    );
+    expect(points(everything)).toBeLessThan(POINT_BUDGET.everything);
+  }, 60_000);
 });
 
 describe("nothing added breaks a letter", () => {

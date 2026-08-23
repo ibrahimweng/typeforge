@@ -59,6 +59,7 @@ describe("the bases sit inside their own controls", () => {
     expect(outside).toEqual([]);
   });
 });
+import type { Contour } from "@/font/types";
 import type { Pen } from "./types";
 
 const NAMES = letterNames();
@@ -79,6 +80,44 @@ function withPart(style: Style, part: string, key: string, value: number | boole
   return { ...style, parts: parts as unknown as Parts };
 }
 
+/**
+ * A contour written down with its position taken out.
+ *
+ * Every coordinate is measured from the contour's own first node, so two
+ * contours that are the same shape in different places come out the same list
+ * and two that are different shapes do not. A missing handle is written as a
+ * pair of NaNs, which compare unequal to a real coordinate and equal to each
+ * other under `matches` below -- an on-curve corner is not the same shape as a
+ * curve that happens to pass through the same point.
+ */
+function shapeOf(contour: Contour): number[] {
+  const origin = contour.nodes[0].point;
+  const out: number[] = [];
+  for (const node of contour.nodes) {
+    for (const point of [node.point, node.handleIn, node.handleOut]) {
+      out.push(point ? point.x - origin.x : NaN, point ? point.y - origin.y : NaN);
+    }
+  }
+  return out;
+}
+
+/*
+ * Compared with room for the arithmetic rather than exactly.
+ *
+ * Moving a contour adds the same number to every coordinate, and `(x + dx) -
+ * (o + dx)` is not `x - o` in floating point. The ring on an `Aring` and the
+ * breve on an `Abreve` come out a few times ten to the minus fourteen away
+ * from the ring and the breve drawn on their own, which is the addition and
+ * nothing else. A tolerance of a millionth of a unit is far below anything a
+ * drawing can mean and far above that.
+ */
+function matches(one: number[], other: number[]): boolean {
+  if (one.length !== other.length) return false;
+  return one.every((value, at) =>
+    Number.isNaN(value) ? Number.isNaN(other[at]) : Math.abs(value - other[at]) < 1e-6,
+  );
+}
+
 /** The style with one field of the pen or the metrics set. */
 function withField(style: Style, where: "pen" | "metrics", key: string, value: number): Style {
   return where === "pen"
@@ -91,8 +130,65 @@ function stops(min: number, max: number): number[] {
   return [min, (min + max) / 2, max];
 }
 
-describe("no control can spoil a letter", () => {
+describe("no control can spoil a letter", { timeout: 60_000 }, () => {
   const weights = [12, 92, 190, 260];
+
+  /*
+   * The sweeps below run over the drawn letters, and the claim that this loses
+   * nothing is the test immediately after this comment rather than an argument
+   * inside it.
+   *
+   * An accented letter is its base and its marks, moved: `marked` shoves what
+   * it is handed and does nothing else to it. A contour that does not cross
+   * itself does not begin crossing itself because somebody slid it sideways,
+   * so driving a control against an `Aacute` asks the same question of the
+   * same geometry as driving it against `A` and against `acute` -- which these
+   * sweeps do anyway, in the same pass.
+   *
+   * It is worth the trouble because the sweep is the largest test in the suite
+   * and it grows with the character set. Over the whole list it is 822 contours
+   * a pass and about ninety passes; over the drawn letters it is 340, and the
+   * character set can go on growing without this timing out on a slow machine.
+   * It timed out on one already, when 196 letters became 317.
+   */
+  it("an accented letter is its parts, moved", () => {
+    const wrong: string[] = [];
+    const drawn = new Set(DRAWN_NAMES);
+
+    for (const letter of NAMES) {
+      const parts = builtFrom(letter);
+      if (!parts) continue;
+
+      const pieces = [parts.base, ...parts.marks];
+      for (const piece of pieces) {
+        if (!drawn.has(piece)) wrong.push(`${letter} is built from ${piece}, which is not swept`);
+      }
+      if (pieces.some((piece) => !drawn.has(piece))) continue;
+
+      /*
+       * Every shape the composite draws has to be a shape one of its pieces
+       * draws, told apart by its outline alone with the position taken out. If
+       * a mark is ever scaled to fit rather than moved to fit, the shapes stop
+       * matching and this says so -- and then the sweeps have to widen again.
+       */
+      const made = drawLetter(letter, SANS)!.contours.map(shapeOf);
+      const available = pieces.flatMap((piece) => drawLetter(piece, SANS)!.contours.map(shapeOf));
+
+      // Each shape is spent as it is matched, so a composite cannot cover two
+      // of its own contours with one of its parts'.
+      const spare = [...available];
+      for (const shape of made) {
+        const at = spare.findIndex((other) => matches(shape, other));
+        if (at < 0) wrong.push(`${letter} draws a shape none of its parts draw`);
+        else spare.splice(at, 1);
+      }
+      if (spare.length > 0) {
+        wrong.push(`${letter} leaves ${spare.length} of its parts' contours undrawn`);
+      }
+    }
+
+    expect([...new Set(wrong)].slice(0, 8)).toEqual([]);
+  });
 
   for (const spec of PART_SPECS) {
     for (const control of spec.controls) {
@@ -115,7 +211,7 @@ describe("no control can spoil a letter", () => {
               true,
             );
             const style = withPart(base, spec.name, control.key, value);
-            for (const name of NAMES) {
+            for (const name of DRAWN_NAMES) {
               const drawn = drawLetter(name, style);
               expect(drawn, `${name} would not draw`).not.toBeNull();
               for (const contour of drawn!.contours) {
@@ -146,7 +242,7 @@ describe("no control can spoil a letter", () => {
               control.key,
               value,
             );
-            for (const name of NAMES) {
+            for (const name of DRAWN_NAMES) {
               for (const contour of drawLetter(name, style)!.contours) {
                 expect(
                   contoursIntersect([contour]),
@@ -165,7 +261,7 @@ describe("no control can spoil a letter", () => {
       for (const contrast of [0, 0.45, 0.9]) {
         for (const angle of [-90, -30, 0, 30, 90]) {
           const style: Style = { ...SANS, pen: { weight, contrast, angle } };
-          for (const name of NAMES) {
+          for (const name of DRAWN_NAMES) {
             for (const contour of drawLetter(name, style)!.contours) {
               expect(
                 contoursIntersect([contour]),
