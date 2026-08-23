@@ -15,7 +15,7 @@
  * it is the last thing that happens before the letters leave.
  */
 
-import { codepointOfAccented } from "./accents";
+import { ALSO_DRAWS, codepointOfAccented } from "./accents";
 import { ready as readyToCut } from "@/font/boolean";
 import { correctDirection } from "@/font/outline";
 import { removeOverlaps } from "@/font/overlap";
@@ -124,7 +124,14 @@ const ALSO: Record<string, number[]> = {
   // names for a comma and draws with one. Two characters, one glyph.
   Tcommaaccent: [0x021a],
   tcommaaccent: [0x021b],
+  ...Object.fromEntries(
+    Object.entries(ALSO_DRAWS).map(([name, characters]) => [
+      name,
+      [...characters].map((one) => one.codePointAt(0)!),
+    ]),
+  ),
 };
+
 
 /*
  * The rest of them, worked out rather than listed.
@@ -164,14 +171,24 @@ const MARK_CODEPOINTS: Record<string, number> = {
   dotlessj: 0x0237,
 };
 
-/** Every character this glyph is the drawing of. */
+/**
+ * Every character this glyph is the drawing of.
+ *
+ * A letter named after itself is that character. Anything else is looked up,
+ * and either way the glyph may answer to more characters than one -- which
+ * used to be true only of the letters that are not named after themselves,
+ * because this returned as soon as it had recognised a one-character name. An
+ * `A` is also a Greek capital alpha and a Cyrillic capital a, and it said it
+ * was neither.
+ */
 export function codepointsFor(name: string): number[] {
+  const also = ALSO[name] ?? [];
   if (name.length === 1) {
     const one = name.codePointAt(0);
-    return one === undefined ? [] : [one];
+    return one === undefined ? also : [one, ...also];
   }
   const first = CODEPOINTS[name] ?? MARK_CODEPOINTS[name] ?? codepointOfAccented(name) ?? null;
-  return first === null ? (ALSO[name] ?? []) : [first, ...(ALSO[name] ?? [])];
+  return first === null ? also : [first, ...also];
 }
 
 export function codepointFor(name: string): number | null {

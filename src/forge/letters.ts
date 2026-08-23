@@ -1379,6 +1379,462 @@ function struck(base: Recipe, bar: Stroke): Recipe {
   return { ...base, strokes: [...base.strokes, bar] };
 }
 
+/**
+ * The tail a zeta, a xi and a final sigma all finish with: down past the
+ * baseline and hooked back to the left.
+ *
+ * The hook takes whatever room is left between where the tail starts and the
+ * descender, and none if there is none -- a descender of forty units under a
+ * pen of two hundred and sixty leaves nothing to turn in, and asked for a hook
+ * anyway the tail was told to run upwards to reach it and the letter folded
+ * over itself. A straight tail is a real tail.
+ *
+ * Its own stroke rather than the end of the run above it, for the same reason:
+ * the run arrives going down and left and the hook sets off going down and
+ * right, which at a display weight is more turn than one join can carry.
+ */
+function tailBelow(f: Frame, x: number, from: number): Stroke {
+  const floor = f.dip(f.desc);
+  const radius = Math.min(Math.max(f.arch * 0.36, f.least), (from - floor) * 0.45);
+  const head = at(x, from);
+  if (radius <= f.least) return ink(f, straight(head, at(x, floor)), BUTT, f.end);
+  const toe = at(x, floor + radius);
+  return ink(
+    f,
+    chain(straight(head, toe), turn(at(toe.x - radius, toe.y), radius, 0, -105)),
+    BUTT,
+    f.end,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Cyrillic shapes
+// ---------------------------------------------------------------------------
+
+/*
+ * Most of Cyrillic's lowercase is its capitals drawn at the x-height.
+ *
+ * A Cyrillic `н` is an `Н` the height of an `n`, not an arch; a `т` is a `Т`,
+ * not a stem with a foot; a `п`, a `м`, a `ш`, a `ц` and a dozen more are the
+ * same. That is a fact about the alphabet, so each shape is written once
+ * against a height and asked for twice, and the two cases cannot drift apart.
+ *
+ * The ones that are genuinely their own shape -- the `б`, which is not a small
+ * `Б` at all -- are written on their own below.
+ */
+
+/** How wide a letter of this height is, in the terms the Latin already uses. */
+function cyrWide(f: Frame, top: number): number {
+  return top > f.x ? f.capBowl : f.bowl;
+}
+
+/** How far a Cyrillic tail hangs below the line, on a letter of this height. */
+function cyrDrop(f: Frame, top: number): number {
+  return Math.max(top * 0.17, f.half * 1.2);
+}
+
+/** Two stems the width of a counter apart, which four of these are built on. */
+function cyrPosts(f: Frame): [number, number] {
+  const left = f.edge;
+  return [left, left + f.style.metrics.counterWidth + f.style.pen.weight];
+}
+
+function cyrBe(f: Frame, top: number): Stroke[] {
+  const wide = cyrWide(f, top);
+  const stem = f.edge;
+  const bowl = Math.max(top * 0.29, f.least);
+  return [
+    ink(f, straight(at(stem, 0), at(stem, top)), f.end, f.end),
+    arm(f, stem, stem + wide * 1.5, f.hangs(top, f.bar)),
+    belly(f, at(stem, bowl), bowl * f.wide, bowl, -90, 90),
+  ];
+}
+
+function cyrVe(f: Frame, top: number): Stroke[] {
+  const stem = f.edge;
+  const upper = Math.max(top * 0.26, f.least);
+  const lower = Math.max(top * 0.29, f.least);
+  return [
+    ink(f, straight(at(stem, 0), at(stem, top)), f.end, f.end),
+    belly(f, at(stem, top - upper), upper * f.wide, upper, -90, 90),
+    belly(f, at(stem, lower), lower * f.wide, lower, -90, 90),
+  ];
+}
+
+function cyrGe(f: Frame, top: number): Stroke[] {
+  const stem = f.edge;
+  return [
+    ink(f, straight(at(stem, 0), at(stem, top)), f.end, f.end),
+    arm(f, stem, stem + cyrWide(f, top) * 1.05, f.hangs(top, f.bar)),
+  ];
+}
+
+/** A roof on a slanted leg, standing on a shelf with two feet under it. */
+function cyrDe(f: Frame, top: number): Stroke[] {
+  const wide = cyrWide(f, top);
+  const left = f.edge;
+  const width = wide * 1.75;
+  const shelf = f.sits(0, f.bar);
+  const roof = f.hangs(top, f.bar);
+  const post = left + width * 0.82;
+  const drop = cyrDrop(f, top);
+  return [
+    ink(f, straight(at(post, shelf), at(post, top)), BUTT, f.end),
+    thin(f, straight(at(left + width * 0.26, roof), at(post, roof)), f.end, BUTT),
+    ink(f, straight(at(left + width * 0.26, roof), at(left + width * 0.12, shelf)), BUTT, BUTT),
+    thin(f, straight(at(left, shelf), at(left + width, shelf)), BUTT, BUTT),
+    ink(f, straight(at(left + f.half, shelf), at(left + f.half, -drop)), BUTT, f.end),
+    ink(f, straight(at(left + width - f.half, shelf), at(left + width - f.half, -drop)), BUTT, f.end),
+  ];
+}
+
+/** A stem with two vees leaning on it, one each side. */
+function cyrZhe(f: Frame, top: number): Stroke[] {
+  const width = cyrWide(f, top) * 2;
+  const left = f.edge;
+  const middle = left + width / 2;
+  const waist = top * 0.5;
+  const arms = ([1, -1] as const).flatMap((way) => {
+    const edge = way > 0 ? left + width : left;
+    return [
+      ink(f, straight(at(edge, top), at(middle, waist)), f.end, BUTT),
+      ink(f, straight(at(edge, 0), at(middle, waist)), f.end, BUTT),
+    ];
+  });
+  return [ink(f, straight(at(middle, 0), at(middle, top)), f.end, f.end), ...arms];
+}
+
+/** Two arcs bulging right, which is what a ze and a three both are. */
+function cyrZe(f: Frame, top: number): Stroke[] {
+  const radius = Math.max(top * 0.27, f.least);
+  /*
+   * Placed by where the arcs actually reach, not by where the whole bowl would.
+   *
+   * A ze is the right side of a bowl and nothing else, so its leftmost ink is
+   * the end of an arc rather than the side of a circle: measured as a circle it
+   * stood eighty-six units inside its own sidebearing and read as a letter that
+   * had been pushed.
+   */
+  const cx = f.edge + bendWidth(f, radius) * 0.643;
+  return [
+    ink(f, bend(f, at(cx, top - radius), radius, -130, 105), f.end, BUTT),
+    ink(f, bend(f, at(cx, radius), radius, -105, 130), BUTT, f.end),
+  ];
+}
+
+/** The N with its diagonal the other way round. */
+function cyrI(f: Frame, top: number): Stroke[] {
+  const [left, right] = cyrPosts(f);
+  const into = stub(f);
+  const start = at(left, into);
+  const end = at(right, top - into);
+  const [foot, head] = corners(f, [start, at(left, 0), at(right, top), end]);
+  return [
+    ink(f, straight(at(left, 0), at(left, top)), f.end, f.end),
+    ink(f, straight(at(right, 0), at(right, top)), f.end, f.end),
+    ink(f, chain(straight(start, foot), straight(foot, head), straight(head, end))),
+  ];
+}
+
+/** A stem on the right with a leg that leans away from it. */
+function cyrEl(f: Frame, top: number): Stroke[] {
+  const width = cyrWide(f, top) * 1.6;
+  const left = f.edge;
+  const right = left + width;
+  const roof = f.hangs(top, f.bar);
+  const knee = at(left + width * 0.3, roof);
+  return [
+    ink(f, straight(at(right, 0), at(right, top)), f.end, BUTT),
+    ink(f, chain(straight(at(right, roof), knee), straight(knee, at(left, 0))), BUTT, f.end),
+  ];
+}
+
+/** Two stems under one bar. */
+function cyrPe(f: Frame, top: number): Stroke[] {
+  const [left, right] = cyrPosts(f);
+  return [
+    ink(f, straight(at(left, 0), at(left, top)), f.end, BUTT),
+    ink(f, straight(at(right, 0), at(right, top)), f.end, BUTT),
+    thin(f, straight(at(left, f.hangs(top, f.bar)), at(right, f.hangs(top, f.bar))), BUTT, BUTT),
+  ];
+}
+
+/** The y's vee, at whatever height it is asked for. */
+function cyrU(f: Frame, top: number): Stroke[] {
+  const half = cyrWide(f, top) * 0.9;
+  const left = f.edge;
+  const middle = left + half;
+  const past = f.half * 1.1;
+  const drop = past / Math.hypot(1, top / half);
+  return [
+    ink(f, straight(at(left, top), at(middle + (drop * half) / top, -drop)), f.end, BUTT),
+    ink(
+      f,
+      straight(at(middle + half, top), at(middle + (half * f.desc) / top, f.desc)),
+      f.end,
+      f.end,
+    ),
+  ];
+}
+
+/** The pe, with a tail hung off the foot of its right stem. */
+function cyrTse(f: Frame, top: number): Stroke[] {
+  const [, right] = cyrPosts(f);
+  const drop = cyrDrop(f, top);
+  return [
+    ...cyrPe(f, top),
+    ink(f, straight(at(right + f.half * 1.6, f.sits(0, f.bar)), at(right + f.half * 1.6, -drop)), BUTT, f.end),
+    thin(f, straight(at(right - f.half, f.sits(0, f.bar)), at(right + f.half * 1.6, f.sits(0, f.bar))), BUTT, BUTT),
+  ];
+}
+
+/** A stem, and a half-stem meeting it at the waist. */
+function cyrChe(f: Frame, top: number): Stroke[] {
+  const [left, right] = cyrPosts(f);
+  const waist = top * 0.44;
+  return [
+    ink(f, straight(at(right, 0), at(right, top)), f.end, f.end),
+    ink(f, straight(at(left, waist), at(left, top)), BUTT, f.end),
+    thin(f, straight(at(left, f.sits(waist, f.bar)), at(right, f.sits(waist, f.bar))), BUTT, BUTT),
+  ];
+}
+
+/** Three stems on one shelf. */
+function cyrSha(f: Frame, top: number): Stroke[] {
+  const gap = f.style.metrics.counterWidth + f.style.pen.weight;
+  const left = f.edge;
+  const shelf = f.sits(0, f.bar);
+  return [
+    ...[0, 1, 2].map((step) =>
+      ink(f, straight(at(left + gap * step, shelf), at(left + gap * step, top)), BUTT, f.end),
+    ),
+    thin(f, straight(at(left, shelf), at(left + gap * 2, shelf)), BUTT, BUTT),
+  ];
+}
+
+/** The sha with the same tail the tse has. */
+function cyrShcha(f: Frame, top: number): Stroke[] {
+  const gap = f.style.metrics.counterWidth + f.style.pen.weight;
+  const right = f.edge + gap * 2;
+  const drop = cyrDrop(f, top);
+  const shelf = f.sits(0, f.bar);
+  return [
+    ...cyrSha(f, top),
+    thin(f, straight(at(right - f.half, shelf), at(right + f.half * 1.6, shelf)), BUTT, BUTT),
+    ink(f, straight(at(right + f.half * 1.6, shelf), at(right + f.half * 1.6, -drop)), BUTT, f.end),
+  ];
+}
+
+/** A stem with a bowl on the bottom half of it, standing where it is told. */
+function cyrSoftAt(f: Frame, top: number, stem: number): Stroke[] {
+  const bowl = Math.max(top * 0.29, f.least);
+  return [
+    ink(f, straight(at(stem, 0), at(stem, top)), f.end, f.end),
+    belly(f, at(stem, bowl), bowl * f.wide, bowl, -90, 90),
+  ];
+}
+
+function cyrSoft(f: Frame, top: number): Stroke[] {
+  return cyrSoftAt(f, top, f.edge);
+}
+
+
+/** A bowl open to the right, with a bar reaching in: the Ukrainian ye. */
+function cyrIe(f: Frame, top: number): Stroke[] {
+  const radius = Math.max(top / 2, f.least);
+  const wide = bendWidth(f, radius);
+  const centre = at(f.edge + wide, top / 2);
+  return [
+    ink(f, bend(f, centre, radius, 55, 305), f.end, f.end),
+    thin(f, straight(at(centre.x - wide, centre.y), at(centre.x + wide * 0.2, centre.y)), BUTT, f.end),
+  ];
+}
+
+/** A bar over a stem, with a shoulder hung off it: the Serbian tshe. */
+function cyrTsheAt(f: Frame, top: number, stem: number, tail: number): Stroke[] {
+  const wide = cyrWide(f, top);
+  const waist = top * 0.56;
+  const right = stem + wide * 1.15;
+  const radius = Math.max(Math.min(wide * 0.55, (top - waist) * 0.9), f.least);
+  return [
+    ink(f, straight(at(stem, 0), at(stem, top)), f.end, f.end),
+    thin(f, straight(at(stem - wide * 0.5, f.hangs(top, f.bar)), at(stem + wide * 0.7, f.hangs(top, f.bar))), f.end, f.end),
+    ink(
+      f,
+      chain(
+        straight(at(stem, waist), at(right - radius, waist)),
+        turn(at(right - radius, waist - radius), radius, 90, 0),
+        straight(at(right, waist - radius), at(right, tail)),
+      ),
+      BUTT,
+      f.end,
+    ),
+  ];
+}
+
+/** The same with a tail below the line, which is the Serbian dje. */
+function cyrDje(f: Frame, top: number): Stroke[] {
+  return cyrTsheAt(f, top, f.edge + cyrWide(f, top) * 0.5, f.dip(f.desc));
+}
+
+function cyrTshe(f: Frame, top: number): Stroke[] {
+  return cyrTsheAt(f, top, f.edge + cyrWide(f, top) * 0.5, 0);
+}
+
+/** An el and a soft sign, tied together at the waist. */
+function cyrLje(f: Frame, top: number): Stroke[] {
+  const width = cyrWide(f, top) * 1.6;
+  // A counter's worth apart, not a pen's: set at the pen the el's leg and the
+  // soft sign's stem sat close enough to read as one crowded letter.
+  const stem = f.edge + width + f.style.metrics.counterWidth * 0.5 + f.style.pen.weight;
+  const waist = top * f.style.parts.crossbar.height;
+  return [
+    ...cyrEl(f, top),
+    thin(f, straight(at(f.edge + width, waist), at(stem, waist)), BUTT, BUTT),
+    ...cyrSoftAt(f, top, stem),
+  ];
+}
+
+/** A stem and a soft sign, tied together at the waist: the nje. */
+function cyrNje(f: Frame, top: number): Stroke[] {
+  const stem = f.edge + f.style.metrics.counterWidth + f.style.pen.weight;
+  const waist = top * f.style.parts.crossbar.height;
+  return [
+    ink(f, straight(at(f.edge, 0), at(f.edge, top)), f.end, f.end),
+    thin(f, straight(at(f.edge, waist), at(stem, waist)), BUTT, BUTT),
+    ...cyrSoftAt(f, top, stem),
+  ];
+}
+
+/** The pe with its tail down the middle rather than off the side. */
+function cyrDzhe(f: Frame, top: number): Stroke[] {
+  const [left, right] = cyrPosts(f);
+  const middle = (left + right) / 2;
+  const drop = cyrDrop(f, top);
+  const shelf = f.sits(0, f.bar);
+  return [
+    ink(f, straight(at(left, shelf), at(left, top)), BUTT, f.end),
+    ink(f, straight(at(right, shelf), at(right, top)), BUTT, f.end),
+    thin(f, straight(at(left, shelf), at(right, shelf)), BUTT, BUTT),
+    ink(f, straight(at(middle, shelf), at(middle, -drop)), BUTT, f.end),
+  ];
+}
+
+/** The ge with a tick turned up at the end of its arm. */
+function cyrGheUpturn(f: Frame, top: number): Stroke[] {
+  const stem = f.edge;
+  const reach = cyrWide(f, top) * 1.05;
+  const tick = Math.max(top * 0.16, f.half * 1.4);
+  /*
+   * The arm set down by the height of its own tick.
+   *
+   * The tick is what makes a ghe with an upturn, and it turns up: put on the
+   * arm where a plain ghe's arm goes it carries the letter past the line every
+   * other capital stops at, which on the undulating face was nineteen units out
+   * and is exactly the fault the whole alphabet was measured for once already.
+   */
+  const bar = f.hangs(top, f.bar) - tick;
+  return [
+    ink(f, straight(at(stem, 0), at(stem, top)), f.end, f.end),
+    arm(f, stem, stem + reach, bar),
+    ink(f, straight(at(stem + reach, bar), at(stem + reach, f.hangs(top, f.bar))), BUTT, f.end),
+  ];
+}
+
+/** The soft sign with a shoulder to its left. */
+function cyrHard(f: Frame, top: number): Stroke[] {
+  const stem = f.edge + cyrWide(f, top) * 0.5;
+  const bowl = Math.max(top * 0.29, f.least);
+  return [
+    ink(f, straight(at(stem, 0), at(stem, top)), f.end, f.end),
+    thin(f, straight(at(f.edge, f.hangs(top, f.bar)), at(stem, f.hangs(top, f.bar))), f.end, BUTT),
+    belly(f, at(stem, bowl), bowl * f.wide, bowl, -90, 90),
+  ];
+}
+
+/** The soft sign with a stem set beside it. */
+function cyrYeru(f: Frame, top: number): Stroke[] {
+  const bowl = Math.max(top * 0.29, f.least);
+  const apart = f.edge + bowl * f.wide + f.style.metrics.counterWidth * 0.55 + f.style.pen.weight;
+  return [
+    ...cyrSoft(f, top),
+    ink(f, straight(at(apart, 0), at(apart, top)), f.end, f.end),
+  ];
+}
+
+/** A bowl open to the left, with a bar reaching in from the right. */
+function cyrE(f: Frame, top: number): Stroke[] {
+  const radius = Math.max(top / 2, f.least);
+  const wide = bendWidth(f, radius);
+  // Placed by where the arc reaches, for the reason the ze is.
+  const centre = at(f.edge + wide * 0.574, top / 2);
+  return [
+    ink(f, bend(f, centre, radius, -125, 125), f.end, f.end),
+    thin(f, straight(at(centre.x - wide * 0.2, centre.y), at(centre.x + wide, centre.y)), f.end, BUTT),
+  ];
+}
+
+/** A stem, a bar, and a ring beside it. */
+function cyrYu(f: Frame, top: number): Stroke[] {
+  const radius = Math.max(top / 2, f.least);
+  const wide = bendWidth(f, radius);
+  const stem = f.edge;
+  const centre = at(stem + f.half * 2.4 + wide, top / 2);
+  return [
+    ink(f, straight(at(stem, 0), at(stem, top)), f.end, f.end),
+    thin(f, straight(at(stem, centre.y), at(centre.x - wide, centre.y)), BUTT, BUTT),
+    ink(f, ring(f, centre, wide, radius)),
+  ];
+}
+
+/** The R the other way round: a bowl on the right and a leg under it. */
+function cyrYa(f: Frame, top: number): Stroke[] {
+  const wide = cyrWide(f, top);
+  const right = f.edge + wide * 1.4;
+  const bowl = Math.max(top * 0.28, f.least);
+  const waist = f.sits(top - bowl * 2, f.bar);
+  return [
+    ink(f, straight(at(right, 0), at(right, top)), f.end, f.end),
+    belly(f, at(right, top - bowl), bowl * f.wide, bowl, 90, 270),
+    ink(f, straight(at(right, waist), at(f.edge, 0)), BUTT, f.end),
+  ];
+}
+
+/** Two stems with a vee between them, which is an M at any height. */
+function cyrEm(f: Frame, top: number): Stroke[] {
+  const half = Math.max(cyrWide(f, top) * 0.66, f.least);
+  const left = f.edge;
+  const right = left + half * 2;
+  const dip = corner(f, at(left, top), at(left + half, top * 0.18), at(right, top));
+  return [
+    ink(f, straight(at(left, 0), at(left, top)), f.end, f.end),
+    ink(f, straight(at(right, 0), at(right, top)), f.end, f.end),
+    ink(f, chain(straight(at(left, top), dip), straight(dip, at(right, top))), BUTT, BUTT),
+  ];
+}
+
+/** Two stems with a bar between them, which is an H at any height. */
+function cyrEn(f: Frame, top: number): Stroke[] {
+  const [left, right] = cyrPosts(f);
+  const bar = top * f.style.parts.crossbar.height;
+  return [
+    ink(f, straight(at(left, 0), at(left, top)), f.end, f.end),
+    ink(f, straight(at(right, 0), at(right, top)), f.end, f.end),
+    thin(f, straight(at(left, bar), at(right, bar)), BUTT, BUTT),
+  ];
+}
+
+/** A stem under a bar, which is a T at any height. */
+function cyrTe(f: Frame, top: number): Stroke[] {
+  const half = cyrWide(f, top) * 0.95;
+  const middle = f.edge + half;
+  const bar = f.hangs(top, f.bar);
+  return [
+    ink(f, straight(at(middle, 0), at(middle, top)), f.end, BUTT),
+    thin(f, straight(at(middle - half, bar), at(middle + half, bar)), f.end, f.end),
+  ];
+}
+
 function crossbar(f: Frame, from: number, to: number): Stroke {
   const height = f.hangs(f.x, f.bar);
   return thin(f, straight(at(from, height), at(to, height)), f.end, f.end);
@@ -4309,6 +4765,671 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
    * the foot of the letter, so what matters here is only its shape.
    */
   cedilla: (style) => hook(style, -1),
+
+  // --- Cyrillic ----------------------------------------------------------
+
+  /*
+   * The third alphabet, and the one where the lowercase is the capitals again.
+   *
+   * A Cyrillic `н` is an `Н` the height of an `n`; a `т` is a `Т`; a `п`, a
+   * `м`, a `ш`, a `ц`, a `ь` and a dozen more are the same letter twice at two
+   * sizes. So each shape is written once against a height, up in the helpers,
+   * and asked for at the cap height and at the x-height -- which is not a
+   * saving, it is the alphabet: drawn separately the two cases would drift
+   * apart, and in Cyrillic that is a fault a reader sees at once.
+   *
+   * Twenty-four characters are drawings this font already had. Eleven capitals
+   * are Latin capitals, three are Greek ones, and ten lowercase are Latin
+   * lowercase -- and the `к`, which is the k with no ascender that Greenlandic
+   * asked for and Greek asked for again.
+   */
+
+  "\u0411": (style) => finish(frame(style), cyrBe(frame(style), frame(style).cap)),
+  "\u0414": (style) => finish(frame(style), cyrDe(frame(style), frame(style).cap)),
+  "\u0416": (style) => finish(frame(style), cyrZhe(frame(style), frame(style).cap)),
+  "\u0417": (style) => finish(frame(style), cyrZe(frame(style), frame(style).cap), true),
+  "\u0418": (style) => finish(frame(style), cyrI(frame(style), frame(style).cap)),
+  "\u041b": (style) => finish(frame(style), cyrEl(frame(style), frame(style).cap)),
+  "\u0423": (style) => finish(frame(style), cyrU(frame(style), frame(style).cap)),
+  "\u0426": (style) => finish(frame(style), cyrTse(frame(style), frame(style).cap)),
+  "\u0427": (style) => finish(frame(style), cyrChe(frame(style), frame(style).cap)),
+  "\u0428": (style) => finish(frame(style), cyrSha(frame(style), frame(style).cap)),
+  "\u0429": (style) => finish(frame(style), cyrShcha(frame(style), frame(style).cap)),
+  "\u042a": (style) => finish(frame(style), cyrHard(frame(style), frame(style).cap), true),
+  "\u042b": (style) => finish(frame(style), cyrYeru(frame(style), frame(style).cap), true),
+  "\u042c": (style) => finish(frame(style), cyrSoft(frame(style), frame(style).cap), true),
+  "\u042d": (style) => finish(frame(style), cyrE(frame(style), frame(style).cap), true),
+  "\u042e": (style) => finish(frame(style), cyrYu(frame(style), frame(style).cap), true),
+  "\u042f": (style) => finish(frame(style), cyrYa(frame(style), frame(style).cap), true),
+
+  /** A bowl with a curl over the top of it, which is not a small hard sign. */
+  "\u0431": (style) => {
+    const f = frame(style);
+    const radius = Math.max(f.x * 0.37, f.least);
+    const wide = bendWidth(f, radius);
+    const centre = at(f.edge + wide, radius);
+    return finish(
+      f,
+      [
+        ink(f, ring(f, centre, wide, radius)),
+        ink(
+          f,
+          chain(
+            straight(at(centre.x - wide * 0.15, f.crest(f.asc)), at(centre.x + wide * 0.3, f.crest(f.asc))),
+            straight(at(centre.x + wide * 0.3, f.crest(f.asc)), at(centre.x - wide * 0.55, radius * 1.5)),
+          ),
+          f.end,
+          BUTT,
+        ),
+      ],
+      true);
+  },
+
+  "\u0432": (style) => finish(frame(style), cyrVe(frame(style), frame(style).x), true),
+  "\u0433": (style) => finish(frame(style), cyrGe(frame(style), frame(style).x)),
+  "\u0434": (style) => finish(frame(style), cyrDe(frame(style), frame(style).x)),
+  "\u0436": (style) => finish(frame(style), cyrZhe(frame(style), frame(style).x)),
+  "\u0437": (style) => finish(frame(style), cyrZe(frame(style), frame(style).x), true),
+  "\u0438": (style) => finish(frame(style), cyrI(frame(style), frame(style).x)),
+  "\u043b": (style) => finish(frame(style), cyrEl(frame(style), frame(style).x)),
+  "\u043c": (style) => finish(frame(style), cyrEm(frame(style), frame(style).x)),
+  "\u043d": (style) => finish(frame(style), cyrEn(frame(style), frame(style).x)),
+  "\u043f": (style) => finish(frame(style), cyrPe(frame(style), frame(style).x)),
+  "\u0442": (style) => finish(frame(style), cyrTe(frame(style), frame(style).x)),
+  "\u0446": (style) => finish(frame(style), cyrTse(frame(style), frame(style).x)),
+  "\u0447": (style) => finish(frame(style), cyrChe(frame(style), frame(style).x)),
+  "\u0448": (style) => finish(frame(style), cyrSha(frame(style), frame(style).x)),
+  "\u0449": (style) => finish(frame(style), cyrShcha(frame(style), frame(style).x)),
+  "\u044a": (style) => finish(frame(style), cyrHard(frame(style), frame(style).x), true),
+  "\u044b": (style) => finish(frame(style), cyrYeru(frame(style), frame(style).x), true),
+  "\u044c": (style) => finish(frame(style), cyrSoft(frame(style), frame(style).x), true),
+  "\u044d": (style) => finish(frame(style), cyrE(frame(style), frame(style).x), true),
+  "\u044e": (style) => finish(frame(style), cyrYu(frame(style), frame(style).x), true),
+  "\u044f": (style) => finish(frame(style), cyrYa(frame(style), frame(style).x), true),
+
+  /*
+   * And the twelve the other Cyrillic languages want.
+   *
+   * Serbian and Macedonian write letters Russian does not, and two of them --
+   * the lje and the nje -- are a letter tied to a soft sign, which is exactly
+   * how they are built here: the shapes are already written down, so the
+   * letters are a bar between two of them.
+   */
+  "\u0402": (style) => finish(frame(style), cyrDje(frame(style), frame(style).cap), true),
+  "\u0404": (style) => finish(frame(style), cyrIe(frame(style), frame(style).cap), true),
+  "\u0409": (style) => finish(frame(style), cyrLje(frame(style), frame(style).cap), true),
+  "\u040a": (style) => finish(frame(style), cyrNje(frame(style), frame(style).cap), true),
+  "\u040b": (style) => finish(frame(style), cyrTshe(frame(style), frame(style).cap), true),
+  "\u040f": (style) => finish(frame(style), cyrDzhe(frame(style), frame(style).cap)),
+  "\u0452": (style) => finish(frame(style), cyrDje(frame(style), frame(style).x), true),
+  "\u0454": (style) => finish(frame(style), cyrIe(frame(style), frame(style).x), true),
+  "\u0459": (style) => finish(frame(style), cyrLje(frame(style), frame(style).x), true),
+  "\u045a": (style) => finish(frame(style), cyrNje(frame(style), frame(style).x), true),
+  "\u045b": (style) => finish(frame(style), cyrTshe(frame(style), frame(style).x), true),
+  "\u045f": (style) => finish(frame(style), cyrDzhe(frame(style), frame(style).x)),
+
+  /** Ukrainian's ghe, which Unicode keeps out on its own two blocks later. */
+  "\u0490": (style) => finish(frame(style), cyrGheUpturn(frame(style), frame(style).cap)),
+  "\u0491": (style) => finish(frame(style), cyrGheUpturn(frame(style), frame(style).x)),
+
+  // --- Greek capitals ----------------------------------------------------
+
+  /*
+   * The ten that are not already here.
+   *
+   * Fourteen of the twenty-four Greek capitals are Latin capitals -- an alpha
+   * is an A, a beta is a B -- and they are pointed at the drawings that already
+   * exist rather than drawn again. What is below is the rest, and every one of
+   * them is built out of the same parts the Latin capitals are: the stem, the
+   * arm, the bowl, the diagonal, the vee. That is the whole claim of this half
+   * of the application, and a second alphabet is where it is either true or
+   * obviously not.
+   */
+
+  /** A stem with one arm, which is an F that stopped after the first. */
+  "\u0393": (style) => {
+    const f = frame(style);
+    const stem = f.edge;
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+      arm(f, stem, stem + f.capBowl * 1.05, f.hangs(f.cap, f.bar)),
+    ]);
+  },
+
+  /** A triangle: the A's two diagonals, closed along the baseline. */
+  "\u0394": (style) => {
+    const f = frame(style);
+    const half = Math.max(f.capBowl * 0.95, f.least);
+    const left = f.edge;
+    const middle = left + half;
+    const foot = at(left, 0);
+    const other = at(middle + half, 0);
+    const peak = corner(f, foot, at(middle, f.cap), other);
+    return finish(f, [
+      ink(f, chain(straight(foot, peak), straight(peak, other)), BUTT, BUTT),
+      ink(f, straight(at(left, f.sits(0)), at(middle + half, f.sits(0))), f.end, f.end),
+    ]);
+  },
+
+  /** An O with a bar across the middle of it. */
+  "\u0398": (style) => {
+    const f = frame(style);
+    const centre = at(f.edge + f.capBowl, f.cap / 2);
+    return finish(
+      f,
+      [
+        ink(f, ring(f, centre, f.capBowl, f.capBowlH)),
+        thin(
+          f,
+          straight(at(centre.x - f.capBowl, centre.y), at(centre.x + f.capBowl, centre.y)),
+          BUTT,
+          BUTT,
+        ),
+      ],
+      true);
+  },
+
+  /** The A without its crossbar, which is what a lambda is. */
+  "\u039b": (style) => {
+    const f = frame(style);
+    const half = Math.max(f.capBowl * 0.86, f.least);
+    const left = f.edge;
+    const middle = left + half;
+    const foot = at(left, 0);
+    const other = at(middle + half, 0);
+    const peak = corner(f, foot, at(middle, f.cap), other);
+    return finish(f, [
+      ink(f, chain(straight(foot, peak), straight(peak, other)), f.end, f.end),
+    ]);
+  },
+
+  /** Three bars and no stem, the middle one held in at both ends. */
+  "\u039e": (style) => {
+    const f = frame(style);
+    const left = f.edge;
+    const reach = f.capBowl * 1.6;
+    const inset = reach * 0.13;
+    const middle = f.cap * f.style.parts.crossbar.height;
+    return finish(f, [
+      thin(f, straight(at(left, f.hangs(f.cap, f.bar)), at(left + reach, f.hangs(f.cap, f.bar))), f.end, f.end),
+      thin(f, straight(at(left + inset, middle), at(left + reach - inset, middle)), f.end, f.end),
+      thin(f, straight(at(left, f.sits(0, f.bar)), at(left + reach, f.sits(0, f.bar))), f.end, f.end),
+    ]);
+  },
+
+  /** Two stems under one bar: an n at cap height with nothing rounded. */
+  "\u03a0": (style) => {
+    const f = frame(style);
+    const left = f.edge;
+    const right = left + f.style.metrics.counterWidth + f.style.pen.weight;
+    return finish(f, [
+      ink(f, straight(at(left, 0), at(left, f.cap)), f.end, BUTT),
+      ink(f, straight(at(right, 0), at(right, f.cap)), f.end, BUTT),
+      thin(f, straight(at(left, f.hangs(f.cap, f.bar)), at(right, f.hangs(f.cap, f.bar))), BUTT, BUTT),
+    ]);
+  },
+
+  /*
+   * One run, folded twice.
+   *
+   * Along the top, back down to the waist, out again to the foot, and along the
+   * bottom -- four straights and three corners, which is what the N already
+   * does with three and two. Drawn as separate strokes the two folds would each
+   * need their own end and the wedges between them would be left open, which is
+   * the fault the diagonals of the alphabet had before they were chained.
+   */
+  "\u03a3": (style) => {
+    const f = frame(style);
+    const left = f.edge;
+    /*
+     * Two bars and a chevron, rather than one run folded three times.
+     *
+     * A sigma has three corners where a Z has one, and they pull against each
+     * other: opening the waist steepens the diagonals, which closes the two
+     * corners the bars make with them, and there is a setting -- five hundred
+     * units of cap height under a pen of two hundred and sixty, which the
+     * panel offers -- where no waist satisfies all three and the run doubles
+     * back through itself. Split, the chevron has one corner to satisfy, which
+     * is what a V has, and the bars lie over its ends.
+     */
+    const reach = Math.max(f.capBowl * 1.5, f.half * 4);
+    const right = left + reach;
+    const top = f.hangs(f.cap, f.bar);
+    const bottom = f.sits(0, f.bar);
+    const inset = Math.min(Math.max(reach * 0.42, f.half * 2.4), reach * 0.72);
+    const head = at(left, top);
+    const heel = at(left, bottom);
+    const waist = corner(f, head, at(left + inset, f.cap / 2), heel);
+    return finish(f, [
+      thin(f, straight(at(right, top), head), f.end, BUTT),
+      ink(f, chain(straight(head, waist), straight(waist, heel)), BUTT, BUTT),
+      thin(f, straight(heel, at(right, bottom)), BUTT, f.end),
+    ]);
+  },
+
+  /** A stem straight through a bowl, out at the top and out at the bottom. */
+  "\u03a6": (style) => {
+    const f = frame(style);
+    const centre = at(f.edge + f.capBowl, f.cap / 2);
+    const height = Math.max(f.capBowlH * 0.76, f.least);
+    return finish(
+      f,
+      [
+        ink(f, ring(f, centre, f.capBowl, height)),
+        ink(f, straight(at(centre.x, 0), at(centre.x, f.cap)), f.end, f.end),
+      ],
+      true);
+  },
+
+  /** A stem with a trough sitting on it, which is a u drawn at cap height. */
+  "\u03a8": (style) => {
+    const f = frame(style);
+    const half = Math.max(f.capBowl * 0.92, f.least);
+    const left = f.edge;
+    const right = left + half * 2;
+    const middle = left + half;
+    const floor = f.cap * 0.34;
+    const radius = Math.max(Math.min(half, (f.cap - floor) * 0.55), f.least);
+    return finish(f, [
+      ink(
+        f,
+        chain(
+          straight(at(left, f.cap), at(left, floor + radius)),
+          turn(at(left + radius, floor + radius), radius, 180, 270),
+          straight(at(left + radius, floor), at(right - radius, floor)),
+          turn(at(right - radius, floor + radius), radius, 270, 360),
+          straight(at(right, floor + radius), at(right, f.cap)),
+        ),
+        f.end,
+        f.end,
+      ),
+      ink(f, straight(at(middle, 0), at(middle, f.cap)), f.end, BUTT),
+    ]);
+  },
+
+  // --- Greek lowercase ---------------------------------------------------
+
+  /*
+   * The other alphabet, and the one that is really a second alphabet.
+   *
+   * The capitals are Latin capitals with ten additions. The lowercase is not:
+   * only the omicron is a Latin letter, and the rho and the kappa are shapes
+   * this font already had under other names. Everything else is drawn, out of
+   * the same bowls, arches, troughs and diagonals -- which is the test. A part
+   * system that only reaches the alphabet it was designed against is a set of
+   * twenty-six special cases wearing a coat.
+   */
+
+  /** A bowl with a straight on its right: the single-storey a, which is what an alpha is. */
+  "\u03b1": (style) => {
+    const f = frame(style);
+    const centre = at(f.edge + f.bowl, f.x / 2);
+    const stem = centre.x + f.bowl;
+    return finish(
+      f,
+      [
+        ink(f, ring(f, centre, f.bowl, f.bowlH)),
+        ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
+      ],
+      true);
+  },
+
+  /** A stem from the descender to the ascender with two bowls hung off it. */
+  "\u03b2": (style) => {
+    const f = frame(style);
+    const stem = f.edge;
+    // Both bowls inside the x-height, the lower a little larger than the upper,
+    // with only the stem reaching the ascender above and the descender below.
+    const upper = Math.max(f.x * 0.26, f.least);
+    const lower = Math.max(f.x * 0.3, f.least);
+    return finish(
+      f,
+      [
+        ink(f, straight(at(stem, f.desc), at(stem, f.asc)), f.end, f.end),
+        belly(f, at(stem, f.x - upper), upper * f.wide, upper, -90, 90),
+        belly(f, at(stem, lower), lower * f.wide, lower, -90, 90),
+      ],
+      true);
+  },
+
+  /** The y's vee, with the tail run straight rather than curled. */
+  "\u03b3": (style) => {
+    const f = frame(style);
+    const half = f.arch * 0.86;
+    const left = f.edge;
+    const middle = left + half;
+    const past = f.half * 1.1;
+    const drop = past / Math.hypot(1, f.x / half);
+    return finish(f, [
+      ink(f, straight(at(left, f.x), at(middle + (drop * half) / f.x, -drop)), f.end, BUTT),
+      ink(
+        f,
+        straight(at(middle + half, f.x), at(middle + (half * f.desc) / f.x, f.desc)),
+        f.end,
+        f.end,
+      ),
+    ]);
+  },
+
+  /** A bowl with a curl rising off the top of it and leaning back. */
+  "\u03b4": (style) => {
+    const f = frame(style);
+    const radius = Math.max(f.x * 0.37, f.least);
+    const wide = bendWidth(f, radius);
+    const centre = at(f.edge + wide, radius);
+    /*
+     * The curl laid over the bowl rather than run into it.
+     *
+     * Chained, the two have to agree about direction where they meet, and a
+     * curl coming down into the top of a bowl meets a bowl setting off back up
+     * the way the curl came: a hundred and seventy-five degrees of turn in one
+     * join, which is a stroke doubled over itself, and the delta folded at
+     * every squareness there is. Two strokes that overlap cannot do that, and
+     * where they overlap is inside the ink of both.
+     */
+    const tip = at(f.edge + wide * 0.2, f.x * 1.26);
+    const into = at(centre.x + wide * 0.66, centre.y + radius * 0.58);
+    return finish(
+      f,
+      [ink(f, ring(f, centre, wide, radius)), ink(f, straight(tip, into), f.end, BUTT)],
+      true);
+  },
+
+  /*
+   * Two arcs bulging left, joined where they meet.
+   *
+   * Joined outright rather than left to overlap, because how far they overlap
+   * depends on the pen: at a display weight they fuse into a shape with no
+   * waist and at a hairline they do not touch at all, and an epsilon in two
+   * pieces is not an epsilon.
+   */
+  "\u03b5": (style) => {
+    const f = frame(style);
+    const radius = Math.max(f.x * 0.26, f.least);
+    const wide = bendWidth(f, radius);
+    const cx = f.edge + wide;
+    const top = bend(f, at(cx, f.x - radius), radius, 55, 300);
+    const bottom = bend(f, at(cx, radius), radius, 60, 305);
+    return finish(f, [ink(f, top, f.end, BUTT), ink(f, bottom, BUTT, f.end)], true);
+  },
+
+  /** A bar, a diagonal back under it, and a tail into the descender. */
+  "\u03b6": (style) => {
+    const f = frame(style);
+    const left = f.edge;
+    const reach = f.arch * 1.25;
+    const top = f.hangs(f.x, f.bar);
+    const heel = at(left + reach * 0.32, f.sits(0, f.bar));
+    const [fold] = corners(f, [at(left, top), at(left + reach, top), heel]);
+    /*
+     * The tail is its own stroke, not the end of the run above it.
+     *
+     * Chained on, the diagonal arrives at the baseline going down and left and
+     * the hook sets off going down and right, and on a shallow descender with a
+     * hairline pen the turn between them closes far enough to double the stroke
+     * back through itself. Two strokes that overlap cannot do that, and where
+     * they overlap is inside the ink of both.
+     */
+    return finish(f, [
+      ink(f, chain(straight(at(left, top), fold), straight(fold, heel)), f.end, BUTT),
+      tailBelow(f, heel.x, f.x * 0.34),
+    ]);
+  },
+
+  /** An n whose right leg carries straight on below the line. */
+  "\u03b7": (style) => {
+    const f = frame(style);
+    const stem = f.edge;
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
+      ink(f, archSpine(f, stem, f.x, f.dip(f.desc)), BUTT, f.end),
+    ]);
+  },
+
+  /** A tall narrow oval with a bar across it. */
+  "\u03b8": (style) => {
+    const f = frame(style);
+    const height = Math.max(f.asc / 2, f.least);
+    const wide = Math.max(f.bowl * 0.78, f.least);
+    const centre = at(f.edge + wide, height);
+    return finish(
+      f,
+      [
+        ink(f, ring(f, centre, wide, height)),
+        thin(f, straight(at(centre.x - wide, height), at(centre.x + wide, height)), BUTT, BUTT),
+      ],
+      true);
+  },
+
+  /** A stroke of its own height and nothing else. */
+  "\u03b9": (style) => {
+    const f = frame(style);
+    return finish(f, [ink(f, straight(at(f.edge, 0), at(f.edge, f.x)), f.end, f.end)]);
+  },
+
+  /** An apex near the top, a long leg down one way and a short one the other. */
+  "\u03bb": (style) => {
+    const f = frame(style);
+    const half = f.arch * 0.92;
+    const left = f.edge;
+    const peak = at(left + half * 0.72, f.asc);
+    const foot = at(left + half * 2, 0);
+    const branch = at(left + half * 0.34, f.x * 0.46);
+    return finish(f, [
+      ink(f, straight(peak, foot), f.end, f.end),
+      ink(f, straight(branch, at(left, 0)), BUTT, f.end),
+    ]);
+  },
+
+  /** A u with its left stem carried down into the descender. */
+  "\u03bc": (style) => {
+    const f = frame(style);
+    return finish(f, [
+      trough(f, f.edge, f.x),
+      ink(f, straight(at(f.edge, f.desc), at(f.edge, f.x)), f.end, f.end),
+    ]);
+  },
+
+  /** The v, drawn a little narrower and standing a little straighter. */
+  "\u03bd": (style) => {
+    const f = frame(style);
+    const half = f.arch * 0.82;
+    const left = f.edge;
+    const middle = left + half;
+    const top = at(left, f.x);
+    const other = at(middle + half, f.x);
+    const point = corner(f, top, at(middle + half * 0.18, 0), other);
+    return finish(f, [
+      ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end),
+    ]);
+  },
+
+  /** The zeta with a curl over the top of it. */
+  "\u03be": (style) => {
+    const f = frame(style);
+    const left = f.edge;
+    const reach = f.arch * 1.25;
+    const cap = Math.max(f.arch * 0.3, f.least);
+    const bar = f.x * 0.56;
+    const heel = at(left + reach * 0.34, f.sits(0, f.bar));
+    /*
+     * Five strokes and not one chain.
+     *
+     * A xi is a curl, a bar and a tail, and every join between them is close to
+     * a doubling-back: the bar runs right and the diagonal under it runs down
+     * and left at sixty degrees, which at a display weight is past what a mitre
+     * can be carried to. Chained, it folded. Laid over each other they cannot,
+     * and each overlap is well inside the ink of both.
+     */
+    const curl = bend(f, at(left + bendWidth(f, cap) * 1.2, f.crest(f.asc) - cap), cap, -25, 195);
+    return finish(f, [
+      ink(f, curl, f.end, BUTT),
+      ink(f, straight(spineEnd(curl), at(left + reach * 0.26, bar)), BUTT, BUTT),
+      thin(f, straight(at(left + reach * 0.16, bar), at(left + reach * 0.94, bar)), BUTT, f.end),
+      ink(f, straight(at(left + reach * 0.9, bar), heel), BUTT, BUTT),
+      tailBelow(f, heel.x, f.x * 0.34),
+    ]);
+  },
+
+  /** Two legs under one bar, and the bar reaches past both of them. */
+  "\u03c0": (style) => {
+    const f = frame(style);
+    const left = f.edge;
+    const right = left + f.arch * 1.5;
+    const over = f.half * 0.9;
+    const bar = f.hangs(f.x, f.bar);
+    return finish(f, [
+      ink(f, straight(at(left, 0), at(left, f.x)), f.end, BUTT),
+      ink(f, straight(at(right, 0), at(right, f.x)), f.end, BUTT),
+      thin(f, straight(at(left - over, bar), at(right + over, bar)), f.plain, f.plain),
+    ]);
+  },
+
+  /** A c with its tail run on down into the descender. */
+  "\u03c2": (style) => {
+    const f = frame(style);
+    const centre = at(f.edge + f.bowl, f.x / 2);
+    // Open at the top right rather than at the side, because the tail leaves
+    // from the bottom right and the two cannot be the same corner.
+    const loop = openBowl(f, centre, f.bowl, f.bowlH, 60, 335);
+    const from = spineEnd(loop.spine);
+    // The tail is its own stroke, for the reason the zeta's is.
+    return finish(
+      f,
+      [
+        loop,
+        tailBelow(f, from.x, from.y + f.bowlH * 0.3),
+      ],
+      true);
+  },
+
+  /** A bowl with a bar running off the top of it to the right. */
+  "\u03c3": (style) => {
+    const f = frame(style);
+    const centre = at(f.edge + f.bowl, f.x / 2);
+    const bar = f.hangs(f.x, f.bar);
+    return finish(
+      f,
+      [
+        ink(f, ring(f, centre, f.bowl, f.bowlH)),
+        thin(f, straight(at(centre.x, bar), at(centre.x + f.bowl + f.arch * 0.5, bar)), BUTT, f.end),
+      ],
+      true);
+  },
+
+  /** A small t with no ascender and no foot: a stem under a bar. */
+  "\u03c4": (style) => {
+    const f = frame(style);
+    const reach = f.arch * 0.72;
+    const middle = f.edge + reach;
+    const bar = f.hangs(f.x, f.bar);
+    return finish(f, [
+      ink(f, straight(at(middle, 0), at(middle, f.x)), f.end, BUTT),
+      thin(f, straight(at(middle - reach, bar), at(middle + reach, bar)), f.end, f.end),
+    ]);
+  },
+
+  /** The u, which is what an upsilon is. */
+  "\u03c5": (style) => {
+    const f = frame(style);
+    return finish(f, [trough(f, f.edge, f.x)]);
+  },
+
+  /** A bowl with a stroke straight through it, out at both ends. */
+  "\u03c6": (style) => {
+    const f = frame(style);
+    const centre = at(f.edge + f.bowl, f.x / 2);
+    return finish(
+      f,
+      [
+        ink(f, ring(f, centre, f.bowl, f.bowlH)),
+        ink(f, straight(at(centre.x, f.desc), at(centre.x, f.asc)), f.end, f.end),
+      ],
+      true);
+  },
+
+  /** The x, with both strokes carried on below the line. */
+  "\u03c7": (style) => {
+    const f = frame(style);
+    const width = f.arch * 1.7;
+    const left = f.edge;
+    const lean = (width * -f.desc) / f.x;
+    return finish(f, [
+      ink(f, straight(at(left, f.x), at(left + width + lean, f.desc)), f.end, f.end),
+      ink(f, straight(at(left, f.desc), at(left + width + lean, f.x)), f.end, f.end),
+    ]);
+  },
+
+  /** The trough of a psi, with its stem carried into the descender. */
+  "\u03c8": (style) => {
+    const f = frame(style);
+    const half = Math.max(f.arch * 0.86, f.least);
+    const left = f.edge;
+    const right = left + half * 2;
+    const middle = left + half;
+    const floor = f.x * 0.3;
+    const radius = Math.max(Math.min(half, (f.x - floor) * 0.55), f.least);
+    return finish(f, [
+      ink(
+        f,
+        chain(
+          straight(at(left, f.x), at(left, floor + radius)),
+          turn(at(left + radius, floor + radius), radius, 180, 270),
+          straight(at(left + radius, floor), at(right - radius, floor)),
+          turn(at(right - radius, floor + radius), radius, 270, 360),
+          straight(at(right, floor + radius), at(right, f.x)),
+        ),
+        f.end,
+        f.end,
+      ),
+      ink(f, straight(at(middle, f.desc), at(middle, f.x)), f.end, BUTT),
+    ]);
+  },
+
+  /** Two troughs side by side, which is what an omega is. */
+  "\u03c9": (style) => {
+    const f = frame(style);
+    const wide = f.arch * 0.82;
+    const left = f.edge;
+    return finish(f, [
+      trough(f, left, f.x),
+      trough(f, left + wide, f.x),
+    ]);
+  },
+
+  /*
+   * A bowl standing on two feet, open between them.
+   *
+   * The feet are taken off the bowl's own ends rather than measured from the
+   * baseline, so a squared face squares the omega with everything else and the
+   * feet still start where the curve stops.
+   *
+   * The bowl is open a third of the way round. Drawn open only eighty degrees
+   * the two ends came within a pen of each other and the letter read as a
+   * lollipop -- the gap between the feet is what says omega, and it has to be
+   * wide enough to be a gap rather than a join that did not quite happen.
+   */
+  "\u03a9": (style) => {
+    const f = frame(style);
+    const radius = Math.max(f.capBowlH * 0.84, f.least);
+    const wide = bendWidth(f, radius);
+    const centre = at(f.edge + wide, f.cap - radius);
+    const loop = bend(f, centre, radius, -30, 210);
+    const toe = wide * 0.62;
+    const foot = (from: Vec2, way: number): Stroke => {
+      const tip = at(from.x + way * toe, f.sits(0, f.bar));
+      const knee = corner(f, from, at(from.x, tip.y), tip);
+      return ink(f, chain(straight(from, knee), straight(knee, tip)), BUTT, f.end);
+    };
+    return finish(
+      f,
+      [
+        ink(f, loop, BUTT, BUTT),
+        foot(spineStart(loop), 1),
+        foot(spineEnd(loop), -1),
+      ],
+      true);
+  },
 };
 
 /**

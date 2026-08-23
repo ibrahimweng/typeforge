@@ -221,10 +221,18 @@ describe("borrowing a font's rhythm", () => {
   });
 
   it("ignores a letter the other font does not have", async () => {
-    const borrowed = borrowFrom(await fontFrom(SANS), ["H", "Ж"]);
+    /*
+     * Something the font really has not got.
+     *
+     * This asked for a `Ж`, which was a letter no font this application drew
+     * had -- until it drew Cyrillic, and then the test was asserting that a
+     * letter the font has is a letter the font has not, and failed. A CJK
+     * character is a safer example: nothing here is ever going to draw one.
+     */
+    const borrowed = borrowFrom(await fontFrom(SANS), ["H", "\u6f22"]);
     expect(borrowed.found).toBe(1);
     expect(borrowed.asked).toBe(2);
-    expect(borrowed.bearings.has("Ж")).toBe(false);
+    expect(borrowed.bearings.has("\u6f22")).toBe(false);
   });
 
   it("gives a space its advance even though it has no ink", async () => {

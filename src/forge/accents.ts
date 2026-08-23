@@ -58,6 +58,77 @@ const DOTLESS: Record<string, string> = { i: "dotlessi", j: "dotlessj" };
 const BELOW = new Set([0x0327, 0x0328, 0x0323, 0x0326]);
 
 /**
+ * The Latin letters that are also Greek letters and Cyrillic letters.
+ *
+ * Not a shortcut. A Greek capital alpha is the same letter as a Latin A -- the
+ * same shape, from the same hand, with the same history -- and every text face
+ * draws it once and points both characters at it. Drawn twice they would be two
+ * glyphs to keep in step, and the day the pen changed one of them would not.
+ *
+ * Only where the shapes really are the same. A Cyrillic `И` is not an `N`, it
+ * is an N drawn the other way round, and a Greek `ν` is not a `v` however much
+ * it looks like one at a glance, so both of those are drawn.
+ *
+ * Here rather than in the exporter because both need it: the exporter to give
+ * one glyph every character it answers to, and the accent builder to know that
+ * a `Ϊ` is an `I` with a dieresis over it even though nothing is drawn under
+ * the name `Ϊ`.
+ */
+export const ALSO_DRAWS: Record<string, string> = {
+  // Greek first, then Cyrillic, in each entry.
+  A: "\u0391\u0410",
+  B: "\u0392\u0412",
+  C: "\u0421",
+  E: "\u0395\u0415",
+  H: "\u0397\u041d",
+  I: "\u0399\u0406",
+  J: "\u0408",
+  K: "\u039a\u041a",
+  M: "\u039c\u041c",
+  N: "\u039d",
+  O: "\u039f\u041e",
+  P: "\u03a1\u0420",
+  S: "\u0405",
+  T: "\u03a4\u0422",
+  X: "\u03a7\u0425",
+  Y: "\u03a5",
+  Z: "\u0396",
+  a: "\u0430",
+  c: "\u0441",
+  e: "\u0435",
+  i: "\u0456",
+  j: "\u0458",
+  o: "\u03bf\u043e",
+  // A Greek rho is a p. So is a Cyrillic er.
+  p: "\u0440\u03c1",
+  s: "\u0455",
+  x: "\u0445",
+  y: "\u0443",
+  // A kappa is the k with no ascender that Greenlandic already asked for, and
+  // so is a Cyrillic ka.
+  kgreenlandic: "\u03ba\u043a",
+  // Three Greek capitals that Cyrillic uses unchanged, and the phi, which is
+  // the same bowl on the same stem as a Cyrillic ef.
+  "\u0393": "\u0413",
+  "\u03a0": "\u041f",
+  "\u03a6": "\u0424",
+  "\u03c6": "\u0444",
+  // The Greek full stop, which is a raised point and nothing else.
+  periodcentered: "\u0387",
+};
+
+const DRAWN_AS = new Map<string, string>(
+  Object.entries(ALSO_DRAWS).flatMap(([name, characters]) =>
+    [...characters].map((one) => [one, name] as [string, string]),
+  ),
+);
+
+/** The letter a character is drawn under, when it is not drawn under its own. */
+export function drawnAs(character: string): string | null {
+  return DRAWN_AS.get(character) ?? null;
+}
+
+/**
  * Which forge letter draws a given character, if any does.
  *
  * Everything a Latin-1 letter decomposes into is either an ASCII letter, which
@@ -70,6 +141,11 @@ function nameForCodepoint(codepoint: number, drawable: ReadonlySet<string>): str
   // Letters and figures are named after themselves; everything else has the
   // name the font world already uses, which is the name the recipe has.
   if (drawable.has(character)) return character;
+  // A character drawn under another letter's name: a Greek capital iota has no
+  // drawing of its own because it is an I, and an accented one still has to
+  // find it.
+  const shared = DRAWN_AS.get(character);
+  if (shared && drawable.has(shared)) return shared;
   for (const candidate of MARK_NAMES[codepoint] ?? []) {
     if (drawable.has(candidate)) return candidate;
   }
@@ -99,12 +175,25 @@ export function accentsFor(drawable: ReadonlySet<string>): Map<string, Parts> {
    * drawn tomorrow adds every letter that uses it without a line being changed
    * here.
    */
+  const range = (from: number, to: number) =>
+    Array.from({ length: to - from + 1 }, (_, index) => from + index);
   const wanted = [
-    ...Array.from({ length: 0x17f - 0xc0 + 1 }, (_, index) => 0xc0 + index),
+    ...range(0xc0, 0x17f),
     0x0218,
     0x0219,
     0x021a,
     0x021b,
+    /*
+     * And the two other alphabets, which want nothing new from this.
+     *
+     * Greek's accents are the acute and the dieresis, and Cyrillic's are the
+     * dieresis, the breve and the grave: five marks this font drew for Latin
+     * and draws once. What stops a character being built here is the same thing
+     * that stops a Latin one -- the base or the mark not being drawn -- so the
+     * day a Cyrillic `И` is drawn the `Й` appears with it.
+     */
+    ...range(0x0386, 0x03ce),
+    ...range(0x0400, 0x045f),
   ];
   for (const code of wanted) {
     const decomposed = decomposeCodepoint(code);
@@ -247,6 +336,22 @@ const EXTENDED_B_NAMES: Record<number, string> = {
 export function accentedNameFor(codepoint: number): string | null {
   if (codepoint >= 0xc0 && codepoint <= 0xff) return LATIN1_NAMES[codepoint - 0xc0] ?? null;
   if (codepoint >= 0x100 && codepoint <= 0x17f) return LATIN_A_NAMES[codepoint - 0x100] ?? null;
+  /*
+   * Greek and Cyrillic are named after themselves, which is what the Latin
+   * letters already are.
+   *
+   * The Latin-1 and Extended-A names are a list because the font world has one
+   * and a font that calls its `é` something else is a font other tools argue
+   * with. Out here there is no such list worth copying: the character is the
+   * name every tool will accept, and it is the one name that cannot be typed
+   * wrong.
+   */
+  if (
+    (codepoint >= 0x0386 && codepoint <= 0x03ce) ||
+    (codepoint >= 0x0400 && codepoint <= 0x045f)
+  ) {
+    return String.fromCodePoint(codepoint);
+  }
   return EXTENDED_B_NAMES[codepoint] ?? null;
 }
 

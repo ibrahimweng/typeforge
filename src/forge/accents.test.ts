@@ -20,7 +20,7 @@ import { describe, expect, it } from "vitest";
 
 import { contoursBounds } from "@/font/geometry";
 import { builtFrom, canDraw, drawLetter, letterNames, makeLetter } from "./build";
-import { accentedNameFor, codepointOfAccented } from "./accents";
+import { accentedNameFor, drawnAs, codepointOfAccented } from "./accents";
 import { editPart, editPen, startFrom, draw } from "./document";
 import { codepointFor } from "./typeface";
 import { BASES, SANS, type Style } from "./style";
@@ -310,6 +310,30 @@ describe("the languages it sets", () => {
     ["Catalan", "Paraŀlel coŀlegi ĿL àèéíòóúüç"],
     ["Dutch", "Ĳsvogel ĳsbeer ĲSSELMEER"],
     ["Northern Sámi", "Buorre beaivi ÁČĐŊŠŦŽ áčđŋšŧž"],
+    /*
+     * And the second alphabet, which is a different claim from all of those.
+     *
+     * Every sentence above is a Latin sentence: the letters were drawn, and
+     * what was being tested is that the marks reach them. This one is the whole
+     * of Greek, and fourteen of its capitals are Latin capitals pointed at
+     * twice while the rest of it -- ten capitals and twenty-four lowercase --
+     * is drawn out of the same bowls, arches and diagonals the Latin is.
+     */
+    ["Greek", "Ξεσκεπάζω την ψυχοφθόρα βδελυγμία ΓΔΘΛΞΠΣΦΨΩ ςϊϋΐΰ"],
+    /*
+     * And the third alphabet, in the four languages that disagree about it.
+     *
+     * Russian is the bulk of it. Ukrainian wants a ghe with a tick on it that
+     * Unicode keeps two blocks further out, and three letters Russian dropped.
+     * Serbian writes six of its own, two of which are a letter tied to a soft
+     * sign. Bulgarian shares Russian's alphabet and is here because it uses the
+     * two signs and the yery far more than Russian does, and a font that draws
+     * them badly is a font Bulgarian reads badly.
+     */
+    ["Russian", "Съешь же ещё этих мягких французских булок да выпей чаю ЁЙЪЫЬЭЮЯ"],
+    ["Ukrainian", "Ґазда їв єнота ІЇЄҐ ґєії"],
+    ["Serbian", "Ђаво љуби њиву ћуп џеп ЂЉЊЋЏ"],
+    ["Bulgarian", "Жълт щъркел ЪЬЮЯ ъьюя"],
   ];
 
   for (const [language, sentence] of sentences) {
@@ -318,7 +342,10 @@ describe("the languages it sets", () => {
         .filter((character) => character !== " ")
         .filter((character) => {
           const code = character.codePointAt(0)!;
-          const name = code < 0x80 ? character : (accentedNameFor(code) ?? character);
+          const called = code < 0x80 ? character : (accentedNameFor(code) ?? character);
+          // A letter drawn under another letter's name still sets the language:
+          // a Greek omicron is an `o` and there is nothing named `ο`.
+          const name = canDraw(called) ? called : (drawnAs(character) ?? called);
           if (!canDraw(name)) return true;
           // Drawn is not the same as drawn with something in it: a name that
           // resolves to a recipe returning nothing would pass the line above.

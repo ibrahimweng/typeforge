@@ -165,6 +165,22 @@ describe("the weight axis, and the letters that cannot follow it", () => {
     "at",
     "nine",
     "yen",
+    /*
+     * And the three Greek letters that finish with a tail below the line.
+     *
+     * The tail takes whatever room is left between where it starts and the
+     * descender and hooks only if there is any -- which is what keeps them from
+     * folding at a shallow descender under a heavy pen -- and a hook that is
+     * there at one weight and not at another is a different number of points.
+     * The other eighty-seven Greek characters follow the axis end to end.
+     */
+    "\u03b6",
+    "\u03be",
+    "\u03c2",
+    // And the Cyrillic ze, which is two arcs meeting in the middle: how far
+    // they overlap is the pen's business, and so is how many nodes that leaves.
+    "\u0417",
+    "\u0437",
   ];
 
   it("names every letter that is left standing, and no others", async () => {
