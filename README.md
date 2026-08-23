@@ -54,17 +54,25 @@ input to the drawing rather than a shove applied to a finished outline: ask for
 a heavier cut and the letter is drawn again, thicker. It cannot fold, because
 nothing moved.
 
-It draws Latin-1 and the whole of Latin Extended-A: three hundred and
-thirty-one glyphs carrying three hundred and thirty-three characters — the
-letters, the figures, the accented forms, and the symbols: the ampersand, the at
-sign, the currency marks, the brackets and braces, the arithmetic, the
-fractions. That is Polish, Czech, Slovak, Hungarian, Turkish, Latvian,
-Lithuanian, Romanian, Croatian, Maltese, Welsh, Esperanto, Māori, French,
-Catalan, Dutch and Northern Sámi as well as the western European languages
-Latin-1 stops at, and there is a test that sets a sentence of each and fails on
-a missing letter rather than on a missing codepoint. Nothing in Extended-A is
-left undrawn, down to the Greenlandic kra and the long s that nobody types.
-Greek and Cyrillic are not drawn at all.
+It draws Latin-1, the whole of Latin Extended-A, the whole of Greek and the
+whole of Cyrillic: four hundred and fifty-two glyphs carrying five hundred and
+one characters — the letters, the figures, the accented forms, and the symbols:
+the ampersand, the at sign, the currency marks, the brackets and braces, the
+arithmetic, the fractions. That is Polish, Czech, Slovak, Hungarian, Turkish,
+Latvian, Lithuanian, Romanian, Croatian, Maltese, Welsh, Esperanto, Māori,
+French, Catalan, Dutch, Northern Sámi, Greek, Russian, Ukrainian, Serbian and
+Bulgarian as well as the western European languages Latin-1 stops at, and there
+is a test that sets a sentence of each and fails on a missing letter rather than
+on a missing codepoint.
+
+Fifty glyphs answer to more characters than one, because a Greek capital alpha
+is a Latin A and a Cyrillic er is a p — the same shape, from the same hand, with
+the same history — and every text face draws those once and points both
+characters at them. Only where the shapes really are the same: a Cyrillic `И` is
+an N drawn the other way round and a Greek `ν` is not a `v` however much it
+looks like one, so both are drawn. And most of Cyrillic's lowercase is its
+capitals at the x-height — a `н` is an `Н`, a `т` is a `Т` — so each of those
+shapes is written once against a height and asked for twice.
 
 All of it comes from the same pen and the same proportions, so one edit reaches
 all of it — and most of it is not a separate drawing at all. A cent is the c of

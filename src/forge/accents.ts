@@ -104,8 +104,15 @@ export const ALSO_DRAWS: Record<string, string> = {
   s: "\u0455",
   x: "\u0445",
   y: "\u0443",
-  // A kappa is the k with no ascender that Greenlandic already asked for.
-  kgreenlandic: "\u03ba",
+  // A kappa is the k with no ascender that Greenlandic already asked for, and
+  // so is a Cyrillic ka.
+  kgreenlandic: "\u03ba\u043a",
+  // Three Greek capitals that Cyrillic uses unchanged, and the phi, which is
+  // the same bowl on the same stem as a Cyrillic ef.
+  "\u0393": "\u0413",
+  "\u03a0": "\u041f",
+  "\u03a6": "\u0424",
+  "\u03c6": "\u0444",
   // The Greek full stop, which is a raised point and nothing else.
   periodcentered: "\u0387",
 };

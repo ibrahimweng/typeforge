@@ -320,6 +320,20 @@ describe("the languages it sets", () => {
      * is drawn out of the same bowls, arches and diagonals the Latin is.
      */
     ["Greek", "Ξεσκεπάζω την ψυχοφθόρα βδελυγμία ΓΔΘΛΞΠΣΦΨΩ ςϊϋΐΰ"],
+    /*
+     * And the third alphabet, in the four languages that disagree about it.
+     *
+     * Russian is the bulk of it. Ukrainian wants a ghe with a tick on it that
+     * Unicode keeps two blocks further out, and three letters Russian dropped.
+     * Serbian writes six of its own, two of which are a letter tied to a soft
+     * sign. Bulgarian shares Russian's alphabet and is here because it uses the
+     * two signs and the yery far more than Russian does, and a font that draws
+     * them badly is a font Bulgarian reads badly.
+     */
+    ["Russian", "Съешь же ещё этих мягких французских булок да выпей чаю ЁЙЪЫЬЭЮЯ"],
+    ["Ukrainian", "Ґазда їв єнота ІЇЄҐ ґєії"],
+    ["Serbian", "Ђаво љуби њиву ћуп џеп ЂЉЊЋЏ"],
+    ["Bulgarian", "Жълт щъркел ЪЬЮЯ ъьюя"],
   ];
 
   for (const [language, sentence] of sentences) {

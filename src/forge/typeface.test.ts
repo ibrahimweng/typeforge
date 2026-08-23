@@ -177,6 +177,10 @@ describe("the weight axis, and the letters that cannot follow it", () => {
     "\u03b6",
     "\u03be",
     "\u03c2",
+    // And the Cyrillic ze, which is two arcs meeting in the middle: how far
+    // they overlap is the pen's business, and so is how many nodes that leaves.
+    "\u0417",
+    "\u0437",
   ];
 
   it("names every letter that is left standing, and no others", async () => {
