@@ -373,13 +373,16 @@ function kinksOf(headed: Headed[], closed: boolean): Kink[] {
     /*
      * Two pieces heading the same way need nothing between them.
      *
-     * Tried the other way, and it is written down here because it looks like
-     * the fix for the letters that still cannot follow the weight axis and is
-     * not. Whether a junction turns depends on which of its pieces travelled,
-     * and that is a question about the pen -- so leaving a wedge at every
-     * junction, turning or not, ought to have steadied the node lists. It
-     * steadied some and unsteadied others: the count went from eleven letters
-     * adrift to thirteen, taking `Oslash` and `oslash` with it.
+     * Tried the other way twice, and it is written down here because it keeps
+     * looking like the fix for the letters that cannot follow the weight axis
+     * and keeps not being one. Whether a junction turns depends on which of its
+     * pieces travelled, and that is a question about the pen -- so leaving a
+     * wedge at every junction, turning or not, ought to steady the node lists.
+     *
+     * It steadies some and unsteadies others, and the second measurement says
+     * so more sharply than the first: the Display comes down from 119 letters
+     * left standing to 107, and the Ribbon goes up from 28 to 100 and the
+     * Technical from 30 to 64. It is not a fix, it is a face traded for two.
      */
     if (Math.abs(turn) < 1e-9 && along > 0) continue;
     found.push({ before: index, after: next, at: segmentEnd(segments[index]), turn });
@@ -487,6 +490,9 @@ function outerJoin(
     },
   ];
 }
+
+/** A round cap is a half turn, and a half turn is two quarter-turn pieces. */
+const CAP_PIECES = 2;
 
 /**
  * How many pieces a corner's wedge is cut into, whatever it turns through.
@@ -665,6 +671,23 @@ function terminalNodes(
       // Half a turn, taken the way that leaves the stroke rather than re-enters
       // it, which is decided by which side of the direction of travel we are on.
       to: fromAngle - Math.PI,
+      /*
+       * And two pieces, said rather than worked out.
+       *
+       * A half turn wants two quarter-turn pieces and an arc is cut into
+       * `ceil(sweep / 90 degrees)` of them -- which is exactly two here, and
+       * only exactly two when the subtraction above comes out at exactly pi.
+       * It does not always: `fromAngle` is read off the stroke's own direction,
+       * so it is whatever the letter's geometry makes it, and subtracting pi
+       * from a large angle loses the last bit or two. Landing a hair over,
+       * `ceil` gives three and the cap arrives with a node it does not have at
+       * the next weight along -- which a variable font cannot join, since two
+       * weights meet only where they are drawn with the same points. A Display
+       * `V` came off with twelve nodes at the Thin and the Black and thirteen
+       * at the Regular and the Bold, and the whole of the difference was one
+       * node in a cap that is the same half circle at all four.
+       */
+      pieces: CAP_PIECES,
     };
     return ellipseNodes(arc);
   }

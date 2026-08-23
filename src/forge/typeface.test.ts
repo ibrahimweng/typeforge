@@ -196,25 +196,29 @@ describe("the weight axis, and the letters that cannot follow it", () => {
   }, 300_000);
 
   /*
-   * And a ceiling for the faces that round their corners, which is where this
-   * goes wrong worst.
+   * And a ceiling for the three faces this went wrong worst on.
    *
-   * The Sans is named letter by letter because it is short enough to read. On
-   * a face with a corner radius it is not: a rounded corner eats back into the
-   * runs either side of it by a radius the pen sets, so how many pieces a run
-   * comes off the pen in is a question about the weight, and the Ribbon left
-   * 166 letters standing against the Sans's 11. Held to a number rather than a
-   * list because the list is eighty names long and nobody would read it, and
-   * because what matters is the direction: a name coming off is progress, and
+   * The Sans is named letter by letter because eleven is short enough to read.
+   * These are not: the Ribbon left 166 letters standing and the Display 137,
+   * and a list that long is a list nobody reads. Held to a number instead,
+   * because what matters is the direction -- a name coming off is progress, and
    * this is here so that a name going back on is noticed.
    *
-   * Measured at 28 and 30. A little over each, the same way the cast layer's
-   * point budget is set, and nothing like room for it to double.
+   * They are three different faults with the same shape, and all three are the
+   * pen deciding how many nodes a letter is drawn with. The Ribbon and the
+   * Technical round their corners, and a rounded corner eats back into the runs
+   * either side of it by a radius the pen sets. The Display caps its strokes
+   * with a half disc, and a half turn is two quarter-turn pieces except when
+   * the arithmetic that says so lands a hair over and makes it three.
+   *
+   * Measured at 28, 30 and 30. A little over each, the same way the cast
+   * layer's point budget is set, and nothing like room for one to double.
    */
-  it("keeps the faces that round their corners on the axis too", async () => {
+  it("keeps the faces that round their corners and their ends on the axis too", async () => {
     for (const [name, most] of [
       ["Ribbon", 33],
       ["Technical", 35],
+      ["Display", 35],
     ] as const) {
       const base = BASES.find((one) => one.name === name)!;
       const forge = { ...startFrom(base), family: { drawn: 400, also: [100, 700, 900] } };

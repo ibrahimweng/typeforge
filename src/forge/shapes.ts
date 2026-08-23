@@ -652,8 +652,44 @@ function ripple(
   // wave.
   const most = length / (4 * penHalf * CLEARANCE);
   if (most < 1) turn = Math.min(turn, Math.asin(most));
-  // Under about a degree there is no wave left to draw, and a chain of arcs
-  // that flat is a slower way of writing a straight line.
+  /*
+   * Under about a degree there is no wave left to draw, and a chain of arcs
+   * that flat is a slower way of writing a straight line.
+   *
+   * This way out and the one above it are both questions about the pen -- the
+   * stubs at each end grow with it and so does the limit above -- so the same
+   * run ripples at one weight and comes off straight at the next, which is a
+   * different number of nodes, and two weights drawn with different nodes
+   * cannot be joined into one variable font. It is most of why the Wavy leaves
+   * 290 letters standing where the Sans leaves 11.
+   *
+   * Four ways round it were measured and none is here.
+   *
+   * Taking both ways out away, so the wave is always drawn however flat it has
+   * to be, is the one that works: 290 letters becomes 211, and nothing is
+   * forced, since the limit above still holds every arc to a radius the pen can
+   * turn. It also puts a hole nineteen units by thirty through the flag of a
+   * Cyrillic `б` at the Black, where fusing the flag's new near-flat wave to
+   * the bowl leaves a sliver behind. Every floor from a ten-thousandth of a
+   * radian to a hundredth leaves the same hole, so it is the wave being there
+   * at all rather than the radius being large. A face that loses a piece of a
+   * letter has not been fixed.
+   *
+   * Taking away only this one, and leaving the span alone, moves nothing: 290
+   * either way. The span is doing all of it.
+   *
+   * Deciding the same thing by the letter instead of the pen -- no wave on a
+   * run shorter than some share of a wavelength -- is worse than either, at
+   * 392 letters standing for nine tenths and 402 for three fifths. The run's
+   * own length is not the letter's either: a corner eats into it by a radius
+   * the pen sets, so the threshold still moves, and now it moves for more runs.
+   *
+   * And counting the wave's arcs off the whole run rather than off the span
+   * left between the stubs steadies the count and changes the face: a `macron`
+   * at the Regular goes from one clean curve to two crammed into the same
+   * width, seventeen per cent more ink, and an `equal` at the Black goes mushy.
+   * That is a different face, not a fixed one.
+   */
   if (turn < 0.02) return [segment];
 
   const radius = length / (4 * Math.sin(turn));
@@ -761,10 +797,29 @@ function backwards(segment: SpineSegment): SpineSegment {
       };
 }
 
-/** The pieces left after taking a length off the front of the run. */
+/**
+ * The pieces left after taking a length off the front of the run.
+ *
+ * Left, not survived: a piece the trim swallows whole is kept and stood on the
+ * point the trim stopped at, rather than dropped. How much comes off is the
+ * pen's business -- a round cap is pulled back by exactly what the cap will add
+ * -- so dropping them made the number of pieces in a spine a question about the
+ * weight. A Display `C` came off the pen with nine pieces at the Thin, the
+ * Regular and the Black and three at the Bold, and the whole point of a bowl
+ * carrying the sides its shape does not need is undone by anything downstream
+ * that throws them away again.
+ *
+ * They are stood at the new head of the run and not at their own ends, because
+ * their own ends are inside the part that has just been trimmed off -- put
+ * there they would hand the stroke back the length the cap was pulled out of
+ * it. And each keeps its own kind: a side stays a line and a corner stays an
+ * arc, since a list that agrees on how many nodes it has and disagrees on which
+ * of them are curves is no more use than one that disagrees on both.
+ */
 function trimmed(segments: SpineSegment[], distance: number): SpineSegment[] {
   let left = distance;
   const kept: SpineSegment[] = [];
+  const stalled: number[] = [];
   for (const segment of segments) {
     if (left <= 0) {
       kept.push(segment);
@@ -773,6 +828,8 @@ function trimmed(segments: SpineSegment[], distance: number): SpineSegment[] {
     const length = lengthOf(segment);
     if (length <= left) {
       left -= length;
+      stalled.push(kept.length);
+      kept.push(segment);
       continue;
     }
     const part = left / length;
@@ -792,7 +849,48 @@ function trimmed(segments: SpineSegment[], distance: number): SpineSegment[] {
       });
     }
   }
-  return kept.length > 0 ? kept : segments;
+  if (kept.length === 0) return segments;
+  if (stalled.length > 0) {
+    /*
+     * Where the run now begins, and which way it leaves there.
+     *
+     * Taken from the first piece that still travels, because a piece of no
+     * length has no direction of its own -- and an arc standing in for one has
+     * to be given the direction the run faces rather than the one it sat at, or
+     * the pen offsets it a whole reach off to one side.
+     */
+    const ahead = kept.slice(stalled[stalled.length - 1] + 1).find(hasLength);
+    const head = ahead ? segmentStart(ahead) : segmentEnd(kept[kept.length - 1]);
+    const heading = ahead ? headingOf(ahead) : at(1, 0);
+    // Anticlockwise, the outward normal is the right of the way it travels.
+    const out = at(heading.y, -heading.x);
+    for (const index of stalled) kept[index] = stoodStill(kept[index], head, out);
+  }
+  return kept;
+}
+
+/** Which way a piece is travelling where it begins. */
+function headingOf(segment: SpineSegment): Vec2 {
+  if (segment.kind === "line") {
+    const dx = segment.to.x - segment.from.x;
+    const dy = segment.to.y - segment.from.y;
+    const length = Math.hypot(dx, dy) || 1;
+    return at(dx / length, dy / length);
+  }
+  const way = segment.endAngle >= segment.startAngle ? 1 : -1;
+  return at(-Math.sin(segment.startAngle) * way, Math.cos(segment.startAngle) * way);
+}
+
+/** The same piece, of the same kind, going nowhere at a given point. */
+function stoodStill(like: SpineSegment, where: Vec2, out: Vec2): SpineSegment {
+  if (like.kind === "line") return { kind: "line", from: where, to: where };
+  const angle = Math.atan2(out.y, out.x);
+  return {
+    ...like,
+    centre: at(where.x - like.radius * out.x, where.y - like.radius * out.y),
+    startAngle: angle,
+    endAngle: angle,
+  };
 }
 
 /** Where a run begins and where it ends, whichever kind of piece that is. */
