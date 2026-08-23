@@ -317,12 +317,20 @@ export async function toTypeface(
    * wrong at the next.
    */
   if (options.kern) {
+    // Which glyphs are marks is not something the kerning can work out by
+    // looking: it is whether some letter here is built by stacking it on
+    // another, which is written down where the accented letters are.
+    const marks = new Set<string>();
+    for (const name of letterNames()) {
+      for (const mark of builtFrom(name)?.marks ?? []) marks.add(mark);
+    }
     typeface.kernClasses = kernsFor(
       glyphs.map((glyph) => ({
         name: glyph.name,
         contours: glyph.contours,
         advanceWidth: glyph.advanceWidth,
         sameAs: builtFrom(glyph.name)?.base,
+        mark: marks.has(glyph.name),
       })),
       typeface.unitsPerEm,
     ).classes;

@@ -18,7 +18,17 @@ import { kernsFor, type KernInput } from "./kern";
 import { BASES, SANS, type Style } from "./style";
 import type { KernClass } from "@/font/types";
 
+/** Every glyph some accented letter is built by stacking on another. */
+function marksIn(): Set<string> {
+  const found = new Set<string>();
+  for (const name of letterNames()) {
+    for (const mark of builtFrom(name)?.marks ?? []) found.add(mark);
+  }
+  return found;
+}
+
 function lettersOf(style: Style): KernInput[] {
+  const marks = marksIn();
   const found: KernInput[] = [];
   for (const name of letterNames()) {
     const drawn = drawLetter(name, style);
@@ -28,6 +38,7 @@ function lettersOf(style: Style): KernInput[] {
       contours: drawn.contours,
       advanceWidth: drawn.advanceWidth,
       sameAs: builtFrom(name)?.base,
+      mark: marks.has(name),
     });
   }
   return found;
@@ -121,6 +132,30 @@ describe("kerning worked out from the letters", () => {
           kernOf(classes, accented, right),
           `${accented}${right} against ${base}${right}`,
         ).toBe(kernOf(classes, base, right));
+      }
+    }
+  });
+
+  /**
+   * A mark is never kerned, because a mark is never set beside anything.
+   *
+   * It is stacked onto a letter by its anchor, and it is in the font at all so
+   * that a shaper can build a letter this font never precomposed. Measured as
+   * though it stood in a line of text it reads as an enormous hole -- a mark
+   * and a letter share almost no heights, and the one or two they do share are
+   * where both are narrowest. Left in, the twenty most open pairs in the font
+   * were all marks: an `ogonek` against a `\u0449` at over an em of supposed air,
+   * a `cedilla` against a `\u0409`, and eighteen more of the same. They were
+   * fifteen of the letters measured and a quarter of the kerning grid, since
+   * each behaved like nothing else and so shared a class with nothing else.
+   */
+  it("never kerns a mark", () => {
+    const marks = marksIn();
+    expect(marks.size).toBeGreaterThan(10);
+    for (const one of classes) {
+      for (const side of [one.left, one.right]) {
+        const found = side.filter((name) => marks.has(name));
+        expect(found, `${one.name} kerns the mark ${found[0]}`).toEqual([]);
       }
     }
   });

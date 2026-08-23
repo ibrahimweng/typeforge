@@ -33,7 +33,7 @@ import {
   type Instance,
   type Master,
 } from "./variable";
-import { buildGposTable, buildKernTable, type ResolvedClassKern, type ResolvedPair } from "./kern";
+import { buildGposTable, type ResolvedClassKern, type ResolvedPair } from "./kern";
 import { anythingCut, effectiveParams, paramsAreDefault, resolveGlyphContours } from "./transform";
 import { ready as readyToCut } from "./boolean";
 import { readSfnt, writeSfnt, SFNT_TRUETYPE, type SfntFont } from "./sfnt";
@@ -442,7 +442,7 @@ async function exportTrueType(
     buildBaselineTables(tables, typeface, built, numberOfHMetrics, context.now, invented);
   }
 
-  applyKerning(tables, typeface, context.includeKerning, context.notes);
+  applyKerning(tables, typeface, context.includeKerning);
 
   const font: SfntFont = { sfntVersion: SFNT_TRUETYPE, tables };
   return writeSfnt(font);
@@ -517,12 +517,12 @@ async function exportOpenType(
   // opentype.js writes no kerning, so reopen its output and add the tables.
   const written = new Uint8Array(font.toArrayBuffer());
   const sfnt = readSfnt(written);
-  applyKerning(sfnt.tables, typeface, context.includeKerning, context.notes, glyphs.length !== resolved.length);
+  applyKerning(sfnt.tables, typeface, context.includeKerning, glyphs.length !== resolved.length);
   return writeSfnt(sfnt);
 }
 
 /**
- * Turn the document's kerning into `kern` and `GPOS` tables.
+ * Turn the document's kerning into a `GPOS` table.
  *
  * `shifted` covers the case where OpenType export prepended a `.notdef` glyph,
  * moving every glyph id up by one.
@@ -531,7 +531,6 @@ function applyKerning(
   tables: Map<string, Uint8Array>,
   typeface: Typeface,
   include: boolean,
-  notes: string[],
   shifted = false,
 ): void {
   if (!include || (typeface.kerning.length === 0 && typeface.kernClasses.length === 0)) {
@@ -566,47 +565,32 @@ function applyKerning(
   }
 
   /*
-   * The legacy table cannot express classes, so class kerning is expanded into
-   * individual pairs for it. GPOS keeps the compact form.
+   * No legacy `kern` table. GPOS carries the kerning, and that is what a font
+   * compiled this decade ships.
    *
-   * Two things about how, both of which matter on a real font. The pairs
-   * already written out are held in a set rather than scanned for, because a
-   * font's classes stand for a few hundred thousand pairs and asking a list of
-   * eleven thousand about each of them is five billion comparisons and a
-   * browser that stops answering. And the expansion stops at the cap rather
-   * than running to the end and throwing the remainder away, since a format 0
-   * subtable addresses its pairs with sixteen-bit offsets and cannot hold more
-   * than this however many are offered.
+   * This was written both ways before it was written this way. The legacy
+   * table cannot express classes, so it has to be handed every pair the classes
+   * stand for -- and a format 0 subtable addresses its pairs with sixteen-bit
+   * offsets, so it holds 10,920 of them and no more, however many are offered.
+   * Both halves of that are bad here. Written up to the cap on a font that
+   * offered thirty-three thousand, it came to sixty-four kilobytes holding a
+   * third of the kerning, and not the important third: the expansion runs class
+   * by class, so 203 letters came out kerned in full and 248 kerned in part,
+   * `d` and `l` and `H` and `I` complete, `E` and `F` and `G` and `K` cut off
+   * partway. Software old enough to read this table and not GPOS would set `LT`
+   * closed and `FT` open in the same word, which looks like a broken font where
+   * no kerning at all looks like no kerning. Written instead only when the whole
+   * of it fits, it was sixty-three kilobytes of a hundred and fifty-one spent
+   * repeating GPOS -- and balanced on a cliff, since the font offered 10,566
+   * pairs and three hundred more would have taken all of it away again without
+   * a word.
+   *
+   * The deciding fact is that nobody ships one. Forty fonts people actually set
+   * text in, opened with fontTools: thirty-nine carry GPOS, and not one carries
+   * a `kern` table. Every shaper in use reads GPOS and ignores `kern` where
+   * both are there, so the table is weight in the file and nothing else.
    */
-  const MOST_LEGACY_PAIRS = 10920;
-  const seen = new Set<number>();
-  for (const pair of pairs) seen.add(pair.left * 65536 + pair.right);
-
-  const flattened = [...pairs];
-  let offered = pairs.length;
-  for (const kernClass of classKerns) {
-    for (const left of kernClass.left) {
-      for (const right of kernClass.right) {
-        const key = left * 65536 + right;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        offered++;
-        if (flattened.length < MOST_LEGACY_PAIRS) {
-          flattened.push({ left, right, value: kernClass.value });
-        }
-      }
-    }
-  }
-
-  const kern = buildKernTable(flattened);
-  if (kern) tables.set("kern", kern);
-  else tables.delete("kern");
-
-  if (offered > MOST_LEGACY_PAIRS) {
-    notes.push(
-      `The legacy kern table holds ${MOST_LEGACY_PAIRS.toLocaleString()} pairs of ${offered.toLocaleString()}; GPOS carries them all.`,
-    );
-  }
+  tables.delete("kern");
 
   const gpos = buildGposTable(pairs, classKerns);
   if (gpos) tables.set("GPOS", gpos);

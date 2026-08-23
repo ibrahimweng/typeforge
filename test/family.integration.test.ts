@@ -54,6 +54,30 @@ describe("a family of files", { timeout: FONT_SUITE_TIMEOUT }, () => {
     expect(report.weightClass).toBe(400);
   });
 
+  /**
+   * All the kerning, in GPOS, and no legacy `kern` table at all.
+   *
+   * The legacy table cannot express classes, so it has to be handed every pair
+   * the classes stand for -- and a format 0 subtable addresses its pairs with
+   * sixteen-bit offsets, so it holds 10,920 of them and no more. This font
+   * offers three times that. Written up to the cap it was sixty-four kilobytes
+   * carrying a third of the kerning, and not a third picked for mattering: the
+   * expansion runs class by class, so `d` and `l` and `H` came out kerned in
+   * full while `E` and `F` and `G` came out kerned in part, which sets `LT`
+   * closed and `FT` open in the same word. Of forty fonts on this machine that
+   * people actually set text in, thirty-nine carry GPOS and not one carries a
+   * `kern` table.
+   */
+  it("carries every kern in GPOS and writes no legacy kern table", async () => {
+    const written = await deliver(startFrom(SANS), { familyName: "Kerned", format: "ttf" });
+    const report = inspectFont(written.bytes);
+    expect(report.error).toBeUndefined();
+    expect(report.tables).toContain("GPOS");
+    expect(report.tables).not.toContain("kern");
+    expect(Object.keys(report.kernPairs)).toHaveLength(0);
+    expect(Object.keys(report.gposKernPairs).length).toBeGreaterThan(1000);
+  });
+
   it("writes an archive of the whole family, each one a real font", async () => {
     const forge = setFamily(startFrom(SANS), { drawn: 400, also: [300, 700, 900] });
     const written = await deliver(forge, { familyName: "My Slab", format: "ttf" });

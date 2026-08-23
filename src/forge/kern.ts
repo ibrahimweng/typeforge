@@ -51,14 +51,29 @@ const SHARE = 0.55;
 /**
  * Below this a pair is not worth a line in the file.
  *
- * Set where it is because of what it costs rather than because of what it
- * corrects. Every pair the measurement marks is a cell in the font's kerning
- * grid, and at a fortieth of an em it marked a quarter of every pair there is
- * -- fifteen thousand of them, seventy-three kilobytes of GPOS on a font whose
- * outlines are fifty-two. Held here it keeps the pairs that visibly need it and
- * drops the ones that were being corrected by a hair.
+ * Where to put it is the one judgement here, and it was found by walking it up
+ * until the font began losing pairs it should not lose. A step past this and
+ * `\u0423\u0414` goes, which wants 0.095 and is a pair any Cyrillic face closes; two
+ * steps and `P` against a comma goes, which every font ever made closes. So it
+ * stands at the last place that still keeps them both.
+ *
+ * It also has to stay under `LIMIT`, and not only just under. The two are the
+ * floor and the ceiling of the one measurement, and set to the same number they
+ * stop being a floor and a ceiling -- every pair either falls below and is
+ * dropped or rises above and is clamped, and a font comes out whose every kern
+ * is the same kern. That is a switch rather than a measurement, and it is what
+ * a tenth of an em here produced.
+ *
+ * What it buys is worth stating, because it is not what it looks like. A pair
+ * below this line does not become a line the font does not write -- it becomes a
+ * zero in a grid the font writes anyway, since class kerning is a rectangle of
+ * left classes against right ones and every cell is two bytes whether anything
+ * is in it or not. So this does not price the kerning by the pair; what it moves
+ * is rows and columns. At a twentieth of an em the Sans came out on a 169 by 140
+ * grid with 6,808 cells filled, and here it is 146 by 125 with 3,352 -- eleven
+ * kilobytes off a font that was a hundred and four.
  */
-const WORTH = 0.055;
+const WORTH = 0.085;
 
 /** And no pair is moved further than this, whatever the measurement says. */
 const LIMIT = 0.1;
@@ -148,6 +163,22 @@ export interface KernInput {
   contours: Contour[];
   advanceWidth: number;
   /**
+   * Whether this is a mark rather than a letter.
+   *
+   * A mark is never set beside anything -- it is stacked onto a letter by its
+   * anchor, and the `dieresis` in the font is there so a shaper can build a
+   * letter this font never precomposed. Measured as though it stood in a line
+   * of text it reads as an enormous hole, because a mark and a letter share
+   * almost no heights and the one or two they do share are where both of them
+   * are narrowest: the twenty most open pairs in the whole font were an `ogonek`
+   * against a `\u0449`, a `cedilla` against a `\u0409`, and eighteen more of the same,
+   * every one of them reading eight tenths of an em of air or more. Left in,
+   * the fifteen of them were fifteen of the two hundred and fifty-two letters
+   * measured and a quarter of the kerning grid, because each behaved like
+   * nothing else and so shared a class with nothing else.
+   */
+  mark?: boolean;
+  /**
    * The letter this one is built from, if it is built from one.
    *
    * An `Á` kerns exactly as an `A` does -- the accent is above everything it
@@ -173,7 +204,12 @@ export interface Kerning {
  */
 export function kernsFor(glyphs: KernInput[], unitsPerEm: number): Kerning {
   const none: Kerning = { pairs: [], classes: [] };
-  const inked = glyphs.filter((one) => one.contours.some((c) => c.nodes.length > 1));
+  // `.notdef` is the box a shaper draws for a character the font has not got.
+  // It is in every font and it is not a letter, so it is not kerned either.
+  const inked = glyphs.filter(
+    (one) =>
+      !one.mark && one.name !== ".notdef" && one.contours.some((c) => c.nodes.length > 1),
+  );
   const drawn = inked.filter((one) => !one.sameAs);
   if (drawn.length === 0) return none;
 
