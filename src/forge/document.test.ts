@@ -142,7 +142,12 @@ describe("editing a part", () => {
     // with a bar laid across it, an n whose leg carries on below the line, and
     // an n with an apostrophe in front of it -- so each is its own letter to
     // `decidedBy` and has to be named here.
-    const arched = ["h", "hbar", "m", "n", "r", "u", "U", "eng", "napostrophe"];
+    const arched = [
+      "h", "hbar", "m", "n", "r", "u", "U", "eng", "napostrophe",
+      // Greek: the eta is an n with a longer leg, and the mu, upsilon and
+      // omega are all troughs, which are arches the other way up.
+      "\u03b7", "\u03bc", "\u03c5", "\u03c9",
+    ];
     for (const letter of arched) {
       expect(changed, `${letter} did not follow the shoulder`).toContain(letter);
     }
