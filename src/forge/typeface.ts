@@ -25,7 +25,8 @@ import {
   type Glyph,
   type Typeface,
 } from "@/font/types";
-import { letterNames } from "./build";
+import { builtFrom, letterNames } from "./build";
+import { kernsFor } from "./kern";
 import { anythingCut, draw, type Forge } from "./document";
 
 /**
@@ -213,6 +214,14 @@ export interface ForgeExportOptions {
    * and for tests that want to count strokes rather than letters.
    */
   merge: boolean;
+  /**
+   * Work the kerning out from the letters.
+   *
+   * Off by default and on for anything leaving the application, because it is a
+   * quarter of a second's measuring on a font of five hundred characters -- fine
+   * once, when a file is written, and not fine on every touch of a slider.
+   */
+  kern?: boolean;
 }
 
 /**
@@ -298,6 +307,34 @@ export async function toTypeface(
 
   typeface.glyphs = glyphs;
   typeface.glyphIndex = new Map(glyphs.map((glyph, index) => [glyph.name, index]));
+
+  /*
+   * And the kerning, measured off the letters that were just drawn.
+   *
+   * It has to be here rather than in a table somebody keeps up to date, because
+   * there is no drawing to keep it up to date against: turn the weight up and
+   * every edge in the alphabet moves, and a pair measured at one weight is
+   * wrong at the next.
+   */
+  if (options.kern) {
+    // Which glyphs are marks is not something the kerning can work out by
+    // looking: it is whether some letter here is built by stacking it on
+    // another, which is written down where the accented letters are.
+    const marks = new Set<string>();
+    for (const name of letterNames()) {
+      for (const mark of builtFrom(name)?.marks ?? []) marks.add(mark);
+    }
+    typeface.kernClasses = kernsFor(
+      glyphs.map((glyph) => ({
+        name: glyph.name,
+        contours: glyph.contours,
+        advanceWidth: glyph.advanceWidth,
+        sameAs: builtFrom(glyph.name)?.base,
+        mark: marks.has(glyph.name),
+      })),
+      typeface.unitsPerEm,
+    ).classes;
+  }
   return typeface;
 }
 

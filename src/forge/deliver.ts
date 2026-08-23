@@ -54,12 +54,13 @@ export async function deliver(
       styleName: member.styleName,
       weightClass: weight,
       merge: true,
+      kern: true,
     });
     const result = await exportFont(typeface, {
       format: options.format,
       // Nothing to preserve: there was never a source font.
       fidelity: "rebuild",
-      includeKerning: false,
+      includeKerning: true,
       mergeOverlaps: true,
     });
     written.push({
@@ -133,6 +134,15 @@ async function varying(
       weightClass: weight,
       // The whole point: see above.
       merge: false,
+      /*
+       * Only the drawn weight is measured for kerning.
+       *
+       * A variable font carries one set of pairs and the format has no way to
+       * vary them, so the masters' would be measured and thrown away. Taking it
+       * from the weight the family was drawn at is the same choice every
+       * variable font makes.
+       */
+      kern: weight === drawn,
     });
 
   const masters = [];
@@ -144,7 +154,7 @@ async function varying(
   const result = await exportFont(await drawing(drawn), {
     format: "ttf",
     fidelity: "rebuild",
-    includeKerning: false,
+    includeKerning: true,
     mergeOverlaps: false,
     // Drawn here, so the winding says which contour is a counter outright.
     roles: "winding",
