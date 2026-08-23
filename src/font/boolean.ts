@@ -212,16 +212,20 @@ export function unite(
    * reported broken, because one contour of nothing counts as one piece to
    * anything counting pieces.
    *
-   * Judged against the ink it was handed rather than against a fixed size, so
-   * it means the same at any scale. Fusing always loses some, because the
-   * shapes overlap and the overlaps were counted twice going in -- but not
-   * much: over the 3,136 drawings the sixteen faces make, the leanest honest
-   * answer keeps 55% of what it was given and three quarters keep 89% or more.
-   * Eighteen were coming back under half. Half sits above all of that and
-   * deliberately: answering yes when the union was fine costs a second fuse
-   * that is then thrown away, and answering no when it was not is a letter
-   * quietly missing from the font. The margin belongs on the side where being
-   * wrong is only slow.
+   * Judged against the least a union can honestly come to, which is arithmetic
+   * rather than a threshold: it must cover the biggest solid it was handed,
+   * and the only thing that can be taken out of that is a counter, so it must
+   * come to at least the biggest solid less every hole. Both halves matter --
+   * an o fuses to a good deal less than its outer circle, and that is its own
+   * counter doing it.
+   *
+   * This was a share of the total ink handed in, and a share cannot be made to
+   * work for both of the things that come through here. Strokes of a letter
+   * overlap a little, so the total is close to the answer; the bands a shadow
+   * is built from overlap enormously, so the total is several times it, and a
+   * perfectly good shadow of an o was being called a failure and thrown away
+   * for a worse one -- which is what filled the counter of every round letter
+   * that had a shadow thrown by it.
    *
    * And the fourth is the one that looks like success. A union cannot hold
    * more ink than it was handed, which is arithmetic rather than a threshold:
@@ -232,13 +236,25 @@ export function unite(
    * A hundredth of a per cent of slack, for the rounding a boolean does.
    */
   const handed = Math.abs(inkIn(drawable));
+  const roomFor = outersIn(drawable, roles);
+  const biggest = Math.max(
+    0,
+    ...drawable.map((contour, index) => (roomFor[index] ? Math.abs(contourArea(contour)) : 0)),
+  );
+  const holes = drawable.reduce(
+    (total, contour, index) => total + (roomFor[index] ? 0 : Math.abs(contourArea(contour))),
+    0,
+  );
+  const least = Math.max(0, biggest - holes);
   const swollen = (answer: Contour[]): boolean =>
     handed > 0 && Math.abs(inkIn(answer)) > handed * 1.0001;
   const gaveUp = (answer: Contour[]): boolean =>
     answer.length === 0 ||
-    (handed > 0 && Math.abs(inkIn(answer)) < handed * 0.5) ||
+    (least > 0 && Math.abs(inkIn(answer)) < least * 0.999) ||
     swollen(answer) ||
-    (join === "whole" ? solidsIn(answer) > 1 : answer.length >= drawable.length);
+    (join === "whole"
+      ? solidsIn(answer) > 1 || !stillDraws(answer, drawable, roles)
+      : answer.length >= drawable.length);
 
   if (!gaveUp(result) || drawable === apart) return result.length > 0 ? result : contours;
 
@@ -255,12 +271,24 @@ export function unite(
   if (!gaveUp(plain)) return plain;
   if (plain.length === 0) return result.length > 0 ? result : contours;
   /*
-   * Both gave up, so keep whichever failed less badly. More ink is the better
-   * answer when the failure is a shape that came back as a crumb -- but not
-   * when it is a counter filled in, which is a failure that makes the ink go
-   * up. So the answer that stayed inside what it was handed wins first, and
-   * only then does more ink decide.
+   * Both gave up, so keep whichever failed less badly, and the order of the
+   * questions is the order of how much they matter.
+   *
+   * Whether it still draws what it was given comes first, because that is the
+   * only one of these that is about the shape rather than about a number: an o
+   * thrown two stems at a hundred and fifty degrees came back from both
+   * attempts with something wrong, and only one of the two had its counter.
+   *
+   * Then whether it stayed inside the ink it was handed, because a counter
+   * filled in makes the ink go up. Then more ink, which is the right answer
+   * when the failure is a shape that came back as a crumb -- and which, asked
+   * first, hands back the filled counter every time, since filled is bigger.
    */
+  if (join === "whole") {
+    const drawsResult = stillDraws(result, drawable, roles);
+    const drawsPlain = stillDraws(plain, drawable, roles);
+    if (drawsResult !== drawsPlain) return drawsResult ? result : plain;
+  }
   if (swollen(result) !== swollen(plain)) return swollen(result) ? plain : result;
   if (Math.abs(inkIn(plain)) > Math.abs(inkIn(result))) return plain;
   return result.length > 0 ? result : contours;
@@ -521,6 +549,91 @@ function withoutStrayHoles(contours: Contour[]): Contour[] {
         contour.nodes.every((node) => contourContainsPoint(solid, node.point))
       );
     });
+  });
+}
+
+/**
+ * A few points spread through a shape, for asking whether it is still there.
+ *
+ * Not one point, and not the centroid: the centroid of a C is outside the C,
+ * and one point anywhere is one point that can land in the single place the
+ * union happened to get right. Scanlines across the shape and the middle of
+ * each span, which puts every sample well inside and spreads them over the
+ * whole of it.
+ */
+function pointsInside(contour: Contour, want: number): Vec2[] {
+  const polygon = flattenContour(contour, 8);
+  if (polygon.length < 3) return [];
+  const box = contoursBounds([contour]);
+  const height = box.yMax - box.yMin;
+  if (!(height > 0)) return [];
+  const found: Vec2[] = [];
+  const lines = want * 2;
+  for (let step = 1; step < lines && found.length < want; step++) {
+    const y = box.yMin + (height * step) / lines;
+    const crossings: number[] = [];
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const a = polygon[i];
+      const b = polygon[j];
+      if (a.y > y !== b.y > y) crossings.push(((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x);
+    }
+    crossings.sort((one, other) => one - other);
+    for (let i = 0; i + 1 < crossings.length && found.length < want; i += 2) {
+      if (crossings[i + 1] - crossings[i] > 1e-6) {
+        found.push({ x: (crossings[i] + crossings[i + 1]) / 2, y });
+      }
+    }
+  }
+  return found;
+}
+
+/** Whether a point is in the ink, by winding, with the roles as stated. */
+function inTheInk(contours: Contour[], isOuter: boolean[], point: Vec2): boolean {
+  let winding = 0;
+  for (let index = 0; index < contours.length; index++) {
+    if (contours[index].nodes.length < 3) continue;
+    if (contourContainsPoint(contours[index], point)) winding += isOuter[index] ? 1 : -1;
+  }
+  return winding > 0;
+}
+
+/**
+ * Whether the answer still draws what the union was handed.
+ *
+ * The one thing a union promises: it covers the same ground. Shapes may be
+ * swallowed, joined, absorbed into one outline -- but a point that was in the
+ * ink has to still be in the ink, and a point that was in a counter has to
+ * still be in a counter.
+ *
+ * Asked only where the caller said `whole`, which is the shaping layers rather
+ * than the letter being drawn: it costs a point-in-polygon for every sample
+ * against every contour of the answer, which is nothing beside a boolean but
+ * is not nothing beside forty letters a frame. The layers are where it is
+ * needed, because they hand the union sets no test made of ink and piece
+ * counts can judge -- a shadow is thirty bands, every one overlapping most of
+ * the others, and a counter filled in among those changes the total by less
+ * than the overlaps do.
+ *
+ * Sampled rather than proved. Proving it means another boolean, and the
+ * failures are whole counters: an o thrown a stem and a half straight up came
+ * back solid while the same o thrown at eighty-nine degrees and at ninety-one
+ * came back right.
+ */
+function stillDraws(answer: Contour[], given: Contour[], roles: Roles): boolean {
+  if (answer.length === 0) return false;
+  const isOuter = outersIn(given, roles);
+  // The answer comes out of a fuse, which states roles by winding outright.
+  const answerRoles = answer.map((contour) => contourArea(contour) >= 0);
+  return given.every((contour) => {
+    if (contour.nodes.length < 3) return true;
+    const samples = pointsInside(contour, 5);
+    if (samples.length === 0) return true;
+    // One stray sample is allowed: a point can land within a rounding of an
+    // edge, and a counter that is really gone disagrees on all five.
+    const wrong = samples.filter(
+      (point) => inTheInk(answer, answerRoles, point) !== inTheInk(given, isOuter, point),
+    ).length;
+    return wrong <= 1;
   });
 }
 

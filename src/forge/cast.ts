@@ -21,7 +21,7 @@
  */
 
 import { loaded, unite, type Roles } from "@/font/boolean";
-import { contourArea } from "@/font/geometry";
+import { contourArea, reverseContour, splitCubic } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import type { CutScale } from "./cut";
 import { alongSpine } from "./shapes";
@@ -142,31 +142,26 @@ function extruded(shape: Contour[], extrude: Cast["extrude"], stem: number): Con
   if (reach <= 0) return shape;
 
   const radians = (extrude.angle * Math.PI) / 180;
-
-  /*
-   * Short enough that a shape and the same shape moved by it overlap all along
-   * their touching edges, which is what makes the union at the bottom of the
-   * halving the swept ground rather than two shapes side by side. A unit and a
-   * half is below the resolution a font file can hold, so nothing that follows
-   * can see the difference.
-   */
-  const STEP = 1.5;
-  const halvings = Math.max(0, Math.ceil(Math.log2(Math.max(reach / STEP, 1))));
-  const step = reach / 2 ** halvings;
-
-  let swept = grownBy(shape, Math.cos(radians) * step, Math.sin(radians) * step);
-  for (let round = 0; round < halvings; round++) {
-    const along = step * 2 ** round;
-    swept = grownBy(swept, Math.cos(radians) * along, Math.sin(radians) * along);
-  }
-  return swept;
+  return sweptAlong(shape, Math.cos(radians) * reach, Math.sin(radians) * reach);
 }
 
 /**
  * A shape and the same shape moved, fused into one, and tidied after.
  *
+ * The approximate sweep, and it is the right one where the move is short
+ * against the shape being moved. Two copies of a stem five units apart overlap
+ * along almost their whole length, so their union is the ground between them
+ * to within the width of a hair -- which is what the rim is built out of, eight
+ * short moves that add up to a sixteen-sided figure.
+ *
+ * The exact sweep below is not used here, and was tried. Its bands are laid
+ * along every edge of the shape, and the rim lays one move on top of the last
+ * eight times over, so by the fourth the shape it is banding has hundreds of
+ * curved edges and paper runs out of stack resolving their crossings. The
+ * shadow makes one move against the letter as drawn and has no such trouble.
+ *
  * Tidied because every union leaves the straight runs chopped into collinear
- * pieces, and the halving would carry all of them into the next union.
+ * pieces, and the next one would carry all of them.
  *
  * Refitting the curves as well was tried and is not here. It takes the point
  * count down by two thirds and takes the shape apart while doing it -- a
@@ -176,23 +171,172 @@ function extruded(shape: Contour[], extrude: Cast["extrude"], stem: number): Con
  * was given, and only the points that change nothing can go.
  */
 function grownBy(shape: Contour[], dx: number, dy: number): Contour[] {
+  return tidied(unite([...shape, ...moved(shape, dx, dy)], "winding", "whole"));
+}
+
+/**
+ * The ground a shape covers as it travels along one line, exactly.
+ *
+ * The shape, the shape moved, and a band laid along every edge between them.
+ * That is the whole of the swept region -- it is what a Minkowski sum with a
+ * segment is -- with nothing sampled and nothing approximated.
+ *
+ * Folded in two at a time rather than handed over all at once, which is the
+ * one thing this cannot do. A union of a letter's strokes is a handful of
+ * shapes overlapping a little, and paper resolves that in one go. This is
+ * thirty bands overlapping enormously -- every one meets its neighbour along a
+ * whole edge and most of them lie inside the letter -- and handed all of them
+ * together paper answers with the counter of an o filled in, at every throw
+ * and every angle. Folded, it is right at every one of them, and the counter
+ * shrinks as the throw lengthens, which is what a shadow does.
+ *
+ * Paired up rather than added one after another, so the shapes stay small for
+ * as long as possible: a band against a band is a cheap boolean and a band
+ * against the whole accumulated shadow is not. Same number of unions, a good
+ * deal less work in them.
+ */
+function sweptAlong(shape: Contour[], dx: number, dy: number): Contour[] {
+  if (Math.hypot(dx, dy) < 1e-9) return shape;
+  const bands: Contour[][] = [];
+  for (const contour of shape) {
+    const nodes = contour.nodes;
+    if (nodes.length < 2) continue;
+    for (let index = 0; index < nodes.length; index++) {
+      for (const piece of facingOneWay(nodes[index], nodes[(index + 1) % nodes.length], dx, dy)) {
+        const band = bandAlong(piece, dx, dy);
+        if (band) bands.push([band]);
+      }
+    }
+  }
   /*
-   * Moved a hair further than asked, so the copy's edges never land exactly on
-   * the original's.
-   *
-   * Not a precaution. This union is a shape against an exact copy of itself,
-   * which is the one arrangement where edges landing on each other is certain
-   * rather than unlucky -- throw an H two and a half stems to the right and
-   * the swept left stem arrives exactly on the right one. Where that happened
-   * the union left a hairline of daylight through the letter, and it left it
-   * inside a single contour, so nothing that counts pieces could see it.
-   *
-   * A hundredth of a unit, the same as the fuse uses for the same reason. Over
-   * the eight rounds of a halving that is under a tenth of a unit of drift in
-   * the finished letter, which is below what a font file can hold.
+   * The bands first and the letter last, which is not arbitrary. Paired up in
+   * that order the bands meet each other -- shapes of the same size, each
+   * touching the next along one edge -- and only the fused ring of them meets
+   * the letter. The letter first, and the first union is a whole letter
+   * against one small band, which is the arrangement paper is worst at: an o
+   * thrown two stems at a hundred and fifty degrees came back solid that way
+   * and open this way, and nothing else about it changed.
    */
-  const HAIR = 0.01;
-  return tidied(unite([...shape, ...moved(shape, dx + HAIR, dy + HAIR * 0.618)], "winding", "whole"));
+  return tidied(pairedUp([...bands, moved(shape, dx, dy), shape]));
+}
+
+/** Everything fused, two at a time, up a tree rather than along a line. */
+function pairedUp(shapes: Contour[][]): Contour[] {
+  let round = shapes;
+  while (round.length > 1) {
+    const next: Contour[][] = [];
+    for (let index = 0; index < round.length; index += 2) {
+      next.push(
+        index + 1 < round.length
+          ? unite([...round[index], ...round[index + 1]], "winding", "whole")
+          : round[index],
+      );
+    }
+    round = next;
+  }
+  return round[0] ?? [];
+}
+
+/** One piece of the outline: where it starts and ends, and how it curves. */
+interface Edge {
+  from: Vec2;
+  c1: Vec2 | null;
+  c2: Vec2 | null;
+  to: Vec2;
+}
+
+/**
+ * One edge cut wherever it turns through the direction of the throw.
+ *
+ * A band is the edge, the edge moved, and the two ends joined -- and that is a
+ * simple shape only while the edge faces one way relative to the throw. Where
+ * it turns through it, the edge and its own moved copy cross each other, the
+ * band folds over itself, and the union resolves the fold into a crescent: the
+ * counter of an o came back as a swirl and the bowl of a B as a comma.
+ *
+ * A curve turns through the throw where its tangent runs parallel to it, which
+ * for a cubic is the root of a quadratic and so is exactly two places at most.
+ * Cut there, every piece faces one way and every band is simple. A straight
+ * edge faces one way all along by definition.
+ */
+function facingOneWay(from: GlyphNode, to: GlyphNode, dx: number, dy: number): Edge[] {
+  const start = from.point;
+  const finish = to.point;
+  const c1 = from.handleOut;
+  const c2 = to.handleIn;
+  if (c1 === null && c2 === null) return [{ from: start, c1: null, c2: null, to: finish }];
+
+  // A cubic with one handle missing is the same cubic with that handle sitting
+  // on its own point, which is what the rest of the engine means by it too.
+  const one = c1 ?? start;
+  const other = c2 ?? finish;
+  const cross = (a: Vec2, b: Vec2): number => (b.x - a.x) * dy - (b.y - a.y) * dx;
+  const a = cross(start, one);
+  const b = cross(one, other);
+  const c = cross(other, finish);
+
+  const at: number[] = [];
+  const square = a - 2 * b + c;
+  const linear = -2 * a + 2 * b;
+  if (Math.abs(square) < 1e-12) {
+    if (Math.abs(linear) > 1e-12) at.push(-a / linear);
+  } else {
+    const under = linear * linear - 4 * square * a;
+    if (under >= 0) {
+      const root = Math.sqrt(under);
+      at.push((-linear + root) / (2 * square), (-linear - root) / (2 * square));
+    }
+  }
+  const cuts = at.filter((value) => value > 1e-6 && value < 1 - 1e-6).sort((x, y) => x - y);
+  if (cuts.length === 0) return [{ from: start, c1: one, c2: other, to: finish }];
+
+  const pieces: Edge[] = [];
+  let piece: [Vec2, Vec2, Vec2, Vec2] = [start, one, other, finish];
+  let eaten = 0;
+  for (const cut of cuts) {
+    // Measured against what is left, since each cut renumbers the rest.
+    const where = (cut - eaten) / (1 - eaten);
+    const [before, after] = splitCubic(piece[0], piece[1], piece[2], piece[3], where);
+    pieces.push({ from: before[0], c1: before[1], c2: before[2], to: before[3] });
+    piece = after;
+    eaten = cut;
+  }
+  pieces.push({ from: piece[0], c1: piece[1], c2: piece[2], to: piece[3] });
+  return pieces;
+}
+
+/**
+ * The ground one edge of the outline passes over, as a shape.
+ *
+ * The edge, the edge moved, and the two straight runs joining their ends. A
+ * curved edge gives a curved band: the far side is the same curve moved, so
+ * its handles are the near side's handles moved, taken in the other order
+ * because that side is walked backwards.
+ *
+ * Wound solid whichever way the edge happened to run, because the union is
+ * told to read the roles off the winding and a band that came out running the
+ * other way would be read as a hole and punched out of the shadow it is part
+ * of.
+ */
+function bandAlong(edge: Edge, dx: number, dy: number): Contour | null {
+  const at = (point: Vec2): Vec2 => ({ x: point.x + dx, y: point.y + dy });
+  const band: Contour = {
+    closed: true,
+    nodes: [
+      { point: { ...edge.from }, handleIn: null, handleOut: edge.c1, type: "corner" },
+      { point: { ...edge.to }, handleIn: edge.c2, handleOut: null, type: "corner" },
+      { point: at(edge.to), handleIn: null, handleOut: edge.c2 && at(edge.c2), type: "corner" },
+      { point: at(edge.from), handleIn: edge.c1 && at(edge.c1), handleOut: null, type: "corner" },
+    ],
+  };
+  /*
+   * An edge running along the throw sweeps no ground, and a band of no area is
+   * a shape the union has to resolve for nothing. Judged on the area rather
+   * than on the direction, so a curve that happens to sweep nothing is caught
+   * as well as a straight run that does.
+   */
+  if (Math.abs(contourArea(band)) < 1e-9) return null;
+  return contourArea(band) < 0 ? reverseContour(band) : band;
 }
 
 /**
@@ -215,27 +359,60 @@ function grownBy(shape: Contour[], dx: number, dy: number): Contour[] {
 function tidied(contours: Contour[]): Contour[] {
   const NEAR = 0.05;
   return contours.map((contour) => {
-    const nodes = contour.nodes;
+    let nodes = contour.nodes;
     if (nodes.length < 4) return contour;
 
-    const kept: GlyphNode[] = [];
-    for (let index = 0; index < nodes.length; index++) {
-      const here = nodes[index];
-      // A point the outline curves through is never redundant, whatever it
-      // lines up with.
-      if (here.handleIn !== null || here.handleOut !== null) {
-        kept.push(here);
-        continue;
-      }
-      const previous = kept.length > 0 ? kept[kept.length - 1] : nodes[nodes.length - 1];
-      const next = nodes[(index + 1) % nodes.length];
-      if (previous.handleOut !== null || next.handleIn !== null) {
-        kept.push(here);
-        continue;
-      }
-      if (offLine(previous.point, here.point, next.point) > NEAR) kept.push(here);
+    /*
+     * The points that sit on top of their neighbour go first, and they have to
+     * go first.
+     *
+     * A union answers with plenty of them, and one of them is at the seam
+     * where the outline closes -- the last point is the first point written
+     * again. Left in, the very first point of the outline is measured against
+     * a copy of itself, comes out as lying on the line between it and its
+     * other neighbour, and is dropped: a shadow of a rectangle came back as a
+     * triangle of exactly half the area, with its bounds still right, which is
+     * a shape that is easy to look at and not notice.
+     *
+     * A hundredth of a unit apart still counts as the same point, because they
+     * do not come back exactly on top of each other. A union grows every shape
+     * it is handed outward by up to a ten-thousandth before joining them, so
+     * what was one point arrives as two a couple of ten-thousandths apart --
+     * and asked for exactness this caught none of them.
+     */
+    const SAME = 0.01;
+    nodes = nodes.filter((node, index) => {
+      const before = nodes[(index + nodes.length - 1) % nodes.length];
+      if (node.handleIn !== null || before.handleOut !== null) return true;
+      return Math.hypot(node.point.x - before.point.x, node.point.y - before.point.y) > SAME;
+    });
+    if (nodes.length < 4) return { ...contour, nodes };
+
+    /*
+     * Then the points that change nothing: a point on the straight line
+     * between its neighbours, with no handles at either side to say the
+     * outline is curving through it. The tolerance is a twentieth of a unit,
+     * which is below what a font file can hold, so what comes out draws
+     * identically to what went in.
+     *
+     * Swept again and again until a sweep finds nothing, because removing one
+     * point makes its two neighbours neighbours: three steps of a staircase in
+     * a line come out only if the middle one going lets the other two be
+     * looked at together. Each sweep asks about the outline as it now is,
+     * rather than about the one it started as.
+     */
+    for (;;) {
+      const kept = nodes.filter((node, index) => {
+        if (node.handleIn !== null || node.handleOut !== null) return true;
+        const before = nodes[(index + nodes.length - 1) % nodes.length];
+        const after = nodes[(index + 1) % nodes.length];
+        if (before.handleOut !== null || after.handleIn !== null) return true;
+        return offLine(before.point, node.point, after.point) > NEAR;
+      });
+      if (kept.length === nodes.length || kept.length < 3) break;
+      nodes = kept;
     }
-    return kept.length >= 3 ? { ...contour, nodes: kept } : contour;
+    return nodes.length >= 3 ? { ...contour, nodes } : contour;
   });
 }
 

@@ -103,14 +103,47 @@ describe("the shadow", () => {
     const across = (100 + 400) * Math.SQRT1_2;
     const swept = 100 * 400 + reach * across;
     /*
-     * Within a hundredth. Each round of the halving moves its copy a hundredth
-     * of a unit further than asked -- which is what stops the copy's edges
-     * landing exactly on the original's -- and the halving's own steps leave a
-     * staircase a unit and a half deep, well under what a font file can hold.
-     * Stamped copies leave one twenty times that, which this is well inside.
+     * To a hundred-thousandth, because the answer is not an approximation of
+     * the swept ground -- it is the swept ground. The shape, the shape moved,
+     * and a band along every edge between them is what a sweep along a line
+     * is, and the only thing left between that and the arithmetic is the
+     * ten-thousandth of a unit a union grows its operands by.
+     *
+     * It was a hundredth of the area, because the shadow used to be stamped
+     * copies at a spacing of a unit and a half and that leaves a staircase on
+     * every edge not parallel to the throw. Copies at a wider spacing leave a
+     * serrated A; this leaves nothing.
      */
-    expect(Math.abs(ink(thrown) - swept) / swept).toBeLessThan(0.01);
+    expect(Math.abs(ink(thrown) - swept) / swept).toBeLessThan(1e-5);
   });
+
+  it("keeps a counter open at every throw and every angle", () => {
+    /*
+     * The counter has to shrink, and it has to survive. Both were true of the
+     * halving; neither was reliably true of the exact sweep until its bands
+     * were folded in two at a time rather than handed to the union all at
+     * once. Handed together -- thirty shapes, every one overlapping most of
+     * the others -- paper answered with the counter of an o filled in solid at
+     * some throws and open at others, with no pattern to which.
+     *
+     * So it is asked at several throws and at more than one angle, and asked
+     * for the shrinking to be monotone, because a single throw at a single
+     * angle is exactly what happened to pass.
+     */
+    const hole = (contours: Contour[]): number =>
+      Math.abs(contours.filter((one) => contourArea(one) < 0).reduce((t, o) => t + contourArea(o), 0));
+
+    for (const angle of [0, -45, 90, 150]) {
+      let last = hole(plain("o"));
+      expect(last, `${angle}`).toBeGreaterThan(0);
+      for (const distance of [0.1, 0.25, 0.5, 1, 1.5, 2]) {
+        const now = hole(put("o", cast((one) => { one.extrude = { on: true, distance, angle }; })));
+        expect(now, `o at ${distance} stems, ${angle} degrees`).toBeGreaterThan(0);
+        expect(now, `o at ${distance} stems, ${angle} degrees`).toBeLessThan(last);
+        last = now;
+      }
+    }
+  }, 60_000);
 
   it("leaves the counter of an O open", () => {
     /*
