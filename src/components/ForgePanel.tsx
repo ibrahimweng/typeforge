@@ -19,7 +19,6 @@ import { segment } from "@/components/controls";
 import { contoursToSvgPath } from "@/font/geometry";
 import { filled, FILL_KINDS } from "@/forge/kit";
 import { drawLetter } from "@/forge/build";
-import { FROM_SKELETON, type Cuts } from "@/forge/cut";
 import { CutPanel } from "@/components/CutPanel";
 import {
   castFor,
@@ -29,7 +28,6 @@ import {
   cutsHeldBy,
   cutsOf,
   formOf,
-  isCutException,
   isException,
   isImported,
   kitOf,
@@ -41,14 +39,11 @@ import {
 import type { Imported } from "@/forge/exchange";
 import { formsOf } from "@/forge/letters";
 import {
-  CUT_SPECS,
   METRIC_CONTROLS,
   PART_SPECS,
   PEN_CONTROLS,
-  cutValuesOf,
   specFor,
   valuesOf,
-  type CutSpec,
   type FieldControl,
   type PartControl,
   type PartName,
@@ -587,11 +582,10 @@ function Cast(): React.JSX.Element {
 }
 
 function Cuts(): React.JSX.Element {
-  const state = useForge();
-  const { forge, letter, scope } = state;
+  const { forge, letter, scope } = useForge();
   /*
    * In letter scope this shows what the letter actually has, rather than what
-   * the font has -- which is where this parts company with the rows above.
+   * the font has -- which is where this parts company with the part rows above.
    *
    * The difference is in how the two are used. A part exception is rare and
    * starts from the family's value, so showing the family's value is showing
@@ -604,10 +598,25 @@ function Cuts(): React.JSX.Element {
   const held = cutsHeldBy(forge, letter);
 
   return (
-    <section className="border-b border-border p-3" data-forge-cuts>
-      <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-2xs font-medium">Cut</h3>
-        {held.length > 0 && (
+    <CutPanel
+      tag="forge-cuts"
+      cuts={cuts}
+      onChange={(name, patch, phase) => forgeStore.changeCut(name, patch as never, phase)}
+      unitsPerEm={forge.style.metrics.unitsPerEm}
+      scopeNote={
+        scope === "family"
+          ? "Cutting the whole font."
+          : `Cutting ${letter} alone. The rest of the font keeps its own.`
+      }
+      reach={
+        isImported(forge, letter)
+          ? `Not on ${letter}: this one is made out of the skeleton, and your drawing has none. The rest of the font still gets it.`
+          : null
+      }
+      heldNote={(name) => (scope === "letter" && held.includes(name) ? "held" : null)}
+      onRelease={(name) => forgeStore.releaseCut(name)}
+      header={
+        held.length > 0 ? (
           <button
             type="button"
             onClick={() => forgeStore.releaseCut()}
@@ -616,110 +625,9 @@ function Cuts(): React.JSX.Element {
           >
             {letter} holds {held.length} · release
           </button>
-        )}
-      </div>
-      <p className="pt-1 text-2xs leading-snug text-muted-foreground">
-        Taken out after the letter is drawn, so every control above still
-        reaches it. Sizes are in stem widths, which is what keeps a cut meaning
-        the same thing at every weight.
-      </p>
-      <p className="pt-1 text-2xs leading-snug text-muted-foreground">
-        {scope === "family"
-          ? "Cutting the whole font."
-          : `Cutting ${letter} alone. The rest of the font keeps its own.`}
-      </p>
-
-      {CUT_SPECS.map((spec) => (
-        <Cutting key={spec.name} spec={spec} cuts={cuts} />
-      ))}
-    </section>
-  );
-}
-
-/** One cut: a switch, and its settings once it is on. */
-function Cutting({
-  spec,
-  cuts,
-}: {
-  spec: CutSpec;
-  cuts: Cuts;
-}): React.JSX.Element {
-  const state = useForge();
-  const values = cutValuesOf(spec.name, cuts);
-  const on = Boolean(values.on);
-  const pinned = isCutException(state.forge, state.letter, spec.name);
-  // The control still works -- it is a decision about the font -- but on this
-  // letter it will do nothing, and that is worth knowing here rather than
-  // after staring at the drawing.
-  const unreachable =
-    FROM_SKELETON.has(spec.name) && on && isImported(state.forge, state.letter);
-
-  return (
-    <div className="border-t border-border pt-2 first-of-type:mt-2" data-forge-cut={spec.name}>
-      {/*
-        A row, not a label.
-        *
-        * It was a <label> wrapping the name, the "own" badge and the switch,
-        * which reads well and does the wrong thing: a click on any button
-        * inside a label is forwarded to the label's own control as well, so
-        * pressing "own" to give a letter back to the font released it and then
-        * immediately toggled the switch, putting the exception straight back.
-        * Both handlers fired on one press. The switch names itself with
-        * aria-label, so the label element was buying nothing to begin with.
-      */}
-      <div className="flex items-center justify-between gap-2">
-        <span className="min-w-0 flex-1 text-2xs font-medium text-foreground">{spec.label}</span>
-        {pinned && (
-          <button
-            type="button"
-            onClick={() => forgeStore.releaseCut(spec.name)}
-            className="shrink-0 text-2xs text-[color:var(--accent)] transition-opacity hover:opacity-70"
-          >
-            held
-          </button>
-        )}
-        <button
-          type="button"
-          role="switch"
-          aria-checked={on}
-          aria-label={spec.label}
-          data-forge-cut-switch={spec.name}
-          onClick={() => forgeStore.changeCut(spec.name, { on: !on } as never)}
-          className={cn(
-            "h-4 w-7 shrink-0 rounded-full transition-colors",
-            on ? "bg-[color:var(--accent)]" : "bg-card",
-          )}
-        >
-          <span
-            className={cn(
-              "block size-3 rounded-full bg-background transition-transform",
-              on ? "translate-x-3.5" : "translate-x-0.5",
-            )}
-          />
-        </button>
-      </div>
-      <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">{spec.hint}</p>
-      {unreachable && (
-        <p className="pt-0.5 text-2xs leading-snug text-[color:var(--accent)]">
-          Not on {state.letter}: this one is made out of the skeleton, and your
-          drawing has none. The rest of the font still gets it.
-        </p>
-      )}
-
-      {on && (
-        <div className="pt-1">
-          {spec.controls.map((control) => (
-            <Control
-              key={control.key}
-              id={`cut:${spec.name}:${control.key}`}
-              control={control}
-              values={values}
-              onChange={(patch, phase) => forgeStore.changeCut(spec.name, patch as never, phase)}
-            />
-          ))}
-        </div>
-      )}
-    </div>
+        ) : null
+      }
+    />
   );
 }
 

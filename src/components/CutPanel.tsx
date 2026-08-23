@@ -58,6 +58,14 @@ interface Common {
   reach?: string | null;
   /** Marks the panel for tests and for the tour to find. */
   tag?: string;
+  /**
+   * Drawn beside the heading, for anything that is about the whole layer.
+   *
+   * Where a letter's own release goes: "H holds 3 · release" belongs at the
+   * top, next to the name of the thing it is releasing, rather than under a
+   * list of six operations it is not about.
+   */
+  header?: React.ReactNode;
   /** Drawn under the operations, for anything the layer has that is not one. */
   footer?: React.ReactNode;
 }
@@ -88,7 +96,8 @@ export type CutPanelProps =
     });
 
 export function CutPanel(props: CutPanelProps): React.JSX.Element {
-  const { cuts, unitsPerEm, scopeNote, reach = null, tag = "cuts", layer = "cut", footer } = props;
+  const { cuts, unitsPerEm, scopeNote, reach = null, tag = "cuts", layer = "cut", header, footer } =
+    props;
   // Widened once, here, so everything below is written for one panel rather
   // than for two that happen to look alike.
   const onChange = props.onChange as (
@@ -105,7 +114,10 @@ export function CutPanel(props: CutPanelProps): React.JSX.Element {
 
   return (
     <section className="border-b border-border p-3" data-cut-panel={tag}>
-      <h3 className="text-2xs font-medium">{cast ? "Cast" : "Cut"}</h3>
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-2xs font-medium">{cast ? "Cast" : "Cut"}</h3>
+        {header}
+      </div>
       <p className="pt-1 text-2xs leading-snug text-muted-foreground">
         {cast
           ? "Put on after the letter is drawn, so everything above still reaches it. Sizes are in stem widths, which is what keeps a shadow meaning the same thing at every weight."
@@ -214,13 +226,16 @@ function CutRow({
       {on && (
         <div className="pt-1">
           {spec.controls.map((control) => (
-            <CutControl
-              key={control.key}
-              control={control}
-              values={values}
-              unitsPerEm={unitsPerEm}
-              onChange={(patch, phase) => onChange(spec.name, patch, phase)}
-            />
+            // Named for what it sets rather than for where it sits, so a test
+            // or the walkthrough can point at one setting of one operation.
+            <div key={control.key} data-cut-control={`${spec.name}:${control.key}`}>
+              <CutControl
+                control={control}
+                values={values}
+                unitsPerEm={unitsPerEm}
+                onChange={(patch, phase) => onChange(spec.name, patch, phase)}
+              />
+            </div>
           ))}
         </div>
       )}
