@@ -33,7 +33,7 @@ import {
   flattenContour,
   reverseContour,
 } from "./geometry";
-import { classifyContours } from "./outline";
+import { classifyContours, outersIn, type Roles } from "./outline";
 import type { Contour, GlyphNode, Vec2 } from "./types";
 
 type PaperScope = typeof import("paper");
@@ -79,24 +79,12 @@ export async function loadPaper(): Promise<PaperScope> {
 // ---------------------------------------------------------------------------
 
 /**
- * How a contour's role -- solid or counter -- is worked out on the way in.
+ * How a set of contours says which of them are counters.
  *
- * `nesting` counts how many contours enclose this one and calls it a counter
- * if that number is odd. It needs nothing of the caller, which is why the
- * export uses it: an imported font's winding has already been rewritten to
- * suit the output format by the time it gets here, so the contours no longer
- * say what they are and the shape has to be read instead.
- *
- * It is also wrong wherever one solid piece happens to sit inside another. A
- * letter drawn as overlapping pieces does that often -- the foot of a stem
- * sits inside the serif laid across it -- and counted by nesting the foot is
- * enclosed once, so it reads as a hole and is punched out of its own serif.
- *
- * `winding` takes each contour at its word: ink runs one way, counters run the
- * other. The sweep guarantees exactly that, so anything drawn here can say so
- * and be believed, and pieces sitting inside pieces stop being a question.
+ * Defined in `outline.ts`, which is where both readings are worked out, and
+ * re-exported here because every boolean takes one.
  */
-export type Roles = "nesting" | "winding";
+export type { Roles };
 
 /**
  * How hard to work at joining, which is not the same question for everybody.
@@ -574,19 +562,6 @@ function touching(contours: Contour[]): boolean {
     }
   }
   return false;
-}
-
-/**
- * Which of these contours are solids, read the way the caller asked for.
- *
- * Shared, because growing the shapes apart has to agree with the union about
- * what it was given: grow a counter outward and the counter gets bigger, which
- * is the one direction it must not go.
- */
-function outersIn(contours: Contour[], roles: Roles): boolean[] {
-  return roles === "winding"
-    ? contours.map((contour) => contourArea(contour) >= 0)
-    : classifyContours(contours);
 }
 
 function compoundOf(

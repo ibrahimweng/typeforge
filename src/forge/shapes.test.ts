@@ -31,10 +31,33 @@ const degrees = (point: { x: number; y: number }): number =>
 describe("a bowl", () => {
   it("is a circle when its corners are as round as they go", () => {
     const round = bowl(centre, 200, 200, 1, 40);
-    // One arc and nothing else: the four straight runs between the corners have
-    // no length left in them.
-    expect(round.segments).toHaveLength(4);
-    expect(round.segments.every((segment) => segment.kind === "arc")).toBe(true);
+    /*
+     * Nine pieces at every shape, four of which travel: a bowl is a rounded
+     * rectangle, and the runs between its corners are kept even where the
+     * corners have taken all the length out of them.
+     *
+     * Kept, rather than dropped for being empty, because the number of nodes
+     * in the swept letter follows the number of pieces in its spine -- so
+     * dropping them made an o seven nodes at a Thin, four at a Regular and six
+     * at a Bold, for a shape that is the same shape throughout. See
+     * `bowlSegments`.
+     */
+    expect(round.segments).toHaveLength(9);
+    const travelling = round.segments.filter((segment) =>
+      segment.kind === "arc"
+        ? Math.abs(segment.endAngle - segment.startAngle) > 1e-9
+        : Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y) > 1e-9,
+    );
+    expect(travelling).toHaveLength(4);
+    expect(travelling.every((segment) => segment.kind === "arc")).toBe(true);
+
+    // And it is a circle: every corner of it turns about the same middle, at
+    // the same radius, which is what the four quarters being all there means.
+    for (const segment of travelling) {
+      if (segment.kind !== "arc") continue;
+      expect(segment.radius).toBeCloseTo(200, 6);
+      expect(Math.hypot(segment.centre.x - centre.x, segment.centre.y - centre.y)).toBeCloseTo(0, 6);
+    }
   });
 
   it("is a rectangle with rounded corners when they are not", () => {

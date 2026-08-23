@@ -353,7 +353,19 @@ export function familyNames(meta: FontMeta): {
   };
 }
 
-export function buildName(meta: FontMeta): Uint8Array {
+export function buildName(
+  meta: FontMeta,
+  /**
+   * Names the font invents for itself, by the id it gave them.
+   *
+   * A varying font names its axes and its named places along them, and the
+   * format has nowhere to put those except here, under ids from 256 upwards --
+   * which is where it says a font may invent its own. Without them a font
+   * manager offers a slider with no label and a list of instances with no
+   * names, which is what it did.
+   */
+  invented: Array<{ id: number; value: string }> = [],
+): Uint8Array {
   const named = familyNames(meta);
   const fullName = `${meta.familyName} ${meta.styleName}`.trim();
   const postScriptName = sanitisePostScriptName(`${meta.familyName}-${meta.styleName}`);
@@ -372,9 +384,14 @@ export function buildName(meta: FontMeta): Uint8Array {
     typographicStyle: named.typographicStyle,
   };
 
-  const entries = NAME_IDS.map(([id, key]) => ({ id, value: values[key] ?? "" })).filter(
-    (entry) => entry.value.length > 0,
-  );
+  const entries = [
+    ...NAME_IDS.map(([id, key]) => ({ id, value: values[key] ?? "" })),
+    ...invented,
+  ]
+    .filter((entry) => entry.value.length > 0)
+    // In order of id, which the format requires of the records and which the
+    // list above is only in by luck once anything is added to it.
+    .sort((one, other) => one.id - other.id);
 
   // Windows platform, Unicode BMP encoding, US English: the combination every
   // system reads.

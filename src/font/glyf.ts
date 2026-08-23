@@ -21,6 +21,22 @@ const MORE_COMPONENTS = 0x0020;
 const WE_HAVE_AN_X_AND_Y_SCALE = 0x0040;
 const WE_HAVE_A_TWO_BY_TWO = 0x0080;
 const ROUND_XY_TO_GRID = 0x0004;
+/**
+ * This glyph's pieces overlap, and the renderer should fill them as one shape.
+ *
+ * The one thing a font file can say instead of merging. A variable font cannot
+ * merge: the movement between masters is stored as a difference between two
+ * lists of points, so the two lists have to hold the same points in the same
+ * order, and a union re-points whatever it is given. Drawn as separate strokes
+ * the letters line up at every weight; fused they stop lining up wherever the
+ * strokes meet differently as the pen widens, which on a text face is most of
+ * the lower case.
+ *
+ * So the strokes are left overlapping and this says so. Under a non-zero fill
+ * that changes nothing, and it tells a rasteriser doing coverage antialiasing
+ * not to darken the seams where they overlap.
+ */
+const OVERLAP_COMPOUND = 0x0400;
 
 const ON_CURVE = 0x01;
 const X_SHORT = 0x02;
@@ -28,6 +44,8 @@ const Y_SHORT = 0x04;
 const REPEAT = 0x08;
 const X_SAME_OR_POSITIVE = 0x10;
 const Y_SAME_OR_POSITIVE = 0x20;
+/** The simple-glyph counterpart of `OVERLAP_COMPOUND`, on the first point. */
+const OVERLAP_SIMPLE = 0x40;
 
 export interface GlyfBuildInput {
   contours: Contour[];
@@ -62,10 +80,39 @@ export interface GlyfTables {
   maxContours: number;
   /** Largest number of references in any one composite, also needed by `maxp`. */
   maxComponents: number;
+  /**
+   * The points that went into each glyph, flattened across its contours.
+   *
+   * Handed back because a varying font has to say how every one of them moves,
+   * and the deltas are only meaningful against exactly the points that were
+   * written. Reading the table back to find them out would work and would be
+   * one more place for the two to disagree.
+   */
+  points: GlyfPoint[][];
 }
 
-export function buildGlyfTables(glyphs: GlyfBuildInput[], tolerance = 0.5): GlyfTables {
+export function buildGlyfTables(
+  glyphs: GlyfBuildInput[],
+  tolerance = 0.5,
+  /**
+   * Split every curve this many ways instead of as few as the tolerance allows.
+   *
+   * Only a varying font asks for it, and it asks because the same letter drawn
+   * at two ends of an axis has to arrive with the same points in the same
+   * order, which a tolerance does not promise.
+   */
+  pieces?: number,
+  /**
+   * Mark every glyph as holding overlapping pieces.
+   *
+   * For a font whose outlines were never merged, which is what a varying font
+   * has to be. Said once for the whole font rather than worked out per glyph,
+   * because it is a fact about how the font was written.
+   */
+  overlapping = false,
+): GlyfTables {
   const records: Uint8Array[] = [];
+  const points: GlyfPoint[][] = [];
   let xMin = Infinity;
   let yMin = Infinity;
   let xMax = -Infinity;
@@ -77,6 +124,7 @@ export function buildGlyfTables(glyphs: GlyfBuildInput[], tolerance = 0.5): Glyf
   for (const glyph of glyphs) {
     if (!glyph.rebuild && glyph.original) {
       records.push(glyph.original);
+      points.push([]);
       if (glyph.original.length >= 10) {
         const view = new DataView(
           glyph.original.buffer,
@@ -95,7 +143,10 @@ export function buildGlyfTables(glyphs: GlyfBuildInput[], tolerance = 0.5): Glyf
 
     if (glyph.composite && glyph.composite.length > 0) {
       const bounds = contoursBounds(glyph.contours);
-      records.push(encodeCompositeGlyph(glyph.composite, bounds));
+      records.push(encodeCompositeGlyph(glyph.composite, bounds, overlapping));
+      // A composite has no points of its own: it varies through the glyphs it
+      // refers to, which carry their own deltas.
+      points.push([]);
       xMin = Math.min(xMin, bounds.xMin);
       yMin = Math.min(yMin, bounds.yMin);
       xMax = Math.max(xMax, bounds.xMax);
@@ -108,13 +159,17 @@ export function buildGlyfTables(glyphs: GlyfBuildInput[], tolerance = 0.5): Glyf
     if (drawable.length === 0) {
       // A glyph with no outline, such as a space, is stored as zero bytes.
       records.push(new Uint8Array(0));
+      points.push([]);
       continue;
     }
 
-    const pointsPerContour = drawable.map((contour) => contourToGlyfPoints(contour, tolerance));
+    const pointsPerContour = drawable.map((contour) =>
+      contourToGlyfPoints(contour, tolerance, pieces ? { pieces } : {}),
+    );
     const total = pointsPerContour.reduce((sum, points) => sum + points.length, 0);
     if (total === 0) {
       records.push(new Uint8Array(0));
+      points.push([]);
       continue;
     }
     maxPoints = Math.max(maxPoints, total);
@@ -126,7 +181,8 @@ export function buildGlyfTables(glyphs: GlyfBuildInput[], tolerance = 0.5): Glyf
     xMax = Math.max(xMax, bounds.xMax);
     yMax = Math.max(yMax, bounds.yMax);
 
-    records.push(encodeSimpleGlyph(pointsPerContour, bounds));
+    records.push(encodeSimpleGlyph(pointsPerContour, bounds, overlapping));
+    points.push(pointsPerContour.flat());
   }
 
   // Records must start on even offsets for the short `loca` format to address them.
@@ -166,6 +222,7 @@ export function buildGlyfTables(glyphs: GlyfBuildInput[], tolerance = 0.5): Glyf
     maxPoints,
     maxContours,
     maxComponents,
+    points,
   };
 }
 
@@ -177,7 +234,11 @@ export function buildGlyfTables(glyphs: GlyfBuildInput[], tolerance = 0.5): Glyf
  * transform is only written when there is one, so a plainly placed accent costs
  * eight bytes rather than an outline.
  */
-function encodeCompositeGlyph(components: CompositeRef[], bounds: Bounds): Uint8Array {
+function encodeCompositeGlyph(
+  components: CompositeRef[],
+  bounds: Bounds,
+  overlapping = false,
+): Uint8Array {
   const writer = new ByteWriter();
   writer.int16(-1); // negative contour count marks a composite
   writer.int16(Math.floor(bounds.xMin));
@@ -195,6 +256,7 @@ function encodeCompositeGlyph(components: CompositeRef[], bounds: Bounds): Uint8
     const axisScale = !identity && !evenScale && b === 0 && c === 0;
 
     let flags = ARGS_ARE_XY_VALUES | ROUND_XY_TO_GRID;
+    if (overlapping && index === 0) flags |= OVERLAP_COMPOUND;
     const needsWords = roundedX < -128 || roundedX > 127 || roundedY < -128 || roundedY > 127;
     if (needsWords) flags |= ARG_1_AND_2_ARE_WORDS;
     if (evenScale) flags |= WE_HAVE_A_SCALE;
@@ -237,6 +299,7 @@ function toF2Dot14(value: number): number {
 function encodeSimpleGlyph(
   pointsPerContour: GlyfPoint[][],
   bounds: { xMin: number; yMin: number; xMax: number; yMax: number },
+  overlapping = false,
 ): Uint8Array {
   const writer = new ByteWriter();
   writer.int16(pointsPerContour.length);
@@ -292,6 +355,14 @@ function encodeSimpleGlyph(
     }
     flags.push(flag);
   }
+
+  /*
+   * On the first point and nowhere else, which is where the format looks for
+   * it. Set before the runs are collapsed rather than after, or a first point
+   * that happened to match its neighbours would be folded into a repeat and
+   * the bit would be lost -- or worse, repeated onto points that never had it.
+   */
+  if (overlapping && flags.length > 0) flags[0] |= OVERLAP_SIMPLE;
 
   // Runs of identical flags collapse into one flag plus a repeat count.
   for (let i = 0; i < flags.length; ) {

@@ -124,14 +124,54 @@ export function bowlBetween(
   const span = Math.min(360, Math.max(0, toDegrees - fromDegrees));
   const finish = start + span;
 
+  /*
+   * How far round the loop each piece begins, added up as the loop is walked
+   * rather than read off each piece's own endpoints.
+   *
+   * Read off the endpoints, a piece that ends where it began cannot say
+   * whether it went nowhere or all the way round -- and the two halves of the
+   * right edge, which the loop starts and ends with, sit at exactly the same
+   * angle. On a bowl that is a true circle both of them measure nothing, so
+   * both landed at the same place in the walk and the closing one came out
+   * after the arc that should have followed it. Every B, D, P, R, Eth and
+   * Thorn collapsed into a wedge.
+   *
+   * Added up, there is no wrap to guess: the loop runs anticlockwise from
+   * wherever it starts to that same angle three hundred and sixty degrees
+   * later, and each piece knows where it is in that whether it travels or not.
+   */
+  const spans = loop.map((segment) => {
+    const one = angleOf(centre, segmentStart(segment));
+    const other = angleOf(centre, segmentEnd(segment));
+    return hasLength(segment) ? (((other - one) % 360) + 360) % 360 : 0;
+  });
+  const at: number[] = [angleOf(centre, segmentStart(loop[0]))];
+  for (const span of spans) at.push(at[at.length - 1] + span);
+
   const kept: SpineSegment[] = [];
-  // Two laps, so a run that crosses the rightmost point is not cut in half by
-  // the seam that happens to be there.
+  // Two laps, so a run that crosses the seam the loop happens to start at is
+  // not cut in half by it.
   for (let lap = 0; lap < 2; lap++) {
-    for (const segment of loop) {
-      const from = angleOf(centre, segmentStart(segment)) + lap * 360;
-      const to = angleOf(centre, segmentEnd(segment)) + lap * 360;
-      const ends = to <= from ? to + 360 : to;
+    for (let index = 0; index < loop.length; index++) {
+      const segment = loop[index];
+      const from = at[index] + lap * 360;
+      const ends = at[index + 1] + lap * 360;
+      /*
+       * A piece that goes nowhere is in the run or out of it, and there is
+       * nothing to cut. Kept at both ends, because a piece that travels and
+       * lands across an end is cut and survives there -- so a run that stops
+       * exactly on the end has to survive too, or the same shape comes back
+       * with one node fewer whenever a bowl happens to be exactly as wide as
+       * it is tall.
+       *
+       * Both ends except when the run is the whole way round, where they are
+       * the same end and keeping both would write the piece twice.
+       */
+      if (from === ends) {
+        const room = span < 360 ? from <= finish : from < finish;
+        if (from >= start && room) kept.push(segment);
+        continue;
+      }
       if (ends <= start || from >= finish) continue;
       let piece: SpineSegment | null = segment;
       if (from < start) piece = cutBefore(piece, centre, start);
@@ -185,9 +225,27 @@ function bowlSegments(
   });
   const run = (from: Vec2, to: Vec2): SpineSegment => ({ kind: "line", from, to });
 
-  // Zero-length runs are dropped by the sweep in any case, but leaving them out
-  // here keeps a circle a single arc rather than a circle with four ghosts in
-  // it, which matters for how the letter reads when its spine is drawn.
+  /*
+   * All nine, including the ones that measure nothing.
+   *
+   * A bowl is a rounded rectangle: four corners with a run between each pair.
+   * Which of those runs has any length depends on the shape -- taller than it
+   * is wide, the sides survive and the top and bottom do not; wider, the other
+   * way about; exactly square, it is a circle and none of them do.
+   *
+   * They used to be dropped here, which kept a circle's spine a clean four arcs
+   * with no ghosts in it when the skeleton was drawn. The cost only showed up
+   * later: the number of nodes in the swept letter follows the number of
+   * segments in its spine, so a Sans o came out seven nodes at a Thin, four at
+   * the Regular and six at a Bold, for a shape that is the same shape all the
+   * way along. Invisible in one font. Fatal in a varying one, where the
+   * movement from one weight to the next is a list of points that moved and
+   * both sides have to have the same list.
+   *
+   * So they are kept, and the sweep is told how to point one that goes
+   * nowhere. The skeleton overlay drops them for drawing, which is where that
+   * concern belongs.
+   */
   const segments: SpineSegment[] = [
     run(at(right, centre.y), at(right, insideTop)),
     quarter(insideRight, insideTop, 0, 90),
@@ -199,9 +257,10 @@ function bowlSegments(
     quarter(insideRight, insideBottom, 270, 360),
     run(at(right, insideBottom), at(right, centre.y)),
   ];
-  return segments.filter(hasLength);
+  return segments;
 }
 
+/** Whether a segment goes anywhere at all. */
 function hasLength(segment: SpineSegment): boolean {
   return segment.kind === "line"
     ? Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y) > 1e-9

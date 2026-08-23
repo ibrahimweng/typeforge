@@ -155,10 +155,12 @@ function segmentEnd(segment: SpineSegment): Vec2 {
  *
  * `side` is +1 for the left of the direction travelled and -1 for the right.
  */
-function offsetSegment(segment: SpineSegment, side: number, reach: PenReach): OffsetSegment {
+function offsetSegment(one: Headed, side: number, reach: PenReach): OffsetSegment {
+  const segment = one.segment;
   if (segment.kind === "line") {
-    const { start } = tangents(segment);
-    const normal = leftOf(start);
+    // The heading rather than the segment's own tangent, because a run of no
+    // length has none of its own and takes its neighbours'.
+    const normal = leftOf(one.start);
     const shift = reachAlong(normal, reach);
     const move = (point: Vec2): Vec2 => ({
       x: point.x + shift.x * side,
@@ -336,13 +338,14 @@ interface Kink {
  * most of them, since an arch and a bowl are built to run smoothly from one
  * piece to the next.
  */
-function kinksOf(segments: SpineSegment[], closed: boolean): Kink[] {
+function kinksOf(headed: Headed[], closed: boolean): Kink[] {
   const found: Kink[] = [];
+  const segments = headed.map((one) => one.segment);
   const upTo = closed ? segments.length : segments.length - 1;
   for (let index = 0; index < upTo; index++) {
     const next = (index + 1) % segments.length;
-    const leaving = tangents(segments[index]).end;
-    const arriving = tangents(segments[next]).start;
+    const leaving = headed[index].end;
+    const arriving = headed[next].start;
     const turn = leaving.x * arriving.y - leaving.y * arriving.x;
     const along = leaving.x * arriving.x + leaving.y * arriving.y;
     if (Math.abs(turn) < 1e-9 && along > 0) continue;
@@ -450,16 +453,16 @@ export const MITER_LIMIT = 4;
  * know which one it is.
  */
 function sideRun(
-  segments: SpineSegment[],
+  headed: Headed[],
   side: number,
   reach: PenReach,
   join: JoinKind,
   closed: boolean,
 ): OffsetSegment[] {
-  const offsets = segments.map((segment) => ({ ...offsetSegment(segment, side, reach) }));
+  const offsets = headed.map((one) => ({ ...offsetSegment(one, side, reach) }));
   const filling = new Map<number, OffsetSegment[]>();
 
-  for (const kink of kinksOf(segments, closed)) {
+  for (const kink of kinksOf(headed, closed)) {
     const before = offsets[kink.before];
     const after = offsets[kink.after];
 
@@ -623,25 +626,87 @@ function terminalNodes(
 // ---------------------------------------------------------------------------
 
 /**
- * The segments that actually go somewhere.
+ * Every segment, and the way it travels.
  *
- * A run of zero length is not a shape, it is a coordinate written twice, and
- * its direction of travel is whatever the arithmetic happened to leave behind.
- * The U had one: the flat across the bottom is what is left after the two
- * corners have taken their radius, and on a face whose corners are as wide as
- * the letter there is nothing left between them. It measured zero, its tangent
- * came out as neither direction, and the corner test then read it as a turn in
- * both directions at once and filled the wedge for a corner that was not there.
+ * A run of zero length cannot say for itself which way it points -- it is a
+ * coordinate written twice, and its tangent is whatever the arithmetic left
+ * behind. The U had one: the flat across the bottom is what is left after the
+ * two corners have taken their radius, and on a face whose corners are as wide
+ * as the letter there is nothing left between them. Its tangent came out as
+ * neither direction, the corner test read it as a turn in both directions at
+ * once, and it filled the wedge for a corner that was not there.
  *
- * It had been sitting in the alphabet all along doing no visible harm, because
- * until there was corner handling nothing ever asked which way it pointed.
+ * It used to be dropped for that, which fixed the wedge and cost something
+ * that only showed up much later: the number of nodes in a letter then depends
+ * on which of its runs happen to measure zero, and that moves. A bowl is a
+ * rounded rectangle, so a bowl taller than it is wide keeps its side runs and
+ * loses its top and bottom; wider, the other way about; exactly square, it is
+ * a circle and keeps none of them. Sans o is seven nodes at a Thin, four at
+ * the Regular and six at a Bold, for a shape that is the same shape throughout
+ * -- which is invisible in a single font and fatal in a varying one, where the
+ * movement between two weights is a list of points that moved and there has to
+ * be the same list on both sides.
+ *
+ * So a run of no length is kept and told which way it goes, which is what its
+ * neighbours already know: on a rounded rectangle the flat between two corners
+ * runs tangent to both, so either of them answers it. Told that, the corner
+ * test sees no turn and the wedge does not come back -- and the letter has the
+ * same nodes at every weight, a few of them in the same place as each other.
+ *
+ * Only a segment with no neighbour to ask is dropped, which leaves a spine
+ * that goes nowhere at all as nothing, which is what it is.
  */
-function travelled(segments: SpineSegment[]): SpineSegment[] {
-  return segments.filter((segment) =>
+interface Headed {
+  segment: SpineSegment;
+  start: Vec2;
+  end: Vec2;
+}
+
+function headings(segments: SpineSegment[], closed: boolean): Headed[] {
+  const real = segments.filter((segment) => segment.kind !== "arc" || segment.radius > 1e-9);
+  const goes = real.map((segment) =>
     segment.kind === "line"
       ? Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y) > 1e-9
-      : segment.radius > 1e-9 && Math.abs(segment.endAngle - segment.startAngle) > 1e-9,
+      : Math.abs(segment.endAngle - segment.startAngle) > 1e-9,
   );
+  // A spine where nothing travels is not a stroke, however many coordinates it
+  // was written with.
+  if (!goes.some(Boolean)) return [];
+
+  const headed: Headed[] = real.map((segment) => {
+    const { start, end } = tangents(segment);
+    return { segment, start, end };
+  });
+  const settled = [...goes];
+
+  /*
+   * Answered from the neighbour before where there is one, because a run of no
+   * length is a stroke that arrived and did not leave, and the way it arrived
+   * is the way it was going. Walked forwards so a chain of them all take the
+   * answer from the last segment that actually travelled.
+   */
+  const take = (index: number, from: number, at: "start" | "end") => {
+    headed[index].start = headed[from][at];
+    headed[index].end = headed[from][at];
+    settled[index] = true;
+  };
+  for (let index = 0; index < headed.length; index++) {
+    if (settled[index]) continue;
+    const before = index === 0 ? (closed ? headed.length - 1 : -1) : index - 1;
+    if (before >= 0 && settled[before]) take(index, before, "end");
+  }
+  // Then backwards, for the ones at the very start of an open spine, which
+  // have nothing before them to ask.
+  for (let index = headed.length - 1; index >= 0; index--) {
+    if (settled[index]) continue;
+    const after = index === headed.length - 1 ? (closed ? 0 : -1) : index + 1;
+    if (after >= 0 && settled[after]) take(index, after, "start");
+  }
+
+  // Nothing should be left -- something travelled, and both walks reach every
+  // segment from it -- but a segment with no direction would sweep to a shape
+  // with no direction, so it goes rather than being taken on trust.
+  return headed.filter((_, index) => settled[index]);
 }
 
 /**
@@ -654,13 +719,13 @@ function travelled(segments: SpineSegment[]): SpineSegment[] {
  */
 export function sweep(stroke: Stroke): Contour[] {
   const { spine, pen } = stroke;
-  const segments = travelled(spine.segments);
-  if (segments.length === 0) return [];
+  const headed = headings(spine.segments, spine.closed);
+  if (headed.length === 0) return [];
   const reach = penReach(pen);
 
   const join = stroke.join ?? "miter";
-  const left = sideRun(segments, 1, reach, join, spine.closed);
-  const right = sideRun(segments, -1, reach, join, spine.closed);
+  const left = sideRun(headed, 1, reach, join, spine.closed);
+  const right = sideRun(headed, -1, reach, join, spine.closed);
 
   if (spine.closed) {
     /*
@@ -682,18 +747,13 @@ export function sweep(stroke: Stroke): Contour[] {
     return [facing(outside, 1), facing(inside, -1)];
   }
 
-  const last = segments[segments.length - 1];
-  const first = segments[0];
-  const endNodes = terminalNodes(
-    stroke.end,
-    segmentEnd(last),
-    tangents(last).end,
-    reach,
-  );
+  const last = headed[headed.length - 1];
+  const first = headed[0];
+  const endNodes = terminalNodes(stroke.end, segmentEnd(last.segment), last.end, reach);
   const startNodes = terminalNodes(
     stroke.start,
-    segmentStart(first),
-    { x: -tangents(first).start.x, y: -tangents(first).start.y },
+    segmentStart(first.segment),
+    { x: -first.start.x, y: -first.start.y },
     reach,
   );
 
@@ -722,9 +782,7 @@ export function sweep(stroke: Stroke): Contour[] {
     }
   }
 
-  const nodes: GlyphNode[] = [...leftNodes, ...endNodes, ...rightNodes, ...startNodes];
-
-  return [facing({ nodes: dropRepeats(nodes), closed: true }, 1)];
+  return [facing({ nodes: joinedAtSeams([leftNodes, endNodes, rightNodes, startNodes]), closed: true }, 1)];
 }
 
 /**
@@ -764,34 +822,49 @@ function closeRing(nodes: GlyphNode[]): GlyphNode[] {
 }
 
 /**
- * Drop points that landed on top of each other.
+ * The four runs of a stroke's outline, joined where they meet.
  *
- * A butt terminal puts its two corners exactly where the two offset sides
- * already end, so without this every stroke would carry four duplicate nodes --
- * harmless to look at, but they would survive into the exported font and show
- * up in the checks as points that go nowhere.
+ * A stroke is a side, an end, the other side and the other end, and each of
+ * the four ends where the next begins: a butt terminal puts its two corners
+ * exactly where the offset sides already stop. Without this every stroke would
+ * carry four duplicate nodes, harmless to look at but written into the file
+ * and reported by the checks as points that go nowhere.
+ *
+ * Only where they meet, and that is the point. This used to walk the whole
+ * outline dropping any point that landed on the one before it, which took the
+ * seams and also took something else: a run of no length in the spine sweeps
+ * to a node exactly on its neighbour, and dropping that makes the number of
+ * nodes in a letter depend on which of its runs happen to measure zero. A bowl
+ * exactly as wide as it is tall is a circle and has none, so a D came back with
+ * six nodes at the weight where its bowl is round and ten either side of it --
+ * for a shape that is the same shape all the way along. That is invisible in
+ * one font and fatal in a varying one, where the movement between two weights
+ * is a list of points that moved and both sides have to have the same list.
  */
-function dropRepeats(nodes: GlyphNode[]): GlyphNode[] {
-  const kept: GlyphNode[] = [];
-  for (const node of nodes) {
-    const previous = kept[kept.length - 1];
+function joinedAtSeams(runs: GlyphNode[][]): GlyphNode[] {
+  const nodes: GlyphNode[] = [];
+  for (const run of runs) {
+    if (run.length === 0) continue;
+    const previous = nodes[nodes.length - 1];
+    const joining = run[0];
     if (
       previous &&
-      Math.hypot(previous.point.x - node.point.x, previous.point.y - node.point.y) < 1e-6
+      Math.hypot(previous.point.x - joining.point.x, previous.point.y - joining.point.y) < 1e-6
     ) {
-      // Keep whichever handles the pair had between them.
-      previous.handleOut = node.handleOut ?? previous.handleOut;
+      previous.handleOut = joining.handleOut ?? previous.handleOut;
+      nodes.push(...run.slice(1));
       continue;
     }
-    kept.push(node);
+    nodes.push(...run);
   }
-  if (kept.length > 1) {
-    const first = kept[0];
-    const last = kept[kept.length - 1];
+  // And where the last run meets the first, which is the same seam once round.
+  if (nodes.length > 1) {
+    const first = nodes[0];
+    const last = nodes[nodes.length - 1];
     if (Math.hypot(first.point.x - last.point.x, first.point.y - last.point.y) < 1e-6) {
       first.handleIn = last.handleIn ?? first.handleIn;
-      kept.pop();
+      nodes.pop();
     }
   }
-  return kept;
+  return nodes;
 }
