@@ -222,6 +222,30 @@ async function resolvedGlyphs(
   format: OutlineFormat,
   mergeOverlaps: boolean,
   roles: Roles = "nesting",
+  /**
+   * Whether to put a node at every turn of every curve.
+   *
+   * Both outline formats want one there, and a static font gets one. A varying
+   * font does not, because where a curve turns is a question about the curve
+   * and a curve here is drawn by a pen: the same `\u03c2` turns inside its tail at
+   * the Regular and not at the Black, so one master comes back with a node the
+   * other has not got. A variable font is one set of outlines and a list of how
+   * each point moves, so two masters meet only where they are drawn with the
+   * same points -- and the letter is then left standing at whichever master it
+   * agreed with, which is a Regular `\u03c2` in a Black word.
+   *
+   * What it costs was measured rather than assumed, because giving up a node
+   * the format asks for is not a thing to do on a hunch. A varying font already
+   * cuts every curve into a fixed four pieces so that the masters line up, so
+   * the outline is carried by four nodes where a static font's tolerance would
+   * often use one, and the turn is never far from one of them. Against the
+   * drawn outlines, the worst any glyph's bounds came out was 1.49 units on a
+   * thousand-unit em -- and that is what it was with the nodes in, because it
+   * is the integer grid rather than the missing node. What changed was how many
+   * glyphs were out by more than a unit at all: 25 of 304 became 30. The file
+   * came down seven kilobytes and four more letters could follow the axis.
+   */
+  extremes = true,
 ) {
   const out: Array<{ glyph: Typeface["glyphs"][number]; contours: ReturnType<typeof resolveGlyphContours> }> = [];
 
@@ -237,7 +261,7 @@ async function resolvedGlyphs(
       merged = true;
     }
 
-    contours = contours.map(insertExtrema);
+    if (extremes) contours = contours.map(insertExtrema);
     /*
      * A merged glyph states its roles by winding whoever was asked on the way
      * in, because that is what a union answers with. One that was not merged
@@ -266,7 +290,15 @@ async function masterOf(
   context: { tolerance: number; mergeOverlaps: boolean; roles: Roles },
   shape: GlyfBuildInput[],
 ): Promise<Master> {
-  const resolved = await resolvedGlyphs(typeface, "truetype", context.mergeOverlaps, context.roles);
+  // A master, so no extremes: see `resolvedGlyphs`. The default master is
+  // written without them too, or it would not line up with these.
+  const resolved = await resolvedGlyphs(
+    typeface,
+    "truetype",
+    context.mergeOverlaps,
+    context.roles,
+    false,
+  );
   const built = buildGlyfTables(
     resolved.map((entry, index) => ({
       contours: entry.contours,
@@ -309,7 +341,13 @@ async function exportTrueType(
     variable?: VariableOptions;
   },
 ): Promise<Uint8Array> {
-  const resolved = await resolvedGlyphs(typeface, "truetype", context.mergeOverlaps, context.roles);
+  const resolved = await resolvedGlyphs(
+    typeface,
+    "truetype",
+    context.mergeOverlaps,
+    context.roles,
+    !context.variable,
+  );
   const preserving = context.fidelity === "preserve" && typeface.source !== null;
 
   // In preserve mode an untouched glyph is copied rather than re-encoded, which

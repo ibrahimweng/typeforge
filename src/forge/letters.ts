@@ -1393,15 +1393,52 @@ function struck(base: Recipe, bar: Stroke): Recipe {
  * the run arrives going down and left and the hook sets off going down and
  * right, which at a display weight is more turn than one join can carry.
  */
+/**
+ * A stroke that runs below the line and hooks left at the bottom.
+ *
+ * The `\u03b6`, the `\u03be` and the final `\u03c2` all end this way, and how much of the
+ * hook there is room for is not the letter's decision. The tail takes whatever
+ * is left between where it starts and the descender, and a turn tighter than
+ * half the pen would fold its inner edge through itself -- so under a heavy pen
+ * on a shallow descender there is no hook to be had.
+ *
+ * What is drawn then is the hook standing still rather than no hook: the run
+ * carries on to the floor and the turn sits on the end of it with no radius and
+ * no sweep. It adds nothing to the shape and it keeps the letter the same
+ * number of nodes at the Black as at the Thin, which is what a variable font
+ * needs -- one set of outlines and a list of how each point moves, so two
+ * weights meet only where they are drawn with the same points. Left out
+ * outright, the three of them were drawn with sixty-four nodes fewer at the
+ * Black and stood in a Black word at Bold weight.
+ */
 function tailBelow(f: Frame, x: number, from: number): Stroke {
   const floor = f.dip(f.desc);
-  const radius = Math.min(Math.max(f.arch * 0.36, f.least), (from - floor) * 0.45);
-  const head = at(x, from);
-  if (radius <= f.least) return ink(f, straight(head, at(x, floor)), BUTT, f.end);
-  const toe = at(x, floor + radius);
+  const room = Math.min(Math.max(f.arch * 0.36, f.least), (from - floor) * 0.45);
+  const hooks = room > f.least;
+  // A radius even when nothing is turned through it. The sweep reads an arc of
+  // no radius as nothing at all and drops it, where an arc of no sweep is kept
+  // and takes its heading from the run before it, which is what is wanted: the
+  // piece is here, it is just standing still.
+  const radius = hooks ? room : f.least;
+  const toe = at(x, hooks ? floor + radius : floor);
   return ink(
     f,
-    chain(straight(head, toe), turn(at(toe.x - radius, toe.y), radius, 0, -105)),
+    chain(straight(at(x, from), toe), {
+      segments: [
+        {
+          kind: "arc",
+          centre: at(toe.x - radius, toe.y),
+          radius,
+          startAngle: 0,
+          endAngle: deg(hooks ? -105 : 0),
+          sweepPositive: false,
+          // Always the two pieces a hundred and five degrees needs, so the
+          // stalled hook and the drawn one come to the same nodes.
+          pieces: 2,
+        },
+      ],
+      closed: false,
+    }),
     BUTT,
     f.end,
   );
@@ -3567,7 +3604,24 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const junction = f.cap * 0.46;
     const top = junction - f.style.pen.weight * 0.85 - bar / 2;
     const step = Math.max(bar * 2.3, f.cap * 0.12);
-    const rows = top - step > f.cap * 0.11 ? [top, top - step] : [top * 0.62];
+    /*
+     * Two bars where they fit and two bars where they do not.
+     *
+     * A yen carries two strokes across its stem, and how much room there is for
+     * them is a question about the pen: at a hairline the two sit clear of each
+     * other and of the vee above, and by a text weight they have eaten the gap
+     * and one bar is all that will go. Drawing one bar in that case is right on
+     * the page and wrong in the file -- it is a whole stroke fewer, four nodes,
+     * and two weights drawn with different nodes cannot be joined into one
+     * variable font, so a yen sat in a Black word at Thin weight.
+     *
+     * So the second bar is drawn on top of the first rather than dropped. Two
+     * strokes on one line are one line to look at, and they are two strokes to
+     * count -- and as the weight comes off they slide apart into the pair the
+     * letter is supposed to have.
+     */
+    const room = top - step > f.cap * 0.11;
+    const rows = room ? [top, top - step] : [top * 0.62, top * 0.62];
     return joined(
       f,
       drawn,

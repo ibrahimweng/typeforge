@@ -139,19 +139,38 @@ describe("fusing a letter for the file", () => {
  */
 describe("the weight axis, and the letters that cannot follow it", () => {
   /*
-   * Nine letters and their accented forms, at the last count.
+   * Seven letters and their accented forms, at the last count.
    *
    * The `G` changes construction across the axis and agrees with no master at
-   * all. The `M` crosses the miter limit at its vertex between the Thin and the
-   * Regular, so the joins that are cut square at one weight are rounded at the
-   * other. The `yen` draws two bars at a hairline and one at a text weight.
-   * `nine`, `ae`, `at` and `ampersand` are each a piece of a bowl that the run
-   * reaches at one weight and not another, in a shape the bowl's own pieces
-   * cannot stand in for.
+   * all. `nine`, `ae`, `at` and `ampersand` come off the pen with the same
+   * nodes at every weight and the curves in different places among them: the
+   * run cut out of a bowl lands on different pieces of it as the corners grow
+   * with the pen, and a variable font compares two masters node by node, so the
+   * same count in a different order is no better than a different count. The
+   * Cyrillic `\u0417` and `\u0437` are two arcs meeting in the middle: how far they
+   * overlap is the pen's business, and so is how many nodes that leaves.
    *
-   * Twenty-two names came off this list when a bowl run started carrying the
+   * Five names came off this list when the pen stopped deciding how many pieces
+   * a corner and a tail are drawn in. The `M` crossed the miter limit at its
+   * apex between the Thin and the Regular, so a vertex carried out to a point
+   * at one weight was rounded at the other -- eighteen nodes against
+   * eighty-two; now every corner leaves a wedge behind, empty where the corner
+   * needed none. The `yen` drew two bars at a hairline and one at a text
+   * weight; now it draws two either way, the second laid on the first where
+   * there is no room for it. And `\u03b6`, `\u03be` and `\u03c2` finish with a tail that
+   * hooks only where there is room to hook, which a heavy pen on a shallow
+   * descender leaves none of; now the hook is always drawn, standing still
+   * where it cannot turn.
+   *
+   * Twenty-two names came off before that, when a bowl run started carrying the
    * pieces it does not reach: the whole `c`, `e` and `two` families, `five`,
    * `cent` and `copyright`.
+   *
+   * This is the Sans, which is the face that fares best. The same measurement
+   * on the Ribbon names 167 letters and on the Technical 95, because both round
+   * their corners and a rounded corner eats back into the runs either side of
+   * it by a radius the pen sets. `roundCorners` in `shapes.ts` carries the
+   * measurement and what stands in the way of collecting it.
    */
   const KNOWN = [
     "G",
@@ -159,26 +178,10 @@ describe("the weight axis, and the letters that cannot follow it", () => {
     "Gcircumflex",
     "Gcommaaccent",
     "Gdotaccent",
-    "M",
     "ae",
     "ampersand",
     "at",
     "nine",
-    "yen",
-    /*
-     * And the three Greek letters that finish with a tail below the line.
-     *
-     * The tail takes whatever room is left between where it starts and the
-     * descender and hooks only if there is any -- which is what keeps them from
-     * folding at a shallow descender under a heavy pen -- and a hook that is
-     * there at one weight and not at another is a different number of points.
-     * The other eighty-seven Greek characters follow the axis end to end.
-     */
-    "\u03b6",
-    "\u03be",
-    "\u03c2",
-    // And the Cyrillic ze, which is two arcs meeting in the middle: how far
-    // they overlap is the pen's business, and so is how many nodes that leaves.
     "\u0417",
     "\u0437",
   ];

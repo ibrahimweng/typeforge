@@ -100,6 +100,24 @@ interface OffsetEllipse {
   rotation: number;
   from: number;
   to: number;
+  /**
+   * Split into this many pieces rather than as few as the sweep needs.
+   *
+   * An arc is cut into quarter turns at most, so how many pieces it becomes --
+   * and so how many nodes -- is `ceil(sweep / 90 degrees)`, which steps up as
+   * the sweep passes each right angle. That is exactly right for a shape whose
+   * sweep is a fact about the letter, and wrong for one whose sweep is a fact
+   * about the pen: the wedge filling a corner turns through whatever angle the
+   * two offsets leave between them, and that angle moves with the weight. An
+   * `M` drawn at the Thin turned far enough at its apex for a second piece and
+   * at the Regular did not, so the two came off the pen with different points
+   * and could not be joined into one variable font.
+   *
+   * The body of a stroke needs no such help. An offset arc keeps the parametric
+   * angles of the spine arc it came from, so its sweep is the skeleton's and
+   * the skeleton is the same at every weight.
+   */
+  pieces?: number;
 }
 
 type OffsetSegment = OffsetLine | OffsetEllipse;
@@ -191,6 +209,10 @@ function offsetSegment(one: Headed, side: number, reach: PenReach): OffsetSegmen
     rotation: reach.angle,
     from: segment.startAngle - reach.angle,
     to: segment.endAngle - reach.angle,
+    // An arc that pinned its own pieces keeps them on both of its offsets, or
+    // the two sides of the same stroke would disagree about how many nodes it
+    // has.
+    pieces: segment.pieces,
   };
 }
 
@@ -227,7 +249,7 @@ function ellipseSlope(arc: OffsetEllipse, t: number): Vec2 {
  */
 function ellipseNodes(arc: OffsetEllipse): GlyphNode[] {
   const sweep = arc.to - arc.from;
-  const pieces = Math.max(1, Math.ceil(Math.abs(sweep) / (Math.PI / 2)));
+  const pieces = arc.pieces ?? Math.max(1, Math.ceil(Math.abs(sweep) / (Math.PI / 2)));
   const step = sweep / pieces;
   const factor = (4 / 3) * Math.tan(step / 4);
 
@@ -348,6 +370,17 @@ function kinksOf(headed: Headed[], closed: boolean): Kink[] {
     const arriving = headed[next].start;
     const turn = leaving.x * arriving.y - leaving.y * arriving.x;
     const along = leaving.x * arriving.x + leaving.y * arriving.y;
+    /*
+     * Two pieces heading the same way need nothing between them.
+     *
+     * Tried the other way, and it is written down here because it looks like
+     * the fix for the letters that still cannot follow the weight axis and is
+     * not. Whether a junction turns depends on which of its pieces travelled,
+     * and that is a question about the pen -- so leaving a wedge at every
+     * junction, turning or not, ought to have steadied the node lists. It
+     * steadied some and unsteadied others: the count went from eleven letters
+     * adrift to thirteen, taking `Oslash` and `oslash` with it.
+     */
     if (Math.abs(turn) < 1e-9 && along > 0) continue;
     found.push({ before: index, after: next, at: segmentEnd(segments[index]), turn });
   }
@@ -400,8 +433,28 @@ function outerJoin(
 ): OffsetSegment[] {
   const from = offsetEnd(before);
   const to = offsetStart(after);
-  if (Math.hypot(from.x - to.x, from.y - to.y) < 1e-9) return [];
-  if (join === "bevel") return [];
+  /*
+   * A corner that needs no wedge still gets one, with nothing in it.
+   *
+   * Whether a corner is filled is not a property of the letter, it is a
+   * property of the pen: a bevel fills none, a round join fills every one, and
+   * a miter fills only the ones too sharp to carry to a point. So the same
+   * vertex is one piece at one weight and two at the next -- which a variable
+   * font cannot join, since it holds one set of outlines and a list of how each
+   * point moves, and two weights meet only where they are drawn with the same
+   * points. An `M` came off the pen with eighty-two points at the Thin and
+   * eighteen at the Regular, its apexes rounded on one side of the miter limit
+   * and cut square on the other, and stood in a Thin word at Regular weight.
+   *
+   * So the wedge is always here and sometimes empty: no width, no sweep, both
+   * ends on the same point, adding nothing to the outline and one piece to the
+   * count at every weight alike.
+   */
+  const empty = (at: Vec2): OffsetSegment[] => [
+    { kind: "ellipse", centre: at, rx: 0, ry: 0, rotation: 0, from: 0, to: 0, pieces: WEDGE_PIECES },
+  ];
+  if (Math.hypot(from.x - to.x, from.y - to.y) < 1e-9) return empty(from);
+  if (join === "bevel") return empty(from);
 
   /*
    * The pen, turned about the corner from one offset to the other.
@@ -430,9 +483,20 @@ function outerJoin(
       rotation: reach.angle,
       from: start,
       to: finish,
+      pieces: WEDGE_PIECES,
     },
   ];
 }
+
+/**
+ * How many pieces a corner's wedge is cut into, whatever it turns through.
+ *
+ * Two, because the short way round between two offsets is at most a half turn
+ * and a half turn wants two quarter-turn pieces. Fixed rather than measured so
+ * that a wedge turning eighty degrees and one turning a hundred come off the
+ * pen with the same nodes -- and so does one turning none at all.
+ */
+const WEDGE_PIECES = 2;
 
 /**
  * How far a miter may be carried before it is given up on.
@@ -483,11 +547,34 @@ function sideRun(
      * they are pulling apart and this is the outside, so either carry them out
      * to meet or fill the wedge some other way.
      */
+    /*
+     * Every corner leaves exactly one piece behind, whichever way it is
+     * resolved -- cut back to where the offsets cross, carried out to a point,
+     * swallowed whole, or filled with a wedge of pen. Which of those happens is
+     * decided by the pen rather than by the letter, so a corner that resolves
+     * one way at the Thin resolves another at the Black, and a run that leaves
+     * a piece on one path and none on another is a different number of points
+     * at the two ends of the axis. See `outerJoin` for what an empty one is.
+     */
+    const stall = (at: Vec2): OffsetSegment[] => [
+      {
+        kind: "ellipse",
+        centre: at,
+        rx: 0,
+        ry: 0,
+        rotation: 0,
+        from: 0,
+        to: 0,
+        pieces: WEDGE_PIECES,
+      },
+    ];
+
     if (before.kind === "line" && after.kind === "line") {
       const crossing = crossingOf(before, after);
       if (crossing && crossing.at > 1e-9 && crossing.at < 1 - 1e-9) {
         before.to = crossing.point;
         after.from = crossing.point;
+        filling.set(kink.before, stall(crossing.point));
         continue;
       }
       if (
@@ -499,6 +586,7 @@ function sideRun(
       ) {
         before.to = crossing.point;
         after.from = crossing.point;
+        filling.set(kink.before, stall(crossing.point));
         continue;
       }
       if (crossing && crossing.at <= 1e-9) {
@@ -507,12 +595,13 @@ function sideRun(
         // at that point and the run gives up its length rather than its shape.
         before.to = before.from;
         after.from = before.from;
+        filling.set(kink.before, stall(before.from));
         continue;
       }
     }
 
     const wedge = outerJoin(before, after, kink.at, reach, join === "miter" ? "round" : join);
-    if (wedge.length > 0) filling.set(kink.before, wedge);
+    filling.set(kink.before, wedge);
   }
 
   const run: OffsetSegment[] = [];

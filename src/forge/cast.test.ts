@@ -54,13 +54,23 @@ const plain = (letter: string, style = SANS): Contour[] => drawLetter(letter, st
  * behind the most of it.
  *
  * Measured rather than chosen: a Flared `k` is 42 points, comes out of the rim
- * at 348 and out of all four operations at 286 -- fewer, because a shadow under
+ * at 432 and out of all four operations at 304 -- fewer, because a shadow under
  * the rim fills in the notches the rim would otherwise have left. A sixth over
  * each is room for a boolean library that resolves a crossing a hair
  * differently, and nothing like room for the operation to start leaving twice
  * as much.
+ *
+ * The rim was 348 until every corner of the sweep started leaving a wedge
+ * behind, which is what lets a letter come off the pen with the same nodes at
+ * the Thin as at the Black -- see `outerJoin` in `sweep.ts`. A wedge is cut in
+ * two pieces however far it turns, so a corner that used to be two nodes is now
+ * three, and a rim traces every corner of the letter eight times over. Cutting
+ * the wedge in one piece instead was tried, to get the nodes back: it does get
+ * the rim back under 348, and it flattens the sharp joins enough that the four
+ * operations together came out at 1,192 against 304. Two it is, and the
+ * twenty-four per cent is what the weight axis costs here.
  */
-const POINT_BUDGET = { rim: 406, everything: 334 };
+const POINT_BUDGET = { rim: 504, everything: 355 };
 
 describe("the shadow", () => {
   it("reaches as far as it is thrown, and no further", () => {
