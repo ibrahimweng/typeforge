@@ -237,7 +237,21 @@ export async function toTypeface(
     if (!drawn) continue;
     let contours = drawn.contours;
     if (options.merge && contours.length > 1) {
-      contours = correctDirection(await removeOverlaps(correctDirection(contours, "truetype")), "truetype");
+      /*
+       * Believed rather than guessed at, and set afterwards rather than
+       * before. A letter out of the pen already says which of its contours is
+       * a counter, by which way round the sweep drew it -- so the fuse is told
+       * `winding` and reads it. Told to work it out by nesting instead it
+       * filled the counter of the single-storey a, because that counter sits
+       * inside the ring and inside the stem laid across it, and two is even.
+       *
+       * Nothing sets the direction on the way in any more either. Nesting is
+       * exactly as unreliable there, and on overlapping strokes it is worse
+       * than unreliable: with no counter to be inside anything, an x is two
+       * bars crossing and which of them counts as enclosed by the other moves
+       * about with the weight.
+       */
+      contours = correctDirection(await removeOverlaps(contours, "winding"), "truetype");
     }
     glyphs.push({
       name,

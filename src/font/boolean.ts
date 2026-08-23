@@ -26,6 +26,7 @@
  */
 
 import {
+  centroid,
   contourArea,
   contourContainsPoint,
   contoursBounds,
@@ -172,100 +173,108 @@ export function unite(
    *
    * `fuse` below is that union.
    */
-  const fused = fuse(compoundOf(paper, drawable, roles));
+  /*
+   * Nudged a hair apart before anything else, and this is the whole trick.
+   *
+   * Handed shapes with edges lying exactly along one line, paper decides
+   * wrongly, and on a letter that is not a rare case: it is wherever pieces
+   * are cut level with the baseline or the cap height, wherever a serif sits
+   * flush on a stem, wherever a stem runs down the side of a counter. Exactly
+   * one line is a coincidence floating point has to notice and then judge, and
+   * a hair of separation means there is no coincidence left to judge.
+   *
+   * It used to be the retry rather than the rule: fuse, look at the answer,
+   * and try again nudged if the answer looked wrong. That is one boolean
+   * instead of one boolean and a test, and it is cheaper -- but only if the
+   * test can tell. It could not. Judged against the drawing by a rasteriser
+   * rather than against its own arithmetic, 175 of the 2,503 drawings the
+   * sixteen faces make came out of the fuse covering different ground from the
+   * strokes that went in: a Slab thorn missing seven eighths of itself, a
+   * Flared p with its bowl filled solid and a bite out of the stem, a Brush d
+   * fused to a single blob, a Typewriter b with its counter closed over.
+   * Every one had ink in a believable range and a believable number of pieces,
+   * so no test made of ink and piece counts was ever going to catch them --
+   * and every one of them is right when the shapes are nudged apart. Nudging
+   * first leaves seven, and the worst of those is off by one per cent.
+   *
+   * Only where the shapes really meet. A letter genuinely in pieces -- the dot
+   * and the stem of an i -- has no coincidence to break and may as well keep
+   * its coordinates exactly.
+   */
+  const apart = touching(drawable) ? nudgeApart(drawable, outersIn(drawable, roles)) : drawable;
+  const fused = fuse(compoundOf(paper, apart, roles));
   const result = withoutStrayHoles(contoursOf(fused));
   clear(paper);
 
   /*
-   * Handed every shape at once, the union sometimes gives up.
+   * The union can still give up, and there are four ways it does it.
    *
-   * Where several shapes have edges lying exactly along one line -- which on a
-   * letter is wherever pieces are cut level with the baseline or the cap
-   * height -- it can come back with nothing at all, or with as many shapes as
-   * it was given and none of them joined. It is not that they fail to overlap:
-   * the bottom arm of a Flared E overlaps its stem by most of its own area.
-   * Four paths sharing a collinear edge on y=0 is simply a case the library
-   * does not survive, and handing back the shapes unjoined is what left a
-   * Flared E as twelve separate solids and a Serif H as nine. The letter looks
-   * right either way -- abutting shapes leave no seam under a non-zero fill --
-   * so it went unnoticed until a cut took one of the pieces away and the rest
-   * turned out never to have been attached.
+   * It comes back with nothing at all. It comes back with as many shapes as it
+   * was given and none of them joined -- which is not a failure to overlap:
+   * the bottom arm of a Flared E overlaps its stem by most of its own area,
+   * and unjoined is what left that E as twelve separate solids and a Serif H
+   * as nine. The letter looks right either way, since abutting shapes leave no
+   * seam under a non-zero fill, so it went unnoticed until a cut took one of
+   * the pieces away and the rest turned out never to have been attached.
    *
-   * Folded in one at a time it succeeds, because every step is one shape
-   * against one shape. That is the fallback rather than the rule because the
-   * whole alphabet comes through here on every frame, and paying a boolean per
-   * shape for the letters that do not need it is exactly the cost this half of
-   * the application was built to avoid.
-   *
-   * Only worth retrying where the shapes really do meet: a letter that is
-   * genuinely in pieces -- the dot and the stem of an i -- also comes back
-   * unreduced, and folding it one at a time would be work for nothing.
-   *
-   * There is a third way it fails, and it is the quietest: it comes back
-   * holding almost nothing. The w of a Brush face -- two vees overlapping by a
-   * quarter of an arm, each with its flares -- fused to a single contour of
-   * exactly zero area, and the letter was simply not there: blank on the page,
-   * blank in the file, and not even reported broken, because one contour of
-   * nothing counts as one piece to anything counting pieces.
+   * The third is the quietest: it comes back holding almost nothing. The w of
+   * a Brush face -- two vees overlapping by a quarter of an arm, each with its
+   * flares -- fused to a single contour of exactly zero area, and the letter
+   * was simply not there: blank on the page, blank in the file, and not even
+   * reported broken, because one contour of nothing counts as one piece to
+   * anything counting pieces.
    *
    * Judged against the ink it was handed rather than against a fixed size, so
    * it means the same at any scale. Fusing always loses some, because the
    * shapes overlap and the overlaps were counted twice going in -- but not
    * much: over the 3,136 drawings the sixteen faces make, the leanest honest
    * answer keeps 55% of what it was given and three quarters keep 89% or more.
-   * Eighteen were coming back under half. Seventeen of those kept a sixth or
-   * less -- Wavy's A, AE, V and x and every accented A built on them, Flared's
-   * accented E, Brush's p and its accented y -- and were blank or a crumb.
+   * Eighteen were coming back under half. Half sits above all of that and
+   * deliberately: answering yes when the union was fine costs a second fuse
+   * that is then thrown away, and answering no when it was not is a letter
+   * quietly missing from the font. The margin belongs on the side where being
+   * wrong is only slow.
    *
-   * Half sits above all of that, closer to the honest end than the gap alone
-   * would ask for, and deliberately. Answering yes when the union was fine
-   * costs a fold that is then thrown away for being no better; answering no
-   * when it was not is a letter quietly missing from the font. The margin
-   * belongs on the side where being wrong is only slow.
+   * And the fourth is the one that looks like success. A union cannot hold
+   * more ink than it was handed, which is arithmetic rather than a threshold:
+   * the shapes going in are counted one by one, so wherever two of them
+   * overlap the same ground is counted twice, and joining them counts it once.
+   * Same or smaller, always -- unless a counter has been read as solid on the
+   * way through, in which case its area changes sign and the total goes up.
+   * A hundredth of a per cent of slack, for the rounding a boolean does.
    */
   const handed = Math.abs(inkIn(drawable));
+  const swollen = (answer: Contour[]): boolean =>
+    handed > 0 && Math.abs(inkIn(answer)) > handed * 1.0001;
   const gaveUp = (answer: Contour[]): boolean =>
     answer.length === 0 ||
     (handed > 0 && Math.abs(inkIn(answer)) < handed * 0.5) ||
+    swollen(answer) ||
     (join === "whole" ? solidsIn(answer) > 1 : answer.length >= drawable.length);
 
-  if (!gaveUp(result) || !touching(drawable)) return result.length > 0 ? result : contours;
+  if (!gaveUp(result) || drawable === apart) return result.length > 0 ? result : contours;
 
-  /*
-   * So try the same union again, with the shapes nudged a hair apart.
-   *
-   * Every failure above has one shape to it: several edges lying along exactly
-   * one line. That is not a hard case in principle -- it is a hard case for
-   * floating point, where "exactly one line" is a coincidence the arithmetic
-   * has to notice and then decide about, and paper decides wrongly. Move each
-   * shape by a different sub-unit amount and the coincidence is gone, and with
-   * it the whole class of failure.
-   *
-   * This used to be done by folding the shapes in one at a time instead, which
-   * works for the same reason -- every step is then one shape against one
-   * shape -- but cost a boolean per shape per round, took three passes and a
-   * page of bookkeeping to decide what had joined and what to offer again, and
-   * treated the symptom rather than the cause. Over all 3,136 drawings the
-   * sixteen faces make, the nudge leaves exactly the same letters in one piece
-   * with exactly the same ink in them, for one boolean and a third less time.
-   *
-   * A hundredth of a unit, which at the usual em is a hundred-thousandth of it
-   * and far below what a font file can hold: outlines are rounded to integers
-   * on the way out and a hundredth of a unit rounds to nothing. Bounded rather
-   * than growing with the count, or a drawing of two hundred shapes would have
-   * its last shape moved two whole units.
-   */
-  const nudged = withoutStrayHoles(contoursOf(fuse(compoundOf(paper, nudgeApart(drawable), roles))));
+  // Nudged and still wrong, so try it on the coordinates as they arrived. The
+  // nudge fixes far more than it breaks, but it is a change to the shapes and
+  // there is no reason to insist on it when it has not helped.
+  const plain = withoutStrayHoles(contoursOf(fuse(compoundOf(paper, drawable, roles))));
   clear(paper);
   // Judged by the same test that called the first answer a failure, rather
   // than by a fresh rule invented for the comparison. A rule of its own has to
   // decide what beats what -- more ink, or fewer solids? -- and the first
   // version of it traded a Flared p in one piece for one in three, because the
   // three-piece answer happened to hold a little more ink.
-  if (!gaveUp(nudged)) return nudged;
-  // Both gave up. Keep whichever holds more ink, since a fused shape that lost
-  // its ink is the worse of the two failures by a long way.
-  if (nudged.length > 0 && Math.abs(inkIn(nudged)) > Math.abs(inkIn(result))) return nudged;
+  if (!gaveUp(plain)) return plain;
+  if (plain.length === 0) return result.length > 0 ? result : contours;
+  /*
+   * Both gave up, so keep whichever failed less badly. More ink is the better
+   * answer when the failure is a shape that came back as a crumb -- but not
+   * when it is a counter filled in, which is a failure that makes the ink go
+   * up. So the answer that stayed inside what it was handed wins first, and
+   * only then does more ink decide.
+   */
+  if (swollen(result) !== swollen(plain)) return swollen(result) ? plain : result;
+  if (Math.abs(inkIn(plain)) > Math.abs(inkIn(result))) return plain;
   return result.length > 0 ? result : contours;
 }
 
@@ -412,32 +421,69 @@ function fuse(item: paper.PathItem): paper.PathItem {
 }
 
 /**
- * The same shapes, each moved a different hair's breadth.
+ * The same shapes, each grown outward by a different hair's breadth.
  *
- * Spread by the golden ratio rather than by a multiple of the index, which
- * keeps every offset inside one step however many shapes there are and still
- * leaves no two of them alike. What this has to break is the exact equality
- * between one shape's edge and another's, so any spread will do as long as it
- * is bounded and repeatable -- repeatable because a letter has to be drawn the
+ * Grown rather than moved, and that is the whole of it.
+ *
+ * What this has to break is the exact equality between one shape's edge and
+ * another's. Sliding each shape a different hair does break it -- but it also
+ * pulls apart shapes that were only ever touching, and a letter can be built
+ * entirely out of those: a glyph laid out on a grid is a heap of cells sharing
+ * their edges and overlapping nowhere, and slid apart it fused into six pieces
+ * instead of one. Growing cannot do that. Two shapes that met still meet, and
+ * now they overlap by a hair instead of agreeing exactly on where they meet.
+ *
+ * Counters shrink instead, by the same reasoning pointed the other way: what
+ * grows is the ink, and the ink is on the other side of a counter.
+ *
+ * Each node moves away from its own shape's middle, handles carried with it so
+ * the curve between two nodes keeps its shape. That is not a true offset --
+ * a node further from the middle moves the same distance as a near one, where
+ * a real offset would move each edge by its own normal -- and it does not need
+ * to be. A hair is not a size, it is a way of not being in exactly the same
+ * place.
+ *
+ * Spread by the golden ratio rather than by a multiple of the index, so every
+ * shape grows by a different amount however many there are, all of them inside
+ * one step, and the same amounts every time -- a letter has to be drawn the
  * same way twice.
+ *
+ * A ten-thousandth of a unit, which at the usual em is a ten-millionth of it.
+ * Outlines are rounded to integers on the way out, so it rounds to nothing in
+ * a file, and on a screen it is orders of magnitude under a pixel. It was a
+ * hundredth when this was a last resort rather than the rule, and shrinking it
+ * costs nothing: breaking an exact equality does not need room, only more room
+ * than the arithmetic's own idea of the same place, and a ten-thousandth is a
+ * thousand times paper's. What it buys is that the growth stops being visible
+ * to anything measuring -- the cut layer asks where a motif landed to within a
+ * thousandth of a unit, and it still lands there.
  */
-const NUDGE = 0.01;
+const NUDGE = 0.0001;
 
-function nudgeApart(contours: Contour[]): Contour[] {
+function nudgeApart(contours: Contour[], isOuter: boolean[]): Contour[] {
   return contours.map((contour, index) => {
     const step = (index * 0.6180339887498949) % 1;
-    const dx = step * NUDGE;
-    const dy = ((step + 0.5) % 1) * NUDGE;
-    const move = (point: Vec2 | null): Vec2 | null =>
-      point === null ? null : { x: point.x + dx, y: point.y + dy };
+    const grow = (0.5 + step) * NUDGE * (isOuter[index] ? 1 : -1);
+    const middle = centroid(contour);
     return {
       ...contour,
-      nodes: contour.nodes.map((node) => ({
-        ...node,
-        point: { x: node.point.x + dx, y: node.point.y + dy },
-        handleIn: move(node.handleIn),
-        handleOut: move(node.handleOut),
-      })),
+      nodes: contour.nodes.map((node) => {
+        const away = { x: node.point.x - middle.x, y: node.point.y - middle.y };
+        const span = Math.hypot(away.x, away.y);
+        // A node sitting on its own middle has no outward to go, which happens
+        // on a shape of no area and nowhere else. Left where it is.
+        if (!(span > 0)) return node;
+        const dx = (away.x / span) * grow;
+        const dy = (away.y / span) * grow;
+        const move = (point: Vec2 | null): Vec2 | null =>
+          point === null ? null : { x: point.x + dx, y: point.y + dy };
+        return {
+          ...node,
+          point: { x: node.point.x + dx, y: node.point.y + dy },
+          handleIn: move(node.handleIn),
+          handleOut: move(node.handleOut),
+        };
+      }),
     };
   });
 }
@@ -530,15 +576,25 @@ function touching(contours: Contour[]): boolean {
   return false;
 }
 
+/**
+ * Which of these contours are solids, read the way the caller asked for.
+ *
+ * Shared, because growing the shapes apart has to agree with the union about
+ * what it was given: grow a counter outward and the counter gets bigger, which
+ * is the one direction it must not go.
+ */
+function outersIn(contours: Contour[], roles: Roles): boolean[] {
+  return roles === "winding"
+    ? contours.map((contour) => contourArea(contour) >= 0)
+    : classifyContours(contours);
+}
+
 function compoundOf(
   paper: PaperScope,
   contours: Contour[],
   roles: Roles = "nesting",
 ): paper.PathItem {
-  const isOuter =
-    roles === "winding"
-      ? contours.map((contour) => contourArea(contour) >= 0)
-      : classifyContours(contours);
+  const isOuter = outersIn(contours, roles);
   const paths = contours.map((contour, index) => {
     const path = new paper.Path({
       segments: contour.nodes.map((node) => toSegment(paper, node)),
@@ -552,12 +608,36 @@ function compoundOf(
   return new paper.CompoundPath({ children: paths });
 }
 
+/**
+ * The smallest area a boolean's answer can hold and still be a shape.
+ *
+ * A hundredth of a square unit is a tenth of a unit each way, which at the
+ * usual em is a ten-thousandth of it -- below what a font file can hold, since
+ * outlines are rounded to integers on the way out, and below what the cut
+ * layer works at, since the smallest motif is still units across.
+ */
+const SPECK = 0.01;
+
 function contoursOf(item: paper.PathItem): Contour[] {
   const children = (item as paper.CompoundPath).children as paper.Path[] | undefined;
   const paths = children && children.length > 0 ? children : [item as paper.Path];
   return paths
     .filter((path) => path.segments && path.segments.length >= 2)
-    .map(fromPath);
+    .map(fromPath)
+    /*
+     * Without the specks paper leaves behind.
+     *
+     * A boolean can answer with a contour of two nodes in the same place,
+     * enclosing exactly nothing -- the residue of an edge that used to lie
+     * along another edge. It draws nothing, so it never showed; but anything
+     * counting the pieces of a letter counts it, and a Flared p that fuses
+     * perfectly was reported broken in two on the strength of one such speck
+     * sitting at the bottom left corner of its stem.
+     *
+     * By area rather than by node count, because two nodes with handles on
+     * them can enclose a real lens and four nodes in a line enclose nothing.
+     */
+    .filter((contour) => Math.abs(contourArea(contour)) >= SPECK);
 }
 
 /** A node's handles are absolute here and relative to the point in paper. */

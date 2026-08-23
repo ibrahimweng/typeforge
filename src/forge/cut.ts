@@ -337,6 +337,12 @@ function toothTool(bounds: Bounds, tooth: Cuts["tooth"], stem: number, scale: Cu
  * from each end first, or it breaks out through the terminals and the letter
  * arrives in pieces -- which is a thing somebody may want, and is what setting
  * the inset to nothing does.
+ *
+ * Nothing means past the end rather than exactly at it. Run to exactly the end
+ * of the spine, the groove's last edge lies exactly along the stroke's own end
+ * cap, and whether that cuts through or leaves a bridge of no width is a
+ * question about floating point rather than about the letter. Run a stem past
+ * it, it breaks out because it was drawn breaking out.
  */
 function inlineTool(strokes: Stroke[], inline: Cuts["inline"], stem: number): Contour[] {
   const width = Math.min(Math.max(inline.width, 0), 0.85) * stem;
@@ -345,7 +351,7 @@ function inlineTool(strokes: Stroke[], inline: Cuts["inline"], stem: number): Co
 
   const grooves: Contour[] = [];
   for (const stroke of strokes) {
-    const spine = back > 0 ? shortened(stroke.spine, back) : stroke.spine;
+    const spine = back > 0 ? shortened(stroke.spine, back) : lengthened(stroke.spine, stem);
     if (spine.segments.length === 0) continue;
     grooves.push(
       ...sweep({
@@ -964,6 +970,50 @@ function spineBetween(spine: Spine, from: number, to: number): Spine {
   const front = eatFrom(spine.segments, Math.max(0, from), "front");
   const both = eatFrom(front, Math.max(0, total - to), "back");
   return { segments: both, closed: false };
+}
+
+/**
+ * The same spine with a straight run added at each end, along the way it was
+ * going when it got there.
+ *
+ * For the groove that is meant to break out through the terminals. Straight
+ * rather than curving on with the arc it leaves, because what this is for is
+ * getting clear of the end of the stroke, and the shortest way out of a
+ * terminal is the way the stroke was pointing.
+ */
+function lengthened(spine: Spine, by: number): Spine {
+  if (spine.closed || by <= 0 || spine.segments.length === 0) return spine;
+  const first = spine.segments[0];
+  const last = spine.segments[spine.segments.length - 1];
+  const head = endOf(first, "front");
+  const tail = endOf(last, "back");
+  return {
+    closed: false,
+    segments: [
+      { kind: "line", from: { x: head.at.x - head.away.x * by, y: head.at.y - head.away.y * by }, to: head.at },
+      ...spine.segments,
+      { kind: "line", from: tail.at, to: { x: tail.at.x + tail.away.x * by, y: tail.at.y + tail.away.y * by } },
+    ],
+  };
+}
+
+/** Where a spine segment ends, and the way it was heading when it got there. */
+function endOf(segment: SpineSegment, end: "front" | "back"): { at: Vec2; away: Vec2 } {
+  if (segment.kind === "line") {
+    const at = end === "front" ? segment.from : segment.to;
+    const run = { x: segment.to.x - segment.from.x, y: segment.to.y - segment.from.y };
+    const span = Math.hypot(run.x, run.y);
+    const away = span > 0 ? { x: run.x / span, y: run.y / span } : { x: 1, y: 0 };
+    return { at, away };
+  }
+  const angle = end === "front" ? segment.startAngle : segment.endAngle;
+  const at = {
+    x: segment.centre.x + Math.cos(angle) * segment.radius,
+    y: segment.centre.y + Math.sin(angle) * segment.radius,
+  };
+  // The tangent of a circle, pointing the way the arc is being swept.
+  const turn = segment.sweepPositive ? 1 : -1;
+  return { at, away: { x: -Math.sin(angle) * turn, y: Math.cos(angle) * turn } };
 }
 
 function shortened(spine: Spine, by: number): Spine {
