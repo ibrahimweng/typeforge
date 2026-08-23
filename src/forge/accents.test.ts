@@ -297,6 +297,19 @@ describe("the languages it sets", () => {
     ["Welsh", "Ŵy â bŷs Sŵn Ŷd"],
     ["Esperanto", "Eĥoŝanĝo ĉiuĵaŭde ĈĜĤĴŜŬ"],
     ["Māori", "Whakatōhea ā ē ī ō ū"],
+    /*
+     * And the four that wanted a letter with no decomposition to build it from.
+     *
+     * French is the one that matters most and was the one most obviously
+     * missing: `cœur`, `sœur`, `œuvre`, `bœuf` are ordinary words, and a font
+     * that cannot set them cannot set French. Catalan needs the geminated l,
+     * Dutch the IJ, and Northern Sámi the eng and the barred t beside the eth
+     * it already had.
+     */
+    ["French", "Le cœur de la sœur ŒUVRE ÇÀÉÈÊËÎÏÔÙÛÜŸ"],
+    ["Catalan", "Paraŀlel coŀlegi ĿL àèéíòóúüç"],
+    ["Dutch", "Ĳsvogel ĳsbeer ĲSSELMEER"],
+    ["Northern Sámi", "Buorre beaivi ÁČĐŊŠŦŽ áčđŋšŧž"],
   ];
 
   for (const [language, sentence] of sentences) {
@@ -315,4 +328,24 @@ describe("the languages it sets", () => {
       expect(missing).toEqual([]);
     });
   }
+
+  /**
+   * And the whole block, which is a different claim from any sentence.
+   *
+   * A sentence says the font sets a language. This says there is no character
+   * in Latin Extended-A left that draws an empty box -- including the ones
+   * nobody types any more, the Greenlandic kra and the long s, because a
+   * character that renders as a box is worse than one nobody uses.
+   */
+  it("leaves nothing in Latin Extended-A undrawn", () => {
+    const missing: string[] = [];
+    for (let code = 0x0100; code <= 0x017f; code++) {
+      const name = accentedNameFor(code);
+      const drawn = name ? drawLetter(name, SANS) : null;
+      if (!name || !canDraw(name) || !drawn || drawn.contours.length === 0) {
+        missing.push(`U+${code.toString(16).toUpperCase().padStart(4, "0")} ${String.fromCodePoint(code)}`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
 });

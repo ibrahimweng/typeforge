@@ -1139,6 +1139,18 @@ function tail(frame: Frame, radius: number): Stroke {
  * which is why n, m, h and r all move together when it changes.
  */
 function arch(frame: Frame, fromX: number, height: number): Stroke {
+  return ink(frame, archSpine(frame, fromX, height), BUTT, frame.end);
+}
+
+/**
+ * The same, as a run rather than a stroke, and stopping where it is told.
+ *
+ * An eng is an n whose right leg carries on below the line and hooks back, and
+ * that leg is one run from the top of the shoulder to the end of the hook: the
+ * arch cannot be drawn and the hook added, or the face's own terminal is drawn
+ * across the middle of the leg and a serif eng grows a foot halfway down.
+ */
+function archSpine(frame: Frame, fromX: number, height: number, bottom = 0): Spine {
   uses("shoulder");
   /*
    * A quarter turn up, a flat run across the top, a quarter turn down.
@@ -1173,16 +1185,13 @@ function arch(frame: Frame, fromX: number, height: number): Stroke {
    */
   const crest = Math.max(frame.hangs(height) + frame.over, radius);
   const top = crest - radius;
-  return ink(
-    frame,
-    chain(
-      turn(at(fromX + radius, top), radius, 180, 90),
-      straight(at(fromX + radius, crest), at(landing - radius, crest)),
-      turn(at(landing - radius, top), radius, 90, 0),
-      straight(at(landing, top), at(landing, 0)),
-    ),
-    BUTT,
-    frame.end,
+  return chain(
+    turn(at(fromX + radius, top), radius, 180, 90),
+    straight(at(fromX + radius, crest), at(landing - radius, crest)),
+    turn(at(landing - radius, top), radius, 90, 0),
+    // Never above where the corner leaves off, for the same reason the crest is
+    // never below the radius: a leg told to run upwards folds the letter.
+    straight(at(landing, top), at(landing, Math.min(bottom, top))),
   );
 }
 
@@ -1352,6 +1361,22 @@ function slash(f: Frame, stem: number, height: number): Stroke {
     f.plain,
     f.plain,
   );
+}
+
+/**
+ * Where a t stands.
+ *
+ * Placed so the bar's left end lands on the sidebearing rather than through it,
+ * and named because the barred t has to stand in exactly the same place: a
+ * number written twice is a letter that moves when only one of them is edited.
+ */
+function tStem(f: Frame): number {
+  return f.edge + f.arch * 0.7 * 0.7;
+}
+
+/** A letter with a bar struck through it, which is how the barred pair is made. */
+function struck(base: Recipe, bar: Stroke): Recipe {
+  return { ...base, strokes: [...base.strokes, bar] };
 }
 
 function crossbar(f: Frame, from: number, to: number): Stroke {
@@ -1734,10 +1759,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const radius = Math.max(f.arch * 0.42, f.least);
     const reach = f.arch * 0.7;
-    // Placed so the bar's left end lands on the sidebearing rather than through
-    // it. Set from the arch instead, a heavy t reached to within two units of
-    // the letter before it.
-    const stem = f.edge + reach * 0.7;
+    const stem = tStem(f);
     return finish(
       f,
       [
@@ -3568,6 +3590,349 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       arch(f, stem, f.x),
       thin(f, straight(at(stem - f.half * 2.2, bar), at(stem + f.half * 2.2, bar)), f.plain, f.plain),
     ]);
+  },
+
+  /*
+   * The rest of Latin Extended-A: the thirteen characters with no decomposition
+   * to build them from.
+   *
+   * Every one of these is a letter somebody's language needs and none of them
+   * is a letter under a mark, so the loop that reads Unicode's decompositions
+   * cannot reach any of them. French cannot set `coeur` without the first pair,
+   * Catalan cannot set `paral*lel` without the third, and Northern Sami needs
+   * the eng and the barred t as much as it needs the eth it already has.
+   */
+
+  /**
+   * The French ligature, drawn as a bowl with a flat right side and an E hung
+   * off it.
+   *
+   * Not an O and an E set close together: the two share one stroke, which is
+   * the difference between a ligature and a pair. Built the way the Eth is and
+   * facing the other way -- a straight upright with the bowl bulging left off
+   * it -- so the arms of the E have something straight to leave from at all
+   * three heights, which a round O does not offer.
+   */
+  OE: (style) => {
+    const f = frame(style);
+    const radius = Math.max((f.crest(f.cap) - f.dip(0)) / 2, f.least);
+    const wide = Math.max(radius * f.wide * 0.88, f.least);
+    const stem = f.edge + wide;
+    const reach = f.capBowl * 1.05;
+    return finish(
+      f,
+      [
+        ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+        belly(f, at(stem, f.cap / 2), wide, radius, 90, 270),
+        arm(f, stem, stem + reach, f.hangs(f.cap, f.bar)),
+        arm(f, stem, stem + reach * 0.86, f.cap * f.style.parts.crossbar.height),
+        arm(f, stem, stem + reach, f.sits(0, f.bar)),
+      ],
+      true);
+  },
+
+  /**
+   * The same ligature in lowercase, which is the ae with an o where the a is.
+   *
+   * Narrowed the same way and for the same reason: two bowls at their full
+   * width read as two letters that have collided, and the pair has to read as
+   * one letter with two counters.
+   */
+  oe: (style) => {
+    const f = frame(style);
+    const bowl = Math.max(f.bowl * 0.68, f.least);
+    const first = at(f.edge + bowl, f.x / 2);
+    const second = at(first.x + bowl * 2, f.x / 2);
+
+    const eye = f.x * f.style.parts.crossbar.height;
+    const rise = Math.max(-0.85, Math.min(0.85, (eye - second.y) / f.bowlH));
+    const opens = (Math.asin(rise) * 180) / Math.PI;
+    const belt = bend(f, second, f.bowlH, opens, opens + 300);
+
+    return finish(
+      f,
+      [
+        ink(f, ring(f, first, bowl, f.bowlH)),
+        thin(f, straight(at(second.x - bowl + f.half, eye), spineStart(belt))),
+        ink(f, belt, BUTT, f.end),
+      ],
+      true);
+  },
+
+  /**
+   * The Dutch digraph, which is one character and two letters.
+   *
+   * Set tighter than two letters and looser than two stems, because it is
+   * neither. A whole counter between them and the pair reads as an I and a J
+   * that happen to be adjacent -- which is what it looked like set into a word,
+   * where `Ĳsvogel` came out as `I Jsvogel`. The gap is measured off the
+   * counter rather than off the pen, so it survives a display weight without
+   * the J's hook ever reaching the I.
+   */
+  IJ: (style) => {
+    const f = frame(style);
+    const radius = Math.max(f.capBowl * 0.55, f.least);
+    const apart = f.style.metrics.counterWidth * 0.55 + f.style.pen.weight;
+    const first = f.edge;
+    const stem = first + apart + radius;
+    return finish(
+      f,
+      [
+        ink(f, straight(at(first, 0), at(first, f.cap)), f.end, f.end),
+        ink(
+          f,
+          chain(
+            straight(at(stem, f.cap), at(stem, f.dip(0) + radius)),
+            turn(at(stem - radius, f.dip(0) + radius), radius, 0, -90),
+          ),
+          f.end,
+          f.end,
+        ),
+      ]);
+  },
+
+  ij: (style) => {
+    const f = frame(style);
+    const radius = Math.max(f.arch * 0.62, f.least);
+    const apart = f.style.metrics.counterWidth * 0.55 + f.style.pen.weight;
+    const first = f.edge;
+    const stem = first + apart + radius;
+    const dotUp = f.x + f.half * 1.5 + f.half * 0.55;
+    return finish(
+      f,
+      [
+        ink(f, straight(at(first, 0), at(first, f.x)), f.end, f.end),
+        dot(f, at(first, dotUp), f.half * 0.55),
+        ink(
+          f,
+          chain(
+            straight(at(stem, f.x), at(stem, f.dip(f.desc) + radius)),
+            turn(at(stem - radius, f.dip(f.desc) + radius), radius, 0, -95),
+          ),
+          f.end,
+          f.end,
+        ),
+        dot(f, at(stem, dotUp), f.half * 0.55),
+      ]);
+  },
+
+  /**
+   * The eng, which Northern Sami and the phonetic alphabet both need.
+   *
+   * An n whose right leg carries on below the line and hooks back, drawn as one
+   * run from the top of the shoulder so that the leg has no terminal in the
+   * middle of it.
+   */
+  eng: (style) => {
+    const f = frame(style);
+    const stem = f.edge;
+    const landing = stem + f.arch * 2;
+    const floor = f.dip(f.desc);
+    /*
+     * The hook takes whatever room is left under the shoulder, and none if
+     * there is none.
+     *
+     * How far down the arch's own leg begins is not a number this letter knows:
+     * a high springing leaves a large corner radius and starts the leg most of
+     * the way down the x-height, and on a shallow descender with a heavy pen
+     * there is then nothing below it to turn in. Asked for a fixed hook anyway,
+     * the leg was told to run upwards to reach it and the letter folded over
+     * itself. So the leg is drawn first, and the hook is the distance between
+     * where it actually stopped and the descender -- which on a face with no
+     * room is nothing, and a straight-legged eng is a real eng.
+     */
+    const leg = archSpine(f, stem, f.x, floor + Math.max(f.arch * 0.62, f.least));
+    const radius = spineEnd(leg).y - floor;
+    return finish(
+      f,
+      [
+        ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
+        ink(
+          f,
+          radius > f.least
+            ? chain(leg, turn(at(landing - radius, spineEnd(leg).y), radius, 0, -95))
+            : leg,
+          BUTT,
+          f.end,
+        ),
+      ]);
+  },
+
+  /** The capital, which is an N with the same leg on it. */
+  Eng: (style) => {
+    const f = frame(style);
+    const left = f.edge;
+    const right = left + f.capBowl * 1.35;
+    const radius = Math.max(f.capBowl * 0.5, f.least);
+    const into = stub(f);
+    const start = at(left, f.cap - into);
+    const end = at(right, into);
+    const [top, foot] = corners(f, [start, at(left, f.cap), at(right, 0), end]);
+    return finish(
+      f,
+      [
+        ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
+        ink(
+          f,
+          chain(
+            straight(at(right, f.cap), at(right, f.dip(f.desc) + radius)),
+            turn(at(right - radius, f.dip(f.desc) + radius), radius, 0, -95),
+          ),
+          f.end,
+          f.end,
+        ),
+        ink(f, chain(straight(start, top), straight(top, foot), straight(foot, end))),
+      ]);
+  },
+
+  /**
+   * The Catalan geminated l: two of them with a dot between, which Unicode
+   * gives one character apiece for the left half.
+   *
+   * The dot sits clear of the stem by a whole pen rather than by a hair, or a
+   * heavy weight closes the gap and the pair reads as a thicker l.
+   */
+  Ldot: (style) => {
+    const f = frame(style);
+    const stem = f.edge;
+    const reach = f.capBowl * 1.05;
+    const radius = f.half * 0.62;
+    return finish(
+      f,
+      [
+        ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+        arm(f, stem, stem + reach, f.sits(0, f.bar)),
+        dot(f, at(stem + f.half * 2.8, f.cap * 0.45), radius),
+      ]);
+  },
+
+  ldot: (style) => {
+    const f = frame(style);
+    const stem = f.edge;
+    const radius = f.half * 0.62;
+    return finish(
+      f,
+      [
+        ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
+        dot(f, at(stem + f.half * 2.8, f.x * 0.5), radius),
+      ]);
+  },
+
+  /** The barred T, which Northern Sami needs beside the eth and the eng. */
+  Tbar: (style) => {
+    const f = frame(style);
+    const half = f.capBowl * 0.95;
+    const middle = f.edge + half;
+    const bar = f.cap * 0.42;
+    return finish(
+      f,
+      [
+        ink(f, straight(at(middle, 0), at(middle, f.cap)), f.end, BUTT),
+        thin(
+          f,
+          straight(
+            at(middle - half, f.hangs(f.cap, f.bar)),
+            at(middle + half, f.hangs(f.cap, f.bar)),
+          ),
+          f.end,
+          f.end,
+        ),
+        thin(
+          f,
+          straight(at(middle - f.half * 2.4, bar), at(middle + f.half * 2.4, bar)),
+          f.plain,
+          f.plain,
+        ),
+      ]);
+  },
+
+  /*
+   * And the lowercase, which is the t itself with a second bar low on the stem.
+   *
+   * Below the foot's turn rather than through it, or the bar and the foot are
+   * one shape at a heavy weight and the letter reads as a t standing in a
+   * puddle.
+   */
+  tbar: (style) => {
+    const f = frame(style);
+    const stem = tStem(f);
+    const height = f.x * 0.38;
+    return struck(
+      LETTERS.t(style),
+      thin(
+        f,
+        straight(at(stem - f.half * 2.2, height), at(stem + f.half * 2.2, height)),
+        f.plain,
+        f.plain,
+      ),
+    );
+  },
+
+  /**
+   * The Greenlandic kra, which is a k with no ascender.
+   *
+   * Deprecated in 1973 and still in the block, so it is drawn: a character that
+   * renders as an empty box is worse than one nobody types.
+   */
+  kgreenlandic: (style) => {
+    const f = frame(style);
+    const stem = f.edge;
+    const reach = stem + f.arch * 1.7;
+    const waist = f.x * 0.42;
+    const arm = at(reach, f.x);
+    const leg = at(reach, 0);
+    const meet = junction(f, arm, stem, waist, leg);
+    return finish(
+      f,
+      [
+        ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
+        ink(f, chain(straight(arm, meet), straight(meet, leg)), f.end, f.end),
+      ]);
+  },
+
+  /** An apostrophe and an n, which Afrikaans used to set as one character. */
+  napostrophe: (style) => {
+    const f = frame(style);
+    const tick = f.edge;
+    const stem = tick + f.half * 2 + f.arch * 0.5;
+    return finish(
+      f,
+      [
+        ink(f, straight(at(tick, f.asc * 0.72), at(tick, f.asc)), f.plain, f.plain),
+        ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
+        arch(f, stem, f.x),
+      ]);
+  },
+
+  /**
+   * The long s, which is an f with the right half of its bar taken off.
+   *
+   * The nub is what tells it from an l and from an integral sign both, so it
+   * stays even on a face whose f has hardly any bar at all.
+   */
+  longs: (style) => {
+    const f = frame(style);
+    const radius = Math.max(f.arch * 0.66, f.least);
+    const stem = f.edge + radius;
+    return finish(
+      f,
+      [
+        ink(
+          f,
+          chain(
+            straight(at(stem, 0), at(stem, f.crest(f.asc) - radius)),
+            turn(at(stem - radius, f.crest(f.asc) - radius), radius, 0, 92),
+          ),
+          f.end,
+          f.end,
+        ),
+        thin(
+          f,
+          straight(at(stem - f.arch * 0.5, f.hangs(f.x, f.bar)), at(stem, f.hangs(f.x, f.bar))),
+          f.end,
+          BUTT,
+        ),
+      ]);
   },
 
   Eth: (style) => {
