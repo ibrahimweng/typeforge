@@ -30,6 +30,7 @@ import {
   reversed,
   roundCorners,
   shortened,
+  endPieces,
   spineEnd,
   spineStart,
   wavy,
@@ -689,8 +690,17 @@ function finish(frame: Frame, strokes: Stroke[], round = false): Recipe {
 function capped(frame: Frame, stroke: Stroke): Stroke {
   const segments = stroke.spine.segments;
   if (stroke.spine.closed || segments.length === 0) return stroke;
-  const first = segments[0];
-  const last = segments[segments.length - 1];
+  /*
+   * The first and last pieces that go anywhere, rather than the first and last.
+   *
+   * A run can begin and end on pieces of no length -- a bowl carries the pieces
+   * its shape does not need so that the same shape has the same number of nodes
+   * at every weight, and a run cut out of one carries the pieces it does not
+   * reach for the same reason. Asked which way a run of no length travels, this
+   * got no answer and sized the cap on it: a Slab `c` at its heaviest lost both
+   * its serifs to a pair of specks the size of a point.
+   */
+  const { first, last } = endPieces(stroke.spine)!;
   const leaning = (segment: SpineSegment, which: "start" | "end"): number => {
     if (segment.kind !== "line") return 0;
     const point = which === "start" ? segment.from : segment.to;

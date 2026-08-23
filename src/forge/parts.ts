@@ -18,6 +18,7 @@
  */
 
 import type { Cast, CastName } from "./cast";
+import { endPieces } from "./shapes";
 import type { CutName, Cuts } from "./cut";
 import { LETTERS, recipeOf, recordPartsWhile, type PartName } from "./letters";
 import type { Parts, Style } from "./style";
@@ -502,11 +503,12 @@ function takesSerif(letter: string, style: Style, form?: string): boolean {
   const recipe = recipeOf(letter, form);
   if (!recipe) return false;
   return recipe(serifsForced(style)).strokes.some((stroke) => {
-    const segments = stroke.spine.segments;
-    if (stroke.spine.closed || segments.length === 0) return false;
+    if (stroke.spine.closed) return false;
+    const ends = endPieces(stroke.spine);
+    if (!ends) return false;
     return (
-      (stroke.start.kind === "slab" && segments[0].kind === "line") ||
-      (stroke.end.kind === "slab" && segments[segments.length - 1].kind === "line")
+      (stroke.start.kind === "slab" && ends.first.kind === "line") ||
+      (stroke.end.kind === "slab" && ends.last.kind === "line")
     );
   });
 }

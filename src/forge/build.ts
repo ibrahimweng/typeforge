@@ -24,7 +24,7 @@ import { reachesCast, type Cast } from "./cast";
 import { reaches, scaleOf, type Cuts } from "./cut";
 import { shapedInk } from "./layers";
 import { assemble, hasTiles, type Kit } from "./kit";
-import { alongSpine, spinePath, wavy } from "./shapes";
+import { alongSpine, endPieces, spinePath, wavy } from "./shapes";
 import { penReach, reachAlong, sweep } from "./sweep";
 import type { Style } from "./style";
 import type { Stroke, Terminal } from "./types";
@@ -1040,8 +1040,9 @@ function endsOf(stroke: Stroke): Array<[Terminal, Vec2, Vec2, boolean]> {
   const segments = stroke.spine.segments;
   if (stroke.spine.closed || segments.length === 0) return [];
 
-  const first = segments[0];
-  const last = segments[segments.length - 1];
+  // The pieces the run actually begins and ends on, which are not always the
+  // first and last: see `endPieces`.
+  const { first, last } = endPieces(stroke.spine)!;
 
   const startPoint = first.kind === "line" ? first.from : onArc(first.centre, first.radius, first.startAngle);
   const endPoint = last.kind === "line" ? last.to : onArc(last.centre, last.radius, last.endAngle);

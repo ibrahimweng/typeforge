@@ -18,6 +18,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { ready, unite } from "@/font/boolean";
 import { contourArea } from "@/font/geometry";
 import type { Contour } from "@/font/types";
+import { deliver } from "./deliver";
 import { draw } from "./document";
 import { drawLetter, letterNames } from "./build";
 import { layOut, startFrom, useKit } from "./document";
@@ -118,4 +119,60 @@ describe("fusing a letter for the file", () => {
     expect(o.filter((one) => contourArea(one) < 0)).toHaveLength(1);
     expect(o.filter((one) => contourArea(one) > 0)).toHaveLength(1);
   }, 60_000);
+});
+
+/**
+ * A letter that cannot follow the weight axis is set at the wrong weight.
+ *
+ * A variable font holds one set of outlines and a list of how every point
+ * moves, so two weights can only be joined where they are drawn with the same
+ * points. Where they are not, the letter follows the masters it does agree with
+ * and is left at the nearest of them for the rest of the axis -- and "left at
+ * the nearest" is not a nicety about shape. It is a Regular `G` sitting in a
+ * Black word with a third of the ink of the letters either side of it.
+ *
+ * The list is what this pins, not the count. Every name on it is a letter that
+ * is drawn with a different number of nodes at some weight, and that is a fact
+ * about the drawing which can be fixed one letter at a time -- so a name coming
+ * off it is progress and a name going on it is a letter that quietly stopped
+ * working, and only naming them tells the two apart.
+ */
+describe("the weight axis, and the letters that cannot follow it", () => {
+  /*
+   * Nine letters and their accented forms, at the last count.
+   *
+   * The `G` changes construction across the axis and agrees with no master at
+   * all. The `M` crosses the miter limit at its vertex between the Thin and the
+   * Regular, so the joins that are cut square at one weight are rounded at the
+   * other. The `yen` draws two bars at a hairline and one at a text weight.
+   * `nine`, `ae`, `at` and `ampersand` are each a piece of a bowl that the run
+   * reaches at one weight and not another, in a shape the bowl's own pieces
+   * cannot stand in for.
+   *
+   * Twenty-two names came off this list when a bowl run started carrying the
+   * pieces it does not reach: the whole `c`, `e` and `two` families, `five`,
+   * `cent` and `copyright`.
+   */
+  const KNOWN = [
+    "G",
+    "Gbreve",
+    "Gcircumflex",
+    "Gcommaaccent",
+    "Gdotaccent",
+    "M",
+    "ae",
+    "ampersand",
+    "at",
+    "nine",
+    "yen",
+  ];
+
+  it("names every letter that is left standing, and no others", async () => {
+    const forge = { ...startFrom(SANS), family: { drawn: 400, also: [100, 700, 900] } };
+    const delivered = await deliver(forge, { familyName: "Probe", format: "ttf", variable: true });
+
+    expect([...delivered.held].sort()).toEqual([...KNOWN].sort());
+    // And the note the export shows says so rather than saying nothing.
+    expect(delivered.notes.join(" ")).toContain("follow the axis only part of the way");
+  }, 300_000);
 });

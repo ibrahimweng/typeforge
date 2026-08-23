@@ -21,6 +21,8 @@ export interface Delivery {
   members: Array<{ weight: number; styleName: string; fileName: string }>;
   /** Anything worth telling somebody about what was written. */
   notes: string[];
+  /** Glyphs that follow a variable axis only part of the way, by name. */
+  held: string[];
 }
 
 /**
@@ -75,13 +77,14 @@ export async function deliver(
   }));
 
   if (written.length === 1) {
-    return { fileName: written[0].fileName, bytes: written[0].bytes, members, notes: [] };
+    return { fileName: written[0].fileName, bytes: written[0].bytes, members, notes: [], held: [] };
   }
   const tidy = familyName.replace(/[^A-Za-z0-9]+/g, "") || "Untitled";
   return {
     fileName: `${tidy}.zip`,
     bytes: zip(written.map(({ fileName, bytes }) => ({ name: fileName, bytes }))),
     members,
+    held: [],
     notes: [],
   };
 }
@@ -160,5 +163,6 @@ async function varying(
       fileName: `${tidy}[wght].ttf`,
     })),
     notes: result.notes,
+    held: result.held,
   };
 }
