@@ -234,6 +234,30 @@ function ellipseSlope(arc: OffsetEllipse, t: number): Vec2 {
 }
 
 /**
+ * The hair of slack in "how many quarter turns is this".
+ *
+ * An arc is cut into `ceil(sweep / 90 degrees)` pieces, and a right angle is
+ * meant to be one of them. Whether it is comes down to the last bit or two of a
+ * subtraction: a bowl's corners are cut at nought, a right angle, a half turn
+ * and three quarters, and `pi - pi/2` comes out at exactly `pi/2` while
+ * `3pi/2 - pi` comes out four ulps above it. So one corner of a bowl was drawn
+ * in one piece and the corner opposite it in two.
+ *
+ * That is invisible on the page -- the second piece is a node on a curve that
+ * was already there -- and fatal to the axis, because it only happens while the
+ * corner is a true quarter turn. A Brush bowl wide enough to have flat sides
+ * between its corners has them at exactly ninety degrees and comes back with 22
+ * nodes; the same bowl at the Black is drawn rounder, its corners turn 88.1
+ * degrees, and it comes back with 20. Fourteen of the Brush's eighteen letters
+ * left standing were this, and the other four are the same bowl in `three` and
+ * `ae`.
+ *
+ * A billionth, because the error is at the sixteenth digit and the smallest
+ * thing anybody would mean by it is a millionth of a degree.
+ */
+const A_QUARTER = 1e-9;
+
+/**
  * Split an ellipse arc into cubic pieces.
  *
  * Quarter turns at most, with the handles set to the length that best fits an
@@ -249,7 +273,7 @@ function ellipseSlope(arc: OffsetEllipse, t: number): Vec2 {
  */
 function ellipseNodes(arc: OffsetEllipse): GlyphNode[] {
   const sweep = arc.to - arc.from;
-  const pieces = arc.pieces ?? Math.max(1, Math.ceil(Math.abs(sweep) / (Math.PI / 2)));
+  const pieces = arc.pieces ?? Math.max(1, Math.ceil(Math.abs(sweep) / (Math.PI / 2) - A_QUARTER));
   const step = sweep / pieces;
   const factor = (4 / 3) * Math.tan(step / 4);
 
