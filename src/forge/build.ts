@@ -794,10 +794,9 @@ function flaresFor(stroke: Stroke, style: Style): Contour[] {
        * so a flare dropped here is a contour the letter has at one weight and
        * not at the next: the Brush's `one` came back with six contours at the
        * Thin and five at the Bold, the `\u0490` with eleven, ten and eleven across the
-       * four, and neither can be laid over the other. A flare of no reach ends
-       * on the stroke's own edge, so it is inside ink that is already there and
-       * adds nothing at all -- which is the same thing the Psychedelic's ball
-       * does when the room for it runs out, and for the same reason.
+       * four, and neither can be laid over the other. Drawn on one spot instead
+       * it is the same shape the Psychedelic's ball takes when the room for it
+       * runs out, and for the same reason.
        */
       const refused =
         !swelling || crossesALine(at, facing, side, inner + reach, inner, style);
@@ -910,11 +909,12 @@ function serifsFor(stroke: Stroke, style: Style): Contour[] {
      * ball -- and until there is a shape for that, the plain terminal the style
      * already specifies is the honest answer.
      *
-     * Refused, the wing is drawn a unit proud of the stroke rather than not
-     * drawn, exactly as a refused flare is: whether a run ends on a straight
-     * piece is a fair question with an answer that moves with the pen, and a
-     * face that hangs a serif on every straight end otherwise draws letters
-     * with two more contours at one weight than at the next.
+     * Refused, the wing is drawn on the stroke's own end rather than not drawn,
+     * exactly as a refused flare is -- see below for the shape it takes.
+     * Whether a run ends on a straight piece is a fair question with an answer
+     * that moves with the pen, and a face that hangs a serif on every straight
+     * end otherwise draws letters with two more contours at one weight than at
+     * the next.
      */
     const winged = straightEnd;
     const projection = terminal.projection ?? 0;
