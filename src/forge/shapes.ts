@@ -562,10 +562,28 @@ function rides(segment: SpineLine, along: WaveAlong): boolean {
   const dy = segment.to.y - segment.from.y;
   const length = Math.hypot(dx, dy);
   if (length < 1e-9) return false;
-  // Within thirty degrees of the line it is being called flat or upright
-  // against, so a slightly leaning arm still counts as an arm.
+  /*
+   * Within about fifteen degrees of the line it is being called flat or upright
+   * against, so a slightly leaning arm still counts as an arm and a diagonal
+   * does not.
+   *
+   * Thirty was the first answer and it cannot be one, because how far a run
+   * leans is not fixed: a mark is drawn to the ink it leaves, so as the pen
+   * fattens it the mark grows wider and shorter and lies flatter. The acute
+   * leans at 0.539 of its own length at the Thin and 0.265 at the Black -- it
+   * starts a diagonal and ends an arm -- so it rippled at three weights out of
+   * four and the letter could not follow the axis.
+   *
+   * Fifteen is not a rounder number; it is where the gap is. Of the 980 runs
+   * this face waves, the ones that ever lie flat top out at 0.099, 0.122,
+   * 0.166 and 0.220, and the next value up is 0.309: a real arm barely leans at
+   * any weight, and everything between is a diagonal on its way somewhere.
+   * Threshold it anywhere in that gap and one run in 980 still crosses it --
+   * against 147 at thirty degrees -- and two runs in the whole font stop
+   * waving.
+   */
   const steep = Math.abs(dy) / length;
-  return along === "flat" ? steep <= 0.5 : steep >= 0.866;
+  return along === "flat" ? steep <= 0.25 : steep >= 0.968;
 }
 
 /**
@@ -670,32 +688,84 @@ function ripple(
    * to look at.
    */
   /*
-   * Where the stubs have taken the whole run, there is no wave to draw.
-   *
-   * This is the one place the count is allowed to move with the pen, and it is
-   * here because the alternative is worse. Emitting the wave anyway, as pieces
-   * of no size sitting where the two stubs meet, keeps the count -- and a chain
-   * of microscopic pieces in the middle of a run is not something the sweep can
-   * read: it hangs the corner and terminal work on whichever piece comes first
-   * with any length in it, and those pieces have some. Tried three ways, and
-   * all three are worse than this one: as arcs that turn two hundredths of a
-   * radian, 245 letters left standing; as arcs that turn a ten-thousandth, 245;
-   * as true stalls that neither travel nor turn, 233. Against 208 for handing
-   * the run back straight. What breaks in every case is the chevron marks --
-   * `circumflex` and `caron` and everything that wears one -- which are exactly
-   * the short runs this case is about.
-   *
-   * How short is worth writing down, because it is shorter than it sounds. The
-   * flat top of a Cyrillic `б` is 34 units at the Thin and 135 at the Black,
-   * and the two corners either side of it ask for 48 per cent of it at the
-   * Thin, 97 at the Regular, and 155 at the Black. From a text weight up there
-   * is no wave to be had on that run at all, and no arrangement of pieces
-   * changes that.
+   * How often the stubs take the whole run is worth writing down, because it is
+   * more often than it sounds. The flat top of a Cyrillic `б` is 34 units at
+   * the Thin and 135 at the Black, and the two corners either side of it ask
+   * for 48 per cent of it at the Thin, 97 at the Regular, and 155 at the Black.
+   * From a text weight up there is no wave to be had on that run at all -- and
+   * that is 161 runs of the font at the Black against none at the Thin.
    */
-  if (length < 1e-9) return [segment];
+  /*
+   * Unless the opening stub has taken the run down to nothing, in which case
+   * the wave is not drawn at all and the run is handed back as it came.
+   *
+   * A stub of no length is not a straight end; it is no end at all.
+   * `endsStraight` walks back past it, finds the wave's own arcs, and reports
+   * the run as finishing on a curve -- so the terminal work goes to the curved
+   * case, and the flag of a Cyrillic `б` at a text weight came off the pen with
+   * a round hook on it, crossing itself. Sharing the run out between the two
+   * corners in proportion fixes that end and breaks the other: the corner then
+   * gets less room than its cut needs, the cut fails, and a `bracketright` at
+   * the same weight folds instead. The corner has to have what it asks for --
+   * that is settled, and it is why the stubs are not capped -- so where there
+   * is nothing left over for the far end, there is no wave.
+   */
+  /*
+   * Unless the opening stub has taken the run down to nothing, in which case
+   * there is no wave at all and the run is handed back as it came.
+   *
+   * A stub of no length is not a straight end; it is no end at all.
+   * `endsStraight` walks back past it, meets the wave's own arcs, and reports
+   * the run as finishing on a curve -- so the terminal work goes to the curved
+   * case, and the flag of a Cyrillic `б` at a text weight came off the pen with
+   * a round hook on it, crossing itself.
+   *
+   * Two ways past that were measured and neither survives. Sharing the run
+   * between the two corners in proportion gives the far end its stub and takes
+   * the near one's room away: the cut it needs then fails and a `bracketright`
+   * folds instead. Standing the stall at the near end rather than the far one
+   * leaves the whole run as one straight stub and fixes both -- and a corner
+   * only asks for a lot of room when it has a neighbour, so that end is one the
+   * letter does not finish on -- but where both corners want more than the run
+   * has, which is a `Z` at two hundred and sixty units of stem, the extra
+   * pieces land inside the corner work and the letter folds there instead.
+   *
+   * So: this case gives up, and the count moves with the pen here and nowhere
+   * else in the wave. It is worth 57 letters -- the Wavy reaches 58 left
+   * standing with the stall applied here too, against 115 with this line --
+   * and none of the three ways of collecting them keeps every letter whole.
+   */
   let turn: number;
   let radius: number;
-  {
+  if (length < 1e-9 && closing < 1e-9) return [segment];
+  if (length < 1e-9) {
+    /*
+     * A wave with nothing left to wave in is drawn as a wave of nothing.
+     *
+     * The stubs above take what their corners ask for, so on a short run under
+     * a heavy pen they can take all of it. That happens to 161 runs at the
+     * Black and to none at all at the Thin, which made it the single biggest
+     * reason the face could not follow the axis: the same run came off waved at
+     * one weight and straight at the next.
+     *
+     * What is drawn instead is the same arcs, turning nothing, standing where
+     * the two stubs meet -- and the radius is the point. Three earlier attempts
+     * all gave the stall a radius of nothing and all measured worse than
+     * handing the run back straight: arcs turning two hundredths of a radian on
+     * a radius of a millionth, 245 letters standing; a ten-thousandth, 245;
+     * neither travelling nor turning, 233; against 208 for giving up. An arc of
+     * no radius is not an arc to the sweep, which drops it when it collects the
+     * headings a corner is worked out from, so the chevron marks lost their
+     * apex and the count moved again by another route.
+     *
+     * The radius here is the smallest one any arc of this wave is ever allowed
+     * -- half a pen and the clearance, which is what the cap just below holds
+     * every real arc to. So the stall is an arc the sweep can turn, and it
+     * turns nothing.
+     */
+    turn = 0;
+    radius = penHalf * CLEARANCE;
+  } else {
     /*
      * How far each arc turns, worked out from how deep the wave is asked to be.
      *
@@ -747,9 +817,19 @@ function ripple(
   for (let index = 0; index < wholeArcs + 2; index++) {
     // The first and last are halves; everything between is a whole.
     const sweep = index === 0 || index === wholeArcs + 1 ? turn : turn * 2;
-    // The first bends toward the side the wave rides on, and every one after
-    // it bends back the other way.
-    const side = (index % 2 === 0 ? 1 : -1) * first;
+    /*
+     * The first bends toward the side the wave rides on, and every one after
+     * it bends back the other way.
+     *
+     * Except where the wave turns nothing, where they all take the same side.
+     * An arc that turns nothing is a point on a circle, and which way it reads
+     * as travelling is decided entirely by where its centre is: on one side the
+     * tangent is the way the run goes, on the other it is the way the run came
+     * from. Alternating them handed the sweep a chain of hairpins standing on
+     * one spot, which is worse than either a wave or a straight line -- 224
+     * letters left standing against 196 for giving up.
+     */
+    const side = turn === 0 ? 1 : (index % 2 === 0 ? 1 : -1) * first;
     /*
      * The centre is a right angle from the way the stroke is travelling now,
      * not from the way the run travels.
@@ -768,7 +848,19 @@ function ripple(
       radius,
       startAngle,
       endAngle,
-      sweepPositive: endAngle > startAngle,
+      /*
+       * Which way it bends, and for a stall that has to be said rather than
+       * read off the two angles.
+       *
+       * They are equal where nothing turns, so the comparison answers no every
+       * time -- and the sweep offsets an arc inward or outward by this, so a
+       * stall that says no where a real arc bending the same way says yes gets
+       * offset the other way round and comes off the pen with four more nodes
+       * than the wave it is standing in for. A `u` at the Bold read 26 against
+       * the 22 it has at every other weight, which is the whole disagreement
+       * this is here to end.
+       */
+      sweepPositive: turn === 0 ? true : endAngle > startAngle,
       /*
        * A half arc in one piece and a whole one in two, always.
        *
