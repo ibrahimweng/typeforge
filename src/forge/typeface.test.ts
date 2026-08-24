@@ -219,6 +219,19 @@ describe("the weight axis, and the letters that cannot follow it", () => {
       ["Ribbon", 33],
       ["Technical", 35],
       ["Display", 35],
+      /*
+       * And the Wavy, which is the worst of the sixteen by a long way and is
+       * held here rather than fixed. Its whole idea is that every run lying
+       * flat ripples, and how much of a run is left to ripple after its two
+       * corners have taken what they need is a question about the pen: the flat
+       * top of a Cyrillic `\u0431` is 34 units at the Thin and 135 at the Black, and
+       * the corners either side ask for 48 per cent of it at the Thin and 155
+       * at the Black. Where they take all of it there is no wave to draw, and
+       * that is the one place in `ripple` where the count still moves with the
+       * weight. 290 to 208; see `ripple` for the three ways of keeping the
+       * count that were measured and are worse.
+       */
+      ["Wavy", 215],
     ] as const) {
       const base = BASES.find((one) => one.name === name)!;
       const forge = { ...startFrom(base), family: { drawn: 400, also: [100, 700, 900] } };

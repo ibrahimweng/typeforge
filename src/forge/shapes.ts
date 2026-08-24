@@ -610,13 +610,27 @@ function ripple(
    * because a serif goes on a straight end and there were none left.
    *
    * How long each stub has to be is the corner's business rather than the
-   * wave's, so it is worked out from the neighbour and handed in. Never more
-   * than two fifths of the run apiece, or there would be nothing left to wave.
+   * wave's, so it is worked out from the neighbour and handed in -- and it is
+   * given in full, however little that leaves to wave.
+   *
+   * It used to be held to two fifths of the run apiece, on the reasoning that
+   * there would otherwise be nothing left to wave, and the reasoning is right
+   * and the conclusion is backwards: where a corner needs more room than that,
+   * what should give way is the wave and not the corner. Held back, the corner
+   * does not get the room the sweep needs to cut its inside back into, and the
+   * cut fails -- the flag of a Cyrillic `б` at the Black came off the pen as
+   * two separate blobs with a gap between them, and fusing the letter left a
+   * hole nineteen units by thirty where the gap was. The wave is decoration;
+   * the corner is the letter.
+   *
+   * So the stubs take what they ask for, the wave takes what is left, and where
+   * that is nothing the wave is still drawn -- as arcs that go nowhere, sitting
+   * where the two stubs meet. Which keeps the count the same at every weight,
+   * and is the whole reason for the shape of this function.
    */
-  const opening = Math.min(keepStart, whole * 0.4);
-  const closing = Math.min(keepEnd, whole * 0.4);
-  const span = whole - opening - closing;
-  if (span < penHalf * 2) return [segment];
+  const opening = Math.min(keepStart, whole);
+  const closing = Math.min(keepEnd, whole - opening);
+  const span = Math.max(0, whole - opening - closing);
 
   /*
    * The wave is a half arc, some number of whole ones, and a half arc back.
@@ -627,7 +641,7 @@ function ripple(
    * an odd number of them for the last half to arrive travelling the right way
    * to come back down. A period is two of them.
    */
-  const wanted = Math.max(1, (2 * span) / wavelength - 1);
+  const wanted = Math.max(1, (2 * whole) / wavelength - 2);
   const wholeArcs = Math.max(1, Math.round((wanted - 1) / 2) * 2 + 1);
   const length = (2 * span) / (wholeArcs + 1);
 
@@ -639,60 +653,85 @@ function ripple(
    * the turn, and dividing one by the other loses the radius and leaves the
    * tangent of half of it.
    */
-  let turn = 2 * Math.atan((2 * depth) / length);
   /*
-   * A quarter turn a side and no more, which is a wave of half circles.
+   * A wave with nothing left to wave in is still a wave, drawn on one spot.
    *
-   * Past that the centre of the arc crosses to the other side of its own chord
-   * and the arc curls back on itself rather than bulging.
+   * The stubs above take what their corners ask for, so on a short run under a
+   * heavy pen they can take all of it and leave the wave no room at all. What
+   * is drawn then is the same arcs, of no size, sitting where the two stubs
+   * meet -- which keeps the letter the same number of nodes at every weight,
+   * and is the whole reason for the shape of this function.
+   *
+   * They still have to turn. A piece that goes nowhere takes its neighbour's
+   * heading, so a chain of arcs that neither travels nor turns reads to the
+   * sweep as one straight run with no corners in it -- no corners, no wedges,
+   * and the node count moves again. Two hundredths of a radian each, on a
+   * radius of a millionth of a unit, is a turn to the sweep and nothing at all
+   * to look at.
    */
-  turn = Math.min(turn, Math.PI / 2);
-  // Then held so no arc turns tighter than half the pen, which is the same
-  // rule everything else here is held to, and caps the depth rather than the
-  // wave.
-  const most = length / (4 * penHalf * CLEARANCE);
-  if (most < 1) turn = Math.min(turn, Math.asin(most));
   /*
-   * Under about a degree there is no wave left to draw, and a chain of arcs
-   * that flat is a slower way of writing a straight line.
+   * Where the stubs have taken the whole run, there is no wave to draw.
    *
-   * This way out and the one above it are both questions about the pen -- the
-   * stubs at each end grow with it and so does the limit above -- so the same
-   * run ripples at one weight and comes off straight at the next, which is a
-   * different number of nodes, and two weights drawn with different nodes
-   * cannot be joined into one variable font. It is most of why the Wavy leaves
-   * 290 letters standing where the Sans leaves 11.
+   * This is the one place the count is allowed to move with the pen, and it is
+   * here because the alternative is worse. Emitting the wave anyway, as pieces
+   * of no size sitting where the two stubs meet, keeps the count -- and a chain
+   * of microscopic pieces in the middle of a run is not something the sweep can
+   * read: it hangs the corner and terminal work on whichever piece comes first
+   * with any length in it, and those pieces have some. Tried three ways, and
+   * all three are worse than this one: as arcs that turn two hundredths of a
+   * radian, 245 letters left standing; as arcs that turn a ten-thousandth, 245;
+   * as true stalls that neither travel nor turn, 233. Against 208 for handing
+   * the run back straight. What breaks in every case is the chevron marks --
+   * `circumflex` and `caron` and everything that wears one -- which are exactly
+   * the short runs this case is about.
    *
-   * Four ways round it were measured and none is here.
-   *
-   * Taking both ways out away, so the wave is always drawn however flat it has
-   * to be, is the one that works: 290 letters becomes 211, and nothing is
-   * forced, since the limit above still holds every arc to a radius the pen can
-   * turn. It also puts a hole nineteen units by thirty through the flag of a
-   * Cyrillic `б` at the Black, where fusing the flag's new near-flat wave to
-   * the bowl leaves a sliver behind. Every floor from a ten-thousandth of a
-   * radian to a hundredth leaves the same hole, so it is the wave being there
-   * at all rather than the radius being large. A face that loses a piece of a
-   * letter has not been fixed.
-   *
-   * Taking away only this one, and leaving the span alone, moves nothing: 290
-   * either way. The span is doing all of it.
-   *
-   * Deciding the same thing by the letter instead of the pen -- no wave on a
-   * run shorter than some share of a wavelength -- is worse than either, at
-   * 392 letters standing for nine tenths and 402 for three fifths. The run's
-   * own length is not the letter's either: a corner eats into it by a radius
-   * the pen sets, so the threshold still moves, and now it moves for more runs.
-   *
-   * And counting the wave's arcs off the whole run rather than off the span
-   * left between the stubs steadies the count and changes the face: a `macron`
-   * at the Regular goes from one clean curve to two crammed into the same
-   * width, seventeen per cent more ink, and an `equal` at the Black goes mushy.
-   * That is a different face, not a fixed one.
+   * How short is worth writing down, because it is shorter than it sounds. The
+   * flat top of a Cyrillic `б` is 34 units at the Thin and 135 at the Black,
+   * and the two corners either side of it ask for 48 per cent of it at the
+   * Thin, 97 at the Regular, and 155 at the Black. From a text weight up there
+   * is no wave to be had on that run at all, and no arrangement of pieces
+   * changes that.
    */
-  if (turn < 0.02) return [segment];
+  if (length < 1e-9) return [segment];
+  let turn: number;
+  let radius: number;
+  {
+    /*
+     * How far each arc turns, worked out from how deep the wave is asked to be.
+     *
+     * Depth here is the whole swing, crest to line, which is twice what one arc
+     * rises over its own half period. Both that and the half period fall out of
+     * the turn, and dividing one by the other loses the radius and leaves the
+     * tangent of half of it.
+     */
+    turn = 2 * Math.atan((2 * depth) / length);
+    /*
+     * A quarter turn a side and no more, which is a wave of half circles.
+     *
+     * Past that the centre of the arc crosses to the other side of its own
+     * chord and the arc curls back on itself rather than bulging.
+     */
+    turn = Math.min(turn, Math.PI / 2);
+    // Then held so no arc turns tighter than half the pen, which is the same
+    // rule everything else here is held to, and caps the depth rather than the
+    // wave.
+    const most = length / (4 * penHalf * CLEARANCE);
+    if (most < 1) turn = Math.min(turn, Math.asin(most));
+    /*
+     * And however flat that leaves it, it is still drawn as a wave.
+     *
+     * Under about a degree there is nothing left to see, and a chain of arcs
+     * that flat is a slower way of writing a straight line -- so this used to
+     * give up and hand the run back straight. How flat the wave is held to is a
+     * question about the pen, though, so giving up was one too: the same run
+     * rippled at one weight and came off straight at the next. Drawing it
+     * forces nothing, since the limit just above still holds every arc to a
+     * radius the pen can turn and a flatter arc is a larger radius.
+     */
+    if (turn < 0.02) return [segment];
+    radius = length / (4 * Math.sin(turn));
+  }
 
-  const radius = length / (4 * Math.sin(turn));
   const along = at(dx / whole, dy / whole);
   const opens = at(segment.from.x + along.x * opening, segment.from.y + along.y * opening);
 
