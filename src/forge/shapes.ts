@@ -659,6 +659,39 @@ function ripple(
    * an odd number of them for the last half to arrive travelling the right way
    * to come back down. A period is two of them.
    */
+  /*
+   * How many, and the one number in the wave that still moves with the pen.
+   *
+   * The count is a rounding of the run's own length, and a run's length is not
+   * a fixed thing: the letter is drawn wider at the Black, so a run bounded by
+   * the letter's edges grows -- a `T` crossbar runs 754 units at the Thin and
+   * 822 at the Black -- while a run bounded by two stems shrinks, a `z` arm
+   * going 355 to 299. Different runs move different ways by different amounts,
+   * so no correction applied here fixes them together. 35 of the 167 runs that
+   * carry more than one hump cross a boundary somewhere on the axis, which is
+   * 26 letters of the 115 the face still leaves standing.
+   *
+   * That it cannot be fixed by counting differently is not a guess. Snapping
+   * down to the nearest odd instead of to the nearest fixes the `T`, `z`,
+   * `four`, `seven` and `numbersign` families and breaks the `Z`, `OE`, `Ш` and
+   * `Θ` families -- 20 letters for 12, a boundary moved rather than removed.
+   * Sweeping the rounding's phase gets 35 down to 22 at an offset of 0.13,
+   * which is a number fitted to this alphabet and nothing else. Counting off
+   * whole wavelengths, or half, or a third, all measure worse.
+   *
+   * And there is a floor under all of it. For a count to hold still it has to
+   * be constant across everything its run's length does, and the median run
+   * moves 2.37 steps of the current quantisation. Coarsen the step until that
+   * fits -- 2.87 times the wavelength -- and every run in the font gets one
+   * hump. Stable and no longer a wave.
+   *
+   * What would fix it is the run's length at one reference weight, which means
+   * drawing the letter twice and matching its runs between the two draws. The
+   * recipes branch on the pen in a few places -- `one`, `zero` and `Ґ` come out
+   * with a different number of runs at different weights -- so the match needs
+   * a fallback, and that is a piece of order-dependent state this file does not
+   * have yet. It is the only thing left that would work.
+   */
   const wanted = Math.max(1, (2 * whole) / wavelength - 2);
   const wholeArcs = Math.max(1, Math.round((wanted - 1) / 2) * 2 + 1);
   const length = (2 * span) / (wholeArcs + 1);
