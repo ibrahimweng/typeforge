@@ -435,6 +435,25 @@ function kinksOf(headed: Headed[], closed: boolean): Kink[] {
      * takes the whole sixteen faces from 76 to 76 -- the brackets, the `\u00ac`, the
      * `\u0431` and the two omegas come off the Display's list and its G family, `\u00e6`,
      * `\u03c2` and `onehalf` go on. Neither is here.
+     *
+     * A fourth was tried from the other end, at the nodes rather than at the
+     * pieces, and it measures the same way. Every corner leaves exactly one
+     * piece whichever way it resolves, which is steady; what is not is the
+     * nodes either side of that piece. A corner cut back to where its offsets
+     * cross has its two neighbours meeting on one point, and `stitch` welds
+     * those into a single node; a corner filled with a wedge leaves them a gap
+     * apart and keeps both. Which of the two happens is the pen's business.
+     * Refusing to weld a corner shut -- so that every corner carries the same
+     * nodes however it resolves -- takes the Marker to nothing and the sixteen
+     * faces together from 27 to 134, the Ribbon going 0 to 73 and the
+     * Technical 1 to 36. The same trade as the first three, and it goes the
+     * same way.
+     *
+     * The gaps are worth knowing about even so, because they say where this
+     * lives. Over the whole font 268 joins have one, they run from 6 units to
+     * 306, and they are on two faces only: the Marker, whose corners are
+     * bevelled, and the Display, whose are round. Every other face welds every
+     * corner it has, which is why every other face is off this list.
      */
     if (Math.abs(turn) < 1e-9 && along > 0) continue;
     found.push({ before: index, after: next, at: segmentEnd(segments[index]), turn });
