@@ -15,6 +15,7 @@ import { ForgeExportDialog } from "@/components/ForgeExportDialog";
 import { ForgePanel } from "@/components/ForgePanel";
 import { HelpDrawer } from "@/components/HelpDrawer";
 import { LibraryDialog } from "@/components/LibraryDialog";
+import { QuickActions, useQuickActionShortcut, type Shell } from "@/palette";
 import { Inspector } from "@/components/Inspector";
 import { TopBar } from "@/components/TopBar";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
@@ -44,6 +45,7 @@ export function App(): React.JSX.Element {
   const assemble = useAssemble();
   const [exporting, setExporting] = React.useState(false);
   const [helping, setHelping] = React.useState(false);
+  const [quick, setQuick] = React.useState(false);
   /*
    * Which of the three jobs is in front.
    *
@@ -278,6 +280,48 @@ export function App(): React.JSX.Element {
     [mode, openFiles],
   );
 
+  /*
+   * Everything the palette can do, gathered in one place.
+   *
+   * Handed to it rather than reached for, so the palette stays a description
+   * of what the product offers and the wiring stays here with the rest of it.
+   * Every one of these is already a button somewhere: the palette is a second
+   * door to the same rooms, not a second set of rooms.
+   */
+  const shell: Shell = React.useMemo(
+    () => ({
+      mode,
+      setMode,
+      view: state.view,
+      setView: (view) => store.setView(view),
+      openFile: () => inputRef.current?.click(),
+      export: () => setExporting(true),
+      save: saveProject,
+      newProject: () => {
+        store.startBlank();
+        setMode("edit");
+      },
+      toggleHelp: () => setHelping((was) => !was),
+      library: () => void libraryStore.show(),
+      selectGlyph: (name) => store.selectGlyph(name, { open: true }),
+      paramOf: (key) => state.typeface?.params[key] ?? 0,
+      setParam: (key, value) => store.setFamilyParam(key, value),
+      partOf: (part, key) =>
+        (forge.forge.style.parts[part] as Record<string, number | string | boolean>)[key],
+      setPart: (part, key, value, done) =>
+        forgeStore.changePart(part, { [key]: value }, done ? "end" : "during"),
+      startFromBase: (name) => forgeStore.startFromBase(name),
+      chooseAlternate: (letter, form) => {
+        forgeStore.select(letter);
+        forgeStore.chooseAlternate(form);
+      },
+      hasFont: Boolean(state.typeface),
+    }),
+    [mode, state.view, state.typeface, forge.forge, saveProject],
+  );
+
+  useQuickActionShortcut(React.useCallback(() => setQuick(true), []));
+
   return (
     <div
       className="flex h-full flex-col"
@@ -353,6 +397,8 @@ export function App(): React.JSX.Element {
           <div className="h-full w-1/3 animate-pulse bg-accent" />
         </div>
       )}
+
+      <QuickActions open={quick} onClose={() => setQuick(false)} shell={shell} />
 
       <LibraryDialog mode={mode} onMode={setMode} />
 
