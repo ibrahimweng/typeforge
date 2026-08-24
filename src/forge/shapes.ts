@@ -51,6 +51,97 @@ const TAU = Math.PI * 2;
 const CLEARANCE = 1.06;
 
 /**
+ * The run lengths a family's waves are counted off, taken once and kept.
+ *
+ * How many humps a run gets is a rounding of how long the run is, and a run's
+ * length is not fixed: the face is drawn wider at the Black, so a run bounded
+ * by the letter's edges grows -- a Wavy `T` crossbar runs 754 units at the Thin
+ * and 822 at the Black -- while a run bounded by two stems shrinks, a `z` arm
+ * going 355 to 299. Different runs move different ways by different amounts, so
+ * nothing measured where the count is worked out holds still; that is written
+ * out at length in `ripple`, along with the four ways of counting differently
+ * that were tried and are worse.
+ *
+ * The answer is not to count better but to count once. A family is drawn at one
+ * weight and taken to the others, so the run lengths at that one weight are the
+ * design's own, and every master counts its humps off those. What varies then
+ * is how long each hump is, which is what the wave is for, and not how many
+ * there are, which is what the axis cannot carry.
+ *
+ * Kept per letter and consumed in the order the recipe draws its runs, which is
+ * the same order at every weight, because a recipe is a function of the style
+ * and nothing else. Three letters in the whole Wavy manage to draw more runs at
+ * one weight than at another, and those extra runs fall off the end of the page
+ * and get their own length: see `counted`.
+ */
+export interface WaveBook {
+  /** Run lengths, per letter, in the order the letter draws them. */
+  lengths: Map<string, number[]>;
+  /** Taking them down, rather than reading them back. */
+  recording: boolean;
+}
+
+let book: WaveBook | null = null;
+let bookAt = "";
+let bookCursor = 0;
+
+/**
+ * Start or stop keeping the book, handing back whatever was open before.
+ *
+ * Whoever opens one puts back what they found, so a drawing that happens
+ * inside another drawing leaves the outer one's book where it was. It is
+ * module state and it is honest about what that does not cover: two drawings
+ * running at once and taking turns at an await would still read each other's
+ * pages. Nothing does that today -- a family is drawn one master at a time,
+ * and the letter loop for a varying font has no await in it -- and if
+ * something ever does, this is the thing that has to be handed down the call
+ * instead of kept here.
+ */
+export function openWaveBook(next: WaveBook | null): WaveBook | null {
+  const was = book;
+  book = next;
+  bookAt = "";
+  bookCursor = 0;
+  return was;
+}
+
+/** Begin a letter: its runs are read and written under its own name. */
+export function waveBookAt(name: string): void {
+  bookAt = name;
+  bookCursor = 0;
+}
+
+/**
+ * The length this run is counted off: the one the drawn weight had, or its own.
+ *
+ * A letter that draws more runs at this weight than it did at the drawn one has
+ * fallen out of step, and the ones past the end of the page get their own
+ * length. Three letters do it across the whole Wavy -- the `ampersand`, the `at`
+ * and a `psi`, four runs between them -- and two of those are in the handful
+ * every face leaves standing anyway.
+ *
+ * Nothing else is checked. A reading was at first thrown away when it was more
+ * than twice or less than half the run in hand, on the reasoning that it could
+ * not then be the same run; the reasoning is wrong -- a short run doubles in
+ * length across the axis quite normally, and the rule fired on 2,830 readings
+ * out of 5,700 -- and so is the conclusion, because with the rule in or out the
+ * Wavy leaves the same 32 letters standing at every width from twice to a
+ * hundredfold. A rule that changes nothing is not a safeguard.
+ */
+function counted(whole: number): number {
+  if (!book) return whole;
+  const at = bookCursor;
+  bookCursor += 1;
+  if (book.recording) {
+    const list = book.lengths.get(bookAt);
+    if (list) list.push(whole);
+    else book.lengths.set(bookAt, [whole]);
+    return whole;
+  }
+  return book.lengths.get(bookAt)?.[at] ?? whole;
+}
+
+/**
  * The shortest piece of run that still counts as one, in units.
  *
  * For the closing stub of a wave with no room left: see `ripple`. It has to
@@ -675,39 +766,38 @@ function ripple(
    * to come back down. A period is two of them.
    */
   /*
-   * How many, and the one number in the wave that still moves with the pen.
+   * How many, counted off the drawn weight's length for this run rather than
+   * this weight's: see `WaveBook`.
    *
-   * The count is a rounding of the run's own length, and a run's length is not
-   * a fixed thing: the letter is drawn wider at the Black, so a run bounded by
-   * the letter's edges grows -- a `T` crossbar runs 754 units at the Thin and
-   * 822 at the Black -- while a run bounded by two stems shrinks, a `z` arm
-   * going 355 to 299. Different runs move different ways by different amounts,
-   * so no correction applied here fixes them together. 35 of the 167 runs that
-   * carry more than one hump cross a boundary somewhere on the axis, which is
-   * 26 letters of the 115 the face still leaves standing.
+   * It has to be, and that took some proving. The count is a rounding, and the
+   * run's length is not a fixed thing: the letter is drawn wider at the Black,
+   * so a run bounded by the letter's edges grows -- a `T` crossbar runs 754
+   * units at the Thin and 822 at the Black -- while a run bounded by two stems
+   * shrinks, a `z` arm going 355 to 299. Different runs move different ways by
+   * different amounts, so no correction applied here fixed them together, and
+   * 35 of the 167 runs carrying more than one hump crossed a boundary
+   * somewhere on the axis: 26 letters.
    *
-   * That it cannot be fixed by counting differently is not a guess. Snapping
-   * down to the nearest odd instead of to the nearest fixes the `T`, `z`,
-   * `four`, `seven` and `numbersign` families and breaks the `Z`, `OE`, `Ш` and
-   * `Θ` families -- 20 letters for 12, a boundary moved rather than removed.
-   * Sweeping the rounding's phase gets 35 down to 22 at an offset of 0.13,
-   * which is a number fitted to this alphabet and nothing else. Counting off
-   * whole wavelengths, or half, or a third, all measure worse.
+   * Four ways of counting differently were measured and every one of them
+   * moves the boundary rather than removes it. Snapping down to the nearest odd
+   * rather than to the nearest fixes the `T`, `z`, `four`, `seven` and
+   * `numbersign` families and breaks the `Z`, `OE`, `Ш` and `Θ` families --
+   * twenty letters for twelve. Sweeping the rounding's phase gets 35 down to 22
+   * at an offset of 0.13, a number fitted to this alphabet and nothing else;
+   * unlike the fifteen degrees in `rides`, which sits in a real gap in the
+   * measurements, there is no gap here, the runs' spans running continuously
+   * from 0.14 of a step to 2.55. Counting off whole wavelengths, or half, or a
+   * third, all measure worse again.
    *
-   * And there is a floor under all of it. For a count to hold still it has to
-   * be constant across everything its run's length does, and the median run
-   * moves 2.37 steps of the current quantisation. Coarsen the step until that
-   * fits -- 2.87 times the wavelength -- and every run in the font gets one
-   * hump. Stable and no longer a wave.
+   * And there was a floor under all of it. For a count to hold still by
+   * rounding alone it has to be constant across everything its run's length
+   * does, and the median run moves 2.37 steps of this quantisation. Coarsen the
+   * step until that fits -- 2.87 times the wavelength -- and every run in the
+   * font comes out with one hump: stable, and no longer a wave.
    *
-   * What would fix it is the run's length at one reference weight, which means
-   * drawing the letter twice and matching its runs between the two draws. The
-   * recipes branch on the pen in a few places -- `one`, `zero` and `Ґ` come out
-   * with a different number of runs at different weights -- so the match needs
-   * a fallback, and that is a piece of order-dependent state this file does not
-   * have yet. It is the only thing left that would work.
+   * So the count is not worked out better, it is worked out once.
    */
-  const wanted = Math.max(1, (2 * whole) / wavelength - 2);
+  const wanted = Math.max(1, (2 * counted(whole)) / wavelength - 2);
   const wholeArcs = Math.max(1, Math.round((wanted - 1) / 2) * 2 + 1);
   const length = (2 * span) / (wholeArcs + 1);
 

@@ -13,6 +13,7 @@ import { zip } from "@/font/zip";
 import { familyOf, weighted, type Forge } from "./document";
 import { memberOf, nameOfWeight, weightsOf } from "./family";
 import { toTypeface } from "./typeface";
+import type { WaveBook } from "./shapes";
 
 export interface Delivery {
   fileName: string;
@@ -127,11 +128,25 @@ async function varying(
     at: { wght: weight },
   }));
 
+  /*
+   * The run lengths every master counts its waves off, taken from the weight
+   * the family was drawn at: see `WaveBook` in `shapes.ts`.
+   *
+   * Which means the drawn weight has to be drawn first, and it is -- the loop
+   * below skips it and the export at the end uses what is drawn here. Before
+   * this, each master counted its own humps off its own run lengths, and a run
+   * that crossed a boundary somewhere on the axis came out with a different
+   * number of them at the two ends: 26 of the Wavy's letters, and no way to
+   * count differently that does not move the boundary rather than remove it.
+   */
+  const waves: WaveBook = { lengths: new Map(), recording: true };
+
   const drawing = async (weight: number) =>
     await toTypeface(weighted(forge, weight), {
       familyName,
       styleName: memberOf(familyName, weight).styleName,
       weightClass: weight,
+      waves,
       // The whole point: see above.
       merge: false,
       /*
@@ -145,13 +160,16 @@ async function varying(
       kern: weight === drawn,
     });
 
+  const master = await drawing(drawn);
+  waves.recording = false;
+
   const masters = [];
   for (const weight of weights) {
     if (weight === drawn) continue;
     masters.push({ at: { wght: weight }, typeface: await drawing(weight) });
   }
 
-  const result = await exportFont(await drawing(drawn), {
+  const result = await exportFont(master, {
     format: "ttf",
     fidelity: "rebuild",
     includeKerning: true,
