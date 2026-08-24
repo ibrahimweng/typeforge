@@ -26,6 +26,7 @@ import {
   type Typeface,
 } from "@/font/types";
 import { builtFrom, letterNames } from "./build";
+import { openWaveBook, type WaveBook } from "./shapes";
 import { kernsFor } from "./kern";
 import { anythingCut, draw, type Forge } from "./document";
 
@@ -200,6 +201,15 @@ export interface ForgeExportOptions {
   familyName: string;
   styleName: string;
   /**
+   * The run lengths this family's waves are counted off: see `WaveBook`.
+   *
+   * Passed by the family builder, which fills it from the drawn weight and
+   * hands the same book to every other master. Left out everywhere else -- a
+   * letter drawn on its own is drawn at its own weight, which is what the
+   * editor is showing.
+   */
+  waves?: WaveBook;
+  /**
    * How heavy this member of the family is, from 100 to 900.
    *
    * Said rather than guessed from the style name, because the file has to
@@ -272,6 +282,10 @@ export async function toTypeface(
   // nothing else to show.
   glyphs.push(notdef(forge));
 
+  // Opened for the drawing and put back after it, because it is module state
+  // and whoever was using it is owed it back: see `WaveBook`.
+  const hadWaves = openWaveBook(options.waves ?? null);
+  try {
   for (const name of letterNames()) {
     const drawn = draw(name, forge);
     if (!drawn) continue;
@@ -303,6 +317,9 @@ export async function toTypeface(
       params: {},
       dirty: false,
     });
+  }
+  } finally {
+    openWaveBook(hadWaves);
   }
 
   typeface.glyphs = glyphs;

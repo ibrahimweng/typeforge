@@ -256,12 +256,16 @@ describe("the weight axis, and the letters that cannot follow it", () => {
        * that piece. All the far stub needs is to be a length at all. See
        * `ripple` for both, and for the three placements that fold a letter.
        *
-       * What is left is the arc count, which is 26 of the 58 and cannot be
-       * fixed where it is worked out -- see `ripple` again for the measurement.
+       * The arc count was the last of it, 26 of the 58, and it is not fixed
+       * where it is worked out because it cannot be: the count is a rounding
+       * and the run's length moves. It is worked out once instead, at the
+       * weight the family was drawn at, and every master counts off that --
+       * see `WaveBook` in `shapes.ts`, and `ripple` for the four ways of
+       * rounding differently that only move the boundary.
        *
-       * 290 to 208 to 196 to 115 to 58.
+       * 290 to 208 to 196 to 115 to 58 to 32.
        */
-      ["Wavy", 65],
+      ["Wavy", 38],
     ] as const) {
       const base = BASES.find((one) => one.name === name)!;
       const forge = { ...startFrom(base), family: { drawn: 400, also: [100, 700, 900] } };
@@ -269,6 +273,31 @@ describe("the weight axis, and the letters that cannot follow it", () => {
       expect(delivered.held.length, `${name} leaves ${delivered.held.length} standing`).toBeLessThan(
         most,
       );
+
+      /*
+       * And for the Wavy, the letters the wave book bought, named rather than
+       * counted. A ceiling goes on passing if the count is held down by
+       * something else giving way, so these are said out loud: every one has a
+       * run long enough to carry more than one hump, and every one crossed a
+       * hump boundary somewhere on the axis before the count was taken once at
+       * the drawn weight. The `T` crossbar goes 754 units at the Thin to 822 at
+       * the Black, over the line at 760, and came out with seven humps at one
+       * end and nine at the other.
+       *
+       * Asked of the delivery this test already made, rather than of one of its
+       * own: a second pass over the Wavy is twenty seconds, and the file it
+       * would slow down has a five-second test in it.
+       */
+      if (name === "Wavy") {
+        const standing = new Set(delivered.held);
+        for (const letter of [
+          "T", "Tbar", "Tcaron", "z", "zcaron", "four",
+          "seven", "numbersign", "yen", "AE", "Hbar", "onequarter",
+        ]) {
+          expect(standing.has(letter), `${letter} is left standing`).toBe(false);
+        }
+      }
     }
   }, 900_000);
+
 });

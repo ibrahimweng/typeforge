@@ -24,7 +24,7 @@ import { reachesCast, type Cast } from "./cast";
 import { reaches, scaleOf, type Cuts } from "./cut";
 import { shapedInk } from "./layers";
 import { assemble, hasTiles, type Kit } from "./kit";
-import { alongSpine, endPieces, endsStraight, spinePath, wavy } from "./shapes";
+import { alongSpine, endPieces, endsStraight, spinePath, waveBookAt, wavy } from "./shapes";
 import { penReach, reachAlong, sweep } from "./sweep";
 import type { Style } from "./style";
 import type { Stroke, Terminal } from "./types";
@@ -182,6 +182,10 @@ export function makeLetter(
   // three of them pass a cut at all.
   cast?: Cast,
 ): Made | null {
+  // This letter's own page in the wave book, if one is being kept: see
+  // `WaveBook`. A letter built from parts keeps no page of its own -- the base
+  // and the mark each open theirs as they are drawn.
+  waveBookAt(name);
   const parts = builtFrom(name);
   if (parts) return marked(parts, style, form, cuts, kit, cast);
 
