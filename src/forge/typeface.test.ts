@@ -240,8 +240,9 @@ describe("the weight axis, and the letters that cannot follow it", () => {
    * Geometric, the Fairground, and all but one letter of the Ribbon, the
    * Technical and the Marker.
    *
-   * Measured at 1, 1, 21, 5, 6 and 3. A little over each, the same way the
-   * cast layer's point budget is set, and nothing like room for one to double.
+   * Measured at 1, 1, 21, 5, 6, 3, 18 and 1. A little over each, the same way
+   * the cast layer's point budget is set, and nothing like room for one to
+   * double.
    */
   it("keeps the faces that round their corners and their ends on the axis too", async () => {
     for (const [name, most] of [
@@ -295,14 +296,15 @@ describe("the weight axis, and the letters that cannot follow it", () => {
        */
       ["Wavy", 6],
       /*
-       * And the two worst left, which are neither corners nor ends: the Brush
-       * at 23 and the Flared at 8. Both hang their own shape on a stroke -- the
-       * Brush a swelling and the Flared a splay -- and both are on this list so
-       * that what is left of them is a number somebody can watch rather than a
-       * face nobody measured.
+       * And the two that swell their stroke ends rather than rounding a corner
+       * or hanging a serif: the Brush at 18 and the Flared at 1, from 23 and 8.
+       * A swelling refused -- because it would hang under the line the letter
+       * stands on, or because the stroke ends on a curve -- is now drawn a unit
+       * deep on the stroke's own end rather than not drawn, so the letter has
+       * the same contours at every weight. See `flaresFor` in `build.ts`.
        */
-      ["Brush", 27],
-      ["Flared", 12],
+      ["Brush", 22],
+      ["Flared", 4],
     ] as const) {
       const base = BASES.find((one) => one.name === name)!;
       const forge = { ...startFrom(base), family: { drawn: 400, also: [100, 700, 900] } };

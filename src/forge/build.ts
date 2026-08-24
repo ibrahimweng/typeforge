@@ -762,8 +762,17 @@ function flaresFor(stroke: Stroke, style: Style): Contour[] {
      * as the stroke thickening -- the c, e, s, C, G and S all came out looking
      * chipped. A curved terminal is finished by the terminal, which is what
      * the terminal is for.
+     *
+     * A curved end swells by nothing rather than not being drawn, for the same
+     * reason the refusal below does. Whether a bowl's run ends on a straight
+     * piece or a curved one is a fair question about the drawing and the answer
+     * really does move with the pen -- a bowl wide enough to have flat sides
+     * ends on one, and the same bowl drawn as a circle ends on the arc beside
+     * it -- so a face that swells its ends draws letters with two more contours
+     * at one weight than at the next. The Brush's `three`, `\u00e6` and `\u03c2` and the
+     * Flared's `three` and `sterling` are all this.
      */
-    if (!straightEnd) continue;
+    const swelling = straightEnd;
     // And only a real end. The arm of an E begins inside the stem and the eye
     // of an e inside the bowl; swelling those puts the shape in the counter.
     if (terminal.open !== true) continue;
@@ -775,13 +784,41 @@ function flaresFor(stroke: Stroke, style: Style): Contour[] {
     const reach = spread * stem;
     const back = depth * stem;
     for (const side of [1, -1]) {
-      // A flare never crosses a line the stroke is standing on, which is the
-      // same rule a serif follows and for the same reason: one of its two
-      // sides would hang under the baseline the letter is standing on.
-      if (crossesALine(at, facing, side, inner + reach, inner, style)) continue;
+      /*
+       * A flare never crosses a line the stroke is standing on, which is the
+       * same rule a serif follows and for the same reason: one of its two
+       * sides would hang under the baseline the letter is standing on.
+       *
+       * Refused, it swells by nothing rather than not being drawn. Whether it
+       * crosses is measured from the stroke's own half width, which is the pen,
+       * so a flare dropped here is a contour the letter has at one weight and
+       * not at the next: the Brush's `one` came back with six contours at the
+       * Thin and five at the Bold, the `\u0490` with eleven, ten and eleven across the
+       * four, and neither can be laid over the other. A flare of no reach ends
+       * on the stroke's own edge, so it is inside ink that is already there and
+       * adds nothing at all -- which is the same thing the Psychedelic's ball
+       * does when the room for it runs out, and for the same reason.
+       */
+      const refused =
+        !swelling || crossesALine(at, facing, side, inner + reach, inner, style);
+      /*
+       * Refused, the swelling reaches nowhere and is a unit deep, which puts
+       * all four of its nodes on the stroke's own end inside ink that is
+       * already there.
+       *
+       * Reach alone is not enough: a flare of no reach still runs back up the
+       * stroke by its full depth, and on a curved end the stroke curves away
+       * from that while the shape does not, so the Brush's `c` crested fifty-
+       * two units above its own line and its `C` stopped lining up with its
+       * `I`. Depth of nothing is not enough either -- that is a shape with no
+       * area, which this face is not allowed to draw. A unit is the same
+       * measure and the same reasoning as `BURIED` above.
+       */
+      const swells = refused ? 0 : reach;
+      const deep = refused ? BURIED : back;
       // Wound with the stroke it swells, or it would cancel the ink it is
       // meant to be adding to and open a hole where the two overlap.
-      const shape = flare(at, facing, side, inner, reach, back, curve);
+      const shape = flare(at, facing, side, inner, swells, deep, curve);
       out.push(contourArea(shape) < 0 ? reverseContour(shape) : shape);
     }
   }
