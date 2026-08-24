@@ -256,16 +256,21 @@ describe("the weight axis, and the letters that cannot follow it", () => {
        * that piece. All the far stub needs is to be a length at all. See
        * `ripple` for both, and for the three placements that fold a letter.
        *
-       * The arc count was the last of it, 26 of the 58, and it is not fixed
-       * where it is worked out because it cannot be: the count is a rounding
-       * and the run's length moves. It is worked out once instead, at the
-       * weight the family was drawn at, and every master counts off that --
-       * see `WaveBook` in `shapes.ts`, and `ripple` for the four ways of
-       * rounding differently that only move the boundary.
+       * The arc count was not fixed where it is worked out, because it cannot
+       * be: the count is a rounding and the run's length moves. It is worked
+       * out once instead, at the weight the family was drawn at, and every
+       * master counts off that -- see `WaveBook` in `shapes.ts`, and `ripple`
+       * for the four ways of rounding differently that only move the boundary.
        *
-       * 290 to 208 to 196 to 115 to 58 to 32.
+       * And the last of it was a line that had been argued out of the code in
+       * a comment and left in it: a wave held flatter than a degree by the pen
+       * used to be handed back as a straight run, which is the same fault as
+       * all the others and was worth nineteen letters on its own.
+       *
+       * 290 to 208 to 196 to 115 to 58 to 32 to 12, which is the eleven every
+       * face inherits from the Sans and one more.
        */
-      ["Wavy", 38],
+      ["Wavy", 16],
     ] as const) {
       const base = BASES.find((one) => one.name === name)!;
       const forge = { ...startFrom(base), family: { drawn: 400, also: [100, 700, 900] } };
@@ -293,6 +298,10 @@ describe("the weight axis, and the letters that cannot follow it", () => {
         for (const letter of [
           "T", "Tbar", "Tcaron", "z", "zcaron", "four",
           "seven", "numbersign", "yen", "AE", "Hbar", "onequarter",
+          // And the ones the flat wave bought, which is the whole `e` family.
+          "e", "eacute", "egrave", "ecircumflex", "edieresis", "emacron",
+          "ebreve", "edotaccent", "eogonek", "ecaron", "ae", "oe", "five",
+          "longs", "b", "ъ",
         ]) {
           expect(standing.has(letter), `${letter} is left standing`).toBe(false);
         }

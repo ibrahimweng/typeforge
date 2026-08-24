@@ -70,13 +70,16 @@ const CLEARANCE = 1.06;
  *
  * Kept per letter and consumed in the order the recipe draws its runs, which is
  * the same order at every weight, because a recipe is a function of the style
- * and nothing else. Three letters in the whole Wavy manage to draw more runs at
- * one weight than at another, and those extra runs fall off the end of the page
- * and get their own length: see `counted`.
+ * and nothing else. A letter that runs past the end of its page answers for
+ * itself from there on: see `counted`.
  */
 export interface WaveBook {
-  /** Run lengths, per letter, in the order the letter draws them. */
-  lengths: Map<string, number[]>;
+  /**
+   * One entry per straight piece of every run a letter draws, in order: how
+   * long that piece was at the drawn weight, or null where it did not take the
+   * wave at all.
+   */
+  lengths: Map<string, Array<number | null>>;
   /** Taking them down, rather than reading them back. */
   recording: boolean;
 }
@@ -112,33 +115,40 @@ export function waveBookAt(name: string): void {
 }
 
 /**
- * The length this run is counted off: the one the drawn weight had, or its own.
+ * The length this straight piece is counted off: the one the drawn weight had,
+ * or its own.
  *
- * A letter that draws more runs at this weight than it did at the drawn one has
- * fallen out of step, and the ones past the end of the page get their own
- * length. Three letters do it across the whole Wavy -- the `ampersand`, the `at`
- * and a `psi`, four runs between them -- and two of those are in the handful
- * every face leaves standing anyway.
+ * Asked once for every straight piece, whether or not that piece takes the
+ * wave, and answered with null where it does not. Asked only of the pieces that
+ * wave, the book and the letter came out of step the moment a piece rode at one
+ * weight and not at another, and every reading after it in that letter belonged
+ * to the run before: an `OE` at the Thin came off the pen with its runs' humps
+ * dealt out to the wrong runs. A straight piece is a straight piece at every
+ * weight -- what the pen decides is how long it is, not whether it exists -- so
+ * counting them all is what keeps the two in step.
+ *
+ * A letter that runs past the end of its page answers for itself from there on.
  *
  * Nothing else is checked. A reading was at first thrown away when it was more
  * than twice or less than half the run in hand, on the reasoning that it could
  * not then be the same run; the reasoning is wrong -- a short run doubles in
  * length across the axis quite normally, and the rule fired on 2,830 readings
  * out of 5,700 -- and so is the conclusion, because with the rule in or out the
- * Wavy leaves the same 32 letters standing at every width from twice to a
+ * Wavy left the same letters standing at every width from twice to a
  * hundredfold. A rule that changes nothing is not a safeguard.
  */
-function counted(whole: number): number {
-  if (!book) return whole;
+function counted(mine: number | null): number | null {
+  if (!book) return mine;
   const at = bookCursor;
   bookCursor += 1;
   if (book.recording) {
     const list = book.lengths.get(bookAt);
-    if (list) list.push(whole);
-    else book.lengths.set(bookAt, [whole]);
-    return whole;
+    if (list) list.push(mine);
+    else book.lengths.set(bookAt, [mine]);
+    return mine;
   }
-  return book.lengths.get(bookAt)?.[at] ?? whole;
+  const list = book.lengths.get(bookAt);
+  return at < (list?.length ?? 0) ? list![at] : mine;
 }
 
 /**
@@ -592,12 +602,18 @@ export function wavy(
   return {
     closed: spine.closed,
     segments: spine.segments.flatMap((segment, index) => {
-      if (segment.kind !== "line" || !rides(segment, along)) return [segment];
+      if (segment.kind !== "line") return [segment];
       const before = index > 0 ? spine.segments[index - 1] : spine.closed ? spine.segments[count - 1] : null;
       const after =
         index < count - 1 ? spine.segments[index + 1] : spine.closed ? spine.segments[0] : null;
+      // Asked of every straight piece, riding or not, so the book and the letter
+      // keep in step: see `counted`.
+      const mine = Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y);
+      const takes = counted(rides(segment, along) ? mine : null);
+      if (takes === null) return [segment];
       return ripple(
         segment,
+        takes,
         wavelength,
         depth,
         penHalf,
@@ -712,6 +728,8 @@ function rides(segment: SpineLine, along: WaveAlong): boolean {
  */
 function ripple(
   segment: SpineLine,
+  /** The length its humps are counted off, which is the drawn weight's: see `WaveBook`. */
+  counts: number,
   wavelength: number,
   depth: number,
   penHalf: number,
@@ -797,7 +815,7 @@ function ripple(
    *
    * So the count is not worked out better, it is worked out once.
    */
-  const wanted = Math.max(1, (2 * counted(whole)) / wavelength - 2);
+  const wanted = Math.max(1, (2 * counts) / wavelength - 2);
   const wholeArcs = Math.max(1, Math.round((wanted - 1) / 2) * 2 + 1);
   const length = (2 * span) / (wholeArcs + 1);
 
@@ -903,14 +921,20 @@ function ripple(
      * And however flat that leaves it, it is still drawn as a wave.
      *
      * Under about a degree there is nothing left to see, and a chain of arcs
-     * that flat is a slower way of writing a straight line -- so this used to
-     * give up and hand the run back straight. How flat the wave is held to is a
-     * question about the pen, though, so giving up was one too: the same run
-     * rippled at one weight and came off straight at the next. Drawing it
-     * forces nothing, since the limit just above still holds every arc to a
-     * radius the pen can turn and a flatter arc is a larger radius.
+     * that flat is a slower way of writing a straight line, so this used to
+     * give up here and hand the run back straight. How flat the wave is held to
+     * is a question about the pen, though -- the cap just above is half a pen
+     * and the clearance -- so giving up was one too: the same run rippled at one
+     * weight and came off straight at the next, ten nodes adrift. It was the
+     * largest thing left on the face by a distance. The `e` family lost its
+     * wave at the Black, and with the accented ones that is thirteen letters;
+     * with the rest it is nineteen.
+     *
+     * Drawing it forces nothing. The cap still holds every arc to a radius the
+     * pen can turn, and a flatter arc is a larger radius; what comes out is a
+     * wave of a degree, which is a straight line with the nodes of a wave --
+     * and the nodes are the point. It costs 21 KiB on a 1.6 MB font.
      */
-    if (turn < 0.02) return [segment];
     radius = length / (4 * Math.sin(turn));
   }
 
