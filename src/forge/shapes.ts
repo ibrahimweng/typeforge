@@ -50,6 +50,21 @@ const TAU = Math.PI * 2;
  */
 const CLEARANCE = 1.06;
 
+/**
+ * The shortest piece of run that still counts as one, in units.
+ *
+ * For the closing stub of a wave with no room left: see `ripple`. It has to
+ * survive being asked whether it goes anywhere, and `hasLength` answers that
+ * against a billionth -- but a billionth is not what it has to clear. The
+ * coordinates it is worked out from are in the hundreds, and this file and the
+ * sweep both test against a billionth in places, so a stub a millionth of a
+ * unit long lands among those tolerances rather than above them: it left six
+ * more of the Wavy's letters standing than a stub a hundredth long. A hundredth
+ * is clear of every tolerance in play and a ten-thousandth of the smallest step
+ * the grid can hold.
+ */
+const A_HAIR = 0.01;
+
 // ---------------------------------------------------------------------------
 // Bowls
 // ---------------------------------------------------------------------------
@@ -659,6 +674,39 @@ function ripple(
    * an odd number of them for the last half to arrive travelling the right way
    * to come back down. A period is two of them.
    */
+  /*
+   * How many, and the one number in the wave that still moves with the pen.
+   *
+   * The count is a rounding of the run's own length, and a run's length is not
+   * a fixed thing: the letter is drawn wider at the Black, so a run bounded by
+   * the letter's edges grows -- a `T` crossbar runs 754 units at the Thin and
+   * 822 at the Black -- while a run bounded by two stems shrinks, a `z` arm
+   * going 355 to 299. Different runs move different ways by different amounts,
+   * so no correction applied here fixes them together. 35 of the 167 runs that
+   * carry more than one hump cross a boundary somewhere on the axis, which is
+   * 26 letters of the 115 the face still leaves standing.
+   *
+   * That it cannot be fixed by counting differently is not a guess. Snapping
+   * down to the nearest odd instead of to the nearest fixes the `T`, `z`,
+   * `four`, `seven` and `numbersign` families and breaks the `Z`, `OE`, `Ш` and
+   * `Θ` families -- 20 letters for 12, a boundary moved rather than removed.
+   * Sweeping the rounding's phase gets 35 down to 22 at an offset of 0.13,
+   * which is a number fitted to this alphabet and nothing else. Counting off
+   * whole wavelengths, or half, or a third, all measure worse.
+   *
+   * And there is a floor under all of it. For a count to hold still it has to
+   * be constant across everything its run's length does, and the median run
+   * moves 2.37 steps of the current quantisation. Coarsen the step until that
+   * fits -- 2.87 times the wavelength -- and every run in the font gets one
+   * hump. Stable and no longer a wave.
+   *
+   * What would fix it is the run's length at one reference weight, which means
+   * drawing the letter twice and matching its runs between the two draws. The
+   * recipes branch on the pen in a few places -- `one`, `zero` and `Ґ` come out
+   * with a different number of runs at different weights -- so the match needs
+   * a fallback, and that is a piece of order-dependent state this file does not
+   * have yet. It is the only thing left that would work.
+   */
   const wanted = Math.max(1, (2 * whole) / wavelength - 2);
   const wholeArcs = Math.max(1, Math.round((wanted - 1) / 2) * 2 + 1);
   const length = (2 * span) / (wholeArcs + 1);
@@ -710,34 +758,8 @@ function ripple(
    * that is settled, and it is why the stubs are not capped -- so where there
    * is nothing left over for the far end, there is no wave.
    */
-  /*
-   * Unless the opening stub has taken the run down to nothing, in which case
-   * there is no wave at all and the run is handed back as it came.
-   *
-   * A stub of no length is not a straight end; it is no end at all.
-   * `endsStraight` walks back past it, meets the wave's own arcs, and reports
-   * the run as finishing on a curve -- so the terminal work goes to the curved
-   * case, and the flag of a Cyrillic `б` at a text weight came off the pen with
-   * a round hook on it, crossing itself.
-   *
-   * Two ways past that were measured and neither survives. Sharing the run
-   * between the two corners in proportion gives the far end its stub and takes
-   * the near one's room away: the cut it needs then fails and a `bracketright`
-   * folds instead. Standing the stall at the near end rather than the far one
-   * leaves the whole run as one straight stub and fixes both -- and a corner
-   * only asks for a lot of room when it has a neighbour, so that end is one the
-   * letter does not finish on -- but where both corners want more than the run
-   * has, which is a `Z` at two hundred and sixty units of stem, the extra
-   * pieces land inside the corner work and the letter folds there instead.
-   *
-   * So: this case gives up, and the count moves with the pen here and nowhere
-   * else in the wave. It is worth 57 letters -- the Wavy reaches 58 left
-   * standing with the stall applied here too, against 115 with this line --
-   * and none of the three ways of collecting them keeps every letter whole.
-   */
   let turn: number;
   let radius: number;
-  if (length < 1e-9 && closing < 1e-9) return [segment];
   if (length < 1e-9) {
     /*
      * A wave with nothing left to wave in is drawn as a wave of nothing.
@@ -803,7 +825,30 @@ function ripple(
   }
 
   const along = at(dx / whole, dy / whole);
-  const opens = at(segment.from.x + along.x * opening, segment.from.y + along.y * opening);
+  /*
+   * Where a stall stands, when the opening corner has taken the whole run.
+   *
+   * A stub of no length is not a straight end, it is no end at all:
+   * `endsStraight` walks back over it, meets the wave's own arcs, and reports
+   * the run as finishing on a curve, so the terminal work goes to the curved
+   * case. The flag of a Cyrillic `б` at a text weight then came off the pen
+   * with a round hook on it, crossing itself. All the closing stub needs is to
+   * be a length, so it is given the shortest one that counts and the opening
+   * corner keeps the rest of the run.
+   *
+   * Everything else tried here moves the stall inward instead, and every one of
+   * them folds a letter -- because the sweep cuts a corner by crossing the
+   * offsets of the two pieces that meet there, and gives up when the crossing
+   * lands past the end of one of them. Shortening the piece a corner is cut
+   * against is exactly what moving the stall inward does. Sharing the run
+   * between the two corners in proportion folds a `bracketright` at 190 units
+   * of stem; standing the stall at the near end folds a `Z` at 260; standing it
+   * at the middle of the run folds a `bracketleft` at 260. Which way the stall
+   * bends changes none of them: all three fold with its side pinned,
+   * alternating, or following the wave.
+   */
+  const beside = span < 1e-9 && closing < 1e-9 ? Math.max(0, whole - A_HAIR) : opening;
+  const opens = at(segment.from.x + along.x * beside, segment.from.y + along.y * beside);
 
   const out: SpineSegment[] = [{ kind: "line", from: segment.from, to: opens }];
   /*
