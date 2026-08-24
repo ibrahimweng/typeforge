@@ -1296,12 +1296,23 @@ function openBowl(
   halfHeight = halfWidth,
   fromDegrees = 55,
   toDegrees = 305,
+  /**
+   * Carried this much further round, after the aperture has had its say.
+   *
+   * For a bowl that is meant to end up somewhere in particular rather than
+   * merely to end: the G's has to reach the far side of its own bar. Written
+   * into `toDegrees` the aperture eats it, because the aperture is applied to
+   * the gap and the gap is measured between the two angles it is given -- so
+   * asking for a bowl that runs eight degrees past its start opens the gap
+   * eight degrees wider and the bowl ends where it always did.
+   */
+  carry = 0,
 ): Stroke {
   uses("bowl");
   const [from, to] = opening(f, centre, halfHeight, fromDegrees, toDegrees);
   return ink(
     f,
-    bowlBetween(centre, halfWidth, halfHeight, 1 - f.square, f.half, from, to),
+    bowlBetween(centre, halfWidth, halfHeight, 1 - f.square, f.half, from, to + carry),
     f.end,
     f.end,
   );
@@ -2565,7 +2576,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     return finish(
       f,
       [
-        openBowl(f, centre, f.capBowl, f.capBowlH, opens, 360 + past),
+        openBowl(f, centre, f.capBowl, f.capBowlH, opens, 360, past),
         ink(f, straight(at(right, centre.y), at(right - f.capBowl * 0.55, centre.y)), BUTT, f.end),
       ],
       true);

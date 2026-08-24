@@ -172,27 +172,44 @@ describe("the weight axis, and the letters that cannot follow it", () => {
    * it by a radius the pen sets. `roundCorners` in `shapes.ts` carries the
    * measurement and what stands in the way of collecting it.
    */
-  const KNOWN = [
-    "G",
-    "Gbreve",
-    "Gcircumflex",
-    "Gcommaaccent",
-    "Gdotaccent",
-    "ae",
-    "ampersand",
-    "at",
-    "nine",
-    "\u0417",
-    "\u0437",
-  ];
-
-  it("names every letter that is left standing, and no others", async () => {
+  /*
+   * And the last eleven came off when a bowl stopped being allowed to begin its
+   * list of pieces wherever the aperture happened to fall.
+   *
+   * A bowl is cut into nine pieces and a run is cut out of those nine. A run
+   * that does not cross the seam they are cut at reads round from the first
+   * piece however far it reaches, because the pieces it misses stall at the
+   * head. A run that does cross it cannot: the list has to begin where the run
+   * begins, so a bowl whose aperture moves onto the next piece as the pen
+   * widens comes back with the same nine pieces in a different order.
+   *
+   * The `G` is the plainest of the eleven. Its bowl is carried past its own
+   * start so the bar has ink to sit in, and the aperture opens as the pen
+   * widens: the run begins on the second piece at the Thin, the Regular and the
+   * Bold, and on the third at the Black -- the same twenty nodes rotated by
+   * one. So the drawn weight writes down which piece it began on and every
+   * other master begins on the same one: `begun` in `shapes.ts`, which is the
+   * arrangement `WaveBook` already makes for how many humps a wave has.
+   *
+   * The `ae`, `ampersand`, `at`, `nine`, `\u0417` and `\u0437` are the same fault in bowls
+   * that are not carried past anything -- they cross the seam because their
+   * apertures are not near it -- and the five `G`s are one letter drawn five
+   * times. Nothing else in this face is left.
+   */
+  it("leaves no letter standing at all", async () => {
     const forge = { ...startFrom(SANS), family: { drawn: 400, also: [100, 700, 900] } };
     const delivered = await deliver(forge, { familyName: "Probe", format: "ttf", variable: true });
 
-    expect([...delivered.held].sort()).toEqual([...KNOWN].sort());
-    // And the note the export shows says so rather than saying nothing.
-    expect(delivered.notes.join(" ")).toContain("follow the axis only part of the way");
+    /*
+     * That the whole family was drawn, before anything is read into an empty
+     * list: nothing standing and nothing drawn look the same from here.
+     */
+    expect(delivered.members.map((one) => one.weight)).toEqual([100, 400, 700, 900]);
+    expect(delivered.bytes.length).toBeGreaterThan(100_000);
+
+    expect(delivered.held).toEqual([]);
+    // And with nothing held there is nothing to say about it.
+    expect(delivered.notes.join(" ")).not.toContain("follow the axis only part of the way");
   }, 300_000);
 
   /*
@@ -216,29 +233,35 @@ describe("the weight axis, and the letters that cannot follow it", () => {
    * were answered by measuring against the pen. The Psychedelic puts a ball on
    * every open end, and dropped it wherever the room for it ran out.
    *
-   * Measured at 28, 30, 30, 15, 15 and 196. A little over each, the same way
-   * the cast layer's point budget is set, and nothing like room for one to
-   * double.
+   * Every one of them then moved again when bowls stopped beginning their lists
+   * wherever the aperture fell -- see the test above, and `begun` in
+   * `shapes.ts`. Across the sixteen faces that took 294 letter-face pairs to
+   * 88, and six of the sixteen to none at all: the Sans, the Grotesque, the
+   * Geometric, the Fairground, and all but one letter of the Ribbon, the
+   * Technical and the Marker.
+   *
+   * Measured at 1, 1, 21, 5, 6 and 3. A little over each, the same way the
+   * cast layer's point budget is set, and nothing like room for one to double.
    */
   it("keeps the faces that round their corners and their ends on the axis too", async () => {
     for (const [name, most] of [
-      ["Ribbon", 33],
-      ["Technical", 35],
-      ["Display", 35],
+      ["Ribbon", 4],
+      ["Technical", 4],
+      ["Display", 26],
       /*
        * The Slab, 64 to 15, and with it the Typewriter 50 to 13, the Serif 40
        * to 13, the Didone 40 to 11, the Flared 56 to 30 and the Brush 37 to 31:
        * every face that hangs a shape on the end of a straight run. What is
        * left is the Sans's own eleven and four more.
        */
-      ["Slab", 19],
+      ["Slab", 8],
       /*
        * And the Psychedelic, 74 to 15, which is the ball. Five of the fifteen
        * left are still the ball, refused at one weight and drawn at the next
        * because `onALine` measures the upright share of a slanted pen; see
        * there for the measurement, and for what asking it the other way cost.
        */
-      ["Psychedelic", 19],
+      ["Psychedelic", 9],
       /*
        * And the Wavy, still the worst of the sixteen. Its whole idea is that
        * every run lying flat ripples, and both halves of that move with the
@@ -270,7 +293,16 @@ describe("the weight axis, and the letters that cannot follow it", () => {
        * 290 to 208 to 196 to 115 to 58 to 32 to 12, which is the eleven every
        * face inherits from the Sans and one more.
        */
-      ["Wavy", 16],
+      ["Wavy", 6],
+      /*
+       * And the two worst left, which are neither corners nor ends: the Brush
+       * at 23 and the Flared at 8. Both hang their own shape on a stroke -- the
+       * Brush a swelling and the Flared a splay -- and both are on this list so
+       * that what is left of them is a number somebody can watch rather than a
+       * face nobody measured.
+       */
+      ["Brush", 27],
+      ["Flared", 12],
     ] as const) {
       const base = BASES.find((one) => one.name === name)!;
       const forge = { ...startFrom(base), family: { drawn: 400, also: [100, 700, 900] } };

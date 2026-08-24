@@ -139,7 +139,7 @@ async function varying(
    * number of them at the two ends: 26 of the Wavy's letters, and no way to
    * count differently that does not move the boundary rather than remove it.
    */
-  const waves: WaveBook = { lengths: new Map(), recording: true };
+  const waves: WaveBook = { lengths: new Map(), bowls: new Map(), recording: true };
 
   const drawing = async (weight: number) =>
     await toTypeface(weighted(forge, weight), {

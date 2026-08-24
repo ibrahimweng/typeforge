@@ -80,6 +80,11 @@ export interface WaveBook {
    * wave at all.
    */
   lengths: Map<string, Array<number | null>>;
+  /**
+   * One entry per bowl a letter draws, in order: which of the pieces the bowl
+   * is cut into the drawn weight began its list with. See `begun`.
+   */
+  bowls: Map<string, number[]>;
   /** Taking them down, rather than reading them back. */
   recording: boolean;
 }
@@ -87,6 +92,7 @@ export interface WaveBook {
 let book: WaveBook | null = null;
 let bookAt = "";
 let bookCursor = 0;
+let bowlCursor = 0;
 
 /**
  * Start or stop keeping the book, handing back whatever was open before.
@@ -105,6 +111,7 @@ export function openWaveBook(next: WaveBook | null): WaveBook | null {
   book = next;
   bookAt = "";
   bookCursor = 0;
+  bowlCursor = 0;
   return was;
 }
 
@@ -112,6 +119,7 @@ export function openWaveBook(next: WaveBook | null): WaveBook | null {
 export function waveBookAt(name: string): void {
   bookAt = name;
   bookCursor = 0;
+  bowlCursor = 0;
 }
 
 /**
@@ -148,6 +156,24 @@ function counted(mine: number | null): number | null {
     return mine;
   }
   const list = book.lengths.get(bookAt);
+  return at < (list?.length ?? 0) ? list![at] : mine;
+}
+
+/**
+ * The piece this bowl's list of pieces begins with: the drawn weight's, or its
+ * own. The same arrangement `counted` makes for waves, and for the same reason.
+ */
+function begun(mine: number): number {
+  if (!book) return mine;
+  const at = bowlCursor;
+  bowlCursor += 1;
+  if (book.recording) {
+    const list = book.bowls.get(bookAt);
+    if (list) list.push(mine);
+    else book.bowls.set(bookAt, [mine]);
+    return mine;
+  }
+  const list = book.bowls.get(bookAt);
   return at < (list?.length ?? 0) ? list![at] : mine;
 }
 
@@ -311,6 +337,27 @@ export function bowlBetween(
   while (last + 1 < walk.length && walk[last + 1].piece) last++;
 
   /*
+   * Never the whole loop at once.
+   *
+   * The walk is two laps so that a run crossing the seam its pieces are cut at
+   * is not cut in half by it. A run that reaches all the way back round is then
+   * offered a piece twice -- once cut at its own start, once at its own end --
+   * and both are real, because the run does cover both parts. What they cannot
+   * do is be counted, and worse, a run holding every piece leaves the list no
+   * slack: the list has to begin on the piece the run begins on, and which
+   * piece that is, is a question about the aperture, and the aperture is a
+   * question about the pen.
+   *
+   * So a run is never more slots than the loop has pieces. What it covers past
+   * that -- and what it covers outside the list when the list has to begin
+   * somewhere else, below -- is given up. On the G, which is the letter this is
+   * for, that is six tenths of a degree at the Regular and seven and a half at
+   * the Black: three and a half units and thirty-five, on a bar standing forty-
+   * two and a hundred and three proud of the bowl either way.
+   */
+  last = Math.min(last, first + loop.length - 1);
+
+  /*
    * The pieces the run does not reach, put back with no length in them.
    *
    * A run is cut out of the same nine pieces however far round it goes, and how
@@ -398,34 +445,54 @@ export function bowlBetween(
   const outHead = along(first, 1, "start");
   const outTail = along(last, -1, "end");
 
-  const chosen = new Map<number, SpineSegment>();
-  for (let index = 0; index < loop.length; index++) {
-    if (walk.slice(first, last + 1).some((slot) => slot.index === index)) continue;
-    // Of the two places the walk offers this piece, the one nearer the run.
-    let where = -1;
-    let nearest = Infinity;
-    for (let slot = 0; slot < walk.length; slot++) {
-      if (walk[slot].index !== index) continue;
-      const gap = slot < first ? first - slot : slot - last;
-      if (gap < nearest) {
-        nearest = gap;
-        where = slot;
-      }
-    }
-    chosen.set(
-      where,
-      where < first ? stall(head, outHead, loop[index]) : stall(tail, outTail, loop[index]),
-    );
-  }
+  /*
+   * Which piece the list begins with.
+   *
+   * A run that does not cross the seam begins on the first piece, whatever the
+   * pen: the pieces it never reaches stall at the head and the list reads round
+   * the loop from nought. A run that does cross it cannot -- the list has to
+   * begin where the run begins, so a bowl whose aperture moves onto the next
+   * piece as the pen widens comes back with the same nine pieces in a different
+   * order, and one weight's list cannot be laid over another's.
+   *
+   * The G is the letter this is about. Its bowl is carried past its own start
+   * so the bar has ink to sit in, so it crosses the seam at every weight, and
+   * its aperture opens as the pen widens: the run begins on the second piece at
+   * the Thin, the Regular and the Bold, and on the third at the Black, which is
+   * the same twenty nodes in an order rotated by one. Five letters with the
+   * accented forms, on all sixteen faces, because every face is a Sans with its
+   * parts moved: eighty of the two hundred and ninety-four left standing.
+   *
+   * So the drawn weight writes down which piece it began on and the others
+   * begin on the same one, which is the arrangement `WaveBook` already makes
+   * for how many humps a wave has. A weight whose run really begins later gives
+   * up the piece it would have started on, and one whose run begins earlier
+   * stalls the pieces in between at the head, where they were going anyway.
+   */
+  const at0 = ((first % loop.length) + loop.length) % loop.length;
+  const asked = begun(at0);
+  /*
+   * Of the two laps that begin on the asked-for piece, the one that holds more
+   * of the run. Starting before the run stalls the pieces in between at the
+   * head and gives up the same number off the tail; starting after it gives up
+   * the head instead. They are only ever both wrong when the run covers every
+   * piece, and then the smaller loss wins.
+   */
+  const back = first - ((((first - asked) % loop.length) + loop.length) % loop.length);
+  const kept = (at: number) => Math.min(last, at + loop.length - 1) - Math.max(first, at) + 1;
+  const from = kept(back) >= kept(back + loop.length) ? back : back + loop.length;
 
   const segments: SpineSegment[] = [];
-  for (let slot = 0; slot < walk.length; slot++) {
-    if (slot >= first && slot <= last) {
-      if (walk[slot].piece) segments.push(walk[slot].piece!);
+  for (let slot = from; slot < from + loop.length; slot++) {
+    const piece = slot >= first && slot <= last ? walk[slot].piece : null;
+    if (piece) {
+      segments.push(piece);
       continue;
     }
-    const stalled = chosen.get(slot);
-    if (stalled) segments.push(stalled);
+    const index = ((slot % loop.length) + loop.length) % loop.length;
+    segments.push(
+      slot < first ? stall(head, outHead, loop[index]) : stall(tail, outTail, loop[index]),
+    );
   }
   return { segments, closed: false };
 }
