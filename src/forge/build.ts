@@ -24,7 +24,7 @@ import { reachesCast, type Cast } from "./cast";
 import { reaches, scaleOf, type Cuts } from "./cut";
 import { shapedInk } from "./layers";
 import { assemble, hasTiles, type Kit } from "./kit";
-import { alongSpine, endPieces, spinePath, wavy } from "./shapes";
+import { alongSpine, endPieces, endsStraight, spinePath, wavy } from "./shapes";
 import { penReach, reachAlong, sweep } from "./sweep";
 import type { Style } from "./style";
 import type { Stroke, Terminal } from "./types";
@@ -574,6 +574,18 @@ function inkOf(stroke: Stroke, style: Style): Contour[] {
 }
 
 /**
+ * A ball with nowhere to go, in units.
+ *
+ * Not zero, which would be the obvious way to say it and does not survive the
+ * trip: a disc of no radius comes off the sweep with its caps collapsed and
+ * its handles in a different order, so the same six nodes stop lining up with
+ * the six of a ball that has room, which is the disagreement this is here to
+ * end. One unit sweeps as a disc, rounds to four distinct points on the grid,
+ * and is a fiftieth of a hairline wide.
+ */
+const BURIED = 1;
+
+/**
  * The balls on one stroke: a disc closing off an end that stops in mid-air.
  *
  * Drawn as a stroke going nowhere with a round cap on each end, which is how
@@ -622,14 +634,41 @@ function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
       const lean = 1 + outward.y * drop;
       return lean > 1e-6 ? (limit - at.y) / lean : Infinity;
     };
-    const held = Math.min(radius, spare(band.yMax), spare(-band.yMin + 2 * at.y));
-    // Below a stroke's own width there is nothing of the ball left outside the
-    // stroke to see, and what is left reads as a lump rather than a terminal.
-    if (held < penReach(stroke.pen).across) continue;
-    const middle = {
-      x: at.x + outward.x * held * drop,
-      y: at.y + outward.y * held * drop,
-    };
+    const room = Math.min(radius, spare(band.yMax), spare(-band.yMin + 2 * at.y));
+    /*
+     * A ball with no room for it is drawn buried, rather than not drawn.
+     *
+     * Below a stroke's own width there is nothing of the ball left outside the
+     * stroke to see, and what is left reads as a lump rather than a terminal.
+     * That judgement stands; what was wrong was to skip the shape when it
+     * failed, because how much room there is moves with the pen. A Psychedelic
+     * C opens its aperture as the pen widens -- it has to, or a heavy one fuses
+     * shut -- and opening it swings the terminal round toward the top of the
+     * bowl, where there is no headroom left. So the ball was there at the Thin
+     * and the Regular and gone by the Bold, and a letter drawn with a different
+     * number of shapes at different weights cannot follow the axis at all:
+     * 74 of the Psychedelic's letters were being left standing at whichever
+     * weight they happened to agree with.
+     *
+     * Buried, it is the same answer the spine gives for a piece it does not
+     * reach -- kept, standing still, taking no room -- and it draws what
+     * dropping it drew, because a disc two units across inside a stroke three
+     * hundred wide is nothing to see. What it buys is a ball that shrinks down
+     * the slider between two weights instead of one that vanishes between them.
+     */
+    const buried = room < penReach(stroke.pen).across;
+    const held = buried ? BURIED : room;
+    const middle = buried
+      ? /*
+         * Set back along the stroke by its own radius, so that the far edge of
+         * it lands on the end of the spine and no part of it is outside ink the
+         * stroke has already laid down. Left where a ball goes, it showed: a
+         * unit and a half of halo on the bounds of a Psychedelic t and J, which
+         * is nothing to look at and is still the letter changing shape for a
+         * shape that is meant not to be there.
+         */
+        { x: at.x - outward.x * held, y: at.y - outward.y * held }
+      : { x: at.x + outward.x * held * drop, y: at.y + outward.y * held * drop };
     out.push(
       ...sweep({
         spine: {
@@ -663,6 +702,25 @@ function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
  */
 function onALine(stroke: Stroke, at: Vec2, outward: Vec2, style: Style): boolean {
   const { metrics } = style;
+  /*
+   * The up-and-down part of the ink, and not the whole of it.
+   *
+   * This one does move a little with the pen, and the alternative measured
+   * worse. A pen with contrast lies across a stroke at an angle, so the share
+   * of it pointing up shrinks as the stroke turns: the foot of a Psychedelic
+   * Omega stands 8 units off the baseline at the Thin and 72 at the Black,
+   * against an upright share of 8 and 53. Level at the Thin and well short by
+   * the Black, so the ball on it is refused at one weight and drawn at the
+   * next, and the Omega, delta, zeta and Ghe-with-upturn are four of the
+   * fifteen the Psychedelic still leaves standing.
+   *
+   * Asked of the whole width across the stroke instead -- which is the
+   * measurement `standingOn` uses, and would have made the two rules agree --
+   * the Omega came right and fourteen other letters went wrong, because that
+   * measurement runs the other way past what the ink really reaches: 138 units
+   * against 72 at the Black. The Psychedelic went from 15 letters standing to
+   * 29. Under-counting is the cheaper of the two mistakes here.
+   */
   const reaches = Math.abs(
     reachAlong({ x: -outward.y, y: outward.x }, penReach(stroke.pen)).y,
   );
@@ -716,7 +774,7 @@ function flaresFor(stroke: Stroke, style: Style): Contour[] {
       // A flare never crosses a line the stroke is standing on, which is the
       // same rule a serif follows and for the same reason: one of its two
       // sides would hang under the baseline the letter is standing on.
-      if (crossesALine(at, facing, side, inner + reach, style)) continue;
+      if (crossesALine(at, facing, side, inner + reach, inner, style)) continue;
       // Wound with the stroke it swells, or it would cancel the ink it is
       // meant to be adding to and open a hole where the two overlap.
       const shape = flare(at, facing, side, inner, reach, back, curve);
@@ -875,7 +933,7 @@ function serifsFor(stroke: Stroke, style: Style): Contour[] {
        * the foot of an L turns up. It falls out of one rule rather than a list
        * of letters, so a letter that gains an arm tomorrow gets it too.
        */
-      if (crossesALine(at, facing, side, tip, style)) continue;
+      if (crossesALine(at, facing, side, tip, inner, style)) continue;
       /*
        * A face that undulates undulates here too, and the only way to say that
        * is to draw the bar as a stroke rather than as a shape.
@@ -902,7 +960,14 @@ function serifsFor(stroke: Stroke, style: Style): Contour[] {
 }
 
 /** Whether this wing would reach past a line the stroke end is sitting on. */
-function crossesALine(at: Vec2, outward: Vec2, side: number, tip: number, style: Style): boolean {
+function crossesALine(
+  at: Vec2,
+  outward: Vec2,
+  side: number,
+  tip: number,
+  inner: number,
+  style: Style,
+): boolean {
   const { metrics } = style;
   const across = { x: -outward.y * side, y: outward.x * side };
   const far = at.y + across.y * tip;
@@ -937,11 +1002,31 @@ function crossesALine(at: Vec2, outward: Vec2, side: number, tip: number, style:
    */
   return lines.some(
     ([line, inward]) =>
-      Math.abs(at.y - line) < tip &&
+      standingOn(at.y, line, inner) &&
       Math.abs(across.y) > 0.8 &&
       (far - line) * inward < 0,
   );
 }
+
+/**
+ * Whether a stroke sitting at this height is standing on this line.
+ *
+ * Asked of the stroke's edge rather than of its spine, because an arm drawn
+ * along the cap line has its spine half the arm's own width below it: the two
+ * are the same question asked about different things, and only the edge
+ * touches. Reaching past the line counts as standing on it, so that a round
+ * letter's overshoot does not read as clearance.
+ *
+ * Asked instead as "is the line within the serif's reach" -- which is what
+ * this was -- the answer moved with the pen, because the serif's reach is the
+ * pen. The middle arm of a Slab E is 154 units clear of the x-height at every
+ * weight; by the Black the reach had grown to 277, so the arm was ruled to be
+ * standing on a line it is nowhere near and lost the wing it wears at every
+ * other weight. Both sides of this one grow together, which is what makes the
+ * answer the same at every weight.
+ */
+const standingOn = (height: number, line: number, inner: number): boolean =>
+  Math.abs(height - line) <= inner + Math.max(1, inner * 0.02);
 
 /** Whether this face has a wave for a flat run to follow. */
 function waving(style: Style): boolean {
@@ -1054,9 +1139,13 @@ function endsOf(stroke: Stroke): Array<[Terminal, Vec2, Vec2, boolean]> {
     ? unit(last.from, endPoint, 1)
     : tangentOnArc(last.endAngle, last.sweepPositive, 1);
 
+  // Which piece a run ends on and whether it ends straight are two questions:
+  // see `endsStraight`. The first is asked of a piece that goes somewhere, the
+  // second of the run's own end, stalls and all.
+  const straight = endsStraight(stroke.spine);
   return [
-    [stroke.start, startPoint, startOut, first.kind === "line"],
-    [stroke.end, endPoint, endOut, last.kind === "line"],
+    [stroke.start, startPoint, startOut, straight.start],
+    [stroke.end, endPoint, endOut, straight.end],
   ];
 }
 
