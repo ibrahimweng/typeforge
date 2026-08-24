@@ -762,8 +762,17 @@ function flaresFor(stroke: Stroke, style: Style): Contour[] {
      * as the stroke thickening -- the c, e, s, C, G and S all came out looking
      * chipped. A curved terminal is finished by the terminal, which is what
      * the terminal is for.
+     *
+     * A curved end swells by nothing rather than not being drawn, for the same
+     * reason the refusal below does. Whether a bowl's run ends on a straight
+     * piece or a curved one is a fair question about the drawing and the answer
+     * really does move with the pen -- a bowl wide enough to have flat sides
+     * ends on one, and the same bowl drawn as a circle ends on the arc beside
+     * it -- so a face that swells its ends draws letters with two more contours
+     * at one weight than at the next. The Brush's `three`, `\u00e6` and `\u03c2` and the
+     * Flared's `three` and `sterling` are all this.
      */
-    if (!straightEnd) continue;
+    const swelling = straightEnd;
     // And only a real end. The arm of an E begins inside the stem and the eye
     // of an e inside the bowl; swelling those puts the shape in the counter.
     if (terminal.open !== true) continue;
@@ -775,13 +784,40 @@ function flaresFor(stroke: Stroke, style: Style): Contour[] {
     const reach = spread * stem;
     const back = depth * stem;
     for (const side of [1, -1]) {
-      // A flare never crosses a line the stroke is standing on, which is the
-      // same rule a serif follows and for the same reason: one of its two
-      // sides would hang under the baseline the letter is standing on.
-      if (crossesALine(at, facing, side, inner + reach, inner, style)) continue;
+      /*
+       * A flare never crosses a line the stroke is standing on, which is the
+       * same rule a serif follows and for the same reason: one of its two
+       * sides would hang under the baseline the letter is standing on.
+       *
+       * Refused, it swells by nothing rather than not being drawn. Whether it
+       * crosses is measured from the stroke's own half width, which is the pen,
+       * so a flare dropped here is a contour the letter has at one weight and
+       * not at the next: the Brush's `one` came back with six contours at the
+       * Thin and five at the Bold, the `\u0490` with eleven, ten and eleven across the
+       * four, and neither can be laid over the other. Drawn on one spot instead
+       * it is the same shape the Psychedelic's ball takes when the room for it
+       * runs out, and for the same reason.
+       */
+      const refused =
+        !swelling || crossesALine(at, facing, side, inner + reach, inner, style);
+      /*
+       * Refused, the swelling reaches nowhere and is a unit deep, which puts
+       * all four of its nodes on the stroke's own end inside ink that is
+       * already there.
+       *
+       * Reach alone is not enough: a flare of no reach still runs back up the
+       * stroke by its full depth, and on a curved end the stroke curves away
+       * from that while the shape does not, so the Brush's `c` crested fifty-
+       * two units above its own line and its `C` stopped lining up with its
+       * `I`. Depth of nothing is not enough either -- that is a shape with no
+       * area, which this face is not allowed to draw. A unit is the same
+       * measure and the same reasoning as `BURIED` above.
+       */
+      const swells = refused ? 0 : reach;
+      const deep = refused ? BURIED : back;
       // Wound with the stroke it swells, or it would cancel the ink it is
       // meant to be adding to and open a hole where the two overlap.
-      const shape = flare(at, facing, side, inner, reach, back, curve);
+      const shape = flare(at, facing, side, inner, swells, deep, curve);
       out.push(contourArea(shape) < 0 ? reverseContour(shape) : shape);
     }
   }
@@ -872,8 +908,15 @@ function serifsFor(stroke: Stroke, style: Style): Contour[] {
      * Serif faces finish a curved terminal differently -- flared, or with a
      * ball -- and until there is a shape for that, the plain terminal the style
      * already specifies is the honest answer.
+     *
+     * Refused, the wing is drawn on the stroke's own end rather than not drawn,
+     * exactly as a refused flare is -- see below for the shape it takes.
+     * Whether a run ends on a straight piece is a fair question with an answer
+     * that moves with the pen, and a face that hangs a serif on every straight
+     * end otherwise draws letters with two more contours at one weight than at
+     * the next.
      */
-    if (!straightEnd) continue;
+    const winged = straightEnd;
     const projection = terminal.projection ?? 0;
     const thickness = terminal.thickness ?? 0;
     if (projection <= 0 || thickness <= 0) continue;
@@ -917,11 +960,7 @@ function serifsFor(stroke: Stroke, style: Style): Contour[] {
     // the projection beyond it. Measured from the stem so that every serif in
     // the face is the same size, and from the stroke where the stroke is the
     // wider of the two, or the wing would begin inside the ink it sits on.
-    const tip = Math.max(reference, inner) + projection;
-    if (tip <= inner) continue;
-    // Never fillet more than the wing is deep or wide, or the curve would have
-    // to begin before the serif does.
-    const bracket = Math.min(terminal.bracket ?? 0, thickness, tip - inner);
+    const full = Math.max(reference, inner) + projection;
     for (const side of [1, -1]) {
       /*
        * A serif never crosses a line the stroke it belongs to is standing on.
@@ -937,7 +976,38 @@ function serifsFor(stroke: Stroke, style: Style): Contour[] {
        * the foot of an L turns up. It falls out of one rule rather than a list
        * of letters, so a letter that gains an arm tomorrow gets it too.
        */
-      if (crossesALine(at, facing, side, tip, inner, style)) continue;
+      /*
+       * Both refusals leave the wing drawn on the stroke's own end instead:
+       * from the spine out to the edge, and a unit deep. Which is the shape a
+       * refused flare takes and for the same reasons -- it begins on the spine,
+       * so it is buried in ink whichever way the stroke was going, and a unit
+       * of depth is little enough that a curved end cannot curve away from it.
+       *
+       * Proud of the edge by a unit rather than buried in it was tried first
+       * and is worse than it sounds: a unit past the baseline is exactly the
+       * tolerance the letters are held to, and on a curve the edge is not where
+       * `halfWidthAcross` says it is -- the Slab's `s` crested twelve units
+       * above its own line and the Didone's `c` and `e` came apart into two
+       * pieces, the wing floating clear of the stroke it belonged to.
+       *
+       * The `one` and the `\u0490` are this refusal on five faces apiece, and so is
+       * the Slab's `\u00e6`, the Didone's `\u0431` and the Serif's whole G family.
+       */
+      const refused = !winged || crossesALine(at, facing, side, full, inner, style);
+      const from = refused ? 0 : inner;
+      const tip = refused ? inner : full;
+      const deep = refused ? BURIED : thickness;
+      /*
+       * Never fillet more than the wing is deep or wide, or the curve would
+       * have to begin before the serif does. Measured against whichever wing is
+       * being drawn, so that a refused one is filleted if the face fillets:
+       * held at nought instead it comes off the pen with the same four nodes
+       * carrying no handles, and a list that agrees on how many nodes it has
+       * and disagrees on which of them are curves is no use either -- the
+       * Serif, the Didone, the Slab and the Typewriter all stayed exactly where
+       * they were.
+       */
+      const bracket = Math.min(terminal.bracket ?? 0, deep, tip - from);
       /*
        * A face that undulates undulates here too, and the only way to say that
        * is to draw the bar as a stroke rather than as a shape.
@@ -951,8 +1021,8 @@ function serifsFor(stroke: Stroke, style: Style): Contour[] {
        * and what they do have is feet that ripple.
        */
       const shape: Contour[] = waving(style)
-        ? sweptWing(stroke, style, at, facing, side, inner, tip, thickness)
-        : [wing(at, facing, side, inner, tip, thickness, bracket)];
+        ? sweptWing(stroke, style, at, facing, side, from, tip, deep)
+        : [wing(at, facing, side, from, tip, deep, bracket)];
       for (const piece of shape) {
         // Wound with the strokes it sits on, or the serif would cancel the stem
         // it is attached to rather than adding to it.

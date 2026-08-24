@@ -383,6 +383,34 @@ function kinksOf(headed: Headed[], closed: boolean): Kink[] {
      * so more sharply than the first: the Display comes down from 119 letters
      * left standing to 107, and the Ribbon goes up from 28 to 100 and the
      * Technical from 30 to 64. It is not a fix, it is a face traded for two.
+     *
+     * Measured a third time once the bowls and the flares had stopped moving,
+     * it says the same thing louder: the Display 21 to 5, the Ribbon 1 to 74,
+     * the Technical 1 to 36, and the sixteen faces together 76 to 168.
+     *
+     * And there is a reason it cannot be right, which is worth writing down
+     * because it also says what is really going on. A corner that is rounded is
+     * three pieces with two junctions and neither of them turns; the same
+     * corner left sharp is two pieces with one junction and it does turn. As
+     * things are those come to the same three pieces of offset either way,
+     * which is why a face that rounds its corners only where the pen leaves
+     * room can round some of them and not others and still be drawn with the
+     * same nodes at every weight. A wedge at every junction breaks that balance
+     * -- five against three -- and the balance is worth more than the corners
+     * it leaves ragged.
+     *
+     * The ragged ones are real, though. A corner whose shorter leg the trim
+     * eats whole stops turning, because a piece standing still reports its
+     * neighbour's heading, and the Display's brackets and its `\u00ac` lose four
+     * nodes at the weights where that happens. Two ways of telling the junction
+     * what the leg used to be were built and thrown away: a hair of length put
+     * back on the swallowed piece takes the Display 21 to 61, because length is
+     * the answer to "does this piece go anywhere" and a great deal downstream
+     * asks that and means it; the direction remembered on the piece instead
+     * takes it 21 to 58, and restricting that to corners between two lines
+     * takes the whole sixteen faces from 76 to 76 -- the brackets, the `\u00ac`, the
+     * `\u0431` and the two omegas come off the Display's list and its G family, `\u00e6`,
+     * `\u03c2` and `onehalf` go on. Neither is here.
      */
     if (Math.abs(turn) < 1e-9 && along > 0) continue;
     found.push({ before: index, after: next, at: segmentEnd(segments[index]), turn });

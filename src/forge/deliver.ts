@@ -48,15 +48,31 @@ export async function deliver(
 
   const written: Array<{ weight: number; styleName: string; fileName: string; bytes: Uint8Array }> =
     [];
-  for (const weight of weights) {
+  /*
+   * The same book the variable font keeps, kept for the separate files too.
+   *
+   * Not because a static font needs its masters to line up -- it has none --
+   * but because these are the same family written two ways, and a family whose
+   * Black `c` has a serif in one file and not in the other is two families. The
+   * book decides where a bowl's list of pieces begins, and what a run ends on
+   * decides how it is finished; see `begun` in `shapes.ts`.
+   *
+   * A family of one weight records its own page and reads it back, which is the
+   * same drawing it would have had without a book at all.
+   */
+  const waves: WaveBook = { lengths: new Map(), bowls: new Map(), recording: true };
+  const order = [family.drawn, ...weights.filter((weight) => weight !== family.drawn)];
+  for (const weight of order) {
     const member = memberOf(familyName, weight);
     const typeface = await toTypeface(weighted(forge, weight), {
       familyName,
       styleName: member.styleName,
       weightClass: weight,
+      waves,
       merge: true,
       kern: true,
     });
+    waves.recording = false;
     const result = await exportFont(typeface, {
       format: options.format,
       // Nothing to preserve: there was never a source font.
@@ -71,6 +87,10 @@ export async function deliver(
       bytes: result.bytes,
     });
   }
+
+  // Back into the order somebody asked for, since the drawn weight was drawn
+  // first so that it could write the book rather than because it comes first.
+  written.sort((one, other) => weights.indexOf(one.weight) - weights.indexOf(other.weight));
 
   const members = written.map(({ weight, styleName, fileName }) => ({
     weight,
@@ -139,7 +159,7 @@ async function varying(
    * number of them at the two ends: 26 of the Wavy's letters, and no way to
    * count differently that does not move the boundary rather than remove it.
    */
-  const waves: WaveBook = { lengths: new Map(), recording: true };
+  const waves: WaveBook = { lengths: new Map(), bowls: new Map(), recording: true };
 
   const drawing = async (weight: number) =>
     await toTypeface(weighted(forge, weight), {

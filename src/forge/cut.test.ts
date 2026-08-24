@@ -322,7 +322,13 @@ describe("motif", () => {
       }
     }
     expect(severed).toEqual([]);
-  });
+    /*
+     * Said out loud, because eleven shapes cut out of five letters on four
+     * faces is three and a half seconds of drawing and the default is five.
+     * Left to the default it passed on a quiet machine and failed on a busy
+     * one, which is a test that reports the load rather than the code.
+     */
+  }, 30_000);
 
   it("leaves a letter with no counter alone", () => {
     const cuts = cutWith((one) => { one.motif.on = true; });
