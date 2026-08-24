@@ -304,10 +304,30 @@ export function App(): React.JSX.Element {
       toggleHelp: () => setHelping((was) => !was),
       library: () => void libraryStore.show(),
       selectGlyph: (name) => store.selectGlyph(name, { open: true }),
-      paramOf: (key) => state.typeface?.params[key] ?? 0,
+      /*
+       * Read off the store rather than off this render.
+       *
+       * Two things go wrong when these close over the values React has in hand.
+       * The palette moves a control and then reads it back to draw the slider,
+       * and what it reads is the value from before the move -- so the slider
+       * snaps back under the pointer and a drag across the whole track lands
+       * one step from where it started. And the shell would have to be rebuilt
+       * on every edit, which rebuilds the catalogue and its index: five hundred
+       * entries and a word count of every hint, forty times a second while a
+       * slider moves.
+       *
+       * Asking the store each time costs a property lookup and is always
+       * right.
+       */
+      paramOf: (key) => store.getSnapshot().typeface?.params[key] ?? 0,
       setParam: (key, value) => store.setFamilyParam(key, value),
       partOf: (part, key) =>
-        (forge.forge.style.parts[part] as Record<string, number | string | boolean>)[key],
+        (
+          forgeStore.getSnapshot().forge.style.parts[part] as Record<
+            string,
+            number | string | boolean
+          >
+        )[key],
       setPart: (part, key, value, done) =>
         forgeStore.changePart(part, { [key]: value }, done ? "end" : "during"),
       startFromBase: (name) => forgeStore.startFromBase(name),
@@ -317,7 +337,9 @@ export function App(): React.JSX.Element {
       },
       hasFont: Boolean(state.typeface),
     }),
-    [mode, state.view, state.typeface, forge.forge, saveProject],
+    // Only what changes the shape of the catalogue: which job is in front and
+    // which view it is showing. The values themselves are read live, above.
+    [mode, state.view, state.typeface, saveProject],
   );
 
   useQuickActionShortcut(React.useCallback(() => setQuick(true), []));

@@ -50,7 +50,34 @@ test("adjusts a control in the palette, and the font moves behind it", async ({ 
   await first.click();
   // The row opens a slider rather than closing the palette.
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("slider").first()).toBeVisible();
+
+  /*
+   * Dragged, and the number checked afterwards.
+   *
+   * Asserting that the slider is on screen is not the same as asserting that
+   * it works, and the difference is not academic: this test passed while a
+   * drag across the whole track moved the value by one step, because the
+   * palette read the control back after every change and handed the slider
+   * the value from before the change it had just made.
+   *
+   * The drag has to take hold of the thumb. The element carrying the slider
+   * role is the whole group, six hundred pixels of it, and pressing on that
+   * does something quite different.
+   */
+  const group = dialog.locator('[role="group"]').first();
+  const thumb = group.locator('[class*="slider-thumb"]').first();
+  const track = group.locator('[class*="slider-track"]').first();
+  const from = await thumb.boundingBox();
+  const along = await track.boundingBox();
+  if (!from || !along) throw new Error("no slider to drag");
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(along.x + along.width * 0.8, from.y + from.height / 2, { steps: 15 });
+  await page.mouse.up();
+
+  // Squareness runs nought to one, so four fifths along is nothing like where
+  // it started and nothing like a rounding of it either.
+  await expect(group).toContainText(/0\.[678]/);
 });
 
 test("asks before throwing the work away", async ({ page }) => {

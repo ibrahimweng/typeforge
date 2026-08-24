@@ -337,26 +337,36 @@ function Row({ item, at, chosen, adjusting, first, onHover, onPick }: RowProps):
   );
 }
 
-/** The control itself, in the row, moving the real font behind the palette. */
+/**
+ * The control itself, in the row, moving the real font behind the palette.
+ *
+ * The value is read once, when the row opens, and the slider owns it from
+ * there. Read again on every change instead -- which is the obvious way to
+ * write this, and how it was written first -- the slider is handed back the
+ * value it had before the change it just made, snaps to it under the pointer,
+ * and a drag across the whole track lands one step from where it began. The
+ * font is still the truth; it is just not a truth worth asking for in the
+ * middle of a gesture.
+ */
 function Adjuster({ item }: { item: Item }): React.JSX.Element | null {
-  // Read once per render rather than held in state: the font is the truth, and
-  // it can be changed by the panels behind this while the palette is open.
   const [, redraw] = React.useReducer((count: number) => count + 1, 0);
+  const opened = React.useRef<{ id: string; value: number } | null>(null);
+  if (item.adjust && opened.current?.id !== item.id) {
+    opened.current = { id: item.id, value: item.adjust.read() };
+  }
 
   if (item.adjust) {
-    const value = item.adjust.read();
     return (
       <div className="mt-2" onClick={(event) => event.stopPropagation()}>
         <SliderControl
           name={item.short ?? item.label}
-          value={value}
+          value={opened.current!.value}
           min={item.adjust.min}
           max={item.adjust.max}
           step={item.adjust.step}
           showFill
           onValueChange={(next, meta) => {
             item.adjust!.write(next, meta?.history !== "merge");
-            redraw();
           }}
         />
       </div>
