@@ -242,7 +242,7 @@ describe("the weight axis, and the letters that cannot follow it", () => {
    *
    * All sixteen are here now rather than the six worst, because ten of them are
    * at nothing or one and a face that has arrived is exactly the one worth
-   * watching. Measured at 0, 0, 0, 21, 0, 1, 2, 1, 0, 0, 0, 1, 1, 1, 6 and 18,
+   * watching. Measured at 0, 0, 0, 20, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 5 and 0,
    * in the order below. A little over each, the same way the cast layer's point
    * budget is set, and nothing like room for one to double.
    */
@@ -252,10 +252,10 @@ describe("the weight axis, and the letters that cannot follow it", () => {
       ["Grotesque", 1],
       ["Geometric", 1],
       ["Fairground", 3],
-      ["Ribbon", 4],
-      ["Technical", 5],
+      ["Ribbon", 3],
+      ["Technical", 4],
       ["Marker", 4],
-      ["Display", 26],
+      ["Display", 25],
       /*
        * The Slab, 64 to 15, and with it the Typewriter 50 to 13, the Serif 40
        * to 13, the Didone 40 to 11, the Flared 56 to 30 and the Brush 37 to 31:
@@ -307,14 +307,19 @@ describe("the weight axis, and the letters that cannot follow it", () => {
       ["Wavy", 4],
       /*
        * And the two that swell their stroke ends rather than rounding a corner
-       * or hanging a serif: the Brush at 18 and the Flared at 1, from 23 and 8.
+       * or hanging a serif: the Brush at 1 and the Flared at 1, from 23 and 8.
        * A swelling refused -- because it would hang under the line the letter
        * stands on, or because the stroke ends on a curve -- is now drawn a unit
        * deep on the stroke's own end rather than not drawn, so the letter has
        * the same contours at every weight. See `flaresFor` in `build.ts`.
+       *
+       * The Brush's last seventeen were a quarter turn drawn in two pieces
+       * because `3pi/2 - pi` lands four ulps above `pi/2`: see `A_QUARTER` in
+       * `sweep.ts`. It is the only face whose bowls have corners at exactly a
+       * right angle, which is why it is the only face that had them.
        */
-      ["Brush", 22],
-      ["Flared", 4],
+      ["Brush", 3],
+      ["Flared", 3],
     ] as const) {
       const base = BASES.find((one) => one.name === name)!;
       const forge = { ...startFrom(base), family: { drawn: 400, also: [100, 700, 900] } };
