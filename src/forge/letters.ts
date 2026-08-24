@@ -4263,16 +4263,44 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
      * room is nothing, and a straight-legged eng is a real eng.
      */
     const leg = archSpine(f, stem, f.x, floor + Math.max(f.arch * 0.62, f.least));
-    const radius = spineEnd(leg).y - floor;
+    const room = spineEnd(leg).y - floor;
+    /*
+     * And where there is none, the hook is drawn standing still rather than not
+     * drawn -- the same arrangement `tailBelow` makes for the tails of the
+     * greek, and for the same reason. How much room is left under the leg is
+     * the pen's business, so a hook left out outright is a letter drawn with
+     * four nodes fewer at the weights that have no room for one: the Brush's
+     * `eng` came back with fourteen pieces of outline at the Thin, the Regular
+     * and the Bold and ten at the Black.
+     *
+     * A radius even when nothing is turned through it, because the sweep reads
+     * an arc of no radius as nothing at all and drops it, where an arc of no
+     * sweep is kept and takes its heading from the run before it. And the two
+     * pieces ninety-five degrees needs, said rather than worked out, so the
+     * stalled hook and the drawn one come to the same nodes.
+     */
+    const hooks = room > f.least;
+    const radius = hooks ? room : f.least;
     return finish(
       f,
       [
         ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
         ink(
           f,
-          radius > f.least
-            ? chain(leg, turn(at(landing - radius, spineEnd(leg).y), radius, 0, -95))
-            : leg,
+          chain(leg, {
+            segments: [
+              {
+                kind: "arc",
+                centre: at(landing - radius, spineEnd(leg).y),
+                radius,
+                startAngle: deg(0),
+                endAngle: deg(hooks ? -95 : 0),
+                sweepPositive: false,
+                pieces: 2,
+              },
+            ],
+            closed: false,
+          }),
           BUTT,
           f.end,
         ),

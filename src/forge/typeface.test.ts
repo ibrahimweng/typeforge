@@ -242,7 +242,7 @@ describe("the weight axis, and the letters that cannot follow it", () => {
    *
    * All sixteen are here now rather than the six worst, because ten of them are
    * at nothing or one and a face that has arrived is exactly the one worth
-   * watching. Measured at 0, 0, 0, 21, 0, 1, 2, 1, 0, 0, 0, 1, 1, 1, 6 and 1,
+   * watching. Measured at 0, 0, 0, 20, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 5 and 0,
    * in the order below. A little over each, the same way the cast layer's point
    * budget is set, and nothing like room for one to double.
    */
@@ -252,10 +252,10 @@ describe("the weight axis, and the letters that cannot follow it", () => {
       ["Grotesque", 1],
       ["Geometric", 1],
       ["Fairground", 3],
-      ["Ribbon", 4],
-      ["Technical", 5],
+      ["Ribbon", 3],
+      ["Technical", 4],
       ["Marker", 4],
-      ["Display", 26],
+      ["Display", 25],
       /*
        * The Slab, 64 to 15, and with it the Typewriter 50 to 13, the Serif 40
        * to 13, the Didone 40 to 11, the Flared 56 to 30 and the Brush 37 to 31:
@@ -319,7 +319,7 @@ describe("the weight axis, and the letters that cannot follow it", () => {
        * right angle, which is why it is the only face that had them.
        */
       ["Brush", 3],
-      ["Flared", 4],
+      ["Flared", 3],
     ] as const) {
       const base = BASES.find((one) => one.name === name)!;
       const forge = { ...startFrom(base), family: { drawn: 400, also: [100, 700, 900] } };
