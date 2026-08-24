@@ -235,19 +235,26 @@ describe("the weight axis, and the letters that cannot follow it", () => {
    *
    * Every one of them then moved again when bowls stopped beginning their lists
    * wherever the aperture fell -- see the test above, and `begun` in
-   * `shapes.ts`. Across the sixteen faces that took 294 letter-face pairs to
-   * 88, and six of the sixteen to none at all: the Sans, the Grotesque, the
-   * Geometric, the Fairground, and all but one letter of the Ribbon, the
-   * Technical and the Marker.
+   * `shapes.ts` -- and again when a refused flare and a refused serif stopped
+   * being shapes not drawn and became shapes drawn on one spot. Across the
+   * sixteen faces, 294 letter-face pairs to 88 to 52, and seven of the sixteen
+   * to none at all.
    *
-   * Measured at 1, 1, 21, 5, 6, 3, 18 and 1. A little over each, the same way
-   * the cast layer's point budget is set, and nothing like room for one to
-   * double.
+   * All sixteen are here now rather than the six worst, because ten of them are
+   * at nothing or one and a face that has arrived is exactly the one worth
+   * watching. Measured at 0, 0, 0, 21, 0, 1, 2, 1, 0, 0, 0, 1, 1, 1, 6 and 18,
+   * in the order below. A little over each, the same way the cast layer's point
+   * budget is set, and nothing like room for one to double.
    */
   it("keeps the faces that round their corners and their ends on the axis too", async () => {
     for (const [name, most] of [
+      ["Sans", 1],
+      ["Grotesque", 1],
+      ["Geometric", 1],
+      ["Fairground", 3],
       ["Ribbon", 4],
-      ["Technical", 4],
+      ["Technical", 5],
+      ["Marker", 4],
       ["Display", 26],
       /*
        * The Slab, 64 to 15, and with it the Typewriter 50 to 13, the Serif 40
@@ -255,7 +262,10 @@ describe("the weight axis, and the letters that cannot follow it", () => {
        * every face that hangs a shape on the end of a straight run. What is
        * left is the Sans's own eleven and four more.
        */
-      ["Slab", 8],
+      ["Slab", 3],
+      ["Serif", 3],
+      ["Didone", 3],
+      ["Typewriter", 3],
       /*
        * And the Psychedelic, 74 to 15, which is the ball. Five of the fifteen
        * left are still the ball, refused at one weight and drawn at the next
@@ -294,7 +304,7 @@ describe("the weight axis, and the letters that cannot follow it", () => {
        * 290 to 208 to 196 to 115 to 58 to 32 to 12, which is the eleven every
        * face inherits from the Sans and one more.
        */
-      ["Wavy", 6],
+      ["Wavy", 4],
       /*
        * And the two that swell their stroke ends rather than rounding a corner
        * or hanging a serif: the Brush at 18 and the Flared at 1, from 23 and 8.

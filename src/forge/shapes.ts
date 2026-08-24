@@ -480,7 +480,35 @@ export function bowlBetween(
    */
   const back = first - ((((first - asked) % loop.length) + loop.length) % loop.length);
   const kept = (at: number) => Math.min(last, at + loop.length - 1) - Math.max(first, at) + 1;
-  const from = kept(back) >= kept(back + loop.length) ? back : back + loop.length;
+  const wanted = kept(back) >= kept(back + loop.length) ? back : back + loop.length;
+  /*
+   * And only if the run can afford it.
+   *
+   * Beginning somewhere other than where the run begins costs the run whatever
+   * falls outside the list, and that is not always a sliver: over the sixteen
+   * faces 331 bowls give something up, half of them less than a quarter of a
+   * pen and the worst of them nearly three pens. A quarter of a pen off the end
+   * of a stroke is inside the ink the cap puts there anyway; three is a
+   * different letter, and the Slab's `c` at the Black lost a quarter of its
+   * bowl and a fifth of its ink to this before it was bounded.
+   *
+   * So a bowl gives up at most two pens of itself, and past that it keeps its
+   * own start and the letter is left standing at that weight. Which is the
+   * right way round: a letter that does not follow the axis is a letter drawn
+   * at one weight, and a letter drawn wrong is wrong everywhere.
+   *
+   * Two rather than a rounder number because that is where the measurement
+   * turns. Over the sixteen faces the letters left standing come to 135 at half
+   * a pen, 91 at one, 52 at two and 50 with no bound at all -- and the largest
+   * give-up any bowl asks for is 2.93 pens, so a bound of two is the one that
+   * refuses the handful that are really giving up a piece of themselves and
+   * lets through the ones giving up a sliver.
+   */
+  const spare = penHalf * 4;
+  let given = 0;
+  for (let slot = first; slot <= last; slot++)
+    if (slot < wanted || slot >= wanted + loop.length) given += lengthOf(walk[slot].piece!);
+  const from = given > spare ? first : wanted;
 
   const segments: SpineSegment[] = [];
   for (let slot = from; slot < from + loop.length; slot++) {
