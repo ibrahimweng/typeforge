@@ -240,19 +240,23 @@ describe("the weight axis, and the letters that cannot follow it", () => {
        */
       ["Psychedelic", 19],
       /*
-       * And the Wavy, which is the worst of the sixteen by a long way and is
-       * held here rather than fixed. Its whole idea is that every run lying
-       * flat ripples, and how much of a run is left to ripple after its two
-       * corners have taken what they need is a question about the pen: the flat
-       * top of a Cyrillic `\u0431` is 34 units at the Thin and 135 at the Black, and
-       * the corners either side ask for 48 per cent of it at the Thin and 155
-       * at the Black. Where they take all of it there is no wave to draw, and
-       * that is the one place in `ripple` where the count still moves with the
-       * weight. 290 to 208; see `ripple` for the three ways of keeping the
-       * count that were measured and are worse. 208 to 196 since, from the two
-       * serif rules above, which the Wavy follows as well as anybody.
+       * And the Wavy, still the worst of the sixteen. Its whole idea is that
+       * every run lying flat ripples, and both halves of that move with the
+       * pen: how far a run leans, and how much of it is left once its two
+       * corners have taken what they need.
+       *
+       * How far it leans is now asked with the answer in mind -- see `rides`,
+       * where the band for "flat" is fifteen degrees rather than thirty,
+       * because that is where the gap in the measurements is. What is left is
+       * now drawn as a wave of nothing where there is nothing left, which took
+       * four attempts to get right: the trick is that an arc turning nothing
+       * has to be told which way it bends, since the two angles it would be
+       * read off are equal. See `ripple` for both, and for the one case that
+       * still gives up and why every way of not giving up folds a letter.
+       *
+       * 290 to 208 to 196 to 115.
        */
-      ["Wavy", 203],
+      ["Wavy", 122],
     ] as const) {
       const base = BASES.find((one) => one.name === name)!;
       const forge = { ...startFrom(base), family: { drawn: 400, also: [100, 700, 900] } };
