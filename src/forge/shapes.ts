@@ -956,6 +956,34 @@ export function endPieces(spine: Spine): { first: SpineSegment; last: SpineSegme
     : { first: segments[0], last: segments[segments.length - 1] };
 }
 
+/**
+ * Whether each end of a run finishes straight.
+ *
+ * Not the same question as which piece it finishes on. A run carries pieces of
+ * no length -- see `endPieces` -- and a piece the trim has eaten whole is still
+ * there, standing still and keeping its own kind, because its kind is the
+ * shape it was going to be. So an arc the trim swallowed is still a curve, and
+ * a run that ends on one ends curved however little of it is left.
+ *
+ * Asked instead as "is the last piece that goes anywhere a line", the answer
+ * moved with the pen. A Slab C is a bowl whose aperture opens as the pen
+ * widens -- it has to, or a heavy c fuses shut -- and at the Black the opening
+ * had eaten the terminal arc entirely. The run then came off the flat top of
+ * the bowl, reported itself straight, and grew the two slab serifs the same
+ * letter has at no other weight.
+ */
+export function endsStraight(spine: Spine): { start: boolean; end: boolean } {
+  const segments = spine.segments;
+  const straight = (from: number, step: number): boolean => {
+    for (let index = from; index >= 0 && index < segments.length; index += step) {
+      if (segments[index].kind !== "line") return false;
+      if (hasLength(segments[index])) break;
+    }
+    return true;
+  };
+  return { start: straight(0, 1), end: straight(segments.length - 1, -1) };
+}
+
 export function spineStart(spine: Spine): Vec2 {
   return segmentStart(spine.segments[0]);
 }

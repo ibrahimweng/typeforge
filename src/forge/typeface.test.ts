@@ -196,29 +196,49 @@ describe("the weight axis, and the letters that cannot follow it", () => {
   }, 300_000);
 
   /*
-   * And a ceiling for the three faces this went wrong worst on.
+   * And a ceiling for the faces this went wrong worst on.
    *
    * The Sans is named letter by letter because eleven is short enough to read.
-   * These are not: the Ribbon left 166 letters standing and the Display 137,
-   * and a list that long is a list nobody reads. Held to a number instead,
-   * because what matters is the direction -- a name coming off is progress, and
-   * this is here so that a name going back on is noticed.
+   * These are not: the Ribbon left 166 letters standing, the Display 137, the
+   * Psychedelic 74 and the Slab 64, and a list that long is a list nobody
+   * reads. Held to a number instead, because what matters is the direction --
+   * a name coming off is progress, and this is here so that a name going back
+   * on is noticed.
    *
-   * They are three different faults with the same shape, and all three are the
+   * They are different faults with the same shape, and every one of them is the
    * pen deciding how many nodes a letter is drawn with. The Ribbon and the
    * Technical round their corners, and a rounded corner eats back into the runs
    * either side of it by a radius the pen sets. The Display caps its strokes
    * with a half disc, and a half turn is two quarter-turn pieces except when
-   * the arithmetic that says so lands a hair over and makes it three.
+   * the arithmetic that says so lands a hair over and makes it three. The Slab
+   * hangs a serif on every straight end, and both of the questions it asked
+   * about one -- does this run end straight, and is it standing on a line --
+   * were answered by measuring against the pen. The Psychedelic puts a ball on
+   * every open end, and dropped it wherever the room for it ran out.
    *
-   * Measured at 28, 30 and 30. A little over each, the same way the cast
-   * layer's point budget is set, and nothing like room for one to double.
+   * Measured at 28, 30, 30, 15, 15 and 196. A little over each, the same way
+   * the cast layer's point budget is set, and nothing like room for one to
+   * double.
    */
   it("keeps the faces that round their corners and their ends on the axis too", async () => {
     for (const [name, most] of [
       ["Ribbon", 33],
       ["Technical", 35],
       ["Display", 35],
+      /*
+       * The Slab, 64 to 15, and with it the Typewriter 50 to 13, the Serif 40
+       * to 13, the Didone 40 to 11, the Flared 56 to 30 and the Brush 37 to 31:
+       * every face that hangs a shape on the end of a straight run. What is
+       * left is the Sans's own eleven and four more.
+       */
+      ["Slab", 19],
+      /*
+       * And the Psychedelic, 74 to 15, which is the ball. Five of the fifteen
+       * left are still the ball, refused at one weight and drawn at the next
+       * because `onALine` measures the upright share of a slanted pen; see
+       * there for the measurement, and for what asking it the other way cost.
+       */
+      ["Psychedelic", 19],
       /*
        * And the Wavy, which is the worst of the sixteen by a long way and is
        * held here rather than fixed. Its whole idea is that every run lying
@@ -229,9 +249,10 @@ describe("the weight axis, and the letters that cannot follow it", () => {
        * at the Black. Where they take all of it there is no wave to draw, and
        * that is the one place in `ripple` where the count still moves with the
        * weight. 290 to 208; see `ripple` for the three ways of keeping the
-       * count that were measured and are worse.
+       * count that were measured and are worse. 208 to 196 since, from the two
+       * serif rules above, which the Wavy follows as well as anybody.
        */
-      ["Wavy", 215],
+      ["Wavy", 203],
     ] as const) {
       const base = BASES.find((one) => one.name === name)!;
       const forge = { ...startFrom(base), family: { drawn: 400, also: [100, 700, 900] } };
@@ -240,5 +261,5 @@ describe("the weight axis, and the letters that cannot follow it", () => {
         most,
       );
     }
-  }, 600_000);
+  }, 900_000);
 });
