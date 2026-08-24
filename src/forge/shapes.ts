@@ -469,7 +469,22 @@ export function bowlBetween(
    * up the piece it would have started on, and one whose run begins earlier
    * stalls the pieces in between at the head, where they were going anyway.
    */
-  const at0 = ((first % loop.length) + loop.length) % loop.length;
+  /*
+   * A run that stays on one lap needs no book at all.
+   *
+   * It reads round the loop from nought however far it reaches -- the pieces
+   * before it stall at the head and the pieces after it at the tail, which is
+   * what the stalls were put in for and what worked before any of this. Only a
+   * run that crosses the seam has to be told where to begin, because then the
+   * list has to begin where the run begins and there is nowhere else to put the
+   * piece it began on.
+   *
+   * Said as nought rather than by not asking, so the book is still asked once
+   * per bowl and its page stays in step: a master that crosses the seam where
+   * the drawn weight did not would otherwise read the next bowl's answer.
+   */
+  const wraps = last >= loop.length;
+  const at0 = wraps ? ((first % loop.length) + loop.length) % loop.length : 0;
   const asked = begun(at0);
   /*
    * Of the two laps that begin on the asked-for piece, the one that holds more
@@ -715,6 +730,14 @@ export function wavy(
         keeps(segment, before, penHalf, "start"),
         keeps(segment, after, penHalf, "end"),
         inward(segment.from, segment.to) >= 0 ? 1 : -1,
+        // Its own way, or its neighbours' where it goes nowhere: see `ripple`.
+        mine > 1e-9
+          ? at((segment.to.x - segment.from.x) / mine, (segment.to.y - segment.from.y) / mine)
+          : after
+            ? headingOf(after)
+            : before
+              ? headingOf(before)
+              : at(1, 0),
       );
     }),
   };
@@ -831,11 +854,18 @@ function ripple(
   keepStart: number,
   keepEnd: number,
   first: number,
+  /**
+   * Which way the run is going, for a run that goes nowhere.
+   *
+   * A piece of no length has no direction of its own, and the wave needs one --
+   * it is the line the arcs leave and come back to. Handed in from the
+   * neighbours, the same way the sweep gives a stalled piece its heading.
+   */
+  facing: Vec2,
 ): SpineSegment[] {
   const dx = segment.to.x - segment.from.x;
   const dy = segment.to.y - segment.from.y;
   const whole = Math.hypot(dx, dy);
-  if (whole < 1e-9) return [segment];
 
   /*
    * A straight stub left at each end, and the wave taken through the middle.
@@ -1033,7 +1063,18 @@ function ripple(
     radius = length / (4 * Math.sin(turn));
   }
 
-  const along = at(dx / whole, dy / whole);
+  /*
+   * A run of no length waves too, standing on its own point.
+   *
+   * Which pieces of a bowl have any length is a question about its
+   * proportions, and its proportions move with the pen: the `O` of the Wavy's
+   * `OE` is taller than it is wide at the Thin, so the sides that lie flat
+   * measure nothing there and the sides that stand upright do, and at every
+   * other weight it is the other way about. Handed back straight, the flat
+   * sides waved at three weights of the four and the letter came off the pen
+   * with twenty nodes at the Thin against forty.
+   */
+  const along = whole > 1e-9 ? at(dx / whole, dy / whole) : facing;
   /*
    * Where a stall stands, when the opening corner has taken the whole run.
    *
