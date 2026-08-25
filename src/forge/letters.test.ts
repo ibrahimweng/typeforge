@@ -436,6 +436,38 @@ describe("an arc that goes nowhere still lands where its neighbours are", () => 
     expect(adrift).toEqual([]);
   }, 60_000);
 
+  /*
+   * The Technical `section`, which is the bowl book's give-up rather than a
+   * shape or a piece: it asks to give up three pens of one run to begin its
+   * list where the drawn weight began, and the bound refused it at two.
+   *
+   * Named rather than counted because it is the only pinning in the font that
+   * the bound has ever refused -- 8,924 of them across the sixteen faces and
+   * four weights, and this is the one. A ceiling on the Technical would go on
+   * passing if the bound were tightened again and something else gave way.
+   */
+  it("pins the Technical section rather than refusing it", () => {
+    const book: WaveBook = { lengths: new Map(), bowls: new Map(), balls: new Map(), recording: true };
+    const was = openWaveBook(book);
+    const face = STARTING_POINTS.find((one) => one.name === "Technical")!;
+    try {
+      waveBookAt("section");
+      drawLetter("section", styleAt(face, 400));
+      book.recording = false;
+      const flags = WEIGHTS.map((weight) => {
+        waveBookAt("section");
+        const drawn = drawLetter("section", styleAt(face, weight));
+        return (drawn?.contours ?? [])
+          .map((one) => one.nodes.map((node) => (node.type === "smooth" ? "s" : "c")).join(""))
+          .join("|");
+      });
+      expect(flags.every((one) => one.length > 0), "section draws nothing").toBe(true);
+      expect(new Set(flags).size, `section is drawn ${new Set(flags).size} different ways`).toBe(1);
+    } finally {
+      openWaveBook(was);
+    }
+  });
+
   it.each(["two", "three", "onehalf", "threequarters", "copyright", "ae", "C"])(
     "leaves the Display %s the same letter at every weight",
     (name) => {
