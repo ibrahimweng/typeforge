@@ -17,6 +17,8 @@ import { describe, expect, it } from "vitest";
 import { contourArea, contoursBounds } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import { builtFrom, drawLetter, letterNames } from "./build";
+import { startFrom, weighted } from "./document";
+import { recipeOf } from "./letters";
 import { BASES as STARTING_POINTS, DISPLAY, SANS, SERIF, type Style } from "./style";
 
 /*
@@ -297,5 +299,77 @@ describe("letters in one piece", () => {
       }
     }
     expect(lost).toEqual([]);
+  }, 120_000);
+});
+
+describe("a round cap does not eat the run it sits on", () => {
+  /*
+   * The cap reaches half the pen, and half the pen at the Black is wider than
+   * some of the runs it is put on the end of. Pulled back that far the run has
+   * no length left, and a run of no length is not a shorter run: its two ends
+   * are the same point, so `stitch` welds them into one node and the letter
+   * comes back with fewer nodes than the same letter at a lighter weight.
+   *
+   * The Display bracket is the case it was found on. Its arms are `arch * 0.52`
+   * and that grows with the pen -- 133 units at the Thin and 153 at the Black --
+   * but after the cap had been taken off them they measured 112, 53, 0 and 0,
+   * and the letter had 18 nodes at the Thin and the Regular and 10 at the Bold
+   * and the Black. Six of the Display's twenty standing letters were this.
+   */
+  const WEIGHTS = [100, 400, 700, 900];
+  /*
+   * Weighted the way the family is weighted, not by scaling the pen here.
+   *
+   * A first version of this scaled `pen.weight` on its own, and it passed with
+   * the fault still in: the arms only vanish once every measurement the arch is
+   * built from has moved with the pen, which is what `weighted` does and a
+   * scaled pen does not. A test that reproduces most of the setup reproduces
+   * none of the bug.
+   */
+  const styleAt = (base: Style, weight: number): Style =>
+    weighted({ ...startFrom(base), family: { drawn: 400, also: WEIGHTS } }, weight).style;
+
+  it("leaves the Display bracket the same letter at every weight", () => {
+    const counts = WEIGHTS.map((weight) => {
+      const drawn = drawLetter("bracketleft", styleAt(DISPLAY, weight));
+      return drawn ? drawn.contours.reduce((sum, one) => sum + one.nodes.length, 0) : 0;
+    });
+    expect(counts.every((one) => one > 0)).toBe(true);
+    expect(new Set(counts).size, `bracketleft has ${counts.join(", ")} nodes across the axis`).toBe(
+      1,
+    );
+  });
+
+  /*
+   * And the invariant behind it, asked of every letter on every face rather
+   * than of the one that happened to show it: a straight run that a recipe put
+   * there still goes somewhere after the caps have been taken off it. Nothing
+   * is said about how much is left, only that a run the letter asked for has
+   * not been taken away entirely.
+   */
+  it("never takes a straight run down to nothing, on any face at any weight", () => {
+    const gone: string[] = [];
+    for (const base of STARTING_POINTS) {
+      for (const weight of WEIGHTS) {
+        const style = styleAt(base, weight);
+        for (const name of letterNames()) {
+          const recipe = recipeOf(name);
+          if (!recipe) continue;
+          for (const stroke of recipe(style).strokes) {
+            const lines = stroke.spine.segments.filter((one) => one.kind === "line");
+            // A bowl carries pieces its shape does not reach on purpose, and
+            // those are meant to stand still. Only a run that is the whole of
+            // its stroke is asked about, which is the shape a cap sits on.
+            if (stroke.spine.closed || lines.length !== stroke.spine.segments.length) continue;
+            for (const line of lines) {
+              if (line.kind !== "line") continue;
+              const span = Math.hypot(line.to.x - line.from.x, line.to.y - line.from.y);
+              if (span < 1e-6) gone.push(`${base.name} ${name} at ${weight}`);
+            }
+          }
+        }
+      }
+    }
+    expect([...new Set(gone)]).toEqual([]);
   }, 120_000);
 });

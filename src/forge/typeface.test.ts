@@ -242,9 +242,19 @@ describe("the weight axis, and the letters that cannot follow it", () => {
    *
    * All sixteen are here now rather than the six worst, because ten of them are
    * at nothing or one and a face that has arrived is exactly the one worth
-   * watching. Measured at 0, 0, 0, 20, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 5 and 0,
-   * in the order below. A little over each, the same way the cast layer's point
-   * budget is set, and nothing like room for one to double.
+   * watching. A little over each, the same way the cast layer's point budget is
+   * set, and nothing like room for one to double.
+   *
+   * The Display then went 20 to 14 when a round cap stopped being allowed to
+   * pull a run back past its own length -- see `back` in `capped`. Six of its
+   * twenty were a run the cap had eaten whole, and a run of no length is not a
+   * shorter run: its two ends are one point, `stitch` welds them into a single
+   * node, and the letter comes back with fewer nodes than the same letter at a
+   * lighter weight. The bracket's arms went 112, 53, 0, 0 across the axis and
+   * the letter had 18 nodes at the first two weights and 10 at the last two.
+   *
+   * Measured at 0, 0, 0, 14, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 5 and 0, in the
+   * order below.
    */
   it("keeps the faces that round their corners and their ends on the axis too", async () => {
     for (const [name, most] of [
@@ -255,7 +265,7 @@ describe("the weight axis, and the letters that cannot follow it", () => {
       ["Ribbon", 3],
       ["Technical", 4],
       ["Marker", 4],
-      ["Display", 25],
+      ["Display", 17],
       /*
        * The Slab, 64 to 15, and with it the Typewriter 50 to 13, the Serif 40
        * to 13, the Didone 40 to 11, the Flared 56 to 30 and the Brush 37 to 31:

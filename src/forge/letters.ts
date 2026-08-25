@@ -745,7 +745,29 @@ function capped(frame: Frame, stroke: Stroke): Stroke {
     if (terminal.kind !== "round" || segment.kind !== "line") return 0;
     // Far enough back that the far side of the cap lands on the line, which on
     // a stroke arriving at an angle is further than the cap is deep.
-    return frame.reach(headingAt(segment, which)) / (lean > 0 ? lean : 1);
+    const wanted = frame.reach(headingAt(segment, which)) / (lean > 0 ? lean : 1);
+    /*
+     * And never the whole run, which `leaning` above already refuses for
+     * itself and this did not.
+     *
+     * The cap reaches half the pen, and half the pen at the Black is wider
+     * than some of the runs it is put on the end of. Pulled back that far the
+     * run has no length left at all, and a run of no length is not a smaller
+     * run: its two ends are the same point, so `stitch` welds them into one
+     * node and the letter comes back with fewer nodes than the same letter at a
+     * lighter weight. The bracket's arms are `arch * 0.52`, which grows with
+     * the pen -- 133 units at the Thin and 153 at the Black -- and they came
+     * out 112, 53, 0 and 0, so the Display bracket had 18 nodes at the first
+     * two weights and 10 at the last two and could not ride the axis.
+     *
+     * Four fifths is the figure `leaning` uses, for the same reason and against
+     * the same measurement: a run keeps enough of itself to still be a run.
+     * Where that bites, the cap reaches past the line it was measured against,
+     * which is a smaller wrong than an arm that is not there -- a bracket whose
+     * arms have gone is not a bracket.
+     */
+    const run = Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y);
+    return Math.min(wanted, run * 0.8);
   };
   const fromStart = back(stroke.start, first, "start", startLean);
   const fromEnd = back(stroke.end, last, "end", endLean);
