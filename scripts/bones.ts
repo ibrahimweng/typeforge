@@ -46,7 +46,7 @@ function shapeOf(name: string, style: ReturnType<typeof weighted>["style"]): str
     .join(" ");
 }
 
-const book: WaveBook = { lengths: new Map(), bowls: new Map(), balls: new Map(), recording: true };
+const book: WaveBook = { lengths: new Map(), bowls: new Map(), balls: new Map(), corners: new Map(), recording: true };
 const was = openWaveBook(book);
 
 // The drawn weight first, recording, as `deliver` does it. Every letter, not

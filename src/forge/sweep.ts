@@ -31,6 +31,7 @@
 
 import { contourArea, reverseContour } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
+import { folded } from "./shapes";
 import type { JoinKind, Pen, Spine, SpineArc, SpineSegment, Stroke, Terminal } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -492,6 +493,23 @@ function kinksOf(headed: Headed[], closed: boolean): Kink[] {
      * 306, and they are on two faces only: the Marker, whose corners are
      * bevelled, and the Display, whose are round. Every other face welds every
      * corner it has, which is why every other face is off this list.
+     *
+     * What all four have in common is that each of them picked one answer and
+     * made every corner in the font give it, and there is no such answer: a
+     * corner cut back and a corner filled are both right, and which is right
+     * here depends on the pen. So the fifth does not pick one. The drawn weight
+     * picks, per corner, and the other masters read it back -- `folded` in
+     * `shapes.ts`, beside the pages the waves and the bowls already keep. That
+     * takes the sixteen faces from 1 letter standing to none, and it moves no
+     * face at the drawn weight and nothing visible anywhere else, because a
+     * master only departs from its own arithmetic at the corners where the two
+     * disagree, and on the Marker that was one corner of one letter.
+     *
+     * Which also says why this list is worth keeping now that it is finished.
+     * Three of the four are still true as measurements -- a wedge everywhere
+     * does cost 76 to 168, and a hair of length does cost 21 to 61 -- and all
+     * of them were the right shape of idea aimed at the wrong half of the
+     * problem.
      */
     if (Math.abs(turn) < 1e-9 && along > 0) continue;
     found.push({ before: index, after: next, at: segmentEnd(segments[index]), turn });
@@ -684,33 +702,54 @@ function sideRun(
       },
     ];
 
-    if (before.kind === "line" && after.kind === "line") {
-      const crossing = crossingOf(before, after);
-      if (crossing && crossing.at > 1e-9 && crossing.at < 1 - 1e-9) {
-        before.to = crossing.point;
-        after.from = crossing.point;
-        filling.set(kink.before, stall(crossing.point));
-        continue;
-      }
-      if (
-        crossing &&
-        crossing.at >= 1 - 1e-9 &&
-        join === "miter" &&
-        Math.hypot(crossing.point.x - kink.at.x, crossing.point.y - kink.at.y) <=
-          reach.across * MITER_LIMIT
-      ) {
-        before.to = crossing.point;
-        after.from = crossing.point;
-        filling.set(kink.before, stall(crossing.point));
-        continue;
-      }
-      if (crossing && crossing.at <= 1e-9) {
-        // The whole run is swallowed by the corner. Nothing can be cut back to
-        // a point behind where the run began, so the two are brought together
-        // at that point and the run gives up its length rather than its shape.
-        before.to = before.from;
-        after.from = before.from;
-        filling.set(kink.before, stall(before.from));
+    const straight = before.kind === "line" && after.kind === "line";
+    const crossing = straight ? crossingOf(before, after) : null;
+    // Overlapping: the two offsets cross before either ends, so this is the
+    // inside of the turn and both are cut back to where they meet.
+    const overlapping = crossing !== null && crossing.at > 1e-9 && crossing.at < 1 - 1e-9;
+    // Swallowed whole: nothing can be cut back to a point behind where the run
+    // began, so the two come together there and the run gives up its length
+    // rather than its shape.
+    const swallowed = crossing !== null && crossing.at <= 1e-9;
+    const within =
+      crossing !== null &&
+      Math.hypot(crossing.point.x - kink.at.x, crossing.point.y - kink.at.y) <=
+        reach.across * MITER_LIMIT;
+    const carried = crossing !== null && crossing.at >= 1 - 1e-9 && join === "miter" && within;
+
+    /*
+     * Whether this corner comes to a point, asked of the drawn weight.
+     *
+     * A corner leaves one piece behind whichever way it resolves, and that has
+     * been steady since the corners were built. What is not steady is the nodes
+     * either side of it: brought to a point the two offsets end on one spot,
+     * which `stitch` welds into a single node, and filled with a wedge they end
+     * a pen apart and both stay. Which of those happens follows from where the
+     * two offsets cross, and where they cross moves with the pen -- so the
+     * Marker's `braceright` had a corner that came to a point at the Regular
+     * and was filled at the Black, and 141 nodes at both weights with the
+     * corners in different places.
+     *
+     * Four attempts at this are written into `kinksOf` with what each cost, and
+     * every one of them argued about which answer was right everywhere. The
+     * answer is that neither is: the drawn weight's is, and the others follow
+     * it. Where a master would have filled a corner the drawn weight brought to
+     * a point, it carries out to the crossing instead -- which is what a mitred
+     * join does, and is held to the same limit, so nothing grows a spike. Where
+     * the crossing is past that limit there is nothing to carry out to and the
+     * corner is filled, which leaves the letter standing at that weight and is
+     * the honest answer.
+     */
+    const folds = folded(overlapping || swallowed || carried);
+
+    if (folds) {
+      // Both are lines wherever a crossing was found, which is the only way
+      // any of these are true.
+      const point = swallowed && before.kind === "line" ? before.from : crossing?.point;
+      if (point && (overlapping || swallowed || within)) {
+        before.to = point;
+        after.from = point;
+        filling.set(kink.before, stall(point));
         continue;
       }
     }

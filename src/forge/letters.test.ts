@@ -405,7 +405,7 @@ describe("an arc that goes nowhere still lands where its neighbours are", () => 
    */
   it("keeps the Psychedelic's balls on the axis", () => {
     const adrift: string[] = [];
-    const book: WaveBook = { lengths: new Map(), bowls: new Map(), balls: new Map(), recording: true };
+    const book: WaveBook = { lengths: new Map(), bowls: new Map(), balls: new Map(), corners: new Map(), recording: true };
     const was = openWaveBook(book);
     const face = STARTING_POINTS.find((one) => one.name === "Psychedelic")!;
     try {
@@ -447,7 +447,7 @@ describe("an arc that goes nowhere still lands where its neighbours are", () => 
    * passing if the bound were tightened again and something else gave way.
    */
   it("pins the Technical section rather than refusing it", () => {
-    const book: WaveBook = { lengths: new Map(), bowls: new Map(), balls: new Map(), recording: true };
+    const book: WaveBook = { lengths: new Map(), bowls: new Map(), balls: new Map(), corners: new Map(), recording: true };
     const was = openWaveBook(book);
     const face = STARTING_POINTS.find((one) => one.name === "Technical")!;
     try {
@@ -463,6 +463,38 @@ describe("an arc that goes nowhere still lands where its neighbours are", () => 
       });
       expect(flags.every((one) => one.length > 0), "section draws nothing").toBe(true);
       expect(new Set(flags).size, `section is drawn ${new Set(flags).size} different ways`).toBe(1);
+    } finally {
+      openWaveBook(was);
+    }
+  });
+
+  /*
+   * The Marker's `braceright`, which is the corner itself rather than a shape
+   * or a piece or a bound: a corner brought to a point ends both offsets on one
+   * spot and `stitch` welds them into one node, and a corner filled with a
+   * wedge leaves them a pen apart and keeps both. It came to a point at the
+   * Regular and was filled at the Black, and came back with 141 nodes at both
+   * and the corners in different places.
+   */
+  it("keeps the Marker braceright's corners in the same places at every weight", () => {
+    const book: WaveBook = {
+      lengths: new Map(), bowls: new Map(), balls: new Map(), corners: new Map(), recording: true,
+    };
+    const was = openWaveBook(book);
+    const face = STARTING_POINTS.find((one) => one.name === "Marker")!;
+    try {
+      waveBookAt("braceright");
+      drawLetter("braceright", styleAt(face, 400));
+      book.recording = false;
+      const drawn = WEIGHTS.map((weight) => {
+        waveBookAt("braceright");
+        const one = drawLetter("braceright", styleAt(face, weight));
+        return (one?.contours ?? [])
+          .map((c) => c.nodes.map((n) => (n.type === "smooth" ? "s" : "c")).join(""))
+          .join("|");
+      });
+      expect(drawn.every((one) => one.length > 0), "braceright draws nothing").toBe(true);
+      expect(new Set(drawn).size, `braceright is drawn ${new Set(drawn).size} different ways`).toBe(1);
     } finally {
       openWaveBook(was);
     }
@@ -497,7 +529,7 @@ describe("an arc that goes nowhere still lands where its neighbours are", () => 
    */
   it("keeps the figures on the axis on every face", () => {
     const adrift: string[] = [];
-    const book: WaveBook = { lengths: new Map(), bowls: new Map(), balls: new Map(), recording: true };
+    const book: WaveBook = { lengths: new Map(), bowls: new Map(), balls: new Map(), corners: new Map(), recording: true };
     const was = openWaveBook(book);
     try {
       for (const base of STARTING_POINTS) {
