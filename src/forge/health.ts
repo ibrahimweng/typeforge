@@ -63,16 +63,38 @@ const MANY = 12;
  * a list of forty letters from a weight they have not seen is not.
  */
 export function familyTroubles(forge: Forge): Trouble[] {
+  return allOf(familyWalk(forge));
+}
+
+/**
+ * The same walk, handed back a letter at a time.
+ *
+ * This is the most expensive thing on the draw page and it runs after every
+ * change: the whole alphabet, at every weight the family has, drawn in full --
+ * and with a cast switched on a letter costs several milliseconds, so the pass
+ * takes a second or two. Run in one go it is one task that long, and a task
+ * that long is a window that does not answer: the release of a slider froze the
+ * page for as long as it took.
+ *
+ * Nothing about the work got cheaper. What changed is that it can be put down:
+ * the caller runs it a few milliseconds at a time between frames and drops it
+ * if the font moves again first, so the same answer arrives at the same moment
+ * without the page going deaf to get there.
+ *
+ * Both entry points stay as they were -- everything that wants the answer and
+ * does not care about frames, the tests included, calls the plain function.
+ */
+export function* familyWalk(forge: Forge): Generator<void, Trouble[], void> {
   const family = familyOf(forge);
   const weights = weightsOf(family);
-  const found = troubles(forge);
+  const found = yield* walk(forge);
   if (weights.length < 2) return found;
 
   const closed: string[] = [];
   const letters = new Set<string>();
   for (const weight of weights) {
     if (weight === family.drawn) continue;
-    const gone = troubles(weighted(forge, weight));
+    const gone = yield* walk(weighted(forge, weight));
     const tight = gone.find((one) => one.what === CLOSING);
     if (!tight) continue;
     closed.push(nameOfWeight(weight));
@@ -98,6 +120,17 @@ function said(names: string[]): string {
 }
 
 export function troubles(forge: Forge): Trouble[] {
+  return allOf(walk(forge));
+}
+
+/** Run a walk to the end without stopping, for a caller with no frames to keep. */
+function allOf(walking: Generator<void, Trouble[], void>): Trouble[] {
+  let step = walking.next();
+  while (!step.done) step = walking.next();
+  return step.value;
+}
+
+function* walk(forge: Forge): Generator<void, Trouble[], void> {
   const em = forge.style.metrics.unitsPerEm;
   const closing: Array<{ letter: string; room: number }> = [];
   const overflowing: string[] = [];
@@ -112,6 +145,9 @@ export function troubles(forge: Forge): Trouble[] {
   const floor = forge.style.metrics.descender - forge.style.pen.weight;
 
   for (const letter of letterNames()) {
+    // Offered before the letter rather than after it, so a caller that has run
+    // out of time in this frame stops without having paid for one more.
+    yield;
     const drawn = draw(letter, forge);
     if (!drawn) continue;
     /*

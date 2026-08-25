@@ -16,6 +16,9 @@ const open = async (page: import("@playwright/test").Page) => {
   await expect(page.getByRole("dialog", { name: "Quick actions" })).toBeVisible();
 };
 
+const dialog = (page: import("@playwright/test").Page) =>
+  page.getByRole("dialog", { name: "Quick actions" });
+
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: /draw/i }).first().click();
@@ -163,4 +166,44 @@ test("moves the pen itself, which lives nowhere near the family's numbers", asyn
   await page.mouse.up();
 
   await expect.poll(() => outlineOf(page)).not.toBe(before);
+});
+
+
+/*
+ * Space opens it too, and the whole difficulty of space is the places it must
+ * not: it is a character in a text field and it is how a keyboard presses a
+ * button. Cmd-K stays for exactly that reason -- it is the one that still works
+ * when the caret is in a box.
+ */
+test("opens on the space bar", async ({ page }) => {
+  await page.keyboard.press("Space");
+  await expect(dialog(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog(page)).toBeHidden();
+});
+
+test("leaves the space bar alone while typing, and Cmd-K still works there", async ({ page }) => {
+  await open(page);
+  const box = page.getByRole("textbox", { name: "Search everything" });
+  await box.fill("bowl");
+  await box.press("Space");
+  // The space was typed rather than swallowed by a second opening.
+  await expect(box).toHaveValue("bowl ");
+  await expect(dialog(page)).toBeVisible();
+});
+
+/*
+ * A button keeps the focus after it is clicked, and people click constantly, so
+ * a space that stood aside for whatever was last pressed would be a shortcut
+ * that stopped working almost immediately. It does not stand aside, and it can
+ * afford not to: a button answers to Enter as well, which is the key most
+ * people reach for anyway. Only the controls with nothing but a space -- a
+ * checkbox, a radio, a switch -- keep it.
+ */
+test("still opens with a button focused, which is where the pointer leaves it", async ({ page }) => {
+  const button = page.getByRole("button").first();
+  await button.click();
+  await expect(dialog(page)).toBeHidden();
+  await page.keyboard.press("Space");
+  await expect(dialog(page)).toBeVisible();
 });

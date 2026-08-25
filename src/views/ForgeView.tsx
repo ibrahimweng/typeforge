@@ -28,7 +28,7 @@ import {
   rowsOf,
   unitOf,
 } from "@/forge/kit";
-import { familyOf, weighted, type Forge } from "@/forge/document";
+import { familyOf, unshaped, weighted, type Forge } from "@/forge/document";
 import { nameOfWeight, weightsOf } from "@/forge/family";
 import { codepointsFor } from "@/forge/typeface";
 import {
@@ -44,7 +44,7 @@ import {
   tilesFor,
 } from "@/forge/document";
 import { handlesFor, valueAfter, type Handle } from "@/forge/handles";
-import { familyTroubles } from "@/forge/health";
+import { familyWalk, type Trouble } from "@/forge/health";
 import { driveId, valueOf, whatGoverns, type Governing } from "@/forge/probe";
 import { segment, tile } from "@/components/controls";
 import { forgeStore, useForge, type Phase } from "@/state/useForge";
@@ -69,10 +69,10 @@ export function ForgeView(): React.JSX.Element {
         <Stage letter={letter} revision={state.revision} parts={parts} />
         <Specimen revision={state.revision} />
         <Warnings revision={state.settledRevision} />
-        {/* Both of these read the whole alphabet, so both follow the settled
-            document rather than the live one: they catch up when a drag ends
-            instead of holding it up. */}
-        <Alphabet names={names} selected={letter} revision={state.settledRevision} />
+        {/* Both of these read the whole alphabet, so both wait for the drag to
+            end rather than following the live one: they catch up when the hand
+            comes off instead of holding it up. */}
+        <Alphabet names={names} selected={letter} />
       </div>
     </div>
   );
@@ -116,9 +116,17 @@ function Stage({
 
   const form = formOf(state.forge, letter);
   const kitOn = Boolean(state.forge.kit?.on);
+  /*
+   * Without the cuts and the casts while a gesture is in flight.
+   *
+   * They are booleans over the whole outline and cost between five and forty
+   * milliseconds a letter, which is nothing once and everything on every frame
+   * of a drag. The full shape comes back the moment the hand stops -- see
+   * `unshaped`, and `resting` on the store.
+   */
   const drawn = React.useMemo(
-    () => draw(letter, state.forge),
-    [letter, state.forge, revision],
+    () => draw(letter, state.resting ? state.forge : unshaped(state.forge)),
+    [letter, state.forge, state.resting, revision],
   );
   /*
    * A letter that came in from outside has neither.
@@ -622,17 +630,22 @@ function setLine(forge: Forge, text: string): { pieces: Array<{ d: string; x: nu
 function Specimen({ revision }: { revision: number }): React.JSX.Element {
   const state = useForge();
   const weights = weightsOf(familyOf(state.forge));
+  /*
+   * The same, and it matters more here: the specimen is set at every weight the
+   * family has, so a line of twenty characters is eighty letters a frame.
+   */
+  const shown = state.resting ? state.forge : unshaped(state.forge);
   const lines = React.useMemo(
     () =>
       weights.map((weight) => ({
         weight,
         name: nameOfWeight(weight),
-        drawn: weight === familyOf(state.forge).drawn,
-        ...setLine(weighted(state.forge, weight), state.specimen),
+        drawn: weight === familyOf(shown).drawn,
+        ...setLine(weighted(shown, weight), state.specimen),
       })),
     // The forge and the text are what the lines are made of; the revision is
     // how everything else here knows a part moved underneath them.
-    [state.forge, state.specimen, revision, weights.join()],
+    [shown, state.specimen, revision, weights.join()],
   );
   const { metrics } = state.forge.style;
 
@@ -819,6 +832,27 @@ function Cells({ letter, scale }: { letter: string; scale: number }): React.JSX.
 }
 
 /**
+ * How long the font has to hold still before it is worth looking over.
+ *
+ * Longer than the store's own sixth of a second, and for a different reason:
+ * that one is there so a grid is never left behind, and this one is there so a
+ * pass over the whole alphabet is not started by a pause in a drag.
+ */
+const STILL = 600;
+
+/**
+ * How long a piece of catching-up may hold the thread before letting go of it.
+ *
+ * Eight milliseconds leaves half a sixty-hertz frame for everything else. It is
+ * a floor rather than a ceiling -- the work is only ever put down between whole
+ * letters, and a letter with a long shadow on it is seventy milliseconds all by
+ * itself -- but it is the difference between a page that stutters and a page
+ * that stops. Shared by the two passes that walk the font: the health check and
+ * the strip catching up.
+ */
+const SLICE = 8;
+
+/**
  * What has closed up, and where.
  *
  * The letters here cannot fold, but they can be pushed somewhere nobody meant:
@@ -829,10 +863,57 @@ function Cells({ letter, scale }: { letter: string; scale: number }): React.JSX.
  */
 function Warnings({ revision }: { revision: number }): React.JSX.Element | null {
   const state = useForge();
-  const found = React.useMemo(
-    () => familyTroubles(state.settled),
-    [state.settled, revision],
-  );
+  /*
+   * Worked out when the browser has nothing better to do, not while it has.
+   *
+   * The walk draws every letter in the font, at every weight the family has,
+   * and asks what each one has done to itself. That is honest work for a panel
+   * whose job is to name the letters that have closed up, and it is far too
+   * much work to do between two frames of a drag: with a shadow switched on it
+   * is fifteen seconds of arithmetic.
+   *
+   * It used to run whole, on every settle, and a settle was not only the end of
+   * a gesture -- the store settled after a sixth of a second of quiet, so a
+   * pause in the middle of a drag started the entire pass with the button still
+   * down. That is where a ten-step pull of `Fillets: Size` spent most of its
+   * four hundred blocked seconds.
+   *
+   * Now it waits for the font to hold still, and then walks it a few
+   * milliseconds at a time, and is dropped if the font moves again first.
+   * Nothing is lost but the promptness of a warning, and a warning that arrives
+   * a moment after the letter is still a warning about the letter in front of
+   * you -- whereas a slider that cannot be moved is not a slider.
+   */
+  const [found, setFound] = React.useState<Trouble[]>([]);
+  React.useEffect(() => {
+    // Not while a hand is on a control. The walk below is polite about frames,
+    // but a pass that is thrown away and restarted on every one of them is
+    // still the whole alphabet's worth of drawing per frame.
+    if (!state.resting) return;
+    let live = true;
+    let asked = 0;
+    const waited = window.setTimeout(() => {
+      const walking = familyWalk(state.settled);
+      // A slice short enough to fit in a frame with the drawing, so the page
+      // keeps answering while the font is being looked over.
+      const slice = () => {
+        asked = 0;
+        const until = performance.now() + SLICE;
+        let step = walking.next();
+        while (!step.done && performance.now() < until) step = walking.next();
+        if (!live) return;
+        if (step.done) setFound(step.value);
+        else asked = window.requestAnimationFrame(slice);
+      };
+      asked = window.requestAnimationFrame(slice);
+    }, STILL);
+    return () => {
+      live = false;
+      window.clearTimeout(waited);
+      if (asked) window.cancelAnimationFrame(asked);
+    };
+  }, [state.settled, state.resting, revision]);
+
   if (found.length === 0) return null;
   return (
     <div className="shrink-0 border-b border-border px-4 py-2" data-forge-warnings>
@@ -863,32 +944,219 @@ function Warnings({ revision }: { revision: number }): React.JSX.Element | null 
   );
 }
 
+/**
+ * Which of the letters are worth drawing: the ones somebody can see.
+ *
+ * The strip holds every glyph in the font -- four hundred and fifty-two of
+ * them -- in a scrolling box that shows about a hundred and twenty-seven at a
+ * time. Every one of the rest was being drawn in full on every change, and with
+ * a cast switched on a letter costs several milliseconds, so nearly three
+ * quarters of the most expensive work on the page was going into pictures
+ * nobody was looking at.
+ *
+ * A letter is drawn once it has come near the box, and from then on it is
+ * redrawn with the others: what this saves is the letters that have never been
+ * anywhere near it, which on a font this size is most of them. Scrolling adds
+ * to the set and nothing takes away from it, so a letter seen once never blanks
+ * again -- there is no second pass to pay for, and nothing flickers on the way
+ * back up.
+ *
+ * The first screenful is assumed rather than waited for. An observer only
+ * reports after the browser has laid the page out, and a strip that came up
+ * empty and filled in a frame later would read as a bug on every load.
+ */
+const FIRST_SCREEN = 128;
+
+function whatIsNear(names: string[]): {
+  near: ReadonlySet<string>;
+  watch: (node: HTMLElement | null) => void;
+} {
+  const [near, setNear] = React.useState<ReadonlySet<string>>(
+    () => new Set(names.slice(0, FIRST_SCREEN)),
+  );
+  const waiting = React.useRef<Set<string>>(new Set(names.slice(0, FIRST_SCREEN)));
+  const watcher = React.useRef<IntersectionObserver | null>(null);
+
+  if (watcher.current === null && typeof IntersectionObserver !== "undefined") {
+    watcher.current = new IntersectionObserver(
+      (entries) => {
+        let fresh = false;
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const name = (entry.target as HTMLElement).dataset.forgeCell;
+          if (name && !waiting.current.has(name)) {
+            waiting.current.add(name);
+            fresh = true;
+          }
+          watcher.current?.unobserve(entry.target);
+        }
+        // One update for the whole batch, and none at all when a scroll only
+        // brought back letters that had already been drawn.
+        if (fresh) setNear(new Set([...waiting.current]));
+      },
+      /*
+       * Two rows of warning, not a screen's worth.
+       *
+       * The margin is measured off the window, not off the strip, and the strip
+       * is a fraction of the window tall -- so a screenful of margin reaches
+       * many rows past it in both directions and calls most of the alphabet
+       * near, which is the saving given back. Two rows is enough for a letter
+       * to be ready by the time it is scrolled to.
+       */
+      { rootMargin: "120px 0px" },
+    );
+  }
+  React.useEffect(() => () => watcher.current?.disconnect(), []);
+
+  /*
+   * The same function every render, on purpose.
+   *
+   * It is handed to four hundred and fifty-two cells as a ref, and a ref that
+   * changes identity is detached and re-attached on every one of them -- which
+   * is most of a render's work for a list this long, and it happens whether or
+   * not anything about the cells has changed. Reading the set through a ref
+   * keeps it stable without going stale.
+   */
+  const watch = React.useCallback((node: HTMLElement | null) => {
+    if (!node) return;
+    const name = node.dataset.forgeCell;
+    if (name && waiting.current.has(name)) return;
+    watcher.current?.observe(node);
+  }, []);
+
+  return { near, watch };
+}
+
+/** One glyph of the strip: what to draw, and what is different about it. */
+interface Cell {
+  name: string;
+  d: string;
+  width: number;
+  held: boolean;
+  shaped: boolean;
+  outside: boolean;
+}
+
+function cellOf(name: string, near: ReadonlySet<string>, forge: Forge): Cell {
+  // A letter nobody has scrolled to yet is not drawn at all. It has an empty
+  // box the right size, which is what it had while it was off screen anyway,
+  // and it fills in before it arrives.
+  const drawn = near.has(name) ? draw(name, forge) : null;
+  return {
+    name,
+    d: drawn ? contoursToSvgPath(drawn.contours) : "",
+    width: drawn?.advanceWidth ?? 0,
+    held: isException(forge, name),
+    shaped: Boolean(formOf(forge, name)),
+    outside: isImported(forge, name),
+  };
+}
+
+function cellsOf(names: string[], near: ReadonlySet<string>, forge: Forge): Cell[] {
+  return names.map((name) => cellOf(name, near, forge));
+}
+
 /** Every glyph in the font, small, so a change can be seen spreading. */
 function Alphabet({
   names,
   selected,
-  revision,
 }: {
   names: string[];
   selected: string;
-  revision: number;
 }): React.JSX.Element {
   const state = useForge();
-  const cells = React.useMemo(
-    () =>
-      names.map((name) => {
-        const drawn = draw(name, state.settled);
-        return {
-          name,
-          d: drawn ? contoursToSvgPath(drawn.contours) : "",
-          width: drawn?.advanceWidth ?? 0,
-          held: isException(state.settled, name),
-          shaped: Boolean(formOf(state.settled, name)),
-          outside: isImported(state.settled, name),
-        };
-      }),
-    [names, state.settled, revision],
-  );
+  /*
+   * Four hundred and fifty-two letters, so this is where a drag is won or lost.
+   *
+   * Measured on the draw page with `Fillets` switched on: one ten-step pull of
+   * its `Size` slider drew five thousand letters and spent seventeen of its
+   * twenty-two seconds inside the shaping layers, nearly all of it here. The
+   * strip follows the settled font, which is meant to keep it out of a drag
+   * altogether -- but the store used to settle in any pause, and with a cast on
+   * every frame is a pause, so it redrew the whole alphabet on every one.
+   *
+   * Both halves of that are fixed now, and this is the second: the strip holds
+   * the last font it was shown at rest and catches up when the hand comes off.
+   * That is what following `settled` rather than the live document was always
+   * meant to buy -- the timer was quietly taking it back.
+   */
+  const held = React.useRef(state.settled);
+  if (state.resting) held.current = state.settled;
+  const settled = held.current;
+  const { near, watch } = whatIsNear(names);
+
+  // Without the layers, which is what the strip shows the instant a change
+  // lands. Cheap enough to work out in a render: a letter with nothing cast on
+  // it is a handful of contours and a short path.
+  const plain = React.useMemo(() => cellsOf(names, near, unshaped(settled)), [names, near, settled]);
+  /*
+   * The shapes arrive a few frames after the letters do.
+   *
+   * Even scoped to what is on screen, putting the cast back on a hundred and
+   * twenty-seven letters at once is a single stretch of work seconds long:
+   * measured on the draw page, letting go of `Shadow: How far` froze the window
+   * for six and a half seconds and `Rim: Thickness` for five and three
+   * quarters. All of it in one task, so nothing could be clicked and nothing
+   * repainted until it finished.
+   *
+   * So the strip shows the plain letters at once and builds the shaped ones a
+   * few milliseconds at a time in the frames after, swapping the lot in when
+   * the last is ready. A whole cell is made at a time -- drawn, measured and
+   * spelled out as a path -- so the render that follows does no drawing at all
+   * and cannot become a long task of its own however the cache happens to
+   * stand.
+   *
+   * The page stays answerable the whole way through, and nothing is lost but
+   * the promptness of a shadow on a picture nine pixels across.
+   */
+  const [ripe, setRipe] = React.useState<{ of: Forge; cells: Cell[] } | null>(null);
+  React.useEffect(() => {
+    // Nothing to put back on, so what is drawn already is the finished thing.
+    // Asked for rather than assigned, because this runs again whenever the
+    // visible set grows, and an answer that has not changed should not cost a
+    // render of four hundred and fifty-two cells to say so.
+    if (unshaped(settled) === settled) {
+      setRipe((was) => (was?.of === settled ? was : { of: settled, cells: plain }));
+      return;
+    }
+    const made: Cell[] = [];
+    let at = 0;
+    let asked = 0;
+    const slice = () => {
+      const until = performance.now() + SLICE;
+      while (at < names.length && performance.now() < until) {
+        made.push(cellOf(names[at++], near, settled));
+      }
+      if (at < names.length) asked = window.requestAnimationFrame(slice);
+      else setRipe({ of: settled, cells: made });
+    };
+    asked = window.requestAnimationFrame(slice);
+    return () => window.cancelAnimationFrame(asked);
+  }, [settled, near, names, plain]);
+  /*
+   * The best each letter has, until the whole strip has caught up.
+   *
+   * Falling back to the plain letters wholesale looked wrong in a way the
+   * timings did not show: change one setting and for the better part of a
+   * second every letter in the font lost its cuts and then got them back. That
+   * reads as the cuts having been switched off, not as a picture being
+   * redrawn -- and it is worse than useless when the change was to one letter,
+   * because the other four hundred and fifty-one flicker for no reason at all.
+   *
+   * So a letter that already had a shape keeps it until its new one is ready,
+   * and only a letter that has none -- one being scrolled to for the first
+   * time -- shows the plain drawing while it waits. The strip is always a whole
+   * font rather than a mixture caught mid-change.
+   */
+  const cells = React.useMemo(() => {
+    if (ripe?.of === settled) return ripe.cells;
+    if (!ripe) return plain;
+    const before = new Map(ripe.cells.map((cell) => [cell.name, cell]));
+    return plain.map((cell) => {
+      const was = before.get(cell.name);
+      return was && was.d ? was : cell;
+    });
+  }, [ripe, settled, plain]);
 
   const { metrics } = state.forge.style;
 
@@ -909,6 +1177,7 @@ function Alphabet({
                   : cell.name
             }
             data-forge-cell={cell.name}
+            ref={watch}
             className={tile(
               cell.name === selected,
               "relative flex size-14 items-center justify-center rounded-md border",
