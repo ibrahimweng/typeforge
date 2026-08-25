@@ -45,6 +45,8 @@ const FAMILY_CONTROLS: Record<Family, string> = {
 };
 
 const SHORTCUTS: Array<[string, string]> = [
+  ["Space", "Quick actions"],
+  ["⌘K", "Quick actions, even while typing"],
   ["V", "Select tool"],
   ["P", "Pen tool"],
   ["⌘Z", "Undo"],
