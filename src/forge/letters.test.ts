@@ -396,6 +396,46 @@ describe("an arc that goes nowhere still lands where its neighbours are", () => 
   const styleAt = (base: Style, weight: number): Style =>
     weighted({ ...startFrom(base), family: { drawn: 400, also: WEIGHTS } }, weight).style;
 
+  /*
+   * The Psychedelic's five, which are the same fault in a shape rather than in
+   * a piece: a ball is refused where a run arrives straight and its ink has
+   * already reached one of the letter's lines, and both of those move with the
+   * pen. The drawn weight decides now and the others follow -- so these have to
+   * be asked with the book open, like the figures below.
+   */
+  it("keeps the Psychedelic's balls on the axis", () => {
+    const adrift: string[] = [];
+    const book: WaveBook = { lengths: new Map(), bowls: new Map(), balls: new Map(), recording: true };
+    const was = openWaveBook(book);
+    const face = STARTING_POINTS.find((one) => one.name === "Psychedelic")!;
+    try {
+      // Named by their characters, which is what the engine calls them: there
+      // is no `Omega` in `letterNames()` and a list of names that are not names
+      // is a test that passes without asking anything.
+      for (const name of ["Ω", "Ώ", "δ", "ζ", "Ґ", "C", "S", "s"]) {
+        book.recording = true;
+        waveBookAt(name);
+        drawLetter(name, styleAt(face, 400));
+        book.recording = false;
+        const counts = WEIGHTS.map((weight) => {
+          waveBookAt(name);
+          const drawn = drawLetter(name, styleAt(face, weight));
+          return drawn ? drawn.contours.reduce((sum, one) => sum + one.nodes.length, 0) : 0;
+        });
+        book.lengths.clear();
+        book.bowls.clear();
+        book.balls.clear();
+        // Every one of these is drawn on this face, so a zero is a name that
+        // is not a name rather than a letter with nothing in it.
+        expect(counts.every((one) => one > 0), `${name} draws nothing`).toBe(true);
+        if (new Set(counts).size !== 1) adrift.push(`${name}: ${counts.join(", ")}`);
+      }
+    } finally {
+      openWaveBook(was);
+    }
+    expect(adrift).toEqual([]);
+  }, 60_000);
+
   it.each(["two", "three", "onehalf", "threequarters", "copyright", "ae", "C"])(
     "leaves the Display %s the same letter at every weight",
     (name) => {
@@ -425,7 +465,7 @@ describe("an arc that goes nowhere still lands where its neighbours are", () => 
    */
   it("keeps the figures on the axis on every face", () => {
     const adrift: string[] = [];
-    const book: WaveBook = { lengths: new Map(), bowls: new Map(), recording: true };
+    const book: WaveBook = { lengths: new Map(), bowls: new Map(), balls: new Map(), recording: true };
     const was = openWaveBook(book);
     try {
       for (const base of STARTING_POINTS) {
