@@ -90,6 +90,11 @@ export interface WaveBook {
    * drawn weight gave it one. See `decided`.
    */
   balls: Map<string, boolean[]>;
+  /**
+   * One entry per corner a letter's offsets turn, in order: whether the drawn
+   * weight brought the two sides of it to a point. See `folded`.
+   */
+  corners: Map<string, boolean[]>;
   /** Taking them down, rather than reading them back. */
   recording: boolean;
 }
@@ -99,6 +104,7 @@ let bookAt = "";
 let bookCursor = 0;
 let bowlCursor = 0;
 let ballCursor = 0;
+let cornerCursor = 0;
 
 /**
  * Start or stop keeping the book, handing back whatever was open before.
@@ -119,6 +125,7 @@ export function openWaveBook(next: WaveBook | null): WaveBook | null {
   bookCursor = 0;
   bowlCursor = 0;
   ballCursor = 0;
+  cornerCursor = 0;
   return was;
 }
 
@@ -128,6 +135,7 @@ export function waveBookAt(name: string): void {
   bookCursor = 0;
   bowlCursor = 0;
   ballCursor = 0;
+  cornerCursor = 0;
 }
 
 /**
@@ -150,6 +158,20 @@ export function waveBookAt(name: string): void {
  *
  * Asked once per terminal whatever the answer, so the page stays in step.
  */
+export function folded(mine: boolean): boolean {
+  if (!book) return mine;
+  const at = cornerCursor;
+  cornerCursor += 1;
+  if (book.recording) {
+    const list = book.corners.get(bookAt);
+    if (list) list.push(mine);
+    else book.corners.set(bookAt, [mine]);
+    return mine;
+  }
+  const list = book.corners.get(bookAt);
+  return at < (list?.length ?? 0) ? list![at] : mine;
+}
+
 export function decided(mine: boolean): boolean {
   if (!book) return mine;
   const at = ballCursor;

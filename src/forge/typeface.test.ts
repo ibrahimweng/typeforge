@@ -275,9 +275,14 @@ describe("the weight axis, and the letters that cannot follow it", () => {
    * two the bound was refusing exactly two pinnings of 8,924 and both were the
    * `section`.
    *
-   * Measured at 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0 and 0, in the order
-   * below. Fifteen of the sixteen carry every letter they draw, and what is
-   * left is the Marker's `braceright`.
+   * And the Marker went 1 to 0 when a corner stopped deciding for itself
+   * whether to come to a point -- see `folded` in `shapes.ts`. Which is the
+   * last of them: measured at nothing on all sixteen, and every face carries
+   * every letter it draws.
+   *
+   * The ceilings stay a little over rather than at nothing, because a ceiling
+   * is there to catch a change going wrong and a face at nothing has no room
+   * to say by how much.
    */
   it("keeps the faces that round their corners and their ends on the axis too", async () => {
     for (const [name, most] of [
@@ -287,7 +292,7 @@ describe("the weight axis, and the letters that cannot follow it", () => {
       ["Fairground", 3],
       ["Ribbon", 3],
       ["Technical", 1],
-      ["Marker", 4],
+      ["Marker", 1],
       ["Display", 1],
       /*
        * The Slab, 64 to 15, and with it the Typewriter 50 to 13, the Serif 40
