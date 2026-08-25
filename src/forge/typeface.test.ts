@@ -269,9 +269,15 @@ describe("the weight axis, and the letters that cannot follow it", () => {
    * drawn weight decides now and the rest follow it, which is what the waves
    * and the bowls already do.
    *
-   * Measured at 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0 and 0, in the
-   * order below. Fourteen of the sixteen carry every letter they draw, and
-   * what is left is the Technical's `section` and the Marker's `braceright`.
+   * And the Technical went 1 to 0 when the bowl book's give-up was measured
+   * again -- see `bowlBetween` in `shapes.ts`. Its bound was set at two pens
+   * against a font that left 52 letters standing, and by the time the font left
+   * two the bound was refusing exactly two pinnings of 8,924 and both were the
+   * `section`.
+   *
+   * Measured at 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0 and 0, in the order
+   * below. Fifteen of the sixteen carry every letter they draw, and what is
+   * left is the Marker's `braceright`.
    */
   it("keeps the faces that round their corners and their ends on the axis too", async () => {
     for (const [name, most] of [
@@ -280,7 +286,7 @@ describe("the weight axis, and the letters that cannot follow it", () => {
       ["Geometric", 1],
       ["Fairground", 3],
       ["Ribbon", 3],
-      ["Technical", 4],
+      ["Technical", 1],
       ["Marker", 4],
       ["Display", 1],
       /*

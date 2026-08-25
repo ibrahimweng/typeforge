@@ -549,19 +549,33 @@ export function bowlBetween(
    * different letter, and the Slab's `c` at the Black lost a quarter of its
    * bowl and a fifth of its ink to this before it was bounded.
    *
-   * So a bowl gives up at most two pens of itself, and past that it keeps its
+   * So a bowl gives up at most four pens of itself, and past that it keeps its
    * own start and the letter is left standing at that weight. Which is the
    * right way round: a letter that does not follow the axis is a letter drawn
    * at one weight, and a letter drawn wrong is wrong everywhere.
    *
-   * Two rather than a rounder number because that is where the measurement
-   * turns. Over the sixteen faces the letters left standing come to 135 at half
-   * a pen, 91 at one, 52 at two and 50 with no bound at all -- and the largest
-   * give-up any bowl asks for is 2.93 pens, so a bound of two is the one that
-   * refuses the handful that are really giving up a piece of themselves and
-   * lets through the ones giving up a sliver.
+   * It was two, and two was right when it was chosen: the letters left standing
+   * over the sixteen faces came to 135 at half a pen, 91 at one, 52 at two and
+   * 50 with no bound at all, so two refused the handful really giving up a
+   * piece of themselves and let through the ones giving up a sliver.
+   *
+   * That trade no longer exists, because the letters it was trading against
+   * have since been fixed where they actually broke -- a cap eating its run, an
+   * arc that goes nowhere landing away from its neighbours, a ball refused at
+   * one weight and drawn at the next. Measured again: of 8,924 pinnings across
+   * the sixteen faces and four weights, 204 give anything up at all, the median
+   * of those is a quarter of a pen, the ninety-ninth centile is 1.4 pens and
+   * the worst is 3. Two pens refuses exactly two of the 8,924, and both of them
+   * are the Technical `section` -- so the bound had stopped being a bound on
+   * damage and become a bound on one letter.
+   *
+   * Four, then: above everything measured with room to spare, and still there
+   * for a bowl that asks for something wilder later. What it costs is the Thin
+   * `section`, which gives up three pens of one run: six per cent of its ink,
+   * the same bounding box to the unit, and a step at the bottom left that a
+   * side-by-side rendering has to be looked at twice to find.
    */
-  const spare = penHalf * 4;
+  const spare = penHalf * 8;
   let given = 0;
   for (let slot = first; slot <= last; slot++)
     if (slot < wanted || slot >= wanted + loop.length) given += lengthOf(walk[slot].piece!);
