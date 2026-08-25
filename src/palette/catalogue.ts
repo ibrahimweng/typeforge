@@ -19,7 +19,18 @@ import { PARAMS } from "@/components/param-specs";
 import { DEFAULT_PARAMS, type GlyphParams } from "@/font/types";
 import { letterNames } from "@/forge/build";
 import { ALTERNATES } from "@/forge/letters";
-import { PART_SPECS, type PartName } from "@/forge/parts";
+import {
+  CAST_SPECS,
+  CUT_SPECS,
+  METRIC_CONTROLS,
+  PART_SPECS,
+  PEN_CONTROLS,
+  type PartControl,
+  type PartName,
+  type FieldControl,
+} from "@/forge/parts";
+import type { CastName } from "@/forge/cast";
+import type { CutName } from "@/forge/cut";
 import { BASES } from "@/forge/style";
 import type { Mode } from "@/App";
 import type { ViewId } from "@/state/store";
@@ -93,6 +104,21 @@ export interface Shell {
   /** Forge parts. */
   partOf: (part: PartName, key: string) => number | string | boolean;
   setPart: (part: PartName, key: string, value: number | string | boolean, done: boolean) => void;
+  /**
+   * The pen the forge draws with, and the lines the letters stand on.
+   *
+   * These are not parts -- a part belongs to a letter and these belong to the
+   * whole face -- so they are their own registries and want their own readers.
+   */
+  penOf: (key: string) => number;
+  setPen: (key: string, value: number, done: boolean) => void;
+  metricOf: (key: string) => number;
+  setMetric: (key: string, value: number, done: boolean) => void;
+  /** What is done to the letter after it has been drawn. */
+  cutOf: (cut: CutName, key: string) => number | string | boolean;
+  setCut: (cut: CutName, key: string, value: number | string | boolean, done: boolean) => void;
+  castOf: (cast: CastName, key: string) => number | string | boolean;
+  setCast: (cast: CastName, key: string, value: number | string | boolean, done: boolean) => void;
   startFromBase: (name: string) => void;
   chooseAlternate: (letter: string, form: string) => void;
   hasFont: boolean;
@@ -284,6 +310,12 @@ export function catalogue(shell: Shell): Item[] {
       if (control.options) {
         add({
           ...base,
+          // What it can be set to, as well as what it is. A choice between
+          // named shapes carries its meaning in the options rather than in the
+          // hint -- "Which edge" says "Where the saw runs" and leaves every
+          // word that would find it ("left", "foot", "both flanks") sitting in
+          // the five options underneath.
+          also: [...(base.also ?? []), ...optionWords(control.options)],
           choose: {
             options: control.options,
             read: () => String(shell.partOf(part.name, control.key) ?? control.options![0].value),
@@ -322,6 +354,179 @@ export function catalogue(shell: Shell): Item[] {
           format: (value) => trim(value, control.step),
         },
       });
+    }
+  }
+
+  // ---- The pen, and the lines the letters stand on -----------------------
+  //
+  // A part belongs to a letter; these belong to the whole face, so they keep
+  // their own registries -- and the first version of this file read `PARAMS`
+  // and `PART_SPECS` and stopped there. That left the pen's own weight, the
+  // first thing anybody drawing a face reaches for, unreachable from the
+  // palette. The `Weight` that did answer to "fatter" was the whole-font
+  // transform in edit mode: a different control that happens to share a name,
+  // and answering with it took you out of the forge to use it.
+  const drawing = shell.mode === "forge" ? undefined : "Drawing a font";
+
+  const fields: Array<{
+    group: string;
+    prefix: string;
+    controls: readonly FieldControl[];
+    read: (key: string) => number;
+    write: (key: string, value: number, done: boolean) => void;
+  }> = [
+    {
+      group: "The pen",
+      prefix: "pen",
+      controls: PEN_CONTROLS,
+      read: (key) => shell.penOf(key),
+      write: (key, value, done) => shell.setPen(key, value, done),
+    },
+    {
+      group: "Proportions",
+      prefix: "metrics",
+      controls: METRIC_CONTROLS,
+      read: (key) => shell.metricOf(key),
+      write: (key, value, done) => shell.setMetric(key, value, done),
+    },
+  ];
+
+  for (const field of fields) {
+    for (const control of field.controls) {
+      const base: Item = {
+        id: `${field.prefix}:${control.key}`,
+        kind: "control",
+        group: field.group,
+        label: control.label,
+        hint: control.hint,
+        also: [control.key, field.group],
+        where: drawing,
+      };
+      if (control.toggle) {
+        add({
+          ...base,
+          toggle: {
+            read: () => Boolean(field.read(control.key)),
+            write: (on) => {
+              shell.setMode("forge");
+              field.write(control.key, on ? 1 : 0, true);
+            },
+          },
+        });
+        continue;
+      }
+      add({
+        ...base,
+        adjust: {
+          min: control.min,
+          max: control.max,
+          step: control.step,
+          read: () => field.read(control.key),
+          write: (value, done) => {
+            shell.setMode("forge");
+            field.write(control.key, value, done);
+          },
+          format: (value) => trim(value, control.step),
+        },
+      });
+    }
+  }
+
+  // ---- What is done to the letter after it has been drawn ----------------
+  //
+  // A cut takes ink away and a cast puts it back, and both happen once the pen
+  // has finished, which is why neither is a part. Each is a switch and then its
+  // own numbers, so the switch is offered too: somebody who wants slots wants
+  // them turned on, not a slot thickness on a face that has no slots.
+  const operations: Array<{
+    prefix: string;
+    specs: ReadonlyArray<{ name: string; label: string; hint: string; controls: PartControl[] }>;
+    also: string;
+    read: (name: string, key: string) => number | string | boolean;
+    write: (name: string, key: string, value: number | string | boolean, done: boolean) => void;
+  }> = [
+    {
+      prefix: "cut",
+      specs: CUT_SPECS,
+      also: "cut away",
+      read: (name, key) => shell.cutOf(name as CutName, key),
+      write: (name, key, value, done) => shell.setCut(name as CutName, key, value, done),
+    },
+    {
+      prefix: "cast",
+      specs: CAST_SPECS,
+      also: "added to the letter",
+      read: (name, key) => shell.castOf(name as CastName, key),
+      write: (name, key, value, done) => shell.setCast(name as CastName, key, value, done),
+    },
+  ];
+
+  for (const operation of operations) {
+    for (const spec of operation.specs) {
+      add({
+        id: `${operation.prefix}:${spec.name}:on`,
+        kind: "control",
+        group: spec.label,
+        label: spec.label,
+        hint: spec.hint,
+        also: [operation.prefix, operation.also, spec.name],
+        where: drawing,
+        toggle: {
+          read: () => Boolean(operation.read(spec.name, "on")),
+          write: (on) => {
+            shell.setMode("forge");
+            operation.write(spec.name, "on", on, true);
+          },
+        },
+      });
+      for (const control of spec.controls) {
+        const base: Item = {
+          id: `${operation.prefix}:${spec.name}:${control.key}`,
+          kind: "control",
+          group: spec.label,
+          // Named by the operation as well, for the same reason the parts are:
+          // there are four things called Thickness and three called Angle.
+          label: `${spec.label}: ${control.label}`,
+          short: control.label,
+          hint: control.hint,
+          also: [spec.hint, spec.name, control.key, operation.prefix],
+          where: drawing,
+        };
+        // Turning a number up on an operation that is switched off does
+        // nothing anybody can see, so setting one switches it on.
+        const wake = (value: number | string | boolean, done: boolean) => {
+          shell.setMode("forge");
+          if (!operation.read(spec.name, "on")) operation.write(spec.name, "on", true, true);
+          operation.write(spec.name, control.key, value, done);
+        };
+        if (control.options) {
+          add({
+            ...base,
+            also: [...(base.also ?? []), ...optionWords(control.options)],
+            choose: {
+              options: control.options,
+              read: () => String(operation.read(spec.name, control.key) ?? control.options![0].value),
+              write: (value) => wake(value, true),
+            },
+          });
+          continue;
+        }
+        if (control.toggle) {
+          add({ ...base, toggle: { read: () => Boolean(operation.read(spec.name, control.key)), write: (on) => wake(on, true) } });
+          continue;
+        }
+        add({
+          ...base,
+          adjust: {
+            min: control.min,
+            max: control.max,
+            step: control.step,
+            read: () => Number(operation.read(spec.name, control.key) ?? control.min),
+            write: (value, done) => wake(value, done),
+            format: (value) => trim(value, control.step),
+          },
+        });
+      }
     }
   }
 
@@ -383,6 +588,13 @@ export function catalogue(shell: Shell): Item[] {
   }
 
   return items;
+}
+
+/** Everything a choice can be set to, as words the index can weigh. */
+function optionWords(
+  options: ReadonlyArray<{ value: string; label: string; hint: string }>,
+): string[] {
+  return options.flatMap((option) => [option.label, option.hint]);
 }
 
 /** A number written for reading rather than for arithmetic. */

@@ -112,6 +112,62 @@ export const SYNONYMS: Record<string, string[]> = {
   broken: ["report", "check", "validate", "warning"],
   check: ["report", "validate", "problem"],
 
+  // What is cut out of the letter, and what is laid on it
+  //
+  // These arrived with the operations, which were not in the palette until the
+  // reachability run went looking for them. They are the widest gap in the
+  // table, because a cut is the one thing here somebody is most likely to
+  // arrive wanting and least likely to know the name of: they have seen the
+  // poster, not the panel.
+  teeth: ["saw", "notch", "comb", "tooth"],
+  tooth: ["saw", "notch", "comb"],
+  jagged: ["saw", "notch", "comb", "tooth"],
+  serrated: ["saw", "notch", "comb", "tooth"],
+  zigzag: ["saw", "notch", "comb", "tooth", "chevron"],
+  notched: ["saw", "notch", "comb"],
+  stripe: ["slot", "band", "inline"],
+  striped: ["slot", "band"],
+  stripes: ["slot", "band"],
+  band: ["slot", "stripe"],
+  bands: ["slot", "stripe"],
+  sliced: ["slot", "band", "cut"],
+  groove: ["inline", "channel"],
+  grooved: ["inline", "channel"],
+  channel: ["inline", "groove"],
+  hollow: ["inline", "rim", "outline", "counter"],
+  clipped: ["chamfer", "bevel", "corner"],
+  chamfered: ["chamfer", "bevel", "corner"],
+  split: ["break", "gap"],
+  dashed: ["break", "gap"],
+  dotted: ["break", "gap"],
+  shadow: ["extrude", "shadow", "cast"],
+  shadowed: ["extrude", "shadow", "cast"],
+  drop: ["extrude", "shadow"],
+  block: ["extrude", "shadow"],
+  depth: ["extrude", "shadow"],
+  dimensional: ["extrude", "shadow"],
+  extruded: ["extrude", "shadow"],
+  outlined: ["rim", "outline", "inline"],
+  spike: ["point", "spur", "star"],
+  spiky: ["point", "spur", "star"],
+  spikes: ["point", "spur"],
+  star: ["point", "spur"],
+  soften: ["fillet", "round", "corner", "radius"],
+  softened: ["fillet", "round", "corner"],
+  smooth: ["fillet", "round", "corner", "radius"],
+  blend: ["fillet", "round", "join"],
+  fillet: ["fillet", "round", "join"],
+
+  // The pen itself
+  // Not "weight": a broad nib is a statement about the pen and the thick-thin
+  // it produces, not about how heavy the letter is. Pointing these at weight
+  // as well put the weight control above the pen for every query that named
+  // the nib, which is the one query that means the pen and nothing else.
+  nib: ["pen", "angle", "contrast"],
+  calligraphic: ["pen", "angle", "contrast", "broad"],
+  broad: ["pen", "angle", "contrast"],
+  modulation: ["contrast", "thick", "thin"],
+
   // Places
   preview: ["specimen", "sample", "text"],
   sample: ["specimen", "preview", "text"],

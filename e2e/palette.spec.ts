@@ -99,3 +99,68 @@ test("walks the list with the arrow keys", async ({ page }) => {
   await page.keyboard.press("ArrowDown");
   await expect(dialog.getByRole("option").nth(1)).toHaveAttribute("aria-selected", "true");
 });
+
+/**
+ * The outline the forge is drawing, as a string.
+ *
+ * Read off the stage rather than from a screenshot, because the question is
+ * whether the letter was redrawn and not whether it was repainted: a shadow
+ * moving under an unchanged letter would pass a pixel comparison and this is
+ * about the palette reaching the drawing at all.
+ */
+const outlineOf = async (page: import("@playwright/test").Page): Promise<string> =>
+  page
+    .locator("[data-forge-stage] path")
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("d") ?? "").join("|"));
+
+/*
+ * These two drive controls that were not in the palette at all until the
+ * reachability run went looking for them: the catalogue read `PARAMS` and
+ * `PART_SPECS` and stopped, so the pen and the operations -- half the controls
+ * in the product -- had no rows here. `catalogue.test.ts` counts them; these
+ * check the wiring underneath actually reaches the drawing, which a count
+ * cannot say.
+ */
+test("turns a cut on from a description of what it looks like", async ({ page }) => {
+  await open(page);
+  const before = await outlineOf(page);
+  expect(before.length).toBeGreaterThan(50);
+
+  await page.getByRole("textbox", { name: "Search everything" }).fill("stripes across the letters");
+  const dialog = page.getByRole("dialog", { name: "Quick actions" });
+  const first = dialog.getByRole("option").first();
+  await expect(first).toContainText(/slot/i);
+  await first.click();
+
+  // The row opens its switch rather than closing the palette.
+  const toggle = dialog.getByRole("button", { name: /^(On|Off)$/ }).first();
+  await expect(toggle).toHaveText("Off");
+  await toggle.click();
+  await expect(toggle).toHaveText("On");
+
+  await expect.poll(() => outlineOf(page)).not.toBe(before);
+});
+
+test("moves the pen itself, which lives nowhere near the family's numbers", async ({ page }) => {
+  await open(page);
+  const before = await outlineOf(page);
+
+  await page.getByRole("textbox", { name: "Search everything" }).fill("~contrast");
+  const dialog = page.getByRole("dialog", { name: "Quick actions" });
+  const first = dialog.getByRole("option").first();
+  await expect(first).toContainText(/contrast/i);
+  await first.click();
+
+  const group = dialog.locator('[role="group"]').first();
+  const thumb = group.locator('[class*="slider-thumb"]').first();
+  const track = group.locator('[class*="slider-track"]').first();
+  const from = await thumb.boundingBox();
+  const along = await track.boundingBox();
+  if (!from || !along) throw new Error("no slider to drag");
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(along.x + along.width * 0.75, from.y + from.height / 2, { steps: 15 });
+  await page.mouse.up();
+
+  await expect.poll(() => outlineOf(page)).not.toBe(before);
+});
