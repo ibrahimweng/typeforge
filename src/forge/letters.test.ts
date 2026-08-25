@@ -18,6 +18,7 @@ import { contourArea, contoursBounds } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import { builtFrom, drawLetter, letterNames } from "./build";
 import { startFrom, weighted } from "./document";
+import { openWaveBook, waveBookAt, type WaveBook } from "./shapes";
 import { recipeOf } from "./letters";
 import { BASES as STARTING_POINTS, DISPLAY, SANS, SERIF, type Style } from "./style";
 
@@ -371,5 +372,82 @@ describe("a round cap does not eat the run it sits on", () => {
       }
     }
     expect([...new Set(gone)]).toEqual([]);
+  }, 120_000);
+});
+
+describe("an arc that goes nowhere still lands where its neighbours are", () => {
+  /*
+   * The line case in `offsetSegment` says it outright -- a run of no length has
+   * no tangent of its own and takes its neighbours' -- and the arc case did
+   * not. It read its own centre and angles, which for a piece that never
+   * travels are arithmetic about a turn that does not happen, and the offset
+   * landed wherever that put it rather than on the point its neighbours had
+   * arrived at. A piece whose ends do not meet its neighbours' is a piece
+   * `stitch` cannot weld, so it keeps both nodes where the same piece at
+   * another weight keeps one.
+   *
+   * The Display figures are the case it was found on. The `two`'s bend is nine
+   * pieces at every weight and two of them turn through nothing at the Thin and
+   * through five and nineteen degrees everywhere else, so the bend came back
+   * with 25 nodes at the Thin and 21 at the other three. Fourteen of the
+   * Display's letters were this.
+   */
+  const WEIGHTS = [100, 400, 700, 900];
+  const styleAt = (base: Style, weight: number): Style =>
+    weighted({ ...startFrom(base), family: { drawn: 400, also: WEIGHTS } }, weight).style;
+
+  it.each(["two", "three", "onehalf", "threequarters", "copyright", "ae", "C"])(
+    "leaves the Display %s the same letter at every weight",
+    (name) => {
+      const counts = WEIGHTS.map((weight) => {
+        const drawn = drawLetter(name, styleAt(DISPLAY, weight));
+        return drawn ? drawn.contours.reduce((sum, one) => sum + one.nodes.length, 0) : 0;
+      });
+      expect(counts.every((one) => one > 0)).toBe(true);
+      expect(new Set(counts).size, `${name} has ${counts.join(", ")} nodes across the axis`).toBe(1);
+    },
+  );
+
+  /*
+   * And the invariant behind it, asked of every face: a piece that turns
+   * through nothing is offset onto the run it sits in, so the two ends it
+   * contributes are the ends its neighbours already have. Said as node counts,
+   * because that is what the axis actually joins on, and asked of the letters
+   * that carry a bend rather than of all of them, which is seconds rather than
+   * minutes.
+   *
+   * With the wave book open and read back, which is the only way to ask it.
+   * A first version of this drew the letters bare and the Wavy `at` came back
+   * 52, 52, 52, 62 -- a face the delivered font leaves nothing standing on.
+   * How many humps a run carries is settled once at the drawn weight and read
+   * back by the others, so a letter drawn without the book is a letter nobody
+   * ships, and a test that asks about one is asking about nothing.
+   */
+  it("keeps the figures on the axis on every face", () => {
+    const adrift: string[] = [];
+    const book: WaveBook = { lengths: new Map(), bowls: new Map(), recording: true };
+    const was = openWaveBook(book);
+    try {
+      for (const base of STARTING_POINTS) {
+        for (const name of ["two", "three", "five", "six", "nine", "copyright", "at"]) {
+          // Recorded at the drawn weight first, exactly as `deliver` does it.
+          book.recording = true;
+          waveBookAt(name);
+          drawLetter(name, styleAt(base, 400));
+          book.recording = false;
+          const counts = WEIGHTS.map((weight) => {
+            waveBookAt(name);
+            const drawn = drawLetter(name, styleAt(base, weight));
+            return drawn ? drawn.contours.reduce((sum, one) => sum + one.nodes.length, 0) : 0;
+          });
+          book.lengths.clear();
+          book.bowls.clear();
+          if (new Set(counts).size !== 1) adrift.push(`${base.name} ${name}: ${counts.join(", ")}`);
+        }
+      }
+    } finally {
+      openWaveBook(was);
+    }
+    expect(adrift).toEqual([]);
   }, 120_000);
 });

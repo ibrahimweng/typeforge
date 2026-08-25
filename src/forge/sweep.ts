@@ -198,6 +198,44 @@ function offsetSegment(one: Headed, side: number, reach: PenReach): OffsetSegmen
    * an ellipse with the same centre and the same parametric angles -- which is
    * why nothing here has to be sampled.
    */
+  /*
+   * An arc that goes nowhere is offset the way a line that goes nowhere is.
+   *
+   * The line case above says it outright: a run of no length has no tangent of
+   * its own and takes its neighbours'. The arc case did not, and read its own
+   * centre and angles instead -- which for a piece that never travels are
+   * arithmetic about a turn that does not happen. The offset landed wherever
+   * that put it rather than on the point its neighbours had arrived at, and a
+   * piece whose ends do not meet its neighbours' is a piece `stitch` cannot
+   * weld: it keeps both nodes where the same piece at another weight keeps one.
+   *
+   * That is the whole of the Display's Thin figures. The `two`'s bend is nine
+   * pieces at every weight and two of them are arcs of no sweep at the Thin and
+   * of five and nineteen degrees everywhere else, so the bend came back with 25
+   * nodes at the Thin and 21 at the other three -- and with forty of its points
+   * piled on two spots forty-four units apart, which is where the offsets of
+   * those two pieces had gone.
+   *
+   * Placed as a point, it stands still exactly where the run is, keeping its
+   * own kind and its own piece count so the node it contributes is the node the
+   * travelling version of it contributes.
+   */
+  const turns = Math.abs(segment.endAngle - segment.startAngle) > 1e-9 && segment.radius > 1e-9;
+  if (!turns) {
+    const shift = reachAlong(leftOf(one.start), reach);
+    const here = segmentStart(segment);
+    return {
+      kind: "ellipse",
+      centre: { x: here.x + shift.x * side, y: here.y + shift.y * side },
+      rx: 0,
+      ry: 0,
+      rotation: reach.angle,
+      from: 0,
+      to: 0,
+      pieces: segment.pieces,
+    };
+  }
+
   const inward = segment.sweepPositive ? side : -side;
   const rx = segment.radius - inward * reach.across;
   const ry = segment.radius - inward * reach.along;

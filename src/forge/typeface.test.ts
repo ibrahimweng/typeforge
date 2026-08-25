@@ -253,8 +253,16 @@ describe("the weight axis, and the letters that cannot follow it", () => {
    * lighter weight. The bracket's arms went 112, 53, 0, 0 across the axis and
    * the letter had 18 nodes at the first two weights and 10 at the last two.
    *
-   * Measured at 0, 0, 0, 14, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 5 and 0, in the
-   * order below.
+   * And went 14 to 0 when an arc that goes nowhere stopped being offset from
+   * angles of its own -- see `offsetSegment` in `sweep.ts`. The `two`'s bend is
+   * nine pieces at every weight and two of them turn through nothing at the
+   * Thin and through five and nineteen degrees everywhere else, and a piece
+   * that turns through nothing was landing wherever its own arithmetic put it
+   * rather than on the point its neighbours had reached. Forty of the Thin
+   * `two`'s points sat on two spots forty-four units apart.
+   *
+   * Measured at 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 5 and 0, in the
+   * order below. Thirteen of the sixteen carry every letter they draw.
    */
   it("keeps the faces that round their corners and their ends on the axis too", async () => {
     for (const [name, most] of [
@@ -265,7 +273,7 @@ describe("the weight axis, and the letters that cannot follow it", () => {
       ["Ribbon", 3],
       ["Technical", 4],
       ["Marker", 4],
-      ["Display", 17],
+      ["Display", 1],
       /*
        * The Slab, 64 to 15, and with it the Typewriter 50 to 13, the Serif 40
        * to 13, the Didone 40 to 11, the Flared 56 to 30 and the Brush 37 to 31:
