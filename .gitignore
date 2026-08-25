@@ -12,3 +12,12 @@ blob-report/
 .vercel
 shot.mjs
 one.mjs
+
+# Anything holding a secret, ahead of there being one to hold. The repository
+# has none in any of its 144 commits and this is so that stays true: a stray
+# .env is the one mistake a public repository cannot take back, because it is
+# in the history from the moment it is pushed whatever a later commit does.
+.env
+.env.*
+*.pem
+*.key
