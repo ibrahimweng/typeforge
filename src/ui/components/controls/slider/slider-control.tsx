@@ -138,7 +138,45 @@ export function SliderControl({
             commitValue(resolvedValue, getLiveHistoryMeta());
           }
         }}
-        onValueCommitted={finishLiveHistoryGroup}
+        /*
+         * Say that the drag has ended, not just that the history group has.
+         *
+         * The value changes during a drag carry `history: "merge"`, which is
+         * how a listener knows one movement is still in progress. Nothing said
+         * that it had stopped: this fired on pointer-up and cleared the group
+         * silently, so the last thing a listener ever heard was another
+         * "still going".
+         *
+         * Downstream that left every drag permanently open, and anything
+         * waiting for a hand to come off a control had to guess -- by a timer,
+         * which fires in any pause long enough, so a slow frame read as a
+         * finished gesture. Sending the committed value with no merge on it
+         * makes the end of a drag a fact rather than an inference.
+         */
+        onValueCommitted={(nextValue, details) => {
+          /*
+           * A key is not a hand coming off the control.
+           *
+           * The slider commits on every arrow press as well as on pointer-up,
+           * and treating those alike would end the run after each press --
+           * sixty presses, sixty entries in the history, and sixty undos to
+           * take back one adjustment. So a keyboard commit says nothing and the
+           * run stays open, which is what it was before this and what the
+           * trailing catch-up downstream is there to close. The group is closed
+           * exactly as it always was, so nothing else about a keyboard run
+           * changes.
+           */
+          if (details.reason === "keyboard") {
+            finishLiveHistoryGroup();
+            return;
+          }
+          const resolvedValue = getSliderControlValue(nextValue);
+
+          if (typeof resolvedValue === "number") {
+            commitValue(resolvedValue);
+          }
+          finishLiveHistoryGroup();
+        }}
         resetValue={typeof baseValue === "number" ? [baseValue] : undefined}
         showFill={showFill}
         step={step}

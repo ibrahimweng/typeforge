@@ -1271,6 +1271,29 @@ test("takes a whole drag back in one undo", async ({ page }) => {
   await expect.poll(() => stage.getAttribute("d")).toBe(before);
 });
 
+/**
+ * And a run of key presses the same way.
+ *
+ * A slider reports the end of a pointer drag, which is how everything
+ * downstream knows a hand has come off it. It also reports one after every
+ * arrow press, and those are not endings: a run of ten presses is one
+ * adjustment, and taking it back should cost one undo rather than ten. The two
+ * are told apart by where the commit came from, and this is what says so.
+ */
+test("takes a run of key presses back in one undo too", async ({ page }) => {
+  await openForge(page);
+  const stage = page.locator("[data-forge-stage] path").first();
+  const before = await stage.getAttribute("d");
+
+  const weight = page.getByRole("slider", { name: "Weight" });
+  await weight.focus();
+  for (let step = 0; step < 10; step++) await page.keyboard.press("ArrowRight");
+  await expect.poll(() => stage.getAttribute("d")).not.toBe(before);
+
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect.poll(() => stage.getAttribute("d")).toBe(before);
+});
+
 /** A serif face leaves its hyphen, slash and quotes bare, as every serif face does. */
 test("keeps the serifs off the marks that never wear them", async ({ page }) => {
   await openForge(page);
@@ -1483,11 +1506,22 @@ test("cuts every letter in the font, and says what it did", async ({ page }) => 
 test("cuts one letter differently from the rest", async ({ page }) => {
   await openForge(page);
   const panel = page.getByRole("complementary", { name: "Forge" });
-  await panel.getByRole("switch", { name: "Slots" }).click();
 
   const outline = (letter: string) =>
     page.locator(`[data-forge-cell="${letter}"] path`).getAttribute("d");
-  await expect.poll(async () => ((await outline("H")) ?? "").split("Z").length).toBeGreaterThan(3);
+  /*
+   * The uncut letter first, so what follows can wait for the cut one by name.
+   *
+   * The strip puts the cuts on a few letters at a time rather than all at once,
+   * so for a frame or two after the switch it is still showing the letter as it
+   * was -- and an H with slots through it and an H without both answer to
+   * "more than three pieces", which is what this used to wait for. It waited
+   * for nothing, took the uncut H as its starting point, and then asked for a
+   * change that had already happened.
+   */
+  const whole = { H: await outline("H"), o: await outline("o") };
+  await panel.getByRole("switch", { name: "Slots" }).click();
+  await expect.poll(() => outline("H")).not.toBe(whole.H);
   const before = { H: await outline("H"), o: await outline("o") };
 
   // In letter scope the switch lands on this letter alone.
@@ -2515,5 +2549,81 @@ test("comes up anyway when what was kept will not come back", async ({ page }) =
   await settle(page);
   await page.locator('[data-forge-part="slab"]').getByRole("switch", { name: "Serifs" }).click();
   await expect.poll(() => keptHalves(page)).toContain("draw");
+  expect(errors).toEqual([]);
+});
+
+/**
+ * The cast comes off the letters while the slider is moving and back on when it
+ * stops.
+ *
+ * This is the whole of the bargain the draw page makes: putting a cut or a cast
+ * on costs several milliseconds a letter and there are four hundred and
+ * fifty-two letters, so while a hand is on a control they are left off, and the
+ * moment it comes away they go back.
+ *
+ * Both halves are checked, against the letter as it is drawn with nothing on it
+ * at all -- so "off" means the plain letter exactly and "on" means something
+ * other than it, rather than either being whatever the page happened to show.
+ */
+test("takes the cast off while the slider moves and puts it back after", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openForge(page);
+
+  const strip = page.locator('[data-forge-cell="n"] path');
+  const stage = page.locator("[data-forge-stage] path").first();
+  const plain = { stage: await stage.getAttribute("d"), strip: await strip.getAttribute("d") };
+
+  // Fillets: ink piled into every corner, which every letter with a join has.
+  await page.locator('[data-cut-switch="weld"]').scrollIntoViewIfNeeded();
+  await page.locator('[data-cut-switch="weld"]').click();
+  const slider = page.locator('[data-cut-control="weld:size"] [data-slot="slider"]').first();
+  await expect(slider).toBeVisible();
+  await slider.scrollIntoViewIfNeeded();
+
+  const box = (await slider.boundingBox())!;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(box.x + box.width * 0.05, y);
+  await page.mouse.down();
+  for (let step = 1; step <= 4; step++) {
+    await page.mouse.move(box.x + box.width * (0.05 + 0.1 * step), y);
+  }
+
+  // Still under the hand: the plain letter, whatever the fillet is set to.
+  await expect.poll(() => stage.getAttribute("d"), { timeout: 60_000 }).toBe(plain.stage);
+
+  await page.mouse.up();
+  await expect.poll(() => stage.getAttribute("d"), { timeout: 60_000 }).not.toBe(plain.stage);
+  await expect.poll(() => strip.getAttribute("d"), { timeout: 60_000 }).not.toBe(plain.strip);
+  expect(errors).toEqual([]);
+});
+
+/**
+ * The strip draws the letters somebody can see, and the rest when they scroll
+ * to them.
+ *
+ * Four hundred and fifty-two letters is more than a screen holds and far more
+ * than is worth drawing, so the ones nobody has scrolled to are left as empty
+ * boxes until they come near. That is only a saving if they fill in -- a letter
+ * that stays blank is a letter missing from the font as far as anybody looking
+ * at this page can tell.
+ */
+test("fills in the letters at the bottom of the strip when they are scrolled to", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openForge(page);
+
+  const cells = page.locator("[data-forge-cell]");
+  const total = await cells.count();
+  expect(total).toBeGreaterThan(300);
+
+  const last = cells.nth(total - 1);
+  const name = await last.getAttribute("data-forge-cell");
+  await last.scrollIntoViewIfNeeded();
+  await expect
+    .poll(() => page.locator(`[data-forge-cell="${name}"] path`).getAttribute("d"))
+    .not.toBe("");
   expect(errors).toEqual([]);
 });

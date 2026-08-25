@@ -19,7 +19,7 @@
 import { decidedBy, drawLetter, letterNames, type Drawn } from "./build";
 import { anyCast, CAST_NAMES, noCast, sameCast, type Cast, type CastName } from "./cast";
 import { anyCut, CUT_NAMES, noCuts, scaleOf, type CutName, type Cuts } from "./cut";
-import { shapedInk } from "./layers";
+import { anyShaping, shapedInk } from "./layers";
 import {
   emptyKit,
   hasTiles,
@@ -610,6 +610,49 @@ function remembered(
   const drawn = make();
   kept.set(letter, drawn);
   return drawn;
+}
+
+/**
+ * The same document with the shaping layers left off, for while a gesture is in
+ * flight.
+ *
+ * A cut and a cast are booleans over the whole outline and they cost between
+ * five and forty milliseconds a letter, which is nothing once and everything
+ * sixty times a second. Measured on the draw page before this: one ten-step
+ * pull of `Fillets: Size` blocked the main thread for four hundred and
+ * twenty-three seconds, in single tasks of up to thirty-eight.
+ *
+ * Kept here rather than at the call sites so that the letter drawn under the
+ * hand and the letter drawn when the hand stops come from one function and
+ * cannot drift apart. The forge handed back is a shallow copy with the two
+ * layers switched off, made once per forge so the drawing cache still has
+ * something stable to key on.
+ */
+const plainly = new WeakMap<Forge, Forge>();
+
+export function unshaped(forge: Forge): Forge {
+  // A font with nothing switched on is already this, and handing back a copy
+  // of it would be a second document drawing the same letters -- every one of
+  // them a fresh miss in a cache that had them.
+  if (!anyShaping(forge.cuts, forge.cast) && forge.cutExceptions === undefined
+      && forge.castExceptions === undefined) {
+    return forge;
+  }
+  const kept = plainly.get(forge);
+  if (kept) return kept;
+  // The per-letter exceptions go with them: a letter cut differently from the
+  // rest is still a letter with no cut on it while the hand is moving. Nothing
+  // else is touched, so the letterform itself -- its parts, its alternates,
+  // whatever was imported for it -- is exactly what it always was.
+  const plain: Forge = {
+    ...forge,
+    cuts: noCuts(),
+    cast: noCast(),
+    cutExceptions: undefined,
+    castExceptions: undefined,
+  };
+  plainly.set(forge, plain);
+  return plain;
 }
 
 /**

@@ -118,6 +118,20 @@ export interface ForgeState {
    * panel back there instead of doing nothing the second time.
    */
   focus: { id: string; asked: number } | null;
+  /**
+   * Whether a gesture is in flight.
+   *
+   * The shaping layers -- the cuts and the casts -- are booleans over the whole
+   * outline, and they cost between five and forty milliseconds a letter. Run on
+   * every frame of a drag they are what turns a slider into a frozen window:
+   * measured on the draw page, one ten-step pull of `Fillets: Size` blocked the
+   * main thread for four hundred and twenty-three seconds.
+   *
+   * So while a gesture is open the live views draw the letter without them and
+   * put them back the moment it ends. What is lost is watching a shadow grow
+   * under the hand; what is bought is a slider that moves at all.
+   */
+  resting: boolean;
   /** Bumped on every change, so views can memoise against it. */
   revision: number;
   /** The same, for `settled`: bumped only when a gesture has finished. */
@@ -130,6 +144,7 @@ class ForgeStore {
   private state: ForgeState = {
     forge: startFrom(SANS),
     settled: startFrom(SANS),
+    resting: true,
     letter: "n",
     scope: "family",
     familyName: "Untitled",
@@ -175,10 +190,36 @@ class ForgeStore {
    * So there are two ways to settle and either is enough: the gesture ends, or
    * the changes stop. A sixth of a second is longer than the gap between two
    * frames of a drag and shorter than anyone waiting for a grid to catch up.
+   *
+   * It waits twice, and the second wait is the one that matters here. Quiet is
+   * not the same as finished: a drag on a heavy font stalls for longer than a
+   * sixth of a second between frames, and treating every stall as the end of
+   * the gesture is what made this page slow -- the expensive layers went back
+   * on, the next frame stalled harder, and the two fed each other. So the first
+   * wait lets the views catch up and says nothing about the hand; only after a
+   * second, much longer, silence is the gesture given up for over. That one is
+   * for the control that never says it has finished, and it is the only thing
+   * standing between such a control and a view stuck a minute in the past.
    */
   private catchUp: ReturnType<typeof setTimeout> | null = null;
 
   private static readonly QUIET = 160;
+
+  /*
+   * How long after the last change a gesture nobody closed is given up for
+   * over.
+   *
+   * A pointer drag says when it ends, so this is really for the slider held
+   * down on an arrow key, which sends a run of changes and nothing to say the
+   * last of them was the last. The cost of being wrong is small in one
+   * direction and not the other: too long and a keyboard run waits a moment
+   * before the strip catches up; too short and a drag that stalled for one bad
+   * frame is read as finished and puts the whole cast back mid-pull.
+   *
+   * A second and a fifth, against a worst frame measured at seven hundred
+   * milliseconds on the heaviest setting this page has.
+   */
+  private static readonly ABANDONED = 1200;
 
   /**
    * Record the document as it was, then move to a new one.
@@ -204,16 +245,12 @@ class ForgeStore {
     this.gestureOpen = phase === "during";
     const resting = phase !== "during";
     if (this.catchUp !== null) clearTimeout(this.catchUp);
-    this.catchUp = resting
-      ? null
-      : setTimeout(() => {
-          this.catchUp = null;
-          if (this.state.settled !== this.state.forge) this.settle();
-        }, ForgeStore.QUIET);
+    this.catchUp = resting ? null : setTimeout(() => this.wentQuiet(), ForgeStore.QUIET);
     this.set({
       forge: next,
       settled: resting ? next : this.state.settled,
       settledRevision: this.state.settledRevision + (resting ? 1 : 0),
+      resting,
       canUndo: true,
       canRedo: false,
       revision: this.state.revision + 1,
@@ -228,12 +265,25 @@ class ForgeStore {
    * it the run would stay open and the next edit would disappear into it.
    */
   endGesture(): void {
-    this.gestureOpen = false;
-    if (this.catchUp !== null) {
-      clearTimeout(this.catchUp);
-      this.catchUp = null;
-    }
+    this.stopMoving();
     if (this.state.settled !== this.state.forge) this.settle();
+    else if (!this.state.resting) this.set({ resting: true });
+  }
+
+  /**
+   * Nothing has arrived for a while.
+   *
+   * Let the views catch up, and then wait again, much longer, before deciding
+   * the gesture itself is over -- see the note on `catchUp` for why those are
+   * two different questions.
+   */
+  private wentQuiet(): void {
+    if (this.state.settled !== this.state.forge) this.settle();
+    this.catchUp = setTimeout(() => {
+      this.catchUp = null;
+      this.gestureOpen = false;
+      if (!this.state.resting) this.set({ resting: true });
+    }, ForgeStore.ABANDONED);
   }
 
   /** Let whatever was waiting for the drag to finish catch up. */
@@ -241,6 +291,20 @@ class ForgeStore {
     this.set({
       settled: this.state.forge,
       settledRevision: this.state.settledRevision + 1,
+      /*
+       * Still moving, unless the gesture has actually closed.
+       *
+       * Two different questions, and running them together is what made this
+       * whole page slow. `settled` is there so that whatever follows the
+       * alphabet is never left showing a stale font; it is allowed to catch up
+       * in a pause. `resting` is there so that the expensive layers stay off
+       * while a hand is on a control, and a pause is not a hand coming off.
+       *
+       * When the timer set them both, a drag that stalled -- which is to say,
+       * any drag on a font with a cast on it -- read as finished on every
+       * frame, the layers went back on, and the next frame stalled harder.
+       */
+      resting: !this.gestureOpen,
     });
   }
 
@@ -511,13 +575,25 @@ class ForgeStore {
    *
    * There is one such thing: the boolean library the cuts are made of arrives
    * after the application does, and until it has, a letter with slots through
-   * it is drawn without them. Bumping the revision is what asks every view to
-   * draw again once it is there. Deliberately not a commit -- nothing about
-   * the document changed, and finding a step in the undo history for a
-   * download that finished would be undo doing something nobody asked for.
+   * it is drawn without them. This is what asks every view to draw again once
+   * it is there. Deliberately not a commit -- nothing about the document
+   * changed, and finding a step in the undo history for a download that
+   * finished would be undo doing something nobody asked for.
+   *
+   * Said by handing out the same document in a new wrapper, because a bumped
+   * revision on its own is not enough to shift a drawing: letters are
+   * remembered against the object they were drawn from, and the object has not
+   * changed -- so every view that asked again got the very drawings made
+   * without the library handed straight back. A shallow copy holds all the
+   * same parts and is a different thing to remember against, which is exactly
+   * the distinction wanted: nothing about the font is different, and every
+   * letter of it has to be drawn afresh.
    */
   refresh(): void {
+    const again = { ...this.state.forge };
     this.set({
+      forge: again,
+      settled: this.state.settled === this.state.forge ? again : { ...this.state.settled },
       revision: this.state.revision + 1,
       settledRevision: this.state.settledRevision + 1,
     });
@@ -579,10 +655,12 @@ class ForgeStore {
     const previous = this.past.pop();
     if (!previous) return;
     this.future.push(this.state.forge);
+    this.stopMoving();
     this.set({
       forge: previous,
       settled: previous,
       settledRevision: this.state.settledRevision + 1,
+      resting: true,
       canUndo: this.past.length > 0,
       canRedo: true,
       revision: this.state.revision + 1,
@@ -593,14 +671,33 @@ class ForgeStore {
     const next = this.future.pop();
     if (!next) return;
     this.past.push(this.state.forge);
+    this.stopMoving();
     this.set({
       forge: next,
       settled: next,
       settledRevision: this.state.settledRevision + 1,
+      resting: true,
       canUndo: true,
       canRedo: this.future.length > 0,
       revision: this.state.revision + 1,
     });
+  }
+
+  /**
+   * Whatever run was open is not open any more.
+   *
+   * Undo and redo are not part of a drag: they are somebody stepping outside
+   * one, and the step they undid may well be the drag itself. So the gesture
+   * closes and its timers go with it -- otherwise the views that hold still
+   * while a hand is on a control would go on holding the font that was just
+   * undone, until a timer that is about something else got round to them.
+   */
+  private stopMoving(): void {
+    this.gestureOpen = false;
+    if (this.catchUp !== null) {
+      clearTimeout(this.catchUp);
+      this.catchUp = null;
+    }
   }
 
   get style(): Style {
