@@ -261,8 +261,17 @@ describe("the weight axis, and the letters that cannot follow it", () => {
    * rather than on the point its neighbours had reached. Forty of the Thin
    * `two`'s points sat on two spots forty-four units apart.
    *
-   * Measured at 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 5 and 0, in the
-   * order below. Thirteen of the sixteen carry every letter they draw.
+   * And the Psychedelic went 5 to 0 when a ball stopped being refused outright
+   * -- see `decided` in `shapes.ts`. Whether a run arrives straight and whether
+   * its ink has reached one of the letter's lines are both the pen's business,
+   * so a terminal carried a ball at one weight and not at the next, and its
+   * `Ω` came back with 220 nodes at three weights and 152 at the Thin. The
+   * drawn weight decides now and the rest follow it, which is what the waves
+   * and the bowls already do.
+   *
+   * Measured at 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0 and 0, in the
+   * order below. Fourteen of the sixteen carry every letter they draw, and
+   * what is left is the Technical's `section` and the Marker's `braceright`.
    */
   it("keeps the faces that round their corners and their ends on the axis too", async () => {
     for (const [name, most] of [
@@ -290,7 +299,7 @@ describe("the weight axis, and the letters that cannot follow it", () => {
        * because `onALine` measures the upright share of a slanted pen; see
        * there for the measurement, and for what asking it the other way cost.
        */
-      ["Psychedelic", 9],
+      ["Psychedelic", 1],
       /*
        * And the Wavy, still the worst of the sixteen. Its whole idea is that
        * every run lying flat ripples, and both halves of that move with the

@@ -85,6 +85,11 @@ export interface WaveBook {
    * is cut into the drawn weight began its list with. See `begun`.
    */
   bowls: Map<string, number[]>;
+  /**
+   * One entry per terminal a letter offers a ball to, in order: whether the
+   * drawn weight gave it one. See `decided`.
+   */
+  balls: Map<string, boolean[]>;
   /** Taking them down, rather than reading them back. */
   recording: boolean;
 }
@@ -93,6 +98,7 @@ let book: WaveBook | null = null;
 let bookAt = "";
 let bookCursor = 0;
 let bowlCursor = 0;
+let ballCursor = 0;
 
 /**
  * Start or stop keeping the book, handing back whatever was open before.
@@ -112,6 +118,7 @@ export function openWaveBook(next: WaveBook | null): WaveBook | null {
   bookAt = "";
   bookCursor = 0;
   bowlCursor = 0;
+  ballCursor = 0;
   return was;
 }
 
@@ -120,6 +127,41 @@ export function waveBookAt(name: string): void {
   bookAt = name;
   bookCursor = 0;
   bowlCursor = 0;
+  ballCursor = 0;
+}
+
+/**
+ * Whether this terminal carries a ball: what the drawn weight decided, or its
+ * own answer.
+ *
+ * The same arrangement `counted` makes for waves and `begun` for bowls, with
+ * one difference that matters. Those settle how long a piece is and where a
+ * list starts; this settles whether a shape is there at all, which is the one
+ * thing the axis cannot survive a disagreement about -- two masters with a
+ * different number of shapes in a letter have a different number of points in
+ * it, and gvar joins them on the points.
+ *
+ * Both of the questions a ball is refused on move with the pen. Whether a run
+ * arrives straight is settled after its corners are rounded and its cap taken
+ * off; whether its ink has already reached one of the letter's lines is a
+ * question about how wide the pen is. So the Psychedelic's `Ω` had two balls
+ * at the Regular and none at the Thin, and its `Ґ` had one at the Thin and the
+ * Bold and the Black and none at the Regular.
+ *
+ * Asked once per terminal whatever the answer, so the page stays in step.
+ */
+export function decided(mine: boolean): boolean {
+  if (!book) return mine;
+  const at = ballCursor;
+  ballCursor += 1;
+  if (book.recording) {
+    const list = book.balls.get(bookAt);
+    if (list) list.push(mine);
+    else book.balls.set(bookAt, [mine]);
+    return mine;
+  }
+  const list = book.balls.get(bookAt);
+  return at < (list?.length ?? 0) ? list![at] : mine;
 }
 
 /**

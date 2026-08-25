@@ -24,7 +24,15 @@ import { reachesCast, type Cast } from "./cast";
 import { reaches, scaleOf, type Cuts } from "./cut";
 import { shapedInk } from "./layers";
 import { assemble, hasTiles, type Kit } from "./kit";
-import { alongSpine, endPieces, endsStraight, spinePath, waveBookAt, wavy } from "./shapes";
+import {
+  alongSpine,
+  decided,
+  endPieces,
+  endsStraight,
+  spinePath,
+  waveBookAt,
+  wavy,
+} from "./shapes";
 import { penReach, reachAlong, sweep } from "./sweep";
 import type { Style } from "./style";
 import type { Stroke, Terminal } from "./types";
@@ -619,7 +627,26 @@ function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
      * below, which shrinks the disc to whatever room there is rather than
      * refusing it outright.
      */
-    if (straightEnd && onALine(stroke, at, outward, style)) continue;
+    /*
+     * Asked of the book rather than answered outright, because both halves of
+     * the question move with the pen: whether a run arrives straight is settled
+     * after its corners are rounded and its cap taken off, and whether its ink
+     * has reached one of the letter's lines is a question about how wide the
+     * pen is. Refused outright, a terminal carried a ball at one weight and not
+     * at the next, and a letter drawn with a different number of shapes at the
+     * two ends of the axis cannot follow it: the Psychedelic's `Ω` came back
+     * with 220 nodes at three weights and 152 at the Thin, which is two balls.
+     *
+     * The judgement itself stands -- a disc on a run that stops on a line reads
+     * as a blot, and it would hang past the line, which every letter here is
+     * careful not to do. So it is the drawn weight's answer every master takes,
+     * and where a master would have refused, the ball it draws is buried: the
+     * shape is there to be joined to and there is nothing of it to see. Which
+     * is the arrangement the waves and the bowls already have, and is why the
+     * drawn weight comes back byte for byte what it was.
+     */
+    const blot = straightEnd && onALine(stroke, at, outward, style);
+    if (!decided(!blot)) continue;
     /*
      * And held inside the ink the stroke already made.
      *
@@ -660,7 +687,7 @@ function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
      * hundred wide is nothing to see. What it buys is a ball that shrinks down
      * the slider between two weights instead of one that vanishes between them.
      */
-    const buried = room < penReach(stroke.pen).across;
+    const buried = blot || room < penReach(stroke.pen).across;
     const held = buried ? BURIED : room;
     const middle = buried
       ? /*
