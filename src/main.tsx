@@ -18,7 +18,7 @@ if (!container) throw new Error("Missing #root element.");
  */
 createRoot(container).render(
   <React.StrictMode>
-    <Boundary onDiscard={() => void forget()}>
+    <Boundary onDiscard={forget}>
       <App />
     </Boundary>
   </React.StrictMode>,

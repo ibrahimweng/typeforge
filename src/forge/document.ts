@@ -169,40 +169,99 @@ export function whole(forge: Forge): Forge {
     cast: forge.cast ?? noCast(),
     cutExceptions: forge.cutExceptions ?? {},
     kit: forge.kit ?? emptyKit(),
+    /*
+     * A document that has no tool settings is a document that never had any,
+     * and is left without -- but one that has *some* is filled in like
+     * everything else. The budget was added a day after the effects were, so a
+     * drawing kept in between has the rest of them and not that, and an
+     * undefined budget is not an unlimited one: the comparison it is used in is
+     * false either way, so the cap on how many points a roughened letter may
+     * come to is quietly not applied at all.
+     */
+    effects: forge.effects ? filled(forge.effects, noEffects(), true) : undefined,
     style: settled(forge.style),
   };
 }
 
 /**
- * A style with every part a current one has.
+ * A style with everything a current one has.
  *
- * The same filling-in as above, one level down, and it is written to fill parts
- * it has never heard of rather than to fill the ones somebody remembered.
+ * The same filling-in as above, one level down, and it is written to fill
+ * settings it has never heard of rather than the ones somebody remembered.
  *
  * That is the whole point of it. The document is written to the browser as the
  * drawing goes and read back on the next visit, so anybody who has used this
- * before a part existed has one in their browser that predates it -- and a
+ * before a setting existed has one in their browser that predates it -- and a
  * `parts` object missing a key is not a document that reads a little oddly. It
  * is `undefined.on`, thrown on the first letter drawn, which is the entire
  * application gone. The join was added as a required part and this function was
  * not told, and the result was a black screen for anybody who had opened the
  * page before that day.
  *
- * So nothing here names a field. Every part group the current shape has is
- * taken from the document where the document has one and from the plain face
- * where it does not, which fills the part added last week and the part added
- * next year on the same line. The plain face is the right place to borrow from:
- * a part that did not exist was a part nobody had set, and the neutral setting
- * is what the drawing was made with.
+ * So nothing here names a field. Three things follow from that, and each was
+ * got wrong at first:
+ *
+ * It goes inside the groups as well as across them. A whole part appearing is
+ * the loud case; a field appearing *inside* one is the quiet case, and it is
+ * quieter than it sounds -- `bowl.width` gone missing makes every measurement
+ * built on it NaN, and a font of NaN coordinates draws nothing at all and
+ * throws nothing at all. `metrics` and `pen` are filled the same way, because
+ * they gain fields exactly as the parts do.
+ *
+ * It treats a null as missing. A key written as JSON null rather than left out
+ * -- which is what plenty of tools do -- is not undefined, so a check for
+ * undefined walks straight past it and the letter throws on `null.on` instead.
+ *
+ * And it rebuilds in the plain face's order rather than appending. Whether one
+ * object's keys are in the same order as another's is not usually anybody's
+ * business, but `hasDrawing` decides whether there is work worth keeping by
+ * comparing two `JSON.stringify` results, and that is order-sensitive: a
+ * restored document whose keys had been shuffled would read as changed for
+ * ever, and would be written over the top of itself on every edit.
+ *
+ * The plain face is the right place to borrow from throughout: a setting that
+ * did not exist was a setting nobody had set, and the neutral value is what the
+ * drawing was actually made with.
  */
 function settled(style: Style): Style {
-  const base = SANS.parts as unknown as Record<string, unknown>;
-  const mine = (style.parts ?? {}) as unknown as Record<string, unknown>;
-  const missing = Object.keys(base).filter((name) => mine[name] === undefined);
-  if (missing.length === 0) return style;
-  const parts = { ...mine };
-  for (const name of missing) parts[name] = structuredClone(base[name]);
-  return { ...style, parts: parts as unknown as Parts };
+  if (!style || typeof style !== "object") return style;
+  return {
+    ...style,
+    metrics: filled(style.metrics, SANS.metrics),
+    pen: filled(style.pen, SANS.pen),
+    parts: filled(style.parts, SANS.parts, true),
+  };
+}
+
+/**
+ * One object with every key the current shape has, in that shape's own order.
+ *
+ * `deep` fills the keys inside each value as well, which is what `parts` needs
+ * and what a flat group of numbers like `metrics` does not.
+ */
+function filled<T>(mine: T, base: T, deep = false): T {
+  const theirs = base as unknown as Record<string, unknown>;
+  const ours = (mine ?? {}) as unknown as Record<string, unknown>;
+  if (typeof ours !== "object") return structuredClone(base);
+  const out: Record<string, unknown> = {};
+  // The base's keys first and in the base's order, then anything the document
+  // has that the current shape no longer does -- which is kept rather than
+  // dropped, because a field this version stopped reading is not this
+  // version's to throw away.
+  for (const key of Object.keys(theirs)) {
+    const had = ours[key];
+    if (had == null) {
+      out[key] = structuredClone(theirs[key]);
+    } else if (deep && typeof had === "object" && !Array.isArray(had)) {
+      out[key] = filled(had, theirs[key]);
+    } else {
+      out[key] = had;
+    }
+  }
+  for (const key of Object.keys(ours)) {
+    if (!(key in out)) out[key] = ours[key];
+  }
+  return out as unknown as T;
 }
 
 /** The weights of this document, which is at least the one being drawn. */
@@ -1007,22 +1066,14 @@ export function partsOf(letter: string, forge: Forge): PartName[] {
   return found;
 }
 
+/**
+ * A style nothing else holds a reference into.
+ *
+ * Every group copied rather than every group named. The list this used to
+ * spell out is the same list `settled` was written to stop keeping: naming
+ * fields one at a time is what put a black screen in front of somebody, and
+ * a second copy of the habit two hundred lines away would be the next one.
+ */
 function clone(style: Style): Style {
-  return {
-    ...style,
-    metrics: { ...style.metrics },
-    pen: { ...style.pen },
-    parts: {
-      slab: { ...style.parts.slab },
-      shoulder: { ...style.parts.shoulder },
-      bowl: { ...style.parts.bowl },
-      corner: { ...style.parts.corner },
-      terminal: { ...style.parts.terminal },
-      crossbar: { ...style.parts.crossbar },
-      ball: { ...style.parts.ball },
-      flare: { ...style.parts.flare },
-      wave: { ...style.parts.wave },
-      script: { ...style.parts.script },
-    },
-  };
+  return structuredClone(style);
 }

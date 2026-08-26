@@ -268,7 +268,15 @@ export function readProject(raw: unknown): Project | null {
     mode: project.mode,
     // Filled in on the way through, so a document written before a field
     // existed reads as though it always had one.
-    draw: project.draw?.forge
+    /*
+     * A drawing needs a style; a half without one is turned away rather than
+     * filled in. There is a difference between a document written before a
+     * field existed -- which is most of them, and is what `whole` is for -- and
+     * one with nothing in it to fill, which is a truncated file or a record
+     * from something that was never this application. Fabricating a face for
+     * the second kind would restore somebody into a drawing they never made.
+     */
+    draw: project.draw?.forge?.style
       ? { ...project.draw, forge: whole(project.draw.forge) }
       : undefined,
     assemble: project.assemble?.assembly ? project.assemble : undefined,
