@@ -21,6 +21,7 @@ import {
 } from "./letters";
 import { accentsFor, gapFor, hangsBelow, isCapital, type Parts } from "./accents";
 import { reachesCast, type Cast } from "./cast";
+import { effectInk, reachesEffects, type Effects } from "./effects";
 import { reaches, scaleOf, type Cuts } from "./cut";
 import { shapedInk } from "./layers";
 import { assemble, hasTiles, type Kit } from "./kit";
@@ -139,8 +140,9 @@ export function drawLetter(
   cuts?: Cuts,
   kit?: Kit,
   cast?: Cast,
+  effects?: Effects,
 ): Drawn | null {
-  const made = makeLetter(name, style, form, cuts, kit, cast);
+  const made = makeLetter(name, style, form, cuts, kit, cast, effects);
   return made
     ? { contours: made.contours, advanceWidth: made.advanceWidth, cut: made.cut }
     : null;
@@ -189,13 +191,22 @@ export function makeLetter(
   // eighty-odd places that draw a letter passes these by position and only
   // three of them pass a cut at all.
   cast?: Cast,
+  /*
+   * What the tool that drew this was like, and only where somebody has asked
+   * to see it.
+   *
+   * Passed by the proofing panel and by the exporter and by nothing else. Every
+   * other caller leaves it out, which is what keeps the roughening off the four
+   * hundred and fifty letters nobody is looking at -- see `@/font/effects`.
+   */
+  effects?: Effects,
 ): Made | null {
   // This letter's own page in the wave book, if one is being kept: see
   // `WaveBook`. A letter built from parts keeps no page of its own -- the base
   // and the mark each open theirs as they are drawn.
   waveBookAt(name);
   const parts = builtFrom(name);
-  if (parts) return marked(parts, style, form, cuts, kit, cast);
+  if (parts) return marked(parts, style, form, cuts, kit, cast, effects);
 
   /*
    * Laid out on a grid, or drawn from a skeleton.
@@ -238,7 +249,22 @@ export function makeLetter(
   const cutting = reaches(cuts, strokes) || reachesCast(cast, strokes)
     ? shapedInk(inked.flat(), strokes, scaleOf(style), cuts, cast)
     : null;
-  const cut = cutting ? sheared(cutting.contours, lean, pivot) : solid;
+  /*
+   * What the tool left, on the letter as the cut and the cast have made it and
+   * before the lean is taken.
+   *
+   * Before the lean because three of the four effects are found from the
+   * skeleton and the skeleton has not been leaned either -- roughen after the
+   * shear and every pool would sit off its own join by the width of the lean.
+   */
+  const marks = effects && reachesEffects(effects, strokes)
+    ? effectInk(cutting ? cutting.contours : inked.flat(), strokes, scaleOf(style), effects)
+    : null;
+  const cut = marks
+    ? sheared(marks, lean, pivot)
+    : cutting
+      ? sheared(cutting.contours, lean, pivot)
+      : solid;
 
   // Only the letters that actually cross are moved, and each by exactly what
   // it needs.
@@ -307,8 +333,9 @@ function marked(
   cuts?: Cuts,
   kit?: Kit,
   cast?: Cast,
+  effects?: Effects,
 ): Made | null {
-  const base = makeLetter(parts.base, style, form, cuts, kit, cast);
+  const base = makeLetter(parts.base, style, form, cuts, kit, cast, effects);
   if (!base || base.contours.length === 0) return null;
 
   const em = style.metrics.unitsPerEm;
@@ -317,7 +344,9 @@ function marked(
   const contours = [...base.contours];
 
   for (const markName of parts.marks) {
-    const mark = makeLetter(markName, style);
+    // The mark gets the tool's marks too, or an accented letter comes out with
+    // a roughened body under a machined accent.
+    const mark = makeLetter(markName, style, undefined, undefined, undefined, undefined, effects);
     if (!mark || mark.contours.length === 0) return null;
 
     // Measured against everything placed so far, so a second mark stacks on
