@@ -42,6 +42,8 @@ const FAMILY_CONTROLS: Record<Family, string> = {
   display:
     "Move within it with weight past what text would take, then with the parts a text face leaves off -- wave depth and wavelength, flare spread and hollow, ball size and overhang.",
   hand: "Move within it with pen angle, contrast and slant. Those three say which tool is being remembered; the terminal cut says how it was lifted off the paper.",
+  script:
+    "Move within it with the join: how high it hands over, how far it reaches and how much it swings. Reach is the letter-spacing as well as the shape of the join, because on a joined face they are the same thing. Loop opens the ascenders, and irregularity is how steady the hand is.",
 };
 
 const SHORTCUTS: Array<[string, string]> = [

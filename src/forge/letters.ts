@@ -22,6 +22,7 @@
 
 import type { Vec2 } from "@/font/types";
 import type { Style } from "./style";
+import { movedSpine, planJoin, planLoops, wobbleOf } from "./script";
 import { terminalFor } from "./style";
 import {
   bowl,
@@ -6614,6 +6615,101 @@ export function recipeOf(
     // Carried so that a symbol built out of a letter draws the same letter the
     // font does: an ordinal on a font with the single-storey a is that a.
     borrowing = form;
-    return build(style);
+    return connected(name, build(style), style);
   };
+}
+
+/**
+ * The letters a joined face reaches out of, which is the lowercase and nothing
+ * else.
+ *
+ * Not an oversight about the capitals. A cursive capital is a different letter
+ * from a cursive lowercase rather than a larger one -- it is swashed, it is
+ * built from a flourish rather than from a stem, and in every hand that has
+ * ever been written it joins on its right at best and usually on neither side.
+ * Reaching a lead-in out of the left of a script `A` would draw a stroke into a
+ * letter nothing is ever set before.
+ *
+ * The figures and the punctuation are out for the plainer reason that nothing
+ * joins to them either.
+ */
+export const JOINS = new Set<string>("abcdefghijklmnopqrstuvwxyz".split(""));
+
+/**
+ * The letter with its lead-in and lead-out, for a face that connects.
+ *
+ * Done here rather than in `finish` because `finish` does not know which letter
+ * it is finishing, and the answer for a capital is different from the answer
+ * for an n. Done after the recipe rather than inside it so that every one of
+ * the ninety-odd recipes below stays a description of a letter and none of them
+ * has to know this exists.
+ *
+ * The width comes back stated rather than measured. Every other letter in this
+ * engine takes its advance from where its ink happened to stop, which is right
+ * when the gap either side is empty space and wrong when the gap is a stroke:
+ * the exit has to stop *on* the advance, to the unit, or the next letter's
+ * entry starts somewhere the last one did not finish.
+ */
+function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
+  const script = style.parts.script;
+  if (!script.on || !JOINS.has(name)) return recipe;
+  const f = frame(style);
+  /*
+   * Off its line first, then the join, then over into its room.
+   *
+   * The order is the whole of why an unsteady hand does not open the joins. The
+   * letter is lifted before the join is planned, so the join is drawn to where
+   * the letter actually ended up rather than to where it would have been -- the
+   * lead-in climbs a little further on a letter that bounced up and a little
+   * less on one that dropped, and both still leave the seam at exactly the
+   * height everything else leaves it at.
+   */
+  const room = { half: f.half, upright: f.upright, x: f.x };
+  /*
+   * Loops first, then the lift, then the join. The order is the whole of why
+   * this works, and each step of it was wrong once.
+   *
+   * The loops are found on the letter as its recipe drew it, before the hand
+   * has moved it anywhere. Found afterwards instead, a letter the hand happened
+   * to drop had stroke ends below the baseline that its recipe never put there
+   * -- so an `m` grew a descender loop, and hung ninety-five units under a line
+   * it is supposed to stand on.
+   *
+   * The lift then moves the letter and its loops together, before the join is
+   * planned, so the join is drawn to where the letter actually ended up rather
+   * than to where it would have been. The seam never moves; the lead-in simply
+   * climbs a little further or a little less.
+   *
+   * And the join is planned last of all, with the loops already part of the
+   * letter it is measuring -- a loop reaches left of the stem it is on, and a
+   * lead-in drawn to the stem instead would cross it.
+   */
+  const loops = planLoops(recipe.strokes.map((stroke) => stroke.spine), room, script);
+  const lift = wobbleOf(name, script, f.x).lift;
+  const body = [...recipe.strokes, ...loops.map((loop) => ink(f, loop, BUTT, BUTT))].map((stroke) => ({
+    ...stroke,
+    spine: movedSpine(stroke.spine, 0, lift),
+  }));
+  const plan = planJoin(body.map((stroke) => stroke.spine), room, script);
+  if (!plan) return recipe;
+  /*
+   * The letter moves over; the join does not.
+   *
+   * The lead-in needs a run of its own to climb along, and on a joined face
+   * there is no sidebearing for it to borrow -- the space either side of a
+   * letter here is the join itself. So the letter is given that room by being
+   * slid into it, and the join is drawn where it already belongs.
+   */
+  const strokes = body.map((stroke) => ({ ...stroke, spine: movedSpine(stroke.spine, plan.inset, 0) }));
+  /*
+   * Cut square at both ends, whatever the face's terminal is.
+   *
+   * The seam end has to be: two square cuts along the same line meet exactly,
+   * and a round cap would add half a pen of length to each half of the join and
+   * push the two ends through each other. The buried end is square because
+   * nothing can see it.
+   */
+  if (plan.entry) strokes.push(ink(f, plan.entry, BUTT, BUTT));
+  if (plan.exit) strokes.push(ink(f, plan.exit, BUTT, BUTT));
+  return { ...recipe, strokes, width: plan.width };
 }

@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 
 import { contoursBounds } from "@/font/geometry";
 import { drawLetter } from "./build";
+import { mostLift } from "./script";
 import { BASES, type Style } from "./style";
 import { penReach, reachAlong } from "./sweep";
 
@@ -42,6 +43,25 @@ describe("the letters stand on their lines", () => {
   for (const style of BASES) {
     describe(style.name.toLowerCase(), () => {
       const slack = nib(style) + 1;
+      /*
+       * How far this face's own hand wanders off the line, for the letters it
+       * wanders with.
+       *
+       * Nought on nineteen of the twenty faces. On the four that join, each
+       * lowercase letter is deliberately set a little above or below its line --
+       * a hand that puts every letter at exactly the same height is not a hand,
+       * and that is the whole of what the irregularity control does. So a
+       * script's letters are still held to their lines, but to within what the
+       * face says it wanders by rather than to within a nib's width.
+       *
+       * The capitals get none of it, and must not: they do not join, so they do
+       * not bounce, and letting them off here would stop this noticing if they
+       * ever did.
+       */
+      const bounce = (name: string): number =>
+        name.length === 1 && name >= "a" && name <= "z"
+          ? mostLift(style.parts.script, style.metrics.xHeight)
+          : 0;
       const { xHeight, capHeight, ascender, overshoot } = style.metrics;
 
       it("stops a flat stroke on the line it was written to", () => {
@@ -49,14 +69,18 @@ describe("the letters stand on their lines", () => {
         // and no diagonal at either extreme, so there is nothing else in them
         // that could be what is being measured.
         for (const name of ["E", "F", "H", "I", "L", "T", "one", "four", "exclam"]) {
-          expect(Math.abs(topOf(name, style) - capHeight), `${name} misses the cap line`).toBeLessThan(slack);
-          expect(Math.abs(footOf(name, style)), `${name} misses the baseline`).toBeLessThan(slack);
+          expect(Math.abs(topOf(name, style) - capHeight), `${name} misses the cap line`)
+            .toBeLessThan(slack + bounce(name));
+          expect(Math.abs(footOf(name, style)), `${name} misses the baseline`)
+            .toBeLessThan(slack + bounce(name));
         }
         for (const name of ["b", "d", "h", "k", "l"]) {
-          expect(Math.abs(topOf(name, style) - ascender), `${name} misses the ascender`).toBeLessThan(slack);
+          expect(Math.abs(topOf(name, style) - ascender), `${name} misses the ascender`)
+            .toBeLessThan(slack + bounce(name));
         }
         for (const name of ["m", "n", "r", "i"]) {
-          expect(Math.abs(footOf(name, style)), `${name} misses the baseline`).toBeLessThan(slack);
+          expect(Math.abs(footOf(name, style)), `${name} misses the baseline`)
+            .toBeLessThan(slack + bounce(name));
         }
       });
 
@@ -79,13 +103,13 @@ describe("the letters stand on their lines", () => {
           expect(
             Math.abs(topOf(name, style) - line - overshoot),
             `${name} does not crest on its line`,
-          ).toBeLessThan(room);
+          ).toBeLessThan(room + bounce(name));
         }
         for (const name of ["o", "c", "e", "s", "a", "u", "O", "C", "S", "G", "U", "J", "zero", "eight"]) {
           expect(
             Math.abs(footOf(name, style) + overshoot),
             `${name} does not dip to the baseline`,
-          ).toBeLessThan(room);
+          ).toBeLessThan(room + bounce(name));
         }
       });
 
@@ -109,10 +133,11 @@ describe("the letters stand on their lines", () => {
           expect(
             Math.abs(topOf(name, style) - (name === name.toUpperCase() ? capHeight : xHeight)),
             `${name} does not stop its arms on the line`,
-          ).toBeLessThan(slack);
+          ).toBeLessThan(slack + bounce(name));
         }
         for (const name of ["K", "R", "X", "Z", "k", "x", "z"]) {
-          expect(Math.abs(footOf(name, style)), `${name} does not stand on the baseline`).toBeLessThan(slack);
+          expect(Math.abs(footOf(name, style)), `${name} does not stand on the baseline`)
+            .toBeLessThan(slack + bounce(name));
         }
       });
 
