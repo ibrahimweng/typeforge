@@ -19,7 +19,7 @@ import { contoursIntersect } from "@/font/outline";
 import { builtFrom, drawLetter, letterNames , reachesOut } from "./build";
 import { startFrom, weighted } from "./document";
 import { openWaveBook, spineEnd, spineStart, waveBookAt, type WaveBook } from "./shapes";
-import { recipeOf } from "./letters";
+import { formsOf, recipeOf } from "./letters";
 import { mostLift } from "./script";
 import { BASES as STARTING_POINTS, DISPLAY, SANS, SERIF, type Style } from "./style";
 
@@ -310,9 +310,23 @@ describe("letters in one piece", () => {
     const apart: string[] = [];
     for (const style of STARTING_POINTS) {
       for (const name of solid) {
-        const drawn = drawLetter(name, style);
-        if (!drawn || drawn.contours.length === 0) continue;
-        if (piecesOf(drawn.contours) > 1) apart.push(`${style.name} ${name}`);
+        /*
+         * Every form the letter offers, and not only the one it draws by
+         * default.
+         *
+         * A face chooses its alternates in `forms`, so a broken alternate ships
+         * without the default form of that letter ever being wrong. Drawing
+         * only the defaults, this passed for as long as the `y` with the
+         * straight tail had that tail floating clear of its own vee, on three
+         * of the faces that offer it.
+         */
+        for (const { id } of formsOf(name)) {
+          const drawn = drawLetter(name, style, id || undefined);
+          if (!drawn || drawn.contours.length === 0) continue;
+          if (piecesOf(drawn.contours) > 1) {
+            apart.push(`${style.name} ${name}${id ? ` (${id})` : ""}`);
+          }
+        }
       }
     }
     expect(apart).toEqual([]);

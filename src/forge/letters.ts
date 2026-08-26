@@ -6395,7 +6395,25 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const point = corner(f, top, at(middle, 0), other);
         return finish(f, [
           ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end),
-          ink(f, straight(point, at(point.x, f.desc)), BUTT, f.end),
+          /*
+           * The tail leaves the vee's apex, which is not where `corner` put the
+           * vee's vertex.
+           *
+           * `corner` pushes a vertex out along its own bisector by as far as
+           * the rounding is going to pull the turn back, so that the *rounded*
+           * apex lands where the letter asked for it -- here, on the baseline.
+           * Started at that pushed vertex the tail began below the ink instead
+           * of inside it: on the Marker it hung ninety units under a vee it had
+           * never touched, and on the Casual Script the letter was a `v` with a
+           * loose stub floating beneath it. Both faces round their corners. The
+           * ones that round nothing were fine, because there the pushed vertex
+           * and the apex are the same point, which is why this survived.
+           *
+           * Half a pen above the apex is inside the ink at any weight and any
+           * radius -- the two arms are barely a pen apart by then -- and the cut
+           * is square and buried, so none of it shows.
+           */
+          ink(f, straight(at(middle, f.half), at(middle, f.desc)), BUTT, f.end),
         ]);
       },
     },
