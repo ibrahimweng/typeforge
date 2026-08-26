@@ -376,6 +376,16 @@ export const SERIF: Style = {
   family: "serif",
   blurb: "Contrast, an angled pen, and bracketed serifs.",
   pen: { weight: 96, contrast: 0.42, angle: 8 },
+  /*
+   * The two-storey a, which is what most text faces use and what none of them
+   * were asking for.
+   *
+   * The alternate has said so in its own hint since it was written -- "what
+   * most text faces use" -- and single storey is what this engine draws by
+   * default. So every face here had the geometric one, which is most of why a
+   * Serif and a Geometric read as the same drawings with the pen changed.
+   */
+  forms: { a: "double", J: "descending" },
   parts: {
     ...SANS.parts,
     slab: { on: true, projection: 0.46, thickness: 0.48, bracket: 0.23 },
@@ -396,15 +406,36 @@ export const DISPLAY: Style = {
   ...SANS,
   name: "Display",
   family: "display",
-  blurb: "Heavy, round and tight. Made to be looked at rather than read.",
-  metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 340, sidebearing: 40 },
-  pen: { weight: 175, contrast: 0, angle: 0 },
+  blurb: "A fat face: as heavy as the counters will take, with the weight all on the uprights.",
+  /*
+   * The fat face, which is a category rather than a description.
+   *
+   * "Display" said only that it was big, and big is what every face in this
+   * group is. The fat face is a particular thing -- the nineteenth-century
+   * poster letter, taken as heavy as its counters will survive, with vertical
+   * stress so the weight piles on the uprights and the curves thin away where
+   * they turn. Set tight it reads as one block of colour, which is what it was
+   * invented to do.
+   */
+  metrics: { ...SANS.metrics, xHeight: 575, counterWidth: 285, sidebearing: 34, width: 1.02 },
+  pen: { weight: 205, contrast: 0.55, angle: 0 },
+  // The apex cut flat, which its own hint says is what a heavy face does to
+  // keep the top of an A from going black.
+  forms: { A: "flat" },
   parts: {
     ...SANS.parts,
-    shoulder: { spring: 0.7, reach: 1.05 },
-    bowl: { width: 1.06, squareness: 0.2, aperture: 1 },
+    shoulder: { spring: 0.66, reach: 1.02 },
+    /*
+     * Narrower than tall, which is both what a fat face is and what keeps its
+     * letters in the order the rest of the alphabet stands in. At a round bowl
+     * this face's `o` came out seventeen units wider than its `n` -- the stems
+     * are two hundred units of ink and the counter between them only two
+     * hundred and eighty -- and an `o` wider than an `n` is a face whose
+     * rhythm has inverted.
+     */
+    bowl: { width: 0.92, squareness: 0.12, aperture: 0.9 },
     corner: { radius: 0, join: "round" },
-    terminal: { kind: "round", angle: 0 },
+    terminal: { kind: "butt", angle: 0 },
   },
 };
 
@@ -429,6 +460,15 @@ export const GEOMETRIC: Style = {
   blurb: "Circles and points, one thickness throughout.",
   metrics: { ...SANS.metrics, xHeight: 500, counterWidth: 380, sidebearing: 58 },
   pen: { weight: 86, contrast: 0, angle: 0 },
+  /*
+   * The three letters a geometric face argues about, and every one of these
+   * alternates names it in its own hint: the tail hung under the bowl rather
+   * than crossing its wall, a G with nothing turned back into it, and the M's
+   * vertex carried to the baseline to square the letter off. The a stays as it
+   * is -- single storey is already what is drawn here, and it is the text faces
+   * that wanted the other one.
+   */
+  forms: { Q: "under", G: "bare", M: "deep" },
   parts: {
     ...SANS.parts,
     shoulder: { spring: 0.55, reach: 1 },
@@ -446,6 +486,9 @@ export const RIBBON: Style = {
   blurb: "One heavy stroke bent round. Corners opened until the joints disappear.",
   metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 330, sidebearing: 46 },
   pen: { weight: 150, contrast: 0, angle: 0 },
+  // A single bent stroke cannot tell an l from a one, so the l is turned out
+  // at the foot -- which is what its alternate exists for.
+  forms: { l: "tailed" },
   parts: {
     ...SANS.parts,
     shoulder: { spring: 0.4, reach: 1.05 },
@@ -463,6 +506,9 @@ export const TECHNICAL: Style = {
   blurb: "Squared off and narrow, with the corners just off the limit.",
   metrics: { ...SANS.metrics, counterWidth: 300, sidebearing: 52, width: 0.9 },
   pen: { weight: 78, contrast: 0, angle: 0 },
+  // The t cut off square at the baseline, which its own hint calls the
+  // squared or technical face's.
+  forms: { t: "straight" },
   parts: {
     ...SANS.parts,
     shoulder: { spring: 0.78, reach: 0.82 },
@@ -477,12 +523,29 @@ export const FAIRGROUND: Style = {
   ...SANS,
   name: "Fairground",
   family: "display",
-  blurb: "The pen turned a quarter, so the horizontals carry the weight.",
-  metrics: { ...SANS.metrics, sidebearing: 50 },
-  pen: { weight: 130, contrast: 0.62, angle: 90 },
+  blurb: "Circus and western wood type: the pen turned a quarter, so the horizontals carry the weight and the verticals thin away.",
+  /*
+   * Already the one face here drawn with reverse contrast, and that was never
+   * the problem: it moved six numbers of thirty-six and drew the same letters
+   * as everything else, so its one idea was carrying the whole face alone.
+   * Wide, heavy, slabbed and set on the older forms, it reads as the poster it
+   * is named after rather than as a sans with its pen turned.
+   */
+  metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 400, sidebearing: 46, width: 1.1 },
+  // Not as far as reverse contrast will go: at seven tenths the uprights thin
+  // to hairlines and the right stem of an `n` all but leaves. Six tenths keeps
+  // the horizontals carrying the weight and the letters legible, which is what
+  // the wood type it is named after actually did.
+  pen: { weight: 150, contrast: 0.6, angle: 90 },
+  // The older shapes a wood-type poster is cut in: the W built as two vees
+  // that overlap, and a one with a foot so it does not lean on its neighbours.
+  forms: { W: "crossed", one: "footed" },
   parts: {
     ...SANS.parts,
-    bowl: { width: 1.08, squareness: 0.15, aperture: 1 },
+    // Slabs, because a circus face has them and because a slab laid across a
+    // thin vertical is what stops reverse contrast reading as a mistake.
+    slab: { on: true, projection: 0.5, thickness: 0.34, bracket: 0 },
+    bowl: { width: 1.06, squareness: 0.18, aperture: 1 },
     terminal: { kind: "butt", angle: 0 },
   },
 };
@@ -577,6 +640,10 @@ export const WAVY: Style = {
   blurb: "Thin, wide, and rippling along every run that lies flat.",
   metrics: { ...SANS.metrics, width: 1.12, sidebearing: 44 },
   pen: { weight: 44, contrast: 0, angle: 0 },
+  // A wave needs something long and flat to happen along, and the barred seven
+  // and the open four both give it one where the plain forms give it a
+  // diagonal.
+  forms: { seven: "barred", four: "open" },
   parts: {
     ...SANS.parts,
     slab: { on: true, projection: 1.55, thickness: 0.52, bracket: 0 },
@@ -600,6 +667,9 @@ export const FLARED: Style = {
   blurb: "Condensed and swelling at every stroke end, the art-nouveau way.",
   metrics: { ...SANS.metrics, width: 0.78, capHeight: 740, xHeight: 500, sidebearing: 42 },
   pen: { weight: 118, contrast: 0.34, angle: 0 },
+  // The art-nouveau f and J, both carried below the line as a display face
+  // does with them.
+  forms: { f: "descending", J: "descending" },
   parts: {
     ...SANS.parts,
     bowl: { width: 0.94, squareness: 0.1, aperture: 1 },
@@ -624,6 +694,9 @@ export const PSYCHEDELIC: Style = {
   blurb: "Heavy, swollen, nearly shut, with a ball on every open end.",
   metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 300, sidebearing: 40, width: 1.04 },
   pen: { weight: 168, contrast: 0.62, angle: 0 },
+  // The warm curled g and the descending f, both of which their own hints
+  // give to a display face.
+  forms: { g: "curled", f: "descending" },
   parts: {
     ...SANS.parts,
     bowl: { width: 1.02, squareness: 0.1, aperture: 0.42 },
@@ -669,6 +742,22 @@ export const BRUSH: Style = {
     flare: { spread: 0.14, depth: 1.1, curve: 0.7 },
   },
   forms: { g: "curled", f: "descending", y: "straight", l: "tailed" },
+  /*
+   * The pressure, which is what separates a brush from a slanted pen.
+   *
+   * A broad nib thins where the stroke turns across it, and the pen here
+   * already does that. A brush thins where the hand lifted, which is a fact
+   * about position along the stroke and nothing a pen can say. Heaviest in the
+   * middle: a stroke laid down and picked up again.
+   *
+   * A little roughening with it and no ink pooling -- a brush leaves a dry edge
+   * where the bristles ran out, not a wet one where it sat.
+   */
+  effects: {
+    ...noEffects(),
+    press: { on: true, at: "middle", amount: 0.34 },
+    rough: { on: true, amplitude: 0.03, wavelength: 1.2, reach: "all", seed: 11 },
+  },
 };
 
 /**
@@ -687,6 +776,16 @@ export const GROTESQUE: Style = {
   blurb: "A sans that has closed up: tight apertures, high shoulders, squared bowls.",
   metrics: { ...SANS.metrics, xHeight: 535, width: 0.97, counterWidth: 318 },
   pen: { weight: 104, contrast: 0.06, angle: 0 },
+  /*
+   * The two-storey a, which is what most text faces use and what none of them
+   * were asking for.
+   *
+   * The alternate has said so in its own hint since it was written -- "what
+   * most text faces use" -- and single storey is what this engine draws by
+   * default. So every face here had the geometric one, which is most of why a
+   * Serif and a Geometric read as the same drawings with the pen changed.
+   */
+  forms: { a: "double", R: "curved" },
   parts: {
     ...SANS.parts,
     bowl: { width: 0.97, squareness: 0.14, aperture: 0.62 },
@@ -710,9 +809,42 @@ export const DIDONE: Style = {
   blurb: "Contrast at its limit and serifs left as unbracketed hairlines.",
   metrics: { ...SANS.metrics, xHeight: 500, width: 0.98 },
   pen: { weight: 118, contrast: 0.8, angle: 0 },
+  /*
+   * The two-storey a, which is what most text faces use and what none of them
+   * were asking for.
+   *
+   * The alternate has said so in its own hint since it was written -- "what
+   * most text faces use" -- and single storey is what this engine draws by
+   * default. So every face here had the geometric one, which is most of why a
+   * Serif and a Geometric read as the same drawings with the pen changed.
+   */
+  forms: { a: "double" },
   parts: {
     ...SANS.parts,
-    slab: { on: true, projection: 0.54, thickness: 0.13, bracket: 0.02 },
+    /*
+     * Longer than the old-style's, and no thinner or squarer than this.
+     *
+     * A didone's serifs are unbracketed hairlines and both of those were tried:
+     * a bar at eleven hundredths of a stem, and a bracket of nothing at all.
+     * Either on its own pinches the `Q` into two pieces where its tail crosses
+     * the bowl -- bisected, and the projection is innocent. Two hundredths of a
+     * bracket is a hairline by any reading, and a Q in two pieces is not a Q.
+     */
+    slab: { on: true, projection: 0.58, thickness: 0.13, bracket: 0.02 },
+    /*
+     * No balls, and this is the thing this face was most supposed to get.
+     *
+     * A ball on the `a`, the `c`, the `f`, the `r` and the `y` is half of what
+     * makes a didone read as one at a glance, and the part has sat unused since
+     * it was written with only the Psychedelic reaching for it. It cannot go on
+     * here: a ball goes wherever a stroke stops in mid-air, the tail of a `Q` is
+     * such a stop, and at every size tried -- from seven tenths of a stem to a
+     * stem and a sixth -- it comes away as a disc of its own and the letter is
+     * in two pieces. Hung below the bowl instead of crossing it, the same.
+     *
+     * So it waits for somewhere a base can say "not on this letter". A face is
+     * a set of decisions and this is one it cannot make yet.
+     */
     bowl: { width: 0.96, squareness: 0, aperture: 0.9 },
     crossbar: { height: 0.52, weight: 0.9 },
   },
@@ -733,6 +865,16 @@ export const SLAB: Style = {
   blurb: "Serifs as heavy as the stems, and no contrast to soften them.",
   metrics: { ...SANS.metrics, xHeight: 528, width: 1.02, counterWidth: 340 },
   pen: { weight: 112, contrast: 0.05, angle: 0 },
+  /*
+   * The two-storey a, which is what most text faces use and what none of them
+   * were asking for.
+   *
+   * The alternate has said so in its own hint since it was written -- "what
+   * most text faces use" -- and single storey is what this engine draws by
+   * default. So every face here had the geometric one, which is most of why a
+   * Serif and a Geometric read as the same drawings with the pen changed.
+   */
+  forms: { a: "double" },
   parts: {
     ...SANS.parts,
     slab: { on: true, projection: 0.6, thickness: 0.74, bracket: 0.04 },
@@ -756,6 +898,18 @@ export const TYPEWRITER: Style = {
   blurb: "One advance for every letter, wide or narrow, and serifs to fill it.",
   metrics: { ...SLAB.metrics, monospaced: true, width: 0.95, sidebearing: 40 },
   pen: { weight: 96, contrast: 0.04, angle: 0 },
+  /*
+   * The two-storey a, which is what most text faces use and what none of them
+   * were asking for.
+   *
+   * The alternate has said so in its own hint since it was written -- "what
+   * most text faces use" -- and single storey is what this engine draws by
+   * default. So every face here had the geometric one, which is most of why a
+   * Serif and a Geometric read as the same drawings with the pen changed.
+   */
+  // And a one with a foot on it: a monospaced face gives every letter the same
+  // advance, so a bare one sits in a column of white with nothing to fill it.
+  forms: { a: "double", one: "footed" },
   parts: { ...SLAB.parts, slab: { on: true, projection: 0.72, thickness: 0.5, bracket: 0.06 } },
 };
 
