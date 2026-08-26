@@ -262,8 +262,26 @@ export interface Typeface {
   glyphIndex: Map<string, number>;
   kerning: KernPair[];
   kernClasses: KernClass[];
+  /**
+   * Glyphs that replace others where a named sequence occurs.
+   *
+   * The font's own contextual alternates, written out as GSUB. Empty on
+   * everything but a joined script, which is the only thing here that has a
+   * decision to make about a pair of letters rather than about one letter.
+   * Named rather than indexed, because glyph ids are not settled until the
+   * export orders them.
+   */
+  alternates: NamedRule[];
   params: GlyphParams;
   source: SourceFont | null;
+}
+
+/** One contextual rule, in glyph names. */
+export interface NamedRule {
+  /** The sequence that has to match, one set of glyph names per position. */
+  input: string[][];
+  /** Which positions are redrawn, and into what. */
+  swaps: Array<{ at: number; swap: Array<{ plain: string; alternate: string }> }>;
 }
 
 export function emptyTypeface(): Typeface {
@@ -284,6 +302,7 @@ export function emptyTypeface(): Typeface {
     glyphIndex: new Map(),
     kerning: [],
     kernClasses: [],
+    alternates: [],
     params: { ...DEFAULT_PARAMS },
     source: null,
   };

@@ -141,6 +141,49 @@ export const NO_SCRIPT: Script = {
   irregularity: 0,
 };
 
+/**
+ * The letters a written hand leaves from high.
+ *
+ * An `o`, a `v`, a `w` and a `b` all finish at the top of themselves -- the pen
+ * comes round the bowl or up the last arm and is already at the waist when the
+ * letter is done. Every other lowercase letter finishes at the baseline. That
+ * is the one thing about a joined script that is a fact about a *pair* rather
+ * than about a letter: either of the two drawn alone is unremarkable, and only
+ * the two set together is wrong.
+ *
+ * These four are the set every writing manual names, and they are the reason a
+ * script font needs a GSUB table at all.
+ */
+export const HANDS_OVER_HIGH = new Set(["o", "v", "w", "b"]);
+
+/**
+ * Where the high join crosses, as a fraction of the x-height.
+ *
+ * Near the waist rather than at it. At the x-height the join would run along
+ * the top of the letters, which is a different thing altogether -- what a hand
+ * does after an `o` is leave a little below the widest point and carry across
+ * at about three quarters of the way up.
+ */
+const HIGH = 0.76;
+
+/** The two heights a join can cross at on this face. */
+export function seamsOf(script: Script, x: number): { low: number; high: number } {
+  return { low: script.height * x, high: Math.max(script.height * x, HIGH * x) };
+}
+
+/**
+ * Which height each half of one letter's join crosses at.
+ *
+ * Both are the low seam on an ordinary letter. A letter that hands over high
+ * leaves at the high one, and a letter drawn to be *set after* one of those
+ * arrives at the high one -- which is a different drawing of the same letter,
+ * and is what the contextual alternate substitutes in.
+ */
+export interface Crossing {
+  entry: number;
+  exit: number;
+}
+
 /** The measurements a join needs, which is fewer than a letter does. */
 export interface Room {
   /** Half the pen: how far ink stands off its own spine. */
@@ -464,12 +507,19 @@ export function planLoops(spines: Spine[], room: Room, script: Script): Spine[] 
  * not a space, so the room has to be made here where the size of that stroke is
  * known.
  */
-export function planJoin(spines: Spine[], room: Room, script: Script): Join | null {
+export function planJoin(
+  spines: Spine[],
+  room: Room,
+  script: Script,
+  crossing?: Crossing,
+): Join | null {
   if (!script.on) return null;
   const points = skeleton(spines);
   if (points.length === 0) return null;
 
-  const seam = script.height * room.x;
+  const seams = seamsOf(script, room.x);
+  const entryAt = crossing?.entry ?? seams.low;
+  const exitAt = crossing?.exit ?? seams.low;
   const reach = script.reach * room.half * 2;
 
   /*
@@ -483,8 +533,17 @@ export function planJoin(spines: Spine[], room: Room, script: Script): Join | nu
    * underneath has to stop short of it to keep that promise. Half a pen in is
    * where the join is buried inside ink the letter already had.
    */
-  const lands = attach(points, (point) => point.y >= seam && point.y <= room.x - room.half, "left");
-  const leaves = attach(points, (point) => point.y >= room.half && point.y <= seam, "right");
+  const lands = attach(points, (point) => point.y >= entryAt && point.y <= room.x - room.half, "left");
+  /*
+   * The lead-out searches below its own crossing on an ordinary letter and
+   * above it on one that hands over high -- which is the whole of the
+   * difference between the two. An `n` is left from the foot of its last stem
+   * and an `o` from the top of its bowl, and a band that looked in one
+   * direction only would find the wrong end of one of them.
+   */
+  const leaves = exitAt > seams.low
+    ? attach(points, (point) => point.y >= exitAt && point.y <= room.x - room.half, "right")
+    : attach(points, (point) => point.y >= room.half && point.y <= exitAt, "right");
 
   /*
    * How much room the letter takes, which is not the same question as where the
@@ -520,12 +579,15 @@ export function planJoin(spines: Spine[], room: Room, script: Script): Join | nu
    */
   const level = Math.max(0, Math.min(1, script.flat)) * reach;
   const entry = chained(
-    { segments: [{ kind: "line", from: at(0, seam), to: at(level, seam) }], closed: false },
-    levelArc(at(level, seam), from, room),
+    { segments: [{ kind: "line", from: at(0, entryAt), to: at(level, entryAt) }], closed: false },
+    levelArc(at(level, entryAt), from, room),
   );
   const exit = chained(
-    reversed(levelArc(at(width - level, seam), to, room)),
-    { segments: [{ kind: "line", from: at(width - level, seam), to: at(width, seam) }], closed: false },
+    reversed(levelArc(at(width - level, exitAt), to, room)),
+    {
+      segments: [{ kind: "line", from: at(width - level, exitAt), to: at(width, exitAt) }],
+      closed: false,
+    },
   );
 
   return { entry, exit, inset, width };

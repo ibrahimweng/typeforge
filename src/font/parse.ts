@@ -258,6 +258,7 @@ export async function importFont(
     glyphIndex,
     kerning,
     kernClasses,
+    alternates: [],
     params: { ...DEFAULT_PARAMS },
     source,
   };

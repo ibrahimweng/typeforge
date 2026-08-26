@@ -22,7 +22,7 @@
 
 import type { Vec2 } from "@/font/types";
 import type { Style } from "./style";
-import { movedSpine, planJoin, planLoops, wobbleOf } from "./script";
+import { HANDS_OVER_HIGH, movedSpine, planJoin, planLoops, seamsOf, wobbleOf } from "./script";
 import { terminalFor } from "./style";
 import {
   bowl,
@@ -6636,6 +6636,39 @@ export function recipeOf(
 export const JOINS = new Set<string>("abcdefghijklmnopqrstuvwxyz".split(""));
 
 /**
+ * Which half of the join, if either, this drawing of a letter takes high.
+ *
+ * Module state with a scoped setter, which is how everything else here that has
+ * to reach a recipe without threading a parameter through it is done: the wave
+ * book does it, and so does the alternate a symbol borrows. The alternative was
+ * an eighth positional argument on `drawLetter`, which already has seven.
+ *
+ * It cannot be the `form` argument, which is the other obvious place. A face
+ * that draws the two-storey `a` needs the alternate of its `a` to be the
+ * two-storey one *and* to come in high, and `form` can only say one of those.
+ */
+let takingHigh: { entry?: boolean; exit?: boolean } = {};
+
+/**
+ * Draw whatever this does with one half of every join taken high.
+ *
+ * For building the contextual alternates, and nothing else calls it: the plain
+ * glyphs of a joined face all meet each other at the low seam, which is what
+ * makes the font correct in a renderer that never applies the feature. The flag
+ * is put back afterwards whatever happens, because a letter drawn high by
+ * accident is a letter that does not meet the one before it.
+ */
+export function joiningHigh<T>(which: { entry?: boolean; exit?: boolean }, run: () => T): T {
+  const was = takingHigh;
+  takingHigh = which;
+  try {
+    return run();
+  } finally {
+    takingHigh = was;
+  }
+}
+
+/**
  * The letter with its lead-in and lead-out, for a face that connects.
  *
  * Done here rather than in `finish` because `finish` does not know which letter
@@ -6684,13 +6717,30 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * letter it is measuring -- a loop reaches left of the stem it is on, and a
    * lead-in drawn to the stem instead would cross it.
    */
+  /*
+   * Which height each half of this letter's join crosses at, and the plain
+   * answer is: both low.
+   *
+   * A written `o`, `v`, `w` and `b` hand over at the waist where everything
+   * else hands over at the baseline -- but that is a fact about the *pair*, and
+   * drawing it into the letter is what would make this font wrong wherever the
+   * feature is not applied. So the letter as it is mapped in `cmap` joins low at
+   * both ends like every other, and the high hand-over lives in a second
+   * drawing that a shaper swaps in when the pair actually occurs. `o` and the
+   * letter after it are both replaced, so the two that meet always agree.
+   */
+  const seams = seamsOf(script, f.x);
+  const crossing = {
+    entry: takingHigh.entry ? seams.high : seams.low,
+    exit: takingHigh.exit && HANDS_OVER_HIGH.has(name) ? seams.high : seams.low,
+  };
   const loops = planLoops(recipe.strokes.map((stroke) => stroke.spine), room, script);
   const lift = wobbleOf(name, script, f.x).lift;
   const body = [...recipe.strokes, ...loops.map((loop) => ink(f, loop, BUTT, BUTT))].map((stroke) => ({
     ...stroke,
     spine: movedSpine(stroke.spine, 0, lift),
   }));
-  const plan = planJoin(body.map((stroke) => stroke.spine), room, script);
+  const plan = planJoin(body.map((stroke) => stroke.spine), room, script, crossing);
   if (!plan) return recipe;
   /*
    * The letter moves over; the join does not.
