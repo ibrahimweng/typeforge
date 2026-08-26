@@ -16,6 +16,8 @@
 import { ready, unite } from "@/font/boolean";
 import { inkRunsAt } from "@/font/geometry";
 import { drawLetter } from "@/forge/build";
+import { noEffects } from "@/font/effects";
+import { proof, startFrom } from "@/forge/document";
 import { BASES, type Style } from "@/forge/style";
 import type { Contour } from "@/font/types";
 
@@ -34,9 +36,32 @@ const slid = (contours: Contour[], by: number): Contour[] =>
   }));
 
 /** The widest stretch of the seam with no ink on it, across the boundary. */
+/*
+ * Drawn through the tool layer when asked, because the roughening is the one
+ * thing here that could open a join without anybody noticing: it pushes every
+ * point of the outline off its own line, and two letters that met exactly are
+ * two letters whose edges were perturbed by different amounts.
+ */
+const TEXTURED = process.env.EFFECTS ?? "";
+
+function drawn(letter: string, style: Style) {
+  if (!TEXTURED) return drawLetter(letter, style);
+  // "own" runs the face through whatever texture it ships with, which is the
+  // combination anybody exporting it will actually get.
+  if (TEXTURED === "own") return proof(letter, startFrom(style));
+  const effects = noEffects();
+  for (const name of TEXTURED.split(",")) {
+    if (name === "rough") effects.rough.on = true;
+    if (name === "pool") effects.pool.on = true;
+    if (name === "skip") effects.skip.on = true;
+    if (name === "press") effects.press.on = true;
+  }
+  return proof(letter, { ...startFrom(style), effects });
+}
+
 function seamGap(style: Style, pair: string): number | null {
-  const first = drawLetter(pair[0], style);
-  const second = drawLetter(pair[1], style);
+  const first = drawn(pair[0], style);
+  const second = drawn(pair[1], style);
   if (!first || !second) return null;
   const seam = style.parts.script.height * style.metrics.xHeight;
   /*

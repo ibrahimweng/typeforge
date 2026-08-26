@@ -1008,6 +1008,18 @@ export const HANDWRITING: Style = {
       irregularity: 1,
     },
   },
+  /*
+   * A ballpoint resting where the strokes meet, and nothing else.
+   *
+   * The joins are where a hand actually pauses -- the pen arrives, changes
+   * direction and leaves -- so that is where the ink gathers. No roughening:
+   * this is a biro on ordinary paper, which leaves an edge as clean as a
+   * printed one, and it is the face the other three are read against.
+   */
+  effects: {
+    ...noEffects(),
+    pool: { on: true, size: 0.3, where: "joins" },
+  },
 };
 
 
@@ -1050,6 +1062,19 @@ export const FORMAL_SCRIPT: Style = {
       irregularity: 0.12,
     },
   },
+  /*
+   * The pressure a pointed pen puts on the paper, and only that.
+   *
+   * A pointed nib spreads under the hand and closes as it lifts, which is a
+   * fact about where along the stroke you are rather than about which way it
+   * is going -- the one thing the pen model here cannot say. No roughening and
+   * no dry patches: a copperplate hand was written slowly with a wet nib, and
+   * the whole character of it is that nothing wavers.
+   */
+  effects: {
+    ...noEffects(),
+    press: { on: true, at: "middle", amount: 0.3 },
+  },
 };
 
 /**
@@ -1086,6 +1111,27 @@ export const CASUAL_SCRIPT: Style = {
       loop: 0.7,
       irregularity: 1.6,
     },
+  },
+  /*
+   * A felt tip that has been used before, moving quickly.
+   *
+   * All three of the things a marker does: a dragged edge, ink pooling where
+   * the hand stopped and turned, and the odd dry patch where it moved faster
+   * than the ink could follow. The roughening is long-wavelength rather than
+   * gritty -- a tip that wide cannot leave a fine edge, and a long wander is a
+   * quarter of the points.
+   */
+  effects: {
+    ...noEffects(),
+    rough: { on: true, amplitude: 0.032, wavelength: 1.2, reach: "all", seed: 23 },
+    pool: { on: true, size: 0.4, where: "both" },
+    /*
+     * Sparse. At a sixth of the letter broken the words read as chewed rather
+     * than as written with a tired pen -- a marker that skips that much is one
+     * nobody would still be using. A tenth leaves a gap every few letters,
+     * which is what the real thing does.
+     */
+    skip: { on: true, density: 0.09, length: 1.5, width: 0.16, seed: 23 },
   },
 };
 
@@ -1124,6 +1170,15 @@ export const MONOLINE_SCRIPT: Style = {
       irregularity: 0,
     },
   },
+  /*
+   * And no tool marks either, for the same reason there is no bounce.
+   *
+   * This face was ruled out rather than written, and a ruled line has no ink
+   * pooling in it and no dry patches. Leaving the whole layer off is the
+   * decision that makes it the even one of the four rather than an oversight --
+   * it is the only face here that would be *wrong* with texture on it.
+   */
+  effects: { ...noEffects() },
 };
 
 export const BASES: Style[] = [

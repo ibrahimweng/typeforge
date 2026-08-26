@@ -19,6 +19,7 @@ import { writeFileSync } from "node:fs";
 import { ready } from "@/font/boolean";
 import { contoursToSvgPath } from "@/font/geometry";
 import { drawLetter } from "@/forge/build";
+import { proof, startFrom } from "@/forge/document";
 import { BASES, type Style } from "@/forge/style";
 import type { Contour } from "@/font/types";
 
@@ -41,7 +42,9 @@ function setLine(style: Style, line: string): { path: string; width: number } {
   const parts: string[] = [];
   for (const letter of line) {
     if (letter === " ") { x += style.metrics.xHeight * 0.7; continue; }
-    const drawn = drawLetter(letter, style);
+    // TEXTURE=on runs each letter through the tool layer, which is what an
+    // export bakes in and what the proofing window shows one letter of.
+    const drawn = process.env.TEXTURE ? proof(letter, startFrom(style)) : drawLetter(letter, style);
     if (!drawn) continue;
     parts.push(contoursToSvgPath(slid(drawn.contours, x)));
     x += drawn.advanceWidth;
