@@ -136,6 +136,27 @@ export interface Effects {
     /** How much thinner the stroke gets where it is lightest, as a share of the stem. */
     amount: number;
   };
+  /**
+   * How many points a roughened letter is allowed to come to.
+   *
+   * Not an operation and not switched on or off, so it is kept off the list
+   * everything else walks -- the same arrangement the cast makes for its order,
+   * and for the same reason: a caller that has the description has this, and
+   * nothing that iterates the operations should trip over it.
+   *
+   * It exists because a rough edge is bought by the point and a font is bought
+   * by the kilobyte. Every wander needs several points to read as one, so a
+   * letter roughened finely comes to four hundred points where it began with
+   * fourteen -- and four hundred and fifty-two letters of that is a file some
+   * renderers will not take and nobody will want to serve.
+   *
+   * It only ever coarsens. The wander is laid down at whichever spacing is
+   * wider: the one the wavelength asks for, or the one this allows. So a simple
+   * letter is drawn exactly as asked and a busy one gets a coarser grain rather
+   * than a bigger file, which is the right way round -- the busy letter had the
+   * least room for fine grain to show in anyway.
+   */
+  budget: number;
 }
 
 /*
@@ -151,6 +172,10 @@ export const NO_EFFECTS: Effects = {
   pool: { on: false, size: 0.45, where: "both" },
   skip: { on: false, density: 0.25, length: 1.2, width: 0.22, seed: 1 },
   press: { on: false, at: "middle", amount: 0.35 },
+  // Measured: an `n` at the default roughening comes to 138 points, and the
+  // busiest letters in the set run to about three times that. Nine hundred
+  // leaves every letter drawn as asked and catches only the pathological ones.
+  budget: 900,
 };
 
 export function noEffects(): Effects {
@@ -159,10 +184,20 @@ export function noEffects(): Effects {
     pool: { ...NO_EFFECTS.pool },
     skip: { ...NO_EFFECTS.skip },
     press: { ...NO_EFFECTS.press },
+    budget: NO_EFFECTS.budget,
   };
 }
 
-export type EffectName = keyof Effects;
+/**
+ * The operations, which is every field except the one that is a setting.
+ *
+ * The budget draws nothing on its own and has no switch; it is a decision about
+ * what the drawing may cost rather than about what it looks like. So it lives
+ * on the same object -- there is nowhere better, and a caller that has the
+ * description has it -- and is kept out of the list everything else walks. The
+ * cast makes exactly this arrangement for its order.
+ */
+export type EffectName = Exclude<keyof Effects, "budget">;
 
 /*
  * In the order they are run, which is the order a hand would have imposed them:

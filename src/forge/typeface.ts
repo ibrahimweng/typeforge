@@ -28,7 +28,7 @@ import {
 import { builtFrom, letterNames } from "./build";
 import { openWaveBook, type WaveBook } from "./shapes";
 import { kernsFor } from "./kern";
-import { anythingCut, draw, type Forge } from "./document";
+import { anythingCut, draw, proof, type Forge } from "./document";
 
 /**
  * What each drawn glyph is called in Unicode.
@@ -232,6 +232,20 @@ export interface ForgeExportOptions {
    * once, when a file is written, and not fine on every touch of a slider.
    */
   kern?: boolean;
+  /**
+   * Bake in what the tool left.
+   *
+   * On for anything leaving the application and off everywhere else, which is
+   * the same bargain `merge` and `kern` already make and for a sharper version
+   * of the same reason. The roughening touches every point of every outline and
+   * then resolves the result with a boolean; across four hundred and fifty-two
+   * letters that is the better part of half a minute, which is fine once when a
+   * file is written and impossible on every touch of a slider.
+   *
+   * While the font is being worked on it is shown on one letter, in the
+   * proofing panel, and on nothing else. This is where it reaches the rest.
+   */
+  effects?: boolean;
 }
 
 /**
@@ -286,8 +300,21 @@ export async function toTypeface(
   // and whoever was using it is owed it back: see `WaveBook`.
   const hadWaves = openWaveBook(options.waves ?? null);
   try {
-  for (const name of letterNames()) {
-    const drawn = draw(name, forge);
+  const names = letterNames();
+  for (let at = 0; at < names.length; at++) {
+    const name = names[at];
+    /*
+     * Handed back to the browser every so often, so a textured export does not
+     * look like a hung page.
+     *
+     * A plain font is drawn in a couple of seconds and would not need this. One
+     * with a rough edge on it is twenty times that, and twenty-five seconds of
+     * one unbroken task is a window that answers nothing -- no spinner turns,
+     * no button can be pressed, and some browsers offer to kill the tab. The
+     * work is not made any shorter by breaking it up; it is made survivable.
+     */
+    if (options.effects && at % 12 === 0) await Promise.resolve();
+    const drawn = options.effects ? proof(name, forge) : draw(name, forge);
     if (!drawn) continue;
     let contours = drawn.contours;
     if (options.merge && contours.length > 1) {

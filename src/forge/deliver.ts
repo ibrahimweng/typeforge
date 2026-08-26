@@ -13,6 +13,7 @@ import { zip } from "@/font/zip";
 import { familyOf, weighted, type Forge } from "./document";
 import { memberOf, nameOfWeight, weightsOf } from "./family";
 import { toTypeface } from "./typeface";
+import { anyEffect } from "@/font/effects";
 import type { WaveBook } from "./shapes";
 
 export interface Delivery {
@@ -42,7 +43,22 @@ export async function deliver(
   const familyName = options.familyName || "Untitled";
   const extension = options.format === "otf" ? "otf" : "ttf";
 
-  if (options.variable && weights.length > 1 && options.format !== "otf") {
+  /*
+   * A textured face cannot be a variable one, and this is where that is said.
+   *
+   * Two masters join only where they are drawn with the same points in the same
+   * order. The roughening is seeded, so the same settings always give the same
+   * edge -- but a Regular and a Bold are not the same settings: the wander is
+   * measured in stem widths and laid along a perimeter, and both of those move
+   * with the weight. The masters come out with different point counts and there
+   * is nothing to interpolate between.
+   *
+   * So the variable path is taken only where nothing is switched on. Elsewhere
+   * the family is written as separate files, which is the honest answer rather
+   * than a variable font whose axis tears its letters apart halfway along.
+   */
+  const textured = anyEffect(forge.effects);
+  if (options.variable && !textured && weights.length > 1 && options.format !== "otf") {
     return await varying(forge, familyName, weights, family.drawn);
   }
 
@@ -71,6 +87,8 @@ export async function deliver(
       waves,
       merge: true,
       kern: true,
+      // The one place the tool reaches the whole font: see `ForgeExportOptions`.
+      effects: true,
     });
     waves.recording = false;
     const result = await exportFont(typeface, {

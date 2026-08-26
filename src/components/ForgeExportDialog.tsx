@@ -13,6 +13,7 @@
  */
 
 import * as React from "react";
+import { anyEffect } from "@/font/effects";
 
 import { enter, refuse } from "@/anim/motion";
 import type { ExportFormat } from "@/font/export";
@@ -34,6 +35,9 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
    * beside the two formats and is turned into a format and a flag here.
    */
   const [kind, setKind] = React.useState<"ttf" | "otf" | "variable">("ttf");
+  // Whether anything the tool leaves is switched on, which decides both what
+  // this costs and what it can be written as.
+  const textured = anyEffect(state.forge.effects);
   const format: ExportFormat = kind === "otf" ? "otf" : "ttf";
   const [working, setWorking] = React.useState(false);
   const [problem, setProblem] = React.useState<string | null>(null);
@@ -184,6 +188,25 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
           </select>
         </label>
 
+        {textured && (
+          /*
+           * Said here rather than discovered afterwards.
+           *
+           * Two masters join only where they are drawn with the same points in
+           * the same order, and a wander measured in stem widths along a
+           * perimeter is not the same wander at two weights. So a textured
+           * family is written as separate files, which is the honest answer
+           * rather than a variable font whose axis tears its letters apart
+           * halfway along.
+           */
+          <p className="pb-3 text-2xs leading-snug text-[color:var(--accent)]" data-tool-note>
+            The tool is baked into every letter on the way out, which takes a
+            few seconds a weight. It cannot be a variable font: the rough edge
+            is drawn to the stem, so two weights come out with different points
+            and there is nothing to slide between.
+          </p>
+        )}
+
         <p className="pb-4 pt-1 text-2xs leading-snug text-muted-foreground" data-weight-note>
           {weights.length === 1
             ? "One weight. Add another and the whole family is drawn from this one — the stems in proportion to the number, the counters giving back four fifths of what the stems gain, the spacing left alone."
@@ -201,10 +224,12 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
               [
                 "variable",
                 "Variable",
-                weights.length > 1
-                  ? "One file with a weight slider from end to end."
-                  : "Needs more than one weight.",
-                weights.length > 1,
+                textured
+                  ? "Not with a tool on the font: see below."
+                  : weights.length > 1
+                    ? "One file with a weight slider from end to end."
+                    : "Needs more than one weight.",
+                weights.length > 1 && !textured,
               ],
             ] as Array<["ttf" | "otf" | "variable", string, string, boolean]>
           ).map(([id, label, note, allowed]) => (

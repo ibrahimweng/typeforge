@@ -194,6 +194,31 @@ describe("pressure", () => {
   });
 });
 
+describe("the points budget", () => {
+  /*
+   * The budget only ever coarsens. A letter that fits inside it is drawn
+   * exactly as its wavelength asks, and one that does not gets a wider grain
+   * rather than a bigger file -- which is the right way round, because the busy
+   * letter had the least room for fine grain to show in anyway.
+   */
+  it("leaves a letter that fits inside it exactly as asked", () => {
+    const generous = withOnly((e) => { e.rough.on = true; e.budget = 5000; });
+    const ordinary = withOnly((e) => { e.rough.on = true; });
+    expect(bothWays("n", generous).marked.contours).toEqual(bothWays("n", ordinary).marked.contours);
+  });
+
+  it("coarsens a letter that does not", () => {
+    const tight = withOnly((e) => { e.rough.on = true; e.budget = 40; });
+    const ordinary = withOnly((e) => { e.rough.on = true; });
+    const spent = pointsIn(bothWays("n", tight).marked.contours);
+    expect(spent).toBeLessThan(pointsIn(bothWays("n", ordinary).marked.contours));
+    // Held to roughly what was asked for rather than exactly: the wander is
+    // laid at one spacing around each contour and a contour is a whole number
+    // of steps, so the count lands near the budget rather than on it.
+    expect(spent).toBeLessThan(120);
+  });
+});
+
 describe("what it costs", () => {
   /*
    * The number the export budget is built on, and the reason the roughening's

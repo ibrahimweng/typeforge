@@ -57,6 +57,29 @@ export {
 const SAMPLES = 64;
 
 /**
+ * How many for the pressure, which pays for each one twice over.
+ *
+ * Every sample on every flank casts a ray at the letter's own outline to find
+ * where the ink really stops, and each ray is tested against every edge of it.
+ * At sixty-four that came to some forty million tests across a font and took a
+ * hundred seconds to write one; at twenty-four it is under twenty, and the
+ * taper is a smooth thing that twenty-four points describe as well as sixty-four
+ * -- the quads between them are what get subtracted, and they were never going
+ * to show the difference.
+ */
+const PRESS_SAMPLES = 24;
+
+/**
+ * How finely the outline is flattened for those rays to hit.
+ *
+ * Coarser than the roughening's own flattening on purpose. This one is only
+ * ever asked "how far to the edge", and an answer off by a unit moves a cut by
+ * a unit -- where the roughening's flattening becomes the letter and has to
+ * follow every curve it is given.
+ */
+const RAY_STEPS = 4;
+
+/**
  * Whether any effect that is on can do anything to this ink.
  *
  * Not the same question as whether any are on. Three of the four are found
@@ -123,7 +146,7 @@ export function effectInk(
     if (gaps.length > 0) shape = subtract(shape, gaps, "winding");
   }
   if (effects.rough.on) {
-    shape = roughened(shape, effects.rough, stem);
+    shape = roughened(shape, effects.rough, stem, effects.budget);
     // The wander can carry an edge across itself where a stroke is thin or a
     // corner tight. One union afterwards resolves that into the shape somebody
     // would have drawn, and leaves the winding right for whatever writes the
@@ -161,10 +184,30 @@ const PER_WAVE = 4;
  * no seam where the outline started. That is worth the arithmetic: a seam on a
  * round letter is the one artefact of this kind the eye finds immediately.
  */
-function roughened(shape: Contour[], rough: Effects["rough"], stem: number): Contour[] {
+function roughened(
+  shape: Contour[],
+  rough: Effects["rough"],
+  stem: number,
+  budget: number,
+): Contour[] {
   const amplitude = rough.amplitude * stem;
   const wavelength = Math.max(rough.wavelength * stem, 4);
   if (amplitude <= 0) return shape;
+
+  /*
+   * The widest of the two spacings the letter is entitled to.
+   *
+   * Worked out across every contour at once rather than one at a time, because
+   * the budget is a fact about the letter and a letter is not more entitled to
+   * points because it happens to be made of more pieces. Taken this way, a
+   * simple letter is drawn exactly as its wavelength asks and only a busy one
+   * is coarsened -- and a busy one had the least room for fine grain to show
+   * in to begin with.
+   */
+  const asked = wavelength / PER_WAVE;
+  const around = shape.reduce((sum, one) => sum + perimeterOf(flattenContour(one, 8)), 0);
+  const allowed = budget > 0 ? around / budget : 0;
+  const spacing = Math.max(asked, allowed);
 
   return shape.map((contour, index) => {
     // A counter is wound against the ink. Left alone, the letter reads as
@@ -173,7 +216,7 @@ function roughened(shape: Contour[], rough: Effects["rough"], stem: number): Con
     // as a choice rather than decided here.
     if (rough.reach === "outside" && contourArea(contour) < 0) return contour;
 
-    const line = evenly(flattenContour(contour, 8), wavelength / PER_WAVE);
+    const line = evenly(flattenContour(contour, 8), spacing);
     if (line.length < 6) return contour;
 
     // A whole number of waves, so the last point wanders by exactly as much as
@@ -428,12 +471,12 @@ function pressWedges(
    * difference between an effect that works on five letters and one that works
    * on all of them.
    */
-  const edges = ink.map((contour) => flattenContour(contour, 8));
+  const edges = ink.map((contour) => flattenContour(contour, RAY_STEPS));
   const wedges: Contour[] = [];
 
   for (const stroke of strokes) {
     if (stroke.spine.closed) continue;
-    const walked = alongSpine(stroke.spine, SAMPLES);
+    const walked = alongSpine(stroke.spine, PRESS_SAMPLES);
     if (walked.length < 3) continue;
     const half = Math.max(stroke.pen.weight, stem) * 0.5;
     const most = press.amount * half;
