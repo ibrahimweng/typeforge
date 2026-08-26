@@ -82,8 +82,14 @@ describe("which weight a face already is", () => {
   it("reads a weight off the stem rather than assuming four hundred", () => {
     expect(weightClassOf(SANS)).toBe(400);
     expect(weightClassOf(SERIF)).toBe(400);
-    // Its stem is a third of its x-height, which is where a bold sits.
-    expect(weightClassOf(DISPLAY)).toBe(700);
+    /*
+     * A fat face, and the number moved with it: this was a Bold at seven
+     * hundred when Display meant only "big", and became an ExtraBold at eight
+     * when it became the thing it is named after. A stem of two hundred units
+     * against a five hundred and seventy-five x-height is not a Bold by any
+     * reading, and the rule this test is about is the one that noticed.
+     */
+    expect(weightClassOf(DISPLAY)).toBe(800);
   });
 
   it("puts every base somewhere on the scale", () => {
@@ -109,7 +115,7 @@ describe("which weight a face already is", () => {
 
   it("starts a document at the weight the base actually is", () => {
     expect(startFrom(SANS).family?.drawn).toBe(400);
-    expect(startFrom(DISPLAY).family?.drawn).toBe(700);
+    expect(startFrom(DISPLAY).family?.drawn).toBe(800);
   });
 });
 

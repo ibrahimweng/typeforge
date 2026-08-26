@@ -914,15 +914,19 @@ test("draws a family and downloads every weight of it", async ({ page }) => {
  *
  * Half the faces offered here are not a Regular, and calling one a Regular and
  * asking for a Bold of it is asking for a stem half again as wide as the one
- * that was already closing the counters. The display face is read as a Bold
- * when it is chosen, so its family runs downward from where it actually is.
+ * that was already closing the counters. The display face is read as heavy when
+ * it is chosen, so its family runs downward from where it actually is.
+ *
+ * Eight hundred rather than seven: the display face is a fat face, and its stem
+ * is not a bold's. The number is measured off the drawing rather than declared,
+ * so it moved when the face did.
  */
-test("knows the display face is already a bold", async ({ page }) => {
+test("knows the display face is already a heavy", async ({ page }) => {
   await openForge(page);
   await page.getByRole("button", { name: "Display", exact: true }).click();
   await page.getByRole("button", { name: "Download", exact: true }).click();
-  await expect(page.getByRole("dialog").locator("[data-drawn-weight]")).toHaveValue("700");
-  await expect(page.getByRole("dialog").locator('[data-weight="700"]')).toBeDisabled();
+  await expect(page.getByRole("dialog").locator("[data-drawn-weight]")).toHaveValue("800");
+  await expect(page.getByRole("dialog").locator('[data-weight="800"]')).toBeDisabled();
 });
 
 test("spreads one edit across the whole alphabet", async ({ page }) => {
