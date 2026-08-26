@@ -28,7 +28,8 @@ import {
 import { builtFrom, letterNames } from "./build";
 import { openWaveBook, type WaveBook } from "./shapes";
 import { kernsFor } from "./kern";
-import { anythingCut, draw, proof, type Forge } from "./document";
+import { anythingCut, draw, drawnHigh, proof, type Forge } from "./document";
+import { alternateName, joinRules, joinsUp } from "./joins";
 
 /**
  * What each drawn glyph is called in Unicode.
@@ -347,6 +348,44 @@ export async function toTypeface(
   }
   } finally {
     openWaveBook(hadWaves);
+  }
+
+  /*
+   * And the second drawings, for the faces whose letters reach each other.
+   *
+   * A written `o`, `v`, `w` and `b` hand over at the waist where every other
+   * letter hands over at the baseline. That is a fact about the pair, so it
+   * cannot live in either letter: the glyphs above all meet at the low seam,
+   * which is what makes the font right in a renderer that never applies a
+   * feature, and the high hand-over is carried here as alternates a shaper
+   * swaps in when the pair actually occurs.
+   *
+   * Both halves are swapped, never only the second. Swapping only the letter
+   * that follows would need the `o` above to be drawn high already, and then a
+   * renderer that skipped the feature would join every one of those pairs high
+   * to low -- which is the broken font this exists to avoid.
+   */
+  const joined = joinsUp(forge);
+  if (joined.length > 0) {
+    const before = glyphs.length;
+    for (const [name, which] of joined) {
+      const drawn = drawnHigh(name, which, forge);
+      if (!drawn) continue;
+      glyphs.push({
+        name: alternateName(name, which),
+        // No codepoint. These are reached only through the feature, and a
+        // second glyph mapped to the same character is a font that renders
+        // differently depending on which one a tool happens to pick.
+        unicodes: [],
+        advanceWidth: drawn.advanceWidth,
+        contours: drawn.contours,
+        components: [],
+        anchors: [],
+        params: {},
+        dirty: false,
+      });
+    }
+    if (glyphs.length > before) typeface.alternates = joinRules(joined);
   }
 
   typeface.glyphs = glyphs;

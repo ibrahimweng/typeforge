@@ -32,7 +32,7 @@ import {
   type Port,
   type Tiles,
 } from "./kit";
-import { recipeOf } from "./letters";
+import { joiningHigh, recipeOf } from "./letters";
 import type { Imported } from "./exchange";
 import { weightClassOf, weightedStyle, type Family } from "./family";
 import { partsUsedBy, type PartName } from "./parts";
@@ -691,6 +691,12 @@ const solids = new WeakMap<Forge, Map<string, Drawn | null>>();
  * proofing panel asking for one must not be handed the other.
  */
 const proofs = new WeakMap<Forge, Map<string, Drawn | null>>();
+/*
+ * And the second drawings a joined face needs, kept apart again and for the
+ * same reason: they are the same letter answering a different question, and a
+ * cache keyed on the letter alone would hand one back for the other.
+ */
+const highs = new WeakMap<Forge, Map<string, Drawn | null>>();
 
 function remembered(
   where: WeakMap<Forge, Map<string, Drawn | null>>,
@@ -759,6 +765,30 @@ export function unshaped(forge: Forge): Forge {
  * Everything downstream -- the grid, the specimen, the checks, the exporters --
  * asks this one question and gets one answer whichever kind of letter it is.
  */
+/**
+ * The same letter with one half of its join taken up to the waist.
+ *
+ * For the contextual alternates, and for nothing else: the letter as the font
+ * maps it joins low at both ends, so that a renderer which never applies a
+ * feature still gets a face whose letters meet. Cut and cast like any other
+ * letter, because an alternate that missed the font's own slots would show as
+ * one solid letter in the middle of a word full of cut ones.
+ */
+export function drawnHigh(letter: string, which: "entry" | "exit", forge: Forge): Drawn | null {
+  return remembered(highs, forge, `${letter}.${which}`, () =>
+    joiningHigh({ [which]: true }, () =>
+      drawLetter(
+        letter,
+        styleFor(letter, forge),
+        formOf(forge, letter),
+        cutsFor(letter, forge),
+        forge.kit,
+        castFor(letter, forge),
+      ),
+    ),
+  );
+}
+
 export function draw(letter: string, forge: Forge): Drawn | null {
   return remembered(drawings, forge, letter, () => {
     const outside = forge.imported[letter];

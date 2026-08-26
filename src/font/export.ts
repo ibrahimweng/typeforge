@@ -34,6 +34,7 @@ import {
   type Master,
 } from "./variable";
 import { buildGposTable, type ResolvedClassKern, type ResolvedPair } from "./kern";
+import { buildGsubTable, type ChainRule } from "./gsub";
 import { anythingCut, effectiveParams, paramsAreDefault, resolveGlyphContours } from "./transform";
 import { ready as readyToCut } from "./boolean";
 import { readSfnt, writeSfnt, SFNT_TRUETYPE, type SfntFont } from "./sfnt";
@@ -481,6 +482,7 @@ async function exportTrueType(
   }
 
   applyKerning(tables, typeface, context.includeKerning);
+  applyAlternates(tables, typeface);
 
   const font: SfntFont = { sfntVersion: SFNT_TRUETYPE, tables };
   return writeSfnt(font);
@@ -556,7 +558,71 @@ async function exportOpenType(
   const written = new Uint8Array(font.toArrayBuffer());
   const sfnt = readSfnt(written);
   applyKerning(sfnt.tables, typeface, context.includeKerning, glyphs.length !== resolved.length);
+  applyAlternates(sfnt.tables, typeface, glyphs.length !== resolved.length);
   return writeSfnt(sfnt);
+}
+
+/**
+ * Turn the document's contextual alternates into a `GSUB` table.
+ *
+ * Named rules in, glyph ids out. The names are resolved here rather than where
+ * the rules are written because nothing knows a glyph's id until the export has
+ * settled the order -- and `shifted` covers the case where OpenType export
+ * prepended a `.notdef` and moved every id up by one, exactly as the kerning
+ * has to.
+ *
+ * A rule whose glyphs are not all in the font is dropped rather than written
+ * with the missing ones left out. A join is a statement about a pair, and half
+ * of one is not a smaller truth: it is a rule that fires where it should not.
+ */
+function applyAlternates(
+  tables: Map<string, Uint8Array>,
+  typeface: Typeface,
+  shifted = false,
+): void {
+  const offset = shifted ? 1 : 0;
+  const idFor = (name: string): number | null => {
+    const index = typeface.glyphIndex.get(name);
+    return index === undefined ? null : index + offset;
+  };
+
+  const rules: ChainRule[] = [];
+  for (const rule of typeface.alternates ?? []) {
+    const input: number[][] = [];
+    let whole = true;
+    for (const position of rule.input) {
+      const ids = position.map(idFor);
+      if (ids.some((id) => id === null)) whole = false;
+      input.push(ids.filter((id): id is number => id !== null));
+    }
+    const swaps: ChainRule["swaps"] = [];
+    for (const position of rule.swaps) {
+      const swap: Array<{ plain: number; alternate: number }> = [];
+      for (const one of position.swap) {
+        const plain = idFor(one.plain);
+        const alternate = idFor(one.alternate);
+        if (plain === null || alternate === null) {
+          whole = false;
+          continue;
+        }
+        swap.push({ plain, alternate });
+      }
+      swaps.push({ at: position.at, swap });
+    }
+    if (whole) rules.push({ input, swaps });
+  }
+
+  /*
+   * Written when there is something to write, and otherwise left alone.
+   *
+   * Not deleted, which is what this did first and which quietly threw away the
+   * GSUB of every font somebody imported. A document that has no alternates of
+   * its own has said nothing about substitutions; it has not said there are to
+   * be none, and the ligatures and alternates the source font came with are
+   * part of what an import is promised it will keep.
+   */
+  const gsub = buildGsubTable(rules);
+  if (gsub) tables.set("GSUB", gsub);
 }
 
 /**
@@ -734,7 +800,14 @@ function buildBaselineTables(
   );
   tables.set("cmap", buildCmap(mappings));
   tables.set("name", buildName(typeface.meta, invented));
-  tables.set("post", buildPost(isItalic ? -12 : 0, typeface.unitsPerEm));
+  tables.set(
+    "post",
+    buildPost(
+      isItalic ? -12 : 0,
+      typeface.unitsPerEm,
+      typeface.glyphs.map((glyph) => glyph.name),
+    ),
+  );
   tables.set(
     "OS/2",
     buildOs2({

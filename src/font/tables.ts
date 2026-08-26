@@ -431,14 +431,55 @@ function sanitisePostScriptName(value: string): string {
 }
 
 /** `post` version 3.0: the form that stores no glyph names, which keeps it small. */
-export function buildPost(italicAngle: number, unitsPerEm: number): Uint8Array {
+/**
+ * The `post` table, carrying the glyph names when it is given any.
+ *
+ * Version three when it is not, which stores no names at all and is what a
+ * screen font ships -- a name costs bytes and nothing reading a font to set
+ * text with ever asks for one.
+ *
+ * Version two when it is, and the reason is the contextual alternates. Every
+ * other glyph in this font can be identified from the outside by the character
+ * it is mapped to; an alternate is mapped to nothing, because it is reached
+ * only through a feature, so with no name it is a glyph nobody opening the file
+ * can tell from any other. `o.medi` says what it is and `glyph00468` does not.
+ *
+ * Every name is written out rather than indexed into the standard Macintosh
+ * set of 258 that the format also allows. The set would save about half the
+ * table -- two kilobytes on a font of a hundred and sixty -- at the cost of
+ * carrying 258 strings in this file to be looked up in, and half of them name
+ * glyphs nothing here draws. A name written out is right whether or not anyone
+ * has agreed on a number for it.
+ */
+export function buildPost(
+  italicAngle: number,
+  unitsPerEm: number,
+  glyphNames?: string[],
+): Uint8Array {
   const writer = new ByteWriter();
-  writer.fixed(3);
+  writer.fixed(glyphNames && glyphNames.length > 0 ? 2 : 3);
   writer.fixed(italicAngle);
   writer.int16(Math.round(-unitsPerEm * 0.075)); // underlinePosition
   writer.int16(Math.round(unitsPerEm * 0.05)); // underlineThickness
   writer.uint32(0); // isFixedPitch
   for (let i = 0; i < 4; i++) writer.uint32(0); // memory usage hints, unused
+  if (!glyphNames || glyphNames.length === 0) return writer.toUint8Array();
+
+  /*
+   * The indices first and the strings after them, which is the shape of the
+   * table: an index of 258 or more points at the nth string in the list that
+   * follows, in the order they are written.
+   */
+  writer.uint16(glyphNames.length);
+  for (let index = 0; index < glyphNames.length; index++) writer.uint16(258 + index);
+  for (const name of glyphNames) {
+    // A Pascal string: one byte of length, then the bytes. Names are ASCII by
+    // the specification, and anything else is cut back to it rather than
+    // written as something no reader will agree about.
+    const bytes = [...name].map((one) => one.charCodeAt(0)).filter((code) => code > 0x20 && code < 0x7f);
+    writer.uint8(Math.min(bytes.length, 63));
+    for (const code of bytes.slice(0, 63)) writer.uint8(code);
+  }
   return writer.toUint8Array();
 }
 

@@ -63,6 +63,16 @@ export interface FontToolsReport {
   /** What OS/2 says this face weighs, and whether it claims to be the bold. */
   weightClass: number;
   isBold: boolean;
+  /**
+   * Every glyph's name, as the file carries them.
+   *
+   * A glyph reached only through a feature has no character mapped to it, so
+   * its name is the only thing that identifies it from outside -- which is why
+   * this font writes a `post` table that has them.
+   */
+  glyphNames: string[];
+  /** Every glyph's advance, by name. */
+  advanceWidths: Record<string, number>;
   error?: string;
 }
 
@@ -77,7 +87,8 @@ out = {"outlineFormat": "unknown", "tables": [], "numGlyphs": 0, "unitsPerEm": 0
        "contoursOf": {}, "inkOf": {},
        "winAscent": 0, "winDescent": 0,
        "yMax": 0, "yMin": 0,
-       "names": {}, "weightClass": 0, "isBold": False}
+       "names": {}, "weightClass": 0, "isBold": False,
+       "glyphNames": [], "advanceWidths": {}}
 try:
     f = TTFont(path)
     # Report the outline flavour rather than the raw version tag, which is
@@ -88,6 +99,8 @@ try:
     out["unitsPerEm"] = f["head"].unitsPerEm
     out["yMax"] = f["head"].yMax
     out["yMin"] = f["head"].yMin
+    out["glyphNames"] = list(f.getGlyphOrder())
+    out["advanceWidths"] = {n: w for n, (w, _) in f["hmtx"].metrics.items()}
     if "OS/2" in f:
         out["winAscent"] = f["OS/2"].usWinAscent
         out["winDescent"] = f["OS/2"].usWinDescent
@@ -262,6 +275,46 @@ export function shapeKerning(bytes: Uint8Array, pairs: string[]): Record<string,
   }
   return JSON.parse(result.stdout) as Record<string, number>;
 }
+
+/**
+ * The glyph names a shaper produces for a word, in order.
+ *
+ * For the contextual alternates. fontTools says whether the bytes decompile
+ * into the rules that were meant; only a shaper says whether those rules fire
+ * on real text, which is a different question and the one that matters. Every
+ * feature the shaper applies by default is applied, exactly as a line of type
+ * would get it.
+ */
+export function shapeWords(bytes: Uint8Array, words: string[]): Record<string, string[]> {
+  const dir = mkdtempSync(join(tmpdir(), "typeforge-"));
+  const fontPath = join(dir, "font.bin");
+  writeFileSync(fontPath, bytes);
+
+  const result = spawnSync("python3", ["-c", SHAPE_WORDS, fontPath, JSON.stringify(words)], {
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (result.status !== 0) {
+    throw new Error(`HarfBuzz shaping failed: ${result.stderr || result.stdout}`);
+  }
+  return JSON.parse(result.stdout) as Record<string, string[]>;
+}
+
+const SHAPE_WORDS = `
+import json, sys
+import uharfbuzz as hb
+
+blob = hb.Blob.from_file_path(sys.argv[1])
+font = hb.Font(hb.Face(blob))
+out = {}
+for word in json.loads(sys.argv[2]):
+    buf = hb.Buffer()
+    buf.add_str(word)
+    buf.guess_segment_properties()
+    hb.shape(font, buf)
+    out[word] = [font.glyph_to_string(info.codepoint) for info in buf.glyph_infos]
+print(json.dumps(out))
+`;
 
 /**
  * What a varying font says about itself, and what it draws when asked.
