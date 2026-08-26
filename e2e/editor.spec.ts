@@ -1661,8 +1661,19 @@ test("stamps filled shapes into cells, and takes them out again", async ({ page 
   await expect(page.locator("[data-forge-cells]")).toBeVisible();
 
   // Start from an empty letter, so what appears can only be what was stamped.
-  await panel.locator("[data-forge-kit-clear]").click();
   const outline = () => page.locator('[data-forge-cell="n"] path').getAttribute("d");
+  const laid = await outline();
+  await panel.locator("[data-forge-kit-clear]").click();
+  /*
+   * Waited for, rather than read straight after the press.
+   *
+   * `empty` is what the last assertion in this test compares against, and the
+   * letter takes a moment to fall back to its own skeleton. Read too early it
+   * held the cell-built outline instead -- so the test ended by asking a letter
+   * with its stamps taken out to look like a letter that still had them, and
+   * failed on a slow enough machine. It went flaky on CI before it went red.
+   */
+  await expect.poll(outline).not.toBe(laid);
   const empty = await outline();
 
   // Nothing is chosen to begin with, which is the eraser: a press on the stage
