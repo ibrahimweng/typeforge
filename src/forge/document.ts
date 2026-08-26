@@ -19,6 +19,7 @@
 import { decidedBy, drawLetter, letterNames, type Drawn } from "./build";
 import { anyCast, CAST_NAMES, noCast, sameCast, type Cast, type CastName } from "./cast";
 import { anyCut, CUT_NAMES, noCuts, scaleOf, type CutName, type Cuts } from "./cut";
+import { anyEffect, effectInk, noEffects, type EffectName, type Effects } from "./effects";
 import { anyShaping, shapedInk } from "./layers";
 import {
   emptyKit,
@@ -131,6 +132,23 @@ export interface Forge {
    * it. `whole` below fills it in, so nothing downstream has to ask twice.
    */
   family?: Family;
+  /**
+   * What the tool that drew the letters was like.
+   *
+   * The third layer, beside the cuts and the cast and on the same terms: a
+   * description re-read every time a letter is drawn, so a heavier face is
+   * roughened at its own weight rather than at the weight it was set up at.
+   *
+   * Kept on the document rather than on the style because it is a decision
+   * about the tool, not about the pen -- the same distinction that keeps the
+   * cuts out of the style. And unlike either of them it is not applied to the
+   * font while it is being worked on: see `proof`, and the note in
+   * `@/font/effects` on why a live view of it is one letter and not four
+   * hundred and fifty-two.
+   *
+   * Optional because documents saved before there were effects do not have it.
+   */
+  effects?: Effects;
 }
 
 const ALONE: Family = { drawn: 400, also: [] };
@@ -183,6 +201,7 @@ export function startFrom(base: Style): Forge {
     imported: {},
     cuts: noCuts(),
     cast: noCast(),
+    effects: noEffects(),
     cutExceptions: {},
     kit: emptyKit(),
     // Asked rather than assumed. A face is whatever weight its own stem says
@@ -312,6 +331,76 @@ export function editCast(
 /** Which way round the two layers go. A decision about the font, never a letter. */
 export function setCastOrder(forge: Forge, order: Cast["order"]): Forge {
   return { ...forge, cast: { ...castOf(forge), order } };
+}
+
+// ---------------------------------------------------------------------------
+// The tool
+// ---------------------------------------------------------------------------
+
+export function effectsOf(forge: Forge): Effects {
+  return forge.effects ?? noEffects();
+}
+
+/**
+ * Change something about the tool.
+ *
+ * A decision about the font and never about one letter, which is the one place
+ * this parts company with the cut and the cast. Those two describe things done
+ * to a letter, and a letter can reasonably be done to differently. This
+ * describes what drew the font, and a font drawn with two different markers is
+ * not a font.
+ */
+export function editEffect(
+  forge: Forge,
+  name: EffectName,
+  patch: Partial<Effects[EffectName]>,
+): Forge {
+  const effects = effectsOf(forge);
+  return { ...forge, effects: { ...effects, [name]: { ...effects[name], ...patch } } };
+}
+
+/**
+ * One letter as the tool actually left it.
+ *
+ * The only way to see the effects while the font is being worked on, and it
+ * reaches exactly one letter on purpose. Roughening is the most expensive thing
+ * here -- it touches every point of every outline and then resolves the result
+ * with a boolean -- and the whole reason the draw page keeps up is that no
+ * expensive layer is ever run over the alphabet between two frames.
+ *
+ * So this is what the proofing panel calls, for the letter under the hand, and
+ * the exporter is the only other caller. Everything else on the page goes on
+ * asking `draw` and getting the letter without them.
+ *
+ * Remembered against the document like every other drawing, and in a book of
+ * its own, so a letter drawn both ways is kept both ways rather than one
+ * evicting the other.
+ */
+export function proof(letter: string, forge: Forge): Drawn | null {
+  const effects = effectsOf(forge);
+  if (!anyEffect(effects)) return draw(letter, forge);
+  return remembered(proofs, forge, letter, () => {
+    if (forge.imported[letter]) {
+      // Nothing here has a skeleton, so only the roughening reaches it -- and
+      // it reaches it through the same call, which is what keeps an imported
+      // letter looking like it belongs to the font it has joined.
+      const drawn = draw(letter, forge);
+      if (!drawn) return null;
+      return {
+        ...drawn,
+        contours: effectInk(drawn.contours, [], scaleOf(forge.style), effects),
+      };
+    }
+    return drawLetter(
+      letter,
+      styleFor(letter, forge),
+      formOf(forge, letter),
+      cutsFor(letter, forge),
+      forge.kit,
+      castFor(letter, forge),
+      effects,
+    );
+  });
 }
 
 /** The operations this letter holds its own version of. */
@@ -594,6 +683,12 @@ export function styleFor(letter: string, forge: Forge): Style {
  */
 const drawings = new WeakMap<Forge, Map<string, Drawn | null>>();
 const solids = new WeakMap<Forge, Map<string, Drawn | null>>();
+/*
+ * Letters as the tool left them, kept apart from the letters as the font has
+ * them, because they are two different answers to the same question and a
+ * proofing panel asking for one must not be handed the other.
+ */
+const proofs = new WeakMap<Forge, Map<string, Drawn | null>>();
 
 function remembered(
   where: WeakMap<Forge, Map<string, Drawn | null>>,

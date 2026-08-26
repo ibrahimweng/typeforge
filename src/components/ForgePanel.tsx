@@ -24,6 +24,7 @@ import {
   castFor,
   castHeldBy,
   castOf,
+  effectsOf,
   cutsFor,
   cutsHeldBy,
   cutsOf,
@@ -213,6 +214,8 @@ export function ForgePanel(): React.JSX.Element {
         <Cuts />
 
         <Cast />
+
+        <Tool />
 
         <Forms letter={letter} />
 
@@ -577,6 +580,28 @@ function Cast(): React.JSX.Element {
           </p>
         </div>
       }
+    />
+  );
+}
+
+/**
+ * What the tool that drew the letters was like.
+ *
+ * The third layer, drawn by the same panel as the other two because it is
+ * described in exactly the same shape. What it does not have is a scope note or
+ * a way to give a letter back: a cut and a cast are things done to a letter and
+ * a letter can be done to differently, and this says what drew the font.
+ */
+function Tool(): React.JSX.Element {
+  const { forge } = useForge();
+  return (
+    <CutPanel
+      layer="effect"
+      tag="forge-tool"
+      cuts={effectsOf(forge)}
+      onChange={(name, patch, phase) => forgeStore.changeEffect(name, patch as never, phase)}
+      unitsPerEm={forge.style.metrics.unitsPerEm}
+      scopeNote="A decision about the whole font, never about one letter."
     />
   );
 }

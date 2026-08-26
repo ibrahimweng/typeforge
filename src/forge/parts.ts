@@ -18,6 +18,7 @@
  */
 
 import type { Cast, CastName } from "./cast";
+import type { EffectName, Effects } from "@/font/effects";
 import { endPieces } from "./shapes";
 import type { CutName, Cuts } from "./cut";
 import { LETTERS, recipeOf, recordPartsWhile, type PartName } from "./letters";
@@ -842,4 +843,167 @@ export function castSpecFor(name: CastName): CastSpec | undefined {
 /** One operation's current values as a plain record, for reading a control out. */
 export function castValuesOf(name: CastName, cast: Cast): Record<string, number | boolean | string> {
   return cast[name] as unknown as Record<string, number | boolean | string>;
+}
+
+/**
+ * What each effect offers, in the shape the panel already draws.
+ *
+ * Deliberately the same shape as `CutSpec` and `CastSpec` for the same reason
+ * they are the same shape as each other: the panel that draws one draws all
+ * three, and none of them can come to offer a control the layer does not have.
+ */
+export interface EffectSpec {
+  name: EffectName;
+  label: string;
+  hint: string;
+  controls: PartControl[];
+}
+
+export const EFFECT_SPECS: EffectSpec[] = [
+  {
+    name: "press",
+    label: "Pressure",
+    hint: "The stroke swelling and thinning along its length rather than by direction, which is the difference between a brush and a slanted pen. Only where a stroke really ends: half the ends in the alphabet are buried inside another stroke, and a hand lifting there never happened.",
+    controls: [
+      {
+        key: "at",
+        label: "Heaviest",
+        hint: "Where along the stroke the tool pressed hardest. The middle is a brush stroke laid down and lifted; either end is a hand that started or finished heavy.",
+        min: 0,
+        max: 0,
+        step: 1,
+        options: [
+          { value: "start", label: "Start", hint: "Heavy where the stroke begins, lifting as it goes." },
+          { value: "middle", label: "Middle", hint: "Light at both ends and full in the middle, which is a brush stroke." },
+          { value: "end", label: "End", hint: "Growing heavier as the stroke runs, which is a hand pressing in." },
+        ],
+      },
+      {
+        key: "amount",
+        label: "How much",
+        hint: "How much thinner the stroke gets where it is lightest, as a share of its own width. Above about a half the thin end stops reading as a stroke.",
+        min: 0,
+        max: 0.8,
+        step: 0.01,
+      },
+    ],
+  },
+  {
+    name: "pool",
+    label: "Ink pooling",
+    hint: "Ink gathered where the tool stopped, and where two strokes went over the same ground twice. What a wet marker and a fountain pen both do, and what the eye reads as ink rather than as fill.",
+    controls: [
+      {
+        key: "size",
+        label: "Size",
+        hint: "How wide the pool is against the stem. A pool wider than the stroke reads as a blot rather than as ink.",
+        min: 0,
+        max: 1.4,
+        step: 0.01,
+      },
+      {
+        key: "where",
+        label: "Where",
+        hint: "Which pauses gather ink.",
+        min: 0,
+        max: 0,
+        step: 1,
+        options: [
+          { value: "joins", label: "Joins", hint: "Only where two strokes meet." },
+          { value: "ends", label: "Ends", hint: "Only where a stroke stops in mid-air." },
+          { value: "both", label: "Both", hint: "Everywhere the tool paused." },
+        ],
+      },
+    ],
+  },
+  {
+    name: "skip",
+    label: "Dry skip",
+    hint: "The stroke broken where the tool ran dry or moved too fast. Laid along the way the stroke was drawn, so it reads as drag rather than as damage. This is the one effect that takes a letter to pieces on purpose.",
+    controls: [
+      {
+        key: "density",
+        label: "How worn",
+        hint: "How much of the letter is broken. A little is a marker running out; a lot is chalk on a rough board.",
+        min: 0,
+        max: 1,
+        step: 0.01,
+      },
+      {
+        key: "length",
+        label: "Gap length",
+        hint: "How far each break runs along the stroke, in stem widths.",
+        min: 0.2,
+        max: 4,
+        step: 0.05,
+      },
+      {
+        key: "width",
+        label: "Gap width",
+        hint: "How wide each break is against the stem. Wider than the stroke and it cuts clean through.",
+        min: 0.02,
+        max: 0.9,
+        step: 0.01,
+      },
+      {
+        key: "seed",
+        label: "Which gaps",
+        hint: "Any whole number, and none is better than another. The same one always gives the same wear, which is what lets a font be exported at all.",
+        min: 1,
+        max: 99,
+        step: 1,
+      },
+    ],
+  },
+  {
+    name: "rough",
+    label: "Rough edge",
+    hint: "The outline pushed off its own line as it runs, which is the single biggest thing that makes a face read as drawn rather than printed. A printed letter has an edge a machine cut; a drawn one has an edge that followed paper.",
+    controls: [
+      {
+        key: "amplitude",
+        label: "How far",
+        hint: "How far the edge wanders either side of its true line, in stem widths.",
+        min: 0,
+        max: 0.25,
+        step: 0.005,
+      },
+      {
+        key: "wavelength",
+        label: "How often",
+        hint: "How far it travels between wanders, in stem widths. Short is gritty and costs four times the points; long is a wobble and reads more clearly as a hand at anything under about forty points on the page.",
+        min: 0.1,
+        max: 2.5,
+        step: 0.05,
+      },
+      {
+        key: "reach",
+        label: "Reaches",
+        hint: "Whether the counters wander too.",
+        min: 0,
+        max: 0,
+        step: 1,
+        options: [
+          { value: "all", label: "Everywhere", hint: "Inside and out, which is what a tool on paper does." },
+          { value: "outside", label: "Outside only", hint: "The silhouette wanders and the counters stay true, which reads as a rough tool used on a clean stencil." },
+        ],
+      },
+      {
+        key: "seed",
+        label: "Which edge",
+        hint: "Any whole number, and none is better than another. The same one always gives the same edge.",
+        min: 1,
+        max: 99,
+        step: 1,
+      },
+    ],
+  },
+];
+
+/** The values one effect is set to, for the panel. */
+export function effectValuesOf(
+  name: EffectName,
+  effects: Effects,
+): Record<string, number | boolean | string> {
+  return effects[name] as unknown as Record<string, number | boolean | string>;
 }

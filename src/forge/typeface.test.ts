@@ -24,6 +24,7 @@ import { drawLetter, letterNames } from "./build";
 import { layOut, startFrom, useKit } from "./document";
 import { BASES, SANS } from "./style";
 import { toTypeface } from "./typeface";
+import { noEffects } from "./effects";
 
 beforeAll(async () => {
   await ready();
@@ -396,4 +397,51 @@ describe("the weight axis, and the letters that cannot follow it", () => {
     }
   }, 900_000);
 
+});
+
+/**
+ * The tool reaches the whole font on the way out, and only there.
+ *
+ * The bargain the effects layer makes: shown on one letter while the font is
+ * being worked on, baked into every one of them when a file is written. Both
+ * halves are checked, because either alone is a layer that does nothing or a
+ * layer that is always on.
+ */
+describe("baking in what the tool left", () => {
+  it("writes a different letter with the effects than without", async () => {
+    await ready();
+    const effects = noEffects();
+    effects.rough.on = true;
+    const forge = { ...startFrom(SANS), effects };
+
+    const plain = await toTypeface(forge, { familyName: "P", styleName: "Regular", merge: true });
+    const baked = await toTypeface(forge, {
+      familyName: "P",
+      styleName: "Regular",
+      merge: true,
+      effects: true,
+    });
+
+    const nOf = (face: Awaited<ReturnType<typeof toTypeface>>) =>
+      face.glyphs.find((one) => one.name === "n")!;
+    const was = nOf(plain).contours.reduce((sum, one) => sum + one.nodes.length, 0);
+    const now = nOf(baked).contours.reduce((sum, one) => sum + one.nodes.length, 0);
+    expect(now).toBeGreaterThan(was * 3);
+  });
+
+  it("leaves the font alone when the tool is asked for and nothing is on", async () => {
+    await ready();
+    const forge = startFrom(SANS);
+    const without = await toTypeface(forge, { familyName: "P", styleName: "Regular", merge: true });
+    const with_ = await toTypeface(forge, {
+      familyName: "P",
+      styleName: "Regular",
+      merge: true,
+      effects: true,
+    });
+    expect(with_.glyphs.length).toBe(without.glyphs.length);
+    const nOf = (face: Awaited<ReturnType<typeof toTypeface>>) =>
+      face.glyphs.find((one) => one.name === "n")!;
+    expect(nOf(with_).contours).toEqual(nOf(without).contours);
+  });
 });

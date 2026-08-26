@@ -32,14 +32,26 @@ export function loadTestFont(): Uint8Array | null {
 /**
  * Timeout for suites that compile a whole font.
  *
- * These tests import DejaVu (≈400ms), run the full export pipeline over every
- * glyph (≈2.2s) and shell out to fontTools to read the result back (≈850ms),
- * so 3-5s per test is the honest cost of the work, not a hang. Vitest's 5s
- * default left no headroom at all: the suite passed on a fast machine and
- * failed on a loaded CI runner, which is a stopwatch result rather than a
- * behavioural one.
+ * These tests import DejaVu, run the full export pipeline over every glyph and
+ * shell out to fontTools to read the result back, so the seconds they take are
+ * the honest cost of the work rather than a hang. Vitest's 5s default left no
+ * headroom at all: the suite passed on a fast machine and failed on a loaded CI
+ * runner, which is a stopwatch result rather than a behavioural one.
+ *
+ * Raised again for the same reason, and this time with the measurement. The
+ * slowest of them -- writing slots into a font this application did not draw --
+ * takes twenty-eight seconds here, against a minute. That is a margin of two,
+ * and a shared runner is comfortably more than twice as slow as this machine:
+ * on Node 20 it went over the minute while the identical commit passed on Node
+ * 22, which is the signature of a stopwatch rather than of a fault.
+ *
+ * Checked rather than assumed before raising it. The same test on `main`, with
+ * none of the work that was being merged, takes twenty-seven and a half seconds
+ * -- so nothing had got slower, the headroom was simply never there. Two
+ * minutes leaves the margin the work actually needs and still tells a hang
+ * apart from a long job, because a hang does not finish at all.
  */
-export const FONT_SUITE_TIMEOUT = 60_000;
+export const FONT_SUITE_TIMEOUT = 120_000;
 
 /** WOFF and WOFF2 built from the system font, or null when they cannot be. */
 export interface WebFontFixtures {
