@@ -18,6 +18,7 @@
 import type { WaveAlong } from "./shapes";
 import { noEffects, type Effects } from "@/font/effects";
 import type { JoinKind, Pen, Terminal, TerminalKind } from "./types";
+import { NO_SCRIPT, type Script } from "./script";
 
 /** The heights and widths every letter is built against. */
 export interface Metrics {
@@ -214,6 +215,20 @@ export interface Parts {
     /** Which runs undulate: the flat ones, the upright ones, or all of them. */
     along: WaveAlong;
   };
+  /**
+   * The join, for the faces whose letters reach the ones beside them.
+   *
+   * The one part here that is not a decoration on a stroke end but a decision
+   * about what a letter *is*. Every other face draws a letter and leaves a gap
+   * either side; a script draws the gap as well, and the stroke that finishes
+   * one letter and starts the next is a single stroke with a glyph boundary in
+   * the middle of it.
+   *
+   * Kept in `parts` rather than beside the pen because it is shared by every
+   * letter that has one, which is the test everything else here passes. What it
+   * means for a letter is worked out in `script.ts`.
+   */
+  script: Script;
 }
 
 export interface Style {
@@ -269,7 +284,7 @@ export interface Style {
  * by that measure a didone and an old-style are near neighbours while a
  * blackletter and a psychedelic poster face are not related at all.
  */
-export type Family = "sans" | "serif" | "display" | "hand";
+export type Family = "sans" | "serif" | "display" | "hand" | "script";
 
 export const FAMILIES: Array<{ id: Family; label: string; hint: string }> = [
   {
@@ -291,6 +306,11 @@ export const FAMILIES: Array<{ id: Family; label: string; hint: string }> = [
     id: "hand",
     label: "Hand",
     hint: "Faces that remember the tool that made them: a nib held at an angle, a brush, a marker. The lean and the contrast do most of the work.",
+  },
+  {
+    id: "script",
+    label: "Script",
+    hint: "The faces whose letters reach the ones beside them. The gap between two letters is not empty space here, it is the stroke that carries one into the next, so the spacing and the joining are the same control.",
   },
 ];
 
@@ -358,6 +378,7 @@ export const SANS: Style = {
     ball: { size: 0, drop: 0.45 },
     flare: { spread: 0, depth: 0.9, curve: 0.85 },
     wave: { length: 130, depth: 0, along: "flat" },
+    script: { ...NO_SCRIPT },
   },
 };
 
@@ -913,6 +934,198 @@ export const TYPEWRITER: Style = {
   parts: { ...SLAB.parts, slab: { on: true, projection: 0.72, thickness: 0.5, bracket: 0.06 } },
 };
 
+/**
+ * The handwriting: the plainest of the four that join.
+ *
+ * A monoline hand with no pretension to calligraphy -- one thickness, a small
+ * lean, letters that reach each other and a baseline that does not quite hold
+ * still. It is the one to read the others against, because it changes only the
+ * things that make a script a script and leaves the pen alone.
+ *
+ * The sidebearing is left alone, which was not obvious. A joined letter never
+ * uses it -- it is drawn deliberately touching its own origin, and the nudge
+ * that would push it inside a sidebearing is skipped for exactly that reason --
+ * but the capitals, the figures and the marks on this face do not join, and
+ * they are spaced by it like any other letter. Set to nothing, as this was at
+ * first, every one of them sat flush against its neighbours.
+ */
+export const HANDWRITING: Style = {
+  ...SANS,
+  name: "Handwriting",
+  family: "script",
+  blurb: "A plain joined hand. One thickness, a slight lean, and a line that does not sit quite still.",
+  /*
+   * The capitals come down and the ascenders go up, to leave room for the
+   * bounce.
+   *
+   * A hand that puts each letter a little off the line needs somewhere to put
+   * it. On the inherited metrics the ascender stood thirty units above the
+   * capitals and this face bounces by thirty-one, so an `l` that happened to
+   * drop landed under an `H` that could not -- capitals do not join, so they do
+   * not bounce. The gap has to be wider than the bounce, and it is.
+   */
+  metrics: { ...SANS.metrics, xHeight: 520, capHeight: 700, ascender: 790, slant: 6 },
+  pen: { weight: 84, contrast: 0, angle: 0 },
+  /*
+   * The single-storey a and the tailed l, which is what a hand writes. Nobody
+   * draws a two-storey a with a pen unless they are drawing a typeface.
+   */
+  forms: { l: "tailed", g: "curled", t: "straight", f: "descending" },
+  parts: {
+    ...SANS.parts,
+    /*
+     * Cut square, on all four of these, and the note is here because it is not
+     * what any of them would choose.
+     *
+     * Measured across the four, twenty-six letters each. A butt cap folds
+     * nothing anywhere. A round cap folds twenty-five letters on the Formal
+     * Script and twenty-four on the Casual -- the two whose pens have contrast
+     * -- and on the two that have none it folds nothing at the weight they are
+     * drawn at but folds the `W` and the `Y` by the time the weight control
+     * reaches 260, which is inside the range every face here has to survive. An
+     * angled cut folds fourteen to eighteen letters on every one of the four,
+     * contrast or no contrast.
+     *
+     * So the round cap and the pen do not combine in this engine, and the
+     * angled cut does not work at all. The Marker found the first of those the
+     * same way and settled on the same answer.
+     *
+     * It costs less here than it sounds: nearly every terminal on a joined face
+     * is buried inside a lead-in or a lead-out, so what the cap looks like only
+     * shows on the capitals and the marks.
+     */
+    terminal: { kind: "butt", angle: 0 },
+    corner: { radius: 40, join: "round" },
+    shoulder: { spring: 0.55, reach: 1 },
+    script: {
+      on: true,
+      height: 0.36,
+      reach: 1.5,
+      flat: 0.2,
+      // No loops. A print hand does not make them, and leaving them off is what
+      // separates this from the three below rather than an omission.
+      loop: 0,
+      irregularity: 1,
+    },
+  },
+};
+
+
+/**
+ * The formal script: a pointed pen held at an angle and moved slowly.
+ *
+ * The copperplate end of the family. Everything about it says a hand that was
+ * being careful: a steep lean, thick downstrokes and hairline upstrokes from a
+ * pen with more contrast than any other face here, a small x-height under long
+ * ascenders, and loops wide enough to be the point of the letter rather than a
+ * detail on it. The join hands over low and reaches far, so the letters stand
+ * apart on a long even swing.
+ *
+ * Its irregularity is nearly nothing, and that is the setting that makes it
+ * formal. The others are hands writing; this one is a hand performing.
+ */
+export const FORMAL_SCRIPT: Style = {
+  ...SANS,
+  name: "Formal Script",
+  family: "script",
+  blurb: "A pointed pen held at an angle and moved slowly. Long loops, deep contrast, and a steep even lean.",
+  metrics: { ...SANS.metrics, xHeight: 430, ascender: 790, descender: -260, slant: 22 },
+  pen: { weight: 96, contrast: 0.58, angle: 42 },
+  forms: { a: "double", g: "curled", l: "tailed", f: "descending", one: "footed" },
+  parts: {
+    ...SANS.parts,
+    // Square, for the reason set out on the Handwriting above.
+    terminal: { kind: "butt", angle: 0 },
+    corner: { radius: 46, join: "round" },
+    bowl: { width: 0.92, squareness: 0, aperture: 1 },
+    shoulder: { spring: 0.5, reach: 0.96 },
+    script: {
+      on: true,
+      height: 0.3,
+      reach: 1.9,
+      // Almost no flat: a formal hand swings from one letter into the next in
+      // one continuous turn and never runs level between them.
+      flat: 0.04,
+      loop: 1.8,
+      irregularity: 0.12,
+    },
+  },
+};
+
+/**
+ * The casual script: a felt tip moving fast.
+ *
+ * The opposite corner from the formal one, and it is the settings rather than
+ * the letterforms that put it there. The hand is quick, so the seam is high and
+ * the reach is short -- the letters crowd each other the way they do when
+ * somebody is not waiting for the last one to dry. The loops are barely there,
+ * because a fast hand cuts corners, and the writing does not sit still.
+ */
+export const CASUAL_SCRIPT: Style = {
+  ...SANS,
+  name: "Casual Script",
+  family: "script",
+  blurb: "A felt tip moving fast. High joins, short reach, small loops and a line that will not sit still.",
+  // Bounces hardest of the four, so it needs the most room between its
+  // capitals and its ascenders. See the note on the Handwriting.
+  metrics: { ...SANS.metrics, xHeight: 560, capHeight: 690, ascender: 800, descender: -200, slant: 13 },
+  pen: { weight: 112, contrast: 0.18, angle: 12 },
+  forms: { g: "curled", t: "straight", y: "straight", f: "descending" },
+  parts: {
+    ...SANS.parts,
+    // Square, for the reason set out on the Handwriting above.
+    terminal: { kind: "butt", angle: 0 },
+    corner: { radius: 70, join: "round" },
+    bowl: { width: 1.05, squareness: 0, aperture: 1.08 },
+    shoulder: { spring: 0.48, reach: 1.06 },
+    script: {
+      on: true,
+      height: 0.44,
+      reach: 1.05,
+      flat: 0.3,
+      loop: 0.7,
+      irregularity: 1.6,
+    },
+  },
+};
+
+/**
+ * The monoline script: one thickness, drawn rather than written.
+ *
+ * The one of the four that is a lettering job rather than a hand. Nothing about
+ * it varies -- no contrast, no bounce, an even seam and an even reach -- and
+ * the loops are round rather than pointed because they were constructed rather
+ * than turned. It is what a sign painter rules out with a compass, and its
+ * evenness is the whole of its character.
+ */
+export const MONOLINE_SCRIPT: Style = {
+  ...SANS,
+  name: "Monoline Script",
+  family: "script",
+  blurb: "One thickness throughout, drawn rather than written. Even joins, round loops, no bounce.",
+  metrics: { ...SANS.metrics, xHeight: 505, ascender: 760, descender: -225, slant: 9 },
+  pen: { weight: 78, contrast: 0, angle: 0 },
+  forms: { l: "tailed", f: "descending", seven: "barred", four: "open" },
+  parts: {
+    ...SANS.parts,
+    // Square, for the reason set out on the Handwriting above.
+    terminal: { kind: "butt", angle: 0 },
+    corner: { radius: 90, join: "round" },
+    bowl: { width: 1, squareness: 0, aperture: 1 },
+    shoulder: { spring: 0.6, reach: 1 },
+    script: {
+      on: true,
+      height: 0.38,
+      reach: 1.65,
+      flat: 0.16,
+      loop: 1.3,
+      // Nothing. A drawn script is drawn on a line and stays on it, and this is
+      // the setting that says so.
+      irregularity: 0,
+    },
+  },
+};
+
 export const BASES: Style[] = [
   SANS,
   GROTESQUE,
@@ -930,4 +1143,8 @@ export const BASES: Style[] = [
   FLARED,
   PSYCHEDELIC,
   BRUSH,
+  HANDWRITING,
+  FORMAL_SCRIPT,
+  CASUAL_SCRIPT,
+  MONOLINE_SCRIPT,
 ];

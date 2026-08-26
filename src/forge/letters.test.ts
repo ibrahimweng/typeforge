@@ -14,12 +14,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import { contourArea, contoursBounds } from "@/font/geometry";
+import { contourArea, contoursBounds, inkRunsAt } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
-import { builtFrom, drawLetter, letterNames } from "./build";
+import { builtFrom, drawLetter, letterNames , reachesOut } from "./build";
 import { startFrom, weighted } from "./document";
 import { openWaveBook, waveBookAt, type WaveBook } from "./shapes";
 import { recipeOf } from "./letters";
+import { mostLift } from "./script";
 import { BASES as STARTING_POINTS, DISPLAY, SANS, SERIF, type Style } from "./style";
 
 /*
@@ -125,20 +126,74 @@ describe("the character set", () => {
           expect(bounds.yMin, `${name} falls below the descender`).toBeGreaterThanOrEqual(
             descender - style.pen.weight,
           );
-          expect(bounds.xMin, `${name} starts left of the origin`).toBeGreaterThan(-1);
+          /*
+           * A joined face is the exception, and it is the only one.
+           *
+           * Its lead-in starts on the origin and climbs away from it, so the
+           * square cut at that end puts one corner a little to the left of
+           * nought -- and the letter before it puts the matching corner the
+           * same distance to the right of its own advance, which is how the two
+           * meet without a gap. It may not go further than that corner reaches,
+           * which is half a pen.
+           */
+          const reaches = reachesOut(name, style);
+          /*
+           * Measured against the lean as well as the pen. A shear moves the ink
+           * at the seam sideways -- thirty-five units at twenty-two degrees on
+           * the formal script -- and it moves the next letter's by exactly the
+           * same amount, which is why the joins close anyway. So what is being
+           * checked here is that the lead-in reaches no further left than its
+           * own square cut can, not that it starts at nought.
+           */
+          const seam = style.parts.script.height * style.metrics.xHeight;
+          const leaned = (seam - style.metrics.xHeight / 2)
+            * Math.tan((style.metrics.slant * Math.PI) / 180);
+          expect(bounds.xMin, `${name} starts left of the origin`).toBeGreaterThan(
+            reaches ? Math.min(0, leaned) - style.pen.weight * 0.5 - 1 : -1,
+          );
           expect(bounds.xMax, `${name} runs off the right`).toBeLessThan(unitsPerEm * 1.6);
         }
       });
 
+      /*
+       * White space either side, on the faces whose letters stand apart -- and
+       * the exact opposite on the four whose letters do not.
+       *
+       * This is the same invariant read the right way round for each kind of
+       * face rather than two different standards. What both say is that the
+       * letter fills the space it was given and no more: a face that spaces
+       * with white leaves white at both edges, and a face that spaces with a
+       * stroke has to have that stroke reaching both edges, or its letters do
+       * not join and the whole point of it is gone.
+       */
       it("leaves white space on both sides of every letter", () => {
         for (const name of letterNames()) {
           const drawn = drawLetter(name, style)!;
           if (drawn.contours.length === 0) continue;
+          if (reachesOut(name, style)) continue;
           const bounds = contoursBounds(drawn.contours);
           expect(bounds.xMin, `${name} touches its left edge`).toBeGreaterThan(0);
           expect(drawn.advanceWidth - bounds.xMax, `${name} touches its right edge`).toBeGreaterThan(
             0,
           );
+        }
+      });
+
+      it("reaches both edges of every joined letter", () => {
+        if (!style.parts.script.on) return;
+        const seam = style.parts.script.height * style.metrics.xHeight;
+        for (const name of LOWERCASE) {
+          const drawn = drawLetter(name, style)!;
+          const runs = inkRunsAt(drawn.contours, seam, "y", 48);
+          expect(runs.length, `${name} has no ink at the seam`).toBeGreaterThan(0);
+          // Measured against the lean, which moves the ink at the seam sideways
+          // -- by seven or eight units at six degrees, on both letters of every
+          // pair equally, so it opens nothing.
+          const shift = (seam - style.metrics.xHeight / 2) * Math.tan((style.metrics.slant * Math.PI) / 180);
+          expect(Math.min(...runs.map((run) => run[0])), `${name} does not reach its left edge`)
+            .toBeLessThan(shift + 1);
+          expect(Math.max(...runs.map((run) => run[1])), `${name} does not reach its right edge`)
+            .toBeGreaterThan(drawn.advanceWidth + shift - 1);
         }
       });
 
@@ -186,8 +241,14 @@ describe("the character set", () => {
          * ellipse is an ellipse, and a rotated one does not have its highest
          * point where the circle does. It is two or three units on the marker
          * face and nothing at all on a round pen.
+         *
+         * And within the bounce, twice over, on the faces that have one. The
+         * two letters are set off the line independently -- that is the point
+         * of an unsteady hand -- so the worst case is one of them lifted as far
+         * up as the face allows and the other as far down.
          */
-        expect(heightOf("o")).toBeGreaterThan(heightOf("n") - 4);
+        const apart = mostLift(style.parts.script, style.metrics.xHeight) * 2;
+        expect(heightOf("o")).toBeGreaterThan(heightOf("n") - 4 - apart);
       });
     });
   }

@@ -960,6 +960,7 @@ function clone(style: Style): Style {
       ball: { ...style.parts.ball },
       flare: { ...style.parts.flare },
       wave: { ...style.parts.wave },
+      script: { ...style.parts.script },
     },
   };
 }

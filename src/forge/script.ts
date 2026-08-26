@@ -1,0 +1,606 @@
+/**
+ * The connecting script: what a letter does before it starts and after it ends.
+ *
+ * Every other face here draws a letter and leaves a gap either side of it. A
+ * script does not: the stroke that finishes one letter and the stroke that
+ * begins the next are the same stroke, and the boundary between two glyphs
+ * falls in the middle of it. That is the whole difference, and nothing about a
+ * pen, a weight or a slant can produce it -- which is why a `Handwriting` built
+ * out of the controls this engine already had came out as a slanted sans, and
+ * why the four faces at the end of `style.ts` needed this file before they
+ * could exist.
+ *
+ * The join is drawn in two halves and the halves have to meet exactly.
+ *
+ *   The exit leaves the letter's own ink, climbs to the right, and its spine
+ *   stops precisely on the advance width at the seam height.
+ *
+ *   The entry starts precisely on the origin at the same seam height, climbing
+ *   in the same direction, and runs until it is inside the letter's ink.
+ *
+ * Set next to each other, the exit's end and the entry's start are the same
+ * point and the same heading, so the two square cuts lie along one line and the
+ * pair reads as a single unbroken stroke. There is no overlap to fuse and no
+ * gap to kern away: the arithmetic is exact, and it is exact because the
+ * advance is *defined* as where the exit ends rather than measured off the ink
+ * afterwards the way every other letter's is.
+ *
+ * Where the join attaches to the letter is found by walking rather than
+ * declared. A table of twenty-six entry points and twenty-six exit points is
+ * how a script is drawn by hand and is also how it goes wrong the first time a
+ * bowl changes width -- so instead the join marches out from the seam until it
+ * is within a pen of the letter's own skeleton, and stops there. That answers
+ * the `i` without knowing about dots and the `o` without knowing it is a ring,
+ * and it keeps working when the shoulder springs higher or the bowl narrows.
+ *
+ * What it does not do yet is choose a *different* join depending on the letter
+ * that follows -- the high exit an `o`, `v`, `w` and `b` want, against the low
+ * one everything else takes. That is a contextual substitution, it needs a GSUB
+ * table this exporter cannot yet write, and it is the next piece of work rather
+ * than a shortcoming of this one. The exit here leaves from wherever the ink
+ * actually ends, which on an `o` is already high and on an `n` is already low;
+ * what is missing is the *pair*, not the single letter.
+ */
+
+import type { Vec2 } from "@/font/types";
+
+import { alongSpine, reversed, spineEnd, spineLength, spineStart } from "./shapes";
+import type { Spine, SpineArc } from "./types";
+
+const at = (x: number, y: number): Vec2 => ({ x, y });
+
+/** Two runs end to end, with any piece of no length left out. */
+function chained(...spines: Spine[]): Spine {
+  return {
+    segments: spines.flatMap((spine) =>
+      spine.segments.filter(
+        (segment) =>
+          segment.kind !== "line" ||
+          Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y) > 1e-9,
+      ),
+    ),
+    closed: false,
+  };
+}
+
+/**
+ * How the letters of a joined face reach each other, and how steadily.
+ *
+ * Three of the four settings are about the join and the fourth is about the
+ * hand holding the pen. They are kept together because they are the same
+ * decision -- how much of this face is handwriting rather than lettering.
+ */
+export interface Script {
+  /** Off for a face whose letters stand apart, which is every face but four. */
+  on: boolean;
+  /**
+   * Where one letter hands over to the next, as a fraction of the x-height.
+   *
+   * The seam. Low is a script that runs along its baseline; high is one that
+   * hands over near the waist, which reads faster and more slanted. It is not
+   * a free choice for a face that has to join every pair: whatever it is set
+   * to, every letter's exit stops there and every letter's entry starts there,
+   * because two letters can only meet at one height.
+   */
+  height: number;
+  /**
+   * How far the join runs sideways, in stem widths.
+   *
+   * This is the face's letter-spacing as well as the shape of its joins, and
+   * the two cannot be separated -- the gap between two letters of a joined
+   * script *is* the join. Widen it and the writing opens up; close it and the
+   * letters crowd, exactly as they would under a hand moving faster.
+   */
+  reach: number;
+  /**
+   * How much of the join runs level at the seam before it turns into the
+   * letter, as a fraction of the reach.
+   *
+   * Nought is a pure curve from one letter into the next, which is a fast hand.
+   * Opened up, the join flattens out between the letters and the writing slows
+   * down and opens out with it. It cannot go past the reach, because past that
+   * there would be no turn left to make.
+   */
+  flat: number;
+  /**
+   * How far the ascenders and descenders open into loops.
+   *
+   * The other thing that separates a script from a slanted sans, and the thing
+   * that separates a formal one from a casual one. Nought leaves a straight
+   * stroke, which is what a monoline script does; opened up, the ascender
+   * becomes a closed eye and the face reads as written rather than drawn.
+   *
+   * Measured as the width of the eye in stem widths, so it holds at every
+   * weight: an eye has to be wide against the pen drawing it, and one measured
+   * against the ascender instead comes out as a blob on a heavy face and a
+   * balloon on a light one.
+   */
+  loop: number;
+  /**
+   * How much each letter departs from the one beside it.
+   *
+   * A hand does not put two letters on exactly the same baseline at exactly
+   * the same angle, and a face where it does reads as a font imitating
+   * handwriting rather than as handwriting. Small: a fortieth of the x-height
+   * of bounce and a degree or so of lean is already visible in a word and
+   * anything more looks like a fault.
+   *
+   * Deterministic, from the letter's own name, for the same reason the
+   * roughening is seeded: a letter that came out somewhere different each time
+   * it was drawn could not be cached, compared with itself, or exported.
+   */
+  irregularity: number;
+}
+
+export const NO_SCRIPT: Script = {
+  on: false,
+  height: 0.4,
+  reach: 1.5,
+  flat: 0.2,
+  loop: 0,
+  irregularity: 0,
+};
+
+/** The measurements a join needs, which is fewer than a letter does. */
+export interface Room {
+  /** Half the pen: how far ink stands off its own spine. */
+  half: number;
+  /**
+   * How far ink stands off a run lying along a line.
+   *
+   * Half the pen for a pen that is round, and not otherwise -- a nib held at an
+   * angle is at its widest across a horizontal and at its narrowest across an
+   * upright. The loop needs it because the loop is level where it meets the
+   * stem, and how far its ink reaches past that point is the whole question of
+   * whether a looped `l` stands taller than a plain one.
+   */
+  upright: number;
+  /** The x-height. */
+  x: number;
+}
+
+export interface Join {
+  /** From the origin at the seam into the letter's own ink. */
+  entry: Spine | null;
+  /** From the letter's ink out to the advance, at the seam. */
+  exit: Spine | null;
+  /** How far the letter itself has to move over to make room for the entry. */
+  inset: number;
+  /** Where the exit stops, which is what the letter's advance must be. */
+  width: number;
+}
+
+/*
+ * How finely the letter's skeleton is sampled when the join goes looking for
+ * where to attach.
+ *
+ * Sixty-four points along each run puts the attachment within about a sixtieth
+ * of a stroke of the true extreme, which on a lowercase letter is a unit or
+ * two -- under a tenth of the pen, and invisible.
+ */
+const SAMPLES = 64;
+
+/**
+ * An arc from the seam to a point, level where it leaves the seam.
+ *
+ * The one piece of arithmetic this file could not do without, and the thing
+ * that makes every letter of a joined face meet every other exactly.
+ *
+ * A stroke cut square across itself leaves an end face at right angles to the
+ * way it was travelling. Two such faces meet with no gap and no overlap only if
+ * the strokes arrive travelling the same way -- so if the join is to close for
+ * every pair of the twenty-six letters rather than for the few that happen to
+ * agree, every exit must arrive at the seam on the same heading and every entry
+ * must leave it on that heading. Level is the heading to pick, because it is the
+ * only one that does not depend on the letter: the shape either side can climb
+ * as steeply as it likes and still be flat where it hands over.
+ *
+ * There is exactly one circle through a given point and tangent to the
+ * horizontal at another, so nothing here is chosen -- it is solved. The minor
+ * arc of it is the one taken, and taking the minor arc is also what gets the
+ * direction right: on the major arc the stroke would leave the seam travelling
+ * backwards.
+ */
+function levelArc(seam: Vec2, target: Vec2, room: Room): Spine {
+  const dx = target.x - seam.x;
+  const dy = target.y - seam.y;
+  const line: Spine = { segments: [{ kind: "line", from: seam, to: target }], closed: false };
+  // Level all the way: there is no circle, and none is wanted.
+  if (Math.abs(dy) < 1e-6) return line;
+  const radius = (dx * dx + dy * dy) / (2 * dy);
+  /*
+   * And no tighter than the pen can turn. A spine whose radius is under half
+   * the pen has an inner edge that has passed through itself, which is not a
+   * tight curve but a folded stroke -- and it shows up as a letter with a knot
+   * in it rather than as anything anybody would call a join. Where the turn
+   * would be that tight there is nothing to turn: the two ends are less than a
+   * pen apart, so a straight run between them is the same shape.
+   */
+  if (Math.abs(radius) < room.half * 1.2) return line;
+  const centre = at(seam.x, seam.y + radius);
+  const startAngle = Math.atan2(-radius, 0);
+  const finish = Math.atan2(target.y - centre.y, target.x - centre.x);
+  let sweep = finish - startAngle;
+  while (sweep > Math.PI) sweep -= Math.PI * 2;
+  while (sweep <= -Math.PI) sweep += Math.PI * 2;
+  const arc: SpineArc = {
+    kind: "arc",
+    centre,
+    radius: Math.abs(radius),
+    startAngle,
+    endAngle: startAngle + sweep,
+    sweepPositive: sweep > 0,
+  };
+  return { segments: [arc], closed: false };
+}
+
+/** Every run of the letter, as points, for the join to find its edges by. */
+function skeleton(spines: Spine[]): Vec2[] {
+  const points: Vec2[] = [];
+  for (const spine of spines) {
+    if (spineLength(spine) <= 0) continue;
+    points.push(...alongSpine(spine, SAMPLES));
+  }
+  return points;
+}
+
+/**
+ * Where the lead-in lands, and where the lead-out leaves from.
+ *
+ * Found by looking at the letter rather than by a table of fifty-two entries,
+ * and the band each one searches is the whole of the decision.
+ *
+ * The lead-in wants the letter's left edge somewhere between the seam and the
+ * x-height, which is where a hand arrives: on an `n` that is the top of the
+ * first stem, so the entry and the stem meet at a point the way an up-stroke
+ * and a down-stroke do; on an `o` it is the widest part of the bowl. Searching
+ * the whole letter instead would find the dot of an `i` and the hook of an `f`,
+ * both of which sit above everything a join has any business touching.
+ *
+ * The lead-out wants the right edge at or below the seam, which is where a hand
+ * leaves: low on an `n`, and on an `o` a little under the widest point rather
+ * than above it. That last is the compromise in this file. A written `o` hands
+ * over high, and so do a `v`, a `w` and a `b` -- but only when something
+ * follows them, which is a fact about the pair and not about the letter. Until
+ * there is a GSUB table to say so, every letter leaves the same way, and
+ * leaving low is the one that looks like handwriting for twenty-two of the
+ * twenty-six rather than for four.
+ */
+function attach(points: Vec2[], band: (point: Vec2) => boolean, side: "left" | "right"): Vec2 {
+  const inside = points.filter(band);
+  const looking = inside.length > 0 ? inside : points;
+  let best = looking[0];
+  for (const point of looking) {
+    if (side === "left") {
+      // Leftmost, and of the leftmost the highest: a stem is one x all the way
+      // up, and a hand arrives at the top of it rather than the middle.
+      if (point.x < best.x - 1e-9 || (Math.abs(point.x - best.x) <= 1e-9 && point.y > best.y)) best = point;
+    } else if (point.x > best.x + 1e-9 || (Math.abs(point.x - best.x) <= 1e-9 && point.y < best.y)) {
+      best = point;
+    }
+  }
+  return best;
+}
+
+/**
+ * The same run somewhere else.
+ *
+ * A translation and nothing else, which matters: it is the only transform an
+ * arc comes through as an arc, so it is the only one a skeleton in this engine
+ * may be put through. Everything that is not a translation -- the face's slant,
+ * a letter's own extra lean -- is taken on the finished outline instead, where
+ * a shear maps a cubic to a cubic and costs nothing.
+ */
+export function movedSpine(spine: Spine, dx: number, dy: number): Spine {
+  if (dx === 0 && dy === 0) return spine;
+  return {
+    ...spine,
+    segments: spine.segments.map((segment) =>
+      segment.kind === "line"
+        ? {
+            ...segment,
+            from: at(segment.from.x + dx, segment.from.y + dy),
+            to: at(segment.to.x + dx, segment.to.y + dy),
+          }
+        : { ...segment, centre: at(segment.centre.x + dx, segment.centre.y + dy) },
+    ),
+  };
+}
+
+/**
+ * The loops a written ascender and descender open into.
+ *
+ * The second thing that separates a script from a slanted sans, and the one
+ * that separates a formal hand from a casual one. A drawn ascender is a stem
+ * that stops; a written one is a stroke that went up, came back down beside
+ * itself, and left an eye where the two passed -- because a hand that has to
+ * get back to the baseline to carry on writing does not lift off and start
+ * again, it turns round.
+ *
+ * Added beside the stem rather than replacing it, which is both simpler and
+ * more honest about what a hand does: the up-stroke and the down-stroke are two
+ * strokes that touch, and the loop is the turn between them. One arc bowed hard
+ * to the left of the stem is that turn.
+ *
+ * Only on runs that cross the x-height or the baseline on their way out. That
+ * rules out the dot of an `i`, which is above the x-height and is not an
+ * ascender, without this having to know what an `i` is.
+ */
+function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
+  if (script.loop <= 0) return [];
+  const out: Spine[] = [];
+  /*
+   * How wide the eye is, which is the number that decides whether there is one.
+   *
+   * Written as a fraction of the ascender first, and that was wrong in a way
+   * worth keeping a note of: the arc this draws is a semicircle at its widest,
+   * so its radius is half its own height, and half an ascender on this face is
+   * ninety units against a pen of eighty-four. The loop came out with a hole
+   * eight units across -- a blob on a stem rather than an eye. An eye has to be
+   * wide against the *pen*, not against the letter, so that is what it is
+   * measured in.
+   */
+  const wide = script.loop * room.half * 2;
+  if (wide < room.half) return [];
+
+  /*
+   * One loop up and one loop down, and no more.
+   *
+   * A hand turns round once at the top of a letter and once at the bottom,
+   * whatever the letter is built from. A `y` here is drawn as an arm and a
+   * tail, and both of them end below the baseline -- so asking each run
+   * separately gave it two descender loops, one inside the other. The letter
+   * has the loops, not the strokes: the highest end above the x-height gets the
+   * one, the lowest end below the baseline gets the other.
+   */
+  let top: Vec2 | null = null;
+  let foot: Vec2 | null = null;
+  for (const spine of spines) {
+    if (spine.closed || spineLength(spine) <= 0) continue;
+    const ends = [spineStart(spine), spineEnd(spine)];
+    const highest = Math.max(...ends.map((one) => one.y));
+    const lowest = Math.min(...ends.map((one) => one.y));
+    for (const end of ends) {
+      // An ascender goes up out of the x-height; a descender goes down out of
+      // the baseline. A run that stays entirely one side of the line it would
+      // have crossed is a mark rather than a stroke -- which is what keeps the
+      // dot of an `i` from being treated as an ascender.
+      if (end.y > room.x && lowest < room.x && (!top || end.y > top.y)) top = end;
+      if (end.y < 0 && highest > 0 && (!foot || end.y < foot.y)) foot = end;
+    }
+  }
+
+  for (const [end, rising] of [[top, true], [foot, false]] as const) {
+    if (!end) continue;
+    /*
+     * A loop may not turn round past the line the stroke came from. One on an
+     * `l` reaches down past the x-height, which is what a written one does; one
+     * that reached past the baseline would be drawn through the letter after it.
+     */
+    const available = rising ? end.y : room.x - end.y;
+    const deep = Math.min(wide * 2, available);
+    // Radius is half the chord at a semicircle, so this is the same floor the
+    // join keeps: no turn tighter than the pen can go round.
+    if (deep < room.half * 2.4) continue;
+    /*
+     * The eye stops short of the stem's own end by exactly what its ink will
+     * reach back over.
+     *
+     * At the top of the loop the stroke is running level, and a stroke running
+     * level stands its full upright reach above its own spine -- while the stem
+     * it is meeting is cut square and stands nothing above its. Ended flush
+     * with that stem, the loop on a Formal Script `b` topped out at 820 against
+     * a stem topping at 801 and an ascender at 790, and the same letter with
+     * its loop turned off was on its line. So a letter grew twenty units taller
+     * for having a loop on it.
+     *
+     * A share of the pen was the first answer and it was wrong in both
+     * directions: four tenths was right on the Formal Script, whose nib is
+     * narrow across a horizontal, and the same four tenths left the Monoline's
+     * loop twenty units proud, because a round pen is at its full width across
+     * everything. The number is not a share of anything -- it is the reach
+     * itself, and the frame already knows it for whatever pen the face has.
+     */
+    const tip = at(end.x, rising ? end.y - room.upright : end.y + room.upright);
+    const start = at(end.x, rising ? tip.y - deep : tip.y + deep);
+    /*
+     * A half is as far as a single arc bows: at a half it is a semicircle, and
+     * past that the construction below is asked for a sagitta larger than its
+     * own radius and quietly gives back a shallower arc instead. So the eye is a
+     * semicircle standing on the stem, and how wide it is comes from how far
+     * down the stem it starts rather than from bowing it harder.
+     */
+    out.push(bowed(start, tip, rising ? 0.5 : -0.5));
+  }
+  return out;
+}
+
+/** An arc from one point to another, bowed out by a fraction of the chord. */
+function bowed(from: Vec2, to: Vec2, amount: number): Spine {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const chord = Math.hypot(dx, dy);
+  if (chord < 1e-9) return { segments: [{ kind: "line", from, to }], closed: false };
+  const side = amount < 0 ? -1 : 1;
+  const rise = Math.abs(amount) * chord;
+  const radius = (chord * chord) / (8 * rise) + rise / 2;
+  const middle = at((from.x + to.x) / 2, (from.y + to.y) / 2);
+  const left = at((-dy / chord) * side, (dx / chord) * side);
+  const back = Math.sqrt(Math.max(0, radius * radius - (chord * chord) / 4));
+  const centre = at(middle.x - left.x * back, middle.y - left.y * back);
+  const startAngle = Math.atan2(from.y - centre.y, from.x - centre.x);
+  let sweep = Math.atan2(to.y - centre.y, to.x - centre.x) - startAngle;
+  while (sweep > Math.PI) sweep -= Math.PI * 2;
+  while (sweep < -Math.PI) sweep += Math.PI * 2;
+  const arc: SpineArc = {
+    kind: "arc",
+    centre,
+    radius,
+    startAngle,
+    endAngle: startAngle + sweep,
+    sweepPositive: sweep > 0,
+  };
+  return { segments: [arc], closed: false };
+}
+
+/** The loops this letter's ascenders and descenders open into, if any. */
+export function planLoops(spines: Spine[], room: Room, script: Script): Spine[] {
+  return script.on ? loopsOn(spines, room, script) : [];
+}
+
+/**
+ * The two halves of the join, the room the letter needs, and the width it ends
+ * up with.
+ *
+ * `spines` is the letter as its recipe drew it, before any join. The letter's
+ * own shape decides where the join attaches; the script's settings decide the
+ * rest.
+ *
+ * `inset` is how far the letter has to move over to make room for its own
+ * lead-in, and the caller has to apply it -- to the letter, not to the join,
+ * which is already drawn where it belongs. That is the one awkward part of this
+ * arrangement and it is deliberate: a joined face has no sidebearing to be
+ * nudged inside of, because the space either side of the letter is a stroke and
+ * not a space, so the room has to be made here where the size of that stroke is
+ * known.
+ */
+export function planJoin(spines: Spine[], room: Room, script: Script): Join | null {
+  if (!script.on) return null;
+  const points = skeleton(spines);
+  if (points.length === 0) return null;
+
+  const seam = script.height * room.x;
+  const reach = script.reach * room.half * 2;
+
+  /*
+   * The bands stop half a pen inside the letter's own lines rather than on
+   * them.
+   *
+   * A join attached exactly at the top of a `v`'s left arm ends with half a pen
+   * of ink standing proud of the x-height -- the cut is square to the way the
+   * join was travelling, and it arrives climbing. Every face here promises that
+   * its letters stop on their lines, and a stroke that arrives at a line from
+   * underneath has to stop short of it to keep that promise. Half a pen in is
+   * where the join is buried inside ink the letter already had.
+   */
+  const lands = attach(points, (point) => point.y >= seam && point.y <= room.x - room.half, "left");
+  const leaves = attach(points, (point) => point.y >= room.half && point.y <= seam, "right");
+
+  /*
+   * How much room the letter takes, which is not the same question as where the
+   * join attaches to it and was written as though it were.
+   *
+   * The lead-out leaves from the letter's right edge *at or below the seam*,
+   * and on a `w` or a `v` that is a good way in from the letter's actual right
+   * edge -- the arms lean out as they rise, so the widest part is at the top and
+   * the join leaves from the bottom. Spaced by the attachment, every one of
+   * those letters was handed an advance that ended inside its own ink and the
+   * letter after it was set on top of it.
+   *
+   * So the room comes from the whole letter and the attachment only says where
+   * the stroke starts. Half a pen either side of the outermost run is the ink's
+   * own edge closely enough for spacing -- and it does not have to be exact,
+   * because what has to be exact is that the lead-out stops on the advance,
+   * whatever the advance turns out to be.
+   */
+  const leftmost = points.reduce((least, one) => Math.min(least, one.x), Infinity);
+  const rightmost = points.reduce((most, one) => Math.max(most, one.x), -Infinity);
+  // Moved over by this much, the letter's own left edge sits exactly one reach
+  // from the origin, which is the run the lead-in has to climb along.
+  const inset = reach - (leftmost - room.half);
+  const from = at(lands.x + inset, lands.y);
+  const to = at(leaves.x + inset, leaves.y);
+  const width = rightmost + room.half + inset + reach;
+
+  /*
+   * A level run at each end before the turn, so the two halves have something
+   * to agree on beyond a single point. Nought is a pure curve and still joins;
+   * opened up, the letters sit further apart with a flatter line between them,
+   * which is the difference between a fast hand and a careful one.
+   */
+  const level = Math.max(0, Math.min(1, script.flat)) * reach;
+  const entry = chained(
+    { segments: [{ kind: "line", from: at(0, seam), to: at(level, seam) }], closed: false },
+    levelArc(at(level, seam), from, room),
+  );
+  const exit = chained(
+    reversed(levelArc(at(width - level, seam), to, room)),
+    { segments: [{ kind: "line", from: at(width - level, seam), to: at(width, seam) }], closed: false },
+  );
+
+  return { entry, exit, inset, width };
+}
+
+/**
+ * How far this letter sits off the line, and how much further over it leans.
+ *
+ * Worked out from the letter's own name so that a word is drawn the same way
+ * every time it is drawn, and so that two letters that happen to sit beside
+ * each other do not both bounce the same way. The hash is the cheap one -- this
+ * is asked once per letter and wants to be boring rather than uniform.
+ *
+ * Both halves have to be applied somewhere that does not open the joins, and
+ * those are two different places.
+ *
+ * The lift moves the letter off its line, which would carry the seam with it
+ * and leave the letter after it reaching for a height that letter is no longer
+ * at. So it is applied to the skeleton *before* the join is planned -- a
+ * translation, which is the one transform an arc survives exactly -- and the
+ * join is then drawn to wherever the letter ended up. The seam never moves; the
+ * lead-in and lead-out simply climb a little further or a little less.
+ *
+ * The lean is applied to the finished outline like the face's own slant, but
+ * turned about the seam rather than about the middle of the x-height. A shear
+ * leaves the line it is pivoted on exactly where it was, so pivoting on the
+ * seam is what lets a letter lean a degree and a half further than its
+ * neighbour and still hand over to it in the same place.
+ */
+/*
+ * What one unit of unsteadiness is worth: a twelfth of the x-height of bounce
+ * either way, and three degrees of lean either way.
+ *
+ * Settled by drawing the same two lines at nought, one, two and three times
+ * this and looking at them. At nought the writing is a machine's. At one it
+ * reads as a hand without drawing attention to itself, which is what a face
+ * called Handwriting wants. It is still legible at three -- a lively hand
+ * rather than a mess -- so the control has real range in it, which is worth
+ * saying because the first guess at these numbers was a third of them and did
+ * nothing visible at any setting.
+ */
+const SETTLE = 0.12;
+const TILT = 6;
+
+/**
+ * The furthest a letter of this face may sit from its line.
+ *
+ * For the invariants that measure a letter against the lines it was drawn
+ * between. A face that says its hand is unsteady is not broken when its letters
+ * are off their lines; it is broken when they are off them by more than it
+ * said. Exported so the tests read the same number this does rather than a
+ * copy of it that can drift.
+ */
+export function mostLift(script: Script, xHeight: number): number {
+  return script.on ? Math.abs(script.irregularity) * xHeight * SETTLE * 0.5 : 0;
+}
+
+export function wobbleOf(name: string, script: Script, xHeight: number): { lift: number; lean: number } {
+  if (!script.on || script.irregularity <= 0) return { lift: 0, lean: 0 };
+  let hash = 2166136261;
+  for (let index = 0; index < name.length; index++) {
+    hash ^= name.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  const first = ((hash >>> 8) & 1023) / 1023 - 0.5;
+  const second = ((hash >>> 20) & 1023) / 1023 - 0.5;
+  return {
+    /*
+     * Half a unit either way, so one whole unit is a sixteenth of the x-height
+     * of bounce and three degrees of lean -- about thirty units and three
+     * degrees on this face. A line of type is so exactly level that the eye
+     * reads any departure from it at once, which is why this is worth having
+     * and why it does not need to be large.
+     */
+    lift: first * script.irregularity * xHeight * SETTLE,
+    lean: second * script.irregularity * TILT,
+  };
+}

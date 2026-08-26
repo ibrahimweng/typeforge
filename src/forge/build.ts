@@ -18,6 +18,7 @@ import {
   recipeOf,
   type PartName,
   type Recipe,
+  JOINS,
 } from "./letters";
 import { accentsFor, gapFor, hangsBelow, isCapital, type Parts } from "./accents";
 import { reachesCast, type Cast } from "./cast";
@@ -34,6 +35,7 @@ import {
   waveBookAt,
   wavy,
 } from "./shapes";
+import { wobbleOf } from "./script";
 import { penReach, reachAlong, sweep } from "./sweep";
 import type { Style } from "./style";
 import type { Stroke, Terminal } from "./types";
@@ -106,6 +108,19 @@ export function canDraw(name: string): boolean {
 /** What an accented letter is built from, or nothing if it is drawn outright. */
 export function builtFrom(name: string): Parts | null {
   return DRAWN.has(name) ? null : (accentsFor(DRAWN).get(name) ?? null);
+}
+
+/**
+ * Whether this glyph is one of the ones a joined face reaches out of.
+ *
+ * The accented letters answer for the letter under the mark: an `à` in a script
+ * has to hand over to the letter after it exactly as an `a` does, or a word
+ * with an accent in it comes apart at both ends of it.
+ */
+export function reachesOut(name: string, style: Style): boolean {
+  if (!style.parts.script.on) return false;
+  const parts = builtFrom(name);
+  return JOINS.has(parts ? parts.base : name);
 }
 
 export { letterBehind } from "./letters";
@@ -229,6 +244,25 @@ export function makeLetter(
   if (laid && laid.blocks.length > 0) inked.push(laid.blocks);
   const lean = leanOf(style);
   const pivot = style.metrics.xHeight / 2;
+  /*
+   * A letter of an unsteady hand leans a little further over than its
+   * neighbour, and turns about the seam rather than about the middle of its own
+   * x-height.
+   *
+   * A shear leaves the line it is pivoted on exactly where it was. Pivoting on
+   * the seam is therefore the one place this can be done without opening the
+   * joins: the lead-out still stops on the advance and the lead-in still starts
+   * on the origin, both at the height they always did, while everything above
+   * and below them leans.
+   *
+   * Nought on every face that does not join, where `wobbleOf` returns nothing
+   * and this collapses to the shear that was always here.
+   */
+  const script = style.parts.script;
+  const tilt = wobbleOf(name, script, style.metrics.xHeight).lean;
+  const seam = script.height * style.metrics.xHeight;
+  const wobbled = (contours: Contour[]): Contour[] =>
+    tilt === 0 ? contours : sheared(contours, Math.tan((tilt * Math.PI) / 180), seam);
 
   /*
    * Where the letter sits, and how much room it is given, are read off the
@@ -242,7 +276,7 @@ export function makeLetter(
    * space -- which is the same promise an imported letter is given when it
    * keeps the advance of the letter it replaced.
    */
-  const solid = sheared(inked.flat(), lean, pivot);
+  const solid = wobbled(sheared(inked.flat(), lean, pivot));
   // Asked of this letter's own strokes rather than of the settings, so a
   // letter nothing can reach -- a space, which has no ink -- is not put through
   // the machinery to come back as what it already was.
@@ -261,14 +295,23 @@ export function makeLetter(
     ? effectInk(cutting ? cutting.contours : inked.flat(), strokes, scaleOf(style), effects)
     : null;
   const cut = marks
-    ? sheared(marks, lean, pivot)
+    ? wobbled(sheared(marks, lean, pivot))
     : cutting
-      ? sheared(cutting.contours, lean, pivot)
+      ? wobbled(sheared(cutting.contours, lean, pivot))
       : solid;
 
-  // Only the letters that actually cross are moved, and each by exactly what
-  // it needs.
-  const shortfall = solid.length > 0
+  /*
+   * Only the letters that actually cross are moved, and each by exactly what
+   * it needs -- and none of them on a face that joins.
+   *
+   * A joined letter is drawn deliberately touching its own origin, because the
+   * stroke it hands over to the next letter with has to start where the last
+   * one stopped. Nudged inside a sidebearing it does not have, every letter of
+   * a script would slide right by the same few units and every join in the
+   * font would open by them.
+   */
+  const joinsUp = style.parts.script.on && built?.width !== undefined;
+  const shortfall = solid.length > 0 && !joinsUp
     ? Math.max(0, style.metrics.sidebearing - contoursBounds(solid).xMin)
     : 0;
   const placed = slid(cut, shortfall);
@@ -305,7 +348,7 @@ export function makeLetter(
     cut: cutting?.cut,
     contours: slid(placed, centring),
     runs: inked.map((contours, index) => ({
-      contours: slid(sheared(contours, lean, pivot), slide),
+      contours: slid(wobbled(sheared(contours, lean, pivot)), slide),
       // A cell has no named part behind it: what it is, is where it is.
       parts: built && index < built.strokes.length ? partsOfStroke(built.strokes[index]) : [],
     })),
@@ -382,7 +425,19 @@ function marked(
    */
   const bounds = contoursBounds(contours);
   const { sidebearing } = style.metrics;
-  const shortfall = Math.max(0, sidebearing - bounds.xMin);
+  /*
+   * And none of it on a joined face, where the letter's width is not the
+   * letter's to change.
+   *
+   * A script letter's advance is where its lead-out stops, to the unit, and the
+   * next letter's lead-in starts there. Widened by an accent, an `à` would hand
+   * over five units past where the letter after it begins, and a word with one
+   * accent in it would come apart at both ends of it. A mark that reaches past
+   * the letter under it simply overhangs, which is what a written accent does
+   * anyway.
+   */
+  const reaching = style.parts.script.on && JOINS.has(parts.base);
+  const shortfall = reaching ? 0 : Math.max(0, sidebearing - bounds.xMin);
   const placed = shortfall > 0 ? shoved(contours, { x: shortfall, y: 0 }) : contours;
   const spaced =
     shortfall > 0
@@ -398,7 +453,7 @@ function marked(
    * amount the `O` had been tightened by, and a word with one accent in it
    * limped.
    */
-  const overhang = Math.max(0, bounds.xMax - contoursBounds(base.contours).xMax);
+  const overhang = reaching ? 0 : Math.max(0, bounds.xMax - contoursBounds(base.contours).xMax);
   return {
     advanceWidth: base.advanceWidth + shortfall + overhang,
     slide: base.slide + shortfall,

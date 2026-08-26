@@ -19,7 +19,7 @@
 import { describe, expect, it } from "vitest";
 
 import { contoursBounds } from "@/font/geometry";
-import { builtFrom, canDraw, drawLetter, letterNames, makeLetter } from "./build";
+import { builtFrom, canDraw, drawLetter, letterNames, makeLetter , reachesOut } from "./build";
 import { accentedNameFor, drawnAs, codepointOfAccented } from "./accents";
 import { editPart, editPen, startFrom, draw } from "./document";
 import { codepointFor } from "./typeface";
@@ -195,17 +195,45 @@ describe("what an accented letter is allowed", () => {
     }
   });
 
+  /*
+   * White on both sides, except where the face spaces with a stroke instead.
+   *
+   * A joined letter's advance is where its lead-out stops, to the unit, and the
+   * letter after it starts there -- so an accent on one may not widen it, and a
+   * mark that reaches past the letter under it has to overhang instead. Which
+   * is what a written accent does anyway: nobody moves a word along to make
+   * room for a grave.
+   */
   it("keeps its white on both sides, however wide the mark is", () => {
     for (const base of BASES) {
       for (const name of LATIN1) {
         const drawn = drawLetter(name, base);
         if (!drawn) continue;
+        if (reachesOut(name, base)) continue;
         const bounds = contoursBounds(drawn.contours);
         expect(bounds.xMin, `${name} on ${base.name} runs off the left`).toBeGreaterThan(0);
         expect(
           drawn.advanceWidth - bounds.xMax,
           `${name} on ${base.name} runs off the right`,
         ).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  /*
+   * And on a joined face the accented letter keeps the exact advance of the
+   * letter under the mark, which is the thing that lets it join at all.
+   */
+  it("gives an accented letter of a joined face the advance of its own base", () => {
+    for (const base of BASES.filter((one) => one.parts.script.on)) {
+      for (const [name, under] of [["agrave", "a"], ["eacute", "e"], ["ntilde", "n"], ["ocircumflex", "o"]]) {
+        const drawn = drawLetter(name, base);
+        if (!drawn) continue;
+        expect([base.name, name, drawn.advanceWidth]).toEqual([
+          base.name,
+          name,
+          drawLetter(under, base)!.advanceWidth,
+        ]);
       }
     }
   });
