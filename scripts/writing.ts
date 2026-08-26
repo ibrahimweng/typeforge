@@ -44,7 +44,14 @@ function setLine(style: Style, line: string): { path: string; width: number } {
     if (letter === " ") { x += style.metrics.xHeight * 0.7; continue; }
     // TEXTURE=on runs each letter through the tool layer, which is what an
     // export bakes in and what the proofing window shows one letter of.
-    const drawn = process.env.TEXTURE ? proof(letter, startFrom(style)) : drawLetter(letter, style);
+    //
+    // Either way the face's own letterforms are the ones drawn. Without the
+    // third argument this asked for the default form of every letter, so a page
+    // of the Handwriting showed an f the face does not use -- and this is the
+    // page that is supposed to say what the font would print.
+    const drawn = process.env.TEXTURE
+      ? proof(letter, startFrom(style))
+      : drawLetter(letter, style, style.forms?.[letter]);
     if (!drawn) continue;
     parts.push(contoursToSvgPath(slid(drawn.contours, x)));
     x += drawn.advanceWidth;

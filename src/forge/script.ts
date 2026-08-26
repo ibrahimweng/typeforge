@@ -396,8 +396,10 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
    * has the loops, not the strokes: the highest end above the x-height gets the
    * one, the lowest end below the baseline gets the other.
    */
-  let top: Vec2 | null = null;
-  let foot: Vec2 | null = null;
+  // The run each end belongs to is carried along with it: the eye is struck on
+  // that run and nowhere else, so it is that run it has to be checked against.
+  let top: { end: Vec2; on: Spine } | null = null;
+  let foot: { end: Vec2; on: Spine } | null = null;
   for (const spine of spines) {
     if (spine.closed || spineLength(spine) <= 0) continue;
     const ends = [spineStart(spine), spineEnd(spine)];
@@ -408,13 +410,14 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
       // the baseline. A run that stays entirely one side of the line it would
       // have crossed is a mark rather than a stroke -- which is what keeps the
       // dot of an `i` from being treated as an ascender.
-      if (end.y > room.x && lowest < room.x && (!top || end.y > top.y)) top = end;
-      if (end.y < 0 && highest > 0 && (!foot || end.y < foot.y)) foot = end;
+      if (end.y > room.x && lowest < room.x && (!top || end.y > top.end.y)) top = { end, on: spine };
+      if (end.y < 0 && highest > 0 && (!foot || end.y < foot.end.y)) foot = { end, on: spine };
     }
   }
 
-  for (const [end, rising] of [[top, true], [foot, false]] as const) {
-    if (!end) continue;
+  for (const [found, rising] of [[top, true], [foot, false]] as const) {
+    if (!found) continue;
+    const { end, on } = found;
     /*
      * A loop may not turn round past the line the stroke came from. One on an
      * `l` reaches down past the x-height, which is what a written one does; one
@@ -447,6 +450,26 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
     const tip = at(end.x, rising ? end.y - room.upright : end.y + room.upright);
     const start = at(end.x, rising ? tip.y - deep : tip.y + deep);
     /*
+     * An eye on an ascender stands on that ascender or it is not drawn.
+     *
+     * It is struck straight down from the end it turns round, so its foot lands
+     * back on the run only if that run goes straight down from there. Every
+     * ascender here does except the `f`'s, which ends in a hook: its highest
+     * end is a radius off to the side of its own stem, the eye was struck out
+     * in clear air beside the letter, and the `f` came apart into two pieces on
+     * both faces that loop.
+     *
+     * Checking against the whole letter instead of against the one run let the
+     * `f` through anyway: its foot came down within half a pen of the far end
+     * of the crossbar, which is drawn thin and never had ink out that far. The
+     * run the eye turns round is the one it has to find.
+     *
+     * The eye on a descender is struck the other way, up into the body of the
+     * letter and well past the end of the run that earned it -- a different
+     * question, asked and answered nowhere, and left here as it was.
+     */
+    if (rising && !standsOn(on, start, room.half)) continue;
+    /*
      * A half is as far as a single arc bows: at a half it is a semicircle, and
      * past that the construction below is asked for a sagitta larger than its
      * own radius and quietly gives back a shallower arc instead. So the eye is a
@@ -456,6 +479,12 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
     out.push(bowed(start, tip, rising ? 0.5 : -0.5));
   }
   return out;
+}
+
+/** Whether this run passes under the point, for a loop to stand on it. */
+function standsOn(spine: Spine, point: Vec2, reach: number): boolean {
+  return alongSpine(spine, SAMPLES).some(
+    (one) => Math.hypot(one.x - point.x, one.y - point.y) <= reach);
 }
 
 /** An arc from one point to another, bowed out by a fraction of the chord. */

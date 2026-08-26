@@ -18,7 +18,7 @@ import { contourArea, contoursBounds, inkRunsAt } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import { builtFrom, drawLetter, letterNames , reachesOut } from "./build";
 import { startFrom, weighted } from "./document";
-import { openWaveBook, waveBookAt, type WaveBook } from "./shapes";
+import { openWaveBook, spineEnd, spineStart, waveBookAt, type WaveBook } from "./shapes";
 import { recipeOf } from "./letters";
 import { mostLift } from "./script";
 import { BASES as STARTING_POINTS, DISPLAY, SANS, SERIF, type Style } from "./style";
@@ -615,4 +615,75 @@ describe("an arc that goes nowhere still lands where its neighbours are", () => 
     }
     expect(adrift).toEqual([]);
   }, 120_000);
+});
+
+/*
+ * The two letters this file's own header records a sheet catching once, and
+ * what the sheet was actually looking at both times.
+ */
+describe("an f is not a t, and a k is not a fan", () => {
+  /*
+   * Everything that tells an f from a t is above the bar, and it is on the
+   * right: the hook is the whole of the difference and there is no Latin face
+   * anywhere that puts it on the other side. Curling left, every scrap of ink
+   * above the bar sat where a t has nothing and none of it sat where an f is
+   * known, and `fox` set as `tox` on all sixteen faces. Narrowing the bar was
+   * the answer once; this is the answer.
+   */
+  it("hooks the f to the right of its own stem, in both forms, on every face", () => {
+    const wrongWay: string[] = [];
+    for (const style of STARTING_POINTS) {
+      for (const form of [undefined, "descending"]) {
+        const runs = recipeOf("f", form)!(style).strokes;
+        // The run that reaches the ascender is the one with the hook on it.
+        const hooked = runs.reduce((best, one) =>
+          Math.max(spineStart(one.spine).y, spineEnd(one.spine).y) >
+          Math.max(spineStart(best.spine).y, spineEnd(best.spine).y) ? one : best);
+        const ends = [spineStart(hooked.spine), spineEnd(hooked.spine)];
+        const [low, high] = ends[0].y < ends[1].y ? ends : [ends[1], ends[0]];
+        if (high.x - low.x <= style.pen.weight / 2) {
+          wrongWay.push(`${style.name} f${form ? ` (${form})` : ""}`);
+        }
+      }
+    }
+    expect(wrongWay).toEqual([]);
+  });
+
+  /*
+   * The lead-out leaves from the letter's rightmost run between half a pen up
+   * and the seam, which on a straight-legged k is partway up the leg -- so the
+   * rest of the leg carried on past it, out and down, and the letter finished
+   * with its arm, its join and the tip of its leg all leaving one corner
+   * pointing the same way. A leg that turns upright before it lands is the
+   * rightmost thing down there itself, and the join leaves its side the way it
+   * leaves an n's.
+   */
+  it("stands the joined k's leg up, so nothing reaches out past where the join leaves", () => {
+    const bare = (one: Style): Style =>
+      ({ ...one, parts: { ...one.parts, script: { ...one.parts.script, on: false } } });
+    const rightAt = (drawn: NonNullable<ReturnType<typeof drawLetter>>, y: number) =>
+      Math.max(...inkRunsAt(drawn.contours, y).map(([, to]) => to));
+
+    const joined = STARTING_POINTS.filter((one) => one.parts.script.on);
+    expect(joined.length).toBe(4);
+    for (const style of joined) {
+      const half = style.pen.weight / 2;
+      const seam = style.parts.script.height * style.metrics.xHeight;
+      // The band the lead-out searches, and the point in it that it leaves from.
+      const bandMax = (drawn: NonNullable<ReturnType<typeof drawLetter>>) =>
+        Math.max(...Array.from({ length: 9 }, (_, step) =>
+          rightAt(drawn, half + ((seam - half) * step) / 8)));
+      // Just off the baseline, which is under the band and is where a straight
+      // leg is at its widest.
+      const under = half * 0.2;
+      const standing = drawLetter("k", bare(style), "standing")!;
+      const splayed = drawLetter("k", bare(style))!;
+      expect([style.name, rightAt(standing, under) <= bandMax(standing) + half * 0.2])
+        .toEqual([style.name, true]);
+      // And the straight leg does reach past it, which is why the alternate is
+      // here at all: without this the test above would pass on any k.
+      expect([style.name, rightAt(splayed, under) > bandMax(splayed) + half * 0.2])
+        .toEqual([style.name, true]);
+    }
+  });
 });
