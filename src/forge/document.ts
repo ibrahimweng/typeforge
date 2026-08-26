@@ -36,7 +36,7 @@ import { joiningHigh, recipeOf } from "./letters";
 import type { Imported } from "./exchange";
 import { weightClassOf, weightedStyle, type Family } from "./family";
 import { partsUsedBy, type PartName } from "./parts";
-import { BASES, type Parts, type Style } from "./style";
+import { BASES, SANS, type Parts, type Style } from "./style";
 
 /** A letter that has been told to differ, and in what. */
 export type Overrides = Partial<{ [K in keyof Parts]: Partial<Parts[K]> }>;
@@ -162,7 +162,6 @@ const ALONE: Family = { drawn: 400, also: [] };
  * use.
  */
 export function whole(forge: Forge): Forge {
-  if (forge.family && forge.cuts && forge.kit && forge.cast) return forge;
   return {
     ...forge,
     family: forge.family ?? { ...ALONE },
@@ -170,7 +169,40 @@ export function whole(forge: Forge): Forge {
     cast: forge.cast ?? noCast(),
     cutExceptions: forge.cutExceptions ?? {},
     kit: forge.kit ?? emptyKit(),
+    style: settled(forge.style),
   };
+}
+
+/**
+ * A style with every part a current one has.
+ *
+ * The same filling-in as above, one level down, and it is written to fill parts
+ * it has never heard of rather than to fill the ones somebody remembered.
+ *
+ * That is the whole point of it. The document is written to the browser as the
+ * drawing goes and read back on the next visit, so anybody who has used this
+ * before a part existed has one in their browser that predates it -- and a
+ * `parts` object missing a key is not a document that reads a little oddly. It
+ * is `undefined.on`, thrown on the first letter drawn, which is the entire
+ * application gone. The join was added as a required part and this function was
+ * not told, and the result was a black screen for anybody who had opened the
+ * page before that day.
+ *
+ * So nothing here names a field. Every part group the current shape has is
+ * taken from the document where the document has one and from the plain face
+ * where it does not, which fills the part added last week and the part added
+ * next year on the same line. The plain face is the right place to borrow from:
+ * a part that did not exist was a part nobody had set, and the neutral setting
+ * is what the drawing was made with.
+ */
+function settled(style: Style): Style {
+  const base = SANS.parts as unknown as Record<string, unknown>;
+  const mine = (style.parts ?? {}) as unknown as Record<string, unknown>;
+  const missing = Object.keys(base).filter((name) => mine[name] === undefined);
+  if (missing.length === 0) return style;
+  const parts = { ...mine };
+  for (const name of missing) parts[name] = structuredClone(base[name]);
+  return { ...style, parts: parts as unknown as Parts };
 }
 
 /** The weights of this document, which is at least the one being drawn. */
