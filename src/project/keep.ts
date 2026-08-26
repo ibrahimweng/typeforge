@@ -86,9 +86,24 @@ export async function kept(): Promise<Project | null> {
       const request = database.transaction(STORE, "readonly").objectStore(STORE).get(ONE);
       request.onsuccess = () => {
         database.close();
-        // Read through the same door a file goes through, so a session written
-        // by an older Typeforge is turned away rather than half-restored.
-        resolve(readProject(request.result));
+        /*
+         * Guarded, because this runs after the try below has already returned.
+         *
+         * A throw in here escapes into the database's own event handler, and
+         * the promise around it then neither resolves nor rejects -- so the
+         * caller waits for a session that never arrives, the flag saying a
+         * restore is in progress is never put down, and nothing is written to
+         * disk again for the rest of the visit. Silently: no error, no message,
+         * and the drawing on screen carries on as though it were being kept.
+         */
+        try {
+          // Read through the same door a file goes through, so a session
+          // written by an older Typeforge is turned away rather than
+          // half-restored.
+          resolve(readProject(request.result));
+        } catch {
+          resolve(null);
+        }
       };
       request.onerror = () => {
         database.close();

@@ -24,8 +24,16 @@ import * as React from "react";
 
 interface Props {
   children: React.ReactNode;
-  /** Wipe the kept session, for when it is the document that will not open. */
-  onDiscard?: () => void;
+  /**
+   * Wipe the kept session, for when it is the document that will not open.
+   *
+   * Returns a promise and it is waited for. Throwing the work away is a
+   * transaction against a database this page is about to be navigated away
+   * from, and reloading without waiting cancels it -- which was how this was
+   * written first, and it made the one button here does nothing at all: the
+   * page came back with the same document in it and threw again.
+   */
+  onDiscard?: () => Promise<void> | void;
 }
 
 interface State {
@@ -58,7 +66,15 @@ export class Boundary extends React.Component<Props, State> {
             anything you did.
           </p>
           <pre className="max-h-40 overflow-auto rounded border border-border bg-muted/40 p-3 text-2xs leading-relaxed">
-            {error.message}
+            {/*
+              * Whatever was thrown, not whatever an Error would have said.
+              *
+              * React hands this back exactly as it was thrown, and nothing
+              * obliges a library to throw an Error -- so reading `.message` off
+              * a thrown string leaves this box empty, which is the same
+              * silence the whole component exists to break.
+              */}
+            {error instanceof Error ? error.message : String(error)}
           </pre>
           <p className="text-sm text-muted-foreground">
             Reloading is worth trying first. If it stops again in the same place, the work kept in
@@ -77,8 +93,10 @@ export class Boundary extends React.Component<Props, State> {
               <button
                 type="button"
                 onClick={() => {
-                  this.props.onDiscard?.();
-                  window.location.reload();
+                  // Waited for, then reloaded. See `onDiscard`.
+                  void Promise.resolve(this.props.onDiscard?.()).then(() => {
+                    window.location.reload();
+                  });
                 }}
                 className="rounded border border-border px-3 py-1.5 text-sm hover:bg-muted"
               >
