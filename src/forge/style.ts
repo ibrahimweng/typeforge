@@ -16,6 +16,7 @@
  */
 
 import type { WaveAlong } from "./shapes";
+import { noEffects, type Effects } from "@/font/effects";
 import type { JoinKind, Pen, Terminal, TerminalKind } from "./types";
 
 /** The heights and widths every letter is built against. */
@@ -230,6 +231,19 @@ export interface Style {
    * and every one of them can still be changed afterwards like any other.
    */
   forms?: Record<string, string>;
+  /**
+   * What the tool that drew this face was like.
+   *
+   * The same kind of statement as `forms`: not a decision the face makes for
+   * ever, only the one it starts from. A marker face that begins with no
+   * roughening on it is a marker face that begins as a slanted sans, and
+   * somebody choosing it has to know to go and switch the thing on that makes
+   * it what its name says.
+   *
+   * Left out by every face that is a printed thing rather than a drawn one,
+   * which is most of them.
+   */
+  effects?: Effects;
   /** What kind of face this is, for the person choosing one. */
   blurb?: string;
   /**
@@ -478,14 +492,72 @@ export const MARKER: Style = {
   ...SANS,
   name: "Marker",
   family: "hand",
-  blurb: "Leaned over, drawn with a flat pen held at an angle.",
-  metrics: { ...SANS.metrics, slant: 13, sidebearing: 48 },
-  pen: { weight: 118, contrast: 0.5, angle: -32 },
+  blurb: "A felt tip on paper: one width whichever way it goes, and an edge that followed the grain.",
+  metrics: {
+    ...SANS.metrics,
+    // A hand leans a little; thirteen degrees was a typeface being italic.
+    slant: 8,
+    // Handwriting runs a larger x-height than type does, and sits looser.
+    xHeight: 545,
+    counterWidth: 345,
+    sidebearing: 58,
+  },
+  /*
+   * Monolinear, and that is the whole correction.
+   *
+   * This face used to be drawn with contrast at half and the pen turned thirty
+   * degrees over, which is a broad nib -- a calligraphy pen, not a marker. A
+   * felt tip lays one width whichever way it is dragged; what varies in real
+   * marker lettering is ink and pressure, and neither of those is the nib. So
+   * the pen says almost nothing here and the tool says the rest.
+   */
+  pen: { weight: 126, contrast: 0.06, angle: 0 },
   parts: {
     ...SANS.parts,
-    bowl: { width: 0.95, squareness: 0.35, aperture: 1 },
-    corner: { radius: 0, join: "bevel" },
+    // A hand does not close its apertures, and a bullet tip cannot draw a
+    // corner: the tip has a radius and so does everything it draws.
+    bowl: { width: 0.98, squareness: 0.1, aperture: 1.06 },
+    corner: { radius: 30, join: "round" },
+    /*
+     * Square, and not for want of trying.
+     *
+     * A bullet tip is round and its caps should be too, and the round terminal
+     * exists -- the Display uses it. On this face it breaks three things the
+     * alphabet is checked for: the leg of a `k` folds over itself, the figures
+     * come out with thirty pieces at one weight and thirty-two at the others so
+     * the two cannot be joined into one variable font, and the arms of an `X`
+     * stop a hundred and fifty thousandths of a unit past a tolerance of one.
+     *
+     * The last of those is a hair. The first two are the fault this whole
+     * alphabet was walked to nothing to get rid of, and a cap shape is not
+     * worth putting one of them back. So the softness comes from the corner
+     * radius above and from the tool below, and the round cap waits for the
+     * terminal itself to be fixed.
+     */
     terminal: { kind: "butt", angle: 0 },
+    shoulder: { spring: 0.42, reach: 1.02 },
+  },
+  /*
+   * The shapes a person draws rather than the shapes a punchcutter cut. The
+   * single-storey a is already what this engine draws by default -- it is the
+   * two-storey one that is the alternate, and it is the text faces that should
+   * be asking for it.
+   */
+  forms: { g: "curled", t: "straight", y: "straight", l: "tailed" },
+  /*
+   * And the tool, which is where this face stops being a slanted sans.
+   *
+   * A wander of a twentieth of a stem at a wavelength most of one, which reads
+   * as paper rather than as grit; and ink gathering where the tip paused, which
+   * is what a wet marker leaves at every join and every stop. No pressure: a
+   * felt tip does not taper, it blots. No skip either -- that is a marker
+   * running out, which is a thing somebody chooses rather than a thing a marker
+   * is.
+   */
+  effects: {
+    ...noEffects(),
+    rough: { on: true, amplitude: 0.045, wavelength: 0.8, reach: "all", seed: 7 },
+    pool: { on: true, size: 0.4, where: "both" },
   },
 };
 

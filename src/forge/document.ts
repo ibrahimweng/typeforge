@@ -201,7 +201,9 @@ export function startFrom(base: Style): Forge {
     imported: {},
     cuts: noCuts(),
     cast: noCast(),
-    effects: noEffects(),
+    // A face that says what drew it starts with it switched on, or its name is
+    // a promise nobody kept: see `Style.effects`.
+    effects: base.effects ? { ...noEffects(), ...base.effects } : noEffects(),
     cutExceptions: {},
     kit: emptyKit(),
     // Asked rather than assumed. A face is whatever weight its own stem says
