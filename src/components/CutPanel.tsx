@@ -26,12 +26,20 @@ import { SliderControl as Slider } from "@/ui/components/controls/slider";
 import { FROM_SKELETON as CAST_FROM_SKELETON, type Cast, type CastName } from "@/font/cast";
 import { FROM_SKELETON, type CutName, type Cuts } from "@/font/cuts";
 import {
+  FROM_SKELETON as EFFECT_FROM_SKELETON,
+  type EffectName,
+  type Effects,
+} from "@/font/effects";
+import {
   CAST_SPECS,
   CUT_SPECS,
+  EFFECT_SPECS,
   castValuesOf,
   cutValuesOf,
+  effectValuesOf,
   type CastSpec,
   type CutSpec,
+  type EffectSpec,
   type PartControl,
 } from "@/forge/parts";
 import { cn } from "@/ui/lib/utils";
@@ -93,6 +101,17 @@ export type CutPanelProps =
       onChange: (name: CastName, patch: Record<string, unknown>, phase: Phase) => void;
       heldNote?: (name: CastName) => string | null;
       onRelease?: (name: CastName) => void;
+    })
+  | (Common & {
+      /*
+       * The third layer, and the one that is never a letter's own: a cut and a
+       * cast are things done to a letter and a letter can reasonably be done to
+       * differently, where this describes what drew the font. So it offers no
+       * badge and no way to release one, and the panel simply never asks.
+       */
+      layer: "effect";
+      cuts: Effects;
+      onChange: (name: EffectName, patch: Record<string, unknown>, phase: Phase) => void;
     });
 
 export function CutPanel(props: CutPanelProps): React.JSX.Element {
@@ -105,23 +124,35 @@ export function CutPanel(props: CutPanelProps): React.JSX.Element {
     patch: Record<string, unknown>,
     phase: Phase,
   ) => void;
-  const heldNote = props.heldNote as ((name: string) => string | null) | undefined;
-  const onRelease = props.onRelease as ((name: string) => void) | undefined;
+  const held = props as { heldNote?: (name: string) => string | null; onRelease?: (name: string) => void };
+  const heldNote = held.heldNote;
+  const onRelease = held.onRelease;
   const cast = layer === "cast";
-  const specs: Named[] = cast ? (CAST_SPECS as CastSpec[]) : (CUT_SPECS as CutSpec[]);
-  const skeleton: ReadonlySet<string> = cast ? CAST_FROM_SKELETON : FROM_SKELETON;
-  const values = cast ? castValuesOf : cutValuesOf;
+  const tool = layer === "effect";
+  const specs: Named[] = tool
+    ? (EFFECT_SPECS as EffectSpec[])
+    : cast
+      ? (CAST_SPECS as CastSpec[])
+      : (CUT_SPECS as CutSpec[]);
+  const skeleton: ReadonlySet<string> = tool
+    ? EFFECT_FROM_SKELETON
+    : cast
+      ? CAST_FROM_SKELETON
+      : FROM_SKELETON;
+  const values = tool ? effectValuesOf : cast ? castValuesOf : cutValuesOf;
 
   return (
     <section className="border-b border-border p-3" data-cut-panel={tag}>
       <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-2xs font-medium">{cast ? "Cast" : "Cut"}</h3>
+        <h3 className="text-2xs font-medium">{tool ? "The tool" : cast ? "Cast" : "Cut"}</h3>
         {header}
       </div>
       <p className="pt-1 text-2xs leading-snug text-muted-foreground">
-        {cast
-          ? "Put on after the letter is drawn, so everything above still reaches it. Sizes are in stem widths, which is what keeps a shadow meaning the same thing at every weight."
-          : "Taken out after the letter is drawn, so everything above still reaches it. Sizes are in stem widths, which is what keeps a cut meaning the same thing at every weight."}
+        {tool
+          ? "What the tool that drew the letters was like. Shown on the letter you are working on and on nothing else until the font is exported, when it is baked into every glyph in the file \u2014 roughening four hundred and fifty letters between two frames is what a slider cannot survive."
+          : cast
+            ? "Put on after the letter is drawn, so everything above still reaches it. Sizes are in stem widths, which is what keeps a shadow meaning the same thing at every weight."
+            : "Taken out after the letter is drawn, so everything above still reaches it. Sizes are in stem widths, which is what keeps a cut meaning the same thing at every weight."}
       </p>
       <p className="pt-1 text-2xs leading-snug text-muted-foreground">{scopeNote}</p>
 

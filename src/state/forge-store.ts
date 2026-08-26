@@ -14,6 +14,7 @@
  */
 
 import type { Cast, CastName } from "@/font/cast";
+import type { EffectName, Effects } from "@/font/effects";
 import {
   chooseForm,
   clearCutException,
@@ -22,6 +23,7 @@ import {
   editCut,
   releaseCast as giveCastBack,
   setCastOrder,
+  editEffect,
   editMetrics,
   editPart,
   editPen,
@@ -498,6 +500,22 @@ class ForgeStore {
   changeCast(name: CastName, patch: Partial<Cast[CastName]>, phase: Phase = "single"): void {
     const { forge, scope, letter } = this.state;
     this.commit(editCast(forge, name, patch, scope === "letter" ? letter : undefined), phase);
+  }
+
+  /**
+   * Change something about the tool that drew the font.
+   *
+   * Never scoped to a letter, which is the one place this parts company with
+   * the cut and the cast. Those describe things done to a letter and a letter
+   * can reasonably be done to differently; this describes what drew the font,
+   * and a font drawn with two different markers is not a font.
+   */
+  changeEffect(
+    name: EffectName,
+    patch: Partial<Effects[EffectName]>,
+    phase: Phase = "single",
+  ): void {
+    this.commit(editEffect(this.state.forge, name, patch), phase);
   }
 
   /** Cast this letter the way the rest of the font is cast. */

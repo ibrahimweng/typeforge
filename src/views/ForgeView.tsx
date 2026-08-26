@@ -28,7 +28,8 @@ import {
   rowsOf,
   unitOf,
 } from "@/forge/kit";
-import { familyOf, unshaped, weighted, type Forge } from "@/forge/document";
+import { anyEffect } from "@/font/effects";
+import { effectsOf, familyOf, proof, unshaped, weighted, type Forge } from "@/forge/document";
 import { nameOfWeight, weightsOf } from "@/forge/family";
 import { codepointsFor } from "@/forge/typeface";
 import {
@@ -340,6 +341,7 @@ function Stage({
 
   return (
     <div className="relative flex min-h-0 flex-[3] select-none items-center justify-center bg-[var(--canvas)] px-6">
+      <Proof letter={letter} />
       <svg
         ref={svgRef}
         viewBox={viewBox}
@@ -717,6 +719,151 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
 }
 
 /**
+ * The letter as the tool actually left it.
+ *
+ * One letter, on purpose, and it is the whole of the bargain this layer makes.
+ * Roughening touches every point of every outline and then resolves the result
+ * with a boolean; run across the alphabet between two frames it is exactly the
+ * kind of work that made this page unusable before. So the effects are shown
+ * here, on the letter under the hand, and go on the rest of the font only when
+ * it is exported.
+ *
+ * Two sizes, because the mistake this panel exists to prevent is choosing a
+ * texture at poster size and finding out at twelve point that it has turned to
+ * mud.
+ *
+ * The small row is the one letter repeated rather than a word, and that is the
+ * point rather than a shortcut: it is the same drawing set again, so what is
+ * small is exactly what is large. Setting a real word would mean drawing six
+ * more letters through the whole layer, which is six times the cost to show
+ * something this panel is not being asked.
+ */
+const PROOF_RUN = 7;
+
+function Proof({ letter }: { letter: string }): React.JSX.Element | null {
+  const state = useForge();
+  const effects = effectsOf(state.forge);
+  const [open, setOpen] = React.useState(true);
+
+  /*
+   * Worked out when the font holds still, like the health check and for the
+   * same reason -- one letter is cheap next to four hundred and fifty, and it
+   * is not cheap next to a frame.
+   */
+  const [made, setMade] = React.useState<{ of: Forge; d: string; width: number; points: number } | null>(null);
+  React.useEffect(() => {
+    if (!anyEffect(effects) || !state.resting) return;
+    let live = true;
+    const waited = window.setTimeout(() => {
+      if (!live) return;
+      const drawn = proof(letter, state.forge);
+      setMade({
+        of: state.forge,
+        d: drawn ? contoursToSvgPath(drawn.contours) : "",
+        width: drawn?.advanceWidth ?? 0,
+        points: drawn ? drawn.contours.reduce((sum, one) => sum + one.nodes.length, 0) : 0,
+      });
+    }, PROOF_WAIT);
+    return () => {
+      live = false;
+      window.clearTimeout(waited);
+    };
+  }, [letter, state.forge, state.resting, effects]);
+
+  if (!anyEffect(effects)) return null;
+  const { metrics } = state.forge.style;
+  const top = metrics.ascender * 1.06;
+  const bottom = metrics.descender * 1.2;
+  const stale = made !== null && made.of !== state.forge;
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        data-forge-proof-open
+        className={cn(
+          "absolute bottom-3 right-3 z-10 rounded-md border border-border bg-card px-2 py-1",
+          "text-2xs text-foreground transition-opacity hover:opacity-80",
+        )}
+      >
+        Proof {letter}
+      </button>
+    );
+  }
+
+  return (
+    <div
+      data-forge-proof={letter}
+      className={cn(
+        "absolute bottom-3 right-3 z-10 w-56 rounded-md border border-border bg-card p-2",
+        "shadow-lg",
+      )}
+    >
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-2xs font-medium text-foreground">The tool, on {letter}</span>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          aria-label="Hide the proof"
+          className="text-2xs text-muted-foreground transition-opacity hover:opacity-70"
+        >
+          Hide
+        </button>
+      </div>
+
+      <div className={cn("mt-1 rounded bg-[var(--canvas)] p-1", stale && "opacity-40")}>
+        <svg
+          viewBox={`0 ${-top} ${Math.max(made?.width ?? 1, 1)} ${top - bottom}`}
+          className="h-24 w-full"
+          role="img"
+          aria-label={`${letter} as the tool left it`}
+          data-forge-proof-large
+        >
+          <g transform="scale(1,-1)">
+            <path d={made?.d ?? ""} fill="var(--foreground)" fillRule="nonzero" />
+          </g>
+        </svg>
+      </div>
+
+      {/* The same drawing again and again, small, because a texture that reads
+          at poster size can be mud at twelve point and this is where to find
+          that out. */}
+      <div className={cn("mt-1 flex justify-center rounded bg-[var(--canvas)] py-1", stale && "opacity-40")}>
+        <svg
+          viewBox={`0 ${-top} ${Math.max((made?.width ?? 1) * PROOF_RUN, 1)} ${top - bottom}`}
+          className="h-5 w-full"
+          role="img"
+          aria-label={`${letter} repeated small`}
+          data-forge-proof-small
+        >
+          <g transform="scale(1,-1)">
+            {Array.from({ length: PROOF_RUN }, (_, at) => (
+              <path
+                key={at}
+                d={made?.d ?? ""}
+                transform={`translate(${(made?.width ?? 0) * at} 0)`}
+                fill="var(--foreground)"
+                fillRule="nonzero"
+              />
+            ))}
+          </g>
+        </svg>
+      </div>
+
+      <p className="pt-1 text-2xs leading-snug text-muted-foreground" data-forge-proof-cost>
+        {made === null
+          ? "Drawing\u2026"
+          : `${made.points} points. About ${Math.round((made.points * 452 * 10) / 1024)}KB across the font.`}
+      </p>
+      <p className="text-2xs leading-snug text-muted-foreground">
+        On this letter only until you export.
+      </p>
+    </div>
+  );
+}
+
+/**
  * Which letter draws a character, for setting a line of type in the specimen.
  *
  * Read back off the characters the font already answers to, rather than from a
@@ -851,6 +998,9 @@ const STILL = 600;
  * the strip catching up.
  */
 const SLICE = 8;
+
+/** How long the letter holds still before the tool is drawn on it. */
+const PROOF_WAIT = 220;
 
 /**
  * What has closed up, and where.
