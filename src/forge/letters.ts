@@ -2045,25 +2045,37 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     // Big enough to read as a hook rather than a curl, small enough that the
     // letter does not turn into a walking stick.
     const radius = Math.max(f.arch * 0.66, f.least);
-    const stem = f.edge + radius;
+    // How far left of the stem the bar reaches, which is also how far in from
+    // the sidebearing the stem stands: the bar is this letter's left edge.
+    const left = Math.max(f.arch * 0.42, f.least);
+    const stem = f.edge + left;
+    const top = f.crest(f.asc) - radius;
     return finish(
       f,
       [
-        // Straight up, then a quarter turn left into the hook.
+        /*
+         * Straight up, then a quarter turn right into the hook.
+         *
+         * Right, because that is the only side an f's hook has ever been on.
+         * Turned the other way -- which is how this was written -- every scrap
+         * of ink above the bar sat to the left of the stem, where a t has
+         * nothing and an f has the whole of what tells them apart. `fox` set
+         * as `tox` on all sixteen faces.
+         */
         ink(
           f,
           chain(
-            straight(at(stem, 0), at(stem, f.crest(f.asc) - radius)),
+            straight(at(stem, 0), at(stem, top)),
             // Set down by the pen's own reach across a horizontal, so the top
             // of the hook lands on the ascender rather than setting off from it.
-            turn(at(stem - radius, f.crest(f.asc) - radius), radius, 0, 92),
+            turn(at(stem + radius, top), radius, 180, 88),
           ),
           f.end,
           f.end,
         ),
-        // Narrow enough to tell an f from a t, which is the only thing keeping
-        // them apart once both have a bar at the x-height.
-        crossbar(f, stem - f.arch * 0.5, stem + f.arch * 0.5),
+        // Reaching further right than left, as the t's bar does, so the two are
+        // told apart by more than the hook at the sizes text is set at.
+        crossbar(f, stem - left, stem + f.arch * 0.62),
       ]);
   },
 
@@ -6383,7 +6395,25 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const point = corner(f, top, at(middle, 0), other);
         return finish(f, [
           ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end),
-          ink(f, straight(point, at(point.x, f.desc)), BUTT, f.end),
+          /*
+           * The tail leaves the vee's apex, which is not where `corner` put the
+           * vee's vertex.
+           *
+           * `corner` pushes a vertex out along its own bisector by as far as
+           * the rounding is going to pull the turn back, so that the *rounded*
+           * apex lands where the letter asked for it -- here, on the baseline.
+           * Started at that pushed vertex the tail began below the ink instead
+           * of inside it: on the Marker it hung ninety units under a vee it had
+           * never touched, and on the Casual Script the letter was a `v` with a
+           * loose stub floating beneath it. Both faces round their corners. The
+           * ones that round nothing were fine, because there the pushed vertex
+           * and the apex are the same point, which is why this survived.
+           *
+           * Half a pen above the apex is inside the ink at any weight and any
+           * radius -- the two arms are barely a pen apart by then -- and the cut
+           * is square and buried, so none of it shows.
+           */
+          ink(f, straight(at(middle, f.half), at(middle, f.desc)), BUTT, f.end),
         ]);
       },
     },
@@ -6413,6 +6443,73 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
     },
   ],
 
+  k: [
+    {
+      id: "standing",
+      label: "With the leg standing",
+      hint: "The leg curving over and coming down onto the baseline instead of running out to a point, which is what a hand does with a k it has to carry on out of.",
+      build: (style) => {
+        const f = frame(style);
+        const stem = f.edge;
+        const span = f.arch * 1.7;
+        const waist = f.x * 0.42;
+        const foot = stem + span;
+        /*
+         * Where the leg stops falling and starts standing.
+         *
+         * A straight leg runs out to a point on the baseline, and on a joined
+         * face the lead-out cannot leave from that point: it takes the letter's
+         * rightmost skeleton between half a pen up and the seam, and the last
+         * stretch of a diagonal leg is below that band. So the join left from
+         * partway up the leg and the rest of the leg carried on past it, down
+         * and to the right -- the arm, the join and the tip of the leg all
+         * leaving the same corner pointing the same way.
+         *
+         * Turned upright, the leg's own foot is the rightmost thing there is
+         * and the join leaves from its side, which is what happens on an `n`
+         * and is why an `n` never had this. Half a pen up is as high as the
+         * turn needs to start: it is exactly what the band excludes. Higher
+         * and the fall gets shared with the upright, and at a fifth of the
+         * x-height the diagonal is down to seventeen degrees and reads as a
+         * bar with a drop on the end rather than as a leg.
+         */
+        const knee = at(foot, Math.max(f.half * 1.3, f.least));
+        // The arm stops short of the leg rather than on the same line as it,
+        // so the two are not one symmetrical V lying on its side.
+        const arm = at(stem + span * 0.84, f.x);
+        /*
+         * Aimed at the stem's own line rather than at its far edge.
+         *
+         * `junction` aims a vee at the far edge and leaves the apex's own ink
+         * to cover the rest, which holds while the corner is sharp enough to
+         * miter out past its vertex. This vee's corner is blunter than a
+         * straight-legged k's, because the leg leaves it shallower to have
+         * somewhere to turn upright, so the apex reaches less far -- and on the
+         * Formal Script the vee and the stem finished two units apart. Half a
+         * pen deeper is inside the stem's ink at any weight, and it is where a
+         * written k's vee springs from in any case.
+         */
+        const meet = junction(f, arm, stem - f.half, waist, knee);
+        return finish(f, [
+          ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
+          ink(
+            f,
+            chain(
+              straight(arm, meet),
+              roundCorners(
+                chain(straight(meet, knee), straight(knee, at(foot, 0))),
+                Math.max(f.arch * 0.35, f.least),
+                f.half,
+              ),
+            ),
+            f.end,
+            f.end,
+          ),
+        ]);
+      },
+    },
+  ],
+
   f: [
     {
       id: "descending",
@@ -6421,7 +6518,8 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
       build: (style) => {
         const f = frame(style);
         const radius = Math.max(f.arch * 0.66, f.least);
-        const stem = f.edge + radius;
+        const left = Math.max(f.arch * 0.42, f.least);
+        const stem = f.edge + left;
         const lower = Math.max(f.arch * 0.5, f.least);
         const top = f.crest(f.asc) - radius;
         const base = f.dip(f.desc) + lower;
@@ -6433,19 +6531,23 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
          * listed together: the first turn ended nowhere near where the straight
          * began, the chain had a jump in it, and the letter folded. A chain is
          * a journey, and every piece has to leave where the last one arrived.
+         *
+         * The hook is on the right and the tail on the left, which is the way
+         * round every descending f is drawn: the run starts out over the letter
+         * after this one and finishes under the letter before it.
          */
         return finish(f, [
           ink(
             f,
             chain(
-              turn(at(stem - radius, top), radius, 92, 0),
+              turn(at(stem + radius, top), radius, 88, 180),
               straight(at(stem, top), at(stem, base)),
               turn(at(stem - lower, base), lower, 0, -95),
             ),
             f.end,
             f.end,
           ),
-          crossbar(f, stem - f.arch * 0.5, stem + f.arch * 0.5),
+          crossbar(f, stem - left, stem + f.arch * 0.62),
         ]);
       },
     },

@@ -970,7 +970,7 @@ export const HANDWRITING: Style = {
    * The single-storey a and the tailed l, which is what a hand writes. Nobody
    * draws a two-storey a with a pen unless they are drawing a typeface.
    */
-  forms: { l: "tailed", g: "curled", t: "straight", f: "descending" },
+  forms: { k: "standing", l: "tailed", g: "curled", t: "straight", f: "descending" },
   parts: {
     ...SANS.parts,
     /*
@@ -1043,7 +1043,7 @@ export const FORMAL_SCRIPT: Style = {
   blurb: "A pointed pen held at an angle and moved slowly. Long loops, deep contrast, and a steep even lean.",
   metrics: { ...SANS.metrics, xHeight: 430, ascender: 790, descender: -260, slant: 22 },
   pen: { weight: 96, contrast: 0.58, angle: 42 },
-  forms: { a: "double", g: "curled", l: "tailed", f: "descending", one: "footed" },
+  forms: { k: "standing", a: "double", g: "curled", l: "tailed", f: "descending", one: "footed" },
   parts: {
     ...SANS.parts,
     // Square, for the reason set out on the Handwriting above.
@@ -1095,7 +1095,7 @@ export const CASUAL_SCRIPT: Style = {
   // capitals and its ascenders. See the note on the Handwriting.
   metrics: { ...SANS.metrics, xHeight: 560, capHeight: 690, ascender: 800, descender: -200, slant: 13 },
   pen: { weight: 112, contrast: 0.18, angle: 12 },
-  forms: { g: "curled", t: "straight", y: "straight", f: "descending" },
+  forms: { k: "standing", g: "curled", t: "straight", y: "straight", f: "descending" },
   parts: {
     ...SANS.parts,
     // Square, for the reason set out on the Handwriting above.
@@ -1151,7 +1151,7 @@ export const MONOLINE_SCRIPT: Style = {
   blurb: "One thickness throughout, drawn rather than written. Even joins, round loops, no bounce.",
   metrics: { ...SANS.metrics, xHeight: 505, ascender: 760, descender: -225, slant: 9 },
   pen: { weight: 78, contrast: 0, angle: 0 },
-  forms: { l: "tailed", f: "descending", seven: "barred", four: "open" },
+  forms: { k: "standing", l: "tailed", f: "descending", seven: "barred", four: "open" },
   parts: {
     ...SANS.parts,
     // Square, for the reason set out on the Handwriting above.
