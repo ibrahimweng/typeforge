@@ -822,6 +822,120 @@ export function wavy(
 }
 
 /**
+ * Every upright run in a letter bowed once on its way.
+ *
+ * A hand does not draw a straight line, and this is the difference between a
+ * written stem and a ruled one.
+ *
+ * It is the wave asked for exactly one period across the run, which is not a
+ * shortcut but the only shape that works. A single arc from end to end was the
+ * first go and it is wrong twice over: the run arrives at its line at an angle,
+ * so the square cut across it drops a corner below the line the letter stands
+ * on -- and, worse, it is no longer a *line*, so every piece of machinery that
+ * asks "is the run arriving here straight?" takes its other branch. The
+ * Monoline `x` stopped its arms twenty-eight units above the x-height and its
+ * `a` crested eighteen over, by those same amounts whether the bow was deep or
+ * shallow, which is what says a different path is being taken rather than a
+ * curve followed.
+ *
+ * A period leaves the line along the line and comes back to it the same way, so
+ * both ends keep their heading and their straight stub, and everything
+ * downstream sees what it saw before.
+ *
+ * Uprights only. An arm is a straight stroke stopping on a line and there is
+ * nothing in a hand that bows one; a flat run *is* a line -- the foot of an
+ * `L`, the bar of a `Z` -- and bowing it lifts the whole of it off the line it
+ * was drawing.
+ */
+export function bowRuns(spine: Spine, bow: number, penHalf: number): Spine {
+  if (bow <= 0) return spine;
+  /*
+   * A run that is the whole of its own stroke, and nothing chained.
+   *
+   * Because a recipe solves its other strokes against this one where this one
+   * *is*: the standing `k` aims its vee at the stem, the vertex-down `M` sits
+   * its middle on the two it stands between. Bowing afterwards moves the stem
+   * out from under them -- the Monoline `k` came off the pen in two pieces and
+   * the `M` folded on two faces at two weights -- and the fix is not a smaller
+   * bow, because what breaks is where the meeting was solved and not how far
+   * the stroke moved.
+   *
+   * A stem drawn on its own has nothing fitted to it and is free to curve. That
+   * is most of the uprights in the alphabet, which is enough: what reads as
+   * written is the long strokes not being ruled, and the ones inside a junction
+   * are the short ones.
+   */
+  if (spine.segments.length !== 1 || spine.closed) return spine;
+  const reach = bow * penHalf;
+  const count = spine.segments.length;
+  let moved = false;
+  const segments = spine.segments.flatMap((segment, index) => {
+    if (segment.kind !== "line") return [segment];
+    const dx = segment.to.x - segment.from.x;
+    const dy = segment.to.y - segment.from.y;
+    const mine = Math.hypot(dx, dy);
+    const bows = mine >= penHalf * 3 && Math.abs(dy) > Math.abs(dx) * UPRIGHT_ENOUGH;
+    /*
+     * Through the book like the wave's, and asked of every straight piece
+     * whether it bows or not, so the two stay in step: see `counted`. A run
+     * that bowed at one weight and not at another would deal the rest of the
+     * letter's readings out to the wrong runs, and the figures came off the
+     * axis with twenty-four of them holding a different number of nodes at one
+     * weight than at the next.
+     *
+     * The book has one cursor, so a face that asked for a wave *and* a bow
+     * would read every run twice. None does -- each of these returns before
+     * the book is touched when its own control is at nothing -- and the day one
+     * does, this is where the two have to be brought together.
+     */
+    const whole = counted(bows ? mine : null);
+    // The book decides, and nothing after it. Asking `bows` again here is what
+    // the book is for: whether a run is long enough to bow, and whether it is
+    // upright enough, both move with the weight -- the letter is drawn wider at
+    // the Black and the pen is thicker -- so a run that bowed at one weight
+    // stopped bowing at the next and the figures held fifty nodes at two
+    // weights and forty at the other two.
+    if (whole === null) return [segment];
+    const before = index > 0 ? spine.segments[index - 1] : spine.closed ? spine.segments[count - 1] : null;
+    const after =
+      index < count - 1 ? spine.segments[index + 1] : spine.closed ? spine.segments[0] : null;
+    moved = true;
+    return ripple(
+      segment,
+      // Counted off its own length at its own wavelength, which is what asks
+      // for one period and no more.
+      whole,
+      mine,
+      Math.min(reach, mine * MOST_OF_A_RUN),
+      penHalf,
+      keeps(segment, before, penHalf, "start"),
+      keeps(segment, after, penHalf, "end"),
+      // Read off where the run points, not off which way the recipe drew it: a
+      // recipe draws some stems up and some down and it means nothing, and
+      // bowed by the direction of travel the two stems of an `n` curve away
+      // from each other.
+      dy < 0 ? -1 : 1,
+      at(dx / mine, dy / mine),
+    );
+  });
+  return moved ? { closed: spine.closed, segments } : spine;
+}
+
+/** How far off its own chord a bowed run may swing, as a share of that chord. */
+const MOST_OF_A_RUN = 0.05;
+
+/**
+ * How much more upright than flat a run has to be before it is bowed at all.
+ *
+ * Three rather than two, and the two letters that moved it are the `k` and the
+ * `x`. A leg steep enough to pass at two still meets its stem at a shallow
+ * enough angle that the corner cut needs most of the run to work in, and bowed
+ * it does not get it: the Monoline `k` and the Handwriting `x` each came off
+ * the pen in two pieces. A stem is upright; a leg is a diagonal however steep.
+ */
+const UPRIGHT_ENOUGH = 3;
+
+/**
  * How much of a run has to be left straight at one end for the corner there to
  * survive.
  *

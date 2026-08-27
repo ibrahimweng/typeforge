@@ -776,7 +776,20 @@ export const BRUSH: Style = {
    */
   effects: {
     ...noEffects(),
-    press: { on: true, at: "middle", amount: 0.34 },
+    /*
+     * The press is off, and it is off because it severs letters.
+     *
+     * It carves wedges out of the finished outline, and where a stroke is
+     * buried in another the ray it measures against comes back with an edge
+     * that is not this stroke's -- so the wedge is laid across ink belonging to
+     * something else. Thirty letters of this face came out of `proof` in more
+     * than one piece, which is the drawing this application exports.
+     *
+     * See "draws every letter of every carved face as one solid" in
+     * `letters.test.ts`, which is the test that was missing: the one above it
+     * asks `drawLetter`, and no effect is applied until `proof`.
+     */
+    press: { ...noEffects().press },
     rough: { on: true, amplitude: 0.03, wavelength: 1.2, reach: "all", seed: 11 },
   },
 };
@@ -953,7 +966,7 @@ export const HANDWRITING: Style = {
   ...SANS,
   name: "Handwriting",
   family: "script",
-  blurb: "A plain joined hand. One thickness, a slight lean, and a line that does not sit quite still.",
+  blurb: "A plain joined hand. A line that bows as it goes, a pen that swells on the downstroke, and a lean that will not sit quite still.",
   /*
    * The capitals come down and the ascenders go up, to leave room for the
    * bounce.
@@ -965,7 +978,7 @@ export const HANDWRITING: Style = {
    * not bounce. The gap has to be wider than the bounce, and it is.
    */
   metrics: { ...SANS.metrics, xHeight: 520, capHeight: 700, ascender: 790, slant: 6 },
-  pen: { weight: 84, contrast: 0, angle: 0 },
+  pen: { weight: 84, contrast: 0.22, angle: 28 },
   /*
    * The single-storey a and the tailed l, which is what a hand writes. Nobody
    * draws a two-storey a with a pen unless they are drawing a typeface.
@@ -1015,6 +1028,7 @@ export const HANDWRITING: Style = {
       // separates this from the three below rather than an omission.
       loop: 0,
       irregularity: 1,
+      bow: 0.8,
     },
   },
   /*
@@ -1070,6 +1084,7 @@ export const FORMAL_SCRIPT: Style = {
       flat: 0.04,
       loop: 1.8,
       irregularity: 0.12,
+      bow: 0.6,
     },
   },
   /*
@@ -1083,7 +1098,20 @@ export const FORMAL_SCRIPT: Style = {
    */
   effects: {
     ...noEffects(),
-    press: { on: true, at: "middle", amount: 0.3 },
+    /*
+     * The press is off, and it is off because it severs letters.
+     *
+     * It carves wedges out of the finished outline, and where a stroke is
+     * buried in another the ray it measures against comes back with an edge
+     * that is not this stroke's -- so the wedge is laid across ink belonging to
+     * something else. Thirty letters of this face came out of `proof` in more
+     * than one piece, which is the drawing this application exports.
+     *
+     * See "draws every letter of every carved face as one solid" in
+     * `letters.test.ts`, which is the test that was missing: the one above it
+     * asks `drawLetter`, and no effect is applied until `proof`.
+     */
+    press: { ...noEffects().press },
   },
 };
 
@@ -1100,11 +1128,11 @@ export const CASUAL_SCRIPT: Style = {
   ...SANS,
   name: "Casual Script",
   family: "script",
-  blurb: "A felt tip moving fast. High joins, short reach, small loops and a line that will not sit still.",
+  blurb: "A felt tip moving fast. High joins, short reach, small loops, and a line that bows and will not sit still.",
   // Bounces hardest of the four, so it needs the most room between its
   // capitals and its ascenders. See the note on the Handwriting.
   metrics: { ...SANS.metrics, xHeight: 560, capHeight: 690, ascender: 800, descender: -200, slant: 13 },
-  pen: { weight: 112, contrast: 0.18, angle: 12 },
+  pen: { weight: 112, contrast: 0.3, angle: 22 },
   forms: { k: "standing", g: "curled", t: "straight", y: "straight", f: "descending" },
   parts: {
     ...SANS.parts,
@@ -1121,6 +1149,7 @@ export const CASUAL_SCRIPT: Style = {
       flat: 0.3,
       loop: 0.7,
       irregularity: 1.6,
+      bow: 0.9,
     },
   },
   /*
@@ -1231,6 +1260,7 @@ export const MONOLINE_SCRIPT: Style = {
       // Nothing. A drawn script is drawn on a line and stays on it, and this is
       // the setting that says so.
       irregularity: 0,
+      bow: 0.2,
     },
   },
   /*

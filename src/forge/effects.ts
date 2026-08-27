@@ -37,6 +37,7 @@ import {
 } from "@/font/effects";
 import type { CutScale } from "./cut";
 import { alongSpine } from "./shapes";
+import { penReach, reachAlong } from "./sweep";
 import type { Stroke } from "./types";
 
 export {
@@ -78,6 +79,50 @@ const PRESS_SAMPLES = 24;
  * follow every curve it is given.
  */
 const RAY_STEPS = 4;
+
+/**
+ * The most of a stroke's own half-width one flank may cut away.
+ *
+ * Both flanks cut, so what is left where the hand was lightest is one part in
+ * five of what the stroke had. A stroke can be taken to a hairline by pressing
+ * and no further: a press that meets itself in the middle is not a light touch,
+ * it is a stroke that has been cut in two.
+ */
+const MOST_OF_A_STROKE = 0.9;
+
+/**
+ * How far past its own half-width a ray may find ink before it has to be
+ * treated as having escaped.
+ *
+ * A stroke is swept by a pen of one width, so its flank is half that from the
+ * spine -- further out where a join or a slab has pushed it, and nearer where
+ * contrast has pulled it in. A ray that comes back with much more than that did
+ * not find this stroke's edge: it left through a junction and hit the far side
+ * of the letter, and a wedge built on it is a band laid across ink belonging to
+ * something else.
+ *
+ * Two and a half was the first number and it is a long way past any real flank.
+ * The Formal Script's `n` came out with a notch cut through its shoulder, its
+ * `i` bitten into and its `l` cut in two at the baseline -- all three at
+ * junctions, and all three still there with the cut set to nothing, which is
+ * what says the depth was never what was wrong.
+ */
+const ESCAPED = 1.6;
+
+/**
+ * How wide the pen really is across one direction, which is not half its
+ * weight on any face that has contrast.
+ *
+ * The same measurement the flare takes to find where a stroke's own edge is,
+ * and it is what the ray has to be believed against. Bounded by a share of the
+ * *nominal* stem, a hairline on a face with contrast is under half of it, so a
+ * ray that had escaped through a junction and come back with the far side of
+ * the letter still looked plausible.
+ */
+function penHalfAcross(stroke: Stroke, normal: Vec2): number {
+  const shift = reachAlong({ x: -normal.y, y: normal.x }, penReach(stroke.pen));
+  return Math.hypot(shift.x, shift.y);
+}
 
 /**
  * Whether any effect that is on can do anything to this ink.
@@ -478,8 +523,9 @@ function pressWedges(
     if (stroke.spine.closed) continue;
     const walked = alongSpine(stroke.spine, PRESS_SAMPLES);
     if (walked.length < 3) continue;
+    // Still wanted, for the ray's own reach: a hit further off than this came
+    // through a gap and found the far side of the letter.
     const half = Math.max(stroke.pen.weight, stem) * 0.5;
-    const most = press.amount * half;
     /*
      * Only the ends that are really ends.
      *
@@ -494,7 +540,7 @@ function pressWedges(
     for (const side of [1, -1] as const) {
       const flank: Array<{ inner: Vec2; outer: Vec2 } | null> = [];
       for (let at = 0; at < walked.length; at++) {
-        flank.push(flankAt(walked, at, side, most, press.at, opens, edges, half));
+        flank.push(flankAt(walked, at, side, press.amount, press.at, opens, edges, half, stroke));
       }
       for (let at = 0; at + 1 < flank.length; at++) {
         const here = flank[at];
@@ -526,11 +572,12 @@ function flankAt(
   walked: Vec2[],
   at: number,
   side: 1 | -1,
-  most: number,
+  press: number,
   when: HeaviestAt,
   opens: { start: boolean; end: boolean },
   edges: Vec2[][],
   half: number,
+  stroke: Stroke,
 ): { inner: Vec2; outer: Vec2 } | null {
   const before = walked[Math.max(0, at - 1)];
   const after = walked[Math.min(walked.length - 1, at + 1)];
@@ -542,10 +589,28 @@ function flankAt(
   const here = walked[at];
 
   const hit = rayHitDistance(edges, here, normal);
-  if (!Number.isFinite(hit) || hit > half * 2.5) return null;
+  // Believed against the pen this stroke is actually swept with, not against
+  // the face's nominal stem: see `penHalfAcross`.
+  const pen = penHalfAcross(stroke, normal);
+  if (!Number.isFinite(hit) || hit > Math.max(pen, half * 0.25) * ESCAPED) return null;
 
   const u = at / (walked.length - 1);
-  const thin = Math.min(most * lightness(when, u, opens), hit * 0.85);
+  /*
+   * How far to cut is measured too, and against the ink that is really there.
+   *
+   * Taken as a share of the nominal stem it is a fixed number of units cut into
+   * whatever the stroke happens to be, and on a face with contrast the stroke
+   * is not the stem: the Formal Script's hairlines are under half its stem, so
+   * a cut of a third of the stem took two thirds of the hairline from each side
+   * and met in the middle. That face ships with the press on, and its `n` came
+   * out with a gap through the shoulder and its `l` cut in two at the baseline.
+   *
+   * A share of what the ray found instead, so the stroke keeps the same
+   * fraction of itself wherever it is thin, and the two flanks together can
+   * never take more of it than there is.
+   */
+  const thin =
+    Math.min(hit, pen) * Math.min(press * lightness(when, u, opens), MOST_OF_A_STROKE);
   return {
     inner: { x: here.x + normal.x * (hit - thin), y: here.y + normal.y * (hit - thin) },
     // Just past the edge that was measured, so the cut always starts in air.

@@ -130,6 +130,28 @@ export interface Script {
    * it was drawn could not be cached, compared with itself, or exported.
    */
   irregularity: number;
+  /**
+   * How far a straight run bows on its way, in stem widths.
+   *
+   * A hand does not draw a straight line, and this is the difference between a
+   * written stem and a plotted one. Nought is the ruled line every other face
+   * here is built from.
+   *
+   * In stem widths like the reach and the loop, and for the same reason -- but
+   * it was written as a fraction of the run's own length first, on the
+   * reasoning that a long ascender and a short arm should bow by the same
+   * *shape*. What that does is bow the long runs furthest in units, and a hand
+   * does the opposite: the wrist travels about as far off the line whatever it
+   * is drawing.
+   *
+   * It also broke the loops, which is the part that showed. An eye is struck
+   * straight down from the end of the ascender it turns round and has to land
+   * back on that ascender; a Monoline stem bowed by three per cent of a
+   * nine-hundred-unit run has moved twenty-seven units at the middle against a
+   * pen of twenty-eight, so the eye came down beside its own stem. `minimum`
+   * came off that face unreadable.
+   */
+  bow: number;
 }
 
 export const NO_SCRIPT: Script = {
@@ -139,6 +161,7 @@ export const NO_SCRIPT: Script = {
   flat: 0.2,
   loop: 0,
   irregularity: 0,
+  bow: 0,
 };
 
 /**

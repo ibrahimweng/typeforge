@@ -332,6 +332,54 @@ describe("letters in one piece", () => {
     expect(apart).toEqual([]);
   }, 60_000);
 
+  /*
+   * And drawn as the face really ships it, with the tool's own marks on.
+   *
+   * The test above asks `drawLetter`, which draws the letter and stops. Every
+   * effect is applied after that and only by `proof`, so nothing here saw them
+   * -- and the press does not add ink, it carves it away, which is the one
+   * operation in the engine that can take a letter apart.
+   *
+   * It did. The Formal Script ships with the press on and its `n` had a notch
+   * cut through the shoulder, its `i` was bitten into and its `l` was in two
+   * pieces at the baseline, in the drawing this application exports. The cut
+   * was being placed against whatever a ray fired from the spine found first,
+   * and at a junction that ray leaves through the gap between two strokes and
+   * comes back with the far side of the letter -- so the wedge was laid across
+   * ink belonging to something else.
+   *
+   * The press is off on both of those faces now, and this is what holds it off:
+   * turn it back on and this test says so. Asked of every face that puts a mark
+   * on rather than only of the ones that carve, because they all work on the
+   * same outline and the cost of asking is one drawing per letter.
+   *
+   * Except a face that skips. A dry brush leaves the paper bare in places and
+   * the letter really is in several pieces afterwards -- that is the whole of
+   * what the effect draws, so counting pieces cannot say anything about it.
+   */
+  it("draws every letter of every marked face as one solid", async () => {
+    const { ready } = await import("@/font/boolean");
+    const { piecesOf } = await import("./cut");
+    const { proof } = await import("./document");
+    const { anyEffect } = await import("@/font/effects");
+    await ready();
+
+    const marked = STARTING_POINTS.filter(
+      (one) => one.effects && anyEffect(one.effects) && !one.effects.skip.on);
+    expect(marked.length).toBeGreaterThan(0);
+
+    const apart: string[] = [];
+    for (const style of marked) {
+      const forge = startFrom(style);
+      for (const name of solid) {
+        const drawn = proof(name, forge);
+        if (!drawn || drawn.contours.length === 0) continue;
+        if (piecesOf(drawn.contours) > 1) apart.push(`${style.name} ${name}`);
+      }
+    }
+    expect(apart).toEqual([]);
+  }, 180_000);
+
   it("keeps the ink it was handed when a drawing is fused", async () => {
     /*
      * The other way a drawing can fail, and the quieter one.

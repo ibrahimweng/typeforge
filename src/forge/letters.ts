@@ -35,6 +35,7 @@ import {
 import { terminalFor } from "./style";
 import {
   bowl,
+  bowRuns,
   bowlBetween,
   bowlPoint,
   reversed,
@@ -6903,6 +6904,25 @@ export function joiningHigh<T>(which: { entry?: boolean; exit?: boolean }, run: 
  */
 function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
   const script = style.parts.script;
+  /*
+   * The bow first, and before anything asks whether this letter joins.
+   *
+   * A written line is bowed whether or not it reaches a neighbour, so a digit,
+   * a comma and the four capitals that hand on to nothing all take it -- and
+   * the letters that do join are bowed before their loops are found and their
+   * joins are planned, so both are struck against the letter as it really ends
+   * up rather than against a straight one it never was.
+   */
+  if (script.on && script.bow > 0) {
+    const half = style.pen.weight / 2;
+    recipe = {
+      ...recipe,
+      strokes: recipe.strokes.map((stroke) => ({
+        ...stroke,
+        spine: bowRuns(stroke.spine, script.bow, half),
+      })),
+    };
+  }
   /*
    * What the letter has, less whatever this drawing is doing without.
    *
