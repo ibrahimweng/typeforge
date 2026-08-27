@@ -776,20 +776,7 @@ export const BRUSH: Style = {
    */
   effects: {
     ...noEffects(),
-    /*
-     * The press is off, and it is off because it severs letters.
-     *
-     * It carves wedges out of the finished outline, and where a stroke is
-     * buried in another the ray it measures against comes back with an edge
-     * that is not this stroke's -- so the wedge is laid across ink belonging to
-     * something else. Thirty letters of this face came out of `proof` in more
-     * than one piece, which is the drawing this application exports.
-     *
-     * See "draws every letter of every carved face as one solid" in
-     * `letters.test.ts`, which is the test that was missing: the one above it
-     * asks `drawLetter`, and no effect is applied until `proof`.
-     */
-    press: { ...noEffects().press },
+    press: { on: true, at: "middle", amount: 0.34 },
     rough: { on: true, amplitude: 0.03, wavelength: 1.2, reach: "all", seed: 11 },
   },
 };
@@ -1098,20 +1085,7 @@ export const FORMAL_SCRIPT: Style = {
    */
   effects: {
     ...noEffects(),
-    /*
-     * The press is off, and it is off because it severs letters.
-     *
-     * It carves wedges out of the finished outline, and where a stroke is
-     * buried in another the ray it measures against comes back with an edge
-     * that is not this stroke's -- so the wedge is laid across ink belonging to
-     * something else. Thirty letters of this face came out of `proof` in more
-     * than one piece, which is the drawing this application exports.
-     *
-     * See "draws every letter of every carved face as one solid" in
-     * `letters.test.ts`, which is the test that was missing: the one above it
-     * asks `drawLetter`, and no effect is applied until `proof`.
-     */
-    press: { ...noEffects().press },
+    press: { on: true, at: "middle", amount: 0.3 },
   },
 };
 

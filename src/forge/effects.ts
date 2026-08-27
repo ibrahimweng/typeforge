@@ -20,7 +20,7 @@
  */
 
 import { contourArea, flattenContour, rayHitDistance, reverseContour } from "@/font/geometry";
-import { loaded, subtract, unite, type Roles } from "@/font/boolean";
+import { intersect, loaded, subtract, unite, type Roles } from "@/font/boolean";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import {
   anyEffect,
@@ -36,8 +36,8 @@ import {
   type RoughReach,
 } from "@/font/effects";
 import type { CutScale } from "./cut";
-import { alongSpine } from "./shapes";
-import { penReach, reachAlong } from "./sweep";
+import { alongSpine, spineLength } from "./shapes";
+import { penReach, reachAlong, sweep } from "./sweep";
 import type { Stroke } from "./types";
 
 export {
@@ -68,7 +68,25 @@ const SAMPLES = 64;
  * -- the quads between them are what get subtracted, and they were never going
  * to show the difference.
  */
-const PRESS_SAMPLES = 24;
+/**
+ * How closely the flank is walked, at the least and at the most.
+ *
+ * The strip is quads between one sample and the next, and a quad has straight
+ * sides. On a straight run that is exact; on a curve the sides cut the chord,
+ * and if the chord is long against the pen they cut across the stroke instead
+ * of along it. Twenty-four samples is plenty for a stem and nowhere near enough
+ * for the long turn of a `G`: the Formal Script's came out of `proof` as two
+ * fragments of fifteen hundred and twenty-four hundred units with the body of
+ * the letter gone.
+ *
+ * So the count comes off the run's own length against the pen that draws it,
+ * which is what decides how long a chord may be. The bounds are there to keep
+ * a dot from costing twenty-four rays and a swash from costing a thousand.
+ */
+const FEWEST_SAMPLES = 24;
+const MOST_SAMPLES = 160;
+/** How much of a half-pen one step along the flank may cover. */
+const STEP_OF_A_PEN = 0.35;
 
 /**
  * How finely the outline is flattened for those rays to hit.
@@ -198,7 +216,17 @@ export function effectInk(
     // file.
     if (canCarve) shape = unite(shape, "winding", "whole");
   }
-  return shape;
+  /*
+   * And the floor swept, once, after all of them.
+   *
+   * Every tool here works on the whole outline, and two of them can leave a
+   * speck behind: the press cuts a straight band across an outline that steps
+   * at every junction, and the roughening carries an edge across itself where a
+   * stroke is thin. Done after the press alone it caught the press's; the
+   * Brush's `e`, `f`, `k`, `u`, `v` and `w` kept theirs, because the wander
+   * comes afterwards and makes its own.
+   */
+  return canCarve ? swept(shape, stem) : shape;
 }
 
 /** How many points the finished letter is made of, for the proofing panel. */
@@ -494,6 +522,54 @@ function skipTool(strokes: Stroke[], skip: Effects["skip"], stem: number): Conto
  * has contrast and the flank is not where the spine says it is: the cut starts
  * outside the letter in every case and stops exactly where it is told.
  */
+/**
+ * The specks a cut leaves behind, taken off the floor.
+ *
+ * A wedge is a straight strip laid along one flank, and a letter's flank is not
+ * straight where two strokes meet: the outline steps in and out at every
+ * junction, and the strip cuts across the step and leaves the little triangle
+ * beyond it standing on its own. Sixteen letters of the Formal Script came out
+ * of `proof` in more than one piece and every extra piece was one of these --
+ * the `v` shed twelve square units out of eighty thousand, the `h` two of
+ * thirty-one, and they sit in the notch under a shoulder or beside a stem where
+ * nothing about the drawing wanted an island.
+ *
+ * Not fixed by cutting less. The strip cuts across the step wherever the step
+ * is, so a shallower cut moves the speck rather than removing it; a strip that
+ * followed the outline instead of running straight would be a different effect
+ * from this one. What is wrong is not the depth, it is that a thinning tool has
+ * left a crumb, and a crumb is not something the press is entitled to draw.
+ *
+ * So they are dropped, and the bound is measured rather than chosen. The
+ * largest speck any of the sixteen faces sheds is under seven hundred square
+ * units; the smallest mark any of them means to draw is the dot of an `i`, at
+ * two thousand two hundred on the Formal Script and three thousand four on the
+ * Brush. An eighth of the stem squared falls between the two on every face --
+ * eleven hundred and twenty-two hundred respectively -- which is the gap this
+ * sits in and not a number with a reason of its own. The test holds both ends
+ * of it: no letter in more pieces than it was drawn in, and the `i` and the `j`
+ * still keeping their dots.
+ *
+ * Only the outer contours are looked at, so a counter this size is left alone:
+ * filling a hole is as wrong as leaving an island.
+ */
+function swept(shape: Contour[], stem: number): Contour[] {
+  if (shape.length < 2) return shape;
+  const areas = shape.map((contour) => contourArea(contour));
+  let widest = 0;
+  for (let at = 1; at < areas.length; at++) {
+    if (Math.abs(areas[at]) > Math.abs(areas[widest])) widest = at;
+  }
+  // Which way round this shape draws its solids, read off the biggest of them,
+  // which is the letter's own body.
+  const solid = Math.sign(areas[widest]);
+  const least = stem * stem * 0.125;
+  const kept = shape.filter(
+    (_, at) => !(Math.sign(areas[at]) === solid && Math.abs(areas[at]) < least),
+  );
+  return kept.length > 0 ? kept : shape;
+}
+
 function pressWedges(
   ink: Contour[],
   strokes: Stroke[],
@@ -521,7 +597,14 @@ function pressWedges(
 
   for (const stroke of strokes) {
     if (stroke.spine.closed) continue;
-    const walked = alongSpine(stroke.spine, PRESS_SAMPLES);
+    const reach = Math.max(stroke.pen.weight, stem) * 0.5;
+    const walked = alongSpine(
+      stroke.spine,
+      Math.min(
+        MOST_SAMPLES,
+        Math.max(FEWEST_SAMPLES, Math.ceil(spineLength(stroke.spine) / (reach * STEP_OF_A_PEN))),
+      ),
+    );
     if (walked.length < 3) continue;
     // Still wanted, for the ray's own reach: a hit further off than this came
     // through a gap and found the far side of the letter.
@@ -537,26 +620,76 @@ function pressWedges(
     const opens = { start: stroke.start.open === true, end: stroke.end.open === true };
     if (!opens.start && !opens.end) continue;
 
+    const strip: Contour[] = [];
     for (const side of [1, -1] as const) {
       const flank: Array<{ inner: Vec2; outer: Vec2 } | null> = [];
       for (let at = 0; at < walked.length; at++) {
         flank.push(flankAt(walked, at, side, press.amount, press.at, opens, edges, half, stroke));
       }
-      for (let at = 0; at + 1 < flank.length; at++) {
-        const here = flank[at];
-        const next = flank[at + 1];
-        if (!here || !next) continue;
-        // Wound one way whichever flank it is on. The two sides put their
-        // normals in opposite directions, so their quads come out wound
-        // opposite -- and a union told to read winding takes the ones going the
-        // other way for holes and cancels the strip against itself.
-        wedges.push(oneWay(poly([here.inner, here.outer, next.outer, next.inner])));
+      /*
+       * One band per unbroken run of flank, and not one quad per pair of
+       * samples.
+       *
+       * A quad has straight sides and a flank does not, so on a curve every
+       * quad cuts its own chord and the strip is a chain of overlapping
+       * lozenges rather than a band. Where they overlap they pile winding on
+       * winding, and the boolean has to make sense of a hundred of them at once
+       * -- which it does until the letter is a long turn under a broad pen, and
+       * then it does not: the Formal Script `E` and `F` came back with their
+       * bodies gone and four thousand units of fragment where the letter was.
+       *
+       * Walked as one polygon -- out along the inner edge and back along the
+       * outer -- there is nothing to overlap and nothing to add up. The chords
+       * are still chords, which is what the sample count above is for.
+       */
+      let run: Array<{ inner: Vec2; outer: Vec2 }> = [];
+      const close = () => {
+        if (run.length >= 2) {
+          strip.push(oneWay(poly([...run.map((one) => one.inner), ...run.map((one) => one.outer).reverse()])));
+        }
+        run = [];
+      };
+      for (const edge of flank) {
+        if (edge) run.push(edge);
+        else close();
       }
+      close();
     }
+    if (strip.length === 0) continue;
+    /*
+     * Clipped to the stroke it is thinning, and this is what makes it safe.
+     *
+     * The band has to be measured against the *letter's* outline, because that
+     * is the only place the ink really stops -- contrast pulls a flank in, a
+     * join pushes it out, and a guess at half a pen took the bowl off an `a`
+     * three times over. But the ink out there is not always this stroke's: a
+     * letter is strokes laid over one another, and where two overlap the band
+     * runs on through the neighbour. Thinning an `n`'s stem took the flag off
+     * its own lead-in; thinning a `u` cut along the top of its lead-out and
+     * left fifteen thousand square units of it lying beside the letter.
+     *
+     * Measuring against the stroke's own sweep instead does not work either,
+     * and the letters say so plainly: forty-seven of them came apart, because a
+     * band that stops at a buried stroke's own flank is a slot cut through the
+     * middle of the letter. Both halves are wanted -- measured on the letter,
+     * spent on the stroke.
+     */
+    if (!loaded()) {
+      wedges.push(...strip);
+      continue;
+    }
+    wedges.push(...intersect(strip, sweep(stroke), "winding").map(oneWay));
   }
-  // Fused before they are taken away, so what is subtracted is one strip down
-  // each flank rather than a hundred overlapping slivers.
-  return wedges.length > 0 && loaded() ? unite(wedges, "winding", "whole") : wedges;
+  /*
+   * Handed over as they are. They used to be fused first, so that what was
+   * taken away was one strip down each flank rather than a hundred overlapping
+   * slivers -- and that was right while a flank *was* a hundred slivers. It is
+   * one band per run now, clipped to its own stroke, and fusing them turns a
+   * set the subtraction can read into one it cannot: the Formal Script `E` and
+   * the Brush `s` came back *as* their own wedges, a few thousand units of band
+   * where the letter had been.
+   */
+  return wedges;
 }
 
 /**

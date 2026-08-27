@@ -378,6 +378,21 @@ describe("letters in one piece", () => {
       }
     }
     expect(apart).toEqual([]);
+
+    /*
+     * And the other end of the same rule. What keeps a letter in one piece is a
+     * sweep that drops any speck the tools shed, and a sweep is one threshold
+     * away from taking the dot off an `i`. The test above cannot see that -- it
+     * excludes the two letters that are meant to be in two pieces -- so it is
+     * asked here.
+     */
+    for (const style of marked) {
+      const forge = startFrom(style);
+      for (const name of ["i", "j"]) {
+        const drawn = proof(name, forge)!;
+        expect([style.name, name, piecesOf(drawn.contours)]).toEqual([style.name, name, 2]);
+      }
+    }
   }, 180_000);
 
   it("keeps the ink it was handed when a drawing is fused", async () => {
