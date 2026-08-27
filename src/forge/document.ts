@@ -33,6 +33,7 @@ import {
   type Tiles,
 } from "./kit";
 import { joiningHigh, joiningWithout, recipeOf } from "./letters";
+import type { Ends } from "./script";
 import type { Imported } from "./exchange";
 import { weightClassOf, weightedStyle, type Family } from "./family";
 import { partsUsedBy, type PartName } from "./parts";
@@ -882,16 +883,27 @@ export function drawnHigh(letter: string, which: "entry" | "exit", forge: Forge)
 }
 
 /**
- * The same letter with one half of its join left off, for the ends of a word.
+ * The same letter with a half of its join left off, for the sides that have
+ * nothing to meet.
  *
- * `begin` is the drawing for a letter that starts one and so has nothing to
- * reach back to; `end` is for the letter that finishes one. Both are reached
- * only through the feature, and both are cut and cast like any other letter for
- * the reason `drawnHigh` gives.
+ * `begin` is the drawing for a letter with nothing before it and so nothing to
+ * reach back to; `end` is for the letter with nothing after it; `alone` is a
+ * word of one letter, which has neither and comes out as the plain roman
+ * letter the join layer never touched. All three are reached only through the
+ * feature, and all three are cut and cast like any other letter for the reason
+ * `drawnHigh` gives.
  */
-export function drawnEnds(letter: string, which: "begin" | "end", forge: Forge): Drawn | null {
+export type Without = "begin" | "end" | "alone";
+
+const WITHOUT: Record<Without, Partial<Ends>> = {
+  begin: { entry: false },
+  end: { exit: false },
+  alone: { entry: false, exit: false },
+};
+
+export function drawnEnds(letter: string, which: Without, forge: Forge): Drawn | null {
   return remembered(edges, forge, `${letter}.${which}`, () =>
-    joiningWithout(which === "begin" ? { entry: false } : { exit: false }, () =>
+    joiningWithout(WITHOUT[which], () =>
       drawLetter(
         letter,
         styleFor(letter, forge),

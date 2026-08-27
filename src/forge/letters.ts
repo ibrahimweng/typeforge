@@ -6897,7 +6897,15 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
     entry: has.entry && without.entry !== false,
     exit: has.exit && without.exit !== false,
   };
-  if (!script.on || enclosing || (!ends.entry && !ends.exit)) return recipe;
+  /*
+   * Asked on what the letter *has*, not on what this drawing kept. A letter
+   * that never joins -- a capital that hands on to nothing, a digit, a comma --
+   * has no business in the join layer and is spaced as the roman letter it is.
+   * A letter that joins and has been asked to give up both halves is still a
+   * letter of a joined face, and has to be spaced like one: it goes through,
+   * and comes out with the room either side and no strokes in it.
+   */
+  if (!script.on || enclosing || (!has.entry && !has.exit)) return recipe;
   const f = frame(style);
   /*
    * Off its line first, then the join, then over into its room.

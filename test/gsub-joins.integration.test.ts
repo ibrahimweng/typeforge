@@ -126,14 +126,13 @@ suite("a joined face carries its joins into the file", () => {
    * the base's: the letter before it still hands over onto the same x.
    */
   it(
-    "narrows a word-boundary alternate only on the side that lost its stroke",
+    "narrows a boundary alternate only on the side that lost its stroke",
     async () => {
       const bytes = await exported(SCRIPT.name);
       const report = inspectFont(bytes);
       const widths = report.advanceWidths ?? {};
       const left = report.sidebearings ?? {};
       const right = report.rightEdges ?? {};
-      const lowercase = (name: string) => /^[a-z]\./.test(name);
 
       const begun = Object.keys(widths).filter((n) => n.endsWith(".begin"));
       for (const name of begun) {
@@ -145,55 +144,89 @@ suite("a joined face carries its joins into the file", () => {
         ]);
       }
 
-      const ended = Object.keys(widths).filter((n) => n.endsWith(".end") && lowercase(n));
+      const ended = Object.keys(widths).filter((n) => n.endsWith(".end"));
       for (const name of ended) {
         const letter = name.split(".")[0];
         expect([name, widths[name] < widths[letter]]).toEqual([name, true]);
         expect([name, left[name]]).toEqual([name, left[letter]]);
       }
 
-      // Every lowercase letter has both, and only lowercase begins a word --
-      // nothing ever joins *into* a capital.
+      /*
+       * A word of one letter gave up both halves, and it gave up exactly what
+       * the two half-drawings gave up between them. The arithmetic is exact
+       * because all three are spaced by the same join layer, standing in the
+       * sidebearing on whichever side has no stroke on it -- which is the
+       * point, and was not free: a letter with neither end used to fall
+       * through to the plain roman path and be spaced off its own raw ink, and
+       * a lone Monoline `f` came out at 809 units against the 460 the same
+       * letter takes everywhere else in the face.
+       *
+       * Checked on the advance and not on the ink, which was the first way
+       * this was written and says nothing here: these faces have letters whose
+       * ink legitimately hangs outside their advance on either side -- a
+       * looped ascender, a crossbar, the tail under that same Monoline `f`,
+       * which sits 127 units past its own advance before anything is taken off
+       * it. Ink outside the box is what a joined face looks like; the advance
+       * is what has to be right.
+       *
+       * To within a unit, and only because of where it is being read: the
+       * engine's own arithmetic is exact, as the unit tests hold it to, and
+       * this is four advances that were each rounded to a whole unit on the way
+       * into the file. Three roundings do not compose.
+       */
+      const lone = Object.keys(widths).filter((n) => n.endsWith(".alone"));
+      for (const name of lone) {
+        const letter = name.split(".")[0];
+        const want = widths[`${letter}.begin`] + widths[`${letter}.end`] - widths[letter];
+        expect([name, Math.abs(widths[name] - want) <= 1]).toEqual([name, true]);
+        expect([name, widths[name] < widths[`${letter}.begin`]]).toEqual([name, true]);
+      }
+
+      /*
+       * Every lowercase letter has all three; only lowercase begins a word or
+       * stands as one, because nothing ever joins *into* a capital. The
+       * twenty-two capitals that hand on are in the last drawing only, and by
+       * the same rule as the lowercase -- there is no second spacing path for
+       * them any more.
+       */
       expect(begun).toHaveLength(26);
-      expect(ended).toHaveLength(26);
+      expect(ended).toHaveLength(26 + 22);
+      expect(lone).toHaveLength(26);
     },
     FONT_SUITE_TIMEOUT,
   );
 
   /*
-   * A capital is the exception, and it is the join layer's own doing: a
-   * capital only ever hands on, so taking its exit away leaves it with no
-   * join at all, and it falls back to the plain roman spacing on *both*
-   * sides. That is safe for exactly one reason -- nothing joins into a
-   * capital, so the edge that moved was never a seam. Some come out wider
-   * than the joined drawing, which is what a letter reaching out for a
-   * neighbour and then not needing to should look like.
+   * The capitals used to be the exception here, and it was the join layer's
+   * own doing: a capital only ever hands on, so taking its exit away left it
+   * with no join at all, it fell through to the plain roman spacing, and it
+   * came out somewhere else -- six of the twenty-two *wider* than the drawing
+   * that had been reaching out, and every sidebearing moved.
+   *
+   * They are on the same rule as the lowercase now, which is what this says.
+   * The letter that has been asked to give up a join is still a letter of a
+   * joined face and is spaced by the join layer standing in the sidebearing;
+   * only a letter that never had one is spaced as the roman letter it is.
    */
   it(
-    "spaces a word-final capital as the plain letter it falls back to",
+    "takes the same width off every letter that gives up its lead-out",
     async () => {
       const bytes = await exported(SCRIPT.name);
       const report = inspectFont(bytes);
       const widths = report.advanceWidths ?? {};
       const left = report.sidebearings ?? {};
 
-      const right = report.rightEdges ?? {};
-      const capitals = Object.keys(widths).filter((n) => /^[A-Z]\.end$/.test(n));
-      expect(capitals).toHaveLength(22);
+      const ended = Object.keys(widths).filter((n) => n.endsWith(".end"));
+      const lost = new Set(ended.map((n) => widths[n.split(".")[0]] - widths[n]));
+      expect([...lost]).toHaveLength(1);
+      expect([...lost][0]).toBeGreaterThan(0);
 
-      for (const name of capitals) {
-        const letter = name.split(".")[0];
-        // The reach is gone, so every one of them stands well clear of its
-        // advance where the joined drawing ran up close to it.
-        const gap = widths[name] - right[name];
-        expect([name, gap > widths[letter] - right[letter]]).toEqual([name, true]);
-        // And the left edge, which was never a seam, only ever relaxes.
-        expect([name, left[name] >= left[letter]]).toEqual([name, true]);
+      // Capitals and lowercase alike, and the side that kept its stroke did
+      // not move at all.
+      expect(ended.filter((n) => /^[A-Z]\./.test(n))).toHaveLength(22);
+      for (const name of ended) {
+        expect([name, left[name]]).toEqual([name, left[name.split(".")[0]]]);
       }
-
-      // Some come out wider than the drawing that was reaching out, which is
-      // the whole tell that these are the un-joined letter and not a trim.
-      expect(capitals.filter((n) => widths[n] > widths[n.split(".")[0]])).not.toHaveLength(0);
     },
     FONT_SUITE_TIMEOUT,
   );

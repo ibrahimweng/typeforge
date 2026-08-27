@@ -19,7 +19,7 @@ import { writeFileSync } from "node:fs";
 import { ready } from "@/font/boolean";
 import { contoursToSvgPath } from "@/font/geometry";
 import { drawLetter } from "@/forge/build";
-import { joiningWithout } from "@/forge/letters";
+import { joinEnds, joiningWithout } from "@/forge/letters";
 import { proof, startFrom } from "@/forge/document";
 import { BASES, type Style } from "@/forge/style";
 import type { Contour } from "@/font/types";
@@ -52,14 +52,15 @@ function setLine(style: Style, line: string): { path: string; width: number } {
     // of the Handwriting showed an f the face does not use -- and this is the
     // page that is supposed to say what the font would print.
     /*
-     * Drawn as a shaper would set it, which for the two ends of a word means
-     * without the half of the join that has nothing to meet. Set from the
-     * mapped letters alone every word begins and ends with a stroke reaching
-     * towards a letter that is not there, and this page is supposed to say what
-     * the font would print.
+     * Drawn as a shaper would set it, which means without any half of the join
+     * that has nothing to meet. Asked of the neighbours rather than of the
+     * spaces, because the same question has the same answer either side of a
+     * `B`, a comma or a digit as it does either side of a word: `joinEnds` is
+     * what the font's own rules are built from, so asking it here is what keeps
+     * this page saying what the font would print.
      */
-    const begins = at === 0 || line[at - 1] === " ";
-    const finishes = at === line.length - 1 || line[at + 1] === " ";
+    const begins = at === 0 || !joinEnds(line[at - 1]).exit;
+    const finishes = at === line.length - 1 || !joinEnds(line[at + 1]).entry;
     const without = { entry: begins ? false : undefined, exit: finishes ? false : undefined };
     const bare = begins || finishes;
     const drawn = process.env.TEXTURE

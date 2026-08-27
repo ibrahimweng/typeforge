@@ -10,9 +10,9 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { ready } from "@/font/boolean";
 import { contoursBounds, inkRunsAt } from "@/font/geometry";
-import { drawLetter } from "./build";
+import { drawLetter, letterNames } from "./build";
 import { drawnEnds, drawnHigh, startFrom } from "./document";
-import { alternateName, joinRules, joinsUp, wordEndRules, wordEnds } from "./joins";
+import { alternateName, boundaryEnds, boundaryRules, joinRules, joinsUp, joinSides } from "./joins";
 import { BASES, SANS } from "./style";
 import { seamsOf } from "./script";
 
@@ -73,7 +73,7 @@ describe("what the rule says", () => {
   });
 });
 
-describe("the two ends of a word", () => {
+describe("the two sides of a join that is not there", () => {
   const forge = startFrom(BASES.find((one) => one.name === "Handwriting")!);
 
   /*
@@ -100,27 +100,97 @@ describe("the two ends of a word", () => {
   });
 
   /*
-   * The space is matched as part of the sequence and nothing is substituted at
-   * its position, which is what lets these be written without a backtrack or a
-   * lookahead. Two rules and so two lookups: one that consumed the space would
-   * leave the word after it unlooked at.
+   * The neighbour is matched as part of the sequence and nothing is
+   * substituted at its position, which is what lets these be written without a
+   * backtrack or a lookahead. Two rules and so two lookups: one that consumed
+   * the space would leave the word after it unlooked at.
    */
-  it("matches on the space and leaves the space alone", () => {
-    const rules = wordEndRules(wordEnds(forge));
-    expect(rules.length).toBe(2);
-    const [begins, ends] = rules;
-    expect(begins.input[0]).toEqual(["space"]);
+  it("matches on the neighbour and leaves the neighbour alone", () => {
+    const rules = boundaryRules(boundaryEnds(forge), letterNames());
+    expect(rules.length).toBe(3);
+    const [, begins, ends] = rules;
+    expect(begins.input[0]).toContain("space");
     expect(begins.swaps.map((one) => one.at)).toEqual([1]);
-    expect(ends.input[1]).toEqual(["space"]);
+    expect(ends.input[1]).toContain("space");
     expect(ends.swaps.map((one) => one.at)).toEqual([0]);
+    // Nothing in either rule redraws the glyph that provided the context.
+    expect(begins.swaps.flatMap((one) => one.swap).some((one) => one.plain === "space")).toBe(false);
+    expect(ends.swaps.flatMap((one) => one.swap).some((one) => one.plain === "space")).toBe(false);
+  });
+
+  /*
+   * The space is not a case of its own. Whatever cannot take a lead-out is on
+   * the left of the first rule and whatever cannot take a lead-in is on the
+   * right of the second, and the classes come off `joinEnds` -- so the four
+   * capitals that never hand on are in the first, every capital is in the
+   * second, and the digits and punctuation are in both.
+   */
+  it("counts everything a letter can fail to join to, not only the space", () => {
+    const { noExit, noEntry } = joinSides(letterNames());
+    for (const shut of ["B", "D", "O", "P", "space", "period", "one", "parenleft"]) {
+      expect([shut, noExit.includes(shut)]).toEqual([shut, true]);
+    }
+    // Every capital can be handed on *to* by nothing, and the handing-on ones
+    // are still on the left of the second rule.
+    for (const cap of ["A", "B", "K", "Z"]) {
+      expect([cap, noEntry.includes(cap)]).toEqual([cap, true]);
+    }
+    // A lowercase letter joins on both sides, so it is in neither class.
+    for (const letter of ["a", "n", "e", "h"]) {
+      expect([letter, noExit.includes(letter), noEntry.includes(letter)]).toEqual([letter, false, false]);
+    }
+    // And a capital that hands on is not something a lead-out has to give up for.
+    expect(noExit.includes("A")).toBe(false);
+  });
+
+  /*
+   * `a` is a word. Both halves have to go, and neither of the two rules above
+   * can do it alone -- whichever ran first would leave a glyph the other no
+   * longer recognises -- so the case is its own rule and it is asked first.
+   */
+  it("draws a one-letter word with neither half, and asks for it first", () => {
+    for (const letter of ["a", "n", "e", "h", "f", "x", "y"]) {
+      // The face's own form of the letter, which for the `f` is not the
+      // default one -- `drawLetter` asks for that only when told.
+      const plain = drawLetter(letter, HAND, HAND.forms?.[letter])!;
+      const alone = drawnEnds(letter, "alone", forge)!;
+      const begin = drawnEnds(letter, "begin", forge)!;
+      const end = drawnEnds(letter, "end", forge)!;
+      /*
+       * It gave up exactly what the two half-drawings gave up between them,
+       * and the arithmetic is exact because all three are spaced by the join
+       * layer standing in the sidebearing on the side it has nothing on. The
+       * letter that has been asked to give up both its joins is still a letter
+       * of a joined face; sent down the plain roman path it would be spaced off
+       * its own raw ink, which on an `f` with a loop under it is half a letter
+       * wider than the face it belongs to.
+       */
+      expect([letter, alone.advanceWidth]).toEqual([
+        letter,
+        begin.advanceWidth + end.advanceWidth - plain.advanceWidth,
+      ]);
+      expect([letter, alone.advanceWidth < begin.advanceWidth]).toEqual([letter, true]);
+      // And it starts on its own ink, like the letter that begins a word.
+      expect([letter, contoursBounds(alone.contours).xMin > 0]).toEqual([letter, true]);
+    }
+
+    const rules = boundaryRules(boundaryEnds(forge), letterNames());
+    expect(rules).toHaveLength(3);
+    const [lone] = rules;
+    expect(lone.input).toHaveLength(3);
+    expect(lone.swaps.map((one) => one.at)).toEqual([1]);
+    expect(lone.swaps[0].swap).toContainEqual({ plain: "a", alternate: "a.alone" });
+    // A capital is not in it: with no lead-in to lose, alone and last are the
+    // same drawing and it already has one.
+    expect(lone.swaps[0].swap.some((one) => /[A-Z]/.test(one.plain))).toBe(false);
   });
 
   /*
    * A capital has no lead-in to go without, so it is in the second list and not
    * the first. The four that hand over to nothing are in neither.
    */
-  it("asks for a word-end capital and never a word-start one", () => {
-    const wanted = wordEnds(forge);
+  it("asks for a trailing capital and never a leading one", () => {
+    const wanted = boundaryEnds(forge);
     const named = (which: "begin" | "end") =>
       wanted.filter(([, one]) => one === which).map(([letter]) => letter);
     expect(named("begin").some((letter) => /[A-Z]/.test(letter))).toBe(false);

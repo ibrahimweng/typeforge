@@ -578,7 +578,16 @@ export function planJoin(
   crossing?: Crossing,
   ends: Ends = BOTH_ENDS,
 ): Join | null {
-  if (!script.on || (!ends.entry && !ends.exit)) return null;
+  /*
+   * A letter with neither end still comes through here, and only the strokes
+   * fall away. What it is here for is the spacing: a joined face has no
+   * sidebearing to be nudged inside of, so the room either side of a letter is
+   * worked out here or nowhere -- and a letter that has been asked to give up
+   * both its joins is still a letter of that face. Sent down the plain roman
+   * path instead it is spaced off its own raw ink, which on a script `f` with
+   * a descender loop under it is most of a second letter's width.
+   */
+  if (!script.on) return null;
   const points = skeleton(spines);
   if (points.length === 0) return null;
 
