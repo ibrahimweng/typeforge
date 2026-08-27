@@ -550,9 +550,20 @@ function bowed(from: Vec2, to: Vec2, amount: number): Spine {
   return { segments: [arc], closed: false };
 }
 
-/** The loops this letter's ascenders and descenders open into, if any. */
-export function planLoops(spines: Spine[], room: Room, script: Script): Spine[] {
-  return script.on ? loopsOn(spines, room, script) : [];
+/**
+ * The loops this letter's ascenders and descenders open into, if any.
+ *
+ * `takes` is the letter's own answer to whether it has an ascender or a
+ * descender to loop -- a question this cannot see from the spines, which is
+ * exactly how every capital built on an upright came to have one.
+ */
+export function planLoops(
+  spines: Spine[],
+  room: Room,
+  script: Script,
+  takes = true,
+): Spine[] {
+  return script.on && takes ? loopsOn(spines, room, script) : [];
 }
 
 /**

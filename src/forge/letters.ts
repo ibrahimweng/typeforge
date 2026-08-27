@@ -6804,6 +6804,26 @@ export function joinEnds(name: string): Ends {
   return { entry: false, exit: false };
 }
 
+/**
+ * Whether the cursive loop belongs on this letter.
+ *
+ * It is an ascender's loop and a descender's, and a capital has neither -- it
+ * is a capital, not a tall lowercase. The eye is struck straight down from the
+ * highest end of the letter and it does not ask what that end belongs to, so
+ * every capital built on an upright was taking one: `ITEM LIFT` came out of
+ * the Formal Script as `P PEM PPF P`, the `I` and the `T` both reading as a
+ * `P` because on both of them the loop is the only thing the eye finds first.
+ *
+ * Not that a written capital never has a loop -- half of them do, in a formal
+ * hand. But the loop on a capital is part of how that capital is drawn, sized
+ * and placed by whoever drew it, and this one is a semicircle of so many pen
+ * widths struck on whatever stem stands highest. That is the right construction
+ * for the ascender it was written for and no construction at all for a `T`.
+ */
+export function takesLoop(name: string): boolean {
+  return !CAPITALS.has(name);
+}
+
 /** Whether the join reaches out of this letter at all, on either side. */
 export function reachesEither(name: string): boolean {
   const ends = joinEnds(name);
@@ -6954,7 +6974,8 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
     entry: takingHigh.entry ? seams.high : seams.low,
     exit: takingHigh.exit && HANDS_OVER_HIGH.has(name) ? seams.high : seams.low,
   };
-  const loops = planLoops(recipe.strokes.map((stroke) => stroke.spine), room, script);
+  const loops = planLoops(
+    recipe.strokes.map((stroke) => stroke.spine), room, script, takesLoop(name));
   /*
    * And the hand is only unsteady in the middle of a word.
    *

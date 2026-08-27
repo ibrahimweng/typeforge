@@ -244,6 +244,26 @@ describe("the loops", () => {
     expect(recipeOf("j")!(looped).strokes.length).toBe(recipeOf("j")!(HAND).strokes.length + 1);
   });
 
+  /*
+   * And not on a capital, which is not a tall lowercase. The eye is struck
+   * straight down from the highest end of the letter and does not ask what
+   * that end belongs to, so every capital built on an upright was taking one
+   * -- `ITEM LIFT` came out of the Formal Script as `P PEM PPF P`.
+   *
+   * Asked of all twenty-six because the ones that escaped did so by accident:
+   * an `E` was spared only because its crossbar reaches higher than its stem
+   * and the eye struck down from there found nothing to stand on, which is not
+   * a rule anybody wrote.
+   */
+  it("leave every capital alone", () => {
+    for (const name of "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("")) {
+      expect([name, recipeOf(name)!(looped).strokes.length]).toEqual([
+        name,
+        recipeOf(name)!(HAND).strokes.length,
+      ]);
+    }
+  });
+
   it("are off when the control is at nothing", () => {
     for (const name of ["l", "g"]) {
       expect(recipeOf(name)!(withScript(HAND, { loop: 0 })).strokes.length)
