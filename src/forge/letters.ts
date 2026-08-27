@@ -6473,7 +6473,16 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
          * x-height the diagonal is down to seventeen degrees and reads as a
          * bar with a drop on the end rather than as a leg.
          */
-        const knee = at(foot, Math.max(f.half * 1.3, f.least));
+        /*
+         * And never above the junction the leg falls from.
+         *
+         * Half a pen is a floor, not a height: on a face whose x-height is
+         * small against its pen -- a hairline script wound up to a heavy weight
+         * -- a pen and a third is most of the way to the waist, so the leg was
+         * asked to fall from the junction to a knee above it and folded back on
+         * itself. Kept under half the drop, the leg always falls.
+         */
+        const knee = at(foot, Math.min(Math.max(f.half * 1.3, f.least), waist * 0.55));
         // The arm stops short of the leg rather than on the same line as it,
         // so the two are not one symmetrical V lying on its side.
         const arm = at(stem + span * 0.84, f.x);

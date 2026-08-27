@@ -1154,29 +1154,80 @@ export const CASUAL_SCRIPT: Style = {
  * the loops are round rather than pointed because they were constructed rather
  * than turned. It is what a sign painter rules out with a compass, and its
  * evenness is the whole of its character.
+ *
+ * Drawn at the proportions the genre actually uses, which is where this face
+ * was wrong rather than merely different. A monoweight script is a *hairline*:
+ * the stroke is somewhere near a thirteenth of the x-height, the x-height is
+ * under half the ascender so the loops have room to be the point of the letter,
+ * and the whole thing leans hard. Set at a sixth of a much larger x-height with
+ * ascenders half again as tall, it was a fat upright cursive -- the shape of a
+ * script with none of the proportions of one.
+ *
+ * Every quantity the join and the loops are measured in is a multiple of the
+ * pen, which is right at a text weight and is the trap here: taking the pen
+ * down by two thirds takes the reach, the loops and the ball down with it
+ * unless they are put back up by the same factor. That is why `reach` and
+ * `loop` are numbers that look absurd beside the other three faces.
  */
 export const MONOLINE_SCRIPT: Style = {
   ...SANS,
   name: "Monoline Script",
   family: "script",
-  blurb: "One thickness throughout, drawn rather than written. Even joins, round loops, no bounce.",
-  metrics: { ...SANS.metrics, xHeight: 505, ascender: 760, descender: -225, slant: 9 },
-  pen: { weight: 78, contrast: 0, angle: 0 },
+  blurb: "A hairline of one thickness, drawn rather than written. Long looped ascenders, a hard lean, and a drop of ink on every open end.",
+  metrics: {
+    ...SANS.metrics,
+    xHeight: 360,
+    /*
+     * Capitals raised with the ascenders rather than left where the sans put
+     * them. Every other face here has its ascender a shade over its cap; this
+     * one carries the ascender half again as high, and a capital left at the
+     * sans' height would be a third of the way down the letter beside it. It is
+     * also what keeps an accent on an `l` under the ceiling the drawing is
+     * checked against, which is read off the cap.
+     */
+    capHeight: 800,
+    ascender: 900,
+    descender: -320,
+    /*
+     * Twenty-one, and it is the descenders that set the ceiling rather than
+     * taste. The lean turns about the seam, so a descender three hundred units
+     * below it swings a long way left; past twenty-two the `p` and the `j` come
+     * out further left than their own origin and stand in the letter before.
+     */
+    slant: 21,
+    width: 0.95,
+    sidebearing: 40,
+  },
+  pen: { weight: 28, contrast: 0, angle: 0 },
   forms: { k: "standing", l: "tailed", f: "descending", seven: "barred", four: "open" },
   parts: {
     ...SANS.parts,
     // Square, for the reason set out on the Handwriting above.
     terminal: { kind: "butt", angle: 0 },
-    corner: { radius: 90, join: "round" },
-    bowl: { width: 1, squareness: 0, aperture: 1 },
+    /*
+     * A drop of ink wherever a stroke stops in mid-air.
+     *
+     * Five stems across, which is far past what the control offers a face of
+     * ordinary weight and is the same disc in absolute terms: the ball is
+     * measured against the stem, and this stem is a third of the others'. At
+     * the 2.4 the slider stopped at, the drop came out a full stop.
+     *
+     * The join's own ends are cut square and get none of this -- they are not
+     * ends, they are the middle of a stroke that happens to cross a boundary.
+     */
+    ball: { size: 5, drop: 0.7 },
+    corner: { radius: 30, join: "round" },
+    bowl: { width: 0.92, squareness: 0, aperture: 1 },
     shoulder: { spring: 0.6, reach: 1 },
     script: {
       on: true,
       // Low, for the reason set out on the Handwriting above.
-      height: 0.17,
-      reach: 1.65,
-      flat: 0.16,
-      loop: 1.3,
+      height: 0.22,
+      // In pens, and this pen is a hairline: five of them is the same run of
+      // white that 1.65 was at the old weight.
+      reach: 5,
+      flat: 0.05,
+      loop: 9,
       // Nothing. A drawn script is drawn on a line and stays on it, and this is
       // the setting that says so.
       irregularity: 0,

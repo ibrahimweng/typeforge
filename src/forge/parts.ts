@@ -211,9 +211,9 @@ export const PART_SPECS: PartSpec[] = [
       {
         key: "size",
         label: "Size",
-        hint: "How wide the disc is against the stem. Nought leaves the stroke to stop on its own.",
+        hint: "How wide the disc is against the stem. Nought leaves the stroke to stop on its own. Held in stems, so a hairline face needs a far bigger number than a poster one to get the same disc.",
         min: 0,
-        max: 2.4,
+        max: 8,
         step: 0.02,
       },
       {
