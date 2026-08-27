@@ -20,9 +20,11 @@ import { noEffects } from "@/font/effects";
 import { proof, startFrom } from "@/forge/document";
 import { BASES, type Style } from "@/forge/style";
 import { seamsOf } from "@/forge/script";
+import { joinEnds } from "@/forge/letters";
 import type { Contour } from "@/font/types";
 
 const LOWER = "abcdefghijklmnopqrstuvwxyz".split("");
+const CAPS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 const PAIRS = ["nn", "no", "on", "ll", "ie", "an", "ou", "st", "he", "mm"];
 
 const slid = (contours: Contour[], by: number): Contour[] =>
@@ -120,6 +122,26 @@ async function main() {
       }
     }
     console.log(`  pairs that do not join, of 52: ${broken.length ? broken.join(" ") : "none"}`);
+
+    /*
+     * And every capital that hands over, against the lowercase after it.
+     *
+     * One side only, because that is the claim: a capital reaches out on its
+     * right and never on its left, so `An` is a join and `nA` is two letters
+     * that happen to be next to each other. Four capitals hand over to nothing
+     * at all and are not asked.
+     */
+    const capsBroken: string[] = [];
+    let capsAsked = 0;
+    for (const cap of CAPS) {
+      if (!joinEnds(cap).exit) continue;
+      capsAsked += 1;
+      const gap = seamGap(style, `${cap}n`);
+      if (gap === null) capsBroken.push(`${cap}n(nothing)`);
+      else if (gap > 1) capsBroken.push(`${cap}n(${gap.toFixed(0)})`);
+    }
+    console.log(
+      `  capitals that do not hand on, of ${capsAsked}: ${capsBroken.length ? capsBroken.join(" ") : "none"}`);
 
     let worst = 0;
     for (const pair of PAIRS) {

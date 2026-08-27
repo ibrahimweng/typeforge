@@ -24,6 +24,7 @@ import { drawLetter } from "./build";
 import { recipeOf } from "./letters";
 import { BASES, SANS, type Style } from "./style";
 import { seamsOf, wobbleOf } from "./script";
+import { spineEnd, spineStart } from "./shapes";
 
 const SCRIPTS = BASES.filter((one) => one.parts.script.on);
 const LOWER = "abcdefghijklmnopqrstuvwxyz".split("");
@@ -155,13 +156,39 @@ describe("what the join does not touch", () => {
   /*
    * A cursive capital is a different letter from a cursive lowercase rather
    * than a larger one, and in every hand that has been written it joins on its
-   * right at best. A lead-in on the left of a script A would be a stroke into a
-   * letter nothing is ever set before.
+   * right at best: the hand sets it down at the start of a word and carries on
+   * out of it. So it takes a lead-out and never a lead-in -- one on its left
+   * would be a stroke reaching into a letter nothing is ever set before.
+   *
+   * The `O` is one of the four left out entirely. It closes its bowl at the top
+   * and the hand lifts there, which is what every copperplate does with it.
    */
-  it("leaves the capitals, the figures and the marks alone", () => {
-    for (const name of ["A", "H", "O", "seven", "period", "comma"]) {
+  it("hands a capital on to its right and never reaches out of its left", () => {
+    for (const name of ["A", "H", "K"]) {
+      const joined = recipeOf(name)!(HAND);
+      expect([name, joined.width !== undefined]).toEqual([name, true]);
+      // The lead-in is the stroke that would start at the origin. There is none.
+      const reaches = joined.strokes.some((stroke) =>
+        spineStart(stroke.spine).x < 1 && spineEnd(stroke.spine).x > 1);
+      expect([name, reaches]).toEqual([name, false]);
+    }
+  });
+
+  it("leaves the four that close at the top, the figures and the marks alone", () => {
+    for (const name of ["B", "D", "O", "P", "seven", "period", "comma"]) {
       const joined = recipeOf(name)!(HAND);
       expect([name, joined.width]).toEqual([name, undefined]);
+    }
+  });
+
+  /*
+   * And a letter set inside another glyph takes none of it, whatever case it
+   * is: the `C` in a copyright sign is a drawing, not a letter in a word.
+   */
+  it("leaves a letter set inside another glyph alone", () => {
+    for (const name of ["copyright", "registered", "ordfeminine"]) {
+      const drawn = recipeOf(name)!(HAND);
+      expect([name, drawn.width]).toEqual([name, undefined]);
     }
   });
 });

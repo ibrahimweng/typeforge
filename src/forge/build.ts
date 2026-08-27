@@ -18,7 +18,8 @@ import {
   recipeOf,
   type PartName,
   type Recipe,
-  JOINS,
+  joinEnds,
+  reachesEither,
 } from "./letters";
 import { accentsFor, gapFor, hangsBelow, isCapital, type Parts } from "./accents";
 import { reachesCast, type Cast } from "./cast";
@@ -120,7 +121,7 @@ export function builtFrom(name: string): Parts | null {
 export function reachesOut(name: string, style: Style): boolean {
   if (!style.parts.script.on) return false;
   const parts = builtFrom(name);
-  return JOINS.has(parts ? parts.base : name);
+  return reachesEither(parts ? parts.base : name);
 }
 
 export { letterBehind } from "./letters";
@@ -259,7 +260,8 @@ export function makeLetter(
    * and this collapses to the shear that was always here.
    */
   const script = style.parts.script;
-  const tilt = wobbleOf(name, script, style.metrics.xHeight).lean;
+  // Only the letters of the running hand lean extra; see the lift in `connected`.
+  const tilt = joinEnds(name).entry ? wobbleOf(name, script, style.metrics.xHeight).lean : 0;
   const seam = seamsOf(script, style.metrics.xHeight, style.pen.weight / 2).low;
   const wobbled = (contours: Contour[]): Contour[] =>
     tilt === 0 ? contours : sheared(contours, Math.tan((tilt * Math.PI) / 180), seam);
@@ -436,7 +438,7 @@ function marked(
    * the letter under it simply overhangs, which is what a written accent does
    * anyway.
    */
-  const reaching = style.parts.script.on && JOINS.has(parts.base);
+  const reaching = style.parts.script.on && reachesEither(parts.base);
   const shortfall = reaching ? 0 : Math.max(0, sidebearing - bounds.xMin);
   const placed = shortfall > 0 ? shoved(contours, { x: shortfall, y: 0 }) : contours;
   const spaced =

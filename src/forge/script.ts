@@ -215,7 +215,27 @@ export interface Room {
   upright: number;
   /** The x-height. */
   x: number;
+  /**
+   * The face's own sidebearing, for whichever side of the letter has no join
+   * reaching out of it.
+   *
+   * A joined face has no sidebearings -- the space either side of a letter is a
+   * stroke and not a space -- and that holds only while both halves are drawn.
+   * A capital reaches out on its right and never on its left, so its left has
+   * to be spaced the way every other face spaces everything.
+   */
+  sidebearing: number;
 }
+
+/** Which halves of the join a letter has. */
+export interface Ends {
+  /** A lead-in reaching out of its left, into the letter set before it. */
+  entry: boolean;
+  /** A lead-out reaching out of its right, into the letter set after it. */
+  exit: boolean;
+}
+
+export const BOTH_ENDS: Ends = { entry: true, exit: true };
 
 export interface Join {
   /** From the origin at the seam into the letter's own ink. */
@@ -556,8 +576,9 @@ export function planJoin(
   room: Room,
   script: Script,
   crossing?: Crossing,
+  ends: Ends = BOTH_ENDS,
 ): Join | null {
-  if (!script.on) return null;
+  if (!script.on || (!ends.entry && !ends.exit)) return null;
   const points = skeleton(spines);
   if (points.length === 0) return null;
 
@@ -610,10 +631,10 @@ export function planJoin(
   const rightmost = points.reduce((most, one) => Math.max(most, one.x), -Infinity);
   // Moved over by this much, the letter's own left edge sits exactly one reach
   // from the origin, which is the run the lead-in has to climb along.
-  const inset = reach - (leftmost - room.half);
+  const inset = (ends.entry ? reach : room.sidebearing) - (leftmost - room.half);
   const from = at(lands.x + inset, lands.y);
   const to = at(leaves.x + inset, leaves.y);
-  const width = rightmost + room.half + inset + reach;
+  const width = rightmost + room.half + inset + (ends.exit ? reach : room.sidebearing);
 
   /*
    * A level run at each end before the turn, so the two halves have something
@@ -622,11 +643,11 @@ export function planJoin(
    * which is the difference between a fast hand and a careful one.
    */
   const level = Math.max(0, Math.min(1, script.flat)) * reach;
-  const entry = chained(
+  const entry = !ends.entry ? null : chained(
     { segments: [{ kind: "line", from: at(0, entryAt), to: at(level, entryAt) }], closed: false },
     levelArc(at(level, entryAt), from, room),
   );
-  const exit = chained(
+  const exit = !ends.exit ? null : chained(
     reversed(levelArc(at(width - level, exitAt), to, room)),
     {
       segments: [{ kind: "line", from: at(width - level, exitAt), to: at(width, exitAt) }],

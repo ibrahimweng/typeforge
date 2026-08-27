@@ -22,7 +22,16 @@
 
 import type { Vec2 } from "@/font/types";
 import type { Style } from "./style";
-import { HANDS_OVER_HIGH, movedSpine, planJoin, planLoops, seamsOf, wobbleOf } from "./script";
+import {
+  BOTH_ENDS,
+  HANDS_OVER_HIGH,
+  type Ends,
+  movedSpine,
+  planJoin,
+  planLoops,
+  seamsOf,
+  wobbleOf,
+} from "./script";
 import { terminalFor } from "./style";
 import {
   bowl,
@@ -5857,6 +5866,30 @@ function turnedStroke(stroke: Stroke, about: Vec2): Stroke {
  * `left` is where its ink begins and `foot` is the line it stands on, so a
  * superior figure is the same figure with a line of its own further up the page.
  */
+/**
+ * Whether a letter is being drawn inside another glyph rather than as itself.
+ *
+ * A `C` set small inside a ring is the copyright sign, not a letter in a word,
+ * and nothing is ever set after it -- so it takes none of the join. Left to take
+ * it, the ring came out with a stroke reaching out of the `C` towards a letter
+ * that is not there, and the sign gained and lost nodes along the weight axis
+ * because the length of that stroke is a multiple of the pen.
+ *
+ * True of the lowercase too, and was before the capitals ever reached out: the
+ * `a` inside an `ª` is set the same way.
+ */
+let enclosing = false;
+
+function setInside<T>(run: () => T): T {
+  const was = enclosing;
+  enclosing = true;
+  try {
+    return run();
+  } finally {
+    enclosing = was;
+  }
+}
+
 function setSmall(
   style: Style,
   name: LetterName,
@@ -5866,7 +5899,7 @@ function setSmall(
   penShare?: number,
 ): Stroke[] {
   const little = sized(style, fraction, penShare);
-  const strokes = recipeOf(name, borrowing)!(little).strokes;
+  const strokes = setInside(() => recipeOf(name, borrowing)!(little).strokes);
   return strokes.map((stroke) => shovedStroke(stroke, left - little.metrics.sidebearing, foot));
 }
 
@@ -6747,6 +6780,37 @@ export function recipeOf(
 export const JOINS = new Set<string>("abcdefghijklmnopqrstuvwxyz".split(""));
 
 /**
+ * The capitals, which reach out on their right and never on their left.
+ *
+ * Which is the whole of what makes a written capital a written capital rather
+ * than a roman one leaning over. A hand sets a capital at the start of a word
+ * and carries straight on out of it into the lowercase; nothing is ever set
+ * before it, so a lead-in out of its left would be a stroke reaching into an
+ * empty page.
+ *
+ * These four are left out because in a written hand they are the ones a pen
+ * finishes on the wrong side of. An `O`, a `D`, a `P` and a `B` all close their
+ * bowl at the top, and the hand lifts there rather than carrying on -- so the
+ * letter after one of them starts a fresh stroke, which is what the reader
+ * sees in every copperplate ever cut.
+ */
+const NEVER_HANDS_ON = new Set(["B", "D", "O", "P"]);
+const CAPITALS = new Set<string>("ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));
+
+/** Which halves of the join this letter has, if any. */
+export function joinEnds(name: string): Ends {
+  if (JOINS.has(name)) return BOTH_ENDS;
+  if (CAPITALS.has(name) && !NEVER_HANDS_ON.has(name)) return { entry: false, exit: true };
+  return { entry: false, exit: false };
+}
+
+/** Whether the join reaches out of this letter at all, on either side. */
+export function reachesEither(name: string): boolean {
+  const ends = joinEnds(name);
+  return ends.entry || ends.exit;
+}
+
+/**
  * Which half of the join, if either, this drawing of a letter takes high.
  *
  * Module state with a scoped setter, which is how everything else here that has
@@ -6796,7 +6860,8 @@ export function joiningHigh<T>(which: { entry?: boolean; exit?: boolean }, run: 
  */
 function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
   const script = style.parts.script;
-  if (!script.on || !JOINS.has(name)) return recipe;
+  const ends = joinEnds(name);
+  if (!script.on || enclosing || (!ends.entry && !ends.exit)) return recipe;
   const f = frame(style);
   /*
    * Off its line first, then the join, then over into its room.
@@ -6808,7 +6873,7 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * less on one that dropped, and both still leave the seam at exactly the
    * height everything else leaves it at.
    */
-  const room = { half: f.half, upright: f.upright, x: f.x };
+  const room = { half: f.half, upright: f.upright, x: f.x, sidebearing: f.edge - f.half };
   /*
    * Loops first, then the lift, then the join. The order is the whole of why
    * this works, and each step of it was wrong once.
@@ -6846,12 +6911,21 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
     exit: takingHigh.exit && HANDS_OVER_HIGH.has(name) ? seams.high : seams.low,
   };
   const loops = planLoops(recipe.strokes.map((stroke) => stroke.spine), room, script);
-  const lift = wobbleOf(name, script, f.x).lift;
+  /*
+   * And the hand is only unsteady in the middle of a word.
+   *
+   * A capital is set down deliberately at the start of one, on the line, and
+   * the bounce is a property of a running hand rather than of every letter that
+   * hand ever writes. Lifted with the rest, the capitals came off their lines by
+   * thirty units on the Handwriting and fifty on the Casual Script -- which is
+   * the one thing every face here promises not to do.
+   */
+  const lift = ends.entry ? wobbleOf(name, script, f.x).lift : 0;
   const body = [...recipe.strokes, ...loops.map((loop) => ink(f, loop, BUTT, BUTT))].map((stroke) => ({
     ...stroke,
     spine: movedSpine(stroke.spine, 0, lift),
   }));
-  const plan = planJoin(body.map((stroke) => stroke.spine), room, script, crossing);
+  const plan = planJoin(body.map((stroke) => stroke.spine), room, script, crossing, ends);
   if (!plan) return recipe;
   /*
    * The letter moves over; the join does not.
