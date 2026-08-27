@@ -1066,8 +1066,24 @@ export const FORMAL_SCRIPT: Style = {
    *
    * And then the ratio is worth having: at 0.58 the thin is four tenths of the
    * thick, where the reference's hairlines are nearer a fifth.
+   *
+   * The weight came up with it, and for the reference's colour rather than its
+   * proportion: raising the contrast thins the thins and leaves the thicks
+   * where they were, so the page got *lighter* for having more contrast in it.
+   * Swept at 96, 108, 120, 132, 145 and 175 against the counters -- the `a`,
+   * the `e` and the `g` are closing by 132 and gone by 145, and the reference
+   * keeps its counters open. A hundred and twenty is a quarter more colour with
+   * the whites still breathing.
+   *
+   * Two numbers below are measured in stems and so moved with it. The reach
+   * would have widened the face by six per cent for a change that is meant to
+   * be about colour; at 1.6 the line comes out within one per cent of where it
+   * was. The drop would have grown to a hundred and twenty units, which is the
+   * size that was already blobbing on the `c`; at 0.8 it stays where it was
+   * tuned. The reference is set tighter than either -- closing the reach
+   * further is a change to the fit and belongs to itself.
    */
-  pen: { weight: 96, contrast: 0.78, angle: -22 },
+  pen: { weight: 120, contrast: 0.78, angle: -22 },
   forms: { k: "standing", a: "double", g: "curled", l: "tailed", f: "descending", one: "footed" },
   parts: {
     ...SANS.parts,
@@ -1080,7 +1096,7 @@ export const FORMAL_SCRIPT: Style = {
      * arrangement the Monoline arrived at -- visible and confident rather than
      * timid, and reading as the stroke swelling and stopping.
      */
-    ball: { size: 1, drop: 0.35 },
+    ball: { size: 0.8, drop: 0.35 },
     corner: { radius: 46, join: "round" },
     bowl: { width: 0.92, squareness: 0, aperture: 1 },
     shoulder: { spring: 0.5, reach: 0.96 },
@@ -1088,7 +1104,7 @@ export const FORMAL_SCRIPT: Style = {
       on: true,
       // Low, for the reason set out on the Handwriting above.
       height: 0.16,
-      reach: 1.9,
+      reach: 1.6,
       // Almost no flat: a formal hand swings from one letter into the next in
       // one continuous turn and never runs level between them.
       flat: 0.04,

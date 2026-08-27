@@ -47,7 +47,7 @@ import {
   wavy,
 } from "./shapes";
 import { MITER_LIMIT, penReach, reachAlong } from "./sweep";
-import type { JoinKind, Spine, SpineSegment, Stroke, Terminal } from "./types";
+import type { JoinKind, Spine, SpineArc, SpineSegment, Stroke, Terminal } from "./types";
 
 /**
  * A letter, as strokes plus how it should be spaced.
@@ -1022,6 +1022,26 @@ function corner(f: Frame, from: Vec2, tip: Vec2, to: Vec2): Vec2 {
  * rounds nothing is left where it was; a face that rounds a lot moves exactly
  * as far as it needs. Giving every face the worst face's allowance instead
  * would swing the arms of a Sans k by a tenth of its x-height.
+ *
+ * What that miss is measured on is the whole of it, and measuring it on the
+ * wrong point is what let the Formal Script's k come apart the moment its pen
+ * went from 96 units to 120. `through` hands back the vertex before it is
+ * rounded, and that vertex was inside the stem quite happily -- 142.9 against a
+ * limit of 145, so the guard never fired and no correction was made.
+ * `roundCorners` then threw it away: the arc it puts in the corner's place sits
+ * back along the bisector by the radius over the sine of the half-angle, which
+ * on a sixty-degree vee rounded at 63.6 units is another 64. The apex the guard
+ * had approved was drawn 92 units clear of the stem, and the two strokes were
+ * held together by nothing but ink -- about twenty units of overlap, which the
+ * bow then walked the stem out of.
+ *
+ * So the vee is rounded here, with the same call the recipe is going to make,
+ * and the miss is read off where the ink really ends up. A face that rounds
+ * nothing gets its vertex back unchanged and is left exactly where it was:
+ * driving the correction home instead, until every face's apex sat on the
+ * limit rather than near it, moved the Flared k by seven and a half units and
+ * cost it 1,256 points under the rim in place of 355, because eight passes
+ * double whatever new corner they are given.
  */
 function junction(f: Frame, arm: Vec2, stem: number, height: number, leg: Vec2): Vec2 {
   // Far enough past the edge to overlap rather than touch. A quarter of the
@@ -1029,8 +1049,51 @@ function junction(f: Frame, arm: Vec2, stem: number, height: number, leg: Vec2):
   const inside = stem + f.half - f.half * 0.5;
   const asked = at(stem + f.half, height);
   const meet = corner(f, arm, asked, leg);
-  if (meet.x <= inside) return meet;
-  return corner(f, arm, at(asked.x - (meet.x - inside), height), leg);
+  const lands = rounded(f, arm, meet, leg);
+  if (lands <= inside) return meet;
+  return corner(f, arm, at(asked.x - (lands - inside), height), leg);
+}
+
+/**
+ * How far into the stem a vee drawn through this vertex really reaches, once
+ * the corner has been rounded off the way the recipe is about to round it.
+ */
+function rounded(f: Frame, arm: Vec2, meet: Vec2, leg: Vec2): number {
+  const spine = roundCorners(
+    chain(straight(arm, meet), straight(meet, leg)),
+    f.radius,
+    f.half,
+  );
+  let least = Infinity;
+  for (const segment of spine.segments) {
+    if (segment.kind === "line") {
+      least = Math.min(least, segment.from.x, segment.to.x);
+      continue;
+    }
+    least = Math.min(least, ...ends(segment).map((point) => point.x));
+    // The leftmost point of the circle, but only where the arc actually goes
+    // through it.
+    if (sweeps(segment, Math.PI)) least = Math.min(least, segment.centre.x - segment.radius);
+  }
+  return Number.isFinite(least) ? least : meet.x;
+}
+
+/** Whether an arc passes through the given angle on its way from start to end. */
+function sweeps(arc: SpineArc, angle: number): boolean {
+  const turn = Math.PI * 2;
+  const from = ((arc.startAngle % turn) + turn) % turn;
+  const to = ((arc.endAngle % turn) + turn) % turn;
+  const want = ((angle % turn) + turn) % turn;
+  const along = ((want - from) * (arc.sweepPositive ? 1 : -1) + turn) % turn;
+  const whole = ((to - from) * (arc.sweepPositive ? 1 : -1) + turn) % turn;
+  return along <= whole;
+}
+
+/** An arc's two ends. */
+function ends(arc: SpineArc): Vec2[] {
+  return [arc.startAngle, arc.endAngle].map((angle) =>
+    at(arc.centre.x + Math.cos(angle) * arc.radius, arc.centre.y + Math.sin(angle) * arc.radius),
+  );
 }
 
 function towards(from: Vec2, to: Vec2): Vec2 {

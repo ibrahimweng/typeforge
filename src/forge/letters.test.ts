@@ -763,4 +763,43 @@ describe("an f is not a t, and a k is not a fan", () => {
         .toEqual([style.name, true]);
     }
   });
+
+  /*
+   * And that the vee actually reaches the stem, at every weight and not only at
+   * the one the face is drawn at.
+   *
+   * `junction` puts the apex inside the stem, and used to check its work on the
+   * vertex `through` hands back -- which is the point before the corner is
+   * rounded off. On a face that rounds its corners that point is not where the
+   * ink goes: the Formal Script's vertex sat 2 units inside its limit while the
+   * arc `roundCorners` put in its place was drawn 62 units outside it, and the
+   * two strokes were left overlapping by about twenty units of ink and nothing
+   * else. That is enough to look like a k, which is why it shipped, and it went
+   * the moment the pen went from 96 units to 120.
+   *
+   * So this asks at seven weights across the axis rather than at the one each
+   * face happens to be drawn at. Every other test of the letters draws each
+   * face at its own weight, and the fault was invisible to all of them.
+   */
+  it("meets the k's vee to its stem at every weight, on every face", async () => {
+    const { ready } = await import("@/font/boolean");
+    const { piecesOf } = await import("./cut");
+    await ready();
+    const apart: string[] = [];
+    for (const base of STARTING_POINTS) {
+      for (const weight of [40, 60, 84, 110, 140, 175, 210]) {
+        const style: Style = { ...base, pen: { ...base.pen, weight } };
+        for (const name of ["k", "K"]) {
+          for (const { id } of formsOf(name)) {
+            const drawn = drawLetter(name, style, id || undefined);
+            if (!drawn || drawn.contours.length === 0) continue;
+            if (piecesOf(drawn.contours) > 1) {
+              apart.push(`${base.name} ${name}${id ? ` (${id})` : ""} at ${weight}`);
+            }
+          }
+        }
+      }
+    }
+    expect(apart).toEqual([]);
+  }, 60_000);
 });
