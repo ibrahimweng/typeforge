@@ -6789,13 +6789,26 @@ export const JOINS = new Set<string>("abcdefghijklmnopqrstuvwxyz".split(""));
  * before it, so a lead-in out of its left would be a stroke reaching into an
  * empty page.
  *
- * These four are left out because in a written hand they are the ones a pen
- * finishes on the wrong side of. An `O`, a `D`, a `P` and a `B` all close their
- * bowl at the top, and the hand lifts there rather than carrying on -- so the
- * letter after one of them starts a fresh stroke, which is what the reader
- * sees in every copperplate ever cut.
+ * Four are left out because in a written hand they are the ones a pen finishes
+ * on the wrong side of. An `O`, a `D`, a `P` and a `B` all close their bowl at
+ * the top, and the hand lifts there rather than carrying on -- so the letter
+ * after one of them starts a fresh stroke, which is what the reader sees in
+ * every copperplate ever cut.
+ *
+ * And two more for a harder reason: the hand-over draws them into a different
+ * letter. Every lead-out leaves along the baseline, and on an `F` the baseline
+ * is exactly where an `E` keeps its bottom arm -- so an `F` that hands on *is*
+ * an `E`, and `Fox` sets as `Eox`. An `I` with a foot going right is an `L`.
+ * Neither is a matter of taste or of how far the stroke reaches: it is the
+ * letter as `cmap` maps it, which is what a reader gets in any renderer that
+ * applies no features at all.
+ *
+ * Nothing else in the alphabet does it. Drawn with and without their lead-outs
+ * side by side, the other twenty carry a tail off a terminal that was already
+ * pointing that way -- the `E` and the `L` simply grow a longer bottom arm, and
+ * the rest end in clear air.
  */
-const NEVER_HANDS_ON = new Set(["B", "D", "O", "P"]);
+const NEVER_HANDS_ON = new Set(["B", "D", "F", "I", "O", "P"]);
 export const CAPITALS = new Set<string>("ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));
 
 /** Which halves of the join this letter has, if any. */

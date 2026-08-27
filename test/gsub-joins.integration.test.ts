@@ -185,12 +185,12 @@ suite("a joined face carries its joins into the file", () => {
       /*
        * Every lowercase letter has all three; only lowercase begins a word or
        * stands as one, because nothing ever joins *into* a capital. The
-       * twenty-two capitals that hand on are in the last drawing only, and by
+       * twenty capitals that hand on are in the last drawing only, and by
        * the same rule as the lowercase -- there is no second spacing path for
        * them any more.
        */
       expect(begun).toHaveLength(26);
-      expect(ended).toHaveLength(26 + 22);
+      expect(ended).toHaveLength(26 + 20);
       expect(lone).toHaveLength(26);
     },
     FONT_SUITE_TIMEOUT,
@@ -223,7 +223,7 @@ suite("a joined face carries its joins into the file", () => {
 
       // Capitals and lowercase alike, and the side that kept its stroke did
       // not move at all.
-      expect(ended.filter((n) => /^[A-Z]\./.test(n))).toHaveLength(22);
+      expect(ended.filter((n) => /^[A-Z]\./.test(n))).toHaveLength(20);
       for (const name of ended) {
         expect([name, left[name]]).toEqual([name, left[name.split(".")[0]]]);
       }

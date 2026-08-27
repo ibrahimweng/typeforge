@@ -13,6 +13,7 @@ import { contoursBounds, inkRunsAt } from "@/font/geometry";
 import { drawLetter, letterNames } from "./build";
 import { drawnEnds, drawnHigh, startFrom } from "./document";
 import { alternateName, boundaryEnds, boundaryRules, joinRules, joinsUp, joinSides } from "./joins";
+import { joiningWithout } from "./letters";
 import { BASES, SANS } from "./style";
 import { seamsOf } from "./script";
 
@@ -195,8 +196,38 @@ describe("the two sides of a join that is not there", () => {
       wanted.filter(([, one]) => one === which).map(([letter]) => letter);
     expect(named("begin").some((letter) => /[A-Z]/.test(letter))).toBe(false);
     expect(named("end")).toContain("A");
-    for (const shut of ["B", "D", "O", "P"]) {
+    for (const shut of ["B", "D", "F", "I", "O", "P"]) {
       expect([shut, named("end").includes(shut)]).toEqual([shut, false]);
+    }
+  });
+
+  /*
+   * And the two that are shut for a different reason from the other four.
+   *
+   * A lead-out leaves along the baseline, and on an `F` the baseline is where
+   * an `E` keeps its bottom arm: an `F` that hands on is an `E`, and `Fox` sets
+   * as `Eox`. An `I` with a foot going right is an `L`. That is the letter as
+   * `cmap` maps it, so it is what a reader gets from any renderer that applies
+   * no features -- which is the case the whole of this design is built to be
+   * right in.
+   *
+   * Measured rather than asserted: the joined drawing of a letter that hands on
+   * has to reach further right than the drawing without it, and for these two
+   * that reach is what makes the wrong letter. So the test is that they do not
+   * reach at all, while a letter that is allowed to hand on does.
+   */
+  it("keeps the lead-out off the letters it would turn into another letter", () => {
+    const reach = (letter: string) => {
+      const joined = drawLetter(letter, HAND, HAND.forms?.[letter])!;
+      const shut = joiningWithout({ exit: false }, () =>
+        drawLetter(letter, HAND, HAND.forms?.[letter])!);
+      return contoursBounds(joined.contours).xMax - contoursBounds(shut.contours).xMax;
+    };
+    for (const letter of ["F", "I", "B", "D", "O", "P"]) {
+      expect([letter, reach(letter)]).toEqual([letter, 0]);
+    }
+    for (const letter of ["E", "L", "A", "H", "T"]) {
+      expect([letter, reach(letter) > 0]).toEqual([letter, true]);
     }
   });
 });
