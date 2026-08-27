@@ -1218,7 +1218,22 @@ export const MONOLINE_SCRIPT: Style = {
      * The join's own ends are cut square and get none of this -- they are not
      * ends, they are the middle of a stroke that happens to cross a boundary.
      */
-    ball: { size: 5, drop: 0.7 },
+    /*
+     * The drop, against the reference this face is cut to.
+     *
+     * A written drop terminal reads as the stroke swelling and stopping. Five
+     * stems on a pen of twenty-eight is a hundred and forty units -- two fifths
+     * of the x-height -- and that is not a terminal, it is a dot: it shut the
+     * aperture of the `G` and sat beside the `c` and the `S` rather than on
+     * them.
+     *
+     * The overhang was doing as much of the damage as the size. At seven tenths
+     * of its own radius the disc's middle sits past the end of the stroke, so
+     * most of its mass is outside the ink and it reads as something stuck on.
+     * A third of a radius leaves it seated on the end and pulled along it,
+     * which is the shape a pen makes when it stops.
+     */
+    ball: { size: 2.4, drop: 0.35 },
     corner: { radius: 30, join: "round" },
     bowl: { width: 0.92, squareness: 0, aperture: 1 },
     shoulder: { spring: 0.6, reach: 1 },

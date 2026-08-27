@@ -751,7 +751,31 @@ function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
       const lean = 1 + outward.y * drop;
       return lean > 1e-6 ? (limit - at.y) / lean : Infinity;
     };
-    const room = Math.min(radius, spare(band.yMax), spare(-band.yMin + 2 * at.y));
+    /*
+     * And not further to the left than the letter already reaches, for the
+     * same reason and by the same arithmetic.
+     *
+     * The hold above says a ball fattens an end and does not make the letter
+     * taller. It does not make it start further left either -- the space to a
+     * letter's left is where the letter before it finished, and on a joined
+     * face it is a stroke rather than a space. A Monoline `j` seated its drop
+     * three units outside the room its own descender is allowed, which is a
+     * drop resting on whatever was written before it.
+     *
+     * Left only. A ball on the right is finishing a stroke that runs out to the
+     * advance and is spaced with it; it is the left where the letter has
+     * already been placed and cannot give any more.
+     */
+    const spareLeft = (limit: number) => {
+      const lean = 1 - outward.x * drop;
+      return lean > 1e-6 ? (at.x - limit) / lean : Infinity;
+    };
+    const room = Math.min(
+      radius,
+      spare(band.yMax),
+      spare(-band.yMin + 2 * at.y),
+      spareLeft(band.xMin),
+    );
     /*
      * A ball with no room for it is drawn buried, rather than not drawn.
      *
