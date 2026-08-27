@@ -6831,7 +6831,7 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * drawing that a shaper swaps in when the pair actually occurs. `o` and the
    * letter after it are both replaced, so the two that meet always agree.
    */
-  const seams = seamsOf(script, f.x);
+  const seams = seamsOf(script, f.x, f.half);
   const crossing = {
     entry: takingHigh.entry ? seams.high : seams.low,
     exit: takingHigh.exit && HANDS_OVER_HIGH.has(name) ? seams.high : seams.low,

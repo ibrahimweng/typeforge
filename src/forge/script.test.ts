@@ -23,7 +23,7 @@ import type { Contour } from "@/font/types";
 import { drawLetter } from "./build";
 import { recipeOf } from "./letters";
 import { BASES, SANS, type Style } from "./style";
-import { wobbleOf } from "./script";
+import { seamsOf, wobbleOf } from "./script";
 
 const SCRIPTS = BASES.filter((one) => one.parts.script.on);
 const LOWER = "abcdefghijklmnopqrstuvwxyz".split("");
@@ -50,7 +50,7 @@ function seamGap(style: Style, first: string, second: string): number | null {
   const left = drawLetter(first, style);
   const right = drawLetter(second, style);
   if (!left || !right) return null;
-  const seam = style.parts.script.height * style.metrics.xHeight;
+  const seam = seamsOf(style.parts.script, style.metrics.xHeight, style.pen.weight / 2).low;
   const both = unite([...left.contours, ...slid(right.contours, left.advanceWidth)], "winding");
   const runs = inkRunsAt(both, seam, "y", 48);
   const edge = left.advanceWidth;
@@ -107,6 +107,38 @@ describe("the letters reach each other", () => {
     for (const pair of ["ll", "bd", "hk", "gy", "jp"]) {
       expect([pair, seamGap(looped, pair[0], pair[1])]).toEqual([pair, 0]);
     }
+  });
+
+  /*
+   * And at the bottom of the seam control, which is where this came apart
+   * quietly rather than loudly.
+   *
+   * The lead-out searches from half a pen above the baseline up to the seam, so
+   * a seam below half a pen leaves that band empty -- and `attach`, which has
+   * to return something, falls back to the whole letter and takes its rightmost
+   * point wherever it happens to be. On an `n` that is the top of the arch. The
+   * letters still met, so nothing here failed: they were threaded together
+   * through their own middles instead of written along a line.
+   *
+   * So the seam is held off the baseline by the pen that has to reach it,
+   * rather than taken at its word.
+   */
+  it("keeps the seam off the baseline when it is asked for under the pen", () => {
+    const grazing = withScript(HAND, { height: 0.01 });
+    const half = HAND.pen.weight / 2;
+    expect(seamsOf(grazing.parts.script, HAND.metrics.xHeight, half).low)
+      .toBeGreaterThan(half);
+    for (const pair of ["nn", "on", "no", "an", "he"]) {
+      expect([pair, seamGap(grazing, pair[0], pair[1])]).toEqual([pair, 0]);
+    }
+    // Left from the foot of the letter rather than from the top of its arch:
+    // an `n` handing over has ink at the seam within a pen of its own right
+    // edge, and had it two thirds of the way up the letter before.
+    const drawn = drawLetter("n", grazing)!;
+    const seam = seamsOf(grazing.parts.script, HAND.metrics.xHeight, half).low;
+    const runs = inkRunsAt(drawn.contours, seam);
+    expect([runs.length > 0, runs[runs.length - 1][1] >= drawn.advanceWidth - half])
+      .toEqual([true, true]);
   });
 });
 

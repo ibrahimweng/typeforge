@@ -19,6 +19,7 @@ import { drawLetter } from "@/forge/build";
 import { noEffects } from "@/font/effects";
 import { proof, startFrom } from "@/forge/document";
 import { BASES, type Style } from "@/forge/style";
+import { seamsOf } from "@/forge/script";
 import type { Contour } from "@/font/types";
 
 const LOWER = "abcdefghijklmnopqrstuvwxyz".split("");
@@ -63,7 +64,7 @@ function seamGap(style: Style, pair: string): number | null {
   const first = drawn(pair[0], style);
   const second = drawn(pair[1], style);
   if (!first || !second) return null;
-  const seam = style.parts.script.height * style.metrics.xHeight;
+  const seam = seamsOf(style.parts.script, style.metrics.xHeight, style.pen.weight / 2).low;
   /*
    * Fused before measuring, and this is not a nicety.
    *
@@ -97,7 +98,7 @@ async function main() {
     extra ? { ...one, parts: { ...one.parts, script: { ...one.parts.script, irregularity: extra } } } : one);
   for (const style of faces) {
     const script = style.parts.script;
-    const seam = script.height * style.metrics.xHeight;
+    const seam = seamsOf(script, style.metrics.xHeight, style.pen.weight / 2).low;
     console.log(`\n${style.name}  seam y=${Math.round(seam)}  pen=${style.pen.weight}`);
 
     /*

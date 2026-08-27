@@ -166,9 +166,24 @@ export const HANDS_OVER_HIGH = new Set(["o", "v", "w", "b"]);
  */
 const HIGH = 0.76;
 
-/** The two heights a join can cross at on this face. */
-export function seamsOf(script: Script, x: number): { low: number; high: number } {
-  return { low: script.height * x, high: Math.max(script.height * x, HIGH * x) };
+/**
+ * The two heights a join can cross at on this face.
+ *
+ * The low one is where the face asks, but never lower than the lead-out can
+ * reach. That band runs from half a pen above the baseline up to the seam, so a
+ * seam under half a pen leaves it empty -- and `attach` then falls back to the
+ * whole letter and takes its rightmost point wherever it happens to be. A word
+ * came out threaded together through the tops of its arches. A quarter of a pen
+ * of room is enough for the band to find the foot of a stem in.
+ *
+ * Every part of the join has to agree about where this is, and so does the
+ * lean: a shear leaves its own pivot line where it was, and the seam is the one
+ * line it can be pivoted on without opening the joins. So this is the one place
+ * that answers, and the pen is passed in because the floor is measured in it.
+ */
+export function seamsOf(script: Script, x: number, half: number): { low: number; high: number } {
+  const low = Math.max(script.height * x, half * 1.25);
+  return { low, high: Math.max(low, HIGH * x) };
 }
 
 /**
@@ -546,7 +561,7 @@ export function planJoin(
   const points = skeleton(spines);
   if (points.length === 0) return null;
 
-  const seams = seamsOf(script, room.x);
+  const seams = seamsOf(script, room.x, room.half);
   const entryAt = crossing?.entry ?? seams.low;
   const exitAt = crossing?.exit ?? seams.low;
   const reach = script.reach * room.half * 2;

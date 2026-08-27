@@ -35,7 +35,7 @@ import {
   waveBookAt,
   wavy,
 } from "./shapes";
-import { wobbleOf } from "./script";
+import { seamsOf, wobbleOf } from "./script";
 import { penReach, reachAlong, sweep } from "./sweep";
 import type { Style } from "./style";
 import type { Stroke, Terminal } from "./types";
@@ -260,7 +260,7 @@ export function makeLetter(
    */
   const script = style.parts.script;
   const tilt = wobbleOf(name, script, style.metrics.xHeight).lean;
-  const seam = script.height * style.metrics.xHeight;
+  const seam = seamsOf(script, style.metrics.xHeight, style.pen.weight / 2).low;
   const wobbled = (contours: Contour[]): Contour[] =>
     tilt === 0 ? contours : sheared(contours, Math.tan((tilt * Math.PI) / 180), seam);
 

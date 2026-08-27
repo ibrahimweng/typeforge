@@ -20,7 +20,7 @@ import { builtFrom, drawLetter, letterNames , reachesOut } from "./build";
 import { startFrom, weighted } from "./document";
 import { openWaveBook, spineEnd, spineStart, waveBookAt, type WaveBook } from "./shapes";
 import { formsOf, recipeOf } from "./letters";
-import { mostLift } from "./script";
+import { mostLift, seamsOf } from "./script";
 import { BASES as STARTING_POINTS, DISPLAY, SANS, SERIF, type Style } from "./style";
 
 /*
@@ -145,7 +145,7 @@ describe("the character set", () => {
            * checked here is that the lead-in reaches no further left than its
            * own square cut can, not that it starts at nought.
            */
-          const seam = style.parts.script.height * style.metrics.xHeight;
+          const seam = seamsOf(style.parts.script, style.metrics.xHeight, style.pen.weight / 2).low;
           const leaned = (seam - style.metrics.xHeight / 2)
             * Math.tan((style.metrics.slant * Math.PI) / 180);
           expect(bounds.xMin, `${name} starts left of the origin`).toBeGreaterThan(
@@ -181,7 +181,7 @@ describe("the character set", () => {
 
       it("reaches both edges of every joined letter", () => {
         if (!style.parts.script.on) return;
-        const seam = style.parts.script.height * style.metrics.xHeight;
+        const seam = seamsOf(style.parts.script, style.metrics.xHeight, style.pen.weight / 2).low;
         for (const name of LOWERCASE) {
           const drawn = drawLetter(name, style)!;
           const runs = inkRunsAt(drawn.contours, seam, "y", 48);
@@ -682,7 +682,7 @@ describe("an f is not a t, and a k is not a fan", () => {
     expect(joined.length).toBe(4);
     for (const style of joined) {
       const half = style.pen.weight / 2;
-      const seam = style.parts.script.height * style.metrics.xHeight;
+      const seam = seamsOf(style.parts.script, style.metrics.xHeight, style.pen.weight / 2).low;
       // The band the lead-out searches, and the point in it that it leaves from.
       const bandMax = (drawn: NonNullable<ReturnType<typeof drawLetter>>) =>
         Math.max(...Array.from({ length: 9 }, (_, step) =>

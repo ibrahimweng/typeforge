@@ -14,6 +14,7 @@ import { drawLetter } from "./build";
 import { drawnHigh, startFrom } from "./document";
 import { alternateName, joinRules, joinsUp } from "./joins";
 import { BASES, SANS } from "./style";
+import { seamsOf } from "./script";
 
 const HAND = BASES.find((one) => one.name === "Handwriting")!;
 
@@ -142,7 +143,7 @@ describe("the second drawing is the same letter", () => {
     }
     // The plain letters still meet each other at the low seam, which is what
     // makes the font right where the feature is never applied.
-    const low = script.height * HAND.metrics.xHeight;
+    const low = seamsOf(script, HAND.metrics.xHeight, HAND.pen.weight / 2).low;
     for (const letter of ["o", "n"]) {
       const runs = inkRunsAt(drawLetter(letter, HAND)!.contours, low, "y", 48);
       expect([letter, runs.length > 0]).toEqual([letter, true]);

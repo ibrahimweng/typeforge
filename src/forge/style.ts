@@ -999,7 +999,16 @@ export const HANDWRITING: Style = {
     shoulder: { spring: 0.55, reach: 1 },
     script: {
       on: true,
-      height: 0.36,
+      /*
+       * Low, so the join runs along the writing line and the letters arch over
+       * it. Set near the waist -- which is where these all began -- the
+       * connecting stroke crosses every letter at mid height and a word comes
+       * out threaded on a rule rather than written on a line. `levelArc`
+       * arrives tangent to the horizontal, so a long stretch either side of
+       * every seam is flat, and at the waist that flat is the most visible
+       * thing on the page.
+       */
+      height: 0.18,
       reach: 1.5,
       flat: 0.2,
       // No loops. A print hand does not make them, and leaving them off is what
@@ -1053,7 +1062,8 @@ export const FORMAL_SCRIPT: Style = {
     shoulder: { spring: 0.5, reach: 0.96 },
     script: {
       on: true,
-      height: 0.3,
+      // Low, for the reason set out on the Handwriting above.
+      height: 0.16,
       reach: 1.9,
       // Almost no flat: a formal hand swings from one letter into the next in
       // one continuous turn and never runs level between them.
@@ -1105,7 +1115,8 @@ export const CASUAL_SCRIPT: Style = {
     shoulder: { spring: 0.48, reach: 1.06 },
     script: {
       on: true,
-      height: 0.44,
+      // Low, for the reason set out on the Handwriting above.
+      height: 0.17,
       reach: 1.05,
       flat: 0.3,
       loop: 0.7,
@@ -1161,7 +1172,8 @@ export const MONOLINE_SCRIPT: Style = {
     shoulder: { spring: 0.6, reach: 1 },
     script: {
       on: true,
-      height: 0.38,
+      // Low, for the reason set out on the Handwriting above.
+      height: 0.17,
       reach: 1.65,
       flat: 0.16,
       loop: 1.3,
