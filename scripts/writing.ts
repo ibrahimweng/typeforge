@@ -19,6 +19,7 @@ import { writeFileSync } from "node:fs";
 import { ready } from "@/font/boolean";
 import { contoursToSvgPath } from "@/font/geometry";
 import { drawLetter } from "@/forge/build";
+import { joiningWithout } from "@/forge/letters";
 import { proof, startFrom } from "@/forge/document";
 import { BASES, type Style } from "@/forge/style";
 import type { Contour } from "@/font/types";
@@ -40,7 +41,8 @@ const LINES = (process.env.LINES ?? "handwriting|minimum|the quick brown fox|abc
 function setLine(style: Style, line: string): { path: string; width: number } {
   let x = 0;
   const parts: string[] = [];
-  for (const letter of line) {
+  for (let at = 0; at < line.length; at++) {
+    const letter = line[at];
     if (letter === " ") { x += style.metrics.xHeight * 0.7; continue; }
     // TEXTURE=on runs each letter through the tool layer, which is what an
     // export bakes in and what the proofing window shows one letter of.
@@ -49,9 +51,22 @@ function setLine(style: Style, line: string): { path: string; width: number } {
     // third argument this asked for the default form of every letter, so a page
     // of the Handwriting showed an f the face does not use -- and this is the
     // page that is supposed to say what the font would print.
+    /*
+     * Drawn as a shaper would set it, which for the two ends of a word means
+     * without the half of the join that has nothing to meet. Set from the
+     * mapped letters alone every word begins and ends with a stroke reaching
+     * towards a letter that is not there, and this page is supposed to say what
+     * the font would print.
+     */
+    const begins = at === 0 || line[at - 1] === " ";
+    const finishes = at === line.length - 1 || line[at + 1] === " ";
+    const without = { entry: begins ? false : undefined, exit: finishes ? false : undefined };
+    const bare = begins || finishes;
     const drawn = process.env.TEXTURE
       ? proof(letter, startFrom(style))
-      : drawLetter(letter, style, style.forms?.[letter]);
+      : bare
+        ? joiningWithout(without, () => drawLetter(letter, style, style.forms?.[letter]))
+        : drawLetter(letter, style, style.forms?.[letter]);
     if (!drawn) continue;
     parts.push(contoursToSvgPath(slid(drawn.contours, x)));
     x += drawn.advanceWidth;

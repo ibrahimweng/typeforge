@@ -15,7 +15,7 @@
  */
 
 import { HANDS_OVER_HIGH } from "./script";
-import { JOINS } from "./letters";
+import { CAPITALS, JOINS, joinEnds } from "./letters";
 import type { Forge } from "./document";
 import { styleFor } from "./document";
 import type { NamedRule } from "@/font/types";
@@ -83,4 +83,73 @@ export function joinRules(wanted: Array<[string, HighHalf]>): NamedRule[] {
       ],
     },
   ];
+}
+
+/**
+ * What a word-end drawing is called.
+ *
+ * Not `.init` and `.fina`, which is what a foundry would reach for, because
+ * `.init` is already taken here for a different axis entirely: the letter drawn
+ * to receive a hand-over at the waist. Two conventions cannot share one suffix,
+ * and of the two the one that would have to be explained is this one.
+ */
+export function boundaryName(letter: string, which: "begin" | "end"): string {
+  return `${letter}.${which}`;
+}
+
+/**
+ * Every letter that needs a drawing for one end of a word.
+ *
+ * A letter begins a word with no lead-in and finishes one with no lead-out, so
+ * the two lists are the letters that have each half to lose. The capitals are
+ * in the second and not the first: they have no lead-in to go without.
+ */
+export function wordEnds(forge: Forge): Array<[string, "begin" | "end"]> {
+  const wanted: Array<[string, "begin" | "end"]> = [];
+  for (const letter of [...JOINS, ...CAPITALS].sort()) {
+    if (!styleFor(letter, forge).parts.script.on) continue;
+    const ends = joinEnds(letter);
+    if (ends.entry) wanted.push([letter, "begin"]);
+    if (ends.exit) wanted.push([letter, "end"]);
+  }
+  return wanted;
+}
+
+/**
+ * The two rules: a letter after a space begins a word, one before a space ends
+ * it.
+ *
+ * The space is matched as part of the sequence and nothing is substituted at
+ * its position, which is why neither of these needs a backtrack or a lookahead.
+ * They are separate rules and so separate lookups, and a lookup makes its own
+ * pass -- one rule doing both would consume the space and the word after it
+ * would never be looked at.
+ *
+ * The first word of a run and the last are not caught. Nothing precedes the one
+ * or follows the other, so there is no sequence to match, and a font cannot see
+ * past its own string.
+ */
+export function wordEndRules(wanted: Array<[string, "begin" | "end"]>): NamedRule[] {
+  const beginning = wanted.filter(([, which]) => which === "begin").map(([letter]) => letter);
+  const ending = wanted.filter(([, which]) => which === "end").map(([letter]) => letter);
+  const rules: NamedRule[] = [];
+  if (beginning.length > 0) {
+    rules.push({
+      input: [["space"], beginning],
+      swaps: [{
+        at: 1,
+        swap: beginning.map((letter) => ({ plain: letter, alternate: boundaryName(letter, "begin") })),
+      }],
+    });
+  }
+  if (ending.length > 0) {
+    rules.push({
+      input: [ending, ["space"]],
+      swaps: [{
+        at: 0,
+        swap: ending.map((letter) => ({ plain: letter, alternate: boundaryName(letter, "end") })),
+      }],
+    });
+  }
+  return rules;
 }

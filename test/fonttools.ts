@@ -73,6 +73,15 @@ export interface FontToolsReport {
   glyphNames: string[];
   /** Every glyph's advance, by name. */
   advanceWidths: Record<string, number>;
+  /**
+   * Every glyph's left sidebearing, by name. Held alongside the advance
+   * because the pair is what says *where* a glyph differs from another: two
+   * drawings of one letter that share a sidebearing differ only on the right,
+   * and two that share `advance - sidebearing` differ only on the left.
+   */
+  sidebearings: Record<string, number>;
+  /** Every drawn glyph's rightmost ink, by name. Blank glyphs are absent. */
+  rightEdges: Record<string, number>;
   error?: string;
 }
 
@@ -88,7 +97,8 @@ out = {"outlineFormat": "unknown", "tables": [], "numGlyphs": 0, "unitsPerEm": 0
        "winAscent": 0, "winDescent": 0,
        "yMax": 0, "yMin": 0,
        "names": {}, "weightClass": 0, "isBold": False,
-       "glyphNames": [], "advanceWidths": {}}
+       "glyphNames": [], "advanceWidths": {}, "sidebearings": {},
+       "rightEdges": {}}
 try:
     f = TTFont(path)
     # Report the outline flavour rather than the raw version tag, which is
@@ -101,6 +111,7 @@ try:
     out["yMin"] = f["head"].yMin
     out["glyphNames"] = list(f.getGlyphOrder())
     out["advanceWidths"] = {n: w for n, (w, _) in f["hmtx"].metrics.items()}
+    out["sidebearings"] = {n: b for n, (_, b) in f["hmtx"].metrics.items()}
     if "OS/2" in f:
         out["winAscent"] = f["OS/2"].usWinAscent
         out["winDescent"] = f["OS/2"].usWinDescent
@@ -181,6 +192,10 @@ try:
                 out["compositeGlyphs"] += 1
                 if name in ("aacute", "agrave", "ccedilla", "Odieresis"):
                     out["componentsOf"][name] = [c.glyphName for c in glyf[name].components]
+        for name in f.getGlyphOrder():
+            g = glyf[name]
+            if g.numberOfContours > 0:
+                out["rightEdges"][name] = g.xMax
         for name in f.getGlyphOrder()[:600]:
             g = glyf[name]
             if g.numberOfContours <= 0:

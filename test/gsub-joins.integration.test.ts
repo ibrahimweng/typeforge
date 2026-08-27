@@ -91,23 +91,109 @@ suite("a joined face carries its joins into the file", () => {
   );
 
   /*
-   * The alternates are the same letter, not a different one. An advance that
-   * moved would put the letter after it somewhere the letter before it did not
-   * finish, which is the one thing a joined face cannot survive -- and it would
-   * only show on the pairs the feature fires on.
+   * A mid-word alternate is the same letter, not a different one. An advance
+   * that moved would put the letter after it somewhere the letter before it
+   * did not finish, which is the one thing a joined face cannot survive -- and
+   * it would only show on the pairs the feature fires on.
    */
   it(
-    "gives every alternate the advance of the letter it stands in for",
+    "gives every mid-word alternate the advance of the letter it stands in for",
+    async () => {
+      const bytes = await exported(SCRIPT.name);
+      const widths = inspectFont(bytes).advanceWidths ?? {};
+      const checked: string[] = [];
+      for (const [name, width] of Object.entries(widths)) {
+        if (!/\.(init|medi)$/.test(name)) continue;
+        const letter = name.split(".")[0];
+        expect([name, width]).toEqual([name, widths[letter]]);
+        checked.push(name);
+      }
+      expect(checked).toHaveLength(30);
+    },
+    FONT_SUITE_TIMEOUT,
+  );
+
+  /*
+   * The word-boundary alternates are the one place an advance is *meant* to
+   * move: the letter is missing a stroke that reached out to a neighbour that
+   * is not there, so it is narrower by what the stroke cost. What must not
+   * move is the end that is still joining, because that end is a seam -- so
+   * each of these is checked from the side it keeps.
+   *
+   * `.begin` drops the entry, so its distance from the rightmost ink to the
+   * advance is the one the base has: the exit still lands where the next
+   * letter starts looking for it. `.end` drops the exit, so its sidebearing is
+   * the base's: the letter before it still hands over onto the same x.
+   */
+  it(
+    "narrows a word-boundary alternate only on the side that lost its stroke",
     async () => {
       const bytes = await exported(SCRIPT.name);
       const report = inspectFont(bytes);
       const widths = report.advanceWidths ?? {};
-      for (const [name, width] of Object.entries(widths)) {
-        if (!name.includes(".")) continue;
+      const left = report.sidebearings ?? {};
+      const right = report.rightEdges ?? {};
+      const lowercase = (name: string) => /^[a-z]\./.test(name);
+
+      const begun = Object.keys(widths).filter((n) => n.endsWith(".begin"));
+      for (const name of begun) {
         const letter = name.split(".")[0];
-        if (widths[letter] === undefined) continue;
-        expect([name, width]).toEqual([name, widths[letter]]);
+        expect([name, widths[name] < widths[letter]]).toEqual([name, true]);
+        expect([name, widths[name] - right[name]]).toEqual([
+          name,
+          widths[letter] - right[letter],
+        ]);
       }
+
+      const ended = Object.keys(widths).filter((n) => n.endsWith(".end") && lowercase(n));
+      for (const name of ended) {
+        const letter = name.split(".")[0];
+        expect([name, widths[name] < widths[letter]]).toEqual([name, true]);
+        expect([name, left[name]]).toEqual([name, left[letter]]);
+      }
+
+      // Every lowercase letter has both, and only lowercase begins a word --
+      // nothing ever joins *into* a capital.
+      expect(begun).toHaveLength(26);
+      expect(ended).toHaveLength(26);
+    },
+    FONT_SUITE_TIMEOUT,
+  );
+
+  /*
+   * A capital is the exception, and it is the join layer's own doing: a
+   * capital only ever hands on, so taking its exit away leaves it with no
+   * join at all, and it falls back to the plain roman spacing on *both*
+   * sides. That is safe for exactly one reason -- nothing joins into a
+   * capital, so the edge that moved was never a seam. Some come out wider
+   * than the joined drawing, which is what a letter reaching out for a
+   * neighbour and then not needing to should look like.
+   */
+  it(
+    "spaces a word-final capital as the plain letter it falls back to",
+    async () => {
+      const bytes = await exported(SCRIPT.name);
+      const report = inspectFont(bytes);
+      const widths = report.advanceWidths ?? {};
+      const left = report.sidebearings ?? {};
+
+      const right = report.rightEdges ?? {};
+      const capitals = Object.keys(widths).filter((n) => /^[A-Z]\.end$/.test(n));
+      expect(capitals).toHaveLength(22);
+
+      for (const name of capitals) {
+        const letter = name.split(".")[0];
+        // The reach is gone, so every one of them stands well clear of its
+        // advance where the joined drawing ran up close to it.
+        const gap = widths[name] - right[name];
+        expect([name, gap > widths[letter] - right[letter]]).toEqual([name, true]);
+        // And the left edge, which was never a seam, only ever relaxes.
+        expect([name, left[name] >= left[letter]]).toEqual([name, true]);
+      }
+
+      // Some come out wider than the drawing that was reaching out, which is
+      // the whole tell that these are the un-joined letter and not a trim.
+      expect(capitals.filter((n) => widths[n] > widths[n.split(".")[0]])).not.toHaveLength(0);
     },
     FONT_SUITE_TIMEOUT,
   );

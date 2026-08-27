@@ -11,8 +11,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { ready } from "@/font/boolean";
 import { contoursBounds, inkRunsAt } from "@/font/geometry";
 import { drawLetter } from "./build";
-import { drawnHigh, startFrom } from "./document";
-import { alternateName, joinRules, joinsUp } from "./joins";
+import { drawnEnds, drawnHigh, startFrom } from "./document";
+import { alternateName, joinRules, joinsUp, wordEndRules, wordEnds } from "./joins";
 import { BASES, SANS } from "./style";
 import { seamsOf } from "./script";
 
@@ -70,6 +70,64 @@ describe("what the rule says", () => {
     expect(rules[0].swaps.map((one) => one.at)).toEqual([0, 1]);
     expect(rules[0].swaps[0].swap).toContainEqual({ plain: "o", alternate: "o.medi" });
     expect(rules[0].swaps[1].swap).toContainEqual({ plain: "n", alternate: "n.init" });
+  });
+});
+
+describe("the two ends of a word", () => {
+  const forge = startFrom(BASES.find((one) => one.name === "Handwriting")!);
+
+  /*
+   * A word does not begin with a stroke reaching out of its first letter
+   * towards nothing, or end with one reaching out of its last.
+   */
+  it("draws the first letter of a word without its lead-in", () => {
+    for (const letter of ["a", "n", "e", "h"]) {
+      const plain = drawLetter(letter, HAND)!;
+      const begin = drawnEnds(letter, "begin", forge)!;
+      expect([letter, begin.advanceWidth < plain.advanceWidth]).toEqual([letter, true]);
+      // And it starts on its own ink rather than reaching back past the origin.
+      expect([letter, contoursBounds(begin.contours).xMin > 0]).toEqual([letter, true]);
+      expect([letter, contoursBounds(plain.contours).xMin < 0]).toEqual([letter, true]);
+    }
+  });
+
+  it("draws the last letter of a word without its lead-out", () => {
+    for (const letter of ["a", "n", "e", "h"]) {
+      const plain = drawLetter(letter, HAND)!;
+      const end = drawnEnds(letter, "end", forge)!;
+      expect([letter, end.advanceWidth < plain.advanceWidth]).toEqual([letter, true]);
+    }
+  });
+
+  /*
+   * The space is matched as part of the sequence and nothing is substituted at
+   * its position, which is what lets these be written without a backtrack or a
+   * lookahead. Two rules and so two lookups: one that consumed the space would
+   * leave the word after it unlooked at.
+   */
+  it("matches on the space and leaves the space alone", () => {
+    const rules = wordEndRules(wordEnds(forge));
+    expect(rules.length).toBe(2);
+    const [begins, ends] = rules;
+    expect(begins.input[0]).toEqual(["space"]);
+    expect(begins.swaps.map((one) => one.at)).toEqual([1]);
+    expect(ends.input[1]).toEqual(["space"]);
+    expect(ends.swaps.map((one) => one.at)).toEqual([0]);
+  });
+
+  /*
+   * A capital has no lead-in to go without, so it is in the second list and not
+   * the first. The four that hand over to nothing are in neither.
+   */
+  it("asks for a word-end capital and never a word-start one", () => {
+    const wanted = wordEnds(forge);
+    const named = (which: "begin" | "end") =>
+      wanted.filter(([, one]) => one === which).map(([letter]) => letter);
+    expect(named("begin").some((letter) => /[A-Z]/.test(letter))).toBe(false);
+    expect(named("end")).toContain("A");
+    for (const shut of ["B", "D", "O", "P"]) {
+      expect([shut, named("end").includes(shut)]).toEqual([shut, false]);
+    }
   });
 });
 

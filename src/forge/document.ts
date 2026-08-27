@@ -32,7 +32,7 @@ import {
   type Port,
   type Tiles,
 } from "./kit";
-import { joiningHigh, recipeOf } from "./letters";
+import { joiningHigh, joiningWithout, recipeOf } from "./letters";
 import type { Imported } from "./exchange";
 import { weightClassOf, weightedStyle, type Family } from "./family";
 import { partsUsedBy, type PartName } from "./parts";
@@ -788,6 +788,7 @@ const proofs = new WeakMap<Forge, Map<string, Drawn | null>>();
  * cache keyed on the letter alone would hand one back for the other.
  */
 const highs = new WeakMap<Forge, Map<string, Drawn | null>>();
+const edges = new WeakMap<Forge, Map<string, Drawn | null>>();
 
 function remembered(
   where: WeakMap<Forge, Map<string, Drawn | null>>,
@@ -868,6 +869,29 @@ export function unshaped(forge: Forge): Forge {
 export function drawnHigh(letter: string, which: "entry" | "exit", forge: Forge): Drawn | null {
   return remembered(highs, forge, `${letter}.${which}`, () =>
     joiningHigh({ [which]: true }, () =>
+      drawLetter(
+        letter,
+        styleFor(letter, forge),
+        formOf(forge, letter),
+        cutsFor(letter, forge),
+        forge.kit,
+        castFor(letter, forge),
+      ),
+    ),
+  );
+}
+
+/**
+ * The same letter with one half of its join left off, for the ends of a word.
+ *
+ * `begin` is the drawing for a letter that starts one and so has nothing to
+ * reach back to; `end` is for the letter that finishes one. Both are reached
+ * only through the feature, and both are cut and cast like any other letter for
+ * the reason `drawnHigh` gives.
+ */
+export function drawnEnds(letter: string, which: "begin" | "end", forge: Forge): Drawn | null {
+  return remembered(edges, forge, `${letter}.${which}`, () =>
+    joiningWithout(which === "begin" ? { entry: false } : { exit: false }, () =>
       drawLetter(
         letter,
         styleFor(letter, forge),

@@ -28,8 +28,8 @@ import {
 import { builtFrom, letterNames } from "./build";
 import { openWaveBook, type WaveBook } from "./shapes";
 import { kernsFor } from "./kern";
-import { anythingCut, draw, drawnHigh, proof, type Forge } from "./document";
-import { alternateName, joinRules, joinsUp } from "./joins";
+import { anythingCut, draw, drawnEnds, drawnHigh, proof, type Forge } from "./document";
+import { alternateName, boundaryName, joinRules, joinsUp, wordEndRules, wordEnds } from "./joins";
 
 /**
  * What each drawn glyph is called in Unicode.
@@ -386,6 +386,38 @@ export async function toTypeface(
       });
     }
     if (glyphs.length > before) typeface.alternates = joinRules(joined);
+  }
+
+  /*
+   * And the two ends of a word, which is the other thing a shaper has to be
+   * told about a joined face.
+   *
+   * The letter as `cmap` maps it reaches out on both sides, because that is
+   * what makes the font right in a renderer that applies nothing. A word set
+   * from those alone begins and ends with a stroke reaching towards a letter
+   * that is not there, so the first letter of one and the last are drawn again
+   * without the half that has nothing to meet.
+   */
+  const edges = wordEnds(forge);
+  if (edges.length > 0) {
+    const before = glyphs.length;
+    for (const [name, which] of edges) {
+      const drawn = drawnEnds(name, which, forge);
+      if (!drawn) continue;
+      glyphs.push({
+        name: boundaryName(name, which),
+        unicodes: [],
+        advanceWidth: drawn.advanceWidth,
+        contours: drawn.contours,
+        components: [],
+        anchors: [],
+        params: {},
+        dirty: false,
+      });
+    }
+    if (glyphs.length > before) {
+      typeface.alternates = [...typeface.alternates, ...wordEndRules(edges)];
+    }
   }
 
   typeface.glyphs = glyphs;

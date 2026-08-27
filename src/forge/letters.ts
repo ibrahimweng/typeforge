@@ -6795,7 +6795,7 @@ export const JOINS = new Set<string>("abcdefghijklmnopqrstuvwxyz".split(""));
  * sees in every copperplate ever cut.
  */
 const NEVER_HANDS_ON = new Set(["B", "D", "O", "P"]);
-const CAPITALS = new Set<string>("ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));
+export const CAPITALS = new Set<string>("ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));
 
 /** Which halves of the join this letter has, if any. */
 export function joinEnds(name: string): Ends {
@@ -6833,6 +6833,29 @@ let takingHigh: { entry?: boolean; exit?: boolean } = {};
  * is put back afterwards whatever happens, because a letter drawn high by
  * accident is a letter that does not meet the one before it.
  */
+/**
+ * Which half of its join this drawing of a letter goes without.
+ *
+ * The same module-scoped, scoped-setter arrangement as `takingHigh` above, and
+ * for the same reason: a second drawing of a letter that a shaper swaps in.
+ *
+ * A word does not begin with a stroke reaching out of its first letter towards
+ * nothing, or end with one reaching out of its last. The letter as `cmap` maps
+ * it has both halves, so a renderer that never applies a feature still gets a
+ * face whose letters meet; these are the drawings for the two ends of a word.
+ */
+let endsWithout: Partial<Ends> | null = null;
+
+export function joiningWithout<T>(which: Partial<Ends>, run: () => T): T {
+  const was = endsWithout;
+  endsWithout = which;
+  try {
+    return run();
+  } finally {
+    endsWithout = was;
+  }
+}
+
 export function joiningHigh<T>(which: { entry?: boolean; exit?: boolean }, run: () => T): T {
   const was = takingHigh;
   takingHigh = which;
@@ -6860,7 +6883,20 @@ export function joiningHigh<T>(which: { entry?: boolean; exit?: boolean }, run: 
  */
 function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
   const script = style.parts.script;
-  const ends = joinEnds(name);
+  /*
+   * What the letter has, less whatever this drawing is doing without.
+   *
+   * The override can only take a half away, never hand one over: a capital that
+   * gained a lead-in because something asked for one would be reaching into a
+   * letter nothing is ever set before, which is the thing `joinEnds` exists to
+   * prevent.
+   */
+  const has = joinEnds(name);
+  const without = endsWithout ?? {};
+  const ends: Ends = {
+    entry: has.entry && without.entry !== false,
+    exit: has.exit && without.exit !== false,
+  };
   if (!script.on || enclosing || (!ends.entry && !ends.exit)) return recipe;
   const f = frame(style);
   /*
