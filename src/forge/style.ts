@@ -1052,12 +1052,35 @@ export const FORMAL_SCRIPT: Style = {
   family: "script",
   blurb: "A pointed pen held at an angle and moved slowly. Long loops, deep contrast, and a steep even lean.",
   metrics: { ...SANS.metrics, xHeight: 430, ascender: 790, descender: -260, slant: 22 },
-  pen: { weight: 96, contrast: 0.58, angle: 42 },
+  /*
+   * The nib, set against the Garamond this face is cut to.
+   *
+   * Forty-two degrees is a broad-nib angle and it was fighting the letters. A
+   * nib is thickest across itself, so at forty-two the thick falls on a stroke
+   * running down and to the *left* -- and an italic has none: at this slant
+   * every downstroke runs at about sixty-eight degrees, sixty off the thickest
+   * direction, so the deepest contrast the face could ask for came out as a
+   * face with almost none. Set square to the downstrokes instead and the thick
+   * lands where a hand puts it and where the reference has it, with the
+   * hairlines left on the joins and the tops of the bowls.
+   *
+   * And then the ratio is worth having: at 0.58 the thin is four tenths of the
+   * thick, where the reference's hairlines are nearer a fifth.
+   */
+  pen: { weight: 96, contrast: 0.78, angle: -22 },
   forms: { k: "standing", a: "double", g: "curled", l: "tailed", f: "descending", one: "footed" },
   parts: {
     ...SANS.parts,
     // Square, for the reason set out on the Handwriting above.
     terminal: { kind: "butt", angle: 0 },
+    /*
+     * The drops the reference finishes its `a`, `c`, `f`, `r` and `y` on, which
+     * this face had none of: `ball.size` came down from the Sans at nought. One
+     * stem across and seated a third of a radius along the stroke, which is the
+     * arrangement the Monoline arrived at -- visible and confident rather than
+     * timid, and reading as the stroke swelling and stopping.
+     */
+    ball: { size: 1, drop: 0.35 },
     corner: { radius: 46, join: "round" },
     bowl: { width: 0.92, squareness: 0, aperture: 1 },
     shoulder: { spring: 0.5, reach: 0.96 },
