@@ -1125,17 +1125,31 @@ export const FORMAL_SCRIPT: Style = {
   name: "Formal Script",
   family: "script",
   blurb: "A pointed pen held at an angle and moved slowly. Long loops, deep contrast, and a steep even lean.",
-  // The lowercase brought down under the extenders, as on the Handwriting and
-  // for the reason set out there. This is the face that goes furthest, and it
-  // lands on the reference: 2.18 x-heights of ascender against its 2.17.
+  /*
+   * The lowercase brought down under the extenders, as on the Handwriting and
+   * for the reason set out there, and taken the whole way: 0.330 of the em in
+   * the x-height and 2.20 x-heights of ascender, against the reference's 0.332
+   * and 2.17. It read 0.368 and 2.18 -- right on the rise and a tenth wide on
+   * the body, which is a face that has the reference's proportion between its
+   * own two lines and not against the em.
+   *
+   * Everything measured against the x-height came down with it: the counter,
+   * the sidebearing, the overshoot and the pen. The descender is set where the
+   * ink lands rather than where the loop is aimed, which is a little short of
+   * the metric because a descender loop reaches past its line.
+   */
   metrics: {
     ...SANS.metrics,
-    xHeight: 370,
-    ascender: 790,
-    descender: -290,
-    counterWidth: 318,
-    sidebearing: 47,
-    overshoot: 9,
+    xHeight: 332,
+    // Under the ascender by the gap this face already had, brought down in the
+    // same proportion. Left at the Sans' 700 it stood level with the new
+    // ascender, and a capital that is not shorter than an `l` is not a capital.
+    capHeight: 639,
+    ascender: 720,
+    descender: -262,
+    counterWidth: 285,
+    sidebearing: 42,
+    overshoot: 8,
     slant: 22,
   },
   /*
@@ -1169,7 +1183,21 @@ export const FORMAL_SCRIPT: Style = {
    * tuned. The reference is set tighter than either -- closing the reach
    * further is a change to the fit and belongs to itself.
    */
-  pen: { weight: 103, contrast: 0.78, angle: -22 },
+  /*
+   * And the weight down with the body.
+   *
+   * At 103 against a 370-unit x-height this pen was 0.28 of it, against the
+   * reference's 0.19 -- and the page still read within five per cent of the
+   * reference's colour, because the face was half again too wide and the extra
+   * white was paying for the extra black. Closing the fit took that cover away
+   * and the colour went to 1.22. At 70 against 332 the stem is 0.21 of the
+   * x-height and the two land together: 1.10 on the fit, 1.07 on the colour.
+   *
+   * Swept at 92, 80 and 70 across four reaches, with the counters watched: the
+   * `a`, the `e` and the `g` closed at 132 and above on the old body and are
+   * open at every one of these.
+   */
+  pen: { weight: 70, contrast: 0.78, angle: -22 },
   forms: { k: "standing", a: "double", g: "curled", l: "tailed", f: "descending", one: "footed" },
   parts: {
     ...SANS.parts,
@@ -1191,12 +1219,26 @@ export const FORMAL_SCRIPT: Style = {
       on: true,
       // Low, for the reason set out on the Handwriting above.
       height: 0.16,
-      // Down from 1.6, and it stops sooner than the others: below 1.1 this
-      // face's bodies start lapping by more than the knit intends -- 0.20 at
-      // 0.9 against the knit's 0.16 -- because its letters are wider than the
-      // reference's to begin with. That is the counter's business, not the
-      // join's.
-      reach: 1.1,
+      /*
+       * Down from 1.6, then from 1.1, and the second of those was waiting on
+       * the body rather than on the join.
+       *
+       * At 1.1 this face set 1.48 times as wide as the reference, and closing
+       * the reach on its own only traded that for colour: the ink stayed where
+       * it was and the room around it came away, so the page went from 1.05 to
+       * 1.31 as the fit came from 1.48 to 1.13. The reach was holding a wide
+       * face apart, not spacing a right one.
+       *
+       * With the body and the pen at the reference's proportions there is
+       * nothing to hold apart. Swept at 0.8, 0.65 and 0.55 against three knits:
+       * the fit and the colour cross at about 0.7, which reads 1.10 and 1.07.
+       *
+       * The note that used to stand here said the bodies lap by more than the
+       * knit intends below 1.1 -- 0.20 against 0.16 at a reach of 0.9. They do
+       * not any more; that was the old body's letters being wider than the
+       * reference's, and it is 0.16 here.
+       */
+      reach: 0.7,
       // Almost no flat: a formal hand swings from one letter into the next in
       // one continuous turn and never runs level between them.
       flat: 0.04,
@@ -1218,9 +1260,9 @@ export const FORMAL_SCRIPT: Style = {
       irregularity: 0.12,
       bow: 0.6,
       // The reference's sixteen hundredths of an x-height, in this face's
-      // stems. Its pen is the heaviest of the four, so its number is the
-      // smallest.
-      knit: 0.22,
+      // stems -- so it moves whenever the pen does, and the pen came down by a
+      // third. At 0.22 the lap fell to 0.13 with it.
+      knit: 0.3,
     },
   },
   /*
@@ -1335,22 +1377,31 @@ export const CASUAL_SCRIPT: Style = {
  * script with none of the proportions of one.
  *
  * The stroke was a thirteenth of the x-height, on the reasoning that a
- * monoweight script is a hairline, and that is the one thing here that has been
- * taken back. Measured as ink over the area of its own line -- which is what
- * colour is, and what an eye reads -- a thirteenth put this face at half the
- * reference's darkness where the other three sit within three per cent of it.
- * Half is not a lighter face of the same family, it is a different weight of
- * text, so the pen goes to a sixth and the page comes out at the reference's.
- * The reach, the loop and the ball are all counted in stems and are put back
- * down by the same factor, so they are the same size on the page as before and
- * what moved is the colour. The knit is the exception and moves on purpose:
- * the lap it buys was short of the reference only because the pen was light.
+ * monoweight script is a hairline; it was then taken to a sixth, because at a
+ * thirteenth the page read half the reference's darkness; and it now sits at
+ * about a seventh and a half. The middle of those three was a right reading of
+ * a wrong measurement.
+ *
+ * Colour is ink over the area of the line it sits on, and the area of the line
+ * is the advance. This face set 1.46 times as wide as the reference, so every
+ * letter had half again the white to fill and no pen light enough to look right
+ * could fill it -- the darkness was missing because the room was there, not
+ * because the stroke was thin. Raising the pen filled the room and left the
+ * face reading as a heavy monoline set loose.
+ *
+ * With the body at the reference's proportions and the reach closed to match,
+ * the room is gone and the hairline is right: pen 44 against a 332 x-height
+ * reads 1.02 times the reference's colour at 1.05 times its fit, where the old
+ * arrangement read 1.01 at 1.46. The face is a hairline again and the page is
+ * the reference's.
  *
  * Every quantity the join and the loops are measured in is a multiple of the
- * pen, which is right at a text weight and is the trap here: taking the pen
- * down by two thirds takes the reach, the loops and the ball down with it
- * unless they are put back up by the same factor. That is why `reach` and
- * `loop` are numbers that look absurd beside the other three faces.
+ * pen, which is right at a text weight and is the trap here: the reach at 2.12
+ * was that compensation, holding a join the size of the old page's on a pen
+ * that had come down. It is 0.9 now because the page it is drawn on is the
+ * reference's size, and the loop stays high because it is the point of the
+ * face -- swept at 5.8, 4.2, 3.2 and 2.4, and it moves the fit by four
+ * hundredths and the colour by nothing that holds a direction.
  */
 export const MONOLINE_SCRIPT: Style = {
   ...SANS,
@@ -1359,7 +1410,7 @@ export const MONOLINE_SCRIPT: Style = {
   blurb: "A hairline of one thickness, drawn rather than written. Long looped ascenders, a hard lean, and a drop of ink on every open end.",
   metrics: {
     ...SANS.metrics,
-    xHeight: 360,
+    xHeight: 332,
     /*
      * Capitals raised with the ascenders rather than left where the sans put
      * them. Every other face here has its ascender a shade over its cap; this
@@ -1367,10 +1418,15 @@ export const MONOLINE_SCRIPT: Style = {
      * sans' height would be a third of the way down the letter beside it. It is
      * also what keeps an accent on an `l` under the ceiling the drawing is
      * checked against, which is read off the cap.
+     *
+     * The three came down together, keeping the cap eight ninths of the rise
+     * that the paragraph above is about. The body is the reference's now --
+     * 0.332 of the em and 2.17 x-heights of ascender, which is its figure to
+     * the second place -- where this face read 0.360 and 2.50.
      */
-    capHeight: 800,
-    ascender: 900,
-    descender: -320,
+    capHeight: 640,
+    ascender: 720,
+    descender: -268,
     /*
      * Twenty-one, and it is the descenders that set the ceiling rather than
      * taste. The lean turns about the seam, so a descender three hundred units
@@ -1379,9 +1435,12 @@ export const MONOLINE_SCRIPT: Style = {
      */
     slant: 21,
     width: 0.95,
-    sidebearing: 40,
+    // Down with the x-height, and it has to stay under the join's reach in
+    // units or a letter that gives up a join comes out wider than the one that
+    // keeps it. The reach is 0.9 stems of a 44-unit pen, which is 39.6.
+    sidebearing: 34,
   },
-  pen: { weight: 58, contrast: 0, angle: 0 },
+  pen: { weight: 44, contrast: 0, angle: 0 },
   forms: { k: "standing", l: "tailed", f: "descending", seven: "barred", four: "open" },
   parts: {
     ...SANS.parts,
@@ -1443,7 +1502,7 @@ export const MONOLINE_SCRIPT: Style = {
        * 4.4 of the old 28-unit pen is 2.12 of the 58-unit one, which is the
        * same 123 units of white and the same two limits above.
        */
-      reach: 2.12,
+      reach: 0.9,
       flat: 0.05,
       // Held in units across the pen change, and then opened to put the eye's
       // foot where the reference puts it. See the note on the Formal's loop.

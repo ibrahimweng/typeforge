@@ -150,8 +150,26 @@ describe("the character set", () => {
            * checked here is that the lead-in reaches no further left than its
            * own square cut can, not that it starts at nought.
            */
+          /*
+           * And leaned at the height the leftmost ink actually sits at, not at
+           * the seam.
+           *
+           * The seam is where the lead-in is, and for most letters the lead-in
+           * is the leftmost thing. A descender is not: it hangs a long way
+           * below the seam, and the same shear that moves the seam sideways
+           * moves it further -- a Monoline `j`, whose loop drops 0.84 of an
+           * x-height under a lean of twenty-one degrees, reaches a third of an
+           * x-height left of its origin for it. That is the shear doing what a
+           * shear does, not a letter spaced wrong, and the reference does the
+           * same and more: its `j` starts 0.58 of an x-height left of the
+           * origin, its `p` 0.28 and its `f` 0.20. A descender hangs under the
+           * tail of the letter before it, where there is nothing to foul.
+           */
+          const lowest = drawn.contours
+            .flatMap((one) => one.nodes)
+            .reduce((left, node) => (node.point.x < left.point.x ? node : left)).point;
           const seam = seamsOf(style.parts.script, style.metrics.xHeight, style.pen.weight / 2).low;
-          const leaned = (seam - style.metrics.xHeight / 2)
+          const leaned = (Math.min(seam, lowest.y) - style.metrics.xHeight / 2)
             * Math.tan((style.metrics.slant * Math.PI) / 180);
           const knit = style.parts.script.on ? style.parts.script.knit * style.pen.weight : 0;
           expect(bounds.xMin, `${name} starts left of the origin`).toBeGreaterThan(
