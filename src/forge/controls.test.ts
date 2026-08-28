@@ -385,14 +385,20 @@ describe("every starting point, at every weight", () => {
      * about the alpha. So each of these is written with what the pen actually
      * is where it folds:
      *
-     *   Handwriting     @92   pen 0.28 of the x-height, 1.7x its own
-     *   Handwriting     @260  pen 0.78 of the x-height, 4.8x its own
-     *   Formal Script   @150  pen 0.41 of the x-height, 1.5x its own
-     *   Formal Script   @210  pen 0.57 of the x-height, 2.0x its own
-     *   Formal Script   @260  pen 0.70 of the x-height, 2.5x its own
-     *   Casual Script   @260  pen 0.78 of the x-height, 3.9x its own
-     *   Monoline Script @210  pen 0.58 of the x-height, 3.6x its own
-     *   Monoline Script @260  pen 0.72 of the x-height, 4.5x its own
+     *   Formal Script   @150  pen 0.45 of the x-height, 2.1x its own
+     *   Formal Script   @210  pen 0.64 of the x-height, 3.0x its own
+     *   Formal Script   @260  pen 0.79 of the x-height, 3.7x its own
+     *   Casual Script   @150  pen 0.46 of the x-height, 2.1x its own
+     *   Casual Script   @210  pen 0.64 of the x-height, 3.0x its own
+     *   Casual Script   @260  pen 0.80 of the x-height, 3.7x its own
+     *   Monoline Script @210  pen 0.63 of the x-height, 4.8x its own
+     *   Monoline Script @260  pen 0.78 of the x-height, 5.9x its own
+     *
+     * The Handwriting is off this list now and the Casual Script is further
+     * onto it, both for the same reason: they were given pointed pens for
+     * their texture, so the Handwriting's letters stopped folding where they
+     * did and the Casual's omega started folding where the Formal Script's
+     * already did.
      *
      * Not one of them folds at the pen its face is drawn with, and each is a
      * mitre carried out to a point over a terminal or a corner cut back further
@@ -411,25 +417,18 @@ describe("every starting point, at every weight", () => {
      * 1.5.
      */
     const known = new Set([
-      "α / Default folds on Handwriting at weight 92",
-      "ά / Default folds on Handwriting at weight 92",
-      "z / Default folds on Handwriting at weight 260",
-      "braceright / Default folds on Handwriting at weight 260",
-      "zacute / Default folds on Handwriting at weight 260",
-      "zdotaccent / Default folds on Handwriting at weight 260",
-      "zcaron / Default folds on Handwriting at weight 260",
       "Ω / Default folds on Formal Script at weight 150",
       "Ώ / Default folds on Formal Script at weight 150",
       "Ω / Default folds on Formal Script at weight 210",
       "Ώ / Default folds on Formal Script at weight 210",
       "Ω / Default folds on Formal Script at weight 260",
       "Ώ / Default folds on Formal Script at weight 260",
-      "z / Default folds on Casual Script at weight 260",
-      "braceleft / Default folds on Casual Script at weight 260",
-      "braceright / Default folds on Casual Script at weight 260",
-      "zacute / Default folds on Casual Script at weight 260",
-      "zdotaccent / Default folds on Casual Script at weight 260",
-      "zcaron / Default folds on Casual Script at weight 260",
+      "Ω / Default folds on Casual Script at weight 150",
+      "Ώ / Default folds on Casual Script at weight 150",
+      "Ω / Default folds on Casual Script at weight 210",
+      "Ώ / Default folds on Casual Script at weight 210",
+      "Ω / Default folds on Casual Script at weight 260",
+      "Ώ / Default folds on Casual Script at weight 260",
       "z / Default folds on Monoline Script at weight 210",
       "zacute / Default folds on Monoline Script at weight 210",
       "zdotaccent / Default folds on Monoline Script at weight 210",

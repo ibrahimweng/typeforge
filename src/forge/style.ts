@@ -983,16 +983,41 @@ export const HANDWRITING: Style = {
    */
   metrics: {
     ...SANS.metrics,
-    xHeight: 332,
-    capHeight: 650,
-    ascender: 720,
-    descender: -252,
-    counterWidth: 236,
-    sidebearing: 36,
+    xHeight: 350,
+    capHeight: 656,
+    ascender: 726,
+    descender: -250,
+    counterWidth: 249,
+    // Under the join's reach in units, which is 0.42 of a 78-unit pen: a
+    // letter that gives up a join swaps the reach for this, and has to come out
+    // narrower for it, not wider.
+    sidebearing: 28,
     overshoot: 6,
     slant: 6,
   },
-  pen: { weight: 54, contrast: 0.22, angle: 28 },
+  /*
+   * A pointed pen, not a ballpoint, and this is what a script's texture is.
+   *
+   * Read the widths of every run of ink a horizontal line crosses on `noeacsu`
+   * and the reference comes out in two heaps: about 350 runs at 0.07 to 0.09 of
+   * an x-height and about 440 at 0.19 to 0.21, with a gap between them. That is
+   * a nib that swells coming down and lifts going up. This face came out as one
+   * spike -- 399 runs at 0.16 and nothing at all thinner -- which is a monoline
+   * wearing a script's shapes, and is exactly what it looked like set as words.
+   *
+   * Contrast below about 0.6 does not open the heap at all: swept at 0.22, 0.45
+   * and 0.6, the thin end never leaves the spike. There is no moderate setting
+   * here, only spike or spread. At 0.78 the runs spread from 0.10 to 0.35 with
+   * the main heap at 0.19, which is the reference's, and the weight goes to 74
+   * to put it there and keep the page at 0.99 of the reference's colour.
+   *
+   * The angle stays at 28. Swept against 0 and -6 -- on the reasoning that a
+   * nib square to the downstroke is what the Formal Script wanted -- and both
+   * of those close the spread back into a single spike, because at this face's
+   * slant it is 28 that puts the two directions of travel across different
+   * widths of the nib.
+   */
+  pen: { weight: 78, contrast: 0.78, angle: 28 },
   /*
    * The single-storey a and the tailed l, which is what a hand writes. Nobody
    * draws a two-storey a with a pen unless they are drawing a typeface.
@@ -1086,7 +1111,7 @@ export const HANDWRITING: Style = {
        * the narrower drawings they exist to be. This face's sidebearing is 46
        * units against a pen of 70, so the floor is two thirds of a stem.
        */
-      reach: 0.72,
+      reach: 0.42,
       flat: 0.2,
       /*
        * Looped, where this face used to have none.
@@ -1097,7 +1122,7 @@ export const HANDWRITING: Style = {
        * where the reference's does, just above the x-height, rather than partway
        * up the ascender: see the note on the Formal Script's loop.
        */
-      loop: 3.8,
+      loop: 2.63,
       /*
        * How narrow the eye is for its height, and it was never chosen: one arc
        * bowed to a half is a semicircle, so every eye came out exactly half as
@@ -1119,7 +1144,7 @@ export const HANDWRITING: Style = {
        * its pairs by about sixteen hundredths of its x-height, and this is
        * what that comes to here, in stems, at this face's pen. See `knit`.
        */
-      knit: 0.4,
+      knit: 0.22,
     },
   },
   /*
@@ -1362,12 +1387,12 @@ export const CASUAL_SCRIPT: Style = {
   // Script end, because a fast informal hand is not a formal one.
   metrics: {
     ...SANS.metrics,
-    xHeight: 332,
-    capHeight: 637,
-    ascender: 720,
-    descender: -237,
-    counterWidth: 220,
-    sidebearing: 32,
+    xHeight: 350,
+    capHeight: 645,
+    ascender: 729,
+    descender: -239,
+    counterWidth: 232,
+    sidebearing: 34,
     overshoot: 6,
     slant: 13,
   },
@@ -1387,7 +1412,21 @@ export const CASUAL_SCRIPT: Style = {
    * a sixth more ink than the reference's at the same width, and its `v` and
    * `e` a third.
    */
-  pen: { weight: 52, contrast: 0.3, angle: 22 },
+  /*
+   * And a pointed pen here too, which is the one thing about this face that is
+   * not what a felt tip does.
+   *
+   * A felt tip is monoline, and monoline is what this was: 385 runs at 0.15 of
+   * an x-height and nothing thinner. Against the reference that reads as wire
+   * rather than as writing -- see the note on the Handwriting for the two heaps
+   * a written line comes in. Swept at 0.30, 0.70 and 0.78 across three weights,
+   * 0.70 at 66 puts the main heap at 0.19, where the reference's is, and the
+   * page at the reference's colour exactly.
+   *
+   * What is kept of the felt tip is everything else: the speed, the high seam,
+   * the short reach, the bounce.
+   */
+  pen: { weight: 70, contrast: 0.7, angle: 22 },
   // The tailed `l`, as on the other three and as the reference draws it: the
   // plain one is a bare stem with no width of its own, so the join spaced it at
   // 0.47 of this face's `o` where the reference sets its `l` at 0.65.
@@ -1418,11 +1457,11 @@ export const CASUAL_SCRIPT: Style = {
       height: 0.17,
       // Down from 1.05, to where the bodies still lap by only what the knit
       // intends. See the note on the Handwriting.
-      reach: 0.8,
+      reach: 0.6,
       flat: 0.3,
       // Was 0.7, which was too small to close an eye at all -- the loop showed
       // as a bulge on the stem. Sized on the reference's, as on the Formal.
-      loop: 2.9,
+      loop: 2.16,
       /*
        * How narrow the eye is for its height, and it was never chosen: one arc
        * bowed to a half is a semicircle, so every eye came out exactly half as
@@ -1442,7 +1481,7 @@ export const CASUAL_SCRIPT: Style = {
       // The reference's lap, in this face's stems.
       // In stems, so it moves whenever the pen does, and the pen came down by a
       // fifth.
-      knit: 0.32,
+      knit: 0.25,
     },
   },
   /*
