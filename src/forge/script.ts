@@ -319,6 +319,16 @@ const SAMPLES = 64;
  * the very point being avoided. A quarter and a third draw the same letter;
  * a third keeps more of the bowl available on the faces whose seam sits high.
  */
+/**
+ * How far past its own advance a letter may hang, as a share of the x-height.
+ *
+ * Read off the reference: its `l` reaches 0.33 of an x-height past its advance,
+ * its `f` 0.25 and its `d` 0.22, and every letter with nothing above the waist
+ * stops between 0.09 and 0.11. So this is what a loop costs the letter beside
+ * it, and it is the most one is allowed to cost.
+ */
+const HANGS_OVER = 0.33;
+
 const ROUND_ENTRY = 0.35;
 
 /**
@@ -937,7 +947,26 @@ export function planJoin(
   const inset = (ends.entry ? reach : room.sidebearing) - (leftmost - room.half);
   const from = at(lands.x + inset, lands.y);
   const to = at(leaves.x + inset, leaves.y);
-  const width = rightmost + room.half + inset + (ends.exit ? reach : room.sidebearing);
+  const asked = rightmost + room.half + inset + (ends.exit ? reach : room.sidebearing);
+  /*
+   * And never so narrow that the letter hangs over more than a loop's worth.
+   *
+   * Spacing off the body at the line is right until the letter has no body at
+   * the line. An `l` is a stem, so its advance came out as the join and nothing
+   * else -- 0.49 of an x-height on the Casual Script, where the reference gives
+   * its `l` 0.71 and every other letter more. Two of them set side by side
+   * would have put one loop through the other.
+   *
+   * The reference says how far is far enough: its `l` reaches 0.33 of an
+   * x-height past its own advance, its `f` 0.25 and its `d` 0.22, and nothing
+   * else in the lowercase reaches beyond 0.11. So a third of an x-height is
+   * what a loop is allowed to hang over, and a letter that would hang over more
+   * is given the room instead.
+   */
+  const hangs = spanning === points
+    ? 0
+    : Math.max(0, points.reduce((most, one) => Math.max(most, one.x), -Infinity) - rightmost);
+  const width = asked + Math.max(0, hangs - room.x * HANGS_OVER);
 
   /*
    * A level run at each end before the turn, so the two halves have something
