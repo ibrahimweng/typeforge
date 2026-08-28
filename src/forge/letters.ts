@@ -7063,7 +7063,20 @@ export function joinEnds(name: string): Ends {
  * came out at 1.19 to 1.34 of its own face's `o` against the reference's 1.07,
  * and at 1.01 to 1.07 with the loop turned off.
  */
-const NO_LOOP = new Set(["p", "thorn"]);
+/*
+ * And the `d`, which the reference draws with no loop at all.
+ *
+ * It is the one ascender in the font that does not take one. Read across the
+ * ascender the reference's `l`, `h`, `b`, `k` and `f` all come to two runs of
+ * ink -- a loop and the stem beside it -- and every one of them spans 0.39 to
+ * 0.54 of an x-height. Its `d` is a single run of 0.24 to 0.27 at every height,
+ * which is one stroke and its lean and nothing else: the ascender goes up,
+ * curves over to the right, and comes back down into the bowl.
+ *
+ * Ours gave it the loop the others have, two runs and 0.37 to 0.52 wide, so the
+ * `d` carried an ornament no `d` in the reference has.
+ */
+const NO_LOOP = new Set(["p", "thorn", "d", "dcroat"]);
 
 export function takesLoop(name: string): boolean {
   return !CAPITALS.has(name) && !NO_LOOP.has(name);

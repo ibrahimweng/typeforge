@@ -417,6 +417,17 @@ describe("every starting point, at every weight", () => {
      * 1.5.
      */
     const known = new Set([
+      /*
+       * The Handwriting joined the other two when its bowl went round.
+       *
+       * Its `o` was a narrow oval at 0.84 of its own height where the
+       * reference's is a circle at 1.006, and the omega folds for the same
+       * reason on all three: a wider bowl brings the two feet closer to the
+       * mitre over them. Whole after the union, like the rest of this list --
+       * `whole.ts` reports no breaks on any face at any weight.
+       */
+      "Ω / Default folds on Handwriting at weight 260",
+      "Ώ / Default folds on Handwriting at weight 260",
       "Ω / Default folds on Formal Script at weight 150",
       "Ώ / Default folds on Formal Script at weight 150",
       "Ω / Default folds on Formal Script at weight 210",

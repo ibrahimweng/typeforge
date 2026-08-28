@@ -867,6 +867,46 @@ export function planJoin(
   const seams = seamsOf(script, room.x, room.half);
   const entryAt = crossing?.entry ?? seams.low;
   const exitAt = crossing?.exit ?? seams.low;
+  /*
+   * A round letter takes too much room here, and this is not where to fix it.
+   *
+   * The reference's `o` is the plainest statement of it in the whole font: its
+   * bowl runs 0.03 to 1.19 of an x-height and its ink runs -0.03 to 1.19, so
+   * the join hangs 0.06 past the bowl on the left and nothing at all on the
+   * right. Its `n` is the opposite -- ink from -0.11 to 1.49 around a body of
+   * about 0.98, which is a third of an x-height of tail at each end.
+   *
+   * A round letter needs no tail because its own stroke is the join: the hand
+   * leaves the top of the bowl already travelling into the next letter, and the
+   * advance (1.10) is shorter than the ink (1.22), so the letter after it
+   * starts inside this one. A stem has no such stroke to spare and has to grow
+   * one.
+   *
+   * Ours gives every letter the same tail and the round ones wear it worst --
+   * hanging 0.26 to 0.38 of an x-height off the left of an `o`, all of them at
+   * the same height, so a word comes out with a rule drawn through it at the
+   * writing line. It costs the spacing as well as the look: the tail is added
+   * to the advance at both ends, so an `o` sets at 1.32 against 1.10.
+   *
+   * Scaling this reach down for a round letter was tried and backed out. It
+   * works -- a quarter of it brings the `o` to 1.11 to 1.13 and the four faces
+   * to a fit of 1.05, 1.01, 1.05 and 0.96 -- and it breaks a promise the rest
+   * of the font keeps: the reach is the room the letter takes as well as the
+   * stroke it draws, and a side with no join stands in the sidebearing
+   * instead. Cut the reach below the sidebearing and a letter that gives up a
+   * join gets *wider*, so an `o.end` would set a word wider at its end than in
+   * its middle. Four tests say so and they are right.
+   *
+   * The room and the stroke want separating, and the room is the one that is
+   * wrong. It is measured at the letter's widest point; on a round letter that
+   * is the waist, and no neighbour ever comes near the waist -- the letter
+   * after an `o` arrives at the seam, a fifth of an x-height up, where the
+   * bowl has already curved away. That is the same argument the band above
+   * makes vertically, unmade horizontally. Measured there, a round letter
+   * would take less room without its stroke growing shorter, and the reference
+   * says how much less: its `o` sets at 1.10 with its bowl 1.16 wide, an
+   * advance narrower than the letter, so the next letter laps onto the bowl.
+   */
   const reach = script.reach * room.half * 2;
 
   /*
