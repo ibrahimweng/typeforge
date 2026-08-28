@@ -1354,9 +1354,27 @@ export const MONOLINE_SCRIPT: Style = {
       // the setting that says so.
       irregularity: 0,
       bow: 0.2,
-      // The reference's lap, in stems. This pen is a hairline, so the same lap
-      // in units is a whole stem here where it is a third of one on the Formal.
-      knit: 0.84,
+      /*
+       * Short of the reference's lap, and knowingly.
+       *
+       * This pen is a hairline -- seventy-eight thousandths of the x-height
+       * against the reference's hundred and ninety -- so the reference's lap
+       * costs most of a stem here where it costs a fifth of one on the Formal,
+       * and 0.84 is what it takes. At that figure the `e` brings its entry
+       * stroke tangent to its own bowl, and the fuse and the painter part
+       * company over the sliver between them: `ecircumflex` and `ecaron` come
+       * out 2.2% different with a run of 108 pixels disagreeing, which is a
+       * boolean failure and not a rounding one.
+       *
+       * The tangency is this face's, not the lap's -- at 0.84 it is 2.2%, at
+       * nothing it is already 1.1% with a 57-pixel run, and everything between
+       * 0.2 and 0.6 is under half a per cent. So the lap stops where the
+       * letter still fuses. The pair laps by about an eighth of the x-height
+       * instead of the reference's sixth, which is the pen being too light
+       * showing up again; it should go back to the reference's figure when
+       * this face's colour is set against it.
+       */
+      knit: 0.6,
     },
   },
   /*
