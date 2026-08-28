@@ -1082,6 +1082,20 @@ export const HANDWRITING: Style = {
        * up the ascender: see the note on the Formal Script's loop.
        */
       loop: 3.8,
+      /*
+       * How narrow the eye is for its height, and it was never chosen: one arc
+       * bowed to a half is a semicircle, so every eye came out exactly half as
+       * wide as it was tall. Measured where the eye is widest, ours spanned 0.79
+       * of an x-height against the reference's 0.48, with a counter of 0.47
+       * against its 0.20.
+       *
+       * Swept from 0.5 down to 0.22 on all four; this is where this face's `l`
+       * lands on both of the reference's numbers at once. The four differ because
+       * they differ in slant and pen and where their eyes sit -- the Formal's is
+       * struck at 1.6 x-heights and the Monoline's at 1.3 -- and this is fitted
+       * to the same two figures on each.
+       */
+      eye: 0.28,
       irregularity: 1,
       bow: 0.8,
       /*
@@ -1257,6 +1271,20 @@ export const FORMAL_SCRIPT: Style = {
        * is how far down it reaches, and that is this number.
        */
       loop: 2.7,
+      /*
+       * How narrow the eye is for its height, and it was never chosen: one arc
+       * bowed to a half is a semicircle, so every eye came out exactly half as
+       * wide as it was tall. Measured where the eye is widest, ours spanned 0.76
+       * of an x-height against the reference's 0.48, with a counter of 0.37
+       * against its 0.20.
+       *
+       * Swept from 0.5 down to 0.22 on all four; this is where this face's `l`
+       * lands on both of the reference's numbers at once. The four differ because
+       * they differ in slant and pen and where their eyes sit -- the Formal's is
+       * struck at 1.6 x-heights and the Monoline's at 1.3 -- and this is fitted
+       * to the same two figures on each.
+       */
+      eye: 0.3,
       irregularity: 0.12,
       bow: 0.6,
       // The reference's sixteen hundredths of an x-height, in this face's
@@ -1328,7 +1356,10 @@ export const CASUAL_SCRIPT: Style = {
    * `e` a third.
    */
   pen: { weight: 52, contrast: 0.3, angle: 22 },
-  forms: { k: "standing", g: "curled", t: "straight", y: "straight", f: "descending" },
+  // The tailed `l`, as on the other three and as the reference draws it: the
+  // plain one is a bare stem with no width of its own, so the join spaced it at
+  // 0.47 of this face's `o` where the reference sets its `l` at 0.65.
+  forms: { k: "standing", g: "curled", t: "straight", y: "straight", f: "descending", l: "tailed" },
   parts: {
     ...SANS.parts,
     // Square, for the reason set out on the Handwriting above.
@@ -1348,6 +1379,20 @@ export const CASUAL_SCRIPT: Style = {
       // Was 0.7, which was too small to close an eye at all -- the loop showed
       // as a bulge on the stem. Sized on the reference's, as on the Formal.
       loop: 2.9,
+      /*
+       * How narrow the eye is for its height, and it was never chosen: one arc
+       * bowed to a half is a semicircle, so every eye came out exactly half as
+       * wide as it was tall. Measured where the eye is widest, ours spanned 0.64
+       * of an x-height against the reference's 0.48, with a counter of 0.34
+       * against its 0.20.
+       *
+       * Swept from 0.5 down to 0.22 on all four; this is where this face's `l`
+       * lands on both of the reference's numbers at once. The four differ because
+       * they differ in slant and pen and where their eyes sit -- the Formal's is
+       * struck at 1.6 x-heights and the Monoline's at 1.3 -- and this is fitted
+       * to the same two figures on each.
+       */
+      eye: 0.4,
       irregularity: 1.6,
       bow: 0.9,
       // The reference's lap, in this face's stems.
@@ -1525,6 +1570,20 @@ export const MONOLINE_SCRIPT: Style = {
       // Held in units across the pen change, and then opened to put the eye's
       // foot where the reference puts it. See the note on the Formal's loop.
       loop: 5.8,
+      /*
+       * How narrow the eye is for its height, and it was never chosen: one arc
+       * bowed to a half is a semicircle, so every eye came out exactly half as
+       * wide as it was tall. Measured where the eye is widest, ours spanned 0.90
+       * of an x-height against the reference's 0.48, with a counter of 0.63
+       * against its 0.20.
+       *
+       * Swept from 0.5 down to 0.22 on all four; this is where this face's `l`
+       * lands on both of the reference's numbers at once. The four differ because
+       * they differ in slant and pen and where their eyes sit -- the Formal's is
+       * struck at 1.6 x-heights and the Monoline's at 1.3 -- and this is fitted
+       * to the same two figures on each.
+       */
+      eye: 0.22,
       // Nothing. A drawn script is drawn on a line and stays on it, and this is
       // the setting that says so.
       irregularity: 0,

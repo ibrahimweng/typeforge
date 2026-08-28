@@ -63,6 +63,20 @@ export interface Recipe {
   strokes: Stroke[];
   /** Round letters are set a little tighter, or they look loose beside flat ones. */
   round?: boolean;
+  /**
+   * More room than the join gives, at each end, as a share of its reach.
+   *
+   * A joined face spaces every letter the same way -- the letter's own width
+   * plus a reach at each end -- and a written hand does not. The reference sets
+   * its `s` with 0.245 of an x-height either side of the body and its `o` with
+   * 0.155, so its `s` takes 0.95 of the `o`'s advance for a body that is 0.70
+   * of it. Ours took 0.69, which is a letter that has been measured rather than
+   * spaced.
+   *
+   * The roman path has had the same idea for as long as it has had round
+   * letters, in the other direction: see `ROUND_TIGHTENING`.
+   */
+  air?: number;
   /** A width to use instead of measuring, for the space and for the figures. */
   width?: number;
 }
@@ -395,6 +409,28 @@ interface Frame {
   /** How wide a bowl is against its height. */
   wide: number;
   /**
+   * How far a stem set beside a bowl stands clear of it.
+   *
+   * Nought on a face that is drawn, which is what a roman `a` and `d` and `g`
+   * and `q` are: the bowl is tangent to the stem and the two share an edge.
+   *
+   * A written one is not. The pen comes round the bowl, back up its right side,
+   * and down again beside it rather than on it -- so there is a stem's own
+   * width of daylight between the two, and the letter is wider than an `o` by
+   * exactly that. The reference's `a` body is 0.89 of an x-height against its
+   * `o`'s 0.79; ours were the same width to the unit, on all four faces, which
+   * is a roman `a` on a joined face.
+   *
+   * The `a` and the `d`, and not the `g`, the `q`, the `b` or the `p`. The
+   * reference divides them the same way its letterforms do: a stem that comes
+   * down beside a bowl and stops on the baseline stands clear of it, and one
+   * that carries on past the line into an extender does not. Its `a` takes 1.19
+   * of its `o`'s advance and its `d` 1.30, where its `g` takes 1.07, its `q`
+   * 1.10, its `b` 1.08 and its `p` 1.07 -- and ours draws its `g` at 1.43
+   * already, so widening that one is the wrong direction twice over.
+   */
+  aside: number;
+  /**
    * The smallest half-measure any shape here may have.
    *
    * A shape narrower than the pen drawing it is not a narrow shape, it is one
@@ -477,6 +513,24 @@ interface Frame {
   plain: Terminal;
 }
 
+/**
+ * How far a written stem stands clear of the bowl it is set against, in stem
+ * widths.
+ *
+ * In stems and not in bowls, and the difference is a letter that comes apart. A
+ * share of the bowl was the first answer -- the bowl is what the stem is set
+ * against, so it looked like the bowl's business -- and it does not shrink when
+ * the pen does. At the weight that put the reference's gap on the page, a pen
+ * of 40 units left the stem standing 64 units clear of a bowl it could reach 20
+ * across: the `a` and the `d` came off in two pieces on all four faces, and the
+ * Monoline's at 44 as well.
+ *
+ * What has to hold is that the two strokes still overlap, and that is the pen's
+ * question at every weight. The reference's gap is 0.10 of an x-height against
+ * a stem of 0.19, which is a little over half a stem.
+ */
+const ASIDE = 0.53;
+
 function frame(style: Style): Frame {
   const { metrics, pen } = style;
   const half = pen.weight / 2;
@@ -497,6 +551,8 @@ function frame(style: Style): Frame {
    * which is what a circle is.
    */
   const bowlH = Math.max(metrics.xHeight / 2 + metrics.overshoot - upright, least);
+  // In stem widths, and that is the whole of it: see `ASIDE`.
+  const aside = style.parts.script.on ? pen.weight * ASIDE : 0;
   const capBowlH = Math.max(metrics.capHeight / 2 + metrics.overshoot - upright, least);
   return {
     style,
@@ -512,6 +568,7 @@ function frame(style: Style): Frame {
       least,
     ),
     bowl: Math.max(bowlH * wide, least),
+    aside,
     bowlH,
     /*
      * A width floor, which the height does not have.
@@ -2078,13 +2135,22 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   a: (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
-    const stem = centre.x + f.bowl;
-    return finish(
-      f,
-      [
-        ink(f, ring(f, centre, f.bowl, f.bowlH)),
-        ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
-      ]);
+    const stem = centre.x + f.bowl + f.aside;
+    /*
+     * And set with the room the reference gives it, which is more than it gives
+     * an `o`: 0.21 of an x-height either side against 0.155, for a body only
+     * 0.10 wider. Half the difference between its `a` and its `o` is the stem
+     * standing clear and half is the air around it. See `air`.
+     */
+    return {
+      ...finish(
+        f,
+        [
+          ink(f, ring(f, centre, f.bowl, f.bowlH)),
+          ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
+        ]),
+      air: 0.45,
+    };
   },
 
   b: (style) => {
@@ -2108,13 +2174,21 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   d: (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
-    const stem = centre.x + f.bowl;
-    return finish(
-      f,
-      [
-        ink(f, ring(f, centre, f.bowl, f.bowlH)),
-        ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
-      ]);
+    const stem = centre.x + f.bowl + f.aside;
+    /*
+     * Set loose, as the `a` is and for the same reason -- and looser, because
+     * this letter is: the reference takes 1.30 of its own `o`'s advance for a
+     * `d` and 1.19 for an `a`. Swept at 0.45, 0.75 and 0.95 against that.
+     */
+    return {
+      ...finish(
+        f,
+        [
+          ink(f, ring(f, centre, f.bowl, f.bowlH)),
+          ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
+        ]),
+      air: 0.95,
+    };
   },
 
   e: (style) => {
@@ -2403,7 +2477,14 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   s: (style) => {
     const f = frame(style);
     const { stroke } = spine(f, f.x, f.edge);
-    return finish(f, [stroke], true);
+    /*
+     * And set loose. An `s` is built from half a bowl at each end, so it is
+     * about seven tenths of an `o` across -- which is what the reference's is
+     * too -- and spacing it off that width alone made it seven tenths of an
+     * `o`'s advance where the reference gives it ninety-five hundredths. See
+     * `air`.
+     */
+    return { ...finish(f, [stroke], true), air: 1.05 };
   },
 
   t: (style) => {
@@ -4222,7 +4303,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   dcroat: (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
-    const stem = centre.x + f.bowl;
+    const stem = centre.x + f.bowl + f.aside;
     const bar = f.x + (f.asc - f.x) * 0.55;
     return finish(f, [
       ink(f, ring(f, centre, f.bowl, f.bowlH)),
@@ -5307,7 +5388,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   "\u03b1": (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
-    const stem = centre.x + f.bowl;
+    const stem = centre.x + f.bowl + f.aside;
     return finish(
       f,
       [
@@ -7095,7 +7176,14 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * less on one that dropped, and both still leave the seam at exactly the
    * height everything else leaves it at.
    */
-  const room = { half: f.half, upright: f.upright, x: f.x, sidebearing: f.edge - f.half };
+  const room = {
+    half: f.half,
+    upright: f.upright,
+    // What the pen is certain to reach, which is what it is at its narrowest.
+    narrow: f.half * Math.max(0, 1 - Math.abs(style.pen.contrast)),
+    x: f.x,
+    sidebearing: f.edge - f.half,
+  };
   /*
    * Loops first, then the lift, then the join. The order is the whole of why
    * this works, and each step of it was wrong once.
@@ -7153,7 +7241,8 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
     // Where this letter's waist has ended up, so what rises above it can hang
     // over the letter beside it -- and `null` for a capital, which has no
     // letter set before it and is spaced off the whole of its own ink.
-    has.entry ? f.x + lift : null);
+    has.entry ? f.x + lift : null,
+    recipe.air);
   if (!plan) return recipe;
   /*
    * The letter moves over; the join does not.

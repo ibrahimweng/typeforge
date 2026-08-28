@@ -117,6 +117,27 @@ export interface Script {
    */
   loop: number;
   /**
+   * How far the eye bows off the stem it stands on, as a share of its own
+   * length -- which is to say how narrow it is for its height.
+   *
+   * A half is a semicircle: the arc bows out by half the chord, so the eye is
+   * exactly half as wide as it is tall. That was not a decision, it was what
+   * one arc does when nothing tells it otherwise, and the loops were drawn that
+   * way on all four faces. The reference's is a long narrow oval: its `l` turns
+   * an eye about one and a half x-heights tall and bows it 0.19 of that, which
+   * puts the eye's ink 0.29 of an x-height clear of the stem where ours put it
+   * 0.63.
+   *
+   * Measured at the height the eye is widest -- 1.4 x-heights up on the
+   * reference -- ours spanned 0.62 to 0.90 of an x-height against its 0.48, on
+   * every one of the four.
+   *
+   * It is a share of the eye's own length rather than a count of stems because
+   * it is a shape and not a size: how deep the eye reaches is `loop`, and this
+   * says what shape that depth is drawn as.
+   */
+  eye: number;
+  /**
    * How much each letter departs from the one beside it.
    *
    * A hand does not put two letters on exactly the same baseline at exactly
@@ -187,6 +208,7 @@ export const NO_SCRIPT: Script = {
   reach: 1.5,
   flat: 0.2,
   loop: 0,
+  eye: 0.5,
   irregularity: 0,
   bow: 0,
   knit: 0,
@@ -264,6 +286,16 @@ export interface Room {
    * whether a looped `l` stands taller than a plain one.
    */
   upright: number;
+  /**
+   * The pen's narrowest reach: how far ink is certain to stand off its spine,
+   * whichever way the spine runs.
+   *
+   * Half the pen is how far it reaches at its widest, and testing a point
+   * against that says the point *might* be inked. This says it is. The
+   * difference is the whole of a nib: at a contrast of 0.78 the Formal Script's
+   * pen is a fifth as wide one way as the other.
+   */
+  narrow: number;
   /** The x-height. */
   x: number;
   /**
@@ -623,7 +655,18 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
      */
     const home = rising
       ? { much: deep, over: 0 }
-      : reaching(spines, end, deep, available, room.half, room.x);
+      /*
+       * Asked with the pen's narrow reach rather than its wide one.
+       *
+       * `standsOn` within half a pen is a fair test for a round pen and an
+       * optimistic one for a nib: a point half a pen from a spine has ink on it
+       * only in the direction the nib is widest. It passed anyway for as long as
+       * the eye was a semicircle, because a semicircle bulges sideways into the
+       * letter and the two met there rather than at the foot. Narrowed to the
+       * reference's shape the bulge is gone, the foot is all there is, and the
+       * Casual Script's descending `f` came apart at four weights.
+       */
+      : reaching(spines, end, deep, available, room.narrow, room.x);
     const start = at(end.x + home.over, rising ? tip.y - deep : tip.y + home.much);
     /*
      * An eye on an ascender stands on that ascender or it is not drawn.
@@ -648,11 +691,20 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
     /*
      * A half is as far as a single arc bows: at a half it is a semicircle, and
      * past that the construction below is asked for a sagitta larger than its
-     * own radius and quietly gives back a shallower arc instead. So the eye is a
-     * semicircle standing on the stem, and how wide it is comes from how far
-     * down the stem it starts rather than from bowing it harder.
+     * own radius and quietly gives back a shallower arc instead. So how far
+     * down the stem the eye starts is how tall it is, and `eye` is how wide it
+     * is drawn for that height -- a half being the semicircle this used to be
+     * whatever the face wanted.
      */
-    out.push(bowed(start, tip, rising ? 0.5 : -0.5));
+    const shape = Math.max(0, Math.min(0.5, script.eye));
+    /*
+     * And an eye narrower than the pen drawing it is a blob rather than an eye,
+     * which is the same thing `wide` guards at the other end. What has to clear
+     * the pen is the part of the eye that is not the stem: the arc's rise, less
+     * what the two strokes' own ink takes out of the middle of it.
+     */
+    if (deep * shape < room.upright * 1.5) continue;
+    out.push(bowed(start, tip, rising ? shape : -shape));
   }
   return out;
 }
@@ -778,6 +830,7 @@ export function planJoin(
   ends: Ends = BOTH_ENDS,
   round = false,
   waist: number | null = null,
+  air = 0,
 ): Join | null {
   /*
    * A letter with neither end still comes through here, and only the strokes
@@ -944,10 +997,12 @@ export function planJoin(
   const rightmost = measured.reduce((most, one) => Math.max(most, one.x), -Infinity);
   // Moved over by this much, the letter's own left edge sits exactly one reach
   // from the origin, which is the run the lead-in has to climb along.
-  const inset = (ends.entry ? reach : room.sidebearing) - (leftmost - room.half);
+  // What this letter asks for on top of the join's own reach, at each end.
+  const spare = reach * Math.max(0, air);
+  const inset = (ends.entry ? reach : room.sidebearing) + spare - (leftmost - room.half);
   const from = at(lands.x + inset, lands.y);
   const to = at(leaves.x + inset, leaves.y);
-  const asked = rightmost + room.half + inset + (ends.exit ? reach : room.sidebearing);
+  const asked = rightmost + room.half + inset + spare + (ends.exit ? reach : room.sidebearing);
   /*
    * And never so narrow that the letter hangs over more than a loop's worth.
    *

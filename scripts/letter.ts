@@ -58,7 +58,10 @@ for (const [what, of] of [["colour", "colour"], ["adv/x", "fit"]] as const) {
     let row = `  ${letter}     ${want.toFixed(3)}`;
     for (const face of faces) {
       const x = face.metrics.xHeight;
-      const drawn = drawLetter(letter, face)!;
+      // The face's own form of the letter, not the default one: three of the
+      // four draw a tailed `l` and a curled `g`, and comparing those against
+      // the reference's while measuring the plain ones is comparing nothing.
+      const drawn = drawLetter(letter, face, face.forms?.[letter])!;
       const area = unite(drawn.contours).reduce((all, one) => all + contourArea(one), 0);
       const got = of === "colour" ? area / (drawn.advanceWidth * x) : drawn.advanceWidth / x;
       const [was, wide] = ink.get(face.name) ?? [0, 0];
