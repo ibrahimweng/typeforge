@@ -964,8 +964,35 @@ export const HANDWRITING: Style = {
    * drop landed under an `H` that could not -- capitals do not join, so they do
    * not bounce. The gap has to be wider than the bounce, and it is.
    */
-  metrics: { ...SANS.metrics, xHeight: 520, capHeight: 700, ascender: 790, slant: 6 },
-  pen: { weight: 84, contrast: 0.22, angle: 28 },
+  /*
+   * And the lowercase is small on the body, which is the other half of what
+   * separates a script from a sans on a slant.
+   *
+   * Every face here was drawn with a text face's proportions: this one put
+   * half the body into its x-height and gave its `l` a rise of one and a half
+   * of them. Dancing Script puts a third of the body into its x-height and
+   * carries its ascenders two and a fifth. Nothing about the letters was
+   * wrong; there was simply not enough of the body left over for the
+   * extenders to be the point of the face, and a joined hand whose ascenders
+   * barely clear the waist reads as a slanted sans however it is joined.
+   *
+   * So the lowercase comes down and the extenders stay where they are, which
+   * moves both figures at once. Everything measured against the x-height came
+   * down with it -- the counter, the sidebearing, the overshoot and the pen --
+   * so the face keeps its colour and its fit and only its proportion changes.
+   */
+  metrics: {
+    ...SANS.metrics,
+    xHeight: 430,
+    capHeight: 700,
+    ascender: 790,
+    descender: -270,
+    counterWidth: 306,
+    sidebearing: 46,
+    overshoot: 8,
+    slant: 6,
+  },
+  pen: { weight: 70, contrast: 0.22, angle: 28 },
   /*
    * The single-storey a and the tailed l, which is what a hand writes. Nobody
    * draws a two-storey a with a pen unless they are drawing a typeface.
@@ -1057,7 +1084,19 @@ export const FORMAL_SCRIPT: Style = {
   name: "Formal Script",
   family: "script",
   blurb: "A pointed pen held at an angle and moved slowly. Long loops, deep contrast, and a steep even lean.",
-  metrics: { ...SANS.metrics, xHeight: 430, ascender: 790, descender: -260, slant: 22 },
+  // The lowercase brought down under the extenders, as on the Handwriting and
+  // for the reason set out there. This is the face that goes furthest, and it
+  // lands on the reference: 2.18 x-heights of ascender against its 2.17.
+  metrics: {
+    ...SANS.metrics,
+    xHeight: 370,
+    ascender: 790,
+    descender: -290,
+    counterWidth: 318,
+    sidebearing: 47,
+    overshoot: 9,
+    slant: 22,
+  },
   /*
    * The nib, set against the Garamond this face is cut to.
    *
@@ -1089,7 +1128,7 @@ export const FORMAL_SCRIPT: Style = {
    * tuned. The reference is set tighter than either -- closing the reach
    * further is a change to the fit and belongs to itself.
    */
-  pen: { weight: 120, contrast: 0.78, angle: -22 },
+  pen: { weight: 103, contrast: 0.78, angle: -22 },
   forms: { k: "standing", a: "double", g: "curled", l: "tailed", f: "descending", one: "footed" },
   parts: {
     ...SANS.parts,
@@ -1154,8 +1193,22 @@ export const CASUAL_SCRIPT: Style = {
   blurb: "A felt tip moving fast. High joins, short reach, small loops, and a line that bows and will not sit still.",
   // Bounces hardest of the four, so it needs the most room between its
   // capitals and its ascenders. See the note on the Handwriting.
-  metrics: { ...SANS.metrics, xHeight: 560, capHeight: 690, ascender: 800, descender: -200, slant: 13 },
-  pen: { weight: 112, contrast: 0.3, angle: 22 },
+  // The lowercase brought down under the extenders, as on the Handwriting. This
+  // one had the largest x-height of the four and the shortest rise, so it moves
+  // furthest; it stops at the Telma end of the range rather than the Dancing
+  // Script end, because a fast informal hand is not a formal one.
+  metrics: {
+    ...SANS.metrics,
+    xHeight: 440,
+    capHeight: 690,
+    ascender: 800,
+    descender: -280,
+    counterWidth: 291,
+    sidebearing: 43,
+    overshoot: 8,
+    slant: 13,
+  },
+  pen: { weight: 88, contrast: 0.3, angle: 22 },
   forms: { k: "standing", g: "curled", t: "straight", y: "straight", f: "descending" },
   parts: {
     ...SANS.parts,

@@ -21,7 +21,7 @@ import { ready, unite } from "@/font/boolean";
 import { contoursBounds, inkRunsAt } from "@/font/geometry";
 import type { Contour } from "@/font/types";
 import { drawLetter } from "./build";
-import { recipeOf } from "./letters";
+import { formsOf, recipeOf } from "./letters";
 import { BASES, SANS, type Style } from "./style";
 import { seamsOf, wobbleOf } from "./script";
 import { spineEnd, spineStart } from "./shapes";
@@ -200,6 +200,47 @@ describe("the letters reach each other", () => {
 });
 
 describe("what the join does not touch", () => {
+
+  /*
+   * The lead-out leaves from low down, even where the letter has nothing in
+   * the band it looks in.
+   *
+   * The bands are thin: a lead-out searches between half a pen and the seam,
+   * which on the Formal Script is a strip seven units tall. The skeleton is
+   * sampled a fixed sixty-four times per run whatever the run is, so on that
+   * letter's eight-hundred-unit stem the step is thirteen units and the
+   * sampling walks straight over the strip. `attach` then fell back to the
+   * whole letter and took its rightmost point -- which on an `f` is the tip of
+   * the hook, seven hundred units up, and is the one search its own note says
+   * not to make. The letter's join left from the top of its ascender.
+   *
+   * An empty band means the letter has nothing there, and the answer is the
+   * nearest thing it does have. So this holds every lead-out to the bottom
+   * half of the letter on every joining face, which is where a hand leaves.
+   */
+  it.each(SCRIPTS.map((one) => [one.name, one] as const))(
+    "%s leaves every letter from low down, whatever its band finds",
+    (_name, style) => {
+      const high: string[] = [];
+      const seam = seamsOf(style.parts.script, style.metrics.xHeight, style.pen.weight / 2).low;
+      for (const letter of LOWER) {
+        // Every form, not only the one this face happens to ship: the form that
+        // broke was the plain `f`, and the Formal Script ships the descending
+        // one, so asking each face for its own would have missed it entirely.
+        for (const { id } of formsOf(letter)) {
+          const runs = recipeOf(letter, id || undefined)!(style).strokes;
+          // The lead-out is the run that finishes on the advance, at the seam.
+          const exit = runs.find((one) => Math.abs(spineEnd(one.spine).y - seam) < 1);
+          if (!exit) continue;
+          const from = spineStart(exit.spine);
+          if (from.y > style.metrics.xHeight) {
+            high.push(`${letter}${id ? ` (${id})` : ""} at ${from.y.toFixed(0)}`);
+          }
+        }
+      }
+      expect(high).toEqual([]);
+    },
+  );
   it("leaves a face that does not join exactly as it was", () => {
     for (const name of ["n", "o", "a", "g"]) {
       const plain = drawLetter(name, SANS)!;

@@ -395,9 +395,37 @@ function skeleton(spines: Spine[]): Vec2[] {
  * leaving low is the one that looks like handwriting for twenty-two of the
  * twenty-six rather than for four.
  */
-function attach(points: Vec2[], band: (point: Vec2) => boolean, side: "left" | "right"): Vec2 {
+function attach(
+  points: Vec2[],
+  band: (point: Vec2) => boolean,
+  side: "left" | "right",
+  near?: (point: Vec2) => number,
+): Vec2 {
   const inside = points.filter(band);
-  const looking = inside.length > 0 ? inside : points;
+  /*
+   * And when nothing is in the band, the nearest thing to it -- not the whole
+   * letter, which is what this used to fall back on and is exactly the search
+   * the note above says not to make.
+   *
+   * The bands are thin. A lead-out looks between half a pen and the seam, and
+   * on the Formal Script at its new proportions that is a strip seven units
+   * tall; the skeleton is sampled sixty-four times per run whatever the run's
+   * length, which on that letter's eight-hundred-unit stem is a step of
+   * thirteen. So the sampling walked straight over the strip, the band came
+   * back empty, and the fallback handed the join the rightmost point of the
+   * whole letter -- the top of the `f`'s hook, seven hundred units up. The
+   * letter's lead-out left from the tip of its ascender.
+   *
+   * Nothing in the band means the letter has nothing there to attach to, and
+   * the answer is the closest it does have, which is a point on the same stem a
+   * few units above or below. Where the band has anything at all this changes
+   * nothing.
+   */
+  const looking = inside.length > 0
+    ? inside
+    : near
+      ? nearest(points, near)
+      : points;
   let best = looking[0];
   for (const point of looking) {
     if (side === "left") {
@@ -409,6 +437,13 @@ function attach(points: Vec2[], band: (point: Vec2) => boolean, side: "left" | "
     }
   }
   return best;
+}
+
+/** Every point equally closest to the band, by whatever measure it gives. */
+function nearest(points: Vec2[], howFar: (point: Vec2) => number): Vec2[] {
+  let least = Infinity;
+  for (const point of points) least = Math.min(least, howFar(point));
+  return points.filter((point) => howFar(point) <= least + 1e-9);
 }
 
 /**
@@ -711,7 +746,10 @@ export function planJoin(
    * underneath has to stop short of it to keep that promise. Half a pen in is
    * where the join is buried inside ink the letter already had.
    */
-  const lands = attach(points, (point) => point.y >= entryAt && point.y <= room.x - room.half, "left");
+  const offBand = (low: number, high: number) => (point: Vec2) =>
+    Math.max(0, low - point.y, point.y - high);
+  const lands = attach(points, (point) => point.y >= entryAt && point.y <= room.x - room.half,
+    "left", offBand(entryAt, room.x - room.half));
   /*
    * The lead-out searches below its own crossing on an ordinary letter and
    * above it on one that hands over high -- which is the whole of the
@@ -720,8 +758,10 @@ export function planJoin(
    * direction only would find the wrong end of one of them.
    */
   const leaves = exitAt > seams.low
-    ? attach(points, (point) => point.y >= exitAt && point.y <= room.x - room.half, "right")
-    : attach(points, (point) => point.y >= room.half && point.y <= exitAt, "right");
+    ? attach(points, (point) => point.y >= exitAt && point.y <= room.x - room.half,
+      "right", offBand(exitAt, room.x - room.half))
+    : attach(points, (point) => point.y >= room.half && point.y <= exitAt,
+      "right", offBand(room.half, exitAt));
 
   /*
    * How much room the letter takes, which is not the same question as where the

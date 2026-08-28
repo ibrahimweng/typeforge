@@ -159,17 +159,24 @@ describe("the two sides of a join that is not there", () => {
       const end = drawnEnds(letter, "end", forge)!;
       /*
        * It gave up exactly what the two half-drawings gave up between them,
-       * and the arithmetic is exact because all three are spaced by the join
-       * layer standing in the sidebearing on the side it has nothing on. The
-       * letter that has been asked to give up both its joins is still a letter
-       * of a joined face; sent down the plain roman path it would be spaced off
-       * its own raw ink, which on an `f` with a loop under it is half a letter
-       * wider than the face it belongs to.
+       * because all three are spaced by the join layer standing in the
+       * sidebearing on the side it has nothing on. The letter that has been
+       * asked to give up both its joins is still a letter of a joined face;
+       * sent down the plain roman path it would be spaced off its own raw ink,
+       * which on an `f` with a loop under it is half a letter wider than the
+       * face it belongs to.
+       *
+       * To a unit, not to the bit. The identity is exact in the arithmetic and
+       * not in the floating point that carries it: the two sides are summed in
+       * a different order and came apart in the last place -- 481.59999999999997
+       * against 481.5999999999999 -- the first time the face's metrics moved
+       * under it. A twentieth of a unit is far below anything that could be a
+       * spacing fault and far above the noise.
        */
-      expect([letter, alone.advanceWidth]).toEqual([
-        letter,
+      expect(alone.advanceWidth, `${letter} alone`).toBeCloseTo(
         begin.advanceWidth + end.advanceWidth - plain.advanceWidth,
-      ]);
+        1,
+      );
       expect([letter, alone.advanceWidth < begin.advanceWidth]).toEqual([letter, true]);
       // And it starts on its own ink, like the letter that begins a word.
       expect([letter, contoursBounds(alone.contours).xMin > 0]).toEqual([letter, true]);

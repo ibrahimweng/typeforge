@@ -19,6 +19,13 @@
  * `asc/x` The ascender against the x-height, which is the same observation
  *         from the other end and the one a reader actually sees.
  *
+ *         Read off the ink, not off the vertical metrics, and the difference
+ *         matters: Dancing Script's `hhea` ascender is 920, which is 2.77
+ *         x-heights and is what this said at first. Its `l` stops at 720. The
+ *         other two hundred units are line spacing, and no letter goes there --
+ *         so the figure a reader sees is 2.17, and 720 is also exactly where
+ *         its `H` stops. Caps and ascenders share a line on that face.
+ *
  * `pen/x` The stem against the x-height: the face's colour, in the only unit
  *         that compares across faces of different sizes.
  *
@@ -41,9 +48,13 @@ import { BASES } from "@/forge/style";
 
 await ready();
 
-/** Measured from the released Dancing Script, at its default weight. */
-const REFERENCE = { name: "Dancing Script", xOverEm: 0.332, ascOverX: 2.77, descOverX: 0.84,
+/** Measured from the released Dancing Script's ink, at its default weight. */
+const REFERENCE = { name: "Dancing Script", xOverEm: 0.332, ascOverX: 2.17, descOverX: 0.84,
   penOverX: 0.19, left: 0.07, right: 0.09 };
+
+/** The letters whose tops and tails set the extenders, on any face. */
+const RISERS = ["l", "b", "d", "h", "k"];
+const FALLERS = ["p", "q", "g", "y", "j"];
 
 const SAMPLE = ["n", "o", "a", "e", "m"];
 const row = (name: string, x: number, asc: number, desc: number, pen: number, left: number, right: number) =>
@@ -52,7 +63,14 @@ const row = (name: string, x: number, asc: number, desc: number, pen: number, le
 
 console.log("face             x/em   asc/x  desc/x  pen/x    over left/right   pair overlap");
 for (const style of BASES.filter((one) => one.parts.script.on)) {
-  const { xHeight, ascender, descender, unitsPerEm } = style.metrics;
+  const { unitsPerEm } = style.metrics;
+  const inkOf = (name: string) => {
+    const drawn = drawLetter(name, style, style.forms?.[name]);
+    return drawn ? contoursBounds(drawn.contours) : null;
+  };
+  const xHeight = inkOf("x")!.yMax;
+  const ascender = Math.max(...RISERS.map((one) => inkOf(one)!.yMax));
+  const descender = Math.min(...FALLERS.map((one) => inkOf(one)!.yMin));
   const reach = SAMPLE.map((name) => {
     const drawn = drawLetter(name, style, style.forms?.[name]);
     if (!drawn) return null;
