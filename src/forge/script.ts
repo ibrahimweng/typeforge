@@ -611,7 +611,26 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
      * twenty-nine units over instead of fifty.
      */
     const available = (rising ? end.y : room.x - end.y) - room.upright * 2;
-    const deep = Math.min(wide * 2, available);
+    /*
+     * And a descender's loop lives in the descender.
+     *
+     * `available` is how far the eye may be let out before it fouls something,
+     * and for a falling loop that is the whole way up to the x-height -- which
+     * is the ceiling, not the size. Struck at the size the `loop` asks for, the
+     * eye on a `g` was 1.23 x-heights long on a descender 0.84 deep, so it
+     * turned round well up inside the bowl and was at its widest just under the
+     * baseline: two strokes an x-height apart at -0.1, where the reference has
+     * one stroke a fifth of an x-height wide and does not open out until -0.3.
+     * Ours read two and a half to seven times as wide as the reference's all
+     * the way down.
+     *
+     * A written descender goes down, turns, and comes back up into the stroke
+     * it left -- it does not climb into the letter to do it. So the eye starts
+     * out no longer than the descender it hangs from, and `reaching` still lets
+     * it out past that if that is what it takes to land on the letter.
+     */
+    const asked = rising ? available : Math.min(available, -end.y - room.upright);
+    const deep = Math.min(wide * 2, asked);
     // Radius is half the chord at a semicircle, so this is the same floor the
     // join keeps: no turn tighter than the pen can go round.
     if (deep < room.half * 2.4) continue;

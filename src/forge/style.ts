@@ -997,7 +997,23 @@ export const HANDWRITING: Style = {
    * The single-storey a and the tailed l, which is what a hand writes. Nobody
    * draws a two-storey a with a pen unless they are drawing a typeface.
    */
-  forms: { k: "standing", l: "tailed", g: "curled", t: "straight", f: "descending" },
+  /*
+   * The plain `g`, not the curled one, and that is a fact about a joined face
+   * rather than about the letter.
+   *
+   * The curl carries the descender further round than a straight hook does,
+   * which is what a face without loops wants. This face has loops: the join
+   * layer strikes an eye on the lowest end of every descender, so a curled `g`
+   * is a written descender drawn twice, and the two ran an x-height apart just
+   * under the baseline where the reference has one stroke a fifth of an
+   * x-height wide. It set the `g` at 1.26 to 1.41 of this family's own `o`
+   * against the reference's 1.07; plain, it is 1.00.
+   */
+  // And the straight-tailed `y` for the same reason as the plain `g` above: the
+  // eye is the join layer's to draw, so a tail that curls round as well draws
+  // it twice. Plain, this face set its `y` at 1.44 to 1.68 of its own `o`
+  // against the reference's 1.06.
+  forms: { k: "standing", l: "tailed", t: "straight", y: "straight", f: "descending" },
   parts: {
     ...SANS.parts,
     /*
@@ -1212,7 +1228,23 @@ export const FORMAL_SCRIPT: Style = {
    * open at every one of these.
    */
   pen: { weight: 70, contrast: 0.78, angle: -22 },
-  forms: { k: "standing", a: "double", g: "curled", l: "tailed", f: "descending", one: "footed" },
+  /*
+   * The plain `g`, not the curled one, and that is a fact about a joined face
+   * rather than about the letter.
+   *
+   * The curl carries the descender further round than a straight hook does,
+   * which is what a face without loops wants. This face has loops: the join
+   * layer strikes an eye on the lowest end of every descender, so a curled `g`
+   * is a written descender drawn twice, and the two ran an x-height apart just
+   * under the baseline where the reference has one stroke a fifth of an
+   * x-height wide. It set the `g` at 1.26 to 1.41 of this family's own `o`
+   * against the reference's 1.07; plain, it is 1.00.
+   */
+  // And the straight-tailed `y` for the same reason as the plain `g` above: the
+  // eye is the join layer's to draw, so a tail that curls round as well draws
+  // it twice. Plain, this face set its `y` at 1.44 to 1.68 of its own `o`
+  // against the reference's 1.06.
+  forms: { k: "standing", a: "double", l: "tailed", y: "straight", f: "descending", one: "footed" },
   parts: {
     ...SANS.parts,
     // Square, for the reason set out on the Handwriting above.
@@ -1359,7 +1391,19 @@ export const CASUAL_SCRIPT: Style = {
   // The tailed `l`, as on the other three and as the reference draws it: the
   // plain one is a bare stem with no width of its own, so the join spaced it at
   // 0.47 of this face's `o` where the reference sets its `l` at 0.65.
-  forms: { k: "standing", g: "curled", t: "straight", y: "straight", f: "descending", l: "tailed" },
+  /*
+   * The plain `g`, not the curled one, and that is a fact about a joined face
+   * rather than about the letter.
+   *
+   * The curl carries the descender further round than a straight hook does,
+   * which is what a face without loops wants. This face has loops: the join
+   * layer strikes an eye on the lowest end of every descender, so a curled `g`
+   * is a written descender drawn twice, and the two ran an x-height apart just
+   * under the baseline where the reference has one stroke a fifth of an
+   * x-height wide. It set the `g` at 1.26 to 1.41 of this family's own `o`
+   * against the reference's 1.07; plain, it is 1.00.
+   */
+  forms: { k: "standing", t: "straight", y: "straight", f: "descending", l: "tailed" },
   parts: {
     ...SANS.parts,
     // Square, for the reason set out on the Handwriting above.
@@ -1504,7 +1548,10 @@ export const MONOLINE_SCRIPT: Style = {
     sidebearing: 34,
   },
   pen: { weight: 44, contrast: 0, angle: 0 },
-  forms: { k: "standing", l: "tailed", f: "descending", seven: "barred", four: "open" },
+  // The straight-tailed `y`, for the reason set out on the Handwriting: this
+  // face's eye is the join layer's, and a tail that curls as well draws it
+  // twice -- 1.68 of its own `o` against the reference's 1.06.
+  forms: { k: "standing", l: "tailed", y: "straight", f: "descending", seven: "barred", four: "open" },
   parts: {
     ...SANS.parts,
     // Square, for the reason set out on the Handwriting above.

@@ -2270,7 +2270,14 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const centre = at(f.edge + f.bowl, f.x / 2);
     const stem = centre.x + f.bowl;
     const radius = Math.max(f.arch * 0.7, f.least);
-    return finish(
+    /*
+     * And set a little loose, like the `a` and the `d`: this letter is a bowl
+     * with a tail hanging under the letter beside it rather than beside it, so
+     * spacing it off its own width alone leaves it tight. The reference takes
+     * 1.07 of its own `o`'s advance for a `g`. See `air`.
+     */
+    return {
+      ...finish(
       f,
       [
         ink(f, ring(f, centre, f.bowl, f.bowlH)),
@@ -2287,7 +2294,9 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
           f.end,
           f.end,
         ),
-      ]);
+      ]),
+      air: 0.2,
+    };
   },
 
   h: (style) => {
