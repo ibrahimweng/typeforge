@@ -178,8 +178,21 @@ describe("the two sides of a join that is not there", () => {
         1,
       );
       expect([letter, alone.advanceWidth < begin.advanceWidth]).toEqual([letter, true]);
-      // And it starts on its own ink, like the letter that begins a word.
-      expect([letter, contoursBounds(alone.contours).xMin > 0]).toEqual([letter, true]);
+      /*
+       * And it starts on its own ink, like the letter that begins a word --
+       * asked of the letter at the line, which is where a neighbour would be.
+       *
+       * A descender's loop turns left under the letter before it, and a letter
+       * is spaced off its body between the lines rather than off that turn. So
+       * the loop comes out over the origin, which is what the reference does
+       * too: its `f` starts 0.20 of an x-height left of its own origin and its
+       * `j` 0.58. Below the baseline there is nothing to start on top of.
+       */
+      const atTheLine = alone.contours
+        .flatMap((one) => one.nodes)
+        .filter((node) => node.point.y >= 0);
+      const starts = Math.min(...atTheLine.map((node) => node.point.x));
+      expect([letter, starts > 0]).toEqual([letter, true]);
     }
 
     const rules = boundaryRules(boundaryEnds(forge), letterNames());

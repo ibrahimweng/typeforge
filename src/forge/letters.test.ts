@@ -172,8 +172,26 @@ describe("the character set", () => {
           const leaned = (Math.min(seam, lowest.y) - style.metrics.xHeight / 2)
             * Math.tan((style.metrics.slant * Math.PI) / 180);
           const knit = style.parts.script.on ? style.parts.script.knit * style.pen.weight : 0;
+          /*
+           * And a descender's loop swings sideways as well as leaning.
+           *
+           * The shear above accounts for a stroke being carried left by the
+           * lean; it does not account for a loop turning left under its own
+           * letter. Since a letter is spaced off its body between the lines,
+           * that swing is not paid for in the advance and comes out over the
+           * origin -- which is what the reference does too, and by about as
+           * much: its `j` starts 0.58 of an x-height left of its own origin
+           * against our 0.57 and 0.59, its `p` 0.28 and its `f` 0.20.
+           *
+           * How far a loop may swing is the loop's own arithmetic rather than a
+           * figure picked to fit: it is struck no longer than the descender it
+           * hangs from and bows `eye` of that.
+           */
+          const swing = style.parts.script.on && bounds.yMin < 0
+            ? style.parts.script.eye * Math.abs(style.metrics.descender)
+            : 0;
           expect(bounds.xMin, `${name} starts left of the origin`).toBeGreaterThan(
-            reaches ? Math.min(0, leaned) - style.pen.weight * 0.5 - knit - 1 : -1,
+            reaches ? Math.min(0, leaned) - style.pen.weight * 0.5 - knit - swing - 1 : -1,
           );
           expect(bounds.xMax, `${name} runs off the right`).toBeLessThan(unitsPerEm * 1.6);
         }

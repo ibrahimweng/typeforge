@@ -977,7 +977,37 @@ export function planJoin(
    * band whole. A loop at the ascender is nowhere near.
    */
   const band = waist === null ? null : waist + room.half;
-  const body = points.filter((one) => band !== null && one.y <= band);
+  /*
+   * And the same at the other end, because a descender is the same fact upside
+   * down.
+   *
+   * What rises above the waist hangs over the letter after it; what falls below
+   * the baseline hangs under the letter before it, and there is as little down
+   * there to foul as there is up here. The reference says so plainly: its `p`
+   * reaches 0.28 of an x-height left of its own origin, its `j` 0.58 and its
+   * `f` 0.20, while everything with nothing below the line stops within 0.06.
+   *
+   * Measured to the waist only, the descender loop was inside the band and paid
+   * for its swing in the advance -- the `p` came out at 1.19 to 1.34 of its own
+   * face's `o` against the reference's 1.07, and every one of those faces drew
+   * it at 1.01 to 1.07 with the loop turned off. The letter was right and the
+   * spacing was reading a loop as though it were a body.
+   *
+   * Half a pen below the line, for the reason the waist is half a pen above it
+   * -- and moved by the same bounce, which is what the waist above already
+   * carries and this did not. A hand that sets each letter a little off the
+   * line moves its baseline with it, so a floor left at nought is a floor that
+   * cuts a lifted letter in a different place: the `f` and the `j` came out
+   * *wider* at the start of a word than in the middle of one, by three units
+   * and twenty-seven, where every other letter came out narrower by the same
+   * three.
+   *
+   * The lift is not handed in because it does not need to be: the waist is the
+   * x-height plus it.
+   */
+  const lift = waist === null ? 0 : waist - room.x;
+  const floor = lift - room.half;
+  const body = points.filter((one) => band !== null && one.y <= band && one.y >= floor);
   const spanning = body.length >= 2 ? body : points;
   /*
    * And only for a letter written in the middle of a word, which is the one

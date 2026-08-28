@@ -7048,9 +7048,25 @@ export function joinEnds(name: string): Ends {
  * and placed by whoever drew it, and this one is a semicircle of so many pen
  * widths struck on whatever stem stands highest. That is the right construction
  * for the ascender it was written for and no construction at all for a `T`.
+ *
+ * And the `p` has neither, which is a fact about the order the strokes are
+ * made in rather than about the letter's shape. A loop is what a pen leaves
+ * when it turns round at the end of a stroke and carries on. On a `g`, a `y`,
+ * a `j` and an `f` the descender is the last thing drawn, so it turns; on a
+ * `p` it is the first, and the pen lifts at the bottom of it and comes back up
+ * to start the bowl. The reference draws it exactly so -- its `p` is a single
+ * stroke 0.18 of an x-height wide at every depth below the line, where its `q`,
+ * `g`, `y`, `j` and `f` all read as two.
+ *
+ * It cost the `p` a fifth of its width. The loop swung out to the left of the
+ * stem and the spacing counted that swing as part of the letter, so the `p`
+ * came out at 1.19 to 1.34 of its own face's `o` against the reference's 1.07,
+ * and at 1.01 to 1.07 with the loop turned off.
  */
+const NO_LOOP = new Set(["p", "thorn"]);
+
 export function takesLoop(name: string): boolean {
-  return !CAPITALS.has(name);
+  return !CAPITALS.has(name) && !NO_LOOP.has(name);
 }
 
 /** Whether the join reaches out of this letter at all, on either side. */
