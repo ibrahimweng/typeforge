@@ -1036,7 +1036,30 @@ export const HANDWRITING: Style = {
        * thing on the page.
        */
       height: 0.18,
-      reach: 1.5,
+      /*
+       * And this is the face's fit as much as its join, which is why it moved.
+       *
+       * The reach is added to the advance at both ends, so it is the white
+       * between two letters as well as the stroke that crosses it. At 1.5 it
+       * was a quarter of the x-height at each end where the reference runs
+       * about a twelfth, and the letters that have no width of their own paid
+       * for it twice: the `o` and the `e` came out as wide as the `n`, where
+       * the reference draws them a fifth narrower.
+       *
+       * Set to where the letters still only lap by what the knit intends. Below
+       * that they lap by more, which is two letters colliding rather than one
+       * joining, and this face has room all the way down -- at 0.6 the worst
+       * pair still laps by exactly the knit's sixteen hundredths.
+       *
+       * What stops it there is the other end: the reach has to stay above the
+       * sidebearing, because that is what stands in for it on the side a
+       * boundary letter has no join on. Below it, dropping a join makes a
+       * letter *wider* -- the first letter of a word came out broader than the
+       * same letter mid-word, and the `.begin` and `.end` forms stopped being
+       * the narrower drawings they exist to be. This face's sidebearing is 46
+       * units against a pen of 70, so the floor is two thirds of a stem.
+       */
+      reach: 0.72,
       flat: 0.2,
       // No loops. A print hand does not make them, and leaving them off is what
       // separates this from the three below rather than an omission.
@@ -1149,7 +1172,12 @@ export const FORMAL_SCRIPT: Style = {
       on: true,
       // Low, for the reason set out on the Handwriting above.
       height: 0.16,
-      reach: 1.6,
+      // Down from 1.6, and it stops sooner than the others: below 1.1 this
+      // face's bodies start lapping by more than the knit intends -- 0.20 at
+      // 0.9 against the knit's 0.16 -- because its letters are wider than the
+      // reference's to begin with. That is the counter's business, not the
+      // join's.
+      reach: 1.1,
       // Almost no flat: a formal hand swings from one letter into the next in
       // one continuous turn and never runs level between them.
       flat: 0.04,
@@ -1221,7 +1249,9 @@ export const CASUAL_SCRIPT: Style = {
       on: true,
       // Low, for the reason set out on the Handwriting above.
       height: 0.17,
-      reach: 1.05,
+      // Down from 1.05, to where the bodies still lap by only what the knit
+      // intends. See the note on the Handwriting.
+      reach: 0.8,
       flat: 0.3,
       loop: 0.7,
       irregularity: 1.6,
@@ -1345,9 +1375,23 @@ export const MONOLINE_SCRIPT: Style = {
       on: true,
       // Low, for the reason set out on the Handwriting above.
       height: 0.22,
-      // In pens, and this pen is a hairline: five of them is the same run of
-      // white that 1.65 was at the old weight.
-      reach: 5,
+      /*
+       * In pens, and this pen is a hairline, so the number is large where the
+       * run of white it buys is not.
+       *
+       * Down from five, and not as far as the others. Two things stop it. The
+       * `r` against the `n` begins to lap by more than the knit intends below
+       * about three and a half; and before that, at about four and a third,
+       * the `p`'s descender swings out past its own origin and into the letter
+       * before it -- this face leans twenty-one degrees and its descenders are
+       * the deepest of the four, so a tighter fit puts their tails outside the
+       * letter rather than under it.
+       *
+       * It also carries the widest counter of the four against its x-height:
+       * still the Sans' 370 over an x-height of 360. Narrowing that is what
+       * would let this face close up properly, and it belongs to itself.
+       */
+      reach: 4.4,
       flat: 0.05,
       loop: 9,
       // Nothing. A drawn script is drawn on a line and stays on it, and this is

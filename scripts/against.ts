@@ -29,6 +29,13 @@
  * `pen/x` The stem against the x-height: the face's colour, in the only unit
  *         that compares across faces of different sizes.
  *
+ * `adv/x` The mean advance of ten letters against the x-height -- the face's
+ *         fit. Mostly the join's reach, which is added to the advance at both
+ *         ends and so is the white between two letters as well as the stroke
+ *         that crosses it. The letters with no width of their own show it
+ *         first: an `o` and an `e` came out as wide as the `n` where the
+ *         reference draws them a fifth narrower.
+ *
  * `over`  How far the ink reaches past the origin on the left and past the
  *         advance on the right, as a share of the x-height. This is the one
  *         that was furthest out and the least obvious. A joined letter here
@@ -57,11 +64,19 @@ const RISERS = ["l", "b", "d", "h", "k"];
 const FALLERS = ["p", "q", "g", "y", "j"];
 
 const SAMPLE = ["n", "o", "a", "e", "m"];
-const row = (name: string, x: number, asc: number, desc: number, pen: number, left: number, right: number) =>
-  `${name.padEnd(16)} ${x.toFixed(3)}  ${asc.toFixed(2)}   ${desc.toFixed(2)}    ${pen.toFixed(3)}` +
-  `   ${left >= 0 ? " " : ""}${left.toFixed(2)} / ${right >= 0 ? " " : ""}${right.toFixed(2)}   ${(left + right).toFixed(2)}`;
 
-console.log("face             x/em   asc/x  desc/x  pen/x    over left/right   pair overlap");
+/** The reference's advance over its x-height, letter by letter, from its ink. */
+const FIT: Record<string, number> = {
+  n: 1.40, m: 1.95, o: 1.10, e: 1.00, a: 1.31, c: 0.97, u: 1.32, r: 1.05, s: 1.04, t: 0.86,
+};
+const FIT_MEAN = Object.values(FIT).reduce((sum, one) => sum + one, 0) / Object.keys(FIT).length;
+const row = (name: string, x: number, asc: number, desc: number, pen: number,
+  left: number, right: number, fit: number) =>
+  `${name.padEnd(16)} ${x.toFixed(3)}  ${asc.toFixed(2)}   ${desc.toFixed(2)}    ${pen.toFixed(3)}` +
+  `   ${left >= 0 ? " " : ""}${left.toFixed(2)} / ${right >= 0 ? " " : ""}${right.toFixed(2)}   ${(left + right).toFixed(2)}` +
+  `      ${fit.toFixed(2)} (${(fit / FIT_MEAN).toFixed(2)}x)`;
+
+console.log("face             x/em   asc/x  desc/x  pen/x    over left/right   pair overlap   adv/x");
 for (const style of BASES.filter((one) => one.parts.script.on)) {
   const { unitsPerEm } = style.metrics;
   const inkOf = (name: string) => {
@@ -79,8 +94,11 @@ for (const style of BASES.filter((one) => one.parts.script.on)) {
   }).filter((one): one is { left: number; right: number } => one !== null);
   const mean = (of: (one: { left: number; right: number }) => number) =>
     reach.reduce((sum, one) => sum + of(one), 0) / (reach.length || 1);
+  const fit = Object.keys(FIT)
+    .map((one) => drawLetter(one, style, style.forms?.[one])!.advanceWidth / xHeight)
+    .reduce((sum, one) => sum + one, 0) / Object.keys(FIT).length;
   console.log(row(style.name, xHeight / unitsPerEm, ascender / xHeight, Math.abs(descender) / xHeight,
-    style.pen.weight / xHeight, mean((one) => one.left), mean((one) => one.right)));
+    style.pen.weight / xHeight, mean((one) => one.left), mean((one) => one.right), fit));
 }
 console.log(row(REFERENCE.name, REFERENCE.xOverEm, REFERENCE.ascOverX, REFERENCE.descOverX,
-  REFERENCE.penOverX, REFERENCE.left, REFERENCE.right));
+  REFERENCE.penOverX, REFERENCE.left, REFERENCE.right, FIT_MEAN));

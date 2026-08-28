@@ -138,10 +138,15 @@ suite("a joined face carries its joins into the file", () => {
       for (const name of begun) {
         const letter = name.split(".")[0];
         expect([name, widths[name] < widths[letter]]).toEqual([name, true]);
-        expect([name, widths[name] - right[name]]).toEqual([
-          name,
-          widths[letter] - right[letter],
-        ]);
+        /*
+         * To within a unit, for the reason set out below on the lone letters:
+         * this is four numbers that were each rounded to a whole unit on the
+         * way into the file, and roundings do not compose. Written exact, it
+         * held only while the join's reach happened to land on a whole number
+         * of units, and read -21 against -20 the first time the reach moved.
+         */
+        expect([name, Math.abs((widths[name] - right[name]) - (widths[letter] - right[letter])) <= 1])
+          .toEqual([name, true]);
       }
 
       const ended = Object.keys(widths).filter((n) => n.endsWith(".end"));
@@ -217,9 +222,12 @@ suite("a joined face carries its joins into the file", () => {
       const left = report.sidebearings ?? {};
 
       const ended = Object.keys(widths).filter((n) => n.endsWith(".end"));
-      const lost = new Set(ended.map((n) => widths[n.split(".")[0]] - widths[n]));
-      expect([...lost]).toHaveLength(1);
-      expect([...lost][0]).toBeGreaterThan(0);
+      const lost = [...new Set(ended.map((n) => widths[n.split(".")[0]] - widths[n]))];
+      // The same width off every one of them, to a unit -- two advances each
+      // rounded on the way into the file, so a reach that is not a whole
+      // number of units splits the answer between two neighbouring integers.
+      expect([lost, Math.max(...lost) - Math.min(...lost) <= 1]).toEqual([lost, true]);
+      expect(Math.min(...lost)).toBeGreaterThan(0);
 
       // Capitals and lowercase alike, and the side that kept its stroke did
       // not move at all.
