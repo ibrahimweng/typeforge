@@ -23,10 +23,11 @@ await ready();
 
 const OUT = process.argv[2] ?? "specimen.svg";
 const WORDS = (process.argv[3] ?? "handgloves,typeforge,abcdefghijklm,nopqrstuvwxyz").split(",");
-/** Enough to read the joins at, on a page a screen wide. */
-const SCALE = 0.11;
-const LINE = 150;
+/** Enough to read the joins at, on a page a screen wide. Raise it to look at one. */
+const SCALE = Number(process.env.SCALE ?? 0.11);
+const LINE = 150 * (SCALE / 0.11);
 const EDGE = 60;
+const WIDE = Number(process.env.WIDE ?? 1320);
 
 const rows: string[] = [];
 let down = EDGE;
@@ -51,7 +52,7 @@ for (const style of BASES.filter((one) => one.parts.script?.on)) {
     rows.push(
       `<g transform="translate(${EDGE} ${line}) scale(${SCALE} ${-SCALE})" fill="#1b1917">` +
       `${glyphs.join("")}</g>`,
-      `<line x1="${EDGE}" y1="${line}" x2="${EDGE + 1200}" y2="${line}" stroke="#d9d2c4" stroke-width="1"/>`,
+      `<line x1="${EDGE}" y1="${line}" x2="${WIDE - EDGE}" y2="${line}" stroke="#d9d2c4" stroke-width="1"/>`,
     );
     down += LINE;
   }
@@ -60,8 +61,8 @@ for (const style of BASES.filter((one) => one.parts.script?.on)) {
 
 writeFileSync(
   OUT,
-  `<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="${down + EDGE}"` +
-  ` viewBox="0 0 1320 ${down + EDGE}"><rect width="100%" height="100%" fill="#faf8f3"/>` +
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDE}" height="${down + EDGE}"` +
+  ` viewBox="0 0 ${WIDE} ${down + EDGE}"><rect width="100%" height="100%" fill="#faf8f3"/>` +
   `${rows.join("\n")}</svg>`,
 );
 console.log(`${OUT} written`);
