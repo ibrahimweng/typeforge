@@ -310,6 +310,18 @@ export interface Join {
 const SAMPLES = 64;
 
 /**
+ * How high up a round letter the lead-in may land, as a share of the x-height.
+ *
+ * Below the widest point, which is the whole of it: at the widest point the
+ * bowl's edge is running straight up and the entry has to arrive across it,
+ * and a third of the way up it is still opening out and the entry arrives
+ * along it. Half was no use -- a bowl is widest at half its height, so that is
+ * the very point being avoided. A quarter and a third draw the same letter;
+ * a third keeps more of the bowl available on the faces whose seam sits high.
+ */
+const ROUND_ENTRY = 0.35;
+
+/**
  * An arc from the seam to a point, level where it leaves the seam.
  *
  * The one piece of arithmetic this file could not do without, and the thing
@@ -599,8 +611,10 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
      * end is standing on the letter. A weight where it already reaches is left
      * exactly as it was.
      */
-    const reachedBack = rising ? deep : reaching(spines, end, deep, available, room.half);
-    const start = at(end.x, rising ? tip.y - deep : tip.y + reachedBack);
+    const home = rising
+      ? { much: deep, over: 0 }
+      : reaching(spines, end, deep, available, room.half, room.x);
+    const start = at(end.x + home.over, rising ? tip.y - deep : tip.y + home.much);
     /*
      * An eye on an ascender stands on that ascender or it is not drawn.
      *
@@ -646,14 +660,38 @@ function reaching(
   deep: number,
   available: number,
   half: number,
-): number {
-  const lands = (much: number) =>
-    spines.some((one) => standsOn(one, at(end.x, end.y + much), half));
-  if (lands(deep) || half <= 0) return deep;
+  across: number,
+): { much: number; over: number } {
+  const lands = (much: number, over: number) =>
+    spines.some((one) => standsOn(one, at(end.x + over, end.y + much), half));
+  if (lands(deep, 0) || half <= 0) return { much: deep, over: 0 };
   for (let much = deep + half; much <= available; much += half) {
-    if (lands(much)) return much;
+    if (lands(much, 0)) return { much, over: 0 };
   }
-  return lands(available) ? available : deep;
+  /*
+   * And sideways, over the whole letter rather than a stem or two.
+   *
+   * The eye is struck straight up from the end it hangs off, and that is an
+   * assumption about where the rest of the letter is rather than a fact about
+   * it. Draw the `g`'s bowl to the reference's width and the line straight up
+   * from its tail rises through where the bowl used to be: at pen 40 the eye
+   * came out a crescent hanging off the bottom left with the letter's body two
+   * hundred units away up and to the right, and no length of eye reaches
+   * something it is not pointing at. Leaning it a stem or two does not either
+   * -- the distance is the letter's, not the pen's.
+   *
+   * Straight up first and leaning only if that fails, so every letter that
+   * never needed it is drawn exactly as it was.
+   */
+  for (let over = half; over <= across; over += half) {
+    for (const side of [over, -over]) {
+      if (lands(deep, side)) return { much: deep, over: side };
+      for (let much = deep + half; much <= available; much += half) {
+        if (lands(much, side)) return { much, over: side };
+      }
+    }
+  }
+  return lands(available, 0) ? { much: available, over: 0 } : { much: deep, over: 0 };
 }
 
 /** Whether this run passes under the point, for a loop to stand on it. */
@@ -728,6 +766,7 @@ export function planJoin(
   script: Script,
   crossing?: Crossing,
   ends: Ends = BOTH_ENDS,
+  round = false,
 ): Join | null {
   /*
    * A letter with neither end still comes through here, and only the strokes
@@ -760,8 +799,30 @@ export function planJoin(
    */
   const offBand = (low: number, high: number) => (point: Vec2) =>
     Math.max(0, low - point.y, point.y - high);
-  const lands = attach(points, (point) => point.y >= entryAt && point.y <= room.x - room.half,
-    "left", offBand(entryAt, room.x - room.half));
+  /*
+   * A round letter is joined below its widest point, where its edge is still
+   * climbing; everything else is joined at the top of the run the hand arrives
+   * at.
+   *
+   * The band is the whole of the decision and it was the same band for both.
+   * On a stem that is right -- the entry and the stem meet at a point, the way
+   * an up-stroke meets a down-stroke. On a bowl it lands on the leftmost point
+   * there is, which is the widest part, and the entry then has to climb from
+   * the seam to the middle of the letter's height over whatever horizontal run
+   * is left. Draw the bowl narrower and that run shortens: the arc stands up,
+   * and a stroke a whole pen wide arriving steeply at the side of a bowl puts
+   * its ink straight through the wall and takes a bite out of the counter.
+   * That is what stopped the round letters being drawn to the reference's
+   * width -- a notch in the `o` and the `e` on two faces at a bowl of 0.71.
+   *
+   * Landing under the widest point gives the entry the bowl's own lower left
+   * to arrive along, so it meets the curve going the way the curve goes. It is
+   * also where a hand enters an `o`: at the bottom of the stroke, not at its
+   * side.
+   */
+  const ceiling = round ? room.x * ROUND_ENTRY : room.x - room.half;
+  const lands = attach(points, (point) => point.y >= entryAt && point.y <= ceiling,
+    "left", offBand(entryAt, ceiling));
   /*
    * The lead-out searches below its own crossing on an ordinary letter and
    * above it on one that hands over high -- which is the whole of the

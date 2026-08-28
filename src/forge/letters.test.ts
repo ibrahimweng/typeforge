@@ -19,7 +19,7 @@ import { contoursIntersect } from "@/font/outline";
 import { builtFrom, drawLetter, letterNames , reachesOut } from "./build";
 import { startFrom, weighted } from "./document";
 import { openWaveBook, spineEnd, spineStart, waveBookAt, type WaveBook } from "./shapes";
-import { formsOf, recipeOf } from "./letters";
+import { everyFormOf, recipeOf } from "./letters";
 import { mostLift, seamsOf } from "./script";
 import { BASES as STARTING_POINTS, DISPLAY, SANS, SERIF, type Style } from "./style";
 
@@ -326,7 +326,7 @@ describe("letters in one piece", () => {
          * straight tail had that tail floating clear of its own vee, on three
          * of the faces that offer it.
          */
-        for (const { id } of formsOf(name)) {
+        for (const { id } of everyFormOf(name)) {
           const drawn = drawLetter(name, style, id || undefined);
           if (!drawn || drawn.contours.length === 0) continue;
           if (piecesOf(drawn.contours) > 1) {
@@ -796,7 +796,7 @@ describe("an f is not a t, and a k is not a fan", () => {
       for (const weight of [40, 60, 84, 110, 140, 175, 210]) {
         const style: Style = { ...base, pen: { ...base.pen, weight } };
         for (const name of ["k", "K"]) {
-          for (const { id } of formsOf(name)) {
+          for (const { id } of everyFormOf(name)) {
             const drawn = drawLetter(name, style, id || undefined);
             if (!drawn || drawn.contours.length === 0) continue;
             if (piecesOf(drawn.contours) > 1) {

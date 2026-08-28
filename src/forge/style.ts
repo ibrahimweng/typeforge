@@ -1024,6 +1024,17 @@ export const HANDWRITING: Style = {
     terminal: { kind: "butt", angle: 0 },
     corner: { radius: 40, join: "round" },
     shoulder: { spring: 0.55, reach: 1 },
+    /*
+     * Narrower than a circle, which is what a script's round letters are.
+     *
+     * Read across the middle, the reference's `o` covers 0.79 of an x-height
+     * and this face's covered 1.05. The counter measured as a narrow slit on
+     * the reference, which sent me looking at the pen's stress; three ink runs
+     * across the middle rather than two is what said otherwise. The reference's
+     * entry sweeps *through* the bowl and cuts its counter in two, and the bowl
+     * itself is simply narrower.
+     */
+    bowl: { width: 0.71, squareness: 0, aperture: 1 },
     script: {
       on: true,
       /*
@@ -1173,7 +1184,8 @@ export const FORMAL_SCRIPT: Style = {
      */
     ball: { size: 0.8, drop: 0.35 },
     corner: { radius: 46, join: "round" },
-    bowl: { width: 0.92, squareness: 0, aperture: 1 },
+    // Sized on the reference's `o`, as on the Handwriting.
+    bowl: { width: 0.62, squareness: 0, aperture: 1 },
     shoulder: { spring: 0.5, reach: 0.96 },
     script: {
       on: true,
@@ -1264,7 +1276,8 @@ export const CASUAL_SCRIPT: Style = {
     // Square, for the reason set out on the Handwriting above.
     terminal: { kind: "butt", angle: 0 },
     corner: { radius: 70, join: "round" },
-    bowl: { width: 1.05, squareness: 0, aperture: 1.08 },
+    // Sized on the reference's `o`, as on the Handwriting.
+    bowl: { width: 0.67, squareness: 0, aperture: 1.08 },
     shoulder: { spring: 0.48, reach: 1.06 },
     script: {
       on: true,
@@ -1404,7 +1417,8 @@ export const MONOLINE_SCRIPT: Style = {
     // 1.16 of the new one, and the drop is the same size on the page as before.
     ball: { size: 1.16, drop: 0.35 },
     corner: { radius: 30, join: "round" },
-    bowl: { width: 0.92, squareness: 0, aperture: 1 },
+    // Sized on the reference's `o`, as on the Handwriting.
+    bowl: { width: 0.72, squareness: 0, aperture: 1 },
     shoulder: { spring: 0.6, reach: 1 },
     script: {
       on: true,

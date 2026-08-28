@@ -1078,6 +1078,45 @@ function rounded(f: Frame, arm: Vec2, meet: Vec2, leg: Vec2): number {
   return Number.isFinite(least) ? least : meet.x;
 }
 
+/**
+ * Where a rounded vee actually bottoms out, in both x and y.
+ *
+ * The same question `rounded` asks of a K sideways, asked of a Y downwards, and
+ * asked because two of the three points that look like the bottom of a vee are
+ * not on the ink at all.
+ *
+ * The recipe names the point the ink should reach. `through` hands back the
+ * skeleton vertex that puts the ink there, and for a pen that is rotated -- as
+ * every script pen here is -- that vertex is not above the tip but up and to
+ * one side of it: thirty-two units to the side on the Formal Script. Then
+ * `roundCorners` lifts the spine off that vertex as well.
+ *
+ * So a stem told to stand at the tip stands beside the vee rather than under
+ * it, and the Formal Script Y was two pieces at every weight and every bowl
+ * width below 0.95 -- the ink of a vee is wide enough to hide the mistake until
+ * something narrows it.
+ */
+function dips(f: Frame, arm: Vec2, meet: Vec2, leg: Vec2): Vec2 {
+  const spine = roundCorners(chain(straight(arm, meet), straight(meet, leg)), f.radius, f.half);
+  const seen: Vec2[] = [];
+  for (const segment of spine.segments) {
+    if (segment.kind === "line") {
+      seen.push(segment.from, segment.to);
+      continue;
+    }
+    seen.push(...ends(segment));
+    // The bottom of the circle, but only where the arc actually goes through it.
+    if (sweeps(segment, -Math.PI / 2)) {
+      seen.push(at(segment.centre.x, segment.centre.y - segment.radius));
+    }
+  }
+  // The lowest point the rounded spine reaches, which is above the vertex it
+  // was rounded from -- not the lower of the two, which would be the vertex.
+  let low = seen[0] ?? meet;
+  for (const point of seen) if (point.y < low.y) low = point;
+  return low;
+}
+
 /** Whether an arc passes through the given angle on its way from start to end. */
 function sweeps(arc: SpineArc, angle: number): boolean {
   const turn = Math.PI * 2;
@@ -2977,26 +3016,29 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const top = at(left, f.cap);
     const other = at(middle + half, f.cap);
     const point = corner(f, top, at(middle, junction), other);
+    const low = dips(f, top, point, other);
     return finish(
       f,
       [
         ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end),
         /*
-         * The stem runs up past the vee's vertex, so its square top is buried
-         * rather than showing as a step.
+         * The stem stands under the vee and runs up past where it bottoms out,
+         * so its square top is buried rather than showing as a step.
          *
-         * Past the vertex, not up to the corner the chain turns on: those are
-         * not the same place. The sweep rounds the join, and on a face that
-         * rounds it hard the ink stops well above the corner -- ninety units
-         * above it on Ribbon, which left the stem floating clear below a vee
-         * that read as a U, and eighteen on Technical.
+         * Under where the vee really bottoms out, which is not under the tip
+         * the recipe named: `dips` explains the two places that only look like
+         * it. Standing at the tip put this stem thirty-two units to one side of
+         * its own vee on the Formal Script, and only the width of the vee's ink
+         * was holding the letter together -- thirty-six square units of overlap
+         * at the bowl width it used to ship, none at all at the one it ships
+         * now.
          *
-         * Half a pen above the vertex is inside the ink on any face. The two
-         * arms are still overlapping each other there, and go on doing so
-         * until they have risen a pen's half-width times `cap - junction` over
-         * `half`, which on every face here is a good deal more.
+         * Half a pen-half past the meeting point, so the two are overlapping
+         * over an area rather than touching along a line. Measured from a point
+         * both strokes' spines pass through, that is a full pen's footprint of
+         * shared ink on every face here.
          */
-        ink(f, straight(at(middle, 0), at(middle, junction + f.half * 0.5)), f.end, BUTT),
+        ink(f, straight(at(low.x, 0), at(low.x, low.y + f.half * 0.5)), f.end, BUTT),
       ]);
   },
 
@@ -6801,6 +6843,26 @@ export function formsOf(name: LetterName): Array<{ id: string; label: string; hi
   ];
 }
 
+/**
+ * Every form of a letter that can be drawn, which is not the same list.
+ *
+ * `formsOf` answers a picker's question -- what is there to choose between --
+ * and a letter carrying no alternate is not a choice, so it answers with
+ * nothing. Seven loops across the tests and the scripts read that list to
+ * decide what to draw, and so drew nothing: thirty-six of the fifty letters,
+ * every capital but seven, the whole of the round letters. A Formal Script `Y`
+ * in two pieces sat in front of all of them and none of them saw it, and the
+ * one test that did catch it was the one that had never been given the forms
+ * loop at all.
+ *
+ * So: the ids to draw, always at least the default.
+ */
+export function everyFormOf(name: LetterName): Array<{ id: string; label: string; hint: string }> {
+  const forms = formsOf(name);
+  if (forms.length > 0) return forms;
+  return [{ id: "", label: "Default", hint: "The letter as this face draws it." }];
+}
+
 /** The recipe for a letter, in whichever form has been chosen. */
 export function recipeOf(
   name: LetterName,
@@ -7086,7 +7148,8 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
     ...stroke,
     spine: movedSpine(stroke.spine, 0, lift),
   }));
-  const plan = planJoin(body.map((stroke) => stroke.spine), room, script, crossing, ends);
+  const plan = planJoin(
+    body.map((stroke) => stroke.spine), room, script, crossing, ends, recipe.round);
   if (!plan) return recipe;
   /*
    * The letter moves over; the join does not.

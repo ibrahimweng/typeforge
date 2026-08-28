@@ -21,7 +21,7 @@ import { ready, unite } from "@/font/boolean";
 import { contoursBounds, inkRunsAt } from "@/font/geometry";
 import type { Contour } from "@/font/types";
 import { drawLetter } from "./build";
-import { formsOf, recipeOf } from "./letters";
+import { everyFormOf, recipeOf } from "./letters";
 import { BASES, SANS, type Style } from "./style";
 import { seamsOf, wobbleOf } from "./script";
 import { spineEnd, spineStart } from "./shapes";
@@ -227,7 +227,7 @@ describe("what the join does not touch", () => {
         // Every form, not only the one this face happens to ship: the form that
         // broke was the plain `f`, and the Formal Script ships the descending
         // one, so asking each face for its own would have missed it entirely.
-        for (const { id } of formsOf(letter)) {
+        for (const { id } of everyFormOf(letter)) {
           const runs = recipeOf(letter, id || undefined)!(style).strokes;
           // The lead-out is the run that finishes on the advance, at the seam.
           const exit = runs.find((one) => Math.abs(spineEnd(one.spine).y - seam) < 1);
@@ -355,7 +355,7 @@ describe("the loops", () => {
     const { ready: loaded } = await import("@/font/boolean");
     const { piecesOf } = await import("./cut");
     const { letterNames } = await import("./build");
-    const { formsOf } = await import("./letters");
+    const { everyFormOf } = await import("./letters");
     await loaded();
     const solid = letterNames().filter((one) => /^[A-Za-z]$/.test(one) && one !== "i" && one !== "j");
     const apart: string[] = [];
@@ -363,7 +363,7 @@ describe("the loops", () => {
       for (const weight of [40, 60, 120, 210]) {
         const style: Style = { ...base, pen: { ...base.pen, weight } };
         for (const name of solid) {
-          for (const { id } of formsOf(name)) {
+          for (const { id } of everyFormOf(name)) {
             const drawn = drawLetter(name, style, id || undefined);
             if (!drawn || drawn.contours.length === 0) continue;
             if (piecesOf(drawn.contours) > 1) {
