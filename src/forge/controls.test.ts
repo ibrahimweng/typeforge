@@ -373,39 +373,70 @@ describe("every starting point, at every weight", () => {
    */
   it("never folds, on any base, in any form", () => {
     /*
-     * Six that still do, all of them at a pen no face is drawn with.
+     * The ones that still do, and every one of them at a pen far heavier than
+     * the letter it is drawn on.
      *
-     * The Monoline Script is drawn at 58 and the Formal Script at 103. These
-     * are a mitre carried out to a point over a terminal, on a letter being
-     * asked to hold a pen between one and a half and three and a half times the
-     * one it was drawn for, and the overlap is the spike touching the cap.
+     * The unit weight is the wrong way to say that, and saying it that way is
+     * how this list moved when nothing about the drawing did. A fold is the pen
+     * being too heavy for the letterform, which is a ratio: the Handwriting's
+     * `alpha` folds at 92 units now that this face has the reference's
+     * proportions, and folded at about 119 before, because 92 units against a
+     * 332-unit x-height is the same pen as 119 against 430. Nothing changed
+     * about the alpha. So each of these is written with what the pen actually
+     * is where it folds:
      *
-     * Left because the union takes them out again. Every one of these fuses to
-     * a single piece with no fold in it and keeps its ink -- 99.9%, 99.8% and
-     * 99.1% of what it was handed, and 83% for the z at 260 where the spike is
-     * the part absorbed -- so no exported file has ever carried one. What
-     * carries them is the drawing on the screen, which is why they are written
-     * down here rather than allowed for silently.
+     *   Handwriting     @92   pen 0.28 of the x-height, 1.7x its own
+     *   Handwriting     @260  pen 0.78 of the x-height, 4.8x its own
+     *   Formal Script   @150  pen 0.41 of the x-height, 1.5x its own
+     *   Formal Script   @210  pen 0.57 of the x-height, 2.0x its own
+     *   Formal Script   @260  pen 0.70 of the x-height, 2.5x its own
+     *   Casual Script   @260  pen 0.78 of the x-height, 3.9x its own
+     *   Monoline Script @210  pen 0.58 of the x-height, 3.6x its own
+     *   Monoline Script @260  pen 0.72 of the x-height, 4.5x its own
+     *
+     * Not one of them folds at the pen its face is drawn with, and each is a
+     * mitre carried out to a point over a terminal or a corner cut back further
+     * than the run it is cut into.
+     *
+     * Left because the union takes them out again: every one fuses to a single
+     * piece, and all but the two braces fuse with no fold left in them at all,
+     * keeping 76 to 100 per cent of the ink they were handed. No exported file
+     * has carried one. What carries them is the drawing on the screen, which is
+     * why they are written down here rather than allowed for silently.
      *
      * Two fixes were tried and neither earned its place: guarding the crossing
-     * against the far run's end as well as the near one, which left all six and
-     * folded a Formal Script `л` and `љ` besides, and lowering the mitre limit
-     * from four, which changed nothing at 3, 2.5, 2 or 1.5.
+     * against the far run's end as well as the near one, which left all six of
+     * the ones known then and folded a Formal Script `l` and `lje` besides, and
+     * lowering the mitre limit from four, which changed nothing at 3, 2.5, 2 or
+     * 1.5.
      */
     const known = new Set([
+      "α / Default folds on Handwriting at weight 92",
+      "ά / Default folds on Handwriting at weight 92",
+      "z / Default folds on Handwriting at weight 260",
+      "braceright / Default folds on Handwriting at weight 260",
+      "zacute / Default folds on Handwriting at weight 260",
+      "zdotaccent / Default folds on Handwriting at weight 260",
+      "zcaron / Default folds on Handwriting at weight 260",
       "Ω / Default folds on Formal Script at weight 150",
-      "Ω / Default folds on Formal Script at weight 210",
-      "Ω / Default folds on Formal Script at weight 260",
       "Ώ / Default folds on Formal Script at weight 150",
+      "Ω / Default folds on Formal Script at weight 210",
       "Ώ / Default folds on Formal Script at weight 210",
+      "Ω / Default folds on Formal Script at weight 260",
       "Ώ / Default folds on Formal Script at weight 260",
+      "z / Default folds on Casual Script at weight 260",
+      "braceleft / Default folds on Casual Script at weight 260",
+      "braceright / Default folds on Casual Script at weight 260",
+      "zacute / Default folds on Casual Script at weight 260",
+      "zdotaccent / Default folds on Casual Script at weight 260",
+      "zcaron / Default folds on Casual Script at weight 260",
       "z / Default folds on Monoline Script at weight 210",
-      "z / Default folds on Monoline Script at weight 260",
       "zacute / Default folds on Monoline Script at weight 210",
-      "zacute / Default folds on Monoline Script at weight 260",
       "zdotaccent / Default folds on Monoline Script at weight 210",
-      "zdotaccent / Default folds on Monoline Script at weight 260",
       "zcaron / Default folds on Monoline Script at weight 210",
+      "z / Default folds on Monoline Script at weight 260",
+      "zacute / Default folds on Monoline Script at weight 260",
+      "zdotaccent / Default folds on Monoline Script at weight 260",
       "zcaron / Default folds on Monoline Script at weight 260",
     ]);
     const wrong: string[] = [];

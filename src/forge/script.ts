@@ -767,6 +767,7 @@ export function planJoin(
   crossing?: Crossing,
   ends: Ends = BOTH_ENDS,
   round = false,
+  waist: number | null = null,
 ): Join | null {
   /*
    * A letter with neither end still comes through here, and only the strokes
@@ -853,8 +854,84 @@ export function planJoin(
    * because what has to be exact is that the lead-out stops on the advance,
    * whatever the advance turns out to be.
    */
-  const leftmost = points.reduce((least, one) => Math.min(least, one.x), Infinity);
-  const rightmost = points.reduce((most, one) => Math.max(most, one.x), -Infinity);
+  /*
+   * And measured on the part of the letter that shares a line with its
+   * neighbours, which is the part at or below the x-height.
+   *
+   * What rises above that hangs over the letter beside it, because there is
+   * nothing there to hang over: the next letter's body is down at the line. A
+   * written `l` is a stem with a loop over it, and spaced by the loop it is as
+   * wide as an `o` -- which is exactly what these faces did. The reference
+   * gives its `l` an advance of 0.71 x-heights and lets the ink run 1.04, a
+   * third of an x-height out past the advance; ours were 1.08, 1.73, 1.19 and
+   * 1.79, and its `d`, `b`, `k`, `f` and `h` went the same way behind it.
+   *
+   * It is the same figure for every letter that has nothing up there: the
+   * reference's `n`, `o`, `a`, `v`, `e`, `u`, `r`, `w`, `x` and `g` all reach
+   * between 0.09 and 0.10 x-heights past their advance, and only the ones with
+   * something above the x-height reach further -- 0.33 on the `l`, 0.25 on the
+   * `f`, 0.22 on the `d`.
+   *
+   * Not the arms of a `v` or a `w`, which lean out as they rise and are widest
+   * exactly at the x-height: they are inside the band and still measured, which
+   * is what the paragraph above this one is about.
+   *
+   * A capital has nothing at or below the x-height that is not also its widest
+   * part -- and one that is entirely above it, as every capital of a face with
+   * a tall x-height very nearly is, would be left with no letter to measure at
+   * all. So an empty band falls back to the whole letter.
+   */
+  /*
+   * Half a pen above the waist, not on it.
+   *
+   * The arms of a `v` and a `w` lean out as they rise and are widest exactly at
+   * the x-height, so a band that stops there stops in the middle of the part of
+   * the letter it is trying to measure -- and which side of the line each arm
+   * falls on then moves with the bounce. The `w` came out six tenths of a unit
+   * narrower at the start of a word than in the middle of one, which rounds to
+   * no difference at all in the file.
+   *
+   * Half a pen clear of it, a stroke that arrives at the waist is inside the
+   * band whole. A loop at the ascender is nowhere near.
+   */
+  const band = waist === null ? null : waist + room.half;
+  const body = points.filter((one) => band !== null && one.y <= band);
+  const spanning = body.length >= 2 ? body : points;
+  /*
+   * And only for a letter written in the middle of a word, which is the one
+   * that has a neighbour to hang over.
+   *
+   * A capital is set down on its own -- it takes a lead-out into the letter
+   * after it and never a lead-in from the letter before -- and the reference
+   * spaces its capitals off the whole of their ink: its `H`, `O`, `A`, `V`,
+   * `W` and `L` all sit within six hundredths of an x-height of their own
+   * advance, where its lowercase reaches a tenth past. Measured on its band a
+   * capital `T` is measured on its stem alone, and its bar came down eighty
+   * units left of the origin.
+   *
+   * Asked once for the letter rather than of each side separately, because the
+   * two sides have to be measured the same way for the same letter. Asked per
+   * side, turning a letter's lead-out off changed how its right edge was found
+   * as well as what was drawn there, and the width every letter gives up when
+   * it loses that stroke stopped being the same width.
+   *
+   * And asked of what the letter can do, not of what this drawing of it is
+   * doing: `d.begin` is the `d` at the start of a word and has given up its
+   * lead-in, but it is still a written `d` with a loop over it and still has
+   * the letter after it to hang over. Asked of the drawing, it was spaced like
+   * a capital.
+   *
+   * The height is handed in rather than taken from `room.x`, because the letter
+   * has already been moved by then. A hand that bounces sets each letter a
+   * little off the line, and a `d` dropped thirty units has thirty units more
+   * of its loop below the x-height than the same `d` standing level -- so the
+   * advance moved with the bounce, and `d.begin`, which does not bounce because
+   * it is not in the middle of a word, came out twenty-five units wider than
+   * the `d` it is meant to be narrower than.
+   */
+  const measured = spanning;
+  const leftmost = measured.reduce((least, one) => Math.min(least, one.x), Infinity);
+  const rightmost = measured.reduce((most, one) => Math.max(most, one.x), -Infinity);
   // Moved over by this much, the letter's own left edge sits exactly one reach
   // from the origin, which is the run the lead-in has to climb along.
   const inset = (ends.entry ? reach : room.sidebearing) - (leftmost - room.half);

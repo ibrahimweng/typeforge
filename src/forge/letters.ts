@@ -7149,7 +7149,11 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
     spine: movedSpine(stroke.spine, 0, lift),
   }));
   const plan = planJoin(
-    body.map((stroke) => stroke.spine), room, script, crossing, ends, recipe.round);
+    body.map((stroke) => stroke.spine), room, script, crossing, ends, recipe.round,
+    // Where this letter's waist has ended up, so what rises above it can hang
+    // over the letter beside it -- and `null` for a capital, which has no
+    // letter set before it and is spaced off the whole of its own ink.
+    has.entry ? f.x + lift : null);
   if (!plan) return recipe;
   /*
    * The letter moves over; the join does not.

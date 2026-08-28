@@ -139,13 +139,28 @@ suite("a joined face carries its joins into the file", () => {
         const letter = name.split(".")[0];
         expect([name, widths[name] < widths[letter]]).toEqual([name, true]);
         /*
-         * To within a unit, for the reason set out below on the lone letters:
-         * this is four numbers that were each rounded to a whole unit on the
-         * way into the file, and roundings do not compose. Written exact, it
-         * held only while the join's reach happened to land on a whole number
-         * of units, and read -21 against -20 the first time the reach moved.
+         * To within three units, and the first of those is the reason set out
+         * below on the lone letters: this is four numbers that were each
+         * rounded to a whole unit on the way into the file, and roundings do
+         * not compose. Written exact, it held only while the join's reach
+         * happened to land on a whole number of units, and read -21 against
+         * -20 the first time the reach moved.
+         *
+         * The other two are the bounce, and they arrived with the loops being
+         * allowed to hang over the letter beside them. A letter is now spaced
+         * off its body at the line and not off its loop, so the rightmost ink
+         * and the advance are no longer found on the same part of the letter --
+         * and a hand that bounces tilts each letter a little, which moves a
+         * loop two units against a stem it used to move with. `.begin` does not
+         * bounce, because it is not in the middle of a word, so it does not
+         * tilt either and the two differ by that much. Turn the irregularity
+         * off and this reads 0.00 on the `d` and the `l` alike.
+         *
+         * What the seam does is unchanged, which is what this is guarding: the
+         * lead-out still stops on the advance to the unit, and the pairs still
+         * join at nothing on all four faces.
          */
-        expect([name, Math.abs((widths[name] - right[name]) - (widths[letter] - right[letter])) <= 1])
+        expect([name, Math.abs((widths[name] - right[name]) - (widths[letter] - right[letter])) <= 3])
           .toEqual([name, true]);
       }
 

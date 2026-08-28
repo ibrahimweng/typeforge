@@ -983,16 +983,16 @@ export const HANDWRITING: Style = {
    */
   metrics: {
     ...SANS.metrics,
-    xHeight: 430,
-    capHeight: 700,
-    ascender: 790,
-    descender: -270,
-    counterWidth: 306,
-    sidebearing: 46,
-    overshoot: 8,
+    xHeight: 332,
+    capHeight: 650,
+    ascender: 720,
+    descender: -252,
+    counterWidth: 236,
+    sidebearing: 36,
+    overshoot: 6,
     slant: 6,
   },
-  pen: { weight: 70, contrast: 0.22, angle: 28 },
+  pen: { weight: 54, contrast: 0.22, angle: 28 },
   /*
    * The single-storey a and the tailed l, which is what a hand writes. Nobody
    * draws a two-storey a with a pen unless they are drawing a typeface.
@@ -1260,16 +1260,16 @@ export const CASUAL_SCRIPT: Style = {
   // Script end, because a fast informal hand is not a formal one.
   metrics: {
     ...SANS.metrics,
-    xHeight: 440,
-    capHeight: 690,
-    ascender: 800,
-    descender: -280,
-    counterWidth: 291,
-    sidebearing: 43,
-    overshoot: 8,
+    xHeight: 332,
+    capHeight: 637,
+    ascender: 720,
+    descender: -237,
+    counterWidth: 220,
+    sidebearing: 32,
+    overshoot: 6,
     slant: 13,
   },
-  pen: { weight: 88, contrast: 0.3, angle: 22 },
+  pen: { weight: 66, contrast: 0.3, angle: 22 },
   forms: { k: "standing", g: "curled", t: "straight", y: "straight", f: "descending" },
   parts: {
     ...SANS.parts,
