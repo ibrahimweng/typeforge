@@ -48,8 +48,8 @@
  *
  *   npx vite-node scripts/against.ts
  */
-import { ready } from "@/font/boolean";
-import { contoursBounds } from "@/font/geometry";
+import { ready, unite } from "@/font/boolean";
+import { contourArea, contoursBounds } from "@/font/geometry";
 import { drawLetter } from "@/forge/build";
 import { BASES } from "@/forge/style";
 
@@ -70,13 +70,32 @@ const FIT: Record<string, number> = {
   n: 1.40, m: 1.95, o: 1.10, e: 1.00, a: 1.31, c: 0.97, u: 1.32, r: 1.05, s: 1.04, t: 0.86,
 };
 const FIT_MEAN = Object.values(FIT).reduce((sum, one) => sum + one, 0) / Object.keys(FIT).length;
+
+/**
+ * The word the colour is read off, and the reference's reading of it.
+ *
+ * Colour is ink over the area of the line it sits on, which is what an eye
+ * judges and what neither the pen's weight nor its contrast can be read off
+ * alone: this face's Formal Script carries the heaviest pen of the four and
+ * lands within one per cent of the reference, because a contrast of 0.78 makes
+ * most of its strokes hairlines.
+ *
+ * Signed areas, so a counter comes off the ink instead of on. Summed with the
+ * absolute area of every contour instead, doubling a pen moved the answer four
+ * per cent -- the outer grew and the counter shrank and the two cancelled.
+ */
+const COLOUR_WORD = "handgloves".split("");
+const COLOUR_REF = 0.476;
 const row = (name: string, x: number, asc: number, desc: number, pen: number,
-  left: number, right: number, fit: number) =>
+  left: number, right: number, fit: number, colour: number) =>
   `${name.padEnd(16)} ${x.toFixed(3)}  ${asc.toFixed(2)}   ${desc.toFixed(2)}    ${pen.toFixed(3)}` +
   `   ${left >= 0 ? " " : ""}${left.toFixed(2)} / ${right >= 0 ? " " : ""}${right.toFixed(2)}   ${(left + right).toFixed(2)}` +
-  `      ${fit.toFixed(2)} (${(fit / FIT_MEAN).toFixed(2)}x)`;
+  `      ${fit.toFixed(2)} (${(fit / FIT_MEAN).toFixed(2)}x)` +
+  `   ${colour.toFixed(3)} (${(colour / COLOUR_REF).toFixed(2)}x)`;
 
-console.log("face             x/em   asc/x  desc/x  pen/x    over left/right   pair overlap   adv/x");
+console.log(
+  "face             x/em   asc/x  desc/x  pen/x    over left/right   pair overlap   adv/x          colour",
+);
 for (const style of BASES.filter((one) => one.parts.script.on)) {
   const { unitsPerEm } = style.metrics;
   const inkOf = (name: string) => {
@@ -94,11 +113,20 @@ for (const style of BASES.filter((one) => one.parts.script.on)) {
   }).filter((one): one is { left: number; right: number } => one !== null);
   const mean = (of: (one: { left: number; right: number }) => number) =>
     reach.reduce((sum, one) => sum + of(one), 0) / (reach.length || 1);
+  let ink = 0;
+  let along = 0;
+  for (const letter of COLOUR_WORD) {
+    const drawn = drawLetter(letter, style, style.forms?.[letter]);
+    if (!drawn) continue;
+    for (const contour of unite(drawn.contours, "winding")) ink += contourArea(contour);
+    along += drawn.advanceWidth;
+  }
+  const colour = Math.abs(ink) / (along * xHeight);
   const fit = Object.keys(FIT)
     .map((one) => drawLetter(one, style, style.forms?.[one])!.advanceWidth / xHeight)
     .reduce((sum, one) => sum + one, 0) / Object.keys(FIT).length;
   console.log(row(style.name, xHeight / unitsPerEm, ascender / xHeight, Math.abs(descender) / xHeight,
-    style.pen.weight / xHeight, mean((one) => one.left), mean((one) => one.right), fit));
+    style.pen.weight / xHeight, mean((one) => one.left), mean((one) => one.right), fit, colour));
 }
 console.log(row(REFERENCE.name, REFERENCE.xOverEm, REFERENCE.ascOverX, REFERENCE.descOverX,
-  REFERENCE.penOverX, REFERENCE.left, REFERENCE.right, FIT_MEAN));
+  REFERENCE.penOverX, REFERENCE.left, REFERENCE.right, FIT_MEAN, COLOUR_REF));

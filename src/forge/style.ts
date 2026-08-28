@@ -1292,13 +1292,23 @@ export const CASUAL_SCRIPT: Style = {
  * than turned. It is what a sign painter rules out with a compass, and its
  * evenness is the whole of its character.
  *
- * Drawn at the proportions the genre actually uses, which is where this face
- * was wrong rather than merely different. A monoweight script is a *hairline*:
- * the stroke is somewhere near a thirteenth of the x-height, the x-height is
- * under half the ascender so the loops have room to be the point of the letter,
- * and the whole thing leans hard. Set at a sixth of a much larger x-height with
+ * Drawn at the proportions the genre actually uses: the x-height is under half
+ * the ascender so the loops have room to be the point of the letter, and the
+ * whole thing leans hard. Set at a sixth of a much larger x-height with
  * ascenders half again as tall, it was a fat upright cursive -- the shape of a
  * script with none of the proportions of one.
+ *
+ * The stroke was a thirteenth of the x-height, on the reasoning that a
+ * monoweight script is a hairline, and that is the one thing here that has been
+ * taken back. Measured as ink over the area of its own line -- which is what
+ * colour is, and what an eye reads -- a thirteenth put this face at half the
+ * reference's darkness where the other three sit within three per cent of it.
+ * Half is not a lighter face of the same family, it is a different weight of
+ * text, so the pen goes to a sixth and the page comes out at the reference's.
+ * The reach, the loop and the ball are all counted in stems and are put back
+ * down by the same factor, so they are the same size on the page as before and
+ * what moved is the colour. The knit is the exception and moves on purpose:
+ * the lap it buys was short of the reference only because the pen was light.
  *
  * Every quantity the join and the loops are measured in is a multiple of the
  * pen, which is right at a text weight and is the trap here: taking the pen
@@ -1335,7 +1345,7 @@ export const MONOLINE_SCRIPT: Style = {
     width: 0.95,
     sidebearing: 40,
   },
-  pen: { weight: 28, contrast: 0, angle: 0 },
+  pen: { weight: 58, contrast: 0, angle: 0 },
   forms: { k: "standing", l: "tailed", f: "descending", seven: "barred", four: "open" },
   parts: {
     ...SANS.parts,
@@ -1367,7 +1377,9 @@ export const MONOLINE_SCRIPT: Style = {
      * A third of a radius leaves it seated on the end and pulled along it,
      * which is the shape a pen makes when it stops.
      */
-    ball: { size: 2.4, drop: 0.35 },
+    // Held in units as the pen went from 28 to 58: 2.4 stems of the old pen is
+    // 1.16 of the new one, and the drop is the same size on the page as before.
+    ball: { size: 1.16, drop: 0.35 },
     corner: { radius: 30, join: "round" },
     bowl: { width: 0.92, squareness: 0, aperture: 1 },
     shoulder: { spring: 0.6, reach: 1 },
@@ -1390,10 +1402,14 @@ export const MONOLINE_SCRIPT: Style = {
        * It also carries the widest counter of the four against its x-height:
        * still the Sans' 370 over an x-height of 360. Narrowing that is what
        * would let this face close up properly, and it belongs to itself.
+       *
+       * 4.4 of the old 28-unit pen is 2.12 of the 58-unit one, which is the
+       * same 123 units of white and the same two limits above.
        */
-      reach: 4.4,
+      reach: 2.12,
       flat: 0.05,
-      loop: 9,
+      // Held in units across the pen change, like the reach and the ball.
+      loop: 4.35,
       // Nothing. A drawn script is drawn on a line and stays on it, and this is
       // the setting that says so.
       irregularity: 0,
@@ -1412,13 +1428,15 @@ export const MONOLINE_SCRIPT: Style = {
        *
        * The tangency is this face's, not the lap's -- at 0.84 it is 2.2%, at
        * nothing it is already 1.1% with a 57-pixel run, and everything between
-       * 0.2 and 0.6 is under half a per cent. So the lap stops where the
-       * letter still fuses. The pair laps by about an eighth of the x-height
-       * instead of the reference's sixth, which is the pen being too light
-       * showing up again; it should go back to the reference's figure when
-       * this face's colour is set against it.
+       * 0.2 and 0.6 is under half a per cent.
+       *
+       * That was at the old hairline pen, where 0.6 of a stem bought only an
+       * eighth of an x-height of lap against the reference's sixth. With the
+       * pen at 58 the same 0.6 buys a quarter, which is half as much again as
+       * the reference, so it comes down to 0.32 and the pair laps by the
+       * reference's figure at last.
        */
-      knit: 0.6,
+      knit: 0.32,
     },
   },
   /*
