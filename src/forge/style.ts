@@ -1311,7 +1311,23 @@ export const CASUAL_SCRIPT: Style = {
     overshoot: 6,
     slant: 13,
   },
-  pen: { weight: 66, contrast: 0.3, angle: 22 },
+  /*
+   * Down with the fit, and for the reason the Formal and the Monoline record:
+   * this face was 1.14 times as wide as the reference and 1.29 times as dark,
+   * and those are not two faults. Half again the room needs half again the ink
+   * to fill it, so closing one without the other only trades them -- swept at
+   * 66, 58, 52 and 46 across three reaches, and the colour rises a hundredth
+   * for every hundredth the fit comes in.
+   *
+   * At 52 the fit is exactly the reference's and the page reads 1.17. Lighter
+   * closes the rest of it -- 46 reads 1.09 at a fit of 0.96 -- and stops being
+   * this face: a felt tip moving fast is not thinner than the plain hand beside
+   * it, and 46 is 0.143 of the x-height against the Handwriting's 0.157. What
+   * is left is not the pen. It is the line: this face's `d`, `h` and `g` carry
+   * a sixth more ink than the reference's at the same width, and its `v` and
+   * `e` a third.
+   */
+  pen: { weight: 52, contrast: 0.3, angle: 22 },
   forms: { k: "standing", g: "curled", t: "straight", y: "straight", f: "descending" },
   parts: {
     ...SANS.parts,
@@ -1335,7 +1351,9 @@ export const CASUAL_SCRIPT: Style = {
       irregularity: 1.6,
       bow: 0.9,
       // The reference's lap, in this face's stems.
-      knit: 0.25,
+      // In stems, so it moves whenever the pen does, and the pen came down by a
+      // fifth.
+      knit: 0.32,
     },
   },
   /*
