@@ -1064,7 +1064,7 @@ export const HANDWRITING: Style = {
      */
     terminal: { kind: "butt", angle: 0 },
     corner: { radius: 40, join: "round" },
-    shoulder: { spring: 0.55, reach: 1 },
+    shoulder: { spring: 0.55, reach: 0.75 },
     /*
      * Narrower than a circle, which is what a script's round letters are.
      *
@@ -1111,7 +1111,25 @@ export const HANDWRITING: Style = {
        * the narrower drawings they exist to be. This face's sidebearing is 46
        * units against a pen of 70, so the floor is two thirds of a stem.
        */
-      reach: 0.42,
+      /*
+       * Narrower than the arch this face used to carry, and measured stem to
+       * stem rather than by the advance.
+       *
+       * Across an `n` at half the x-height the reference sets its two stems
+       * 0.79 of an x-height apart, and its `m` a shade tighter still at 0.73
+       * and 0.61. These faces stood at 0.97 to 1.20. It hides in the `n`,
+       * which has one arch and came out within a twentieth of the reference's
+       * advance, and it doubles in the `m`: 2.37 to 2.75 against 1.95.
+       *
+       * The join goes up as the arch comes down. The reference builds its `n`
+       * out of a narrow arch and a long reach -- 0.55 of the advance is arch
+       * and 0.85 is stem and join -- where these were built the other way
+       * round, 0.98 and 0.49. Moving one without the other only trades the `m`
+       * for the `n`.
+       *
+       * This face stood at 1.02 and reads 0.78 here.
+       */
+      reach: 0.55,
       flat: 0.2,
       /*
        * Looped, where this face used to have none.
@@ -1285,7 +1303,7 @@ export const FORMAL_SCRIPT: Style = {
     corner: { radius: 46, join: "round" },
     // Sized on the reference's `o`, as on the Handwriting.
     bowl: { width: 0.62, squareness: 0, aperture: 1 },
-    shoulder: { spring: 0.5, reach: 0.96 },
+    shoulder: { spring: 0.5, reach: 0.7 },
     script: {
       on: true,
       // Low, for the reason set out on the Handwriting above.
@@ -1302,14 +1320,20 @@ export const FORMAL_SCRIPT: Style = {
        *
        * With the body and the pen at the reference's proportions there is
        * nothing to hold apart. Swept at 0.8, 0.65 and 0.55 against three knits:
-       * the fit and the colour cross at about 0.7, which reads 1.10 and 1.07.
+       * the fit and the colour crossed at about 0.7, which read 1.10 and 1.07.
        *
        * The note that used to stand here said the bodies lap by more than the
        * knit intends below 1.1 -- 0.20 against 0.16 at a reach of 0.9. They do
        * not any more; that was the old body's letters being wider than the
        * reference's, and it is 0.16 here.
+       *
+       * Back up to 0.8, as the arch comes down, for the reason set out on the
+       * Handwriting above. That sweep was against a shoulder of 0.96, and it
+       * was reading the two together without knowing it. This face stood at
+       * 1.09 stem to stem across an `n`, against the reference's 0.79, and
+       * reads 0.80 here.
        */
-      reach: 0.7,
+      reach: 0.8,
       // Almost no flat: a formal hand swings from one letter into the next in
       // one continuous turn and never runs level between them.
       flat: 0.04,
@@ -1450,14 +1474,21 @@ export const CASUAL_SCRIPT: Style = {
     corner: { radius: 70, join: "round" },
     // Sized on the reference's `o`, as on the Handwriting.
     bowl: { width: 0.67, squareness: 0, aperture: 1.08 },
-    shoulder: { spring: 0.48, reach: 1.06 },
+    shoulder: { spring: 0.48, reach: 0.8 },
     script: {
       on: true,
       // Low, for the reason set out on the Handwriting above.
       height: 0.17,
-      // Down from 1.05, to where the bodies still lap by only what the knit
-      // intends. See the note on the Handwriting.
-      reach: 0.6,
+      /*
+       * Down from 1.05 to 0.6, to where the bodies still lap by only what the
+       * knit intends, and then back up to 0.7 as the arch comes down. See the
+       * note on the Handwriting.
+       *
+       * This face stood at 0.97 stem to stem across an `n`, against the
+       * reference's 0.79, and reads 0.79 here. It was the closest of the four
+       * before and moved the least.
+       */
+      reach: 0.7,
       flat: 0.3,
       // Was 0.7, which was too small to close an eye at all -- the loop showed
       // as a bulge on the stem. Sized on the reference's, as on the Formal.
@@ -1627,7 +1658,7 @@ export const MONOLINE_SCRIPT: Style = {
     corner: { radius: 30, join: "round" },
     // Sized on the reference's `o`, as on the Handwriting.
     bowl: { width: 0.72, squareness: 0, aperture: 1 },
-    shoulder: { spring: 0.6, reach: 1 },
+    shoulder: { spring: 0.6, reach: 0.65 },
     script: {
       on: true,
       // Low, for the reason set out on the Handwriting above.
@@ -1650,8 +1681,13 @@ export const MONOLINE_SCRIPT: Style = {
        *
        * 4.4 of the old 28-unit pen is 2.12 of the 58-unit one, which is the
        * same 123 units of white and the same two limits above.
+       *
+       * Up again to 1.0, as the arch comes down, for the reason set out on the
+       * Handwriting above -- away from both of those limits, not towards them.
+       * This face stood at 1.20 stem to stem across an `n`, the widest of the
+       * four against the reference's 0.79, and reads 0.78 here.
        */
-      reach: 0.9,
+      reach: 1.0,
       flat: 0.05,
       // Held in units across the pen change, and then opened to put the eye's
       // foot where the reference puts it. See the note on the Formal's loop.

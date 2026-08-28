@@ -147,7 +147,22 @@ export const PART_SPECS: PartSpec[] = [
         key: "reach",
         label: "Reach",
         hint: "How far the arch carries over before it turns down.",
-        min: 0.7,
+        /*
+         * Down to 0.6, because the joined faces need it and nothing was
+         * holding the floor at 0.7.
+         *
+         * The reference sets the two stems of an `n` 0.79 of an x-height
+         * apart; the Monoline Script reaches that at 0.65 and stood at 1.20.
+         * A shipped value outside its own control is a face the slider cannot
+         * get back to, which is what the test on the bases guards.
+         *
+         * Checked before moving it rather than after: driving all twenty bases
+         * to 0.7 and sweeping six weights already leaves 20 folds and 27
+         * letters in pieces, and driving them to 0.6 leaves 18 and 28. The
+         * floor was not protecting anything -- it is where the range happened
+         * to stop.
+         */
+        min: 0.6,
         max: 1.3,
         step: 0.005,
       },
