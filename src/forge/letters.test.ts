@@ -129,12 +129,17 @@ describe("the character set", () => {
           /*
            * A joined face is the exception, and it is the only one.
            *
-           * Its lead-in starts on the origin and climbs away from it, so the
-           * square cut at that end puts one corner a little to the left of
-           * nought -- and the letter before it puts the matching corner the
-           * same distance to the right of its own advance, which is how the two
-           * meet without a gap. It may not go further than that corner reaches,
-           * which is half a pen.
+           * Its lead-in starts a knit to the left of the origin and climbs away
+           * from it, so the square cut at that end sits out there -- and the
+           * letter before it carries the matching distance past its own
+           * advance, which is how the two lap over each other instead of
+           * meeting at a point. It may not go further left than the knit plus
+           * what that square cut reaches, which is half a pen.
+           *
+           * The knit is the part that is deliberate and was not always here.
+           * Both halves used to stop dead on the boundary, so the ink met along
+           * a line and over no area: the letters joined and read as letters
+           * pushed together. See `knit` on the Script.
            */
           const reaches = reachesOut(name, style);
           /*
@@ -148,8 +153,9 @@ describe("the character set", () => {
           const seam = seamsOf(style.parts.script, style.metrics.xHeight, style.pen.weight / 2).low;
           const leaned = (seam - style.metrics.xHeight / 2)
             * Math.tan((style.metrics.slant * Math.PI) / 180);
+          const knit = style.parts.script.on ? style.parts.script.knit * style.pen.weight : 0;
           expect(bounds.xMin, `${name} starts left of the origin`).toBeGreaterThan(
-            reaches ? Math.min(0, leaned) - style.pen.weight * 0.5 - 1 : -1,
+            reaches ? Math.min(0, leaned) - style.pen.weight * 0.5 - knit - 1 : -1,
           );
           expect(bounds.xMax, `${name} runs off the right`).toBeLessThan(unitsPerEm * 1.6);
         }

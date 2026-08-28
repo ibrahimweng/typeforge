@@ -47,6 +47,29 @@ const slid = (contours: Contour[], by: number): Contour[] =>
  * Nought means the ink runs straight through the boundary, which is what a
  * joined face is for. Null means one of the two had no ink at the seam at all.
  */
+/**
+ * How far the first letter's ink carries past where the second letter's ink
+ * begins, once the two are set side by side.
+ *
+ * Positive is a lap and is what a written join is; nought is the two touching,
+ * which passes `seamGap` and does not read as one stroke.
+ */
+function seamLap(style: Style, first: string, second: string): number | null {
+  const one = drawLetter(first, style, style.forms?.[first]);
+  const other = drawLetter(second, style, style.forms?.[second]);
+  if (!one || !other) return null;
+  const moved = other.contours.map((contour) => ({
+    ...contour,
+    nodes: contour.nodes.map((node) => ({
+      ...node,
+      point: { x: node.point.x + one.advanceWidth, y: node.point.y },
+      handleIn: node.handleIn ? { x: node.handleIn.x + one.advanceWidth, y: node.handleIn.y } : null,
+      handleOut: node.handleOut ? { x: node.handleOut.x + one.advanceWidth, y: node.handleOut.y } : null,
+    })),
+  }));
+  return contoursBounds(one.contours).xMax - contoursBounds(moved).xMin;
+}
+
 function seamGap(style: Style, first: string, second: string): number | null {
   const left = drawLetter(first, style);
   const right = drawLetter(second, style);
@@ -72,6 +95,39 @@ beforeAll(async () => {
 });
 
 describe("the letters reach each other", () => {
+
+  /*
+   * And lap over each other while they do it, rather than meeting at a point.
+   *
+   * Joining is not the same claim as reading as one stroke, and the seam gap
+   * above is satisfied by the two halves touching. They were: a lead-out's
+   * spine stops on the advance and the next lead-in's starts on the origin,
+   * both cut square and both running level, so the ink met along a single
+   * vertical line and over no area. A pair of `n`s on the Formal Script
+   * overlapped by sixteen units of a four-hundred-and-thirty-unit x-height,
+   * and the writing read as letters that had been pushed together.
+   *
+   * Dancing Script laps its pairs by about sixteen hundredths of its x-height,
+   * which is most of a stem width, so that is what these are set to and what
+   * this holds them to. The floor is a tenth rather than the figure itself --
+   * what is being defended is that the join is welded over a length of stroke
+   * and not tacked at a point, and each face may sit where it looks right.
+   */
+  it.each(SCRIPTS.map((one) => [one.name, one] as const))(
+    "%s laps one letter over the next, rather than meeting it at a point",
+    (_name, style) => {
+      const shy: string[] = [];
+      for (const letter of LOWER) {
+        for (const [first, second] of [[letter, "n"], ["n", letter]] as const) {
+          const lap = seamLap(style, first, second);
+          if (lap === null || lap < style.metrics.xHeight * 0.1) {
+            shy.push(`${first}${second} ${lap === null ? "-" : lap.toFixed(0)}`);
+          }
+        }
+      }
+      expect(shy).toEqual([]);
+    },
+  );
   /*
    * Fifty-two surfaces for each face: every letter as the one handing over and
    * every letter as the one being handed to. Anything less than all of them is

@@ -1016,6 +1016,12 @@ export const HANDWRITING: Style = {
       loop: 0,
       irregularity: 1,
       bow: 0.8,
+      /*
+       * Sized against the reference rather than guessed: Dancing Script laps
+       * its pairs by about sixteen hundredths of its x-height, and this is
+       * what that comes to here, in stems, at this face's pen. See `knit`.
+       */
+      knit: 0.4,
     },
   },
   /*
@@ -1111,6 +1117,10 @@ export const FORMAL_SCRIPT: Style = {
       loop: 1.8,
       irregularity: 0.12,
       bow: 0.6,
+      // The reference's sixteen hundredths of an x-height, in this face's
+      // stems. Its pen is the heaviest of the four, so its number is the
+      // smallest.
+      knit: 0.22,
     },
   },
   /*
@@ -1163,6 +1173,8 @@ export const CASUAL_SCRIPT: Style = {
       loop: 0.7,
       irregularity: 1.6,
       bow: 0.9,
+      // The reference's lap, in this face's stems.
+      knit: 0.25,
     },
   },
   /*
@@ -1289,6 +1301,9 @@ export const MONOLINE_SCRIPT: Style = {
       // the setting that says so.
       irregularity: 0,
       bow: 0.2,
+      // The reference's lap, in stems. This pen is a hairline, so the same lap
+      // in units is a whole stem here where it is a third of one on the Formal.
+      knit: 0.84,
     },
   },
   /*

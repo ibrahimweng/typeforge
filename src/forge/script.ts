@@ -152,6 +152,33 @@ export interface Script {
    * came off that face unreadable.
    */
   bow: number;
+  /**
+   * How far each half of a join carries past the seam into the other, in stem
+   * widths.
+   *
+   * Two letters of a joined face meet where one's advance is the next one's
+   * origin: the lead-out's spine stops there and the lead-in's spine starts
+   * there, both running level, so the two touch at a point. Both are cut
+   * square, so the ink meets along a single vertical line and over no area at
+   * all -- and a pair of `n`s on the Formal Script overlapped by sixteen units
+   * of a four-hundred-and-thirty-unit x-height, which is nothing. The letters
+   * are joined, and they read as two letters that have been pushed together.
+   *
+   * Dancing Script overlaps its pairs by about sixteen hundredths of its
+   * x-height, which is most of a stem width, and that is the difference
+   * between a line of writing and a row of letters: the join is welded over a
+   * length of stroke rather than tacked at a point.
+   *
+   * So each half carries on past the seam by this much and the two cross. The
+   * advance does not move, so the fit is untouched -- this is not tracking,
+   * and a face can be crowded or opened with `reach` exactly as before.
+   *
+   * In stem widths like the reach, the loop and the bow: how far one stroke
+   * runs into another to weld it is a fact about the pen, and the reference's
+   * sixteen hundredths of an x-height is most of a stem on a face whose stem
+   * is nineteen hundredths of its x-height.
+   */
+  knit: number;
 }
 
 export const NO_SCRIPT: Script = {
@@ -162,6 +189,7 @@ export const NO_SCRIPT: Script = {
   loop: 0,
   irregularity: 0,
   bow: 0,
+  knit: 0,
 };
 
 /**
@@ -728,14 +756,20 @@ export function planJoin(
    * which is the difference between a fast hand and a careful one.
    */
   const level = Math.max(0, Math.min(1, script.flat)) * reach;
+  /*
+   * And each half carries on past the seam by the knit, so the two cross
+   * rather than touch. Both ends are cut square, so meeting at a point is
+   * meeting over no area -- see `knit`. The advance is not moved by it.
+   */
+  const knit = Math.max(0, script.knit) * room.half * 2;
   const entry = !ends.entry ? null : chained(
-    { segments: [{ kind: "line", from: at(0, entryAt), to: at(level, entryAt) }], closed: false },
+    { segments: [{ kind: "line", from: at(-knit, entryAt), to: at(level, entryAt) }], closed: false },
     levelArc(at(level, entryAt), from, room),
   );
   const exit = !ends.exit ? null : chained(
     reversed(levelArc(at(width - level, exitAt), to, room)),
     {
-      segments: [{ kind: "line", from: at(width - level, exitAt), to: at(width, exitAt) }],
+      segments: [{ kind: "line", from: at(width - level, exitAt), to: at(width + knit, exitAt) }],
       closed: false,
     },
   );
