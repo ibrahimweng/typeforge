@@ -475,7 +475,7 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
 
   for (const [found, rising] of [[top, true], [foot, false]] as const) {
     if (!found) continue;
-    const { end, on } = found;
+    const { end, on: run } = found;
     /*
      * A loop may not turn round past the line the stroke came from. One on an
      * `l` reaches down past the x-height, which is what a written one does; one
@@ -506,7 +506,26 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
      * itself, and the frame already knows it for whatever pen the face has.
      */
     const tip = at(end.x, rising ? end.y - room.upright : end.y + room.upright);
-    const start = at(end.x, rising ? tip.y - deep : tip.y + deep);
+    /*
+     * How far the eye reaches back is the pen's business until it stops
+     * reaching the letter, and then it is the letter's.
+     *
+     * `wide` is measured in pen-halves, which is right for how *open* the eye
+     * is -- an eye has to be wide against the pen or it is a blob. It is wrong
+     * for how *far* the eye has to travel to get home, because that distance
+     * belongs to the letter and does not shrink when the pen does. On the
+     * Formal Script's curled `g` the eye reached y=164 at pen 84, well up
+     * inside the bowl, and y=-19 at pen 40, which is below the bowl entirely:
+     * struck in clear air, and joined to the letter by nothing but the hairline
+     * where its turn grazed the tail -- this face's nib is 6.6 units across a
+     * horizontal at that weight. The letter came off the pen in two pieces.
+     *
+     * So the eye is let out, as far as it needs and no further, until its far
+     * end is standing on the letter. A weight where it already reaches is left
+     * exactly as it was.
+     */
+    const reachedBack = rising ? deep : reaching(spines, end, deep, available, room.half);
+    const start = at(end.x, rising ? tip.y - deep : tip.y + reachedBack);
     /*
      * An eye on an ascender stands on that ascender or it is not drawn.
      *
@@ -526,7 +545,7 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
      * letter and well past the end of the run that earned it -- a different
      * question, asked and answered nowhere, and left here as it was.
      */
-    if (rising && !standsOn(on, start, room.half)) continue;
+    if (rising && !standsOn(run, start, room.half)) continue;
     /*
      * A half is as far as a single arc bows: at a half it is a semicircle, and
      * past that the construction below is asked for a sagitta larger than its
@@ -537,6 +556,29 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
     out.push(bowed(start, tip, rising ? 0.5 : -0.5));
   }
   return out;
+}
+
+/**
+ * The shortest reach, no smaller than the one asked for, that puts a descender
+ * eye's far end back on the letter -- or the one asked for, if none does.
+ *
+ * Walked out in pen-halves rather than solved, because what it is walking over
+ * is the letter's whole outline and there is nothing to solve against.
+ */
+function reaching(
+  spines: Spine[],
+  end: Vec2,
+  deep: number,
+  available: number,
+  half: number,
+): number {
+  const lands = (much: number) =>
+    spines.some((one) => standsOn(one, at(end.x, end.y + much), half));
+  if (lands(deep) || half <= 0) return deep;
+  for (let much = deep + half; much <= available; much += half) {
+    if (lands(much)) return much;
+  }
+  return lands(available) ? available : deep;
 }
 
 /** Whether this run passes under the point, for a loop to stand on it. */

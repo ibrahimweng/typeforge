@@ -10,9 +10,10 @@
  * one is fixed and has a test of its own now; run this after any change to how
  * strokes meet, which is what it is for.
  *
- * Standing findings, unfixed: the Formal Script's t comes apart at 40 and 60,
- * and its curled g at 40. Both are far below anything the face ships at, and
- * both predate the weight it ships at now.
+ * The t and the curled g that this found next are fixed too, and for the same
+ * reason underneath: a descender's eye is as long as the pen says, and at a
+ * light pen that was not far enough to reach back onto the letter. There is a
+ * test on the axis for that one as well; this stays as the wider net.
  *
  *   npx vite-node scripts/whole.ts
  */

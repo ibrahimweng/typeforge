@@ -225,6 +225,48 @@ describe("the advance", () => {
 describe("the loops", () => {
   const looped = withScript(HAND, { loop: 1.6 });
 
+  /*
+   * And they reach the letter at every weight, not only at the one the face is
+   * drawn at.
+   *
+   * The eye's width is measured in pen-halves, which is right -- an eye has to
+   * be open against the pen or it is a blob on a stem. How far it has to travel
+   * to get back onto the letter is not the pen's business at all, and reading
+   * that off the pen too is what took the Formal Script's curled `g` apart
+   * below pen 60 and its `t` below 70: at pen 84 the eye reached y=164, well up
+   * inside the bowl, and at pen 40 it stopped at y=-19, below the bowl and in
+   * clear air. The only thing holding the two halves together was the hairline
+   * where the eye's turn grazed the tail, this face's nib being 6.6 units
+   * across a horizontal at that weight.
+   *
+   * Every other test of the letters draws each face at its own weight, so all
+   * of them passed throughout. This one walks the axis.
+   */
+  it("still reach the letter at every weight, on every joining face", async () => {
+    const { ready: loaded } = await import("@/font/boolean");
+    const { piecesOf } = await import("./cut");
+    const { letterNames } = await import("./build");
+    const { formsOf } = await import("./letters");
+    await loaded();
+    const solid = letterNames().filter((one) => /^[A-Za-z]$/.test(one) && one !== "i" && one !== "j");
+    const apart: string[] = [];
+    for (const base of BASES.filter((one) => one.parts.script.on)) {
+      for (const weight of [40, 60, 120, 210]) {
+        const style: Style = { ...base, pen: { ...base.pen, weight } };
+        for (const name of solid) {
+          for (const { id } of formsOf(name)) {
+            const drawn = drawLetter(name, style, id || undefined);
+            if (!drawn || drawn.contours.length === 0) continue;
+            if (piecesOf(drawn.contours) > 1) {
+              apart.push(`${base.name} ${name}${id ? ` (${id})` : ""} at ${weight}`);
+            }
+          }
+        }
+      }
+    }
+    expect(apart).toEqual([]);
+  }, 120_000);
+
   it("open the ascenders and the descenders", () => {
     for (const name of ["l", "b", "h", "k", "g", "y"]) {
       const plain = recipeOf(name)!(HAND).strokes.length;
