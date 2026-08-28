@@ -1061,9 +1061,16 @@ export const HANDWRITING: Style = {
        */
       reach: 0.72,
       flat: 0.2,
-      // No loops. A print hand does not make them, and leaving them off is what
-      // separates this from the three below rather than an omission.
-      loop: 0,
+      /*
+       * Looped, where this face used to have none.
+       *
+       * That was a deliberate choice -- a print hand does not turn its
+       * ascenders round -- and it is the furthest thing in the family from the
+       * reference, which loops every one of them. Sized so the eye's foot lands
+       * where the reference's does, just above the x-height, rather than partway
+       * up the ascender: see the note on the Formal Script's loop.
+       */
+      loop: 3.8,
       irregularity: 1,
       bow: 0.8,
       /*
@@ -1181,7 +1188,21 @@ export const FORMAL_SCRIPT: Style = {
       // Almost no flat: a formal hand swings from one letter into the next in
       // one continuous turn and never runs level between them.
       flat: 0.04,
-      loop: 1.8,
+      /*
+       * Sized on the reference's eye rather than on the pen alone.
+       *
+       * The eye's *shape* was already close -- half again as tall as it is
+       * wide, against the reference's 0.53 -- and its size and its place were
+       * not. The reference's `l` turns its ascender round and crosses back over
+       * the stem just above the x-height, at 0.64 of one, leaving an eye 1.28
+       * x-heights tall. This face crossed at 1.18 and left one 0.85 tall: a
+       * small eye stranded near the top of the ascender rather than the loop
+       * being the point of the letter.
+       *
+       * The eye is struck down from the top of the stem, so what moves its foot
+       * is how far down it reaches, and that is this number.
+       */
+      loop: 2.7,
       irregularity: 0.12,
       bow: 0.6,
       // The reference's sixteen hundredths of an x-height, in this face's
@@ -1253,7 +1274,9 @@ export const CASUAL_SCRIPT: Style = {
       // intends. See the note on the Handwriting.
       reach: 0.8,
       flat: 0.3,
-      loop: 0.7,
+      // Was 0.7, which was too small to close an eye at all -- the loop showed
+      // as a bulge on the stem. Sized on the reference's, as on the Formal.
+      loop: 2.9,
       irregularity: 1.6,
       bow: 0.9,
       // The reference's lap, in this face's stems.
@@ -1408,8 +1431,9 @@ export const MONOLINE_SCRIPT: Style = {
        */
       reach: 2.12,
       flat: 0.05,
-      // Held in units across the pen change, like the reach and the ball.
-      loop: 4.35,
+      // Held in units across the pen change, and then opened to put the eye's
+      // foot where the reference puts it. See the note on the Formal's loop.
+      loop: 5.8,
       // Nothing. A drawn script is drawn on a line and stays on it, and this is
       // the setting that says so.
       irregularity: 0,

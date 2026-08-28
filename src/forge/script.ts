@@ -544,7 +544,19 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
      * `l` reaches down past the x-height, which is what a written one does; one
      * that reached past the baseline would be drawn through the letter after it.
      */
-    const available = rising ? end.y : room.x - end.y;
+    /*
+     * And the room is measured to where the *ink* has to stop, not to where the
+     * spine may go. A loop turning round at the x-height puts an upright reach
+     * of ink above it, and the `y`'s arms are supposed to be the highest thing
+     * on that letter: opening the loops far enough to reach the reference's put
+     * the eye fifty units over the line the arms stop on.
+     *
+     * Twice the reach, not once. The turn is already set an upright reach in
+     * from the end it hangs from, and the far end of the eye then stands
+     * another one proud of its own spine -- taking one off left the `y`
+     * twenty-nine units over instead of fifty.
+     */
+    const available = (rising ? end.y : room.x - end.y) - room.upright * 2;
     const deep = Math.min(wide * 2, available);
     // Radius is half the chord at a semicircle, so this is the same floor the
     // join keeps: no turn tighter than the pen can go round.

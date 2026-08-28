@@ -243,13 +243,26 @@ describe("the second drawing is the same letter", () => {
   const forge = startFrom(HAND);
 
   /*
+   * The same letter on both sides of the comparison, which means the face's own
+   * form of it.
+   *
+   * `drawnHigh` goes through the forge and so draws whichever form the face
+   * chose; written as a bare `drawLetter` the other side drew the default one,
+   * and for a `g` on this face those are two different letters. It passed for
+   * as long as the two happened to come out the same width, and stopped the
+   * day the loops were opened -- 559 units against 726, which reads as the
+   * high-entry drawing moving its advance when nothing of the sort happened.
+   */
+  const plainly = (letter: string) => drawLetter(letter, HAND, HAND.forms?.[letter])!;
+
+  /*
    * The advance may not move. A letter set after an `o` that was a few units
    * wider would put the letter after *it* somewhere the one before did not
    * finish, and it would only show on the pairs the feature fires on.
    */
   it("keeps the letter's own advance", () => {
     for (const letter of ["a", "n", "o", "w", "g"]) {
-      const plain = drawLetter(letter, HAND)!;
+      const plain = plainly(letter);
       expect([letter, drawnHigh(letter, "entry", forge)!.advanceWidth]).toEqual([
         letter,
         plain.advanceWidth,
@@ -259,12 +272,12 @@ describe("the second drawing is the same letter", () => {
 
   it("is a different drawing all the same", () => {
     for (const letter of ["a", "n", "o"]) {
-      const plain = drawLetter(letter, HAND)!;
+      const plain = plainly(letter);
       expect(drawnHigh(letter, "entry", forge)!.contours).not.toEqual(plain.contours);
     }
     // And the high hand-over only exists on the four that have one.
-    expect(drawnHigh("n", "exit", forge)!.contours).toEqual(drawLetter("n", HAND)!.contours);
-    expect(drawnHigh("o", "exit", forge)!.contours).not.toEqual(drawLetter("o", HAND)!.contours);
+    expect(drawnHigh("n", "exit", forge)!.contours).toEqual(plainly("n").contours);
+    expect(drawnHigh("o", "exit", forge)!.contours).not.toEqual(plainly("o").contours);
   });
 
   /*
@@ -311,14 +324,14 @@ describe("the second drawing is the same letter", () => {
     // makes the font right where the feature is never applied.
     const low = seamsOf(script, HAND.metrics.xHeight, HAND.pen.weight / 2).low;
     for (const letter of ["o", "n"]) {
-      const runs = inkRunsAt(drawLetter(letter, HAND)!.contours, low, "y", 48);
+      const runs = inkRunsAt(plainly(letter).contours, low, "y", 48);
       expect([letter, runs.length > 0]).toEqual([letter, true]);
     }
   });
 
   it("stands where the letter stands", () => {
     for (const letter of ["a", "n", "o"]) {
-      const plain = contoursBounds(drawLetter(letter, HAND)!.contours);
+      const plain = contoursBounds(plainly(letter).contours);
       const high = contoursBounds(drawnHigh(letter, "entry", forge)!.contours);
       // The body has not moved: only the lead-in was drawn somewhere else.
       expect(Math.abs(high.yMax - plain.yMax)).toBeLessThan(HAND.pen.weight);
