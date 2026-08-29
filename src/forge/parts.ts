@@ -462,6 +462,112 @@ export const METRIC_CONTROLS: FieldControl[] = [
   },
 ];
 
+/**
+ * The joining, which had no controls at all until now.
+ *
+ * Every one of these existed and every one of them was reachable only by
+ * picking one of the four joined faces and taking the numbers it happened to
+ * carry. That made the join a thing a face *is* rather than a thing a face
+ * does, and it is the second of those: the difference between a formal hand and
+ * a casual one is where the seam sits and how far the letters reach for each
+ * other, and both of those are numbers.
+ *
+ * Only meaningful on a face whose letters join. The panel shows them where
+ * they apply and says so where they do not, rather than hiding them -- a
+ * control that vanishes is a control nobody learns exists.
+ */
+export const SCRIPT_CONTROLS: FieldControl[] = [
+  {
+    key: "on",
+    label: "Join the letters",
+    hint: "Whether the stroke that finishes one letter is the stroke that begins the next. Off, the letters stand apart and every control below stops mattering; on, the space between two letters stops being space at all.",
+    min: 0,
+    max: 1,
+    step: 1,
+    toggle: true,
+  },
+  {
+    key: "height",
+    label: "Seam height",
+    hint: "Where one letter hands over to the next, as a share of the x-height. Low runs along the baseline; high hands over near the waist, which reads faster. Not a free choice on a face that joins every pair -- two letters can only meet at one height, so this is that height.",
+    min: 0.1,
+    max: 0.75,
+    step: 0.01,
+  },
+  {
+    key: "reach",
+    label: "Reach",
+    hint: "How far the join runs sideways, in stem widths. This is the letter-spacing as well as the shape of the join, and the two cannot be separated: the gap between two letters of a joined script is the join.",
+    min: 0.6,
+    max: 3.2,
+    step: 0.05,
+  },
+  {
+    key: "balance",
+    label: "In against out",
+    hint: "How the reach divides between the lead-in and the lead-out. A half is even, which is what a drawn script does. A written hand arrives late and leaves long, or the other way about, and which it is is most of what separates one hand from another.",
+    min: 0.1,
+    max: 0.9,
+    step: 0.01,
+  },
+  {
+    key: "flat",
+    label: "Level run",
+    hint: "How much of the join runs level at the seam before it turns into the letter. Nought is a pure curve from one letter into the next, which is a fast hand; opened up, the writing slows down and spreads out.",
+    min: 0,
+    max: 0.9,
+    step: 0.01,
+  },
+  {
+    key: "loop",
+    label: "Loop",
+    hint: "How far the ascenders and descenders open into eyes, measured against the pen so it holds at every weight. Nought leaves a straight stroke, which is a monoline script; opened up, the ascender becomes a closed eye and the face reads as written rather than drawn.",
+    min: 0,
+    max: 3,
+    step: 0.05,
+  },
+  {
+    key: "loopDepth",
+    label: "Loop depth",
+    hint: "How far back down its own stroke the eye reaches, in eye-widths. Short is a round bead on the end of an ascender; long is the narrow blade a copperplate hand leaves. Both are the same width, which is why one control cannot say both.",
+    min: 0.5,
+    max: 4,
+    step: 0.05,
+  },
+  {
+    key: "highSeam",
+    label: "High seam",
+    hint: "Where the four letters that finish at the top of themselves -- the o, the v, the w and the b -- hand over, as a share of the x-height. What decides whether the stroke leaving them runs along the top of the writing or dives back to the line first.",
+    min: 0.5,
+    max: 1,
+    step: 0.01,
+  },
+  {
+    key: "irregularity",
+    label: "Unsteadiness",
+    hint: "How much each letter departs from the one beside it. A hand does not put two letters on exactly the same line at exactly the same angle, and a face where it does reads as a font imitating handwriting. Worked out from each letter's own name, so a word is drawn the same way every time.",
+    min: 0,
+    max: 3,
+    step: 0.05,
+  },
+  {
+    key: "bounce",
+    label: "· as bounce",
+    hint: "How much of that unsteadiness shows as a letter sitting off its line. Turn it down and the writing is level however unsteady the angle is.",
+    min: 0,
+    max: 2,
+    step: 0.05,
+  },
+  {
+    key: "lean",
+    label: "· as lean",
+    hint: "How much of it shows as a letter leaning further than its neighbour. The two are separate because real hands split them differently: a flowing script can bounce by a ninth of its x-height at a dead steady angle, and one control asked for both cannot draw it.",
+    min: 0,
+    max: 2,
+    step: 0.05,
+  },
+];
+
 export function specFor(part: PartName): PartSpec | undefined {
   return PART_SPECS.find((spec) => spec.name === part);
 }

@@ -100,6 +100,51 @@ and called a Regular and given a Bold of its own it is asked for a weight that
 cannot exist. The tool reads it off the stem when you start and lets you correct
 it.
 
+## Joining
+
+A script is not a slanted sans. Every other face draws a letter and leaves a gap
+either side of it; a joined one draws the gap as well, because the stroke that
+finishes one letter and the stroke that begins the next are the same stroke and
+the boundary between two glyphs falls in the middle of it. That is the whole
+difference, and no amount of weight or slant produces it.
+
+How the letters reach each other is eleven controls in the **Joining** panel,
+and every one of them was a number buried in a face until it was a control. The
+seam is the height two letters hand over at, and it has to be one height,
+because two letters can only meet in one place. The reach is how far the join
+runs sideways, which is the letter-spacing as well as the shape of the join —
+on a joined face those are not two things. How that reach divides between the
+lead-in and the lead-out is separate again, because a written hand arrives at a
+letter late and leaves it long. The loops are what a hand does at the top of an
+ascender rather than what a compass does, and how far back down its own stroke
+the eye reaches is what separates a round bead from a copperplate blade.
+
+The unsteadiness splits into bounce and lean, and they split because real hands
+split them. Measured across two variable script faces: one bounces by a
+thirtieth of its x-height at a dead steady thirteen degrees, and the other sits
+on exactly its line and leans sixteen. One control asked for both cannot draw
+either.
+
+The **Roundhand** is the face built to be moved rather than to be one hand, and
+it starts between those two on every axis that separates them. `likeness.ts`
+holds what each of them measures and the settings that travel there, and
+
+```bash
+npx vite-node scripts/likeness.ts
+```
+
+draws the face, measures it with the same ruler the references were measured
+with, and prints the difference. Every figure it reports is taken off the drawn
+outlines rather than read back out of the settings that produced them, which is
+the only way the two can be caught disagreeing — a face that declares an
+ascender of 720 draws an `l` that stops somewhere else, because the pen standing
+above the skeleton is part of the letter.
+
+What parameters reach is a likeness and not a replica. The proportions, the
+rhythm, the weight and the way the letters hand over all travel; the letterforms
+underneath stay this engine's own, because a skeleton swept by a pen does not
+arrive at outlines somebody drew freehand, at any setting.
+
 ## Finding your way around
 
 There is a sample font in the toolbar's empty state, so the tool can be tried
@@ -278,6 +323,8 @@ src/forge/    the skeleton-and-pen engine behind Draw
   family.ts     the nine weights, and what changes between them
   deliver.ts    every weight drawn and written out as one download
   shapes.ts     bowls, bends and the runs a letter is described with
+  script.ts     the joining: the seam, the reach, the loops and the bounce
+  likeness.ts   what two reference faces measure, and the way to each
 src/assemble/ the pile of drawings behind Assemble
 src/project/  the saved document: the file format, and keeping it in the browser
 src/views/    font, glyph, kerning and spacing views

@@ -27,6 +27,7 @@ import {
   editMetrics,
   editPart,
   editPen,
+  editScript,
   familyOf,
   importLetter,
   relinkLetter,
@@ -624,6 +625,18 @@ class ForgeStore {
 
   changeMetrics(patch: Partial<Metrics>, phase: Phase = "single"): void {
     this.commit(editMetrics(this.state.forge, patch), phase);
+  }
+
+  /**
+   * The join reaches every letter, and no letter may hold an exception to it.
+   *
+   * Family scope whatever the panel is set to, which is the one place a
+   * control ignores that switch. A seam is an agreement between two letters
+   * rather than a property of one, so a letter holding its own would hand over
+   * at a height its neighbour never arrives at and the pair would come apart.
+   */
+  changeScript(patch: Partial<Style["parts"]["script"]>, phase: Phase = "single"): void {
+    this.commit(editScript(this.state.forge, patch), phase);
   }
 
   // --- the trip out and back ----------------------------------------------

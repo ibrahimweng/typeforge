@@ -41,6 +41,7 @@ import type { Imported } from "@/forge/exchange";
 import { formsOf } from "@/forge/letters";
 import {
   METRIC_CONTROLS,
+  SCRIPT_CONTROLS,
   PART_SPECS,
   PEN_CONTROLS,
   specFor,
@@ -208,6 +209,8 @@ export function ForgePanel(): React.JSX.Element {
             />
           ))}
         </Section>
+
+        <Joining />
 
         <KitPanel />
 
@@ -1065,6 +1068,53 @@ function useShown(id: string): {
 /** How a row marks itself while it is the one being pointed at. */
 const SHOWN = "-mx-1 rounded-md px-1 ring-1 ring-[color:var(--accent)]";
 
+/**
+ * How the letters reach each other, which had no panel at all until now.
+ *
+ * The four joined faces carried these numbers and nothing offered them, so the
+ * only way to a script that was not one of those four was to pick the nearest
+ * and live with it. They are ordinary controls and they read the way the rest
+ * of the panel reads.
+ *
+ * The switch stays live and the rest go quiet when it is off, rather than the
+ * section disappearing. A face whose letters stand apart is one press away from
+ * one whose letters join, and a panel that hides the press hides the fact --
+ * the join is the largest single decision this engine makes about a face, and
+ * finding it should not require having already chosen a face that has it.
+ */
+function Joining(): React.JSX.Element {
+  const state = useForge();
+  const script = state.forge.style.parts.script;
+  const joined = Boolean(script.on);
+
+  return (
+    <section className="border-b border-border p-3" data-forge-joining={joined ? "on" : "off"}>
+      <h3 className="pb-2 text-2xs font-medium">Joining</h3>
+      {SCRIPT_CONTROLS.map((control) => {
+        // Everything but the switch is about a join, so with no join there is
+        // nothing for them to be about. Dimmed and left in place: they say what
+        // turning the switch on would give access to.
+        const idle = !joined && control.key !== "on";
+        return (
+          <div key={control.key} className={cn(idle && "pointer-events-none opacity-40")} aria-hidden={idle}>
+            <Field
+              on="script"
+              control={control}
+              value={(script as unknown as Record<string, number | boolean>)[control.key]}
+              onChange={(next, phase) => forgeStore.changeScript({ [control.key]: next } as never, phase)}
+            />
+          </div>
+        );
+      })}
+      <p className="pt-2 text-2xs leading-snug text-muted-foreground">
+        {joined
+          ? "The join reaches every letter. There is no exception to be had from it: two letters can only meet at one height, so a letter keeping its own seam would hand over where its neighbour never arrives."
+          : "The letters stand apart. Turn joining on and the space between two of them stops being space and becomes the stroke that carries one into the next."}
+      </p>
+    </section>
+  );
+}
+
 function Section({
   title,
   children,
@@ -1096,7 +1146,7 @@ function Field({
 }: {
   control: FieldControl;
   /** Which half of the style this control lives in, for naming it. */
-  on: "pen" | "metrics";
+  on: "pen" | "metrics" | "script";
   /*
    * Undefined is a real state, not a mistake to be asserted away.
    *
