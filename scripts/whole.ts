@@ -31,7 +31,20 @@ for (const base of scripts) {
   // The face's own weight among them, which it was not. Sweeping 100 and 120
   // and never 103 is how a Formal Script `Y` that comes apart at the weight it
   // ships at went unnoticed here.
-  for (const weight of [...new Set([40, 60, 84, 100, 120, 145, 175, 210, base.pen.weight])].sort((a, b) => a - b)) {
+  /*
+   * From the control's own floor, which this did not reach. Sweeping from 40 up
+   * missed a change that folded thirty-seven letters of the Handwriting at a
+   * pen of 8 and pulled twenty of them apart -- a hairline is where a join that
+   * reaches too far crosses itself, and it is a weight the axis offers.
+   *
+   * It reports eight breaks the moment it is switched on, and all eight are
+   * older than the weight that found them: the capital `A` comes apart at a pen
+   * of 8 on all four faces, in its flat form on all four and its default on
+   * three, and the Casual Script's `G` with it. Checked against the tree before
+   * this weight was added and the same eight are there. They are a fault to
+   * fix, not a reason to stop looking.
+   */
+  for (const weight of [...new Set([8, 40, 60, 84, 100, 120, 145, 175, 210, base.pen.weight])].sort((a, b) => a - b)) {
     const style: Style = { ...base, pen: { ...base.pen, weight } };
     for (const name of solid) {
       for (const { id } of everyFormOf(name)) {
