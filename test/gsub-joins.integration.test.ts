@@ -18,7 +18,6 @@ import { describe, expect, it } from "vitest";
 
 import { deliver } from "../src/forge/deliver";
 import { startFrom } from "../src/forge/document";
-import { recipeOf } from "../src/forge/letters";
 import { BASES } from "../src/forge/style";
 import { FONT_SUITE_TIMEOUT } from "./fixtures";
 import { hasFontTools, hasHarfbuzz, inspectFont, shapeWords } from "./fonttools";
@@ -228,25 +227,9 @@ suite("a joined face carries its joins into the file", () => {
    * The letter that has been asked to give up a join is still a letter of a
    * joined face and is spaced by the join layer standing in the sidebearing;
    * only a letter that never had one is spaced as the roman letter it is.
-   *
-   * The same width off every letter was the shape of this until the round ones
-   * came to reach less far than the rest. They had to: the reference sets its
-   * `o` at 1.10 of an x-height with a bowl 1.16 wide, an advance narrower than
-   * the letter, where ours added a whole reach at each end and set it at 1.38.
-   * A round letter is tighter on every side -- which is what round letters are
-   * in a roman face too -- so it gives up less when it gives up a stroke: 6 and
-   * 7 units against 14 and 15 on this face.
-   *
-   * What was being defended survives that. It is not the number; it is that a
-   * letter which has given up a join is still spaced by the join layer, on the
-   * same rule as every other letter of its kind, and never falls through to the
-   * roman path. So: the same width off every letter of a kind, both kinds give
-   * something up, and the round ones give up less. A letter's kind comes off
-   * its own recipe rather than a list kept here, which would go stale the first
-   * time a letter changed shape.
    */
   it(
-    "takes the same width off every letter of a kind that gives up its lead-out",
+    "takes the same width off every letter that gives up its lead-out",
     async () => {
       const bytes = await exported(SCRIPT.name);
       const report = inspectFont(bytes);
@@ -254,22 +237,12 @@ suite("a joined face carries its joins into the file", () => {
       const left = report.sidebearings ?? {};
 
       const ended = Object.keys(widths).filter((n) => n.endsWith(".end"));
-      const isRound = (name: string): boolean =>
-        recipeOf(name.split(".")[0] as Parameters<typeof recipeOf>[0])?.(SCRIPT).round === true;
-      const lostBy = (names: string[]) =>
-        [...new Set(names.map((n) => widths[n.split(".")[0]] - widths[n]))];
-      const round = lostBy(ended.filter(isRound));
-      const rest = lostBy(ended.filter((n) => !isRound(n)));
-      expect([round.length, rest.length].every((n) => n > 0)).toBe(true);
-      // The same width off every letter of a kind, to a unit -- two advances
-      // each rounded on the way into the file, so a reach that is not a whole
+      const lost = [...new Set(ended.map((n) => widths[n.split(".")[0]] - widths[n]))];
+      // The same width off every one of them, to a unit -- two advances each
+      // rounded on the way into the file, so a reach that is not a whole
       // number of units splits the answer between two neighbouring integers.
-      expect([round, Math.max(...round) - Math.min(...round) <= 1]).toEqual([round, true]);
-      expect([rest, Math.max(...rest) - Math.min(...rest) <= 1]).toEqual([rest, true]);
-      // Both kinds give something up, and the round ones give up less.
-      expect(Math.min(...round)).toBeGreaterThan(0);
-      expect(Math.min(...rest)).toBeGreaterThan(0);
-      expect([round, rest, Math.max(...round) < Math.min(...rest)]).toEqual([round, rest, true]);
+      expect([lost, Math.max(...lost) - Math.min(...lost) <= 1]).toEqual([lost, true]);
+      expect(Math.min(...lost)).toBeGreaterThan(0);
 
       // Capitals and lowercase alike, and the side that kept its stroke did
       // not move at all.

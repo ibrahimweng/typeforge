@@ -2714,9 +2714,18 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
      * whole idea cannot afford.
      */
     const bar = f.cap * f.style.parts.crossbar.height * 0.58;
-    // Where the diagonals actually are at that height, so the bar meets them
-    // rather than poking out either side.
-    const inset = (half * bar) / f.cap;
+    /*
+     * Where the diagonals actually are at that height, so the bar meets them
+     * rather than poking out either side -- or, as it did, stopping short.
+     *
+     * Measured to the apex the skeleton really reaches, which is not the cap
+     * line: `corner` returns the vertex the two spines meet at, and that sits
+     * below the line by however far the point of the angle carries. Divided by
+     * the cap the bar was cut for a taller A than the one drawn, so both ends
+     * landed inside the letter and short of the diagonals. Thick ink hid it;
+     * at a pen of 8 the bar came away as a piece of its own on all four faces.
+     */
+    const inset = (half * bar) / Math.max(peak.y, f.least);
     return finish(
       f,
       [
@@ -6486,9 +6495,19 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const middle = left + half;
         const cut = f.capBowl * 0.34;
         const bar = f.cap * f.style.parts.crossbar.height * 0.58;
-        const inset = (half * bar) / f.cap;
         // Where the two diagonals would be at the height the top is cut.
         const rise = f.cap;
+        /*
+         * And where they are at the bar's height, which is the same question
+         * the default `A` gets wrong the other way round.
+         *
+         * These two do not meet at a point: the top is cut flat, so each
+         * diagonal stops half a cut short of the middle. Reckoned as though
+         * they met, the bar was drawn for a narrower A than this one and both
+         * ends landed inside it, clear of the diagonals -- invisible under a
+         * thick pen and a piece of its own at a pen of 8.
+         */
+        const inset = ((half - cut / 2) * bar) / rise;
         const leftFoot = at(left, 0);
         const rightFoot = at(middle + half, 0);
         return finish(f, [

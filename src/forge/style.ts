@@ -1109,26 +1109,28 @@ export const HANDWRITING: Style = {
      */
     shoulder: { spring: 0.55, reach: 0.75, crest: 0.90 },
     /*
-     * A circle, because that is what the reference draws.
+     * Narrower than a circle, which is what a script's round letters are.
      *
-     * The note that used to stand here said the opposite -- narrower than a
-     * circle, on a reading of the reference's `o` as 0.79 of an x-height
-     * across the middle. Measured again from the released font: the waist is
-     * 386 units wide against an ink height of 384, so the ratio is 1.006 and
-     * the letter is round. The old reading took the width of one run rather
-     * than the bowl's outer extent, and the reference's entry stroke cuts its
-     * counter into four runs at that height, which is what made a single run
-     * look like the whole letter.
+     * This said the opposite for a while and was wrong. The reference's `o`
+     * reads 0.799 of an x-height across the middle against a bowl 1.16 tall --
+     * a ratio of 0.69, an upright oval, and the same 0.79 the note that stood
+     * here before recorded. What overturned it was measuring the waist on a
+     * band a tenth of an x-height deep: the reference's exit stroke climbs
+     * through 0.3 to 0.4 and reaches 1.18, half an x-height outside the bowl,
+     * and a band that wide catches it and reads the letter as a circle. Read on
+     * three hundredths either side of the middle it cannot, and the bowl is an
+     * oval again.
      *
-     * It is the "slanted" half of a face that reads as a slanted roman: shear
-     * a narrow oval and it stays a narrow oval, leaning. A written bowl is
-     * round and the lean lives in the axis inside it.
+     * The cost of getting it wrong was not the shape alone. Drawn to 1.15 the
+     * bowls filled their own advances: two `o`s left 0.10 of an x-height of
+     * white between them at the waist where the reference leaves 0.29, and on
+     * the Casual Script and the Monoline they touched and fused.
      *
-     * Swept against the measure rather than solved, since the pen adds to the
-     * width and the height by different amounts: 0.895 reads 1.012 here, where the
-     * reference reads 1.006.
+     * The number is a ratio of the bowl's height, so it moved when the
+     * overshoot did -- a taller bowl is a wider one at the same ratio. 0.56
+     * reads 0.795 here.
      */
-    bowl: { width: 0.895, squareness: 0, aperture: 1 },
+    bowl: { width: 0.56, squareness: 0, aperture: 1 },
     script: {
       on: true,
       /*
@@ -1371,8 +1373,9 @@ export const FORMAL_SCRIPT: Style = {
      */
     ball: { size: 0.8, drop: 0.35 },
     corner: { radius: 46, join: "round" },
-    // A circle, as on the Handwriting. 0.85 reads 1.008.
-    bowl: { width: 0.85, squareness: 0, aperture: 1 },
+    // An oval, as on the Handwriting. 0.55 reads 0.822, and is the floor of
+    // its own control; the reference's 0.799 would want 0.539.
+    bowl: { width: 0.55, squareness: 0, aperture: 1 },
     // The arch stops short, as on the Handwriting. 0.86 reads 0.88 and 0.88.
     shoulder: { spring: 0.5, reach: 0.7, crest: 0.86 },
     script: {
@@ -1549,8 +1552,8 @@ export const CASUAL_SCRIPT: Style = {
     // Square, for the reason set out on the Handwriting above.
     terminal: { kind: "butt", angle: 0 },
     corner: { radius: 70, join: "round" },
-    // A circle, as on the Handwriting. 0.878 reads 1.006.
-    bowl: { width: 0.878, squareness: 0, aperture: 1.08 },
+    // An oval, as on the Handwriting. 0.56 reads 0.799.
+    bowl: { width: 0.56, squareness: 0, aperture: 1.08 },
     // The arch stops short, as on the Handwriting. This face already sat
     // lowest of the four, so it asks for the least. 0.95 reads 0.89 and 0.91.
     shoulder: { spring: 0.48, reach: 0.8, crest: 0.95 },
@@ -1740,10 +1743,10 @@ export const MONOLINE_SCRIPT: Style = {
     // 1.16 of the new one, and the drop is the same size on the page as before.
     ball: { size: 1.16, drop: 0.35 },
     corner: { radius: 30, join: "round" },
-    // A circle, as on the Handwriting. This face runs at a width of 0.95,
-    // which multiplies the bowl, so it asks for more than one to get there;
-    // 1.019 reads 1.006.
-    bowl: { width: 1.019, squareness: 0, aperture: 1 },
+    // An oval, as on the Handwriting. This face runs at a width of 0.95, which
+    // multiplies the bowl, so it asks for more than the others; 0.66 reads
+    // 0.801.
+    bowl: { width: 0.66, squareness: 0, aperture: 1 },
     // The arch stops short, as on the Handwriting. 0.85 reads 0.88 and 0.91.
     shoulder: { spring: 0.6, reach: 0.65, crest: 0.85 },
     script: {

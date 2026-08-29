@@ -371,24 +371,6 @@ const SAMPLES = 64;
  * stops between 0.09 and 0.11. So this is what a loop costs the letter beside
  * it, and it is the most one is allowed to cost.
  */
-/**
- * What a round letter's share of the reach and the sidebearing is, against a
- * stemmed one's.
- *
- * The reference's `o` sets at 1.10 of an x-height with a bowl 1.163 wide -- an
- * advance narrower than the letter, so the next one laps onto the bowl. Ours
- * had the bowl right to a thousandth and set it at 1.38, because a whole reach
- * was added at each end of it.
- *
- * Swept, and stopped by two things rather than by taste. At 0.7 the four faces
- * read 1.12, 1.09, 1.13 and 1.01 of the reference's width; at 0.45, 1.09, 1.06,
- * 1.10 and 0.99; at 0.25, 1.07, 1.03, 1.07 and 0.96. Below about 0.45 the ink
- * of `e.begin` starts left of its own origin -- 2 units at 0.25 -- and a letter
- * that begins a word may not do that; and the Casual Script folds thirteen
- * letters at a pen of 8 and pulls them apart.
- */
-const ROUND_REACH = 0.45;
-
 const HANGS_OVER = 0.33;
 
 const ROUND_ENTRY = 0.35;
@@ -954,20 +936,7 @@ export function planJoin(
    * says how much less: its `o` sets at 1.10 with its bowl 1.16 wide, an
    * advance narrower than the letter, so the next letter laps onto the bowl.
    */
-  /*
-   * A round letter reaches less far, and stands in less of a sidebearing when
-   * it has no join on a side.
-   *
-   * Both scaled by the same figure, because `reach` is two things at once: how
-   * far the join stroke draws, and how much room the letter takes at that end.
-   * Scale only the first and a letter that gives up a join comes out wider than
-   * the one that kept it, which is an `o.end` setting a word wider at its end
-   * than in its middle. Scaled together, a round letter is simply tighter on
-   * every side, which is what round letters are in a roman face too.
-   */
-  const roundly = round ? ROUND_REACH : 1;
-  const reach = script.reach * room.half * 2 * roundly;
-  const side = room.sidebearing * roundly;
+  const reach = script.reach * room.half * 2;
 
   /*
    * The bands stop half a pen inside the letter's own lines rather than on
@@ -1142,73 +1111,62 @@ export function planJoin(
    * the `d` it is meant to be narrower than.
    */
   /*
-   * A round letter is measured where its neighbour actually is, not at its
-   * widest point.
+   * A round letter takes too much room here, and this is still not fixed.
    *
-   * The room a letter takes was its widest point, and on a bowl that is the
-   * waist -- where no neighbour ever comes. The letter after an `o` arrives at
-   * the seam, and by the waist the bowl has curved away from it. The reference
-   * states it plainly: its `o` runs -0.03 to 1.19 of an x-height and its
-   * advance is 1.10, so the advance is narrower than the letter and the next
-   * one laps onto the bowl. That is what round letters do in every roman face
-   * too, and for the same reason.
+   * The room is the letter's widest point, and on a bowl that is the waist --
+   * where no neighbour ever comes. The letter after an `o` arrives at the seam,
+   * a fifth of an x-height up, and by the waist the bowl has curved away. The
+   * reference states it plainly: its `o` runs -0.03 to 1.19 and its advance is
+   * 1.10, so the advance is narrower than the letter and the next one laps onto
+   * the bowl. Ours sets at 1.35 to 1.44.
    *
-   * Measured at the seam, which is where the neighbour arrives, so it needs no
-   * number of its own.
+   * Measuring the round ones lower down works and was backed out twice, each
+   * time on the same rock. Cut at the seam's height above the writing line, the
+   * `o` comes to 1.10, 1.19, 1.11 and 1.10 and the four faces to a fit of 1.08,
+   * 1.08, 1.10 and 1.00 -- and `e.begin` stops being narrower than the plain
+   * `e`, which is a promise the boundary forms rest on. Cut as a share of the
+   * letter's own height instead, to take the bounce out of it, and the same
+   * test fails the same way.
    *
-   * Lower would be better on the numbers and is not available. Swept as a share
-   * of the x-height, a ceiling of 0.16 puts the four faces at 1.11, 1.11, 1.15
-   * and 1.03 of the reference's width and 0.08 at 1.09, 1.09, 1.12 and 0.99,
-   * against 1.15, 1.14, 1.17 and 1.05 here. Two things stop it, and both are
-   * the same fact from different sides: measured low, the room is taken from a
-   * narrow slice near the letter's foot while the bowl's waist stands well
-   * outside it.
-   *
-   * A word begins on that overhang. `e.begin` gives up its lead-in and has no
-   * neighbour to lap onto, and below a ceiling of about 0.22 its ink starts
-   * left of its own origin -- at 0.12 by 21 units of a 350 x-height. A letter
-   * that begins a word may not do that.
-   *
-   * And the join has to reach further out to find the letter, which at a
-   * hairline pen it cannot do without crossing itself: at a pen of 8, a ceiling
-   * of 0.22 folds 37 letters on the Handwriting, 20 of which come apart, and
-   * leaves a Formal Script `o` keeping 3 per cent of its ink after the union.
-   * At the seam nothing folds at that weight on any of the four.
-   *
-   * Only the round ones. A `v` and a `w` lean out as they rise and are widest
-   * at the x-height, and they are not falling away from anything -- the note on
-   * the band above is about keeping them measured, and this must not undo it.
-   *
-   * This is the room only. The reach -- how far the join stroke draws, and how
-   * much room a side with no join stands in instead -- is untouched, which is
-   * where an earlier attempt at the same fault went wrong: cut the reach below
-   * the sidebearing and a letter that gives up a join comes out wider, so an
-   * `o.end` would set a word wider at its end than in its middle.
-   *
-   * Twice before, this broke that promise from the other side -- `e.begin`
-   * stopped being narrower than the `e` -- and twice it was backed out with
-   * the cause unestablished. Measured this time rather than reasoned about:
-   * both drawings come out on the same 22 points of the 130, the same left and
-   * right edge, and the same 14.9 units between them, which is the reach less
-   * the sidebearing exactly as it should be. What had changed underneath was
-   * the letters: round bowls, an overshoot that reaches over the line, and a
-   * handover a third of the way up rather than at the feet. The old failure
-   * does not reproduce on them.
+   * Why it breaks that promise is not established. The obvious suspect was
+   * cleared: `lift` here is `waist - room.x`, and `waist` is handed in as
+   * `f.x + lift` with the same lift the body was moved by, so it is the body's
+   * true shift for both drawings and not a letter-of-this-name guess. Both
+   * anchors were then tried and both failed the same test, which says the
+   * fault is somewhere the anchor is not. Establish that before trying a
+   * third: measure the two `e` drawings under the change and find where their
+   * measured widths part company, rather than reasoning about it -- two
+   * attempts have now been lost to reasoning about it.
    */
-  const reachable = round
-    ? spanning.filter((one) => one.y <= lift + seams.low)
-    : spanning;
-  const measured = reachable.length >= 2 ? reachable : spanning;
+  /*
+   * The whole letter, at its widest. Two attempts to give a round letter less
+   * room than that were made and both are gone, because the fault they were
+   * built for was not here.
+   *
+   * The reference's `o` looked as though it set at 1.10 of an x-height around
+   * a bowl 1.16 wide -- an advance narrower than the letter -- which asks for a
+   * round letter to be measured somewhere other than its waist. It does not:
+   * that bowl is 0.80, and the 1.16 was its exit stroke, which climbs through
+   * 0.3 to 0.4 of an x-height and reaches half an x-height outside the bowl.
+   * Measured on a band thin enough to miss it, the advance is comfortably
+   * wider than the letter and nothing here needs to know a bowl from a stem.
+   *
+   * Both attempts left marks worth keeping: measured low, the ink of `e.begin`
+   * starts left of its own origin and a word may not begin on an overhang; and
+   * the join has to reach further out to find the letter, which at a pen of 8
+   * it cannot do without crossing itself.
+   */
+  const measured = spanning;
   const leftmost = measured.reduce((least, one) => Math.min(least, one.x), Infinity);
   const rightmost = measured.reduce((most, one) => Math.max(most, one.x), -Infinity);
   // Moved over by this much, the letter's own left edge sits exactly one reach
   // from the origin, which is the run the lead-in has to climb along.
   // What this letter asks for on top of the join's own reach, at each end.
   const spare = reach * Math.max(0, air);
-  const inset = (ends.entry ? reach : side) + spare - (leftmost - room.half);
+  const inset = (ends.entry ? reach : room.sidebearing) + spare - (leftmost - room.half);
   const from = at(lands.x + inset, lands.y);
   const to = at(leaves.x + inset, leaves.y);
-  const asked = rightmost + room.half + inset + spare + (ends.exit ? reach : side);
+  const asked = rightmost + room.half + inset + spare + (ends.exit ? reach : room.sidebearing);
   /*
    * And never so narrow that the letter hangs over more than a loop's worth.
    *
