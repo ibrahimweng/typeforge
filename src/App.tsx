@@ -21,9 +21,11 @@ import { Inspector } from "@/components/Inspector";
 import { TopBar } from "@/components/TopBar";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
 import { forgeStore, useForge } from "@/state/useForge";
+import { quillStore } from "@/state/useQuill";
 import { castFor, castOf, cutsFor, cutsOf } from "@/forge/document";
 import { ready as readyToCut } from "@/font/boolean";
 import { detectFormat } from "@/font/parse";
+import { looksJoined } from "@/quill/joined";
 import { describe, readProject, type Mode as SavedMode } from "@/project/format";
 import { keeper as makeKeeper, kept } from "@/project/keep";
 import { fileNameFor, restore, session } from "@/project/session";
@@ -253,6 +255,47 @@ export function App(): React.JSX.Element {
     }
   }, [state.view]);
 
+  /**
+   * A font whose letters join, sent to the engine that can read them.
+   *
+   * The two halves of this application are not two views of one thing. The
+   * editor moves points on outlines somebody else drew; the tracer reads those
+   * outlines back into the strokes that made them, and only the second can say
+   * anything about a script -- because what a script is made of is a moving pen
+   * and a changing pressure, and neither of those is a point on an outline.
+   *
+   * So a joined script opened into the editor lands in front of controls that
+   * cannot reach it, one mode away from the ones that can, with nothing on
+   * screen saying so. That is the failure this fixes, and it is worth fixing
+   * here rather than with a note in the interface: the font is already parsed
+   * at this point, the measurement is a few bounding boxes, and the answer is
+   * known before anybody has looked at the wrong panel.
+   *
+   * Both things happen rather than one. The outlines stay loaded next door, so
+   * a wrong answer costs the click back to Edit and nothing else, and a right
+   * one still leaves the outlines there to be compared against.
+   */
+  const sendScriptToTrace = React.useCallback((bytes: Uint8Array, name: string) => {
+    /*
+     * The font that was just opened, and a check that it really was.
+     *
+     * `loadFont` reports a file it could not read by setting a status and
+     * leaving the previous font in place, so the store still holds a typeface
+     * afterwards -- the wrong one. Without the name check, dropping a corrupt
+     * file while a script was open would measure the script, agree it joins,
+     * and start tracing the font that was already there.
+     */
+    const { typeface, fileName } = store.getSnapshot();
+    if (!typeface || fileName !== name) return;
+    const verdict = looksJoined(typeface);
+    if (!verdict.joined) return;
+    setMode("quill");
+    // Not awaited: this is most of a minute of arithmetic in a worker, and it
+    // reports its own progress. Holding the drop open until it finished would
+    // freeze the door every font comes through.
+    void quillStore.trace(bytes, name, verdict);
+  }, []);
+
   /*
    * Whatever was brought in, opened as what it is.
    *
@@ -270,11 +313,12 @@ export function App(): React.JSX.Element {
       const bytes = new Uint8Array(await file.arrayBuffer());
       if (detectFormat(bytes) !== "unknown") {
         await store.loadFont(bytes, file.name);
+        sendScriptToTrace(bytes, file.name);
         return;
       }
       await openProject(file, bytes);
     },
-    [openProject],
+    [openProject, sendScriptToTrace],
   );
 
   /*

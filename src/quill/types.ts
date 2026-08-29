@@ -178,6 +178,17 @@ export interface QuillGlyph {
   name: string;
   advanceWidth: number;
   strokes: QuillStroke[];
+  /**
+   * How big the em is, carried by the glyph rather than looked up.
+   *
+   * Several of the controls are *distances* -- how far a letter lifts off its
+   * line, how far a joining stroke runs on -- and a distance means nothing
+   * without a scale. Kept here rather than passed in beside the style, because
+   * a scale passed in can be passed in wrong: the same slider on a 2048-unit
+   * font would move a letter twice as far as on a 1000-unit one, and only on
+   * the caller that forgot. A glyph knows how big it is.
+   */
+  unitsPerEm: number;
 }
 
 // ---------------------------------------------------------------------------

@@ -17,6 +17,7 @@
  */
 
 import { PLAIN_HAND, restyle, type QuillStyle } from "@/quill/controls";
+import type { JoinedVerdict } from "@/quill/joined";
 import { sweepAll } from "@/quill/sweep";
 import { traceFont, type TraceMessage, type TraceProgress, type Traced } from "@/quill/tracing";
 
@@ -53,6 +54,17 @@ export interface QuillState {
   progress: TraceProgress | null;
   /** What went wrong, if anything did. */
   trouble: string | null;
+  /**
+   * The evidence that sent this font here, when it was not asked for by hand.
+   *
+   * A font opened anywhere in the application is measured, and one whose
+   * letters join is read into strokes here rather than opened as outlines next
+   * door -- because the controls next door cannot reach what a script is made
+   * of. That is a decision taken on somebody's behalf, so the reason for it is
+   * kept and shown rather than left to be inferred from the application having
+   * moved on its own. Null where a font was read from the panel deliberately.
+   */
+  routed: JoinedVerdict | null;
   canUndo: boolean;
   canRedo: boolean;
   revision: number;
@@ -73,6 +85,7 @@ class QuillStore {
     showSpines: false,
     progress: null,
     trouble: null,
+    routed: null,
     canUndo: false,
     canRedo: false,
     revision: 0,
@@ -153,11 +166,17 @@ class QuillStore {
    * it runs inline and reports progress just the same. That path is slow and
    * blocking and is not pretended otherwise; it is there so the behaviour is
    * degraded rather than absent.
+   *
+   * `routed` carries the measurement that sent a font here on its own, and is
+   * null when somebody asked for this font by name. It is set at the start
+   * rather than at the end because it explains the minute of tracing as well as
+   * the letters, and a reason that only appears once the work is finished has
+   * arrived too late to be the reason for anything.
    */
-  async trace(bytes: Uint8Array, name: string): Promise<void> {
+  async trace(bytes: Uint8Array, name: string, routed: JoinedVerdict | null = null): Promise<void> {
     this.stopReading();
     const mine = this.reading;
-    this.set({ progress: { done: 0, total: 0, letter: "" }, trouble: null });
+    this.set({ progress: { done: 0, total: 0, letter: "" }, trouble: null, routed });
 
     const arrived = (result: { letters: Traced[]; unitsPerEm: number }) => {
       if (mine !== this.reading) return;

@@ -17,6 +17,8 @@
 
 import { describe, expect, it } from "vitest";
 
+import { importFont } from "@/font/parse";
+import { looksJoined } from "@/quill/joined";
 import { traceFont, WANTED, type TraceProgress } from "@/quill/tracing";
 import { findTestFont, loadTestFont } from "./fixtures";
 
@@ -87,5 +89,31 @@ describeWithFont("tracing a whole font", { timeout: 180_000 }, () => {
     const named = seen.filter((one) => one.letter !== "");
     expect(named.length).toBe(total);
     expect(new Set(named.map((one) => one.letter)).size).toBe(total);
+  });
+});
+
+/**
+ * That a real text face is not mistaken for a script.
+ *
+ * The synthetic side of this is next door in `src/quill/quill.test.ts`, where
+ * boxes of ink with known sidebearings pin the rule exactly. What that cannot
+ * do is stand in for a real font's spacing, and the cost of a wrong answer
+ * falls entirely on this side of it: a text face called a script sends somebody
+ * who opened a font to edit into a minute of tracing they did not ask for.
+ *
+ * So the one case worth a real font is the negative. DejaVu is a text face by
+ * every measure, and if the detector ever drifts far enough to call it joined,
+ * it will call half the fonts in the world joined too.
+ */
+describeWithFont("what a real text face reads as", () => {
+  it("does not read DejaVu as a joined script", async () => {
+    const { typeface } = await importFont(loadTestFont()!, "test.ttf");
+    const verdict = looksJoined(typeface);
+    expect(verdict.joined).toBe(false);
+    // Not merely under the line: a text face keeps real space on both sides,
+    // and a verdict that scraped in at a hundredth of an em would be one bad
+    // font away from flipping.
+    expect(verdict.tested).toBeGreaterThanOrEqual(8);
+    expect(verdict.sidebearing).toBeGreaterThan(0.03);
   });
 });

@@ -643,7 +643,7 @@ export function fitGlyph(
   }
 
   return {
-    glyph: { name, advanceWidth, strokes },
+    glyph: { name, advanceWidth, strokes, unitsPerEm: options.unitsPerEm ?? 1000 },
     found: paths.length,
     kept: strokes.length,
     spineDeviation,

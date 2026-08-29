@@ -140,10 +140,19 @@ the only way the two can be caught disagreeing — a face that declares an
 ascender of 720 draws an `l` that stops somewhere else, because the pen standing
 above the skeleton is part of the letter.
 
-What parameters reach is a likeness and not a replica. The proportions, the
-rhythm, the weight and the way the letters hand over all travel; the letterforms
-underneath stay this engine's own, because a skeleton swept by a pen does not
-arrive at outlines somebody drew freehand, at any setting.
+What parameters reach is a **proportion** and not a replica, and the size of the
+gap is arithmetic rather than opinion: the dial moves seventeen numbers, and the
+reference spends fifteen thousand to draw the same fifty-two letters. So the
+proportions, the rhythm, the weight and the way the letters hand over all
+travel; the letterforms underneath stay this engine's own, because a skeleton
+swept by a pen does not arrive at outlines somebody drew freehand, at any
+setting. The harness prints that comparison under every face it measures, in the
+same block of text as the eight rows it just matched — because eight green rows
+read as "arrived", and they are not evidence about letterforms at all.
+
+If it is the letterforms you want, that is Trace below, which recovers them from
+the outlines instead of aiming at measurements. A font whose letters join is
+sent there on the way in for exactly that reason.
 
 ## Trace
 
@@ -190,9 +199,38 @@ it never runs. Where there is no worker it runs inline and reports the same
 progress, slowly and blockingly, so the behaviour is degraded rather than
 absent.
 
-Then seven controls reach every letter at once: weight, pressure, taper, slant,
-nib contrast, nib angle and tracking. The strokes underneath are never touched,
-so any of it goes back with one press.
+Then ten controls reach every letter at once. Seven describe a pen — weight,
+pressure, taper, slant, nib contrast, nib angle and tracking — and three are
+about a script in particular:
+
+**Bounce** lifts each letter off the common line by its own amount, worked out
+from its name, which is what separates a written line from a typeset one. A hand
+puts the same letter in a different place every time and a font cannot, so the
+same letter always lands in the same place here; that is the honest limit of
+doing this with a slider.
+
+**Width** stretches the letters across and takes the advance with them, so a
+joined face stays joined. The stroke widths are left alone: the letter gets
+wider and the pen that drew it does not.
+
+**Join reach** runs the entry and exit strokes on. It is the only one that picks
+its strokes, and what it picks is the ends that reach the edge of the letter's
+own advance *travelling outwards* — which is what a join is. Both halves of that
+test are needed: the edge alone catches the side of a bowl on a tightly fitted
+face, and it reads the direction from a chord back along the stroke rather than
+the tangent at the tip, because a fitted script exit routinely curls at its last
+control point and a join extended along that grows backwards into the letter.
+
+The strokes underneath are never touched, so any of it goes back with one press.
+
+**Which engine a font lands in** is measured rather than declared. Both reference
+scripts here carry an `OS/2` family class of nought and ten zeroes for PANOSE —
+the fields that would say "script" are routinely left at their defaults — so what
+is read instead is the letters: a joined face runs its ink to the edge of its own
+advance and usually past it, where a text face keeps clear space on both sides.
+Across the round and straight lowercase the two are far apart, and a font that
+joins is opened in Trace with the reason shown in the panel. The outlines stay
+loaded in Edit either way, so a wrong answer costs a click.
 
 Two honest limits. A junction is one point in the ink and two strokes in the
 hand, and nothing in the ink says which two — so some letters come back in more
@@ -383,13 +421,14 @@ src/forge/    the skeleton-and-pen engine behind Draw
   deliver.ts    every weight drawn and written out as one download
   shapes.ts     bowls, bends and the runs a letter is described with
   script.ts     the joining: the seam, the reach, the loops and the bounce
-  likeness.ts   what two reference faces measure, and the way to each
+  likeness.ts   what two reference faces measure in proportion, and the way to each
 src/quill/    the stroke engine behind Trace
   types.ts      spines, width profiles, strokes
   sweep.ts      a centre-line into ink, at a width that varies
   fit.ts        a drawn letter read back as strokes
   raster.ts     fill, distance transform, thinning
-  controls.ts   the hand: weight, pressure, taper, slant, nib
+  controls.ts   the hand: pen, and the script's bounce, width and join reach
+  joined.ts     whether a font's letters join, judged by where its ink stops
   tracing.ts    the pass over a whole font, and what it reports
   trace-worker  the same pass, off the main thread
 src/assemble/ the pile of drawings behind Assemble
