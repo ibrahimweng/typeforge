@@ -164,7 +164,7 @@ test("a read can be given up on", async ({ page }) => {
 
 test("reads a font in and offers its letters", async ({ page }) => {
   await traceAFont(page);
-  await expect(page.locator("[data-quill-control]")).toHaveCount(7);
+  await expect(page.locator("[data-quill-control]")).toHaveCount(10);
   // The letter on screen, and a line of them underneath to judge it by.
   await expect(page.locator('svg[aria-label^="The letter"]')).toBeVisible();
   const specimen = page.locator('svg[aria-label="A line of the traced letters"] path');
@@ -192,6 +192,8 @@ test("every slider can be dragged and changes the letter", async ({ page }) => {
     ["slant", 0.8],
     ["contrast", 0.8],
     ["nibAngle", 0.2],
+    ["bounce", 0.8],
+    ["width", 0.85],
   ];
   let previous = await inkOf(page);
   for (const [key, fraction] of moves) {
@@ -213,6 +215,34 @@ test("every slider can be dragged and changes the letter", async ({ page }) => {
   await dragTo(page, "tracking", 0.85);
   expect(await line.getAttribute("viewBox"), "tracking moved no room").not.toBe(width);
   expect(await inkOf(page), "tracking should not touch the strokes").toBe(letter);
+});
+
+test("the join reach finds the joins and leaves the rest alone", async ({ page }) => {
+  /*
+   * The one control here that picks its strokes, checked on the only font this
+   * suite can count on -- which is a text face, and so has almost no joins at
+   * all. That is what makes it a good test rather than an awkward one: on a
+   * letter with nothing reaching its edges the reach must do *nothing*, and on
+   * one of the few that do it must do something. A control that changed every
+   * letter would be growing spurs out of the sides of a text face, and a
+   * control that changed none would be dead. Both look the same from a
+   * screenshot and neither is acceptable.
+   */
+  await traceAFont(page);
+
+  const untouched = await inkOf(page);
+  await dragTo(page, "reach", 0.85);
+  expect(
+    await inkOf(page),
+    "a letter with no stroke at its own edge has no join to run on",
+  ).toBe(untouched);
+
+  // `r` is one of the handful in a text face whose arm does reach the edge.
+  await page.getByRole("button", { name: "r", exact: true }).click();
+  await expect.poll(() => inkOf(page)).not.toBe(untouched);
+  const arm = await inkOf(page);
+  await dragTo(page, "reach", 0.2);
+  expect(await inkOf(page), "the join reach moved nothing on a letter that joins").not.toBe(arm);
 });
 
 test("a drag lands on the undo stack once", async ({ page }) => {
@@ -247,4 +277,32 @@ test("the hand can be put back without losing the strokes", async ({ page }) => 
   await expect.poll(() => inkOf(page)).toBe(before);
   // The strokes underneath were never the thing being changed.
   await expect(page.getByText(/\d+ strokes/)).toHaveText(strokes);
+});
+
+test("a text face opened for editing stays in the editor", async ({ page }) => {
+  /*
+   * The guard on the routing, and it is the negative half on purpose.
+   *
+   * A font whose letters join is measured on the way in and sent to Trace,
+   * because the outline editor has nothing that reaches what a script is made
+   * of. The cost of that being too eager is much higher than the cost of it
+   * being too shy: a text face pulled into Trace puts somebody who opened a
+   * font to edit into a minute of tracing they did not ask for, while a script
+   * left in the editor is one click from where it should be. So what is checked
+   * here is that an ordinary text face is left exactly where it was put.
+   *
+   * The positive half is measured rather than clicked -- in
+   * `src/quill/quill.test.ts` against known sidebearings, and in
+   * `test/trace.integration.test.ts` against this same font -- because a
+   * joined script is not something this suite can count on having.
+   */
+  await page.goto("/");
+  await page.setInputFiles("[data-open-input]", FONT_PATH!);
+  await expect(page.getByText("DejaVu Sans", { exact: false }).first()).toBeVisible({
+    timeout: 45_000,
+  });
+
+  // Still in the editor: no Trace panel, and nothing being traced.
+  await expect(page.getByRole("complementary", { name: "Quill" })).toHaveCount(0);
+  await expect(page.locator('[role="progressbar"]')).toHaveCount(0);
 });

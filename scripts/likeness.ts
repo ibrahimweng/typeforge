@@ -1,5 +1,14 @@
 /**
- * How close the drawn face is to the one it is aimed at, measure by measure.
+ * Which of eight proportions the drawn face reached, measure by measure.
+ *
+ * What this is not: evidence that the face looks like the reference. It reads
+ * eight numbers off the drawn ink and compares them with eight read off a
+ * reference, and eight numbers are a size and a lean and a weight -- never a
+ * letterform. A run where every row is green means the face sets to the same
+ * rhythm on the same lines in this engine's own letterforms, which is the whole
+ * of what the dial does. The report says so itself, in the same block of text
+ * as the green rows, because a green report read on its own is how the dial
+ * came to be mistaken for a replica in the first place.
  *
  * The dial in `forge/likeness.ts` says where to go. This says where you got to,
  * which is a different question and the only one worth asking after a setting
@@ -29,7 +38,7 @@ import { ready } from "@/font/boolean";
 import { contoursBounds, inkRunsAt } from "@/font/geometry";
 import type { Drawn } from "@/forge/build";
 import { draw, startFrom } from "@/forge/document";
-import { dialledTo, LIKENESSES, type Measurements } from "@/forge/likeness";
+import { dialledTo, dialWidth, LIKENESSES, type Measurements } from "@/forge/likeness";
 import { ROUNDHAND, type Style } from "@/forge/style";
 
 await ready();
@@ -279,8 +288,15 @@ if (wanted.length === 0) {
   process.exit(1);
 }
 
-console.log("The Roundhand, drawn and measured against what it is aimed at.");
+console.log("The Roundhand, drawn and measured against the proportions it is aimed at.");
 console.log("Every figure below is taken off the drawn outlines with a ruler.");
+console.log("");
+console.log("  These eight numbers are proportions. They are not letterforms, and nothing");
+console.log("  in this report is evidence about letterforms. A face that passes every row");
+console.log("  below sits on the same lines and sets to the same rhythm as the reference,");
+console.log("  in this engine's own letterforms -- which is what the dial is for and the");
+console.log("  whole of what it does. For the letterforms themselves see src/quill, which");
+console.log("  recovers strokes from the outlines rather than aiming at measurements.");
 
 /*
  * The base first, undialled.
@@ -299,11 +315,29 @@ let missed = 0;
 for (const likeness of wanted) {
   const drawn = measure(dialledTo(likeness));
   missed += report(`${likeness.label}  (${likeness.source})`, drawn, likeness.measured);
+  /*
+   * What the dial spends against what the reference spends, printed under every
+   * face rather than once at the end.
+   *
+   * Under the eight rows on purpose. Eight green rows read as "arrived", and
+   * the row that stops them reading that way has to be in the same block of
+   * text or it will not be read at all -- which is exactly what happened when
+   * this report ended on "every measure is inside its tolerance" and nothing
+   * else. Both halves are counted rather than asserted: the dial from its own
+   * settings, the reference off its own outlines.
+   */
+  const width = dialWidth(likeness.settings);
+  console.log(
+    `\n  Reached with ${width} numbers. The reference spends ${likeness.spends.toLocaleString()} ` +
+      `on the same 52 letters,\n  so what is matched above is the proportion and not the drawing.`,
+  );
 }
 
 console.log(
   missed === 0
-    ? "\n  Every measure is inside its tolerance.\n"
-    : `\n  ${missed} ${missed === 1 ? "measure is" : "measures are"} outside tolerance. ` +
+    ? "\n  Every proportion is inside its tolerance. The letterforms are this engine's" +
+        "\n  own and are not compared here, because no setting moves them toward" +
+        "\n  anybody else's. These settings are finished; there is nothing to tune.\n"
+    : `\n  ${missed} ${missed === 1 ? "proportion is" : "proportions are"} outside tolerance. ` +
         "The settings in forge/likeness.ts are what to move.\n",
 );

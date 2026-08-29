@@ -21,7 +21,7 @@ import { describe, expect, it } from "vitest";
 
 import { contoursBounds, inkRunsAt } from "@/font/geometry";
 import { draw, startFrom } from "./document";
-import { dialledTo, LIKENESSES, likenessBy, type Measurements } from "./likeness";
+import { dialledTo, dialWidth, LIKENESSES, likenessBy, type Measurements } from "./likeness";
 import { NO_SCRIPT, scatterOf } from "./script";
 import { BASES, ROUNDHAND, type Style } from "./style";
 
@@ -319,5 +319,106 @@ describe("the Roundhand is a face like the others", () => {
         expect(base.parts.script[key], `${base.name} has no script.${key}`).toBeDefined();
       }
     }
+  });
+});
+
+/**
+ * That the dial keeps saying what it can and cannot do.
+ *
+ * These are not tests of arithmetic. They are tests of a claim, and they exist
+ * because the claim is the thing that went wrong: eight proportions were
+ * matched, the harness printed eight green rows, and that was read -- by the
+ * person who wrote it -- as a face that matched the reference. It did not and
+ * could not. The rows were true and the conclusion drawn from them was not.
+ *
+ * A test cannot stop somebody drawing a wrong conclusion. What it can do is
+ * stop the wrong conclusion being written into the product, which is the step
+ * that turns one person's mistake into everybody's. So: the label a person
+ * reads may not name somebody else's font, and the settings may not drift
+ * without the measurements they were fitted against moving too.
+ */
+describe("what the dial claims", () => {
+  /*
+   * The faces the eight numbers were taken off, which are named nowhere a
+   * person reads.
+   *
+   * Listed here rather than imported because that is the point -- nothing in
+   * `likeness.ts` should have these strings in it, so there is nothing to
+   * import. `source` is provenance and is allowed to describe the reference in
+   * prose; `label` and `blurb` are what somebody reads on the face they end up
+   * with, and a face is not entitled to a name it does not have.
+   */
+  const REFERENCE_FONTS = ["dancing", "telma"];
+
+  for (const likeness of LIKENESSES) {
+    it(`${likeness.id} does not present itself as somebody else's font`, () => {
+      const shown = `${likeness.label} ${likeness.blurb}`.toLowerCase();
+      for (const name of REFERENCE_FONTS) {
+        expect(shown, `${likeness.id} names ${name} where a person reads it`).not.toContain(name);
+      }
+      // And the same on the face that actually comes out, which carries the
+      // label into the document, the export and the file name.
+      expect(dialledTo(likeness).name.toLowerCase()).not.toMatch(/dancing|telma/);
+    });
+
+    it(`${likeness.id} says how many numbers it is reaching with`, () => {
+      /*
+       * The comparison that stops eight green rows reading as a replica, and
+       * it has to survive somebody adding a control. `dialWidth` counts the
+       * settings rather than quoting a number, so this checks the count is
+       * honest and that the gap it is set against is still enormous.
+       */
+      const width = dialWidth(likeness.settings);
+      expect(width).toBe(
+        Object.keys(likeness.settings.metrics).length +
+          Object.keys(likeness.settings.pen).length +
+          Object.keys(likeness.settings.script).length,
+      );
+      expect(likeness.spends).toBeGreaterThan(width * 100);
+    });
+  }
+
+  /**
+   * That the fitted settings are the fitted settings.
+   *
+   * Written out rather than snapshotted, so a change to one of them is a line
+   * in a diff next to the number it replaces. These were fitted against the
+   * measurements above and the harness says they arrive; tuning them further
+   * moves the face away from the proportions it was placed at and does not move
+   * it toward the reference's letterforms, because letterforms are not on this
+   * axis at all. If one of these has to change, the measurement it was fitted
+   * against changed first -- and that measurement is in the same file.
+   */
+  it("holds the settings that were fitted", () => {
+    expect(likenessBy("flowing")!.settings).toEqual({
+      metrics: { xHeight: 317, capHeight: 716, ascender: 709, descender: -270, slant: 13 },
+      pen: { weight: 61, contrast: 0.3, angle: 30 },
+      script: {
+        height: 0.3,
+        reach: 1.9,
+        flat: 0.06,
+        loop: 1.7,
+        highSeam: 0.78,
+        knit: 0.07,
+        irregularity: 0.4,
+        bounce: 1,
+        lean: 0.5,
+      },
+    });
+    expect(likenessBy("brush")!.settings).toEqual({
+      metrics: { xHeight: 485, capHeight: 691, ascender: 747, descender: -239, slant: 16 },
+      pen: { weight: 70, contrast: 0.42, angle: 22 },
+      script: {
+        height: 0.42,
+        reach: 0.9,
+        flat: 0.22,
+        loop: 0.35,
+        highSeam: 0.72,
+        knit: 0,
+        irregularity: 0.25,
+        bounce: 0.02,
+        lean: 1,
+      },
+    });
   });
 });

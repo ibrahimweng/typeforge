@@ -1,27 +1,38 @@
 /**
- * How close a drawn face is to one somebody else drew, and how to get closer.
+ * Eight proportions of a reference face, and the settings that reach them.
  *
- * A face that is meant to travel needs somewhere to travel to. This file holds
- * the two ends of the dial: what a reference face measures, and the settings
- * that put the Roundhand where those measurements are.
+ * Read the limit first, because everything below is only honest inside it.
+ * What this file reaches is *proportion*: how big the lowercase is against the
+ * em, how far the letters lean, how heavy the stroke reads, how far a join runs
+ * past the ink. What it does not reach, cannot reach, and must never be
+ * presented as reaching is the *letterforms*. The shapes that come out are this
+ * engine's own skeletons swept by its own pen, and no setting turns them into
+ * the curves somebody else drew freehand.
+ *
+ * The size of that gap is arithmetic rather than opinion, and it is printed by
+ * the harness on every run so it cannot be forgotten: the dial below moves
+ * seventeen numbers, and the reference spends fifteen thousand of them to draw
+ * the same fifty-two letters. Seventeen numbers cannot land on a point in a
+ * fifteen-thousand-dimensional space. A face dialled here that matches all
+ * eight proportions is a face that sits on the same lines and sets to the same
+ * rhythm as the reference and looks nothing like it, and that is the *correct*
+ * result rather than a shortfall to be tuned away.
+ *
+ * Which is why these settings are finished. They were fitted against measured
+ * targets and the harness says they arrive; there is no further tuning that
+ * moves them toward the reference's letterforms, because proportion is not the
+ * axis those letterforms are along. Anything wanting the letterforms belongs in
+ * `src/quill`, which recovers strokes from the outlines themselves and is the
+ * only thing here that reproduces a face rather than a genre.
  *
  * What is here is a description and not a drawing. A measurement -- an
  * x-height, a slant, how far a join runs past the ink -- is a fact about a
  * shape rather than the shape itself, and eight numbers cannot be assembled
- * back into anybody's letters. Nothing is traced, no outline is read, and the
- * settings below are the same controls the panel offers: what they produce is
- * this engine's own skeletons, drawn with its own pen, standing where the
- * measurements say. Two faces built to the same x-height and the same slant are
- * as related as two buildings built to the same ceiling height.
- *
- * Which is also the honest limit, and it is worth saying plainly because the
- * request that produced this file asked for something else. Parameters reach a
- * *likeness* -- the proportions, the rhythm, the weight, the way the letters
- * hand over -- and they do not reach a replica. The letterforms underneath are
- * this engine's, and a skeleton swept by a pen cannot be made to arrive at
- * outlines drawn freehand by somebody else, at any setting. What the dial buys
- * is a face that reads as belonging to the same genre and sits on the same
- * lines. What it cannot buy is the other font.
+ * back into anybody's letters. Nothing is traced and no outline is read: the
+ * settings below are the same controls the panel offers, and what they produce
+ * is this engine's own drawing standing where the measurements say. Two faces
+ * built to the same x-height and the same slant are as related as two buildings
+ * built to the same ceiling height.
  *
  * The measurements were taken by scanline off the reference files at a named
  * weight, by `scripts/likeness.ts`, which measures a drawn face the same way
@@ -77,14 +88,50 @@ export interface Measurements {
 /** A face worth aiming at, what it measures, and the way there. */
 export interface Likeness {
   id: string;
+  /**
+   * What this is called, everywhere it is shown.
+   *
+   * A genre and never a font. The reference is named in `source` where it
+   * belongs -- as provenance for eight numbers -- and it is deliberately not
+   * named here, because a label is what a person reads on the face they end up
+   * with, and a face labelled with somebody else's font name is claiming to be
+   * that font. It reaches the proportions and not the letters, and the label
+   * says the part it reaches.
+   */
   label: string;
   /** What kind of hand it is, in the terms the panel uses. */
   blurb: string;
   /** Where the measurements came from, so a number can be traced to a file. */
   source: string;
   measured: Measurements;
+  /**
+   * How many free numbers the reference spends on the basic fifty-two letters.
+   *
+   * Counted off the reference's own outlines -- two per point, two more per
+   * handle, one per advance -- and kept here so the harness can print the
+   * comparison that matters next to the eight that flatter. Seventeen settings
+   * against this is the whole of why proportion is reachable and letterform is
+   * not, and a number is harder to argue with than a paragraph.
+   */
+  spends: number;
   /** What to change on the Roundhand to arrive at them. */
   settings: Settings;
+}
+
+/**
+ * How many numbers the dial itself moves.
+ *
+ * Counted from a `Settings` rather than written down, so it cannot go stale the
+ * next time a control is added: a dial that grew to twenty numbers and still
+ * claimed seventeen would be understating its own reach, and one that shrank
+ * would be overstating it.
+ */
+export function dialWidth(settings: Settings): number {
+  return (
+    Object.keys(settings.metrics).length +
+    Object.keys(settings.pen).length +
+    Object.keys(settings.script).length
+  );
 }
 
 /** The controls the dial moves, which are the controls the panel offers. */
@@ -120,9 +167,11 @@ export interface Settings {
  */
 export const FLOWING: Likeness = {
   id: "flowing",
-  label: "Flowing script",
-  blurb: "Small lowercase, long looped extenders, a line that will not sit still. A pen moving quickly.",
-  source: "measured at weight 400",
+  label: "Flowing proportions",
+  blurb:
+    "Small lowercase, long looped extenders, a line that will not sit still. A pen moving quickly. The proportions of a flowing script, in this engine's own letterforms.",
+  source: "measured off a flowing script at weight 400",
+  spends: 15354,
   measured: {
     xHeight: 0.332,
     capHeight: 0.72,
@@ -192,9 +241,11 @@ export const FLOWING: Likeness = {
  */
 export const BRUSH_HAND: Likeness = {
   id: "brush",
-  label: "Upright brush",
-  blurb: "Tall lowercase, short extenders, a steady line and a heavy stroke. A brush held at an angle.",
-  source: "measured at weight 300",
+  label: "Brush proportions",
+  blurb:
+    "Tall lowercase, short extenders, a steady line and a heavy stroke. A brush held at an angle. The proportions of a brush hand, in this engine's own letterforms.",
+  source: "measured off an upright brush face at weight 300",
+  spends: 15726,
   measured: {
     xHeight: 0.495,
     capHeight: 0.696,

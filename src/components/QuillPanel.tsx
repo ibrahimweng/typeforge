@@ -4,7 +4,7 @@
  * Two halves, and the order is the workflow rather than a grouping. At the top,
  * where the letters came from and what reading them cost -- because a fit is a
  * guess and the panel should say how good a guess before it offers to change
- * anything. Below, the hand: seven controls that reach every letter at once.
+ * anything. Below, the hand: ten controls that reach every letter at once.
  *
  * There is no per-letter scope switch here, and its absence is the point. The
  * forge next door has one because its letters share a description, so an edit
@@ -67,6 +67,8 @@ export function QuillPanel(): React.JSX.Element {
           >
             {doc.letters.length > 0 ? "Read another font" : "Read a font"}
           </button>
+
+          {state.routed && <WhyHere />}
 
           {state.progress && <Reading />}
 
@@ -177,6 +179,31 @@ export function QuillPanel(): React.JSX.Element {
         )}
       </div>
     </aside>
+  );
+}
+
+/**
+ * Why the application moved on its own.
+ *
+ * A font dropped anywhere opens in the editor, and one whose letters join is
+ * read into strokes here instead. That is a decision taken on somebody's
+ * behalf, and the thing that makes it acceptable rather than mysterious is that
+ * it says what it measured -- so a person who disagrees knows what to disagree
+ * with, and a person whose text face landed here by mistake can see that it was
+ * a measurement rather than a whim, and go back.
+ */
+function WhyHere(): React.JSX.Element | null {
+  const routed = useQuill().routed;
+  if (!routed) return null;
+  const overhangs = routed.sidebearing < 0;
+  return (
+    <p className="pt-2 text-2xs leading-snug text-muted-foreground" data-quill-routed="joined">
+      Sent here because this face joins: {routed.reaching} of {routed.tested} lowercase letters run{" "}
+      {overhangs
+        ? `past their own advance, by ${Math.abs(routed.sidebearing * 100).toFixed(1)}% of the em at the median`
+        : "to the edge of their own advance"}
+      . The outlines are still open in Edit.
+    </p>
   );
 }
 
