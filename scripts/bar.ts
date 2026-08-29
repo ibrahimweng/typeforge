@@ -12,10 +12,16 @@
  * height once per letter and each crossing is short. A bar is one run as long
  * as the word.
  *
- * `longest` is the share of the word the longest single run covers, which is
- * the number that says it. The reference's `handgloves` at the seam is 0.20 --
- * its longest run is a fifth of the word, which is two letters joined. A face
- * whose letters have all fused into one stroke reads 1.00.
+ * The number that says it is the longest single run, as a share of the word,
+ * taken over every height and allowing runs the eye closes up -- a rule made of
+ * separate tails a tenth of an x-height apart is still a rule. The reference's
+ * `handgloves` reads 0.06. Ours read 0.18, 0.20, 0.17 and 0.14.
+ *
+ * How much of the word is ink at one height was tried first and does not work.
+ * It reads 0.49 on the reference and 0.64 to 0.74 on ours, which looks like a
+ * difference until it is swept: it barely moves for the unsteadiness, the level
+ * run, the knit or the seam height, because most of what it counts is the
+ * letters themselves rather than what joins them.
  *
  * The reference is Dancing Script (Pablo Impallari, SIL OFL 1.1), fetched from
  * npm as in the note on `beside.ts`. Telma's licence does not permit this, so
@@ -86,39 +92,52 @@ async function runsAt(word: Contour[], y: number, thick: number): Promise<Array<
     .sort((a, b) => a[0] - b[0]);
 }
 
-/** Runs that touch or overlap are one run: the eye reads ink, not contours. */
-function merged(runs: Array<[number, number]>): Array<[number, number]> {
+/**
+ * Runs that touch are one run: the eye reads ink, not contours. `bridge` closes
+ * gaps narrower than itself as well, for the reading where a line of separate
+ * tails still reads as a line.
+ */
+function merged(runs: Array<[number, number]>, bridge = 0): Array<[number, number]> {
   const out: Array<[number, number]> = [];
   for (const [from, to] of runs) {
     const last = out[out.length - 1];
-    if (last && from <= last[1]) last[1] = Math.max(last[1], to);
+    if (last && from <= last[1] + bridge) last[1] = Math.max(last[1], to);
     else out.push([from, to]);
   }
   return out;
 }
 
 /**
- * How much of the word's length is inked at a height, and at which height most.
+ * The longest unbroken run of ink at any height, and where it is.
  *
- * The bar is not one stroke -- cut at the writing line, our words and the
- * reference's both come to a dozen or two runs. It is every letter's tail
- * sitting at the *same* height with a small gap between each, which the eye
- * joins up into a rule. So the number that says it is not how long one run is,
- * it is how much of the whole line is ink at one height.
+ * Reported twice: touching, and again allowing the runs either side of a gap a
+ * tenth of an x-height wide to count as one, because that is a gap the eye
+ * closes and a rule made of separate tails is still a rule.
+ *
+ * Also the share of the line that is ink at the worst height, which is the
+ * measure that was tried first and did not work -- kept because a number that
+ * does not move is worth being able to show does not move.
  */
 async function report(name: string, word: Contour[], x: number) {
   const whole = contoursBounds(word);
   const across = whole.xMax - whole.xMin;
-  let worst = { at: 0, share: 0 };
-  const profile: string[] = [];
-  for (let i = -2; i <= 8; i++) {
+  let longest = { at: 0, run: 0 };
+  let bridged = 0;
+  let share = 0;
+  for (let i = -4; i <= 24; i++) {
     const at = i / 20;
-    const runs = merged(await runsAt(word, x * at, x * 0.03));
-    const inked = runs.reduce((sum, [from, to]) => sum + (to - from), 0) / across;
-    if (inked > worst.share) worst = { at, share: inked };
-    if (i % 2 === 0) profile.push(`${at.toFixed(2)}:${inked.toFixed(2)}`);
+    const runs = await runsAt(word, x * at, x * 0.03);
+    const touching = merged(runs);
+    const most = touching.reduce((top, [from, to]) => Math.max(top, to - from), 0) / across;
+    if (most > longest.run) longest = { at, run: most };
+    share = Math.max(share, touching.reduce((sum, [from, to]) => sum + (to - from), 0) / across);
+    bridged = Math.max(bridged, merged(runs, x * 0.1)
+      .reduce((top, [from, to]) => Math.max(top, to - from), 0) / across);
   }
-  console.log(`  ${name.padEnd(17)} most ${worst.share.toFixed(2)} at ${worst.at.toFixed(2)}   ${profile.join(" ")}`);
+  console.log(
+    `  ${name.padEnd(17)} longest ${longest.run.toFixed(2)} at ${longest.at.toFixed(2)}` +
+    `   bridging tenth-gaps ${bridged.toFixed(2)}   most ink at one height ${share.toFixed(2)}`,
+  );
 }
 
 const { typeface } = await importFont(readFileSync(REF));
@@ -126,7 +145,7 @@ const refGlyph = (letter: string): Glyph | undefined =>
   typeface.glyphs.find((one) => one.unicodes.includes(letter.codePointAt(0) ?? -1));
 const refX = contoursBounds(refGlyph("x")!.contours).yMax;
 
-console.log(`\`${WORD}\`: the share of the line that is ink, at heights in x-heights\n`);
+console.log(`\`${WORD}\`, every figure a share of the word's length\n`);
 await report("reference", await setWord([...WORD].map(refGlyph).filter((one): one is Glyph => !!one)), refX);
 for (const style of BASES.filter((one) => one.parts.script?.on)) {
   const glyphs = [...WORD]

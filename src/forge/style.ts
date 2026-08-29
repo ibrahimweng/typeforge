@@ -1139,8 +1139,23 @@ export const HANDWRITING: Style = {
        * arrives tangent to the horizontal, so a long stretch either side of
        * every seam is flat, and at the waist that flat is the most visible
        * thing on the page.
+       *
+       * Low was the wrong answer to that, and the reference says so. Sliced
+       * down its own advance, its `n`, `o`, `e`, `a`, `u` and `m` all carry
+       * ink from about 0.25 of an x-height to 0.40 -- it hands over a third of
+       * the way up, and the crossing is 0.15 of an x-height tall, which is a
+       * stroke climbing steeply through the boundary. Ours handed over at 0.15
+       * to 0.22, a crossing 0.07 tall, which is a stroke lying flat -- and
+       * lying flat right where every letter's foot already is.
+       *
+       * Taken up to the reference's third. Measured on the longest unbroken
+       * run of ink at any height in `handgloves`, which is what a rule through
+       * a word is: 0.25 of the word at 0.18, 0.18 at 0.24, and 0.14 from 0.30
+       * up, against the reference's 0.06. The rest of that gap is the flat
+       * tangent itself and is not a number this control can reach.
        */
-      height: 0.18,
+      height: 0.3,
+      tilt: 20,
       /*
        * And this is the face's fit as much as its join, which is why it moved.
        *
@@ -1363,7 +1378,9 @@ export const FORMAL_SCRIPT: Style = {
     script: {
       on: true,
       // Low, for the reason set out on the Handwriting above.
-      height: 0.16,
+      // A third of the way up, as on the Handwriting. Its run goes 0.19 to 0.15.
+      height: 0.3,
+      tilt: 20,
       /*
        * Down from 1.6, then from 1.1, and the second of those was waiting on
        * the body rather than on the join.
@@ -1540,7 +1557,9 @@ export const CASUAL_SCRIPT: Style = {
     script: {
       on: true,
       // Low, for the reason set out on the Handwriting above.
-      height: 0.17,
+      // A third of the way up, as on the Handwriting. Its run goes 0.17 to 0.10, and is worse again above this.
+      height: 0.24,
+      tilt: 20,
       /*
        * Down from 1.05 to 0.6, to where the bodies still lap by only what the
        * knit intends, and then back up to 0.7 as the arch comes down. See the
@@ -1730,7 +1749,9 @@ export const MONOLINE_SCRIPT: Style = {
     script: {
       on: true,
       // Low, for the reason set out on the Handwriting above.
-      height: 0.22,
+      // A third of the way up, as on the Handwriting. Its run goes 0.19 to 0.14.
+      height: 0.24,
+      tilt: 20,
       /*
        * In pens, and this pen is a hairline, so the number is large where the
        * run of white it buys is not.
@@ -1799,8 +1820,16 @@ export const MONOLINE_SCRIPT: Style = {
        * pen at 58 the same 0.6 buys a quarter, which is half as much again as
        * the reference, so it comes down to 0.32 and the pair laps by the
        * reference's figure at last.
+       *
+       * And back up to 0.38 once the hand began handing over climbing rather
+       * than level. The knit is how far each half carries on past the seam so
+       * that the two cross rather than touch, and a climbing handover spends
+       * some of that going up instead of along: this face's worst pair fell to
+       * 33 units against a floor of 33, where 0.38 puts it at 39. The other
+       * three had room already -- 40, 76 and 39 against floors of 35, 33 and
+       * 35.
        */
-      knit: 0.32,
+      knit: 0.38,
     },
   },
   /*

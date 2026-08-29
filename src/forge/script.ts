@@ -93,6 +93,17 @@ export interface Script {
    */
   reach: number;
   /**
+   * The heading the hand hands over on, in degrees above the horizontal.
+   *
+   * Every exit arrives on it and every entry leaves on it, which is the whole
+   * of what makes twenty-six letters meet twenty-six others; see `levelArc`.
+   * Nought is level, and level is the one heading that shows, because an arc
+   * tangent to the horizontal lies flat for a long stretch either side of the
+   * seam and every letter laying one at the same height rules a line through
+   * the word.
+   */
+  tilt: number;
+  /**
    * How much of the join runs level at the seam before it turns into the
    * letter, as a fraction of the reach.
    *
@@ -206,6 +217,7 @@ export const NO_SCRIPT: Script = {
   on: false,
   height: 0.4,
   reach: 1.5,
+  tilt: 0,
   flat: 0.2,
   loop: 0,
   eye: 0.5,
@@ -374,23 +386,40 @@ const ROUND_ENTRY = 0.35;
  * the strokes arrive travelling the same way -- so if the join is to close for
  * every pair of the twenty-six letters rather than for the few that happen to
  * agree, every exit must arrive at the seam on the same heading and every entry
- * must leave it on that heading. Level is the heading to pick, because it is the
- * only one that does not depend on the letter: the shape either side can climb
- * as steeply as it likes and still be flat where it hands over.
+ * must leave it on that heading. Any *fixed* heading has that property -- what
+ * matters is only that it does not depend on the letter, so the shape either
+ * side can climb as steeply as it likes and still hand over on the agreed one.
  *
- * There is exactly one circle through a given point and tangent to the
- * horizontal at another, so nothing here is chosen -- it is solved. The minor
+ * Level was picked because it is the simplest, and it turned out to be the one
+ * heading that shows. An arc tangent to the horizontal lies flat for a long
+ * stretch either side of the seam, and every letter of a word laying such a
+ * stretch at the same height is a rule drawn through the word. The reference
+ * hands over climbing: sliced down its own advance its lowercase carries ink
+ * through 0.15 of an x-height, where a level handover carries it through half
+ * that.
+ *
+ * There is exactly one circle through a given point and tangent to a given
+ * direction at another, so nothing here is chosen -- it is solved. The minor
  * arc of it is the one taken, and taking the minor arc is also what gets the
  * direction right: on the major arc the stroke would leave the seam travelling
  * backwards.
  */
-function levelArc(seam: Vec2, target: Vec2, room: Room): Spine {
-  const dx = target.x - seam.x;
-  const dy = target.y - seam.y;
+function levelArc(seam: Vec2, target: Vec2, room: Room, along: Vec2 = at(1, 0)): Spine {
   const line: Spine = { segments: [{ kind: "line", from: seam, to: target }], closed: false };
-  // Level all the way: there is no circle, and none is wanted.
-  if (Math.abs(dy) < 1e-6) return line;
-  const radius = (dx * dx + dy * dy) / (2 * dy);
+  /*
+   * The centre is on the normal at the seam, so C = seam + r*n, and |C - T| = r
+   * gives r = -|seam - T|^2 / (2 (seam - T) . n). One solve, nothing chosen. At
+   * a level heading the normal is (0, 1) and this comes to (dx^2 + dy^2) /
+   * (2 dy), which is what stood here before a heading could be asked for.
+   */
+  const length = Math.hypot(along.x, along.y) || 1;
+  const unit = at(along.x / length, along.y / length);
+  const normal = at(-unit.y, unit.x);
+  const away = at(seam.x - target.x, seam.y - target.y);
+  const under = 2 * (away.x * normal.x + away.y * normal.y);
+  // Straight at the target already: there is no circle, and none is wanted.
+  if (Math.abs(under) < 1e-6) return line;
+  const radius = -(away.x * away.x + away.y * away.y) / under;
   /*
    * And no tighter than the pen can turn. A spine whose radius is under half
    * the pen has an inner edge that has passed through itself, which is not a
@@ -400,8 +429,8 @@ function levelArc(seam: Vec2, target: Vec2, room: Room): Spine {
    * pen apart, so a straight run between them is the same shape.
    */
   if (Math.abs(radius) < room.half * 1.2) return line;
-  const centre = at(seam.x, seam.y + radius);
-  const startAngle = Math.atan2(-radius, 0);
+  const centre = at(seam.x + normal.x * radius, seam.y + normal.y * radius);
+  const startAngle = Math.atan2(seam.y - centre.y, seam.x - centre.x);
   const finish = Math.atan2(target.y - centre.y, target.x - centre.x);
   let sweep = finish - startAngle;
   while (sweep > Math.PI) sweep -= Math.PI * 2;
@@ -1153,14 +1182,39 @@ export function planJoin(
    * meeting over no area -- see `knit`. The advance is not moved by it.
    */
   const knit = Math.max(0, script.knit) * room.half * 2;
+  /*
+   * The heading, as a rise per unit along.
+   *
+   * The contract is unchanged by it: the lead-in still passes through the
+   * origin at the seam height and the lead-out still passes through the advance
+   * at the same height, so the two halves meet where they always did. What
+   * changes is the direction they are travelling as they cross, and that is the
+   * one thing both sides have to agree on.
+   */
+  const rise = Math.tan((script.tilt * Math.PI) / 180);
+  const climbing = at(1, rise);
+  const falling = at(-1, -rise);
   const entry = !ends.entry ? null : chained(
-    { segments: [{ kind: "line", from: at(-knit, entryAt), to: at(level, entryAt) }], closed: false },
-    levelArc(at(level, entryAt), from, room),
+    {
+      segments: [{
+        kind: "line",
+        from: at(-knit, entryAt - knit * rise),
+        to: at(level, entryAt + level * rise),
+      }],
+      closed: false,
+    },
+    levelArc(at(level, entryAt + level * rise), from, room, climbing),
   );
   const exit = !ends.exit ? null : chained(
-    reversed(levelArc(at(width - level, exitAt), to, room)),
+    // Handed the heading backwards, because this half is drawn from the seam
+    // into the letter and then turned round: reversed, it arrives climbing.
+    reversed(levelArc(at(width - level, exitAt - level * rise), to, room, falling)),
     {
-      segments: [{ kind: "line", from: at(width - level, exitAt), to: at(width + knit, exitAt) }],
+      segments: [{
+        kind: "line",
+        from: at(width - level, exitAt - level * rise),
+        to: at(width + knit, exitAt + knit * rise),
+      }],
       closed: false,
     },
   );
