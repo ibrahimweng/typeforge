@@ -371,6 +371,24 @@ const SAMPLES = 64;
  * stops between 0.09 and 0.11. So this is what a loop costs the letter beside
  * it, and it is the most one is allowed to cost.
  */
+/**
+ * What a round letter's share of the reach and the sidebearing is, against a
+ * stemmed one's.
+ *
+ * The reference's `o` sets at 1.10 of an x-height with a bowl 1.163 wide -- an
+ * advance narrower than the letter, so the next one laps onto the bowl. Ours
+ * had the bowl right to a thousandth and set it at 1.38, because a whole reach
+ * was added at each end of it.
+ *
+ * Swept, and stopped by two things rather than by taste. At 0.7 the four faces
+ * read 1.12, 1.09, 1.13 and 1.01 of the reference's width; at 0.45, 1.09, 1.06,
+ * 1.10 and 0.99; at 0.25, 1.07, 1.03, 1.07 and 0.96. Below about 0.45 the ink
+ * of `e.begin` starts left of its own origin -- 2 units at 0.25 -- and a letter
+ * that begins a word may not do that; and the Casual Script folds thirteen
+ * letters at a pen of 8 and pulls them apart.
+ */
+const ROUND_REACH = 0.45;
+
 const HANGS_OVER = 0.33;
 
 const ROUND_ENTRY = 0.35;
@@ -936,7 +954,20 @@ export function planJoin(
    * says how much less: its `o` sets at 1.10 with its bowl 1.16 wide, an
    * advance narrower than the letter, so the next letter laps onto the bowl.
    */
-  const reach = script.reach * room.half * 2;
+  /*
+   * A round letter reaches less far, and stands in less of a sidebearing when
+   * it has no join on a side.
+   *
+   * Both scaled by the same figure, because `reach` is two things at once: how
+   * far the join stroke draws, and how much room the letter takes at that end.
+   * Scale only the first and a letter that gives up a join comes out wider than
+   * the one that kept it, which is an `o.end` setting a word wider at its end
+   * than in its middle. Scaled together, a round letter is simply tighter on
+   * every side, which is what round letters are in a roman face too.
+   */
+  const roundly = round ? ROUND_REACH : 1;
+  const reach = script.reach * room.half * 2 * roundly;
+  const side = room.sidebearing * roundly;
 
   /*
    * The bands stop half a pen inside the letter's own lines rather than on
@@ -1174,10 +1205,10 @@ export function planJoin(
   // from the origin, which is the run the lead-in has to climb along.
   // What this letter asks for on top of the join's own reach, at each end.
   const spare = reach * Math.max(0, air);
-  const inset = (ends.entry ? reach : room.sidebearing) + spare - (leftmost - room.half);
+  const inset = (ends.entry ? reach : side) + spare - (leftmost - room.half);
   const from = at(lands.x + inset, lands.y);
   const to = at(leaves.x + inset, leaves.y);
-  const asked = rightmost + room.half + inset + spare + (ends.exit ? reach : room.sidebearing);
+  const asked = rightmost + room.half + inset + spare + (ends.exit ? reach : side);
   /*
    * And never so narrow that the letter hangs over more than a loop's worth.
    *
