@@ -10,18 +10,36 @@
  *
  * `round`  A bowl's width at its waist over its full height. One is a circle.
  *          Taken at the waist because the joins leave at about a fifth of the
- *          x-height and would otherwise be measured as part of the bowl. The
- *          reference's `o` is 1.006 -- it draws a circle and leans the axis
- *          inside it. A face that shears a narrow oval instead reads as an
- *          italic roman, which is what ours did at 0.76 to 0.84.
+ *          x-height and would otherwise be measured as part of the bowl.
  *
- * `bow`    How far a stem's left edge stands off the straight line joining its
- *          ends, in x-heights, signed: positive bulges left. Measured on the
- *          left edge rather than the middle, because below the x-height an `h`
- *          has the arch beside the stem and a middle would average the two.
+ *          On a band a tenth of an x-height deep this read the reference's `o`
+ *          as 1.006 -- a circle -- and that was wrong, and the four faces were
+ *          widened on it. The band was deep enough to catch the `o`'s exit,
+ *          which climbs through 0.3 to 0.4 of an x-height and reaches half an
+ *          x-height outside the bowl, so what was measured was the letter plus
+ *          its join. On a band three hundredths deep the bowl is 0.799: an
+ *          upright oval, not a circle. The band is thin here for that reason
+ *          and must stay thin.
+ *
+ * `bow`    How far the letter's left edge stands off the straight line joining
+ *          its ends, in x-heights, signed: positive bulges left. Measured on
+ *          the left edge rather than the middle, because below the x-height an
+ *          `h` has the arch beside the stem and a middle would average the two.
  *          Shear-proof: a shear moves every point at a given height by the same
  *          amount, so a horizontal distance from a line at that height survives
- *          it. The reference's `l` is 0.260; a straight stem is 0.
+ *          it. A straight stem is 0.
+ *
+ *          The left edge, not the stem's left edge, and the difference is the
+ *          lead-in: it climbs from the seam into the letter and is left of the
+ *          stem for part of the way up. That is the honest comparison rather
+ *          than a flaw, because the reference's lead-in is not a separate
+ *          stroke either -- it is the up-stroke the letter is written with.
+ *          What it cannot survive is a loop, which is a stroke bowed hard to
+ *          the left of the ascender it stands on and swamps everything else, so
+ *          every letter is now read between 0.3 and 0.9 of an x-height, under
+ *          every loop this family draws. Read to 1.9 the `l`, `h`, `b` and `k`
+ *          came out between -0.16 and -0.46 against the reference's +0.09, and
+ *          all of that was the eye.
  *
  * The reference is Dancing Script (Pablo Impallari, SIL OFL 1.1), fetched from
  * npm as in the note on `beside.ts`. Telma's licence does not permit this, so
@@ -56,7 +74,7 @@ const refX = contoursBounds(refGlyph("x")!.contours).yMax;
 
 async function round(contours: Contour[], x: number): Promise<number | null> {
   const all = contoursBounds(contours);
-  const cut = await intersect(contours, [band(x * 0.45, x * 0.55)]);
+  const cut = await intersect(contours, [band(x * 0.485, x * 0.515)]);
   if (!cut.length) return null;
   const waist = contoursBounds(cut);
   return (waist.xMax - waist.xMin) / (all.yMax - all.yMin);
@@ -90,7 +108,7 @@ async function bow(contours: Contour[], x: number, low: number, high: number): P
 
 /** Where to look on each letter, in x-heights above the baseline. */
 const STEMS: Record<string, [number, number]> = {
-  l: [0.3, 1.9], h: [0.3, 1.9], b: [0.3, 1.9], k: [0.3, 1.9], d: [0.3, 1.9],
+  l: [0.3, 0.9], h: [0.3, 0.9], b: [0.3, 0.9], k: [0.3, 0.9], d: [0.3, 0.9],
   n: [0.3, 0.9], m: [0.3, 0.9], i: [0.3, 0.9], u: [0.3, 0.9], r: [0.3, 0.9],
 };
 const BOWLS = ["o", "e", "c", "a", "g", "q", "p", "b", "d"];

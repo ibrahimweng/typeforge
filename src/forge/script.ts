@@ -406,10 +406,18 @@ const ROUND_ENTRY = 0.35;
  * top-left of the letter comes to a point.
  *
  * So the lead-in arrives this far round from the letter's heading, turned
- * towards the seam it came from. Wider and the wedge opens into a fork; at
- * nought it is the hairline again.
+ * towards the seam it came from. At nought it is the hairline again; wider and
+ * the join takes hold lower down the stem and the wedge opens into a fork.
+ *
+ * Twenty-eight, by drawing the `n` at eighteen, twenty-eight and thirty-eight
+ * and looking. Eighteen still left a step in the outline where the two strokes
+ * ran a pen apart; thirty-eight brought the join in at half the stem's height,
+ * which is not where a hand arrives. The reference's own wedge is about
+ * twenty-six degrees wide -- its up-stroke leaves the writing line a third of
+ * an x-height left of where its first stem stands and the two close at the
+ * apex -- so this is close to its figure as well as to what looks right.
  */
-const APEX = (18 * Math.PI) / 180;
+const APEX = (28 * Math.PI) / 180;
 
 /**
  * And never further round from the straight line between the seam and the
