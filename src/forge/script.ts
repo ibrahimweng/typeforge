@@ -477,6 +477,42 @@ function skeleton(spines: Spine[]): Vec2[] {
  * there is a GSUB table to say so, every letter leaves the same way, and
  * leaving low is the one that looks like handwriting for twenty-two of the
  * twenty-six rather than for four.
+ *
+ * The tie-break below is the expensive part of it and it is not a mistake.
+ * `against.ts` reports these faces drawing a fifth more line than the reference
+ * -- 53.5 x-heights of `handgloves` against 44.7 -- and the joins carry most of
+ * that: on the Handwriting they cost 0.75 to 1.53 of an x-height a letter,
+ * about 1.26 on average, where the reference's cannot be carrying more than
+ * 0.38. Taking hold of the top of a stem rather than the foot is what makes
+ * them long, and it is also what a running hand does.
+ *
+ * Six ways of making them shorter were tried and measured, and none of them is
+ * the answer:
+ *
+ *   - `script.reach` halved takes 0.9 x-heights off the line and puts the
+ *     colour *up*, because the advance comes off faster than the ink does.
+ *   - Capping how far the lead-in may climb above the seam, at a quarter of an
+ *     x-height, is worth 1.5 x-heights and a hundredth of the colour. It buys
+ *     that by attaching lower on the stem, which is the one thing the note
+ *     above says not to do, and a hundredth is not the price of it.
+ *   - Letting the lead-out look above the seam as well as below: nothing.
+ *   - Keeping the join off the loop, so it takes hold of the letter's own
+ *     strokes: nothing. The `h`'s lead-in was never on the loop -- a stem is
+ *     one x all the way up in the skeleton, since the slant is sheared on at
+ *     the end, so the tie-break picks its top and that is what costs 0.98.
+ *   - The seam height: 0.18 draws *more* line than 0.30, so the handover height
+ *     the bar wanted is already the one the line wants.
+ *   - Making the letters narrower: done, and it is in the bowls above. It moved
+ *     the width and not this.
+ *
+ * What bounds it: a letter is inset one reach from the origin, so its lead-in
+ * cannot be shorter than that reach plus whatever climb the attachment asks
+ * for. On an `n` the seam is at (0, 0.30) and the attachment at (0.23, 0.40),
+ * a chord of 0.25, and the knit adds 0.05 -- a floor of 0.30 against the 0.37
+ * it actually draws. Even the cheapest letter here is twice what the reference
+ * appears to spend. Whatever closes that gap is not one of the numbers in this
+ * file, and the next attempt should start by measuring where the reference's
+ * own joins begin and end rather than by turning one of them.
  */
 function attach(
   points: Vec2[],
