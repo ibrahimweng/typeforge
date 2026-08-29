@@ -1,0 +1,208 @@
+/**
+ * The panel for the traced font: read one in, then reshape it.
+ *
+ * Two halves, and the order is the workflow rather than a grouping. At the top,
+ * where the letters came from and what reading them cost -- because a fit is a
+ * guess and the panel should say how good a guess before it offers to change
+ * anything. Below, the hand: seven controls that reach every letter at once.
+ *
+ * There is no per-letter scope switch here, and its absence is the point. The
+ * forge next door has one because its letters share a description, so an edit
+ * has to say whether it means the family or the one letter. Here each letter
+ * owns its own strokes already, so the only thing that *can* be shared is the
+ * hand -- and the hand is what these controls are.
+ */
+
+import * as React from "react";
+
+import { QUILL_CONTROLS, type QuillStyle } from "@/quill/controls";
+import { drawTraced, quillStore, useQuill, type Phase } from "@/state/useQuill";
+import { OUTLINE_ACTION, segment, SEGMENT_TRACK } from "./controls";
+import { SliderControl as Slider } from "@/ui/components/controls/slider";
+import { cn } from "@/ui/lib/utils";
+
+export function QuillPanel(): React.JSX.Element {
+  const state = useQuill();
+  const { document: doc, letter } = state;
+  const traced = doc.letters.find((one) => one.glyph.name === letter) ?? doc.letters[0];
+  const file = React.useRef<HTMLInputElement>(null);
+
+  /*
+   * What the drawing actually promised, read off the letter on screen.
+   *
+   * Recomputed with the letter and the hand rather than remembered, because it
+   * changes with both: a stroke that was exact at one width stops being exact
+   * the moment the slant shears its arcs into cubics, and a panel that went on
+   * claiming otherwise would be the most misleading thing here.
+   */
+  const drawn = React.useMemo(
+    () => (traced ? drawTraced(traced, doc.style) : null),
+    [traced, doc.style, state.revision],
+  );
+
+  return (
+    <aside
+      aria-label="Quill"
+      className="toolcraft-panel-surface flex w-80 shrink-0 flex-col border-l border-border"
+    >
+      <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
+        <section className="border-b border-border p-3">
+          <h3 className="pb-2 text-2xs font-medium">The letters</h3>
+          <input
+            ref={file}
+            type="file"
+            accept=".ttf,.otf,.woff,.woff2"
+            className="hidden"
+            onChange={async (event) => {
+              const chosen = event.target.files?.[0];
+              event.target.value = "";
+              if (!chosen) return;
+              await quillStore.trace(new Uint8Array(await chosen.arrayBuffer()), chosen.name);
+            }}
+          />
+          <button
+            type="button"
+            className={cn(OUTLINE_ACTION, "w-full")}
+            disabled={state.tracing}
+            onClick={() => file.current?.click()}
+          >
+            {state.tracing ? "Reading the strokes…" : doc.letters.length > 0 ? "Read another font" : "Read a font"}
+          </button>
+
+          {state.trouble && (
+            <p className="pt-2 text-2xs leading-snug text-[color:var(--destructive,#b4483f)]">
+              {state.trouble}
+            </p>
+          )}
+
+          {doc.letters.length > 0 ? (
+            <>
+              <p className="pt-2 text-2xs leading-snug text-muted-foreground">
+                {doc.letters.length} letters from <span className="text-foreground">{doc.from}</span>,
+                read back as strokes. {traced ? `${traced.glyph.strokes.length} in this one.` : ""}
+              </p>
+              {drawn && (
+                <p className="pt-1 text-2xs leading-snug text-muted-foreground">
+                  {drawn.exactness.exact
+                    ? "Every stroke here offsets in closed form, so this letter cannot fold at any width."
+                    : `Fitted rather than exact, to within ${drawn.exactness.deviation.toFixed(2)} units.`}
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="pt-2 text-2xs leading-snug text-muted-foreground">
+              Reading a font recovers the strokes that drew each letter -- where they run and how
+              wide the pen was along them -- so the letters can be reshaped rather than merely
+              nudged. Point it only at a font you have the right to derive from.
+            </p>
+          )}
+        </section>
+
+        {doc.letters.length > 0 && (
+          <>
+            <section className="border-b border-border p-3">
+              <div className="flex items-baseline justify-between pb-2">
+                <h3 className="text-2xs font-medium">Letter</h3>
+                <span className="text-2xs tabular-nums text-muted-foreground">
+                  {traced?.glyph.strokes.length ?? 0} strokes
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-0.5">
+                {doc.letters.map((one) => (
+                  <button
+                    key={one.glyph.name}
+                    type="button"
+                    aria-pressed={one.glyph.name === letter}
+                    onClick={() => quillStore.setLetter(one.glyph.name)}
+                    className={cn(
+                      "min-w-6 rounded px-1 py-0.5 text-2xs transition-colors",
+                      one.glyph.name === letter
+                        ? "bg-background font-medium text-foreground ring-1 ring-[color:var(--border)]"
+                        : "text-muted-foreground hover:bg-card hover:text-foreground",
+                    )}
+                  >
+                    {one.glyph.name}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="border-b border-border p-3">
+              <h3 className="pb-2 text-2xs font-medium">Shown</h3>
+              <div className={SEGMENT_TRACK} role="group" aria-label="What is drawn">
+                <button
+                  type="button"
+                  aria-pressed={state.showSource}
+                  onClick={() => quillStore.setShowSource(!state.showSource)}
+                  className={segment(state.showSource, "flex-1")}
+                >
+                  Source under
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={state.showSpines}
+                  onClick={() => quillStore.setShowSpines(!state.showSpines)}
+                  className={segment(state.showSpines, "flex-1")}
+                >
+                  Centre-lines
+                </button>
+              </div>
+              <p className="pt-2 text-2xs leading-snug text-muted-foreground">
+                The source is the outline the strokes were read from. It stays where it was however
+                far the hand below is moved, so it is the thing to judge a change against.
+              </p>
+            </section>
+
+            <section className="border-b border-border p-3">
+              <div className="flex items-baseline justify-between pb-2">
+                <h3 className="text-2xs font-medium">The hand</h3>
+                <button
+                  type="button"
+                  onClick={() => quillStore.resetStyle()}
+                  className="text-2xs text-[color:var(--accent)] transition-opacity hover:opacity-70"
+                >
+                  as read
+                </button>
+              </div>
+              {QUILL_CONTROLS.map((control) => (
+                <Hand key={control.key} control={control} />
+              ))}
+              <p className="pt-2 text-2xs leading-snug text-muted-foreground">
+                Every one of these reaches all {doc.letters.length} letters. The strokes underneath
+                are untouched, so any of it can be put back with the button above.
+              </p>
+            </section>
+          </>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+/** One control of the hand, wired to the store. */
+function Hand({ control }: { control: (typeof QUILL_CONTROLS)[number] }): React.JSX.Element {
+  const state = useQuill();
+  const value = (state.document.style as unknown as Record<string, number>)[control.key];
+  return (
+    <div className="py-1" data-quill-control={control.key}>
+      <Slider
+        name={control.label}
+        value={value}
+        min={control.min}
+        max={control.max}
+        step={control.step}
+        showFill
+        onValueChange={(next: number, meta?: { history?: string }) => {
+          /*
+           * `merge` is the middle of a drag and anything else is the end of
+           * one. Told apart so a drag lands on the undo stack once rather than
+           * sixty times, which is the same arrangement the forge's sliders use.
+           */
+          const phase: Phase = meta?.history === "merge" ? "during" : "end";
+          quillStore.changeStyle({ [control.key]: next } as Partial<QuillStyle>, phase);
+        }}
+      />
+      <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">{control.hint}</p>
+    </div>
+  );
+}

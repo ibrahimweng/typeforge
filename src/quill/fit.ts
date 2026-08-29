@@ -36,7 +36,17 @@ import { widthAt } from "./sweep";
 import { ROUND_NIB, type QuillGlyph, type QuillStroke, type WidthProfile } from "./types";
 
 export interface FitOptions {
-  /** Font units per pixel. One is a good trade of accuracy against work. */
+  /**
+   * The em the glyph is drawn on, so the raster can be sized against it.
+   *
+   * Accuracy here is worth having in proportion to the letter rather than in
+   * absolute units: a unit on a 2048-unit em is half as large as a unit on a
+   * 1000-unit em, and rasterising both at a pixel per unit spends four times
+   * the work on the larger one for accuracy nobody asked for. Left out, a
+   * thousand is assumed, which is what most fonts use.
+   */
+  unitsPerEm?: number;
+  /** Font units per pixel. Worked out from the em unless it is given. */
   scale?: number;
   /** How closely the fitted centre-line has to follow the thinned one. */
   tolerance?: number;
@@ -474,7 +484,16 @@ export function fitGlyph(
   advanceWidth: number,
   options: FitOptions = {},
 ): Fitted | null {
-  const scale = options.scale ?? 1;
+  /*
+   * About a thousand pixels to the em, whatever the em is.
+   *
+   * Fixed at a pixel per unit this took four times as long on a 2048-unit font
+   * as on a 1000-unit one and was no more accurate in any way a reader could
+   * see -- and slowly enough that tracing an alphabet ran past a minute and a
+   * half. Sized against the em it is the same work and the same proportional
+   * accuracy for either.
+   */
+  const scale = options.scale ?? Math.max(1, (options.unitsPerEm ?? 1000) / 1000);
   const tolerance = options.tolerance ?? 1.2;
   const budget = options.widthStops ?? 6;
 

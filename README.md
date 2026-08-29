@@ -145,6 +145,57 @@ rhythm, the weight and the way the letters hand over all travel; the letterforms
 underneath stay this engine's own, because a skeleton swept by a pen does not
 arrive at outlines somebody drew freehand, at any setting.
 
+## Trace
+
+The third half of the application, and a second engine rather than a mode of
+the first. Draw builds letters from a skeleton of straight runs and circular
+arcs swept by a fixed pen, which is what makes weight an input rather than a
+distortion and why a drawn letter cannot fold at any setting. It is also why it
+cannot arrive at somebody else's letterforms: it describes a whole typeface in
+forty-six numbers, and a reference script spends twenty-seven thousand.
+
+So `src/quill/` gives the skeleton two things Draw withholds. A spine segment
+may be a **cubic**, so curvature varies along a stroke. A stroke carries a
+**width profile**, so it swells and tapers along its length — which is what a
+nib cannot fake, because a nib is wide across one axis and narrow across the
+other and its thicks and thins follow the *heading* of the stroke. Pressure
+follows the hand, and a straight downstroke that thickens in its middle is the
+shape that proves the difference.
+
+Both are optional and the trade is made per stroke. Lines and arcs at one width
+are offset in closed form and say `exact`; reach for a cubic or a varying width
+and the offset is fitted, and the stroke reports the deviation it actually
+achieved rather than the one it was asked for. The panel says which you have.
+
+**Reading a font in** recovers the strokes that drew each letter: fill it,
+measure how far every inside pixel is from the edge, thin that to a line one
+pixel wide, break it at its junctions, splice back the arms that plainly carry
+on into each other, and fit cubics to what is left. The width comes off the
+distance field, which is the same measurement as the stroke's half-width.
+
+```bash
+FONT=/path/to/font.ttf npx vite-node scripts/trace.ts
+```
+
+prints how far the redrawing strays from what it read, letter by letter. On a
+connected script it comes back within about two units on a thousand-unit em,
+and — which matters as much — as the handful of strokes a hand would have used
+rather than the hundreds a junction-by-junction cut produces.
+
+Then seven controls reach every letter at once: weight, pressure, taper, slant,
+nib contrast, nib angle and tracking. The strokes underneath are never touched,
+so any of it goes back with one press.
+
+Two honest limits. A junction is one point in the ink and two strokes in the
+hand, and nothing in the ink says which two — so some letters come back in more
+pieces than a designer would have drawn, and joining those is a hand
+correction. And what this reaches is a few units, not a byte-identical copy;
+those are different claims and only the smaller one is being made.
+
+Point it only at a font you have the right to derive from. Recovering the
+strokes of a typeface and redrawing them makes a derivative work of it, whatever
+the representation in between.
+
 ## Finding your way around
 
 There is a sample font in the toolbar's empty state, so the tool can be tried
@@ -325,6 +376,12 @@ src/forge/    the skeleton-and-pen engine behind Draw
   shapes.ts     bowls, bends and the runs a letter is described with
   script.ts     the joining: the seam, the reach, the loops and the bounce
   likeness.ts   what two reference faces measure, and the way to each
+src/quill/    the stroke engine behind Trace
+  types.ts      spines, width profiles, strokes
+  sweep.ts      a centre-line into ink, at a width that varies
+  fit.ts        a drawn letter read back as strokes
+  raster.ts     fill, distance transform, thinning
+  controls.ts   the hand: weight, pressure, taper, slant, nib
 src/assemble/ the pile of drawings behind Assemble
 src/project/  the saved document: the file format, and keeping it in the browser
 src/views/    font, glyph, kerning and spacing views
