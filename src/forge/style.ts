@@ -110,6 +110,11 @@ export interface Parts {
     spring: number;
     /** How far the arch reaches over before it turns down. */
     reach: number;
+    /**
+     * How high the arch rises, as a share of the x-height. One reaches the
+     * waist; less stops short of it, which is what a running hand does.
+     */
+    crest: number;
   };
   bowl: {
     /**
@@ -370,7 +375,7 @@ export const SANS: Style = {
   pen: { weight: 92, contrast: 0, angle: 0 },
   parts: {
     slab: { on: false, projection: 0.65, thickness: 0.43, bracket: 0 },
-    shoulder: { spring: 0.62, reach: 1 },
+    shoulder: { spring: 0.62, reach: 1, crest: 1 },
     bowl: { width: 1, squareness: 0, aperture: 1 },
     corner: { radius: 0, join: "miter" },
     terminal: { kind: "butt", angle: 0 },
@@ -410,7 +415,7 @@ export const SERIF: Style = {
   parts: {
     ...SANS.parts,
     slab: { on: true, projection: 0.46, thickness: 0.48, bracket: 0.23 },
-    shoulder: { spring: 0.58, reach: 1 },
+    shoulder: { spring: 0.58, reach: 1, crest: 1 },
     terminal: { kind: "angled", angle: 12 },
   },
 };
@@ -445,7 +450,7 @@ export const DISPLAY: Style = {
   forms: { A: "flat" },
   parts: {
     ...SANS.parts,
-    shoulder: { spring: 0.66, reach: 1.02 },
+    shoulder: { spring: 0.66, reach: 1.02, crest: 1 },
     /*
      * Narrower than tall, which is both what a fat face is and what keeps its
      * letters in the order the rest of the alphabet stands in. At a round bowl
@@ -492,7 +497,7 @@ export const GEOMETRIC: Style = {
   forms: { Q: "under", G: "bare", M: "deep" },
   parts: {
     ...SANS.parts,
-    shoulder: { spring: 0.55, reach: 1 },
+    shoulder: { spring: 0.55, reach: 1, crest: 1 },
     bowl: { width: 1, squareness: 0, aperture: 1 },
     corner: { radius: 0, join: "miter" },
     terminal: { kind: "butt", angle: 0 },
@@ -512,7 +517,7 @@ export const RIBBON: Style = {
   forms: { l: "tailed" },
   parts: {
     ...SANS.parts,
-    shoulder: { spring: 0.4, reach: 1.05 },
+    shoulder: { spring: 0.4, reach: 1.05, crest: 1 },
     bowl: { width: 1, squareness: 0.5, aperture: 1 },
     corner: { radius: 220, join: "round" },
     terminal: { kind: "butt", angle: 0 },
@@ -532,7 +537,7 @@ export const TECHNICAL: Style = {
   forms: { t: "straight" },
   parts: {
     ...SANS.parts,
-    shoulder: { spring: 0.78, reach: 0.82 },
+    shoulder: { spring: 0.78, reach: 0.82, crest: 1 },
     bowl: { width: 0.82, squareness: 0.92, aperture: 1 },
     corner: { radius: 45, join: "round" },
     terminal: { kind: "butt", angle: 0 },
@@ -619,7 +624,7 @@ export const MARKER: Style = {
      * terminal itself to be fixed.
      */
     terminal: { kind: "butt", angle: 0 },
-    shoulder: { spring: 0.42, reach: 1.02 },
+    shoulder: { spring: 0.42, reach: 1.02, crest: 1 },
   },
   /*
    * The shapes a person draws rather than the shapes a punchcutter cut. The
@@ -721,7 +726,7 @@ export const PSYCHEDELIC: Style = {
   parts: {
     ...SANS.parts,
     bowl: { width: 1.02, squareness: 0.1, aperture: 0.42 },
-    shoulder: { spring: 0.72, reach: 1 },
+    shoulder: { spring: 0.72, reach: 1, crest: 1 },
     ball: { size: 1.75, drop: 0.4 },
   },
 };
@@ -757,7 +762,7 @@ export const BRUSH: Style = {
   parts: {
     ...SANS.parts,
     bowl: { width: 0.94, squareness: 0.28, aperture: 0.86 },
-    shoulder: { spring: 0.5, reach: 0.96 },
+    shoulder: { spring: 0.5, reach: 0.96, crest: 1 },
     corner: { radius: 0, join: "miter" },
     terminal: { kind: "butt", angle: 0 },
     flare: { spread: 0.14, depth: 1.1, curve: 0.7 },
@@ -810,7 +815,7 @@ export const GROTESQUE: Style = {
   parts: {
     ...SANS.parts,
     bowl: { width: 0.97, squareness: 0.14, aperture: 0.62 },
-    shoulder: { spring: 0.74, reach: 1 },
+    shoulder: { spring: 0.74, reach: 1, crest: 1 },
   },
 };
 
@@ -900,7 +905,7 @@ export const SLAB: Style = {
     ...SANS.parts,
     slab: { on: true, projection: 0.6, thickness: 0.74, bracket: 0.04 },
     bowl: { width: 1, squareness: 0.08, aperture: 0.78 },
-    shoulder: { spring: 0.66, reach: 1 },
+    shoulder: { spring: 0.66, reach: 1, crest: 1 },
   },
 };
 
@@ -953,7 +958,7 @@ export const HANDWRITING: Style = {
   ...SANS,
   name: "Handwriting",
   family: "script",
-  blurb: "A plain joined hand. One thickness, a slight lean, and a line that does not sit quite still.",
+  blurb: "A plain joined hand. A line that bows as it goes, a pen that swells on the downstroke, and a lean that will not sit quite still.",
   /*
    * The capitals come down and the ascenders go up, to leave room for the
    * bounce.
@@ -964,13 +969,107 @@ export const HANDWRITING: Style = {
    * drop landed under an `H` that could not -- capitals do not join, so they do
    * not bounce. The gap has to be wider than the bounce, and it is.
    */
-  metrics: { ...SANS.metrics, xHeight: 520, capHeight: 700, ascender: 790, slant: 6 },
-  pen: { weight: 84, contrast: 0, angle: 0 },
+  /*
+   * And the lowercase is small on the body, which is the other half of what
+   * separates a script from a sans on a slant.
+   *
+   * Every face here was drawn with a text face's proportions: this one put
+   * half the body into its x-height and gave its `l` a rise of one and a half
+   * of them. Dancing Script puts a third of the body into its x-height and
+   * carries its ascenders two and a fifth. Nothing about the letters was
+   * wrong; there was simply not enough of the body left over for the
+   * extenders to be the point of the face, and a joined hand whose ascenders
+   * barely clear the waist reads as a slanted sans however it is joined.
+   *
+   * So the lowercase comes down and the extenders stay where they are, which
+   * moves both figures at once. Everything measured against the x-height came
+   * down with it -- the counter, the sidebearing, the overshoot and the pen --
+   * so the face keeps its colour and its fit and only its proportion changes.
+   */
+  metrics: {
+    ...SANS.metrics,
+    xHeight: 350,
+    capHeight: 656,
+    ascender: 726,
+    descender: -250,
+    counterWidth: 249,
+    // Under the join's reach in units, which is 0.42 of a 78-unit pen: a
+    // letter that gives up a join swaps the reach for this, and has to come out
+    // narrower for it, not wider.
+    sidebearing: 28,
+    /*
+     * The round letters go well over the line, which is half of the bounce.
+     *
+     * The reference tops its `o` at 1.06 of an x-height and its `e` at 1.08,
+     * against an `n` at 0.88 -- and ours reached 0.93 to 1.03 for everything,
+     * which is a ruled line. The other half is the shoulder's crest above.
+     *
+     * Large for an overshoot because it is doing more than one job: a pen with
+     * this much contrast is at its thinnest across the top of a bowl, so the
+     * ink stops short of where the spine goes and the overshoot pays for that
+     * before it buys any overshoot at all. At 6 this face's `o` did not reach
+     * the x-height at all, topping out at 0.96.
+     *
+     * Affordable only since a round letter's room came to be measured at the
+     * seam: a taller bowl is a wider one, and spaced off its waist it would
+     * have taken the width with it.
+     *
+     * Thirty on all four, which is about a tenth of an x-height and is what the
+     * reference overshoots -- its `o` stands 0.06 of one above the waist and
+     * 0.10 below the line. Swept further and it keeps paying: 52 on the Casual
+     * took the spread of the tops to 0.151 and the face to 1.20 of the
+     * reference's width with descenders 0.99 deep against its 0.84, because
+     * the overshoot goes under the line as well as over it and a descender is
+     * measured from where it lands. Thirty is where the bounce is bought and
+     * the descender is not.
+     */
+    overshoot: 30,
+    slant: 6,
+  },
+  /*
+   * A pointed pen, not a ballpoint, and this is what a script's texture is.
+   *
+   * Read the widths of every run of ink a horizontal line crosses on `noeacsu`
+   * and the reference comes out in two heaps: about 350 runs at 0.07 to 0.09 of
+   * an x-height and about 440 at 0.19 to 0.21, with a gap between them. That is
+   * a nib that swells coming down and lifts going up. This face came out as one
+   * spike -- 399 runs at 0.16 and nothing at all thinner -- which is a monoline
+   * wearing a script's shapes, and is exactly what it looked like set as words.
+   *
+   * Contrast below about 0.6 does not open the heap at all: swept at 0.22, 0.45
+   * and 0.6, the thin end never leaves the spike. There is no moderate setting
+   * here, only spike or spread. At 0.78 the runs spread from 0.10 to 0.35 with
+   * the main heap at 0.19, which is the reference's, and the weight goes to 74
+   * to put it there and keep the page at 0.99 of the reference's colour.
+   *
+   * The angle stays at 28. Swept against 0 and -6 -- on the reasoning that a
+   * nib square to the downstroke is what the Formal Script wanted -- and both
+   * of those close the spread back into a single spike, because at this face's
+   * slant it is 28 that puts the two directions of travel across different
+   * widths of the nib.
+   */
+  pen: { weight: 78, contrast: 0.78, angle: 28 },
   /*
    * The single-storey a and the tailed l, which is what a hand writes. Nobody
    * draws a two-storey a with a pen unless they are drawing a typeface.
    */
-  forms: { k: "standing", l: "tailed", g: "curled", t: "straight", f: "descending" },
+  /*
+   * The plain `g`, not the curled one, and that is a fact about a joined face
+   * rather than about the letter.
+   *
+   * The curl carries the descender further round than a straight hook does,
+   * which is what a face without loops wants. This face has loops: the join
+   * layer strikes an eye on the lowest end of every descender, so a curled `g`
+   * is a written descender drawn twice, and the two ran an x-height apart just
+   * under the baseline where the reference has one stroke a fifth of an
+   * x-height wide. It set the `g` at 1.26 to 1.41 of this family's own `o`
+   * against the reference's 1.07; plain, it is 1.00.
+   */
+  // And the straight-tailed `y` for the same reason as the plain `g` above: the
+  // eye is the join layer's to draw, so a tail that curls round as well draws
+  // it twice. Plain, this face set its `y` at 1.44 to 1.68 of its own `o`
+  // against the reference's 1.06.
+  forms: { k: "standing", l: "tailed", t: "straight", y: "straight", f: "descending", n: "written", o: "written", a: "written", e: "written" },
   parts: {
     ...SANS.parts,
     /*
@@ -996,17 +1095,180 @@ export const HANDWRITING: Style = {
      */
     terminal: { kind: "butt", angle: 0 },
     corner: { radius: 40, join: "round" },
-    shoulder: { spring: 0.55, reach: 1 },
+    /*
+     * The arch stops short of the waist, which is what a hand does.
+     *
+     * The reference tops its `n` at 0.88 of an x-height and its `u` at 0.90
+     * while its `m`, `v`, `w` and `x` reach 1.00 and its `o`, `e` and `z` go
+     * over to 1.06 and beyond -- a fifth of an x-height between the lowest
+     * letter and the highest. Every letter of ours stood within four
+     * hundredths of every other, which is what makes a line of type look ruled
+     * rather than written.
+     *
+     * Swept: 0.90 puts the `n` at 0.89 and the `u` at 0.91.
+     */
+    shoulder: { spring: 0.55, reach: 0.75, crest: 0.90 },
+    /*
+     * Narrower than a circle, which is what a script's round letters are.
+     *
+     * This said the opposite for a while and was wrong. The reference's `o`
+     * reads 0.799 of an x-height across the middle against a bowl 1.16 tall --
+     * a ratio of 0.69, an upright oval, and the same 0.79 the note that stood
+     * here before recorded. What overturned it was measuring the waist on a
+     * band a tenth of an x-height deep: the reference's exit stroke climbs
+     * through 0.3 to 0.4 and reaches 1.18, half an x-height outside the bowl,
+     * and a band that wide catches it and reads the letter as a circle. Read on
+     * three hundredths either side of the middle it cannot, and the bowl is an
+     * oval again.
+     *
+     * The cost of getting it wrong was not the shape alone. Drawn to 1.15 the
+     * bowls filled their own advances: two `o`s left 0.10 of an x-height of
+     * white between them at the waist where the reference leaves 0.29, and on
+     * the Casual Script and the Monoline they touched and fused.
+     *
+     * The number is a ratio of the bowl's height, so it moved when the
+     * overshoot did -- a taller bowl is a wider one at the same ratio. 0.56
+     * reads 0.795 here.
+     */
+    bowl: { width: 0.56, squareness: 0, aperture: 1 },
     script: {
       ...NO_SCRIPT,
       on: true,
-      height: 0.36,
-      reach: 1.5,
-      flat: 0.2,
-      // No loops. A print hand does not make them, and leaving them off is what
-      // separates this from the three below rather than an omission.
-      loop: 0,
+      /*
+       * Low, so the join runs along the writing line and the letters arch over
+       * it. Set near the waist -- which is where these all began -- the
+       * connecting stroke crosses every letter at mid height and a word comes
+       * out threaded on a rule rather than written on a line. `levelArc`
+       * arrives tangent to the horizontal, so a long stretch either side of
+       * every seam is flat, and at the waist that flat is the most visible
+       * thing on the page.
+       *
+       * Low was the wrong answer to that, and the reference says so. Sliced
+       * down its own advance, its `n`, `o`, `e`, `a`, `u` and `m` all carry
+       * ink from about 0.25 of an x-height to 0.40 -- it hands over a third of
+       * the way up, and the crossing is 0.15 of an x-height tall, which is a
+       * stroke climbing steeply through the boundary. Ours handed over at 0.15
+       * to 0.22, a crossing 0.07 tall, which is a stroke lying flat -- and
+       * lying flat right where every letter's foot already is.
+       *
+       * Taken up to the reference's third. Measured on the longest unbroken
+       * run of ink at any height in `handgloves`, which is what a rule through
+       * a word is: 0.25 of the word at 0.18, 0.18 at 0.24, and 0.14 from 0.30
+       * up, against the reference's 0.06. The rest of that gap is the flat
+       * tangent itself and is not a number this control can reach.
+       *
+       * It is now a number `tilt` reaches, and the height was right all along:
+       * `seam.ts` puts the reference's handover at 0.26 to 0.39 on every letter
+       * of its lowercase, which is where this already stood. See `tilt`.
+       */
+      height: 0.3,
+      /*
+       * Climbing, and steeply, which is the difference between a join and a
+       * rule through the word.
+       *
+       * Twenty was the first attempt and it tilted the wrong thing: the arc
+       * turned and the straight run at the seam stayed level, so every letter
+       * still laid a flat stretch at the same height. `scallop.ts` draws what
+       * the reference does instead -- its `n` leaves the foot of its last stem
+       * at the writing line, runs level for a tenth of an x-height, then climbs
+       * at about fifty degrees across its own advance and goes on climbing into
+       * the letter after it at about seventy.
+       *
+       * Fifty-five is between the reference's two, which is as close as one
+       * number gets: both halves of a join have to leave the seam on the same
+       * heading or two letters that have never met cannot meet on it. Swept at
+       * 45, 55, 65 and 72 with the ink standing on the origin measured against
+       * the reference's -- 0.08, 0.11, 0.16 and 0.19 of an x-height tall
+       * against its 0.27 -- and taken by looking rather than by that number,
+       * because past about sixty-five the straight run either side of the seam
+       * reads as a spike between the letters.
+       */
+      tilt: 55,
+      /*
+       * And this is the face's fit as much as its join, which is why it moved.
+       *
+       * The reach is added to the advance at both ends, so it is the white
+       * between two letters as well as the stroke that crosses it. At 1.5 it
+       * was a quarter of the x-height at each end where the reference runs
+       * about a twelfth, and the letters that have no width of their own paid
+       * for it twice: the `o` and the `e` came out as wide as the `n`, where
+       * the reference draws them a fifth narrower.
+       *
+       * Set to where the letters still only lap by what the knit intends. Below
+       * that they lap by more, which is two letters colliding rather than one
+       * joining, and this face has room all the way down -- at 0.6 the worst
+       * pair still laps by exactly the knit's sixteen hundredths.
+       *
+       * What stops it there is the other end: the reach has to stay above the
+       * sidebearing, because that is what stands in for it on the side a
+       * boundary letter has no join on. Below it, dropping a join makes a
+       * letter *wider* -- the first letter of a word came out broader than the
+       * same letter mid-word, and the `.begin` and `.end` forms stopped being
+       * the narrower drawings they exist to be. This face's sidebearing is 46
+       * units against a pen of 70, so the floor is two thirds of a stem.
+       */
+      /*
+       * Narrower than the arch this face used to carry, and measured stem to
+       * stem rather than by the advance.
+       *
+       * Across an `n` at half the x-height the reference sets its two stems
+       * 0.79 of an x-height apart, and its `m` a shade tighter still at 0.73
+       * and 0.61. These faces stood at 0.97 to 1.20. It hides in the `n`,
+       * which has one arch and came out within a twentieth of the reference's
+       * advance, and it doubles in the `m`: 2.37 to 2.75 against 1.95.
+       *
+       * The join goes up as the arch comes down. The reference builds its `n`
+       * out of a narrow arch and a long reach -- 0.55 of the advance is arch
+       * and 0.85 is stem and join -- where these were built the other way
+       * round, 0.98 and 0.49. Moving one without the other only trades the `m`
+       * for the `n`.
+       *
+       * This face stood at 1.02 and reads 0.78 here.
+       */
+      reach: 0.55,
+      flat: 0.06,
+      /*
+       * Looped, where this face used to have none.
+       *
+       * That was a deliberate choice -- a print hand does not turn its
+       * ascenders round -- and it is the furthest thing in the family from the
+       * reference, which loops every one of them. Sized so the eye's foot lands
+       * where the reference's does, just above the x-height, rather than partway
+       * up the ascender: see the note on the Formal Script's loop.
+       */
+      loop: 2.63,
+      /*
+       * How narrow the eye is for its height, and it was never chosen: one arc
+       * bowed to a half is a semicircle, so every eye came out exactly half as
+       * wide as it was tall. Measured where the eye is widest, ours spanned 0.79
+       * of an x-height against the reference's 0.48, with a counter of 0.47
+       * against its 0.20.
+       *
+       * Swept from 0.5 down to 0.22 on all four; this is where this face's `l`
+       * lands on both of the reference's numbers at once. The four differ because
+       * they differ in slant and pen and where their eyes sit -- the Formal's is
+       * struck at 1.6 x-heights and the Monoline's at 1.3 -- and this is fitted
+       * to the same two figures on each.
+       */
+      eye: 0.28,
       irregularity: 1,
+      bow: 0.8,
+      /*
+       * A tenth of an x-height of overlap either side of the seam, in this
+       * face's stems.
+       *
+       * Sized against the reference rather than guessed: its `n`'s lead-out
+       * runs a tenth of an x-height past its own advance and the next letter's
+       * lead-in starts a tenth before its own origin, so the two halves lap over
+       * a fifth of an x-height and weld into one climbing stroke. Kept in stems
+       * so it moves whenever the pen does -- which is why the four numbers
+       * differ, the Monoline's pen being a hairline and needing most of one.
+       *
+       * Up from 0.22, which was the same figure sized for a handover that
+       * crossed the seam nearly level. A climbing one spends part of its run
+       * going up instead of along, so the same length of stroke laps less.
+       */
+      knit: 0.45,
     },
   },
   /*
@@ -1042,26 +1304,188 @@ export const FORMAL_SCRIPT: Style = {
   name: "Formal Script",
   family: "script",
   blurb: "A pointed pen held at an angle and moved slowly. Long loops, deep contrast, and a steep even lean.",
-  metrics: { ...SANS.metrics, xHeight: 430, ascender: 790, descender: -260, slant: 22 },
-  pen: { weight: 96, contrast: 0.58, angle: 42 },
-  forms: { k: "standing", a: "double", g: "curled", l: "tailed", f: "descending", one: "footed" },
+  /*
+   * The lowercase brought down under the extenders, as on the Handwriting and
+   * for the reason set out there, and taken the whole way: 0.330 of the em in
+   * the x-height and 2.20 x-heights of ascender, against the reference's 0.332
+   * and 2.17. It read 0.368 and 2.18 -- right on the rise and a tenth wide on
+   * the body, which is a face that has the reference's proportion between its
+   * own two lines and not against the em.
+   *
+   * Everything measured against the x-height came down with it: the counter,
+   * the sidebearing, the overshoot and the pen. The descender is set where the
+   * ink lands rather than where the loop is aimed, which is a little short of
+   * the metric because a descender loop reaches past its line.
+   */
+  metrics: {
+    ...SANS.metrics,
+    xHeight: 332,
+    // Under the ascender by the gap this face already had, brought down in the
+    // same proportion. Left at the Sans' 700 it stood level with the new
+    // ascender, and a capital that is not shorter than an `l` is not a capital.
+    capHeight: 639,
+    ascender: 720,
+    descender: -262,
+    counterWidth: 285,
+    sidebearing: 42,
+    // Over the line, as on the Handwriting. 30 takes the spread of the tops
+    // from 0.147 to 0.202, against the reference's 0.205, for 4 per cent of width.
+    overshoot: 30,
+    slant: 22,
+  },
+  /*
+   * The nib, set against the Garamond this face is cut to.
+   *
+   * Forty-two degrees is a broad-nib angle and it was fighting the letters. A
+   * nib is thickest across itself, so at forty-two the thick falls on a stroke
+   * running down and to the *left* -- and an italic has none: at this slant
+   * every downstroke runs at about sixty-eight degrees, sixty off the thickest
+   * direction, so the deepest contrast the face could ask for came out as a
+   * face with almost none. Set square to the downstrokes instead and the thick
+   * lands where a hand puts it and where the reference has it, with the
+   * hairlines left on the joins and the tops of the bowls.
+   *
+   * And then the ratio is worth having: at 0.58 the thin is four tenths of the
+   * thick, where the reference's hairlines are nearer a fifth.
+   *
+   * The weight came up with it, and for the reference's colour rather than its
+   * proportion: raising the contrast thins the thins and leaves the thicks
+   * where they were, so the page got *lighter* for having more contrast in it.
+   * Swept at 96, 108, 120, 132, 145 and 175 against the counters -- the `a`,
+   * the `e` and the `g` are closing by 132 and gone by 145, and the reference
+   * keeps its counters open. A hundred and twenty is a quarter more colour with
+   * the whites still breathing.
+   *
+   * Two numbers below are measured in stems and so moved with it. The reach
+   * would have widened the face by six per cent for a change that is meant to
+   * be about colour; at 1.6 the line comes out within one per cent of where it
+   * was. The drop would have grown to a hundred and twenty units, which is the
+   * size that was already blobbing on the `c`; at 0.8 it stays where it was
+   * tuned. The reference is set tighter than either -- closing the reach
+   * further is a change to the fit and belongs to itself.
+   */
+  /*
+   * And the weight down with the body.
+   *
+   * At 103 against a 370-unit x-height this pen was 0.28 of it, against the
+   * reference's 0.19 -- and the page still read within five per cent of the
+   * reference's colour, because the face was half again too wide and the extra
+   * white was paying for the extra black. Closing the fit took that cover away
+   * and the colour went to 1.22. At 70 against 332 the stem is 0.21 of the
+   * x-height and the two land together: 1.10 on the fit, 1.07 on the colour.
+   *
+   * Swept at 92, 80 and 70 across four reaches, with the counters watched: the
+   * `a`, the `e` and the `g` closed at 132 and above on the old body and are
+   * open at every one of these.
+   */
+  pen: { weight: 70, contrast: 0.78, angle: -22 },
+  /*
+   * The plain `g`, not the curled one, and that is a fact about a joined face
+   * rather than about the letter.
+   *
+   * The curl carries the descender further round than a straight hook does,
+   * which is what a face without loops wants. This face has loops: the join
+   * layer strikes an eye on the lowest end of every descender, so a curled `g`
+   * is a written descender drawn twice, and the two ran an x-height apart just
+   * under the baseline where the reference has one stroke a fifth of an
+   * x-height wide. It set the `g` at 1.26 to 1.41 of this family's own `o`
+   * against the reference's 1.07; plain, it is 1.00.
+   */
+  // And the straight-tailed `y` for the same reason as the plain `g` above: the
+  // eye is the join layer's to draw, so a tail that curls round as well draws
+  // it twice. Plain, this face set its `y` at 1.44 to 1.68 of its own `o`
+  // against the reference's 1.06.
+  forms: { k: "standing", a: "double", l: "tailed", y: "straight", f: "descending", one: "footed", n: "written", o: "written", e: "written" },
   parts: {
     ...SANS.parts,
     // Square, for the reason set out on the Handwriting above.
     terminal: { kind: "butt", angle: 0 },
+    /*
+     * The drops the reference finishes its `a`, `c`, `f`, `r` and `y` on, which
+     * this face had none of: `ball.size` came down from the Sans at nought. One
+     * stem across and seated a third of a radius along the stroke, which is the
+     * arrangement the Monoline arrived at -- visible and confident rather than
+     * timid, and reading as the stroke swelling and stopping.
+     */
+    ball: { size: 0.8, drop: 0.35 },
     corner: { radius: 46, join: "round" },
-    bowl: { width: 0.92, squareness: 0, aperture: 1 },
-    shoulder: { spring: 0.5, reach: 0.96 },
+    // An oval, as on the Handwriting. 0.55 reads 0.822, and is the floor of
+    // its own control; the reference's 0.799 would want 0.539.
+    bowl: { width: 0.55, squareness: 0, aperture: 1 },
+    // The arch stops short, as on the Handwriting. 0.86 reads 0.88 and 0.88.
+    shoulder: { spring: 0.5, reach: 0.7, crest: 0.86 },
     script: {
       ...NO_SCRIPT,
       on: true,
+      // Low, for the reason set out on the Handwriting above.
+      // A third of the way up, as on the Handwriting. Its run goes 0.19 to 0.15.
       height: 0.3,
-      reach: 1.9,
+      // Climbing, as on the Handwriting, and for the reason set out there.
+      tilt: 55,
+      /*
+       * Down from 1.6, then from 1.1, and the second of those was waiting on
+       * the body rather than on the join.
+       *
+       * At 1.1 this face set 1.48 times as wide as the reference, and closing
+       * the reach on its own only traded that for colour: the ink stayed where
+       * it was and the room around it came away, so the page went from 1.05 to
+       * 1.31 as the fit came from 1.48 to 1.13. The reach was holding a wide
+       * face apart, not spacing a right one.
+       *
+       * With the body and the pen at the reference's proportions there is
+       * nothing to hold apart. Swept at 0.8, 0.65 and 0.55 against three knits:
+       * the fit and the colour crossed at about 0.7, which read 1.10 and 1.07.
+       *
+       * The note that used to stand here said the bodies lap by more than the
+       * knit intends below 1.1 -- 0.20 against 0.16 at a reach of 0.9. They do
+       * not any more; that was the old body's letters being wider than the
+       * reference's, and it is 0.16 here.
+       *
+       * Back up to 0.8, as the arch comes down, for the reason set out on the
+       * Handwriting above. That sweep was against a shoulder of 0.96, and it
+       * was reading the two together without knowing it. This face stood at
+       * 1.09 stem to stem across an `n`, against the reference's 0.79, and
+       * reads 0.80 here.
+       */
+      reach: 0.8,
       // Almost no flat: a formal hand swings from one letter into the next in
       // one continuous turn and never runs level between them.
       flat: 0.04,
-      loop: 1.8,
+      /*
+       * Sized on the reference's eye rather than on the pen alone.
+       *
+       * The eye's *shape* was already close -- half again as tall as it is
+       * wide, against the reference's 0.53 -- and its size and its place were
+       * not. The reference's `l` turns its ascender round and crosses back over
+       * the stem just above the x-height, at 0.64 of one, leaving an eye 1.28
+       * x-heights tall. This face crossed at 1.18 and left one 0.85 tall: a
+       * small eye stranded near the top of the ascender rather than the loop
+       * being the point of the letter.
+       *
+       * The eye is struck down from the top of the stem, so what moves its foot
+       * is how far down it reaches, and that is this number.
+       */
+      loop: 2.7,
+      /*
+       * How narrow the eye is for its height, and it was never chosen: one arc
+       * bowed to a half is a semicircle, so every eye came out exactly half as
+       * wide as it was tall. Measured where the eye is widest, ours spanned 0.76
+       * of an x-height against the reference's 0.48, with a counter of 0.37
+       * against its 0.20.
+       *
+       * Swept from 0.5 down to 0.22 on all four; this is where this face's `l`
+       * lands on both of the reference's numbers at once. The four differ because
+       * they differ in slant and pen and where their eyes sit -- the Formal's is
+       * struck at 1.6 x-heights and the Monoline's at 1.3 -- and this is fitted
+       * to the same two figures on each.
+       */
+      eye: 0.3,
       irregularity: 0.12,
+      bow: 0.6,
+      // The reference's tenth of an x-height either side of the seam, in this
+      // face's stems -- so it moves whenever the pen does, and the pen came down
+      // by a third. Up from 0.3 with the climbing handover; see the Handwriting.
+      knit: 0.48,
     },
   },
   /*
@@ -1092,27 +1516,127 @@ export const CASUAL_SCRIPT: Style = {
   ...SANS,
   name: "Casual Script",
   family: "script",
-  blurb: "A felt tip moving fast. High joins, short reach, small loops and a line that will not sit still.",
+  blurb: "A felt tip moving fast. High joins, short reach, small loops, and a line that bows and will not sit still.",
   // Bounces hardest of the four, so it needs the most room between its
   // capitals and its ascenders. See the note on the Handwriting.
-  metrics: { ...SANS.metrics, xHeight: 560, capHeight: 690, ascender: 800, descender: -200, slant: 13 },
-  pen: { weight: 112, contrast: 0.18, angle: 12 },
-  forms: { k: "standing", g: "curled", t: "straight", y: "straight", f: "descending" },
+  // The lowercase brought down under the extenders, as on the Handwriting. This
+  // one had the largest x-height of the four and the shortest rise, so it moves
+  // furthest; it stops at the Telma end of the range rather than the Dancing
+  // Script end, because a fast informal hand is not a formal one.
+  metrics: {
+    ...SANS.metrics,
+    xHeight: 350,
+    capHeight: 645,
+    ascender: 729,
+    descender: -239,
+    counterWidth: 232,
+    sidebearing: 34,
+    // Over the line, as on the Handwriting. 52 takes the spread of the tops
+    // from 0.049 to 0.150, against the reference's 0.205, for 6 per cent of width.
+    // Furthest behind of the four: its round letters topped out at 0.93,
+    // below the waist rather than over it, so it asks for the most.
+    overshoot: 30,
+    slant: 13,
+  },
+  /*
+   * Down with the fit, and for the reason the Formal and the Monoline record:
+   * this face was 1.14 times as wide as the reference and 1.29 times as dark,
+   * and those are not two faults. Half again the room needs half again the ink
+   * to fill it, so closing one without the other only trades them -- swept at
+   * 66, 58, 52 and 46 across three reaches, and the colour rises a hundredth
+   * for every hundredth the fit comes in.
+   *
+   * At 52 the fit is exactly the reference's and the page reads 1.17. Lighter
+   * closes the rest of it -- 46 reads 1.09 at a fit of 0.96 -- and stops being
+   * this face: a felt tip moving fast is not thinner than the plain hand beside
+   * it, and 46 is 0.143 of the x-height against the Handwriting's 0.157. What
+   * is left is not the pen. It is the line: this face's `d`, `h` and `g` carry
+   * a sixth more ink than the reference's at the same width, and its `v` and
+   * `e` a third.
+   */
+  /*
+   * And a pointed pen here too, which is the one thing about this face that is
+   * not what a felt tip does.
+   *
+   * A felt tip is monoline, and monoline is what this was: 385 runs at 0.15 of
+   * an x-height and nothing thinner. Against the reference that reads as wire
+   * rather than as writing -- see the note on the Handwriting for the two heaps
+   * a written line comes in. Swept at 0.30, 0.70 and 0.78 across three weights,
+   * 0.70 at 66 puts the main heap at 0.19, where the reference's is, and the
+   * page at the reference's colour exactly.
+   *
+   * What is kept of the felt tip is everything else: the speed, the high seam,
+   * the short reach, the bounce.
+   */
+  pen: { weight: 70, contrast: 0.7, angle: 22 },
+  // The tailed `l`, as on the other three and as the reference draws it: the
+  // plain one is a bare stem with no width of its own, so the join spaced it at
+  // 0.47 of this face's `o` where the reference sets its `l` at 0.65.
+  /*
+   * The plain `g`, not the curled one, and that is a fact about a joined face
+   * rather than about the letter.
+   *
+   * The curl carries the descender further round than a straight hook does,
+   * which is what a face without loops wants. This face has loops: the join
+   * layer strikes an eye on the lowest end of every descender, so a curled `g`
+   * is a written descender drawn twice, and the two ran an x-height apart just
+   * under the baseline where the reference has one stroke a fifth of an
+   * x-height wide. It set the `g` at 1.26 to 1.41 of this family's own `o`
+   * against the reference's 1.07; plain, it is 1.00.
+   */
+  forms: { k: "standing", t: "straight", y: "straight", f: "descending", l: "tailed", n: "written", o: "written", a: "written", e: "written" },
   parts: {
     ...SANS.parts,
     // Square, for the reason set out on the Handwriting above.
     terminal: { kind: "butt", angle: 0 },
     corner: { radius: 70, join: "round" },
-    bowl: { width: 1.05, squareness: 0, aperture: 1.08 },
-    shoulder: { spring: 0.48, reach: 1.06 },
+    // An oval, as on the Handwriting. 0.56 reads 0.799.
+    bowl: { width: 0.56, squareness: 0, aperture: 1.08 },
+    // The arch stops short, as on the Handwriting. This face already sat
+    // lowest of the four, so it asks for the least. 0.95 reads 0.89 and 0.91.
+    shoulder: { spring: 0.48, reach: 0.8, crest: 0.95 },
     script: {
       ...NO_SCRIPT,
       on: true,
-      height: 0.44,
-      reach: 1.05,
-      flat: 0.3,
-      loop: 0.7,
+      // Low, for the reason set out on the Handwriting above.
+      // A third of the way up, as on the Handwriting. Its run goes 0.17 to 0.10, and is worse again above this.
+      height: 0.24,
+      // Climbing, as on the Handwriting, and for the reason set out there.
+      tilt: 55,
+      /*
+       * Down from 1.05 to 0.6, to where the bodies still lap by only what the
+       * knit intends, and then back up to 0.7 as the arch comes down. See the
+       * note on the Handwriting.
+       *
+       * This face stood at 0.97 stem to stem across an `n`, against the
+       * reference's 0.79, and reads 0.79 here. It was the closest of the four
+       * before and moved the least.
+       */
+      reach: 0.7,
+      flat: 0.1,
+      // Was 0.7, which was too small to close an eye at all -- the loop showed
+      // as a bulge on the stem. Sized on the reference's, as on the Formal.
+      loop: 2.16,
+      /*
+       * How narrow the eye is for its height, and it was never chosen: one arc
+       * bowed to a half is a semicircle, so every eye came out exactly half as
+       * wide as it was tall. Measured where the eye is widest, ours spanned 0.64
+       * of an x-height against the reference's 0.48, with a counter of 0.34
+       * against its 0.20.
+       *
+       * Swept from 0.5 down to 0.22 on all four; this is where this face's `l`
+       * lands on both of the reference's numbers at once. The four differ because
+       * they differ in slant and pen and where their eyes sit -- the Formal's is
+       * struck at 1.6 x-heights and the Monoline's at 1.3 -- and this is fitted
+       * to the same two figures on each.
+       */
+      eye: 0.4,
       irregularity: 1.6,
+      bow: 0.9,
+      // The reference's lap, in this face's stems, so it moves whenever the pen
+      // does -- and the pen came down by a fifth. Up from 0.25 with the climbing
+      // handover; see the Handwriting.
+      knit: 0.5,
     },
   },
   /*
@@ -1146,32 +1670,211 @@ export const CASUAL_SCRIPT: Style = {
  * the loops are round rather than pointed because they were constructed rather
  * than turned. It is what a sign painter rules out with a compass, and its
  * evenness is the whole of its character.
+ *
+ * Drawn at the proportions the genre actually uses: the x-height is under half
+ * the ascender so the loops have room to be the point of the letter, and the
+ * whole thing leans hard. Set at a sixth of a much larger x-height with
+ * ascenders half again as tall, it was a fat upright cursive -- the shape of a
+ * script with none of the proportions of one.
+ *
+ * The stroke was a thirteenth of the x-height, on the reasoning that a
+ * monoweight script is a hairline; it was then taken to a sixth, because at a
+ * thirteenth the page read half the reference's darkness; and it now sits at
+ * about a seventh and a half. The middle of those three was a right reading of
+ * a wrong measurement.
+ *
+ * Colour is ink over the area of the line it sits on, and the area of the line
+ * is the advance. This face set 1.46 times as wide as the reference, so every
+ * letter had half again the white to fill and no pen light enough to look right
+ * could fill it -- the darkness was missing because the room was there, not
+ * because the stroke was thin. Raising the pen filled the room and left the
+ * face reading as a heavy monoline set loose.
+ *
+ * With the body at the reference's proportions and the reach closed to match,
+ * the room is gone and the hairline is right: pen 44 against a 332 x-height
+ * reads 1.02 times the reference's colour at 1.05 times its fit, where the old
+ * arrangement read 1.01 at 1.46. The face is a hairline again and the page is
+ * the reference's.
+ *
+ * Every quantity the join and the loops are measured in is a multiple of the
+ * pen, which is right at a text weight and is the trap here: the reach at 2.12
+ * was that compensation, holding a join the size of the old page's on a pen
+ * that had come down. It is 0.9 now because the page it is drawn on is the
+ * reference's size, and the loop stays high because it is the point of the
+ * face -- swept at 5.8, 4.2, 3.2 and 2.4, and it moves the fit by four
+ * hundredths and the colour by nothing that holds a direction.
  */
 export const MONOLINE_SCRIPT: Style = {
   ...SANS,
   name: "Monoline Script",
   family: "script",
-  blurb: "One thickness throughout, drawn rather than written. Even joins, round loops, no bounce.",
-  metrics: { ...SANS.metrics, xHeight: 505, ascender: 760, descender: -225, slant: 9 },
-  pen: { weight: 78, contrast: 0, angle: 0 },
-  forms: { k: "standing", l: "tailed", f: "descending", seven: "barred", four: "open" },
+  blurb: "A hairline of one thickness, drawn rather than written. Long looped ascenders, a hard lean, and a drop of ink on every open end.",
+  metrics: {
+    ...SANS.metrics,
+    // Over the line, as on the Handwriting. Never named here before; it was
+    // taking the Sans' 10.
+    overshoot: 30,
+    xHeight: 332,
+    /*
+     * Capitals raised with the ascenders rather than left where the sans put
+     * them. Every other face here has its ascender a shade over its cap; this
+     * one carries the ascender half again as high, and a capital left at the
+     * sans' height would be a third of the way down the letter beside it. It is
+     * also what keeps an accent on an `l` under the ceiling the drawing is
+     * checked against, which is read off the cap.
+     *
+     * The three came down together, keeping the cap eight ninths of the rise
+     * that the paragraph above is about. The body is the reference's now --
+     * 0.332 of the em and 2.17 x-heights of ascender, which is its figure to
+     * the second place -- where this face read 0.360 and 2.50.
+     */
+    capHeight: 640,
+    ascender: 720,
+    descender: -268,
+    /*
+     * Twenty-one, and it is the descenders that set the ceiling rather than
+     * taste. The lean turns about the seam, so a descender three hundred units
+     * below it swings a long way left; past twenty-two the `p` and the `j` come
+     * out further left than their own origin and stand in the letter before.
+     */
+    slant: 21,
+    width: 0.95,
+    // Down with the x-height, and it has to stay under the join's reach in
+    // units or a letter that gives up a join comes out wider than the one that
+    // keeps it. The reach is 0.9 stems of a 44-unit pen, which is 39.6.
+    sidebearing: 34,
+  },
+  pen: { weight: 44, contrast: 0, angle: 0 },
+  // The straight-tailed `y`, for the reason set out on the Handwriting: this
+  // face's eye is the join layer's, and a tail that curls as well draws it
+  // twice -- 1.68 of its own `o` against the reference's 1.06.
+  forms: { k: "standing", l: "tailed", y: "straight", f: "descending", seven: "barred", four: "open", n: "written", o: "written", a: "written", e: "written" },
   parts: {
     ...SANS.parts,
     // Square, for the reason set out on the Handwriting above.
     terminal: { kind: "butt", angle: 0 },
-    corner: { radius: 90, join: "round" },
-    bowl: { width: 1, squareness: 0, aperture: 1 },
-    shoulder: { spring: 0.6, reach: 1 },
+    /*
+     * A drop of ink wherever a stroke stops in mid-air.
+     *
+     * Five stems across, which is far past what the control offers a face of
+     * ordinary weight and is the same disc in absolute terms: the ball is
+     * measured against the stem, and this stem is a third of the others'. At
+     * the 2.4 the slider stopped at, the drop came out a full stop.
+     *
+     * The join's own ends are cut square and get none of this -- they are not
+     * ends, they are the middle of a stroke that happens to cross a boundary.
+     */
+    /*
+     * The drop, against the reference this face is cut to.
+     *
+     * A written drop terminal reads as the stroke swelling and stopping. Five
+     * stems on a pen of twenty-eight is a hundred and forty units -- two fifths
+     * of the x-height -- and that is not a terminal, it is a dot: it shut the
+     * aperture of the `G` and sat beside the `c` and the `S` rather than on
+     * them.
+     *
+     * The overhang was doing as much of the damage as the size. At seven tenths
+     * of its own radius the disc's middle sits past the end of the stroke, so
+     * most of its mass is outside the ink and it reads as something stuck on.
+     * A third of a radius leaves it seated on the end and pulled along it,
+     * which is the shape a pen makes when it stops.
+     */
+    // Held in units as the pen went from 28 to 58: 2.4 stems of the old pen is
+    // 1.16 of the new one, and the drop is the same size on the page as before.
+    ball: { size: 1.16, drop: 0.35 },
+    corner: { radius: 30, join: "round" },
+    // An oval, as on the Handwriting. This face runs at a width of 0.95, which
+    // multiplies the bowl, so it asks for more than the others; 0.66 reads
+    // 0.801.
+    bowl: { width: 0.66, squareness: 0, aperture: 1 },
+    // The arch stops short, as on the Handwriting. 0.85 reads 0.88 and 0.91.
+    shoulder: { spring: 0.6, reach: 0.65, crest: 0.85 },
     script: {
       ...NO_SCRIPT,
       on: true,
-      height: 0.38,
-      reach: 1.65,
-      flat: 0.16,
-      loop: 1.3,
+      // Low, for the reason set out on the Handwriting above.
+      // A third of the way up, as on the Handwriting. Its run goes 0.19 to 0.14.
+      height: 0.24,
+      // Climbing, as on the Handwriting, and for the reason set out there.
+      tilt: 55,
+      /*
+       * In pens, and this pen is a hairline, so the number is large where the
+       * run of white it buys is not.
+       *
+       * Down from five, and not as far as the others. Two things stop it. The
+       * `r` against the `n` begins to lap by more than the knit intends below
+       * about three and a half; and before that, at about four and a third,
+       * the `p`'s descender swings out past its own origin and into the letter
+       * before it -- this face leans twenty-one degrees and its descenders are
+       * the deepest of the four, so a tighter fit puts their tails outside the
+       * letter rather than under it.
+       *
+       * It also carries the widest counter of the four against its x-height:
+       * still the Sans' 370 over an x-height of 360. Narrowing that is what
+       * would let this face close up properly, and it belongs to itself.
+       *
+       * 4.4 of the old 28-unit pen is 2.12 of the 58-unit one, which is the
+       * same 123 units of white and the same two limits above.
+       *
+       * Up again to 1.0, as the arch comes down, for the reason set out on the
+       * Handwriting above -- away from both of those limits, not towards them.
+       * This face stood at 1.20 stem to stem across an `n`, the widest of the
+       * four against the reference's 0.79, and reads 0.78 here.
+       */
+      reach: 1.0,
+      flat: 0.05,
+      // Held in units across the pen change, and then opened to put the eye's
+      // foot where the reference puts it. See the note on the Formal's loop.
+      loop: 5.8,
+      /*
+       * How narrow the eye is for its height, and it was never chosen: one arc
+       * bowed to a half is a semicircle, so every eye came out exactly half as
+       * wide as it was tall. Measured where the eye is widest, ours spanned 0.90
+       * of an x-height against the reference's 0.48, with a counter of 0.63
+       * against its 0.20.
+       *
+       * Swept from 0.5 down to 0.22 on all four; this is where this face's `l`
+       * lands on both of the reference's numbers at once. The four differ because
+       * they differ in slant and pen and where their eyes sit -- the Formal's is
+       * struck at 1.6 x-heights and the Monoline's at 1.3 -- and this is fitted
+       * to the same two figures on each.
+       */
+      eye: 0.22,
       // Nothing. A drawn script is drawn on a line and stays on it, and this is
       // the setting that says so.
       irregularity: 0,
+      bow: 0.2,
+      /*
+       * Short of the reference's lap, and knowingly.
+       *
+       * This pen is a hairline -- seventy-eight thousandths of the x-height
+       * against the reference's hundred and ninety -- so the reference's lap
+       * costs most of a stem here where it costs a fifth of one on the Formal,
+       * and 0.84 is what it takes. At that figure the `e` brings its entry
+       * stroke tangent to its own bowl, and the fuse and the painter part
+       * company over the sliver between them: `ecircumflex` and `ecaron` come
+       * out 2.2% different with a run of 108 pixels disagreeing, which is a
+       * boolean failure and not a rounding one.
+       *
+       * The tangency is this face's, not the lap's -- at 0.84 it is 2.2%, at
+       * nothing it is already 1.1% with a 57-pixel run, and everything between
+       * 0.2 and 0.6 is under half a per cent.
+       *
+       * That was at the old hairline pen, where 0.6 of a stem bought only an
+       * eighth of an x-height of lap against the reference's sixth. With the
+       * pen at 58 the same 0.6 buys a quarter, which is half as much again as
+       * the reference, so it comes down to 0.32 and the pair laps by the
+       * reference's figure at last.
+       *
+       * And up to 0.76 once the hand began handing over climbing rather than
+       * level. The knit is how far each half carries on past the seam so that
+       * the two cross rather than touch, and a climbing handover spends part of
+       * that going up instead of along, so the same length of stroke laps less.
+       * This is the reference's tenth of an x-height at this face's pen, which
+       * is a hairline and so needs most of a stem where the other three need
+       * about half of one.
+       */
+      knit: 0.76,
     },
   },
   /*
@@ -1252,7 +1955,7 @@ export const ROUNDHAND: Style = {
     terminal: { kind: "butt", angle: 0 },
     corner: { radius: 60, join: "round" },
     bowl: { width: 0.96, squareness: 0, aperture: 1 },
-    shoulder: { spring: 0.56, reach: 0.98 },
+    shoulder: { spring: 0.56, reach: 0.98, crest: 1 },
     script: {
       ...NO_SCRIPT,
       on: true,
@@ -1260,14 +1963,6 @@ export const ROUNDHAND: Style = {
       reach: 1.7,
       flat: 0.12,
       loop: 1.4,
-      loopDepth: 2.2,
-      /*
-       * Short in, long out, because that is what both of the faces measured
-       * do and neither of them is subtle about it: on the flowing one the
-       * lead-out runs past the ink three times as far as the lead-in does.
-       * A join divided evenly is a drawn script; this is a written one.
-       */
-      balance: 0.32,
       /*
        * Two tenths, which reads as a hand and not as a fault.
        *

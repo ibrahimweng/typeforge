@@ -21,9 +21,10 @@ import { ready, unite } from "@/font/boolean";
 import { contoursBounds, inkRunsAt } from "@/font/geometry";
 import type { Contour } from "@/font/types";
 import { drawLetter } from "./build";
-import { recipeOf } from "./letters";
+import { everyFormOf, recipeOf } from "./letters";
 import { BASES, SANS, type Style } from "./style";
-import { wobbleOf } from "./script";
+import { seamsOf, wobbleOf } from "./script";
+import { spineEnd, spineStart } from "./shapes";
 
 const SCRIPTS = BASES.filter((one) => one.parts.script.on);
 const LOWER = "abcdefghijklmnopqrstuvwxyz".split("");
@@ -46,14 +47,51 @@ const slid = (contours: Contour[], by: number): Contour[] =>
  * Nought means the ink runs straight through the boundary, which is what a
  * joined face is for. Null means one of the two had no ink at the seam at all.
  */
+/**
+ * How far the first letter's ink carries past where the second letter's ink
+ * begins, once the two are set side by side.
+ *
+ * Positive is a lap and is what a written join is; nought is the two touching,
+ * which passes `seamGap` and does not read as one stroke.
+ */
+function seamLap(style: Style, first: string, second: string): number | null {
+  const one = drawLetter(first, style, style.forms?.[first]);
+  const other = drawLetter(second, style, style.forms?.[second]);
+  if (!one || !other) return null;
+  const moved = other.contours.map((contour) => ({
+    ...contour,
+    nodes: contour.nodes.map((node) => ({
+      ...node,
+      point: { x: node.point.x + one.advanceWidth, y: node.point.y },
+      handleIn: node.handleIn ? { x: node.handleIn.x + one.advanceWidth, y: node.handleIn.y } : null,
+      handleOut: node.handleOut ? { x: node.handleOut.x + one.advanceWidth, y: node.handleOut.y } : null,
+    })),
+  }));
+  return contoursBounds(one.contours).xMax - contoursBounds(moved).xMin;
+}
+
 function seamGap(style: Style, first: string, second: string): number | null {
   const left = drawLetter(first, style);
   const right = drawLetter(second, style);
   if (!left || !right) return null;
-  const seam = style.parts.script.height * style.metrics.xHeight;
+  const seam = seamsOf(style.parts.script, style.metrics.xHeight, style.pen.weight / 2).low;
   const both = unite([...left.contours, ...slid(right.contours, left.advanceWidth)], "winding");
   const runs = inkRunsAt(both, seam, "y", 48);
-  const edge = left.advanceWidth;
+  /*
+   * The boundary is not the advance. The slant is sheared onto the finished
+   * outline about the middle of the lowercase, so a point the skeleton put on
+   * the advance is drawn to the left of it by however far the seam stands below
+   * that middle -- thirty-three units on the Monoline, which leans hardest and
+   * has the lowest seam. Both letters move by the same amount, so the weld is
+   * unharmed; a cut taken at the advance itself is simply taken in the wrong
+   * place. It was the right place while the join crossed the seam nearly level,
+   * because the ink was then a long horizontal run either side of the cut. A
+   * join that crosses climbing shows about a pen and a half of ink at any one
+   * height, and the shear is most of that.
+   */
+  const lean = (seam - style.metrics.xHeight / 2)
+    * Math.tan((style.metrics.slant * Math.PI) / 180);
+  const edge = left.advanceWidth + lean;
   if (runs.some((run) => run[0] < edge && run[1] > edge)) return 0;
   const before = runs.filter((run) => run[1] <= edge + 1e-6).map((run) => run[1]);
   const after = runs.filter((run) => run[0] >= edge - 1e-6).map((run) => run[0]);
@@ -71,6 +109,39 @@ beforeAll(async () => {
 });
 
 describe("the letters reach each other", () => {
+
+  /*
+   * And lap over each other while they do it, rather than meeting at a point.
+   *
+   * Joining is not the same claim as reading as one stroke, and the seam gap
+   * above is satisfied by the two halves touching. They were: a lead-out's
+   * spine stops on the advance and the next lead-in's starts on the origin,
+   * both cut square and both running level, so the ink met along a single
+   * vertical line and over no area. A pair of `n`s on the Formal Script
+   * overlapped by sixteen units of a four-hundred-and-thirty-unit x-height,
+   * and the writing read as letters that had been pushed together.
+   *
+   * Dancing Script laps its pairs by about sixteen hundredths of its x-height,
+   * which is most of a stem width, so that is what these are set to and what
+   * this holds them to. The floor is a tenth rather than the figure itself --
+   * what is being defended is that the join is welded over a length of stroke
+   * and not tacked at a point, and each face may sit where it looks right.
+   */
+  it.each(SCRIPTS.map((one) => [one.name, one] as const))(
+    "%s laps one letter over the next, rather than meeting it at a point",
+    (_name, style) => {
+      const shy: string[] = [];
+      for (const letter of LOWER) {
+        for (const [first, second] of [[letter, "n"], ["n", letter]] as const) {
+          const lap = seamLap(style, first, second);
+          if (lap === null || lap < style.metrics.xHeight * 0.1) {
+            shy.push(`${first}${second} ${lap === null ? "-" : lap.toFixed(0)}`);
+          }
+        }
+      }
+      expect(shy).toEqual([]);
+    },
+  );
   /*
    * Fifty-two surfaces for each face: every letter as the one handing over and
    * every letter as the one being handed to. Anything less than all of them is
@@ -108,9 +179,82 @@ describe("the letters reach each other", () => {
       expect([pair, seamGap(looped, pair[0], pair[1])]).toEqual([pair, 0]);
     }
   });
+
+  /*
+   * And at the bottom of the seam control, which is where this came apart
+   * quietly rather than loudly.
+   *
+   * The lead-out searches from half a pen above the baseline up to the seam, so
+   * a seam below half a pen leaves that band empty -- and `attach`, which has
+   * to return something, falls back to the whole letter and takes its rightmost
+   * point wherever it happens to be. On an `n` that is the top of the arch. The
+   * letters still met, so nothing here failed: they were threaded together
+   * through their own middles instead of written along a line.
+   *
+   * So the seam is held off the baseline by the pen that has to reach it,
+   * rather than taken at its word.
+   */
+  it("keeps the seam off the baseline when it is asked for under the pen", () => {
+    const grazing = withScript(HAND, { height: 0.01 });
+    const half = HAND.pen.weight / 2;
+    expect(seamsOf(grazing.parts.script, HAND.metrics.xHeight, half).low)
+      .toBeGreaterThan(half);
+    for (const pair of ["nn", "on", "no", "an", "he"]) {
+      expect([pair, seamGap(grazing, pair[0], pair[1])]).toEqual([pair, 0]);
+    }
+    // Left from the foot of the letter rather than from the top of its arch:
+    // an `n` handing over has ink at the seam within a pen of its own right
+    // edge, and had it two thirds of the way up the letter before.
+    const drawn = drawLetter("n", grazing)!;
+    const seam = seamsOf(grazing.parts.script, HAND.metrics.xHeight, half).low;
+    const runs = inkRunsAt(drawn.contours, seam);
+    expect([runs.length > 0, runs[runs.length - 1][1] >= drawn.advanceWidth - half])
+      .toEqual([true, true]);
+  });
 });
 
 describe("what the join does not touch", () => {
+
+  /*
+   * The lead-out leaves from low down, even where the letter has nothing in
+   * the band it looks in.
+   *
+   * The bands are thin: a lead-out searches between half a pen and the seam,
+   * which on the Formal Script is a strip seven units tall. The skeleton is
+   * sampled a fixed sixty-four times per run whatever the run is, so on that
+   * letter's eight-hundred-unit stem the step is thirteen units and the
+   * sampling walks straight over the strip. `attach` then fell back to the
+   * whole letter and took its rightmost point -- which on an `f` is the tip of
+   * the hook, seven hundred units up, and is the one search its own note says
+   * not to make. The letter's join left from the top of its ascender.
+   *
+   * An empty band means the letter has nothing there, and the answer is the
+   * nearest thing it does have. So this holds every lead-out to the bottom
+   * half of the letter on every joining face, which is where a hand leaves.
+   */
+  it.each(SCRIPTS.map((one) => [one.name, one] as const))(
+    "%s leaves every letter from low down, whatever its band finds",
+    (_name, style) => {
+      const high: string[] = [];
+      const seam = seamsOf(style.parts.script, style.metrics.xHeight, style.pen.weight / 2).low;
+      for (const letter of LOWER) {
+        // Every form, not only the one this face happens to ship: the form that
+        // broke was the plain `f`, and the Formal Script ships the descending
+        // one, so asking each face for its own would have missed it entirely.
+        for (const { id } of everyFormOf(letter)) {
+          const runs = recipeOf(letter, id || undefined)!(style).strokes;
+          // The lead-out is the run that finishes on the advance, at the seam.
+          const exit = runs.find((one) => Math.abs(spineEnd(one.spine).y - seam) < 1);
+          if (!exit) continue;
+          const from = spineStart(exit.spine);
+          if (from.y > style.metrics.xHeight) {
+            high.push(`${letter}${id ? ` (${id})` : ""} at ${from.y.toFixed(0)}`);
+          }
+        }
+      }
+      expect(high).toEqual([]);
+    },
+  );
   it("leaves a face that does not join exactly as it was", () => {
     for (const name of ["n", "o", "a", "g"]) {
       const plain = drawLetter(name, SANS)!;
@@ -123,13 +267,39 @@ describe("what the join does not touch", () => {
   /*
    * A cursive capital is a different letter from a cursive lowercase rather
    * than a larger one, and in every hand that has been written it joins on its
-   * right at best. A lead-in on the left of a script A would be a stroke into a
-   * letter nothing is ever set before.
+   * right at best: the hand sets it down at the start of a word and carries on
+   * out of it. So it takes a lead-out and never a lead-in -- one on its left
+   * would be a stroke reaching into a letter nothing is ever set before.
+   *
+   * The `O` is one of the four left out entirely. It closes its bowl at the top
+   * and the hand lifts there, which is what every copperplate does with it.
    */
-  it("leaves the capitals, the figures and the marks alone", () => {
-    for (const name of ["A", "H", "O", "seven", "period", "comma"]) {
+  it("hands a capital on to its right and never reaches out of its left", () => {
+    for (const name of ["A", "H", "K"]) {
+      const joined = recipeOf(name)!(HAND);
+      expect([name, joined.width !== undefined]).toEqual([name, true]);
+      // The lead-in is the stroke that would start at the origin. There is none.
+      const reaches = joined.strokes.some((stroke) =>
+        spineStart(stroke.spine).x < 1 && spineEnd(stroke.spine).x > 1);
+      expect([name, reaches]).toEqual([name, false]);
+    }
+  });
+
+  it("leaves the four that close at the top, the figures and the marks alone", () => {
+    for (const name of ["B", "D", "O", "P", "seven", "period", "comma"]) {
       const joined = recipeOf(name)!(HAND);
       expect([name, joined.width]).toEqual([name, undefined]);
+    }
+  });
+
+  /*
+   * And a letter set inside another glyph takes none of it, whatever case it
+   * is: the `C` in a copyright sign is a drawing, not a letter in a word.
+   */
+  it("leaves a letter set inside another glyph alone", () => {
+    for (const name of ["copyright", "registered", "ordfeminine"]) {
+      const drawn = recipeOf(name)!(HAND);
+      expect([name, drawn.width]).toEqual([name, undefined]);
     }
   });
 });
@@ -164,11 +334,65 @@ describe("the advance", () => {
 });
 
 describe("the loops", () => {
+  /*
+   * Both sides of the comparison are said out loud, because the Handwriting
+   * stopped being the loop-free one.
+   *
+   * These read as "with loops against without", and they used to get the
+   * "without" for free by taking the face as it came -- that face was drawn
+   * with `loop` at nothing, on the reasoning that a print hand does not turn
+   * its ascenders round. When the reference turned out to loop every one of
+   * them and the face was given loops too, three tests here quietly compared a
+   * looped face with a looped face and asked why nothing had changed.
+   */
+  const bare = withScript(HAND, { loop: 0 });
   const looped = withScript(HAND, { loop: 1.6 });
+
+  /*
+   * And they reach the letter at every weight, not only at the one the face is
+   * drawn at.
+   *
+   * The eye's width is measured in pen-halves, which is right -- an eye has to
+   * be open against the pen or it is a blob on a stem. How far it has to travel
+   * to get back onto the letter is not the pen's business at all, and reading
+   * that off the pen too is what took the Formal Script's curled `g` apart
+   * below pen 60 and its `t` below 70: at pen 84 the eye reached y=164, well up
+   * inside the bowl, and at pen 40 it stopped at y=-19, below the bowl and in
+   * clear air. The only thing holding the two halves together was the hairline
+   * where the eye's turn grazed the tail, this face's nib being 6.6 units
+   * across a horizontal at that weight.
+   *
+   * Every other test of the letters draws each face at its own weight, so all
+   * of them passed throughout. This one walks the axis.
+   */
+  it("still reach the letter at every weight, on every joining face", async () => {
+    const { ready: loaded } = await import("@/font/boolean");
+    const { piecesOf } = await import("./cut");
+    const { letterNames } = await import("./build");
+    const { everyFormOf } = await import("./letters");
+    await loaded();
+    const solid = letterNames().filter((one) => /^[A-Za-z]$/.test(one) && one !== "i" && one !== "j");
+    const apart: string[] = [];
+    for (const base of BASES.filter((one) => one.parts.script.on)) {
+      for (const weight of [40, 60, 120, 210]) {
+        const style: Style = { ...base, pen: { ...base.pen, weight } };
+        for (const name of solid) {
+          for (const { id } of everyFormOf(name)) {
+            const drawn = drawLetter(name, style, id || undefined);
+            if (!drawn || drawn.contours.length === 0) continue;
+            if (piecesOf(drawn.contours) > 1) {
+              apart.push(`${base.name} ${name}${id ? ` (${id})` : ""} at ${weight}`);
+            }
+          }
+        }
+      }
+    }
+    expect(apart).toEqual([]);
+  }, 120_000);
 
   it("open the ascenders and the descenders", () => {
     for (const name of ["l", "b", "h", "k", "g", "y"]) {
-      const plain = recipeOf(name)!(HAND).strokes.length;
+      const plain = recipeOf(name)!(bare).strokes.length;
       expect([name, recipeOf(name)!(looped).strokes.length]).toEqual([name, plain + 1]);
     }
   });
@@ -181,14 +405,34 @@ describe("the loops", () => {
   it("leave the dot of an i and the dot of a j where they are", () => {
     // The j has a descender and so gains exactly one loop; the i has neither an
     // ascender nor a descender and gains none.
-    expect(recipeOf("i")!(looped).strokes.length).toBe(recipeOf("i")!(HAND).strokes.length);
-    expect(recipeOf("j")!(looped).strokes.length).toBe(recipeOf("j")!(HAND).strokes.length + 1);
+    expect(recipeOf("i")!(looped).strokes.length).toBe(recipeOf("i")!(bare).strokes.length);
+    expect(recipeOf("j")!(looped).strokes.length).toBe(recipeOf("j")!(bare).strokes.length + 1);
+  });
+
+  /*
+   * And not on a capital, which is not a tall lowercase. The eye is struck
+   * straight down from the highest end of the letter and does not ask what
+   * that end belongs to, so every capital built on an upright was taking one
+   * -- `ITEM LIFT` came out of the Formal Script as `P PEM PPF P`.
+   *
+   * Asked of all twenty-six because the ones that escaped did so by accident:
+   * an `E` was spared only because its crossbar reaches higher than its stem
+   * and the eye struck down from there found nothing to stand on, which is not
+   * a rule anybody wrote.
+   */
+  it("leave every capital alone", () => {
+    for (const name of "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("")) {
+      expect([name, recipeOf(name)!(looped).strokes.length]).toEqual([
+        name,
+        recipeOf(name)!(bare).strokes.length,
+      ]);
+    }
   });
 
   it("are off when the control is at nothing", () => {
     for (const name of ["l", "g"]) {
       expect(recipeOf(name)!(withScript(HAND, { loop: 0 })).strokes.length)
-        .toBe(recipeOf(name)!(HAND).strokes.length);
+        .toBe(recipeOf(name)!(bare).strokes.length);
     }
   });
 });

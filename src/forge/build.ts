@@ -18,7 +18,8 @@ import {
   recipeOf,
   type PartName,
   type Recipe,
-  JOINS,
+  joinEnds,
+  reachesEither,
 } from "./letters";
 import { accentsFor, gapFor, hangsBelow, isCapital, type Parts } from "./accents";
 import { reachesCast, type Cast } from "./cast";
@@ -35,7 +36,7 @@ import {
   waveBookAt,
   wavy,
 } from "./shapes";
-import { wobbleOf } from "./script";
+import { seamsOf, wobbleOf } from "./script";
 import { penReach, reachAlong, sweep } from "./sweep";
 import type { Style } from "./style";
 import type { Stroke, Terminal } from "./types";
@@ -120,7 +121,7 @@ export function builtFrom(name: string): Parts | null {
 export function reachesOut(name: string, style: Style): boolean {
   if (!style.parts.script.on) return false;
   const parts = builtFrom(name);
-  return JOINS.has(parts ? parts.base : name);
+  return reachesEither(parts ? parts.base : name);
 }
 
 export { letterBehind } from "./letters";
@@ -259,8 +260,9 @@ export function makeLetter(
    * and this collapses to the shear that was always here.
    */
   const script = style.parts.script;
-  const tilt = wobbleOf(name, script, style.metrics.xHeight).lean;
-  const seam = script.height * style.metrics.xHeight;
+  // Only the letters of the running hand lean extra; see the lift in `connected`.
+  const tilt = joinEnds(name).entry ? wobbleOf(name, script, style.metrics.xHeight).lean : 0;
+  const seam = seamsOf(script, style.metrics.xHeight, style.pen.weight / 2).low;
   const wobbled = (contours: Contour[]): Contour[] =>
     tilt === 0 ? contours : sheared(contours, Math.tan((tilt * Math.PI) / 180), seam);
 
@@ -436,7 +438,7 @@ function marked(
    * the letter under it simply overhangs, which is what a written accent does
    * anyway.
    */
-  const reaching = style.parts.script.on && JOINS.has(parts.base);
+  const reaching = style.parts.script.on && reachesEither(parts.base);
   const shortfall = reaching ? 0 : Math.max(0, sidebearing - bounds.xMin);
   const placed = shortfall > 0 ? shoved(contours, { x: shortfall, y: 0 }) : contours;
   const spaced =
@@ -749,7 +751,31 @@ function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
       const lean = 1 + outward.y * drop;
       return lean > 1e-6 ? (limit - at.y) / lean : Infinity;
     };
-    const room = Math.min(radius, spare(band.yMax), spare(-band.yMin + 2 * at.y));
+    /*
+     * And not further to the left than the letter already reaches, for the
+     * same reason and by the same arithmetic.
+     *
+     * The hold above says a ball fattens an end and does not make the letter
+     * taller. It does not make it start further left either -- the space to a
+     * letter's left is where the letter before it finished, and on a joined
+     * face it is a stroke rather than a space. A Monoline `j` seated its drop
+     * three units outside the room its own descender is allowed, which is a
+     * drop resting on whatever was written before it.
+     *
+     * Left only. A ball on the right is finishing a stroke that runs out to the
+     * advance and is spaced with it; it is the left where the letter has
+     * already been placed and cannot give any more.
+     */
+    const spareLeft = (limit: number) => {
+      const lean = 1 - outward.x * drop;
+      return lean > 1e-6 ? (at.x - limit) / lean : Infinity;
+    };
+    const room = Math.min(
+      radius,
+      spare(band.yMax),
+      spare(-band.yMin + 2 * at.y),
+      spareLeft(band.xMin),
+    );
     /*
      * A ball with no room for it is drawn buried, rather than not drawn.
      *

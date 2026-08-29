@@ -433,7 +433,31 @@ export function pieces(contours: Contour[]): number {
     .filter((contour) => contour.nodes.length >= 3)
     .filter((contour) => !aSliver(contour));
   if (drawable.length === 0) return 0;
-  return classifyContours(drawable).filter(Boolean).length;
+  const outer = classifyContours(drawable);
+  const areas = drawable.map((contour) => Math.abs(contourArea(contour)));
+  let biggest = 0;
+  for (let at = 0; at < areas.length; at++) {
+    if (outer[at] && areas[at] > biggest) biggest = areas[at];
+  }
+  /*
+   * And the crumbs that are not thin, which `aSliver` cannot see.
+   *
+   * The same fault it was written for and a fatter shape: uniting a letter that
+   * is already united can drop a chip out of its edge where the outline nearly
+   * touches itself, and a chip is not a hair. A roughened Brush `A` came back
+   * as its own body of a hundred and sixty-nine thousand units and a piece of a
+   * hundred and thirty-eight, and was reported broken -- while every drawing of
+   * it, before the union and after, is one solid `A` with its counter in it.
+   *
+   * Measured against the piece it fell off rather than against the em, because
+   * what says it is a chip is that it is nothing beside the thing it came from.
+   * A two-hundredth separates them by a wide margin: the chip above is eight
+   * ten-thousandths of its letter, and the smallest thing anybody draws as a
+   * piece of its own -- the dot of an `i` -- is five hundredths of the letter
+   * it belongs to, sixty times over.
+   */
+  const least = biggest * 0.005;
+  return outer.filter((one, at) => one && areas[at] >= least).length;
 }
 
 /**

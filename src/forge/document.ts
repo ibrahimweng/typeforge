@@ -32,7 +32,8 @@ import {
   type Port,
   type Tiles,
 } from "./kit";
-import { joiningHigh, recipeOf } from "./letters";
+import { joiningHigh, joiningWithout, recipeOf } from "./letters";
+import type { Ends } from "./script";
 import type { Imported } from "./exchange";
 import { weightClassOf, weightedStyle, type Family } from "./family";
 import { partsUsedBy, type PartName } from "./parts";
@@ -788,6 +789,7 @@ const proofs = new WeakMap<Forge, Map<string, Drawn | null>>();
  * cache keyed on the letter alone would hand one back for the other.
  */
 const highs = new WeakMap<Forge, Map<string, Drawn | null>>();
+const edges = new WeakMap<Forge, Map<string, Drawn | null>>();
 
 function remembered(
   where: WeakMap<Forge, Map<string, Drawn | null>>,
@@ -868,6 +870,40 @@ export function unshaped(forge: Forge): Forge {
 export function drawnHigh(letter: string, which: "entry" | "exit", forge: Forge): Drawn | null {
   return remembered(highs, forge, `${letter}.${which}`, () =>
     joiningHigh({ [which]: true }, () =>
+      drawLetter(
+        letter,
+        styleFor(letter, forge),
+        formOf(forge, letter),
+        cutsFor(letter, forge),
+        forge.kit,
+        castFor(letter, forge),
+      ),
+    ),
+  );
+}
+
+/**
+ * The same letter with a half of its join left off, for the sides that have
+ * nothing to meet.
+ *
+ * `begin` is the drawing for a letter with nothing before it and so nothing to
+ * reach back to; `end` is for the letter with nothing after it; `alone` is a
+ * word of one letter, which has neither and comes out as the plain roman
+ * letter the join layer never touched. All three are reached only through the
+ * feature, and all three are cut and cast like any other letter for the reason
+ * `drawnHigh` gives.
+ */
+export type Without = "begin" | "end" | "alone";
+
+const WITHOUT: Record<Without, Partial<Ends>> = {
+  begin: { entry: false },
+  end: { exit: false },
+  alone: { entry: false, exit: false },
+};
+
+export function drawnEnds(letter: string, which: Without, forge: Forge): Drawn | null {
+  return remembered(edges, forge, `${letter}.${which}`, () =>
+    joiningWithout(WITHOUT[which], () =>
       drawLetter(
         letter,
         styleFor(letter, forge),

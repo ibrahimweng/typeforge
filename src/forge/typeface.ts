@@ -28,8 +28,8 @@ import {
 import { builtFrom, letterNames } from "./build";
 import { openWaveBook, type WaveBook } from "./shapes";
 import { kernsFor } from "./kern";
-import { anythingCut, draw, drawnHigh, proof, type Forge } from "./document";
-import { alternateName, joinRules, joinsUp } from "./joins";
+import { anythingCut, draw, drawnEnds, drawnHigh, proof, type Forge } from "./document";
+import { alternateName, boundaryEnds, boundaryName, boundaryRules, joinRules, joinsUp } from "./joins";
 
 /**
  * What each drawn glyph is called in Unicode.
@@ -351,6 +351,14 @@ export async function toTypeface(
   }
 
   /*
+   * Noted before any alternate is added, because these are the names a shaper
+   * can be looking at when it decides whether a join has anything to meet, and
+   * an alternate is not one of them: `joinEnds` answers for letters, and asked
+   * about `v.init` it would say a letter that hands on does not.
+   */
+  const plain = glyphs.map((glyph) => glyph.name);
+
+  /*
    * And the second drawings, for the faces whose letters reach each other.
    *
    * A written `o`, `v`, `w` and `b` hand over at the waist where every other
@@ -386,6 +394,48 @@ export async function toTypeface(
       });
     }
     if (glyphs.length > before) typeface.alternates = joinRules(joined);
+  }
+
+  /*
+   * And the two ends of a word, which is the other thing a shaper has to be
+   * told about a joined face.
+   *
+   * The letter as `cmap` maps it reaches out on both sides, because that is
+   * what makes the font right in a renderer that applies nothing. A word set
+   * from those alone begins and ends with a stroke reaching towards a letter
+   * that is not there, so the first letter of one and the last are drawn again
+   * without the half that has nothing to meet.
+   */
+  const edges = boundaryEnds(forge);
+  if (edges.length > 0) {
+    const before = glyphs.length;
+    for (const [name, which] of edges) {
+      const drawn = drawnEnds(name, which, forge);
+      if (!drawn) continue;
+      glyphs.push({
+        name: boundaryName(name, which),
+        unicodes: [],
+        advanceWidth: drawn.advanceWidth,
+        contours: drawn.contours,
+        components: [],
+        anchors: [],
+        params: {},
+        dirty: false,
+      });
+    }
+    /*
+     * Ahead of the hand-over rules, and the order is the whole of why it
+     * works. A lookup matches the letter `cmap` maps, so once a letter has
+     * been swapped no later lookup recognises it -- and of the two, the one
+     * that has to win is this. Run second, a word ending `on` would already
+     * be `o.medi n.init` and the `n` would keep a lead-out into the space,
+     * which no reordering can take back. Run first, that pair simply does not
+     * get the hand-over at the waist and joins at the baseline instead, which
+     * is what the letters do anyway with no feature applied at all.
+     */
+    if (glyphs.length > before) {
+      typeface.alternates = [...boundaryRules(edges, plain), ...typeface.alternates];
+    }
   }
 
   typeface.glyphs = glyphs;

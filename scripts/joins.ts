@@ -19,9 +19,12 @@ import { drawLetter } from "@/forge/build";
 import { noEffects } from "@/font/effects";
 import { proof, startFrom } from "@/forge/document";
 import { BASES, type Style } from "@/forge/style";
+import { seamsOf } from "@/forge/script";
+import { joinEnds } from "@/forge/letters";
 import type { Contour } from "@/font/types";
 
 const LOWER = "abcdefghijklmnopqrstuvwxyz".split("");
+const CAPS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 const PAIRS = ["nn", "no", "on", "ll", "ie", "an", "ou", "st", "he", "mm"];
 
 const slid = (contours: Contour[], by: number): Contour[] =>
@@ -63,7 +66,7 @@ function seamGap(style: Style, pair: string): number | null {
   const first = drawn(pair[0], style);
   const second = drawn(pair[1], style);
   if (!first || !second) return null;
-  const seam = style.parts.script.height * style.metrics.xHeight;
+  const seam = seamsOf(style.parts.script, style.metrics.xHeight, style.pen.weight / 2).low;
   /*
    * Fused before measuring, and this is not a nicety.
    *
@@ -75,9 +78,26 @@ function seamGap(style: Style, pair: string): number | null {
    */
   const both = unite([...first.contours, ...slid(second.contours, first.advanceWidth)], "winding");
   const runs = inkRunsAt(both, seam, "y", 48);
-  // Only the runs that bracket the boundary matter: ink to the left of it and
-  // ink to the right of it, and whether anything joins them.
-  const edge = first.advanceWidth;
+  /*
+   * Only the runs that bracket the boundary matter: ink to the left of it and
+   * ink to the right of it, and whether anything joins them.
+   *
+   * And the boundary is not the advance. The slant is sheared onto the finished
+   * outline about the middle of the lowercase -- see `leaning` -- so a point the
+   * skeleton put on the advance is drawn to the *left* of it by however far the
+   * seam stands below that middle: thirty-three units on the Monoline, which
+   * leans hardest and has the lowest seam. Both letters move by the same amount
+   * and the weld is unharmed, but a cut taken at the advance itself is taken to
+   * the right of where the ink now is.
+   *
+   * This mattered not at all while a join crossed the seam nearly level,
+   * because its ink was then a long horizontal run either side of the cut. It
+   * matters now that a join crosses climbing: a climbing stroke's ink at one
+   * height is only about a pen and a half wide, and the shear is most of that.
+   */
+  const lean = (seam - style.metrics.xHeight / 2)
+    * Math.tan((style.metrics.slant * Math.PI) / 180);
+  const edge = first.advanceWidth + lean;
   const before = runs.filter((run) => run[1] <= edge + 1e-6);
   const after = runs.filter((run) => run[0] >= edge - 1e-6);
   const spans = runs.some((run) => run[0] < edge && run[1] > edge);
@@ -97,7 +117,7 @@ async function main() {
     extra ? { ...one, parts: { ...one.parts, script: { ...one.parts.script, irregularity: extra } } } : one);
   for (const style of faces) {
     const script = style.parts.script;
-    const seam = script.height * style.metrics.xHeight;
+    const seam = seamsOf(script, style.metrics.xHeight, style.pen.weight / 2).low;
     console.log(`\n${style.name}  seam y=${Math.round(seam)}  pen=${style.pen.weight}`);
 
     /*
@@ -119,6 +139,26 @@ async function main() {
       }
     }
     console.log(`  pairs that do not join, of 52: ${broken.length ? broken.join(" ") : "none"}`);
+
+    /*
+     * And every capital that hands over, against the lowercase after it.
+     *
+     * One side only, because that is the claim: a capital reaches out on its
+     * right and never on its left, so `An` is a join and `nA` is two letters
+     * that happen to be next to each other. Four capitals hand over to nothing
+     * at all and are not asked.
+     */
+    const capsBroken: string[] = [];
+    let capsAsked = 0;
+    for (const cap of CAPS) {
+      if (!joinEnds(cap).exit) continue;
+      capsAsked += 1;
+      const gap = seamGap(style, `${cap}n`);
+      if (gap === null) capsBroken.push(`${cap}n(nothing)`);
+      else if (gap > 1) capsBroken.push(`${cap}n(${gap.toFixed(0)})`);
+    }
+    console.log(
+      `  capitals that do not hand on, of ${capsAsked}: ${capsBroken.length ? capsBroken.join(" ") : "none"}`);
 
     let worst = 0;
     for (const pair of PAIRS) {
