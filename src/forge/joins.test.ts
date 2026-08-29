@@ -13,6 +13,7 @@ import { contoursBounds, inkRunsAt } from "@/font/geometry";
 import { drawLetter } from "./build";
 import { drawnHigh, startFrom } from "./document";
 import { alternateName, joinRules, joinsUp } from "./joins";
+import { wobbleOf } from "./script";
 import { BASES, SANS } from "./style";
 
 const HAND = BASES.find((one) => one.name === "Handwriting")!;
@@ -121,15 +122,36 @@ describe("the second drawing is the same letter", () => {
      */
     const shiftAt = (y: number): number => (y - HAND.metrics.xHeight / 2) * lean;
     const close = HAND.pen.weight * 0.1;
+    /*
+     * And the letter's own lean on top of the face's.
+     *
+     * A joined face leans each letter a little further than its neighbour, and
+     * that shear is taken about the seam rather than about the middle of the
+     * x-height -- which is what lets a letter lean and still hand over in the
+     * same place. So at the seam it moves nothing, and at the high seam two
+     * hundred units above it, it moves the ink by as much as ten: on this face
+     * the `e` leans 2.8 degrees of its own and its ink at the high seam stands
+     * ten units right of where the face's slant alone would put it.
+     *
+     * That is the join arriving exactly where it should, not missing. The
+     * tolerance above is for the run-finder walking a flattened outline and is
+     * a tenth of the pen; widening it to swallow a real displacement would
+     * stop this noticing a join that had actually missed. So the displacement
+     * is worked out instead -- it is deterministic, from the letter's name --
+     * and the tolerance stays where it was.
+     */
+    const ownLean = (letter: string, y: number): number =>
+      (y - HAND.parts.script.height * HAND.metrics.xHeight) *
+      Math.tan((wobbleOf(letter, HAND.parts.script, HAND.metrics.xHeight).lean * Math.PI) / 180);
 
     for (const letter of ["a", "n", "e", "u"]) {
       const drawn = drawnHigh(letter, "entry", forge)!;
       const runs = inkRunsAt(drawn.contours, high, "y", 48);
       expect([letter, runs.length > 0]).toEqual([letter, true]);
-      expect([letter, Math.min(...runs.map((run) => run[0])) < shiftAt(high) + close]).toEqual([
+      expect([
         letter,
-        true,
-      ]);
+        Math.min(...runs.map((run) => run[0])) < shiftAt(high) + ownLean(letter, high) + close,
+      ]).toEqual([letter, true]);
     }
     for (const letter of ["o", "v", "w", "b"]) {
       const drawn = drawnHigh(letter, "exit", forge)!;
@@ -137,7 +159,8 @@ describe("the second drawing is the same letter", () => {
       expect([letter, runs.length > 0]).toEqual([letter, true]);
       expect([
         letter,
-        Math.max(...runs.map((run) => run[1])) > drawn.advanceWidth + shiftAt(high) - close,
+        Math.max(...runs.map((run) => run[1])) >
+          drawn.advanceWidth + shiftAt(high) + ownLean(letter, high) - close,
       ]).toEqual([letter, true]);
     }
     // The plain letters still meet each other at the low seam, which is what

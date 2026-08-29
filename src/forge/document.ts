@@ -1022,6 +1022,27 @@ export function editMetrics(forge: Forge, patch: Partial<Style["metrics"]>): For
 }
 
 /**
+ * Change how the letters join, which no letter may hold an exception to.
+ *
+ * The join lives in `parts` and is edited through here rather than through the
+ * part editor, because it is the one part that is not a property of a letter.
+ * A serif belongs to the stroke that wears it and one letter may keep its own;
+ * a seam is an agreement between two letters, and a letter that kept its own
+ * copy of it would hand over at a height its neighbour does not arrive at. The
+ * seam either holds for the whole alphabet or the face comes apart, so this
+ * writes to the family and there is no letter scope to be had from it.
+ */
+export function editScript(forge: Forge, patch: Partial<Style["parts"]["script"]>): Forge {
+  return {
+    ...forge,
+    style: {
+      ...forge.style,
+      parts: { ...forge.style.parts, script: { ...forge.style.parts.script, ...patch } },
+    },
+  };
+}
+
+/**
  * What an edit to this part is about to change, in letters.
  *
  * Said before the edit rather than discovered after it. Moving the serif is a

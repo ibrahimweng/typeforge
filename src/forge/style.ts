@@ -998,6 +998,7 @@ export const HANDWRITING: Style = {
     corner: { radius: 40, join: "round" },
     shoulder: { spring: 0.55, reach: 1 },
     script: {
+      ...NO_SCRIPT,
       on: true,
       height: 0.36,
       reach: 1.5,
@@ -1052,6 +1053,7 @@ export const FORMAL_SCRIPT: Style = {
     bowl: { width: 0.92, squareness: 0, aperture: 1 },
     shoulder: { spring: 0.5, reach: 0.96 },
     script: {
+      ...NO_SCRIPT,
       on: true,
       height: 0.3,
       reach: 1.9,
@@ -1104,6 +1106,7 @@ export const CASUAL_SCRIPT: Style = {
     bowl: { width: 1.05, squareness: 0, aperture: 1.08 },
     shoulder: { spring: 0.48, reach: 1.06 },
     script: {
+      ...NO_SCRIPT,
       on: true,
       height: 0.44,
       reach: 1.05,
@@ -1160,6 +1163,7 @@ export const MONOLINE_SCRIPT: Style = {
     bowl: { width: 1, squareness: 0, aperture: 1 },
     shoulder: { spring: 0.6, reach: 1 },
     script: {
+      ...NO_SCRIPT,
       on: true,
       height: 0.38,
       reach: 1.65,
@@ -1179,6 +1183,113 @@ export const MONOLINE_SCRIPT: Style = {
    * it is the only face here that would be *wrong* with texture on it.
    */
   effects: { ...noEffects() },
+};
+
+/**
+ * The roundhand: the joined face the others are the corners of.
+ *
+ * The four above each commit to a hand -- a print hand, a pointed pen, a felt
+ * tip, a ruled line -- and each is best at being that one thing. This one is
+ * built to be moved. Every setting on it sits where a dial has room either
+ * side, so the same face reaches a low-waisted flowing script at one end and a
+ * tall upright brush hand at the other without any of the controls running
+ * into a stop.
+ *
+ * Where the numbers come from, since a face that is *meant* to travel needs to
+ * start somewhere defensible rather than somewhere convenient. Two variable
+ * script faces were measured -- one a flowing connected script, one an upright
+ * brush -- and this sits between them on every axis that separates the two:
+ *
+ *                       flowing      brush      here
+ *   x-height / em         0.332      0.495     0.433
+ *   cap height / em       0.720      0.696     0.712
+ *   ascender / em         0.720      0.751     0.743
+ *   descender / em       -0.280     -0.250    -0.275
+ *   slant                  13deg      16deg     14deg
+ *   stroke / x-height      0.179      0.125     0.157
+ *   bounce / x-height      0.033      0.000     0.017
+ *
+ * The middle column is what this face measures, not what it declares -- those
+ * are two numbers, and `scripts/likeness.ts` is what keeps them honest.
+ *
+ * Read off the letters rather than out of the tables, which matters on the two
+ * that disagree: both fonts declare an ascender near the top of the em, and in
+ * both the actual `l` stops a good way under it. The declared figure is the
+ * line spacing and the drawn one is the letter, and it is the letter this
+ * engine draws to.
+ *
+ * `likeness.ts` holds those measurements and the settings that travel to each
+ * of them, so the two ends of the dial are written down once and the harness
+ * that checks the journey reads the same numbers this face was placed between.
+ */
+export const ROUNDHAND: Style = {
+  ...SANS,
+  name: "Roundhand",
+  family: "script",
+  blurb:
+    "The joined face built to be moved rather than to be one hand. Middling everything, with room on both sides of every control.",
+  metrics: {
+    ...SANS.metrics,
+    xHeight: 420,
+    capHeight: 708,
+    ascender: 735,
+    descender: -265,
+    slant: 14,
+  },
+  /*
+   * A little contrast rather than none.
+   *
+   * The two faces measured have a good deal of it and the engine's own four
+   * split evenly -- two with a nib, two without. Starting at nought would put
+   * half the range on one side of the rest position and none of it on the
+   * other, which is the one thing a face meant to travel cannot afford.
+   */
+  pen: { weight: 74, contrast: 0.24, angle: 28 },
+  forms: { k: "standing", l: "tailed", g: "curled", t: "straight", f: "descending" },
+  parts: {
+    ...SANS.parts,
+    // Square, for the reason set out on the Handwriting above.
+    terminal: { kind: "butt", angle: 0 },
+    corner: { radius: 60, join: "round" },
+    bowl: { width: 0.96, squareness: 0, aperture: 1 },
+    shoulder: { spring: 0.56, reach: 0.98 },
+    script: {
+      ...NO_SCRIPT,
+      on: true,
+      height: 0.33,
+      reach: 1.7,
+      flat: 0.12,
+      loop: 1.4,
+      loopDepth: 2.2,
+      /*
+       * Short in, long out, because that is what both of the faces measured
+       * do and neither of them is subtle about it: on the flowing one the
+       * lead-out runs past the ink three times as far as the lead-in does.
+       * A join divided evenly is a drawn script; this is a written one.
+       */
+      balance: 0.32,
+      /*
+       * Two tenths, which reads as a hand and not as a fault.
+       *
+       * It was nine tenths until the seed behind it was found not to scatter:
+       * every letter was drawing very nearly the same number, so the control
+       * was sinking the whole lowercase rather than bouncing it, and nine
+       * tenths of nothing is nothing. With a seed that scatters, two tenths
+       * puts this between the two faces measured, which is where a face built
+       * to be moved belongs.
+       */
+      irregularity: 0.2,
+      bounce: 1,
+      /*
+       * Leans about half as much as it bounces. The flowing face measured
+       * bounces by a thirtieth of its x-height while sitting at a steady
+       * thirteen degrees, and the brush face bounces by nothing measurable at
+       * sixteen -- so between them the two axes vary independently, which is
+       * exactly the split one control could not say.
+       */
+      lean: 0.55,
+    },
+  },
 };
 
 export const BASES: Style[] = [
@@ -1202,4 +1313,5 @@ export const BASES: Style[] = [
   FORMAL_SCRIPT,
   CASUAL_SCRIPT,
   MONOLINE_SCRIPT,
+  ROUNDHAND,
 ];

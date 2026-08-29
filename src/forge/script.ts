@@ -117,6 +117,47 @@ export interface Script {
    */
   loop: number;
   /**
+   * How far back down its own stroke the eye reaches, in eye-widths.
+   *
+   * The other half of the loop, and the one that says what kind of loop it is.
+   * The eye is struck as a semicircle standing on the stroke, so how wide it is
+   * comes from how far down the stroke it starts: short, and the eye is a round
+   * bead on the end of an ascender; long, and it is the narrow blade a
+   * copperplate hand leaves. Both are loops of the same width, which is why
+   * this cannot be read off `loop`.
+   *
+   * Capped by the room there actually is -- an eye on an `l` may reach down to
+   * the x-height and no further, because past that it would be drawn through
+   * the letter beside it -- so asking for more than fits gives what fits.
+   */
+  loopDepth: number;
+  /**
+   * Where a letter that hands over high crosses, as a fraction of the x-height.
+   *
+   * Only the four letters that finish at the top of themselves read it -- the
+   * `o`, the `v`, the `w` and the `b` -- and it is what decides whether the
+   * stroke that leaves them runs along the top of the writing or dives back to
+   * the line before the next letter picks it up. Near the waist rather than at
+   * it: at the x-height itself the join runs along the tops of the letters,
+   * which is a different hand altogether.
+   */
+  highSeam: number;
+  /**
+   * How the reach is divided between the lead-in and the lead-out.
+   *
+   * A half is even, which is what a drawn script does. A hand does not: it
+   * arrives at a letter late and leaves it early, or the other way about, and
+   * which of those it is is most of what separates one written hand from
+   * another. Below a half the letter is entered close and left long; above it,
+   * the reverse.
+   *
+   * Kept as a share rather than as two lengths because the two are not
+   * independent -- their sum is the letter-spacing, and a face that set them
+   * separately would have a spacing control that moved when neither of the two
+   * controls named "spacing" was touched.
+   */
+  balance: number;
+  /**
    * How much each letter departs from the one beside it.
    *
    * A hand does not put two letters on exactly the same baseline at exactly
@@ -130,6 +171,25 @@ export interface Script {
    * it was drawn could not be cached, compared with itself, or exported.
    */
   irregularity: number;
+  /**
+   * How much of that unsteadiness shows as a letter sitting off its line.
+   *
+   * Split from the lean because the two are not one thing, and a font that had
+   * them as one could not be pointed at half the scripts that exist. Measured
+   * across two variable script faces: one bounces by a ninth of its x-height
+   * and leans hardly at all, the other sits so exactly on its line that the
+   * spread across its twelve baseline letters is a single unit -- and leans
+   * sixteen degrees. One control cannot ask for both, because turning it up for
+   * the bounce brings a lean that face does not have.
+   *
+   * A share of `irregularity` rather than a measurement of its own, so the one
+   * control still says how unsteady the hand is and these two say what the
+   * unsteadiness looks like. At one apiece this is exactly what a single
+   * control did.
+   */
+  bounce: number;
+  /** How much of that unsteadiness shows as a letter leaning further than its neighbour. */
+  lean: number;
 }
 
 export const NO_SCRIPT: Script = {
@@ -138,7 +198,12 @@ export const NO_SCRIPT: Script = {
   reach: 1.5,
   flat: 0.2,
   loop: 0,
+  loopDepth: 2,
+  highSeam: 0.76,
+  balance: 0.5,
   irregularity: 0,
+  bounce: 1,
+  lean: 1,
 };
 
 /**
@@ -157,18 +222,20 @@ export const NO_SCRIPT: Script = {
 export const HANDS_OVER_HIGH = new Set(["o", "v", "w", "b"]);
 
 /**
- * Where the high join crosses, as a fraction of the x-height.
+ * Where the high join crosses when a face has not said.
  *
  * Near the waist rather than at it. At the x-height the join would run along
  * the top of the letters, which is a different thing altogether -- what a hand
  * does after an `o` is leave a little below the widest point and carry across
- * at about three quarters of the way up.
+ * at about three quarters of the way up. A face may now say otherwise, and
+ * this is what it starts from.
  */
-const HIGH = 0.76;
+export const HIGH = 0.76;
 
 /** The two heights a join can cross at on this face. */
 export function seamsOf(script: Script, x: number): { low: number; high: number } {
-  return { low: script.height * x, high: Math.max(script.height * x, HIGH * x) };
+  const high = script.highSeam ?? HIGH;
+  return { low: script.height * x, high: Math.max(script.height * x, high * x) };
 }
 
 /**
@@ -424,7 +491,14 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
      * that reached past the baseline would be drawn through the letter after it.
      */
     const available = rising ? end.y : room.x - end.y;
-    const deep = Math.min(wide * 2, available);
+    /*
+     * Twice the eye's width was the only depth there was, and it is what a
+     * round eye wants. A hand that writes a long narrow loop strikes the same
+     * width of eye much further down its own stroke, so the depth is asked for
+     * separately and clamped to the room rather than to a multiple of nothing.
+     */
+    const reachBack = Math.max(0.5, script.loopDepth ?? 2);
+    const deep = Math.min(wide * reachBack, available);
     // Radius is half the chord at a semicircle, so this is the same floor the
     // join keeps: no turn tighter than the pen can go round.
     if (deep < room.half * 2.4) continue;
@@ -550,6 +624,19 @@ export function planJoin(
   const entryAt = crossing?.entry ?? seams.low;
   const exitAt = crossing?.exit ?? seams.low;
   const reach = script.reach * room.half * 2;
+  /*
+   * The two halves of it, which used to be one number used twice.
+   *
+   * Their sum is what it always was, so a face that divides them evenly is
+   * spaced exactly as it was before there was anything to divide. What the
+   * share buys is the asymmetry a written hand actually has: measured on a
+   * variable script face, the lead-out runs three times as far past the ink as
+   * the lead-in does, and a join built from one length either side cannot be
+   * pointed at it.
+   */
+  const share = Math.max(0, Math.min(1, script.balance ?? 0.5));
+  const reachIn = reach * 2 * share;
+  const reachOut = reach * 2 * (1 - share);
 
   /*
    * The bands stop half a pen inside the letter's own lines rather than on
@@ -595,10 +682,10 @@ export function planJoin(
   const rightmost = points.reduce((most, one) => Math.max(most, one.x), -Infinity);
   // Moved over by this much, the letter's own left edge sits exactly one reach
   // from the origin, which is the run the lead-in has to climb along.
-  const inset = reach - (leftmost - room.half);
+  const inset = reachIn - (leftmost - room.half);
   const from = at(lands.x + inset, lands.y);
   const to = at(leaves.x + inset, leaves.y);
-  const width = rightmost + room.half + inset + reach;
+  const width = rightmost + room.half + inset + reachOut;
 
   /*
    * A level run at each end before the turn, so the two halves have something
@@ -606,15 +693,19 @@ export function planJoin(
    * opened up, the letters sit further apart with a flatter line between them,
    * which is the difference between a fast hand and a careful one.
    */
-  const level = Math.max(0, Math.min(1, script.flat)) * reach;
+  const flat = Math.max(0, Math.min(1, script.flat));
+  // A share of each half's own reach, so the flat run stays in proportion to
+  // the turn it is shortening rather than swamping the shorter of the two.
+  const levelIn = flat * reachIn;
+  const levelOut = flat * reachOut;
   const entry = chained(
-    { segments: [{ kind: "line", from: at(0, entryAt), to: at(level, entryAt) }], closed: false },
-    levelArc(at(level, entryAt), from, room),
+    { segments: [{ kind: "line", from: at(0, entryAt), to: at(levelIn, entryAt) }], closed: false },
+    levelArc(at(levelIn, entryAt), from, room),
   );
   const exit = chained(
-    reversed(levelArc(at(width - level, exitAt), to, room)),
+    reversed(levelArc(at(width - levelOut, exitAt), to, room)),
     {
-      segments: [{ kind: "line", from: at(width - level, exitAt), to: at(width, exitAt) }],
+      segments: [{ kind: "line", from: at(width - levelOut, exitAt), to: at(width, exitAt) }],
       closed: false,
     },
   );
@@ -671,18 +762,73 @@ const TILT = 6;
  * copy of it that can drift.
  */
 export function mostLift(script: Script, xHeight: number): number {
-  return script.on ? Math.abs(script.irregularity) * xHeight * SETTLE * 0.5 : 0;
+  const share = Math.max(0, script.bounce ?? 1);
+  return script.on ? Math.abs(script.irregularity) * share * xHeight * SETTLE * 0.5 : 0;
 }
 
-export function wobbleOf(name: string, script: Script, xHeight: number): { lift: number; lean: number } {
-  if (!script.on || script.irregularity <= 0) return { lift: 0, lean: 0 };
+/**
+ * Two numbers between minus a half and a half, from a letter's name.
+ *
+ * The seed the bounce and the lean are drawn from, and it has to actually
+ * scatter or neither of them is a bounce. It did not.
+ *
+ * What was here was FNV-1a -- hash the bytes, take ten bits out of the middle
+ * for one number and ten from higher up for the other. That is a sound hash for
+ * a word and it falls apart completely on a name one character long, because a
+ * single round of multiply-and-xor does not diffuse: with only the low seven
+ * bits of the input varying, the ten bits pulled out of the product vary almost
+ * linearly with the character code. Printed for `a` through `z` the results
+ * came out in alphabetical order, which is the giveaway -- a hash whose output
+ * you can sort is not a hash.
+ *
+ * The cost was the whole control. Across the twenty-six lowercase letters the
+ * bounce seed spanned five hundredths of its range instead of all of it, and
+ * every value was negative. So the unsteadiness never made a letter sit high
+ * against its neighbour sitting low; it moved the entire lowercase down by very
+ * nearly one amount. Turned up, the alphabet sank together and the *spread* --
+ * which is the only part anybody sees -- barely moved. It looked exactly like a
+ * control at the end of its range, and it was a control that had never been
+ * connected to what it was named after.
+ *
+ * The fix is the standard avalanche finaliser, three shift-xor-multiply rounds,
+ * which is what FNV-1a wants after it for short keys. Every input bit now
+ * reaches every output bit. The seeds span their range, they are as often
+ * positive as negative, and sorting them gives back nothing.
+ *
+ * Still worked out from the letter's own name, and still the same numbers on
+ * every machine and every run: this is asked once per letter and has to be
+ * boring rather than uniform. A letter that came out somewhere different each
+ * time it was drawn could not be cached, compared with itself, or exported.
+ */
+export function scatterOf(name: string): { first: number; second: number } {
   let hash = 2166136261;
   for (let index = 0; index < name.length; index++) {
     hash ^= name.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
-  const first = ((hash >>> 8) & 1023) / 1023 - 0.5;
-  const second = ((hash >>> 20) & 1023) / 1023 - 0.5;
+  // The avalanche. Without these three rounds the bits below are the input
+  // rearranged rather than mixed.
+  hash ^= hash >>> 16;
+  hash = Math.imul(hash, 2246822507);
+  hash ^= hash >>> 13;
+  hash = Math.imul(hash, 3266489909);
+  hash ^= hash >>> 16;
+  return {
+    first: ((hash >>> 8) & 1023) / 1023 - 0.5,
+    second: ((hash >>> 20) & 1023) / 1023 - 0.5,
+  };
+}
+
+export function wobbleOf(name: string, script: Script, xHeight: number): { lift: number; lean: number } {
+  if (!script.on || script.irregularity <= 0) return { lift: 0, lean: 0 };
+  /*
+   * The two shares. Both default to one, at which this is arithmetically the
+   * same as when the unsteadiness had no shape to it -- so no face, document or
+   * test drawn before these existed moves by a unit.
+   */
+  const drift = Math.max(0, script.bounce ?? 1);
+  const tilt = Math.max(0, script.lean ?? 1);
+  const { first, second } = scatterOf(name);
   return {
     /*
      * Half a unit either way, so one whole unit is a sixteenth of the x-height
@@ -691,7 +837,7 @@ export function wobbleOf(name: string, script: Script, xHeight: number): { lift:
      * reads any departure from it at once, which is why this is worth having
      * and why it does not need to be large.
      */
-    lift: first * script.irregularity * xHeight * SETTLE,
-    lean: second * script.irregularity * TILT,
+    lift: first * script.irregularity * drift * xHeight * SETTLE,
+    lean: second * script.irregularity * tilt * TILT,
   };
 }

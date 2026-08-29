@@ -679,7 +679,17 @@ describe("an f is not a t, and a k is not a fan", () => {
       Math.max(...inkRunsAt(drawn.contours, y).map(([, to]) => to));
 
     const joined = STARTING_POINTS.filter((one) => one.parts.script.on);
-    expect(joined.length).toBe(4);
+    /*
+     * A floor rather than a census.
+     *
+     * What this guards against is the filter quietly coming back empty, which
+     * would leave the loop below checking nothing and the test passing anyway.
+     * It was written as an exact four and that made every new joined face a
+     * failing test in a file about the `k` -- the wrong place to find out, and
+     * the wrong thing to have to edit. Each face is checked by the loop, so
+     * however many there are is right; that there are none is not.
+     */
+    expect(joined.length).toBeGreaterThanOrEqual(4);
     for (const style of joined) {
       const half = style.pen.weight / 2;
       const seam = style.parts.script.height * style.metrics.xHeight;

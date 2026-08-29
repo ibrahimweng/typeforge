@@ -25,9 +25,11 @@ import { describe, expect, it } from "vitest";
 import { contoursBounds, contoursToSvgPath } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import { builtFrom, drawLetter, letterNames } from "./build";
+import { drawnHigh, startFrom } from "./document";
+import { HANDS_OVER_HIGH } from "./script";
 import { LETTERS, formsOf } from "./letters";
-import { METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS, type FieldControl } from "./parts";
-import { BASES, SANS, type Metrics, type Parts, type Style } from "./style";
+import { METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS, SCRIPT_CONTROLS, type FieldControl } from "./parts";
+import { BASES, ROUNDHAND, SANS, type Metrics, type Parts, type Style } from "./style";
 
 /*
  * A base is a starting point, and the panel has to be able to show one.
@@ -51,6 +53,8 @@ describe("the bases sit inside their own controls", () => {
       };
       for (const control of PEN_CONTROLS) check("pen", control, (base.pen as unknown as Record<string, unknown>)[control.key]);
       for (const control of METRIC_CONTROLS) check("metrics", control, (base.metrics as unknown as Record<string, unknown>)[control.key]);
+      for (const control of SCRIPT_CONTROLS)
+        check("script", control, (base.parts.script as unknown as Record<string, unknown>)[control.key]);
       for (const spec of PART_SPECS) {
         const values = (base.parts as unknown as Record<string, Record<string, unknown>>)[spec.name];
         for (const control of spec.controls) check(spec.name, control as FieldControl, values?.[control.key]);
@@ -256,6 +260,40 @@ describe("no control can spoil a letter", { timeout: 60_000 }, () => {
     }
   }
 
+  /*
+   * The joining, driven the same way, on the face that joins.
+   *
+   * Against the sans these would all be no-ops, so the sweep is run on the
+   * Roundhand -- and it is the sweep that matters most on a joined face rather
+   * than least. Every other control shapes a letter inside its own advance; a
+   * script control shapes the stroke that *leaves* the letter and arrives at
+   * the next one, so a setting that folds does not fold one letter, it folds
+   * the seam between every pair of them.
+   */
+  for (const control of SCRIPT_CONTROLS) {
+    it(`script / ${control.label}`, () => {
+      const scale = control.emRelative ? ROUNDHAND.metrics.unitsPerEm : 1;
+      for (const value of stops(control.min * scale, control.max * scale)) {
+        for (const weight of [12, 92, 190, 260]) {
+          const style = withPart(
+            { ...ROUNDHAND, pen: { ...ROUNDHAND.pen, weight } },
+            "script",
+            control.key,
+            value,
+          );
+          for (const name of DRAWN_NAMES) {
+            for (const contour of drawLetter(name, style)!.contours) {
+              expect(
+                contoursIntersect([contour]),
+                `${name} folds at script.${control.key} = ${value}, weight ${weight}`,
+              ).toBe(false);
+            }
+          }
+        }
+      }
+    });
+  }
+
   it("the pen, from hairline to the limit and back to front", () => {
     for (const weight of [8, 40, 92, 150, 210, 260]) {
       for (const contrast of [0, 0.45, 0.9]) {
@@ -448,6 +486,7 @@ describe("every control has a value to show", () => {
   const controls: Array<[string, FieldControl[], (style: Style) => Record<string, unknown>]> = [
     ["pen", PEN_CONTROLS, (style) => style.pen as unknown as Record<string, unknown>],
     ["metrics", METRIC_CONTROLS, (style) => style.metrics as unknown as Record<string, unknown>],
+    ["script", SCRIPT_CONTROLS, (style) => style.parts.script as unknown as Record<string, unknown>],
   ];
 
   for (const [where, list, read] of controls) {
@@ -531,6 +570,53 @@ describe("no control is decoration", () => {
         });
         if (!changed) dead.push(`${where}.${control.key} (${control.label})`);
       }
+    }
+
+    /*
+     * The joining, which has to be asked of a face that joins.
+     *
+     * Every one of these controls is read only where `script.on` is set, so put
+     * to the plain sans they would all come back dead and the test would be
+     * reporting the sans rather than the control. The Roundhand is the face
+     * built to be moved, so it is the one that has room at both ends of every
+     * one of them.
+     */
+    for (const control of SCRIPT_CONTROLS) {
+      const scale = control.emRelative ? ROUNDHAND.metrics.unitsPerEm : 1;
+      const low = withPart(ROUNDHAND, "script", control.key, control.min * scale);
+      const high = withPart(ROUNDHAND, "script", control.key, control.max * scale);
+      const changed = NAMES.some((name) => {
+        const before = drawLetter(name, low);
+        const after = drawLetter(name, high);
+        return (
+          contoursToSvgPath(before!.contours) !== contoursToSvgPath(after!.contours) ||
+          before!.advanceWidth !== after!.advanceWidth
+        );
+      });
+      /*
+       * The high seam is not read by the drawing the panel shows, and that is
+       * correct rather than a fault in it.
+       *
+       * It says where the four letters that finish at the top of themselves
+       * hand over, and a letter that hands over high is a *second* drawing --
+       * the one the shaper swaps in when the pair actually occurs. Asked of the
+       * plain drawing it moves nothing, because the plain drawing is the one
+       * that hands over low. So it is asked of the alternates, which is where
+       * it lives.
+       */
+      const alsoHigh =
+        changed ||
+        [...HANDS_OVER_HIGH].some((letter) => {
+          const before = drawnHigh(letter, "exit", startFrom(low));
+          const after = drawnHigh(letter, "exit", startFrom(high));
+          return (
+            !before ||
+            !after ||
+            contoursToSvgPath(before.contours) !== contoursToSvgPath(after.contours) ||
+            before.advanceWidth !== after.advanceWidth
+          );
+        });
+      if (!alsoHigh) dead.push(`script.${control.key} (${control.label})`);
     }
     expect(dead).toEqual([]);
   });

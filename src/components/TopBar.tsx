@@ -8,6 +8,7 @@ import * as React from "react";
 import type { Mode } from "@/App";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
 import { forgeStore, useForge } from "@/state/useForge";
+import { quillStore, useQuill } from "@/state/useQuill";
 import { store, useAppState, type ToolId, type ViewId } from "@/state/useStore";
 import {
   OUTLINE_ACTION,
@@ -65,6 +66,7 @@ export function TopBar({
   const state = useAppState();
   const forge = useForge();
   const assemble = useAssemble();
+  const quill = useQuill();
 
   /*
    * Undo belongs to whichever document is in front.
@@ -88,6 +90,13 @@ export function TopBar({
             redo: () => assembleStore.redo(),
             canUndo: assemble.canUndo,
             canRedo: assemble.canRedo,
+          }
+        : mode === "quill"
+        ? {
+            undo: () => quillStore.undo(),
+            redo: () => quillStore.redo(),
+            canUndo: quill.canUndo,
+            canRedo: quill.canRedo,
           }
         : {
             undo: () => store.undo(),
@@ -139,6 +148,7 @@ export function TopBar({
             ["edit", "Edit", "Edit a font somebody else made"],
             ["forge", "Draw", "Draw a font from nothing"],
             ["assemble", "Assemble", "Assemble a font from drawings"],
+            ["quill", "Trace", "Read a font back into strokes and reshape it"],
           ] as Array<[Mode, string, string]>
         ).map(([id, label, hint]) => (
           <button

@@ -13,6 +13,7 @@ import { AssemblePanel } from "@/components/AssemblePanel";
 import { ExportDialog } from "@/components/ExportDialog";
 import { ForgeExportDialog } from "@/components/ForgeExportDialog";
 import { ForgePanel } from "@/components/ForgePanel";
+import { QuillPanel } from "@/components/QuillPanel";
 import { HelpDrawer } from "@/components/HelpDrawer";
 import { LibraryDialog } from "@/components/LibraryDialog";
 import { QuickActions, useQuickActionShortcut, type Shell } from "@/palette";
@@ -23,7 +24,7 @@ import { forgeStore, useForge } from "@/state/useForge";
 import { castFor, castOf, cutsFor, cutsOf } from "@/forge/document";
 import { ready as readyToCut } from "@/font/boolean";
 import { detectFormat } from "@/font/parse";
-import { describe, readProject } from "@/project/format";
+import { describe, readProject, type Mode as SavedMode } from "@/project/format";
 import { keeper as makeKeeper, kept } from "@/project/keep";
 import { fileNameFor, restore, session } from "@/project/session";
 import type { Keeping } from "@/components/TopBar";
@@ -35,10 +36,29 @@ import { KerningView } from "@/views/KerningView";
 import { MetricsView } from "@/views/MetricsView";
 import { AssembleView } from "@/views/AssembleView";
 import { ForgeView } from "@/views/ForgeView";
+import { QuillView } from "@/views/QuillView";
 import { ReportView } from "@/views/ReportView";
 
 /** Which of the three jobs is in front. */
-export type Mode = "edit" | "forge" | "assemble";
+export type Mode = "edit" | "forge" | "assemble" | "quill";
+
+/**
+ * The half of the application a saved session records.
+ *
+ * Three of the four, and Trace is the one left out on purpose. What a session
+ * remembers is which half you were in so that opening the tab again puts you
+ * back there, and it is worth being put back only where there is a document to
+ * be put back into. A traced font is not in the file format -- it is somebody
+ * else's outlines read into strokes, and writing those into a `.typeforge`
+ * would be writing their font into your project file.
+ *
+ * So Trace records the half underneath it instead of itself. Coming back lands
+ * on a document that is really there rather than on an empty Trace view
+ * claiming to be where you left off.
+ */
+function saveableMode(mode: Mode): SavedMode {
+  return mode === "quill" ? "edit" : mode;
+}
 
 export function App(): React.JSX.Element {
   const state = useAppState();
@@ -145,7 +165,7 @@ export function App(): React.JSX.Element {
         if (live) {
           // Whether this browser will keep anything is not a question with an
           // answer until something has been written, so it is asked by writing.
-          setKeeping((await keeper.now(() => session(was))) ? "kept" : "off");
+          setKeeping((await keeper.now(() => session(saveableMode(was)))) ? "kept" : "off");
         }
         restoring.current = false;
       }
@@ -167,7 +187,7 @@ export function App(): React.JSX.Element {
   const revisions = `${state.revision}:${forge.revision}:${assemble.revision}:${mode}`;
   React.useEffect(() => {
     if (restoring.current) return;
-    keeper.soon(() => session(mode));
+    keeper.soon(() => session(saveableMode(mode)));
   }, [revisions, keeper, mode]);
 
   /*
@@ -187,7 +207,7 @@ export function App(): React.JSX.Element {
   React.useEffect(() => {
     const flush = () => {
       if (document.visibilityState === "hidden" && !restoring.current) {
-        void keeper.now(() => session(mode));
+        void keeper.now(() => session(saveableMode(mode)));
       }
     };
     document.addEventListener("visibilitychange", flush);
@@ -195,7 +215,7 @@ export function App(): React.JSX.Element {
   }, [keeper, mode]);
 
   const saveProject = React.useCallback(() => {
-    const project = session(mode);
+    const project = session(saveableMode(mode));
     const blob = new Blob([JSON.stringify(project)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -409,6 +429,7 @@ export function App(): React.JSX.Element {
       <div className="flex min-h-0 flex-1">
         <div ref={stageRef} className="flex min-w-0 flex-1 flex-col">
           {mode === "forge" && <ForgeView />}
+          {mode === "quill" && <QuillView />}
           {mode === "assemble" && <AssembleView />}
           {mode === "edit" && (
             <>
@@ -421,6 +442,7 @@ export function App(): React.JSX.Element {
           )}
         </div>
         {mode === "forge" && <ForgePanel />}
+        {mode === "quill" && <QuillPanel />}
         {mode === "assemble" && <AssemblePanel />}
         {mode === "edit" && <Inspector />}
         {helping && <HelpDrawer onClose={() => setHelping(false)} />}
@@ -454,7 +476,7 @@ export function App(): React.JSX.Element {
 
       <QuickActions open={quick} onClose={() => setQuick(false)} shell={shell} />
 
-      <LibraryDialog mode={mode} onMode={setMode} />
+      <LibraryDialog mode={saveableMode(mode)} onMode={setMode} />
 
       {exporting && mode === "forge" && <ForgeExportDialog onClose={() => setExporting(false)} />}
       {exporting && mode === "assemble" && (
