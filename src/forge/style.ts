@@ -1631,7 +1631,26 @@ export const CASUAL_SCRIPT: Style = {
        * to the same two figures on each.
        */
       eye: 0.4,
-      irregularity: 1.6,
+      /*
+       * The liveliest of the four, and no longer by nearly double.
+       *
+       * At 1.6 its five square-footed letters spread across 0.142 of an
+       * x-height against the Handwriting's 0.089 and the Monoline's 0.090 --
+       * and the Monoline asks for no unsteadiness at all, so 0.090 is what the
+       * letters' own shapes come to before any is added. Most of what set this
+       * face apart was therefore a fifth of an x-height of bounce laid on top
+       * of a floor everything shares, which reads as a fault rather than as a
+       * fast hand.
+       *
+       * At 1.2 it spreads 0.107: still the highest of the four, which is what a
+       * face whose own blurb says its line will not sit still should be, and no
+       * longer twice what the letters do on their own.
+       *
+       * It measured 0.002 before the seed behind it was found not to scatter,
+       * so this is the first setting of it that has ever been fitted to
+       * anything.
+       */
+      irregularity: 1.2,
       bow: 0.9,
       // The reference's lap, in this face's stems, so it moves whenever the pen
       // does -- and the pen came down by a fifth. Up from 0.25 with the climbing
