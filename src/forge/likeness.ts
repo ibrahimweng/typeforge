@@ -135,7 +135,7 @@ export const FLOWING: Likeness = {
     overlap: 0.123,
   },
   settings: {
-    metrics: { xHeight: 343, capHeight: 716, ascender: 736, descender: -249, slant: 13 },
+    metrics: { xHeight: 317, capHeight: 716, ascender: 709, descender: -270, slant: 13 },
     /*
      * The pen against the measured stroke, which are not the same number.
      *
@@ -158,7 +158,14 @@ export const FLOWING: Likeness = {
       // Short in, long out: the measured lead-out runs about three times the
       // lead-in past the ink, which is a quarter and three quarters.
       balance: 0.25,
-      irregularity: 1.9,
+      /*
+       * Four tenths against the nine tenths of the base, and both were nearly
+       * five times this until the seed behind them was fixed. A control
+       * compensating for a hash that would not scatter is a control fitted to
+       * a bug, and the numbers it was fitted to were meaningless -- which is
+       * the argument for the harness rather than the eye.
+       */
+      irregularity: 0.4,
       bounce: 1,
       lean: 0.5,
     },

@@ -1201,12 +1201,12 @@ export const MONOLINE_SCRIPT: Style = {
  * brush -- and this sits between them on every axis that separates the two:
  *
  *                       flowing      brush      here
- *   x-height / em         0.332      0.495     0.410
+ *   x-height / em         0.332      0.495     0.433
  *   cap height / em       0.720      0.696     0.712
- *   ascender / em         0.720      0.751     0.718
- *   descender / em       -0.280     -0.250    -0.296
+ *   ascender / em         0.720      0.751     0.743
+ *   descender / em       -0.280     -0.250    -0.275
  *   slant                  13deg      16deg     14deg
- *   stroke / x-height      0.179      0.125     0.166
+ *   stroke / x-height      0.179      0.125     0.157
  *   bounce / x-height      0.033      0.000     0.017
  *
  * The middle column is what this face measures, not what it declares -- those
@@ -1268,7 +1268,17 @@ export const ROUNDHAND: Style = {
        * A join divided evenly is a drawn script; this is a written one.
        */
       balance: 0.32,
-      irregularity: 0.9,
+      /*
+       * Two tenths, which reads as a hand and not as a fault.
+       *
+       * It was nine tenths until the seed behind it was found not to scatter:
+       * every letter was drawing very nearly the same number, so the control
+       * was sinking the whole lowercase rather than bouncing it, and nine
+       * tenths of nothing is nothing. With a seed that scatters, two tenths
+       * puts this between the two faces measured, which is where a face built
+       * to be moved belongs.
+       */
+      irregularity: 0.2,
       bounce: 1,
       /*
        * Leans about half as much as it bounces. The flowing face measured

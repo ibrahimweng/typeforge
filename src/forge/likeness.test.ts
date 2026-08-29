@@ -22,7 +22,7 @@ import { describe, expect, it } from "vitest";
 import { contoursBounds, inkRunsAt } from "@/font/geometry";
 import { draw, startFrom } from "./document";
 import { dialledTo, LIKENESSES, likenessBy, type Measurements } from "./likeness";
-import { NO_SCRIPT } from "./script";
+import { NO_SCRIPT, scatterOf } from "./script";
 import { BASES, ROUNDHAND, type Style } from "./style";
 
 /*
@@ -199,6 +199,82 @@ describe("what the dial leaves alone", () => {
     for (const likeness of LIKENESSES) {
       expect(dialledTo(likeness).parts.script.on, likeness.id).toBe(true);
     }
+  });
+});
+
+/*
+ * The seed the bounce is drawn from, checked for actually scattering.
+ *
+ * This is here because it did not, and nothing noticed. One round of FNV-1a
+ * over a one-character name does not diffuse, so the ten bits taken out of it
+ * varied almost linearly with the character code: across the lowercase the
+ * bounce seed spanned five hundredths of its range and every value was
+ * negative. The control that reads it was therefore not a bounce at all -- it
+ * moved the whole alphabet down together, and turning it up moved the whole
+ * alphabet down further while the spread, which is the part anybody sees,
+ * stayed where it was.
+ *
+ * What makes that worth a test rather than a fix and a shrug is how it hid. A
+ * broken hash draws letters, exports fonts, passes every invariant about ink
+ * and folding, and produces a face that looks like a script. It was found only
+ * by asking why a control would not move a measurement, which is not a
+ * question anybody asks on purpose.
+ */
+describe("the seed behind the bounce scatters", () => {
+  const letters = "abcdefghijklmnopqrstuvwxyz".split("");
+  const seeds = (which: "first" | "second") => letters.map((one) => scatterOf(one)[which]);
+
+  for (const which of ["first", "second"] as const) {
+    describe(which, () => {
+      it("covers most of its range", () => {
+        const values = seeds(which);
+        const spread = Math.max(...values) - Math.min(...values);
+        // The range is a whole unit. Anything under half of it across
+        // twenty-six samples is a hash that is not mixing.
+        expect(spread, `only ${spread.toFixed(3)} of a possible 1.0`).toBeGreaterThan(0.6);
+      });
+
+      it("goes both ways", () => {
+        // The old one was negative for all twenty-six, which is what turned a
+        // bounce into a uniform drop.
+        const values = seeds(which);
+        expect(values.filter((one) => one < 0).length).toBeGreaterThan(5);
+        expect(values.filter((one) => one > 0).length).toBeGreaterThan(5);
+      });
+
+      it("cannot be sorted back into the alphabet", () => {
+        /*
+         * The tell that found it. If the seeds come out in the order the
+         * letters went in, the hash is a rearrangement of its input rather
+         * than a mix of it, and neighbouring letters get neighbouring values
+         * -- which is the one thing a bounce must not do, because the letters
+         * that end up beside each other in a word are the ones that must not
+         * agree.
+         */
+        const values = seeds(which);
+        const rising = values.every((one, at) => at === 0 || one >= values[at - 1]);
+        const falling = values.every((one, at) => at === 0 || one <= values[at - 1]);
+        expect(rising || falling, "the seeds are in alphabetical order").toBe(false);
+      });
+
+      it("keeps neighbouring letters apart", () => {
+        // Averaged over the alphabet, two letters next to each other should
+        // differ by about a third of the range. The old seed managed 0.002.
+        const values = seeds(which);
+        const steps = values.slice(1).map((one, at) => Math.abs(one - values[at]));
+        const mean = steps.reduce((sum, one) => sum + one, 0) / steps.length;
+        expect(mean, `neighbours differ by ${mean.toFixed(4)} on average`).toBeGreaterThan(0.15);
+      });
+    });
+  }
+
+  it("gives the same answer every time it is asked", () => {
+    // Deterministic, or a letter could not be cached, compared with itself, or
+    // exported. This is the property the fix had to keep.
+    for (const one of letters) {
+      expect(scatterOf(one)).toEqual(scatterOf(one));
+    }
+    expect(scatterOf("n")).not.toEqual(scatterOf("m"));
   });
 });
 

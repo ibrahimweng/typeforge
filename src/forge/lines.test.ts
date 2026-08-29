@@ -18,7 +18,8 @@ import { describe, expect, it } from "vitest";
 
 import { contoursBounds } from "@/font/geometry";
 import { drawLetter } from "./build";
-import { mostLift } from "./script";
+import { JOINS } from "./letters";
+import { mostLift, wobbleOf } from "./script";
 import { BASES, type Style } from "./style";
 import { penReach, reachAlong } from "./sweep";
 
@@ -149,17 +150,40 @@ describe("the letters stand on their lines", () => {
          * that wrote a spine where it meant an edge.
          */
         const half = style.pen.weight / 2;
+        /*
+         * Each letter's own bounce taken back off before the two are compared.
+         *
+         * On a joined face an `n` and an `o` are *meant* to sit at different
+         * heights -- that is what the unsteadiness is -- so comparing them raw
+         * measures the bounce rather than the recipe. Widening the tolerance to
+         * let it through would have worked and would have cost the test its
+         * point: two lifts of slack on the Casual Script is a hundred and seven
+         * units, and half a stem there is fifty-six, so the fault this file
+         * exists to catch would have fitted inside the allowance twice over.
+         *
+         * The lift is worked out from the letter's name and is the same every
+         * time it is asked, so it can simply be subtracted. What is left is
+         * where the recipe put the letter, which is what is being asked about.
+         */
+        const settled = (name: string, at: (name: string, style: Style) => number): number =>
+          at(name, style) -
+          // Only the letters that actually receive a lift. `wobbleOf` will
+          // hand one back for any name it is given, including a capital, and
+          // a capital does not join and is never moved by it -- so taking one
+          // off a `C` subtracts a displacement that was never applied. `JOINS`
+          // is the same set the drawing consults, so the two cannot drift.
+          (JOINS.has(name) ? wobbleOf(name, style.parts.script, style.metrics.xHeight).lift : 0);
         for (const [flat, round] of [
           ["H", "O"],
           ["n", "o"],
           ["I", "C"],
         ]) {
           expect(
-            Math.abs(topOf(round, style) - topOf(flat, style)),
+            Math.abs(settled(round, topOf) - settled(flat, topOf)),
             `${round} and ${flat} do not line up`,
           ).toBeLessThan(Math.max(overshoot * 2, half * 0.3));
           expect(
-            Math.abs(footOf(round, style) - footOf(flat, style)),
+            Math.abs(settled(round, footOf) - settled(flat, footOf)),
             `${round} and ${flat} do not sit together`,
           ).toBeLessThan(Math.max(overshoot * 2, half * 0.3));
         }
