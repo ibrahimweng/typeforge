@@ -77,7 +77,21 @@ function seamGap(style: Style, first: string, second: string): number | null {
   const seam = seamsOf(style.parts.script, style.metrics.xHeight, style.pen.weight / 2).low;
   const both = unite([...left.contours, ...slid(right.contours, left.advanceWidth)], "winding");
   const runs = inkRunsAt(both, seam, "y", 48);
-  const edge = left.advanceWidth;
+  /*
+   * The boundary is not the advance. The slant is sheared onto the finished
+   * outline about the middle of the lowercase, so a point the skeleton put on
+   * the advance is drawn to the left of it by however far the seam stands below
+   * that middle -- thirty-three units on the Monoline, which leans hardest and
+   * has the lowest seam. Both letters move by the same amount, so the weld is
+   * unharmed; a cut taken at the advance itself is simply taken in the wrong
+   * place. It was the right place while the join crossed the seam nearly level,
+   * because the ink was then a long horizontal run either side of the cut. A
+   * join that crosses climbing shows about a pen and a half of ink at any one
+   * height, and the shear is most of that.
+   */
+  const lean = (seam - style.metrics.xHeight / 2)
+    * Math.tan((style.metrics.slant * Math.PI) / 180);
+  const edge = left.advanceWidth + lean;
   if (runs.some((run) => run[0] < edge && run[1] > edge)) return 0;
   const before = runs.filter((run) => run[1] <= edge + 1e-6).map((run) => run[1]);
   const after = runs.filter((run) => run[0] >= edge - 1e-6).map((run) => run[0]);

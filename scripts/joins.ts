@@ -78,9 +78,26 @@ function seamGap(style: Style, pair: string): number | null {
    */
   const both = unite([...first.contours, ...slid(second.contours, first.advanceWidth)], "winding");
   const runs = inkRunsAt(both, seam, "y", 48);
-  // Only the runs that bracket the boundary matter: ink to the left of it and
-  // ink to the right of it, and whether anything joins them.
-  const edge = first.advanceWidth;
+  /*
+   * Only the runs that bracket the boundary matter: ink to the left of it and
+   * ink to the right of it, and whether anything joins them.
+   *
+   * And the boundary is not the advance. The slant is sheared onto the finished
+   * outline about the middle of the lowercase -- see `leaning` -- so a point the
+   * skeleton put on the advance is drawn to the *left* of it by however far the
+   * seam stands below that middle: thirty-three units on the Monoline, which
+   * leans hardest and has the lowest seam. Both letters move by the same amount
+   * and the weld is unharmed, but a cut taken at the advance itself is taken to
+   * the right of where the ink now is.
+   *
+   * This mattered not at all while a join crossed the seam nearly level,
+   * because its ink was then a long horizontal run either side of the cut. It
+   * matters now that a join crosses climbing: a climbing stroke's ink at one
+   * height is only about a pen and a half wide, and the shear is most of that.
+   */
+  const lean = (seam - style.metrics.xHeight / 2)
+    * Math.tan((style.metrics.slant * Math.PI) / 180);
+  const edge = first.advanceWidth + lean;
   const before = runs.filter((run) => run[1] <= edge + 1e-6);
   const after = runs.filter((run) => run[0] >= edge - 1e-6);
   const spans = runs.some((run) => run[0] < edge && run[1] > edge);

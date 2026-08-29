@@ -22,6 +22,7 @@ import { ready, intersect } from "@/font/boolean";
 import { contoursBounds } from "@/font/geometry";
 import { importFont } from "@/font/parse";
 import { drawLetter } from "@/forge/build";
+import { seamsOf } from "@/forge/script";
 import { BASES } from "@/forge/style";
 import type { Contour } from "@/font/types";
 
@@ -57,6 +58,7 @@ async function report(
   name: string,
   glyph: (letter: string) => { contours: Contour[]; advanceWidth: number } | undefined,
   x: number,
+  lean = 0,
 ) {
   console.log(`\n  ${name}`);
   console.log("    letter   at the origin               at the advance");
@@ -65,8 +67,8 @@ async function report(
   for (const letter of LETTERS) {
     const drawn = glyph(letter);
     if (!drawn) continue;
-    const entry = await runs(drawn.contours, 0, x);
-    const exit = await runs(drawn.contours, drawn.advanceWidth, x);
+    const entry = await runs(drawn.contours, lean, x);
+    const exit = await runs(drawn.contours, drawn.advanceWidth + lean, x);
     console.log(`    ${letter}        ${show(entry)}  ${show(exit)}`);
     // The middle of the lowest run at each edge, which is the stroke the hand
     // is on when it crosses -- an `f` or a `j` also crosses with its descender.
@@ -86,6 +88,17 @@ console.log("\nWhere the join arrives and leaves, in x-heights above the writing
 await report("Dancing Script -- the reference", refGlyph, refX);
 for (const style of BASES.filter((one) => one.parts.script?.on)) {
   if (FACE && style.name !== FACE) continue;
+  /*
+   * Cut where the seam is drawn, not where the skeleton put it. The slant is
+   * sheared onto the finished outline about the middle of the lowercase -- see
+   * `leaning` in `build.ts` -- so the point the join stops at, which the
+   * skeleton puts on the advance at the seam's height, is drawn this far to the
+   * left of it. The reference has no such offset to undo: its slant is in its
+   * outlines and its origin is where its designer put it.
+   */
+  const seam = seamsOf(style.parts.script, style.metrics.xHeight, style.pen.weight / 2).low;
+  const lean = (seam - style.metrics.xHeight / 2)
+    * Math.tan((style.metrics.slant * Math.PI) / 180);
   await report(style.name, (letter) => drawLetter(letter, style, style.forms?.[letter]) ?? undefined,
-    style.metrics.xHeight);
+    style.metrics.xHeight, lean);
 }

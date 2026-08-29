@@ -96,21 +96,37 @@ export interface Script {
    * The heading the hand hands over on, in degrees above the horizontal.
    *
    * Every exit arrives on it and every entry leaves on it, which is the whole
-   * of what makes twenty-six letters meet twenty-six others; see `levelArc`.
-   * Nought is level, and level is the one heading that shows, because an arc
-   * tangent to the horizontal lies flat for a long stretch either side of the
-   * seam and every letter laying one at the same height rules a line through
-   * the word.
+   * of what makes twenty-six letters meet twenty-six others; see `biarc`.
+   *
+   * Nought is level, and level is the one heading that must not be used,
+   * because it rules a line through the word: every letter lays a stretch of
+   * flat stroke at the same height and the word comes out threaded on it. That
+   * is what these faces did, and `seam.ts` and `scallop.ts` are the two
+   * instruments that finally said so. The reference hands over between 0.26 and
+   * 0.39 of an x-height on every letter of its lowercase -- the same height
+   * ours already used -- but it arrives there *climbing*, at about fifty
+   * degrees leaving a letter and about seventy arriving at the next, so the
+   * join between two letters is a valley with its floor on the writing line
+   * rather than a rail across it.
+   *
+   * Set between those two: one number has to serve both halves, because the
+   * heading at the seam is the one thing a letter and its unknown neighbour
+   * have to agree on. Past about sixty-five the straight run past the seam
+   * starts to read as a spike between the letters.
    */
   tilt: number;
   /**
-   * How much of the join runs level at the seam before it turns into the
+   * How much of the join runs straight at the seam before it turns into the
    * letter, as a fraction of the reach.
    *
    * Nought is a pure curve from one letter into the next, which is a fast hand.
-   * Opened up, the join flattens out between the letters and the writing slows
-   * down and opens out with it. It cannot go past the reach, because past that
-   * there would be no turn left to make.
+   * Opened up, the join straightens out between the letters and the writing
+   * slows down and opens out with it. It cannot go past the reach, because past
+   * that there would be no turn left to make.
+   *
+   * Along the heading, not along the writing line. It used to be level, which
+   * is how a face with a `tilt` of twenty still ruled a line through its own
+   * words: the tilt turned the arc and the flat run stayed flat.
    */
   flat: number;
   /**
@@ -353,6 +369,9 @@ export interface Join {
  */
 const SAMPLES = 64;
 
+/** A point on the letter's skeleton, and the direction the letter runs there. */
+type Sample = { point: Vec2; way: Vec2 };
+
 /**
  * How high up a round letter the lead-in may land, as a share of the x-height.
  *
@@ -374,6 +393,37 @@ const SAMPLES = 64;
 const HANGS_OVER = 0.33;
 
 const ROUND_ENTRY = 0.35;
+
+/**
+ * How far off the letter's own stroke the hand is when it takes hold of it.
+ *
+ * Arriving exactly along the letter's stroke was tried first and is wrong in a
+ * way that is obvious once drawn: an `n`'s first stem is one x all the way up
+ * in the skeleton, so a lead-in tangent to it runs *beside* it for its last
+ * stretch and leaves a hairline of white between the two. The reference does
+ * not do that. Its up-stroke and its first stem meet at the apex from
+ * different directions and close a narrow wedge, which the pen fills, and the
+ * top-left of the letter comes to a point.
+ *
+ * So the lead-in arrives this far round from the letter's heading, turned
+ * towards the seam it came from. Wider and the wedge opens into a fork; at
+ * nought it is the hairline again.
+ */
+const APEX = (18 * Math.PI) / 180;
+
+/**
+ * And never further round from the straight line between the seam and the
+ * letter than this.
+ *
+ * A letter's heading where the join takes hold of it is whatever the recipe was
+ * doing there, and on a few of them -- the `i`'s short stem, the `b`'s bowl --
+ * it points most of a right angle off the line the join has to travel. Asked to
+ * leave the seam one way and arrive that far round, the join has to loop.
+ */
+const MOST_LEAN = (55 * Math.PI) / 180;
+
+/** And no arc of a join may turn further than this, which is a knot. */
+const MOST_TURN = (100 * Math.PI) / 180;
 
 /**
  * An arc from the seam to a point, level where it leaves the seam.
@@ -446,14 +496,30 @@ function levelArc(seam: Vec2, target: Vec2, room: Room, along: Vec2 = at(1, 0)):
   return { segments: [arc], closed: false };
 }
 
-/** Every run of the letter, as points, for the join to find its edges by. */
-function skeleton(spines: Spine[]): Vec2[] {
-  const points: Vec2[] = [];
+/**
+ * Every run of the letter, as points, for the join to find its edges by -- and
+ * the direction the letter is running in at each of them.
+ *
+ * The direction is what lets a join be the letter's own stroke rather than a
+ * stroke that meets it. Taken from the neighbouring samples rather than from
+ * the segment, which costs a sixty-fourth of a run in accuracy and works the
+ * same for a line, an arc and the seam between two of them.
+ */
+function skeleton(spines: Spine[]): Sample[] {
+  const out: Sample[] = [];
   for (const spine of spines) {
     if (spineLength(spine) <= 0) continue;
-    points.push(...alongSpine(spine, SAMPLES));
+    const along = alongSpine(spine, SAMPLES);
+    for (let index = 0; index < along.length; index++) {
+      const before = along[Math.max(0, index - 1)];
+      const after = along[Math.min(along.length - 1, index + 1)];
+      const dx = after.x - before.x;
+      const dy = after.y - before.y;
+      const length = Math.hypot(dx, dy) || 1;
+      out.push({ point: along[index], way: at(dx / length, dy / length) });
+    }
   }
-  return points;
+  return out;
 }
 
 /**
@@ -513,14 +579,27 @@ function skeleton(spines: Spine[]): Vec2[] {
  * appears to spend. Whatever closes that gap is not one of the numbers in this
  * file, and the next attempt should start by measuring where the reference's
  * own joins begin and end rather than by turning one of them.
+ *
+ * That measurement was made, and the answer was not a length at all. `seam.ts`
+ * slices every letter on its own origin and on its own advance -- the two
+ * points a word welds at -- and the reference hands over between 0.26 and 0.39
+ * of an x-height on every letter of its lowercase, which is where our seam
+ * already stood. What was wrong was the heading: ours crossed both marks level
+ * and the reference's crosses climbing, at about fifty degrees leaving a letter
+ * and seventy arriving at the next, so its joins are valleys with their floors
+ * on the writing line and ours was a rail ruled across the word at a third of
+ * an x-height. The line is still longer than the reference's -- 54.6 x-heights
+ * of `handgloves` against 44.7, up a little because a climbing stroke is a
+ * longer stroke -- and the tie-break below still costs most of it. It is no
+ * longer the thing that makes these faces look wrong.
  */
 function attach(
-  points: Vec2[],
+  points: Sample[],
   band: (point: Vec2) => boolean,
   side: "left" | "right",
   near?: (point: Vec2) => number,
-): Vec2 {
-  const inside = points.filter(band);
+): Sample {
+  const inside = points.filter((one) => band(one.point));
   /*
    * And when nothing is in the band, the nearest thing to it -- not the whole
    * letter, which is what this used to fall back on and is exactly the search
@@ -546,23 +625,26 @@ function attach(
       ? nearest(points, near)
       : points;
   let best = looking[0];
-  for (const point of looking) {
+  for (const one of looking) {
+    const point = one.point;
     if (side === "left") {
       // Leftmost, and of the leftmost the highest: a stem is one x all the way
       // up, and a hand arrives at the top of it rather than the middle.
-      if (point.x < best.x - 1e-9 || (Math.abs(point.x - best.x) <= 1e-9 && point.y > best.y)) best = point;
-    } else if (point.x > best.x + 1e-9 || (Math.abs(point.x - best.x) <= 1e-9 && point.y < best.y)) {
-      best = point;
+      if (point.x < best.point.x - 1e-9
+        || (Math.abs(point.x - best.point.x) <= 1e-9 && point.y > best.point.y)) best = one;
+    } else if (point.x > best.point.x + 1e-9
+      || (Math.abs(point.x - best.point.x) <= 1e-9 && point.y < best.point.y)) {
+      best = one;
     }
   }
   return best;
 }
 
 /** Every point equally closest to the band, by whatever measure it gives. */
-function nearest(points: Vec2[], howFar: (point: Vec2) => number): Vec2[] {
+function nearest(points: Sample[], howFar: (point: Vec2) => number): Sample[] {
   let least = Infinity;
-  for (const point of points) least = Math.min(least, howFar(point));
-  return points.filter((point) => howFar(point) <= least + 1e-9);
+  for (const one of points) least = Math.min(least, howFar(one.point));
+  return points.filter((one) => howFar(one.point) <= least + 1e-9);
 }
 
 /**
@@ -891,6 +973,165 @@ export function planLoops(
 }
 
 /**
+ * One half of a join: the straight run past the seam, and the arc into the
+ * letter.
+ *
+ * `seam` is the point on the origin or on the advance that the two halves have
+ * to share, and `hold` is where this half takes hold of the letter. Which of
+ * the two is drawn first depends on which end this is, but the shape does not:
+ * the tangent is fixed at whichever end is lower and set `shallow` radians
+ * under the straight line between them, so the stroke is flattest at the
+ * bottom and steepest at the top -- and the straight run past the seam
+ * follows whatever heading the arc has when it gets there, rather than the
+ * horizontal.
+ */
+function run(
+  seam: Vec2,
+  along: Vec2,
+  hold: Vec2,
+  holding: Vec2,
+  room: Room,
+  level: number,
+  knit: number,
+  end: "in" | "out",
+): Spine {
+  const body = end === "in"
+    ? biarc(seam, along, hold, holding, room, "from")
+    : biarc(hold, holding, seam, along, room, "to");
+  /*
+   * And out past the seam along the heading, so the straight run is a
+   * continuation of the stroke rather than a shelf hung off it. This is the
+   * part both halves share: the run either side of a seam is the same line,
+   * because `along` is the same number on every letter of the face.
+   */
+  const far = level + knit;
+  const out = at(seam.x + along.x * far, seam.y + along.y * far);
+  const back = at(seam.x - along.x * far, seam.y - along.y * far);
+  const tail = (from: Vec2, to: Vec2): Spine => ({
+    segments: [{ kind: "line", from, to }],
+    closed: false,
+  });
+  return end === "in" ? chained(tail(back, seam), body) : chained(body, tail(seam, out));
+}
+
+/**
+ * Two arcs that leave one point going one way and arrive at another going
+ * another, meeting tangentially in the middle.
+ *
+ * One arc can be given a direction at one end -- that is `levelArc`, and it was
+ * all a join needed while the join was a stroke of its own. A join that is the
+ * letter's own stroke needs both: the heading at the seam, which every letter
+ * of the face has to agree on or a word comes apart at the welds, and the
+ * heading at the letter, which is whatever that letter is doing there.
+ *
+ * The construction is the equal-tangent biarc. Both arcs are given the same
+ * tangent length, which puts their joint at the midpoint of the two tangent
+ * points; the tangency condition there comes to a quadratic in that length, and
+ * the positive root is the one that turns the short way round. Where the two
+ * headings are parallel the quadratic degenerates to a linear equation, and
+ * where the points coincide or the root is not positive there is no biarc and
+ * one arc is the honest answer.
+ */
+function biarc(
+  from: Vec2,
+  going: Vec2,
+  to: Vec2,
+  arriving: Vec2,
+  room: Room,
+  keep: "from" | "to",
+): Spine {
+  const straight: Spine = { segments: [{ kind: "line", from, to }], closed: false };
+  /*
+   * The one arc to fall back on, and which end it keeps.
+   *
+   * Always the seam's end. The heading there is the half of the contract two
+   * letters share -- and the straight run past the seam is drawn along it, so
+   * an arc that arrives at the seam on some other heading meets that run at a
+   * corner, and a corner in a spine is a stroke that folds over itself when the
+   * pen is swept along it.
+   */
+  const one = () => keep === "from"
+    ? levelArc(from, to, room, unit(going))
+    : reversed(levelArc(to, from, room, at(-arriving.x, -arriving.y)));
+  const first = unit(going);
+  const last = unit(arriving);
+  const away = at(to.x - from.x, to.y - from.y);
+  const span = away.x * away.x + away.y * away.y;
+  if (span < 1e-9) return straight;
+  const sum = at(first.x + last.x, first.y + last.y);
+  const reach = away.x * sum.x + away.y * sum.y;
+  const bend = 2 * (1 - (first.x * last.x + first.y * last.y));
+  let tangent: number;
+  if (Math.abs(bend) < 1e-9) {
+    if (Math.abs(reach) < 1e-9) return straight;
+    tangent = span / (2 * reach);
+  } else {
+    tangent = (-reach + Math.sqrt(Math.max(0, reach * reach + bend * span))) / bend;
+  }
+  if (!(tangent > 1e-9)) return one();
+  const joint = at(
+    (from.x + first.x * tangent + to.x - last.x * tangent) / 2,
+    (from.y + first.y * tangent + to.y - last.y * tangent) / 2,
+  );
+  const opening = levelArc(from, joint, room, first);
+  const closing = reversed(levelArc(to, joint, room, at(-last.x, -last.y)));
+  /*
+   * And never a biarc that turns further than a stroke can be drawn.
+   *
+   * The construction always has a solution and the solution is not always a
+   * join: where the letter's heading points well off the line between the two
+   * points, the equal-tangent root puts the joint a long way out and one of the
+   * arcs comes back on itself. Swept, that is a stroke that crosses its own
+   * spine -- a knot, not a curve -- and the `i`, `b` and `e` all drew one.
+   *
+   * Where that happens the honest answer is the one arc `levelArc` gives: it
+   * keeps the heading at the seam, which is the half of the contract that two
+   * letters share, and gives up the heading at the letter, which is the half
+   * only this letter cares about.
+   */
+  const turn = (spine: Spine) => spine.segments.reduce((most, part) => part.kind === "arc"
+    ? Math.max(most, Math.abs(part.endAngle - part.startAngle)) : most, 0);
+  /*
+   * A half that comes back straight is a half whose turn was tighter than the
+   * pen -- `levelArc` gives a line rather than a knot -- and a line is not
+   * tangent to the arc beside it, so the two meet at a corner and the corner
+   * folds. Either half like that and the whole biarc goes.
+   */
+  const bent = (spine: Spine) => spine.segments.every((part) => part.kind === "arc");
+  if (!bent(opening) || !bent(closing) || turn(opening) > MOST_TURN || turn(closing) > MOST_TURN) {
+    return one();
+  }
+  return chained(opening, closing);
+}
+
+/**
+ * `way`, turned up to `most` radians towards `towards`.
+ *
+ * Never past it: where the two are already closer together than that, the
+ * answer is `towards` itself, which is the straight line from the seam and is
+ * the right arrival for a letter whose stroke happens to point at it.
+ */
+function turned(way: Vec2, towards: Vec2, most: number): Vec2 {
+  const gap = between(way, towards);
+  const angle = Math.atan2(way.y, way.x) + Math.sign(gap) * Math.min(most, Math.abs(gap));
+  return at(Math.cos(angle), Math.sin(angle));
+}
+
+/** How far round `towards` is from `way`, in radians, signed and within half a turn. */
+function between(way: Vec2, towards: Vec2): number {
+  let gap = Math.atan2(towards.y, towards.x) - Math.atan2(way.y, way.x);
+  while (gap > Math.PI) gap -= Math.PI * 2;
+  while (gap <= -Math.PI) gap += Math.PI * 2;
+  return gap;
+}
+
+/** The same direction, one unit long. */
+function unit(way: Vec2): Vec2 {
+  const length = Math.hypot(way.x, way.y);
+  return length > 1e-9 ? at(way.x / length, way.y / length) : at(1, 0);
+}
+
+/**
  * The two halves of the join, the room the letter needs, and the width it ends
  * up with.
  *
@@ -1112,7 +1353,7 @@ export function planJoin(
    */
   const lift = waist === null ? 0 : waist - room.x;
   const floor = lift - room.half;
-  const body = points.filter((one) => band !== null && one.y <= band && one.y >= floor);
+  const body = points.filter((one) => band !== null && one.point.y <= band && one.point.y >= floor);
   const spanning = body.length >= 2 ? body : points;
   /*
    * And only for a letter written in the middle of a word, which is the one
@@ -1193,15 +1434,15 @@ export function planJoin(
    * it cannot do without crossing itself.
    */
   const measured = spanning;
-  const leftmost = measured.reduce((least, one) => Math.min(least, one.x), Infinity);
-  const rightmost = measured.reduce((most, one) => Math.max(most, one.x), -Infinity);
+  const leftmost = measured.reduce((least, one) => Math.min(least, one.point.x), Infinity);
+  const rightmost = measured.reduce((most, one) => Math.max(most, one.point.x), -Infinity);
   // Moved over by this much, the letter's own left edge sits exactly one reach
   // from the origin, which is the run the lead-in has to climb along.
   // What this letter asks for on top of the join's own reach, at each end.
   const spare = reach * Math.max(0, air);
   const inset = (ends.entry ? reach : room.sidebearing) + spare - (leftmost - room.half);
-  const from = at(lands.x + inset, lands.y);
-  const to = at(leaves.x + inset, leaves.y);
+  const from = at(lands.point.x + inset, lands.point.y);
+  const to = at(leaves.point.x + inset, leaves.point.y);
   const asked = rightmost + room.half + inset + spare + (ends.exit ? reach : room.sidebearing);
   /*
    * And never so narrow that the letter hangs over more than a loop's worth.
@@ -1220,14 +1461,16 @@ export function planJoin(
    */
   const hangs = spanning === points
     ? 0
-    : Math.max(0, points.reduce((most, one) => Math.max(most, one.x), -Infinity) - rightmost);
+    : Math.max(0, points.reduce((most, one) => Math.max(most, one.point.x), -Infinity) - rightmost);
   const width = asked + Math.max(0, hangs - room.x * HANGS_OVER);
 
   /*
-   * A level run at each end before the turn, so the two halves have something
-   * to agree on beyond a single point. Nought is a pure curve and still joins;
-   * opened up, the letters sit further apart with a flatter line between them,
-   * which is the difference between a fast hand and a careful one.
+   * A straight run at each end before the turn, so the two halves have
+   * something to agree on beyond a single point. Nought is a pure curve and
+   * still joins; opened up, the letters sit further apart with a straighter
+   * line between them, which is the difference between a fast hand and a
+   * careful one. It runs along the heading, not along the writing line -- see
+   * `tilt`, which is what it used to do and what put a rule through the word.
    */
   const level = Math.max(0, Math.min(1, script.flat)) * reach;
   /*
@@ -1237,41 +1480,61 @@ export function planJoin(
    */
   const knit = Math.max(0, script.knit) * room.half * 2;
   /*
-   * The heading, as a rise per unit along.
+   * Each half is one arc, bent the same way: flat at the bottom and steepening
+   * towards the top.
    *
-   * The contract is unchanged by it: the lead-in still passes through the
-   * origin at the seam height and the lead-out still passes through the advance
-   * at the same height, so the two halves meet where they always did. What
-   * changes is the direction they are travelling as they cross, and that is the
-   * one thing both sides have to agree on.
+   * This is the whole of what a join is, and it took an instrument to see it.
+   * `seam.ts` slices every letter on its own origin and on its own advance --
+   * the two points a word welds at -- and the reference's numbers there are
+   * flat: it hands over between 0.26 and 0.39 of an x-height on every letter of
+   * the lowercase, which is where our seam already was. So the height was never
+   * the fault. What is different is the direction the hand is travelling when
+   * it gets there. `scallop.ts` draws the shape: the reference's `n` leaves the
+   * foot of its last stem at the writing line, runs level for a tenth of an
+   * x-height, and then climbs at about fifty degrees, crossing its own advance
+   * still climbing; the letter after it starts a tenth before its own origin,
+   * down at the line, and climbs at about seventy into the top of its first
+   * stem. The two overlap over a fifth of an x-height and weld into one steep
+   * stroke, and the join between two letters is a valley with its floor on the
+   * writing line.
+   *
+   * Ours crossed both marks level -- `levelArc` arrived tangent to the
+   * horizontal by construction -- so every seam had a flat stretch either side
+   * of it at a third of an x-height, and a word came out with a rule ruled
+   * through it. `tilt` was the first attempt at this and it tilted the wrong
+   * thing: one fixed heading at the seam for both halves, which slopes the rule
+   * without curving it.
+   *
+   * The rule that replaces it is one sentence: the hand is flattest where it is
+   * lowest. So the tangent is fixed at the lower of the two ends -- the seam
+   * for a lead-in, the letter's own foot for a lead-out -- and it is set
+   * `tilt` degrees shallower than the straight line between them, which leaves
+   * the arc to make up the difference by steepening on its way up. At a tilt of
+   * nought each half is straight and still joins; opened up, it dips.
    */
-  const rise = Math.tan((script.tilt * Math.PI) / 180);
-  const climbing = at(1, rise);
-  const falling = at(-1, -rise);
-  const entry = !ends.entry ? null : chained(
-    {
-      segments: [{
-        kind: "line",
-        from: at(-knit, entryAt - knit * rise),
-        to: at(level, entryAt + level * rise),
-      }],
-      closed: false,
-    },
-    levelArc(at(level, entryAt + level * rise), from, room, climbing),
-  );
-  const exit = !ends.exit ? null : chained(
-    // Handed the heading backwards, because this half is drawn from the seam
-    // into the letter and then turned round: reversed, it arrives climbing.
-    reversed(levelArc(at(width - level, exitAt - level * rise), to, room, falling)),
-    {
-      segments: [{
-        kind: "line",
-        from: at(width - level, exitAt - level * rise),
-        to: at(width + knit, exitAt + knit * rise),
-      }],
-      closed: false,
-    },
-  );
+  const climbing = unit(at(1, Math.tan((Math.max(-60, Math.min(70, script.tilt)) * Math.PI) / 180)));
+  /*
+   * The lead-in arrives along the letter's own stroke, pointing away from the
+   * seam -- up the first stem of an `n`, so the two meet at the apex the way an
+   * up-stroke and a down-stroke do, and round the lower left of an `o`.
+   *
+   * The lead-out leaves along the writing line instead, and that asymmetry is
+   * the reference's, not a shortcut. Its `n` leaves the foot of the last stem
+   * running level for a tenth of an x-height before it climbs; the stem itself
+   * is heading straight down there, and a lead-out tangent to *that* would go
+   * down through the line. A hand turns out of a down-stroke onto the line and
+   * off the line into the next letter, and those are two different tangents.
+   */
+  const holding = (lands.way.x * from.x + lands.way.y * (from.y - entryAt)) >= 0
+    ? lands.way
+    : at(-lands.way.x, -lands.way.y);
+  const chord = at(from.x, from.y - entryAt);
+  const askew = Math.abs(between(holding, chord));
+  const arriving = turned(holding, chord, Math.max(APEX, askew - MOST_LEAN));
+  const entry = !ends.entry ? null
+    : run(at(0, entryAt), climbing, from, arriving, room, level, knit, "in");
+  const exit = !ends.exit ? null
+    : run(at(width, exitAt), climbing, to, at(1, 0), room, level, knit, "out");
 
   return { entry, exit, inset, width };
 }

@@ -1155,9 +1155,34 @@ export const HANDWRITING: Style = {
        * a word is: 0.25 of the word at 0.18, 0.18 at 0.24, and 0.14 from 0.30
        * up, against the reference's 0.06. The rest of that gap is the flat
        * tangent itself and is not a number this control can reach.
+       *
+       * It is now a number `tilt` reaches, and the height was right all along:
+       * `seam.ts` puts the reference's handover at 0.26 to 0.39 on every letter
+       * of its lowercase, which is where this already stood. See `tilt`.
        */
       height: 0.3,
-      tilt: 20,
+      /*
+       * Climbing, and steeply, which is the difference between a join and a
+       * rule through the word.
+       *
+       * Twenty was the first attempt and it tilted the wrong thing: the arc
+       * turned and the straight run at the seam stayed level, so every letter
+       * still laid a flat stretch at the same height. `scallop.ts` draws what
+       * the reference does instead -- its `n` leaves the foot of its last stem
+       * at the writing line, runs level for a tenth of an x-height, then climbs
+       * at about fifty degrees across its own advance and goes on climbing into
+       * the letter after it at about seventy.
+       *
+       * Fifty-five is between the reference's two, which is as close as one
+       * number gets: both halves of a join have to leave the seam on the same
+       * heading or two letters that have never met cannot meet on it. Swept at
+       * 45, 55, 65 and 72 with the ink standing on the origin measured against
+       * the reference's -- 0.08, 0.11, 0.16 and 0.19 of an x-height tall
+       * against its 0.27 -- and taken by looking rather than by that number,
+       * because past about sixty-five the straight run either side of the seam
+       * reads as a spike between the letters.
+       */
+      tilt: 55,
       /*
        * And this is the face's fit as much as its join, which is why it moved.
        *
@@ -1200,7 +1225,7 @@ export const HANDWRITING: Style = {
        * This face stood at 1.02 and reads 0.78 here.
        */
       reach: 0.55,
-      flat: 0.2,
+      flat: 0.06,
       /*
        * Looped, where this face used to have none.
        *
@@ -1228,11 +1253,21 @@ export const HANDWRITING: Style = {
       irregularity: 1,
       bow: 0.8,
       /*
-       * Sized against the reference rather than guessed: Dancing Script laps
-       * its pairs by about sixteen hundredths of its x-height, and this is
-       * what that comes to here, in stems, at this face's pen. See `knit`.
+       * A tenth of an x-height of overlap either side of the seam, in this
+       * face's stems.
+       *
+       * Sized against the reference rather than guessed: its `n`'s lead-out
+       * runs a tenth of an x-height past its own advance and the next letter's
+       * lead-in starts a tenth before its own origin, so the two halves lap over
+       * a fifth of an x-height and weld into one climbing stroke. Kept in stems
+       * so it moves whenever the pen does -- which is why the four numbers
+       * differ, the Monoline's pen being a hairline and needing most of one.
+       *
+       * Up from 0.22, which was the same figure sized for a handover that
+       * crossed the seam nearly level. A climbing one spends part of its run
+       * going up instead of along, so the same length of stroke laps less.
        */
-      knit: 0.22,
+      knit: 0.45,
     },
   },
   /*
@@ -1383,7 +1418,8 @@ export const FORMAL_SCRIPT: Style = {
       // Low, for the reason set out on the Handwriting above.
       // A third of the way up, as on the Handwriting. Its run goes 0.19 to 0.15.
       height: 0.3,
-      tilt: 20,
+      // Climbing, as on the Handwriting, and for the reason set out there.
+      tilt: 55,
       /*
        * Down from 1.6, then from 1.1, and the second of those was waiting on
        * the body rather than on the join.
@@ -1444,10 +1480,10 @@ export const FORMAL_SCRIPT: Style = {
       eye: 0.3,
       irregularity: 0.12,
       bow: 0.6,
-      // The reference's sixteen hundredths of an x-height, in this face's
-      // stems -- so it moves whenever the pen does, and the pen came down by a
-      // third. At 0.22 the lap fell to 0.13 with it.
-      knit: 0.3,
+      // The reference's tenth of an x-height either side of the seam, in this
+      // face's stems -- so it moves whenever the pen does, and the pen came down
+      // by a third. Up from 0.3 with the climbing handover; see the Handwriting.
+      knit: 0.48,
     },
   },
   /*
@@ -1562,7 +1598,8 @@ export const CASUAL_SCRIPT: Style = {
       // Low, for the reason set out on the Handwriting above.
       // A third of the way up, as on the Handwriting. Its run goes 0.17 to 0.10, and is worse again above this.
       height: 0.24,
-      tilt: 20,
+      // Climbing, as on the Handwriting, and for the reason set out there.
+      tilt: 55,
       /*
        * Down from 1.05 to 0.6, to where the bodies still lap by only what the
        * knit intends, and then back up to 0.7 as the arch comes down. See the
@@ -1573,7 +1610,7 @@ export const CASUAL_SCRIPT: Style = {
        * before and moved the least.
        */
       reach: 0.7,
-      flat: 0.3,
+      flat: 0.1,
       // Was 0.7, which was too small to close an eye at all -- the loop showed
       // as a bulge on the stem. Sized on the reference's, as on the Formal.
       loop: 2.16,
@@ -1593,10 +1630,10 @@ export const CASUAL_SCRIPT: Style = {
       eye: 0.4,
       irregularity: 1.6,
       bow: 0.9,
-      // The reference's lap, in this face's stems.
-      // In stems, so it moves whenever the pen does, and the pen came down by a
-      // fifth.
-      knit: 0.25,
+      // The reference's lap, in this face's stems, so it moves whenever the pen
+      // does -- and the pen came down by a fifth. Up from 0.25 with the climbing
+      // handover; see the Handwriting.
+      knit: 0.5,
     },
   },
   /*
@@ -1754,7 +1791,8 @@ export const MONOLINE_SCRIPT: Style = {
       // Low, for the reason set out on the Handwriting above.
       // A third of the way up, as on the Handwriting. Its run goes 0.19 to 0.14.
       height: 0.24,
-      tilt: 20,
+      // Climbing, as on the Handwriting, and for the reason set out there.
+      tilt: 55,
       /*
        * In pens, and this pen is a hairline, so the number is large where the
        * run of white it buys is not.
@@ -1824,15 +1862,15 @@ export const MONOLINE_SCRIPT: Style = {
        * the reference, so it comes down to 0.32 and the pair laps by the
        * reference's figure at last.
        *
-       * And back up to 0.38 once the hand began handing over climbing rather
-       * than level. The knit is how far each half carries on past the seam so
-       * that the two cross rather than touch, and a climbing handover spends
-       * some of that going up instead of along: this face's worst pair fell to
-       * 33 units against a floor of 33, where 0.38 puts it at 39. The other
-       * three had room already -- 40, 76 and 39 against floors of 35, 33 and
-       * 35.
+       * And up to 0.76 once the hand began handing over climbing rather than
+       * level. The knit is how far each half carries on past the seam so that
+       * the two cross rather than touch, and a climbing handover spends part of
+       * that going up instead of along, so the same length of stroke laps less.
+       * This is the reference's tenth of an x-height at this face's pen, which
+       * is a hairline and so needs most of a stem where the other three need
+       * about half of one.
        */
-      knit: 0.38,
+      knit: 0.76,
     },
   },
   /*
