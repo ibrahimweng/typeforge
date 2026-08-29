@@ -63,11 +63,12 @@ export function QuillPanel(): React.JSX.Element {
           <button
             type="button"
             className={cn(OUTLINE_ACTION, "w-full")}
-            disabled={state.tracing}
             onClick={() => file.current?.click()}
           >
-            {state.tracing ? "Reading the strokes…" : doc.letters.length > 0 ? "Read another font" : "Read a font"}
+            {doc.letters.length > 0 ? "Read another font" : "Read a font"}
           </button>
+
+          {state.progress && <Reading />}
 
           {state.trouble && (
             <p className="pt-2 text-2xs leading-snug text-[color:var(--destructive,#b4483f)]">
@@ -176,6 +177,68 @@ export function QuillPanel(): React.JSX.Element {
         )}
       </div>
     </aside>
+  );
+}
+
+/**
+ * How far through the font the reading is.
+ *
+ * A bar and a count rather than a spinner, because this takes most of a minute
+ * and a spinner that says only "working" for that long is indistinguishable
+ * from one that has hung. The letter being read is named beside it: on a font
+ * that stalls, the name is what says where.
+ *
+ * The bar is only honest once the total is known, and the total is not known
+ * until the font has been parsed and its characters counted -- a second or two
+ * on a large one. Until then it says so in words rather than drawing a bar at
+ * nought, which would read as no progress rather than as nothing measured yet.
+ */
+function Reading(): React.JSX.Element {
+  const state = useQuill();
+  const progress = state.progress;
+  const known = Boolean(progress && progress.total > 0);
+  const share = known ? Math.min(1, progress!.done / progress!.total) : 0;
+
+  return (
+    <div className="pt-2" data-quill-progress={known ? String(progress!.done) : "counting"}>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-2xs text-muted-foreground">
+          {known ? (
+            <>
+              Reading {progress!.letter ? <span className="text-foreground">{progress!.letter}</span> : "the last of them"}
+            </>
+          ) : (
+            "Counting the letters…"
+          )}
+        </span>
+        <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
+          {known ? `${progress!.done} of ${progress!.total}` : ""}
+        </span>
+      </div>
+      <div
+        className="mt-1 h-1 w-full overflow-hidden rounded-full bg-card"
+        role="progressbar"
+        aria-label="Reading the font"
+        aria-valuemin={0}
+        aria-valuemax={known ? progress!.total : undefined}
+        aria-valuenow={known ? progress!.done : undefined}
+      >
+        <div
+          className={cn(
+            "h-full rounded-full bg-[color:var(--accent)] transition-[width] duration-150",
+            !known && "animate-pulse w-1/4",
+          )}
+          style={known ? { width: `${(share * 100).toFixed(1)}%` } : undefined}
+        />
+      </div>
+      <button
+        type="button"
+        onClick={() => quillStore.stopTracing()}
+        className="pt-1.5 text-2xs text-[color:var(--accent)] transition-opacity hover:opacity-70"
+      >
+        stop
+      </button>
+    </div>
   );
 }
 

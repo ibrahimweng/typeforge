@@ -182,6 +182,14 @@ connected script it comes back within about two units on a thousand-unit em,
 and — which matters as much — as the handful of strokes a hand would have used
 rather than the hundreds a junction-by-junction cut produces.
 
+Reading runs in a worker, with a bar that counts the letters as they go and a
+stop beside it. That is not decoration: the arithmetic has no waiting in it, so
+done on the main thread it holds the tab for the whole alphabet -- no scrolling,
+no cancelling, and not even a spinner turning, because the frame that would turn
+it never runs. Where there is no worker it runs inline and reports the same
+progress, slowly and blockingly, so the behaviour is degraded rather than
+absent.
+
 Then seven controls reach every letter at once: weight, pressure, taper, slant,
 nib contrast, nib angle and tracking. The strokes underneath are never touched,
 so any of it goes back with one press.
@@ -382,6 +390,8 @@ src/quill/    the stroke engine behind Trace
   fit.ts        a drawn letter read back as strokes
   raster.ts     fill, distance transform, thinning
   controls.ts   the hand: weight, pressure, taper, slant, nib
+  tracing.ts    the pass over a whole font, and what it reports
+  trace-worker  the same pass, off the main thread
 src/assemble/ the pile of drawings behind Assemble
 src/project/  the saved document: the file format, and keeping it in the browser
 src/views/    font, glyph, kerning and spacing views

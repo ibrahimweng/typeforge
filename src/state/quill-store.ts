@@ -16,24 +16,14 @@
  * font would be offering a state nobody was ever in.
  */
 
-import { importFont } from "@/font/parse";
 import { PLAIN_HAND, restyle, type QuillStyle } from "@/quill/controls";
-import { fitGlyph } from "@/quill/fit";
 import { sweepAll } from "@/quill/sweep";
-import type { QuillGlyph } from "@/quill/types";
-import type { Contour } from "@/font/types";
+import { traceFont, type TraceMessage, type TraceProgress, type Traced } from "@/quill/tracing";
+
+export type { Traced, TraceProgress } from "@/quill/tracing";
 
 /** Where a change falls in a drag, exactly as the forge means it. */
 export type Phase = "single" | "during" | "end";
-
-/** One traced letter: the strokes as read, and what they cost to read. */
-export interface Traced {
-  glyph: QuillGlyph;
-  /** How far the redrawing strayed from the outline it was read from. */
-  deviation: number;
-  /** The outline it was read from, kept so the two can be compared on screen. */
-  source: Contour[];
-}
 
 export interface QuillDocument {
   /** The letters, by name, in the order they were read. */
@@ -53,8 +43,14 @@ export interface QuillState {
   showSource: boolean;
   /** Whether the recovered centre-lines are drawn over it. */
   showSpines: boolean;
-  /** True while a font is being read, which takes a moment. */
-  tracing: boolean;
+  /**
+   * How far through a font the tracing is, or null when nothing is being read.
+   *
+   * A count rather than a flag, because the thing it describes takes most of a
+   * minute and a spinner that says only "working" for that long is
+   * indistinguishable from one that has hung.
+   */
+  progress: TraceProgress | null;
   /** What went wrong, if anything did. */
   trouble: string | null;
   canUndo: boolean;
@@ -69,26 +65,13 @@ const EMPTY: QuillDocument = {
   unitsPerEm: 1000,
 };
 
-/*
- * The letters read from a font, and why it is only these.
- *
- * The lowercase is where a script lives and where the fitter has been measured;
- * the capitals and the figures are read too because a font that gives back
- * twenty-six letters is a demonstration rather than a font. What is left out is
- * everything built from a base and a mark -- an accented letter is its base
- * moved, so tracing it separately would trace the same strokes twice and give
- * two copies that drift apart the first time one is edited.
- */
-const WANTED =
-  "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,;:!?'\"-".split("");
-
 class QuillStore {
   private state: QuillState = {
     document: EMPTY,
     letter: "a",
     showSource: true,
     showSpines: false,
-    tracing: false,
+    progress: null,
     trouble: null,
     canUndo: false,
     canRedo: false,
@@ -136,60 +119,142 @@ class QuillStore {
 
   // --- reading a font in -----------------------------------------------------
 
+  /** The worker doing the reading, while one is. */
+  private worker: Worker | null = null;
+
+  /**
+   * Which read is the current one.
+   *
+   * Reading a second font while the first is still going is an ordinary thing
+   * to do -- the first takes most of a minute -- and without a token the slow
+   * one would post its letters over the top of the quick one whenever it
+   * happened to finish second. Every message carries the token it was started
+   * under and anything from an older read is dropped.
+   */
+  private reading = 0;
+
+  /** Stop whatever is being read, and stop listening to it. */
+  private stopReading(): void {
+    this.worker?.terminate();
+    this.worker = null;
+    this.reading++;
+  }
+
   /**
    * Read a font and recover strokes from every letter it has.
    *
-   * Slow enough to be worth saying so -- a hundred and sixty milliseconds a
-   * letter, most of it in the distance transform -- which is why `tracing` is a
-   * field rather than something the caller is left to guess at.
+   * In a worker, because the arithmetic has no waiting in it: a couple of
+   * hundred milliseconds a letter and seventy letters, during which a tab doing
+   * it inline answers nothing at all -- not a scroll, not the cancel button,
+   * not even a spinner, because the frame that would turn the spinner never
+   * runs. Off the thread the page stays live and can say how far along it is.
+   *
+   * Where there is no worker -- a test, or a browser without module workers --
+   * it runs inline and reports progress just the same. That path is slow and
+   * blocking and is not pretended otherwise; it is there so the behaviour is
+   * degraded rather than absent.
    */
   async trace(bytes: Uint8Array, name: string): Promise<void> {
-    this.set({ tracing: true, trouble: null });
-    try {
-      const { typeface } = await importFont(bytes, name);
-      const em = typeface.unitsPerEm ?? 1000;
-      const byChar = new Map<string, (typeof typeface.glyphs)[number]>();
-      for (const glyph of typeface.glyphs) {
-        for (const code of glyph.unicodes ?? []) byChar.set(String.fromCodePoint(code), glyph);
-      }
-      const letters: Traced[] = [];
-      for (const character of WANTED) {
-        const found = byChar.get(character);
-        if (!found?.contours?.length) continue;
-        const fitted = fitGlyph(character, found.contours, found.advanceWidth, { unitsPerEm: em });
-        if (!fitted || fitted.glyph.strokes.length === 0) continue;
-        letters.push({
-          glyph: fitted.glyph,
-          deviation: fitted.spineDeviation,
-          source: found.contours,
-        });
-      }
-      if (letters.length === 0) {
-        this.set({ tracing: false, trouble: "Nothing in that font came back as strokes." });
+    this.stopReading();
+    const mine = this.reading;
+    this.set({ progress: { done: 0, total: 0, letter: "" }, trouble: null });
+
+    const arrived = (result: { letters: Traced[]; unitsPerEm: number }) => {
+      if (mine !== this.reading) return;
+      if (result.letters.length === 0) {
+        this.set({ progress: null, trouble: "Nothing in that font came back as strokes." });
         return;
       }
       this.past = [];
       this.future = [];
       this.set({
         document: {
-          letters,
+          letters: result.letters,
           style: { ...PLAIN_HAND },
           from: name,
-          unitsPerEm: em,
+          unitsPerEm: result.unitsPerEm,
         },
-        letter: letters.find((one) => one.glyph.name === "a")?.glyph.name ?? letters[0].glyph.name,
-        tracing: false,
+        letter:
+          result.letters.find((one) => one.glyph.name === "a")?.glyph.name ??
+          result.letters[0].glyph.name,
+        progress: null,
         trouble: null,
         canUndo: false,
         canRedo: false,
         revision: this.state.revision + 1,
       });
-    } catch (trouble) {
-      this.set({
-        tracing: false,
-        trouble: trouble instanceof Error ? trouble.message : "That file could not be read.",
-      });
+    };
+
+    const wentWrong = (why: string) => {
+      if (mine !== this.reading) return;
+      this.set({ progress: null, trouble: why });
+    };
+
+    if (typeof Worker === "undefined") {
+      try {
+        arrived(await traceFont(bytes, name, (progress) => {
+          if (mine === this.reading) this.set({ progress });
+        }));
+      } catch (trouble) {
+        wentWrong(trouble instanceof Error ? trouble.message : "That file could not be read.");
+      }
+      return;
     }
+
+    /*
+     * The bytes are handed over rather than copied.
+     *
+     * A font is a megabyte or two and structured-cloning it costs a copy at
+     * each end; transferring the buffer costs neither. It does empty the array
+     * on this side, which is why a fresh copy is taken first -- the caller
+     * handed us their bytes and is entitled to still have them afterwards.
+     */
+    const carried = bytes.slice().buffer;
+    try {
+      const worker = new Worker(new URL("../quill/trace-worker.ts", import.meta.url), {
+        type: "module",
+      });
+      this.worker = worker;
+      worker.onmessage = (event: MessageEvent<TraceMessage>) => {
+        if (mine !== this.reading) return;
+        const message = event.data;
+        if (message.kind === "progress") this.set({ progress: message.progress });
+        else if (message.kind === "done") {
+          this.worker = null;
+          worker.terminate();
+          arrived(message.result);
+        } else {
+          this.worker = null;
+          worker.terminate();
+          wentWrong(message.why);
+        }
+      };
+      // A worker that dies rather than replying would otherwise leave the bar
+      // sitting still for ever.
+      worker.onerror = () => {
+        this.worker = null;
+        worker.terminate();
+        wentWrong("The tracing stopped unexpectedly.");
+      };
+      worker.postMessage({ bytes: carried, name }, [carried]);
+    } catch {
+      // Some environments have `Worker` and refuse to build one. Falling back
+      // is better than telling somebody their font is broken when it is not.
+      try {
+        arrived(await traceFont(bytes, name, (progress) => {
+          if (mine === this.reading) this.set({ progress });
+        }));
+      } catch (trouble) {
+        wentWrong(trouble instanceof Error ? trouble.message : "That file could not be read.");
+      }
+    }
+  }
+
+  /** Give up on the read in progress and leave what was already there. */
+  stopTracing(): void {
+    if (!this.state.progress) return;
+    this.stopReading();
+    this.set({ progress: null });
   }
 
   // --- the hand --------------------------------------------------------------

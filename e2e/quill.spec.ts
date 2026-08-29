@@ -93,6 +93,75 @@ async function traceAFont(page: Page) {
   await page.waitForSelector('[data-quill-control="weight"]', { timeout: 180_000 });
 }
 
+test("reads the font off the main thread, and says how far along it is", async ({ page }) => {
+  /*
+   * The test the worker exists for.
+   *
+   * Tracing is a couple of hundred milliseconds a letter with no waiting in it,
+   * so done inline it holds the thread for the whole alphabet: no scrolling, no
+   * cancelling, and not even a spinner turning, because the frame that would
+   * turn it never runs. What is checked here is not that a worker was created
+   * but that the page kept answering while the work was happening -- which is
+   * the only part a person notices, and which a worker could be started and
+   * still fail to deliver.
+   */
+  const started: string[] = [];
+  page.on("worker", (worker) => started.push(worker.url()));
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Trace" }).click();
+  await page
+    .getByRole("complementary", { name: "Quill" })
+    .locator("input[type=file]")
+    .setInputFiles(FONT_PATH!);
+
+  const bar = page.locator('[role="progressbar"]');
+  await expect(bar).toBeVisible({ timeout: 20_000 });
+
+  const seen = new Set<string>();
+  let answered = 0;
+  let asked = 0;
+  for (let look = 0; look < 30; look++) {
+    await page.waitForTimeout(600);
+    const reading = page.locator("[data-quill-progress]");
+    if ((await reading.count()) === 0) break;
+    seen.add((await reading.first().getAttribute("data-quill-progress")) ?? "");
+    asked++;
+    // A frozen main thread cannot answer this, however simple it is.
+    const reply = await Promise.race([
+      page.evaluate(() => {
+        void document.body.offsetWidth;
+        return "answered";
+      }),
+      new Promise((resolve) => setTimeout(() => resolve("frozen"), 400)),
+    ]);
+    if (reply === "answered") answered++;
+  }
+
+  expect(started.some((url) => url.includes("trace-worker")), "no tracing worker started").toBe(true);
+  expect(seen.size, "the bar never moved").toBeGreaterThan(2);
+  expect(answered, `the page froze ${asked - answered} of ${asked} times`).toBe(asked);
+
+  await page.waitForSelector('[data-quill-control="weight"]', { timeout: 240_000 });
+  await expect(bar).toHaveCount(0);
+});
+
+test("a read can be given up on", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Trace" }).click();
+  await page
+    .getByRole("complementary", { name: "Quill" })
+    .locator("input[type=file]")
+    .setInputFiles(FONT_PATH!);
+  await expect(page.locator('[role="progressbar"]')).toBeVisible({ timeout: 20_000 });
+
+  await page.getByRole("button", { name: "stop" }).click();
+  await expect(page.locator('[role="progressbar"]')).toHaveCount(0);
+  // Given up on rather than half-applied: nothing was traced, so nothing shows.
+  await expect(page.getByText("Nothing traced yet")).toBeVisible();
+  await expect(page.locator('[data-quill-control="weight"]')).toHaveCount(0);
+});
+
 test("reads a font in and offers its letters", async ({ page }) => {
   await traceAFont(page);
   await expect(page.locator("[data-quill-control]")).toHaveCount(7);
