@@ -1069,7 +1069,7 @@ export const HANDWRITING: Style = {
   // eye is the join layer's to draw, so a tail that curls round as well draws
   // it twice. Plain, this face set its `y` at 1.44 to 1.68 of its own `o`
   // against the reference's 1.06.
-  forms: { k: "standing", l: "tailed", t: "straight", y: "straight", f: "descending" },
+  forms: { k: "standing", l: "tailed", t: "straight", y: "straight", f: "descending", n: "written", o: "written", a: "written", e: "written" },
   parts: {
     ...SANS.parts,
     /*
@@ -1394,7 +1394,7 @@ export const FORMAL_SCRIPT: Style = {
   // eye is the join layer's to draw, so a tail that curls round as well draws
   // it twice. Plain, this face set its `y` at 1.44 to 1.68 of its own `o`
   // against the reference's 1.06.
-  forms: { k: "standing", a: "double", l: "tailed", y: "straight", f: "descending", one: "footed" },
+  forms: { k: "standing", a: "double", l: "tailed", y: "straight", f: "descending", one: "footed", n: "written", o: "written", e: "written" },
   parts: {
     ...SANS.parts,
     // Square, for the reason set out on the Handwriting above.
@@ -1582,7 +1582,7 @@ export const CASUAL_SCRIPT: Style = {
    * x-height wide. It set the `g` at 1.26 to 1.41 of this family's own `o`
    * against the reference's 1.07; plain, it is 1.00.
    */
-  forms: { k: "standing", t: "straight", y: "straight", f: "descending", l: "tailed" },
+  forms: { k: "standing", t: "straight", y: "straight", f: "descending", l: "tailed", n: "written", o: "written", a: "written", e: "written" },
   parts: {
     ...SANS.parts,
     // Square, for the reason set out on the Handwriting above.
@@ -1745,7 +1745,7 @@ export const MONOLINE_SCRIPT: Style = {
   // The straight-tailed `y`, for the reason set out on the Handwriting: this
   // face's eye is the join layer's, and a tail that curls as well draws it
   // twice -- 1.68 of its own `o` against the reference's 1.06.
-  forms: { k: "standing", l: "tailed", y: "straight", f: "descending", seven: "barred", four: "open" },
+  forms: { k: "standing", l: "tailed", y: "straight", f: "descending", seven: "barred", four: "open", n: "written", o: "written", a: "written", e: "written" },
   parts: {
     ...SANS.parts,
     // Square, for the reason set out on the Handwriting above.

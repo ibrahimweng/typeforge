@@ -83,7 +83,7 @@ describe("the two sides of a join that is not there", () => {
    */
   it("draws the first letter of a word without its lead-in", () => {
     for (const letter of ["a", "n", "e", "h"]) {
-      const plain = drawLetter(letter, HAND)!;
+      const plain = drawLetter(letter, HAND, HAND.forms?.[letter])!;
       const begin = drawnEnds(letter, "begin", forge)!;
       expect([letter, begin.advanceWidth < plain.advanceWidth]).toEqual([letter, true]);
       // And it starts on its own ink rather than reaching back past the origin.
@@ -94,7 +94,7 @@ describe("the two sides of a join that is not there", () => {
 
   it("draws the last letter of a word without its lead-out", () => {
     for (const letter of ["a", "n", "e", "h"]) {
-      const plain = drawLetter(letter, HAND)!;
+      const plain = drawLetter(letter, HAND, HAND.forms?.[letter])!;
       const end = drawnEnds(letter, "end", forge)!;
       expect([letter, end.advanceWidth < plain.advanceWidth]).toEqual([letter, true]);
     }

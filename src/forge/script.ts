@@ -1164,6 +1164,7 @@ export function planJoin(
   round = false,
   waist: number | null = null,
   air = 0,
+  entered = false,
 ): Join | null {
   /*
    * A letter with neither end still comes through here, and only the strokes
@@ -1257,7 +1258,21 @@ export function planJoin(
    * also where a hand enters an `o`: at the bottom of the stroke, not at its
    * side.
    */
-  const ceiling = round ? room.x * ROUND_ENTRY : room.x - room.half;
+  /*
+   * And never below the height this drawing is being entered at.
+   *
+   * A round letter's lead-in is held under the widest point of the bowl for the
+   * reason above, and that cap is about the *low* hand-over. The second drawing
+   * -- the one a shaper swaps in when the letter before hands over at the waist
+   * -- arrives above it, and a band that runs from the high seam down to a
+   * ceiling below it is empty. Empty, the search fell through to the nearest
+   * thing to a band that does not exist, and the high drawing of an `o` came
+   * out identical to the low one: a letter the feature swaps in for itself.
+   */
+  const ceiling = Math.max(
+    round ? room.x * ROUND_ENTRY : room.x - room.half,
+    entryAt + room.half,
+  );
   const lands = attach(points, (point) => point.y >= entryAt && point.y <= ceiling,
     "left", offBand(entryAt, ceiling));
   /*
@@ -1448,10 +1463,80 @@ export function planJoin(
   // from the origin, which is the run the lead-in has to climb along.
   // What this letter asks for on top of the join's own reach, at each end.
   const spare = reach * Math.max(0, air);
-  const inset = (ends.entry ? reach : room.sidebearing) + spare - (leftmost - room.half);
+  /*
+   * A letter that draws its own lead-in is slid until that stroke crosses the
+   * seam on the origin, and is given no other room on that side.
+   *
+   * The join's own inset stands the letter one reach out and leaves the lead-in
+   * to cross that reach, which is the whole reason a lead-in is long. A written
+   * letter has already spent that room on its own up-stroke, so spending it
+   * again would put the up-stroke's foot a reach past where the letter before
+   * it stopped. `lands` is the leftmost point of the letter between the seam
+   * and the x-height, which on a letter whose first stroke climbs through the
+   * seam is that stroke's crossing of it, so putting `lands` on the origin is
+   * the same contract the join kept -- the hand is at the seam height on the
+   * origin -- honoured by the letter instead of by a stroke laid against it.
+   *
+   * Both ends of a word too, and deliberately: the stroke belongs to the letter
+   * now, so a letter that has given up its join has not given up its own first
+   * stroke, and must not be spaced as though it had. The alternative was tried
+   * on the boundary forms and is worse in the way that matters -- `d.begin`
+   * came out wider than the plain `d`, which is a promise the whole boundary
+   * set rests on.
+   */
+  /*
+   * The left edge the spacing is measured from, which on a written letter is
+   * not the left edge of its ink.
+   *
+   * A letter takes its own width plus a reach at each end, and a written one
+   * spends the left-hand reach on its own up-stroke rather than on empty space.
+   * So the room is measured from where that up-stroke crosses the seam --
+   * everything left of that is the room, drawn rather than left blank -- and
+   * the letter is then placed with that same crossing on the origin.
+   *
+   * Measured from the ink instead, the written `n` came out at 1.76 of an
+   * x-height against the reference's 1.40, because the up-stroke's foot was
+   * counted as body and paid for twice. Placed by the crossing but spaced by
+   * the plain formula, the written `o` came out at 0.84 against 1.10, because
+   * the bowl slid left and the advance came with it.
+   */
+  /*
+   * And measured at the seam the letter is drawn to hand over at, not at the
+   * one this particular drawing hands over at.
+   *
+   * A letter that arrives high -- the second drawing a shaper swaps in after an
+   * `o` -- takes hold of itself further up its own up-stroke, and so sits
+   * further right inside its advance. That is the drawing moving, not the
+   * letter: the advance may not move with it, or a word containing an `o` would
+   * be set to different widths depending on which renderer applied the feature.
+   * So the room is asked of the letter's own low crossing and the placement of
+   * the crossing this drawing actually uses.
+   */
+  const settled = !entered || entryAt === seams.low ? lands
+    : attach(points, (point) => point.y >= seams.low && point.y <= ceiling,
+      "left", offBand(seams.low, ceiling));
+  const edge = entered ? settled.point.x : leftmost;
+  const spacing = (ends.entry ? reach : room.sidebearing) + spare - (edge - room.half);
+  const inset = entered ? -lands.point.x : spacing;
   const from = at(lands.point.x + inset, lands.point.y);
   const to = at(leaves.point.x + inset, leaves.point.y);
-  const asked = rightmost + room.half + inset + spare + (ends.exit ? reach : room.sidebearing);
+  /*
+   * Spaced as though it had been stood a reach out, and placed where its own
+   * stroke says instead. The two are different numbers on a written letter and
+   * the advance has to use the first of them.
+   *
+   * A letter takes its own width plus a reach at each end, and a written one
+   * spends the left-hand reach on its own up-stroke rather than on empty space.
+   * Spaced by where it actually sits, it gives that room up altogether: the
+   * written `o` came out at 0.84 of an x-height where the reference sets its
+   * own at 1.10 and where ours had been setting at 1.08, because the bowl slid
+   * left and the advance came with it. Measured on the room the letter asks for
+   * and placed on the room it uses, the advance is what it always was and the
+   * ink simply sits further left inside it -- which is the reference's own
+   * arrangement: its `o` runs -0.03 to 1.13 in an advance of 1.10, so the
+   * letter before it laps onto the bowl.
+   */
+  const asked = rightmost + room.half + spacing + spare + (ends.exit ? reach : room.sidebearing);
   /*
    * And never so narrow that the letter hangs over more than a loop's worth.
    *
@@ -1539,7 +1624,7 @@ export function planJoin(
   const chord = at(from.x, from.y - entryAt);
   const askew = Math.abs(between(holding, chord));
   const arriving = turned(holding, chord, Math.max(APEX, askew - MOST_LEAN));
-  const entry = !ends.entry ? null
+  const entry = !ends.entry || entered ? null
     : run(at(0, entryAt), climbing, from, arriving, room, level, knit, "in");
   const exit = !ends.exit ? null
     : run(at(width, exitAt), climbing, to, at(1, 0), room, level, knit, "out");
