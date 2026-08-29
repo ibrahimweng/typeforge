@@ -19,6 +19,7 @@ import { writeFileSync } from "node:fs";
 import { ready } from "@/font/boolean";
 import { contoursToSvgPath } from "@/font/geometry";
 import { drawLetter } from "@/forge/build";
+import { joinEnds, joiningWithout } from "@/forge/letters";
 import { proof, startFrom } from "@/forge/document";
 import { BASES, type Style } from "@/forge/style";
 import type { Contour } from "@/font/types";
@@ -40,7 +41,8 @@ const LINES = (process.env.LINES ?? "handwriting|minimum|the quick brown fox|abc
 function setLine(style: Style, line: string): { path: string; width: number } {
   let x = 0;
   const parts: string[] = [];
-  for (const letter of line) {
+  for (let at = 0; at < line.length; at++) {
+    const letter = line[at];
     if (letter === " ") { x += style.metrics.xHeight * 0.7; continue; }
     // TEXTURE=on runs each letter through the tool layer, which is what an
     // export bakes in and what the proofing window shows one letter of.
@@ -49,9 +51,23 @@ function setLine(style: Style, line: string): { path: string; width: number } {
     // third argument this asked for the default form of every letter, so a page
     // of the Handwriting showed an f the face does not use -- and this is the
     // page that is supposed to say what the font would print.
+    /*
+     * Drawn as a shaper would set it, which means without any half of the join
+     * that has nothing to meet. Asked of the neighbours rather than of the
+     * spaces, because the same question has the same answer either side of a
+     * `B`, a comma or a digit as it does either side of a word: `joinEnds` is
+     * what the font's own rules are built from, so asking it here is what keeps
+     * this page saying what the font would print.
+     */
+    const begins = at === 0 || !joinEnds(line[at - 1]).exit;
+    const finishes = at === line.length - 1 || !joinEnds(line[at + 1]).entry;
+    const without = { entry: begins ? false : undefined, exit: finishes ? false : undefined };
+    const bare = begins || finishes;
     const drawn = process.env.TEXTURE
       ? proof(letter, startFrom(style))
-      : drawLetter(letter, style, style.forms?.[letter]);
+      : bare
+        ? joiningWithout(without, () => drawLetter(letter, style, style.forms?.[letter]))
+        : drawLetter(letter, style, style.forms?.[letter]);
     if (!drawn) continue;
     parts.push(contoursToSvgPath(slid(drawn.contours, x)));
     x += drawn.advanceWidth;

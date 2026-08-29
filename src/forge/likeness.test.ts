@@ -33,6 +33,7 @@ import { BASES, ROUNDHAND, type Style } from "./style";
  * that bounced.
  */
 const FLAT = ["n", "m", "u", "r", "i"];
+const LINE = ["a", "c", "e", "m", "n", "o", "r", "s", "u", "v", "w", "x"];
 const ASCENDING = ["l", "b", "d", "h", "k"];
 const DESCENDING = ["g", "p", "q", "y"];
 const CAPITALS = ["H", "E", "I", "T"];
@@ -76,6 +77,22 @@ function measure(style: Style): Measurements {
     for (const run of cut(fraction)) widths.push(run[1] - run[0]);
   }
 
+  /*
+   * How far the ink runs past the room the letter is given.
+   *
+   * Asserted now, where it used to be filled in as nought and skipped. The join
+   * used to end precisely on the advance, so this was the same on every face
+   * and no setting moved it; `knit` carries the two halves past each other now,
+   * and a measure a control reaches is a measure worth holding to.
+   */
+  const overlaps: number[] = [];
+  for (const name of LINE) {
+    const drawn = draw(name, forge);
+    if (!drawn || drawn.contours.length === 0) continue;
+    const box = contoursBounds(drawn.contours);
+    overlaps.push(box.xMax - box.xMin - drawn.advanceWidth);
+  }
+
   const sits = flat.map((one) => one.yMin);
   return {
     xHeight: xHeight / em,
@@ -85,10 +102,7 @@ function measure(style: Style): Measurements {
     slant,
     stroke: (median(widths) * Math.cos((slant * Math.PI) / 180)) / xHeight,
     bounce: (Math.max(...sits) - Math.min(...sits)) / xHeight,
-    // Not asserted: this engine ends the lead-out on the advance rather than
-    // overhanging it, so the overlap is a fact about the construction and no
-    // setting moves it. `scripts/likeness.ts` says so at more length.
-    overlap: 0,
+    overlap: median(overlaps) / xHeight,
   };
 }
 
@@ -100,6 +114,7 @@ const CLOSE: Partial<Record<keyof Measurements, number>> = {
   slant: 1.5,
   stroke: 0.02,
   bounce: 0.02,
+  overlap: 0.04,
 };
 
 describe("the dial arrives where it says", () => {

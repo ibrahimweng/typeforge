@@ -231,25 +231,27 @@ const CLOSE: Record<keyof Measurements, number> = {
 };
 
 /*
- * The one measure that is not a target, and why it is printed anyway.
+ * Nothing here is excused any more, and this note is what that cost.
  *
- * The overlap cannot be tuned to a reference, because the two are joined by
- * different constructions rather than by different numbers. A reference face
- * lets its letters overhang their advances and the join happens where the ink
- * of one runs over the ink of the next. This engine ends the lead-out
- * *precisely* on the advance and cuts it square across a level stroke, so the
- * ink stops exactly where the advance does and the two halves meet by
- * arithmetic -- no overlap to fuse, no gap to kern. That is the whole promise
- * of `script.ts` and it is a better join, not a worse one.
+ * The overlap used to be printed and not counted, with an argument attached:
+ * a reference face lets its letters overhang their advances and join where the
+ * ink of one runs over the next, while this engine ended the lead-out precisely
+ * on the advance and cut it square, so the two halves met by arithmetic with
+ * nothing to fuse. Driven across the whole range of the reach and the balance
+ * the overlap did not shift by a unit, and a measure no setting can move is a
+ * design decision rather than a failure to arrive.
  *
- * Which shows up here as an overlap the settings cannot move: driven across the
- * whole range of the reach and the balance it does not shift by a unit, because
- * widening the reach widens the advance by exactly as much as it widens the
- * ink. So it is reported, because how far one letter runs into the next is
- * worth seeing, and it is not counted, because counting it would report a
- * design decision as a failure to arrive.
+ * That was true when it was written and the join has since been rebuilt. `knit`
+ * carries each half on past the seam so the two cross rather than touch --
+ * because meeting at a point is meeting over no area, and a word came out
+ * reading as letters pushed together. It moves this measure directly, which
+ * means the argument for not counting it is gone.
+ *
+ * So it is counted. The lesson worth keeping is not about joins: an excuse
+ * written into a harness outlives the thing it was excusing, and goes on
+ * excusing after the reason has been fixed.
  */
-const STRUCTURAL = new Set<keyof Measurements>(["overlap"]);
+const STRUCTURAL = new Set<keyof Measurements>();
 
 function report(label: string, drawn: Measurements, target: Measurements): number {
   console.log(`\n  ${label}`);
@@ -301,10 +303,7 @@ for (const likeness of wanted) {
 
 console.log(
   missed === 0
-    ? "\n  Every measure that settings can reach is inside its tolerance.\n" +
-        "  The join past the ink is marked by construction: this engine ends the\n" +
-        "  lead-out on the advance rather than overhanging it, so no setting moves\n" +
-        "  it. See the note above STRUCTURAL in this file.\n"
+    ? "\n  Every measure is inside its tolerance.\n"
     : `\n  ${missed} ${missed === 1 ? "measure is" : "measures are"} outside tolerance. ` +
         "The settings in forge/likeness.ts are what to move.\n",
 );

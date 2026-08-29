@@ -96,9 +96,8 @@ export interface Settings {
     reach: number;
     flat: number;
     loop: number;
-    loopDepth: number;
     highSeam: number;
-    balance: number;
+    knit: number;
     irregularity: number;
     bounce: number;
     lean: number;
@@ -153,11 +152,19 @@ export const FLOWING: Likeness = {
       reach: 1.9,
       flat: 0.06,
       loop: 1.7,
-      loopDepth: 2.4,
       highSeam: 0.78,
-      // Short in, long out: the measured lead-out runs about three times the
-      // lead-in past the ink, which is a quarter and three quarters.
-      balance: 0.25,
+      /*
+       * How far the two halves cross past the seam, which is what puts ink
+       * past the advance at all.
+       *
+       * Fitted against the measured overlap rather than chosen: the reference
+       * runs 0.123 of an x-height past its own ink, the join already carries
+       * 0.099 of that on its own, and this buys the rest. Before the join was
+       * rebuilt there was no such control and the overlap could not be moved by
+       * any setting at all -- it is the one measure here that went from
+       * unreachable to fitted.
+       */
+      knit: 0.07,
       /*
        * Four tenths against the nine tenths of the base, and both were nearly
        * five times this until the seed behind them was fixed. A control
@@ -205,7 +212,17 @@ export const BRUSH_HAND: Likeness = {
     pen: { weight: 70, contrast: 0.42, angle: 22 },
     script: {
       height: 0.42,
-      reach: 1.35,
+      /*
+       * Shorter than it was, and the overlap is why.
+       *
+       * This face overlaps its neighbours by 0.087 of an x-height, which is
+       * less than the join carries at the reach it was first given: at 1.35 it
+       * ran 0.131, and `knit` only ever adds. So the reach comes down instead,
+       * which is the honest lever -- on a joined face the reach *is* the
+       * letter-spacing, so this is a decision about how tightly the face sets
+       * and not only about a number in the harness.
+       */
+      reach: 0.9,
       flat: 0.22,
       /*
        * Nearly no loop, and it is the x-height that decides that rather than
@@ -214,9 +231,8 @@ export const BRUSH_HAND: Likeness = {
        * the engine declines to draw one that tight and is right to.
        */
       loop: 0.35,
-      loopDepth: 1.5,
       highSeam: 0.72,
-      balance: 0.3,
+      knit: 0,
       /*
        * Steady. Not nought, because a brush hand is still a hand and the
        * roughening reads as one, but the bounce is turned nearly off while the

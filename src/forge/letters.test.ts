@@ -19,8 +19,8 @@ import { contoursIntersect } from "@/font/outline";
 import { builtFrom, drawLetter, letterNames , reachesOut } from "./build";
 import { startFrom, weighted } from "./document";
 import { openWaveBook, spineEnd, spineStart, waveBookAt, type WaveBook } from "./shapes";
-import { formsOf, recipeOf } from "./letters";
-import { mostLift } from "./script";
+import { everyFormOf, recipeOf } from "./letters";
+import { mostLift, seamsOf } from "./script";
 import { BASES as STARTING_POINTS, DISPLAY, SANS, SERIF, type Style } from "./style";
 
 /*
@@ -129,12 +129,17 @@ describe("the character set", () => {
           /*
            * A joined face is the exception, and it is the only one.
            *
-           * Its lead-in starts on the origin and climbs away from it, so the
-           * square cut at that end puts one corner a little to the left of
-           * nought -- and the letter before it puts the matching corner the
-           * same distance to the right of its own advance, which is how the two
-           * meet without a gap. It may not go further than that corner reaches,
-           * which is half a pen.
+           * Its lead-in starts a knit to the left of the origin and climbs away
+           * from it, so the square cut at that end sits out there -- and the
+           * letter before it carries the matching distance past its own
+           * advance, which is how the two lap over each other instead of
+           * meeting at a point. It may not go further left than the knit plus
+           * what that square cut reaches, which is half a pen.
+           *
+           * The knit is the part that is deliberate and was not always here.
+           * Both halves used to stop dead on the boundary, so the ink met along
+           * a line and over no area: the letters joined and read as letters
+           * pushed together. See `knit` on the Script.
            */
           const reaches = reachesOut(name, style);
           /*
@@ -145,11 +150,48 @@ describe("the character set", () => {
            * checked here is that the lead-in reaches no further left than its
            * own square cut can, not that it starts at nought.
            */
-          const seam = style.parts.script.height * style.metrics.xHeight;
-          const leaned = (seam - style.metrics.xHeight / 2)
+          /*
+           * And leaned at the height the leftmost ink actually sits at, not at
+           * the seam.
+           *
+           * The seam is where the lead-in is, and for most letters the lead-in
+           * is the leftmost thing. A descender is not: it hangs a long way
+           * below the seam, and the same shear that moves the seam sideways
+           * moves it further -- a Monoline `j`, whose loop drops 0.84 of an
+           * x-height under a lean of twenty-one degrees, reaches a third of an
+           * x-height left of its origin for it. That is the shear doing what a
+           * shear does, not a letter spaced wrong, and the reference does the
+           * same and more: its `j` starts 0.58 of an x-height left of the
+           * origin, its `p` 0.28 and its `f` 0.20. A descender hangs under the
+           * tail of the letter before it, where there is nothing to foul.
+           */
+          const lowest = drawn.contours
+            .flatMap((one) => one.nodes)
+            .reduce((left, node) => (node.point.x < left.point.x ? node : left)).point;
+          const seam = seamsOf(style.parts.script, style.metrics.xHeight, style.pen.weight / 2).low;
+          const leaned = (Math.min(seam, lowest.y) - style.metrics.xHeight / 2)
             * Math.tan((style.metrics.slant * Math.PI) / 180);
+          const knit = style.parts.script.on ? style.parts.script.knit * style.pen.weight : 0;
+          /*
+           * And a descender's loop swings sideways as well as leaning.
+           *
+           * The shear above accounts for a stroke being carried left by the
+           * lean; it does not account for a loop turning left under its own
+           * letter. Since a letter is spaced off its body between the lines,
+           * that swing is not paid for in the advance and comes out over the
+           * origin -- which is what the reference does too, and by about as
+           * much: its `j` starts 0.58 of an x-height left of its own origin
+           * against our 0.57 and 0.59, its `p` 0.28 and its `f` 0.20.
+           *
+           * How far a loop may swing is the loop's own arithmetic rather than a
+           * figure picked to fit: it is struck no longer than the descender it
+           * hangs from and bows `eye` of that.
+           */
+          const swing = style.parts.script.on && bounds.yMin < 0
+            ? style.parts.script.eye * Math.abs(style.metrics.descender)
+            : 0;
           expect(bounds.xMin, `${name} starts left of the origin`).toBeGreaterThan(
-            reaches ? Math.min(0, leaned) - style.pen.weight * 0.5 - 1 : -1,
+            reaches ? Math.min(0, leaned) - style.pen.weight * 0.5 - knit - swing - 1 : -1,
           );
           expect(bounds.xMax, `${name} runs off the right`).toBeLessThan(unitsPerEm * 1.6);
         }
@@ -181,7 +223,7 @@ describe("the character set", () => {
 
       it("reaches both edges of every joined letter", () => {
         if (!style.parts.script.on) return;
-        const seam = style.parts.script.height * style.metrics.xHeight;
+        const seam = seamsOf(style.parts.script, style.metrics.xHeight, style.pen.weight / 2).low;
         for (const name of LOWERCASE) {
           const drawn = drawLetter(name, style)!;
           const runs = inkRunsAt(drawn.contours, seam, "y", 48);
@@ -320,7 +362,7 @@ describe("letters in one piece", () => {
          * straight tail had that tail floating clear of its own vee, on three
          * of the faces that offer it.
          */
-        for (const { id } of formsOf(name)) {
+        for (const { id } of everyFormOf(name)) {
           const drawn = drawLetter(name, style, id || undefined);
           if (!drawn || drawn.contours.length === 0) continue;
           if (piecesOf(drawn.contours) > 1) {
@@ -331,6 +373,69 @@ describe("letters in one piece", () => {
     }
     expect(apart).toEqual([]);
   }, 60_000);
+
+  /*
+   * And drawn as the face really ships it, with the tool's own marks on.
+   *
+   * The test above asks `drawLetter`, which draws the letter and stops. Every
+   * effect is applied after that and only by `proof`, so nothing here saw them
+   * -- and the press does not add ink, it carves it away, which is the one
+   * operation in the engine that can take a letter apart.
+   *
+   * It did. The Formal Script ships with the press on and its `n` had a notch
+   * cut through the shoulder, its `i` was bitten into and its `l` was in two
+   * pieces at the baseline, in the drawing this application exports. The cut
+   * was being placed against whatever a ray fired from the spine found first,
+   * and at a junction that ray leaves through the gap between two strokes and
+   * comes back with the far side of the letter -- so the wedge was laid across
+   * ink belonging to something else.
+   *
+   * The press is off on both of those faces now, and this is what holds it off:
+   * turn it back on and this test says so. Asked of every face that puts a mark
+   * on rather than only of the ones that carve, because they all work on the
+   * same outline and the cost of asking is one drawing per letter.
+   *
+   * Except a face that skips. A dry brush leaves the paper bare in places and
+   * the letter really is in several pieces afterwards -- that is the whole of
+   * what the effect draws, so counting pieces cannot say anything about it.
+   */
+  it("draws every letter of every marked face as one solid", async () => {
+    const { ready } = await import("@/font/boolean");
+    const { piecesOf } = await import("./cut");
+    const { proof } = await import("./document");
+    const { anyEffect } = await import("@/font/effects");
+    await ready();
+
+    const marked = STARTING_POINTS.filter(
+      (one) => one.effects && anyEffect(one.effects) && !one.effects.skip.on);
+    expect(marked.length).toBeGreaterThan(0);
+
+    const apart: string[] = [];
+    for (const style of marked) {
+      const forge = startFrom(style);
+      for (const name of solid) {
+        const drawn = proof(name, forge);
+        if (!drawn || drawn.contours.length === 0) continue;
+        if (piecesOf(drawn.contours) > 1) apart.push(`${style.name} ${name}`);
+      }
+    }
+    expect(apart).toEqual([]);
+
+    /*
+     * And the other end of the same rule. What keeps a letter in one piece is a
+     * sweep that drops any speck the tools shed, and a sweep is one threshold
+     * away from taking the dot off an `i`. The test above cannot see that -- it
+     * excludes the two letters that are meant to be in two pieces -- so it is
+     * asked here.
+     */
+    for (const style of marked) {
+      const forge = startFrom(style);
+      for (const name of ["i", "j"]) {
+        const drawn = proof(name, forge)!;
+        expect([style.name, name, piecesOf(drawn.contours)]).toEqual([style.name, name, 2]);
+      }
+    }
+  }, 180_000);
 
   it("keeps the ink it was handed when a drawing is fused", async () => {
     /*
@@ -692,7 +797,7 @@ describe("an f is not a t, and a k is not a fan", () => {
     expect(joined.length).toBeGreaterThanOrEqual(4);
     for (const style of joined) {
       const half = style.pen.weight / 2;
-      const seam = style.parts.script.height * style.metrics.xHeight;
+      const seam = seamsOf(style.parts.script, style.metrics.xHeight, style.pen.weight / 2).low;
       // The band the lead-out searches, and the point in it that it leaves from.
       const bandMax = (drawn: NonNullable<ReturnType<typeof drawLetter>>) =>
         Math.max(...Array.from({ length: 9 }, (_, step) =>
@@ -710,4 +815,43 @@ describe("an f is not a t, and a k is not a fan", () => {
         .toEqual([style.name, true]);
     }
   });
+
+  /*
+   * And that the vee actually reaches the stem, at every weight and not only at
+   * the one the face is drawn at.
+   *
+   * `junction` puts the apex inside the stem, and used to check its work on the
+   * vertex `through` hands back -- which is the point before the corner is
+   * rounded off. On a face that rounds its corners that point is not where the
+   * ink goes: the Formal Script's vertex sat 2 units inside its limit while the
+   * arc `roundCorners` put in its place was drawn 62 units outside it, and the
+   * two strokes were left overlapping by about twenty units of ink and nothing
+   * else. That is enough to look like a k, which is why it shipped, and it went
+   * the moment the pen went from 96 units to 120.
+   *
+   * So this asks at seven weights across the axis rather than at the one each
+   * face happens to be drawn at. Every other test of the letters draws each
+   * face at its own weight, and the fault was invisible to all of them.
+   */
+  it("meets the k's vee to its stem at every weight, on every face", async () => {
+    const { ready } = await import("@/font/boolean");
+    const { piecesOf } = await import("./cut");
+    await ready();
+    const apart: string[] = [];
+    for (const base of STARTING_POINTS) {
+      for (const weight of [40, 60, 84, 110, 140, 175, 210]) {
+        const style: Style = { ...base, pen: { ...base.pen, weight } };
+        for (const name of ["k", "K"]) {
+          for (const { id } of everyFormOf(name)) {
+            const drawn = drawLetter(name, style, id || undefined);
+            if (!drawn || drawn.contours.length === 0) continue;
+            if (piecesOf(drawn.contours) > 1) {
+              apart.push(`${base.name} ${name}${id ? ` (${id})` : ""} at ${weight}`);
+            }
+          }
+        }
+      }
+    }
+    expect(apart).toEqual([]);
+  }, 60_000);
 });

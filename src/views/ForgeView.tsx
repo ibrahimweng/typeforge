@@ -898,6 +898,23 @@ function nameOf(character: string): string | null {
  * Only the cell under the pointer shows all eight. Two hundred and fifty-six
  * dots over a letter is not an editor, it is a screen door, and the ones that
  * matter -- the ports that are on -- are invisible among them.
+ *
+ * Drawn in two passes, every cell's square and then every cell's ports, and
+ * that is not tidiness. A port sits *on* the edge it names, so half of it lies
+ * in the cell next door -- and drawn a cell at a time, square and ports
+ * together, the next cell's square paints straight over that half. Reaching
+ * for the port on a cell's east side, the pointer left the cell before it
+ * arrived: the square next door took the enter, the cell under the pointer
+ * changed, the eight dots vanished, and what was left under the cursor was the
+ * neighbour's west port -- the same spot on the screen, a different toggle. A
+ * miss then landed on the square instead, which stamps a fill. So the gesture
+ * the panel describes could not be made: the dot moved away as it was reached
+ * for, and hitting it did the wrong thing.
+ *
+ * With every port above every square the pointer never crosses into the cell
+ * next door on its way to one, so the cell stays put and the port that is under
+ * the cursor is the one that was aimed at. Each also carries a hit circle
+ * twice its size, because these are five pixels across at the default zoom.
  */
 function Cells({ letter, scale }: { letter: string; scale: number }): React.JSX.Element | null {
   const state = useForge();
@@ -912,13 +929,18 @@ function Cells({ letter, scale }: { letter: string; scale: number }): React.JSX.
   // One column past the letter, so it can be made wider by using it.
   const columns = (tiles?.columns ?? 1) + 1;
 
+  const places = rows.flatMap((row) =>
+    Array.from({ length: columns }, (_, column) => ({
+      key: cellKey(column, row),
+      box: cellBox(column, row, unit, left),
+      cell: tiles?.cells[cellKey(column, row)],
+    })),
+  );
+
   return (
     <g data-forge-cells={letter}>
-      {rows.map((row) =>
-        Array.from({ length: columns }, (_, column) => {
-          const key = cellKey(column, row);
-          const box = cellBox(column, row, unit, left);
-          const cell = tiles?.cells[key];
+      <g data-forge-cell-squares>
+        {places.map(({ key, box, cell }) => {
           const showing = over === key;
           return (
             <g key={key}>
@@ -944,36 +966,60 @@ function Cells({ letter, scale }: { letter: string; scale: number }): React.JSX.
                 data-forge-cell-box={key}
                 className="cursor-crosshair"
               />
-              {PORTS.map((port) => {
-                const at = portAt(port, box);
-                const on = cell?.ports.includes(port) ?? false;
-                if (!on && !showing) return null;
-                return (
-                  <circle
-                    key={port}
-                    cx={at.x}
-                    cy={at.y}
-                    r={scale * (on ? 3.4 : 2.4)}
-                    fill={on ? "var(--accent)" : "var(--canvas)"}
-                    stroke="var(--accent)"
-                    strokeWidth={scale * 0.8}
-                    strokeOpacity={on ? 1 : 0.6}
-                    onPointerEnter={() => setOver(key)}
-                    onPointerDown={(event) => {
-                      event.stopPropagation();
-                      forgeStore.togglePort(key, port);
-                    }}
-                    data-forge-port={`${key}:${port}`}
-                    className="cursor-pointer"
-                  >
-                    <title>{`${port} of ${key}`}</title>
-                  </circle>
-                );
-              })}
             </g>
           );
-        }),
-      )}
+        })}
+      </g>
+      <g data-forge-cell-ports>
+        {places.map(({ key, box, cell }) => {
+          const showing = over === key;
+          return PORTS.map((port) => {
+            const at = portAt(port, box);
+            const on = cell?.ports.includes(port) ?? false;
+            if (!on && !showing) return null;
+            const press = (event: React.PointerEvent) => {
+              event.stopPropagation();
+              forgeStore.togglePort(key, port);
+            };
+            return (
+              <g key={`${key}:${port}`} data-forge-port={`${key}:${port}`} className="cursor-pointer">
+                {/* Twice the size, and invisible: the dot itself is five pixels
+                    across at the default zoom, which is not a target. */}
+                <circle
+                  cx={at.x}
+                  cy={at.y}
+                  r={scale * (on ? 3.4 : 2.4) * 2}
+                  fill="transparent"
+                  onPointerEnter={() => setOver(key)}
+                  /* And the matching leave. A port is above the squares now, so
+                     moving onto one takes the pointer off its own cell's
+                     square and fires that square's leave -- the port's enter
+                     puts the cell straight back, which is the point. Without a
+                     leave of its own here, the last thing to fire on the way
+                     out of the grid was that enter, and the cell stayed lit
+                     with all eight dots showing over a letter nothing was
+                     pointing at. */
+                  onPointerLeave={() => setOver((was) => (was === key ? null : was))}
+                  onPointerDown={press}
+                />
+                <circle
+                  cx={at.x}
+                  cy={at.y}
+                  r={scale * (on ? 3.4 : 2.4)}
+                  fill={on ? "var(--accent)" : "var(--canvas)"}
+                  stroke="var(--accent)"
+                  strokeWidth={scale * 0.8}
+                  strokeOpacity={on ? 1 : 0.6}
+                  onPointerEnter={() => setOver(key)}
+                  onPointerDown={press}
+                  className="pointer-events-none"
+                />
+                <title>{`${port} of ${key}`}</title>
+              </g>
+            );
+          });
+        })}
+      </g>
     </g>
   );
 }

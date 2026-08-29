@@ -1018,14 +1018,29 @@ export function sweep(stroke: Stroke): Contour[] {
   );
 
   /*
-   * A level cut replaces the last node of each side rather than following it,
+   * A slid cut replaces the last node of each side rather than following it,
    * because it is that node moved along the stroke rather than a shape added
    * to the end of it.
+   *
+   * Two cuts slide, and for a long time only one of them said so. A nib held
+   * at an angle slides its corners exactly as a level cut does -- the same two
+   * lines of arithmetic, in opposite directions -- and the corner that slides
+   * backwards was being added after the side node it stands in for. The
+   * outline then ran up the flank, back down the slide, and away across the
+   * cut: the retrace this comment warns about, drawn.
+   *
+   * It showed on the one face that holds its nib at an angle, and on the
+   * steepest strokes it draws: a Serif slash with a ten-unit spur off its tip,
+   * and the backslash, both Lslashes, the eth and both Oslashes with it. At
+   * nineteen of sixty-six weights, which is what made it look like noise in the
+   * measurement rather than a shape -- a fold that comes and goes with the
+   * weight is a fold whose size is a fraction of a slide that is itself a
+   * fraction of the pen.
    */
   let leftNodes = stitch(left);
   let rightNodes = stitch([...right].reverse().map(reverseOffset));
-  const levelStart = stroke.start.level === true && stroke.start.kind !== "round";
-  const levelEnd = stroke.end.level === true && stroke.end.kind !== "round";
+  const levelStart = slides(stroke.start);
+  const levelEnd = slides(stroke.end);
   // Counted against what the sides started with, not against what is left of
   // them: a stroke of one straight run has two nodes a side and both of them
   // are replaced, which is right, and a rule applied one end at a time would
@@ -1043,6 +1058,20 @@ export function sweep(stroke: Stroke): Contour[] {
   }
 
   return [facing({ nodes: joinedAtSeams([leftNodes, endNodes, rightNodes, startNodes]), closed: true }, 1)];
+}
+
+/**
+ * Whether a terminal's cut is the side's own end node moved, rather than a
+ * shape added on after it.
+ *
+ * The two that move are a level cut and an angled one, and they are never the
+ * same terminal: `level` is only ever put on a butt or a slab, and an angled
+ * nib is neither. So each of them is asked for on its own terms.
+ */
+function slides(terminal: Terminal): boolean {
+  if (terminal.kind === "round") return false;
+  if (terminal.level === true) return true;
+  return terminal.kind === "angled" && Boolean(terminal.angle);
 }
 
 /**

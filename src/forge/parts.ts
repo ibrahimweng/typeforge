@@ -147,8 +147,31 @@ export const PART_SPECS: PartSpec[] = [
         key: "reach",
         label: "Reach",
         hint: "How far the arch carries over before it turns down.",
-        min: 0.7,
+        /*
+         * Down to 0.6, because the joined faces need it and nothing was
+         * holding the floor at 0.7.
+         *
+         * The reference sets the two stems of an `n` 0.79 of an x-height
+         * apart; the Monoline Script reaches that at 0.65 and stood at 1.20.
+         * A shipped value outside its own control is a face the slider cannot
+         * get back to, which is what the test on the bases guards.
+         *
+         * Checked before moving it rather than after: driving all twenty bases
+         * to 0.7 and sweeping six weights already leaves 20 folds and 27
+         * letters in pieces, and driving them to 0.6 leaves 18 and 28. The
+         * floor was not protecting anything -- it is where the range happened
+         * to stop.
+         */
+        min: 0.6,
         max: 1.3,
+        step: 0.005,
+      },
+      {
+        key: "crest",
+        label: "Arch height",
+        hint: "How high the arch rises against the x-height. One reaches the waist, which is what a drawn letter does; below one it stops short, which is what a hand does when it is not looking.",
+        min: 0.8,
+        max: 1.05,
         step: 0.005,
       },
     ],
@@ -211,9 +234,9 @@ export const PART_SPECS: PartSpec[] = [
       {
         key: "size",
         label: "Size",
-        hint: "How wide the disc is against the stem. Nought leaves the stroke to stop on its own.",
+        hint: "How wide the disc is against the stem. Nought leaves the stroke to stop on its own. Held in stems, so a hairline face needs a far bigger number than a poster one to get the same disc.",
         min: 0,
-        max: 2.4,
+        max: 8,
         step: 0.02,
       },
       {
@@ -498,17 +521,9 @@ export const SCRIPT_CONTROLS: FieldControl[] = [
     key: "reach",
     label: "Reach",
     hint: "How far the join runs sideways, in stem widths. This is the letter-spacing as well as the shape of the join, and the two cannot be separated: the gap between two letters of a joined script is the join.",
-    min: 0.6,
+    min: 0.5,
     max: 3.2,
     step: 0.05,
-  },
-  {
-    key: "balance",
-    label: "In against out",
-    hint: "How the reach divides between the lead-in and the lead-out. A half is even, which is what a drawn script does. A written hand arrives late and leaves long, or the other way about, and which it is is most of what separates one hand from another.",
-    min: 0.1,
-    max: 0.9,
-    step: 0.01,
   },
   {
     key: "flat",
@@ -523,16 +538,51 @@ export const SCRIPT_CONTROLS: FieldControl[] = [
     label: "Loop",
     hint: "How far the ascenders and descenders open into eyes, measured against the pen so it holds at every weight. Nought leaves a straight stroke, which is a monoline script; opened up, the ascender becomes a closed eye and the face reads as written rather than drawn.",
     min: 0,
-    max: 3,
+    max: 6.5,
     step: 0.05,
   },
   {
-    key: "loopDepth",
-    label: "Loop depth",
-    hint: "How far back down its own stroke the eye reaches, in eye-widths. Short is a round bead on the end of an ascender; long is the narrow blade a copperplate hand leaves. Both are the same width, which is why one control cannot say both.",
-    min: 0.5,
-    max: 4,
-    step: 0.05,
+    key: "eye",
+    label: "Loop shape",
+    hint: "How far the eye bows off the stroke it stands on, as a share of its own length. A half is a semicircle -- as wide as it is tall -- which is what one arc does when nothing tells it otherwise. Lower is the long narrow oval a written hand leaves.",
+    min: 0.08,
+    max: 0.6,
+    step: 0.01,
+  },
+  {
+    key: "tilt",
+    label: "Climb",
+    hint: "How much shallower than the straight line between its two ends each half of the join sets off, in degrees, leaving the arc to steepen on its way up. Nought is a straight run into the next letter; opened up, the join dips into a valley with its floor on the writing line.",
+    /*
+     * Nought at the bottom rather than the sixty below it the sweep will take.
+     *
+     * A negative tilt sets the join off *steeper* than the line between its
+     * ends and leaves the arc to flatten, which turns it back on itself: at
+     * minus ten a light Roundhand folds nineteen of its letters, and it gets
+     * worse all the way down. Nothing uses it, and a control that can spoil a
+     * letter has no business offering the setting that does it. The clamp
+     * inside `planJoin` still takes the wider range, as the backstop for a
+     * document that arrives carrying one.
+     */
+    min: 0,
+    max: 70,
+    step: 1,
+  },
+  {
+    key: "bow",
+    label: "Bow",
+    hint: "How far a straight run bends on its way, in stem widths. Nought is the ruled line every unjoined face here is built from; a hand does not draw a straight line, and this is the difference between a written stem and a plotted one.",
+    min: 0,
+    max: 1.2,
+    step: 0.01,
+  },
+  {
+    key: "knit",
+    label: "Knit",
+    hint: "How far each half of the join carries on past the seam, in stem widths, so the two cross rather than touch. Both ends are cut square, so meeting at a point is meeting over no area and the letters read as pushed together rather than joined. The advance is not moved by it.",
+    min: 0,
+    max: 1.5,
+    step: 0.01,
   },
   {
     key: "highSeam",

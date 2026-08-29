@@ -34,7 +34,14 @@ for (const base of faces) {
   console.log(`\n${base.name}: ${(made.bytes.length / 1024).toFixed(0)}KB  ${made.fileName}`);
   for (const step of [
     ["scripts/joinsub.py", file],
-    ["scripts/shape.py", file, "on,oa,oo,ow,br,ve,no,an,handwriting"],
+    [
+      "scripts/shape.py",
+      file,
+      // The last two carry spaces, which is the only way to see the two ends of
+      // a word: the letter after a space loses its lead-in and the one before
+      // it loses its lead-out.
+      process.env.WORDS ?? "on,oa,oo,ow,br,ve,no,an,handwriting,an even hand,Candy Darling",
+    ],
   ]) {
     const run = spawnSync("python3", step, { encoding: "utf8" });
     console.log(run.stdout ?? "");

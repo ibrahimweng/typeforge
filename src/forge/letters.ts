@@ -22,10 +22,20 @@
 
 import type { Vec2 } from "@/font/types";
 import type { Style } from "./style";
-import { HANDS_OVER_HIGH, movedSpine, planJoin, planLoops, seamsOf, wobbleOf } from "./script";
+import {
+  BOTH_ENDS,
+  HANDS_OVER_HIGH,
+  type Ends,
+  movedSpine,
+  planJoin,
+  planLoops,
+  seamsOf,
+  wobbleOf,
+} from "./script";
 import { terminalFor } from "./style";
 import {
   bowl,
+  bowRuns,
   bowlBetween,
   bowlPoint,
   reversed,
@@ -37,7 +47,7 @@ import {
   wavy,
 } from "./shapes";
 import { MITER_LIMIT, penReach, reachAlong } from "./sweep";
-import type { JoinKind, Spine, SpineSegment, Stroke, Terminal } from "./types";
+import type { JoinKind, Spine, SpineArc, SpineSegment, Stroke, Terminal } from "./types";
 
 /**
  * A letter, as strokes plus how it should be spaced.
@@ -53,8 +63,39 @@ export interface Recipe {
   strokes: Stroke[];
   /** Round letters are set a little tighter, or they look loose beside flat ones. */
   round?: boolean;
+  /**
+   * More room than the join gives, at each end, as a share of its reach.
+   *
+   * A joined face spaces every letter the same way -- the letter's own width
+   * plus a reach at each end -- and a written hand does not. The reference sets
+   * its `s` with 0.245 of an x-height either side of the body and its `o` with
+   * 0.155, so its `s` takes 0.95 of the `o`'s advance for a body that is 0.70
+   * of it. Ours took 0.69, which is a letter that has been measured rather than
+   * spaced.
+   *
+   * The roman path has had the same idea for as long as it has had round
+   * letters, in the other direction: see `ROUND_TIGHTENING`.
+   */
+  air?: number;
   /** A width to use instead of measuring, for the space and for the figures. */
   width?: number;
+  /**
+   * The letter draws its own lead-in, so the join must not add one.
+   *
+   * The difference between a drawn script and a written one, and the thing
+   * `enters.ts` and `scallop.ts` were built to find. A drawn `n` is a complete
+   * letter standing on the line with a separate stroke run in from outside to
+   * touch it. A written one is a hand that came off the letter before, climbed
+   * to the top of the first stem and turned down, so the connection is the
+   * first part of the letter's own path -- one stroke, at the letter's own
+   * weight, going the way the letter goes.
+   *
+   * A letter that says so here is spaced by that stroke instead of by the
+   * join's reach: `planJoin` slides it until the point where its own lead-in
+   * crosses the seam sits on the origin, which is the same contract the join
+   * kept, honoured by the letter rather than by a stroke laid against it.
+   */
+  entered?: boolean;
 }
 
 export type LetterName = string;
@@ -374,6 +415,16 @@ interface Frame {
    * wide one.
    */
   bowl: number;
+  /**
+   * How high an arch reaches on this face -- the x-height, brought down by the
+   * shoulder's crest. A stem that a shoulder springs from stands here, or the
+   * stem pokes up past its own arch.
+   *
+   * Named apart from `crest` below, which is a different question with a
+   * similar name: that one is where a round letter's spine goes to reach a
+   * line, this one is where an arch stops short of one.
+   */
+  crown: number;
   /** Half the height of a lowercase round letter, which fills the x-height. */
   bowlH: number;
   /** Half the width of a capital round letter. */
@@ -384,6 +435,28 @@ interface Frame {
   square: number;
   /** How wide a bowl is against its height. */
   wide: number;
+  /**
+   * How far a stem set beside a bowl stands clear of it.
+   *
+   * Nought on a face that is drawn, which is what a roman `a` and `d` and `g`
+   * and `q` are: the bowl is tangent to the stem and the two share an edge.
+   *
+   * A written one is not. The pen comes round the bowl, back up its right side,
+   * and down again beside it rather than on it -- so there is a stem's own
+   * width of daylight between the two, and the letter is wider than an `o` by
+   * exactly that. The reference's `a` body is 0.89 of an x-height against its
+   * `o`'s 0.79; ours were the same width to the unit, on all four faces, which
+   * is a roman `a` on a joined face.
+   *
+   * The `a` and the `d`, and not the `g`, the `q`, the `b` or the `p`. The
+   * reference divides them the same way its letterforms do: a stem that comes
+   * down beside a bowl and stops on the baseline stands clear of it, and one
+   * that carries on past the line into an extender does not. Its `a` takes 1.19
+   * of its `o`'s advance and its `d` 1.30, where its `g` takes 1.07, its `q`
+   * 1.10, its `b` 1.08 and its `p` 1.07 -- and ours draws its `g` at 1.43
+   * already, so widening that one is the wrong direction twice over.
+   */
+  aside: number;
   /**
    * The smallest half-measure any shape here may have.
    *
@@ -467,6 +540,24 @@ interface Frame {
   plain: Terminal;
 }
 
+/**
+ * How far a written stem stands clear of the bowl it is set against, in stem
+ * widths.
+ *
+ * In stems and not in bowls, and the difference is a letter that comes apart. A
+ * share of the bowl was the first answer -- the bowl is what the stem is set
+ * against, so it looked like the bowl's business -- and it does not shrink when
+ * the pen does. At the weight that put the reference's gap on the page, a pen
+ * of 40 units left the stem standing 64 units clear of a bowl it could reach 20
+ * across: the `a` and the `d` came off in two pieces on all four faces, and the
+ * Monoline's at 44 as well.
+ *
+ * What has to hold is that the two strokes still overlap, and that is the pen's
+ * question at every weight. The reference's gap is 0.10 of an x-height against
+ * a stem of 0.19, which is a little over half a stem.
+ */
+const ASIDE = 0.53;
+
 function frame(style: Style): Frame {
   const { metrics, pen } = style;
   const half = pen.weight / 2;
@@ -487,6 +578,8 @@ function frame(style: Style): Frame {
    * which is what a circle is.
    */
   const bowlH = Math.max(metrics.xHeight / 2 + metrics.overshoot - upright, least);
+  // In stem widths, and that is the whole of it: see `ASIDE`.
+  const aside = style.parts.script.on ? pen.weight * ASIDE : 0;
   const capBowlH = Math.max(metrics.capHeight / 2 + metrics.overshoot - upright, least);
   return {
     style,
@@ -502,6 +595,8 @@ function frame(style: Style): Frame {
       least,
     ),
     bowl: Math.max(bowlH * wide, least),
+    crown: metrics.xHeight * style.parts.shoulder.crest,
+    aside,
     bowlH,
     /*
      * A width floor, which the height does not have.
@@ -1012,6 +1107,26 @@ function corner(f: Frame, from: Vec2, tip: Vec2, to: Vec2): Vec2 {
  * rounds nothing is left where it was; a face that rounds a lot moves exactly
  * as far as it needs. Giving every face the worst face's allowance instead
  * would swing the arms of a Sans k by a tenth of its x-height.
+ *
+ * What that miss is measured on is the whole of it, and measuring it on the
+ * wrong point is what let the Formal Script's k come apart the moment its pen
+ * went from 96 units to 120. `through` hands back the vertex before it is
+ * rounded, and that vertex was inside the stem quite happily -- 142.9 against a
+ * limit of 145, so the guard never fired and no correction was made.
+ * `roundCorners` then threw it away: the arc it puts in the corner's place sits
+ * back along the bisector by the radius over the sine of the half-angle, which
+ * on a sixty-degree vee rounded at 63.6 units is another 64. The apex the guard
+ * had approved was drawn 92 units clear of the stem, and the two strokes were
+ * held together by nothing but ink -- about twenty units of overlap, which the
+ * bow then walked the stem out of.
+ *
+ * So the vee is rounded here, with the same call the recipe is going to make,
+ * and the miss is read off where the ink really ends up. A face that rounds
+ * nothing gets its vertex back unchanged and is left exactly where it was:
+ * driving the correction home instead, until every face's apex sat on the
+ * limit rather than near it, moved the Flared k by seven and a half units and
+ * cost it 1,256 points under the rim in place of 355, because eight passes
+ * double whatever new corner they are given.
  */
 function junction(f: Frame, arm: Vec2, stem: number, height: number, leg: Vec2): Vec2 {
   // Far enough past the edge to overlap rather than touch. A quarter of the
@@ -1019,8 +1134,90 @@ function junction(f: Frame, arm: Vec2, stem: number, height: number, leg: Vec2):
   const inside = stem + f.half - f.half * 0.5;
   const asked = at(stem + f.half, height);
   const meet = corner(f, arm, asked, leg);
-  if (meet.x <= inside) return meet;
-  return corner(f, arm, at(asked.x - (meet.x - inside), height), leg);
+  const lands = rounded(f, arm, meet, leg);
+  if (lands <= inside) return meet;
+  return corner(f, arm, at(asked.x - (lands - inside), height), leg);
+}
+
+/**
+ * How far into the stem a vee drawn through this vertex really reaches, once
+ * the corner has been rounded off the way the recipe is about to round it.
+ */
+function rounded(f: Frame, arm: Vec2, meet: Vec2, leg: Vec2): number {
+  const spine = roundCorners(
+    chain(straight(arm, meet), straight(meet, leg)),
+    f.radius,
+    f.half,
+  );
+  let least = Infinity;
+  for (const segment of spine.segments) {
+    if (segment.kind === "line") {
+      least = Math.min(least, segment.from.x, segment.to.x);
+      continue;
+    }
+    least = Math.min(least, ...ends(segment).map((point) => point.x));
+    // The leftmost point of the circle, but only where the arc actually goes
+    // through it.
+    if (sweeps(segment, Math.PI)) least = Math.min(least, segment.centre.x - segment.radius);
+  }
+  return Number.isFinite(least) ? least : meet.x;
+}
+
+/**
+ * Where a rounded vee actually bottoms out, in both x and y.
+ *
+ * The same question `rounded` asks of a K sideways, asked of a Y downwards, and
+ * asked because two of the three points that look like the bottom of a vee are
+ * not on the ink at all.
+ *
+ * The recipe names the point the ink should reach. `through` hands back the
+ * skeleton vertex that puts the ink there, and for a pen that is rotated -- as
+ * every script pen here is -- that vertex is not above the tip but up and to
+ * one side of it: thirty-two units to the side on the Formal Script. Then
+ * `roundCorners` lifts the spine off that vertex as well.
+ *
+ * So a stem told to stand at the tip stands beside the vee rather than under
+ * it, and the Formal Script Y was two pieces at every weight and every bowl
+ * width below 0.95 -- the ink of a vee is wide enough to hide the mistake until
+ * something narrows it.
+ */
+function dips(f: Frame, arm: Vec2, meet: Vec2, leg: Vec2): Vec2 {
+  const spine = roundCorners(chain(straight(arm, meet), straight(meet, leg)), f.radius, f.half);
+  const seen: Vec2[] = [];
+  for (const segment of spine.segments) {
+    if (segment.kind === "line") {
+      seen.push(segment.from, segment.to);
+      continue;
+    }
+    seen.push(...ends(segment));
+    // The bottom of the circle, but only where the arc actually goes through it.
+    if (sweeps(segment, -Math.PI / 2)) {
+      seen.push(at(segment.centre.x, segment.centre.y - segment.radius));
+    }
+  }
+  // The lowest point the rounded spine reaches, which is above the vertex it
+  // was rounded from -- not the lower of the two, which would be the vertex.
+  let low = seen[0] ?? meet;
+  for (const point of seen) if (point.y < low.y) low = point;
+  return low;
+}
+
+/** Whether an arc passes through the given angle on its way from start to end. */
+function sweeps(arc: SpineArc, angle: number): boolean {
+  const turn = Math.PI * 2;
+  const from = ((arc.startAngle % turn) + turn) % turn;
+  const to = ((arc.endAngle % turn) + turn) % turn;
+  const want = ((angle % turn) + turn) % turn;
+  const along = ((want - from) * (arc.sweepPositive ? 1 : -1) + turn) % turn;
+  const whole = ((to - from) * (arc.sweepPositive ? 1 : -1) + turn) % turn;
+  return along <= whole;
+}
+
+/** An arc's two ends. */
+function ends(arc: SpineArc): Vec2[] {
+  return [arc.startAngle, arc.endAngle].map((angle) =>
+    at(arc.centre.x + Math.cos(angle) * arc.radius, arc.centre.y + Math.sin(angle) * arc.radius),
+  );
 }
 
 function towards(from: Vec2, to: Vec2): Vec2 {
@@ -1161,6 +1358,23 @@ function tail(frame: Frame, radius: number): Stroke {
  * Where it springs from is a style decision rather than a drawing decision,
  * which is why n, m, h and r all move together when it changes.
  */
+/**
+ * How high an arch really goes, which on a written hand is short of the waist.
+ *
+ * The reference tops its `n` at 0.88 of an x-height and its `u` at 0.90, where
+ * its `m`, `v`, `w` and `x` reach 1.00 and its `o`, `e` and `z` overshoot to
+ * 1.06 and beyond. A quarter of an x-height between the lowest letter and the
+ * highest is most of what makes a line of it look written; ours were all inside
+ * four hundredths of each other, which is a row of soldiers.
+ *
+ * Only where the arch is reaching for the x-height. A capital is set down
+ * deliberately on its two lines and does not sag, which is what every face here
+ * promises, so a shoulder drawn to the cap height is left alone.
+ */
+function crested(frame: Frame, height: number): number {
+  return height === frame.x ? height * frame.style.parts.shoulder.crest : height;
+}
+
 function arch(frame: Frame, fromX: number, height: number): Stroke {
   return ink(frame, archSpine(frame, fromX, height), BUTT, frame.end);
 }
@@ -1175,6 +1389,7 @@ function arch(frame: Frame, fromX: number, height: number): Stroke {
  */
 function archSpine(frame: Frame, fromX: number, height: number, bottom = 0): Spine {
   uses("shoulder");
+  height = crested(frame, height);
   /*
    * A quarter turn up, a flat run across the top, a quarter turn down.
    *
@@ -1221,6 +1436,7 @@ function archSpine(frame: Frame, fromX: number, height: number, bottom = 0): Spi
 /** The other way up: down one side, round the bottom, up the other. */
 function trough(frame: Frame, fromX: number, height: number): Stroke {
   uses("shoulder");
+  height = crested(frame, height);
   const reach = frame.arch;
   const radius = Math.max(
     frame.half,
@@ -1966,13 +2182,22 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   a: (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
-    const stem = centre.x + f.bowl;
-    return finish(
-      f,
-      [
-        ink(f, ring(f, centre, f.bowl, f.bowlH)),
-        ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
-      ]);
+    const stem = centre.x + f.bowl + f.aside;
+    /*
+     * And set with the room the reference gives it, which is more than it gives
+     * an `o`: 0.21 of an x-height either side against 0.155, for a body only
+     * 0.10 wider. Half the difference between its `a` and its `o` is the stem
+     * standing clear and half is the air around it. See `air`.
+     */
+    return {
+      ...finish(
+        f,
+        [
+          ink(f, ring(f, centre, f.bowl, f.bowlH)),
+          ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
+        ]),
+      air: 0.45,
+    };
   },
 
   b: (style) => {
@@ -1996,13 +2221,21 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   d: (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
-    const stem = centre.x + f.bowl;
-    return finish(
-      f,
-      [
-        ink(f, ring(f, centre, f.bowl, f.bowlH)),
-        ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
-      ]);
+    const stem = centre.x + f.bowl + f.aside;
+    /*
+     * Set loose, as the `a` is and for the same reason -- and looser, because
+     * this letter is: the reference takes 1.30 of its own `o`'s advance for a
+     * `d` and 1.19 for an `a`. Swept at 0.45, 0.75 and 0.95 against that.
+     */
+    return {
+      ...finish(
+        f,
+        [
+          ink(f, ring(f, centre, f.bowl, f.bowlH)),
+          ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
+        ]),
+      air: 0.95,
+    };
   },
 
   e: (style) => {
@@ -2084,7 +2317,14 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const centre = at(f.edge + f.bowl, f.x / 2);
     const stem = centre.x + f.bowl;
     const radius = Math.max(f.arch * 0.7, f.least);
-    return finish(
+    /*
+     * And set a little loose, like the `a` and the `d`: this letter is a bowl
+     * with a tail hanging under the letter beside it rather than beside it, so
+     * spacing it off its own width alone leaves it tight. The reference takes
+     * 1.07 of its own `o`'s advance for a `g`. See `air`.
+     */
+    return {
+      ...finish(
       f,
       [
         ink(f, ring(f, centre, f.bowl, f.bowlH)),
@@ -2101,7 +2341,9 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
           f.end,
           f.end,
         ),
-      ]);
+      ]),
+      air: 0.2,
+    };
   },
 
   h: (style) => {
@@ -2204,7 +2446,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     return finish(
       f,
       [
-        ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
+        ink(f, straight(at(stem, 0), at(stem, f.crown)), f.end, f.end),
         arch(f, stem, f.x),
         arch(f, stem + f.arch * 2, f.x),
       ]);
@@ -2215,7 +2457,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const stem = f.edge;
     return finish(
       f,
-      [ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end), arch(f, stem, f.x)]);
+      [ink(f, straight(at(stem, 0), at(stem, f.crown)), f.end, f.end), arch(f, stem, f.x)]);
   },
 
   o: (style) => {
@@ -2291,7 +2533,14 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   s: (style) => {
     const f = frame(style);
     const { stroke } = spine(f, f.x, f.edge);
-    return finish(f, [stroke], true);
+    /*
+     * And set loose. An `s` is built from half a bowl at each end, so it is
+     * about seven tenths of an `o` across -- which is what the reference's is
+     * too -- and spacing it off that width alone made it seven tenths of an
+     * `o`'s advance where the reference gives it ninety-five hundredths. See
+     * `air`.
+     */
+    return { ...finish(f, [stroke], true), air: 1.05 };
   },
 
   t: (style) => {
@@ -2482,9 +2731,18 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
      * whole idea cannot afford.
      */
     const bar = f.cap * f.style.parts.crossbar.height * 0.58;
-    // Where the diagonals actually are at that height, so the bar meets them
-    // rather than poking out either side.
-    const inset = (half * bar) / f.cap;
+    /*
+     * Where the diagonals actually are at that height, so the bar meets them
+     * rather than poking out either side -- or, as it did, stopping short.
+     *
+     * Measured to the apex the skeleton really reaches, which is not the cap
+     * line: `corner` returns the vertex the two spines meet at, and that sits
+     * below the line by however far the point of the angle carries. Divided by
+     * the cap the bar was cut for a taller A than the one drawn, so both ends
+     * landed inside the letter and short of the diagonals. Thick ink hid it;
+     * at a pen of 8 the bar came away as a piece of its own on all four faces.
+     */
+    const inset = (half * bar) / Math.max(peak.y, f.least);
     return finish(
       f,
       [
@@ -2532,7 +2790,20 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   D: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    const radius = Math.max((f.crest(f.cap) - f.dip(0)) / 2, f.least);
+    /*
+     * And the belly never reaches past the stem it hangs on.
+     *
+     * Its two ends sit on the stem's own line at the top and the bottom of the
+     * bowl, so a bowl taller than the stem puts them past the end of it -- and
+     * a light pen has too little ink up there to close the gap. At an overshoot
+     * of 30 and a pen of 40 the `D` came apart into two pieces on three faces,
+     * with the stem's tip standing clear of the bowl beside it.
+     *
+     * The stem's ink stops half a pen past each line, so that is how far the
+     * belly may go.
+     */
+    const asked = (f.crest(f.cap) - f.dip(0)) / 2;
+    const radius = Math.max(Math.min(asked, f.cap / 2 + f.half * 0.5), f.least);
     return finish(
       f,
       [
@@ -2904,26 +3175,29 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const top = at(left, f.cap);
     const other = at(middle + half, f.cap);
     const point = corner(f, top, at(middle, junction), other);
+    const low = dips(f, top, point, other);
     return finish(
       f,
       [
         ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end),
         /*
-         * The stem runs up past the vee's vertex, so its square top is buried
-         * rather than showing as a step.
+         * The stem stands under the vee and runs up past where it bottoms out,
+         * so its square top is buried rather than showing as a step.
          *
-         * Past the vertex, not up to the corner the chain turns on: those are
-         * not the same place. The sweep rounds the join, and on a face that
-         * rounds it hard the ink stops well above the corner -- ninety units
-         * above it on Ribbon, which left the stem floating clear below a vee
-         * that read as a U, and eighteen on Technical.
+         * Under where the vee really bottoms out, which is not under the tip
+         * the recipe named: `dips` explains the two places that only look like
+         * it. Standing at the tip put this stem thirty-two units to one side of
+         * its own vee on the Formal Script, and only the width of the vee's ink
+         * was holding the letter together -- thirty-six square units of overlap
+         * at the bowl width it used to ship, none at all at the one it ships
+         * now.
          *
-         * Half a pen above the vertex is inside the ink on any face. The two
-         * arms are still overlapping each other there, and go on doing so
-         * until they have risen a pen's half-width times `cap - junction` over
-         * `half`, which on every face here is a good deal more.
+         * Half a pen-half past the meeting point, so the two are overlapping
+         * over an area rather than touching along a line. Measured from a point
+         * both strokes' spines pass through, that is a full pen's footprint of
+         * shared ink on every face here.
          */
-        ink(f, straight(at(middle, 0), at(middle, junction + f.half * 0.5)), f.end, BUTT),
+        ink(f, straight(at(low.x, 0), at(low.x, low.y + f.half * 0.5)), f.end, BUTT),
       ]);
   },
 
@@ -4107,7 +4381,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   dcroat: (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
-    const stem = centre.x + f.bowl;
+    const stem = centre.x + f.bowl + f.aside;
     const bar = f.x + (f.asc - f.x) * 0.55;
     return finish(f, [
       ink(f, ring(f, centre, f.bowl, f.bowlH)),
@@ -5192,7 +5466,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   "\u03b1": (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
-    const stem = centre.x + f.bowl;
+    const stem = centre.x + f.bowl + f.aside;
     return finish(
       f,
       [
@@ -5857,6 +6131,30 @@ function turnedStroke(stroke: Stroke, about: Vec2): Stroke {
  * `left` is where its ink begins and `foot` is the line it stands on, so a
  * superior figure is the same figure with a line of its own further up the page.
  */
+/**
+ * Whether a letter is being drawn inside another glyph rather than as itself.
+ *
+ * A `C` set small inside a ring is the copyright sign, not a letter in a word,
+ * and nothing is ever set after it -- so it takes none of the join. Left to take
+ * it, the ring came out with a stroke reaching out of the `C` towards a letter
+ * that is not there, and the sign gained and lost nodes along the weight axis
+ * because the length of that stroke is a multiple of the pen.
+ *
+ * True of the lowercase too, and was before the capitals ever reached out: the
+ * `a` inside an `ª` is set the same way.
+ */
+let enclosing = false;
+
+function setInside<T>(run: () => T): T {
+  const was = enclosing;
+  enclosing = true;
+  try {
+    return run();
+  } finally {
+    enclosing = was;
+  }
+}
+
 function setSmall(
   style: Style,
   name: LetterName,
@@ -5866,7 +6164,7 @@ function setSmall(
   penShare?: number,
 ): Stroke[] {
   const little = sized(style, fraction, penShare);
-  const strokes = recipeOf(name, borrowing)!(little).strokes;
+  const strokes = setInside(() => recipeOf(name, borrowing)!(little).strokes);
   return strokes.map((stroke) => shovedStroke(stroke, left - little.metrics.sidebearing, foot));
 }
 
@@ -6159,8 +6457,183 @@ export interface Alternate {
   build: (style: Style) => Recipe;
 }
 
+/**
+ * The stroke a written letter is entered with: up from the writing line, over
+ * the top, and back down to where the letter proper begins.
+ *
+ * This is the whole of what separates a written script from a drawn one. A
+ * drawn `n` is two stems with an arch between them and a separate stroke run in
+ * from outside to touch the first of them; a written one is a hand that came
+ * off the letter before, climbed to the top of the first stem and turned down,
+ * so the connection and the stem are one path. `enters.ts` slices the reference
+ * and ours down their length and shows it: the reference's `n` carries one run
+ * of ink from a tenth of an x-height before its own origin that is already the
+ * letter, and ours carried a run six hundredths tall with the stem arriving
+ * three hundredths later.
+ *
+ * Read off the reference. Its `n`'s up-stroke leaves the writing line 0.11 of
+ * an x-height before its origin and reaches the x-height 0.30 after it, which
+ * is 68 degrees at the bottom easing to about 64 by the top; its first stem
+ * comes back down almost exactly under the apex, so the two close a wedge
+ * rather than making an arch.
+ *
+ * Steeper than the reference here -- 76 rather than 68 -- and the reason is the
+ * seam. The reference's up-stroke crosses its own origin at 0.15 of an x-height
+ * and ours crosses it at the seam, 0.30, so ours has a shorter climb left to
+ * make on the letter's own side of the boundary and has to make it in less
+ * room. At 68 the written `n` set at 1.61 of an x-height against the
+ * reference's 1.40; at 76 it sets at 1.54.
+ *
+ * And the leg comes down upright rather than leaning back under the apex, which
+ * the reference's very nearly does. Two degrees of lean walks the foot of the
+ * leg away from where the arch springs -- `arch` is told an x and starts its
+ * turn at that x partway up -- and at a pen of 8 the two were ten units apart
+ * and the letter came out in two pieces. Upright, the arch springs on the leg
+ * at every weight, which is what the plain `n` has always relied on.
+ *
+ * Built as a straight run, a turn and a straight run, in that order and with
+ * the turn's radius carrying both tangents -- the same construction `archSpine`
+ * uses, and for the same reason: a chain whose pieces do not leave where the
+ * last one arrived is a spine with a corner in it, and a corner between an arc
+ * and a line is not rounded by anything downstream. Swept, that is a stroke
+ * that crosses itself.
+ */
+const UPSTROKE = 76;
+const FIRST_LEG = 90;
+
+function entering(apex: Vec2, radius: number): Spine {
+  const up = (UPSTROKE * Math.PI) / 180;
+  const down = (FIRST_LEG * Math.PI) / 180;
+  const centre = at(apex.x, apex.y - radius);
+  const on = (angle: number): Vec2 =>
+    at(centre.x + radius * Math.cos(angle), centre.y + radius * Math.sin(angle));
+  const start = on(Math.PI / 2 + up);
+  const end = on(Math.PI / 2 - down);
+  return chain(
+    straight(at(start.x - start.y / Math.tan(up), 0), start),
+    turn(centre, radius, 90 + UPSTROKE, 90 - FIRST_LEG),
+    straight(end, at(end.x + end.y / Math.tan(down), 0)),
+  );
+}
+
+/**
+ * The short rise a written round letter is entered with.
+ *
+ * A stem is entered with a whole up-stroke, because the hand has to climb to
+ * the top of it; a bowl is entered a fifth of the way up its own left flank,
+ * because that is where the stroke that draws it begins. The reference's `o`
+ * shows the difference plainly: its ink starts at -0.03 of an x-height and its
+ * bowl at 0.00, so what hangs outside the letter is a flick and not a stroke.
+ */
+function flick(f: Frame, to: Vec2): Spine {
+  const up = (UPSTROKE * Math.PI) / 180;
+  return bowed(f, at(to.x - to.y / Math.tan(up), 0), to, 0.1);
+}
+
 export const ALTERNATES: Record<LetterName, Alternate[]> = {
+  o: [
+    {
+      id: "written",
+      label: "Written",
+      hint: "The bowl itself starts on the origin, so the letter before it runs into the bowl rather than into a stroke laid against it.",
+      build: (style) => {
+        const f = frame(style);
+        const centre = at(f.edge + f.bowl, f.x / 2);
+        /*
+         * The same bowl, and no extra stroke at all: what makes it written is
+         * where it is put, not what is drawn.
+         *
+         * `seam.ts` reads the reference's `o` as carrying ink from -0.00 to
+         * 0.41 of an x-height on its own origin -- that is the bowl's own left
+         * flank standing on the boundary, not a lead-in reaching back over it.
+         * Its bowl runs -0.03 to 1.13 inside an advance of 1.10, so the letter
+         * before it laps onto the bowl and the letter after laps onto the next.
+         * Marked `entered`, the join stops standing this letter a reach out and
+         * slides it until its own flank crosses the seam on the origin, which
+         * is the same thing.
+         */
+        // Where the flick meets the bowl: a fifth of the way up the left
+        // flank, which is where a hand starts an `o` and where this one hands
+        // over to the letter before it.
+        const meets = f.x * 0.32;
+        const across = f.bowl * Math.sqrt(Math.max(0, 1 - ((meets - centre.y) / f.bowlH) ** 2));
+        return {
+          ...finish(f, [
+            ink(f, flick(f, at(centre.x - across, meets)), f.end, BUTT),
+            ink(f, ring(f, centre, f.bowl, f.bowlH)),
+          ], true),
+          entered: true,
+        };
+      },
+    },
+  ],
+
+  e: [
+    {
+      id: "written",
+      label: "Written",
+      hint: "One rising stroke into the loop, at the letter's own weight, instead of a level bar struck through a bowl.",
+      build: (style) => {
+        const f = frame(style);
+        const centre = at(f.edge + f.bowl, f.x / 2);
+        const eye = f.x * f.style.parts.crossbar.height;
+        const rise = Math.max(-0.85, Math.min(0.85, (eye - centre.y) / f.bowlH));
+        const opens = (Math.asin(rise) * 180) / Math.PI;
+        const belt = bend(f, centre, f.bowlH, opens, opens + 300);
+        /*
+         * The bar is the entry, and it climbs.
+         *
+         * A drawn `e` is a bowl with a level bar struck across it, lighter than
+         * the bowl because that is what a crossbar is. A written one has no bar
+         * at all: the hand comes up off the line, runs across the letter to the
+         * far wall, and turns back over the top -- so what looks like a bar is
+         * the first part of the loop, at the letter's own weight, and it rises.
+         *
+         * `over.ts` showed the drawn one plainly: ours put a straight rule
+         * through the letter and out both sides, and the reference's `e` has
+         * nothing straight in it anywhere.
+         *
+         * Two strokes rather than one chained run, because the bar meets the
+         * loop across the tangent and a chain whose pieces do not leave where
+         * the last one arrived is a spine with a corner in it. Two strokes that
+         * cross at the same weight read as one; a corner reads as a knot.
+         */
+        const start = at(centre.x - f.bowl - f.half, seamsOf(f.style.parts.script, f.x, f.half).low);
+        return {
+          ...finish(f, [
+            ink(f, bowed(f, start, spineStart(belt), 0.06), f.end, BUTT),
+            ink(f, belt, BUTT, f.end),
+          ], true),
+          entered: true,
+        };
+      },
+    },
+  ],
+
   a: [
+    {
+      id: "written",
+      label: "Written",
+      hint: "The bowl starts on the origin, the way a hand arrives at an `a` -- round the bowl first and down the stem after.",
+      build: (style) => {
+        const f = frame(style);
+        const centre = at(f.edge + f.bowl, f.x / 2);
+        // The same stem the plain `a` stands, air and all: what changes here is
+        // where the letter is put, not how it is drawn. See the written `o`.
+        const stem = centre.x + f.bowl + f.aside;
+        const meets = f.x * 0.32;
+        const across = f.bowl * Math.sqrt(Math.max(0, 1 - ((meets - centre.y) / f.bowlH) ** 2));
+        return {
+          ...finish(f, [
+            ink(f, flick(f, at(centre.x - across, meets)), f.end, BUTT),
+            ink(f, ring(f, centre, f.bowl, f.bowlH)),
+            ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
+          ]),
+          air: 0.45,
+          entered: true,
+        };
+      },
+    },
     {
       id: "double",
       label: "Two storey",
@@ -6192,6 +6665,27 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
     },
   ],
 
+  n: [
+    {
+      id: "written",
+      label: "Written",
+      hint: "Entered with the up-stroke the letter is written with, rather than standing on the line for a join to be run in to it.",
+      build: (style) => {
+        const f = frame(style);
+        // Tight, because the reference's first stem comes down almost under its
+        // own apex: a wide turn there is an arch, and an `n` with two of those
+        // is an `m` with a leg missing.
+        const radius = Math.max(f.x * 0.045, f.least);
+        const spine = entering(at(f.edge, f.crown), radius);
+        const stands = spineEnd(spine);
+        return {
+          ...finish(f, [ink(f, spine, f.end, BUTT), arch(f, stands.x, f.x)]),
+          entered: true,
+        };
+      },
+    },
+  ],
+
   A: [
     {
       id: "flat",
@@ -6214,9 +6708,19 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const middle = left + half;
         const cut = f.capBowl * 0.34;
         const bar = f.cap * f.style.parts.crossbar.height * 0.58;
-        const inset = (half * bar) / f.cap;
         // Where the two diagonals would be at the height the top is cut.
         const rise = f.cap;
+        /*
+         * And where they are at the bar's height, which is the same question
+         * the default `A` gets wrong the other way round.
+         *
+         * These two do not meet at a point: the top is cut flat, so each
+         * diagonal stops half a cut short of the middle. Reckoned as though
+         * they met, the bar was drawn for a narrower A than this one and both
+         * ends landed inside it, clear of the diagonals -- invisible under a
+         * thick pen and a piece of its own at a pen of 8.
+         */
+        const inset = ((half - cut / 2) * bar) / rise;
         const leftFoot = at(left, 0);
         const rightFoot = at(middle + half, 0);
         return finish(f, [
@@ -6473,7 +6977,16 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
          * x-height the diagonal is down to seventeen degrees and reads as a
          * bar with a drop on the end rather than as a leg.
          */
-        const knee = at(foot, Math.max(f.half * 1.3, f.least));
+        /*
+         * And never above the junction the leg falls from.
+         *
+         * Half a pen is a floor, not a height: on a face whose x-height is
+         * small against its pen -- a hairline script wound up to a heavy weight
+         * -- a pen and a third is most of the way to the waist, so the leg was
+         * asked to fall from the junction to a knee above it and folded back on
+         * itself. Kept under half the drop, the leg always falls.
+         */
+        const knee = at(foot, Math.min(Math.max(f.half * 1.3, f.least), waist * 0.55));
         // The arm stops short of the leg rather than on the same line as it,
         // so the two are not one symmetrical V lying on its side.
         const arm = at(stem + span * 0.84, f.x);
@@ -6695,6 +7208,26 @@ export function formsOf(name: LetterName): Array<{ id: string; label: string; hi
   ];
 }
 
+/**
+ * Every form of a letter that can be drawn, which is not the same list.
+ *
+ * `formsOf` answers a picker's question -- what is there to choose between --
+ * and a letter carrying no alternate is not a choice, so it answers with
+ * nothing. Seven loops across the tests and the scripts read that list to
+ * decide what to draw, and so drew nothing: thirty-six of the fifty letters,
+ * every capital but seven, the whole of the round letters. A Formal Script `Y`
+ * in two pieces sat in front of all of them and none of them saw it, and the
+ * one test that did catch it was the one that had never been given the forms
+ * loop at all.
+ *
+ * So: the ids to draw, always at least the default.
+ */
+export function everyFormOf(name: LetterName): Array<{ id: string; label: string; hint: string }> {
+  const forms = formsOf(name);
+  if (forms.length > 0) return forms;
+  return [{ id: "", label: "Default", hint: "The letter as this face draws it." }];
+}
+
 /** The recipe for a letter, in whichever form has been chosen. */
 export function recipeOf(
   name: LetterName,
@@ -6738,6 +7271,99 @@ export function recipeOf(
 export const JOINS = new Set<string>("abcdefghijklmnopqrstuvwxyz".split(""));
 
 /**
+ * The capitals, which reach out on their right and never on their left.
+ *
+ * Which is the whole of what makes a written capital a written capital rather
+ * than a roman one leaning over. A hand sets a capital at the start of a word
+ * and carries straight on out of it into the lowercase; nothing is ever set
+ * before it, so a lead-in out of its left would be a stroke reaching into an
+ * empty page.
+ *
+ * Four are left out because in a written hand they are the ones a pen finishes
+ * on the wrong side of. An `O`, a `D`, a `P` and a `B` all close their bowl at
+ * the top, and the hand lifts there rather than carrying on -- so the letter
+ * after one of them starts a fresh stroke, which is what the reader sees in
+ * every copperplate ever cut.
+ *
+ * And two more for a harder reason: the hand-over draws them into a different
+ * letter. Every lead-out leaves along the baseline, and on an `F` the baseline
+ * is exactly where an `E` keeps its bottom arm -- so an `F` that hands on *is*
+ * an `E`, and `Fox` sets as `Eox`. An `I` with a foot going right is an `L`.
+ * Neither is a matter of taste or of how far the stroke reaches: it is the
+ * letter as `cmap` maps it, which is what a reader gets in any renderer that
+ * applies no features at all.
+ *
+ * Nothing else in the alphabet does it. Drawn with and without their lead-outs
+ * side by side, the other twenty carry a tail off a terminal that was already
+ * pointing that way -- the `E` and the `L` simply grow a longer bottom arm, and
+ * the rest end in clear air.
+ */
+const NEVER_HANDS_ON = new Set(["B", "D", "F", "I", "O", "P"]);
+export const CAPITALS = new Set<string>("ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));
+
+/** Which halves of the join this letter has, if any. */
+export function joinEnds(name: string): Ends {
+  if (JOINS.has(name)) return BOTH_ENDS;
+  if (CAPITALS.has(name) && !NEVER_HANDS_ON.has(name)) return { entry: false, exit: true };
+  return { entry: false, exit: false };
+}
+
+/**
+ * Whether the cursive loop belongs on this letter.
+ *
+ * It is an ascender's loop and a descender's, and a capital has neither -- it
+ * is a capital, not a tall lowercase. The eye is struck straight down from the
+ * highest end of the letter and it does not ask what that end belongs to, so
+ * every capital built on an upright was taking one: `ITEM LIFT` came out of
+ * the Formal Script as `P PEM PPF P`, the `I` and the `T` both reading as a
+ * `P` because on both of them the loop is the only thing the eye finds first.
+ *
+ * Not that a written capital never has a loop -- half of them do, in a formal
+ * hand. But the loop on a capital is part of how that capital is drawn, sized
+ * and placed by whoever drew it, and this one is a semicircle of so many pen
+ * widths struck on whatever stem stands highest. That is the right construction
+ * for the ascender it was written for and no construction at all for a `T`.
+ *
+ * And the `p` has neither, which is a fact about the order the strokes are
+ * made in rather than about the letter's shape. A loop is what a pen leaves
+ * when it turns round at the end of a stroke and carries on. On a `g`, a `y`,
+ * a `j` and an `f` the descender is the last thing drawn, so it turns; on a
+ * `p` it is the first, and the pen lifts at the bottom of it and comes back up
+ * to start the bowl. The reference draws it exactly so -- its `p` is a single
+ * stroke 0.18 of an x-height wide at every depth below the line, where its `q`,
+ * `g`, `y`, `j` and `f` all read as two.
+ *
+ * It cost the `p` a fifth of its width. The loop swung out to the left of the
+ * stem and the spacing counted that swing as part of the letter, so the `p`
+ * came out at 1.19 to 1.34 of its own face's `o` against the reference's 1.07,
+ * and at 1.01 to 1.07 with the loop turned off.
+ */
+/*
+ * And the `d`, which the reference draws with no loop at all.
+ *
+ * It is the one ascender in the font that does not take one. Read across the
+ * ascender the reference's `l`, `h`, `b`, `k` and `f` all come to two runs of
+ * ink -- a loop and the stem beside it -- and every one of them spans 0.39 to
+ * 0.54 of an x-height. Its `d` is a single run of 0.24 to 0.27 at every height,
+ * which is one stroke and its lean and nothing else: the ascender goes up,
+ * curves over to the right, and comes back down into the bowl.
+ *
+ * Ours gave it the loop the others have, two runs and 0.37 to 0.52 wide, so the
+ * `d` carried an ornament no `d` in the reference has.
+ */
+const NO_LOOP = new Set(["p", "thorn", "d", "dcroat"]);
+
+export function takesLoop(name: string): boolean {
+  return !CAPITALS.has(name) && !NO_LOOP.has(name);
+}
+
+/** Whether the join reaches out of this letter at all, on either side. */
+export function reachesEither(name: string): boolean {
+  const ends = joinEnds(name);
+  return ends.entry || ends.exit;
+}
+
+/**
  * Which half of the join, if either, this drawing of a letter takes high.
  *
  * Module state with a scoped setter, which is how everything else here that has
@@ -6760,6 +7386,29 @@ let takingHigh: { entry?: boolean; exit?: boolean } = {};
  * is put back afterwards whatever happens, because a letter drawn high by
  * accident is a letter that does not meet the one before it.
  */
+/**
+ * Which half of its join this drawing of a letter goes without.
+ *
+ * The same module-scoped, scoped-setter arrangement as `takingHigh` above, and
+ * for the same reason: a second drawing of a letter that a shaper swaps in.
+ *
+ * A word does not begin with a stroke reaching out of its first letter towards
+ * nothing, or end with one reaching out of its last. The letter as `cmap` maps
+ * it has both halves, so a renderer that never applies a feature still gets a
+ * face whose letters meet; these are the drawings for the two ends of a word.
+ */
+let endsWithout: Partial<Ends> | null = null;
+
+export function joiningWithout<T>(which: Partial<Ends>, run: () => T): T {
+  const was = endsWithout;
+  endsWithout = which;
+  try {
+    return run();
+  } finally {
+    endsWithout = was;
+  }
+}
+
 export function joiningHigh<T>(which: { entry?: boolean; exit?: boolean }, run: () => T): T {
   const was = takingHigh;
   takingHigh = which;
@@ -6787,7 +7436,69 @@ export function joiningHigh<T>(which: { entry?: boolean; exit?: boolean }, run: 
  */
 function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
   const script = style.parts.script;
-  if (!script.on || !JOINS.has(name)) return recipe;
+  /*
+   * A word does not begin with a connecting stroke, so the letter that begins
+   * one is drawn rather than written.
+   *
+   * A written letter carries its own lead-in -- the up-stroke it is entered
+   * with is the first part of its own path, not a stroke laid against it -- and
+   * that is exactly the stroke a boundary form exists to drop. Left on, the
+   * first letter of a word reaches back past its own origin and the word hangs
+   * over its own left margin, and there is no join for it to hang over.
+   *
+   * The join layer cannot take it off, because by then it is one of the
+   * letter's own strokes and indistinguishable from the rest. So the recipe is
+   * asked again, in its plain form, before anything else is done to it: the
+   * `.begin` drawing of a written `n` is the drawn `n`, which is the letter
+   * that has a lead-in to lose and loses it. Everything downstream -- the bow,
+   * the loops, the spacing, the promise that a boundary form is narrower than
+   * the letter it stands in for -- then holds unchanged.
+   */
+  if (recipe.entered && script.on && endsWithout?.entry === false && LETTERS[name]) {
+    recipe = LETTERS[name](style);
+  }
+  /*
+   * The bow first, and before anything asks whether this letter joins.
+   *
+   * A written line is bowed whether or not it reaches a neighbour, so a digit,
+   * a comma and the four capitals that hand on to nothing all take it -- and
+   * the letters that do join are bowed before their loops are found and their
+   * joins are planned, so both are struck against the letter as it really ends
+   * up rather than against a straight one it never was.
+   */
+  if (script.on && script.bow > 0) {
+    const half = style.pen.weight / 2;
+    recipe = {
+      ...recipe,
+      strokes: recipe.strokes.map((stroke) => ({
+        ...stroke,
+        spine: bowRuns(stroke.spine, script.bow, half),
+      })),
+    };
+  }
+  /*
+   * What the letter has, less whatever this drawing is doing without.
+   *
+   * The override can only take a half away, never hand one over: a capital that
+   * gained a lead-in because something asked for one would be reaching into a
+   * letter nothing is ever set before, which is the thing `joinEnds` exists to
+   * prevent.
+   */
+  const has = joinEnds(name);
+  const without = endsWithout ?? {};
+  const ends: Ends = {
+    entry: has.entry && without.entry !== false,
+    exit: has.exit && without.exit !== false,
+  };
+  /*
+   * Asked on what the letter *has*, not on what this drawing kept. A letter
+   * that never joins -- a capital that hands on to nothing, a digit, a comma --
+   * has no business in the join layer and is spaced as the roman letter it is.
+   * A letter that joins and has been asked to give up both halves is still a
+   * letter of a joined face, and has to be spaced like one: it goes through,
+   * and comes out with the room either side and no strokes in it.
+   */
+  if (!script.on || enclosing || (!has.entry && !has.exit)) return recipe;
   const f = frame(style);
   /*
    * Off its line first, then the join, then over into its room.
@@ -6799,7 +7510,14 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * less on one that dropped, and both still leave the seam at exactly the
    * height everything else leaves it at.
    */
-  const room = { half: f.half, upright: f.upright, x: f.x };
+  const room = {
+    half: f.half,
+    upright: f.upright,
+    // What the pen is certain to reach, which is what it is at its narrowest.
+    narrow: f.half * Math.max(0, 1 - Math.abs(style.pen.contrast)),
+    x: f.x,
+    sidebearing: f.edge - f.half,
+  };
   /*
    * Loops first, then the lift, then the join. The order is the whole of why
    * this works, and each step of it was wrong once.
@@ -6831,18 +7549,35 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * drawing that a shaper swaps in when the pair actually occurs. `o` and the
    * letter after it are both replaced, so the two that meet always agree.
    */
-  const seams = seamsOf(script, f.x);
+  const seams = seamsOf(script, f.x, f.half);
   const crossing = {
     entry: takingHigh.entry ? seams.high : seams.low,
     exit: takingHigh.exit && HANDS_OVER_HIGH.has(name) ? seams.high : seams.low,
   };
-  const loops = planLoops(recipe.strokes.map((stroke) => stroke.spine), room, script);
-  const lift = wobbleOf(name, script, f.x).lift;
+  const loops = planLoops(
+    recipe.strokes.map((stroke) => stroke.spine), room, script, takesLoop(name));
+  /*
+   * And the hand is only unsteady in the middle of a word.
+   *
+   * A capital is set down deliberately at the start of one, on the line, and
+   * the bounce is a property of a running hand rather than of every letter that
+   * hand ever writes. Lifted with the rest, the capitals came off their lines by
+   * thirty units on the Handwriting and fifty on the Casual Script -- which is
+   * the one thing every face here promises not to do.
+   */
+  const lift = ends.entry ? wobbleOf(name, script, f.x).lift : 0;
   const body = [...recipe.strokes, ...loops.map((loop) => ink(f, loop, BUTT, BUTT))].map((stroke) => ({
     ...stroke,
     spine: movedSpine(stroke.spine, 0, lift),
   }));
-  const plan = planJoin(body.map((stroke) => stroke.spine), room, script, crossing);
+  const plan = planJoin(
+    body.map((stroke) => stroke.spine), room, script, crossing, ends, recipe.round,
+    // Where this letter's waist has ended up, so what rises above it can hang
+    // over the letter beside it -- and `null` for a capital, which has no
+    // letter set before it and is spaced off the whole of its own ink.
+    has.entry ? f.x + lift : null,
+    recipe.air,
+    recipe.entered === true);
   if (!plan) return recipe;
   /*
    * The letter moves over; the join does not.
