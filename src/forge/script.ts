@@ -1081,6 +1081,34 @@ export function planJoin(
    * it is not in the middle of a word, came out twenty-five units wider than
    * the `d` it is meant to be narrower than.
    */
+  /*
+   * A round letter takes too much room here, and this is still not fixed.
+   *
+   * The room is the letter's widest point, and on a bowl that is the waist --
+   * where no neighbour ever comes. The letter after an `o` arrives at the seam,
+   * a fifth of an x-height up, and by the waist the bowl has curved away. The
+   * reference states it plainly: its `o` runs -0.03 to 1.19 and its advance is
+   * 1.10, so the advance is narrower than the letter and the next one laps onto
+   * the bowl. Ours sets at 1.35 to 1.44.
+   *
+   * Measuring the round ones lower down works and was backed out twice, each
+   * time on the same rock. Cut at the seam's height above the writing line, the
+   * `o` comes to 1.10, 1.19, 1.11 and 1.10 and the four faces to a fit of 1.08,
+   * 1.08, 1.10 and 1.00 -- and `e.begin` stops being narrower than the plain
+   * `e`, which is a promise the boundary forms rest on. Cut as a share of the
+   * letter's own height instead, to take the bounce out of it, and the same
+   * test fails the same way.
+   *
+   * Why it breaks that promise is not established. The obvious suspect was
+   * cleared: `lift` here is `waist - room.x`, and `waist` is handed in as
+   * `f.x + lift` with the same lift the body was moved by, so it is the body's
+   * true shift for both drawings and not a letter-of-this-name guess. Both
+   * anchors were then tried and both failed the same test, which says the
+   * fault is somewhere the anchor is not. Establish that before trying a
+   * third: measure the two `e` drawings under the change and find where their
+   * measured widths part company, rather than reasoning about it -- two
+   * attempts have now been lost to reasoning about it.
+   */
   const measured = spanning;
   const leftmost = measured.reduce((least, one) => Math.min(least, one.x), Infinity);
   const rightmost = measured.reduce((most, one) => Math.max(most, one.x), -Infinity);

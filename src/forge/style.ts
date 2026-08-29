@@ -110,6 +110,11 @@ export interface Parts {
     spring: number;
     /** How far the arch reaches over before it turns down. */
     reach: number;
+    /**
+     * How high the arch rises, as a share of the x-height. One reaches the
+     * waist; less stops short of it, which is what a running hand does.
+     */
+    crest: number;
   };
   bowl: {
     /**
@@ -370,7 +375,7 @@ export const SANS: Style = {
   pen: { weight: 92, contrast: 0, angle: 0 },
   parts: {
     slab: { on: false, projection: 0.65, thickness: 0.43, bracket: 0 },
-    shoulder: { spring: 0.62, reach: 1 },
+    shoulder: { spring: 0.62, reach: 1, crest: 1 },
     bowl: { width: 1, squareness: 0, aperture: 1 },
     corner: { radius: 0, join: "miter" },
     terminal: { kind: "butt", angle: 0 },
@@ -410,7 +415,7 @@ export const SERIF: Style = {
   parts: {
     ...SANS.parts,
     slab: { on: true, projection: 0.46, thickness: 0.48, bracket: 0.23 },
-    shoulder: { spring: 0.58, reach: 1 },
+    shoulder: { spring: 0.58, reach: 1, crest: 1 },
     terminal: { kind: "angled", angle: 12 },
   },
 };
@@ -445,7 +450,7 @@ export const DISPLAY: Style = {
   forms: { A: "flat" },
   parts: {
     ...SANS.parts,
-    shoulder: { spring: 0.66, reach: 1.02 },
+    shoulder: { spring: 0.66, reach: 1.02, crest: 1 },
     /*
      * Narrower than tall, which is both what a fat face is and what keeps its
      * letters in the order the rest of the alphabet stands in. At a round bowl
@@ -492,7 +497,7 @@ export const GEOMETRIC: Style = {
   forms: { Q: "under", G: "bare", M: "deep" },
   parts: {
     ...SANS.parts,
-    shoulder: { spring: 0.55, reach: 1 },
+    shoulder: { spring: 0.55, reach: 1, crest: 1 },
     bowl: { width: 1, squareness: 0, aperture: 1 },
     corner: { radius: 0, join: "miter" },
     terminal: { kind: "butt", angle: 0 },
@@ -512,7 +517,7 @@ export const RIBBON: Style = {
   forms: { l: "tailed" },
   parts: {
     ...SANS.parts,
-    shoulder: { spring: 0.4, reach: 1.05 },
+    shoulder: { spring: 0.4, reach: 1.05, crest: 1 },
     bowl: { width: 1, squareness: 0.5, aperture: 1 },
     corner: { radius: 220, join: "round" },
     terminal: { kind: "butt", angle: 0 },
@@ -532,7 +537,7 @@ export const TECHNICAL: Style = {
   forms: { t: "straight" },
   parts: {
     ...SANS.parts,
-    shoulder: { spring: 0.78, reach: 0.82 },
+    shoulder: { spring: 0.78, reach: 0.82, crest: 1 },
     bowl: { width: 0.82, squareness: 0.92, aperture: 1 },
     corner: { radius: 45, join: "round" },
     terminal: { kind: "butt", angle: 0 },
@@ -619,7 +624,7 @@ export const MARKER: Style = {
      * terminal itself to be fixed.
      */
     terminal: { kind: "butt", angle: 0 },
-    shoulder: { spring: 0.42, reach: 1.02 },
+    shoulder: { spring: 0.42, reach: 1.02, crest: 1 },
   },
   /*
    * The shapes a person draws rather than the shapes a punchcutter cut. The
@@ -721,7 +726,7 @@ export const PSYCHEDELIC: Style = {
   parts: {
     ...SANS.parts,
     bowl: { width: 1.02, squareness: 0.1, aperture: 0.42 },
-    shoulder: { spring: 0.72, reach: 1 },
+    shoulder: { spring: 0.72, reach: 1, crest: 1 },
     ball: { size: 1.75, drop: 0.4 },
   },
 };
@@ -757,7 +762,7 @@ export const BRUSH: Style = {
   parts: {
     ...SANS.parts,
     bowl: { width: 0.94, squareness: 0.28, aperture: 0.86 },
-    shoulder: { spring: 0.5, reach: 0.96 },
+    shoulder: { spring: 0.5, reach: 0.96, crest: 1 },
     corner: { radius: 0, join: "miter" },
     terminal: { kind: "butt", angle: 0 },
     flare: { spread: 0.14, depth: 1.1, curve: 0.7 },
@@ -810,7 +815,7 @@ export const GROTESQUE: Style = {
   parts: {
     ...SANS.parts,
     bowl: { width: 0.97, squareness: 0.14, aperture: 0.62 },
-    shoulder: { spring: 0.74, reach: 1 },
+    shoulder: { spring: 0.74, reach: 1, crest: 1 },
   },
 };
 
@@ -900,7 +905,7 @@ export const SLAB: Style = {
     ...SANS.parts,
     slab: { on: true, projection: 0.6, thickness: 0.74, bracket: 0.04 },
     bowl: { width: 1, squareness: 0.08, aperture: 0.78 },
-    shoulder: { spring: 0.66, reach: 1 },
+    shoulder: { spring: 0.66, reach: 1, crest: 1 },
   },
 };
 
@@ -992,7 +997,33 @@ export const HANDWRITING: Style = {
     // letter that gives up a join swaps the reach for this, and has to come out
     // narrower for it, not wider.
     sidebearing: 28,
-    overshoot: 6,
+    /*
+     * The round letters go well over the line, which is half of the bounce.
+     *
+     * The reference tops its `o` at 1.06 of an x-height and its `e` at 1.08,
+     * against an `n` at 0.88 -- and ours reached 0.93 to 1.03 for everything,
+     * which is a ruled line. The other half is the shoulder's crest above.
+     *
+     * Large for an overshoot because it is doing more than one job: a pen with
+     * this much contrast is at its thinnest across the top of a bowl, so the
+     * ink stops short of where the spine goes and the overshoot pays for that
+     * before it buys any overshoot at all. At 6 this face's `o` did not reach
+     * the x-height at all, topping out at 0.96.
+     *
+     * Affordable only since a round letter's room came to be measured at the
+     * seam: a taller bowl is a wider one, and spaced off its waist it would
+     * have taken the width with it.
+     *
+     * Thirty on all four, which is about a tenth of an x-height and is what the
+     * reference overshoots -- its `o` stands 0.06 of one above the waist and
+     * 0.10 below the line. Swept further and it keeps paying: 52 on the Casual
+     * took the spread of the tops to 0.151 and the face to 1.20 of the
+     * reference's width with descenders 0.99 deep against its 0.84, because
+     * the overshoot goes under the line as well as over it and a descender is
+     * measured from where it lands. Thirty is where the bounce is bought and
+     * the descender is not.
+     */
+    overshoot: 30,
     slant: 6,
   },
   /*
@@ -1064,7 +1095,19 @@ export const HANDWRITING: Style = {
      */
     terminal: { kind: "butt", angle: 0 },
     corner: { radius: 40, join: "round" },
-    shoulder: { spring: 0.55, reach: 0.75 },
+    /*
+     * The arch stops short of the waist, which is what a hand does.
+     *
+     * The reference tops its `n` at 0.88 of an x-height and its `u` at 0.90
+     * while its `m`, `v`, `w` and `x` reach 1.00 and its `o`, `e` and `z` go
+     * over to 1.06 and beyond -- a fifth of an x-height between the lowest
+     * letter and the highest. Every letter of ours stood within four
+     * hundredths of every other, which is what makes a line of type look ruled
+     * rather than written.
+     *
+     * Swept: 0.90 puts the `n` at 0.89 and the `u` at 0.91.
+     */
+    shoulder: { spring: 0.55, reach: 0.75, crest: 0.90 },
     /*
      * A circle, because that is what the reference draws.
      *
@@ -1232,7 +1275,9 @@ export const FORMAL_SCRIPT: Style = {
     descender: -262,
     counterWidth: 285,
     sidebearing: 42,
-    overshoot: 8,
+    // Over the line, as on the Handwriting. 30 takes the spread of the tops
+    // from 0.147 to 0.202, against the reference's 0.205, for 4 per cent of width.
+    overshoot: 30,
     slant: 22,
   },
   /*
@@ -1313,7 +1358,8 @@ export const FORMAL_SCRIPT: Style = {
     corner: { radius: 46, join: "round" },
     // A circle, as on the Handwriting. 0.85 reads 1.008.
     bowl: { width: 0.85, squareness: 0, aperture: 1 },
-    shoulder: { spring: 0.5, reach: 0.7 },
+    // The arch stops short, as on the Handwriting. 0.86 reads 0.88 and 0.88.
+    shoulder: { spring: 0.5, reach: 0.7, crest: 0.86 },
     script: {
       on: true,
       // Low, for the reason set out on the Handwriting above.
@@ -1427,7 +1473,11 @@ export const CASUAL_SCRIPT: Style = {
     descender: -239,
     counterWidth: 232,
     sidebearing: 34,
-    overshoot: 6,
+    // Over the line, as on the Handwriting. 52 takes the spread of the tops
+    // from 0.049 to 0.150, against the reference's 0.205, for 6 per cent of width.
+    // Furthest behind of the four: its round letters topped out at 0.93,
+    // below the waist rather than over it, so it asks for the most.
+    overshoot: 30,
     slant: 13,
   },
   /*
@@ -1484,7 +1534,9 @@ export const CASUAL_SCRIPT: Style = {
     corner: { radius: 70, join: "round" },
     // A circle, as on the Handwriting. 0.878 reads 1.006.
     bowl: { width: 0.878, squareness: 0, aperture: 1.08 },
-    shoulder: { spring: 0.48, reach: 0.8 },
+    // The arch stops short, as on the Handwriting. This face already sat
+    // lowest of the four, so it asks for the least. 0.95 reads 0.89 and 0.91.
+    shoulder: { spring: 0.48, reach: 0.8, crest: 0.95 },
     script: {
       on: true,
       // Low, for the reason set out on the Handwriting above.
@@ -1597,6 +1649,9 @@ export const MONOLINE_SCRIPT: Style = {
   blurb: "A hairline of one thickness, drawn rather than written. Long looped ascenders, a hard lean, and a drop of ink on every open end.",
   metrics: {
     ...SANS.metrics,
+    // Over the line, as on the Handwriting. Never named here before; it was
+    // taking the Sans' 10.
+    overshoot: 30,
     xHeight: 332,
     /*
      * Capitals raised with the ascenders rather than left where the sans put
@@ -1670,7 +1725,8 @@ export const MONOLINE_SCRIPT: Style = {
     // which multiplies the bowl, so it asks for more than one to get there;
     // 1.019 reads 1.006.
     bowl: { width: 1.019, squareness: 0, aperture: 1 },
-    shoulder: { spring: 0.6, reach: 0.65 },
+    // The arch stops short, as on the Handwriting. 0.85 reads 0.88 and 0.91.
+    shoulder: { spring: 0.6, reach: 0.65, crest: 0.85 },
     script: {
       on: true,
       // Low, for the reason set out on the Handwriting above.

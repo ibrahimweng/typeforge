@@ -166,6 +166,14 @@ export const PART_SPECS: PartSpec[] = [
         max: 1.3,
         step: 0.005,
       },
+      {
+        key: "crest",
+        label: "Arch height",
+        hint: "How high the arch rises against the x-height. One reaches the waist, which is what a drawn letter does; below one it stops short, which is what a hand does when it is not looking.",
+        min: 0.8,
+        max: 1.05,
+        step: 0.005,
+      },
     ],
   },
   {

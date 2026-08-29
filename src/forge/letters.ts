@@ -398,6 +398,16 @@ interface Frame {
    * wide one.
    */
   bowl: number;
+  /**
+   * How high an arch reaches on this face -- the x-height, brought down by the
+   * shoulder's crest. A stem that a shoulder springs from stands here, or the
+   * stem pokes up past its own arch.
+   *
+   * Named apart from `crest` below, which is a different question with a
+   * similar name: that one is where a round letter's spine goes to reach a
+   * line, this one is where an arch stops short of one.
+   */
+  crown: number;
   /** Half the height of a lowercase round letter, which fills the x-height. */
   bowlH: number;
   /** Half the width of a capital round letter. */
@@ -568,6 +578,7 @@ function frame(style: Style): Frame {
       least,
     ),
     bowl: Math.max(bowlH * wide, least),
+    crown: metrics.xHeight * style.parts.shoulder.crest,
     aside,
     bowlH,
     /*
@@ -1330,6 +1341,23 @@ function tail(frame: Frame, radius: number): Stroke {
  * Where it springs from is a style decision rather than a drawing decision,
  * which is why n, m, h and r all move together when it changes.
  */
+/**
+ * How high an arch really goes, which on a written hand is short of the waist.
+ *
+ * The reference tops its `n` at 0.88 of an x-height and its `u` at 0.90, where
+ * its `m`, `v`, `w` and `x` reach 1.00 and its `o`, `e` and `z` overshoot to
+ * 1.06 and beyond. A quarter of an x-height between the lowest letter and the
+ * highest is most of what makes a line of it look written; ours were all inside
+ * four hundredths of each other, which is a row of soldiers.
+ *
+ * Only where the arch is reaching for the x-height. A capital is set down
+ * deliberately on its two lines and does not sag, which is what every face here
+ * promises, so a shoulder drawn to the cap height is left alone.
+ */
+function crested(frame: Frame, height: number): number {
+  return height === frame.x ? height * frame.style.parts.shoulder.crest : height;
+}
+
 function arch(frame: Frame, fromX: number, height: number): Stroke {
   return ink(frame, archSpine(frame, fromX, height), BUTT, frame.end);
 }
@@ -1344,6 +1372,7 @@ function arch(frame: Frame, fromX: number, height: number): Stroke {
  */
 function archSpine(frame: Frame, fromX: number, height: number, bottom = 0): Spine {
   uses("shoulder");
+  height = crested(frame, height);
   /*
    * A quarter turn up, a flat run across the top, a quarter turn down.
    *
@@ -1390,6 +1419,7 @@ function archSpine(frame: Frame, fromX: number, height: number, bottom = 0): Spi
 /** The other way up: down one side, round the bottom, up the other. */
 function trough(frame: Frame, fromX: number, height: number): Stroke {
   uses("shoulder");
+  height = crested(frame, height);
   const reach = frame.arch;
   const radius = Math.max(
     frame.half,
@@ -2399,7 +2429,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     return finish(
       f,
       [
-        ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
+        ink(f, straight(at(stem, 0), at(stem, f.crown)), f.end, f.end),
         arch(f, stem, f.x),
         arch(f, stem + f.arch * 2, f.x),
       ]);
@@ -2410,7 +2440,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const stem = f.edge;
     return finish(
       f,
-      [ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end), arch(f, stem, f.x)]);
+      [ink(f, straight(at(stem, 0), at(stem, f.crown)), f.end, f.end), arch(f, stem, f.x)]);
   },
 
   o: (style) => {
@@ -2734,7 +2764,20 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   D: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    const radius = Math.max((f.crest(f.cap) - f.dip(0)) / 2, f.least);
+    /*
+     * And the belly never reaches past the stem it hangs on.
+     *
+     * Its two ends sit on the stem's own line at the top and the bottom of the
+     * bowl, so a bowl taller than the stem puts them past the end of it -- and
+     * a light pen has too little ink up there to close the gap. At an overshoot
+     * of 30 and a pen of 40 the `D` came apart into two pieces on three faces,
+     * with the stem's tip standing clear of the bowl beside it.
+     *
+     * The stem's ink stops half a pen past each line, so that is how far the
+     * belly may go.
+     */
+    const asked = (f.crest(f.cap) - f.dip(0)) / 2;
+    const radius = Math.max(Math.min(asked, f.cap / 2 + f.half * 0.5), f.least);
     return finish(
       f,
       [
