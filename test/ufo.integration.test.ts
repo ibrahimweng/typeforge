@@ -15,6 +15,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { validateTypeface } from "../src/font/validate";
 import { readUfo, writeUfo } from "../src/ufo/font";
 import { hasUfoLib, inspectUfo, loadUfoDirectory, writeUfoDirectory } from "./ufo-tools";
 
@@ -106,6 +107,21 @@ suite("a UFO written by another tool", () => {
       "square",
       "openpath",
     ]);
+  });
+
+  it("is not reported as wound the wrong way, which it was", () => {
+    /*
+     * The fault this found. A UFO winds its outer contours counter-clockwise
+     * because PostScript convention is what the format specifies; the checks
+     * judged every font against TrueType's, which was right for as long as a
+     * font could only arrive from a `.ttf`. So the first thing this
+     * application said about a perfectly good source file, written by the
+     * reference implementation, was that its round letters were broken.
+     */
+    const { typeface } = readUfo(files)!;
+    const report = validateTypeface(typeface);
+    const directions = report.findings.filter((one) => one.check === "contour-direction");
+    expect(directions, directions.map((one) => one.message).join("; ")).toEqual([]);
   });
 
   it("carries through the private key another tool left in the lib", () => {

@@ -51,6 +51,9 @@ import {
  */
 import sampleFontUrl from "@/assets/typeforge-sample.ttf?url";
 import { readUfo, writeUfo, type UfoCarried, type UfoFiles } from "@/ufo/font";
+import { correctDirection, dominantConvention, insertExtrema } from "@/font/outline";
+import { removeOverlaps } from "@/font/overlap";
+import { ready as readyToCut, subtract, unite } from "@/font/boolean";
 
 /** What the sample is called once it is open, as any other file would be. */
 const SAMPLE_FILE_NAME = "TypeforgeSample-Regular.ttf";
@@ -540,6 +543,133 @@ class Store {
    * fills solid, and the only way to see that was to export the font and look.
    * Offering it as an operation is what makes it a thing somebody can fix.
    */
+  /**
+   * The four operations this application already knew how to do and had never
+   * offered.
+   *
+   * Every one of them is engine code that has been in the tree since the
+   * exporter needed it: adding the points a curve turns at, winding the
+   * contours the right way round, fusing overlaps, cutting one shape out of
+   * another. They ran once, silently, on the way to a file, and there was no
+   * way to ask for any of them while drawing -- which meant the Checks view
+   * could tell somebody their extremes were missing and offer them nothing to
+   * do about it but place the points by hand.
+   *
+   * Named for what Glyphs calls them, and on the same keys, because somebody
+   * arriving here has those in their fingers already.
+   */
+
+  /** Put a point wherever a curve reaches its furthest in any direction. */
+  addExtremes(glyphName: string): void {
+    this.editGlyph(glyphName, "Add extremes", (glyph) => {
+      glyph.contours = glyph.contours.map((contour) => insertExtrema(contour));
+    });
+  }
+
+  /**
+   * Wind every contour the way the rest of the font is wound.
+   *
+   * The convention is read off the font rather than imposed on it. A font
+   * opened from a `.ttf` is wound one way and one opened from a UFO the
+   * other, and both are correct; forcing either would flip every contour in
+   * somebody's file for no reason they asked for.
+   */
+  correctPathDirection(glyphName: string): void {
+    const typeface = this.state.typeface;
+    if (!typeface) return;
+    const format = dominantConvention(typeface.glyphs);
+    this.editGlyph(glyphName, "Correct path direction", (glyph) => {
+      glyph.contours = correctDirection(glyph.contours, format, "nesting");
+    });
+  }
+
+  /**
+   * Fuse overlapping contours into the outline they add up to.
+   *
+   * Asynchronous, and the only one of the four that is: it goes through the
+   * boolean library, which is loaded on demand rather than carried in the
+   * bundle for the fonts that never need it.
+   */
+  async removeOverlap(glyphName: string): Promise<void> {
+    const typeface = this.state.typeface;
+    const glyph = this.glyph(glyphName);
+    if (!typeface || !glyph || glyph.contours.length < 2) return;
+    this.set({ busy: true });
+    try {
+      const fused = await removeOverlaps(glyph.contours, "nesting");
+      if (fused.length > 0) {
+        this.editGlyph(glyphName, "Remove overlap", (one) => {
+          one.contours = fused;
+        });
+      }
+      this.set({ busy: false });
+    } catch (error) {
+      this.set({
+        busy: false,
+        status: {
+          message: error instanceof Error ? error.message : "The overlap could not be removed.",
+          tone: "error",
+        },
+      });
+    }
+  }
+
+  /**
+   * One contour cut out of the others, or added to them.
+   *
+   * Takes the paths by index because that is how the paths list names them,
+   * and the paths list is where a person picks which two shapes they mean.
+   */
+  async combineContours(
+    glyphName: string,
+    indices: number[],
+    how: "unite" | "subtract",
+  ): Promise<void> {
+    const glyph = this.glyph(glyphName);
+    if (!glyph || indices.length < 2) return;
+    const picked = indices.map((index) => glyph.contours[index]).filter(Boolean);
+    if (picked.length < 2) return;
+
+    // The boolean library is fetched on demand rather than carried in the
+    // bundle, so it has to have arrived before any of it is asked for. It
+    // throws rather than waiting, which is right -- and makes this async.
+    await readyToCut();
+
+    const combined =
+      how === "unite"
+        ? unite(picked, "nesting")
+        : // The first is what is being cut into; the rest are the knife. Which
+          // way round is on the button's hover, because the two directions
+          // give completely different answers and the list order is the only
+          // thing that could decide it.
+          subtract([picked[0]], picked.slice(1), "nesting");
+
+    /*
+     * Nothing left is an answer, and it has to be said.
+     *
+     * Cutting a shape out of one it completely contains leaves nothing, which
+     * is arithmetic rather than a fault -- and it is exactly what happens when
+     * somebody picks the two paths of an `o` the other way round. Returning
+     * quietly makes a working button look broken, so this says what happened
+     * and leaves the letter alone.
+     */
+    if (combined.length === 0) {
+      this.say(
+        how === "unite"
+          ? "Those paths add up to nothing."
+          : `Path ${indices[0] + 1} is inside what you are cutting out of it, so nothing would be left.`,
+        "error",
+      );
+      return;
+    }
+
+    const label = how === "unite" ? "Unite paths" : "Subtract paths";
+    this.editGlyph(glyphName, label, (one) => {
+      const kept = one.contours.filter((_, index) => !indices.includes(index));
+      one.contours = [...kept, ...combined];
+    });
+  }
+
   reverseContour(glyphName: string, index: number): void {
     this.editGlyph(glyphName, "Reverse path direction", (glyph) => {
       const contour = glyph.contours[index];

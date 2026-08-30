@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { emptyTypeface, type Glyph } from "@/font/types";
+import { directionIsCorrect } from "@/font/outline";
+import { emptyTypeface, type Contour, type Glyph } from "@/font/types";
 import { store } from "./store";
 
 function glyph(name: string): Glyph {
@@ -292,5 +293,133 @@ describe("letters built on a control letter follow its shape", () => {
     store.undo();
     const h = typeface.glyphs[typeface.glyphIndex.get("h")!];
     expect(h.contours[0].nodes[2].point).toEqual({ x: 200, y: 1100 });
+  });
+});
+
+/*
+ * The four operations that were in the engine and not in anybody's hands.
+ *
+ * Every one of these has been in the tree since the exporter needed it, and
+ * ran once, silently, on the way to a file. What is new is that they are
+ * edits: they go on the undo stack, they mark the letter as changed, and they
+ * can be asked for while drawing rather than only at the end.
+ */
+
+/** A square, wound whichever way is asked for. */
+function square(size: number, clockwise: boolean, at = 0): Contour {
+  const corner = (x: number, y: number) => ({
+    point: { x: at + x, y: at + y },
+    handleIn: null,
+    handleOut: null,
+    type: "corner" as const,
+  });
+  const nodes = [corner(0, 0), corner(size, 0), corner(size, size), corner(0, size)];
+  return { closed: true, nodes: clockwise ? nodes.reverse() : nodes };
+}
+
+/** A circle drawn as four curves, which is a shape with extremes to find. */
+function circle(radius: number, at = { x: 0, y: 0 }): Contour {
+  const k = radius * 0.5523;
+  const node = (x: number, y: number, hi: [number, number], ho: [number, number]) => ({
+    point: { x: at.x + x, y: at.y + y },
+    handleIn: { x: at.x + hi[0], y: at.y + hi[1] },
+    handleOut: { x: at.x + ho[0], y: at.y + ho[1] },
+    type: "smooth" as const,
+  });
+  return {
+    closed: true,
+    nodes: [
+      node(radius, 0, [radius, -k], [radius, k]),
+      node(0, radius, [k, radius], [-k, radius]),
+      node(-radius, 0, [-radius, k], [-radius, -k]),
+      node(0, -radius, [-k, -radius], [k, -radius]),
+    ],
+  };
+}
+
+function setContours(name: string, contours: Contour[]): void {
+  store.editGlyph(name, "seed", (one) => {
+    one.contours = contours;
+  });
+}
+
+describe("the path operations, as edits", () => {
+  beforeEach(() => seed(["a", "b"]));
+
+  it("puts a point where a curve turns, and can be taken back", () => {
+    // A circle drawn as four curves between its own extremes already has
+    // them; one rotated off its extremes does not.
+    const rotated: Contour = {
+      closed: true,
+      nodes: circle(100).nodes.map((node) => ({
+        point: { x: node.point.x + node.point.y, y: node.point.y - node.point.x },
+        handleIn: node.handleIn
+          ? { x: node.handleIn.x + node.handleIn.y, y: node.handleIn.y - node.handleIn.x }
+          : null,
+        handleOut: node.handleOut
+          ? { x: node.handleOut.x + node.handleOut.y, y: node.handleOut.y - node.handleOut.x }
+          : null,
+        type: node.type,
+      })),
+    };
+    setContours("a", [rotated]);
+    const before = store.glyph("a")!.contours[0].nodes.length;
+
+    store.addExtremes("a");
+    const after = store.glyph("a")!.contours[0].nodes.length;
+    expect(after).toBeGreaterThan(before);
+
+    store.undo();
+    expect(store.glyph("a")!.contours[0].nodes).toHaveLength(before);
+  });
+
+  it("winds a stray contour the way the rest of the font is wound", () => {
+    /*
+     * The convention is read off the font rather than imposed on it. Here the
+     * font is counter-clockwise -- which is what a UFO is -- so the clockwise
+     * one is the odd one out and the one that moves.
+     */
+    // A clear majority rather than one each: with a font split down the
+    // middle the answer is a tie, and a tie keeps to TrueType.
+    seed(["a", "b", "c", "d"]);
+    setContours("a", [square(100, false)]);
+    setContours("c", [square(90, false)]);
+    setContours("d", [square(80, false)]);
+    setContours("b", [square(100, true)]);
+
+    store.correctPathDirection("b");
+    expect(directionIsCorrect(store.glyph("b")!.contours, "cff")).toBe(true);
+    // And the one that already agreed with the font is left alone.
+    const before = JSON.stringify(store.glyph("a")!.contours);
+    store.correctPathDirection("a");
+    expect(JSON.stringify(store.glyph("a")!.contours)).toBe(before);
+  });
+
+  it("cuts one path out of another, and leaves neither behind", async () => {
+    setContours("a", [square(100, false), square(40, false, 30)]);
+    await store.combineContours("a", [0, 1], "subtract");
+    const contours = store.glyph("a")!.contours;
+    // A square with a square hole in it: two contours, not the four a naive
+    // append would leave.
+    expect(contours.length).toBeGreaterThan(0);
+    expect(contours.length).toBeLessThanOrEqual(2);
+    store.undo();
+    expect(store.glyph("a")!.contours).toHaveLength(2);
+  });
+
+  it("does nothing when there are not two paths to combine", async () => {
+    setContours("a", [square(100, false)]);
+    const before = JSON.stringify(store.glyph("a")!.contours);
+    await store.combineContours("a", [0], "unite");
+    expect(JSON.stringify(store.glyph("a")!.contours)).toBe(before);
+  });
+
+  it("marks the letter as changed, because it is", () => {
+    setContours("a", [square(100, true)]);
+    store.editGlyph("a", "settle", (one) => {
+      one.dirty = false;
+    });
+    store.correctPathDirection("a");
+    expect(store.glyph("a")!.dirty).toBe(true);
   });
 });
