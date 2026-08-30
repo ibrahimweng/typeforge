@@ -25,6 +25,7 @@ import { resolveAdvanceWidth } from "@/font/transform";
 import type { Glyph, Typeface } from "@/font/types";
 import { CoachMark } from "@/components/CoachMark";
 import { store, useAppState } from "@/state/useStore";
+import { SIDE_PANEL } from "@/components/controls";
 import { cn } from "@/ui/lib/utils";
 
 interface PlacedGlyph {
@@ -228,7 +229,7 @@ export function KerningView(): React.JSX.Element {
         )}
       </div>
 
-      <aside className="flex w-72 shrink-0 flex-col border-l border-border">
+      <aside className={cn(SIDE_PANEL, "flex shrink-0 flex-col border-l border-border")}>
         <div className="flex gap-1 border-b border-border p-2">
           {(["pairs", "classes"] as const).map((option) => (
             <button

@@ -98,7 +98,21 @@ export function MetricsView(): React.JSX.Element {
             {rows.map((row) => (
               <tr
                 key={row.glyph.name}
+                data-spacing-row={row.glyph.name}
                 onClick={() => store.selectGlyph(row.glyph.name)}
+                /*
+                 * And on focus, which is the part the click alone missed.
+                 *
+                 * Three of the five cells are number fields, and a field
+                 * swallows the click that puts the cursor in it -- rightly,
+                 * since typing a sidebearing should not also be a click on
+                 * whatever is behind the field. The effect was that most of
+                 * the row did not select it: the two narrow cells on the left
+                 * did, and the three wide ones you actually work in did not.
+                 * React's focus event bubbles, so reaching a field by mouse or
+                 * by tab now says which letter is in hand.
+                 */
+                onFocus={() => store.selectGlyph(row.glyph.name)}
                 className={cn(
                   "cursor-pointer border-b border-border/40 hover:bg-card",
                   state.selectedGlyph === row.glyph.name && "bg-card",

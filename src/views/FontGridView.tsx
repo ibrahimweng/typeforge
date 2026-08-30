@@ -11,6 +11,7 @@ import * as React from "react";
 
 import { enterStaggered } from "@/anim/motion";
 import { drawGlyph, fitEmSquare, formatCodepoint, glyphLabel, prepareCanvas, readToken } from "@/components/glyph-render";
+import { groupGlyphs } from "@/font/groups";
 import type { Glyph, Typeface } from "@/font/types";
 import { store, useAppState } from "@/state/useStore";
 import { PRIMARY_ACTION, tile } from "@/components/controls";
@@ -19,6 +20,20 @@ import { cn } from "@/ui/lib/utils";
 
 const CELL_SIZE = 104;
 const CELL_GAP = 8;
+/** A group heading and the air around it, in the same units as a row of cells. */
+const HEADING_HEIGHT = 28;
+
+/**
+ * One line of the grid.
+ *
+ * Headings and cells are the same kind of thing here -- something with a
+ * height, stacked in order -- because that is what the scroll arithmetic needs
+ * them to be. Keeping them in one list is what lets a heading scroll with its
+ * letters instead of floating over them.
+ */
+type Row =
+  | { kind: "heading"; name: string; count: number }
+  | { kind: "cells"; glyphs: Glyph[] };
 /** Extra rows kept mounted above and below, so scrolling does not flash. */
 const OVERSCAN_ROWS = 3;
 
@@ -68,11 +83,55 @@ export function FontGridView(): React.JSX.Element {
 
   const glyphs = React.useMemo(() => filterGlyphs(typeface, state.search), [typeface, state.search, state.revision]);
 
-  const rowHeight = CELL_SIZE + CELL_GAP;
-  const rowCount = Math.ceil(glyphs.length / columns);
-  const firstRow = Math.max(0, Math.floor(scrollTop / rowHeight) - OVERSCAN_ROWS);
-  const lastRow = Math.min(rowCount, Math.ceil((scrollTop + viewportHeight) / rowHeight) + OVERSCAN_ROWS);
-  const visible = glyphs.slice(firstRow * columns, lastRow * columns);
+  /*
+   * The grid, as a list of rows that are not all the same height.
+   *
+   * Six thousand cells cannot all be mounted -- each one holds a canvas it
+   * paints a letter into -- so the grid has always drawn only the rows on
+   * screen and left a spacer the height of the rest. Grouping does not change
+   * that; it changes what a row is. A row is now either a heading or a run of
+   * cells, the two have different heights, and finding the first one on screen
+   * is therefore a walk over accumulated offsets rather than a division.
+   *
+   * Built in one pass and kept until the letters or the column count change,
+   * because it is O(glyphs) and the thing that changes most often here is the
+   * scroll position, which does not touch it.
+   */
+  const { rows, offsets, total } = React.useMemo(() => {
+    const built: Row[] = [];
+    for (const group of groupGlyphs(glyphs)) {
+      built.push({ kind: "heading", name: group.name, count: group.glyphs.length });
+      for (let at = 0; at < group.glyphs.length; at += columns) {
+        built.push({ kind: "cells", glyphs: group.glyphs.slice(at, at + columns) });
+      }
+    }
+    const tops: number[] = [];
+    let y = 0;
+    for (const row of built) {
+      tops.push(y);
+      y += row.kind === "heading" ? HEADING_HEIGHT : CELL_SIZE + CELL_GAP;
+    }
+    return { rows: built, offsets: tops, total: y };
+  }, [glyphs, columns]);
+
+  /** The first row whose bottom is past a given height, by bisection. */
+  const rowAt = React.useCallback(
+    (y: number): number => {
+      let low = 0;
+      let high = offsets.length - 1;
+      while (low < high) {
+        const middle = (low + high + 1) >> 1;
+        if (offsets[middle] <= y) low = middle;
+        else high = middle - 1;
+      }
+      return low;
+    },
+    [offsets],
+  );
+
+  const firstRow = Math.max(0, rowAt(scrollTop) - OVERSCAN_ROWS);
+  const lastRow = Math.min(rows.length, rowAt(scrollTop + viewportHeight) + 1 + OVERSCAN_ROWS);
+  const visible = rows.slice(firstRow, lastRow);
 
   if (!typeface) return <EmptyState />;
 
@@ -103,25 +162,50 @@ export function FontGridView(): React.JSX.Element {
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
         className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto p-3"
       >
-        <div style={{ height: rowCount * rowHeight }} className="relative">
-          <div
-            className="absolute inset-x-0 grid"
-            style={{
-              top: firstRow * rowHeight,
-              gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-              gap: CELL_GAP,
-            }}
-          >
-            {visible.map((glyph) => (
-              <GlyphCell
-                key={glyph.name}
-                name={glyph.name}
-                revision={state.revision}
-                active={state.selectedGlyph === glyph.name}
-                selected={state.selectedGlyphs.has(glyph.name)}
-              />
-            ))}
-          </div>
+        <div style={{ height: total }} className="relative">
+          {visible.map((row, index) => {
+            const at = firstRow + index;
+            const top = offsets[at];
+            if (row.kind === "heading") {
+              return (
+                /*
+                 * The count beside the name, as Assemble writes it. On a
+                 * search it is the one number that answers the question you
+                 * typed: how many `o`s does this font have in it.
+                 */
+                <h3
+                  key={`heading-${row.name}`}
+                  data-glyph-group={row.name}
+                  style={{ top, height: HEADING_HEIGHT }}
+                  className="absolute inset-x-0 flex items-end gap-2 pb-1.5"
+                >
+                  <span className="text-2xs font-medium text-foreground">{row.name}</span>
+                  <span className="text-2xs tabular-nums text-muted-foreground">{row.count}</span>
+                </h3>
+              );
+            }
+            return (
+              <div
+                key={`cells-${row.glyphs[0].name}`}
+                className="absolute inset-x-0 grid"
+                style={{
+                  top,
+                  gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                  gap: CELL_GAP,
+                }}
+              >
+                {row.glyphs.map((glyph) => (
+                  <GlyphCell
+                    key={glyph.name}
+                    name={glyph.name}
+                    revision={state.revision}
+                    active={state.selectedGlyph === glyph.name}
+                    selected={state.selectedGlyphs.has(glyph.name)}
+                  />
+                ))}
+              </div>
+            );
+          })}
         </div>
         {glyphs.length === 0 && (
           <p className="py-16 text-center text-xs-plus text-muted-foreground">

@@ -19,6 +19,7 @@ import { QUILL_CONTROLS, type QuillStyle } from "@/quill/controls";
 import { drawTraced, quillStore, useQuill, type Phase } from "@/state/useQuill";
 import { OUTLINE_ACTION, segment, SEGMENT_TRACK } from "./controls";
 import { SliderControl as Slider } from "@/ui/components/controls/slider";
+import { WIDE_PANEL } from "@/components/controls";
 import { cn } from "@/ui/lib/utils";
 
 export function QuillPanel(): React.JSX.Element {
@@ -53,7 +54,7 @@ export function QuillPanel(): React.JSX.Element {
   return (
     <aside
       aria-label="Quill"
-      className="toolcraft-panel-surface flex w-80 shrink-0 flex-col border-l border-border"
+      className={cn(WIDE_PANEL, "toolcraft-panel-surface flex shrink-0 flex-col border-l border-border")}
     >
       <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
         <section className="border-b border-border p-3">

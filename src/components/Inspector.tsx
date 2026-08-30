@@ -17,19 +17,22 @@ import { CompositionPanel } from "@/components/CompositionPanel";
 import { PathsPanel } from "@/components/PathsPanel";
 import { CoachMark } from "@/components/CoachMark";
 import { ControlLetters } from "@/components/ControlLetters";
-import { segment } from "@/components/controls";
+import { segment, SIDE_PANEL } from "@/components/controls";
 import { PARAMS } from "@/components/param-specs";
 import { noCast, type Cast, type CastName } from "@/font/cast";
 import { CutPanel } from "@/components/CutPanel";
 import { noCuts, type CutName, type Cuts } from "@/font/cuts";
 import { DEFAULT_PARAMS, type GlyphParams } from "@/font/types";
-import { store, useAppState } from "@/state/useStore";
+import { store, useAppState, type ViewId } from "@/state/useStore";
 // Imported from the control directly rather than through the UI barrel: the
 // barrel re-exports every control, which pulls the whole kit into the bundle.
 import { SliderControl as Slider } from "@/ui/components/controls/slider";
 import { cn } from "@/ui/lib/utils";
 
 type Scope = "family" | "glyph" | "build";
+
+/** The views whose subject is one letter rather than the whole typeface. */
+const ABOUT_ONE_LETTER = new Set<ViewId>(["glyph", "metrics"]);
 
 export function Inspector(): React.JSX.Element {
   const state = useAppState();
@@ -44,22 +47,34 @@ export function Inspector(): React.JSX.Element {
   }, [scope]);
 
   /*
-   * Opening a letter puts the panel on that letter.
+   * The panel follows the view, in both directions.
    *
-   * The panel opens on the family, which is right in the font view: there the
-   * subject is the typeface and a hundred letters are on screen. In the glyph
-   * view the subject is one letter, and leaving the panel on the family meant
-   * that everything about the letter -- its own parameters, and now its paths
-   * -- sat behind a tab whose label is a single character and which nothing
-   * suggested was a tab at all. The feature was there and unreachable.
+   * Two of these five views are about one letter -- the glyph editor, where
+   * the letter is the whole screen, and the spacing table, where it is the row
+   * you clicked. The other three are about the typeface: a grid of a hundred
+   * letters, a paragraph of them, a report over all of them.
    *
-   * Only on arriving in the view, not on every render, so somebody who
-   * deliberately switches back to the family stays there while they work.
+   * Leaving the panel on the family in the two meant everything about the
+   * letter sat behind a tab whose label was a single character and which
+   * nothing suggested was a tab at all. In the glyph editor that made the
+   * paths list unreachable; in the spacing table it pointed the three controls
+   * that actually move a sidebearing at all six thousand glyphs while you read
+   * one of them.
+   *
+   * Going the other way matters as much and was the half that got left out at
+   * first: a panel that switches to the letter on the way in and stays there
+   * on the way out is not following anything, it is drifting. Coming back to
+   * the grid put a hundred letters on screen with the parameters aimed at one
+   * of them, and nothing had said so.
+   *
+   * Only on arriving, so a deliberate switch stands for as long as you are in
+   * the view you made it in.
    */
-  const arrivedInGlyphView = React.useRef(false);
+  const arrivedIn = React.useRef<ViewId | null>(null);
   React.useEffect(() => {
-    if (state.view === "glyph" && !arrivedInGlyphView.current) setScope("glyph");
-    arrivedInGlyphView.current = state.view === "glyph";
+    if (arrivedIn.current === state.view) return;
+    arrivedIn.current = state.view;
+    setScope(ABOUT_ONE_LETTER.has(state.view) ? "glyph" : "family");
   }, [state.view]);
 
   const typeface = state.typeface;
@@ -68,7 +83,7 @@ export function Inspector(): React.JSX.Element {
 
   if (!typeface) {
     return (
-      <aside aria-label="Parameters" className="w-72 shrink-0 border-l border-border p-4">
+      <aside aria-label="Parameters" className={cn(SIDE_PANEL, "shrink-0 border-l border-border p-4")}>
         <p className="text-2xs text-muted-foreground">
           Parameters appear once a font is open.
         </p>
@@ -82,7 +97,7 @@ export function Inspector(): React.JSX.Element {
   return (
     <aside
       aria-label="Parameters"
-      className="toolcraft-panel-surface flex w-72 shrink-0 flex-col border-l border-border"
+      className={cn(SIDE_PANEL, "toolcraft-panel-surface flex shrink-0 flex-col border-l border-border")}
     >
       <div
         className="flex gap-0.5 border-b border-border bg-card/60 p-1"
@@ -96,12 +111,53 @@ export function Inspector(): React.JSX.Element {
             aria-pressed={scope === option}
             onClick={() => setScope(option)}
             disabled={option === "glyph" && !glyph}
+            title={
+              option === "family"
+                ? "Every glyph in the font at once"
+                : option === "glyph"
+                  ? glyph
+                    ? `Just ${glyph.name}, which can override any family value`
+                    : "Open a letter to reach its own values"
+                  : "How the letters are built out of each other"
+            }
             className={segment(
               scope === option,
-              cn("min-w-0 flex-1 truncate capitalize", option === "glyph" && !glyph && "opacity-40"),
+              cn("min-w-0 flex-1 truncate", option === "glyph" && !glyph && "opacity-40"),
             )}
           >
-            {option === "glyph" && glyph ? glyph.name : option}
+            {/*
+              Named for what it is, with the letter beside it rather than
+              instead of it.
+
+              This tab used to be labelled with the glyph's name and nothing
+              else, so the three read `Family`, `A`, `Build`: two scopes and a
+              letter. It is a good idea -- the panel really is about that one
+              letter -- with nothing at all to say it was a tab rather than a
+              readout of what is selected, which is how the paths list ended up
+              being shipped somewhere nobody would press.
+
+              Also why `capitalize` is off the label and on the two words that
+              need it. Applied to the whole tab it reached the glyph name too,
+              so the letter `a` announced itself as `A` and `eacute` as
+              `Eacute` -- a font's glyph names are case-sensitive, and the one
+              place in the application that shows you which letter you have was
+              quietly changing it.
+            */}
+            {option === "glyph" ? (
+              <>
+                {/*
+                  A real space rather than a left padding, because the gap has
+                  to be in the text and not only in the picture of it. Set with
+                  `pl-1` this read `Lettera` to anything that computes an
+                  accessible name by joining the text nodes -- a screen reader,
+                  and the test below that caught it.
+                */}
+                Letter{" "}
+                {glyph && <span className="opacity-60">{glyph.name}</span>}
+              </>
+            ) : (
+              <span className="capitalize">{option}</span>
+            )}
           </button>
         ))}
       </div>
@@ -115,13 +171,17 @@ export function Inspector(): React.JSX.Element {
       {scope === "family" && <ControlLetters />}
       {scope === "family" && <CoachMark id="family" />}
       {/*
-        Under the letter's own scope, because that is what it is about.
+        Under the letter's own scope, because that is what it is about, and in
+        the view where a path is what you are handling.
 
         A path belongs to one glyph and to no family, so it has no business in
         the family tab where every other control reaches four hundred and fifty
-        letters at once.
+        letters at once. Nor in the spacing table, which is also about one
+        letter and reaches this panel for that reason: which way a contour runs
+        is a fact about the drawing, and a column of sidebearings is not the
+        place to be told it.
       */}
-      {editingGlyph && <PathsPanel />}
+      {editingGlyph && state.view === "glyph" && <PathsPanel />}
       <div ref={listRef} className="p-3">
         {PARAMS.map((spec) => {
           const scaleFactor = spec.emRelative ? typeface.unitsPerEm : 1;

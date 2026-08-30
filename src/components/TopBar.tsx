@@ -121,7 +121,7 @@ export function TopBar({
 
   return (
     /*
-      Wraps rather than spills.
+      Wraps rather than spills, and wraps into rows rather than into a gap.
 
       Every control in here is fixed-width and there are now three groups of
       them, so below about twelve hundred pixels the row is longer than the
@@ -130,8 +130,19 @@ export function TopBar({
       the first thing over the side, which is the one button somebody came here
       to press. A second line at a narrow window is a smaller cost than a
       missing button, and at any ordinary width nothing moves.
+
+      What that first version got wrong was the second line. The right-hand
+      group was held over there by `ml-auto`, and an auto margin does its job
+      on whatever line the item lands on -- so once the group wrapped it was
+      alone on a line of its own, still pushed to the right, with the whole
+      width of the window empty beside it and the name of the open font
+      stranded at the end of the line above. Two groups and `justify-between`
+      say the same thing about a line that fits and the right thing about one
+      that does not: a lone item on a line goes to the start of it, so the
+      second row begins where a row begins.
     */
-    <header className="flex min-h-11 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-3 py-1">
+    <header className="flex min-h-11 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border px-3 py-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
       <span className="text-xs-plus font-medium tracking-tight">Typeforge</span>
 
       {/*
@@ -239,7 +250,9 @@ export function TopBar({
         </span>
       )}
 
-      <div className="ml-auto flex items-center gap-2">
+      </div>
+
+      <div className="flex items-center gap-2">
         {state.status && (
           <span
             className={cn(
@@ -338,7 +351,25 @@ export function TopBar({
           }
           className={PRIMARY_ACTION}
         >
-          {mode === "edit" ? "Export" : "Download"}
+          {/*
+            One word, in all four modes.
+
+            This read "Export" in the edit mode and "Download" in the other
+            three, from one line of code, and the two names described the same
+            thing: a font file written out of whatever document is in front of
+            you. Nothing about a drawn font makes leaving a different act from
+            what an opened one does, and somebody who learns the button in one
+            mode should not have to find it again in the next.
+
+            "Export" rather than "Download" because it is the word the trade
+            uses and the word every other editor puts on this button; and
+            because "download" describes what the browser does afterwards
+            rather than what this does, which is to build a font out of the
+            drawing. The dialogs that open from here still say Download on the
+            button that actually produces the file, which is the moment the
+            browser really is downloading something.
+          */}
+          Export
         </button>
       </div>
     </header>

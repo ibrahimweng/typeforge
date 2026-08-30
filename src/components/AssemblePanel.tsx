@@ -26,7 +26,7 @@ import {
 } from "@/assemble/document";
 import { CutPanel } from "@/components/CutPanel";
 import { CastOrder } from "@/components/Inspector";
-import { segment } from "@/components/controls";
+import { segment, WIDE_PANEL } from "@/components/controls";
 import { contoursToSvgPath } from "@/font/geometry";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
 import { SliderControl as Slider } from "@/ui/components/controls/slider";
@@ -75,7 +75,7 @@ export function AssemblePanel(): React.JSX.Element {
   return (
     <aside
       aria-label="Assemble"
-      className="toolcraft-panel-surface flex w-80 shrink-0 flex-col border-l border-border"
+      className={cn(WIDE_PANEL, "toolcraft-panel-surface flex shrink-0 flex-col border-l border-border")}
     >
       <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
         <Files />
