@@ -24,6 +24,7 @@ const VIEWS: Array<{ id: ViewId; label: string }> = [
   { id: "glyph", label: "Glyph" },
   { id: "kerning", label: "Kerning" },
   { id: "metrics", label: "Spacing" },
+  { id: "proof", label: "Proof" },
   { id: "report", label: "Checks" },
 ];
 

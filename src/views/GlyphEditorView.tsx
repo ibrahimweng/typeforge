@@ -27,6 +27,7 @@ import {
 } from "@/components/glyph-render";
 import { nodeKey, store, useAppState, type NodeRef } from "@/state/useStore";
 import { CoachMark } from "@/components/CoachMark";
+import { GroundToggle } from "@/components/GroundToggle";
 import { NumberField } from "@/components/NumberField";
 
 /** How close a click has to land, in screen pixels, to grab a node. */
@@ -196,7 +197,7 @@ export function GlyphEditorView(): React.JSX.Element {
      * would be a promise this view does not keep -- clicking one selects
      * nothing, because the thing being edited is the glyph in the middle.
      */
-    const asideFill = withAlpha(readToken("--glyph-fill", "#eeeeee"), 0.28);
+    const asideFill = withAlpha(readToken("--glyph-fill", "#eeeeee", canvas), 0.28);
     for (const one of [...neighbours.before, ...neighbours.after]) {
       const shifted: GlyphView = { ...view, originX: view.originX + one.x * view.scale };
       drawContours(context, resolveGlyphContours(one.glyph, typeface), shifted, { fill: asideFill });
@@ -211,25 +212,31 @@ export function GlyphEditorView(): React.JSX.Element {
     const fromComponents = composed.slice(glyph.contours.length);
     if (fromComponents.length > 0) {
       drawContours(context, fromComponents, view, {
-        fill: withAlpha(readToken("--inspect", "#9149f5"), 0.4),
+        fill: withAlpha(readToken("--inspect", "#9149f5", canvas), 0.4),
       });
     }
 
     const resolved = resolveGlyphContours(glyph, typeface);
     if (resolved !== composed) {
       drawContours(context, resolved, view, {
-        fill: withAlpha(readToken("--accent", "#0c8ce9"), 0.22),
+        fill: withAlpha(readToken("--accent", "#0c8ce9", canvas), 0.22),
       });
     }
     drawContours(context, glyph.contours, view, {
-      fill: withAlpha(readToken("--glyph-fill", "#eeeeee"), resolved !== composed ? 0.5 : 0.92),
+      fill: withAlpha(readToken("--glyph-fill", "#eeeeee", canvas), resolved !== composed ? 0.5 : 0.92),
     });
     drawNodes(context, glyph.contours, view, state.selectedNodes, hover);
     drawAnchors(context, glyph.anchors, view, hover);
 
     const drag = dragRef.current;
     if (drag?.kind === "marquee") drawMarquee(context, drag);
-  }, [typeface, glyph, view, size, state.selectedNodes, state.revision, hover, neighbours, state.guides]);
+    /*
+     * `state.ground` is in here for the reason it is in the proof view: every
+     * colour on this canvas comes from `readToken`, which reads a custom
+     * property rather than taking a prop, so nothing else in this list changes
+     * when the ground does and the canvas would keep its old colours.
+     */
+  }, [typeface, glyph, view, size, state.selectedNodes, state.revision, hover, neighbours, state.guides, state.ground]);
 
 
   // --- interaction ------------------------------------------------------
@@ -583,6 +590,7 @@ export function GlyphEditorView(): React.JSX.Element {
           against it.
         */}
         <span className="ml-auto flex items-center gap-2">
+          <GroundToggle />
           <button
             type="button"
             onClick={() => store.addGuide(typeface.metrics.xHeight)}
@@ -604,7 +612,20 @@ export function GlyphEditorView(): React.JSX.Element {
           )}
         </span>
       </div>
-      <div ref={measure} className="relative min-h-0 flex-1 overflow-hidden bg-[var(--canvas)]">
+      {/*
+        The ground, declared here rather than on the document.
+
+        Custom properties inherit, so putting it on this element redefines the
+        canvas colours for this subtree and for nothing else: the letters in
+        the inspector a few pixels to the right, and the grid one tab over,
+        keep the colours they were designed with. That is the whole scope of
+        this -- the surface a letter is judged on, not a theme.
+      */}
+      <div
+        ref={measure}
+        data-ground={state.ground}
+        className="relative min-h-0 flex-1 overflow-hidden bg-[var(--canvas)]"
+      >
         <canvas
           ref={canvasRef}
           style={{ width: size.width, height: size.height }}
@@ -803,9 +824,9 @@ function drawMetrics(
   size: { width: number; height: number },
   guides: ReadonlyArray<{ y: number }> = [],
 ): void {
-  const metricColour = readToken("--guide-metric", "#5a6070");
-  const baselineColour = readToken("--guide-baseline", "#d24b3a");
-  const sidebearingColour = readToken("--guide-sidebearing", "#3f8fa8");
+  const metricColour = readToken("--guide-metric", "#5a6070", context.canvas);
+  const baselineColour = readToken("--guide-baseline", "#d24b3a", context.canvas);
+  const sidebearingColour = readToken("--guide-sidebearing", "#3f8fa8", context.canvas);
 
   const lines: Array<{ y: number; label: string; colour: string }> = [
     { y: 0, label: "baseline", colour: baselineColour },
@@ -840,7 +861,7 @@ function drawMetrics(
    * with their height beside them, since a guide whose position you cannot read
    * is a guide you cannot put back.
    */
-  const guideColour = readToken("--accent", "#0c8ce9");
+  const guideColour = readToken("--accent", "#0c8ce9", context.canvas);
   context.setLineDash([5, 4]);
   for (const guide of guides) {
     const y = Math.round(view.originY - guide.y * view.scale) + 0.5;
@@ -891,9 +912,9 @@ function drawNodes(
   selected: ReadonlySet<string>,
   hover: Hover,
 ): void {
-  const onCurve = readToken("--node-on-curve", "#0c8ce9");
-  const offCurve = readToken("--node-off-curve", "#9aa0ad");
-  const selectedColour = readToken("--node-selected", "#f5a524");
+  const onCurve = readToken("--node-on-curve", "#0c8ce9", context.canvas);
+  const offCurve = readToken("--node-off-curve", "#9aa0ad", context.canvas);
+  const selectedColour = readToken("--node-selected", "#f5a524", context.canvas);
 
   context.save();
   contours.forEach((contour, contourIndex) => {
@@ -983,7 +1004,7 @@ function drawAnchors(
   hover: Hover,
 ): void {
   if (anchors.length === 0) return;
-  const colour = readToken("--inspect", "#9149f5");
+  const colour = readToken("--inspect", "#9149f5", context.canvas);
 
   context.save();
   context.font = "10px ui-monospace, monospace";
@@ -1049,7 +1070,7 @@ function drawHoverRing(
 }
 
 function drawMarquee(context: CanvasRenderingContext2D, drag: Extract<Drag, { kind: "marquee" }>): void {
-  const accent = readToken("--accent", "#0c8ce9");
+  const accent = readToken("--accent", "#0c8ce9", context.canvas);
   context.save();
   context.strokeStyle = accent;
   context.fillStyle = withAlpha(accent, 0.12);

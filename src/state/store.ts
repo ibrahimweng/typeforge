@@ -54,7 +54,7 @@ import sampleFontUrl from "@/assets/typeforge-sample.ttf?url";
 /** What the sample is called once it is open, as any other file would be. */
 const SAMPLE_FILE_NAME = "TypeforgeSample-Regular.ttf";
 
-export type ViewId = "grid" | "glyph" | "kerning" | "metrics" | "report";
+export type ViewId = "grid" | "glyph" | "kerning" | "metrics" | "proof" | "report";
 export type ToolId = "select" | "pen";
 
 /** A node's address within a glyph, used for selection. */
@@ -94,6 +94,16 @@ export interface AppState {
    * not line two letters up against.
    */
   guides: Array<{ y: number }>;
+  /**
+   * Which ground the type is drawn on, where type is looked at.
+   *
+   * Only the canvas and the proof page change: the chrome stays dark, because
+   * this is not a theme. Black type on white is the thing being made, and a
+   * face judged only on a dark ground is a face nobody has looked at yet --
+   * the eye reads weight differently against the two, and a stem that looks
+   * right in white on black is a shade heavy in black on white.
+   */
+  ground: "dark" | "light";
   /** Name of the glyph open in the editor. */
   selectedGlyph: string | null;
   /** Selected nodes within the open glyph, keyed by `contour:node`. */
@@ -155,6 +165,7 @@ class Store {
      */
     context: { before: "n", after: "n" },
     guides: [],
+    ground: "dark",
     selectedGlyph: null,
     selectedNodes: new Set(),
     selectedGlyphs: new Set(),
@@ -356,6 +367,26 @@ class Store {
   /** Change what stands either side of the glyph being edited. */
   setContext(context: Partial<AppState["context"]>): void {
     this.set({ context: { ...this.state.context, ...context } });
+  }
+
+  /**
+   * Swap the ground the type is drawn on.
+   *
+   * Only state. The two surfaces that honour it render the attribute
+   * themselves, which is what keeps this from being a theme and what keeps
+   * the store out of the document.
+   *
+   * It was briefly the other way round -- an effect writing the attribute on
+   * the root -- and that is worth recording, because the failure was not
+   * obvious. Effects fire child before parent, so every canvas repainted
+   * before the attribute landed, read `--glyph-fill` off a root that still
+   * said dark, and drew near-white letters on the new white page; the
+   * attribute arrived a moment later with nothing left to repaint. Rendering
+   * it removes the question: React commits the attribute before it runs the
+   * effect that paints.
+   */
+  setGround(ground: AppState["ground"]): void {
+    this.set({ ground });
   }
 
   /** Put a guide at a height, in font units. */

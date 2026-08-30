@@ -2851,3 +2851,119 @@ test("lists the paths a letter is made of, and takes guides", async ({ page }) =
   await page.locator("[data-clear-guides]").click();
   await expect(page.locator("[data-clear-guides]")).toHaveCount(0);
 });
+
+/**
+ * The colour actually on the canvas, averaged over the pixels that were
+ * painted.
+ *
+ * Not the token, and not the CSS: the pixels. The bug this exists to catch was
+ * a canvas that read the right token at the wrong moment, so every declared
+ * value in the document was correct and the letters were still the old colour.
+ * Nothing short of reading the bitmap would have noticed.
+ */
+async function inkLuminance(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const canvas = document.querySelector("[data-proof-page] canvas") as HTMLCanvasElement;
+    const context = canvas.getContext("2d")!;
+    const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+    let sum = 0;
+    let painted = 0;
+    // Solid pixels only. The edge of a letter is antialiased against nothing,
+    // so a part-transparent pixel carries the colour diluted and would drag
+    // the average towards the middle from both ends.
+    for (let at = 0; at < data.length; at += 4) {
+      if (data[at + 3] < 250) continue;
+      sum += 0.2126 * data[at] + 0.7152 * data[at + 1] + 0.0722 * data[at + 2];
+      painted += 1;
+    }
+    return painted === 0 ? -1 : sum / painted;
+  });
+}
+
+test("proofs the font in paragraphs, on either ground", async ({ page }) => {
+  /*
+   * A face is judged in paragraphs, and there was nowhere to see one.
+   *
+   * Every view here showed letters one at a time or in a grid of boxes, which
+   * is how you fix a letter and not how you tell whether a font works: a stem
+   * a shade too heavy reads as a grey patch in text and as nothing at all on a
+   * canvas. This draws the outlines on screen -- not an installed font -- into
+   * a column of real text, at a size and a leading you can push around.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Proof", exact: true }).click();
+
+  const pageBox = page.locator("[data-proof-page]");
+  await expect(pageBox).toBeVisible();
+
+  // Something was actually drawn.
+  await expect.poll(() => inkLuminance(page)).toBeGreaterThan(0);
+
+  /*
+   * The type stays inside the page it is drawn on.
+   *
+   * The first version measured the padded parent and drew as though it were
+   * the content box, which put the canvas forty-eight pixels wider than the
+   * white underneath it and clipped the right-hand end of every line.
+   */
+  const widths = await pageBox.evaluate((element) => ({
+    page: element.clientWidth,
+    canvas: (element.querySelector("canvas") as HTMLCanvasElement).clientWidth,
+  }));
+  expect(widths.canvas).toBeLessThanOrEqual(widths.page);
+
+  // Bigger type is more lines of it, and the page grows to hold them.
+  const shortPage = (await pageBox.boundingBox())!.height;
+  const size = page.getByRole("slider", { name: "Size" });
+  await size.fill("28");
+  await expect.poll(async () => (await pageBox.boundingBox())!.height).toBeGreaterThan(shortPage);
+  await size.fill("14");
+
+  /*
+   * The ground, and the only assertion here that reads pixels rather than the
+   * document.
+   *
+   * The canvases are painted in script and take their colour from a custom
+   * property on the root, so switching the ground is two things happening in
+   * order: the attribute changes, and every canvas repaints having read it.
+   * They went out of order -- effects run child before parent, so the canvas
+   * repainted first and read a root that still said dark -- and the result was
+   * near-white letters on the new white page, with every token in the document
+   * reporting the correct value. Hence the luminance: the token was never
+   * wrong, only early.
+   */
+  const onDark = await inkLuminance(page);
+  await page.locator("[data-ground-toggle]").getByRole("button", { name: "On white" }).click();
+  await expect.poll(() => inkLuminance(page)).toBeLessThan(onDark - 100);
+
+  await page.locator("[data-ground-toggle]").getByRole("button", { name: "On black" }).click();
+  await expect.poll(() => inkLuminance(page)).toBeGreaterThan(onDark - 20);
+});
+
+test("carries the ground into the letter being drawn", async ({ page }) => {
+  // The ground is the application's, not the proof page's: a letter is judged
+  // against white too, and the choice should not have to be made twice.
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Proof", exact: true }).click();
+  await page.locator("[data-ground-toggle]").getByRole("button", { name: "On white" }).click();
+
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  const toggle = page.locator("[data-ground-toggle]").getByRole("button", { name: "On white" });
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+
+  /*
+   * And carries it no further than that.
+   *
+   * The ground is declared on the stage rather than on the document, so the
+   * letters a few pixels to the right in the inspector and the grid one tab
+   * over keep the colours they were drawn for. The first version put it on
+   * the root, which took `--canvas` with it everywhere it was used -- and it
+   * is used as a darker panel in two views that carry ordinary white chrome
+   * text, so the Draw stage and the Assemble empty state came up with their
+   * headings white on white.
+   */
+  await expect(page.locator("[data-ground='light']")).toHaveCount(1);
+  await expect(page.locator("html")).not.toHaveAttribute("data-ground", "light");
+});
