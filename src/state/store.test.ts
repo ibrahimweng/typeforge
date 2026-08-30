@@ -983,3 +983,51 @@ describe("carrying a drawing to another letter", () => {
     expect(store.pasteOutlines("m")).toBe(true);
   });
 });
+
+describe("guides, which now run both ways", () => {
+  beforeEach(() => seed(["a"]));
+
+  it("puts one down the canvas as well as across it", () => {
+    /*
+     * The type was `{ y: number }`, so every guide was horizontal and there
+     * was no way to mark where a stem should stand or where a sidebearing
+     * should fall -- half of what anybody draws a guide for.
+     */
+    store.addGuide(500, "y");
+    store.addGuide(80, "x");
+    expect(store.getSnapshot().guides).toEqual([
+      { axis: "y", at: 500 },
+      { axis: "x", at: 80 },
+    ]);
+  });
+
+  it("keeps a guide on the axis it was made on when it moves", () => {
+    store.addGuide(80, "x");
+    store.moveGuide(0, 120.4);
+    expect(store.getSnapshot().guides[0]).toEqual({ axis: "x", at: 120 });
+  });
+
+  it("goes across the canvas when nothing says otherwise", () => {
+    // Which is what it always did, and what most guides are.
+    store.addGuide(300);
+    expect(store.getSnapshot().guides[0].axis).toBe("y");
+  });
+
+  it("leaves its guides behind when a different font is opened", () => {
+    /*
+     * A guide is kept in font units, and font units are not the same size from
+     * one font to the next: 500 is the x-height of a thousand-unit font and a
+     * quarter of the way up a two-thousand-unit one.
+     */
+    store.addGuide(500, "y");
+    expect(store.getSnapshot().guides).toHaveLength(1);
+    store.startBlank();
+    expect(store.getSnapshot().guides).toHaveLength(0);
+  });
+
+  it("has snapping on to begin with, and lets it be turned off", () => {
+    expect(store.getSnapshot().snapping).toBe(true);
+    store.setSnapping(false);
+    expect(store.getSnapshot().snapping).toBe(false);
+  });
+});
