@@ -3351,3 +3351,78 @@ test("correcting the direction is an edit, not a display change", async ({ page 
   await expect.poll(() => page.locator('[data-path-row="0"]').innerText()).not.toBe(winding);
   await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
 });
+
+test("moving what is drawn: flip, slant and align", async ({ page }) => {
+  /*
+   * The operations every drawing tool has, and worth having in a type editor
+   * specifically because letters are full of repeats: a `b` is a `d` mirrored,
+   * a `u` is an `n` turned over, an oblique is the roman leaned twelve degrees.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  const panel = page.locator("[data-transform-panel]");
+  await expect(panel).toBeVisible();
+
+  // With nothing picked, the whole letter is what moves -- which is what every
+  // other drawing tool does and what somebody pressing flip expects.
+  await expect(page.locator("[data-transform-scope]")).toHaveText("the whole letter");
+
+  const undo = page.getByRole("button", { name: "Undo" });
+  await expect(undo).toBeDisabled();
+  await panel.getByRole("button", { name: "Flip ↔" }).click();
+  await expect(undo).toBeEnabled();
+  await undo.click();
+
+  /*
+   * Slant, and what this asks of it.
+   *
+   * Not that the letter's bounding box widens, which was the first thing tried
+   * here and is wrong: an `A` is widest at its feet, and leaning it moves the
+   * apex right without moving either foot, so the box does not change at all
+   * until the apex overtakes the bottom corner. That is geometry rather than a
+   * fault, and a test that assumed otherwise would have reported a working
+   * operation as broken.
+   *
+   * The exact arithmetic is asserted where it can be exact -- the unit tests
+   * lean a square and check it widens by its own height times the tangent of
+   * the angle. What is worth asking here is that the button is wired to it:
+   * that the edit lands, and that leaning back is its inverse.
+   */
+  const bounds = page.locator("[data-paths-panel]");
+  const before = await bounds.innerText();
+  await panel.getByRole("button", { name: "Lean", exact: true }).click();
+  await expect(undo).toBeEnabled();
+
+  await panel.getByRole("button", { name: "Back", exact: true }).click();
+  await expect.poll(() => bounds.innerText()).toBe(before);
+});
+
+test("aligning needs two points, and says so rather than doing nothing", async ({ page }) => {
+  /*
+   * Aligning is not a transform and is not offered as one: every other button
+   * in the panel applies one movement to everything selected, and this sends
+   * each point somewhere different. Which is what makes it the operation for
+   * levelling the two feet of an `n` against each other, and why it means
+   * nothing until there are two points to level.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  const panel = page.locator("[data-transform-panel]");
+  const alignLeft = panel.getByRole("button", { name: "⇤" });
+  await expect(alignLeft).toBeDisabled();
+
+  // Picking a whole path picks all of its points, which is more than two.
+  await page.locator('[data-path-row="0"]').getByRole("button").first().click();
+  await expect(page.locator("[data-transform-scope]")).toContainText("points");
+  await expect(alignLeft).toBeEnabled();
+
+  const before = await page.locator('[data-path-row="0"]').innerText();
+  await alignLeft.click();
+  // Every point on the leftmost of them: the path has no width left.
+  await expect.poll(() => page.locator('[data-path-row="0"]').innerText()).not.toBe(before);
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+});

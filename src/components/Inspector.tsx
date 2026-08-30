@@ -15,6 +15,7 @@ import * as React from "react";
 import { enterStaggered } from "@/anim/motion";
 import { CompositionPanel } from "@/components/CompositionPanel";
 import { PathsPanel } from "@/components/PathsPanel";
+import { TransformPanel } from "@/components/TransformPanel";
 import { CoachMark } from "@/components/CoachMark";
 import { ControlLetters } from "@/components/ControlLetters";
 import { segment, SIDE_PANEL } from "@/components/controls";
@@ -182,6 +183,12 @@ export function Inspector(): React.JSX.Element {
         place to be told it.
       */}
       {editingGlyph && state.view === "glyph" && <PathsPanel />}
+      {/*
+        Under the same scope and the same view as the paths, and for the same
+        reason: a transform acts on one letter's outlines, and the glyph view
+        is where a letter's outlines are in hand.
+      */}
+      {editingGlyph && state.view === "glyph" && <TransformPanel />}
       <div ref={listRef} className="p-3">
         {PARAMS.map((spec) => {
           const scaleFactor = spec.emRelative ? typeface.unitsPerEm : 1;
