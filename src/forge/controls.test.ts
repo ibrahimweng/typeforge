@@ -384,25 +384,37 @@ describe("alternates", () => {
 });
 
 /*
- * A minute rather than the default thirty seconds, and measured rather than
- * guessed.
+ * Two minutes rather than the default thirty seconds, and measured rather than
+ * guessed -- twice, because the first measurement was taken the wrong way.
  *
  * The sweep below draws every letter of every base at every weight in every
- * form, which is eighteen and a half seconds on an idle machine with nothing
- * else running. That is a margin of one and a half against the default, and a
- * margin of one and a half is not one: this file runs in a pool beside suites
- * that take two hundred and three hundred seconds, and on a shared runner it
- * went over on Node 20 while the identical commit passed on Node 22. A result
- * that depends on which Node picked up the job is a stopwatch result rather
- * than a behavioural one.
+ * form. Timed on its own on an idle machine that was eighteen and a half
+ * seconds when this budget was first written and is twenty-one now, the script
+ * faces having been added in between. A minute looked like a margin of three
+ * against that, so a minute is what it got.
  *
- * The same argument, with the same evidence behind it, is why the block above
- * carries a minute and why `test/fixtures.ts` gives the export suites two. The
- * answer is not a faster sweep -- the work is the point, and every letter it
- * skipped would be a letter that could fold unnoticed -- but a budget that
- * tells a hang apart from a long job. A hang does not finish at all.
+ * It went over anyway, on Node 20, while the identical commit passed on Node
+ * 22 -- which is the second time this test has failed that way and the same
+ * way. The figure was wrong because of how it was taken: on its own is not how
+ * this runs. In the pool, beside suites that take two hundred and three
+ * hundred seconds, it is twenty-three; and the runner that failed took two
+ * hundred and six per cent of the local time over the suite as a whole, which
+ * is not a fixed multiplier but an average of a contention that varies. Three
+ * times a number measured in the quiet is not three times anything.
+ *
+ * So: two minutes, which is what `test/fixtures.ts` gives the export suites,
+ * and which this has now earned its way into the same class as. Against the
+ * twenty-three seconds it actually costs under load that is a margin of five,
+ * and against the worst multiplier yet seen from a runner it is still a margin
+ * of two.
+ *
+ * The answer is still not a faster sweep -- the work is the point, and every
+ * letter it skipped would be a letter that could fold unnoticed -- but a
+ * budget that tells a hang apart from a long job. A hang does not finish at
+ * all, so the cost of being generous here is bounded and the cost of being
+ * tight is a red build on somebody else's change.
  */
-describe("every starting point, at every weight", { timeout: 60_000 }, () => {
+describe("every starting point, at every weight", { timeout: 120_000 }, () => {
   /*
    * The eight bases are eight different sets of decisions, and each of them
    * reaches corners of the drawing the others never go near: a pen held at
