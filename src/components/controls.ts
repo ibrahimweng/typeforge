@@ -70,3 +70,30 @@ export function tile(selected: boolean, extra?: string): string {
     extra,
   );
 }
+
+/*
+ * How wide a side panel is, at three window sizes.
+ *
+ * Written once and used by all five of them, because the alternative is what
+ * was here before: `w-72` on two panels, `w-80` on three, and no breakpoint
+ * anywhere in the application's own code. Nothing overflowed, which was luck
+ * rather than intent -- every panel was a fixed number of pixels beside a
+ * canvas that took what was left, so the canvas absorbed the whole cost of a
+ * smaller window. On a thirteen-inch screen the parameters were more than a
+ * third of it.
+ *
+ * Three steps rather than a percentage. A panel of sliders and labels has a
+ * width below which it stops working and above which it stops improving, so
+ * what it wants is to be told a size for the window it is in, not to be given
+ * a share of it.
+ */
+export const SIDE_PANEL = "w-56 lg:w-64 xl:w-72";
+
+/**
+ * The wider panel, for the three that hold a whole set of controls.
+ *
+ * Draw, Assemble and Trace each put their entire document in this column --
+ * there is no second panel and no inspector beside it -- so it carries more
+ * and is given more. The steps are the same ones, moved up by a size.
+ */
+export const WIDE_PANEL = "w-64 lg:w-72 xl:w-80";

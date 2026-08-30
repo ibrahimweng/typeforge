@@ -94,8 +94,26 @@ export function PathsPanel(): React.JSX.Element | null {
                   aria-label={`Select path ${index + 1}`}
                   className="flex min-w-0 flex-1 items-baseline gap-2 text-left"
                 >
-                  <span className="tabular-nums">{index + 1}</span>
-                  <span className="truncate">
+                  {/*
+                    What goes first when the panel is narrow, and what does
+                    not.
+
+                    All three of these used to be the wrong way round: the
+                    point count was the one marked as truncatable and the
+                    other two were held at full size, so in a two-hundred-pixel
+                    panel the count vanished entirely, the size ran out past
+                    the end of the button and collided with the arrow beside
+                    it. The order of the three is an order of importance --
+                    how many points, which way round, how big -- so it is the
+                    size that gives way. Below the width where it fits it is
+                    not there at all: a truncated `1368x1493` reads as `1`,
+                    which is not a smaller version of the number, it is a
+                    different and wrong one. The truncation stays underneath as
+                    the guard against a font whose numbers are longer than
+                    these.
+                  */}
+                  <span className="shrink-0 tabular-nums">{index + 1}</span>
+                  <span className="shrink-0">
                     {contour.nodes.length} {contour.nodes.length === 1 ? "point" : "points"}
                   </span>
                   {/*
@@ -106,7 +124,7 @@ export function PathsPanel(): React.JSX.Element | null {
                   */}
                   <span className="shrink-0 opacity-70">{winding === "clockwise" ? "cw" : "ccw"}</span>
                   {Number.isFinite(box.xMin) && (
-                    <span className="shrink-0 tabular-nums opacity-50">
+                    <span className="hidden min-w-0 truncate tabular-nums opacity-50 xl:inline">
                       {Math.round(box.xMax - box.xMin)}×{Math.round(box.yMax - box.yMin)}
                     </span>
                   )}

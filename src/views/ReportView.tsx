@@ -28,7 +28,26 @@ export function ReportView(): React.JSX.Element {
   const [report, setReport] = React.useState<ValidationReport | null>(null);
   const [running, setRunning] = React.useState(false);
   const [ranAt, setRanAt] = React.useState<number | null>(null);
+  const [shown, setShown] = React.useState<Record<Severity, boolean>>({
+    error: true,
+    warning: true,
+    info: true,
+  });
   const listRef = React.useRef<HTMLDivElement>(null);
+
+  const toggle = (severity: Severity) =>
+    setShown((was) => ({ ...was, [severity]: !was[severity] }));
+
+  const counts = React.useMemo(() => {
+    const tally: Record<Severity, number> = { error: 0, warning: 0, info: 0 };
+    for (const finding of report?.findings ?? []) tally[finding.severity] += 1;
+    return tally;
+  }, [report]);
+
+  const visible = React.useMemo(
+    () => (report?.findings ?? []).filter((finding) => shown[finding.severity]),
+    [report, shown],
+  );
 
   const run = React.useCallback(async () => {
     if (!state.typeface) return;
@@ -64,11 +83,29 @@ export function ReportView(): React.JSX.Element {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <CoachMark id="report" />
-      <div className="flex items-center gap-3 border-b border-border px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-2.5">
         {report && (
           <>
-            <Count value={report.errors} label="error" tone="error" />
-            <Count value={report.warnings} label="warning" tone="warning" />
+            {/*
+              The counts, and the counts are the filter.
+
+              A report of six hundred findings is read by severity: you fix the
+              errors, then you decide about the warnings, and the notes are
+              mostly things you already know. The three numbers were on screen
+              already and did nothing, which is a waste of the one control the
+              list needed -- there was no way to put the notes away and look at
+              what is actually wrong.
+
+              Pressed is showing. A severity with nothing in it is not a
+              filter, so it stays a plain number rather than becoming a button
+              that changes nothing when pressed.
+            */}
+            <Count value={counts.error} label="error" tone="error" on={shown.error}
+              onToggle={() => toggle("error")} />
+            <Count value={counts.warning} label="warning" tone="warning" on={shown.warning}
+              onToggle={() => toggle("warning")} />
+            <Count value={counts.info} label="note" tone="info" on={shown.info}
+              onToggle={() => toggle("info")} />
             <span className="text-2xs text-muted-foreground tabular-nums">
               {report.examined.toLocaleString()} glyphs checked
             </span>
@@ -95,8 +132,19 @@ export function ReportView(): React.JSX.Element {
             Nothing to report. Every check passed.
           </p>
         )}
+        {/*
+          Told apart from the line above it, because they mean opposite things:
+          a clean font and a list you have hidden all of look identical
+          otherwise, and one of them is good news.
+        */}
+        {report && report.findings.length > 0 && visible.length === 0 && (
+          <p className="py-16 text-center text-xs-plus text-muted-foreground">
+            {report.findings.length} findings, all of them put away. Turn a severity back on
+            above.
+          </p>
+        )}
         <div ref={listRef} className="mx-auto flex max-w-3xl flex-col gap-2">
-          {report?.findings.map((finding) => (
+          {visible.map((finding) => (
             <FindingRow key={`${finding.check}-${finding.glyph ?? ""}`} finding={finding} />
           ))}
         </div>
@@ -109,31 +157,48 @@ function Count({
   value,
   label,
   tone,
+  on,
+  onToggle,
 }: {
   value: number;
   label: string;
-  tone: "error" | "warning";
+  tone: Severity;
+  on: boolean;
+  onToggle: () => void;
 }): React.JSX.Element {
+  const colour =
+    tone === "error"
+      ? "text-destructive"
+      : tone === "warning"
+        ? "text-[var(--attention)]"
+        : "text-foreground";
+  const words = `${value} ${label}${value === 1 ? "" : "s"}`;
+
+  if (value === 0) {
+    return <span className="text-2xs tabular-nums text-muted-foreground">{words}</span>;
+  }
+
   return (
-    <span
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onToggle}
+      data-severity={tone}
+      title={on ? `Put the ${label}s away` : `Show the ${label}s again`}
       className={cn(
-        "text-2xs tabular-nums",
-        value === 0
-          ? "text-muted-foreground"
-          : tone === "error"
-            ? "text-destructive"
-            : "text-[var(--attention)]",
+        "rounded border px-1.5 py-0.5 text-2xs tabular-nums transition-colors",
+        on ? cn("border-border bg-card", colour) : "border-transparent text-muted-foreground line-through",
       )}
     >
-      {value} {label}
-      {value === 1 ? "" : "s"}
-    </span>
+      {words}
+    </button>
   );
 }
 
 function FindingRow({ finding }: { finding: Finding }): React.JSX.Element {
   return (
     <div
+      data-finding={finding.severity}
       className={cn(
         "rounded-md border bg-card/40 p-3",
         finding.severity === "error"

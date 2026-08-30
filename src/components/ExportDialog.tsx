@@ -95,9 +95,9 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
         className="floating-popup-surface w-[30rem] rounded-xl border border-border bg-popover p-5 shadow-2xl"
         role="dialog"
         aria-modal="true"
-        aria-label="Export font"
+        aria-label="Download font"
       >
-        <h2 className="pb-4 text-sm font-medium">Export font</h2>
+        <h2 className="pb-4 text-sm font-medium">Download this font</h2>
 
         <CoachMark id="export" className="-mx-5 mb-4 border-t border-border" />
 
@@ -196,7 +196,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
             disabled={working}
             className="rounded-md bg-accent px-3 py-1.5 text-xs-plus text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {working ? "Building…" : "Export"}
+            {working ? "Writing…" : "Download"}
           </button>
         </div>
       </div>

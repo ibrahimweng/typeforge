@@ -32,7 +32,7 @@ import { keeper as makeKeeper, kept } from "@/project/keep";
 import { fileNameFor, restore, session } from "@/project/session";
 import type { Keeping } from "@/components/TopBar";
 import { libraryStore } from "@/state/useLibrary";
-import { store, useAppState } from "@/state/useStore";
+import { store, useAppState, type ViewId } from "@/state/useStore";
 import { FontGridView } from "@/views/FontGridView";
 import { GlyphEditorView } from "@/views/GlyphEditorView";
 import { KerningView } from "@/views/KerningView";
@@ -63,6 +63,27 @@ export type Mode = "edit" | "forge" | "assemble" | "quill";
 function libraryMode(mode: Mode): Exclude<SavedMode, "quill"> {
   return mode === "quill" ? "edit" : mode;
 }
+
+/*
+ * The views the parameter panel belongs in, and the two it does not.
+ *
+ * It used to be in all five, which meant Corner radius, Weight and Middle
+ * space sat on screen while somebody kerned a pair or read a fault report --
+ * controls that reach nothing you are looking at, in a column three hundred
+ * pixels wide, taken off the thing you are looking at.
+ *
+ * Kerning already has a panel of its own about the pairs, so the parameters
+ * were a third column and the canvas was the one paying for it. Checks holds
+ * its findings in the view rather than in the store, so a panel out here could
+ * not say anything about them even if it wanted to; what that view needed was
+ * a way to narrow the list, and that belongs beside the list.
+ *
+ * The other three keep it. In the grid and the glyph view the parameters are
+ * the subject. In the proof they are not the subject but they do reach it: the
+ * paragraph on screen is drawn from these outlines, and noticing the weight is
+ * a shade heavy is exactly what proofing is for.
+ */
+const SHOWS_INSPECTOR = new Set<ViewId>(["grid", "glyph", "metrics", "proof"]);
 
 export function App(): React.JSX.Element {
   const state = useAppState();
@@ -503,7 +524,7 @@ export function App(): React.JSX.Element {
         {mode === "forge" && <ForgePanel />}
         {mode === "quill" && <QuillPanel />}
         {mode === "assemble" && <AssemblePanel />}
-        {mode === "edit" && <Inspector />}
+        {mode === "edit" && SHOWS_INSPECTOR.has(state.view) && <Inspector />}
         {helping && <HelpDrawer onClose={() => setHelping(false)} />}
       </div>
 

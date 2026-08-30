@@ -15,7 +15,7 @@
 
 import * as React from "react";
 
-import { segment } from "@/components/controls";
+import { segment, WIDE_PANEL } from "@/components/controls";
 import { contoursToSvgPath } from "@/font/geometry";
 import { filled, FILL_KINDS } from "@/forge/kit";
 import { drawLetter } from "@/forge/build";
@@ -85,7 +85,7 @@ export function ForgePanel(): React.JSX.Element {
   return (
     <aside
       aria-label="Forge"
-      className="toolcraft-panel-surface flex w-80 shrink-0 flex-col border-l border-border"
+      className={cn(WIDE_PANEL, "toolcraft-panel-surface flex shrink-0 flex-col border-l border-border")}
     >
       <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
         <Section title="Start from">
