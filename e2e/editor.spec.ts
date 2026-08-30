@@ -3740,3 +3740,50 @@ test("export waits until there is something to export, in every mode", async ({ 
   await page.getByRole("button", { name: "Draw", exact: true }).click();
   await expect(exportButton).toBeEnabled();
 });
+
+test("a font can be given a name of its own, which it could not before", async ({ page }) => {
+  /*
+   * The most serious thing a tour of the capability surface turned up.
+   * `setMeta` sat in the store with nothing calling it, so a font opened here
+   * kept the identity of the file it came from whatever was done to it:
+   * redraw every letter of DejaVu Sans, export, and the file is still called
+   * DejaVu Sans, still carrying DejaVu's copyright and naming DejaVu's
+   * designer. Draw, Assemble and Trace all offered a name. Edit did not.
+   */
+  await page.goto("/");
+  await openFont(page);
+
+  // The way in is the name itself, which has always been shown and done
+  // nothing.
+  await page.locator("[data-font-name]").click();
+  await expect(page.locator("[data-font-info]")).toBeVisible();
+
+  const family = page.getByRole("dialog", { name: "Font details" }).locator("input").first();
+  await family.fill("Ours");
+  await family.blur();
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+
+  await expect(page.locator("[data-font-name]")).toContainText("Ours");
+  await expect(page.locator("[data-font-name]")).not.toContainText("DejaVu");
+  // A name is an edit, so it can be taken back.
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+});
+
+test("the checks say when an edited font still wears the name it arrived with", async ({ page }) => {
+  /*
+   * A derivative work that does not say it is one, which is the first thing
+   * every type licence asks of you. It fires only once a letter has actually
+   * been changed: opening somebody's font to read it is not a licensing
+   * question.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await page.locator("[data-transform-panel]").getByRole("button", { name: "Bigger" }).click();
+
+  await page.getByRole("button", { name: "Checks", exact: true }).click();
+  await page.getByRole("button", { name: "Run checks", exact: true }).click();
+  await expect(page.getByText("still called DejaVu Sans", { exact: false })).toBeVisible({
+    timeout: 60_000,
+  });
+});

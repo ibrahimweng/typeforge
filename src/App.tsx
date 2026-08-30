@@ -12,6 +12,7 @@ import { AssembleExportDialog } from "@/components/AssembleExportDialog";
 import { AssemblePanel } from "@/components/AssemblePanel";
 import { ExportDialog } from "@/components/ExportDialog";
 import { ForgeExportDialog } from "@/components/ForgeExportDialog";
+import { FontInfoDialog } from "@/components/FontInfoDialog";
 import { ForgePanel } from "@/components/ForgePanel";
 import { QuillExportDialog } from "@/components/QuillExportDialog";
 import { QuillPanel } from "@/components/QuillPanel";
@@ -112,6 +113,7 @@ export function App(): React.JSX.Element {
   const assemble = useAssemble();
   const traced = useQuill();
   const [exporting, setExporting] = React.useState(false);
+  const [naming, setNaming] = React.useState(false);
   const [helping, setHelping] = React.useState(false);
   const [quick, setQuick] = React.useState(false);
   /*
@@ -653,6 +655,7 @@ export function App(): React.JSX.Element {
         onOpenFile={() => inputRef.current?.click()}
         onLibrary={() => void libraryStore.show()}
         onExport={() => setExporting(true)}
+        onFontInfo={() => setNaming(true)}
         onToggleHelp={() => setHelping((open) => !open)}
         helpOpen={helping}
         mode={mode}
@@ -734,6 +737,7 @@ export function App(): React.JSX.Element {
 
       <LibraryDialog mode={libraryMode(mode)} onMode={setMode} />
 
+      {naming && <FontInfoDialog onClose={() => setNaming(false)} />}
       {exporting && mode === "forge" && <ForgeExportDialog onClose={() => setExporting(false)} />}
       {exporting && mode === "assemble" && (
         <AssembleExportDialog onClose={() => setExporting(false)} />

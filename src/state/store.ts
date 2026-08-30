@@ -1923,17 +1923,60 @@ class Store {
 
   // --- metadata ---------------------------------------------------------
 
+  /*
+   * The font's own identity, and the lines it is drawn between.
+   *
+   * Both of these existed for a long time with nothing calling them, which is
+   * how a font opened in this editor kept the name of the file it came from
+   * whatever was done to it. Redrawing every letter of DejaVu Sans and
+   * exporting gave a file still called DejaVu Sans, still carrying DejaVu's
+   * copyright and still naming DejaVu's designer -- which is not a missing
+   * field, it is a derivative work that does not say so.
+   *
+   * They push an edit each, because a name is an edit. Committed rather than
+   * typed: a field that pushed on every keystroke would put nineteen entries
+   * on the stack for one family name, and undo would walk back through the
+   * spelling of it.
+   */
   setMeta(partial: Partial<Typeface["meta"]>): void {
     const typeface = this.state.typeface;
     if (!typeface) return;
-    typeface.meta = { ...typeface.meta, ...partial };
+    const before = { ...typeface.meta };
+    const after = { ...typeface.meta, ...partial };
+    if (Object.keys(partial).every((key) => before[key as keyof typeof before] === after[key as keyof typeof after])) {
+      return;
+    }
+    typeface.meta = after;
+    this.push({
+      label: "Change the font's details",
+      undo: () => {
+        typeface.meta = { ...before };
+      },
+      redo: () => {
+        typeface.meta = { ...after };
+      },
+    });
     this.touch();
   }
 
   setMetrics(partial: Partial<Typeface["metrics"]>): void {
     const typeface = this.state.typeface;
     if (!typeface) return;
-    typeface.metrics = { ...typeface.metrics, ...partial };
+    const before = { ...typeface.metrics };
+    const after = { ...typeface.metrics, ...partial };
+    if (Object.keys(partial).every((key) => before[key as keyof typeof before] === after[key as keyof typeof after])) {
+      return;
+    }
+    typeface.metrics = after;
+    this.push({
+      label: "Change the font's lines",
+      undo: () => {
+        typeface.metrics = { ...before };
+      },
+      redo: () => {
+        typeface.metrics = { ...after };
+      },
+    });
     this.touch();
   }
 

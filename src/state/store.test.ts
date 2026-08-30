@@ -773,3 +773,52 @@ describe("the tools that make and unmake whole shapes", () => {
     expect(JSON.stringify(store.glyph("a")!.contours)).toBe(before);
   });
 });
+
+describe("the font's own identity", () => {
+  beforeEach(() => seed(["a", "b"]));
+
+  it("can be renamed, which it could not be at all", () => {
+    /*
+     * `setMeta` sat in this store with nothing calling it for a long time, so
+     * a font opened here kept the identity of the file it came from whatever
+     * was done to it: redraw every letter of DejaVu Sans, export, and the file
+     * is still called DejaVu Sans and still carries DejaVu's copyright.
+     */
+    store.setMeta({ familyName: "Ours", copyright: "© us", license: "OFL" });
+    const meta = store.getSnapshot().typeface!.meta;
+    expect(meta.familyName).toBe("Ours");
+    expect(meta.copyright).toBe("© us");
+    expect(meta.license).toBe("OFL");
+    // And the style, which was not asked about, is untouched.
+    expect(meta.styleName).toBe("Regular");
+  });
+
+  it("puts a rename on the undo stack, because a name is an edit", () => {
+    const was = store.getSnapshot().typeface!.meta.familyName;
+    store.setMeta({ familyName: "Ours" });
+    expect(store.getSnapshot().canUndo).toBe(true);
+    store.undo();
+    expect(store.getSnapshot().typeface!.meta.familyName).toBe(was);
+    store.redo();
+    expect(store.getSnapshot().typeface!.meta.familyName).toBe("Ours");
+  });
+
+  it("does not push an edit when nothing changed", () => {
+    // A field commits on the way out whether or not it was typed in, so this
+    // is the ordinary case rather than the odd one.
+    const was = store.getSnapshot().typeface!.meta.familyName;
+    store.setMeta({ familyName: was });
+    expect(store.getSnapshot().canUndo).toBe(false);
+  });
+
+  it("lets the lines be moved, which were equally frozen", () => {
+    store.setMetrics({ xHeight: 520, capHeight: 720 });
+    const metrics = store.getSnapshot().typeface!.metrics;
+    expect(metrics.xHeight).toBe(520);
+    expect(metrics.capHeight).toBe(720);
+    expect(metrics.ascender).toBe(800);
+
+    store.undo();
+    expect(store.getSnapshot().typeface!.metrics.xHeight).toBe(500);
+  });
+});

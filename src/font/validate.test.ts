@@ -133,3 +133,43 @@ describe("glyph outlines", () => {
     expect(report.findings.every((f) => f.title.length > 0 && f.detail.length > 0)).toBe(true);
   });
 });
+
+describe("a font drawn on top of somebody else's", () => {
+  /*
+   * The one finding here that is about a licence rather than about a file
+   * working. An exported font carries the family name, designer, copyright
+   * and licence of whatever it was opened from, and until this check existed
+   * nothing in the application ever said so.
+   */
+  const opened = (dirty: boolean): Typeface => {
+    const one = glyph("A", [square()]);
+    one.dirty = dirty;
+    const typeface = font([glyph(".notdef", [square()]), one]);
+    typeface.meta.familyName = "Somebody Else Sans";
+    // Only its presence matters here: the check asks whether the font came
+    // from a file, not what was in it.
+    typeface.source = {
+      bytes: new Uint8Array(0),
+      sfntVersion: 0x00010000,
+      tables: new Map(),
+      isCFF: false,
+      fileName: "SomebodyElseSans.ttf",
+    };
+    return typeface;
+  };
+
+  it("says so once a letter has been changed", () => {
+    expect(has(opened(true), "derivative-unnamed")).toBe(true);
+  });
+
+  it("says nothing about a font that is only being looked at", () => {
+    // Opening somebody's font to read it is not a licensing question.
+    expect(has(opened(false), "derivative-unnamed")).toBe(false);
+  });
+
+  it("says nothing about a font that came from nowhere", () => {
+    const one = glyph("A", [square()]);
+    one.dirty = true;
+    expect(has(font([glyph(".notdef", [square()]), one]), "derivative-unnamed")).toBe(false);
+  });
+});
