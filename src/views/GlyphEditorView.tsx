@@ -15,6 +15,7 @@ import * as React from "react";
 import { contourSegments, contoursBounds, contoursToPath2D } from "@/font/geometry";
 import { classifyNodes } from "@/font/quadratic";
 import { boxOf, shapeFrom, type ShapeKind } from "@/font/shapes";
+import { linesFor, snapPoint, type Lines } from "@/font/snap";
 import { resolveComponents } from "@/font/composite";
 import { resolveAdvanceWidth, resolveGlyphContours } from "@/font/transform";
 import type { Anchor, Contour, Glyph, GlyphNode, Typeface, Vec2 } from "@/font/types";
@@ -31,6 +32,7 @@ import { CoachMark } from "@/components/CoachMark";
 import { GroundToggle } from "@/components/GroundToggle";
 import { NumberField } from "@/components/NumberField";
 import { ToolPalette } from "@/components/ToolPalette";
+import { cn } from "@/ui/lib/utils";
 
 /** How close a click has to land, in screen pixels, to grab a node. */
 const HIT_RADIUS = 7;
@@ -56,9 +58,26 @@ function hoverKey(hover: Hover): string {
   return `node:${nodeKey(hover.ref)}`;
 }
 
+/**
+ * How near a line has to be, in screen pixels, before a drag lands on it.
+ *
+ * In pixels rather than in font units so it feels the same at every zoom:
+ * six units is a strong pull at a hundred per cent and nothing at all at
+ * eight hundred, which is exactly where somebody is placing a point by eye
+ * and least wants to be argued with.
+ */
+const SNAP_REACH = 6;
+
 type Drag =
-  | { kind: "node"; refs: NodeRef[]; start: Vec2; before: Glyph }
-  | { kind: "handle"; ref: NodeRef; side: "in" | "out"; before: Glyph }
+  /*
+   * `anchor` is the node actually under the pointer, and `lines` is what it
+   * can land on. Both are worked out once when the drag starts rather than on
+   * every move: nothing else in the letter moves while a drag is running, so
+   * recomputing the lines sixty times a second would be the same answer sixty
+   * times.
+   */
+  | { kind: "node"; refs: NodeRef[]; anchor: NodeRef; lines: Lines; start: Vec2; before: Glyph }
+  | { kind: "handle"; ref: NodeRef; side: "in" | "out"; lines: Lines; before: Glyph }
   | { kind: "marquee"; from: Vec2; to: Vec2; additive: boolean }
   | { kind: "anchor"; name: string; before: Anchor[] }
   | { kind: "pan"; from: Vec2; startPan: Vec2 }
@@ -289,7 +308,7 @@ export function GlyphEditorView(): React.JSX.Element {
      * within a few pixels, so it never steals a click meant for a node: the
      * band is thinner than the one a node answers to.
      */
-    const onGuide = guideAt(state.guides, view, canvasPoint.y);
+    const onGuide = guideAt(state.guides, view, canvasPoint);
     if (onGuide !== null) {
       dragRef.current = { kind: "guide", index: onGuide };
       return;
@@ -328,7 +347,15 @@ export function GlyphEditorView(): React.JSX.Element {
     const handleHit = hitTestHandle(glyph, view, canvasPoint);
     if (handleHit) {
       const before = store.snapshotGlyph(glyph.name);
-      if (before) dragRef.current = { kind: "handle", ref: handleHit.ref, side: handleHit.side, before };
+      if (before) {
+        dragRef.current = {
+          kind: "handle",
+          ref: handleHit.ref,
+          side: handleHit.side,
+          lines: linesFor(typeface, glyph, state.guides, new Set([nodeKey(handleHit.ref)])),
+          before,
+        };
+      }
       return;
     }
 
@@ -351,6 +378,11 @@ export function GlyphEditorView(): React.JSX.Element {
         dragRef.current = {
           kind: "node",
           refs: [...selection].map(parseNodeKey),
+          anchor: nodeHit,
+          // Everything in the letter worth landing on, minus the points that
+          // are about to move: a point that snapped to itself would never move
+          // at all.
+          lines: linesFor(typeface, glyph, state.guides, selection),
           start: { x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) },
           before,
         };
@@ -411,7 +443,13 @@ export function GlyphEditorView(): React.JSX.Element {
      * setting up their lines before drawing anything would be standing.
      */
     if (drag.kind === "guide") {
-      store.moveGuide(drag.index, (view.originY - canvasPoint.y) / view.scale);
+      const guide = state.guides[drag.index];
+      store.moveGuide(
+        drag.index,
+        guide?.axis === "x"
+          ? (canvasPoint.x - view.originX) / view.scale
+          : (view.originY - canvasPoint.y) / view.scale,
+      );
       return;
     }
 
@@ -430,9 +468,30 @@ export function GlyphEditorView(): React.JSX.Element {
         let dx = current.x - drag.start.x;
         let dy = current.y - drag.start.y;
         // Shift constrains the drag to one axis, as it does in every drawing tool.
-        if (event.shiftKey) {
+        const held = event.shiftKey;
+        if (held) {
           if (Math.abs(dx) > Math.abs(dy)) dy = 0;
           else dx = 0;
+        }
+
+        /*
+         * The snap is worked out on the node that is actually under the
+         * pointer and then applied to everything moving with it. Snapping each
+         * picked point on its own would pull them onto different lines and
+         * distort the shape somebody is dragging.
+         *
+         * After the shift constraint rather than before, so a drag held to one
+         * axis is not given movement back on the other.
+         */
+        if (state.snapping) {
+          const anchor = drag.before.contours[drag.anchor.contour]?.nodes[drag.anchor.node];
+          if (anchor) {
+            const reach = SNAP_REACH / view.scale;
+            const wanted = { x: anchor.point.x + dx, y: anchor.point.y + dy };
+            const landed = snapPoint(wanted, drag.lines, reach);
+            if (!held || dx !== 0) dx = landed.point.x - anchor.point.x;
+            if (!held || dy !== 0) dy = landed.point.y - anchor.point.y;
+          }
         }
         store.editGlyphLive(glyph.name, (target) => {
           for (const ref of drag.refs) {
@@ -451,7 +510,10 @@ export function GlyphEditorView(): React.JSX.Element {
         break;
       }
       case "handle": {
-        const target = { x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) };
+        const loose = { x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) };
+        const target = state.snapping
+          ? snapPoint(loose, drag.lines, SNAP_REACH / view.scale).point
+          : loose;
         store.editGlyphLive(glyph.name, (editing) => {
           const node = editing.contours[drag.ref.contour]?.nodes[drag.ref.node];
           if (!node) return;
@@ -491,7 +553,7 @@ export function GlyphEditorView(): React.JSX.Element {
    * and you want none.
    */
   const handleDoubleClick = (event: React.PointerEvent<HTMLCanvasElement>): void => {
-    const index = guideAt(state.guides, view, pointerPosition(event).y);
+    const index = guideAt(state.guides, view, pointerPosition(event));
     if (index !== null) store.removeGuide(index);
   };
 
@@ -675,14 +737,52 @@ export function GlyphEditorView(): React.JSX.Element {
         */}
         <span className="ml-auto flex items-center gap-2">
           <GroundToggle />
+          {/*
+            Two of them, because a guide was only ever horizontal and half of
+            what anybody draws one for is vertical: where a stem should stand,
+            where a sidebearing should fall.
+          */}
           <button
             type="button"
-            onClick={() => store.addGuide(typeface.metrics.xHeight)}
+            onClick={() => store.addGuide(typeface.metrics.xHeight, "y")}
             data-add-guide
             title="Put a guide across the canvas, then drag it where you want it"
             className="rounded border border-border px-2 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
           >
-            Add a guide
+            Guide ―
+          </button>
+          <button
+            type="button"
+            onClick={() => store.addGuide(Math.round((glyph?.advanceWidth ?? 500) / 2), "x")}
+            data-add-guide-vertical
+            title="Put a guide down the canvas, then drag it where you want it"
+            className="rounded border border-border px-2 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+          >
+            Guide │
+          </button>
+          {/*
+            Snapping is a switch rather than a modifier, because the two a drag
+            already uses are taken: shift holds it to one axis and alt pans the
+            canvas. A third would be a chord nobody would find.
+          */}
+          <button
+            type="button"
+            onClick={() => store.setSnapping(!state.snapping)}
+            aria-pressed={state.snapping}
+            data-snap-toggle
+            title={
+              state.snapping
+                ? "A dragged point lands on whole units, the metric lines, the guides, and the letter's own points. Press to let it land anywhere."
+                : "A dragged point lands wherever you let go of it. Press to pull it onto the lines worth landing on."
+            }
+            className={cn(
+              "rounded border px-2 py-1 text-2xs transition-colors",
+              state.snapping
+                ? "border-accent bg-accent/15 text-accent"
+                : "border-border text-muted-foreground hover:bg-card hover:text-foreground",
+            )}
+          >
+            Snap
           </button>
           {state.guides.length > 0 && (
             <button
@@ -879,13 +979,19 @@ function Numbers({
  * one back, so the guide drawn on top is the one that answers.
  */
 function guideAt(
-  guides: ReadonlyArray<{ y: number }>,
+  guides: ReadonlyArray<{ axis: "x" | "y"; at: number }>,
   view: GlyphView,
-  canvasY: number,
+  canvasPoint: Vec2,
 ): number | null {
+  // Backwards, so the one drawn last is the one caught first -- which is the
+  // one on top, and the one somebody just put there.
   for (let index = guides.length - 1; index >= 0; index--) {
-    const y = view.originY - guides[index].y * view.scale;
-    if (Math.abs(y - canvasY) <= 4) return index;
+    const guide = guides[index];
+    const where =
+      guide.axis === "y"
+        ? Math.abs(view.originY - guide.at * view.scale - canvasPoint.y)
+        : Math.abs(view.originX + guide.at * view.scale - canvasPoint.x);
+    if (where <= 4) return index;
   }
   return null;
 }
@@ -912,7 +1018,7 @@ function drawMetrics(
   glyph: Glyph | null,
   view: GlyphView,
   size: { width: number; height: number },
-  guides: ReadonlyArray<{ y: number }> = [],
+  guides: ReadonlyArray<{ axis: "x" | "y"; at: number }> = [],
 ): void {
   const metricColour = readToken("--guide-metric", "#5a6070", context.canvas);
   const baselineColour = readToken("--guide-baseline", "#d24b3a", context.canvas);
@@ -954,15 +1060,24 @@ function drawMetrics(
   const guideColour = readToken("--accent", "#0c8ce9", context.canvas);
   context.setLineDash([5, 4]);
   for (const guide of guides) {
-    const y = Math.round(view.originY - guide.y * view.scale) + 0.5;
-    if (y < -2 || y > size.height + 2) continue;
     context.strokeStyle = withAlpha(guideColour, 0.75);
-    context.beginPath();
-    context.moveTo(0, y);
-    context.lineTo(size.width, y);
-    context.stroke();
     context.fillStyle = withAlpha(guideColour, 0.9);
-    context.fillText(String(guide.y), size.width - 46, y - 4);
+    context.beginPath();
+    if (guide.axis === "y") {
+      const y = Math.round(view.originY - guide.at * view.scale) + 0.5;
+      if (y < -2 || y > size.height + 2) continue;
+      context.moveTo(0, y);
+      context.lineTo(size.width, y);
+      context.stroke();
+      context.fillText(String(guide.at), size.width - 46, y - 4);
+    } else {
+      const x = Math.round(view.originX + guide.at * view.scale) + 0.5;
+      if (x < -2 || x > size.width + 2) continue;
+      context.moveTo(x, 0);
+      context.lineTo(x, size.height);
+      context.stroke();
+      context.fillText(String(guide.at), x + 4, 12);
+    }
   }
   context.setLineDash([]);
 

@@ -1,6 +1,6 @@
 # What is missing
 
-> **A** and **B** are done. **C** and **D** are open.
+> **A**, **B** and **C** are done. **D** is open.
 
 An audit of what this application cannot do, taken by reading its capability
 surface rather than by looking at it. That distinction is the point: a tour of
@@ -58,7 +58,7 @@ letters.** There is no clipboard of any kind: no `copyGlyph`, no `pasteGlyph`,
 nothing on the keyboard. So an `m` cannot be started from an `n`, which is how
 an `m` is started.
 
-## C. Nothing helps you draw straight — *open*
+## C. Nothing helps you draw straight — *done*
 
 **C1. Guides are horizontal only.** The type is `Array<{ y: number }>`. There
 is no vertical guide, which is the one you would use to mark a stem position
@@ -109,3 +109,15 @@ is taken at face value, and nothing is guessed.
 resynced from the glyph whenever the glyph changed, with an array in the
 dependency list. A store update landing mid-edit put the old name back into the
 field while somebody was typing in it. Found by a browser test, not by reading.
+
+## What C turned up
+
+A guide survived a change of font. Guides are kept in font units, and font
+units are not the same size from one font to the next -- 500 is the x-height of
+a thousand-unit font and a quarter of the way up a two-thousand-unit one -- so
+guides drawn against one font arrived over the next meaning something else
+entirely. They are cleared with the font now.
+
+And snapping had to be a switch rather than a modifier. The two modifiers a
+drag already uses are taken: shift holds it to one axis, alt pans the canvas. A
+third would have been a chord nobody would find.

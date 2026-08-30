@@ -3877,3 +3877,48 @@ test("a drawing can be carried from one letter to another", async ({ page }) => 
   await expect.poll(() => paths.innerText()).not.toBe(before);
   await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
 });
+
+test("guides run down the canvas as well as across it", async ({ page }) => {
+  /*
+   * The type was `{ y: number }`, so every guide was horizontal and there was
+   * no way to mark where a stem should stand or where a sidebearing should
+   * fall -- which is half of what anybody draws a guide for.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  await page.locator("[data-add-guide]").click();
+  await page.locator("[data-add-guide-vertical]").click();
+  await expect(page.locator("[data-clear-guides]")).toContainText("Clear 2");
+
+  // And they go with the font they were drawn against, because a guide is
+  // kept in font units and font units differ from one font to the next.
+  await page.locator("[data-clear-guides]").click();
+  await expect(page.locator("[data-clear-guides]")).toHaveCount(0);
+});
+
+test("a dragged point is pulled onto the lines worth landing on", async ({ page }) => {
+  /*
+   * Nothing snapped. A point landed wherever the pointer was let go of, and
+   * every coordinate this application shows is shown rounded -- so a letter
+   * drawn by dragging was off the grid in every coordinate and looked
+   * perfectly right until something measured it.
+   *
+   * What is asserted here is the switch and its wiring; where a point actually
+   * lands is asserted exactly in ten unit tests, which is where an assertion
+   * about a coordinate belongs.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  const snap = page.locator("[data-snap-toggle]");
+  // On to begin with, because a font is drawn on whole units and a tool whose
+  // help has to be switched on is a tool most people never switch on.
+  await expect(snap).toHaveAttribute("aria-pressed", "true");
+  await snap.click();
+  await expect(snap).toHaveAttribute("aria-pressed", "false");
+  await snap.click();
+  await expect(snap).toHaveAttribute("aria-pressed", "true");
+});

@@ -141,7 +141,16 @@ export interface AppState {
    * that vanished when you opened the next letter would be a guide you could
    * not line two letters up against.
    */
-  guides: Array<{ y: number }>;
+  /*
+   * A guide runs along one axis or the other.
+   *
+   * This was `{ y: number }`, so every guide was horizontal and there was no
+   * way to mark where a stem should stand or where a sidebearing should fall
+   * -- which is half of what anybody draws a guide for.
+   */
+  guides: Array<{ axis: "x" | "y"; at: number }>;
+  /** Whether a dragged point is pulled onto the lines worth landing on. */
+  snapping: boolean;
   /**
    * Which ground the type is drawn on, where type is looked at.
    *
@@ -223,6 +232,7 @@ class Store {
      */
     context: { before: "n", after: "n" },
     guides: [],
+    snapping: true,
     ground: "dark",
     selectedGlyph: null,
     selectedNodes: new Set(),
@@ -285,6 +295,16 @@ class Store {
       selectedGlyph: firstLetterName(typeface),
       selectedNodes: new Set(),
       selectedGlyphs: new Set(),
+      /*
+       * Guides go with the font they were drawn against.
+       *
+       * They are kept in font units, and font units are not the same size from
+       * one font to the next: a guide at 500 is the x-height of a
+       * thousand-unit font and a quarter of the way up a two-thousand-unit
+       * one. Left in place, they would arrive over the new font meaning
+       * something else entirely.
+       */
+      guides: [],
       busy: false,
       status: {
         message: `Opened — ${typeface.glyphs.length.toLocaleString()} glyphs`,
@@ -480,6 +500,7 @@ class Store {
       selectedGlyph: null,
       selectedNodes: new Set(),
       selectedGlyphs: new Set(),
+      guides: [],
       status: null,
     });
     this.captureControlBaseline();
@@ -519,14 +540,16 @@ class Store {
     this.set({ ground });
   }
 
-  /** Put a guide at a height, in font units. */
-  addGuide(y: number): void {
-    this.set({ guides: [...this.state.guides, { y: Math.round(y) }] });
+  /** Put a guide across the canvas or down it, in font units. */
+  addGuide(at: number, axis: "x" | "y" = "y"): void {
+    this.set({ guides: [...this.state.guides, { axis, at: Math.round(at) }] });
   }
 
-  /** Move one, while it is being dragged. */
-  moveGuide(index: number, y: number): void {
-    const guides = this.state.guides.map((one, at) => (at === index ? { y: Math.round(y) } : one));
+  /** Move one, while it is being dragged. Its axis is fixed when it is made. */
+  moveGuide(index: number, at: number): void {
+    const guides = this.state.guides.map((one, position) =>
+      position === index ? { ...one, at: Math.round(at) } : one,
+    );
     this.set({ guides });
   }
 
@@ -537,6 +560,17 @@ class Store {
   clearGuides(): void {
     if (this.state.guides.length === 0) return;
     this.set({ guides: [] });
+  }
+
+  /**
+   * Whether a dragged point is pulled onto the lines worth landing on.
+   *
+   * On to begin with, and a switch rather than a modifier because the two
+   * modifiers a drag already uses are taken: shift holds a drag to one axis
+   * and alt pans the canvas. A third would be a chord nobody would find.
+   */
+  setSnapping(snapping: boolean): void {
+    this.set({ snapping });
   }
   setSearch(search: string): void {
     this.set({ search });
