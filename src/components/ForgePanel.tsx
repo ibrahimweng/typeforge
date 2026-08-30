@@ -893,7 +893,7 @@ function Part({ part, mine }: { part: PartName; mine: boolean }): React.JSX.Elem
       <div className="flex items-baseline justify-between gap-2">
         <h4 className={cn("text-2xs font-medium", !mine && "text-muted-foreground")}>
           {spec.label}
-          {!mine && <span className="pl-1.5 font-normal">· not in {state.letter}</span>}
+          {!mine && <span className="font-normal"> · not in {state.letter}</span>}
         </h4>
         {pinned ? (
           <button

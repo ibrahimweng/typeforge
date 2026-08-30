@@ -92,6 +92,14 @@ export interface Shell {
   view: ViewId;
   setView: (view: ViewId) => void;
   openFile: () => void;
+  /**
+   * The folder door, which has to be its own.
+   *
+   * `webkitdirectory` is a property of the input element rather than of the
+   * click, so an input that picks folders cannot also pick files. This is that
+   * second input, not a second way of doing the same thing.
+   */
+  openFolder: () => void;
   export: () => void;
   save: () => void;
   newProject: () => void;
@@ -195,6 +203,16 @@ export function catalogue(shell: Shell): Item[] {
     also: ["import", "load", "ttf", "otf", "woff", "woff2", "browse", "file", "drop"],
     destructive: true,
     run: shell.openFile,
+  });
+  add({
+    id: "action:open-folder",
+    kind: "action",
+    group: "Actions",
+    label: "Open a UFO folder",
+    hint: "A UFO is a folder rather than a file, which is why it has its own way in: one file input can pick files or folders and not both.",
+    also: ["ufo", "folder", "directory", "source", "robofont", "glyphs", "designspace", "import"],
+    destructive: true,
+    run: shell.openFolder,
   });
   add({
     id: "action:library",

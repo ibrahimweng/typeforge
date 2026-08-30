@@ -23,6 +23,7 @@ const shell = {
   view: "grid",
   setView: () => {},
   openFile: () => {},
+  openFolder: () => {},
   export: () => {},
   save: () => {},
   newProject: () => {},

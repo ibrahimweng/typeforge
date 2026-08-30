@@ -33,6 +33,8 @@ import { fileNameFor, restore, session } from "@/project/session";
 import type { Keeping } from "@/components/TopBar";
 import { libraryStore } from "@/state/useLibrary";
 import { store, useAppState, type ViewId } from "@/state/useStore";
+import type { UfoFiles } from "@/ufo/font";
+import { filesFromDrop, filesFromPicker, filesFromZip, looksZipped } from "@/ufo/intake";
 import { FontGridView } from "@/views/FontGridView";
 import { GlyphEditorView } from "@/views/GlyphEditorView";
 import { KerningView } from "@/views/KerningView";
@@ -85,6 +87,21 @@ function libraryMode(mode: Mode): Exclude<SavedMode, "quill"> {
  */
 const SHOWS_INSPECTOR = new Set<ViewId>(["grid", "glyph", "metrics", "proof"]);
 
+/**
+ * What the folder somebody picked was called.
+ *
+ * A picked folder gives every file the path it had inside it, so the name is
+ * the first segment of any of them. Only for saying so on screen -- nothing
+ * about reading the font depends on it.
+ */
+function folderNameOf(files: FileList): string | null {
+  for (const file of Array.from(files)) {
+    const path = (file as File & { webkitRelativePath?: string }).webkitRelativePath;
+    if (path) return path.split("/")[0];
+  }
+  return null;
+}
+
 export function App(): React.JSX.Element {
   const state = useAppState();
   const forge = useForge();
@@ -112,6 +129,19 @@ export function App(): React.JSX.Element {
   const [dragging, setDragging] = React.useState(false);
   const [keeping, setKeeping] = React.useState<Keeping>("unknown");
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const folderRef = React.useRef<HTMLInputElement>(null);
+  /*
+   * Set through a ref rather than written in the JSX, because React does not
+   * know the attribute: `webkitdirectory` is not in its list of properties, so
+   * writing it as a prop puts the string "true" on the element and the browser
+   * ignores it. It has to be a real attribute, set on the node.
+   */
+  React.useEffect(() => {
+    const input = folderRef.current;
+    if (!input) return;
+    input.setAttribute("webkitdirectory", "");
+    input.setAttribute("directory", "");
+  }, []);
   const stageRef = React.useRef<HTMLDivElement>(null);
   const previousView = React.useRef(state.view);
 
@@ -341,19 +371,58 @@ export function App(): React.JSX.Element {
    * project saved as "Bakerloo.typeforge" is as likely to reach here called
    * "Bakerloo (1).typeforge" or nothing recognisable at all.
    */
+  /*
+   * A folder of files, which is what a UFO is.
+   *
+   * Reached three ways and handled once. Everything about the format lives in
+   * `src/ufo`; what is here is the decision that this pile of files is a font
+   * rather than something else somebody dropped.
+   */
+  const openUfo = React.useCallback(async (files: UfoFiles, name: string) => {
+    await store.loadUfo(files, name);
+    setMode("edit");
+  }, []);
+
   const openFiles = React.useCallback(
     async (files: FileList | null) => {
       const file = files?.[0];
       if (!file) return;
+
+      /*
+       * More than one file means a folder was picked, and the only folder this
+       * opens is a UFO. The picker sets `webkitRelativePath` on every file it
+       * hands over, which is the only reason the folder can be reassembled at
+       * all -- a plain multiple-file input gives the same files with no idea
+       * which directory any of them was in.
+       */
+      if (files.length > 1) {
+        const ufo = await filesFromPicker(files);
+        if (ufo) {
+          await openUfo(ufo, folderNameOf(files) ?? "a folder");
+          return;
+        }
+        store.say("That folder is not a UFO: it has no metainfo.plist in it.", "error");
+        return;
+      }
+
       const bytes = new Uint8Array(await file.arrayBuffer());
       if (detectFormat(bytes) !== "unknown") {
         await store.loadFont(bytes, file.name);
         sendScriptToTrace(bytes, file.name);
         return;
       }
+      // A `.ufoz` is a zipped UFO and part of the format; a folder somebody
+      // compressed to send is the same thing by a different route.
+      if (looksZipped(bytes)) {
+        const ufo = filesFromZip(bytes);
+        if (ufo) {
+          await openUfo(ufo, file.name.replace(/\.(ufoz|zip)$/i, ".ufo"));
+          return;
+        }
+      }
       await openProject(file, bytes);
     },
-    [openProject, sendScriptToTrace],
+    [openProject, openUfo, sendScriptToTrace],
   );
 
   /*
@@ -364,7 +433,16 @@ export function App(): React.JSX.Element {
    * else in this application the drop takes every file rather than the first.
    */
   const dropFiles = React.useCallback(
-    async (files: FileList | null) => {
+    async (files: FileList | null, items?: DataTransferItemList) => {
+      // A folder first, because a dropped folder also arrives as a list of the
+      // files inside it and would otherwise open as whichever came first.
+      if (items) {
+        const ufo = await filesFromDrop(items);
+        if (ufo) {
+          await openUfo(ufo, "the folder you dropped");
+          return;
+        }
+      }
       // A pile of drawings is what this half is for, so that is where a drop
       // goes -- unless it is one saved project, which is a thing somebody drags
       // in from wherever they keep their work and should not have to be in the
@@ -377,7 +455,7 @@ export function App(): React.JSX.Element {
       }
       await openFiles(files);
     },
-    [mode, openFiles],
+    [mode, openFiles, openUfo],
   );
 
   /*
@@ -395,6 +473,7 @@ export function App(): React.JSX.Element {
       view: state.view,
       setView: (view) => store.setView(view),
       openFile: () => inputRef.current?.click(),
+      openFolder: () => folderRef.current?.click(),
       export: () => setExporting(true),
       save: saveProject,
       newProject: () => {
@@ -490,7 +569,14 @@ export function App(): React.JSX.Element {
       onDrop={(event) => {
         event.preventDefault();
         setDragging(false);
-        void dropFiles(event.dataTransfer.files);
+        /*
+         * The entries are reached for here, synchronously, and not inside the
+         * handler that awaits them. A `DataTransferItemList` is emptied the
+         * moment this returns, so an implementation that waits first and looks
+         * afterwards finds an empty list and no folder -- which is the single
+         * most common way a folder drop is got wrong.
+         */
+        void dropFiles(event.dataTransfer.files, event.dataTransfer.items);
       }}
     >
       <TopBar
@@ -528,10 +614,30 @@ export function App(): React.JSX.Element {
         {helping && <HelpDrawer onClose={() => setHelping(false)} />}
       </div>
 
+      {/*
+        A second input, and it has to be a second one.
+
+        `webkitdirectory` is a property of the element, not of the click, so an
+        input carrying it can only ever pick folders and one without it can
+        only ever pick files. A single button cannot offer both, which is why
+        Open opens a file and the folder has its own way in.
+      */}
+      <input
+        ref={folderRef}
+        type="file"
+        multiple
+        className="hidden"
+        data-open-folder-input
+        onChange={(event) => {
+          void openFiles(event.target.files);
+          event.target.value = "";
+        }}
+      />
+
       <input
         ref={inputRef}
         type="file"
-        accept=".ttf,.otf,.woff,.woff2,.typeforge,font/ttf,font/otf,font/woff,font/woff2,application/json"
+        accept=".ttf,.otf,.woff,.woff2,.typeforge,.ufoz,.zip,font/ttf,font/otf,font/woff,font/woff2,application/json,application/zip"
         className="hidden"
         data-open-input
         onChange={(event) => {

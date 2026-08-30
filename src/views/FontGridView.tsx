@@ -14,7 +14,7 @@ import { drawGlyph, fitEmSquare, formatCodepoint, glyphLabel, prepareCanvas, rea
 import { groupGlyphs } from "@/font/groups";
 import type { Glyph, Typeface } from "@/font/types";
 import { store, useAppState } from "@/state/useStore";
-import { PRIMARY_ACTION, tile } from "@/components/controls";
+import { OUTLINE_ACTION, PRIMARY_ACTION, tile } from "@/components/controls";
 import { CoachMark } from "@/components/CoachMark";
 import { cn } from "@/ui/lib/utils";
 
@@ -367,9 +367,31 @@ function EmptyState(): React.JSX.Element {
         Drop a TrueType, OpenType, WOFF or WOFF2 file anywhere in this window, or use Open in the
         toolbar. Open takes a saved Typeforge project too.
       </p>
-      <button type="button" onClick={() => void store.loadSample()} className={PRIMARY_ACTION}>
-        Try the sample font
-      </button>
+      {/*
+        Said here because here is where somebody who has one is standing.
+
+        A UFO is the file a designer is actually working in, and the first
+        thing they will try is to open it. It cannot go through the button
+        beside it -- an input that picks folders cannot pick files -- so it
+        needs its own, and the empty state is the one screen where there is
+        room to explain why there are two.
+      */}
+      <p className="max-w-sm text-xs-plus text-muted-foreground">
+        A UFO is a folder rather than a file. Drop the whole folder in, or pick it below.
+      </p>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <button type="button" onClick={() => void store.loadSample()} className={PRIMARY_ACTION}>
+          Try the sample font
+        </button>
+        <button
+          type="button"
+          onClick={() => document.querySelector<HTMLInputElement>("[data-open-folder-input]")?.click()}
+          data-open-folder
+          className={OUTLINE_ACTION}
+        >
+          Open a UFO folder
+        </button>
+      </div>
       <p className="max-w-sm text-2xs text-muted-foreground">
         A small Latin face to take the controls for a run. Nothing is uploaded — every font you open
         stays in this browser.

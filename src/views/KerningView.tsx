@@ -243,8 +243,8 @@ export function KerningView(): React.JSX.Element {
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {option}
-              <span className="pl-1 tabular-nums opacity-60">
+              {option}{" "}
+              <span className="tabular-nums opacity-60">
                 {option === "pairs" ? typeface.kerning.length : typeface.kernClasses.length}
               </span>
             </button>
