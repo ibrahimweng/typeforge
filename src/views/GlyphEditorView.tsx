@@ -14,6 +14,7 @@ import * as React from "react";
 
 import { contourSegments, contoursBounds, contoursToPath2D } from "@/font/geometry";
 import { classifyNodes } from "@/font/quadratic";
+import { boxOf, shapeFrom, type ShapeKind } from "@/font/shapes";
 import { resolveComponents } from "@/font/composite";
 import { resolveAdvanceWidth, resolveGlyphContours } from "@/font/transform";
 import type { Anchor, Contour, Glyph, GlyphNode, Typeface, Vec2 } from "@/font/types";
@@ -29,6 +30,7 @@ import { nodeKey, store, useAppState, type NodeRef } from "@/state/useStore";
 import { CoachMark } from "@/components/CoachMark";
 import { GroundToggle } from "@/components/GroundToggle";
 import { NumberField } from "@/components/NumberField";
+import { ToolPalette } from "@/components/ToolPalette";
 
 /** How close a click has to land, in screen pixels, to grab a node. */
 const HIT_RADIUS = 7;
@@ -60,7 +62,16 @@ type Drag =
   | { kind: "marquee"; from: Vec2; to: Vec2; additive: boolean }
   | { kind: "anchor"; name: string; before: Anchor[] }
   | { kind: "pan"; from: Vec2; startPan: Vec2 }
-  | { kind: "guide"; index: number };
+  | { kind: "guide"; index: number }
+  /*
+   * The two that draw rather than move. Both hold canvas coordinates and
+   * neither touches the letter until the pointer comes up: a shape half
+   * dragged is not a shape, and a knife stroke that has not been let go of is
+   * not a cut. Everything they show in the meantime is drawn over the canvas
+   * and belongs to nothing.
+   */
+  | { kind: "shape"; kind2: ShapeKind; from: Vec2; to: Vec2 }
+  | { kind: "knife"; from: Vec2; to: Vec2 };
 
 export function GlyphEditorView(): React.JSX.Element {
   const state = useAppState();
@@ -73,6 +84,16 @@ export function GlyphEditorView(): React.JSX.Element {
   const [zoom, setZoom] = React.useState(1);
   const [pan, setPan] = React.useState<Vec2>({ x: 0, y: 0 });
   const dragRef = React.useRef<Drag | null>(null);
+  /*
+   * The modifiers as of the last pointer move, because a pointer-up event
+   * carries none that can be trusted: letting go of shift a moment before the
+   * button is a thing hands do and is not a change of mind about wanting a
+   * square.
+   */
+  const modifiersRef = React.useRef<{ square: boolean; fromCentre: boolean }>({
+    square: false,
+    fromCentre: false,
+  });
   const [hover, setHover] = React.useState<Hover>(null);
   const [, forceRender] = React.useReducer((n: number) => n + 1, 0);
 
@@ -230,6 +251,8 @@ export function GlyphEditorView(): React.JSX.Element {
 
     const drag = dragRef.current;
     if (drag?.kind === "marquee") drawMarquee(context, drag);
+    if (drag?.kind === "shape") drawShapePreview(context, drag, view, modifiersRef.current);
+    if (drag?.kind === "knife") drawKnifePreview(context, drag);
     /*
      * `state.ground` is in here for the reason it is in the proof view: every
      * colour on this canvas comes from `readToken`, which reads a custom
@@ -274,6 +297,21 @@ export function GlyphEditorView(): React.JSX.Element {
 
     if (state.tool === "pen") {
       addPoint(glyph, view, canvasPoint);
+      return;
+    }
+
+    /*
+     * A drawing tool takes the whole canvas. There is nothing under the
+     * pointer to grab while a rectangle is being dragged out, and a knife that
+     * picked up a node the moment it started on one would be a knife that
+     * could not cut through a corner.
+     */
+    if (state.tool === "rectangle" || state.tool === "ellipse") {
+      dragRef.current = { kind: "shape", kind2: state.tool, from: canvasPoint, to: canvasPoint };
+      return;
+    }
+    if (state.tool === "knife") {
+      dragRef.current = { kind: "knife", from: canvasPoint, to: canvasPoint };
       return;
     }
 
@@ -336,7 +374,7 @@ export function GlyphEditorView(): React.JSX.Element {
    * canvas, so comparing first is what keeps hovering free.
    */
   const updateHover = (canvasPoint: Vec2): void => {
-    if (!glyph || state.tool === "pen") {
+    if (!glyph || state.tool !== "select") {
       setHover((current) => (current === null ? current : null));
       return;
     }
@@ -363,6 +401,7 @@ export function GlyphEditorView(): React.JSX.Element {
       return;
     }
     const canvasPoint = pointerPosition(event);
+    modifiersRef.current = { square: event.shiftKey, fromCentre: event.altKey };
 
     /*
      * A guide moves without a glyph, and before the glyph guard below.
@@ -432,7 +471,9 @@ export function GlyphEditorView(): React.JSX.Element {
         );
         break;
       }
-      case "marquee": {
+      case "marquee":
+      case "shape":
+      case "knife": {
         drag.to = canvasPoint;
         forceRender();
         break;
@@ -486,6 +527,30 @@ export function GlyphEditorView(): React.JSX.Element {
         });
       });
       store.setSelectedNodes(selection);
+      forceRender();
+    } else if (drag.kind === "shape") {
+      /*
+       * Shift squares it off and alt draws from the middle, as in every
+       * drawing tool. Read off the last move rather than off the pointer-up,
+       * because letting go of the modifier a moment before the button is a
+       * thing hands do and is not a change of mind.
+       */
+      store.addShape(
+        glyph.name,
+        drag.kind2,
+        boxOf(
+          { x: toFontX(view, drag.from.x), y: toFontY(view, drag.from.y) },
+          { x: toFontX(view, drag.to.x), y: toFontY(view, drag.to.y) },
+          modifiersRef.current,
+        ),
+      );
+      forceRender();
+    } else if (drag.kind === "knife") {
+      store.cutGlyph(
+        glyph.name,
+        { x: toFontX(view, drag.from.x), y: toFontY(view, drag.from.y) },
+        { x: toFontX(view, drag.to.x), y: toFontY(view, drag.to.y) },
+      );
       forceRender();
     }
   };
@@ -621,6 +686,8 @@ export function GlyphEditorView(): React.JSX.Element {
         keep the colours they were designed with. That is the whole scope of
         this -- the surface a letter is judged on, not a theme.
       */}
+      <div className="flex min-h-0 flex-1">
+      <ToolPalette />
       <div
         ref={measure}
         data-ground={state.ground}
@@ -649,6 +716,7 @@ export function GlyphEditorView(): React.JSX.Element {
           <span>{Math.round(zoom * 100)}%</span>
           {state.selectedNodes.size > 1 && <span>{state.selectedNodes.size} points</span>}
         </div>
+      </div>
       </div>
       <Numbers glyph={glyph} typeface={typeface} selected={state.selectedNodes} />
     </div>
@@ -810,7 +878,10 @@ function guideAt(
  * or over empty space, so the only way to find out is to click and see.
  */
 function cursorFor(tool: string, hover: Hover): string {
-  if (tool === "pen") return "cursor-crosshair";
+  // Everything that draws gets a crosshair, because everything that draws
+  // starts from a point rather than from something already on the canvas --
+  // and the arrow's tip is not where the arrow appears to be pointing.
+  if (tool !== "select") return "cursor-crosshair";
   return hover ? "cursor-grab" : "cursor-default";
 }
 
@@ -1081,6 +1152,48 @@ function drawMarquee(context: CanvasRenderingContext2D, drag: Extract<Drag, { ki
   const height = Math.abs(drag.to.y - drag.from.y);
   context.fillRect(x, y, width, height);
   context.strokeRect(x + 0.5, y + 0.5, width, height);
+  context.restore();
+}
+
+/**
+ * The shape as it is being dragged out.
+ *
+ * Drawn from the same box the shape will be built from rather than from the
+ * raw drag, so what is on screen while the pointer is down is the shape that
+ * lands when it comes up -- squared off if shift is held, rounded onto whole
+ * units, and grown from the middle under alt. A preview that showed the raw
+ * drag would jump the moment the button was let go.
+ */
+function drawShapePreview(
+  context: CanvasRenderingContext2D,
+  drag: Extract<Drag, { kind: "shape" }>,
+  view: GlyphView,
+  modifiers: { square: boolean; fromCentre: boolean },
+): void {
+  const box = boxOf(
+    { x: toFontX(view, drag.from.x), y: toFontY(view, drag.from.y) },
+    { x: toFontX(view, drag.to.x), y: toFontY(view, drag.to.y) },
+    modifiers,
+  );
+  const shape = shapeFrom(drag.kind2, box, false);
+  if (!shape) return;
+  const accent = readToken("--accent", "#0c8ce9", context.canvas);
+  drawContours(context, [shape], view, { fill: withAlpha(accent, 0.18) });
+}
+
+/** The knife stroke, as a dashed line: a cut is a line and not a shape. */
+function drawKnifePreview(
+  context: CanvasRenderingContext2D,
+  drag: Extract<Drag, { kind: "knife" }>,
+): void {
+  context.save();
+  context.strokeStyle = readToken("--destructive", "#e5484d", context.canvas);
+  context.lineWidth = 1;
+  context.setLineDash([4, 3]);
+  context.beginPath();
+  context.moveTo(drag.from.x + 0.5, drag.from.y + 0.5);
+  context.lineTo(drag.to.x + 0.5, drag.to.y + 0.5);
+  context.stroke();
   context.restore();
 }
 

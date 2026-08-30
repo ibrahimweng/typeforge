@@ -3516,3 +3516,98 @@ test("the tidy button says what it would do before it does it", async ({ page })
   await tidy.click();
   await expect(page.getByText(`Removed ${count} point`, { exact: false })).toBeVisible();
 });
+
+test("dragging a shape into a letter, and cutting it back out", async ({ page }) => {
+  /*
+   * The two tools that make and unmake a whole shape, used together, which is
+   * also the only way to test the knife against geometry a test can be sure
+   * of: a rectangle dragged into a known corner of the canvas is a rectangle
+   * a cut through that corner is certain to cross.
+   *
+   * The exact arithmetic is asserted where it can be exact -- twenty-seven
+   * unit tests on the two modules, including the case that matters most, a
+   * cut landing on the points a letter already carries. What is asked here is
+   * that a drag on the canvas reaches them.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  const tools = page.getByRole("group", { name: "Tool" });
+  const canvas = page.locator("canvas").first();
+  const area = (await canvas.boundingBox())!;
+  const paths = page.locator("[data-paths-panel]");
+  const before = await paths.innerText();
+
+  await tools.getByRole("button", { name: "Rectangle" }).click();
+  // Everything that draws starts from a point rather than from something
+  // already on the canvas, so everything that draws gets a crosshair.
+  await expect(canvas).toHaveClass(/cursor-crosshair/);
+
+  await page.mouse.move(area.x + 40, area.y + 40);
+  await page.mouse.down();
+  await page.mouse.move(area.x + 170, area.y + 150, { steps: 5 });
+  await page.mouse.up();
+
+  await expect.poll(() => paths.innerText()).not.toBe(before);
+  // A shape somebody just drew is left picked, because the next thing anybody
+  // does with one is move it or scale it.
+  await expect(page.locator("[data-transform-scope]")).toContainText("4 points");
+
+  await tools.getByRole("button", { name: "Knife" }).click();
+  await page.mouse.move(area.x + 20, area.y + 95);
+  await page.mouse.down();
+  await page.mouse.move(area.x + 200, area.y + 95, { steps: 5 });
+  await page.mouse.up();
+
+  await expect(page.getByText("Cut into", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+});
+
+test("a knife stroke that misses says so rather than looking like it worked", async ({ page }) => {
+  /*
+   * A stroke that fell short of the outline, or grazed it without going
+   * through, looks exactly like one that worked until you try to drag the half
+   * that was never made.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  const canvas = page.locator("canvas").first();
+  const area = (await canvas.boundingBox())!;
+  await page.getByRole("group", { name: "Tool" }).getByRole("button", { name: "Knife" }).click();
+
+  // Along the very top of the canvas, which is above the ascender and so above
+  // anything a letter reaches.
+  await page.mouse.move(area.x + 5, area.y + 4);
+  await page.mouse.down();
+  await page.mouse.move(area.x + 60, area.y + 4, { steps: 3 });
+  await page.mouse.up();
+
+  await expect(page.getByText("did not go through anything", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
+});
+
+test("the tools answer to a single key, as in every drawing application", async ({ page }) => {
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  const tools = page.getByRole("group", { name: "Tool" });
+  await page.keyboard.press("k");
+  await expect(tools.getByRole("button", { name: "Knife" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.keyboard.press("o");
+  await expect(tools.getByRole("button", { name: "Ellipse" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.keyboard.press("v");
+  await expect(tools.getByRole("button", { name: "Select" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+});

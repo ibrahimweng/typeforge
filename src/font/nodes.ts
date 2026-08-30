@@ -18,7 +18,7 @@
  * two numbers that judgement rests on are argued for where they are declared.
  */
 
-import { distance } from "./geometry";
+import { cubicAt, distance, splitCubic } from "./geometry";
 import type { Contour, GlyphNode, NodeType, Vec2 } from "./types";
 
 /**
@@ -306,21 +306,7 @@ function parameterAt(
   want: number,
   fromEnd: "start" | "end",
 ): number {
-  const at = (t: number): Vec2 => {
-    const u = 1 - t;
-    return {
-      x:
-        u * u * u * curve[0].x +
-        3 * u * u * t * curve[1].x +
-        3 * u * t * t * curve[2].x +
-        t * t * t * curve[3].x,
-      y:
-        u * u * u * curve[0].y +
-        3 * u * u * t * curve[1].y +
-        3 * u * t * t * curve[2].y +
-        t * t * t * curve[3].y,
-    };
-  };
+  const at = (t: number): Vec2 => cubicAt(curve[0], curve[1], curve[2], curve[3], t);
   const anchor = fromEnd === "start" ? curve[0] : curve[3];
   // Asked for more than half the segment, stop at the middle exactly rather
   // than converging on it: half a segment is the answer, not an approximation
@@ -336,24 +322,6 @@ function parameterAt(
   }
   const found = (low + high) / 2;
   return fromEnd === "start" ? found : 1 - found;
-}
-
-/** Split a cubic in two at a parameter, in the four-point form used here. */
-function splitAt(
-  curve: [Vec2, Vec2, Vec2, Vec2],
-  t: number,
-): [[Vec2, Vec2, Vec2, Vec2], [Vec2, Vec2, Vec2, Vec2]] {
-  const mix = (a: Vec2, b: Vec2): Vec2 => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
-  const p01 = mix(curve[0], curve[1]);
-  const p12 = mix(curve[1], curve[2]);
-  const p23 = mix(curve[2], curve[3]);
-  const p012 = mix(p01, p12);
-  const p123 = mix(p12, p23);
-  const middle = mix(p012, p123);
-  return [
-    [curve[0], p01, p012, middle],
-    [middle, p123, p23, curve[3]],
-  ];
 }
 
 /** The segment between two nodes as four points, and whether it was straight. */
@@ -396,8 +364,8 @@ export function openCorner(contour: Contour, index: number, by: number = OPEN_BY
   if (distance(before.point, here.point) < 1e-9) return contour;
   if (distance(here.point, after.point) < 1e-9) return contour;
 
-  const [backHalf] = splitAt(arriving.curve, parameterAt(arriving.curve, by, "end"));
-  const [, frontHalf] = splitAt(leaving.curve, parameterAt(leaving.curve, by, "start"));
+  const [backHalf] = splitCubic(...arriving.curve, parameterAt(arriving.curve, by, "end"));
+  const [, frontHalf] = splitCubic(...leaving.curve, parameterAt(leaving.curve, by, "start"));
 
   const first: GlyphNode = {
     point: backHalf[3],

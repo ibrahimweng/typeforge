@@ -53,6 +53,8 @@ import {
 import sampleFontUrl from "@/assets/typeforge-sample.ttf?url";
 import { readUfo, writeUfo, type UfoCarried, type UfoFiles } from "@/ufo/font";
 import { correctDirection, dominantConvention, insertExtrema } from "@/font/outline";
+import { slice } from "@/font/knife";
+import { shapeFrom, type Box, type ShapeKind } from "@/font/shapes";
 import {
   cornered,
   isOnGrid,
@@ -79,7 +81,15 @@ import { ready as readyToCut, subtract, unite } from "@/font/boolean";
 const SAMPLE_FILE_NAME = "TypeforgeSample-Regular.ttf";
 
 export type ViewId = "grid" | "glyph" | "kerning" | "metrics" | "proof" | "report";
-export type ToolId = "select" | "pen";
+/*
+ * The tools, which are the ones Glyphs Mini has and in the order it has them.
+ *
+ * Pan and zoom are not among them and never were: they are alt-drag and
+ * ctrl-wheel, on the canvas, under whichever tool is in hand. A tool you have
+ * to pick before you can move the page is a tool that takes your place in the
+ * work away every time you look at something.
+ */
+export type ToolId = "select" | "pen" | "rectangle" | "ellipse" | "knife";
 
 /** A node's address within a glyph, used for selection. */
 export interface NodeRef {
@@ -688,6 +698,66 @@ class Store {
         }),
       }));
     });
+  }
+
+  /*
+   * The tools that make and unmake whole shapes.
+   *
+   * A rectangle and an ellipse because type is full of both -- a stem is a
+   * rectangle, a bar is a rectangle, the dot on an `i` is a circle -- and a
+   * knife because dividing a shape is the operation no boolean can express:
+   * taking the top off a stem, splitting a bowl from the stem it hangs on.
+   */
+
+  /**
+   * Drop a dragged shape into the letter, wound the way the font is wound.
+   *
+   * The convention is read off the font rather than imposed, exactly as
+   * correcting a direction reads it. Which way a contour runs decides whether
+   * it fills or cuts a hole, so a rectangle added to a UFO with a TrueType
+   * winding is a rectangle that punches a hole in the letter it was added to.
+   */
+  addShape(glyphName: string, kind: ShapeKind, box: Box): void {
+    const typeface = this.state.typeface;
+    if (!typeface) return;
+    const clockwise = dominantConvention(typeface.glyphs) === "truetype";
+    const shape = shapeFrom(kind, box, clockwise);
+    if (!shape) return;
+    this.editGlyph(glyphName, kind === "rectangle" ? "Draw a rectangle" : "Draw an ellipse", (one) => {
+      one.contours = [...one.contours, shape];
+    });
+    // Left selected, because the next thing anybody does with a shape they
+    // just drew is move it or scale it, and both need it picked.
+    const contour = (this.glyph(glyphName)?.contours.length ?? 1) - 1;
+    this.set({
+      selectedNodes: new Set(shape.nodes.map((_, node) => nodeKey({ contour, node }))),
+    });
+  }
+
+  /**
+   * Cut the letter along a dragged line.
+   *
+   * Says when the line missed rather than pushing an edit that changed
+   * nothing: a knife stroke that fell short of the outline, or grazed it
+   * without going through, looks exactly like one that worked until you try to
+   * drag the half that was never made.
+   */
+  cutGlyph(glyphName: string, from: Vec2, to: Vec2): void {
+    const glyph = this.glyph(glyphName);
+    if (!glyph) return;
+    const cut = slice(glyph.contours, from, to);
+    if (!cut) {
+      this.say("That cut did not go through anything. Drag right across a shape.", "error");
+      return;
+    }
+    const made = cut.length - glyph.contours.length;
+    this.editGlyph(glyphName, "Cut", (one) => {
+      one.contours = cut;
+    });
+    // The point indices have all moved, so a selection kept from before would
+    // be pointing at whatever now happens to sit at those numbers.
+    this.set({ selectedNodes: new Set() });
+    this.say(`Cut into ${made + 1} piece${made === 0 ? "" : "s"}.`, "success");
   }
 
   /*

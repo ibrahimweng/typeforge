@@ -9,7 +9,7 @@ import type { Mode } from "@/App";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
 import { forgeStore, useForge } from "@/state/useForge";
 import { quillStore, useQuill } from "@/state/useQuill";
-import { store, useAppState, type ToolId, type ViewId } from "@/state/useStore";
+import { store, useAppState, type ViewId } from "@/state/useStore";
 import {
   OUTLINE_ACTION,
   PRIMARY_ACTION,
@@ -26,11 +26,6 @@ const VIEWS: Array<{ id: ViewId; label: string }> = [
   { id: "metrics", label: "Spacing" },
   { id: "proof", label: "Proof" },
   { id: "report", label: "Checks" },
-];
-
-const TOOLS: Array<{ id: ToolId; label: string; hint: string }> = [
-  { id: "select", label: "Select", hint: "Select and move points (V)" },
-  { id: "pen", label: "Pen", hint: "Add points to an outline (P)" },
 ];
 
 /** Whether the work is being written down between visits. */
@@ -106,19 +101,6 @@ export function TopBar({
             canRedo: state.canRedo,
           };
 
-  // Single-key shortcuts for the tools, as in every drawing application.
-  React.useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (event.key === "v") store.setTool("select");
-      if (event.key === "p") store.setTool("pen");
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
   return (
     /*
       Wraps rather than spills, and wraps into rows rather than into a gap.
@@ -189,23 +171,6 @@ export function TopBar({
           </button>
         ))}
       </div>
-
-      {state.view === "glyph" && (
-        <div className={cn(SEGMENT_TRACK, mode !== "edit" && "hidden")} role="group" aria-label="Tool">
-          {TOOLS.map((tool) => (
-            <button
-              key={tool.id}
-              type="button"
-              title={tool.hint}
-              aria-pressed={state.tool === tool.id}
-              onClick={() => store.setTool(tool.id)}
-              className={segment(state.tool === tool.id)}
-            >
-              {tool.label}
-            </button>
-          ))}
-        </div>
-      )}
 
       <div className="flex items-center gap-0.5">
         <button
