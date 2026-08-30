@@ -78,7 +78,7 @@ export class Boundary extends React.Component<Props, State> {
           </pre>
           <p className="text-sm text-muted-foreground">
             Reloading is worth trying first. If it stops again in the same place, the work kept in
-            this browser is the likely cause and clearing it will get you moving -- though it does
+            this browser is the likely cause and clearing it will get you moving — though it does
             mean losing whatever was in it, so export anything you still want first if you can.
           </p>
           <div className="flex flex-wrap gap-2">

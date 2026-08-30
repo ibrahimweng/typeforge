@@ -124,7 +124,7 @@ export function TopBar({
 
       Every control in here is fixed-width and there are now three groups of
       them, so below about twelve hundred pixels the row is longer than the
-      window -- and a flex row that will not wrap does not hide its overflow, it
+      window — and a flex row that will not wrap does not hide its overflow, it
       puts it past the right-hand edge where nothing can reach it. Export was
       the first thing over the side, which is the one button somebody came here
       to press. A second line at a narrow window is a smaller cost than a
@@ -260,7 +260,7 @@ export function TopBar({
         {/*
           Said once, quietly, and only when it is worth saying.
 
-          "Kept" is the ordinary state and needs no announcement -- it is on the
+          "Kept" is the ordinary state and needs no announcement — it is on the
           Save button's hover. What has to be visible is the other one: a
           private window, or storage switched off, means the work is not being
           kept and somebody should know that before they spend an afternoon in
@@ -293,7 +293,7 @@ export function TopBar({
           a thing somebody opens, so the toolbar was about to carry "Open font"
           next to "Open" and leave anybody to work out which was which. What
           arrives is identified from its own first bytes rather than from its
-          name or from which button was pressed, so one button does both -- and
+          name or from which button was pressed, so one button does both — and
           it is here in every mode, because a project can be a drawing or a
           pile of drawings as easily as a font.
         */}

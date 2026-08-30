@@ -13,6 +13,7 @@ import { AssemblePanel } from "@/components/AssemblePanel";
 import { ExportDialog } from "@/components/ExportDialog";
 import { ForgeExportDialog } from "@/components/ForgeExportDialog";
 import { ForgePanel } from "@/components/ForgePanel";
+import { QuillExportDialog } from "@/components/QuillExportDialog";
 import { QuillPanel } from "@/components/QuillPanel";
 import { HelpDrawer } from "@/components/HelpDrawer";
 import { LibraryDialog } from "@/components/LibraryDialog";
@@ -21,7 +22,7 @@ import { Inspector } from "@/components/Inspector";
 import { TopBar } from "@/components/TopBar";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
 import { forgeStore, useForge } from "@/state/useForge";
-import { quillStore } from "@/state/useQuill";
+import { quillStore, useQuill } from "@/state/useQuill";
 import { castFor, castOf, cutsFor, cutsOf } from "@/forge/document";
 import { ready as readyToCut } from "@/font/boolean";
 import { detectFormat } from "@/font/parse";
@@ -45,20 +46,20 @@ import { ReportView } from "@/views/ReportView";
 export type Mode = "edit" | "forge" | "assemble" | "quill";
 
 /**
- * The half of the application a saved session records.
+ * The half a font chosen from the library is opened into.
  *
- * Three of the four, and Trace is the one left out on purpose. What a session
- * remembers is which half you were in so that opening the tab again puts you
- * back there, and it is worth being put back only where there is a document to
- * be put back into. A traced font is not in the file format -- it is somebody
- * else's outlines read into strokes, and writing those into a `.typeforge`
- * would be writing their font into your project file.
+ * Three of the four, and Trace is the one left out: the library offers fonts to
+ * work on, and Trace's own panel reads a font in for itself with a progress bar
+ * and a stop button, because tracing one takes most of a minute. A library that
+ * silently started that would be a very different button from the one next to
+ * it. Somebody in Trace who picks from the library lands in Edit, which is
+ * where a font opens everywhere else.
  *
- * So Trace records the half underneath it instead of itself. Coming back lands
- * on a document that is really there rather than on an empty Trace view
- * claiming to be where you left off.
+ * This is *not* what a session records. A saved document keeps whichever half
+ * was open, Trace included -- see `TracedProject`, where what is written and
+ * what deliberately is not are argued.
  */
-function saveableMode(mode: Mode): SavedMode {
+function libraryMode(mode: Mode): Exclude<SavedMode, "quill"> {
   return mode === "quill" ? "edit" : mode;
 }
 
@@ -66,6 +67,7 @@ export function App(): React.JSX.Element {
   const state = useAppState();
   const forge = useForge();
   const assemble = useAssemble();
+  const traced = useQuill();
   const [exporting, setExporting] = React.useState(false);
   const [helping, setHelping] = React.useState(false);
   const [quick, setQuick] = React.useState(false);
@@ -167,7 +169,7 @@ export function App(): React.JSX.Element {
         if (live) {
           // Whether this browser will keep anything is not a question with an
           // answer until something has been written, so it is asked by writing.
-          setKeeping((await keeper.now(() => session(saveableMode(was)))) ? "kept" : "off");
+          setKeeping((await keeper.now(() => session(was))) ? "kept" : "off");
         }
         restoring.current = false;
       }
@@ -186,10 +188,21 @@ export function App(): React.JSX.Element {
    * the moment of restoring: putting a document back is itself a change, and
    * without it the first thing a restored session does is save itself again.
    */
-  const revisions = `${state.revision}:${forge.revision}:${assemble.revision}:${mode}`;
+  /*
+   * Every store's revision, and the fourth was missing for as long as Trace
+   * existed.
+   *
+   * This string is the whole of what tells the keeper something changed. A
+   * store left out of it is a store whose work is never written down -- not
+   * badly, but not at all: tracing a font and moving every slider produced no
+   * save, no warning, and an empty Trace view on the next visit. The counters
+   * are cheap and the omission is silent, which is the argument for listing all
+   * of them here rather than the ones that seemed to matter.
+   */
+  const revisions = `${state.revision}:${forge.revision}:${assemble.revision}:${traced.revision}:${mode}`;
   React.useEffect(() => {
     if (restoring.current) return;
-    keeper.soon(() => session(saveableMode(mode)));
+    keeper.soon(() => session(mode));
   }, [revisions, keeper, mode]);
 
   /*
@@ -209,7 +222,7 @@ export function App(): React.JSX.Element {
   React.useEffect(() => {
     const flush = () => {
       if (document.visibilityState === "hidden" && !restoring.current) {
-        void keeper.now(() => session(saveableMode(mode)));
+        void keeper.now(() => session(mode));
       }
     };
     document.addEventListener("visibilitychange", flush);
@@ -217,7 +230,7 @@ export function App(): React.JSX.Element {
   }, [keeper, mode]);
 
   const saveProject = React.useCallback(() => {
-    const project = session(saveableMode(mode));
+    const project = session(mode);
     const blob = new Blob([JSON.stringify(project)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -520,13 +533,14 @@ export function App(): React.JSX.Element {
 
       <QuickActions open={quick} onClose={() => setQuick(false)} shell={shell} />
 
-      <LibraryDialog mode={saveableMode(mode)} onMode={setMode} />
+      <LibraryDialog mode={libraryMode(mode)} onMode={setMode} />
 
       {exporting && mode === "forge" && <ForgeExportDialog onClose={() => setExporting(false)} />}
       {exporting && mode === "assemble" && (
         <AssembleExportDialog onClose={() => setExporting(false)} />
       )}
       {exporting && mode === "edit" && <ExportDialog onClose={() => setExporting(false)} />}
+      {exporting && mode === "quill" && <QuillExportDialog onClose={() => setExporting(false)} />}
     </div>
   );
 }

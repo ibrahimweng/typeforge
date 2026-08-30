@@ -2642,3 +2642,88 @@ test("fills in the letters at the bottom of the strip when they are scrolled to"
     .not.toBe("");
   expect(errors).toEqual([]);
 });
+
+test("the glyph grid fills the width it is given, at any width", async ({ page }) => {
+  /*
+   * The grid measured itself from an effect that ran once, before the grid
+   * existed, and never again -- so the column count stayed at the eight it was
+   * initialised with on every window size. Two faults came out of that one
+   * line. Density got *worse* on a larger monitor, because eight columns of a
+   * wider window is eight bigger cells rather than more letters. And on a
+   * narrow one the cells were squeezed below the fixed size their canvases are
+   * drawn at, so the letters overflowed and drew across their neighbours.
+   *
+   * Checked as a relationship rather than against fixed numbers: what has to
+   * hold is that a wider window shows more letters and that a letter never
+   * draws wider than the cell it sits in. Pinning the counts themselves would
+   * fail the day the cell size is changed for a good reason.
+   */
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto("/");
+  await openFont(page);
+
+  const cells = () => page.locator("[data-glyph-cell]");
+  const countWide = await cells().count();
+
+  await page.setViewportSize({ width: 900, height: 900 });
+  await page.waitForTimeout(600);
+  const countNarrow = await cells().count();
+
+  expect(countWide, "a wider window showed no more letters than a narrow one").toBeGreaterThan(
+    countNarrow,
+  );
+
+  /*
+   * And nothing draws outside its cell. Measured on the letters actually on
+   * screen at the narrow width, which is where the overflow showed.
+   */
+  const spilling = await page.evaluate(() => {
+    const out: string[] = [];
+    for (const cell of document.querySelectorAll("[data-glyph-cell]")) {
+      const canvas = cell.querySelector("canvas");
+      if (!canvas) continue;
+      const inner = canvas.getBoundingClientRect();
+      const outer = cell.getBoundingClientRect();
+      // A pixel of tolerance for sub-pixel layout rounding.
+      if (inner.width > outer.width + 1) out.push(cell.getAttribute("data-glyph-cell") ?? "?");
+    }
+    return out;
+  });
+  expect(spilling, "letters drawn wider than the cell they sit in").toEqual([]);
+});
+
+test("help can be searched and jumped around, not only scrolled", async ({ page }) => {
+  /*
+   * Twenty sections of prose in one scrolling column is a document rather than
+   * help. Somebody arrives with a question -- what does bounce do, why is my
+   * export dropping ligatures -- and the only way to answer it was to read past
+   * everything else. What was missing was not more writing but a way in.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Help", exact: true }).click();
+  const help = page.getByRole("dialog", { name: "Help" });
+  await expect(help).toBeVisible();
+
+  // A contents page, built from the sections themselves rather than kept as a
+  // second list beside them.
+  const contents = help.locator("[data-help-contents]");
+  const all = await help.locator("[data-help-section]").count();
+  expect(all).toBeGreaterThan(10);
+  expect(await contents.count()).toBe(all);
+
+  // Searching narrows to the sections that mention it, matching the prose and
+  // not only the headings.
+  await help.locator("[data-help-search]").fill("kerning");
+  await expect.poll(() => help.locator("[data-help-section]").count()).toBeLessThan(all);
+  await expect.poll(() => help.locator("[data-help-section]").count()).toBeGreaterThan(0);
+
+  // And a search that matches nothing says so, rather than showing an empty
+  // column under a search box.
+  await help.locator("[data-help-search]").fill("zzzznothing");
+  await expect(help.locator("[data-help-empty]")).toBeVisible();
+
+  // Cleared, everything comes back.
+  await help.locator("[data-help-search]").fill("");
+  await expect.poll(() => help.locator("[data-help-section]").count()).toBe(all);
+});

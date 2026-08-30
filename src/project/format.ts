@@ -35,7 +35,7 @@ import type { Cuts } from "@/font/cuts";
 import type { Glyph, GlyphParams, KernClass, KernPair, Typeface } from "@/font/types";
 
 /** Which half of the application was open. */
-export type Mode = "edit" | "forge" | "assemble";
+export type Mode = "edit" | "forge" | "assemble" | "quill";
 
 /**
  * The version of this format.
@@ -55,6 +55,7 @@ export interface Project {
   draw?: DrawnProject;
   assemble?: AssembledProject;
   edit?: EditedProject;
+  traced?: TracedProject;
 }
 
 export interface DrawnProject {
@@ -67,6 +68,40 @@ export interface AssembledProject {
   assembly: Assembly;
   familyName: string;
   specimen: string;
+}
+
+/**
+ * A font read back as strokes, and the hand laid over it.
+ *
+ * What is kept is the strokes and not the outlines they were read from, and
+ * that is a decision rather than an economy. The strokes are the document --
+ * they are what the sliders move and what an export redraws, so leaving them
+ * out is what loses somebody's afternoon. The source outlines are a comparison
+ * aid: they sit behind the redrawing so a change can be judged against where it
+ * started, and they are somebody else's font. Writing those into a file
+ * somebody keeps and sends on would be carrying a copy of that font around
+ * inside a document that is not it.
+ *
+ * So a reopened trace has every stroke and every setting, and the ghost behind
+ * them is gone until the font is read again. That is the right way round: the
+ * work survives, the copy does not.
+ */
+export interface TracedProject {
+  /** The file the strokes were read out of, for the panel to say. */
+  from: string;
+  /** What the font going out is called. */
+  name: string;
+  unitsPerEm: number;
+  /** The hand, as the panel's ten controls left it. */
+  style: Record<string, number>;
+  /** One entry per letter: its strokes, and how far the fit strayed. */
+  letters: Array<{
+    name: string;
+    advanceWidth: number;
+    deviation: number;
+    /** The strokes, exactly as the engine holds them. */
+    strokes: unknown[];
+  }>;
 }
 
 /**
@@ -160,6 +195,7 @@ export interface Snapshot {
   draw?: DrawnProject;
   assemble?: AssembledProject;
   edit?: { typeface: Typeface; fileName: string };
+  traced?: TracedProject;
 }
 
 /**
@@ -183,6 +219,7 @@ export function toProject(snapshot: Snapshot, at: Date): Project {
   if (snapshot.edit?.typeface.source) {
     project.edit = toEdited(snapshot.edit.typeface, snapshot.edit.fileName);
   }
+  if (snapshot.traced && snapshot.traced.letters.length > 0) project.traced = snapshot.traced;
   return project;
 }
 
@@ -259,7 +296,12 @@ export function readProject(raw: unknown): Project | null {
   if (typeof raw !== "object" || raw === null) return null;
   const project = raw as Partial<Project>;
   if (project.typeforge !== FORMAT) return null;
-  if (project.mode !== "edit" && project.mode !== "forge" && project.mode !== "assemble") {
+  if (
+    project.mode !== "edit" &&
+    project.mode !== "forge" &&
+    project.mode !== "assemble" &&
+    project.mode !== "quill"
+  ) {
     return null;
   }
   return {
@@ -281,6 +323,13 @@ export function readProject(raw: unknown): Project | null {
       : undefined,
     assemble: project.assemble?.assembly ? project.assemble : undefined,
     edit: project.edit?.font ? project.edit : undefined,
+    // Checked for its letters rather than merely for being an object: a traced
+    // half with no strokes in it restores an empty Trace view claiming to be
+    // where somebody left off, which is the thing this used to do by leaving
+    // the half out entirely.
+    traced: Array.isArray(project.traced?.letters) && project.traced.letters.length > 0
+      ? project.traced
+      : undefined,
   };
 }
 
@@ -293,6 +342,10 @@ export function describe(project: Project): string {
     halves.push(`${count} assembled ${count === 1 ? "drawing" : "drawings"}`);
   }
   if (project.edit) halves.push(project.edit.fileName);
+  if (project.traced) {
+    const count = project.traced.letters.length;
+    halves.push(`${count} traced ${count === 1 ? "letter" : "letters"}`);
+  }
   if (halves.length === 0) return "nothing";
   return halves.join(", ");
 }

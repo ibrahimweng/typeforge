@@ -1,11 +1,11 @@
 /**
  * The session, gathered from the three halves and handed back to them.
  *
- * The application keeps three documents -- a font being edited, a font being
- * drawn, a font being assembled -- in three stores that know nothing about each
- * other, which is right: an edit to a bowl has no business reaching the pile of
- * SVGs. Saving is the one operation that has to see all three at once, so it
- * lives here rather than in any of them.
+ * The application keeps four documents -- a font being edited, a font being
+ * drawn, a font being assembled, a font read back as strokes -- in four stores
+ * that know nothing about each other, which is right: an edit to a bowl has no
+ * business reaching the pile of SVGs. Saving is the one operation that has to
+ * see all four at once, so it lives here rather than in any of them.
  *
  * Restoring puts back only the halves the document actually holds. Somebody who
  * saved a drawing and then opened a font should not find the font wiped by a
@@ -14,6 +14,7 @@
 
 import { assembleStore } from "@/state/useAssemble";
 import { forgeStore } from "@/state/useForge";
+import { quillStore } from "@/state/useQuill";
 import { store } from "@/state/useStore";
 import { toProject, type Mode, type Project } from "./format";
 
@@ -25,6 +26,7 @@ export function session(mode: Mode, at = new Date()): Project {
       draw: forgeStore.snapshot(),
       assemble: assembleStore.snapshot(),
       edit: store.snapshot(),
+      traced: quillStore.snapshot(),
     },
     at,
   );
@@ -59,6 +61,10 @@ export async function restore(project: Project): Promise<Restored> {
     await store.restore(project.edit);
     halves.push(project.edit.fileName);
   }
+  if (project.traced) {
+    quillStore.restoreSaved(project.traced);
+    halves.push(`${project.traced.letters.length} traced letters`);
+  }
 
   return { mode: project.mode, halves };
 }
@@ -69,6 +75,7 @@ export function fileNameFor(project: Project): string {
     project.draw?.familyName ??
     project.assemble?.familyName ??
     project.edit?.meta.familyName ??
+    project.traced?.name ??
     "Untitled";
   const tidy = named.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "") || "Untitled";
   return `${tidy}.typeforge`;

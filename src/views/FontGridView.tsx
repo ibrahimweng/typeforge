@@ -26,23 +26,45 @@ export function FontGridView(): React.JSX.Element {
   const state = useAppState();
   const typeface = state.typeface;
 
-  const scrollRef = React.useRef<HTMLDivElement>(null);
+  const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = React.useState(0);
   const [viewportHeight, setViewportHeight] = React.useState(600);
   const [columns, setColumns] = React.useState(8);
 
-  // Track the viewport so the visible window can be computed.
-  React.useEffect(() => {
-    const element = scrollRef.current;
+  /*
+   * Measured through a callback ref rather than an effect, and the difference
+   * was the whole of two faults.
+   *
+   * This used to observe from a `useEffect` with no dependencies. The component
+   * returns an empty state before the grid exists, so on the first render the
+   * ref was null, the effect took its early exit, and -- having no dependencies
+   * -- it never ran again once a font arrived and the grid appeared. Nothing
+   * was ever observed. The column count therefore sat at the eight it was
+   * initialised with, on every window, for ever: which meant density got
+   * *worse* on a larger monitor, and meant that on a narrow one the cells were
+   * squeezed under the fixed size their canvases are drawn at, so the letters
+   * spilled over their edges into the next cell along.
+   *
+   * A callback ref fires exactly when the node attaches and when it goes away,
+   * which is the condition this actually cares about, and cannot be true before
+   * the node exists.
+   */
+  const measure = React.useCallback((element: HTMLDivElement | null) => {
+    scrollRef.current = element;
+    observerRef.current?.disconnect();
     if (!element) return;
-    const observer = new ResizeObserver(() => {
+    const read = () => {
       setViewportHeight(element.clientHeight);
       const usable = element.clientWidth - CELL_GAP;
       setColumns(Math.max(1, Math.floor(usable / (CELL_SIZE + CELL_GAP))));
-    });
+    };
+    read();
+    const observer = new ResizeObserver(read);
     observer.observe(element);
-    return () => observer.disconnect();
+    observerRef.current = observer;
   }, []);
+  const observerRef = React.useRef<ResizeObserver | null>(null);
+  React.useEffect(() => () => observerRef.current?.disconnect(), []);
 
   const glyphs = React.useMemo(() => filterGlyphs(typeface, state.search), [typeface, state.search, state.revision]);
 
@@ -77,7 +99,7 @@ export function FontGridView(): React.JSX.Element {
       </div>
 
       <div
-        ref={scrollRef}
+        ref={measure}
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
         className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto p-3"
       >
@@ -194,7 +216,18 @@ const GlyphCell = React.memo(function GlyphCell({
       )}
       style={{ height: CELL_SIZE }}
     >
-      <canvas ref={canvasRef} style={{ width: CELL_SIZE, height: CELL_SIZE - 20 }} />
+      {/*
+        Capped at the cell as well as sized to it.
+
+        The canvas is drawn at a fixed size and the cells are a fraction of the
+        row, so the two agree only while the column count is right. It is right
+        now, and this is the guarantee that a future arithmetic slip shows up as
+        a letter drawn small rather than as a letter drawn over its neighbour.
+      */}
+      <canvas
+        ref={canvasRef}
+        style={{ width: CELL_SIZE, height: CELL_SIZE - 20, maxWidth: "100%" }}
+      />
       <span className="w-full truncate px-1 pb-1 text-center text-2xs text-muted-foreground group-hover:text-foreground">
         {glyphLabel(glyph)}
       </span>

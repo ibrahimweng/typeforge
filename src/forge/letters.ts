@@ -6614,7 +6614,7 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
     {
       id: "written",
       label: "Written",
-      hint: "The bowl starts on the origin, the way a hand arrives at an `a` -- round the bowl first and down the stem after.",
+      hint: "The bowl starts on the origin, the way a hand arrives at an `a` — round the bowl first and down the stem after.",
       build: (style) => {
         const f = frame(style);
         const centre = at(f.edge + f.bowl, f.x / 2);

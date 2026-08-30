@@ -63,16 +63,36 @@ export function KerningView(): React.JSX.Element {
     [typeface, state.previewText, state.revision],
   );
 
-  // Scale the preview so the whole line fits with room to spare.
+  /*
+   * The line, fitted and then centred in what it was given.
+   *
+   * Both halves of that used to be wrong in the same direction. The scale was
+   * capped at half the canvas height and the baseline was pinned at 72% of the
+   * way down, so on a tall window the word sat along the bottom edge with
+   * roughly seven hundred pixels of empty black above it -- the largest wasted
+   * area anywhere in the application, on the one screen whose entire job is
+   * looking closely at a line of type.
+   *
+   * Now the ascender-to-descender band is fitted into the height less a margin
+   * and then centred, which is where the eye looks and where every other view
+   * here puts its subject.
+   */
   const view = React.useMemo<GlyphView>(() => {
     if (!typeface || placed.length === 0) return { scale: 1, originX: 0, originY: 0 };
     const totalWidth =
       placed[placed.length - 1].x + resolveAdvanceWidth(placed[placed.length - 1].glyph, typeface);
+    const band = Math.max(1, typeface.metrics.ascender - typeface.metrics.descender);
+    // Room left around the type on every side, so a descender does not sit on
+    // the edge of the canvas and the pair being dragged is never half off it.
+    const margin = Math.max(48, size.height * 0.12);
     const scale = Math.min(
       (size.width - 80) / Math.max(1, totalWidth),
-      (size.height * 0.5) / Math.max(1, typeface.metrics.ascender - typeface.metrics.descender),
+      Math.max(0, size.height - margin * 2) / band,
     );
-    return { scale, originX: 40, originY: size.height * 0.72 };
+    // The band centred, and the baseline placed inside it where the metrics
+    // say it goes rather than at a fraction picked by eye.
+    const top = (size.height - band * scale) / 2;
+    return { scale, originX: 40, originY: top + typeface.metrics.ascender * scale };
   }, [typeface, placed, size]);
 
   React.useEffect(() => {

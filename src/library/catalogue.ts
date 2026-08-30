@@ -94,8 +94,22 @@ export async function fetchCatalogue(options: {
   };
 }
 
+/**
+ * Why a source did not answer, as a sentence.
+ *
+ * The full stop is the whole of this function's reason for existing. What comes
+ * off an `Error` is a fragment -- "Failed to fetch" -- and the caller joins
+ * these together and adds a sentence of its own, so without one the panel read
+ * "Fontsource: Failed to fetch Showing a short built-in list instead.": two
+ * sentences run together with nothing between them, which looks less like a
+ * service being down and more like the application having come apart.
+ *
+ * Added here rather than at the join, because a fragment is what the caller was
+ * handed and the caller cannot know whether the next one will need it.
+ */
 function reason(error: unknown): string {
-  return error instanceof Error ? error.message : "could not be reached";
+  const said = error instanceof Error && error.message ? error.message : "could not be reached";
+  return /[.!?]$/.test(said) ? said : `${said}.`;
 }
 
 async function fromFontsource(signal?: AbortSignal): Promise<LibraryFont[]> {

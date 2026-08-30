@@ -40,6 +40,16 @@ export function QuillPanel(): React.JSX.Element {
     [traced, doc.style, state.revision],
   );
 
+  /*
+   * Whether there is an outline behind the redrawing at all.
+   *
+   * A trace read from a font has one; a trace reopened from a saved project
+   * does not, because the file keeps the strokes and leaves the other font's
+   * outlines out of it. Asked of the letter on screen rather than of the
+   * document, since that is the one the toggle would draw.
+   */
+  const hasSource = (traced?.source.length ?? 0) > 0;
+
   return (
     <aside
       aria-label="Quill"
@@ -80,6 +90,16 @@ export function QuillPanel(): React.JSX.Element {
 
           {doc.letters.length > 0 ? (
             <>
+              <label className="block pt-3">
+                <span className="text-2xs text-muted-foreground">This font is called</span>
+                <input
+                  value={doc.name}
+                  onChange={(event) => quillStore.setName(event.target.value)}
+                  aria-label="Traced font name"
+                  data-quill-name
+                  className="mt-1 h-8 w-full rounded-md border border-input bg-card px-2.5 text-xs-plus text-foreground outline-none focus-visible:border-accent"
+                />
+              </label>
               <p className="pt-2 text-2xs leading-snug text-muted-foreground">
                 {doc.letters.length} letters from <span className="text-foreground">{doc.from}</span>,
                 read back as strokes. {traced ? `${traced.glyph.strokes.length} in this one.` : ""}
@@ -94,8 +114,8 @@ export function QuillPanel(): React.JSX.Element {
             </>
           ) : (
             <p className="pt-2 text-2xs leading-snug text-muted-foreground">
-              Reading a font recovers the strokes that drew each letter -- where they run and how
-              wide the pen was along them -- so the letters can be reshaped rather than merely
+              Reading a font recovers the strokes that drew each letter — where they run and how
+              wide the pen was along them — so the letters can be reshaped rather than merely
               nudged. Point it only at a font you have the right to derive from.
             </p>
           )}
@@ -135,9 +155,11 @@ export function QuillPanel(): React.JSX.Element {
               <div className={SEGMENT_TRACK} role="group" aria-label="What is drawn">
                 <button
                   type="button"
-                  aria-pressed={state.showSource}
+                  aria-pressed={state.showSource && hasSource}
+                  disabled={!hasSource}
                   onClick={() => quillStore.setShowSource(!state.showSource)}
-                  className={segment(state.showSource, "flex-1")}
+                  className={cn(segment(state.showSource && hasSource, "flex-1"), !hasSource && "opacity-40")}
+                  title={hasSource ? undefined : "Nothing to compare against until the font is read again"}
                 >
                   Source under
                 </button>
@@ -151,8 +173,9 @@ export function QuillPanel(): React.JSX.Element {
                 </button>
               </div>
               <p className="pt-2 text-2xs leading-snug text-muted-foreground">
-                The source is the outline the strokes were read from. It stays where it was however
-                far the hand below is moved, so it is the thing to judge a change against.
+                {hasSource
+                  ? "The source is the outline the strokes were read from. It stays where it was however far the hand below is moved, so it is the thing to judge a change against."
+                  : "This trace was reopened from a saved project, which keeps the strokes and not the outlines they were read from — those are the other font, and they are not written into your file. Read the font again to compare against it."}
               </p>
             </section>
 

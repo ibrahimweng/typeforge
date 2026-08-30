@@ -14,7 +14,8 @@
  * the next one.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { fetchCatalogue } from "./catalogue";
 
 import { toTypeface } from "@/forge/typeface";
 import { startFrom } from "@/forge/document";
@@ -290,5 +291,40 @@ describe("the catalogue", () => {
     expect(nearestWeight(lora, 500)).toBe(400);
     expect(nearestWeight(lora, 900)).toBe(700);
     expect(nearestWeight({ ...lora, weights: [] }, 400)).toBe(400);
+  });
+});
+
+/**
+ * That a failing font source reads as one sentence and not two run together.
+ *
+ * The panel said "Fontsource: Failed to fetch Showing a short built-in list
+ * instead." -- an error message off a network failure is a fragment with no
+ * full stop, and the sentence the catalogue adds after it landed straight
+ * against the end of it. Small, and exactly the kind of thing that makes a
+ * working feature look broken: the library was doing the right thing, offering
+ * a built-in list because a third-party service was down, and saying so in a
+ * way that read like a crash.
+ */
+describe("what the library says when a source is down", () => {
+  it("runs its sentences together for nobody", async () => {
+    const offline = vi.fn().mockRejectedValue(new Error("Failed to fetch"));
+    vi.stubGlobal("fetch", offline);
+    try {
+      const catalogue = await fetchCatalogue();
+      expect(catalogue.from).toBe("builtin");
+      expect(catalogue.fonts.length).toBeGreaterThan(0);
+
+      const problem = catalogue.problem ?? "";
+      expect(problem).toContain("Failed to fetch.");
+      expect(problem).toContain("Showing a short built-in list instead.");
+      // The fault itself: a full stop and a space between every sentence, and
+      // never a lowercase word arriving straight after another sentence's end.
+      expect(problem).not.toMatch(/[a-z] [A-Z][a-z]+ing a short/);
+      for (const sentence of problem.split(/(?<=\.)\s+/)) {
+        expect(sentence.trim(), `"${sentence.trim()}" is not a sentence`).toMatch(/\.$/);
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
