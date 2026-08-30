@@ -11,6 +11,7 @@
  */
 
 import { readComposites } from "./composite";
+import { contoursBounds } from "./geometry";
 import { readGposKerning, toKernClasses, writtenPairs } from "./gpos";
 import { classifyNodes } from "./quadratic";
 import { readSfnt, SFNT_CFF } from "./sfnt";
@@ -234,6 +235,35 @@ export async function importFont(
     return Math.min(1000, Math.max(1, Math.round(scaled)));
   }
 
+  /**
+   * A height read off a letter, for the fonts that do not declare one.
+   *
+   * `sxHeight` and `sCapHeight` arrived in version 2 of the OS/2 table, so
+   * every font written against version 1 -- which includes fonts still being
+   * shipped -- has neither. Falling back to a proportion of the em is what
+   * this did, and for DejaVu Sans that proportion is out by nine per cent:
+   * half the em is 1024 against a real x-height of 1120. Every guide, every
+   * metric line and every proportion the Draw mode works from was built on
+   * that number.
+   *
+   * So it is measured instead. The letters named here are the ones whose flat
+   * top *is* the height -- an `x` has no overshoot and no terminal above the
+   * line, an `H` no serif that rises past the cap -- and the first one the
+   * font actually has decides it. The proportion is still there for a font
+   * that has none of them.
+   */
+  function measuredHeight(names: string[]): number | null {
+    for (const name of names) {
+      const index = glyphIndex.get(name);
+      if (index === undefined) continue;
+      const glyph = glyphs[index];
+      if (!glyph || glyph.contours.length === 0) continue;
+      const top = contoursBounds(glyph.contours).yMax;
+      if (Number.isFinite(top) && top > 0) return Math.round(top);
+    }
+    return null;
+  }
+
   const typeface: Typeface = {
     meta: {
       familyName: readName(font, "fontFamily") || stripExtension(fileName),
@@ -250,8 +280,9 @@ export async function importFont(
     metrics: {
       ascender: font.ascender || hhea.ascender || Math.round(unitsPerEm * 0.8),
       descender: font.descender || hhea.descender || -Math.round(unitsPerEm * 0.2),
-      capHeight: os2.sCapHeight || Math.round(unitsPerEm * 0.7),
-      xHeight: os2.sxHeight || Math.round(unitsPerEm * 0.5),
+      capHeight:
+        os2.sCapHeight || measuredHeight(["H", "I", "E", "T"]) || Math.round(unitsPerEm * 0.7),
+      xHeight: os2.sxHeight || measuredHeight(["x", "z", "v"]) || Math.round(unitsPerEm * 0.5),
       lineGap: hhea.lineGap || 0,
     },
     glyphs,

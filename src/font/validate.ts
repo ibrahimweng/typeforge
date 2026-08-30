@@ -19,10 +19,23 @@ import {
   missingExtrema,
   type OutlineFormat,
 } from "./outline";
+import { opticalAdvice } from "./optical";
 import { resolveGlyphContours } from "./transform";
 import type { Contour, Typeface } from "./types";
 
-export type Severity = "error" | "warning" | "info";
+/*
+ * Four kinds of thing a report can say, and the fourth is not like the others.
+ *
+ * `error`, `warning` and `info` are all about whether the font *works*: what
+ * will break, what might, and what is worth knowing. `advice` is about whether
+ * it *looks right*, which is a different question and has to be able to be
+ * ignored -- every optical rule can be deliberately unfollowed, and a checker
+ * that called those mistakes would teach people to stop reading it.
+ *
+ * Ranked above `info` because advice names a letter and a measurement you
+ * might act on, where a note is a fact you already know.
+ */
+export type Severity = "error" | "warning" | "advice" | "info";
 
 export interface Finding {
   /** Stable identifier for the check, so findings can be grouped and dismissed. */
@@ -76,8 +89,16 @@ export function validateTypeface(
   findings.push(...checkFontStructure(typeface));
   findings.push(...checkVerticalMetrics(typeface, glyphs.length > 0 ? glyphs : typeface.glyphs));
   findings.push(...checkGlyphs(typeface, glyphs, format));
+  /*
+   * The optical advice, last and separately.
+   *
+   * It measures a couple of dozen named letters rather than walking the font,
+   * so it costs the same on a font of six thousand glyphs as on one of forty
+   * and does not take the `limit` the rest of this respects.
+   */
+  findings.push(...opticalAdvice(typeface));
 
-  const order: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
+  const order: Record<Severity, number> = { error: 0, warning: 1, advice: 2, info: 3 };
   findings.sort((a, b) => order[a.severity] - order[b.severity] || a.check.localeCompare(b.check));
 
   return {
