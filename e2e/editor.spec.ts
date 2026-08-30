@@ -3426,3 +3426,93 @@ test("aligning needs two points, and says so rather than doing nothing", async (
   await expect.poll(() => page.locator('[data-path-row="0"]').innerText()).not.toBe(before);
   await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
 });
+
+test("changing what a point is: round, tidy, and the guards on the rest", async ({ page }) => {
+  /*
+   * The panel below the transforms, and the reason it is a separate one: these
+   * change what a point *is* rather than where it goes. Which means most of
+   * them need to be told which point, where every transform falls back to the
+   * whole letter.
+   *
+   * What is asked here is the wiring and the guards. The arithmetic is asserted
+   * where it can be exact -- thirty unit tests on the operations themselves and
+   * fourteen on them as edits -- and a browser is the wrong place to check that
+   * a corner opened by twenty units landed twenty units away.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  const panel = page.locator("[data-points-panel]");
+  await expect(panel).toBeVisible();
+  await expect(page.locator("[data-points-scope]")).toContainText("none picked");
+
+  // Smoothing every point in a letter with no curves in it is not what
+  // pressing a button once means, so it waits to be told which.
+  await expect(panel.getByRole("button", { name: "Smooth" })).toBeDisabled();
+  // Exact, because "Open corner" carries the word too.
+  await expect(panel.getByRole("button", { name: "Corner", exact: true })).toBeDisabled();
+  // These two are about a specific corner and a specific pair.
+  await expect(panel.getByRole("button", { name: "Open corner" })).toBeDisabled();
+  await expect(panel.getByRole("button", { name: "Reconnect" })).toBeDisabled();
+
+  // Picking a whole path picks all of its points: enough for the first two,
+  // and too many for the corner pair.
+  await page.locator('[data-path-row="0"]').getByRole("button").first().click();
+  await expect(page.locator("[data-points-scope]")).toContainText("points");
+  await expect(panel.getByRole("button", { name: "Smooth" })).toBeEnabled();
+  await expect(panel.getByRole("button", { name: "Open corner" })).toBeDisabled();
+  await expect(panel.getByRole("button", { name: "Reconnect" })).toBeDisabled();
+});
+
+test("rounding says how many points it moved, and then that there are none", async ({ page }) => {
+  /*
+   * The two panels used together, which is also the honest way to get a letter
+   * off the grid in the first place: scaling by two per cent leaves every
+   * coordinate on a fraction.
+   *
+   * What is asserted is the count, not the coordinates, and that is the point.
+   * Every number this application shows is displayed rounded -- the paths
+   * panel, the numbers under the canvas, all of it -- so a letter a tenth of a
+   * unit off the grid looks identical to one on it. The first thing tried here
+   * was that the paths row would change, and it does not and cannot. Pressing
+   * the button twice is what proves the first press did something: the second
+   * finds nothing left to move.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  await page.locator("[data-transform-panel]").getByRole("button", { name: "Bigger" }).click();
+
+  const round = page.locator("[data-points-panel]").getByRole("button", { name: "Round" });
+  await round.click();
+  await expect(page.getByText("back on whole units", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+
+  await round.click();
+  await expect(page.getByText("already on a whole unit", { exact: false })).toBeVisible();
+});
+
+test("the tidy button says what it would do before it does it", async ({ page }) => {
+  /*
+   * The one operation in the set that removes something, so it carries its
+   * count on the face rather than in the hover. A button that silently deletes
+   * four points is a button nobody presses twice.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  const tidy = page.locator("[data-points-panel]").getByRole("button", { name: /Tidy up|Nothing to tidy/ });
+  const label = await tidy.innerText();
+  // The label and the state agree: nothing to do means nothing to press.
+  if (label.includes("Nothing to tidy")) {
+    await expect(tidy).toBeDisabled();
+    return;
+  }
+  const count = Number(label.match(/\((\d+)\)/)![1]);
+  expect(count).toBeGreaterThan(0);
+  await tidy.click();
+  await expect(page.getByText(`Removed ${count} point`, { exact: false })).toBeVisible();
+});

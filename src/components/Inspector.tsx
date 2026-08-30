@@ -15,6 +15,7 @@ import * as React from "react";
 import { enterStaggered } from "@/anim/motion";
 import { CompositionPanel } from "@/components/CompositionPanel";
 import { PathsPanel } from "@/components/PathsPanel";
+import { PointsPanel } from "@/components/PointsPanel";
 import { TransformPanel } from "@/components/TransformPanel";
 import { CoachMark } from "@/components/CoachMark";
 import { ControlLetters } from "@/components/ControlLetters";
@@ -189,6 +190,13 @@ export function Inspector(): React.JSX.Element {
         is where a letter's outlines are in hand.
       */}
       {editingGlyph && state.view === "glyph" && <TransformPanel />}
+      {/*
+        And below the transforms, because the order is the order of scope: a
+        path, then the whole drawing, then a point in it. Somebody working
+        their way down the panel goes from the largest thing they can act on
+        to the smallest.
+      */}
+      {editingGlyph && state.view === "glyph" && <PointsPanel />}
       <div ref={listRef} className="p-3">
         {PARAMS.map((spec) => {
           const scaleFactor = spec.emRelative ? typeface.unitsPerEm : 1;
