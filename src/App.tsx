@@ -21,6 +21,9 @@ import { QuickActions, useQuickActionShortcut, type Shell } from "@/palette";
 import { Inspector } from "@/components/Inspector";
 import { TopBar } from "@/components/TopBar";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
+import type { Typeface } from "@/font/types";
+import { toTypeface as forgeToTypeface } from "@/forge/typeface";
+import { toTypeface as quillToTypeface } from "@/quill/typeface";
 import { forgeStore, useForge } from "@/state/useForge";
 import { quillStore, useQuill } from "@/state/useQuill";
 import { castFor, castOf, cutsFor, cutsOf } from "@/forge/document";
@@ -383,6 +386,59 @@ export function App(): React.JSX.Element {
     setMode("edit");
   }, []);
 
+  /*
+   * Out of a generator and into the tools.
+   *
+   * Both of these do what the export dialog next to them does -- draw every
+   * letter once and build a typeface -- and then hand it to the editor instead
+   * of to a file. Until now that typeface only ever went into a download, so
+   * the only way to move a point on a letter you had drawn was to export it
+   * and open the file you had just written.
+   *
+   * The mode switch is why they live here: the panels have no idea which mode
+   * the application is in, and should not.
+   */
+  const takeToEditor = React.useCallback((typeface: Typeface, name: string) => {
+    store.adopt(typeface, name);
+    // Straight to the letter rather than to the grid, because somebody who has
+    // asked to edit these letters has one in mind and is already looking at it.
+    store.setView("glyph");
+    setMode("edit");
+  }, []);
+
+  const editForged = React.useCallback(async () => {
+    const { forge, familyName } = forgeStore.snapshot();
+    const typeface = await forgeToTypeface(forge, {
+      familyName: familyName || "Untitled",
+      styleName: "Regular",
+      /*
+       * Everything on, exactly as it is for a file.
+       *
+       * These three are off while the sliders are moving because each costs a
+       * boolean pass over four hundred letters. This is the one place the
+       * letters stop being a preview, so the version handed over is the one
+       * that would have been written: fused, roughened, and with the kerning
+       * measured, rather than a stack of loose strokes that would need all
+       * three doing again by hand in the editor.
+       */
+      merge: true,
+      kern: true,
+      effects: true,
+    });
+    takeToEditor(typeface, `${familyName || "Untitled"}.ttf`);
+  }, [takeToEditor]);
+
+  const editTraced = React.useCallback(async () => {
+    const doc = quillStore.getSnapshot().document;
+    const family = doc.from ? `${doc.from} Traced` : "Traced";
+    const typeface = await quillToTypeface(doc.letters, doc.style, doc.unitsPerEm, {
+      familyName: family,
+      styleName: "Regular",
+      from: doc.from || "an unnamed font",
+    });
+    takeToEditor(typeface, `${family}.ttf`);
+  }, [takeToEditor]);
+
   const openFiles = React.useCallback(
     async (files: FileList | null) => {
       const file = files?.[0];
@@ -607,8 +663,8 @@ export function App(): React.JSX.Element {
             </>
           )}
         </div>
-        {mode === "forge" && <ForgePanel />}
-        {mode === "quill" && <QuillPanel />}
+        {mode === "forge" && <ForgePanel onEdit={editForged} />}
+        {mode === "quill" && <QuillPanel onEdit={editTraced} />}
         {mode === "assemble" && <AssemblePanel />}
         {mode === "edit" && SHOWS_INSPECTOR.has(state.view) && <Inspector />}
         {helping && <HelpDrawer onClose={() => setHelping(false)} />}

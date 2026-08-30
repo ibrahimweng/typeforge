@@ -20,6 +20,7 @@ import { contoursToSvgPath } from "@/font/geometry";
 import { filled, FILL_KINDS } from "@/forge/kit";
 import { drawLetter } from "@/forge/build";
 import { CutPanel } from "@/components/CutPanel";
+import { TakeToEditor } from "@/components/TakeToEditor";
 import {
   castFor,
   castHeldBy,
@@ -55,7 +56,7 @@ import { forgeStore, useForge, type Phase } from "@/state/useForge";
 import { SliderControl as Slider } from "@/ui/components/controls/slider";
 import { cn } from "@/ui/lib/utils";
 
-export function ForgePanel(): React.JSX.Element {
+export function ForgePanel({ onEdit }: { onEdit: () => Promise<void> }): React.JSX.Element {
   const state = useForge();
   const { forge, letter, scope } = state;
 
@@ -225,6 +226,12 @@ export function ForgePanel(): React.JSX.Element {
         <Trip key={letter} letter={letter} />
 
       </div>
+      {/*
+        Outside the scrolling column, at the foot, because it is the one thing
+        in this panel that leaves it. Everything above changes the letters;
+        this hands them on.
+      */}
+      <TakeToEditor onEdit={onEdit} what="every letter in this family" />
     </aside>
   );
 }

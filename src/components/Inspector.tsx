@@ -164,6 +164,37 @@ export function Inspector(): React.JSX.Element {
         ))}
       </div>
 
+      {/*
+        The way in to the tools, from every view that shows a letter but is not
+        the one you can draw in.
+
+        Above the scope tabs rather than inside one of them, and that is the
+        whole point. The tools sat behind a gesture nobody could see: the font
+        grid opened a letter on a double click, the spacing table selected one
+        without opening it at all, and the proof sheet did neither. Putting the
+        way out under the letter tab would have moved it from one thing nobody
+        presses to another -- the panel opens on the family in three of these
+        four views, which is the tab that is showing when you arrive.
+
+        So it is outside the tabs, in the same place whichever one is chosen,
+        and it says which letter it means because in a grid of a hundred that
+        is not obvious.
+      */}
+      {glyph && state.view !== "glyph" && (
+        <div className="border-b border-border p-2" data-open-in-editor>
+          <button
+            type="button"
+            onClick={() => store.selectGlyph(glyph.name, { open: true })}
+            className={cn(
+              "w-full rounded border border-border px-2 py-1.5 text-2xs text-muted-foreground",
+              "transition-colors hover:border-accent hover:text-foreground",
+            )}
+          >
+            Open <span className="font-mono text-foreground">{glyph.name}</span> in the editor
+          </button>
+        </div>
+      )}
+
       {scope === "build" ? (
         <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto p-3">
           <CompositionPanel />

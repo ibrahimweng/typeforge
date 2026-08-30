@@ -357,11 +357,34 @@ function PairEditor({
           from class
         </span>
       )}
+      {/*
+        Both letters of the pair, on the way to the editor.
+
+        This is the one view with no inspector, so the button that reaches the
+        tools from everywhere else cannot be here -- and a pair is two letters
+        rather than one, so there would be nothing for a single button to mean.
+        A gap that is too wide is often a letter drawn too wide, and the fix is
+        in the outline rather than in the number on this row.
+      */}
+      <span className="ml-auto flex items-center gap-1 text-2xs text-muted-foreground">
+        <span>Edit</span>
+        {[left, right].map((name, at) => (
+          <button
+            key={`${name}-${at}`}
+            type="button"
+            onClick={() => store.selectGlyph(name, { open: true })}
+            title={`Open ${name} in the editor`}
+            className="rounded border border-border px-1.5 py-0.5 font-mono transition-colors hover:border-accent hover:text-foreground"
+          >
+            {name}
+          </button>
+        ))}
+      </span>
       {value !== 0 && (
         <button
           type="button"
           onClick={() => store.setKerning(left, right, 0)}
-          className="ml-auto text-2xs text-muted-foreground hover:text-foreground"
+          className="text-2xs text-muted-foreground hover:text-foreground"
         >
           Remove pair
         </button>
