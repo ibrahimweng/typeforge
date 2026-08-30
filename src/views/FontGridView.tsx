@@ -13,7 +13,7 @@ import { enterStaggered } from "@/anim/motion";
 import { drawGlyph, fitEmSquare, formatCodepoint, glyphLabel, prepareCanvas, readToken } from "@/components/glyph-render";
 import { groupGlyphs } from "@/font/groups";
 import type { Glyph, Typeface } from "@/font/types";
-import { freeNameNear } from "@/font/library";
+import { freeNameNear, hasLetters } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";
 import { OUTLINE_ACTION, PRIMARY_ACTION, tile } from "@/components/controls";
 import { CoachMark } from "@/components/CoachMark";
@@ -149,7 +149,11 @@ export function FontGridView(): React.JSX.Element {
         />
         <span className="text-2xs text-muted-foreground tabular-nums">
           {glyphs.length.toLocaleString()}
-          {glyphs.length === typeface.glyphs.length ? " glyphs" : ` of ${typeface.glyphs.length.toLocaleString()}`}
+          {glyphs.length === typeface.glyphs.length
+            ? glyphs.length === 1
+              ? " glyph"
+              : " glyphs"
+            : ` of ${typeface.glyphs.length.toLocaleString()}`}
         </span>
         {state.selectedGlyphs.size > 0 && (
           <span className="text-2xs text-accent tabular-nums">
@@ -164,7 +168,7 @@ export function FontGridView(): React.JSX.Element {
         */}
         <button
           type="button"
-          onClick={() => store.addGlyph(freeNameNear(typeface, "uni0041"))}
+          onClick={() => store.addGlyph(freeNameNear(typeface, "newGlyph"))}
           data-add-glyph
           title="A new, empty letter. Name it and give it a character in the panel, then draw in it."
           className="ml-auto rounded border border-border px-2 py-1 text-2xs text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
@@ -228,6 +232,19 @@ export function FontGridView(): React.JSX.Element {
             {typeface.glyphs.length === 0
               ? "Nothing here yet. Press New letter to put one in."
               : `No glyph matches “${state.search}”.`}
+          </p>
+        )}
+        {/*
+          A new font is no longer empty -- it carries the `.notdef` every font
+          must have -- so the message above stopped appearing exactly when it
+          was most needed. This one takes over: one cell on screen, and none of
+          it drawn by anybody.
+        */}
+        {glyphs.length > 0 && !hasLetters(typeface) && !state.search && (
+          <p className="mx-auto max-w-prose py-10 text-center text-xs-plus text-muted-foreground">
+            No letters yet. <code className="font-mono">.notdef</code> is the box
+            a renderer draws for a character a font has not got, and every font
+            needs one. Press New letter to add your own.
           </p>
         )}
       </div>

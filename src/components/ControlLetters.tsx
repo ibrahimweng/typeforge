@@ -12,6 +12,7 @@ import * as React from "react";
 import { pulse } from "@/anim/motion";
 import { CoachMark } from "@/components/CoachMark";
 import { CONTROL_GLYPHS, CONTROL_GROUPS } from "@/font/control";
+import { NOTDEF } from "@/font/library";
 import { drawGlyph, fitEmSquare, prepareCanvas, readToken } from "@/components/glyph-render";
 import { store, useAppState } from "@/state/useStore";
 import { tile } from "@/components/controls";
@@ -98,7 +99,17 @@ export function ControlLetters(): React.JSX.Element | null {
   if (!state.typeface) return null;
 
   const present = CONTROL_GLYPHS.filter((name) => store.glyph(name) !== null).length;
-  const others = state.typeface.glyphs.length - present;
+  /*
+   * The letters that follow, which is not every other glyph in the font.
+   * `.notdef` is a box a renderer draws and nobody designs, so it follows
+   * nothing -- and on a font just started it was the whole of the count, which
+   * made the sentence read "1 other glyphs match them" about a glyph that does
+   * not match anything.
+   */
+  const controls = new Set<string>(CONTROL_GLYPHS);
+  const others = state.typeface.glyphs.filter(
+    (glyph) => glyph.name !== NOTDEF && !controls.has(glyph.name),
+  ).length;
 
   return (
     <>
@@ -110,9 +121,14 @@ export function ControlLetters(): React.JSX.Element | null {
       </div>
       <p className="mb-2.5 text-2xs leading-relaxed text-muted-foreground">
         Draw these and the rest follows. Their stem, height and counter set the
-        family; {others.toLocaleString()} other glyphs match them. A badge counts
-        the letters built on that one point for point, which take an edit exactly
-        rather than approximately.
+        family
+        {others === 0
+          ? ". "
+          : others === 1
+            ? "; one other glyph matches them. "
+            : `; ${others.toLocaleString()} other glyphs match them. `}
+        A badge counts the letters built on that one point for point, which take
+        an edit exactly rather than approximately.
       </p>
 
       {Object.entries(CONTROL_GROUPS).map(([group, names]) => (

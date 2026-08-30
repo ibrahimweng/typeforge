@@ -18,10 +18,14 @@ import {
   claimedBy,
   duplicateGlyph,
   freeNameNear,
+  hasLetters,
   nameIsFree,
+  NOTDEF,
+  notdefGlyph,
   removeGlyph,
   renameGlyph,
 } from "./library";
+import { contourArea, contoursBounds } from "./geometry";
 import { emptyTypeface, type Contour, type Typeface } from "./types";
 
 const square = (size = 100): Contour => ({
@@ -75,7 +79,7 @@ function crowded(): Typeface {
 describe("putting a letter in", () => {
   it("adds one to a font that had none, which was a dead end", () => {
     /*
-     * `startBlank()` hands back a typeface whose glyph list is empty, and
+     * `startBlank()` handed back a typeface whose glyph list was empty, and
      * until this existed there was no way to put anything into it. The New
      * action led to a font that could never contain a letter.
      */
@@ -94,6 +98,60 @@ describe("putting a letter in", () => {
     const typeface = crowded();
     expect(addGlyph(typeface, "a")).toBeNull();
     expect(typeface.glyphs).toHaveLength(4);
+  });
+
+  it("does not count `.notdef` as a letter, because nobody drew it", () => {
+    /*
+     * The question five views ask before they show anything. `.notdef` is the
+     * box a renderer draws for a character the font has not got and the format
+     * requires it in position zero, so a font that has just been started
+     * carries one -- and `glyphs.length` says 1 about a font with nothing in
+     * it, which is how the empty states came to stop appearing exactly when
+     * they were needed.
+     */
+    const typeface = emptyTypeface();
+    expect(hasLetters(typeface)).toBe(false);
+
+    addGlyph(typeface, NOTDEF);
+    expect(typeface.glyphs).toHaveLength(1);
+    expect(hasLetters(typeface)).toBe(false);
+
+    addGlyph(typeface, "A");
+    expect(hasLetters(typeface)).toBe(true);
+  });
+
+  it("draws the `.notdef` box rather than leaving it blank", () => {
+    /*
+     * The point of `.notdef` is that a character the font has not got shows as
+     * something. An empty one renders as blank space, which is exactly what it
+     * exists to prevent -- and in the grid it showed as an empty cell,
+     * indistinguishable from a letter nobody had drawn, when it was finished.
+     */
+    const glyph = notdefGlyph({
+      ascender: 800,
+      descender: -200,
+      capHeight: 700,
+      xHeight: 500,
+      lineGap: 0,
+    });
+    expect(glyph.name).toBe(NOTDEF);
+    // A box with a hole in it: two rectangles, and the inner one winding the
+    // other way so it cuts rather than fills.
+    expect(glyph.contours).toHaveLength(2);
+    expect(glyph.contours.map((one) => one.nodes.length)).toEqual([4, 4]);
+    expect(Math.sign(contourArea(glyph.contours[0]))).toBe(
+      -Math.sign(contourArea(glyph.contours[1])),
+    );
+    // The hole sits inside the box rather than over it.
+    const outer = contoursBounds([glyph.contours[0]]);
+    const inner = contoursBounds([glyph.contours[1]]);
+    expect(inner.xMin).toBeGreaterThan(outer.xMin);
+    expect(inner.xMax).toBeLessThan(outer.xMax);
+    expect(inner.yMin).toBeGreaterThan(outer.yMin);
+    expect(inner.yMax).toBeLessThan(outer.yMax);
+    // And it is not somebody's unsaved work.
+    expect(glyph.dirty).toBe(false);
+    expect(glyph.unicodes).toEqual([]);
   });
 
   it("finds a free name near the one asked for", () => {

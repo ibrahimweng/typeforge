@@ -47,6 +47,21 @@ async function openFont(page: Page): Promise<void> {
   });
 }
 
+/**
+ * A font with nothing in it, reached the way somebody would reach it.
+ *
+ * Through the palette rather than by calling the store, because starting again
+ * throws away whatever is open and so asks first -- and because a test that
+ * reaches past the confirmation is not testing the path anybody takes.
+ */
+async function startBlank(page: Page): Promise<void> {
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByRole("textbox", { name: "Search everything" }).fill("start a new font");
+  await page.getByRole("dialog", { name: "Quick actions" }).getByRole("option").first().click();
+  const confirm = page.getByRole("alertdialog").getByRole("button", { name: "Go on" });
+  if (await confirm.isVisible().catch(() => false)) await confirm.click();
+}
+
 test("loads with no console errors and prompts for a font", async ({ page }) => {
   const errors: string[] = [];
   page.on("console", (message) => {
@@ -3790,9 +3805,9 @@ test("the checks say when an edited font still wears the name it arrived with", 
 
 test("a new project can be given a letter, which it could not before", async ({ page }) => {
   /*
-   * The dead end this closes. `startBlank()` hands back a typeface whose glyph
-   * list is empty, and there was no way to put anything into it -- so the New
-   * action led to a font that could never contain a letter.
+   * The dead end this closes. `startBlank()` handed back a typeface whose
+   * glyph list was empty, and there was no way to put anything into it -- so
+   * the New action led to a font that could never contain a letter.
    */
   await page.goto("/");
   await openFont(page);
@@ -3805,7 +3820,10 @@ test("a new project can be given a letter, which it could not before", async ({ 
   await page.getByRole("alertdialog").getByRole("button", { name: "Go on" }).click();
 
   await page.getByRole("button", { name: "Font", exact: true }).click();
-  await expect(page.getByText("Press New letter to put one in", { exact: false })).toBeVisible();
+  // The one glyph every font must carry, and a note saying it is not a letter
+  // somebody drew. The grid's older "Nothing here yet" is for a font stripped
+  // of even that.
+  await expect(page.getByText("No letters yet.", { exact: false })).toBeVisible();
 
   await page.locator("[data-add-glyph]").click();
   // A letter to draw in, and the editor open on it.
@@ -3997,4 +4015,103 @@ test("a proof can be printed, which is what the proofing advice is about", async
   // The controls are chrome and are not part of the proof: the printed page is
   // the letters and nothing else.
   await expect(page.locator("[data-print-away]").first()).toHaveCount(1);
+});
+
+test("a font with nothing in it says so wherever you are standing", async ({ page }) => {
+  /*
+   * Found by looking at every view of a font just started rather than at one
+   * of them. Five of the six showed their furniture over nothing: a spacing
+   * table of no rows under its headings, a proof of no text, a kerning list of
+   * no pairs, a checks page with a Run button. The glyph editor said "Choose a
+   * glyph in the font view", which sends somebody to the one view that would
+   * then tell them to press New letter.
+   *
+   * And the parameter rail was live throughout -- ten sliders describing what
+   * they do to letters, on a font with none.
+   */
+  await page.goto("/");
+  await startBlank(page);
+
+  for (const [view, what] of [
+    ["Glyph", "draw"],
+    ["Spacing", "space"],
+    ["Kerning", "kern"],
+    ["Proof", "proof"],
+    ["Checks", "check"],
+  ]) {
+    await page.getByRole("button", { name: view, exact: true }).click();
+    await expect(
+      page.getByText(`no letters yet, so there is nothing to ${what}`, { exact: false }),
+      `${view} has no empty state`,
+    ).toBeVisible();
+    // And the way out of it is here, rather than in some other view.
+    await expect(page.locator("[data-add-first-glyph]")).toBeVisible();
+  }
+
+  // The parameters go with them: on the letter scope they were the family's
+  // values wearing a letter's label, for a letter that did not exist.
+  await page.getByRole("button", { name: "Font", exact: true }).click();
+  await expect(page.locator("[data-no-letters]")).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Parameters" })).not.toContainText(
+    "Corner radius",
+  );
+
+  // Draw somewhere to stand and they come back.
+  await page.locator("[data-add-glyph]").click();
+  await expect(page.locator("[data-no-letters]")).toHaveCount(0);
+  await expect(page.getByRole("complementary", { name: "Parameters" })).toContainText("Weight");
+});
+
+test("a font just started passes its own checks", async ({ page }) => {
+  /*
+   * It did not. `startBlank` handed back a typeface with no glyphs at all, and
+   * the first thing the checks page said about a font nobody had touched was
+   * an error: "No .notdef glyph". Every other generator here -- quill, forge,
+   * assemble -- puts one in first, because the format requires it in position
+   * zero; this one path did not.
+   *
+   * Which makes `glyphs.length` the wrong question to ask about a new font, so
+   * the views ask `hasLetters` instead and `.notdef` does not count.
+   */
+  await page.goto("/");
+  await startBlank(page);
+
+  await page.getByRole("button", { name: "Font", exact: true }).click();
+  await expect(page.getByText("No letters yet.", { exact: false })).toBeVisible();
+  await expect(page.locator("[data-glyph-cell]").filter({ hasText: ".notdef" })).toHaveCount(1);
+  // One glyph, said as one glyph.
+  await expect(page.getByText("1 glyph", { exact: true })).toBeVisible();
+
+  await page.locator("[data-add-glyph]").click();
+  await page.getByRole("button", { name: "Checks", exact: true }).click();
+  await page.getByRole("button", { name: "Run checks", exact: true }).click();
+  await expect(page.getByText("No .notdef glyph", { exact: false })).toHaveCount(0);
+});
+
+test("a new letter's name does not claim to be a character it is not", async ({ page }) => {
+  /*
+   * The grid named it `uni0041`, which by convention *means* U+0041 -- so the
+   * font said it had an A while the glyph answered to no character at all, and
+   * the codepoint field's `U+0041` placeholder agreed with it. Two lies about
+   * one glyph, either of which exports.
+   *
+   * The three New letter buttons also named it three different ways: the grid
+   * `uni0041`, the letter panel `new.mfa3k2x` off a timestamp, and the empty
+   * state `new`.
+   */
+  await page.goto("/");
+  await startBlank(page);
+  await page.getByRole("button", { name: "Font", exact: true }).click();
+  await page.locator("[data-add-glyph]").click();
+
+  const panel = page.locator("[data-letter-panel]");
+  await expect(panel.getByLabel("Letter name")).toHaveValue("newGlyph");
+  // Nothing claimed, from either field.
+  const character = panel.getByLabel("Characters this letter answers to");
+  await expect(character).toHaveValue("");
+  await expect(character).toHaveAttribute("placeholder", "A or U+0041");
+
+  // And the second one lands beside the first rather than on top of it.
+  await panel.getByRole("button", { name: "New letter" }).click();
+  await expect(panel.getByLabel("Letter name")).toHaveValue("newGlyph.001");
 });

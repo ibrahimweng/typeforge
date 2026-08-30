@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { contourArea, contoursBounds } from "@/font/geometry";
+import { hasLetters } from "@/font/library";
 import { directionIsCorrect } from "@/font/outline";
 import { mirror, slanted } from "@/font/reshape";
 import { emptyTypeface, type Contour, type Glyph } from "@/font/types";
+import { validateTypeface } from "@/font/validate";
 import { store } from "./store";
 
 function glyph(name: string): Glyph {
@@ -828,19 +830,41 @@ describe("making and unmaking letters", () => {
 
   it("puts a letter into a font that had none, which was a dead end", () => {
     /*
-     * `startBlank()` hands back a typeface with an empty glyph list, and until
-     * this existed there was no way to put anything into it. The New action
-     * led to a font that could never contain a letter.
+     * `startBlank()` used to hand back a typeface with an empty glyph list,
+     * and until this existed there was no way to put anything into it. The New
+     * action led to a font that could never contain a letter.
      */
     store.startBlank();
-    expect(store.getSnapshot().typeface!.glyphs).toHaveLength(0);
+    // What a new font does carry: the box a renderer draws for a character the
+    // font has not got, which the format requires in position zero. Every
+    // other generator here puts one in and this one did not, so the first
+    // thing the checks page said about a font nobody had touched was an error.
+    expect(store.getSnapshot().typeface!.glyphs.map((one) => one.name)).toEqual([".notdef"]);
+    // And it is not something anybody drew, so the font is still empty.
+    expect(hasLetters(store.getSnapshot().typeface!)).toBe(false);
+
     expect(store.addGlyph("A", [65])).toBe(true);
 
     const typeface = store.getSnapshot().typeface!;
-    expect(typeface.glyphs.map((one) => one.name)).toEqual(["A"]);
+    expect(typeface.glyphs.map((one) => one.name)).toEqual([".notdef", "A"]);
+    expect(hasLetters(typeface)).toBe(true);
     // Opened, because the reason to make a letter is to draw in it.
     expect(store.getSnapshot().selectedGlyph).toBe("A");
     expect(store.getSnapshot().view).toBe("glyph");
+  });
+
+  it("hands a new font a `.notdef` that its own checks accept", () => {
+    /*
+     * The whole point of the glyph above, said as the check that used to fire.
+     * A font a person has just made should not open on an error about
+     * something they had no way to do anything about.
+     */
+    store.startBlank();
+    const checks = validateTypeface(store.getSnapshot().typeface!).findings.map(
+      (one) => one.check,
+    );
+    expect(checks).not.toContain("notdef-missing");
+    expect(checks).not.toContain("notdef-position");
   });
 
   it("refuses a name that is taken and a character that is claimed", () => {

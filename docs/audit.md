@@ -154,3 +154,65 @@ were drawn against, and three more.
 Every one of those was found by building the thing rather than by reading the
 code, which is the argument for writing the list down and working through it
 rather than filing it.
+
+---
+
+# A second tour, of a font with nothing in it
+
+The audit above works through a list. This is what a tour finds that no list
+does: every view, every scope, every dialog, screenshotted and looked at. The
+first tour was of a font that had been opened. This one was of a font that had
+just been started, which is the state every font passes through and the one
+nobody looks at.
+
+Nine faults, all of them in that state.
+
+**Five of the six edit views had no empty state.** The glyph editor said
+"Choose a glyph in the font view", which sends somebody to the one view that
+would then tell them to press New letter. Spacing, kerning, proof and checks
+showed their furniture over nothing: a table of no rows under its headings, a
+proof of no text, a Run button over no glyphs. `NothingDrawnYet` says the same
+sentence in all five, with the way out in each of them, because a person who
+has just started a font has not chosen a view -- they have arrived in whichever
+one was last open.
+
+**A new font failed its own checks.** `startBlank` handed back a typeface with
+an empty glyph list, so the first thing the checks page said about a font
+nobody had touched was an error: "No .notdef glyph". Every other generator here
+-- quill, forge, assemble -- puts one in first, because the format requires it
+in position zero. This one path did not.
+
+Which turned `glyphs.length` into the wrong question. A new font now carries
+one glyph and is still empty, so the views ask `hasLetters` instead, and
+`.notdef` does not count as a letter because nobody drew it.
+
+**The new letter was called `uni0041`.** By convention that name *means*
+U+0041, so the font claimed to have an A while the glyph answered to no
+character at all -- and the codepoint field's `U+0041` placeholder agreed with
+it. Two lies about one glyph, either of which exports. The three New letter
+buttons named it three different ways besides: the grid `uni0041`, the letter
+panel a timestamp, the empty state `new`. All three now say `newGlyph`, which
+asserts nothing, and the placeholder reads `A or U+0041` so it cannot be
+mistaken for a value.
+
+**The parameter rail was live on a font with no letters.** Ten sliders
+describing what they do to letters -- rounds their corners, thickens their
+strokes, opens the counters of o, e and a -- every one of them moving without
+moving anything. The letter scope was worse: with no letter selected it fell
+back to the family's values and showed them under a tab labelled Letter, so the
+numbers on screen belonged to something other than what the tab said they did.
+
+**The coach mark over the control letters said five.** There are seven, and the
+panel under it says "0 of 7" in the same screenshot. Prose beside a control is
+exactly the text that goes stale silently: nothing type-checks a sentence, and
+nobody re-reads the copy when they add a letter to the list. There is a test on
+it now, which counts them.
+
+Three more, each a sentence: "1 glyphs" beside the search box, reachable on
+every new font the moment one carried a `.notdef`; "1 other glyphs match them"
+in the control-letter panel, about a glyph that matches nothing; and a
+paragraph in the paths list explaining how the order and direction of paths
+decide what fills, printed over a letter with no paths at all.
+
+Every one of these was found by looking at a screenshot. None of them would
+have been found by reading the code, and none of them was on any list.

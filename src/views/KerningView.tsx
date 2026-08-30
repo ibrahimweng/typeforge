@@ -24,6 +24,8 @@ import { drawGlyph, prepareCanvas, readToken, type GlyphView } from "@/component
 import { resolveAdvanceWidth } from "@/font/transform";
 import type { Glyph, Typeface } from "@/font/types";
 import { CoachMark } from "@/components/CoachMark";
+import { NothingDrawnYet } from "@/components/NothingDrawnYet";
+import { hasLetters } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";
 import { SIDE_PANEL } from "@/components/controls";
 import { cn } from "@/ui/lib/utils";
@@ -156,6 +158,10 @@ export function KerningView(): React.JSX.Element {
       </div>
     );
   }
+
+  // A font with no letters is a different thing from no font, and every view
+  // used to say the same about both.
+  if (!hasLetters(typeface)) return <NothingDrawnYet what="kern" />;
 
   const resolved = selectedPair
     ? store.resolvedKerning(selectedPair.left, selectedPair.right)

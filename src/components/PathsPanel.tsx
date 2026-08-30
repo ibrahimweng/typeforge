@@ -286,13 +286,20 @@ export function PathsPanel(): React.JSX.Element | null {
         </div>
       )}
 
-      <p className="pt-2 text-2xs leading-snug text-muted-foreground">
-        Which way a path runs decides whether it fills or cuts a hole through the one around it.
-        The order is the order the exported file lists them in.
-        {contours.length > 1 && picked.length < 2 && (
-          <> Shift-click a second path to add or subtract them.</>
-        )}
-      </p>
+      {/*
+        About the list above, so it goes when the list does. On a letter with
+        nothing in it this was a paragraph on how the order of paths and the
+        direction they run decide what fills -- said over no paths at all.
+      */}
+      {contours.length > 0 && (
+        <p className="pt-2 text-2xs leading-snug text-muted-foreground">
+          Which way a path runs decides whether it fills or cuts a hole through the one around it.
+          The order is the order the exported file lists them in.
+          {contours.length > 1 && picked.length < 2 && (
+            <> Shift-click a second path to add or subtract them.</>
+          )}
+        </p>
+      )}
     </section>
   );
 }
