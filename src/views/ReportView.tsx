@@ -20,6 +20,7 @@ import { cn } from "@/ui/lib/utils";
 const SEVERITY_LABEL: Record<Severity, string> = {
   error: "Error",
   warning: "Warning",
+  advice: "Advice",
   info: "Note",
 };
 
@@ -31,6 +32,7 @@ export function ReportView(): React.JSX.Element {
   const [shown, setShown] = React.useState<Record<Severity, boolean>>({
     error: true,
     warning: true,
+    advice: true,
     info: true,
   });
   const listRef = React.useRef<HTMLDivElement>(null);
@@ -39,7 +41,7 @@ export function ReportView(): React.JSX.Element {
     setShown((was) => ({ ...was, [severity]: !was[severity] }));
 
   const counts = React.useMemo(() => {
-    const tally: Record<Severity, number> = { error: 0, warning: 0, info: 0 };
+    const tally: Record<Severity, number> = { error: 0, warning: 0, advice: 0, info: 0 };
     for (const finding of report?.findings ?? []) tally[finding.severity] += 1;
     return tally;
   }, [report]);
@@ -104,6 +106,15 @@ export function ReportView(): React.JSX.Element {
               onToggle={() => toggle("error")} />
             <Count value={counts.warning} label="warning" tone="warning" on={shown.warning}
               onToggle={() => toggle("warning")} />
+            {/*
+              Advice is not a fault and is coloured as one it is not. It is a
+              second opinion on the drawing -- every optical rule can be
+              deliberately unfollowed -- so it takes the accent the application
+              uses for things worth looking at rather than the red and amber it
+              uses for things that are wrong.
+            */}
+            <Count value={counts.advice} label="piece of advice" tone="advice" on={shown.advice}
+              onToggle={() => toggle("advice")} />
             <Count value={counts.info} label="note" tone="info" on={shown.info}
               onToggle={() => toggle("info")} />
             <span className="text-2xs text-muted-foreground tabular-nums">
@@ -171,8 +182,11 @@ function Count({
       ? "text-destructive"
       : tone === "warning"
         ? "text-[var(--attention)]"
-        : "text-foreground";
-  const words = `${value} ${label}${value === 1 ? "" : "s"}`;
+        : tone === "advice"
+          ? "text-accent"
+          : "text-foreground";
+  // "1 piece of advice" and "4 pieces of advice": the plural is not on the end.
+  const words = value === 1 ? `${value} ${label}` : `${value} ${label.replace("piece of", "pieces of")}${label.startsWith("piece") ? "" : "s"}`;
 
   if (value === 0) {
     return <span className="text-2xs tabular-nums text-muted-foreground">{words}</span>;
@@ -205,7 +219,9 @@ function FindingRow({ finding }: { finding: Finding }): React.JSX.Element {
           ? "border-destructive/50"
           : finding.severity === "warning"
             ? "border-[var(--attention)]/40"
-            : "border-border",
+            : finding.severity === "advice"
+              ? "border-accent/40"
+              : "border-border",
       )}
     >
       <div className="flex items-baseline gap-2.5">
@@ -216,7 +232,9 @@ function FindingRow({ finding }: { finding: Finding }): React.JSX.Element {
               ? "bg-destructive/15 text-destructive"
               : finding.severity === "warning"
                 ? "bg-[var(--attention)]/15 text-[var(--attention)]"
-                : "bg-muted text-muted-foreground",
+                : finding.severity === "advice"
+                  ? "bg-accent/15 text-accent"
+                  : "bg-muted text-muted-foreground",
           )}
         >
           {SEVERITY_LABEL[finding.severity]}
