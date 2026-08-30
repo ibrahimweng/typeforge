@@ -3611,3 +3611,90 @@ test("the tools answer to a single key, as in every drawing application", async 
     "true",
   );
 });
+
+test("the way to the tools is the same from every view that shows a letter", async ({ page }) => {
+  /*
+   * The tools used to sit behind a gesture nobody could see. The font grid
+   * opened a letter on a double click, the spacing table selected one without
+   * opening it, and the proof sheet did neither -- so the shortest way from a
+   * letter you were looking at to the pen was to notice a tab, press it, and
+   * find the letter again.
+   *
+   * Above the scope tabs rather than inside one, because the panel opens on
+   * the family in three of these four views: under the letter tab it would
+   * have moved from one thing nobody presses to another.
+   */
+  await page.goto("/");
+  await openFont(page);
+
+  for (const view of ["Font", "Spacing", "Proof"]) {
+    await page.getByRole("button", { name: view, exact: true }).click();
+    await expect(page.locator("[data-open-in-editor]")).toBeVisible();
+  }
+
+  await page.locator("[data-open-in-editor]").getByRole("button").click();
+  await expect(page.getByRole("button", { name: "Glyph", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  // And the tools are all there, which is the point of having gone.
+  await expect(page.getByRole("group", { name: "Tool" })).toBeVisible();
+  await expect(page.locator("[data-points-panel]")).toBeVisible();
+  // Once you are in the editor there is nowhere to go, so it is not offered.
+  await expect(page.locator("[data-open-in-editor]")).toHaveCount(0);
+});
+
+test("a kerning pair offers both of its letters, because a pair is two", async ({ page }) => {
+  /*
+   * The one view with no inspector, so the button that reaches the tools from
+   * everywhere else cannot be here -- and there would be nothing for a single
+   * button to mean anyway. A gap that is too wide is often a letter drawn too
+   * wide, and that is fixed in the outline rather than in the number on the
+   * row.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Kerning", exact: true }).click();
+
+  await page.getByText("T / o", { exact: false }).first().click();
+  const row = page.getByText("Edit", { exact: true }).locator("..");
+  await expect(row.getByRole("button", { name: "T", exact: true })).toBeVisible();
+
+  await row.getByRole("button", { name: "o", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Glyph", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.locator("[data-glyph-numbers]")).toContainText("o");
+});
+
+test("letters drawn in Draw can be taken to the tools", async ({ page }) => {
+  /*
+   * The connection this application did not have. Draw holds no outlines -- a
+   * letter there is a skeleton, a pen and a set of parts, redrawn from scratch
+   * every time a slider moves -- so the point tools cannot live in it: a
+   * dragged node would be undone by the next parameter change.
+   *
+   * The engine already knew how to build a real typeface, because that is what
+   * its export dialog does. Until now that typeface only ever went into a
+   * file, so the only way to move a point on a letter you had drawn was to
+   * export it and open the file you had just written.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Draw", exact: true }).click();
+
+  await page.locator("[data-take-to-editor]").getByRole("button").click();
+  await expect(page.getByRole("button", { name: "Glyph", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+    { timeout: 120_000 },
+  );
+
+  // The font in hand is the one that was just drawn, not the one that was open.
+  await expect(page.getByText("Untitled", { exact: false }).first()).toBeVisible();
+  await expect(page.getByText("DejaVu Sans", { exact: false })).toHaveCount(0);
+  // And every tool is pointed at it.
+  await expect(page.getByRole("group", { name: "Tool" })).toBeVisible();
+  await expect(page.locator("[data-paths-panel]")).toContainText("paths");
+});

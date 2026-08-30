@@ -19,10 +19,11 @@ import { QUILL_CONTROLS, type QuillStyle } from "@/quill/controls";
 import { drawTraced, quillStore, useQuill, type Phase } from "@/state/useQuill";
 import { OUTLINE_ACTION, segment, SEGMENT_TRACK } from "./controls";
 import { SliderControl as Slider } from "@/ui/components/controls/slider";
+import { TakeToEditor } from "@/components/TakeToEditor";
 import { WIDE_PANEL } from "@/components/controls";
 import { cn } from "@/ui/lib/utils";
 
-export function QuillPanel(): React.JSX.Element {
+export function QuillPanel({ onEdit }: { onEdit: () => Promise<void> }): React.JSX.Element {
   const state = useQuill();
   const { document: doc, letter } = state;
   const traced = doc.letters.find((one) => one.glyph.name === letter) ?? doc.letters[0];
@@ -202,6 +203,16 @@ export function QuillPanel(): React.JSX.Element {
           </>
         )}
       </div>
+      {/*
+        Outside the scrolling column, at the foot, for the reason it is in the
+        forge's panel: everything above reshapes the hand, and this is the one
+        thing that takes the letters somewhere else.
+      */}
+      <TakeToEditor
+        onEdit={onEdit}
+        what="every traced letter"
+        disabled={doc.letters.length === 0}
+      />
     </aside>
   );
 }

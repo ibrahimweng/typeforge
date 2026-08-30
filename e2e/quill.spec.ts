@@ -306,3 +306,38 @@ test("a text face opened for editing stays in the editor", async ({ page }) => {
   await expect(page.getByRole("complementary", { name: "Quill" })).toHaveCount(0);
   await expect(page.locator('[role="progressbar"]')).toHaveCount(0);
 });
+
+test("traced letters can be taken to the tools", async ({ page }) => {
+  /*
+   * The same door the forge has, and worth its own test rather than being
+   * taken on trust from that one: the two engines build a typeface from
+   * different arguments -- a forge and its options against a list of traced
+   * letters, a hand, and a unit size -- so the call is written twice and only
+   * one of them was covered.
+   *
+   * Trace holds strokes rather than outlines, so the point tools cannot live
+   * here either. This is how a traced letter reaches them.
+   */
+  await traceAFont(page);
+
+  const handOver = page.locator("[data-take-to-editor]").getByRole("button");
+  await expect(handOver).toBeEnabled();
+  await handOver.click();
+
+  await expect(page.getByRole("button", { name: "Glyph", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+    { timeout: 180_000 },
+  );
+  await expect(page.getByRole("group", { name: "Tool" })).toBeVisible();
+  await expect(page.locator("[data-paths-panel]")).toContainText("paths");
+});
+
+test("the hand-over waits until there is something to hand over", async ({ page }) => {
+  // Nothing traced is not an error, and pressing a button that cannot work is
+  // not a thing anybody should be able to do.
+  await page.goto("/");
+  await page.getByRole("button", { name: "Trace" }).click();
+  await expect(page.getByText("Nothing traced yet")).toBeVisible();
+  await expect(page.locator("[data-take-to-editor]").getByRole("button")).toBeDisabled();
+});
