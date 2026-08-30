@@ -65,7 +65,7 @@ export function GlyphEditorView(): React.JSX.Element {
   const glyph = store.glyph(state.selectedGlyph);
 
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
-  const containerRef = React.useRef<HTMLDivElement>(null);
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
   const [size, setSize] = React.useState({ width: 800, height: 600 });
   const [zoom, setZoom] = React.useState(1);
   const [pan, setPan] = React.useState<Vec2>({ x: 0, y: 0 });
@@ -73,16 +73,34 @@ export function GlyphEditorView(): React.JSX.Element {
   const [hover, setHover] = React.useState<Hover>(null);
   const [, forceRender] = React.useReducer((n: number) => n + 1, 0);
 
-  React.useEffect(() => {
-    const element = containerRef.current;
+  /*
+   * Measured through a callback ref, for the reason the font grid is.
+   *
+   * This view returns an empty state before the canvas exists, and the observer
+   * used to be set up in an effect with no dependencies -- so on a render with
+   * no font the ref was null, the effect took its early exit, and it never ran
+   * again. Here that is latent rather than visible: the view is mounted and
+   * unmounted by the switch above it, so by the time anybody can reach it there
+   * is always a font and the ref is always there.
+   *
+   * It is fixed anyway, and not for tidiness. The identical shape in the font
+   * grid was not latent: it left that grid at eight columns on every window
+   * size, for ever, with the letters spilling out of their cells on a narrow
+   * one. A fault that is currently invisible because of how a sibling component
+   * happens to be rendered is a fault waiting for that to change.
+   */
+  const observerRef = React.useRef<ResizeObserver | null>(null);
+  const measure = React.useCallback((element: HTMLDivElement | null) => {
+    containerRef.current = element;
+    observerRef.current?.disconnect();
     if (!element) return;
-    const observer = new ResizeObserver(() =>
-      setSize({ width: element.clientWidth, height: element.clientHeight }),
-    );
+    const read = () => setSize({ width: element.clientWidth, height: element.clientHeight });
+    read();
+    const observer = new ResizeObserver(read);
     observer.observe(element);
-    setSize({ width: element.clientWidth, height: element.clientHeight });
-    return () => observer.disconnect();
+    observerRef.current = observer;
   }, []);
+  React.useEffect(() => () => observerRef.current?.disconnect(), []);
 
   // Reset the framing whenever a different glyph is opened.
   React.useEffect(() => {
@@ -411,7 +429,7 @@ export function GlyphEditorView(): React.JSX.Element {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <CoachMark id="glyph" />
-      <div ref={containerRef} className="relative min-h-0 flex-1 overflow-hidden bg-[var(--canvas)]">
+      <div ref={measure} className="relative min-h-0 flex-1 overflow-hidden bg-[var(--canvas)]">
         <canvas
           ref={canvasRef}
           style={{ width: size.width, height: size.height }}

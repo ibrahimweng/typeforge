@@ -2642,3 +2642,52 @@ test("fills in the letters at the bottom of the strip when they are scrolled to"
     .not.toBe("");
   expect(errors).toEqual([]);
 });
+
+test("the glyph grid fills the width it is given, at any width", async ({ page }) => {
+  /*
+   * The grid measured itself from an effect that ran once, before the grid
+   * existed, and never again -- so the column count stayed at the eight it was
+   * initialised with on every window size. Two faults came out of that one
+   * line. Density got *worse* on a larger monitor, because eight columns of a
+   * wider window is eight bigger cells rather than more letters. And on a
+   * narrow one the cells were squeezed below the fixed size their canvases are
+   * drawn at, so the letters overflowed and drew across their neighbours.
+   *
+   * Checked as a relationship rather than against fixed numbers: what has to
+   * hold is that a wider window shows more letters and that a letter never
+   * draws wider than the cell it sits in. Pinning the counts themselves would
+   * fail the day the cell size is changed for a good reason.
+   */
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto("/");
+  await openFont(page);
+
+  const cells = () => page.locator("[data-glyph-cell]");
+  const countWide = await cells().count();
+
+  await page.setViewportSize({ width: 900, height: 900 });
+  await page.waitForTimeout(600);
+  const countNarrow = await cells().count();
+
+  expect(countWide, "a wider window showed no more letters than a narrow one").toBeGreaterThan(
+    countNarrow,
+  );
+
+  /*
+   * And nothing draws outside its cell. Measured on the letters actually on
+   * screen at the narrow width, which is where the overflow showed.
+   */
+  const spilling = await page.evaluate(() => {
+    const out: string[] = [];
+    for (const cell of document.querySelectorAll("[data-glyph-cell]")) {
+      const canvas = cell.querySelector("canvas");
+      if (!canvas) continue;
+      const inner = canvas.getBoundingClientRect();
+      const outer = cell.getBoundingClientRect();
+      // A pixel of tolerance for sub-pixel layout rounding.
+      if (inner.width > outer.width + 1) out.push(cell.getAttribute("data-glyph-cell") ?? "?");
+    }
+    return out;
+  });
+  expect(spilling, "letters drawn wider than the cell they sit in").toEqual([]);
+});
