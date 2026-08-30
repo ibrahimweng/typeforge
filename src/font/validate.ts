@@ -15,6 +15,7 @@ import { contourArea, contoursBounds, distance } from "./geometry";
 import {
   contoursIntersect,
   directionIsCorrect,
+  dominantConvention,
   missingExtrema,
   type OutlineFormat,
 } from "./outline";
@@ -56,7 +57,18 @@ export function validateTypeface(
   typeface: Typeface,
   options: ValidateOptions = {},
 ): ValidationReport {
-  const format = options.format ?? "truetype";
+  /*
+   * Which way round this font winds, measured rather than assumed.
+   *
+   * This said `truetype` and nothing else, which was right while a font could
+   * only arrive from a `.ttf`. A UFO winds the other way -- PostScript
+   * convention is what the format specifies and what every tool that writes
+   * one produces -- so opening a perfectly good UFO reported every round
+   * letter in it as wound the wrong way. A check that is wrong about correct
+   * work is worse than no check, because the one thing it teaches is to stop
+   * reading it.
+   */
+  const format = options.format ?? dominantConvention(typeface.glyphs);
   const limit = options.limit ?? 5000;
   const glyphs = typeface.glyphs.slice(0, limit);
   const findings: Finding[] = [];

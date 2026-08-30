@@ -36,6 +36,28 @@ import { cn } from "@/ui/lib/utils";
 const windingOf = (contour: Contour): "clockwise" | "anticlockwise" =>
   contourArea(contour) < 0 ? "clockwise" : "anticlockwise";
 
+/** One of the operations under the list, all of which look and behave alike. */
+function Operation({
+  onClick,
+  title,
+  children,
+}: {
+  onClick: () => void;
+  title: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className="rounded border border-border px-1.5 py-1 text-2xs text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
+    >
+      {children}
+    </button>
+  );
+}
+
 export function PathsPanel(): React.JSX.Element | null {
   const state = useAppState();
   const glyph = state.selectedGlyph ? store.glyph(state.selectedGlyph) : null;
@@ -51,12 +73,27 @@ export function PathsPanel(): React.JSX.Element | null {
     if (Number.isFinite(contour)) touched.add(contour);
   }
 
-  const selectWhole = (index: number) => {
+  /*
+   * The paths whose points are all selected, in the order they were picked up.
+   *
+   * Which is what the two boolean operations need and what the canvas already
+   * says: a path is "picked" when every one of its points is, so clicking a
+   * row and shift-clicking another is a way of naming two shapes without a
+   * second kind of selection to keep in step with the first.
+   */
+  const picked = contours
+    .map((_, index) => index)
+    .filter((index) =>
+      contours[index].nodes.every((_, node) =>
+        state.selectedNodes.has(nodeKey({ contour: index, node })),
+      ),
+    );
+
+  const selectWhole = (index: number, add: boolean) => {
     const contour = contours[index];
     if (!contour) return;
-    store.setSelectedNodes(
-      new Set(contour.nodes.map((_, node) => nodeKey({ contour: index, node }))),
-    );
+    const keys = contour.nodes.map((_, node) => nodeKey({ contour: index, node }));
+    store.setSelectedNodes(add ? new Set([...state.selectedNodes, ...keys]) : new Set(keys));
   };
 
   return (
@@ -90,7 +127,7 @@ export function PathsPanel(): React.JSX.Element | null {
               >
                 <button
                   type="button"
-                  onClick={() => selectWhole(index)}
+                  onClick={(event) => selectWhole(index, event.shiftKey)}
                   aria-label={`Select path ${index + 1}`}
                   className="flex min-w-0 flex-1 items-baseline gap-2 text-left"
                 >
@@ -171,9 +208,66 @@ export function PathsPanel(): React.JSX.Element | null {
         </ol>
       )}
 
+      {/*
+        The operations, under the paths they operate on.
+
+        All four have been in this application since the exporter needed them,
+        and all four ran once, silently, on the way to a file. There was no way
+        to ask for any of them while drawing -- so the Checks view could say
+        that a letter's extremes were missing and offer nothing to do about it
+        but place the points by hand.
+
+        Here rather than in the toolbar because this is the panel about a
+        letter's paths, and because the two that need a choice of paths need
+        this list to make it in.
+      */}
+      {contours.length > 0 && (
+        <div className="flex flex-wrap gap-1 pt-2.5" data-path-actions>
+          <Operation
+            onClick={() => store.addExtremes(name)}
+            title="Put a point wherever a curve reaches its furthest up, down, left or right. Both outline formats want them, and export adds them anyway; doing it here is doing it where you can see it."
+          >
+            Add extremes
+          </Operation>
+          <Operation
+            onClick={() => store.correctPathDirection(name)}
+            title="Wind the paths the way the rest of this font is wound, so counters cut holes rather than filling in."
+          >
+            Correct direction
+          </Operation>
+          {contours.length > 1 && (
+            <Operation
+              onClick={() => void store.removeOverlap(name)}
+              title="Fuse the paths into the single outline they add up to. Drawing a letter as overlapping pieces is normal; a font file cannot carry them."
+            >
+              Remove overlap
+            </Operation>
+          )}
+          {picked.length > 1 && (
+            <>
+              <Operation
+                onClick={() => void store.combineContours(name, picked, "unite")}
+                title={`Add path ${picked.map((one) => one + 1).join(" and ")} together into one`}
+              >
+                Unite {picked.length}
+              </Operation>
+              <Operation
+                onClick={() => void store.combineContours(name, picked, "subtract")}
+                title={`Cut path ${picked.slice(1).map((one) => one + 1).join(" and ")} out of path ${picked[0] + 1}`}
+              >
+                Subtract
+              </Operation>
+            </>
+          )}
+        </div>
+      )}
+
       <p className="pt-2 text-2xs leading-snug text-muted-foreground">
         Which way a path runs decides whether it fills or cuts a hole through the one around it.
         The order is the order the exported file lists them in.
+        {contours.length > 1 && picked.length < 2 && (
+          <> Shift-click a second path to add or subtract them.</>
+        )}
       </p>
     </section>
   );

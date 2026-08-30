@@ -3254,3 +3254,100 @@ test("one word for writing a font out, in every mode", async ({ page }) => {
   await page.getByRole("button", { name: "Export", exact: true }).click();
   await expect(page.getByRole("button", { name: "Download", exact: true })).toBeVisible();
 });
+
+test("the path operations this font engine already knew how to do", async ({ page }) => {
+  /*
+   * Four operations that had been in the tree since the exporter needed them,
+   * and ran once, silently, on the way to a file. There was no way to ask for
+   * any of them while drawing -- so the Checks view could report that a
+   * letter's extremes were missing and offer nothing to do about it but place
+   * the points by hand.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  const actions = page.locator("[data-path-actions]");
+  await expect(actions).toBeVisible();
+  await expect(actions.getByRole("button", { name: "Add extremes" })).toBeVisible();
+  await expect(actions.getByRole("button", { name: "Correct direction" })).toBeVisible();
+  await expect(actions.getByRole("button", { name: "Remove overlap" })).toBeVisible();
+
+  // The two that need a choice of paths are not offered until one is made.
+  await expect(actions.getByRole("button", { name: /^Unite/ })).toHaveCount(0);
+
+  /*
+   * Picked by clicking a row and shift-clicking another, which is the same
+   * selection the canvas already keeps rather than a second one to hold in
+   * step with it.
+   */
+  await page.locator('[data-path-row="0"]').getByRole("button").first().click();
+  await page
+    .locator('[data-path-row="1"]')
+    .getByRole("button")
+    .first()
+    .click({ modifiers: ["Shift"] });
+  await expect(actions.getByRole("button", { name: "Unite 2" })).toBeVisible();
+
+  /*
+   * And the boolean runs, which means the library it needs was fetched and
+   * waited for rather than reached for while still on its way.
+   *
+   * Compared on what the paths say rather than on how many there are. An `A`
+   * is an outer and a counter, and cutting the second out of the first is
+   * still a shape with a hole in it -- so the count is two before and two
+   * after, and a test watching the count would call a working operation a
+   * failure.
+   */
+  const panel = page.locator("[data-paths-panel]");
+  const before = await panel.innerText();
+  const undo = page.getByRole("button", { name: "Undo" });
+  await expect(undo).toBeDisabled();
+
+  await actions.getByRole("button", { name: "Unite 2" }).click();
+  await expect.poll(() => panel.innerText(), { timeout: 30_000 }).not.toBe(before);
+  await expect(undo).toBeEnabled();
+
+  await undo.click();
+  await expect.poll(() => panel.innerText()).toBe(before);
+});
+
+test("says so when a subtraction would leave nothing", async ({ page }) => {
+  /*
+   * Cutting a shape out of one that contains it leaves nothing, which is
+   * arithmetic rather than a fault -- and it is what happens when the two
+   * paths of an `A` are picked in the order the file lists them, the counter
+   * first. Returning quietly made a working button look broken.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  await page.locator('[data-path-row="0"]').getByRole("button").first().click();
+  await page
+    .locator('[data-path-row="1"]')
+    .getByRole("button")
+    .first()
+    .click({ modifiers: ["Shift"] });
+
+  await page.locator("[data-path-actions]").getByRole("button", { name: "Subtract" }).click();
+  await expect(page.getByText("nothing would be left", { exact: false })).toBeVisible({
+    timeout: 30_000,
+  });
+  // And the letter is left exactly as it was.
+  await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
+});
+
+test("correcting the direction is an edit, not a display change", async ({ page }) => {
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  // Turn a path the wrong way round, then ask for it back.
+  await page.locator('[aria-label="Reverse path 1"]').click();
+  const winding = await page.locator('[data-path-row="0"]').innerText();
+
+  await page.locator("[data-path-actions]").getByRole("button", { name: "Correct direction" }).click();
+  await expect.poll(() => page.locator('[data-path-row="0"]').innerText()).not.toBe(winding);
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+});

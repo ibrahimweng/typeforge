@@ -270,6 +270,43 @@ export function directionIsCorrect(
   });
 }
 
+/**
+ * Which winding convention a font is already written in.
+ *
+ * The two formats disagree, and both are right: TrueType puts an outer contour
+ * clockwise, PostScript puts it counter-clockwise, and a font is correct when
+ * it is consistent with one of them. So "the wrong way round" is not a fact
+ * about a contour on its own -- it is a fact about a contour against the rest
+ * of the font it is in.
+ *
+ * Asked of the drawing rather than tracked alongside it, and the reason is
+ * that the drawing is the only thing that always knows. A font opened from a
+ * `.ttf` arrives one way and a font opened from a UFO the other; a font drawn
+ * here has never been either. Counting is right for all three and needs
+ * nothing remembered.
+ *
+ * A font that is half one way and half the other -- which is what a font with
+ * a real direction fault looks like -- resolves to whichever half is larger,
+ * so the answer is the convention the designer was working in and the
+ * minority is what gets reported or repaired. A tie goes to TrueType, which
+ * is what this defaulted to before it could tell.
+ */
+export function dominantConvention(
+  glyphs: Array<{ contours: Contour[] }>,
+  roles: Roles = "nesting",
+): OutlineFormat {
+  let trueType = 0;
+  let postScript = 0;
+  for (const glyph of glyphs) {
+    if (glyph.contours.length === 0) continue;
+    // An open contour and a contour of two points satisfy both, and counting
+    // them would just add the same number to each side.
+    if (directionIsCorrect(glyph.contours, "truetype", roles)) trueType += 1;
+    if (directionIsCorrect(glyph.contours, "cff", roles)) postScript += 1;
+  }
+  return postScript > trueType ? "cff" : "truetype";
+}
+
 // ---------------------------------------------------------------------------
 // Point-in-polygon helpers
 // ---------------------------------------------------------------------------
