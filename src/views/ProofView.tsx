@@ -197,7 +197,10 @@ export function ProofView(): React.JSX.Element {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-border px-4 py-2 text-2xs">
+      <div
+        className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-border px-4 py-2 text-2xs"
+        data-print-away
+      >
         <Dial label="Size" value={size} min={6} max={72} step={1} onChange={setSize} suffix="px" />
         <Dial
           label="Line height"
@@ -221,16 +224,34 @@ export function ProofView(): React.JSX.Element {
             Drawn from the outlines on screen, not from an installed font.
           </span>
           <GroundToggle />
+          {/*
+            The proofing advice every type designer gives is about paper:
+            print it, look at it away from the screen, put it on a wall. A
+            screen shows a letter lit from behind at seventy-two pixels to the
+            inch and paper shows it lit from the front at three hundred, which
+            is why a face that looks even on a monitor can look blotchy in a
+            book. Until now this view could only be looked at.
+          */}
+          <button
+            type="button"
+            onClick={() => window.print()}
+            data-print-proof
+            title="Print this proof, or save it as a PDF. The page comes out on white with none of the controls on it."
+            className="rounded border border-border px-2 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+          >
+            Print
+          </button>
         </span>
       </div>
 
-      <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
+      <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto" data-proof-sheet>
         <div className="mx-auto max-w-4xl px-6 py-6">
           <textarea
             value={text}
             onChange={(event) => setText(event.target.value)}
             aria-label="Proof text"
             data-proof-text
+            data-print-away
             rows={3}
             className="mb-5 w-full resize-y rounded-md border border-input bg-card p-3 text-2xs leading-relaxed text-foreground outline-none focus-visible:border-accent"
           />

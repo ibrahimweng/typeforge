@@ -25,6 +25,7 @@ import {
   CursorIcon,
   KnifeIcon,
   PenNibIcon,
+  PencilSimpleIcon,
   RectangleIcon,
   type Icon,
 } from "@phosphor-icons/react";
@@ -48,6 +49,13 @@ import { cn } from "@/ui/lib/utils";
 const TOOLS: Array<{ id: ToolId; mark: Icon; name: string; hint: string; key: string }> = [
   { id: "select", mark: CursorIcon, name: "Select", key: "V", hint: "Select and move points" },
   { id: "pen", mark: PenNibIcon, name: "Pen", key: "P", hint: "Add points to an outline" },
+  {
+    id: "pencil",
+    mark: PencilSimpleIcon,
+    name: "Pencil",
+    key: "B",
+    hint: "Draw freehand. The line is fitted to curves when you let go, and closes if you come back to where you started",
+  },
   {
     id: "rectangle",
     mark: RectangleIcon,

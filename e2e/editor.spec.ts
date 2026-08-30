@@ -3922,3 +3922,79 @@ test("a dragged point is pulled onto the lines worth landing on", async ({ page 
   await snap.click();
   await expect(snap).toHaveAttribute("aria-pressed", "true");
 });
+
+test("the pencil draws freehand, and the line becomes an outline", async ({ page }) => {
+  /*
+   * The last tool, deferred when the canvas tools were built. A pointer
+   * reports every few milliseconds, so a stroke drawn in a second arrives as
+   * two or three hundred positions -- and a contour with three hundred nodes
+   * in it is a recording of a hand rather than a drawing. What lands is a
+   * handful of curves; how few is asserted exactly in the unit tests.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  const paths = page.locator("[data-paths-panel]");
+  const before = await paths.innerText();
+
+  await page.getByRole("group", { name: "Tool" }).getByRole("button", { name: "Pencil" }).click();
+  const canvas = page.locator("canvas").first();
+  const area = (await canvas.boundingBox())!;
+  await page.mouse.move(area.x + 60, area.y + 200);
+  await page.mouse.down();
+  for (let step = 1; step <= 20; step++) {
+    await page.mouse.move(area.x + 60 + step * 8, area.y + 200 + Math.sin(step / 3) * 30);
+  }
+  await page.mouse.up();
+
+  await expect.poll(() => paths.innerText()).not.toBe(before);
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+});
+
+test("a letter can be built out of another by hand", async ({ page }) => {
+  /*
+   * `removeComponent` has always existed and nothing ever added one except the
+   * accent builder, which runs on its own -- so a letter could be taken apart
+   * and never put together on purpose.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  // The tab's name is lowercase in the DOM and capitalised only in CSS.
+  await page
+    .getByRole("group", { name: "Inspector scope" })
+    .getByRole("button", { name: "build" })
+    .click();
+
+  const part = page.getByLabel("Add a part by name");
+  await part.fill("a");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByText("is now built from a", { exact: false })).toBeVisible();
+});
+
+test("a proof can be printed, which is what the proofing advice is about", async ({ page }) => {
+  /*
+   * A screen shows a letter lit from behind at seventy-two pixels to the inch
+   * and paper shows it lit from the front at three hundred, which is why a
+   * face that looks even on a monitor can look blotchy in a book. Until now
+   * this view could only be looked at.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Proof", exact: true }).click();
+
+  let asked = false;
+  await page.exposeFunction("__printed", () => {
+    asked = true;
+  });
+  await page.evaluate(() => {
+    window.print = () => (window as unknown as { __printed: () => void }).__printed();
+  });
+  await page.locator("[data-print-proof]").click();
+  expect(asked).toBe(true);
+
+  // The controls are chrome and are not part of the proof: the printed page is
+  // the letters and nothing else.
+  await expect(page.locator("[data-print-away]").first()).toHaveCount(1);
+});

@@ -90,7 +90,14 @@ type Drag =
    * and belongs to nothing.
    */
   | { kind: "shape"; kind2: ShapeKind; from: Vec2; to: Vec2 }
-  | { kind: "knife"; from: Vec2; to: Vec2 };
+  | { kind: "knife"; from: Vec2; to: Vec2 }
+  /*
+   * The pencil keeps its trail in *font* units rather than canvas ones, so a
+   * stroke that was panned or zoomed halfway through is still the stroke that
+   * was drawn. Thinning it is `freehand.ts`'s business, not this one's: what
+   * is recorded here is everything the pointer said.
+   */
+  | { kind: "pencil"; trail: Vec2[] };
 
 export function GlyphEditorView(): React.JSX.Element {
   const state = useAppState();
@@ -272,6 +279,7 @@ export function GlyphEditorView(): React.JSX.Element {
     if (drag?.kind === "marquee") drawMarquee(context, drag);
     if (drag?.kind === "shape") drawShapePreview(context, drag, view, modifiersRef.current);
     if (drag?.kind === "knife") drawKnifePreview(context, drag);
+    if (drag?.kind === "pencil") drawPencilPreview(context, drag, view);
     /*
      * `state.ground` is in here for the reason it is in the proof view: every
      * colour on this canvas comes from `readToken`, which reads a custom
@@ -331,6 +339,13 @@ export function GlyphEditorView(): React.JSX.Element {
     }
     if (state.tool === "knife") {
       dragRef.current = { kind: "knife", from: canvasPoint, to: canvasPoint };
+      return;
+    }
+    if (state.tool === "pencil") {
+      dragRef.current = {
+        kind: "pencil",
+        trail: [{ x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) }],
+      };
       return;
     }
 
@@ -540,6 +555,11 @@ export function GlyphEditorView(): React.JSX.Element {
         forceRender();
         break;
       }
+      case "pencil": {
+        drag.trail.push({ x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) });
+        forceRender();
+        break;
+      }
     }
   };
 
@@ -606,6 +626,11 @@ export function GlyphEditorView(): React.JSX.Element {
           modifiersRef.current,
         ),
       );
+      forceRender();
+    } else if (drag.kind === "pencil") {
+      if (!store.addStroke(glyph.name, drag.trail)) {
+        store.say("That was a click rather than a stroke. Drag to draw.", "error");
+      }
       forceRender();
     } else if (drag.kind === "knife") {
       store.cutGlyph(
@@ -1313,6 +1338,35 @@ function drawShapePreview(
   if (!shape) return;
   const accent = readToken("--accent", "#0c8ce9", context.canvas);
   drawContours(context, [shape], view, { fill: withAlpha(accent, 0.18) });
+}
+
+/**
+ * The stroke as the hand is making it, before anything is fitted.
+ *
+ * Every recorded position, joined up, which is deliberately not what will be
+ * added: the fitted curve has a handful of nodes and this has hundreds. What
+ * is wanted while a hand is moving is to see where it has been, and the
+ * difference between the two only shows up when the fitting is wrong -- which
+ * is exactly when it is worth seeing.
+ */
+function drawPencilPreview(
+  context: CanvasRenderingContext2D,
+  drag: Extract<Drag, { kind: "pencil" }>,
+  view: GlyphView,
+): void {
+  if (drag.trail.length < 2) return;
+  context.save();
+  context.strokeStyle = readToken("--accent", "#0c8ce9", context.canvas);
+  context.lineWidth = 1.5;
+  context.lineJoin = "round";
+  context.beginPath();
+  drag.trail.forEach((point, index) => {
+    const at = toScreen(view, point);
+    if (index === 0) context.moveTo(at.x, at.y);
+    else context.lineTo(at.x, at.y);
+  });
+  context.stroke();
+  context.restore();
 }
 
 /** The knife stroke, as a dashed line: a cut is a line and not a shape. */

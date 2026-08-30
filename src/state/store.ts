@@ -13,7 +13,7 @@
 
 import { applyEdits, fromBase64, type EditedProject } from "@/project/format";
 import { buildAccents, deriveAnchors, suggestAnchors, looksLikeMark } from "@/font/accents";
-import { dependentsOf } from "@/font/composite";
+import { buildsOn, dependentsOf } from "@/font/composite";
 /*
  * Renamed on the way in, because the store's own methods are called the same
  * things. Both resolve correctly -- a bare name inside a method is the module
@@ -67,6 +67,8 @@ import {
 import sampleFontUrl from "@/assets/typeforge-sample.ttf?url";
 import { readUfo, writeUfo, type UfoCarried, type UfoFiles } from "@/ufo/font";
 import { correctDirection, dominantConvention, insertExtrema } from "@/font/outline";
+import { strokeToContour } from "@/font/freehand";
+import { isClockwise, reverseContour as flipContour } from "@/font/geometry";
 import { slice } from "@/font/knife";
 import { shapeFrom, type Box, type ShapeKind } from "@/font/shapes";
 import {
@@ -103,7 +105,7 @@ export type ViewId = "grid" | "glyph" | "kerning" | "metrics" | "proof" | "repor
  * to pick before you can move the page is a tool that takes your place in the
  * work away every time you look at something.
  */
-export type ToolId = "select" | "pen" | "rectangle" | "ellipse" | "knife";
+export type ToolId = "select" | "pen" | "pencil" | "rectangle" | "ellipse" | "knife";
 
 /** A node's address within a glyph, used for selection. */
 export interface NodeRef {
@@ -756,6 +758,30 @@ class Store {
    * knife because dividing a shape is the operation no boolean can express:
    * taking the top off a stem, splitting a bowl from the stem it hangs on.
    */
+
+  /**
+   * Put a freehand stroke into the letter.
+   *
+   * Wound the way the font is wound, for the same reason a dragged shape is: a
+   * stroke drawn anticlockwise into a clockwise font would cut a hole through
+   * whatever it was drawn over. Which way a hand happened to go round a bowl
+   * is not a decision about filling.
+   */
+  addStroke(glyphName: string, trail: Vec2[]): boolean {
+    const typeface = this.state.typeface;
+    if (!typeface) return false;
+    const drawn = strokeToContour(trail);
+    if (!drawn) return false;
+
+    const clockwise = dominantConvention(typeface.glyphs) === "truetype";
+    const contour =
+      drawn.closed && isClockwise(drawn) !== clockwise ? flipContour(drawn) : drawn;
+
+    this.editGlyph(glyphName, "Draw freehand", (one) => {
+      one.contours = [...one.contours, contour];
+    });
+    return true;
+  }
 
   /**
    * Drop a dragged shape into the letter, wound the way the font is wound.
@@ -1815,6 +1841,41 @@ class Store {
   dependents(glyphName: string): string[] {
     const typeface = this.state.typeface;
     return typeface ? dependentsOf(typeface, glyphName) : [];
+  }
+
+  /**
+   * Build a letter out of another one, by hand.
+   *
+   * `removeComponent` has always been here and nothing has ever added one
+   * except the accent builder, which runs on its own -- so a letter could be
+   * taken apart and never put together on purpose. Which is the wrong way
+   * round: the reason components exist is that a correction to an `a` should
+   * reach every letter built on it, and that is worth having on a `ffi` or a
+   * `¼` as much as on an `á`.
+   *
+   * Refused where it would build a letter out of itself, directly or through a
+   * chain of others. A component that refers back to its own letter is a
+   * drawing with no bottom to it, and every renderer that meets one either
+   * gives up or hangs.
+   */
+  addComponent(glyphName: string, part: string): boolean {
+    const typeface = this.state.typeface;
+    const glyph = this.glyph(glyphName);
+    if (!typeface || !glyph || !typeface.glyphIndex.has(part)) return false;
+
+    if (part === glyphName || buildsOn(typeface, part, glyphName)) {
+      this.say(`${part} is already built from ${glyphName}, so this would have no bottom to it.`, "error");
+      return false;
+    }
+
+    this.editGlyph(glyphName, "Add a part", (one) => {
+      one.components = [
+        ...one.components,
+        { glyphName: part, transform: { a: 1, b: 0, c: 0, d: 1, dx: 0, dy: 0 } },
+      ];
+    });
+    this.say(`${glyphName} is now built from ${part}. Drag it into place on the canvas.`, "success");
+    return true;
   }
 
   removeComponent(glyphName: string, position: number): void {
