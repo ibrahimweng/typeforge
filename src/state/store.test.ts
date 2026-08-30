@@ -704,3 +704,72 @@ describe("changing what a point is", () => {
     expect(store.getSnapshot().status?.message).toContain("parallel");
   });
 });
+
+describe("the tools that make and unmake whole shapes", () => {
+  beforeEach(() => seed(["a", "b"]));
+
+  it("drops a rectangle into the letter and leaves it selected", () => {
+    setContours("a", []);
+    store.addShape("a", "rectangle", { xMin: 0, yMin: 0, xMax: 100, yMax: 200 });
+
+    const contours = store.glyph("a")!.contours;
+    expect(contours).toHaveLength(1);
+    // The four corners of the box, in whichever order the font's own winding
+    // asks for -- which is the next test's business, not this one's.
+    expect(contours[0].nodes.map((one) => `${one.point.x},${one.point.y}`).sort()).toEqual([
+      "0,0",
+      "0,200",
+      "100,0",
+      "100,200",
+    ]);
+    // The next thing anybody does with a shape they just drew is move it or
+    // scale it, and both need it picked.
+    expect([...store.getSnapshot().selectedNodes].sort()).toEqual(["0:0", "0:1", "0:2", "0:3"]);
+  });
+
+  it("winds a new shape the way the rest of the font is wound", () => {
+    /*
+     * Which way a contour runs decides whether it fills or cuts a hole, so a
+     * rectangle added to a counter-clockwise font with a clockwise winding is
+     * a rectangle that punches a hole in the letter it was added to.
+     */
+    seed(["a", "b", "c", "d"]);
+    setContours("a", [square(100, false)]);
+    setContours("b", [square(90, false)]);
+    setContours("c", [square(80, false)]);
+    setContours("d", []);
+    store.addShape("d", "rectangle", { xMin: 0, yMin: 0, xMax: 100, yMax: 100 });
+    expect(Math.sign(contourArea(store.glyph("d")!.contours[0]))).toBe(
+      Math.sign(contourArea(store.glyph("a")!.contours[0])),
+    );
+  });
+
+  it("keeps a click from adding a shape with no size", () => {
+    setContours("a", []);
+    store.addShape("a", "ellipse", { xMin: 10, yMin: 10, xMax: 11, yMax: 11 });
+    expect(store.glyph("a")!.contours).toHaveLength(0);
+  });
+
+  it("cuts a shape in two and says so", () => {
+    setContours("a", [square(100, false)]);
+    store.setSelectedNodes(["0:0"]);
+    store.cutGlyph("a", { x: -10, y: 50 }, { x: 110, y: 50 });
+
+    expect(store.glyph("a")!.contours).toHaveLength(2);
+    expect(store.getSnapshot().status?.message).toContain("2 pieces");
+    // Every index has moved, so a selection kept from before would be pointing
+    // at whatever now happens to sit at those numbers.
+    expect(store.getSnapshot().selectedNodes.size).toBe(0);
+
+    store.undo();
+    expect(store.glyph("a")!.contours).toHaveLength(1);
+  });
+
+  it("says a cut missed rather than pushing an edit that changed nothing", () => {
+    setContours("a", [square(100, false)]);
+    const before = JSON.stringify(store.glyph("a")!.contours);
+    store.cutGlyph("a", { x: -10, y: 300 }, { x: 110, y: 300 });
+    expect(store.getSnapshot().status?.tone).toBe("error");
+    expect(JSON.stringify(store.glyph("a")!.contours)).toBe(before);
+  });
+});
