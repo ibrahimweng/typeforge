@@ -225,3 +225,48 @@ body,
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * Printing a proof.
+ *
+ * The proofing advice every type designer gives is about paper: print it, look
+ * at it away from the screen, put it on a wall. A screen shows a letter lit
+ * from behind at seventy-two pixels to the inch, and paper shows it lit from
+ * the front at three hundred -- which is why a face that looks even on a
+ * monitor can look blotchy in a book, and why the whole tradition says to go
+ * and look.
+ *
+ * So the printed page is the proof and nothing else. Everything that is
+ * chrome -- the toolbars, the panels, the sliders that set the proof up -- is
+ * out, and the proof itself goes on white whatever the screen was set to,
+ * because paper is white and a proof printed on a black ground is a proof
+ * printed in ink nobody has.
+ */
+@media print {
+  [data-print-away] {
+    display: none !important;
+  }
+
+  html,
+  body,
+  #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  [data-proof-page] {
+    /* The ground is a custom property the canvas is painted against, so it is
+       set here as well as hidden: the canvas has already been drawn by the
+       time the print stylesheet applies. */
+    background: #fff !important;
+    border: 0 !important;
+    overflow: visible !important;
+  }
+
+  [data-proof-sheet] {
+    display: block !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+}

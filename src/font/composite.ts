@@ -182,3 +182,33 @@ export function dependentsOf(typeface: Typeface, name: string): string[] {
     .filter((glyph) => glyph.components.some((component) => component.glyphName === name))
     .map((glyph) => glyph.name);
 }
+
+/**
+ * Whether one letter is built out of another, however far down.
+ *
+ * For refusing a component that would refer back to its own letter. A direct
+ * loop is easy to see; the one worth checking for is `á` built from `a`, `a`
+ * given `acute`, and `acute` then given `á` -- three reasonable-looking steps
+ * making a drawing with no bottom to it, which every renderer that meets one
+ * either gives up on or hangs in.
+ *
+ * The walk is bounded by the glyphs it has already seen rather than by a
+ * depth, because a font that already contains a loop must not send the check
+ * for one round it for ever.
+ */
+export function buildsOn(typeface: Typeface, glyphName: string, on: string): boolean {
+  const seen = new Set<string>();
+  const waiting = [glyphName];
+  while (waiting.length > 0) {
+    const name = waiting.pop()!;
+    if (name === on) return true;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const index = typeface.glyphIndex.get(name);
+    if (index === undefined) continue;
+    for (const component of typeface.glyphs[index].components) {
+      waiting.push(component.glyphName);
+    }
+  }
+  return false;
+}

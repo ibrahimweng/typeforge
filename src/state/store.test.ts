@@ -1031,3 +1031,58 @@ describe("guides, which now run both ways", () => {
     expect(store.getSnapshot().snapping).toBe(false);
   });
 });
+
+describe("the last three things the audit found", () => {
+  beforeEach(() => seed(["a", "acute", "aacute"]));
+
+  it("draws a freehand stroke into the letter", () => {
+    setContours("a", []);
+    const trail = Array.from({ length: 60 }, (_, index) => ({ x: index * 6, y: index * 3 }));
+    expect(store.addStroke("a", trail)).toBe(true);
+    const contours = store.glyph("a")!.contours;
+    expect(contours).toHaveLength(1);
+    // A handful of nodes, not sixty: a contour with the whole trail in it is
+    // a recording of a hand rather than a drawing.
+    expect(contours[0].nodes.length).toBeLessThan(8);
+  });
+
+  it("says a click was a click rather than drawing nothing", () => {
+    setContours("a", []);
+    expect(store.addStroke("a", [{ x: 5, y: 5 }])).toBe(false);
+    expect(store.glyph("a")!.contours).toHaveLength(0);
+  });
+
+  it("builds a letter out of another by hand", () => {
+    /*
+     * `removeComponent` has always been here and nothing ever added one except
+     * the accent builder, which runs on its own -- so a letter could be taken
+     * apart and never put together on purpose.
+     */
+    expect(store.addComponent("aacute", "a")).toBe(true);
+    expect(store.glyph("aacute")!.components.map((one) => one.glyphName)).toEqual(["a"]);
+    store.undo();
+    expect(store.glyph("aacute")!.components).toHaveLength(0);
+  });
+
+  it("refuses to build a letter out of itself", () => {
+    expect(store.addComponent("a", "a")).toBe(false);
+    expect(store.glyph("a")!.components).toHaveLength(0);
+  });
+
+  it("refuses a loop that goes the long way round", () => {
+    /*
+     * The one worth checking for. `aacute` built from `a`, `a` given `acute`,
+     * and `acute` then given `aacute` -- three reasonable-looking steps making
+     * a drawing with no bottom to it, which every renderer either gives up on
+     * or hangs in.
+     */
+    store.addComponent("aacute", "a");
+    store.addComponent("a", "acute");
+    expect(store.addComponent("acute", "aacute")).toBe(false);
+    expect(store.getSnapshot().status?.message).toContain("no bottom to it");
+  });
+
+  it("refuses a part the font does not have", () => {
+    expect(store.addComponent("a", "zzz")).toBe(false);
+  });
+});

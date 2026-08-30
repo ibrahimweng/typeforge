@@ -18,6 +18,7 @@ export function CompositionPanel(): React.JSX.Element {
   const typeface = state.typeface;
   const glyph = store.glyph(state.selectedGlyph);
   const [note, setNote] = React.useState<string | null>(null);
+  const [adding, setAdding] = React.useState("");
   const noteRef = React.useRef<HTMLParagraphElement>(null);
 
   React.useEffect(() => {
@@ -70,6 +71,52 @@ export function CompositionPanel(): React.JSX.Element {
                 ))}
               </ul>
             )}
+
+            {/*
+              Building a letter out of another, by hand.
+
+              `removeComponent` has always been here and nothing ever added one
+              except the accent builder, which runs on its own -- so a letter
+              could be taken apart and never put together on purpose. The
+              reason components exist is that a correction to an `a` reaches
+              every letter built on it, and that is worth having on a `ffi` or
+              a `¼` as much as on an `á`.
+            */}
+            <div className="flex items-center gap-1 pt-2">
+              <input
+                value={adding}
+                onChange={(event) => setAdding(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  if (store.addComponent(glyph.name, adding.trim())) setAdding("");
+                }}
+                placeholder="Build from a letter…"
+                aria-label="Add a part by name"
+                list="composition-glyph-names"
+                className="h-7 min-w-0 flex-1 rounded border border-input bg-card px-2 font-mono text-2xs outline-none focus-visible:border-accent"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (store.addComponent(glyph.name, adding.trim())) setAdding("");
+                }}
+                disabled={adding.trim().length === 0}
+                className="shrink-0 rounded border border-border px-2 py-1 text-2xs text-muted-foreground transition-colors hover:border-accent hover:text-foreground disabled:opacity-40"
+              >
+                Add
+              </button>
+              {/*
+                Every letter in the font, offered as the field is typed into.
+                A component is named rather than picked from a list because a
+                font has six thousand letters and the one you want is the one
+                you can already say.
+              */}
+              <datalist id="composition-glyph-names">
+                {typeface.glyphs.slice(0, 2000).map((one) => (
+                  <option key={one.name} value={one.name} />
+                ))}
+              </datalist>
+            </div>
           </section>
 
           <section>

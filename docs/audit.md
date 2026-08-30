@@ -1,6 +1,6 @@
 # What is missing
 
-> **A**, **B** and **C** are done. **D** is open.
+> All four are done.
 
 An audit of what this application cannot do, taken by reading its capability
 surface rather than by looking at it. That distinction is the point: a tour of
@@ -70,7 +70,7 @@ y. Every number this application displays is displayed rounded, so a letter
 drawn by dragging is off the grid in every coordinate and looks perfectly
 fine until something measures it.
 
-## D. Three smaller ones — *open*
+## D. Three smaller ones — *done*
 
 **D1. A component cannot be placed by hand.** `removeComponent` exists;
 nothing adds one except the accent builder, which runs automatically. So a
@@ -121,3 +121,36 @@ entirely. They are cleared with the font now.
 And snapping had to be a switch rather than a modifier. The two modifiers a
 drag already uses are taken: shift holds it to one axis, alt pans the canvas. A
 third would have been a chord nobody would find.
+
+## What D turned up
+
+Placing a component by hand needed a guard nothing else in the application
+needed. A letter built out of itself is a drawing with no bottom to it, and the
+loop worth checking for is not the direct one -- it is `á` built from `a`, `a`
+given `acute`, and `acute` then given `á`: three reasonable-looking steps, and
+every renderer that meets the result either gives up or hangs. The walk that
+finds it is bounded by the glyphs it has already seen rather than by a depth,
+so a font that already contains a loop cannot send the check for one round it
+for ever.
+
+The pencil needed no fitter. `fitCubics` in the quill engine already turns a
+run of points into cubics -- it is how a swept stroke becomes an outline -- and
+writing a second one would have been two fitters to keep honest and two sets of
+tolerances to argue about. What the pencil adds is the thinning in front of it:
+a pointer reports every few milliseconds, and feeding a fitter three hundred
+positions makes it work hard to reproduce the shake in somebody's hand.
+
+---
+
+# The audit is finished
+
+Eleven items, four batches, and eight faults found while fixing them that were
+not on the list: the importer falling back to half the em on any font with an
+OS/2 table older than version 2, a rename that would have silently dropped
+kerning, a codepoint field that would have read `A` as a line feed, a panel
+that wiped what was being typed into it, guides that survived the font they
+were drawn against, and three more.
+
+Every one of those was found by building the thing rather than by reading the
+code, which is the argument for writing the list down and working through it
+rather than filing it.
