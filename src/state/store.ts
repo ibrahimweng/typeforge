@@ -69,6 +69,18 @@ export interface AppState {
   fileName: string;
   view: ViewId;
   tool: ToolId;
+  /**
+   * The letters drawn either side of the one being edited.
+   *
+   * Two strings rather than one with the glyph marked inside it, because the
+   * two sides are asked for separately as often as together: a sidebearing is
+   * judged between `n`s, and a kerning pair is judged with one particular
+   * letter on one particular side. A single field with a rule for where the
+   * current glyph goes is a rule to learn; two fields are what they say.
+   *
+   * Empty on either side is allowed and means nothing on that side.
+   */
+  context: { before: string; after: string };
   /** Name of the glyph open in the editor. */
   selectedGlyph: string | null;
   /** Selected nodes within the open glyph, keyed by `contour:node`. */
@@ -120,6 +132,15 @@ class Store {
     fileName: "",
     view: "grid",
     tool: "select",
+    /*
+     * `n` on both sides, which is where a type designer starts.
+     *
+     * A letter is spaced against the ones it will actually stand between, and
+     * the lowercase `n` is the conventional first neighbour because its two
+     * stems are straight and evenly spaced -- so any unevenness in the gap
+     * belongs to the letter under test rather than to the letter beside it.
+     */
+    context: { before: "n", after: "n" },
     selectedGlyph: null,
     selectedNodes: new Set(),
     selectedGlyphs: new Set(),
@@ -318,6 +339,10 @@ class Store {
   setTool(tool: ToolId): void {
     this.set({ tool });
   }
+  /** Change what stands either side of the glyph being edited. */
+  setContext(context: Partial<AppState["context"]>): void {
+    this.set({ context: { ...this.state.context, ...context } });
+  }
   setSearch(search: string): void {
     this.set({ search });
   }
@@ -359,6 +384,37 @@ class Store {
    * The glyph is cloned before and after, so history holds two copies of one
    * glyph rather than of the whole font.
    */
+  /**
+   * Move a glyph within its advance, from either side.
+   *
+   * Changing the left sidebearing slides the outline and widens the advance to
+   * match, so the space on the right is untouched; changing the right one only
+   * changes the advance. That asymmetry is what a designer means by the two
+   * words, and having it here rather than in a view is what lets the Spacing
+   * table and the glyph editor agree about it.
+   */
+  shiftSidebearing(name: string, delta: number, side: "left" | "right"): void {
+    if (delta === 0) return;
+    this.editGlyph(
+      name,
+      side === "left" ? "Set left sidebearing" : "Set right sidebearing",
+      (glyph) => {
+        if (side === "left") {
+          for (const contour of glyph.contours) {
+            for (const node of contour.nodes) {
+              node.point = { x: node.point.x + delta, y: node.point.y };
+              if (node.handleIn) node.handleIn = { x: node.handleIn.x + delta, y: node.handleIn.y };
+              if (node.handleOut) {
+                node.handleOut = { x: node.handleOut.x + delta, y: node.handleOut.y };
+              }
+            }
+          }
+        }
+        glyph.advanceWidth = Math.max(0, glyph.advanceWidth + delta);
+      },
+    );
+  }
+
   editGlyph(name: string, label: string, mutate: (glyph: Glyph) => void): void {
     const typeface = this.state.typeface;
     if (!typeface) return;

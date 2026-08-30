@@ -12,10 +12,10 @@
 
 import * as React from "react";
 
-import { contourSegments, contoursToPath2D } from "@/font/geometry";
+import { contourSegments, contoursBounds, contoursToPath2D } from "@/font/geometry";
 import { classifyNodes } from "@/font/quadratic";
 import { resolveComponents } from "@/font/composite";
-import { resolveGlyphContours } from "@/font/transform";
+import { resolveAdvanceWidth, resolveGlyphContours } from "@/font/transform";
 import type { Anchor, Contour, Glyph, GlyphNode, Typeface, Vec2 } from "@/font/types";
 import {
   applyView,
@@ -27,6 +27,7 @@ import {
 } from "@/components/glyph-render";
 import { nodeKey, store, useAppState, type NodeRef } from "@/state/useStore";
 import { CoachMark } from "@/components/CoachMark";
+import { NumberField } from "@/components/NumberField";
 
 /** How close a click has to land, in screen pixels, to grab a node. */
 const HIT_RADIUS = 7;
@@ -121,6 +122,59 @@ export function GlyphEditorView(): React.JSX.Element {
     };
   }, [typeface, size, zoom, pan, glyph]);
 
+  /*
+   * The letters standing either side, and where each of them sits.
+   *
+   * A sidebearing cannot be judged on a letter by itself. The gap on the left
+   * of an `n` means nothing until there is something to its left; every editor
+   * since the 1990s draws the neighbours for that reason, and this one did not,
+   * which made the one thing the glyph view is for -- deciding whether a letter
+   * is spaced right -- impossible without leaving it.
+   *
+   * Laid out with the real advances and the real kerning, because a neighbour
+   * drawn at the wrong distance is worse than no neighbour: it answers the
+   * question confidently and wrongly.
+   */
+  const neighbours = React.useMemo(() => {
+    if (!typeface || !glyph) return { before: [], after: [] };
+    const byCodepoint = new Map<number, Glyph>();
+    for (const one of typeface.glyphs) {
+      for (const codepoint of one.unicodes) {
+        if (!byCodepoint.has(codepoint)) byCodepoint.set(codepoint, one);
+      }
+    }
+    const found = (text: string): Glyph[] =>
+      [...text].map((character) => byCodepoint.get(character.codePointAt(0)!)).filter((one) => one !== undefined);
+
+    /*
+     * Walked outwards from the glyph in both directions, so the pen starts at
+     * the edited letter rather than at the start of a line. The left side is
+     * built backwards -- each letter placed by its own width plus whatever it
+     * kerns against what follows it -- which is the only way to keep the letter
+     * under the cursor where it already is.
+     */
+    const placed: Array<{ glyph: Glyph; x: number }> = [];
+    let pen = 0;
+    let next = glyph;
+    for (const one of found(state.context.before).reverse()) {
+      pen -= resolveAdvanceWidth(one, typeface) + store.resolvedKerning(one.name, next.name).value;
+      placed.push({ glyph: one, x: pen });
+      next = one;
+    }
+    const before = placed;
+
+    const after: Array<{ glyph: Glyph; x: number }> = [];
+    let forward = resolveAdvanceWidth(glyph, typeface);
+    let previous = glyph;
+    for (const one of found(state.context.after)) {
+      forward += store.resolvedKerning(previous.name, one.name).value;
+      after.push({ glyph: one, x: forward });
+      forward += resolveAdvanceWidth(one, typeface);
+      previous = one;
+    }
+    return { before, after };
+  }, [typeface, glyph, state.context, state.revision]);
+
   // --- drawing ----------------------------------------------------------
 
   React.useEffect(() => {
@@ -131,6 +185,21 @@ export function GlyphEditorView(): React.JSX.Element {
 
     drawMetrics(context, typeface, glyph, view, size);
     if (!glyph) return;
+
+    /*
+     * The neighbours first, and flat.
+     *
+     * Drawn before the letter under the cursor so they can never sit on top of
+     * it, and in one muted tone with no nodes and no handles: they are there to
+     * be measured against, not edited. Anything that made them look editable
+     * would be a promise this view does not keep -- clicking one selects
+     * nothing, because the thing being edited is the glyph in the middle.
+     */
+    const asideFill = withAlpha(readToken("--glyph-fill", "#eeeeee"), 0.28);
+    for (const one of [...neighbours.before, ...neighbours.after]) {
+      const shifted: GlyphView = { ...view, originX: view.originX + one.x * view.scale };
+      drawContours(context, resolveGlyphContours(one.glyph, typeface), shifted, { fill: asideFill });
+    }
 
     // Where parameters change the shape, show the result behind the outline
     // being edited so the effect of the family settings stays visible.
@@ -159,7 +228,7 @@ export function GlyphEditorView(): React.JSX.Element {
 
     const drag = dragRef.current;
     if (drag?.kind === "marquee") drawMarquee(context, drag);
-  }, [typeface, glyph, view, size, state.selectedNodes, state.revision, hover]);
+  }, [typeface, glyph, view, size, state.selectedNodes, state.revision, hover, neighbours]);
 
 
   // --- interaction ------------------------------------------------------
@@ -429,6 +498,37 @@ export function GlyphEditorView(): React.JSX.Element {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <CoachMark id="glyph" />
+      {/*
+        What stands either side, above the canvas rather than in the panel.
+
+        It belongs with the letter it changes: this is a decision about what you
+        are looking at, taken while looking at it, and a control for that on the
+        far side of the window is a control somebody has to go and find.
+      */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2 text-2xs">
+        <span className="text-muted-foreground">Between</span>
+        <input
+          value={state.context.before}
+          onChange={(event) => store.setContext({ before: event.target.value })}
+          aria-label="Letters before"
+          data-context-before
+          maxLength={8}
+          className="h-7 w-16 rounded-md border border-input bg-card px-2 text-center text-xs-plus text-foreground outline-none focus-visible:border-accent"
+        />
+        <span className="rounded bg-card px-2 py-1 font-medium text-foreground">{glyph.name}</span>
+        <input
+          value={state.context.after}
+          onChange={(event) => store.setContext({ after: event.target.value })}
+          aria-label="Letters after"
+          data-context-after
+          maxLength={8}
+          className="h-7 w-16 rounded-md border border-input bg-card px-2 text-center text-xs-plus text-foreground outline-none focus-visible:border-accent"
+        />
+        <span className="pl-1 text-muted-foreground">
+          Drawn flat and not editable — they are what this letter is spaced against, at their real
+          advances and kerning.
+        </span>
+      </div>
       <div ref={measure} className="relative min-h-0 flex-1 overflow-hidden bg-[var(--canvas)]">
         <canvas
           ref={canvasRef}
@@ -449,11 +549,139 @@ export function GlyphEditorView(): React.JSX.Element {
           }}
         />
         <div className="pointer-events-none absolute bottom-3 left-3 flex gap-3 text-2xs text-muted-foreground tabular-nums">
-          <span>{glyph.name}</span>
           <span>{Math.round(zoom * 100)}%</span>
-          {state.selectedNodes.size > 0 && <span>{state.selectedNodes.size} points</span>}
+          {state.selectedNodes.size > 1 && <span>{state.selectedNodes.size} points</span>}
         </div>
       </div>
+      <Numbers glyph={glyph} typeface={typeface} selected={state.selectedNodes} />
+    </div>
+  );
+}
+
+/**
+ * The numbers, under the letter.
+ *
+ * A point could be dragged and nothing else. Moving a stem three units sideways
+ * was therefore not possible: you could get close by eye at a high zoom and
+ * never land on a number, which is most of the difference between a tool a
+ * designer will use and one they will admire and then go back to their own.
+ *
+ * Under the canvas rather than in the panel on the far right, because these are
+ * about the letter and the letter is here. What is offered depends on what is
+ * selected -- the point when there is exactly one, the letter's own spacing
+ * otherwise -- so the row answers the question in front of you rather than
+ * showing eight fields of which six are always dimmed.
+ */
+function Numbers({
+  glyph,
+  typeface,
+  selected,
+}: {
+  glyph: Glyph;
+  typeface: Typeface;
+  selected: ReadonlySet<string>;
+}): React.JSX.Element {
+  const one = selected.size === 1 ? parseNodeKey([...selected][0]) : null;
+  const node = one ? glyph.contours[one.contour]?.nodes[one.node] : null;
+
+  /*
+   * The sidebearings, measured off the ink rather than stored.
+   *
+   * A sidebearing is not a field on a glyph: it is where the ink starts against
+   * where the advance does, so it moves whenever the outline does. Measured
+   * here for the same reason the Spacing table measures it -- a number kept
+   * beside the outline is a number that goes stale the first time a point moves.
+   */
+  const box = glyph.contours.length > 0 ? contoursBounds(glyph.contours) : null;
+  const advance = resolveAdvanceWidth(glyph, typeface);
+  const left = box && Number.isFinite(box.xMin) ? Math.round(box.xMin) : 0;
+  const right = box && Number.isFinite(box.xMax) ? Math.round(advance - box.xMax) : 0;
+
+  const move = (axis: "x" | "y", next: number) => {
+    if (!one) return;
+    store.editGlyph(glyph.name, "Move point", (editing) => {
+      const target = editing.contours[one.contour]?.nodes[one.node];
+      if (!target) return;
+      const delta = next - target.point[axis];
+      target.point = { ...target.point, [axis]: next };
+      // The handles travel with the point they belong to, exactly as they do
+      // under a drag. Left behind, typing a coordinate would straighten the
+      // curve either side of it.
+      if (target.handleIn) {
+        target.handleIn = { ...target.handleIn, [axis]: target.handleIn[axis] + delta };
+      }
+      if (target.handleOut) {
+        target.handleOut = { ...target.handleOut, [axis]: target.handleOut[axis] + delta };
+      }
+    });
+  };
+
+  return (
+    <div
+      className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-1 border-t border-border px-4 py-1.5 text-2xs text-muted-foreground"
+      data-glyph-numbers
+    >
+      <span className="font-medium text-foreground">{glyph.name}</span>
+
+      {node ? (
+        <>
+          <label className="flex items-center gap-1">
+            X
+            <NumberField
+              label="Point x"
+              value={Math.round(node.point.x)}
+              onCommit={(next) => move("x", next)}
+            />
+          </label>
+          <label className="flex items-center gap-1">
+            Y
+            <NumberField
+              label="Point y"
+              value={Math.round(node.point.y)}
+              onCommit={(next) => move("y", next)}
+            />
+          </label>
+        </>
+      ) : (
+        <span className="opacity-70">
+          {selected.size === 0
+            ? "Select one point to type its position."
+            : `${selected.size} points selected — one at a time can be typed.`}
+        </span>
+      )}
+
+      <span className="ml-auto flex items-center gap-x-5">
+        <label className="flex items-center gap-1">
+          Left
+          <NumberField
+            label="Left sidebearing"
+            value={left}
+            disabled={!box}
+            onCommit={(next) => store.shiftSidebearing(glyph.name, next - left, "left")}
+          />
+        </label>
+        <label className="flex items-center gap-1">
+          Width
+          <NumberField
+            label="Advance width"
+            value={Math.round(advance)}
+            onCommit={(next) =>
+              store.editGlyph(glyph.name, "Set advance width", (editing) => {
+                editing.advanceWidth = Math.max(0, next);
+              })
+            }
+          />
+        </label>
+        <label className="flex items-center gap-1">
+          Right
+          <NumberField
+            label="Right sidebearing"
+            value={right}
+            disabled={!box}
+            onCommit={(next) => store.shiftSidebearing(glyph.name, next - right, "right")}
+          />
+        </label>
+      </span>
     </div>
   );
 }

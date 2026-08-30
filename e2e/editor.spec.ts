@@ -2727,3 +2727,69 @@ test("help can be searched and jumped around, not only scrolled", async ({ page 
   await help.locator("[data-help-search]").fill("");
   await expect.poll(() => help.locator("[data-help-section]").count()).toBe(all);
 });
+
+test("shows the letters either side, and lets the numbers be typed", async ({ page }) => {
+  /*
+   * Two absences a designer meets in their first hour.
+   *
+   * A sidebearing cannot be judged on a letter by itself: the gap to the left
+   * of an `n` means nothing until there is something to its left. And a point
+   * could be dragged and nothing else, so moving a stem three units sideways
+   * was not possible -- you could get close by eye at a high zoom and never
+   * land on a number.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  const numbers = page.locator("[data-glyph-numbers]");
+  await expect(numbers).toBeVisible();
+
+  /*
+   * Judged on the ink rather than on the fields, because what was missing was
+   * the drawing. The canvas is compared with itself: more of it is painted
+   * once there are letters either side, and both sides are asked for
+   * separately so an asymmetric pair can be checked.
+   */
+  const inkOf = async () =>
+    page.locator("canvas").first().evaluate((canvas) => {
+      const context = (canvas as HTMLCanvasElement).getContext("2d");
+      if (!context) return 0;
+      const { data } = context.getImageData(0, 0, (canvas as HTMLCanvasElement).width, (canvas as HTMLCanvasElement).height);
+      let lit = 0;
+      for (let index = 3; index < data.length; index += 4 * 16) if (data[index] > 8) lit++;
+      return lit;
+    });
+
+  await page.locator("[data-context-before]").fill("HO");
+  await page.locator("[data-context-after]").fill("no");
+  await page.waitForTimeout(400);
+  const withContext = await inkOf();
+
+  await page.locator("[data-context-before]").fill("");
+  await page.locator("[data-context-after]").fill("");
+  await page.waitForTimeout(400);
+  const alone = await inkOf();
+  expect(withContext, "the neighbours drew nothing").toBeGreaterThan(alone);
+
+  /*
+   * And the numbers. The sidebearing is the honest one to check without
+   * hunting for a node on a canvas: changing the left one slides the outline
+   * and widens the advance to match, so the right-hand space is untouched.
+   */
+  const advance = page.getByLabel("Advance width");
+  const left = page.getByLabel("Left sidebearing");
+  const right = page.getByLabel("Right sidebearing");
+  const wasAdvance = Number(await advance.inputValue());
+  const wasLeft = Number(await left.inputValue());
+  const wasRight = Number(await right.inputValue());
+
+  await left.fill(String(wasLeft + 84));
+  await left.press("Enter");
+  await expect.poll(async () => Number(await advance.inputValue())).toBe(wasAdvance + 84);
+  expect(Number(await left.inputValue())).toBe(wasLeft + 84);
+  expect(Number(await right.inputValue()), "the right-hand space moved").toBe(wasRight);
+
+  // Committed as one undoable edit rather than one per keystroke.
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+});
