@@ -10,6 +10,7 @@
 import * as React from "react";
 
 import { contoursBounds } from "@/font/geometry";
+import { NumberField } from "@/components/NumberField";
 import { resolveAdvanceWidth, resolveGlyphContours } from "@/font/transform";
 import { drawGlyph, glyphLabel, prepareCanvas, type GlyphView } from "@/components/glyph-render";
 import { CoachMark } from "@/components/CoachMark";
@@ -108,19 +109,25 @@ export function MetricsView(): React.JSX.Element {
                   {row.glyph.name}
                 </td>
                 <td className="px-4 py-1.5 text-right tabular-nums">
-                  <SidebearingInput
+                  <NumberField
+                    label={`${row.glyph.name} left sidebearing`}
+                    className="w-20"
                     value={row.left}
-                    onCommit={(next) => shiftSidebearing(row.glyph.name, next - row.left, "left")}
+                    onCommit={(next) => store.shiftSidebearing(row.glyph.name, next - row.left, "left")}
                   />
                 </td>
                 <td className="px-4 py-1.5 text-right tabular-nums">
-                  <SidebearingInput
+                  <NumberField
+                    label={`${row.glyph.name} right sidebearing`}
+                    className="w-20"
                     value={row.right}
-                    onCommit={(next) => shiftSidebearing(row.glyph.name, next - row.right, "right")}
+                    onCommit={(next) => store.shiftSidebearing(row.glyph.name, next - row.right, "right")}
                   />
                 </td>
                 <td className="px-4 py-1.5 text-right tabular-nums">
-                  <SidebearingInput
+                  <NumberField
+                    label={`${row.glyph.name} advance width`}
+                    className="w-20"
                     value={row.advance}
                     onCommit={(next) =>
                       store.editGlyph(row.glyph.name, "Set advance width", (glyph) => {
@@ -135,61 +142,6 @@ export function MetricsView(): React.JSX.Element {
         </table>
       </div>
     </div>
-  );
-}
-
-/**
- * Move a glyph within its advance.
- *
- * Changing the left sidebearing slides the outline and widens the advance to
- * match, so the space on the right is untouched. Changing the right sidebearing
- * only changes the advance.
- */
-function shiftSidebearing(name: string, delta: number, side: "left" | "right"): void {
-  if (delta === 0) return;
-  store.editGlyph(name, side === "left" ? "Set left sidebearing" : "Set right sidebearing", (glyph) => {
-    if (side === "left") {
-      for (const contour of glyph.contours) {
-        for (const node of contour.nodes) {
-          node.point = { x: node.point.x + delta, y: node.point.y };
-          if (node.handleIn) node.handleIn = { x: node.handleIn.x + delta, y: node.handleIn.y };
-          if (node.handleOut) node.handleOut = { x: node.handleOut.x + delta, y: node.handleOut.y };
-        }
-      }
-    }
-    glyph.advanceWidth = Math.max(0, glyph.advanceWidth + delta);
-  });
-}
-
-function SidebearingInput({
-  value,
-  onCommit,
-}: {
-  value: number;
-  onCommit: (next: number) => void;
-}): React.JSX.Element {
-  const [draft, setDraft] = React.useState(String(value));
-  React.useEffect(() => setDraft(String(value)), [value]);
-
-  return (
-    <input
-      value={draft}
-      onChange={(event) => setDraft(event.target.value)}
-      onClick={(event) => event.stopPropagation()}
-      onBlur={() => {
-        const parsed = Number(draft);
-        if (Number.isFinite(parsed) && parsed !== value) onCommit(Math.round(parsed));
-        else setDraft(String(value));
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") event.currentTarget.blur();
-        if (event.key === "Escape") {
-          setDraft(String(value));
-          event.currentTarget.blur();
-        }
-      }}
-      className="h-6 w-20 rounded border border-transparent bg-transparent px-1.5 text-right tabular-nums outline-none hover:border-border focus-visible:border-accent focus-visible:bg-card"
-    />
   );
 }
 

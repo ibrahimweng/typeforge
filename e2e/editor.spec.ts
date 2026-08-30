@@ -2727,3 +2727,243 @@ test("help can be searched and jumped around, not only scrolled", async ({ page 
   await help.locator("[data-help-search]").fill("");
   await expect.poll(() => help.locator("[data-help-section]").count()).toBe(all);
 });
+
+test("shows the letters either side, and lets the numbers be typed", async ({ page }) => {
+  /*
+   * Two absences a designer meets in their first hour.
+   *
+   * A sidebearing cannot be judged on a letter by itself: the gap to the left
+   * of an `n` means nothing until there is something to its left. And a point
+   * could be dragged and nothing else, so moving a stem three units sideways
+   * was not possible -- you could get close by eye at a high zoom and never
+   * land on a number.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  const numbers = page.locator("[data-glyph-numbers]");
+  await expect(numbers).toBeVisible();
+
+  /*
+   * Judged on the ink rather than on the fields, because what was missing was
+   * the drawing. The canvas is compared with itself: more of it is painted
+   * once there are letters either side, and both sides are asked for
+   * separately so an asymmetric pair can be checked.
+   */
+  const inkOf = async () =>
+    page.locator("canvas").first().evaluate((canvas) => {
+      const context = (canvas as HTMLCanvasElement).getContext("2d");
+      if (!context) return 0;
+      const { data } = context.getImageData(0, 0, (canvas as HTMLCanvasElement).width, (canvas as HTMLCanvasElement).height);
+      let lit = 0;
+      for (let index = 3; index < data.length; index += 4 * 16) if (data[index] > 8) lit++;
+      return lit;
+    });
+
+  await page.locator("[data-context-before]").fill("HO");
+  await page.locator("[data-context-after]").fill("no");
+  await page.waitForTimeout(400);
+  const withContext = await inkOf();
+
+  await page.locator("[data-context-before]").fill("");
+  await page.locator("[data-context-after]").fill("");
+  await page.waitForTimeout(400);
+  const alone = await inkOf();
+  expect(withContext, "the neighbours drew nothing").toBeGreaterThan(alone);
+
+  /*
+   * And the numbers. The sidebearing is the honest one to check without
+   * hunting for a node on a canvas: changing the left one slides the outline
+   * and widens the advance to match, so the right-hand space is untouched.
+   */
+  const advance = page.getByLabel("Advance width");
+  const left = page.getByLabel("Left sidebearing");
+  const right = page.getByLabel("Right sidebearing");
+  const wasAdvance = Number(await advance.inputValue());
+  const wasLeft = Number(await left.inputValue());
+  const wasRight = Number(await right.inputValue());
+
+  await left.fill(String(wasLeft + 84));
+  await left.press("Enter");
+  await expect.poll(async () => Number(await advance.inputValue())).toBe(wasAdvance + 84);
+  expect(Number(await left.inputValue())).toBe(wasLeft + 84);
+  expect(Number(await right.inputValue()), "the right-hand space moved").toBe(wasRight);
+
+  // Committed as one undoable edit rather than one per keystroke.
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+});
+
+test("lists the paths a letter is made of, and takes guides", async ({ page }) => {
+  /*
+   * Two things a glyph did not say about itself.
+   *
+   * Which contour a point belonged to, how many there were, which way round
+   * each ran and what order they came in were all facts the letter kept to
+   * itself -- and two of them are correctness rather than convenience.
+   * Direction decides whether a contour fills or cuts a hole in the one around
+   * it, so a counter drawn the same way round as its bowl fills solid, and the
+   * only way to find that out was to export the font and look at it elsewhere.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  // Reachable without hunting: opening a letter puts the panel on that letter.
+  const rows = page.locator("[data-path-row]");
+  await expect.poll(() => rows.count()).toBeGreaterThan(1);
+
+  // Clicking a row selects that whole contour on the canvas, so the list and
+  // the drawing agree about what is in hand.
+  const points = await rows.first().getByRole("button").first().innerText();
+  await rows.first().getByRole("button").first().click();
+  await expect(page.locator("[data-glyph-numbers]")).toContainText("points selected");
+  expect(points).toContain("points");
+
+  // Reversing is an undoable edit rather than a display toggle.
+  await page.locator('[aria-label="Reverse path 1"]').click();
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+
+  /*
+   * Guides. Placed at the height the view is looking at and then dragged, which
+   * is the part that makes them useful -- and they belong to the font, so the
+   * count survives moving to another letter.
+   */
+  await page.locator("[data-add-guide]").click();
+  await expect(page.locator("[data-clear-guides]")).toContainText("Clear 1");
+
+  const canvas = page.locator("canvas").first();
+  const box = (await canvas.boundingBox())!;
+  const at = box.y + box.height * 0.5;
+  await page.mouse.move(box.x + 700, at);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 700, at - 140, { steps: 10 });
+  await page.mouse.up();
+
+  // Still one guide after the drag: it moved rather than a second appearing.
+  await expect(page.locator("[data-clear-guides]")).toContainText("Clear 1");
+
+  // A guide is the font's, not the letter's, so it is still there next door.
+  await page.getByRole("button", { name: "Font", exact: true }).click();
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await expect(page.locator("[data-clear-guides]")).toContainText("Clear 1");
+
+  await page.locator("[data-clear-guides]").click();
+  await expect(page.locator("[data-clear-guides]")).toHaveCount(0);
+});
+
+/**
+ * The colour actually on the canvas, averaged over the pixels that were
+ * painted.
+ *
+ * Not the token, and not the CSS: the pixels. The bug this exists to catch was
+ * a canvas that read the right token at the wrong moment, so every declared
+ * value in the document was correct and the letters were still the old colour.
+ * Nothing short of reading the bitmap would have noticed.
+ */
+async function inkLuminance(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const canvas = document.querySelector("[data-proof-page] canvas") as HTMLCanvasElement;
+    const context = canvas.getContext("2d")!;
+    const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+    let sum = 0;
+    let painted = 0;
+    // Solid pixels only. The edge of a letter is antialiased against nothing,
+    // so a part-transparent pixel carries the colour diluted and would drag
+    // the average towards the middle from both ends.
+    for (let at = 0; at < data.length; at += 4) {
+      if (data[at + 3] < 250) continue;
+      sum += 0.2126 * data[at] + 0.7152 * data[at + 1] + 0.0722 * data[at + 2];
+      painted += 1;
+    }
+    return painted === 0 ? -1 : sum / painted;
+  });
+}
+
+test("proofs the font in paragraphs, on either ground", async ({ page }) => {
+  /*
+   * A face is judged in paragraphs, and there was nowhere to see one.
+   *
+   * Every view here showed letters one at a time or in a grid of boxes, which
+   * is how you fix a letter and not how you tell whether a font works: a stem
+   * a shade too heavy reads as a grey patch in text and as nothing at all on a
+   * canvas. This draws the outlines on screen -- not an installed font -- into
+   * a column of real text, at a size and a leading you can push around.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Proof", exact: true }).click();
+
+  const pageBox = page.locator("[data-proof-page]");
+  await expect(pageBox).toBeVisible();
+
+  // Something was actually drawn.
+  await expect.poll(() => inkLuminance(page)).toBeGreaterThan(0);
+
+  /*
+   * The type stays inside the page it is drawn on.
+   *
+   * The first version measured the padded parent and drew as though it were
+   * the content box, which put the canvas forty-eight pixels wider than the
+   * white underneath it and clipped the right-hand end of every line.
+   */
+  const widths = await pageBox.evaluate((element) => ({
+    page: element.clientWidth,
+    canvas: (element.querySelector("canvas") as HTMLCanvasElement).clientWidth,
+  }));
+  expect(widths.canvas).toBeLessThanOrEqual(widths.page);
+
+  // Bigger type is more lines of it, and the page grows to hold them.
+  const shortPage = (await pageBox.boundingBox())!.height;
+  const size = page.getByRole("slider", { name: "Size" });
+  await size.fill("28");
+  await expect.poll(async () => (await pageBox.boundingBox())!.height).toBeGreaterThan(shortPage);
+  await size.fill("14");
+
+  /*
+   * The ground, and the only assertion here that reads pixels rather than the
+   * document.
+   *
+   * The canvases are painted in script and take their colour from a custom
+   * property on the root, so switching the ground is two things happening in
+   * order: the attribute changes, and every canvas repaints having read it.
+   * They went out of order -- effects run child before parent, so the canvas
+   * repainted first and read a root that still said dark -- and the result was
+   * near-white letters on the new white page, with every token in the document
+   * reporting the correct value. Hence the luminance: the token was never
+   * wrong, only early.
+   */
+  const onDark = await inkLuminance(page);
+  await page.locator("[data-ground-toggle]").getByRole("button", { name: "On white" }).click();
+  await expect.poll(() => inkLuminance(page)).toBeLessThan(onDark - 100);
+
+  await page.locator("[data-ground-toggle]").getByRole("button", { name: "On black" }).click();
+  await expect.poll(() => inkLuminance(page)).toBeGreaterThan(onDark - 20);
+});
+
+test("carries the ground into the letter being drawn", async ({ page }) => {
+  // The ground is the application's, not the proof page's: a letter is judged
+  // against white too, and the choice should not have to be made twice.
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Proof", exact: true }).click();
+  await page.locator("[data-ground-toggle]").getByRole("button", { name: "On white" }).click();
+
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  const toggle = page.locator("[data-ground-toggle]").getByRole("button", { name: "On white" });
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+
+  /*
+   * And carries it no further than that.
+   *
+   * The ground is declared on the stage rather than on the document, so the
+   * letters a few pixels to the right in the inspector and the grid one tab
+   * over keep the colours they were drawn for. The first version put it on
+   * the root, which took `--canvas` with it everywhere it was used -- and it
+   * is used as a darker panel in two views that carry ordinary white chrome
+   * text, so the Draw stage and the Assemble empty state came up with their
+   * headings white on white.
+   */
+  await expect(page.locator("[data-ground='light']")).toHaveCount(1);
+  await expect(page.locator("html")).not.toHaveAttribute("data-ground", "light");
+});

@@ -12,10 +12,10 @@
 
 import * as React from "react";
 
-import { contourSegments, contoursToPath2D } from "@/font/geometry";
+import { contourSegments, contoursBounds, contoursToPath2D } from "@/font/geometry";
 import { classifyNodes } from "@/font/quadratic";
 import { resolveComponents } from "@/font/composite";
-import { resolveGlyphContours } from "@/font/transform";
+import { resolveAdvanceWidth, resolveGlyphContours } from "@/font/transform";
 import type { Anchor, Contour, Glyph, GlyphNode, Typeface, Vec2 } from "@/font/types";
 import {
   applyView,
@@ -27,6 +27,8 @@ import {
 } from "@/components/glyph-render";
 import { nodeKey, store, useAppState, type NodeRef } from "@/state/useStore";
 import { CoachMark } from "@/components/CoachMark";
+import { GroundToggle } from "@/components/GroundToggle";
+import { NumberField } from "@/components/NumberField";
 
 /** How close a click has to land, in screen pixels, to grab a node. */
 const HIT_RADIUS = 7;
@@ -57,7 +59,8 @@ type Drag =
   | { kind: "handle"; ref: NodeRef; side: "in" | "out"; before: Glyph }
   | { kind: "marquee"; from: Vec2; to: Vec2; additive: boolean }
   | { kind: "anchor"; name: string; before: Anchor[] }
-  | { kind: "pan"; from: Vec2; startPan: Vec2 };
+  | { kind: "pan"; from: Vec2; startPan: Vec2 }
+  | { kind: "guide"; index: number };
 
 export function GlyphEditorView(): React.JSX.Element {
   const state = useAppState();
@@ -121,6 +124,59 @@ export function GlyphEditorView(): React.JSX.Element {
     };
   }, [typeface, size, zoom, pan, glyph]);
 
+  /*
+   * The letters standing either side, and where each of them sits.
+   *
+   * A sidebearing cannot be judged on a letter by itself. The gap on the left
+   * of an `n` means nothing until there is something to its left; every editor
+   * since the 1990s draws the neighbours for that reason, and this one did not,
+   * which made the one thing the glyph view is for -- deciding whether a letter
+   * is spaced right -- impossible without leaving it.
+   *
+   * Laid out with the real advances and the real kerning, because a neighbour
+   * drawn at the wrong distance is worse than no neighbour: it answers the
+   * question confidently and wrongly.
+   */
+  const neighbours = React.useMemo(() => {
+    if (!typeface || !glyph) return { before: [], after: [] };
+    const byCodepoint = new Map<number, Glyph>();
+    for (const one of typeface.glyphs) {
+      for (const codepoint of one.unicodes) {
+        if (!byCodepoint.has(codepoint)) byCodepoint.set(codepoint, one);
+      }
+    }
+    const found = (text: string): Glyph[] =>
+      [...text].map((character) => byCodepoint.get(character.codePointAt(0)!)).filter((one) => one !== undefined);
+
+    /*
+     * Walked outwards from the glyph in both directions, so the pen starts at
+     * the edited letter rather than at the start of a line. The left side is
+     * built backwards -- each letter placed by its own width plus whatever it
+     * kerns against what follows it -- which is the only way to keep the letter
+     * under the cursor where it already is.
+     */
+    const placed: Array<{ glyph: Glyph; x: number }> = [];
+    let pen = 0;
+    let next = glyph;
+    for (const one of found(state.context.before).reverse()) {
+      pen -= resolveAdvanceWidth(one, typeface) + store.resolvedKerning(one.name, next.name).value;
+      placed.push({ glyph: one, x: pen });
+      next = one;
+    }
+    const before = placed;
+
+    const after: Array<{ glyph: Glyph; x: number }> = [];
+    let forward = resolveAdvanceWidth(glyph, typeface);
+    let previous = glyph;
+    for (const one of found(state.context.after)) {
+      forward += store.resolvedKerning(previous.name, one.name).value;
+      after.push({ glyph: one, x: forward });
+      forward += resolveAdvanceWidth(one, typeface);
+      previous = one;
+    }
+    return { before, after };
+  }, [typeface, glyph, state.context, state.revision]);
+
   // --- drawing ----------------------------------------------------------
 
   React.useEffect(() => {
@@ -129,8 +185,23 @@ export function GlyphEditorView(): React.JSX.Element {
     const context = prepareCanvas(canvas, size.width, size.height);
     if (!context) return;
 
-    drawMetrics(context, typeface, glyph, view, size);
+    drawMetrics(context, typeface, glyph, view, size, state.guides);
     if (!glyph) return;
+
+    /*
+     * The neighbours first, and flat.
+     *
+     * Drawn before the letter under the cursor so they can never sit on top of
+     * it, and in one muted tone with no nodes and no handles: they are there to
+     * be measured against, not edited. Anything that made them look editable
+     * would be a promise this view does not keep -- clicking one selects
+     * nothing, because the thing being edited is the glyph in the middle.
+     */
+    const asideFill = withAlpha(readToken("--glyph-fill", "#eeeeee", canvas), 0.28);
+    for (const one of [...neighbours.before, ...neighbours.after]) {
+      const shifted: GlyphView = { ...view, originX: view.originX + one.x * view.scale };
+      drawContours(context, resolveGlyphContours(one.glyph, typeface), shifted, { fill: asideFill });
+    }
 
     // Where parameters change the shape, show the result behind the outline
     // being edited so the effect of the family settings stays visible.
@@ -141,25 +212,31 @@ export function GlyphEditorView(): React.JSX.Element {
     const fromComponents = composed.slice(glyph.contours.length);
     if (fromComponents.length > 0) {
       drawContours(context, fromComponents, view, {
-        fill: withAlpha(readToken("--inspect", "#9149f5"), 0.4),
+        fill: withAlpha(readToken("--inspect", "#9149f5", canvas), 0.4),
       });
     }
 
     const resolved = resolveGlyphContours(glyph, typeface);
     if (resolved !== composed) {
       drawContours(context, resolved, view, {
-        fill: withAlpha(readToken("--accent", "#0c8ce9"), 0.22),
+        fill: withAlpha(readToken("--accent", "#0c8ce9", canvas), 0.22),
       });
     }
     drawContours(context, glyph.contours, view, {
-      fill: withAlpha(readToken("--glyph-fill", "#eeeeee"), resolved !== composed ? 0.5 : 0.92),
+      fill: withAlpha(readToken("--glyph-fill", "#eeeeee", canvas), resolved !== composed ? 0.5 : 0.92),
     });
     drawNodes(context, glyph.contours, view, state.selectedNodes, hover);
     drawAnchors(context, glyph.anchors, view, hover);
 
     const drag = dragRef.current;
     if (drag?.kind === "marquee") drawMarquee(context, drag);
-  }, [typeface, glyph, view, size, state.selectedNodes, state.revision, hover]);
+    /*
+     * `state.ground` is in here for the reason it is in the proof view: every
+     * colour on this canvas comes from `readToken`, which reads a custom
+     * property rather than taking a prop, so nothing else in this list changes
+     * when the ground does and the canvas would keep its old colours.
+     */
+  }, [typeface, glyph, view, size, state.selectedNodes, state.revision, hover, neighbours, state.guides, state.ground]);
 
 
   // --- interaction ------------------------------------------------------
@@ -177,6 +254,21 @@ export function GlyphEditorView(): React.JSX.Element {
     // Middle button or alt-drag pans the view.
     if (event.button === 1 || event.altKey) {
       dragRef.current = { kind: "pan", from: canvasPoint, startPan: pan };
+      return;
+    }
+
+    /*
+     * A guide under the pointer is grabbed before anything else is considered.
+     *
+     * It is a full-width line, so it crosses points and outlines all the way
+     * across the canvas -- and a guide that could only be caught where the
+     * letter is not would be uncatchable on a wide letter. Tested first and
+     * within a few pixels, so it never steals a click meant for a node: the
+     * band is thinner than the one a node answers to.
+     */
+    const onGuide = guideAt(state.guides, view, canvasPoint.y);
+    if (onGuide !== null) {
+      dragRef.current = { kind: "guide", index: onGuide };
       return;
     }
 
@@ -270,8 +362,21 @@ export function GlyphEditorView(): React.JSX.Element {
       updateHover(pointerPosition(event));
       return;
     }
-    if (!glyph) return;
     const canvasPoint = pointerPosition(event);
+
+    /*
+     * A guide moves without a glyph, and before the glyph guard below.
+     *
+     * Guides belong to the font rather than to a letter, so dragging one has to
+     * work on a glyph with no outlines at all -- which is where somebody
+     * setting up their lines before drawing anything would be standing.
+     */
+    if (drag.kind === "guide") {
+      store.moveGuide(drag.index, (view.originY - canvasPoint.y) / view.scale);
+      return;
+    }
+
+    if (!glyph) return;
 
     switch (drag.kind) {
       case "pan": {
@@ -333,6 +438,20 @@ export function GlyphEditorView(): React.JSX.Element {
         break;
       }
     }
+  };
+
+  /*
+   * A double click on a guide takes it away.
+   *
+   * The other candidates were a button per guide, which needs somewhere on the
+   * canvas to put it, and dragging one off the edge, which is a gesture with no
+   * edge on an infinite canvas. Double-clicking the thing you want rid of needs
+   * neither, and `Clear` in the toolbar covers the case where there are five
+   * and you want none.
+   */
+  const handleDoubleClick = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    const index = guideAt(state.guides, view, pointerPosition(event).y);
+    if (index !== null) store.removeGuide(index);
   };
 
   const handlePointerUp = (): void => {
@@ -429,7 +548,84 @@ export function GlyphEditorView(): React.JSX.Element {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <CoachMark id="glyph" />
-      <div ref={measure} className="relative min-h-0 flex-1 overflow-hidden bg-[var(--canvas)]">
+      {/*
+        What stands either side, above the canvas rather than in the panel.
+
+        It belongs with the letter it changes: this is a decision about what you
+        are looking at, taken while looking at it, and a control for that on the
+        far side of the window is a control somebody has to go and find.
+      */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2 text-2xs">
+        <span className="text-muted-foreground">Between</span>
+        <input
+          value={state.context.before}
+          onChange={(event) => store.setContext({ before: event.target.value })}
+          aria-label="Letters before"
+          data-context-before
+          maxLength={8}
+          className="h-7 w-16 rounded-md border border-input bg-card px-2 text-center text-xs-plus text-foreground outline-none focus-visible:border-accent"
+        />
+        <span className="rounded bg-card px-2 py-1 font-medium text-foreground">{glyph.name}</span>
+        <input
+          value={state.context.after}
+          onChange={(event) => store.setContext({ after: event.target.value })}
+          aria-label="Letters after"
+          data-context-after
+          maxLength={8}
+          className="h-7 w-16 rounded-md border border-input bg-card px-2 text-center text-xs-plus text-foreground outline-none focus-visible:border-accent"
+        />
+        <span className="pl-1 text-muted-foreground">
+          Drawn flat and not editable — they are what this letter is spaced against, at their real
+          advances and kerning.
+        </span>
+
+        {/*
+          The guides, at the other end of the same row.
+
+          A guide is placed at the height the view is looking at rather than at
+          a number typed into a box, because the reason to want one is almost
+          always "here, level with this" -- and it is then dragged, which is the
+          part that makes it useful. They belong to the font, so one placed
+          while drawing an `n` is still there on the `o` you are lining up
+          against it.
+        */}
+        <span className="ml-auto flex items-center gap-2">
+          <GroundToggle />
+          <button
+            type="button"
+            onClick={() => store.addGuide(typeface.metrics.xHeight)}
+            data-add-guide
+            title="Put a guide across the canvas, then drag it where you want it"
+            className="rounded border border-border px-2 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+          >
+            Add a guide
+          </button>
+          {state.guides.length > 0 && (
+            <button
+              type="button"
+              onClick={() => store.clearGuides()}
+              data-clear-guides
+              className="rounded px-1.5 py-1 text-2xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Clear {state.guides.length}
+            </button>
+          )}
+        </span>
+      </div>
+      {/*
+        The ground, declared here rather than on the document.
+
+        Custom properties inherit, so putting it on this element redefines the
+        canvas colours for this subtree and for nothing else: the letters in
+        the inspector a few pixels to the right, and the grid one tab over,
+        keep the colours they were designed with. That is the whole scope of
+        this -- the surface a letter is judged on, not a theme.
+      */}
+      <div
+        ref={measure}
+        data-ground={state.ground}
+        className="relative min-h-0 flex-1 overflow-hidden bg-[var(--canvas)]"
+      >
         <canvas
           ref={canvasRef}
           style={{ width: size.width, height: size.height }}
@@ -438,6 +634,7 @@ export function GlyphEditorView(): React.JSX.Element {
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
+          onDoubleClick={handleDoubleClick}
           onPointerLeave={() => setHover(null)}
           onWheel={(event) => {
             // Ctrl or command with the wheel zooms, matching every design tool.
@@ -449,13 +646,161 @@ export function GlyphEditorView(): React.JSX.Element {
           }}
         />
         <div className="pointer-events-none absolute bottom-3 left-3 flex gap-3 text-2xs text-muted-foreground tabular-nums">
-          <span>{glyph.name}</span>
           <span>{Math.round(zoom * 100)}%</span>
-          {state.selectedNodes.size > 0 && <span>{state.selectedNodes.size} points</span>}
+          {state.selectedNodes.size > 1 && <span>{state.selectedNodes.size} points</span>}
         </div>
       </div>
+      <Numbers glyph={glyph} typeface={typeface} selected={state.selectedNodes} />
     </div>
   );
+}
+
+/**
+ * The numbers, under the letter.
+ *
+ * A point could be dragged and nothing else. Moving a stem three units sideways
+ * was therefore not possible: you could get close by eye at a high zoom and
+ * never land on a number, which is most of the difference between a tool a
+ * designer will use and one they will admire and then go back to their own.
+ *
+ * Under the canvas rather than in the panel on the far right, because these are
+ * about the letter and the letter is here. What is offered depends on what is
+ * selected -- the point when there is exactly one, the letter's own spacing
+ * otherwise -- so the row answers the question in front of you rather than
+ * showing eight fields of which six are always dimmed.
+ */
+function Numbers({
+  glyph,
+  typeface,
+  selected,
+}: {
+  glyph: Glyph;
+  typeface: Typeface;
+  selected: ReadonlySet<string>;
+}): React.JSX.Element {
+  const one = selected.size === 1 ? parseNodeKey([...selected][0]) : null;
+  const node = one ? glyph.contours[one.contour]?.nodes[one.node] : null;
+
+  /*
+   * The sidebearings, measured off the ink rather than stored.
+   *
+   * A sidebearing is not a field on a glyph: it is where the ink starts against
+   * where the advance does, so it moves whenever the outline does. Measured
+   * here for the same reason the Spacing table measures it -- a number kept
+   * beside the outline is a number that goes stale the first time a point moves.
+   */
+  const box = glyph.contours.length > 0 ? contoursBounds(glyph.contours) : null;
+  const advance = resolveAdvanceWidth(glyph, typeface);
+  const left = box && Number.isFinite(box.xMin) ? Math.round(box.xMin) : 0;
+  const right = box && Number.isFinite(box.xMax) ? Math.round(advance - box.xMax) : 0;
+
+  const move = (axis: "x" | "y", next: number) => {
+    if (!one) return;
+    store.editGlyph(glyph.name, "Move point", (editing) => {
+      const target = editing.contours[one.contour]?.nodes[one.node];
+      if (!target) return;
+      const delta = next - target.point[axis];
+      target.point = { ...target.point, [axis]: next };
+      // The handles travel with the point they belong to, exactly as they do
+      // under a drag. Left behind, typing a coordinate would straighten the
+      // curve either side of it.
+      if (target.handleIn) {
+        target.handleIn = { ...target.handleIn, [axis]: target.handleIn[axis] + delta };
+      }
+      if (target.handleOut) {
+        target.handleOut = { ...target.handleOut, [axis]: target.handleOut[axis] + delta };
+      }
+    });
+  };
+
+  return (
+    <div
+      className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-1 border-t border-border px-4 py-1.5 text-2xs text-muted-foreground"
+      data-glyph-numbers
+    >
+      <span className="font-medium text-foreground">{glyph.name}</span>
+
+      {node ? (
+        <>
+          <label className="flex items-center gap-1">
+            X
+            <NumberField
+              label="Point x"
+              value={Math.round(node.point.x)}
+              onCommit={(next) => move("x", next)}
+            />
+          </label>
+          <label className="flex items-center gap-1">
+            Y
+            <NumberField
+              label="Point y"
+              value={Math.round(node.point.y)}
+              onCommit={(next) => move("y", next)}
+            />
+          </label>
+        </>
+      ) : (
+        <span className="opacity-70">
+          {selected.size === 0
+            ? "Select one point to type its position."
+            : `${selected.size} points selected — one at a time can be typed.`}
+        </span>
+      )}
+
+      <span className="ml-auto flex items-center gap-x-5">
+        <label className="flex items-center gap-1">
+          Left
+          <NumberField
+            label="Left sidebearing"
+            value={left}
+            disabled={!box}
+            onCommit={(next) => store.shiftSidebearing(glyph.name, next - left, "left")}
+          />
+        </label>
+        <label className="flex items-center gap-1">
+          Width
+          <NumberField
+            label="Advance width"
+            value={Math.round(advance)}
+            onCommit={(next) =>
+              store.editGlyph(glyph.name, "Set advance width", (editing) => {
+                editing.advanceWidth = Math.max(0, next);
+              })
+            }
+          />
+        </label>
+        <label className="flex items-center gap-1">
+          Right
+          <NumberField
+            label="Right sidebearing"
+            value={right}
+            disabled={!box}
+            onCommit={(next) => store.shiftSidebearing(glyph.name, next - right, "right")}
+          />
+        </label>
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Which guide, if any, is under a given height on the canvas.
+ *
+ * Four pixels either side, which is deliberately tighter than the band a node
+ * answers to: a guide runs the whole width of the canvas, so a generous band
+ * would take clicks meant for a point anywhere along it. Searched from the last
+ * one back, so the guide drawn on top is the one that answers.
+ */
+function guideAt(
+  guides: ReadonlyArray<{ y: number }>,
+  view: GlyphView,
+  canvasY: number,
+): number | null {
+  for (let index = guides.length - 1; index >= 0; index--) {
+    const y = view.originY - guides[index].y * view.scale;
+    if (Math.abs(y - canvasY) <= 4) return index;
+  }
+  return null;
 }
 
 /**
@@ -477,10 +822,11 @@ function drawMetrics(
   glyph: Glyph | null,
   view: GlyphView,
   size: { width: number; height: number },
+  guides: ReadonlyArray<{ y: number }> = [],
 ): void {
-  const metricColour = readToken("--guide-metric", "#5a6070");
-  const baselineColour = readToken("--guide-baseline", "#d24b3a");
-  const sidebearingColour = readToken("--guide-sidebearing", "#3f8fa8");
+  const metricColour = readToken("--guide-metric", "#5a6070", context.canvas);
+  const baselineColour = readToken("--guide-baseline", "#d24b3a", context.canvas);
+  const sidebearingColour = readToken("--guide-sidebearing", "#3f8fa8", context.canvas);
 
   const lines: Array<{ y: number; label: string; colour: string }> = [
     { y: 0, label: "baseline", colour: baselineColour },
@@ -504,6 +850,31 @@ function drawMetrics(
     context.fillStyle = withAlpha(line.colour, 0.8);
     context.fillText(line.label, 6, y - 4);
   }
+
+  /*
+   * The guides somebody put there, over the metric lines and told apart from
+   * them.
+   *
+   * A different colour and a dashed line, because the two kinds mean opposite
+   * things: a metric line is a fact about the font and cannot be moved, and a
+   * guide is a decision somebody made and can be dragged or thrown away. Drawn
+   * with their height beside them, since a guide whose position you cannot read
+   * is a guide you cannot put back.
+   */
+  const guideColour = readToken("--accent", "#0c8ce9", context.canvas);
+  context.setLineDash([5, 4]);
+  for (const guide of guides) {
+    const y = Math.round(view.originY - guide.y * view.scale) + 0.5;
+    if (y < -2 || y > size.height + 2) continue;
+    context.strokeStyle = withAlpha(guideColour, 0.75);
+    context.beginPath();
+    context.moveTo(0, y);
+    context.lineTo(size.width, y);
+    context.stroke();
+    context.fillStyle = withAlpha(guideColour, 0.9);
+    context.fillText(String(guide.y), size.width - 46, y - 4);
+  }
+  context.setLineDash([]);
 
   // Sidebearings: the origin and the advance width bracket the glyph.
   if (glyph) {
@@ -541,9 +912,9 @@ function drawNodes(
   selected: ReadonlySet<string>,
   hover: Hover,
 ): void {
-  const onCurve = readToken("--node-on-curve", "#0c8ce9");
-  const offCurve = readToken("--node-off-curve", "#9aa0ad");
-  const selectedColour = readToken("--node-selected", "#f5a524");
+  const onCurve = readToken("--node-on-curve", "#0c8ce9", context.canvas);
+  const offCurve = readToken("--node-off-curve", "#9aa0ad", context.canvas);
+  const selectedColour = readToken("--node-selected", "#f5a524", context.canvas);
 
   context.save();
   contours.forEach((contour, contourIndex) => {
@@ -633,7 +1004,7 @@ function drawAnchors(
   hover: Hover,
 ): void {
   if (anchors.length === 0) return;
-  const colour = readToken("--inspect", "#9149f5");
+  const colour = readToken("--inspect", "#9149f5", context.canvas);
 
   context.save();
   context.font = "10px ui-monospace, monospace";
@@ -699,7 +1070,7 @@ function drawHoverRing(
 }
 
 function drawMarquee(context: CanvasRenderingContext2D, drag: Extract<Drag, { kind: "marquee" }>): void {
-  const accent = readToken("--accent", "#0c8ce9");
+  const accent = readToken("--accent", "#0c8ce9", context.canvas);
   context.save();
   context.strokeStyle = accent;
   context.fillStyle = withAlpha(accent, 0.12);

@@ -104,10 +104,23 @@ export function drawGlyph(
   context.restore();
 }
 
-/** Read a CSS custom property so canvas drawing follows the theme. */
-export function readToken(name: string, fallback: string): string {
+/**
+ * Read a CSS custom property so canvas drawing follows the theme.
+ *
+ * `from` is what makes the ground work. Custom properties inherit, so a
+ * surface that declares its own sits in a subtree where they differ from the
+ * root, and a canvas inside it has to ask its own element rather than the
+ * document: the glyph stage and the proof page do exactly that, and every
+ * other canvas in the application -- the grid cells, the kerning band, the
+ * letters in the inspector -- keeps asking the root and keeps its colours
+ * whatever the ground is set to. A drawing function that already has a
+ * context has the element for free, as `context.canvas`.
+ */
+export function readToken(name: string, fallback: string, from?: Element | null): string {
   if (typeof window === "undefined") return fallback;
-  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const value = getComputedStyle(from ?? document.documentElement)
+    .getPropertyValue(name)
+    .trim();
   return value || fallback;
 }
 

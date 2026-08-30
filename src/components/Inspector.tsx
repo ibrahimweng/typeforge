@@ -14,6 +14,7 @@ import * as React from "react";
 
 import { enterStaggered } from "@/anim/motion";
 import { CompositionPanel } from "@/components/CompositionPanel";
+import { PathsPanel } from "@/components/PathsPanel";
 import { CoachMark } from "@/components/CoachMark";
 import { ControlLetters } from "@/components/ControlLetters";
 import { segment } from "@/components/controls";
@@ -41,6 +42,25 @@ export function Inspector(): React.JSX.Element {
       enterStaggered(Array.from(listRef.current.children) as Element[], { step: 10 });
     }
   }, [scope]);
+
+  /*
+   * Opening a letter puts the panel on that letter.
+   *
+   * The panel opens on the family, which is right in the font view: there the
+   * subject is the typeface and a hundred letters are on screen. In the glyph
+   * view the subject is one letter, and leaving the panel on the family meant
+   * that everything about the letter -- its own parameters, and now its paths
+   * -- sat behind a tab whose label is a single character and which nothing
+   * suggested was a tab at all. The feature was there and unreachable.
+   *
+   * Only on arriving in the view, not on every render, so somebody who
+   * deliberately switches back to the family stays there while they work.
+   */
+  const arrivedInGlyphView = React.useRef(false);
+  React.useEffect(() => {
+    if (state.view === "glyph" && !arrivedInGlyphView.current) setScope("glyph");
+    arrivedInGlyphView.current = state.view === "glyph";
+  }, [state.view]);
 
   const typeface = state.typeface;
   const glyphName = state.selectedGlyph;
@@ -94,6 +114,14 @@ export function Inspector(): React.JSX.Element {
       <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
       {scope === "family" && <ControlLetters />}
       {scope === "family" && <CoachMark id="family" />}
+      {/*
+        Under the letter's own scope, because that is what it is about.
+
+        A path belongs to one glyph and to no family, so it has no business in
+        the family tab where every other control reaches four hundred and fifty
+        letters at once.
+      */}
+      {editingGlyph && <PathsPanel />}
       <div ref={listRef} className="p-3">
         {PARAMS.map((spec) => {
           const scaleFactor = spec.emRelative ? typeface.unitsPerEm : 1;

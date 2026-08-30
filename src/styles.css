@@ -108,6 +108,38 @@
   color-scheme: dark;
 }
 
+/*
+ * The ground the type is drawn on, and nothing else.
+ *
+ * Not a light theme, and not on the root. It is set on the glyph stage and on
+ * the proof page, the two surfaces where a letter is being looked at rather
+ * than operated, and custom properties inherit -- so these reach the canvases
+ * inside those two elements and reach nothing else. Everything that also
+ * draws letters, and everything that borrows `--canvas` as a darker panel
+ * than the card, is outside and unaffected. That matters more than it sounds:
+ * `--canvas` is the stage in the Draw view and the empty state in Assemble,
+ * both of which carry ordinary white chrome text, and swapping it under them
+ * from the root turned that text white on white.
+ *
+ * It is here because black type on white is the thing being made. The eye reads
+ * weight differently against the two grounds: a stem that looks right in white
+ * on black is a shade heavy in black on white, which is why type is proofed on
+ * paper and why a face judged only on a dark canvas is a face nobody has looked
+ * at yet. Every one of these is a darkened counterpart of the token above it
+ * rather than an inversion, because a guide line has to stay a guide line --
+ * visible, and quieter than the letter.
+ */
+[data-ground="light"] {
+  --canvas: oklch(0.985 0.002 285);
+  --glyph-fill: oklch(0.17 0.005 285);
+  --guide-baseline: oklch(0.55 0.19 25);
+  --guide-metric: oklch(0.78 0.02 260);
+  --guide-sidebearing: oklch(0.6 0.12 200);
+  --node-on-curve: oklch(0.52 0.16 250);
+  --node-off-curve: oklch(0.62 0.02 285);
+  --node-selected: oklch(0.62 0.15 70);
+}
+
 @layer base {
   * {
     border-color: var(--border);

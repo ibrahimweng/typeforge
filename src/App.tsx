@@ -37,6 +37,7 @@ import { FontGridView } from "@/views/FontGridView";
 import { GlyphEditorView } from "@/views/GlyphEditorView";
 import { KerningView } from "@/views/KerningView";
 import { MetricsView } from "@/views/MetricsView";
+import { ProofView } from "@/views/ProofView";
 import { AssembleView } from "@/views/AssembleView";
 import { ForgeView } from "@/views/ForgeView";
 import { QuillView } from "@/views/QuillView";
@@ -494,6 +495,7 @@ export function App(): React.JSX.Element {
               {state.view === "glyph" && <GlyphEditorView />}
               {state.view === "kerning" && <KerningView />}
               {state.view === "metrics" && <MetricsView />}
+              {state.view === "proof" && <ProofView />}
               {state.view === "report" && <ReportView />}
             </>
           )}
