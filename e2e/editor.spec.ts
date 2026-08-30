@@ -2793,3 +2793,61 @@ test("shows the letters either side, and lets the numbers be typed", async ({ pa
   // Committed as one undoable edit rather than one per keystroke.
   await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
 });
+
+test("lists the paths a letter is made of, and takes guides", async ({ page }) => {
+  /*
+   * Two things a glyph did not say about itself.
+   *
+   * Which contour a point belonged to, how many there were, which way round
+   * each ran and what order they came in were all facts the letter kept to
+   * itself -- and two of them are correctness rather than convenience.
+   * Direction decides whether a contour fills or cuts a hole in the one around
+   * it, so a counter drawn the same way round as its bowl fills solid, and the
+   * only way to find that out was to export the font and look at it elsewhere.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  // Reachable without hunting: opening a letter puts the panel on that letter.
+  const rows = page.locator("[data-path-row]");
+  await expect.poll(() => rows.count()).toBeGreaterThan(1);
+
+  // Clicking a row selects that whole contour on the canvas, so the list and
+  // the drawing agree about what is in hand.
+  const points = await rows.first().getByRole("button").first().innerText();
+  await rows.first().getByRole("button").first().click();
+  await expect(page.locator("[data-glyph-numbers]")).toContainText("points selected");
+  expect(points).toContain("points");
+
+  // Reversing is an undoable edit rather than a display toggle.
+  await page.locator('[aria-label="Reverse path 1"]').click();
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+
+  /*
+   * Guides. Placed at the height the view is looking at and then dragged, which
+   * is the part that makes them useful -- and they belong to the font, so the
+   * count survives moving to another letter.
+   */
+  await page.locator("[data-add-guide]").click();
+  await expect(page.locator("[data-clear-guides]")).toContainText("Clear 1");
+
+  const canvas = page.locator("canvas").first();
+  const box = (await canvas.boundingBox())!;
+  const at = box.y + box.height * 0.5;
+  await page.mouse.move(box.x + 700, at);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 700, at - 140, { steps: 10 });
+  await page.mouse.up();
+
+  // Still one guide after the drag: it moved rather than a second appearing.
+  await expect(page.locator("[data-clear-guides]")).toContainText("Clear 1");
+
+  // A guide is the font's, not the letter's, so it is still there next door.
+  await page.getByRole("button", { name: "Font", exact: true }).click();
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await expect(page.locator("[data-clear-guides]")).toContainText("Clear 1");
+
+  await page.locator("[data-clear-guides]").click();
+  await expect(page.locator("[data-clear-guides]")).toHaveCount(0);
+});

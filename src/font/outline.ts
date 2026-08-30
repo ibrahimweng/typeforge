@@ -244,7 +244,7 @@ export function correctDirection(
 }
 
 /** Reverse a contour, swapping each node's handles so the shape is unchanged. */
-function reverse(contour: Contour): Contour {
+export function reverse(contour: Contour): Contour {
   const nodes = [...contour.nodes].reverse().map<GlyphNode>((node) => ({
     point: { ...node.point },
     handleIn: node.handleOut ? { ...node.handleOut } : null,

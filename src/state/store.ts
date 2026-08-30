@@ -14,6 +14,7 @@
 import { applyEdits, fromBase64, type EditedProject } from "@/project/format";
 import { buildAccents, deriveAnchors, suggestAnchors, looksLikeMark } from "@/font/accents";
 import { dependentsOf } from "@/font/composite";
+import { reverse as reverseContour } from "@/font/outline";
 import {
   deriveParams,
   isControlGlyph,
@@ -81,6 +82,18 @@ export interface AppState {
    * Empty on either side is allowed and means nothing on that side.
    */
   context: { before: string; after: string };
+  /**
+   * Lines somebody put there themselves, in font units.
+   *
+   * The metric lines are drawn already and cannot be moved, which is right --
+   * they are facts about the font. These are the other kind: the height an
+   * overshoot should reach, where a crossbar sits on this particular letter,
+   * a line taken off one glyph to line another up with. They belong to the
+   * font rather than to a glyph, because that is what they are for: a guide
+   * that vanished when you opened the next letter would be a guide you could
+   * not line two letters up against.
+   */
+  guides: Array<{ y: number }>;
   /** Name of the glyph open in the editor. */
   selectedGlyph: string | null;
   /** Selected nodes within the open glyph, keyed by `contour:node`. */
@@ -141,6 +154,7 @@ class Store {
      * belongs to the letter under test rather than to the letter beside it.
      */
     context: { before: "n", after: "n" },
+    guides: [],
     selectedGlyph: null,
     selectedNodes: new Set(),
     selectedGlyphs: new Set(),
@@ -343,6 +357,26 @@ class Store {
   setContext(context: Partial<AppState["context"]>): void {
     this.set({ context: { ...this.state.context, ...context } });
   }
+
+  /** Put a guide at a height, in font units. */
+  addGuide(y: number): void {
+    this.set({ guides: [...this.state.guides, { y: Math.round(y) }] });
+  }
+
+  /** Move one, while it is being dragged. */
+  moveGuide(index: number, y: number): void {
+    const guides = this.state.guides.map((one, at) => (at === index ? { y: Math.round(y) } : one));
+    this.set({ guides });
+  }
+
+  removeGuide(index: number): void {
+    this.set({ guides: this.state.guides.filter((_, at) => at !== index) });
+  }
+
+  clearGuides(): void {
+    if (this.state.guides.length === 0) return;
+    this.set({ guides: [] });
+  }
   setSearch(search: string): void {
     this.set({ search });
   }
@@ -384,6 +418,53 @@ class Store {
    * The glyph is cloned before and after, so history holds two copies of one
    * glyph rather than of the whole font.
    */
+  /**
+   * Turn one contour inside out.
+   *
+   * Direction is not decoration: it decides whether a contour fills or cuts a
+   * hole in the one around it. A counter drawn the same way round as its bowl
+   * fills solid, and the only way to see that was to export the font and look.
+   * Offering it as an operation is what makes it a thing somebody can fix.
+   */
+  reverseContour(glyphName: string, index: number): void {
+    this.editGlyph(glyphName, "Reverse path direction", (glyph) => {
+      const contour = glyph.contours[index];
+      if (contour) glyph.contours[index] = reverseContour(contour);
+    });
+  }
+
+  /**
+   * Move a contour up or down the order it is drawn in.
+   *
+   * Order matters for the same reason direction does, and for one more: an
+   * exported font lists the contours in this order, so two fonts that look
+   * identical and differ here are two different files.
+   */
+  moveContour(glyphName: string, index: number, by: number): void {
+    this.editGlyph(glyphName, "Reorder path", (glyph) => {
+      const to = index + by;
+      if (to < 0 || to >= glyph.contours.length) return;
+      const [moved] = glyph.contours.splice(index, 1);
+      glyph.contours.splice(to, 0, moved);
+    });
+    /*
+     * The selection is dropped rather than followed.
+     *
+     * It is keyed by contour index, so after a reorder every key points at a
+     * different contour -- and a selection that silently jumps to other points
+     * is worse than one that clears.
+     */
+    this.set({ selectedNodes: new Set() });
+  }
+
+  /** Take a contour out of the letter. */
+  removeContour(glyphName: string, index: number): void {
+    this.editGlyph(glyphName, "Delete path", (glyph) => {
+      glyph.contours.splice(index, 1);
+    });
+    this.set({ selectedNodes: new Set() });
+  }
+
   /**
    * Move a glyph within its advance, from either side.
    *

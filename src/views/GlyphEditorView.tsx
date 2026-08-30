@@ -58,7 +58,8 @@ type Drag =
   | { kind: "handle"; ref: NodeRef; side: "in" | "out"; before: Glyph }
   | { kind: "marquee"; from: Vec2; to: Vec2; additive: boolean }
   | { kind: "anchor"; name: string; before: Anchor[] }
-  | { kind: "pan"; from: Vec2; startPan: Vec2 };
+  | { kind: "pan"; from: Vec2; startPan: Vec2 }
+  | { kind: "guide"; index: number };
 
 export function GlyphEditorView(): React.JSX.Element {
   const state = useAppState();
@@ -183,7 +184,7 @@ export function GlyphEditorView(): React.JSX.Element {
     const context = prepareCanvas(canvas, size.width, size.height);
     if (!context) return;
 
-    drawMetrics(context, typeface, glyph, view, size);
+    drawMetrics(context, typeface, glyph, view, size, state.guides);
     if (!glyph) return;
 
     /*
@@ -228,7 +229,7 @@ export function GlyphEditorView(): React.JSX.Element {
 
     const drag = dragRef.current;
     if (drag?.kind === "marquee") drawMarquee(context, drag);
-  }, [typeface, glyph, view, size, state.selectedNodes, state.revision, hover, neighbours]);
+  }, [typeface, glyph, view, size, state.selectedNodes, state.revision, hover, neighbours, state.guides]);
 
 
   // --- interaction ------------------------------------------------------
@@ -246,6 +247,21 @@ export function GlyphEditorView(): React.JSX.Element {
     // Middle button or alt-drag pans the view.
     if (event.button === 1 || event.altKey) {
       dragRef.current = { kind: "pan", from: canvasPoint, startPan: pan };
+      return;
+    }
+
+    /*
+     * A guide under the pointer is grabbed before anything else is considered.
+     *
+     * It is a full-width line, so it crosses points and outlines all the way
+     * across the canvas -- and a guide that could only be caught where the
+     * letter is not would be uncatchable on a wide letter. Tested first and
+     * within a few pixels, so it never steals a click meant for a node: the
+     * band is thinner than the one a node answers to.
+     */
+    const onGuide = guideAt(state.guides, view, canvasPoint.y);
+    if (onGuide !== null) {
+      dragRef.current = { kind: "guide", index: onGuide };
       return;
     }
 
@@ -339,8 +355,21 @@ export function GlyphEditorView(): React.JSX.Element {
       updateHover(pointerPosition(event));
       return;
     }
-    if (!glyph) return;
     const canvasPoint = pointerPosition(event);
+
+    /*
+     * A guide moves without a glyph, and before the glyph guard below.
+     *
+     * Guides belong to the font rather than to a letter, so dragging one has to
+     * work on a glyph with no outlines at all -- which is where somebody
+     * setting up their lines before drawing anything would be standing.
+     */
+    if (drag.kind === "guide") {
+      store.moveGuide(drag.index, (view.originY - canvasPoint.y) / view.scale);
+      return;
+    }
+
+    if (!glyph) return;
 
     switch (drag.kind) {
       case "pan": {
@@ -402,6 +431,20 @@ export function GlyphEditorView(): React.JSX.Element {
         break;
       }
     }
+  };
+
+  /*
+   * A double click on a guide takes it away.
+   *
+   * The other candidates were a button per guide, which needs somewhere on the
+   * canvas to put it, and dragging one off the edge, which is a gesture with no
+   * edge on an infinite canvas. Double-clicking the thing you want rid of needs
+   * neither, and `Clear` in the toolbar covers the case where there are five
+   * and you want none.
+   */
+  const handleDoubleClick = (event: React.PointerEvent<HTMLCanvasElement>): void => {
+    const index = guideAt(state.guides, view, pointerPosition(event).y);
+    if (index !== null) store.removeGuide(index);
   };
 
   const handlePointerUp = (): void => {
@@ -528,6 +571,38 @@ export function GlyphEditorView(): React.JSX.Element {
           Drawn flat and not editable — they are what this letter is spaced against, at their real
           advances and kerning.
         </span>
+
+        {/*
+          The guides, at the other end of the same row.
+
+          A guide is placed at the height the view is looking at rather than at
+          a number typed into a box, because the reason to want one is almost
+          always "here, level with this" -- and it is then dragged, which is the
+          part that makes it useful. They belong to the font, so one placed
+          while drawing an `n` is still there on the `o` you are lining up
+          against it.
+        */}
+        <span className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => store.addGuide(typeface.metrics.xHeight)}
+            data-add-guide
+            title="Put a guide across the canvas, then drag it where you want it"
+            className="rounded border border-border px-2 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+          >
+            Add a guide
+          </button>
+          {state.guides.length > 0 && (
+            <button
+              type="button"
+              onClick={() => store.clearGuides()}
+              data-clear-guides
+              className="rounded px-1.5 py-1 text-2xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Clear {state.guides.length}
+            </button>
+          )}
+        </span>
       </div>
       <div ref={measure} className="relative min-h-0 flex-1 overflow-hidden bg-[var(--canvas)]">
         <canvas
@@ -538,6 +613,7 @@ export function GlyphEditorView(): React.JSX.Element {
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
+          onDoubleClick={handleDoubleClick}
           onPointerLeave={() => setHover(null)}
           onWheel={(event) => {
             // Ctrl or command with the wheel zooms, matching every design tool.
@@ -687,6 +763,26 @@ function Numbers({
 }
 
 /**
+ * Which guide, if any, is under a given height on the canvas.
+ *
+ * Four pixels either side, which is deliberately tighter than the band a node
+ * answers to: a guide runs the whole width of the canvas, so a generous band
+ * would take clicks meant for a point anywhere along it. Searched from the last
+ * one back, so the guide drawn on top is the one that answers.
+ */
+function guideAt(
+  guides: ReadonlyArray<{ y: number }>,
+  view: GlyphView,
+  canvasY: number,
+): number | null {
+  for (let index = guides.length - 1; index >= 0; index--) {
+    const y = view.originY - guides[index].y * view.scale;
+    if (Math.abs(y - canvasY) <= 4) return index;
+  }
+  return null;
+}
+
+/**
  * The cursor says whether there is something to grab before you press.
  *
  * Without this the canvas looks identical whether the pointer is over a point
@@ -705,6 +801,7 @@ function drawMetrics(
   glyph: Glyph | null,
   view: GlyphView,
   size: { width: number; height: number },
+  guides: ReadonlyArray<{ y: number }> = [],
 ): void {
   const metricColour = readToken("--guide-metric", "#5a6070");
   const baselineColour = readToken("--guide-baseline", "#d24b3a");
@@ -732,6 +829,31 @@ function drawMetrics(
     context.fillStyle = withAlpha(line.colour, 0.8);
     context.fillText(line.label, 6, y - 4);
   }
+
+  /*
+   * The guides somebody put there, over the metric lines and told apart from
+   * them.
+   *
+   * A different colour and a dashed line, because the two kinds mean opposite
+   * things: a metric line is a fact about the font and cannot be moved, and a
+   * guide is a decision somebody made and can be dragged or thrown away. Drawn
+   * with their height beside them, since a guide whose position you cannot read
+   * is a guide you cannot put back.
+   */
+  const guideColour = readToken("--accent", "#0c8ce9");
+  context.setLineDash([5, 4]);
+  for (const guide of guides) {
+    const y = Math.round(view.originY - guide.y * view.scale) + 0.5;
+    if (y < -2 || y > size.height + 2) continue;
+    context.strokeStyle = withAlpha(guideColour, 0.75);
+    context.beginPath();
+    context.moveTo(0, y);
+    context.lineTo(size.width, y);
+    context.stroke();
+    context.fillStyle = withAlpha(guideColour, 0.9);
+    context.fillText(String(guide.y), size.width - 46, y - 4);
+  }
+  context.setLineDash([]);
 
   // Sidebearings: the origin and the advance width bracket the glyph.
   if (glyph) {
