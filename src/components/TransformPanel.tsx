@@ -23,38 +23,7 @@ import * as React from "react";
 import { mirror, rotated, scaled, slanted, type Edge } from "@/font/reshape";
 import { store, useAppState } from "@/state/useStore";
 import { NumberField } from "@/components/NumberField";
-import { cn } from "@/ui/lib/utils";
-
-/** One button, all of which look and behave alike. */
-function Act({
-  onClick,
-  title,
-  disabled,
-  children,
-  wide,
-}: {
-  onClick: () => void;
-  title: string;
-  disabled?: boolean;
-  children: React.ReactNode;
-  wide?: boolean;
-}): React.JSX.Element {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className={cn(
-        "rounded border border-border px-1.5 py-1 text-2xs text-muted-foreground transition-colors",
-        "hover:border-accent hover:text-foreground disabled:opacity-40 disabled:hover:border-border",
-        wide && "flex-1",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
+import { ToolButton } from "@/components/ToolButton";
 
 export function TransformPanel(): React.JSX.Element | null {
   const state = useAppState();
@@ -79,7 +48,7 @@ export function TransformPanel(): React.JSX.Element | null {
       </div>
 
       <div className="flex flex-wrap gap-1 pb-2">
-        <Act
+        <ToolButton
           onClick={() =>
             store.reshapeGlyph(name, "Mirror horizontally", (centre) =>
               mirror("horizontal", centre),
@@ -88,21 +57,21 @@ export function TransformPanel(): React.JSX.Element | null {
           title="Flip left to right, about the middle of what is selected. A b is a d mirrored."
         >
           Flip ↔
-        </Act>
-        <Act
+        </ToolButton>
+        <ToolButton
           onClick={() =>
             store.reshapeGlyph(name, "Mirror vertically", (centre) => mirror("vertical", centre))
           }
           title="Flip top to bottom, about the middle of what is selected. A u is an n flipped."
         >
           Flip ↕
-        </Act>
-        <Act
+        </ToolButton>
+        <ToolButton
           onClick={() => store.reshapeGlyph(name, "Rotate", (centre) => rotated(turn, centre))}
           title={`Turn ${turn} degrees anticlockwise about the middle of what is selected`}
         >
           Rotate
-        </Act>
+        </ToolButton>
       </div>
 
       <div className="flex items-center gap-2 pb-2">
@@ -125,47 +94,47 @@ export function TransformPanel(): React.JSX.Element | null {
       <div className="flex items-center gap-2 pb-2">
         <span className="w-14 shrink-0 text-2xs text-muted-foreground">Slant</span>
         <NumberField label="Slant in degrees" className="w-16" value={lean} onCommit={setLean} />
-        <Act
+        <ToolButton
           onClick={() => store.reshapeGlyph(name, "Slant", () => slanted(lean))}
           title={`Lean ${lean} degrees off the baseline, so the feet stay on the line and everything above moves. This is how an oblique is made.`}
         >
           Lean
-        </Act>
-        <Act
+        </ToolButton>
+        <ToolButton
           onClick={() => store.reshapeGlyph(name, "Slant", () => slanted(-lean))}
           title={`Lean ${lean} degrees the other way`}
         >
           Back
-        </Act>
+        </ToolButton>
       </div>
 
       <div className="flex flex-wrap gap-1 pb-2">
-        <Act
+        <ToolButton
           onClick={() => store.reshapeGlyph(name, "Scale up", (centre) => scaled(1.02, 1.02, centre))}
           title="Two per cent larger, about the middle of what is selected"
         >
           Bigger
-        </Act>
-        <Act
+        </ToolButton>
+        <ToolButton
           onClick={() =>
             store.reshapeGlyph(name, "Scale down", (centre) => scaled(1 / 1.02, 1 / 1.02, centre))
           }
           title="Two per cent smaller, about the middle of what is selected"
         >
           Smaller
-        </Act>
-        <Act
+        </ToolButton>
+        <ToolButton
           onClick={() => store.reshapeGlyph(name, "Widen", (centre) => scaled(1.02, 1, centre))}
           title="Two per cent wider, and no taller"
         >
           Wider
-        </Act>
-        <Act
+        </ToolButton>
+        <ToolButton
           onClick={() => store.reshapeGlyph(name, "Narrow", (centre) => scaled(1 / 1.02, 1, centre))}
           title="Two per cent narrower, and no shorter"
         >
           Narrower
-        </Act>
+        </ToolButton>
       </div>
 
       {/*
@@ -189,14 +158,14 @@ export function TransformPanel(): React.JSX.Element | null {
             ["bottom", "⇩", "Move each selected point to the lowest of them"],
           ] as Array<[Edge, string, string]>
         ).map(([edge, glyphChar, hint]) => (
-          <Act
+          <ToolButton
             key={edge}
             onClick={() => store.alignSelection(name, edge)}
             disabled={!canAlign}
             title={canAlign ? hint : "Select two or more points to line them up with each other"}
           >
             {glyphChar}
-          </Act>
+          </ToolButton>
         ))}
       </div>
     </section>

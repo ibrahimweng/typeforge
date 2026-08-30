@@ -54,6 +54,16 @@ import sampleFontUrl from "@/assets/typeforge-sample.ttf?url";
 import { readUfo, writeUfo, type UfoCarried, type UfoFiles } from "@/ufo/font";
 import { correctDirection, dominantConvention, insertExtrema } from "@/font/outline";
 import {
+  cornered,
+  isOnGrid,
+  openCorner,
+  reconnect,
+  rounded,
+  smoothed,
+  tidy,
+  tidyWouldRemove,
+} from "@/font/nodes";
+import {
   alignedTo,
   boundsOfPoints,
   transformContours,
@@ -678,6 +688,193 @@ class Store {
         }),
       }));
     });
+  }
+
+  /*
+   * The operations on one or two points.
+   *
+   * Every one of these needs to know which points are in hand, which is why
+   * they live here rather than in `nodes.ts` -- the arithmetic next door takes
+   * nodes and gives back nodes and has never heard of a selection. What is
+   * added here is the part that is a decision rather than a calculation: what
+   * happens when nothing is selected, and where the selection goes afterwards
+   * when the operation has changed how many points there are.
+   */
+
+  /** Make the picked points smooth, or let them turn again. */
+  retypeSelection(glyphName: string, kind: "smooth" | "corner"): void {
+    const picked = this.state.selectedNodes;
+    /*
+     * This one needs a selection and does not fall back to the whole letter.
+     * Smoothing every point in an `A` would move handles all over a letter
+     * that has no curves in it, which is not a thing anybody means by pressing
+     * a button once.
+     */
+    if (picked.size === 0) {
+      this.say("Pick the points to change first.", "error");
+      return;
+    }
+    const change = kind === "smooth" ? smoothed : cornered;
+    this.editGlyph(glyphName, kind === "smooth" ? "Make smooth" : "Make corner", (one) => {
+      one.contours = one.contours.map((contour, index) => ({
+        ...contour,
+        nodes: contour.nodes.map((node, at) =>
+          picked.has(nodeKey({ contour: index, node: at })) ? change(node) : node,
+        ),
+      }));
+    });
+  }
+
+  /**
+   * Put the picked points, or the whole letter, on whole units.
+   *
+   * The one here that does fall back to the whole letter, because rounding
+   * everything is what somebody means by it: a font is drawn on whole units
+   * and a coordinate between two of them is one the exported file rounds
+   * anyway.
+   */
+  roundSelection(glyphName: string): void {
+    const glyph = this.glyph(glyphName);
+    if (!glyph) return;
+    const picked = this.state.selectedNodes;
+    const whole = picked.size === 0;
+    const inHand = (contour: number, node: number): boolean =>
+      whole || picked.has(nodeKey({ contour, node }));
+
+    /*
+     * Counted before anything is edited, and nothing is edited when the count
+     * is nought. Every number this application shows is displayed rounded, so
+     * a coordinate a tenth of a unit off looks identical before and after --
+     * which makes the count the only way anybody can tell the operation did
+     * something, and makes a silent no-op that marks the font as modified a
+     * thing nobody could see was wrong.
+     */
+    let moving = 0;
+    glyph.contours.forEach((contour, index) => {
+      contour.nodes.forEach((node, at) => {
+        if (inHand(index, at) && !isOnGrid(node)) moving += 1;
+      });
+    });
+    if (moving === 0) {
+      this.say(
+        whole
+          ? "Every point in this letter is already on a whole unit."
+          : "Those points are already on whole units.",
+        "info",
+      );
+      return;
+    }
+
+    this.editGlyph(glyphName, "Round coordinates", (one) => {
+      one.contours = one.contours.map((contour, index) => ({
+        ...contour,
+        nodes: contour.nodes.map((node, at) => (inHand(index, at) ? rounded(node) : node)),
+      }));
+    });
+    this.say(`Put ${moving} point${moving === 1 ? "" : "s"} back on whole units.`, "success");
+  }
+
+  /**
+   * Take out the points that should not be there and straighten what nearly is.
+   *
+   * Says how many it removed, because this is the one operation in the set
+   * that removes something and a button that silently deletes four points is a
+   * button nobody presses twice. The selection goes: every index after a
+   * removed point has moved, and a selection pointing at the wrong points is
+   * worse than none.
+   */
+  tidyGlyph(glyphName: string): void {
+    const glyph = this.glyph(glyphName);
+    if (!glyph) return;
+    const removing = tidyWouldRemove(glyph.contours);
+    this.editGlyph(glyphName, "Tidy up paths", (one) => {
+      one.contours = one.contours.map((contour) => tidy(contour));
+    });
+    this.set({ selectedNodes: new Set() });
+    this.say(
+      removing === 0
+        ? "Nothing to tidy up: no doubled points and nothing off the straight."
+        : `Removed ${removing} point${removing === 1 ? "" : "s"} that was doing nothing.`,
+      removing === 0 ? "info" : "success",
+    );
+  }
+
+  /**
+   * Replace a corner with two points and a flat between them.
+   *
+   * One point, because the operation is about a specific corner and opening
+   * several at once would leave somebody looking at a letter with new points
+   * all over it. The two it makes are left selected, since dragging them
+   * apart is the entire reason for opening a corner.
+   */
+  openSelectedCorner(glyphName: string): void {
+    const glyph = this.glyph(glyphName);
+    const picked = [...this.state.selectedNodes];
+    if (!glyph) return;
+    if (picked.length !== 1) {
+      this.say("Pick the one corner to open.", "error");
+      return;
+    }
+    const [contourIndex, nodeIndex] = picked[0].split(":").map(Number);
+    const contour = glyph.contours[contourIndex];
+    if (!contour) return;
+    const opened = openCorner(contour, nodeIndex);
+    if (opened.nodes.length === contour.nodes.length) {
+      this.say("That point has no corner to open: it is the end of an open path.", "error");
+      return;
+    }
+    this.editGlyph(glyphName, "Open corner", (one) => {
+      one.contours = one.contours.map((each, index) => (index === contourIndex ? opened : each));
+    });
+    this.set({
+      selectedNodes: new Set([
+        nodeKey({ contour: contourIndex, node: nodeIndex }),
+        nodeKey({ contour: contourIndex, node: nodeIndex + 1 }),
+      ]),
+    });
+  }
+
+  /**
+   * Close an opened corner back up: two points and the flat become one.
+   *
+   * The two have to be neighbours on the same path, because the operation is
+   * "carry these two sides on until they meet" and two points at opposite ends
+   * of a letter have no sides in common to carry.
+   */
+  reconnectSelection(glyphName: string): void {
+    const glyph = this.glyph(glyphName);
+    const picked = [...this.state.selectedNodes];
+    if (!glyph) return;
+    if (picked.length !== 2) {
+      this.say("Pick the two points to join.", "error");
+      return;
+    }
+    const refs = picked
+      .map((key) => key.split(":").map(Number))
+      .sort((one, other) => one[0] - other[0] || one[1] - other[1]);
+    const [[contourIndex, first], [otherContour, second]] = refs;
+    const contour = glyph.contours[contourIndex];
+    if (!contour || contourIndex !== otherContour) {
+      this.say("Those two points are on different paths.", "error");
+      return;
+    }
+    // Sorted, so the pair is either consecutive or wraps the end of the ring.
+    const count = contour.nodes.length;
+    const wraps = contour.closed && first === 0 && second === count - 1;
+    const at = wraps ? second : first;
+    if (!wraps && second !== first + 1) {
+      this.say("Those two points are not next to each other on the path.", "error");
+      return;
+    }
+    const joined = reconnect(contour, at);
+    if (joined.nodes.length === count) {
+      this.say("Those two sides run parallel, so there is no corner to put back.", "error");
+      return;
+    }
+    this.editGlyph(glyphName, "Reconnect nodes", (one) => {
+      one.contours = one.contours.map((each, index) => (index === contourIndex ? joined : each));
+    });
+    this.set({ selectedNodes: new Set([nodeKey({ contour: contourIndex, node: wraps ? 0 : at })]) });
   }
 
   /**

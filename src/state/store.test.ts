@@ -482,3 +482,225 @@ describe("moving what is drawn", () => {
     expect(JSON.stringify(store.glyph("a")!.contours)).toBe(before);
   });
 });
+
+describe("changing what a point is", () => {
+  beforeEach(() => seed(["a"]));
+
+  /** A square with a fifth point sitting exactly on the first. */
+  const doubled = (): Contour => {
+    const one = square(100, false);
+    return { ...one, nodes: [...one.nodes, { ...one.nodes[0] }] };
+  };
+
+  it("will not smooth without being told which points, and says so", () => {
+    /*
+     * The one operation here that does not fall back to the whole letter.
+     * Smoothing every point in an `A` would move handles all over a letter
+     * with no curves in it, which is not what pressing a button once means.
+     */
+    setContours("a", [circle(100)]);
+    store.setSelectedNodes([]);
+    const before = JSON.stringify(store.glyph("a")!.contours);
+    store.retypeSelection("a", "smooth");
+    expect(JSON.stringify(store.glyph("a")!.contours)).toBe(before);
+    expect(store.getSnapshot().status?.tone).toBe("error");
+  });
+
+  it("lines a picked point's handles up through it", () => {
+    const kinked: Contour = {
+      closed: true,
+      nodes: [
+        { point: { x: 0, y: 0 }, handleIn: { x: -100, y: 10 }, handleOut: { x: 10, y: 0 }, type: "corner" },
+        { point: { x: 200, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+        { point: { x: 200, y: 200 }, handleIn: null, handleOut: null, type: "corner" },
+      ],
+    };
+    setContours("a", [kinked]);
+    store.setSelectedNodes(["0:0"]);
+    store.retypeSelection("a", "smooth");
+
+    const node = store.glyph("a")!.contours[0].nodes[0];
+    expect(node.type).toBe("smooth");
+    // The longer handle stayed where it was put; the stub swung round to face
+    // it, and is still its own length.
+    expect(node.handleIn).toEqual({ x: -100, y: 10 });
+    expect(Math.hypot(node.handleOut!.x, node.handleOut!.y)).toBeCloseTo(10, 6);
+  });
+
+  it("lets a point turn again without moving a coordinate", () => {
+    setContours("a", [circle(100)]);
+    const before = store.glyph("a")!.contours[0].nodes[0];
+    store.setSelectedNodes(["0:0"]);
+    store.retypeSelection("a", "corner");
+    const after = store.glyph("a")!.contours[0].nodes[0];
+    expect(after.type).toBe("corner");
+    expect(after.point).toEqual(before.point);
+    expect(after.handleIn).toEqual(before.handleIn);
+  });
+
+  it("rounds the whole letter when nothing is picked", () => {
+    setContours("a", [
+      {
+        closed: true,
+        nodes: [
+          { point: { x: 0.4, y: 0.6 }, handleIn: null, handleOut: { x: 10.5, y: 0.2 }, type: "corner" },
+          { point: { x: 99.5, y: 0.4 }, handleIn: null, handleOut: null, type: "corner" },
+          { point: { x: 50.2, y: 80.7 }, handleIn: null, handleOut: null, type: "corner" },
+        ],
+      },
+    ]);
+    store.setSelectedNodes([]);
+    store.roundSelection("a");
+    const nodes = store.glyph("a")!.contours[0].nodes;
+    expect(nodes.map((one) => one.point)).toEqual([
+      { x: 0, y: 1 },
+      { x: 100, y: 0 },
+      { x: 50, y: 81 },
+    ]);
+    // The handle too: one left on a fraction is a control point the exported
+    // file rounds anyway, which is how a rounded outline comes back different.
+    expect(nodes[0].handleOut).toEqual({ x: 11, y: 0 });
+  });
+
+  it("says nothing moved rather than marking the font changed for no reason", () => {
+    // A button that marks a font as modified without altering it is a button
+    // that makes the unsaved-changes warning lie.
+    setContours("a", [square(100, false)]);
+    const before = JSON.stringify(store.glyph("a")!.contours);
+    store.setSelectedNodes([]);
+    store.roundSelection("a");
+    expect(store.getSnapshot().status?.message).toContain("already on a whole unit");
+
+    // No edit was pushed at all, which is the part that matters: one undo goes
+    // straight back past the seeding, because rounding put nothing on the
+    // stack to undo first.
+    store.undo();
+    expect(JSON.stringify(store.glyph("a")!.contours)).not.toBe(before);
+  });
+
+  it("says how many points it put back on the grid", () => {
+    setContours("a", [
+      {
+        closed: true,
+        nodes: [
+          { point: { x: 0.4, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+          { point: { x: 100, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+          { point: { x: 50, y: 80.7 }, handleIn: null, handleOut: null, type: "corner" },
+        ],
+      },
+    ]);
+    store.setSelectedNodes([]);
+    store.roundSelection("a");
+    expect(store.getSnapshot().status?.message).toContain("2 points");
+  });
+
+  it("rounds only the picked points when there are some", () => {
+    setContours("a", [
+      {
+        closed: true,
+        nodes: [
+          { point: { x: 0.4, y: 0.6 }, handleIn: null, handleOut: null, type: "corner" },
+          { point: { x: 99.5, y: 0.4 }, handleIn: null, handleOut: null, type: "corner" },
+          { point: { x: 50.2, y: 80.7 }, handleIn: null, handleOut: null, type: "corner" },
+        ],
+      },
+    ]);
+    store.setSelectedNodes(["0:1"]);
+    store.roundSelection("a");
+    const nodes = store.glyph("a")!.contours[0].nodes;
+    expect(nodes[1].point).toEqual({ x: 100, y: 0 });
+    expect(nodes[0].point).toEqual({ x: 0.4, y: 0.6 });
+  });
+
+  it("tidies away a doubled point, says how many, and can be taken back", () => {
+    setContours("a", [doubled()]);
+    store.setSelectedNodes(["0:4"]);
+    store.tidyGlyph("a");
+
+    expect(store.glyph("a")!.contours[0].nodes).toHaveLength(4);
+    expect(store.getSnapshot().status?.message).toContain("1 point");
+    // The selection goes: every index after a removed point has moved, and a
+    // selection pointing at the wrong points is worse than none.
+    expect(store.getSnapshot().selectedNodes.size).toBe(0);
+
+    store.undo();
+    expect(store.glyph("a")!.contours[0].nodes).toHaveLength(5);
+  });
+
+  it("says there was nothing to tidy rather than pretending it did something", () => {
+    setContours("a", [square(100, false)]);
+    store.tidyGlyph("a");
+    expect(store.glyph("a")!.contours[0].nodes).toHaveLength(4);
+    expect(store.getSnapshot().status?.message).toContain("Nothing to tidy");
+  });
+
+  it("opens one corner and leaves the two new points in hand", () => {
+    setContours("a", [square(100, false)]);
+    store.setSelectedNodes(["0:1"]);
+    store.openSelectedCorner("a");
+
+    const nodes = store.glyph("a")!.contours[0].nodes;
+    expect(nodes).toHaveLength(5);
+    expect(nodes[1].point.x).toBeCloseTo(80, 6);
+    expect(nodes[2].point.y).toBeCloseTo(20, 6);
+    // Dragging them apart is the entire reason for opening a corner, so they
+    // are what is selected afterwards.
+    expect([...store.getSnapshot().selectedNodes].sort()).toEqual(["0:1", "0:2"]);
+  });
+
+  it("will not open a corner without exactly one point picked", () => {
+    setContours("a", [square(100, false)]);
+    store.setSelectedNodes(["0:1", "0:2"]);
+    store.openSelectedCorner("a");
+    expect(store.glyph("a")!.contours[0].nodes).toHaveLength(4);
+    expect(store.getSnapshot().status?.tone).toBe("error");
+  });
+
+  it("puts an opened corner back where it was", () => {
+    setContours("a", [square(100, false)]);
+    store.setSelectedNodes(["0:1"]);
+    store.openSelectedCorner("a");
+    store.reconnectSelection("a");
+
+    const nodes = store.glyph("a")!.contours[0].nodes;
+    expect(nodes).toHaveLength(4);
+    expect(nodes[1].point.x).toBeCloseTo(100, 6);
+    expect(nodes[1].point.y).toBeCloseTo(0, 6);
+    expect([...store.getSnapshot().selectedNodes]).toEqual(["0:1"]);
+  });
+
+  it("refuses to join two points that are not next to each other", () => {
+    setContours("a", [square(100, false)]);
+    store.setSelectedNodes(["0:0", "0:2"]);
+    store.reconnectSelection("a");
+    expect(store.glyph("a")!.contours[0].nodes).toHaveLength(4);
+    expect(store.getSnapshot().status?.message).toContain("not next to each other");
+  });
+
+  it("refuses to join two points on different paths", () => {
+    setContours("a", [square(100, false), square(40, false, 30)]);
+    store.setSelectedNodes(["0:0", "1:0"]);
+    store.reconnectSelection("a");
+    expect(store.getSnapshot().status?.message).toContain("different paths");
+  });
+
+  it("says there is no corner to make when the two sides run parallel", () => {
+    // Sides that never meet have no corner to put back, and a point somewhere
+    // between them would be a guess.
+    setContours("a", [
+      {
+        closed: true,
+        nodes: [
+          { point: { x: 0, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+          { point: { x: 50, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+          { point: { x: 50, y: 10 }, handleIn: null, handleOut: null, type: "corner" },
+          { point: { x: 100, y: 10 }, handleIn: null, handleOut: null, type: "corner" },
+        ],
+      },
+    ]);
+    store.setSelectedNodes(["0:1", "0:2"]);
+    store.reconnectSelection("a");
+    expect(store.glyph("a")!.contours[0].nodes).toHaveLength(4);
+    expect(store.getSnapshot().status?.message).toContain("parallel");
+  });
+});
