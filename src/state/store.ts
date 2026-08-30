@@ -43,6 +43,7 @@ import {
   type KernClass,
   type KernPair,
   type Typeface,
+  type Vec2,
 } from "@/font/types";
 /**
  * The bundled sample, as a URL rather than as bytes: Vite emits it as a hashed
@@ -52,6 +53,15 @@ import {
 import sampleFontUrl from "@/assets/typeforge-sample.ttf?url";
 import { readUfo, writeUfo, type UfoCarried, type UfoFiles } from "@/ufo/font";
 import { correctDirection, dominantConvention, insertExtrema } from "@/font/outline";
+import {
+  alignedTo,
+  boundsOfPoints,
+  transformContours,
+  transformNode,
+  type Affine,
+  type Edge,
+} from "@/font/reshape";
+import type { Bounds } from "@/font/geometry";
 import { removeOverlaps } from "@/font/overlap";
 import { ready as readyToCut, subtract, unite } from "@/font/boolean";
 
@@ -543,6 +553,133 @@ class Store {
    * fills solid, and the only way to see that was to export the font and look.
    * Offering it as an operation is what makes it a thing somebody can fix.
    */
+  /**
+   * Move what is drawn: mirror, scale, rotate, slant.
+   *
+   * The transform is asked for rather than passed in, because every one of
+   * them needs to know what it is happening about and only this knows what is
+   * selected. The caller says "turn it thirty degrees"; this works out that
+   * thirty degrees means thirty degrees about the middle of the four points
+   * somebody has picked, and not about the origin or the middle of the letter.
+   *
+   * Nothing selected means the whole letter, which is what every drawing tool
+   * does and what somebody who has just opened a glyph and pressed mirror
+   * expects.
+   */
+  reshapeGlyph(
+    glyphName: string,
+    label: string,
+    make: (centre: Vec2, bounds: Bounds) => Affine,
+  ): void {
+    const glyph = this.glyph(glyphName);
+    if (!glyph || glyph.contours.length === 0) return;
+
+    const picked = this.state.selectedNodes;
+    const whole = picked.size === 0;
+
+    /*
+     * What the transform happens about: the selection if there is one, the
+     * letter if there is not.
+     */
+    const inHand: Contour[] = whole
+      ? glyph.contours
+      : glyph.contours.map((contour, index) => ({
+          ...contour,
+          nodes: contour.nodes.filter((_, node) =>
+            picked.has(nodeKey({ contour: index, node })),
+          ),
+        }));
+    const bounds = boundsOfPoints(inHand);
+    const centre = { x: (bounds.xMin + bounds.xMax) / 2, y: (bounds.yMin + bounds.yMax) / 2 };
+    const transform = make(centre, bounds);
+
+    this.editGlyph(glyphName, label, (one) => {
+      if (whole) {
+        /*
+         * The whole letter goes through `transformContours`, which puts the
+         * winding back after a flip. A mirror reverses every contour, and
+         * winding is what decides whether a contour fills or cuts a hole, so
+         * a flipped letter left alone comes back with its counters solid.
+         */
+        one.contours = transformContours(one.contours, transform);
+        return;
+      }
+      /*
+       * A partial selection does not get that treatment, and must not. Turning
+       * a contour round is a statement about the whole contour; a few of its
+       * points having been mirrored does not make it a mirrored contour, and
+       * reversing it would scramble the order of points nobody touched.
+       */
+      one.contours = one.contours.map((contour, index) => ({
+        ...contour,
+        nodes: contour.nodes.map((node, at) =>
+          picked.has(nodeKey({ contour: index, node: at }))
+            ? transformNode(node, transform)
+            : node,
+        ),
+      }));
+    });
+  }
+
+  /**
+   * Line the selected points up with each other.
+   *
+   * Not a transform, because it is not one movement applied to everything: each
+   * point goes to the edge of what is selected, so three points aligned left
+   * all land on the leftmost of the three. That is what makes it the operation
+   * for levelling the two feet of an `n` against each other.
+   */
+  alignSelection(glyphName: string, edge: Edge): void {
+    const glyph = this.glyph(glyphName);
+    const picked = this.state.selectedNodes;
+    if (!glyph || picked.size < 2) return;
+
+    const inHand: Contour[] = glyph.contours.map((contour, index) => ({
+      ...contour,
+      nodes: contour.nodes.filter((_, node) => picked.has(nodeKey({ contour: index, node }))),
+    }));
+    // Off the points alone, not their handles: aligning is about where the
+    // outline passes, and a handle sticking out to one side is not a place the
+    // outline goes.
+    let xMin = Infinity;
+    let yMin = Infinity;
+    let xMax = -Infinity;
+    let yMax = -Infinity;
+    for (const contour of inHand) {
+      for (const node of contour.nodes) {
+        xMin = Math.min(xMin, node.point.x);
+        yMin = Math.min(yMin, node.point.y);
+        xMax = Math.max(xMax, node.point.x);
+        yMax = Math.max(yMax, node.point.y);
+      }
+    }
+    if (!Number.isFinite(xMin)) return;
+    const move = alignedTo(edge, { xMin, yMin, xMax, yMax });
+
+    this.editGlyph(glyphName, "Align points", (one) => {
+      one.contours = one.contours.map((contour, index) => ({
+        ...contour,
+        nodes: contour.nodes.map((node, at) => {
+          if (!picked.has(nodeKey({ contour: index, node: at }))) return node;
+          const to = move(node.point);
+          // The handles come along by the same step, so a curve keeps its
+          // shape and only its end moves.
+          const by = { x: to.x - node.point.x, y: to.y - node.point.y };
+          return {
+            ...node,
+            point: to,
+            handleIn: node.handleIn
+              ? { x: node.handleIn.x + by.x, y: node.handleIn.y + by.y }
+              : null,
+            handleOut: node.handleOut
+              ? { x: node.handleOut.x + by.x, y: node.handleOut.y + by.y }
+              : null,
+          };
+        }),
+      }));
+    });
+  }
+
   /**
    * The four operations this application already knew how to do and had never
    * offered.

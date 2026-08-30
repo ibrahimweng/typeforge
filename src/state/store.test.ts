@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { contourArea, contoursBounds } from "@/font/geometry";
 import { directionIsCorrect } from "@/font/outline";
+import { mirror, slanted } from "@/font/reshape";
 import { emptyTypeface, type Contour, type Glyph } from "@/font/types";
 import { store } from "./store";
 
@@ -421,5 +423,62 @@ describe("the path operations, as edits", () => {
     });
     store.correctPathDirection("a");
     expect(store.glyph("a")!.dirty).toBe(true);
+  });
+});
+
+describe("moving what is drawn", () => {
+  beforeEach(() => seed(["a"]));
+
+  it("leans the whole letter when nothing is picked", () => {
+    setContours("a", [square(100, false)]);
+    store.setSelectedNodes([]);
+    store.reshapeGlyph("a", "Slant", () => slanted(12));
+
+    const box = contoursBounds(store.glyph("a")!.contours);
+    // A square leaned twelve degrees off the baseline is wider by its own
+    // height times the tangent of the angle, and no taller.
+    expect(box.xMax - box.xMin).toBeCloseTo(100 + 100 * Math.tan((12 * Math.PI) / 180), 6);
+    expect(box.yMax - box.yMin).toBeCloseTo(100, 6);
+  });
+
+  it("leans only the points that are picked", () => {
+    setContours("a", [square(100, false)]);
+    // The two top corners of the square, which is index 2 and 3.
+    store.setSelectedNodes(["0:2", "0:3"]);
+    store.reshapeGlyph("a", "Slant", () => slanted(12));
+
+    const nodes = store.glyph("a")!.contours[0].nodes;
+    // The feet have not moved.
+    expect(nodes[0].point).toEqual({ x: 0, y: 0 });
+    expect(nodes[1].point).toEqual({ x: 100, y: 0 });
+    // The top has.
+    expect(nodes[2].point.x).toBeGreaterThan(100);
+  });
+
+  it("puts the winding back after a flip of the whole letter", () => {
+    setContours("a", [square(100, false)]);
+    store.setSelectedNodes([]);
+    const before = Math.sign(contourArea(store.glyph("a")!.contours[0]));
+    store.reshapeGlyph("a", "Mirror", (centre) => mirror("horizontal", centre));
+    expect(Math.sign(contourArea(store.glyph("a")!.contours[0]))).toBe(before);
+  });
+
+  it("lines the picked points up with each other", () => {
+    setContours("a", [square(100, false)]);
+    store.setSelectedNodes(["0:0", "0:1"]);
+    store.alignSelection("a", "left");
+    const nodes = store.glyph("a")!.contours[0].nodes;
+    expect(nodes[0].point.x).toBe(0);
+    expect(nodes[1].point.x).toBe(0);
+    // And the ones that were not picked stay exactly where they were.
+    expect(nodes[2].point).toEqual({ x: 100, y: 100 });
+  });
+
+  it("will not align fewer than two points", () => {
+    setContours("a", [square(100, false)]);
+    store.setSelectedNodes(["0:0"]);
+    const before = JSON.stringify(store.glyph("a")!.contours);
+    store.alignSelection("a", "left");
+    expect(JSON.stringify(store.glyph("a")!.contours)).toBe(before);
   });
 });
