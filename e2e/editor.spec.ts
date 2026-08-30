@@ -3698,3 +3698,45 @@ test("letters drawn in Draw can be taken to the tools", async ({ page }) => {
   await expect(page.getByRole("group", { name: "Tool" })).toBeVisible();
   await expect(page.locator("[data-paths-panel]")).toContainText("paths");
 });
+
+test("assembling is a way into the tools too, and was the one left out", async ({ page }) => {
+  /*
+   * Assembling is the third way into a font here and builds a typeface exactly
+   * as the other two do -- which is what its export dialog has always used.
+   * It was left out of the hand-over, so a pile of drawings could be turned
+   * into a file and not into something you could open a letter of. That is the
+   * one of the three where somebody is most likely to want to: a drawing that
+   * came in from somewhere else is a drawing nobody has checked the points of.
+   *
+   * With an empty pile it says so rather than offering nothing, which is what
+   * the traced panel does and what the button beside it now does as well.
+   */
+  await page.goto("/");
+  await page.getByRole("button", { name: "Assemble", exact: true }).click();
+
+  const handOver = page.locator("[data-take-to-editor]").getByRole("button");
+  await expect(handOver).toBeVisible();
+  await expect(handOver).toBeDisabled();
+});
+
+test("export waits until there is something to export, in every mode", async ({ page }) => {
+  /*
+   * Pressing Export in Trace with nothing read opened a dialog offering to
+   * download "0 letters" with its own Download greyed out. Assembling had
+   * always known better, and so had the hand-over button beside it.
+   */
+  await page.goto("/");
+  const exportButton = page.getByRole("button", { name: "Export", exact: true });
+
+  await expect(exportButton).toBeDisabled();
+
+  await page.getByRole("button", { name: "Assemble", exact: true }).click();
+  await expect(exportButton).toBeDisabled();
+
+  await page.getByRole("button", { name: "Trace", exact: true }).click();
+  await expect(exportButton).toBeDisabled();
+
+  // A drawn font is always ready to leave, because the forge always has one.
+  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await expect(exportButton).toBeEnabled();
+});
