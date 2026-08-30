@@ -40,7 +40,7 @@ const FAMILY_CONTROLS: Record<Family, string> = {
   sans: "Move within it with bowl squareness, aperture, shoulder springing and the pen's contrast: a grotesque is a tighter, squarer, more even sans, a geometric a rounder and wider one.",
   serif: "Move within it with serif reach, depth and bracket, and with contrast. A slab is a thick serif barely bracketed; a didone is a thin one on a high-contrast pen; an old-style sits between them with the bracket up.",
   display:
-    "Move within it with weight past what text would take, then with the parts a text face leaves off -- wave depth and wavelength, flare spread and hollow, ball size and overhang.",
+    "Move within it with weight past what text would take, then with the parts a text face leaves off — wave depth and wavelength, flare spread and hollow, ball size and overhang.",
   hand: "Move within it with pen angle, contrast and slant. Those three say which tool is being remembered; the terminal cut says how it was lifted off the paper.",
   script:
     "Move within it with the join: how high it hands over, how far it reaches and how much it swings. Reach is the letter-spacing as well as the shape of the join, because on a joined face they are the same thing. Loop opens the ascenders, and irregularity is how steady the hand is.",
@@ -56,8 +56,72 @@ const SHORTCUTS: Array<[string, string]> = [
   ["Esc", "Close a dialog"],
 ];
 
+/*
+ * How a section knows whether it is wanted, and how the contents knows it is
+ * there.
+ *
+ * Twenty sections of well-written prose in one scrolling column is a document
+ * rather than help: somebody arriving with a specific question -- what does
+ * bounce do, why is my export dropping ligatures -- reads past everything else
+ * to find out, or gives up. What was missing was not more writing. It was a way
+ * in.
+ *
+ * The sections are inline JSX rather than data, so the index is collected from
+ * them as they mount rather than kept as a second list beside them. A second
+ * list is a list that goes stale the first time somebody adds a section and
+ * does not know it exists.
+ */
+interface HelpScope {
+  query: string;
+  register: (title: string) => void;
+}
+
+const HelpContext = React.createContext<HelpScope | null>(null);
+
+/**
+ * All the words inside a section, for matching against.
+ *
+ * Walked rather than taken from the DOM, because the drawer decides what to
+ * render before there is a DOM to read. A search for "kerning" should find the
+ * section that explains kerning even when its title is "The views", which is
+ * what matching on titles alone would miss.
+ */
+function textOf(node: React.ReactNode): string {
+  if (node === null || node === undefined || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join(" ");
+  if (React.isValidElement(node)) {
+    return textOf((node.props as { children?: React.ReactNode }).children);
+  }
+  return "";
+}
+
+/** A section's anchor, so the contents can jump to it. */
+const slugOf = (title: string): string =>
+  `help-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+
 export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Element {
   const dismissed = React.useSyncExternalStore(subscribeToTips, seenTipCount, () => 0);
+  const [query, setQuery] = React.useState("");
+  const [titles, setTitles] = React.useState<string[]>([]);
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+
+  /*
+   * Registered in mount order, which is document order, and only once each.
+   *
+   * Guarded against re-adding because a section re-registers whenever the
+   * filter changes what is on screen, and an index that grew every keystroke
+   * would be a very strange contents page.
+   */
+  const register = React.useCallback((title: string) => {
+    setTitles((was) => (was.includes(title) ? was : [...was, title]));
+  }, []);
+  const scope = React.useMemo<HelpScope>(() => ({ query, register }), [query, register]);
+
+  const goTo = (title: string) => {
+    const target = scrollRef.current?.querySelector(`#${CSS.escape(slugOf(title))}`);
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -68,6 +132,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
   }, [onClose]);
 
   return (
+    <HelpContext.Provider value={scope}>
     <aside
       role="dialog"
       aria-label="Help"
@@ -85,7 +150,38 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
         </button>
       </div>
 
-      <div className="toolcraft-scrollbar min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
+      <div className="shrink-0 border-b border-border p-3">
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search help"
+          aria-label="Search help"
+          data-help-search
+          className="h-8 w-full rounded-md border border-input bg-card px-2.5 text-xs-plus text-foreground outline-none focus-visible:border-accent"
+        />
+        {query.trim() === "" ? (
+          <nav aria-label="Help contents" className="flex flex-wrap gap-1 pt-2.5">
+            {titles.map((title) => (
+              <button
+                key={title}
+                type="button"
+                onClick={() => goTo(title)}
+                data-help-contents
+                className="rounded px-1.5 py-0.5 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+              >
+                {title}
+              </button>
+            ))}
+          </nav>
+        ) : (
+          <p className="pt-2 text-2xs text-muted-foreground" data-help-count>
+            Showing the sections that mention it.
+          </p>
+        )}
+      </div>
+
+      <div ref={scrollRef} className="toolcraft-scrollbar min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
+        <HelpNothingFound />
         <Section title="What this is">
           <p>
             Typeforge opens a font, lets you reshape it, and writes a valid TrueType or OpenType
@@ -149,7 +245,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
           <p>
             That is also why nothing here can be spoilt by turning a control up. Weight is an input
             to the drawing rather than a shove applied to a finished outline: ask for a heavier cut
-            and the letter is drawn again, thicker. One rule holds everywhere -- a stroke never
+            and the letter is drawn again, thicker. One rule holds everywhere — a stroke never
             turns tighter than half its own width, and no shape is smaller than the pen drawing it.
             Where a setting asks for less, the letter grows instead of closing up.
           </p>
@@ -166,7 +262,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
             and you get the serif. A handle appears where you pressed, the panel scrolls to the row
             that control lives on, and the drag reaches the whole font like every other edit. Which
             control is behind a spot is measured rather than looked up: each candidate is nudged,
-            the letter is drawn again, and the one that moves the place you pressed wins -- which is
+            the letter is drawn again, and the one that moves the place you pressed wins — which is
             also how the handle knows how fast to follow your pointer.
           </p>
         </Section>
@@ -226,7 +322,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
             give you a letter whose strokes go where a hand would take them;
             cutting takes material out of one. Neither describes a face whose
             letters are assembled out of a handful of shapes repeated on a grid
-            -- the kind designed as a system first and an alphabet second,
+            — the kind designed as a system first and an alphabet second,
             where what makes it a typeface is that every letter is made of the
             same few parts.
           </p>
@@ -245,7 +341,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
             contrast, pen angle and terminals all still reach them, the family
             still has every weight, and the cuts still cut them. Turn the
             weight up on a font built from cells and it gets heavier, because
-            the cells were never the ink -- they are where the ink runs.
+            the cells were never the ink — they are where the ink runs.
           </p>
           <p>
             Switching it on lays the whole alphabet onto the grid from the
@@ -263,7 +359,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
           <p>
             Everything above adds ink: a spine is drawn and a pen is swept
             along it. That reaches a great many typefaces and it cannot reach
-            the ones whose character is in what has been taken away -- a slot
+            the ones whose character is in what has been taken away — a slot
             through a stem, a saw along an edge, a groove down the middle of
             every stroke, a counter that is a diamond rather than a hole. None
             of those is a shape a pen makes, at any weight or any angle.
@@ -284,7 +380,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
             from one description stays cut the same way at every weight.
           </p>
           <p>
-            A cut can sever a letter, and sometimes that is the point -- a
+            A cut can sever a letter, and sometimes that is the point — a
             stencil face is letters in pieces. The warnings say when it has
             happened and to which letters, so it is a decision rather than a
             surprise.
@@ -297,7 +393,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
             take back. What differs is what a cut has to work with. A face
             drawn here knows how thick its stems are, because a pen drew them;
             a font and a pile do not, so it is measured off their own letters
-            -- ruled across an I or an l or an H, whichever they have. And two
+            — ruled across an I or an l or an H, whichever they have. And two
             of the six are made out of the skeleton a letter was drawn from: an
             outline out of a file has none, so the groove and the break do
             nothing there and say so on the control rather than leaving you to
@@ -310,7 +406,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
             The cut layer's other half, pointed the other way. A cut takes ink
             out of the letter after it is drawn; a cast puts ink on. Between
             them they reach the moves that belong to the letter as a whole
-            rather than to any stroke in it -- a block shadow thrown off it, a
+            rather than to any stroke in it — a block shadow thrown off it, a
             rim grown all round it, a point built out of every corner, a join
             filled in.
           </p>
@@ -328,7 +424,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
             <Term>Which layer goes first is yours to say,</Term> because the
             two orders are two different pictures. Cut first and the shadow is
             thrown by the letter as it now is, so a slot through the face shows
-            as a slot through the shadow -- an object with a shadow behind it.
+            as a slot through the shadow — an object with a shadow behind it.
             Cast first and the face and its shadow are one block for the cut to
             slice, which can put a band across the shadow where the face has
             none.
@@ -392,7 +488,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
             <Term>Adinkra</Term> symbols carry proverbs and concepts, are protected
             as heritage under Ghanaian law, and have been mass-produced abroad
             since the 1990s with nothing going back to the people whose symbols
-            they are -- and no international law that would let Ghana stop it.{" "}
+            they are — and no international law that would let Ghana stop it.{" "}
             <Term>Bògòlanfini</Term> motifs are read in combination, and
             together give expression to a proverb, a song or an event.{" "}
             <Term>Nsibidi</Term>, <Term>Tifinagh</Term> and the{" "}
@@ -404,14 +500,14 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
             So none of them ships here as a shape to pick off a menu, and this
             tool does not offer a preset with a continent's name on it. What it
             offers is the geometry, and the note that if you are working from a
-            particular tradition, the right thing is to go to it directly --
+            particular tradition, the right thing is to go to it directly —
             and, where the work is somebody's rather than everybody's, to name
             them. Esther Mahlangu is the reason Ndebele wall painting is known
             outside South Africa, and hers is the rare case where a tradition's
             geometry travelled with its author's name attached to it. And going
             directly is worth it on the craft alone: Shoowa cut-pile cloth
             builds its patterns by combining a handful of figures, and the
-            published analyses draw each design out from its basic motif --
+            published analyses draw each design out from its basic motif —
             which is the same move this tool makes with cells and counters,
             done better and centuries earlier.
           </p>
@@ -434,8 +530,8 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
         <Section title="Drawing one letter yourself" half="drawn">
           <p>
             Some letter will not come out of a skeleton and a pen. Every font
-            has one -- an ampersand, a g, a piece of lettering that is the
-            reason you started -- and no arrangement of sliders reaches it. So
+            has one — an ampersand, a g, a piece of lettering that is the
+            reason you started — and no arrangement of sliders reaches it. So
             any letter can leave as an SVG, be drawn in whatever tool you draw
             best in, and come back into the space it left.
           </p>
@@ -457,7 +553,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
           <p>
             What it costs is worth knowing before you spend it. A letter that
             came in from outside is an outline rather than a description, so
-            the pen and the parts no longer reach it -- there is nothing behind
+            the pen and the parts no longer reach it — there is nothing behind
             it to make heavier. It is marked in the alphabet, and one button
             hands it back to the family, which draws it again from the
             description it never stopped having.
@@ -465,7 +561,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
           <p>
             <Term>The cuts still reach it.</Term> A slot, a saw, a chamfer and
             a counter shape are taken out of whatever the letter is, so your
-            drawing is cut with the rest of the font and at the same heights --
+            drawing is cut with the rest of the font and at the same heights —
             which is what stops the one letter you drew by hand sitting solid
             in the middle of a striped word. The two made out of the skeleton,
             the inline and the breaks, are the exception: your drawing has no
@@ -484,8 +580,8 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
         <Section title="Assembling a font from artwork" half="assembled">
           <p>
             The third thing this does, and it starts from neither a font nor a
-            description. <Term>Assemble</Term> takes a pile of SVG drawings --
-            lettering, a logo alphabet, whatever was drawn wherever you draw --
+            description. <Term>Assemble</Term> takes a pile of SVG drawings —
+            lettering, a logo alphabet, whatever was drawn wherever you draw —
             and makes a font of them. Nothing is redrawn: the outlines that come
             out are the outlines that went in.
           </p>
@@ -500,8 +596,8 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
             <Term>The letters tell it where they belong.</Term> An H is as tall
             as the caps are, an x is as tall as the lowercase is, a p hangs by
             the descender: measure the ones whose height is known and the scale
-            and the baseline fall out. The ones that settle nothing -- a t stops
-            somewhere between two lines, an i is mostly its dot -- are placed by
+            and the baseline fall out. The ones that settle nothing — a t stops
+            somewhere between two lines, an i is mostly its dot — are placed by
             what the others worked out, and marked, so you know which to look at
             twice.
           </p>
@@ -515,8 +611,8 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
           </p>
           <p>
             <Term>Kerning is measured where two letters come closest.</Term>
-            Which is why two round letters come out untouched -- they are
-            already as near each other as anything else is -- and an A beside a
+            Which is why two round letters come out untouched — they are
+            already as near each other as anything else is — and an A beside a
             V comes out pulled well in. The pairs it is weakest on are the ones
             where a letter overhangs rather than leans away, a T beside an o
             being the standing example, and the pair editor is there for exactly
@@ -622,6 +718,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
         </div>
       </div>
     </aside>
+    </HelpContext.Provider>
   );
 }
 
@@ -643,14 +740,69 @@ function Section({
    * about a different job that happens to share a word.
    */
   half?: "imported" | "drawn" | "assembled" | "library";
-}): React.JSX.Element {
+}): React.JSX.Element | null {
+  const scope = React.useContext(HelpContext);
+  const register = scope?.register;
+
+  React.useEffect(() => {
+    register?.(title);
+  }, [register, title]);
+
+  /*
+   * The section's own words, computed once rather than on every keystroke.
+   *
+   * Matching is against the title and the prose together: somebody searching
+   * for "kerning" wants the section that explains it, whatever that section
+   * happens to be called.
+   */
+  const words = React.useMemo(() => `${title} ${textOf(children)}`.toLowerCase(), [title, children]);
+  const query = (scope?.query ?? "").trim().toLowerCase();
+  if (query !== "" && !words.includes(query)) return null;
+
   return (
-    <section className="space-y-2" data-help-half={half}>
+    <section className="space-y-2" id={slugOf(title)} data-help-half={half} data-help-section={title}>
       <h3 className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
         {title}
       </h3>
       <div className="space-y-2 text-2xs leading-relaxed text-muted-foreground">{children}</div>
     </section>
+  );
+}
+
+/**
+ * What the drawer says when a search matches nothing.
+ *
+ * Its own component because it has to sit inside the scrolling column, beside
+ * the sections, and know the same query they do. An empty column with a
+ * search field above it reads as a broken drawer rather than as an answer.
+ */
+function HelpNothingFound(): React.JSX.Element | null {
+  const scope = React.useContext(HelpContext);
+  const [empty, setEmpty] = React.useState(false);
+  const query = (scope?.query ?? "").trim();
+
+  /*
+   * Read off the rendered sections rather than predicted, because the sections
+   * decide for themselves whether they match and this must agree with them
+   * rather than run a second copy of the rule.
+   */
+  React.useEffect(() => {
+    if (query === "") {
+      setEmpty(false);
+      return;
+    }
+    const id = requestAnimationFrame(() =>
+      setEmpty(document.querySelectorAll("[data-help-section]").length === 0),
+    );
+    return () => cancelAnimationFrame(id);
+  }, [query]);
+
+  if (!empty) return null;
+  return (
+    <p className="text-2xs leading-relaxed text-muted-foreground" data-help-empty>
+      Nothing here mentions “{query}”. The help covers the controls and the views; if you were
+      looking for something the application does not do yet, that is why.
+    </p>
   );
 }
 

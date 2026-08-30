@@ -151,7 +151,7 @@ export const QUILL_CONTROLS: FieldControl[] = [
   {
     key: "pressure",
     label: "Pressure",
-    hint: "How much the stroke swells along its own length. Nought flattens every stroke to one width, which is a monoline; above one exaggerates the swelling that is already there. This is what a nib cannot do -- a nib's thick and thin follow the direction the stroke is travelling, and pressure does not.",
+    hint: "How much the stroke swells along its own length. Nought flattens every stroke to one width, which is a monoline; above one exaggerates the swelling that is already there. This is what a nib cannot do — a nib's thick and thin follow the direction the stroke is travelling, and pressure does not.",
     min: 0,
     max: 2.5,
     step: 0.01,

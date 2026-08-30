@@ -114,8 +114,8 @@ export function QuillPanel(): React.JSX.Element {
             </>
           ) : (
             <p className="pt-2 text-2xs leading-snug text-muted-foreground">
-              Reading a font recovers the strokes that drew each letter -- where they run and how
-              wide the pen was along them -- so the letters can be reshaped rather than merely
+              Reading a font recovers the strokes that drew each letter — where they run and how
+              wide the pen was along them — so the letters can be reshaped rather than merely
               nudged. Point it only at a font you have the right to derive from.
             </p>
           )}

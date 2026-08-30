@@ -179,7 +179,7 @@ class Store {
       selectedGlyphs: new Set(),
       busy: false,
       status: {
-        message: `${typeface.meta.familyName} — ${typeface.glyphs.length.toLocaleString()} glyphs`,
+        message: `Opened — ${typeface.glyphs.length.toLocaleString()} glyphs`,
         tone: "success",
       },
     });
@@ -215,7 +215,7 @@ class Store {
     this.redoStack = [];
     this.set({
       status: {
-        message: `${typeface.meta.familyName} — ${saved.glyphs.length.toLocaleString()} ${
+        message: `Reopened — ${saved.glyphs.length.toLocaleString()} ${
           saved.glyphs.length === 1 ? "glyph" : "glyphs"
         } of your own`,
         tone: "success",
@@ -242,7 +242,16 @@ class Store {
         selectedGlyphs: new Set(),
         busy: false,
         status: {
-          message: `${typeface.meta.familyName} — ${typeface.glyphs.length.toLocaleString()} glyphs${
+          /*
+           * What happened, not what it is called.
+           *
+           * The family name sits permanently in the bar a few inches to the
+           * left, so repeating it here put the same font's name on screen
+           * twice, and the copy that was truncated to fit was this one. A
+           * status line's job is to say what just happened; the identity of
+           * the open document is the label's job, and it already does it.
+           */
+          message: `Opened — ${typeface.glyphs.length.toLocaleString()} glyphs${
             warnings.length ? `. ${warnings[0]}` : ""
           }`,
           tone: "success",

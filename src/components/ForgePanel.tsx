@@ -828,11 +828,11 @@ function Trip({ letter }: { letter: string }): React.JSX.Element {
         <div className="pt-2" data-forge-imported={letter}>
           <p className="text-2xs leading-snug text-muted-foreground">
             {letter} is your drawing, from {outside.from}. It keeps its advance,
-            and nothing above reaches it any more -- there is no pen behind it
+            and nothing above reaches it any more — there is no pen behind it
             to change. The cuts still do: a slot or a saw is taken out of
             whatever the letter is, so your drawing is cut with the rest of the
-            font. The two made out of the skeleton -- the inline and the breaks
-            -- are the exception, because your drawing has no skeleton.
+            font. The two made out of the skeleton — the inline and the breaks
+            — are the exception, because your drawing has no skeleton.
           </p>
           <button
             type="button"

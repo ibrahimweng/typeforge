@@ -456,7 +456,7 @@ function Stage({
                 strokeWidth={unit * 1.2}
                 onPointerDown={startDrag(handle)}
                 /* Pressing a handle is asking about the handle, not about the
-                   letter underneath it -- so the panel is sent to its control
+                   letter underneath it — so the panel is sent to its control
                    rather than the spot being read for whatever else is there. */
                 onDoubleClick={(event) => {
                   event.stopPropagation();
@@ -993,7 +993,7 @@ function Cells({ letter, scale }: { letter: string; scale: number }): React.JSX.
                   onPointerEnter={() => setOver(key)}
                   /* And the matching leave. A port is above the squares now, so
                      moving onto one takes the pointer off its own cell's
-                     square and fires that square's leave -- the port's enter
+                     square and fires that square's leave — the port's enter
                      puts the cell straight back, which is the point. Without a
                      leave of its own here, the last thing to fire on the way
                      out of the grid was that enter, and the cell stayed lit
@@ -1410,7 +1410,7 @@ function Alphabet({
             )}
             {/* A letter that is no longer drawn at all is marked along the
                 foot rather than with a dot, because it is not a variation on
-                the family the way the other two are -- it has left it, and no
+                the family the way the other two are — it has left it, and no
                 edit made here will reach it again until it comes back. */}
             {cell.outside && (
               <span

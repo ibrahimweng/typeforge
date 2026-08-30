@@ -460,7 +460,7 @@ export const METRIC_CONTROLS: FieldControl[] = [
   {
     key: "slant",
     label: "Slant",
-    hint: "How far the whole letter leans. Taken on the finished outline, which is exact -- leaning the skeleton instead would turn every arc into an ellipse and the offsets would stop being exact at every weight but one.",
+    hint: "How far the whole letter leans. Taken on the finished outline, which is exact — leaning the skeleton instead would turn every arc into an ellipse and the offsets would stop being exact at every weight but one.",
     min: -30,
     max: 30,
     step: 0.5,
@@ -512,7 +512,7 @@ export const SCRIPT_CONTROLS: FieldControl[] = [
   {
     key: "height",
     label: "Seam height",
-    hint: "Where one letter hands over to the next, as a share of the x-height. Low runs along the baseline; high hands over near the waist, which reads faster. Not a free choice on a face that joins every pair -- two letters can only meet at one height, so this is that height.",
+    hint: "Where one letter hands over to the next, as a share of the x-height. Low runs along the baseline; high hands over near the waist, which reads faster. Not a free choice on a face that joins every pair — two letters can only meet at one height, so this is that height.",
     min: 0.1,
     max: 0.75,
     step: 0.01,
@@ -544,7 +544,7 @@ export const SCRIPT_CONTROLS: FieldControl[] = [
   {
     key: "eye",
     label: "Loop shape",
-    hint: "How far the eye bows off the stroke it stands on, as a share of its own length. A half is a semicircle -- as wide as it is tall -- which is what one arc does when nothing tells it otherwise. Lower is the long narrow oval a written hand leaves.",
+    hint: "How far the eye bows off the stroke it stands on, as a share of its own length. A half is a semicircle — as wide as it is tall — which is what one arc does when nothing tells it otherwise. Lower is the long narrow oval a written hand leaves.",
     min: 0.08,
     max: 0.6,
     step: 0.01,
@@ -587,7 +587,7 @@ export const SCRIPT_CONTROLS: FieldControl[] = [
   {
     key: "highSeam",
     label: "High seam",
-    hint: "Where the four letters that finish at the top of themselves -- the o, the v, the w and the b -- hand over, as a share of the x-height. What decides whether the stroke leaving them runs along the top of the writing or dives back to the line first.",
+    hint: "Where the four letters that finish at the top of themselves — the o, the v, the w and the b — hand over, as a share of the x-height. What decides whether the stroke leaving them runs along the top of the writing or dives back to the line first.",
     min: 0.5,
     max: 1,
     step: 0.01,

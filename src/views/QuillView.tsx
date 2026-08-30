@@ -34,8 +34,8 @@ export function QuillView(): React.JSX.Element {
           <p className="pt-2 text-2xs leading-relaxed text-muted-foreground">
             Read a font from the panel and every letter in it is taken apart into the strokes that
             drew it: where each one runs, and how wide the pen was at each point along it. From
-            there the whole alphabet answers to one hand -- heavier, more pressure, more taper,
-            further slanted -- rather than to a thousand separate points.
+            there the whole alphabet answers to one hand — heavier, more pressure, more taper,
+            further slanted — rather than to a thousand separate points.
           </p>
         </div>
       </div>

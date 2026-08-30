@@ -2691,3 +2691,39 @@ test("the glyph grid fills the width it is given, at any width", async ({ page }
   });
   expect(spilling, "letters drawn wider than the cell they sit in").toEqual([]);
 });
+
+test("help can be searched and jumped around, not only scrolled", async ({ page }) => {
+  /*
+   * Twenty sections of prose in one scrolling column is a document rather than
+   * help. Somebody arrives with a question -- what does bounce do, why is my
+   * export dropping ligatures -- and the only way to answer it was to read past
+   * everything else. What was missing was not more writing but a way in.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Help", exact: true }).click();
+  const help = page.getByRole("dialog", { name: "Help" });
+  await expect(help).toBeVisible();
+
+  // A contents page, built from the sections themselves rather than kept as a
+  // second list beside them.
+  const contents = help.locator("[data-help-contents]");
+  const all = await help.locator("[data-help-section]").count();
+  expect(all).toBeGreaterThan(10);
+  expect(await contents.count()).toBe(all);
+
+  // Searching narrows to the sections that mention it, matching the prose and
+  // not only the headings.
+  await help.locator("[data-help-search]").fill("kerning");
+  await expect.poll(() => help.locator("[data-help-section]").count()).toBeLessThan(all);
+  await expect.poll(() => help.locator("[data-help-section]").count()).toBeGreaterThan(0);
+
+  // And a search that matches nothing says so, rather than showing an empty
+  // column under a search box.
+  await help.locator("[data-help-search]").fill("zzzznothing");
+  await expect(help.locator("[data-help-empty]")).toBeVisible();
+
+  // Cleared, everything comes back.
+  await help.locator("[data-help-search]").fill("");
+  await expect.poll(() => help.locator("[data-help-section]").count()).toBe(all);
+});
