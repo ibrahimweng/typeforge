@@ -568,6 +568,25 @@ export function GlyphEditorView(): React.JSX.Element {
         else store.undo();
         return;
       }
+      /*
+       * Carrying a drawing from one letter to another, on the keys everything
+       * else uses for it. Before these two there was no way at all: an `m`
+       * could not be started from an `n`, which is how an `m` is started.
+       *
+       * Above the selection guard below, because copying the whole letter is
+       * what happens when nothing is picked and pasting needs nothing picked
+       * at all.
+       */
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c") {
+        event.preventDefault();
+        store.copyOutlines(glyph.name);
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "v") {
+        event.preventDefault();
+        store.pasteOutlines(glyph.name);
+        return;
+      }
       if (state.selectedNodes.size === 0) return;
 
       if (event.key === "Backspace" || event.key === "Delete") {

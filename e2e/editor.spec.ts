@@ -3787,3 +3787,93 @@ test("the checks say when an edited font still wears the name it arrived with", 
     timeout: 60_000,
   });
 });
+
+test("a new project can be given a letter, which it could not before", async ({ page }) => {
+  /*
+   * The dead end this closes. `startBlank()` hands back a typeface whose glyph
+   * list is empty, and there was no way to put anything into it -- so the New
+   * action led to a font that could never contain a letter.
+   */
+  await page.goto("/");
+  await openFont(page);
+
+  // Starting again is a palette action and asks first, because it throws away
+  // whatever is open.
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByRole("textbox", { name: "Search everything" }).fill("start a new font");
+  await page.getByRole("dialog", { name: "Quick actions" }).getByRole("option").first().click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Go on" }).click();
+
+  await page.getByRole("button", { name: "Font", exact: true }).click();
+  await expect(page.getByText("Press New letter to put one in", { exact: false })).toBeVisible();
+
+  await page.locator("[data-add-glyph]").click();
+  // A letter to draw in, and the editor open on it.
+  await expect(page.getByRole("button", { name: "Glyph", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.locator("[data-letter-panel]")).toBeVisible();
+});
+
+test("a letter can be named, given a character, copied and taken out", async ({ page }) => {
+  /*
+   * None of this existed. A font opened here could have its letters redrawn
+   * and nothing else: a glyph's codepoints were shown in a grid cell's hover
+   * text and used by the search box, and were otherwise unreachable.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  const panel = page.locator("[data-letter-panel]");
+  await expect(panel).toBeVisible();
+
+  const name = panel.getByLabel("Letter name");
+  // A name DejaVu does not already have: it covers Greek, so `alpha` is
+  // taken and the store rightly refuses it.
+  await name.fill("A.mine");
+  await name.blur();
+  await expect(page.locator("[data-glyph-numbers]")).toContainText("A.mine");
+
+  // The character, written the way a font's documentation writes one.
+  const character = panel.getByLabel("Characters this letter answers to");
+  await expect(character).toHaveValue(/U\+/);
+
+  await panel.getByRole("button", { name: "Duplicate" }).click();
+  await expect(page.getByText("Copied A.mine to", { exact: false })).toBeVisible();
+  // A copy answers to no character, because two letters on one codepoint is a
+  // font where one of them can never be typed.
+  await expect(panel.getByLabel("Characters this letter answers to")).toHaveValue("");
+
+  await panel.getByRole("button", { name: "Delete" }).click();
+  await expect(page.getByText("Removed A.mine", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+});
+
+test("a drawing can be carried from one letter to another", async ({ page }) => {
+  /*
+   * There was no clipboard of any kind, so every shared part of a family had
+   * to be drawn again by hand -- which is the opposite of what a family is.
+   * An `m` is started from an `n`.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  const carry = page.locator("[data-carry-actions]");
+  await carry.getByRole("button", { name: "Copy" }).click();
+  await expect(page.getByText("Copied", { exact: false })).toBeVisible();
+
+  // Into a different letter, which is the whole point.
+  await page.getByRole("button", { name: "Font", exact: true }).click();
+  await page.getByPlaceholder("Search by letter, name or U+ code").fill("m");
+  await page.locator('[data-glyph-cell="m"]').first().dblclick();
+
+  const paths = page.locator("[data-paths-panel]");
+  const before = await paths.innerText();
+  await page.locator("[data-carry-actions]").getByRole("button", { name: "Paste" }).click();
+  await expect(page.getByText("Pasted", { exact: false })).toBeVisible();
+  await expect.poll(() => paths.innerText()).not.toBe(before);
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+});

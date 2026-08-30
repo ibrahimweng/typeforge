@@ -14,6 +14,20 @@
 import { applyEdits, fromBase64, type EditedProject } from "@/project/format";
 import { buildAccents, deriveAnchors, suggestAnchors, looksLikeMark } from "@/font/accents";
 import { dependentsOf } from "@/font/composite";
+/*
+ * Renamed on the way in, because the store's own methods are called the same
+ * things. Both resolve correctly -- a bare name inside a method is the module
+ * one -- but which is meant should not be something a reader has to work out.
+ */
+import {
+  addGlyph as putGlyphIn,
+  claimedBy,
+  duplicateGlyph as copyGlyphTo,
+  freeNameNear,
+  nameIsFree,
+  removeGlyph as takeGlyphOut,
+  renameGlyph as callGlyph,
+} from "@/font/library";
 import { reverse as reverseContour } from "@/font/outline";
 import {
   deriveParams,
@@ -1922,6 +1936,267 @@ class Store {
   }
 
   // --- metadata ---------------------------------------------------------
+
+  /*
+   * Making and unmaking letters.
+   *
+   * None of this existed, and its absence made `startBlank` a dead end: it
+   * hands back a typeface with an empty glyph list, and there was no way to
+   * put anything into it.
+   *
+   * All of them go through `editFont` below rather than `editGlyph`, because
+   * every one changes something outside a single glyph -- the glyph list, the
+   * index, the kerning, the classes, the ligature rules -- and undo has to put
+   * all of it back.
+   */
+
+  /**
+   * One structural change to the font, with an undo that restores all of it.
+   *
+   * `editGlyph` snapshots one letter, which is right for redrawing one and
+   * useless here: renaming `a` rewrites kern pairs, class memberships,
+   * ligature rules and the components of every letter built on it. So this
+   * snapshots the five collections a name can be written into and puts them
+   * all back together.
+   *
+   * The copies are shallow, which is what makes this cheap enough to do on a
+   * font of six thousand letters: the library functions replace the arrays
+   * they change rather than reaching into them, so holding the old arrays is
+   * enough to hold the old state.
+   */
+  private editFont(label: string, mutate: (typeface: Typeface) => boolean): boolean {
+    const typeface = this.state.typeface;
+    if (!typeface) return false;
+
+    const before = {
+      glyphs: typeface.glyphs,
+      glyphIndex: typeface.glyphIndex,
+      kerning: typeface.kerning,
+      kernClasses: typeface.kernClasses,
+      alternates: typeface.alternates,
+    };
+    if (!mutate(typeface)) return false;
+    const after = {
+      glyphs: typeface.glyphs,
+      glyphIndex: typeface.glyphIndex,
+      kerning: typeface.kerning,
+      kernClasses: typeface.kernClasses,
+      alternates: typeface.alternates,
+    };
+
+    this.push({
+      label,
+      undo: () => Object.assign(typeface, before),
+      redo: () => Object.assign(typeface, after),
+    });
+    this.touch();
+    return true;
+  }
+
+  /** Put a new, empty letter in the font and open it. */
+  addGlyph(name: string, unicodes: number[] = []): boolean {
+    const typeface = this.state.typeface;
+    if (!typeface) return false;
+    const wanted = name.trim();
+    if (wanted.length === 0) {
+      this.say("A letter needs a name.", "error");
+      return false;
+    }
+    if (!nameIsFree(typeface, wanted)) {
+      this.say(`There is already a letter called ${wanted}.`, "error");
+      return false;
+    }
+    const taken = unicodes.map((one) => claimedBy(typeface, one, wanted)).find(Boolean);
+    if (taken) {
+      this.say(`${taken} already answers to that character.`, "error");
+      return false;
+    }
+
+    const made = this.editFont("Add a letter", (one) => putGlyphIn(one, wanted, unicodes) !== null);
+    if (made) {
+      this.set({ selectedGlyph: wanted, selectedNodes: new Set(), view: "glyph" });
+      this.say(`Added ${wanted}. It is empty until you draw in it.`, "success");
+    }
+    return made;
+  }
+
+  /**
+   * Take a letter out, having said what goes with it.
+   *
+   * The letters built on this one are named before anything happens, because
+   * they are what somebody would not have thought of: deleting an `a` takes
+   * the `a` out of every accented letter built from it, and those letters stay
+   * in the font looking like the accent on its own.
+   */
+  removeGlyph(name: string): boolean {
+    const typeface = this.state.typeface;
+    if (!typeface) return false;
+    const built = dependentsOf(typeface, name);
+
+    const gone = this.editFont("Remove a letter", (one) => takeGlyphOut(one, name));
+    if (!gone) return false;
+
+    if (this.state.selectedGlyph === name) {
+      this.set({ selectedGlyph: firstLetterName(typeface), selectedNodes: new Set() });
+    }
+    this.say(
+      built.length === 0
+        ? `Removed ${name}.`
+        : `Removed ${name}, and took it out of ${built.length} letter${built.length === 1 ? "" : "s"} built on it: ${built.slice(0, 4).join(", ")}${built.length > 4 ? "…" : ""}.`,
+      built.length === 0 ? "success" : "info",
+    );
+    return true;
+  }
+
+  /** Give a letter a different name, everywhere the old one was written. */
+  renameGlyph(from: string, to: string): boolean {
+    const typeface = this.state.typeface;
+    if (!typeface) return false;
+    const wanted = to.trim();
+    if (wanted.length === 0 || wanted === from) return false;
+    if (!nameIsFree(typeface, wanted)) {
+      this.say(`There is already a letter called ${wanted}.`, "error");
+      return false;
+    }
+
+    const done = this.editFont("Rename a letter", (one) => callGlyph(one, from, wanted));
+    if (done && this.state.selectedGlyph === from) this.set({ selectedGlyph: wanted });
+    return done;
+  }
+
+  /** A copy of a letter under a new name, without the character it answers to. */
+  duplicateGlyph(name: string): string | null {
+    const typeface = this.state.typeface;
+    if (!typeface) return null;
+    const into = freeNameNear(typeface, name);
+    const made = this.editFont("Duplicate a letter", (one) => copyGlyphTo(one, name, into) !== null);
+    if (!made) return null;
+    this.set({ selectedGlyph: into, selectedNodes: new Set() });
+    this.say(`Copied ${name} to ${into}. It answers to no character until you give it one.`, "success");
+    return into;
+  }
+
+  /**
+   * Which characters a letter answers to.
+   *
+   * Refused rather than merged when another letter already claims one: two
+   * glyphs on the same codepoint is a font where one of them can never be
+   * typed, and which one wins is decided by the order they happen to sit in.
+   */
+  setCodepoints(name: string, unicodes: number[]): boolean {
+    const typeface = this.state.typeface;
+    const glyph = this.glyph(name);
+    if (!typeface || !glyph) return false;
+
+    for (const codepoint of unicodes) {
+      const holder = claimedBy(typeface, codepoint, name);
+      if (holder) {
+        this.say(`${holder} already answers to that character.`, "error");
+        return false;
+      }
+    }
+    const wanted = [...new Set(unicodes)].sort((one, other) => one - other);
+    if (wanted.join() === [...glyph.unicodes].sort((one, other) => one - other).join()) return false;
+
+    this.editGlyph(name, "Set the character", (one) => {
+      one.unicodes = wanted;
+    });
+    return true;
+  }
+
+  /*
+   * Carrying a drawing from one letter to another.
+   *
+   * There was no clipboard of any kind, which meant an `m` could not be
+   * started from an `n` -- and starting an `m` from an `n` is how an `m` is
+   * started. The whole argument for a type family is that the letters share
+   * their parts, and every one of those parts had to be drawn again by hand.
+   *
+   * Kept here rather than in the system clipboard, and that is a decision
+   * rather than a shortcut: the system one holds text, and putting outlines
+   * through it means inventing a serialisation, asking for a permission the
+   * browser may refuse, and handling whatever somebody happens to have copied
+   * from somewhere else. What this is for is one letter to another inside one
+   * font, and for that a variable is the whole of it.
+   */
+  private carried: Contour[] = [];
+
+  /** Take a copy of what is picked, or of the whole letter when nothing is. */
+  copyOutlines(glyphName: string): number {
+    const glyph = this.glyph(glyphName);
+    if (!glyph || glyph.contours.length === 0) return 0;
+
+    const picked = this.state.selectedNodes;
+    const wanted =
+      picked.size === 0
+        ? glyph.contours
+        : glyph.contours.filter((contour, index) =>
+            contour.nodes.every((_, node) => picked.has(nodeKey({ contour: index, node }))),
+          );
+    if (wanted.length === 0) {
+      this.say("Pick whole paths to copy, or none to copy the letter.", "error");
+      return 0;
+    }
+
+    // Copied deeply, because the letter it came from goes on being edited and
+    // a shared node would follow it.
+    this.carried = wanted.map((contour) => ({
+      ...contour,
+      nodes: contour.nodes.map((node) => ({
+        point: { ...node.point },
+        handleIn: node.handleIn ? { ...node.handleIn } : null,
+        handleOut: node.handleOut ? { ...node.handleOut } : null,
+        type: node.type,
+      })),
+    }));
+    this.say(
+      `Copied ${this.carried.length} path${this.carried.length === 1 ? "" : "s"}.`,
+      "success",
+    );
+    return this.carried.length;
+  }
+
+  /** Whether there is anything to paste. */
+  get carrying(): number {
+    return this.carried.length;
+  }
+
+  /**
+   * Put what was copied into a letter, alongside what is already there.
+   *
+   * Added rather than replacing, because that is what somebody starting an `m`
+   * from an `n` wants: the shoulder arrives beside the stems rather than
+   * instead of them. Deleting the letter first is one key away for the times
+   * it is not.
+   */
+  pasteOutlines(glyphName: string): boolean {
+    const glyph = this.glyph(glyphName);
+    if (!glyph || this.carried.length === 0) return false;
+
+    const arriving = this.carried.map((contour) => ({
+      ...contour,
+      nodes: contour.nodes.map((node) => ({
+        point: { ...node.point },
+        handleIn: node.handleIn ? { ...node.handleIn } : null,
+        handleOut: node.handleOut ? { ...node.handleOut } : null,
+        type: node.type,
+      })),
+    }));
+    const from = glyph.contours.length;
+
+    this.editGlyph(glyphName, "Paste paths", (one) => {
+      one.contours = [...one.contours, ...arriving];
+    });
+    // Left picked, because what arrives is almost always in the wrong place
+    // and moving it is the next thing that happens.
+    const keys: string[] = [];
+    arriving.forEach((contour, index) =>
+      contour.nodes.forEach((_, node) => keys.push(nodeKey({ contour: from + index, node }))),
+    );
+    this.set({ selectedNodes: new Set(keys) });
+    this.say(`Pasted ${arriving.length} path${arriving.length === 1 ? "" : "s"}.`, "success");
+    return true;
+  }
 
   /*
    * The font's own identity, and the lines it is drawn between.

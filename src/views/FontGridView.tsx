@@ -13,6 +13,7 @@ import { enterStaggered } from "@/anim/motion";
 import { drawGlyph, fitEmSquare, formatCodepoint, glyphLabel, prepareCanvas, readToken } from "@/components/glyph-render";
 import { groupGlyphs } from "@/font/groups";
 import type { Glyph, Typeface } from "@/font/types";
+import { freeNameNear } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";
 import { OUTLINE_ACTION, PRIMARY_ACTION, tile } from "@/components/controls";
 import { CoachMark } from "@/components/CoachMark";
@@ -151,10 +152,25 @@ export function FontGridView(): React.JSX.Element {
           {glyphs.length === typeface.glyphs.length ? " glyphs" : ` of ${typeface.glyphs.length.toLocaleString()}`}
         </span>
         {state.selectedGlyphs.size > 0 && (
-          <span className="ml-auto text-2xs text-accent tabular-nums">
+          <span className="text-2xs text-accent tabular-nums">
             {state.selectedGlyphs.size} selected
           </span>
         )}
+        {/*
+          The way to put a letter into a font, and it has to be here rather
+          than only beside the letter that is open. A font with no glyphs has
+          no letter to be beside -- which is exactly what `New` hands you, and
+          was exactly why `New` led nowhere.
+        */}
+        <button
+          type="button"
+          onClick={() => store.addGlyph(freeNameNear(typeface, "uni0041"))}
+          data-add-glyph
+          title="A new, empty letter. Name it and give it a character in the panel, then draw in it."
+          className="ml-auto rounded border border-border px-2 py-1 text-2xs text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
+        >
+          New letter
+        </button>
       </div>
 
       <div
@@ -209,7 +225,9 @@ export function FontGridView(): React.JSX.Element {
         </div>
         {glyphs.length === 0 && (
           <p className="py-16 text-center text-xs-plus text-muted-foreground">
-            No glyph matches “{state.search}”.
+            {typeface.glyphs.length === 0
+              ? "Nothing here yet. Press New letter to put one in."
+              : `No glyph matches “${state.search}”.`}
           </p>
         )}
       </div>

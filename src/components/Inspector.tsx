@@ -14,6 +14,7 @@ import * as React from "react";
 
 import { enterStaggered } from "@/anim/motion";
 import { CompositionPanel } from "@/components/CompositionPanel";
+import { LetterPanel } from "@/components/LetterPanel";
 import { PathsPanel } from "@/components/PathsPanel";
 import { PointsPanel } from "@/components/PointsPanel";
 import { TransformPanel } from "@/components/TransformPanel";
@@ -214,6 +215,12 @@ export function Inspector(): React.JSX.Element {
         is a fact about the drawing, and a column of sidebearings is not the
         place to be told it.
       */}
+      {/*
+        What the letter *is*, above the three panels that change how it looks.
+        A level up from them: those redraw it, this decides whether it is there
+        and what it is called.
+      */}
+      {editingGlyph && <LetterPanel />}
       {editingGlyph && state.view === "glyph" && <PathsPanel />}
       {/*
         Under the same scope and the same view as the paths, and for the same

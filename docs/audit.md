@@ -1,5 +1,7 @@
 # What is missing
 
+> **A** and **B** are done. **C** and **D** are open.
+
 An audit of what this application cannot do, taken by reading its capability
 surface rather than by looking at it. That distinction is the point: a tour of
 the screens finds things that are drawn wrong, and finds nothing at all about
@@ -11,7 +13,7 @@ conversation, and when the conversation ended so did the list.
 
 ---
 
-## A. The font is not yours
+## A. The font is not yours — *done*
 
 **A1. A font cannot be renamed, and its designer, version, copyright and
 licence cannot be set.**
@@ -35,7 +37,7 @@ x-height come from the file and stay there for ever -- even though the Draw
 mode has a slider for each of the four, and even though the importer now
 *measures* two of them when the file declines to declare them.
 
-## B. A letter cannot be made or unmade
+## B. A letter cannot be made or unmade — *done*
 
 **B1. A glyph cannot be added.** There is no `addGlyph` anywhere.
 
@@ -56,7 +58,7 @@ letters.** There is no clipboard of any kind: no `copyGlyph`, no `pasteGlyph`,
 nothing on the keyboard. So an `m` cannot be started from an `n`, which is how
 an `m` is started.
 
-## C. Nothing helps you draw straight
+## C. Nothing helps you draw straight — *open*
 
 **C1. Guides are horizontal only.** The type is `Array<{ y: number }>`. There
 is no vertical guide, which is the one you would use to mark a stem position
@@ -68,7 +70,7 @@ y. Every number this application displays is displayed rounded, so a letter
 drawn by dragging is off the grid in every coordinate and looks perfectly
 fine until something measures it.
 
-## D. Three smaller ones
+## D. Three smaller ones — *open*
 
 **D1. A component cannot be placed by hand.** `removeComponent` exists;
 nothing adds one except the accent builder, which runs automatically. So a
@@ -79,3 +81,31 @@ letter cannot be built out of another on purpose.
 **D3. There is no printing.** The proofing advice in the type-design rules is
 about paper -- print it, look at it, put it on a wall -- and the Proof view is
 screen-only.
+
+
+---
+
+## What was learned doing A and B
+
+Two of these were worse than the audit said, and both only showed up once
+something drove them.
+
+**A1 understated it.** `setMeta` was not merely uncalled: nothing in the
+application, the tests or the browser suite had ever called it. The three other
+modes all offer a family name in their export dialogs, so Edit -- the mode
+people spend their time in -- was the only one that could not name its own
+work. The checks now warn when an edited font still wears the name it arrived
+with.
+
+**B3 hid a second fault.** The obvious half was that codepoints could not be
+edited. The half that only appeared once a field existed was how to read one:
+bare hex is ambiguous with the character itself, and `A` is valid hex. Somebody
+typing `A` into a field labelled Character means the letter A, and read as hex
+it is U+000A, a line feed -- a letter put on a different character entirely,
+silently, by the input most likely to be typed. So `U+` says hex, anything else
+is taken at face value, and nothing is guessed.
+
+**And one that was not in the audit at all.** The letter panel's fields
+resynced from the glyph whenever the glyph changed, with an array in the
+dependency list. A store update landing mid-edit put the old name back into the
+field while somebody was typing in it. Found by a browser test, not by reading.

@@ -221,6 +221,30 @@ export function PathsPanel(): React.JSX.Element | null {
         letter's paths, and because the two that need a choice of paths need
         this list to make it in.
       */}
+      {/*
+        Carrying a drawing to another letter, outside the block below because
+        that one waits for the letter to have paths and this must not: an empty
+        letter is exactly where a copied one is going.
+
+        On the keyboard as well, where anybody would reach for it first. These
+        are here because a keystroke with no button is a feature only the
+        person who wrote it knows about.
+      */}
+      <div className="flex flex-wrap gap-1 pt-2.5" data-carry-actions>
+        <Operation
+          onClick={() => store.copyOutlines(name)}
+          title="Copy the picked paths, or the whole letter when none are picked, ready to put into another letter (⌘C)"
+        >
+          Copy
+        </Operation>
+        <Operation
+          onClick={() => store.pasteOutlines(name)}
+          title="Add the copied paths to this letter, alongside what is already here (⌘V)"
+        >
+          Paste
+        </Operation>
+      </div>
+
       {contours.length > 0 && (
         <div className="flex flex-wrap gap-1 pt-2.5" data-path-actions>
           <Operation
