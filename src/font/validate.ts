@@ -116,6 +116,32 @@ export function validateTypeface(
 function checkFontStructure(typeface: Typeface): Finding[] {
   const findings: Finding[] = [];
 
+  /*
+   * Somebody else's font with your drawing in it.
+   *
+   * Asked of the document rather than of the name alone, because a font
+   * nobody has touched is a font being looked at and there is nothing to say
+   * about it. Once a letter has been edited and the name is still the one the
+   * file arrived with, the file that goes out describes the font it was
+   * opened from: its family, its designer, its copyright, its licence. That
+   * is a derivative work that does not say it is one, and it is the first
+   * thing every type licence asks of you.
+   *
+   * A warning rather than an error, because it is about what the file claims
+   * rather than whether it works, and because there are honest reasons to
+   * export an edited font under its own name -- fixing a glyph in a font you
+   * drew yourself, for one.
+   */
+  if (typeface.source !== null && typeface.glyphs.some((glyph) => glyph.dirty)) {
+    findings.push({
+      check: "derivative-unnamed",
+      severity: "warning",
+      title: `Letters have been changed, and the font is still called ${typeface.meta.familyName}`,
+      detail:
+        "An exported file would carry the family name, designer, copyright and licence of the font this was opened from. Press the name in the toolbar to give the work its own.",
+    });
+  }
+
   const notdefIndex = typeface.glyphs.findIndex((glyph) => glyph.name === ".notdef");
   if (notdefIndex === -1) {
     findings.push({

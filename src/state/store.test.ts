@@ -773,3 +773,213 @@ describe("the tools that make and unmake whole shapes", () => {
     expect(JSON.stringify(store.glyph("a")!.contours)).toBe(before);
   });
 });
+
+describe("the font's own identity", () => {
+  beforeEach(() => seed(["a", "b"]));
+
+  it("can be renamed, which it could not be at all", () => {
+    /*
+     * `setMeta` sat in this store with nothing calling it for a long time, so
+     * a font opened here kept the identity of the file it came from whatever
+     * was done to it: redraw every letter of DejaVu Sans, export, and the file
+     * is still called DejaVu Sans and still carries DejaVu's copyright.
+     */
+    store.setMeta({ familyName: "Ours", copyright: "© us", license: "OFL" });
+    const meta = store.getSnapshot().typeface!.meta;
+    expect(meta.familyName).toBe("Ours");
+    expect(meta.copyright).toBe("© us");
+    expect(meta.license).toBe("OFL");
+    // And the style, which was not asked about, is untouched.
+    expect(meta.styleName).toBe("Regular");
+  });
+
+  it("puts a rename on the undo stack, because a name is an edit", () => {
+    const was = store.getSnapshot().typeface!.meta.familyName;
+    store.setMeta({ familyName: "Ours" });
+    expect(store.getSnapshot().canUndo).toBe(true);
+    store.undo();
+    expect(store.getSnapshot().typeface!.meta.familyName).toBe(was);
+    store.redo();
+    expect(store.getSnapshot().typeface!.meta.familyName).toBe("Ours");
+  });
+
+  it("does not push an edit when nothing changed", () => {
+    // A field commits on the way out whether or not it was typed in, so this
+    // is the ordinary case rather than the odd one.
+    const was = store.getSnapshot().typeface!.meta.familyName;
+    store.setMeta({ familyName: was });
+    expect(store.getSnapshot().canUndo).toBe(false);
+  });
+
+  it("lets the lines be moved, which were equally frozen", () => {
+    store.setMetrics({ xHeight: 520, capHeight: 720 });
+    const metrics = store.getSnapshot().typeface!.metrics;
+    expect(metrics.xHeight).toBe(520);
+    expect(metrics.capHeight).toBe(720);
+    expect(metrics.ascender).toBe(800);
+
+    store.undo();
+    expect(store.getSnapshot().typeface!.metrics.xHeight).toBe(500);
+  });
+});
+
+describe("making and unmaking letters", () => {
+  beforeEach(() => seed(["a", "v"]));
+
+  it("puts a letter into a font that had none, which was a dead end", () => {
+    /*
+     * `startBlank()` hands back a typeface with an empty glyph list, and until
+     * this existed there was no way to put anything into it. The New action
+     * led to a font that could never contain a letter.
+     */
+    store.startBlank();
+    expect(store.getSnapshot().typeface!.glyphs).toHaveLength(0);
+    expect(store.addGlyph("A", [65])).toBe(true);
+
+    const typeface = store.getSnapshot().typeface!;
+    expect(typeface.glyphs.map((one) => one.name)).toEqual(["A"]);
+    // Opened, because the reason to make a letter is to draw in it.
+    expect(store.getSnapshot().selectedGlyph).toBe("A");
+    expect(store.getSnapshot().view).toBe("glyph");
+  });
+
+  it("refuses a name that is taken and a character that is claimed", () => {
+    expect(store.addGlyph("a")).toBe(false);
+    expect(store.getSnapshot().status?.message).toContain("already a letter called a");
+
+    store.setCodepoints("a", [97]);
+    expect(store.addGlyph("alpha", [97])).toBe(false);
+    expect(store.getSnapshot().status?.message).toContain("already answers");
+  });
+
+  it("takes a letter out and can be told to put it back", () => {
+    expect(store.removeGlyph("v")).toBe(true);
+    expect(store.getSnapshot().typeface!.glyphs.map((one) => one.name)).toEqual(["a"]);
+    store.undo();
+    expect(store.getSnapshot().typeface!.glyphs.map((one) => one.name)).toEqual(["a", "v"]);
+  });
+
+  it("says what a removal took with it", () => {
+    // Deleting an `a` takes the `a` out of every accented letter built from
+    // it, and those letters stay in the font looking like the accent alone.
+    const typeface = store.getSnapshot().typeface!;
+    typeface.glyphs[1].components = [
+      { glyphName: "a", transform: { a: 1, b: 0, c: 0, d: 1, dx: 0, dy: 0 } },
+    ];
+    store.removeGlyph("a");
+    expect(store.getSnapshot().status?.message).toContain("1 letter built on it: v");
+  });
+
+  it("renames a letter and follows the name into the kerning", () => {
+    store.setKerning("v", "a", -30);
+    store.selectGlyph("a");
+    expect(store.renameGlyph("a", "alpha")).toBe(true);
+
+    const typeface = store.getSnapshot().typeface!;
+    expect(typeface.glyphIndex.has("alpha")).toBe(true);
+    expect(typeface.kerning[0].right).toBe("alpha");
+    // The letter that was open stays open under its new name.
+    expect(store.getSnapshot().selectedGlyph).toBe("alpha");
+
+    store.undo();
+    expect(store.getSnapshot().typeface!.kerning[0].right).toBe("a");
+  });
+
+  it("copies a letter without copying the character it answers to", () => {
+    store.setCodepoints("a", [97]);
+    setContours("a", [square(100, false)]);
+    const into = store.duplicateGlyph("a");
+    expect(into).toBe("a.001");
+
+    const copy = store.glyph("a.001")!;
+    expect(copy.contours[0].nodes).toHaveLength(4);
+    // Two glyphs on one codepoint is a font where one of them can never be
+    // typed, and the copy is the one that loses.
+    expect(copy.unicodes).toEqual([]);
+  });
+
+  it("will not give a character to two letters", () => {
+    store.setCodepoints("a", [97]);
+    expect(store.setCodepoints("v", [97])).toBe(false);
+    expect(store.glyph("v")!.unicodes).toEqual([]);
+    expect(store.getSnapshot().status?.message).toContain("a already answers");
+  });
+});
+
+describe("carrying a drawing to another letter", () => {
+  beforeEach(() => seed(["n", "m"]));
+
+  it("copies a letter and adds it to another, which is how an m is started", () => {
+    /*
+     * There was no clipboard of any kind, so every shared part of a family had
+     * to be drawn again by hand -- which is the opposite of what a family is.
+     */
+    setContours("n", [square(100, false)]);
+    setContours("m", []);
+    store.setSelectedNodes([]);
+    expect(store.copyOutlines("n")).toBe(1);
+    expect(store.pasteOutlines("m")).toBe(true);
+    expect(store.glyph("m")!.contours).toHaveLength(1);
+  });
+
+  it("adds alongside what is there rather than replacing it", () => {
+    // The shoulder arrives beside the stems rather than instead of them.
+    setContours("n", [square(100, false)]);
+    setContours("m", [square(40, false)]);
+    store.setSelectedNodes([]);
+    store.copyOutlines("n");
+    store.pasteOutlines("m");
+    expect(store.glyph("m")!.contours).toHaveLength(2);
+  });
+
+  it("carries a copy, so editing the source does not follow it", () => {
+    // A shared node would make an edit to one letter show up in the other,
+    // which is the kind of fault that looks like the canvas is haunted.
+    setContours("n", [square(100, false)]);
+    setContours("m", []);
+    store.setSelectedNodes([]);
+    store.copyOutlines("n");
+    store.pasteOutlines("m");
+    store.editGlyph("n", "move", (one) => {
+      one.contours[0].nodes[0].point = { x: 999, y: 999 };
+    });
+    expect(store.glyph("m")!.contours[0].nodes[0].point).toEqual({ x: 0, y: 0 });
+  });
+
+  it("copies only the paths that are wholly picked", () => {
+    setContours("n", [square(100, false), square(40, false, 200)]);
+    store.setSelectedNodes(["1:0", "1:1", "1:2", "1:3"]);
+    expect(store.copyOutlines("n")).toBe(1);
+  });
+
+  it("says so rather than copying nothing when a part path is picked", () => {
+    setContours("n", [square(100, false)]);
+    store.setSelectedNodes(["0:0"]);
+    expect(store.copyOutlines("n")).toBe(0);
+    expect(store.getSnapshot().status?.tone).toBe("error");
+  });
+
+  it("pastes nothing into a letter that is not there", () => {
+    setContours("n", [square(100, false)]);
+    store.setSelectedNodes([]);
+    store.copyOutlines("n");
+    expect(store.pasteOutlines("zzz")).toBe(false);
+  });
+
+  it("keeps what it is carrying when the letter changes under it", () => {
+    /*
+     * The property that makes it worth having: copy from one letter, go to
+     * another, paste. A clipboard emptied by moving away from the letter it
+     * came from would be a clipboard for nothing.
+     */
+    setContours("n", [square(100, false)]);
+    setContours("m", []);
+    store.setSelectedNodes([]);
+    store.copyOutlines("n");
+    expect(store.carrying).toBe(1);
+
+    store.selectGlyph("m");
+    expect(store.carrying).toBe(1);
+    expect(store.pasteOutlines("m")).toBe(true);
+  });
+});

@@ -41,6 +41,7 @@ export function TopBar({
   onOpenFile,
   onLibrary,
   onExport,
+  onFontInfo,
   onToggleHelp,
   helpOpen,
   mode,
@@ -51,6 +52,7 @@ export function TopBar({
   onOpenFile: () => void;
   onLibrary: () => void;
   onExport: () => void;
+  onFontInfo: () => void;
   onToggleHelp: () => void;
   helpOpen: boolean;
   mode: Mode;
@@ -208,11 +210,25 @@ export function TopBar({
           </span>
         </span>
       )}
+      {/*
+        The font's name, which is now the way to change it.
+
+        It has always been shown here and done nothing. A thing you can read is
+        the natural place to go to change it, and it costs this toolbar
+        nothing -- which matters, because there is no room on it for a button
+        that would say the same.
+      */}
       {mode === "edit" && state.typeface && (
-        <span className="min-w-16 shrink truncate text-2xs text-muted-foreground">
+        <button
+          type="button"
+          onClick={onFontInfo}
+          data-font-name
+          title="The font's name, designer, licence and lines"
+          className="min-w-16 shrink truncate rounded px-1 text-left text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+        >
           {state.typeface.meta.familyName}{" "}
           <span className="opacity-60">{state.typeface.meta.styleName}</span>
-        </span>
+        </button>
       )}
 
       </div>

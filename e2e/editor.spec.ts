@@ -3740,3 +3740,140 @@ test("export waits until there is something to export, in every mode", async ({ 
   await page.getByRole("button", { name: "Draw", exact: true }).click();
   await expect(exportButton).toBeEnabled();
 });
+
+test("a font can be given a name of its own, which it could not before", async ({ page }) => {
+  /*
+   * The most serious thing a tour of the capability surface turned up.
+   * `setMeta` sat in the store with nothing calling it, so a font opened here
+   * kept the identity of the file it came from whatever was done to it:
+   * redraw every letter of DejaVu Sans, export, and the file is still called
+   * DejaVu Sans, still carrying DejaVu's copyright and naming DejaVu's
+   * designer. Draw, Assemble and Trace all offered a name. Edit did not.
+   */
+  await page.goto("/");
+  await openFont(page);
+
+  // The way in is the name itself, which has always been shown and done
+  // nothing.
+  await page.locator("[data-font-name]").click();
+  await expect(page.locator("[data-font-info]")).toBeVisible();
+
+  const family = page.getByRole("dialog", { name: "Font details" }).locator("input").first();
+  await family.fill("Ours");
+  await family.blur();
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+
+  await expect(page.locator("[data-font-name]")).toContainText("Ours");
+  await expect(page.locator("[data-font-name]")).not.toContainText("DejaVu");
+  // A name is an edit, so it can be taken back.
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+});
+
+test("the checks say when an edited font still wears the name it arrived with", async ({ page }) => {
+  /*
+   * A derivative work that does not say it is one, which is the first thing
+   * every type licence asks of you. It fires only once a letter has actually
+   * been changed: opening somebody's font to read it is not a licensing
+   * question.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await page.locator("[data-transform-panel]").getByRole("button", { name: "Bigger" }).click();
+
+  await page.getByRole("button", { name: "Checks", exact: true }).click();
+  await page.getByRole("button", { name: "Run checks", exact: true }).click();
+  await expect(page.getByText("still called DejaVu Sans", { exact: false })).toBeVisible({
+    timeout: 60_000,
+  });
+});
+
+test("a new project can be given a letter, which it could not before", async ({ page }) => {
+  /*
+   * The dead end this closes. `startBlank()` hands back a typeface whose glyph
+   * list is empty, and there was no way to put anything into it -- so the New
+   * action led to a font that could never contain a letter.
+   */
+  await page.goto("/");
+  await openFont(page);
+
+  // Starting again is a palette action and asks first, because it throws away
+  // whatever is open.
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByRole("textbox", { name: "Search everything" }).fill("start a new font");
+  await page.getByRole("dialog", { name: "Quick actions" }).getByRole("option").first().click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Go on" }).click();
+
+  await page.getByRole("button", { name: "Font", exact: true }).click();
+  await expect(page.getByText("Press New letter to put one in", { exact: false })).toBeVisible();
+
+  await page.locator("[data-add-glyph]").click();
+  // A letter to draw in, and the editor open on it.
+  await expect(page.getByRole("button", { name: "Glyph", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.locator("[data-letter-panel]")).toBeVisible();
+});
+
+test("a letter can be named, given a character, copied and taken out", async ({ page }) => {
+  /*
+   * None of this existed. A font opened here could have its letters redrawn
+   * and nothing else: a glyph's codepoints were shown in a grid cell's hover
+   * text and used by the search box, and were otherwise unreachable.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  const panel = page.locator("[data-letter-panel]");
+  await expect(panel).toBeVisible();
+
+  const name = panel.getByLabel("Letter name");
+  // A name DejaVu does not already have: it covers Greek, so `alpha` is
+  // taken and the store rightly refuses it.
+  await name.fill("A.mine");
+  await name.blur();
+  await expect(page.locator("[data-glyph-numbers]")).toContainText("A.mine");
+
+  // The character, written the way a font's documentation writes one.
+  const character = panel.getByLabel("Characters this letter answers to");
+  await expect(character).toHaveValue(/U\+/);
+
+  await panel.getByRole("button", { name: "Duplicate" }).click();
+  await expect(page.getByText("Copied A.mine to", { exact: false })).toBeVisible();
+  // A copy answers to no character, because two letters on one codepoint is a
+  // font where one of them can never be typed.
+  await expect(panel.getByLabel("Characters this letter answers to")).toHaveValue("");
+
+  await panel.getByRole("button", { name: "Delete" }).click();
+  await expect(page.getByText("Removed A.mine", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+});
+
+test("a drawing can be carried from one letter to another", async ({ page }) => {
+  /*
+   * There was no clipboard of any kind, so every shared part of a family had
+   * to be drawn again by hand -- which is the opposite of what a family is.
+   * An `m` is started from an `n`.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+
+  const carry = page.locator("[data-carry-actions]");
+  await carry.getByRole("button", { name: "Copy" }).click();
+  await expect(page.getByText("Copied", { exact: false })).toBeVisible();
+
+  // Into a different letter, which is the whole point.
+  await page.getByRole("button", { name: "Font", exact: true }).click();
+  await page.getByPlaceholder("Search by letter, name or U+ code").fill("m");
+  await page.locator('[data-glyph-cell="m"]').first().dblclick();
+
+  const paths = page.locator("[data-paths-panel]");
+  const before = await paths.innerText();
+  await page.locator("[data-carry-actions]").getByRole("button", { name: "Paste" }).click();
+  await expect(page.getByText("Pasted", { exact: false })).toBeVisible();
+  await expect.poll(() => paths.innerText()).not.toBe(before);
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+});
