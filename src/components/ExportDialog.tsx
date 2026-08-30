@@ -13,13 +13,22 @@ import { enter, refuse } from "@/anim/motion";
 import { CoachMark } from "@/components/CoachMark";
 import { exportFont, toDownloadBlob, type ExportFidelity, type ExportFormat } from "@/font/export";
 import { store, useAppState } from "@/state/useStore";
+import { ufoNameFor, zipUfo } from "@/ufo/intake";
 import { cn } from "@/ui/lib/utils";
 
 export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.Element {
   const state = useAppState();
   const typeface = state.typeface;
 
-  const [format, setFormat] = React.useState<ExportFormat>("ttf");
+  /*
+   * What is being left with, which is not always a font.
+   *
+   * `ExportFormat` is the font exporter's own type and stays that way: it
+   * lists what `exportFont` can build, and a UFO is not something it builds.
+   * Widening it there would put a case in the encoder for a format that never
+   * reaches it.
+   */
+  const [format, setFormat] = React.useState<ExportFormat | "ufo">("ttf");
   const [fidelity, setFidelity] = React.useState<ExportFidelity>("preserve");
   const [includeKerning, setIncludeKerning] = React.useState(true);
   const [mergeOverlaps, setMergeOverlaps] = React.useState(true);
@@ -53,7 +62,31 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
       // Yield once so the button's pending state paints before the main thread
       // is taken by encoding.
       await new Promise((resolve) => setTimeout(resolve, 0));
+
+      if (format === "ufo") {
+        const files = store.ufoFiles();
+        if (!files) throw new Error("There is no font open to write.");
+        const name = ufoNameFor(typeface.meta.familyName, typeface.meta.styleName);
+        const archive = zipUfo(files, name);
+        const url = URL.createObjectURL(
+          new Blob([archive as BlobPart], { type: "application/zip" }),
+        );
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${name}.zip`;
+        link.click();
+        URL.revokeObjectURL(url);
+        store.setStatus({
+          message: `Wrote ${name} (${formatBytes(archive.length)})`,
+          tone: "success",
+        });
+        onClose();
+        return;
+      }
+
       const result = await exportFont(typeface, {
+        // Narrowed by the branch above, which returns for the one value this
+        // does not accept.
         format,
         fidelity: preserveAvailable ? fidelity : "rebuild",
         includeKerning,
@@ -114,8 +147,35 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
             title="OpenType (.otf)"
             description="PostScript curves, matching how the outlines are drawn here. Preferred by print workflows."
           />
+          {/*
+            The third one is not a font, and that is the point of it.
+
+            A `.ttf` and a `.otf` are what a font becomes at the end; a UFO is
+            what it is while somebody is still drawing it, and it is the file
+            that goes back into RoboFont or Glyphs or a build. Leaving with
+            only a compiled font means leaving with something you cannot open
+            again and keep working in, which is what makes an editor a filter.
+
+            It goes out as a zip because a UFO is a folder and a page cannot
+            hand back a folder. Every operating system expands it into one.
+          */}
+          <Choice
+            selected={format === "ufo"}
+            onSelect={() => setFormat("ufo")}
+            title="UFO (a folder, zipped)"
+            description="The source a designer works in, not a compiled font. Opens in RoboFont, Glyphs and fontmake, and can be opened again here."
+          />
         </Field>
 
+        {/*
+          Both of the questions below are about compiling, and a UFO is not
+          compiled: there is nothing to preserve from an original because the
+          outlines go out as outlines, and nothing to merge because overlaps
+          are what a source file is supposed to keep. Hiding them is better
+          than showing two controls that quietly do nothing.
+        */}
+        {format !== "ufo" && (
+        <>
         <Field label="What to carry over">
           <Choice
             selected={fidelity === "preserve" && preserveAvailable}
@@ -147,8 +207,8 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
               className="size-3.5 accent-[var(--accent)]"
             />
             <span>
-              Include kerning
-              <span className="pl-1.5 text-2xs text-muted-foreground tabular-nums">
+              Include kerning{" "}
+              <span className="text-2xs text-muted-foreground tabular-nums">
                 {typeface.kerning.length.toLocaleString()} pairs
               </span>
             </span>
@@ -171,6 +231,8 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
             </span>
           </label>
         </div>
+        </>
+        )}
 
         {notes.length > 0 && (
           <ul className="mb-4 space-y-1 rounded-md border border-attention/40 bg-attention/10 p-2.5">

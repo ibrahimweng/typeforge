@@ -50,6 +50,7 @@ import {
  * into the JavaScript everybody downloads whether they use it or not.
  */
 import sampleFontUrl from "@/assets/typeforge-sample.ttf?url";
+import { readUfo, writeUfo, type UfoCarried, type UfoFiles } from "@/ufo/font";
 
 /** What the sample is called once it is open, as any other file would be. */
 const SAMPLE_FILE_NAME = "TypeforgeSample-Regular.ttf";
@@ -135,6 +136,16 @@ const MAX_HISTORY = 200;
 
 class Store {
   /** The control letters as the font was opened, never updated afterwards. */
+  /**
+   * What the open UFO holds that this application does not model.
+   *
+   * Kept off `AppState` deliberately: nothing renders from it and it is a
+   * megabyte of somebody's background layers, so putting it in the state
+   * would have every subscriber re-render whenever it changed and every
+   * snapshot carry it.
+   */
+  private ufo: UfoCarried | null = null;
+
   private controlBaseline: ControlReadings | null = null;
   /**
    * Their outlines at that same moment, kept because the fit needs the shape it
@@ -217,6 +228,10 @@ class Store {
     this.undoStack = [];
     this.redoStack = [];
     this.controlBaseline = readControls(typeface);
+    // Whatever the last UFO carried belongs to the last UFO. Left in place, a
+    // font opened afterwards would go out with somebody else's background
+    // layers folded into it.
+    this.ufo = null;
     this.set({
       typeface,
       fileName,
@@ -276,6 +291,9 @@ class Store {
       const { typeface, warnings } = await importFont(bytes, fileName);
       this.undoStack = [];
       this.redoStack = [];
+      // A compiled font has no UFO behind it, and the one that was open
+      // before is not this font's to carry.
+      this.ufo = null;
       // The control letters as they arrived. Every later derivation compares
       // against this rather than against the previous edit, so editing n twice
       // expresses the total change instead of compounding.
@@ -313,6 +331,71 @@ class Store {
         },
       });
     }
+  }
+
+  /**
+   * Open a UFO, which is a folder rather than a file.
+   *
+   * The other half of `loadFont`, and the difference is what arrives: bytes
+   * there, a set of paths and their contents here. Everything about the format
+   * lives in `src/ufo`, so this is only the part that has to be a store
+   * action -- putting the font in front of somebody and remembering enough to
+   * hand their folder back unharmed.
+   *
+   * `carried` is that remembering. A UFO holds things this application has no
+   * idea about: background layers, private keys another tool left in the lib,
+   * the images somebody is tracing over. They are kept beside the typeface and
+   * written back on the way out, because opening somebody's work in progress
+   * and quietly dropping half of it on save is not opening it.
+   */
+  async loadUfo(files: UfoFiles, folderName: string): Promise<void> {
+    this.set({ busy: true, status: { message: `Reading ${folderName}…`, tone: "info" } });
+    try {
+      const read = readUfo(files);
+      if (!read) throw new Error("That folder is not a UFO: it has no metainfo.plist in it.");
+      const { typeface, carried } = read;
+      if (typeface.glyphs.length === 0) {
+        throw new Error("That UFO has no glyphs in it.");
+      }
+      this.undoStack = [];
+      this.redoStack = [];
+      this.controlBaseline = readControls(typeface);
+      this.ufo = carried;
+      this.set({
+        typeface,
+        fileName: folderName,
+        selectedGlyph: firstLetterName(typeface),
+        selectedNodes: new Set(),
+        selectedGlyphs: new Set(),
+        busy: false,
+        status: {
+          message: `Opened — ${typeface.glyphs.length.toLocaleString()} glyphs`,
+          tone: "success",
+        },
+      });
+      this.touch();
+    } catch (error) {
+      this.set({
+        busy: false,
+        status: {
+          message: error instanceof Error ? error.message : "That folder could not be read.",
+          tone: "error",
+        },
+      });
+    }
+  }
+
+  /**
+   * The font as a UFO, with whatever came in with it put back.
+   *
+   * Answers for a font that never was one too: a drawing made here, or a
+   * TrueType file opened here, goes out as a UFO with nothing carried, which
+   * is a perfectly ordinary UFO that simply has no history behind it.
+   */
+  ufoFiles(): UfoFiles | null {
+    const typeface = this.state.typeface;
+    if (!typeface) return null;
+    return writeUfo(typeface, this.ufo ?? undefined);
   }
 
   /**

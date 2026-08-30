@@ -156,7 +156,7 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
                 )}
               >
                 {name}
-                {drawn && <span className="pl-1 opacity-60">·</span>}
+                {drawn && <span className="opacity-60"> ·</span>}
               </button>
             );
           })}

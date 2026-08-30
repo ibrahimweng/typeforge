@@ -230,14 +230,14 @@ export function TopBar({
 
       {mode === "forge" && (
         <span className="min-w-16 shrink truncate text-2xs text-muted-foreground">
-          {forge.familyName}
-          <span className="pl-1.5 opacity-60">{forge.forge.base}</span>
+          {forge.familyName}{" "}
+          <span className="opacity-60">{forge.forge.base}</span>
         </span>
       )}
       {mode === "assemble" && (
         <span className="min-w-16 shrink truncate text-2xs text-muted-foreground">
-          {assemble.familyName}
-          <span className="pl-1.5 opacity-60">
+          {assemble.familyName}{" "}
+          <span className="opacity-60">
             {assemble.assembly.pieces.length} drawing
             {assemble.assembly.pieces.length === 1 ? "" : "s"}
           </span>
@@ -245,8 +245,8 @@ export function TopBar({
       )}
       {mode === "edit" && state.typeface && (
         <span className="min-w-16 shrink truncate text-2xs text-muted-foreground">
-          {state.typeface.meta.familyName}
-          <span className="pl-1.5 opacity-60">{state.typeface.meta.styleName}</span>
+          {state.typeface.meta.familyName}{" "}
+          <span className="opacity-60">{state.typeface.meta.styleName}</span>
         </span>
       )}
 
