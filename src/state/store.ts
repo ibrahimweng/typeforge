@@ -24,7 +24,9 @@ import {
   claimedBy,
   duplicateGlyph as copyGlyphTo,
   freeNameNear,
+  NOTDEF,
   nameIsFree,
+  notdefGlyph,
   removeGlyph as takeGlyphOut,
   renameGlyph as callGlyph,
 } from "@/font/library";
@@ -496,8 +498,21 @@ class Store {
   startBlank(): void {
     this.undoStack = [];
     this.redoStack = [];
+    /*
+     * With a `.notdef` already in it.
+     *
+     * A new font used to fail its own checks on the first thing it said:
+     * `No .notdef glyph`, an error, about a font nobody had touched yet. And
+     * `.notdef` is not a design decision -- it is what the format draws for a
+     * character the font does not cover, and every font must have one. Making
+     * somebody add it by hand, by name, to get a clean report is asking them
+     * to know a piece of trivia before they can draw anything.
+     */
+    const fresh = emptyTypeface();
+    fresh.glyphs = [notdefGlyph(fresh.metrics)];
+    fresh.glyphIndex = new Map([[NOTDEF, 0]]);
     this.set({
-      typeface: emptyTypeface(),
+      typeface: fresh,
       fileName: "",
       selectedGlyph: null,
       selectedNodes: new Set(),
@@ -1825,7 +1840,7 @@ class Store {
 
     const after = typeface.glyphs.map(cloneGlyph);
     this.push({
-      label: `Build ${result.built.length} accented glyphs`,
+      label: `Build ${result.built.length} accented glyph${result.built.length === 1 ? "" : "s"}`,
       undo: () => {
         typeface.glyphs = snapshot.map(cloneGlyph);
       },
@@ -2110,7 +2125,7 @@ class Store {
     const made = this.editFont("Add a letter", (one) => putGlyphIn(one, wanted, unicodes) !== null);
     if (made) {
       this.set({ selectedGlyph: wanted, selectedNodes: new Set(), view: "glyph" });
-      this.say(`Added ${wanted}. It is empty until you draw in it.`, "success");
+      this.say(`Added ${wanted}.`, "success");
     }
     return made;
   }

@@ -4,8 +4,8 @@
  * None of this existed. A font opened here could have its letters redrawn and
  * nothing else -- no letter could be added to it, taken out of it, renamed, or
  * told which character it is. Which made `startBlank` a dead end rather than a
- * beginning: it hands back a typeface whose `glyphs` array is empty, and there
- * was no way to put anything in it.
+ * beginning: it handed back a typeface with nothing in it, and there was no
+ * way to put anything in it.
  *
  * The whole difficulty is in one fact: a glyph's name is not kept only on the
  * glyph. It is written down in six places, and a rename that misses one leaves
@@ -27,13 +27,31 @@
  * around.
  */
 
-import type { Glyph, Typeface } from "./types";
+import type { Contour, Glyph, Typeface, VerticalMetrics } from "./types";
 import { DEFAULT_PARAMS } from "./types";
 
 /** The map from name to position, built again from the glyphs themselves. */
 export function reindex(typeface: Typeface): void {
   typeface.glyphIndex = new Map(typeface.glyphs.map((glyph, at) => [glyph.name, at]));
 }
+
+/**
+ * The name every font must carry, and which nobody designs.
+ *
+ * `.notdef` is what a renderer draws for a character the font has not got, and
+ * the format requires it in first position. Every generator here already puts
+ * one in -- quill, forge, assemble -- and `startBlank` now does too, because a
+ * font that fails its own first check the moment it is made is not a beginning.
+ *
+ * Which makes `glyphs.length` the wrong question to ask about a new font: it
+ * answers one, and the honest answer to "is there anything here" is no. So the
+ * five views that show a letter ask `hasLetters` instead.
+ */
+export const NOTDEF = ".notdef";
+
+/** Whether this font holds anything somebody drew, rather than only `.notdef`. */
+export const hasLetters = (typeface: Typeface): boolean =>
+  typeface.glyphs.some((glyph) => glyph.name !== NOTDEF);
 
 /** Whether a name is free to use. */
 export const nameIsFree = (typeface: Typeface, name: string): boolean =>
@@ -53,6 +71,47 @@ export function freeNameNear(typeface: Typeface, base: string): string {
     if (nameIsFree(typeface, candidate)) return candidate;
   }
   return `${base}.${Date.now()}`;
+}
+
+/**
+ * The box itself, drawn.
+ *
+ * `.notdef` exists so that a character the font has not got shows as something
+ * rather than as nothing -- the hollow rectangle every reader has seen. An
+ * empty one defeats the whole purpose: the missing character comes out as
+ * blank space, which is indistinguishable from a space that was meant to be
+ * there. It also made the new font's grid show `.notdef` as an empty cell,
+ * exactly like a letter nobody had drawn yet, when in fact it was finished.
+ *
+ * Quill, forge and assemble each draw their own, sized off the pen they are
+ * drawing with. This one has no pen to measure, so the rule is a fraction of
+ * the cap height. The hole winds against the outside, which is what makes it a
+ * hole rather than a second box.
+ */
+export function notdefGlyph(metrics: VerticalMetrics): Glyph {
+  const height = metrics.capHeight;
+  const width = Math.round(height * 0.52);
+  const side = Math.round(height * 0.08);
+  const inset = Math.max(8, Math.round(height * 0.06));
+  const box = (x: number, y: number, w: number, h: number): Contour => ({
+    closed: true,
+    nodes: [
+      { point: { x, y }, handleIn: null, handleOut: null, type: "corner" },
+      { point: { x: x + w, y }, handleIn: null, handleOut: null, type: "corner" },
+      { point: { x: x + w, y: y + h }, handleIn: null, handleOut: null, type: "corner" },
+      { point: { x, y: y + h }, handleIn: null, handleOut: null, type: "corner" },
+    ],
+  });
+  const outer = box(side, 0, width, height);
+  const inner = box(side + inset, inset, width - inset * 2, height - inset * 2);
+  inner.nodes.reverse();
+  return {
+    ...blankGlyph(NOTDEF),
+    advanceWidth: width + side * 2,
+    contours: [outer, inner],
+    // Not somebody's work in progress: it is the same box in every font.
+    dirty: false,
+  };
 }
 
 /** An empty letter, ready to be drawn in. */

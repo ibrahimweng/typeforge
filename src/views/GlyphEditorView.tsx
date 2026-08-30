@@ -31,6 +31,8 @@ import { nodeKey, store, useAppState, type NodeRef } from "@/state/useStore";
 import { CoachMark } from "@/components/CoachMark";
 import { GroundToggle } from "@/components/GroundToggle";
 import { NumberField } from "@/components/NumberField";
+import { NothingDrawnYet } from "@/components/NothingDrawnYet";
+import { hasLetters } from "@/font/library";
 import { ToolPalette } from "@/components/ToolPalette";
 import { cn } from "@/ui/lib/utils";
 
@@ -713,6 +715,13 @@ export function GlyphEditorView(): React.JSX.Element {
     return <Centered>Open a font to start editing.</Centered>;
   }
   if (!glyph) {
+    /*
+     * A font with letters in it and none of them open is a different thing
+     * from a font with no letters at all, and this used to say the same about
+     * both -- sending somebody with an empty font to the one view that would
+     * then tell them to press New letter.
+     */
+    if (!hasLetters(typeface)) return <NothingDrawnYet what="draw" />;
     return <Centered>Choose a glyph in the font view.</Centered>;
   }
 

@@ -200,7 +200,11 @@ export async function importFont(
       glyph.contours = [];
     }
     if (components.size > 0) {
-      warnings.push(`${components.size.toLocaleString()} glyphs are built from components.`);
+      warnings.push(
+        components.size === 1
+          ? "One glyph is built from components."
+          : `${components.size.toLocaleString()} glyphs are built from components.`,
+      );
     }
     if (pointMatched > 0) {
       warnings.push(

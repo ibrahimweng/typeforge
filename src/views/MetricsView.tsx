@@ -15,6 +15,8 @@ import { resolveAdvanceWidth, resolveGlyphContours } from "@/font/transform";
 import { drawGlyph, glyphLabel, prepareCanvas, type GlyphView } from "@/components/glyph-render";
 import { CoachMark } from "@/components/CoachMark";
 import type { Glyph } from "@/font/types";
+import { NothingDrawnYet } from "@/components/NothingDrawnYet";
+import { hasLetters } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";
 import { cn } from "@/ui/lib/utils";
 
@@ -61,6 +63,10 @@ export function MetricsView(): React.JSX.Element {
       </div>
     );
   }
+
+  // A font with no letters is a different thing from no font, and every view
+  // used to say the same about both.
+  if (!hasLetters(typeface)) return <NothingDrawnYet what="space" />;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

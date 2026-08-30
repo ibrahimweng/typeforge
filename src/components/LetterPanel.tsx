@@ -16,6 +16,7 @@
 
 import * as React from "react";
 
+import { freeNameNear } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";
 import { cn } from "@/ui/lib/utils";
 
@@ -130,7 +131,7 @@ export function LetterPanel(): React.JSX.Element | null {
             if (event.key === "Enter") event.currentTarget.blur();
             if (event.key === "Escape") setCodes(asText(glyph.unicodes));
           }}
-          placeholder="U+0041"
+          placeholder="A or U+0041"
           aria-label="Characters this letter answers to"
           className="h-7 rounded border border-input bg-card px-2 font-mono text-2xs outline-none focus-visible:border-accent"
         />
@@ -141,7 +142,7 @@ export function LetterPanel(): React.JSX.Element | null {
           title="A copy of this letter under a new name. The copy answers to no character until you give it one.">
           Duplicate
         </button>
-        <button type="button" onClick={() => store.addGlyph(`new.${Date.now().toString(36)}`)} className={ACTION}
+        <button type="button" onClick={() => state.typeface && store.addGlyph(freeNameNear(state.typeface, "newGlyph"))} className={ACTION}
           title="A new, empty letter. Give it a name and a character, then draw in it.">
           New letter
         </button>

@@ -14,6 +14,8 @@ import * as React from "react";
 import { enterStaggered } from "@/anim/motion";
 import { CoachMark } from "@/components/CoachMark";
 import { validateTypeface, type Finding, type Severity, type ValidationReport } from "@/font/validate";
+import { NothingDrawnYet } from "@/components/NothingDrawnYet";
+import { hasLetters } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";
 import { cn } from "@/ui/lib/utils";
 
@@ -80,6 +82,10 @@ export function ReportView(): React.JSX.Element {
     );
   }
 
+  // A font with no letters is a different thing from no font, and every view
+  // used to say the same about both.
+  if (!hasLetters(state.typeface)) return <NothingDrawnYet what="check" />;
+
   const stale = report !== null && ranAt !== state.revision;
 
   return (
@@ -118,7 +124,8 @@ export function ReportView(): React.JSX.Element {
             <Count value={counts.info} label="note" tone="info" on={shown.info}
               onToggle={() => toggle("info")} />
             <span className="text-2xs text-muted-foreground tabular-nums">
-              {report.examined.toLocaleString()} glyphs checked
+              {report.examined.toLocaleString()} {report.examined === 1 ? "glyph" : "glyphs"}{" "}
+              checked
             </span>
           </>
         )}

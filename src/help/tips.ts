@@ -40,7 +40,7 @@ export const TIPS: Record<TipId, string> = {
   family:
     "These change every glyph at once. A single letter can overrule any of them from its own tab.",
   controls:
-    "Change one of these five letters and Typeforge works out what you meant — heavier, wider, taller — and applies it to the whole alphabet.",
+    "Change one of these seven letters and Typeforge works out what you meant — heavier, wider, taller — and applies it to the whole alphabet.",
   forge:
     "Nothing here came from another font. Pick a base, then change a part \u2014 a serif, a shoulder, a corner \u2014 and every letter that has that part follows; the panel says how many before you touch it. Double-click any edge of the letter to get the control behind it, as a handle you can pull and as the row it lives on in the panel. The accented letters are built from the letters and marks you have already drawn, so \u00e9 follows the e and \u00f1 follows the n. Turn on Skeleton to see what is being drawn, and type into the specimen line to judge it in a word.",
   assemble:

@@ -23,6 +23,8 @@ import { resolveAdvanceWidth, resolveGlyphContours } from "@/font/transform";
 import type { Glyph, Typeface } from "@/font/types";
 import { prepareCanvas, readToken } from "@/components/glyph-render";
 import { GroundToggle } from "@/components/GroundToggle";
+import { NothingDrawnYet } from "@/components/NothingDrawnYet";
+import { hasLetters } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";
 import { cn } from "@/ui/lib/utils";
 
@@ -194,6 +196,10 @@ export function ProofView(): React.JSX.Element {
       </div>
     );
   }
+
+  // A font with no letters is a different thing from no font, and every view
+  // used to say the same about both.
+  if (!hasLetters(typeface)) return <NothingDrawnYet what="proof" />;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

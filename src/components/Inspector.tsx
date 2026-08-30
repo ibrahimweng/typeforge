@@ -25,6 +25,7 @@ import { PARAMS } from "@/components/param-specs";
 import { noCast, type Cast, type CastName } from "@/font/cast";
 import { CutPanel } from "@/components/CutPanel";
 import { noCuts, type CutName, type Cuts } from "@/font/cuts";
+import { hasLetters } from "@/font/library";
 import { DEFAULT_PARAMS, type GlyphParams } from "@/font/types";
 import { store, useAppState, type ViewId } from "@/state/useStore";
 // Imported from the control directly rather than through the UI barrel: the
@@ -89,6 +90,38 @@ export function Inspector(): React.JSX.Element {
       <aside aria-label="Parameters" className={cn(SIDE_PANEL, "shrink-0 border-l border-border p-4")}>
         <p className="text-2xs text-muted-foreground">
           Parameters appear once a font is open.
+        </p>
+      </aside>
+    );
+  }
+
+  /*
+   * A font with nothing drawn in it, which is where every font starts.
+   *
+   * Everything below reshapes letters -- rounds their corners, thickens their
+   * strokes, opens the counters of o, e and a -- so on a font with none it was
+   * ten sliders describing what they do to nothing, and every one of them
+   * moved without moving anything. The letter scope was worse than useless:
+   * with no letter selected it fell back to the family's values and showed
+   * them under a tab labelled Letter, so the numbers on screen belonged to
+   * something other than what the tab said they did.
+   *
+   * The control letters below say the same in the other direction -- seven
+   * dashed outlines and "0 of 7" -- and the coach mark over them offers to
+   * carry an edit to the whole alphabet. So the whole panel goes and says the
+   * one thing that is true, which is also the one thing to do next.
+   */
+  if (!hasLetters(typeface)) {
+    return (
+      <aside
+        aria-label="Parameters"
+        className={cn(SIDE_PANEL, "shrink-0 border-l border-border p-4")}
+        data-no-letters
+      >
+        <p className="text-2xs leading-relaxed text-muted-foreground">
+          Parameters reshape letters — their weight, their width, the space
+          inside them. This font has none yet, so there is nothing for them to
+          take hold of. Draw a letter and they appear.
         </p>
       </aside>
     );
