@@ -25,6 +25,7 @@ import {
   kernKey,
 } from "@/assemble/document";
 import { CutPanel } from "@/components/CutPanel";
+import { TakeToEditor } from "@/components/TakeToEditor";
 import { CastOrder } from "@/components/Inspector";
 import { segment, WIDE_PANEL } from "@/components/controls";
 import { contoursToSvgPath } from "@/font/geometry";
@@ -71,7 +72,8 @@ const METRIC_CONTROLS: Array<{ key: string; label: string; hint: string; min: nu
   },
 ];
 
-export function AssemblePanel(): React.JSX.Element {
+export function AssemblePanel({ onEdit }: { onEdit: () => Promise<void> }): React.JSX.Element {
+  const state = useAssemble();
   return (
     <aside
       aria-label="Assemble"
@@ -86,6 +88,22 @@ export function AssemblePanel(): React.JSX.Element {
         <Letter />
         <Pair />
       </div>
+      {/*
+        The same door the forge and the quill have, and it was missing here.
+
+        Assembling is the third way into a font in this application and builds
+        a typeface exactly as the other two do -- which is what its export
+        dialog has always used. Leaving it out meant a pile of drawings could
+        be turned into a file and not into something you could open a letter
+        of, which is the one of the three where somebody is most likely to want
+        to: a drawing that came in from somewhere else is a drawing nobody has
+        checked the points of.
+      */}
+      <TakeToEditor
+        onEdit={onEdit}
+        what="every letter in the pile"
+        disabled={state.assembly.pieces.length === 0}
+      />
     </aside>
   );
 }

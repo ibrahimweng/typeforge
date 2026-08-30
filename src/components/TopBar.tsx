@@ -307,12 +307,22 @@ export function TopBar({
         <button
           type="button"
           onClick={onExport}
-          // A drawn font is always ready to leave. An imported one needs to
-          // have been imported, and an assembled one needs something in the
-          // pile to assemble.
+          /*
+            A drawn font is always ready to leave, because the forge always
+            has a family. The other three have to have something in them: an
+            imported font has to have been imported, an assembled one needs
+            drawings in the pile, and a traced one needs a font to have been
+            read.
+
+            The traced case was missing, and it showed: pressing Export in
+            Trace with nothing read opened a dialog offering to download "0
+            letters" with its own Download greyed out. The button beside it
+            that hands the letters to the editor had always known better.
+          */
           disabled={
             (mode === "edit" && !state.typeface) ||
-            (mode === "assemble" && assemble.assembly.pieces.length === 0)
+            (mode === "assemble" && assemble.assembly.pieces.length === 0) ||
+            (mode === "quill" && quill.document.letters.length === 0)
           }
           className={PRIMARY_ACTION}
         >

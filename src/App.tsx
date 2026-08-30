@@ -22,6 +22,7 @@ import { Inspector } from "@/components/Inspector";
 import { TopBar } from "@/components/TopBar";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
 import type { Typeface } from "@/font/types";
+import { toTypeface as assembleToTypeface } from "@/assemble/typeface";
 import { toTypeface as forgeToTypeface } from "@/forge/typeface";
 import { toTypeface as quillToTypeface } from "@/quill/typeface";
 import { forgeStore, useForge } from "@/state/useForge";
@@ -428,6 +429,19 @@ export function App(): React.JSX.Element {
     takeToEditor(typeface, `${familyName || "Untitled"}.ttf`);
   }, [takeToEditor]);
 
+  const editAssembled = React.useCallback(async () => {
+    const { assembly, familyName } = assembleStore.snapshot();
+    const name = familyName || assembly.name || "Untitled";
+    const typeface = await assembleToTypeface(assembly, {
+      familyName: name,
+      styleName: "Regular",
+      // Fused, as it is for a file: this is where the drawings stop being a
+      // pile and start being letters.
+      merge: true,
+    });
+    takeToEditor(typeface, `${name}.ttf`);
+  }, [takeToEditor]);
+
   const editTraced = React.useCallback(async () => {
     const doc = quillStore.getSnapshot().document;
     const family = doc.from ? `${doc.from} Traced` : "Traced";
@@ -665,7 +679,7 @@ export function App(): React.JSX.Element {
         </div>
         {mode === "forge" && <ForgePanel onEdit={editForged} />}
         {mode === "quill" && <QuillPanel onEdit={editTraced} />}
-        {mode === "assemble" && <AssemblePanel />}
+        {mode === "assemble" && <AssemblePanel onEdit={editAssembled} />}
         {mode === "edit" && SHOWS_INSPECTOR.has(state.view) && <Inspector />}
         {helping && <HelpDrawer onClose={() => setHelping(false)} />}
       </div>
