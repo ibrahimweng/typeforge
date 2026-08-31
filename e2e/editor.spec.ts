@@ -3464,7 +3464,12 @@ test("changing what a point is: round, tidy, and the guards on the rest", async 
 
   // Smoothing every point in a letter with no curves in it is not what
   // pressing a button once means, so it waits to be told which.
-  await expect(panel.getByRole("button", { name: "Smooth" })).toBeDisabled();
+  //
+  // Exact, for the same reason as the line below it: the picking row above
+  // these carries `Pick every smooth point`, and a name matched loosely finds
+  // both. The two buttons are properly distinguishable -- one is named for the
+  // operation and one for the selection -- and the test has to say which.
+  await expect(panel.getByRole("button", { name: "Smooth", exact: true })).toBeDisabled();
   // Exact, because "Open corner" carries the word too.
   await expect(panel.getByRole("button", { name: "Corner", exact: true })).toBeDisabled();
   // These two are about a specific corner and a specific pair.
@@ -3475,7 +3480,7 @@ test("changing what a point is: round, tidy, and the guards on the rest", async 
   // and too many for the corner pair.
   await page.locator('[data-path-row="0"]').getByRole("button").first().click();
   await expect(page.locator("[data-points-scope]")).toContainText("points");
-  await expect(panel.getByRole("button", { name: "Smooth" })).toBeEnabled();
+  await expect(panel.getByRole("button", { name: "Smooth", exact: true })).toBeEnabled();
   await expect(panel.getByRole("button", { name: "Open corner" })).toBeDisabled();
   await expect(panel.getByRole("button", { name: "Reconnect" })).toBeDisabled();
 });

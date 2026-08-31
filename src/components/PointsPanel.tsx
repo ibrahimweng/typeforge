@@ -49,21 +49,34 @@ export function PointsPanel(): React.JSX.Element | null {
         one press once they are picked, and picking forty of them by hand is why
         nobody does it.
       */}
-      <div className="flex flex-wrap gap-1 pb-2" data-select-row>
+      <div className="flex flex-wrap items-center gap-1 pb-2" data-select-row>
+        {/*
+          The row says what it is for, so the buttons in it need not.
+
+          Without the word `Pick` this row read as four more operations, and
+          `Smooths` sat directly above `Smooth` doing something else entirely.
+          One label on the row is cheaper than four longer buttons, and the
+          accessible names below carry the whole sentence for anything reading
+          rather than looking.
+        */}
+        <span className="pr-1 text-2xs text-muted-foreground">Pick</span>
         <ToolButton
           onClick={() => store.selectAllNodes(name)}
+          named="Pick every point"
           title="Pick every point in the letter. Also ctrl-A, or command-A."
         >
           All
         </ToolButton>
         <ToolButton
           onClick={() => store.selectNodesOfKind(name, "corner")}
+          named="Pick every corner"
           title="Pick every point the outline actually turns at, wherever they are — asking the handles rather than the label the file carries"
         >
           Corners
         </ToolButton>
         <ToolButton
           onClick={() => store.selectNodesOfKind(name, "smooth")}
+          named="Pick every smooth point"
           title="Pick every point the curve runs smoothly through"
         >
           Smooths
@@ -71,6 +84,7 @@ export function PointsPanel(): React.JSX.Element | null {
         <ToolButton
           onClick={() => store.setSelectedNodes([])}
           disabled={picked === 0}
+          named="Pick nothing"
           title="Pick nothing, so the operations below work on the whole letter again"
         >
           None
