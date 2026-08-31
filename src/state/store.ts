@@ -248,6 +248,16 @@ export interface AppState {
    */
   drawing: boolean;
   /**
+   * The path the pointer is over in the Paths list, lit on the canvas.
+   *
+   * Twelve rows reading `4 points cw 226x226` and no way to tell which shape
+   * each is: the only way to find out was to click one and watch which points
+   * turned orange, which costs a selection you may have wanted to keep. The
+   * list and the drawing are two views of the same thing and neither pointed
+   * at the other.
+   */
+  highlightPath: number | null;
+  /**
    * Which ground the type is drawn on, where type is looked at.
    *
    * Only the canvas and the proof page change: the chrome stays dark, because
@@ -334,6 +344,7 @@ class Store {
     marks: false,
     polygonSides: POLYGON_SIDES,
     drawing: false,
+    highlightPath: null,
     ground: "dark",
     selectedGlyph: null,
     selectedNodes: new Set(),
@@ -722,6 +733,13 @@ class Store {
   }
 
   /** Whether the canvas rings the faults that cannot be seen by looking. */
+  /** Light one path on the canvas, or none. Compared before storing, because
+   * this fires on every pointer move across the list and each change repaints
+   * the whole canvas. */
+  setHighlightPath(index: number | null): void {
+    if (this.state.highlightPath !== index) this.set({ highlightPath: index });
+  }
+
   /** The pen has begun, or gone on with, an outline. */
   startDrawing(): void {
     if (!this.state.drawing) this.set({ drawing: true });

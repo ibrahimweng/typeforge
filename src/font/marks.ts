@@ -32,6 +32,16 @@ export function extremesMissing(contours: Contour[]): Vec2[] {
   for (const contour of contours) {
     const { nodes, closed } = contour;
     if (nodes.length < 2) continue;
+    /*
+     * Nothing to say about a shape that is not finished.
+     *
+     * An open contour is half a drawing, and half a drawing is missing most of
+     * its extremes by definition -- so turning the marks on part way through
+     * covered the letter in rings that all said the same thing: "you have not
+     * finished". That is noise, and noise is worse than silence here, because
+     * a person who learns to ignore the rings stops seeing the real ones.
+     */
+    if (!closed) continue;
     const last = closed ? nodes.length : nodes.length - 1;
     for (let at = 0; at < last; at++) {
       const a = nodes[at];
@@ -80,6 +90,9 @@ export function nearlySmooth(
 ): { contour: number; node: number; point: Vec2; degrees: number }[] {
   const out: { contour: number; node: number; point: Vec2; degrees: number }[] = [];
   contours.forEach((contour, at) => {
+    // Finished shapes only, for the reason above: a kink in a drawing still
+    // being made is not yet a fault, it is a point that has not been placed.
+    if (!contour.closed) return;
     contour.nodes.forEach((node, index) => {
       const off = offSmooth(node);
       if (off !== null && off > 1e-6 && off <= within) {

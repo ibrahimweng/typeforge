@@ -338,6 +338,16 @@ export function GlyphEditorView(): React.JSX.Element {
       const on = segmentUnder(glyph, view, at);
       if (on) drawSegmentUnder(context, glyph.contours[on.contour], on.index, view);
     }
+    /*
+     * The path the Paths list is pointing at, drawn over the letter.
+     *
+     * Under the nodes so it never hides one, and as the outline rather than a
+     * box: which of two nested contours an `o` row means is the whole question,
+     * and a box round either covers both.
+     */
+    if (state.highlightPath !== null) {
+      drawPathOutline(context, glyph.contours[state.highlightPath], view);
+    }
     drawNodes(context, glyph.contours, view, state.selectedNodes, hover);
     if (state.marks) drawMarks(context, glyph.contours, view);
     drawAnchors(context, glyph.anchors, view, hover);
@@ -364,7 +374,7 @@ export function GlyphEditorView(): React.JSX.Element {
      * property rather than taking a prop, so nothing else in this list changes
      * when the ground does and the canvas would keep its old colours.
      */
-  }, [typeface, glyph, view, size, state.selectedNodes, state.revision, hover, neighbours, state.guides, state.ground, state.marks, state.tool, at]);
+  }, [typeface, glyph, view, size, state.selectedNodes, state.revision, hover, neighbours, state.guides, state.ground, state.marks, state.tool, at, state.highlightPath]);
 
 
   // --- interaction ------------------------------------------------------
@@ -707,7 +717,17 @@ export function GlyphEditorView(): React.JSX.Element {
       pathOpen: Boolean(open),
       openPoints: open?.nodes.length ?? 0,
       node: node !== null,
-      edge: node === null && segmentUnder(glyph, view, canvasPoint) !== null,
+      /*
+       * Asked without regard to whether a point is here too.
+       *
+       * It used to be `no node and an edge`, which reads sensibly and is wrong
+       * for the tool it matters most to: on a curve every point sits on an edge,
+       * so Add point went blank at exactly the places a person aims -- while its
+       * click, which asks the edge directly, went ahead and added one. The words
+       * and the deed disagreed. Which of the two wins where both are present is
+       * each tool's business, and each one says so.
+       */
+      edge: segmentUnder(glyph, view, canvasPoint) !== null,
       shape: glyph.contours.some((one) => one.closed && one.nodes.length >= 3),
       lastPoint: onLastPoint(glyph, view, canvasPoint),
     };
@@ -1965,6 +1985,40 @@ function drawPenReach(
  * counter two segments run within a few units of each other -- a box round
  * either would cover both.
  */
+/** One contour, traced in the colour the interface uses for "this one". */
+function drawPathOutline(
+  context: CanvasRenderingContext2D,
+  contour: Contour | undefined,
+  view: GlyphView,
+): void {
+  if (!contour || contour.nodes.length < 2) return;
+  const to = (v: Vec2) => ({ x: view.originX + v.x * view.scale, y: view.originY - v.y * view.scale });
+
+  context.save();
+  context.beginPath();
+  const first = to(contour.nodes[0].point);
+  context.moveTo(first.x, first.y);
+  const last = contour.closed ? contour.nodes.length : contour.nodes.length - 1;
+  for (let at = 0; at < last; at++) {
+    const a = contour.nodes[at];
+    const b = contour.nodes[(at + 1) % contour.nodes.length];
+    const c1 = to(a.handleOut ?? a.point);
+    const c2 = to(b.handleIn ?? b.point);
+    const end = to(b.point);
+    context.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, end.x, end.y);
+  }
+  if (contour.closed) context.closePath();
+
+  const colour = readToken("--accent", "#0c8ce9", context.canvas);
+  context.strokeStyle = withAlpha(readToken("--canvas", "#111111", context.canvas), 0.6);
+  context.lineWidth = 6;
+  context.stroke();
+  context.strokeStyle = colour;
+  context.lineWidth = 2.5;
+  context.stroke();
+  context.restore();
+}
+
 function drawSegmentUnder(
   context: CanvasRenderingContext2D,
   contour: Contour | undefined,

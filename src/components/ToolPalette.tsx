@@ -198,9 +198,13 @@ export function ToolPalette(): React.JSX.Element {
                 <span
                   aria-hidden
                   className={cn(
-                    "pointer-events-none absolute right-[2px] bottom-[2px] h-0 w-0",
-                    "border-r-[3px] border-b-[3px] border-l-[3px] border-transparent",
-                    here ? "border-b-accent-foreground/70" : "border-b-muted-foreground/60",
+                    // A wedge filling the corner, which is the shape this has
+                    // been since the classic Mac. Built from a transparent top
+                    // border and a coloured right one, so it points into the
+                    // corner rather than away from it.
+                    "pointer-events-none absolute right-[1px] bottom-[1px] h-0 w-0",
+                    "border-t-[4px] border-t-transparent border-r-[4px]",
+                    here ? "border-r-accent-foreground/80" : "border-r-muted-foreground/70",
                   )}
                 />
               )}
@@ -242,6 +246,7 @@ export function ToolPalette(): React.JSX.Element {
  */
 function Flyout({ group, onPick }: { group: GroupId; onPick: () => void }): React.JSX.Element {
   const state = useAppState();
+  const named = GROUPS.find((one) => one.id === group)!;
   const first = React.useRef<HTMLButtonElement>(null);
 
   React.useEffect(() => {
@@ -258,6 +263,22 @@ function Flyout({ group, onPick }: { group: GroupId; onPick: () => void }): Reac
         "bg-popover p-1 shadow-lg",
       )}
     >
+      {/*
+        The key, said here rather than only in a hover.
+
+        A single-key shortcut nobody is told about is a shortcut nobody uses,
+        and the buttons are twenty-eight pixels square with a phase dot in one
+        corner and a flyout tick in another -- no room for a letter that would
+        be legible. The flyout has room, and is where somebody goes the first
+        time they wonder what these are.
+      */}
+      <div className="flex items-baseline justify-between px-2 pt-1 pb-1.5">
+        <span className="text-2xs font-medium text-foreground">{named.name}</span>
+        <span className="text-2xs text-muted-foreground">
+          <kbd className="rounded border border-border px-1 font-mono">{named.key}</kbd> — again to
+          cycle
+        </span>
+      </div>
       {toolsIn(group).map((tool, at) => (
         <FlyoutRow
           key={tool.id}

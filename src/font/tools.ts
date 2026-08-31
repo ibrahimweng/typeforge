@@ -160,6 +160,11 @@ export function toolStateFor(
       return { phase: "ready", says: "Drag to draw. Come back to where you began to close it." };
 
     case "addPoint":
+      /*
+       * An edge is enough, and a point sitting on it is neither here nor there:
+       * on a curve every point is on an edge, so refusing where both are found
+       * would blank the tool at exactly the places a person aims.
+       */
       return under.edge
         ? { phase: "willDo", says: "Click to put a point here. The curve will not move." }
         : { phase: "ready", says: "Point at an edge to put a point on it." };
