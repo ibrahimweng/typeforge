@@ -32,7 +32,16 @@ import {
   type Forge,
 } from "@/forge/document";
 import type { Cuts } from "@/font/cuts";
-import type { Glyph, GlyphParams, KernClass, KernPair, Typeface } from "@/font/types";
+import type {
+  Glyph,
+  GlyphParams,
+  KernClass,
+  KernPair,
+  NamedLigature,
+  NamedRule,
+  NamedSet,
+  Typeface,
+} from "@/font/types";
 
 /** Which half of the application was open. */
 export type Mode = "edit" | "forge" | "assemble" | "quill";
@@ -131,6 +140,21 @@ export interface EditedProject {
   cast?: Cast;
   kerning: KernPair[];
   kernClasses: KernClass[];
+  /**
+   * What the font substitutes, and under which feature.
+   *
+   * None of this was saved. It cost nothing while `alternates` was written
+   * only by the forge -- which saves its own description and draws the rules
+   * again -- and an edit-mode document's was always empty. The moment somebody
+   * could make a ligature by hand, not saving it threw the work away on the
+   * next reopen, silently, with the glyphs still there to make it look fine.
+   *
+   * All three optional, because every document written before this has none
+   * and a reader that demands them turns those away at the door.
+   */
+  alternates?: NamedRule[];
+  ligatures?: NamedLigature[];
+  sets?: NamedSet[];
   /** Only the glyphs that have been touched. */
   glyphs: Glyph[];
 }
@@ -277,6 +301,9 @@ function toEdited(typeface: Typeface, fileName: string): EditedProject | undefin
     cast: typeface.cast,
     kerning: typeface.kerning,
     kernClasses: typeface.kernClasses,
+    alternates: typeface.alternates,
+    ligatures: typeface.ligatures,
+    sets: typeface.sets,
     glyphs: typeface.glyphs.filter((glyph) => glyph.dirty),
   };
 }
@@ -366,6 +393,15 @@ export function applyEdits(typeface: Typeface, saved: EditedProject): Typeface {
   typeface.cast = saved.cast;
   typeface.kerning = saved.kerning;
   typeface.kernClasses = saved.kernClasses;
+  /*
+   * Kept only where the document has something to say. A file written before
+   * these were saved says nothing about them, which is not the same as saying
+   * there are none: the font it was made from may carry its own, and reading
+   * silence as emptiness would take them out.
+   */
+  if (saved.alternates) typeface.alternates = saved.alternates;
+  if (saved.ligatures) typeface.ligatures = saved.ligatures;
+  if (saved.sets) typeface.sets = saved.sets;
 
   for (const glyph of saved.glyphs) {
     const at = typeface.glyphIndex.get(glyph.name);

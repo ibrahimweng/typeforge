@@ -115,3 +115,50 @@ suite("a font that joins its letters up", () => {
     FONT_SUITE_TIMEOUT,
   );
 });
+
+/**
+ * The same thing again, the way a person actually gets there.
+ *
+ * The suite above holds the writer up on its own. This one goes through the
+ * document: open a font, draw a letter, say it is the ligature for two others,
+ * export, and ask a shaper what a word made of them comes out as. Everything
+ * between the panel and the file is in the path -- the model, the rename-safe
+ * names, the id resolution the export does, and the `.notdef` it prepends,
+ * which shifts every glyph id by one and is the single easiest thing here to
+ * get wrong.
+ */
+suite("a ligature made in the document reaches the file", () => {
+  it(
+    "draws the two letters as the one that was made for them",
+    async () => {
+      const { importFont } = await import("../src/font/parse");
+      const { exportFont } = await import("../src/font/export");
+      const { addGlyph } = await import("../src/font/library");
+      const { addLigature } = await import("../src/font/features");
+
+      const { typeface } = await importFont(
+        new Uint8Array(readFileSync(FONT_PATH!)),
+        "DejaVuSans.ttf",
+      );
+
+      /*
+       * A drawing for the pair. Its shape does not matter here -- what is under
+       * test is whether the rule selects it -- so it borrows the `l`, which
+       * makes the answer easy to read in the shaped output.
+       */
+      const made = addGlyph(typeface, "f_i")!;
+      made.contours = typeface.glyphs[typeface.glyphIndex.get("l")!].contours;
+      made.advanceWidth = 900;
+      expect(addLigature(typeface, ["f", "i"], "f_i")).toBe(true);
+
+      // Rebuilt rather than preserved: preserving hands back the source font's
+      // own GSUB, which would answer a question nobody asked.
+      const built = await exportFont(typeface, { format: "ttf", fidelity: "rebuild" });
+      const shaped = shapeWords(built.bytes, ["fi", "fin", "if"]);
+      expect(shaped.fi).toEqual(["f_i"]);
+      expect(shaped.fin).toEqual(["f_i", "n"]);
+      expect(shaped.if).toEqual(["i", "f"]);
+    },
+    FONT_SUITE_TIMEOUT,
+  );
+});

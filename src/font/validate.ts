@@ -11,6 +11,7 @@
  * problem rather than only a list of them.
  */
 
+import { unreachableGlyphs } from "./features";
 import { contourArea, contoursBounds, distance } from "./geometry";
 import {
   contoursIntersect,
@@ -139,6 +140,39 @@ function checkFontStructure(typeface: Typeface): Finding[] {
       title: `Letters have been changed, and the font is still called ${typeface.meta.familyName}`,
       detail:
         "An exported file would carry the family name, designer, copyright and licence of the font this was opened from. Press the name in the toolbar to give the work its own.",
+    });
+  }
+
+  /*
+   * The letters a reader can never arrive at.
+   *
+   * A glyph is shown because a character maps to it, because a rule
+   * substitutes it in, or because another letter is built out of it. A glyph
+   * that is none of those is in the file, adds to its size, and cannot appear
+   * on any screen or page -- which is exactly what drawing `f_i` and stopping
+   * leaves you with, and nothing anywhere said so.
+   *
+   * Advice rather than a warning. It is not wrong: a face under construction is
+   * full of drawings that have not been wired up yet, and saying "error" about
+   * work in progress teaches people to stop reading the report. It says what is
+   * missing and where to go and do it.
+   */
+  const unreachable = unreachableGlyphs(typeface);
+  if (unreachable.length > 0) {
+    const listed = unreachable.slice(0, 8).join(", ");
+    findings.push({
+      check: "unreachable-glyphs",
+      severity: "advice",
+      title:
+        unreachable.length === 1
+          ? `${unreachable[0]} is drawn but nothing can reach it`
+          : `${unreachable.length} letters are drawn but nothing can reach them`,
+      detail:
+        `${listed}${unreachable.length > 8 ? `, and ${unreachable.length - 8} more` : ""}. ` +
+        "No character maps to these and no feature substitutes them in, so they take up room in the " +
+        "file and can never be shown. Give one a character in the letter panel, or make it a " +
+        "ligature or a stylistic set in the features panel.",
+      glyph: unreachable[0],
     });
   }
 

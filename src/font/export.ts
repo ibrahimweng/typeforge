@@ -34,7 +34,7 @@ import {
   type Master,
 } from "./variable";
 import { buildGposTable, type ResolvedClassKern, type ResolvedPair } from "./kern";
-import { buildGsubTable, type ChainRule } from "./gsub";
+import { buildGsubTable, type ChainRule, type GlyphSet, type Ligature } from "./gsub";
 import { anythingCut, effectiveParams, paramsAreDefault, resolveGlyphContours } from "./transform";
 import { ready as readyToCut } from "./boolean";
 import { readSfnt, writeSfnt, SFNT_TRUETYPE, type SfntFont } from "./sfnt";
@@ -563,7 +563,7 @@ async function exportOpenType(
 }
 
 /**
- * Turn the document's contextual alternates into a `GSUB` table.
+ * Turn the document's features into a `GSUB` table.
  *
  * Named rules in, glyph ids out. The names are resolved here rather than where
  * the rules are written because nothing knows a glyph's id until the export has
@@ -613,6 +613,36 @@ function applyAlternates(
   }
 
   /*
+   * A ligature goes in whole or not at all, on the same argument as everywhere
+   * else here: half of `f f i` is `f f`, which is not a smaller truth but a
+   * different rule, and one that fires where the real one should not.
+   */
+  const ligatures: Ligature[] = [];
+  for (const one of typeface.ligatures ?? []) {
+    const components = one.components.map(idFor);
+    const ligature = idFor(one.ligature);
+    if (ligature === null || components.some((id) => id === null)) continue;
+    ligatures.push({ components: components as number[], ligature });
+  }
+
+  /*
+   * A set drops the swaps it cannot write and keeps the rest, because its
+   * swaps are independent of each other: a stylistic set missing its `g` is
+   * still a stylistic set for every other letter in it.
+   */
+  const sets: GlyphSet[] = [];
+  for (const set of typeface.sets ?? []) {
+    const swaps: Array<{ plain: number; alternate: number }> = [];
+    for (const one of set.swaps) {
+      const plain = idFor(one.plain);
+      const alternate = idFor(one.alternate);
+      if (plain === null || alternate === null) continue;
+      swaps.push({ plain, alternate });
+    }
+    if (swaps.length > 0) sets.push({ tag: set.tag, swaps });
+  }
+
+  /*
    * Written when there is something to write, and otherwise left alone.
    *
    * Not deleted, which is what this did first and which quietly threw away the
@@ -621,7 +651,7 @@ function applyAlternates(
    * be none, and the ligatures and alternates the source font came with are
    * part of what an import is promised it will keep.
    */
-  const gsub = buildGsubTable({ contextual: rules });
+  const gsub = buildGsubTable({ ligatures, sets, contextual: rules });
   if (gsub) tables.set("GSUB", gsub);
 }
 

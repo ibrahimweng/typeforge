@@ -30,6 +30,12 @@ import {
   removeGlyph as takeGlyphOut,
   renameGlyph as callGlyph,
 } from "@/font/library";
+import {
+  addLigature as putLigatureIn,
+  addToSet as putInSet,
+  removeFromSet as takeOutOfSet,
+  removeLigature as takeLigatureOut,
+} from "@/font/features";
 import { reverse as reverseContour } from "@/font/outline";
 import {
   deriveParams,
@@ -2066,8 +2072,13 @@ class Store {
    * `editGlyph` snapshots one letter, which is right for redrawing one and
    * useless here: renaming `a` rewrites kern pairs, class memberships,
    * ligature rules and the components of every letter built on it. So this
-   * snapshots the five collections a name can be written into and puts them
-   * all back together.
+   * snapshots every collection a name can be written into and puts them all
+   * back together.
+   *
+   * Every one of them, taken from the one list that says how many there are --
+   * `library.ts` names eight places and this has to hold all of them. It held
+   * five, which was right until a ligature could be made by hand and then was
+   * an undo that took the letter back and left the rule pointing at it.
    *
    * The copies are shallow, which is what makes this cheap enough to do on a
    * font of six thousand letters: the library functions replace the arrays
@@ -2078,21 +2089,19 @@ class Store {
     const typeface = this.state.typeface;
     if (!typeface) return false;
 
-    const before = {
-      glyphs: typeface.glyphs,
-      glyphIndex: typeface.glyphIndex,
-      kerning: typeface.kerning,
-      kernClasses: typeface.kernClasses,
-      alternates: typeface.alternates,
-    };
+    const hold = (one: Typeface) => ({
+      glyphs: one.glyphs,
+      glyphIndex: one.glyphIndex,
+      kerning: one.kerning,
+      kernClasses: one.kernClasses,
+      alternates: one.alternates,
+      ligatures: one.ligatures,
+      sets: one.sets,
+    });
+
+    const before = hold(typeface);
     if (!mutate(typeface)) return false;
-    const after = {
-      glyphs: typeface.glyphs,
-      glyphIndex: typeface.glyphIndex,
-      kerning: typeface.kerning,
-      kernClasses: typeface.kernClasses,
-      alternates: typeface.alternates,
-    };
+    const after = hold(typeface);
 
     this.push({
       label,
@@ -2184,6 +2193,51 @@ class Store {
     this.set({ selectedGlyph: into, selectedNodes: new Set() });
     this.say(`Copied ${name} to ${into}. It answers to no character until you give it one.`, "success");
     return into;
+  }
+
+  /*
+   * The rules that draw one thing for another.
+   *
+   * Through `editFont` like the rest of the structural changes, because a
+   * feature is not part of any one glyph: undo has to put the whole rule back,
+   * and a rule names letters that other operations rewrite.
+   */
+
+  /** Join a run of letters into one drawing of them together. */
+  addLigature(components: string[], ligature: string): boolean {
+    const made = this.editFont("Add a ligature", (one) =>
+      putLigatureIn(one, components, ligature),
+    );
+    if (made) this.say(`${components.join(" ")} now draws as ${ligature}.`, "success");
+    else this.say(`Could not make a ligature of ${components.join(" ")}.`, "error");
+    return made;
+  }
+
+  /** Take a ligature out, leaving the drawing it used behind. */
+  removeLigature(components: string[]): boolean {
+    const gone = this.editFont("Remove a ligature", (one) => takeLigatureOut(one, components));
+    if (gone) {
+      this.say(
+        `${components.join(" ")} draws as separate letters again. The drawing is still in the font.`,
+        "success",
+      );
+    }
+    return gone;
+  }
+
+  /** Put one letter's second drawing under a tag a reader can switch on. */
+  addToSet(tag: string, label: string, plain: string, alternate: string): boolean {
+    const made = this.editFont("Add to a set", (one) =>
+      putInSet(one, tag, label, plain, alternate),
+    );
+    if (made) this.say(`${alternate} is now ${plain} under ${tag}.`, "success");
+    else this.say(`Could not put ${plain} into ${tag}.`, "error");
+    return made;
+  }
+
+  /** Take one letter out of a set, and the set with it if it was the last. */
+  removeFromSet(tag: string, plain: string): boolean {
+    return this.editFont("Remove from a set", (one) => takeOutOfSet(one, tag, plain));
   }
 
   /**
