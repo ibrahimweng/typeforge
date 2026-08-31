@@ -249,3 +249,44 @@ And Trace's panel is mostly empty before anything is traced -- a flex column
 with a pinned footer, and the one action it has sits at the top with the
 explanation filling the canvas beside it. Filling that space would mean
 inventing content.
+
+# A fourth tour: the pen, driven rather than read
+
+Two rounds of tool work were checked by reading the code and looking at the
+page. This one was checked by making the gestures, and the difference is the
+whole entry.
+
+**The pen had stopped working, and the page looked fine.** Placing a point did
+nothing at all: no point, no error on screen, the status line still saying
+`Click to start an outline`. The cause was a cast four files away. `Drag`
+gained a `pen` kind; `reportPhase` passed it to `toolStateFor` through
+`drag.kind as Doing["kind"]`; `whileDoing` had no case for it, so a switch
+declared to return `ToolState` ran off its end and returned `undefined`; the
+store then read `.phase` of nothing and threw inside the pointer-down handler,
+which killed the click before it reached the code that adds a point.
+
+Nothing about that is visible from reading either file. The cast is what made
+it possible -- it had told the compiler to stop checking in the one place
+checking was the point -- and the crash was in a handler, so it never reached
+an error boundary and never marked the page. The only signal was that clicking
+did nothing.
+
+**A colour that was right on one ground and wrong on the other.** The segment
+under the pen is drawn with a casing so it shows where it runs along the edge
+of a letter. The casing was `--background`, the chrome colour, where it meant
+`--canvas`, the ground the letter sits on. Those are the same colour on the
+dark ground, so it looked correct in every screenshot until somebody pressed
+`On white` and got a black halo round the highlight. The light ground also had
+no darkened `--inspect` or `--attention`: both are picked to carry against a
+near-black panel and wash out on a near-white canvas, which is a mark you have
+to hunt for.
+
+**A simplify that made outlines heavier.** Asked for a tolerance tighter than
+the drawing, `fitCubics` subdivides to reach it -- so a four-point circle asked
+to stay within a hundredth of a unit came back as twenty-six points, and the
+status line reported it as `-22 points out`. The negative in the message is
+what gave it away; the operation had been wrong in both directions before
+anybody noticed the sign.
+
+Three faults, none of which a fifth reading would have found, and all three
+were sitting in front of the first person to actually draw with the tool.

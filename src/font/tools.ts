@@ -45,11 +45,23 @@ export interface Under {
 
 /** What a gesture in progress amounts to, if there is one. */
 export interface Doing {
-  kind: "node" | "handle" | "anchor" | "marquee" | "pan" | "guide" | "shape" | "knife" | "pencil";
+  kind:
+    | "node"
+    | "handle"
+    | "anchor"
+    | "marquee"
+    | "pan"
+    | "guide"
+    | "shape"
+    | "knife"
+    | "pencil"
+    | "pen";
   /** For the knife: whether the line as drawn crosses anything. */
   wouldCut?: boolean;
   /** For the pencil: whether letting go here would close the loop. */
   wouldClose?: boolean;
+  /** For the pen: whether the drag has moved far enough to be pulling a handle. */
+  pulling?: boolean;
 }
 
 const SHAPE_WORDS = (tool: ToolId, held: Held): string => {
@@ -136,7 +148,31 @@ function whileDoing(tool: ToolId, doing: Doing, held: Held): ToolState {
       return doing.wouldCut
         ? { phase: "willDo", says: "Let go to cut here." }
         : { phase: "active", says: "Not across anything yet. The line has to cross a shape." };
+    case "pen":
+      /*
+       * The gesture that makes a curve rather than a corner: hold and pull, and
+       * the handle comes out of the point. Said out loud because it is the one
+       * thing about a pen nobody guesses -- a person who only ever clicks draws
+       * polygons and concludes the tool is broken.
+       */
+      return doing.pulling
+        ? {
+            phase: "active",
+            says: held.alt
+              ? "Pulling one side only, so the curve turns here. Let go to keep it."
+              : "Pulling the curve out. Alt breaks the handle so the curve can turn.",
+          }
+        : { phase: "active", says: "Let go for a corner, or pull to curve out of it." };
   }
+  /*
+   * Unreachable while every kind above has a case, and here so that the day a
+   * kind is added it fails loudly rather than returning undefined. It did
+   * exactly that once: the pen's own drag went in without a case here, this
+   * function ran off the end, and the caller crashed reading `.phase` of
+   * nothing -- which killed the whole pointer-down and made the pen look like
+   * it had simply stopped working.
+   */
+  return { phase: "active", says: "" };
 }
 
 /**

@@ -138,6 +138,16 @@
   --node-on-curve: oklch(0.52 0.16 250);
   --node-off-curve: oklch(0.62 0.02 285);
   --node-selected: oklch(0.62 0.15 70);
+  /*
+   * The two advice colours, darkened like everything above them.
+   *
+   * `--inspect` marks what a tool is about to do and `--attention` rings a
+   * fault, and both are drawn on the canvas rather than in the chrome. At their
+   * chrome values -- picked to carry against a near-black panel -- each is a
+   * pale wash on a near-white canvas, which is a mark you have to hunt for.
+   */
+  --inspect: oklch(0.48 0.22 300);
+  --attention: oklch(0.55 0.16 45);
 }
 
 @layer base {

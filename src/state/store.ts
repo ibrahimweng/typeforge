@@ -37,6 +37,8 @@ import {
   removeLigature as takeLigatureOut,
 } from "@/font/features";
 import { reverse as reverseContour } from "@/font/outline";
+import { NEARLY_STRAIGHT, offSmooth } from "@/font/marks";
+import { retracted, simplified, withPointOn, withoutPoint } from "@/font/pen";
 import {
   deriveParams,
   isControlGlyph,
@@ -200,6 +202,15 @@ export interface AppState {
   /** Whether a dragged point is pulled onto the lines worth landing on. */
   snapping: boolean;
   /**
+   * Whether the canvas rings the faults nobody can see by looking.
+   *
+   * Off by default, and a toggle rather than always-on, because these are
+   * advice about a drawing in progress: a letter halfway through being drawn is
+   * covered in missing extremes and does not need telling. Turned on it is the
+   * pass you make before calling a letter finished.
+   */
+  marks: boolean;
+  /**
    * Which ground the type is drawn on, where type is looked at.
    *
    * Only the canvas and the proof page change: the chrome stays dark, because
@@ -282,6 +293,7 @@ class Store {
     context: { before: "n", after: "n" },
     guides: [],
     snapping: true,
+    marks: false,
     ground: "dark",
     selectedGlyph: null,
     selectedNodes: new Set(),
@@ -651,6 +663,11 @@ class Store {
   setSnapping(snapping: boolean): void {
     this.set({ snapping });
   }
+
+  /** Whether the canvas rings the faults that cannot be seen by looking. */
+  setMarks(marks: boolean): void {
+    this.set({ marks });
+  }
   setSearch(search: string): void {
     this.set({ search });
   }
@@ -671,6 +688,101 @@ class Store {
 
   setSelectedNodes(keys: Iterable<string>): void {
     this.set({ selectedNodes: new Set(keys) });
+  }
+
+  /*
+   * Picking points when there are a great many of them.
+   *
+   * A marquee and a click are the whole of what this had, which works up to
+   * about a dozen points and stops working entirely on a traced or imported
+   * outline of two hundred. The three below are what every editor offers
+   * instead, and each answers a question a rubber band cannot: "this shape, not
+   * the one behind it", "every corner, wherever they are", "the next one along
+   * so I can walk the path".
+   */
+
+  /** Every point in the letter, or every point in one contour. */
+  selectAllNodes(glyphName: string, contour?: number): void {
+    const glyph = this.glyph(glyphName);
+    if (!glyph) return;
+    const keys: string[] = [];
+    glyph.contours.forEach((one, at) => {
+      if (contour !== undefined && at !== contour) return;
+      one.nodes.forEach((_, node) => keys.push(nodeKey({ contour: at, node })));
+    });
+    this.setSelectedNodes(keys);
+    this.say(
+      keys.length === 0
+        ? "Nothing to pick."
+        : `${keys.length} ${keys.length === 1 ? "point" : "points"} picked.`,
+      "info",
+    );
+  }
+
+  /**
+   * Every point of one kind.
+   *
+   * The one that saves the most work: "make every corner smooth" and "round
+   * every corner onto the grid" are both a single operation once the corners
+   * are picked, and picking them by hand on a letter with forty of them is the
+   * reason nobody does it.
+   *
+   * Asks the geometry rather than the stored type where the two can disagree: a
+   * node typed `smooth` whose handles are twenty degrees apart is a corner to
+   * everything that reads the font, whatever the file calls it.
+   *
+   * A point with fewer than two handles has no angle to measure and counts as a
+   * corner, which is right for the case that matters -- every point of a square
+   * -- and arguable for a tangent, where a straight runs into a curve. `Smooth`
+   * is the operation somebody reaches for after picking, and running it on a
+   * tangent does nothing, so the cost of the arguable case is nothing.
+   */
+  selectNodesOfKind(glyphName: string, kind: "corner" | "smooth" | "handleless"): void {
+    const glyph = this.glyph(glyphName);
+    if (!glyph) return;
+    const keys: string[] = [];
+    glyph.contours.forEach((one, at) => {
+      one.nodes.forEach((node, index) => {
+        const off = offSmooth(node);
+        const matches =
+          kind === "handleless"
+            ? !node.handleIn && !node.handleOut
+            : off === null
+              ? kind === "corner"
+              : kind === "smooth"
+                ? off <= NEARLY_STRAIGHT
+                : off > NEARLY_STRAIGHT;
+        if (matches) keys.push(nodeKey({ contour: at, node: index }));
+      });
+    });
+    this.setSelectedNodes(keys);
+    const named = kind === "handleless" ? "straight-line points" : `${kind} points`;
+    this.say(keys.length === 0 ? `No ${named}.` : `${keys.length} ${named} picked.`, "info");
+  }
+
+  /**
+   * The next point along the path, which is how a path gets walked.
+   *
+   * Tab in every drawing program there is, and the only way to inspect a
+   * hundred-point outline point by point without hunting for each with the
+   * pointer. Wraps within the contour rather than running off the end, because
+   * a contour is a loop and walking one should be able to go round.
+   */
+  stepSelection(glyphName: string, by: 1 | -1): void {
+    const glyph = this.glyph(glyphName);
+    if (!glyph || glyph.contours.length === 0) return;
+
+    const picked = [...this.state.selectedNodes].map((key) => {
+      const [contour, node] = key.split(":").map(Number);
+      return { contour, node };
+    });
+    // From nothing, start at the first point rather than nowhere.
+    const from = picked[picked.length - 1] ?? { contour: 0, node: by === 1 ? -1 : 0 };
+    const contour = glyph.contours[from.contour];
+    if (!contour || contour.nodes.length === 0) return;
+    const count = contour.nodes.length;
+    const next = ((from.node + by) % count + count) % count;
+    this.setSelectedNodes([nodeKey({ contour: from.contour, node: next })]);
   }
 
   toggleGlyphSelection(name: string, additive: boolean): void {
@@ -1318,6 +1430,98 @@ class Store {
     });
     this.say("Outline closed.", "success");
     return true;
+  }
+
+  /**
+   * Take the outgoing handle off the point the pen last placed.
+   *
+   * Clicking that point is how a curve is ended: the handle on the arriving
+   * side stays and the leaving one goes, so the next click draws a straight
+   * line out of a curve. Without it a curve could only ever be followed by
+   * another curve.
+   */
+  retractLast(glyphName: string): boolean {
+    const glyph = this.glyph(glyphName);
+    const contour = glyph?.contours[glyph.contours.length - 1];
+    if (!glyph || !contour || contour.closed || contour.nodes.length === 0) return false;
+    const last = contour.nodes[contour.nodes.length - 1];
+    if (!last.handleOut) return false;
+
+    this.editGlyph(glyphName, "End the curve", (one) => {
+      const editing = one.contours[one.contours.length - 1];
+      const node = editing?.nodes[editing.nodes.length - 1];
+      if (node) Object.assign(node, retracted(node));
+    });
+    return true;
+  }
+
+  /** Put a point on a segment, leaving the curve exactly where it was. */
+  addPointOn(glyphName: string, contour: number, segment: number, t: number): boolean {
+    const glyph = this.glyph(glyphName);
+    if (!glyph?.contours[contour]) return false;
+    this.editGlyph(glyphName, "Add a point", (one) => {
+      one.contours[contour] = withPointOn(one.contours[contour], segment, t);
+    });
+    return true;
+  }
+
+  /**
+   * Take points out, keeping the curve that ran through them.
+   *
+   * The old delete removed the nodes and let the shape jump, which is what
+   * makes an outline something you cannot thin out: every point you take costs
+   * you the curve. Re-fitting costs a little accuracy instead.
+   *
+   * Highest index first, so the earlier ones are still where they were said to
+   * be -- and one re-fit per removal rather than one for the lot, because the
+   * curve either side of each has to be measured as it stands when that point
+   * goes.
+   */
+  removePoints(glyphName: string, refs: NodeRef[]): boolean {
+    const glyph = this.glyph(glyphName);
+    if (!glyph || refs.length === 0) return false;
+
+    const byContour = new Map<number, number[]>();
+    for (const ref of refs) {
+      byContour.set(ref.contour, [...(byContour.get(ref.contour) ?? []), ref.node]);
+    }
+    this.editGlyph(glyphName, refs.length === 1 ? "Take a point out" : "Take points out", (one) => {
+      for (const [at, nodes] of byContour) {
+        let contour = one.contours[at];
+        if (!contour) continue;
+        for (const node of [...nodes].sort((a, b) => b - a)) {
+          contour = withoutPoint(contour, node);
+        }
+        one.contours[at] = contour;
+      }
+      one.contours = one.contours.filter((contour) => contour.nodes.length > 1);
+    });
+    this.setSelectedNodes([]);
+    return true;
+  }
+
+  /**
+   * The same outlines in fewer points.
+   *
+   * What `Tidy up` never did: tidying drops points that are exactly redundant,
+   * so a curve carried by forty points none of which is redundant stays at
+   * forty. This asks how few describe the same run to within a tolerance.
+   */
+  simplifyGlyph(glyphName: string, tolerance?: number): void {
+    const glyph = this.glyph(glyphName);
+    if (!glyph) return;
+    const before = glyph.contours.reduce((total, one) => total + one.nodes.length, 0);
+    this.editGlyph(glyphName, "Simplify", (one) => {
+      one.contours = one.contours.map((contour) => simplified(contour, tolerance));
+    });
+    const after = this.glyph(glyphName)!.contours.reduce((total, one) => total + one.nodes.length, 0);
+    this.setSelectedNodes([]);
+    this.say(
+      before === after
+        ? "Nothing to take out at this tolerance."
+        : `${before - after} ${before - after === 1 ? "point" : "points"} out, ${after} left.`,
+      before === after ? "info" : "success",
+    );
   }
 
   editGlyph(name: string, label: string, mutate: (glyph: Glyph) => void): void {
