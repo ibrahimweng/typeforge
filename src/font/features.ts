@@ -158,18 +158,121 @@ export function removeFromSet(typeface: Typeface, tag: string, plain: string): b
 }
 
 /**
+ * The ligatures this font could have and has not made yet.
+ *
+ * Only the ones whose letters are all drawn, because offering `ffl` to a font
+ * with no `l` in it is offering work that cannot be done. `drawing` is the
+ * glyph that would be used, and whether it is already there: a person who has
+ * drawn `f_i` wants the rule, and a person who has not wants both.
+ */
+export interface Suggestion {
+  components: string[];
+  drawing: string;
+  drawn: boolean;
+}
+
+export function suggestedLigatures(typeface: Typeface): Suggestion[] {
+  const out: Suggestion[] = [];
+  for (const components of COMMON_LIGATURES) {
+    if (!canJoin(typeface, components)) continue;
+    if (ligatureFor(typeface, components)) continue;
+    const drawing = drawingFor(typeface, components);
+    out.push({
+      components: [...components],
+      drawing,
+      drawn: typeface.glyphIndex.has(drawing),
+    });
+  }
+  return out;
+}
+
+/**
+ * The glyph a ligature of these letters would use, whatever it is called here.
+ *
+ * Two conventions are in use and both are correct. `f_i` is what a tool writes
+ * when it makes one; `fi` is what a great many shipped fonts call it, DejaVu
+ * among them. Looking only for the first offers to *make* a ligature to a font
+ * that already draws it -- and making it adds a second, empty glyph beside the
+ * real one and wires the rule to the blank.
+ *
+ * Found by asking rather than assumed, so an existing drawing is used and a
+ * missing one is made under the name a tool would give it.
+ */
+export function drawingFor(typeface: Typeface, components: readonly string[]): string {
+  const underscored = ligatureName(components);
+  if (typeface.glyphIndex.has(underscored)) return underscored;
+  const joined = components.join("");
+  if (typeface.glyphIndex.has(joined)) return joined;
+  return underscored;
+}
+
+/**
+ * The stylistic sets a font's own glyph names are already asking for.
+ *
+ * `a.ss01` says what it is: the `a` of stylistic set one. The convention is
+ * how every tool that reads a font finds them, and following it is how a person
+ * ends up with twenty drawings and no way to switch them on -- so this reads
+ * the names back and offers to wire up what it finds.
+ *
+ * The suffix has to be a tag this font does not already cover for that letter,
+ * and the plain letter has to exist: `a.ss01` with no `a` is a drawing of
+ * something else that happens to be named like a set.
+ */
+export function suggestedSets(typeface: Typeface): Map<string, Array<{ plain: string; alternate: string }>> {
+  const found = new Map<string, Array<{ plain: string; alternate: string }>>();
+  for (const glyph of typeface.glyphs) {
+    const dot = glyph.name.lastIndexOf(".");
+    if (dot <= 0) continue;
+    const plain = glyph.name.slice(0, dot);
+    const tag = glyph.name.slice(dot + 1);
+    if (!tagIsWellFormed(tag)) continue;
+    if (!SET_TAGS.some((one) => one.tag === tag)) continue;
+    if (!typeface.glyphIndex.has(plain)) continue;
+    if (typeface.sets?.some((set) => set.tag === tag && set.swaps.some((one) => one.plain === plain)))
+      continue;
+
+    const list = found.get(tag);
+    if (list) list.push({ plain, alternate: glyph.name });
+    else found.set(tag, [{ plain, alternate: glyph.name }]);
+  }
+  return found;
+}
+
+/** What a registered tag is called, or the tag itself for one nobody named. */
+export const labelFor = (tag: string): string =>
+  SET_TAGS.find((one) => one.tag === tag)?.label ?? tag;
+
+/**
+ * The names a font carries that no character has ever mapped to.
+ *
+ * `.notdef` is what a renderer draws for a character the font has not got.
+ * `.null` and `nonmarkingreturn` are the two glyphs the old Macintosh tables
+ * required at ids 1 and 2, and plenty of shipped fonts still carry them. None
+ * of the three is reachable by a rule and none of them is a mistake.
+ */
+const NOT_A_MISTAKE = new Set([".notdef", ".null", "nonmarkingreturn"]);
+
+/**
  * The glyphs a reader can never arrive at.
  *
- * A glyph is reachable if a character maps to it, or if some rule puts it
- * there. Everything else is in the file and cannot be shown -- which is exactly
- * the state that drawing `f_i` and stopping used to leave you in, with nothing
- * anywhere saying so.
+ * A glyph is reachable if a character maps to it, if some rule puts it there,
+ * or if another letter is built out of it. Everything else is in the file and
+ * cannot be shown -- which is exactly the state that drawing `f_i` and stopping
+ * used to leave you in, with nothing anywhere saying so.
  *
- * `.notdef` is reachable by definition: it is what a renderer draws for a
- * character the font has not got, which is the one way in that is not a rule.
+ * **Only what was drawn here, on a font that came from a file.** An imported
+ * font brings its own `GSUB` -- ligatures, positional forms, the lot -- which
+ * this document does not model and the exporter hands back untouched. So its
+ * glyphs are reachable through tables nothing here can see, and counting them
+ * reported two hundred and sixty-five dead letters in DejaVu Sans: Arabic
+ * initial and final forms, every one of them reached by the font's own rules.
+ *
+ * A check that is wrong about a correct font is worse than no check. So on a
+ * font with a source, this asks only about the letters somebody has drawn or
+ * changed here, which is the only part this document actually knows about.
  */
 export function unreachableGlyphs(typeface: Typeface): string[] {
-  const reached = new Set<string>([".notdef"]);
+  const reached = new Set<string>(NOT_A_MISTAKE);
   for (const glyph of typeface.glyphs) {
     if (glyph.unicodes.length > 0) reached.add(glyph.name);
   }
@@ -192,5 +295,6 @@ export function unreachableGlyphs(typeface: Typeface): string[] {
     for (const component of glyph.components) reached.add(component.glyphName);
   }
 
-  return typeface.glyphs.filter((one) => !reached.has(one.name)).map((one) => one.name);
+  const mine = typeface.source === null ? typeface.glyphs : typeface.glyphs.filter((one) => one.dirty);
+  return mine.filter((one) => !reached.has(one.name)).map((one) => one.name);
 }

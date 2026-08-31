@@ -215,6 +215,37 @@ describe("the letters nothing can reach", () => {
     expect(unreachableGlyphs(typeface)).toEqual(["f_f_i"]);
   });
 
+  /*
+   * The false positive this check had on every real font. An imported font
+   * brings its own GSUB -- DejaVu's Arabic positional forms among it -- which
+   * this document does not model and the exporter hands back untouched, so its
+   * glyphs are reached through tables nothing here can see. Counting them
+   * reported two hundred and sixty-five dead letters in a font that is fine.
+   */
+  it("asks only about what was drawn here, on a font that came from a file", () => {
+    const typeface = lettered();
+    typeface.source = {
+      bytes: new Uint8Array(),
+      sfntVersion: 0x00010000,
+      tables: new Map(),
+      isCFF: false,
+      fileName: "Imported.ttf",
+    };
+    for (const glyph of typeface.glyphs) glyph.dirty = false;
+    expect(unreachableGlyphs(typeface)).toEqual([]);
+
+    // What somebody draws here is this document's business, and is reported.
+    typeface.glyphs[typeface.glyphIndex.get("f_i")!].dirty = true;
+    expect(unreachableGlyphs(typeface)).toEqual(["f_i"]);
+  });
+
+  it("leaves the names that are never a mistake alone", () => {
+    // The two the old Macintosh tables required at ids 1 and 2, which plenty of
+    // shipped fonts still carry and no rule ever reaches.
+    const typeface = lettered([".notdef", ".null", "nonmarkingreturn", "f"]);
+    expect(unreachableGlyphs(typeface)).toEqual([]);
+  });
+
   it("counts a letter you can type, and `.notdef`, as reached", () => {
     const typeface = lettered(["f", "i"]);
     addGlyph(typeface, ".notdef");

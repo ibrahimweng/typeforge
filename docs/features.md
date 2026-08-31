@@ -86,3 +86,42 @@ not there.
   drawing `f_i` leaves you in today.
 - The proof view shows the features working, because a ligature you cannot see
   is a ligature you cannot judge.
+
+
+---
+
+# What the work turned up
+
+Three batches in, and the pattern holds: the faults that mattered were not on
+the list, and two of the three were found by looking at the panel rather than
+by running the tests.
+
+**CI had never shaped a word.** The workflow installed fontTools and not
+HarfBuzz, so every test that lays out text has been skipping there since the
+joined scripts landed -- silently, the way a skipped test does. The comment
+beside the font install says the principle out loud: "Tests read a font from
+the system and skip when none is present, so install one rather than let that
+coverage silently disappear." HarfBuzz was simply missed.
+
+**The panel made a duplicate of a ligature the font already had.** Two naming
+conventions are in use and both are correct: `f_i` is what a tool writes when
+it makes one, `fi` is what a great many shipped fonts call it. Looking only for
+the first offered to *make* `fi` to DejaVu Sans, which draws it -- and pressing
+the button added a second, empty glyph beside the real one and wired the rule
+to the blank. Which is a worse font than the one the button was there to fix.
+
+**The unreachable check was wrong about every real font.** It reported two
+hundred and sixty-five dead letters in DejaVu: Arabic initial, medial and final
+forms, reached by the font's own `GSUB`, which this document does not model and
+the exporter hands back untouched. A check that is wrong about a correct font
+is worse than no check, so on a font with a source it now asks only about the
+letters somebody has drawn or changed here -- the only part this document knows
+anything about. `.null` and `nonmarkingreturn` went the same way: two glyphs
+the old Macintosh tables required, carried by plenty of shipped fonts, reached
+by nothing and not a mistake.
+
+And one thing that was on the list and turned out bigger than it looked: a
+glyph's name was written in six places, and the two new rule shapes make it
+eight. The store's `editFont` was holding five of them for undo -- right until
+a ligature could be made by hand, and after that an undo that took the letter
+back and left the rule pointing at it.
