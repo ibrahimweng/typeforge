@@ -4491,18 +4491,33 @@ test("a tool says what it is for the moment it is picked up", async ({ page }) =
   await page.getByRole("button", { name: "Glyph", exact: true }).click();
   await page.waitForTimeout(400);
 
-  for (const [tool, expected] of [
-    ["pencil", /Drag to draw/],
-    ["rectangle", /Drag out a rectangle/],
-    ["ellipse", /Drag out an ellipse/],
-    ["knife", /right across a shape/],
+  /*
+   * Through the flyout, because the tools are grouped now.
+   *
+   * A group button carries `data-tool` for whichever of its tools was last
+   * used, so the four defaults are still reachable by that selector and the
+   * other nine are not. `pencil` is `freehand` and lives under the pen, being
+   * a pen that takes a drawn line rather than a series of clicks.
+   */
+  const takeUp = async (group: string, tool: string) => {
+    const button = page.locator(`[data-tool-group="${group}"]`);
+    await button.click();
+    if ((await page.locator(`[data-flyout-tool="${tool}"]`).count()) === 0) await button.click();
+    await page.locator(`[data-flyout-tool="${tool}"]`).click();
+  };
+
+  for (const [group, tool, expected] of [
+    ["pen", "freehand", /Drag to draw/],
+    ["shape", "rectangle", /Drag out a rectangle/],
+    ["shape", "ellipse", /Drag out an ellipse/],
+    ["knife", "knife", /right across a shape/],
   ] as const) {
-    await page.locator(`[data-tool="${tool}"]`).click();
+    await takeUp(group, tool);
     await expect(page.locator("[data-tool-says]"), `${tool} said nothing`).toHaveText(expected);
   }
 
   // And select over nothing says nothing, which is the state most time is
   // spent in and does not need narrating.
-  await page.locator('[data-tool="select"]').click();
+  await takeUp("select", "select");
   await expect(page.locator("[data-tool-says]")).toHaveText(/Select one point/);
 });

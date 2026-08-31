@@ -653,6 +653,17 @@ class Store {
   }
 
   setTool(tool: Tool): void {
+    /*
+     * Picking the tool you already have changes nothing, and must say nothing.
+     *
+     * Clearing the phase is what stops a stale sentence from the last tool
+     * sitting under the new one, and the editor fills it back in on a change of
+     * tool. Cleared without a change there is nothing to fill it back in, so the
+     * line went blank and fell through to its default -- which is how choosing
+     * the rectangle from the flyout while already holding the rectangle left
+     * `Select one point to type its position` under a rectangle tool.
+     */
+    if (tool === this.state.tool) return;
     // A tool picked up mid-anything starts from nothing, which is also what
     // stops a stale sentence from the last tool sitting under the new one.
     this.set({

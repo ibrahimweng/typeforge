@@ -1440,7 +1440,16 @@ export function GlyphEditorView(): React.JSX.Element {
           onPointerLeave={() => {
             setHover(null);
             noteAt(null);
-            store.setToolState({ phase: "idle", says: "" });
+            /*
+             * The tool is still in hand, so it still has something to say.
+             *
+             * This blanked the sentence outright, which meant that reaching
+             * for a tool -- a move that necessarily leaves the canvas -- left
+             * the line empty, and it only came back when the pointer returned.
+             * The state to report is "this tool, with nothing under it", which
+             * is exactly what the tool would do the moment you came back.
+             */
+            reportPhase(null);
           }}
           onWheel={(event) => {
             // Ctrl or command with the wheel zooms, matching every design tool.
