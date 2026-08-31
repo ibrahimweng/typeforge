@@ -12,9 +12,8 @@
 
 import { readComposites } from "./composite";
 import { contoursBounds } from "./geometry";
-import { labelFor } from "./features";
+import { featuresFromGsub } from "./features";
 import { readGposKerning, toKernClasses, writtenPairs } from "./gpos";
-import { readGsubFeatures } from "./gsub";
 import { classifyNodes } from "./quadratic";
 import { readSfnt, SFNT_CFF } from "./sfnt";
 import {
@@ -135,32 +134,7 @@ function featuresOf(
   const raw = source?.tables.get("GSUB");
   if (!raw) return {};
 
-  const read = readGsubFeatures(raw);
-  const nameOf = (id: number): string | null => glyphs[id]?.name ?? null;
-
-  const ligatures: NamedLigature[] = [];
-  for (const one of read.ligatures) {
-    // Only the ligatures a reader gets without asking. `dlig` and `hlig` are
-    // real features and a different promise, and reading them in here would
-    // turn every discretionary ligature in a font into a mandatory one.
-    if (one.tag !== "liga") continue;
-    const components = one.components.map(nameOf);
-    const ligature = nameOf(one.ligature);
-    if (!ligature || components.some((name) => name === null)) continue;
-    ligatures.push({ components: components as string[], ligature });
-  }
-
-  const sets: NamedSet[] = [];
-  for (const set of read.sets) {
-    const swaps: NamedSet["swaps"] = [];
-    for (const one of set.swaps) {
-      const plain = nameOf(one.plain);
-      const alternate = nameOf(one.alternate);
-      if (plain && alternate && plain !== alternate) swaps.push({ plain, alternate });
-    }
-    if (swaps.length > 0) sets.push({ tag: set.tag, label: labelFor(set.tag), swaps });
-  }
-
+  const { ligatures, sets } = featuresFromGsub(raw, glyphs);
   return {
     ...(ligatures.length > 0 ? { ligatures } : {}),
     ...(sets.length > 0 ? { sets } : {}),

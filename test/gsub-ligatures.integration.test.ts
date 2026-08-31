@@ -199,6 +199,34 @@ suite("a font brought in keeps what it came with", () => {
   );
 
   it(
+    "reads only the tags that mean a second drawing somebody switches on",
+    async () => {
+      const typeface = await opened();
+      const tags = (typeface.sets ?? []).map((one) => one.tag);
+
+      /*
+       * A single substitution is not by itself a stylistic set. DejaVu carries
+       * `init`, `medi` and `fina` -- the Arabic positional forms, a hundred and
+       * sixteen in one -- plus `locl`, `case` and `aalt`, every one a single
+       * substitution and none of them a choice made in a panel. Read in without
+       * filtering, the features panel listed fourteen sets nobody had made.
+       */
+      for (const unwanted of ["init", "medi", "fina", "locl", "case", "aalt"]) {
+        expect(tags, `${unwanted} is not a stylistic set`).not.toContain(unwanted);
+      }
+
+      /*
+       * And one entry per tag, however many lookups the font spread it across.
+       * DejaVu reaches three separate substitutions under `salt`; read as three
+       * sets they are three rows with one name and three feature records under
+       * one tag in anything rebuilt from them, which is a malformed list.
+       */
+      expect(new Set(tags).size).toBe(tags.length);
+    },
+    FONT_SUITE_TIMEOUT,
+  );
+
+  it(
     "carries them through a rebuild, which used to drop them",
     async () => {
       const { exportFont } = await import("../src/font/export");

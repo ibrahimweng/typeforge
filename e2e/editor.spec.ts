@@ -4134,23 +4134,31 @@ test("letters can be drawn as one, which nothing could ask for before", async ({
 
   const panel = page.locator("[data-features-panel]");
   await expect(panel).toBeVisible();
-  await expect(panel.getByText("None yet.").first()).toBeVisible();
 
   /*
-   * The standard ones, offered rather than typed -- and only the ones whose
-   * letters this font has, so `ffl` is not offered to a face with no `l`.
+   * The font's own, which it now arrives with. This asserted "None yet" -- true
+   * only while an import read no features, which is the very thing that made
+   * the panel lie about a face that has drawn `fi` for twenty years.
    */
-  const offer = panel.locator("[data-make-ligature]").first();
-  await expect(offer).toBeVisible();
-  await offer.click();
+  const already = await panel.locator("[data-ligature]").count();
+  expect(already).toBeGreaterThan(0);
+
+  /*
+   * A pair of this font's own choosing, typed. DejaVu carries all five of the
+   * standard ligatures already -- `fi`, `fl`, `ff`, `ffi`, `ffl` -- so none of
+   * them is offered, which is the suggestion list being right rather than
+   * empty. The free-form join is the path that always exists.
+   */
+  await page.getByLabel("Letters to join").fill("t h");
+  await page.getByRole("button", { name: "Join", exact: true }).click();
 
   await expect(page.getByText("now draws as", { exact: false })).toBeVisible();
-  await expect(panel.locator("[data-ligature]")).toHaveCount(1);
+  await expect(panel.locator("[data-ligature]")).toHaveCount(already + 1);
 
   // And it comes back out, leaving the drawing where it was.
   const before = await page.locator("[data-glyph-numbers]").count();
-  await panel.locator("[data-ligature]").first().getByRole("button", { name: "Undo" }).click();
-  await expect(panel.locator("[data-ligature]")).toHaveCount(0);
+  await panel.locator("[data-ligature]").last().getByRole("button", { name: "Undo" }).click();
+  await expect(panel.locator("[data-ligature]")).toHaveCount(already);
   expect(await page.locator("[data-glyph-numbers]").count()).toBe(before);
 });
 
@@ -4173,10 +4181,20 @@ test("a ligature uses the drawing the font already has rather than a second one"
     .click();
 
   const panel = page.locator("[data-features-panel]");
-  // DejaVu draws `fi`, so it is offered under that name and without "new".
-  const existing = panel.locator("[data-make-ligature='fi']");
-  await expect(existing).toBeVisible();
-  await expect(existing).not.toContainText("new");
+
+  /*
+   * DejaVu's own `fi` rule is read in now, so it is not offered -- a font that
+   * already joins a pair has nothing to be offered about it. Taking the rule
+   * out puts the pair back in the list with the drawing still in the font,
+   * which is exactly the state this is about: a ligature glyph that exists and
+   * has nothing selecting it.
+   */
+  await panel.locator("[data-ligature='fi']").getByRole("button", { name: "Undo" }).click();
+
+  const offered = panel.locator("[data-make-ligature='fi']");
+  await expect(offered).toBeVisible();
+  // Without "new", because the drawing is there and only the rule is missing.
+  await expect(offered).not.toContainText("new");
 
   await page.getByRole("button", { name: "Font", exact: true }).click();
   const countBefore = await page.locator("[data-glyph-cell]").count();
@@ -4249,11 +4267,25 @@ test("the proof sets the joined letters, and can be asked not to", async ({ page
 });
 
 test("the ligature switch stays away until the font has one", async ({ page }) => {
-  // A switch that changes nothing is furniture.
+  /*
+   * A switch that changes nothing is furniture. Asked of a font just started
+   * rather than of DejaVu, which arrives with its own ligatures now that an
+   * import reads them -- and so rightly gets the switch.
+   */
+  await page.goto("/");
+  await startBlank(page);
+  // A letter, so the proof shows its controls rather than its empty state --
+  // the switch has to be absent from a bar that is actually on screen.
+  await page.getByRole("button", { name: "Font", exact: true }).click();
+  await page.locator("[data-add-glyph]").click();
+  await page.getByRole("button", { name: "Proof", exact: true }).click();
+  await expect(page.locator("[data-proof-ligatures]")).toHaveCount(0);
+
+  // And a font that has one gets it, which is the other half of the claim.
   await page.goto("/");
   await openFont(page);
   await page.getByRole("button", { name: "Proof", exact: true }).click();
-  await expect(page.locator("[data-proof-ligatures]")).toHaveCount(0);
+  await expect(page.locator("[data-proof-ligatures]")).toHaveCount(1);
 });
 
 test("a font opened from another mode takes you to where it opened", async ({ page }) => {
