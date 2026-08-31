@@ -8,7 +8,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -269,6 +269,63 @@ def advance(text, kern):
     return buf.glyph_positions[0].x_advance
 
 print(json.dumps({p: advance(p, True) - advance(p, False) for p in pairs}))
+`;
+
+/**
+ * A font with one of its tables replaced, so a writer can be held up on its own.
+ *
+ * The alternative is to build a whole font around every table under test, which
+ * makes the test about the builder as much as about the table. This takes a
+ * real font off the system, swaps in the bytes, and hands the result to
+ * fontTools and to HarfBuzz -- so what is being asked about is the table.
+ */
+export function withTable(bytes: Uint8Array, tag: string, table: Uint8Array): Uint8Array {
+  const dir = mkdtempSync(join(tmpdir(), "typeforge-"));
+  const fontPath = join(dir, "font.bin");
+  const tablePath = join(dir, "table.bin");
+  const outPath = join(dir, "out.ttf");
+  writeFileSync(fontPath, bytes);
+  writeFileSync(tablePath, table);
+
+  const result = spawnSync("python3", ["-c", SPLICE, fontPath, tag, tablePath, outPath], {
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (result.status !== 0) {
+    throw new Error(`could not splice ${tag}: ${result.stderr || result.stdout}`);
+  }
+  return new Uint8Array(readFileSync(outPath));
+}
+
+const SPLICE = `
+import sys
+from fontTools.ttLib import TTFont
+from fontTools.ttLib.tables.DefaultTable import DefaultTable
+
+source, tag, table, out = sys.argv[1:5]
+font = TTFont(source)
+if tag in font:
+    del font[tag]
+holder = DefaultTable(tag)
+holder.data = open(table, "rb").read()
+font[tag] = holder
+font.save(out)
+`;
+
+/** The glyph order of a font, so a test can name glyphs and get their ids. */
+export function glyphOrder(bytes: Uint8Array): string[] {
+  const dir = mkdtempSync(join(tmpdir(), "typeforge-"));
+  const fontPath = join(dir, "font.bin");
+  writeFileSync(fontPath, bytes);
+  const result = spawnSync("python3", ["-c", ORDER, fontPath], { encoding: "utf8" });
+  if (result.status !== 0) throw new Error(`could not read glyph order: ${result.stderr}`);
+  return JSON.parse(result.stdout) as string[];
+}
+
+const ORDER = `
+import json, sys
+from fontTools.ttLib import TTFont
+print(json.dumps(TTFont(sys.argv[1]).getGlyphOrder()))
 `;
 
 export function hasHarfbuzz(): boolean {

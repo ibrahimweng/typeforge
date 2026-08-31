@@ -28,9 +28,13 @@ jobs:
       - run: npm ci
 
       # The export tests check their output against fontTools, the reference
-      # implementation, rather than against this project's own reader.
-      - name: Install fontTools
-        run: pip install --quiet fonttools brotli
+      # implementation, rather than against this project's own reader -- and
+      # against HarfBuzz, which is what actually lays out text with a font.
+      # HarfBuzz was missing here, so every test that shapes a word skipped in
+      # CI and said nothing: the joins and the ligatures were only ever checked
+      # on a machine that happened to have it.
+      - name: Install fontTools and HarfBuzz
+        run: pip install --quiet fonttools brotli uharfbuzz
 
       # Tests read a font from the system and skip when none is present, so
       # install one rather than let that coverage silently disappear.

@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { buildGsubTable, type ChainRule } from "./gsub";
+import { buildGsubTable, type ChainRule, type Ligature } from "./gsub";
 
 const swap = (from: number, to: number) => ({ plain: from, alternate: to });
 
@@ -31,7 +31,7 @@ const at = (bytes: Uint8Array, index: number): number => (bytes[index] << 8) | b
 
 describe("what it writes at all", () => {
   it("says nothing when there is nothing to say", () => {
-    expect(buildGsubTable([])).toBeNull();
+    expect(buildGsubTable({})).toBeNull();
   });
 
   /*
@@ -41,9 +41,9 @@ describe("what it writes at all", () => {
    * they are a feature the shaper spends time on to no effect.
    */
   it("drops a rule that cannot do anything", () => {
-    expect(buildGsubTable([{ input: [[], [1]], swaps: [{ at: 0, swap: [swap(1, 2)] }] }])).toBeNull();
-    expect(buildGsubTable([{ input: [[1]], swaps: [] }])).toBeNull();
-    expect(buildGsubTable([{ input: [[1]], swaps: [{ at: 0, swap: [] }] }])).toBeNull();
+    expect(buildGsubTable({ contextual: [{ input: [[], [1]], swaps: [{ at: 0, swap: [swap(1, 2)] }] }] })).toBeNull();
+    expect(buildGsubTable({ contextual: [{ input: [[1]], swaps: [] }] })).toBeNull();
+    expect(buildGsubTable({ contextual: [{ input: [[1]], swaps: [{ at: 0, swap: [] }] }] })).toBeNull();
   });
 
   /*
@@ -52,12 +52,12 @@ describe("what it writes at all", () => {
    * calls it undefined; in practice it is a font that crashes something.
    */
   it("drops a rule that changes a position it never matched", () => {
-    expect(buildGsubTable([{ input: [[1]], swaps: [{ at: 3, swap: [swap(1, 2)] }] }])).toBeNull();
+    expect(buildGsubTable({ contextual: [{ input: [[1]], swaps: [{ at: 3, swap: [swap(1, 2)] }] }] })).toBeNull();
   });
 });
 
 describe("the shape of the table", () => {
-  const table = buildGsubTable([JOIN])!;
+  const table = buildGsubTable({ contextual: [JOIN] })!;
 
   it("puts the three lists where the header says they are", () => {
     expect(at(table, 0)).toBe(1); // major version
@@ -98,7 +98,7 @@ describe("the shape of the table", () => {
   });
 
   it("grows a lookup pair for every rule and no more", () => {
-    const two = buildGsubTable([JOIN, JOIN])!;
+    const two = buildGsubTable({ contextual: [JOIN, JOIN] })!;
     const lookupList = at(two, 8);
     expect(at(two, lookupList)).toBe(6);
   });
@@ -113,15 +113,168 @@ describe("what it costs", () => {
   it("stays inside a few hundred bytes for a whole alphabet", () => {
     const letters = Array.from({ length: 26 }, (_, index) => 100 + index);
     const alternates = letters.map((one) => one + 100);
-    const table = buildGsubTable([
-      {
-        input: [[100, 101, 102, 103], letters],
-        swaps: [
-          { at: 0, swap: [100, 101, 102, 103].map((one) => swap(one, one + 200)) },
-          { at: 1, swap: letters.map((one, index) => swap(one, alternates[index])) },
-        ],
-      },
-    ])!;
+    const table = buildGsubTable({
+      contextual: [
+        {
+          input: [[100, 101, 102, 103], letters],
+          swaps: [
+            { at: 0, swap: [100, 101, 102, 103].map((one) => swap(one, one + 200)) },
+            { at: 1, swap: letters.map((one, index) => swap(one, alternates[index])) },
+          ],
+        },
+      ],
+    })!;
     expect(table.length).toBeLessThan(400);
+  });
+});
+
+/** `f` `f` `i` and their friends, as glyph ids. */
+const F = 10;
+const I = 11;
+const L = 12;
+const FI = 90;
+const FF = 91;
+const FFI = 92;
+const FL = 93;
+
+const liga = (components: number[], ligature: number): Ligature => ({ components, ligature });
+
+describe("a run of glyphs that becomes one", () => {
+  it("writes nothing for a ligature with nothing to join", () => {
+    // One component is not a ligature -- it is a set, and the format has a
+    // cheaper lookup for that.
+    expect(buildGsubTable({ ligatures: [liga([F], FI)] })).toBeNull();
+    expect(buildGsubTable({ ligatures: [] })).toBeNull();
+  });
+
+  it("puts the ligatures in their own feature, tagged liga", () => {
+    const table = buildGsubTable({ ligatures: [liga([F, I], FI)] })!;
+    const featureList = at(table, 6);
+    expect(at(table, featureList)).toBe(1);
+    expect(String.fromCharCode(...table.slice(featureList + 2, featureList + 6))).toBe("liga");
+  });
+
+  /*
+   * The bug this is really about, and it does not look like a bug. A shaper
+   * takes the first ligature that matches and carries on from after it, so with
+   * `ff` written before `ffi` the `ff` matches, the `i` is left standing, and
+   * the font has no `ffi` in it. It opens. It recompiles. fontTools reports
+   * both ligatures present. Only shaping the word says otherwise.
+   */
+  it("writes the longer run first, whatever order it was given in", () => {
+    const table = buildGsubTable({
+      ligatures: [liga([F, F], FF), liga([F, F, I], FFI)],
+    })!;
+    const lookupList = at(table, 8);
+    // One lookup, of type 4, holding one subtable.
+    expect(at(table, lookupList)).toBe(1);
+    const lookup = lookupList + at(table, lookupList + 2);
+    expect(at(table, lookup)).toBe(4);
+
+    const subtable = lookup + at(table, lookup + 6);
+    expect(at(table, subtable)).toBe(1); // substFormat 1
+    expect(at(table, subtable + 4)).toBe(1); // one set: both start with f
+
+    const set = subtable + at(table, subtable + 6);
+    expect(at(table, set)).toBe(2); // two ligatures in it
+    const first = set + at(table, set + 2);
+    const second = set + at(table, set + 4);
+    // componentCount includes the first glyph, so ffi is 3 and ff is 2.
+    expect(at(table, first + 2)).toBe(3);
+    expect(at(table, second + 2)).toBe(2);
+    expect(at(table, first)).toBe(FFI);
+    expect(at(table, second)).toBe(FF);
+  });
+
+  it("stores every component but the first, which coverage already found", () => {
+    const table = buildGsubTable({ ligatures: [liga([F, F, I], FFI)] })!;
+    const lookupList = at(table, 8);
+    const lookup = lookupList + at(table, lookupList + 2);
+    const subtable = lookup + at(table, lookup + 6);
+    const set = subtable + at(table, subtable + 6);
+    const record = set + at(table, set + 2);
+    expect(at(table, record + 2)).toBe(3);
+    // Two shorts follow, not three: the leading f is in the coverage table.
+    expect(at(table, record + 4)).toBe(F);
+    expect(at(table, record + 6)).toBe(I);
+
+    const cover = subtable + at(table, subtable + 2);
+    expect(at(table, cover)).toBe(1); // a plain list
+    expect(at(table, cover + 2)).toBe(1);
+    expect(at(table, cover + 4)).toBe(F);
+  });
+
+  /*
+   * A set is found by the index its first glyph has in the coverage table, and
+   * coverage is sorted by glyph id. Written in the order the ligatures happened
+   * to be given, `fi` made after `li` sends the shaper to the wrong set.
+   */
+  it("orders the sets by their first glyph, not by when they were made", () => {
+    const table = buildGsubTable({
+      ligatures: [liga([L, I], FL), liga([F, I], FI)],
+    })!;
+    const lookupList = at(table, 8);
+    const lookup = lookupList + at(table, lookupList + 2);
+    const subtable = lookup + at(table, lookup + 6);
+    const cover = subtable + at(table, subtable + 2);
+    expect([at(table, cover + 4), at(table, cover + 6)]).toEqual([F, L]);
+
+    const forF = subtable + at(table, subtable + 6);
+    const forL = subtable + at(table, subtable + 8);
+    expect(at(table, forF + at(table, forF + 2))).toBe(FI);
+    expect(at(table, forL + at(table, forL + 2))).toBe(FL);
+  });
+});
+
+describe("more than one feature in a font", () => {
+  it("gives each feature its own lookups, and names them all to the language", () => {
+    const table = buildGsubTable({
+      ligatures: [liga([F, I], FI)],
+      contextual: [JOIN],
+      sets: [{ tag: "ss01", swaps: [swap(F, FF)] }],
+    })!;
+
+    const featureList = at(table, 6);
+    expect(at(table, featureList)).toBe(3);
+    const tags = [0, 1, 2].map((index) =>
+      String.fromCharCode(...table.slice(featureList + 2 + index * 6, featureList + 6 + index * 6)),
+    );
+    // Sorted alphabetically, which the format requires and nothing enforces.
+    expect(tags).toEqual(["calt", "liga", "ss01"]);
+
+    // Every one of them reachable: the language system names all three.
+    const scriptList = at(table, 4);
+    const script = scriptList + at(table, scriptList + 6);
+    const langSys = script + at(table, script);
+    expect(at(table, langSys + 4)).toBe(3);
+    expect([0, 1, 2].map((index) => at(table, langSys + 6 + index * 2)).sort()).toEqual([0, 1, 2]);
+  });
+
+  /*
+   * The substitutions a chain reaches are invoked by that chain. Listed in a
+   * feature as well, they would also fire on their own -- every letter in the
+   * font replaced by its alternate wherever it stood.
+   */
+  it("keeps the chain's own substitutions out of every feature", () => {
+    const table = buildGsubTable({ contextual: [JOIN] })!;
+    const featureList = at(table, 6);
+    const feature = featureList + at(table, featureList + 6);
+    expect(at(table, feature + 2)).toBe(1); // the chain, and not its two singles
+    const lookupList = at(table, 8);
+    expect(at(table, lookupList)).toBe(3); // which are still in the font
+  });
+
+  it("drops a set that swaps a glyph for itself", () => {
+    expect(buildGsubTable({ sets: [{ tag: "ss01", swaps: [swap(F, F)] }] })).toBeNull();
+  });
+
+  /*
+   * A tag is four bytes. A shorter one written as it stands shifts every offset
+   * in the table after it, which is a file that opens and is read wrongly.
+   */
+  it("pads a short tag to four bytes rather than writing a short one", () => {
+    const table = buildGsubTable({ sets: [{ tag: "aa", swaps: [swap(F, FI)] }] })!;
+    const featureList = at(table, 6);
+    expect(String.fromCharCode(...table.slice(featureList + 2, featureList + 6))).toBe("aa  ");
   });
 });

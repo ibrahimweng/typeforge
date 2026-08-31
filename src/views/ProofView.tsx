@@ -19,6 +19,7 @@
 import * as React from "react";
 
 import { contoursToPath2D } from "@/font/geometry";
+import { applyLigatures } from "@/font/features";
 import { resolveAdvanceWidth, resolveGlyphContours } from "@/font/transform";
 import type { Glyph, Typeface } from "@/font/types";
 import { prepareCanvas, readToken } from "@/components/glyph-render";
@@ -59,6 +60,7 @@ function layout(
   text: string,
   widthInUnits: number,
   tracking: number,
+  joining: boolean,
 ): { placed: Placed[]; lines: number } {
   const byCodepoint = new Map<number, Glyph>();
   for (const glyph of typeface.glyphs) {
@@ -78,18 +80,35 @@ function layout(
 
       // Measured before it is placed, so a word that will not fit starts the
       // next line whole rather than breaking across two.
-      let width = 0;
-      let previous: Glyph | null = null;
-      const run: Glyph[] = [];
+      const typed: Glyph[] = [];
       for (const character of word) {
         const glyph = byCodepoint.get(character.codePointAt(0)!);
-        if (!glyph) continue;
+        if (glyph) typed.push(glyph);
+      }
+
+      /*
+       * The ligatures, before anything is measured.
+       *
+       * A proof laid out character by character shows a font nobody will ever
+       * see: every ligature in it sitting unused while the letters it replaces
+       * are set side by side. And it has to happen here rather than after the
+       * measuring, because a joined pair is one advance and one kern rather
+       * than two -- measure first and the line breaks in the wrong place.
+       */
+      const run = joining
+        ? applyLigatures(typeface, typed.map((one) => one.name))
+            .map((name) => typeface.glyphs[typeface.glyphIndex.get(name)!])
+            .filter(Boolean)
+        : typed;
+      if (run.length === 0) continue;
+
+      let width = 0;
+      let previous: Glyph | null = null;
+      for (const glyph of run) {
         if (previous) width += store.resolvedKerning(previous.name, glyph.name).value;
         width += resolveAdvanceWidth(glyph, typeface) + tracking;
-        run.push(glyph);
         previous = glyph;
       }
-      if (run.length === 0) continue;
 
       // A space that falls at the end of a line is dropped rather than carried,
       // which is what stops a ragged edge drifting further right every line.
@@ -126,6 +145,13 @@ export function ProofView(): React.JSX.Element {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const boxRef = React.useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = React.useState(760);
+  /*
+   * On, because it is how the face will be read. The switch is here because a
+   * ligature you cannot turn off is a ligature you cannot judge: what it is for
+   * is the collision it takes out, and the only way to see that is to look at
+   * the pair it replaces standing beside it.
+   */
+  const [joining, setJoining] = React.useState(true);
 
   const observerRef = React.useRef<ResizeObserver | null>(null);
   const measure = React.useCallback((element: HTMLDivElement | null) => {
@@ -156,8 +182,8 @@ export function ProofView(): React.JSX.Element {
 
   const { placed, lines } = React.useMemo(() => {
     if (!typeface) return { placed: [], lines: 0 };
-    return layout(typeface, text, columnWidth / scale, tracking * (em / 1000));
-  }, [typeface, text, columnWidth, scale, tracking, em, state.revision]);
+    return layout(typeface, text, columnWidth / scale, tracking * (em / 1000), joining);
+  }, [typeface, text, columnWidth, scale, tracking, em, joining, state.revision]);
 
   const lineHeight = size * leading;
   const height = Math.max(200, Math.ceil((lines + 1) * lineHeight) + 48);
@@ -230,6 +256,37 @@ export function ProofView(): React.JSX.Element {
             Drawn from the outlines on screen, not from an installed font.
           </span>
           <GroundToggle />
+          {/*
+            Off is the interesting position, which is why it is a switch rather
+            than a fact about the view. What a ligature is for is the collision
+            it takes out -- the `f` whose hook runs into the dot of the `i` --
+            and the only way to judge whether the joined drawing is better is to
+            put the pair it replaces beside it.
+
+            Shown only when the font has one, because a switch that changes
+            nothing is furniture.
+          */}
+          {(typeface.ligatures?.length ?? 0) > 0 && (
+            <button
+              type="button"
+              onClick={() => setJoining((was) => !was)}
+              aria-pressed={joining}
+              data-proof-ligatures
+              title={
+                joining
+                  ? "Set the letters separately, to judge the joined drawing against the pair it replaces."
+                  : "Draw the joined letters as one, which is how the face will be read."
+              }
+              className={cn(
+                "rounded border px-2 py-1 text-2xs transition-colors",
+                joining
+                  ? "border-accent text-foreground"
+                  : "border-border text-muted-foreground hover:bg-card hover:text-foreground",
+              )}
+            >
+              Ligatures
+            </button>
+          )}
           {/*
             The proofing advice every type designer gives is about paper:
             print it, look at it away from the screen, put it on a wall. A

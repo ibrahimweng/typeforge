@@ -14,6 +14,7 @@ import * as React from "react";
 
 import { enterStaggered } from "@/anim/motion";
 import { CompositionPanel } from "@/components/CompositionPanel";
+import { FeaturesPanel } from "@/components/FeaturesPanel";
 import { LetterPanel } from "@/components/LetterPanel";
 import { PathsPanel } from "@/components/PathsPanel";
 import { PointsPanel } from "@/components/PointsPanel";
@@ -230,8 +231,16 @@ export function Inspector(): React.JSX.Element {
       )}
 
       {scope === "build" ? (
-        <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto p-3">
+        /*
+          What the font does with a letter, under the same scope as how a letter
+          is put together -- because a ligature is the same kind of fact as a
+          composite: not how this letter looks, but what the font makes of it.
+        */
+        <div className="toolcraft-scrollbar flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-3">
           <CompositionPanel />
+          <div className="border-t border-border pt-4">
+            <FeaturesPanel />
+          </div>
         </div>
       ) : (
       <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">

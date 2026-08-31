@@ -8,9 +8,9 @@
  * way to put anything in it.
  *
  * The whole difficulty is in one fact: a glyph's name is not kept only on the
- * glyph. It is written down in six places, and a rename that misses one leaves
- * a font that still exports but has quietly lost a kern pair, an accent, or a
- * ligature.
+ * glyph. It is written down in eight places, and a rename that misses one
+ * leaves a font that still exports but has quietly lost a kern pair, an accent,
+ * or a ligature.
  *
  *   1. the glyph's own `name`
  *   2. `glyphIndex`, the map from name to position
@@ -18,9 +18,15 @@
  *   4. `kernClasses`, in either list of every class
  *   5. `alternates`, in the sequences and in both halves of every swap
  *   6. `components`, on every glyph built out of this one
+ *   7. `ligatures`, in the run and in the letter it becomes
+ *   8. `sets`, in both halves of every swap
+ *
+ * The last two arrived with the features panel and are the reason this list is
+ * worth keeping in one place: six was right for a year, and the seventh and
+ * eighth were added by somebody who had to be told they existed.
  *
  * So the functions here take the whole typeface rather than a glyph, and each
- * one is written to touch all six or to say plainly which it does not.
+ * one is written to touch all eight or to say plainly which it does not.
  *
  * They mutate rather than returning a new typeface, which is what the rest of
  * this document model does and what the store's undo is built to snapshot
@@ -202,6 +208,34 @@ export function removeGlyph(typeface: Typeface, name: string): boolean {
         rule.swaps.some((swap) => swap.swap.length > 0),
     );
 
+  /*
+   * A ligature goes whole or not at all.
+   *
+   * Trimming the missing letter out of `f i` leaves `f` becoming `fi`, which is
+   * not a smaller version of the rule -- it is a font that draws `fi` for every
+   * `f` in it. The same for the letter it becomes: a ligature pointing at a
+   * glyph that is gone selects nothing, or whatever ends up at that id.
+   */
+  if (typeface.ligatures) {
+    typeface.ligatures = typeface.ligatures.filter(
+      (one) => one.ligature !== name && !one.components.includes(name),
+    );
+  }
+
+  /*
+   * A set is a list of independent swaps, so it loses the one and keeps the
+   * rest -- taking `a.ss01` out does not say anything about `g.ss01`. A set
+   * with nothing left in it is a tag a reader can switch on to no effect.
+   */
+  if (typeface.sets) {
+    typeface.sets = typeface.sets
+      .map((set) => ({
+        ...set,
+        swaps: set.swaps.filter((one) => one.plain !== name && one.alternate !== name),
+      }))
+      .filter((set) => set.swaps.length > 0);
+  }
+
   reindex(typeface);
   return true;
 }
@@ -209,8 +243,8 @@ export function removeGlyph(typeface: Typeface, name: string): boolean {
 /**
  * Give a letter a different name, everywhere the old one was written.
  *
- * All six places, and the reason this is worth its own function rather than a
- * line in the store: a rename that reaches five of them leaves a font that
+ * All eight places, and the reason this is worth its own function rather than a
+ * line in the store: a rename that reaches seven of them leaves a font that
  * still exports and has quietly lost a kern pair or an accent, which is the
  * kind of fault nobody finds until somebody sets the font in a word.
  */
@@ -250,6 +284,18 @@ export function renameGlyph(typeface: Typeface, from: string, to: string): boole
       swap: one.swap.map((pair) => ({ plain: swap(pair.plain), alternate: swap(pair.alternate) })),
     })),
   }));
+  if (typeface.ligatures) {
+    typeface.ligatures = typeface.ligatures.map((one) => ({
+      components: one.components.map(swap),
+      ligature: swap(one.ligature),
+    }));
+  }
+  if (typeface.sets) {
+    typeface.sets = typeface.sets.map((set) => ({
+      ...set,
+      swaps: set.swaps.map((one) => ({ plain: swap(one.plain), alternate: swap(one.alternate) })),
+    }));
+  }
 
   reindex(typeface);
   return true;

@@ -4115,3 +4115,143 @@ test("a new letter's name does not claim to be a character it is not", async ({ 
   await panel.getByRole("button", { name: "New letter" }).click();
   await expect(panel.getByLabel("Letter name")).toHaveValue("newGlyph.001");
 });
+
+test("letters can be drawn as one, which nothing could ask for before", async ({ page }) => {
+  /*
+   * The gap this closes. The GSUB writer could write a chained context and
+   * nothing else, because that is what a joined script needed -- so a person
+   * could draw `f_i`, name it by the convention every font tool follows, watch
+   * it appear in the grid and export it, and no reader would ever see it. The
+   * drawing was in the file and nothing selected it.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await page
+    .getByRole("group", { name: "Inspector scope" })
+    .getByRole("button", { name: "build" })
+    .click();
+
+  const panel = page.locator("[data-features-panel]");
+  await expect(panel).toBeVisible();
+  await expect(panel.getByText("None yet.").first()).toBeVisible();
+
+  /*
+   * The standard ones, offered rather than typed -- and only the ones whose
+   * letters this font has, so `ffl` is not offered to a face with no `l`.
+   */
+  const offer = panel.locator("[data-make-ligature]").first();
+  await expect(offer).toBeVisible();
+  await offer.click();
+
+  await expect(page.getByText("now draws as", { exact: false })).toBeVisible();
+  await expect(panel.locator("[data-ligature]")).toHaveCount(1);
+
+  // And it comes back out, leaving the drawing where it was.
+  const before = await page.locator("[data-glyph-numbers]").count();
+  await panel.locator("[data-ligature]").first().getByRole("button", { name: "Undo" }).click();
+  await expect(panel.locator("[data-ligature]")).toHaveCount(0);
+  expect(await page.locator("[data-glyph-numbers]").count()).toBe(before);
+});
+
+test("a ligature uses the drawing the font already has rather than a second one", async ({
+  page,
+}) => {
+  /*
+   * Two conventions are in use and both are correct: `f_i` is what a tool
+   * writes when it makes one, `fi` is what a great many shipped fonts call it,
+   * DejaVu among them. Looking only for the first offered to *make* a ligature
+   * to a font that already draws one -- and making it added a second, empty
+   * glyph beside the real one and wired the rule to the blank.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await page
+    .getByRole("group", { name: "Inspector scope" })
+    .getByRole("button", { name: "build" })
+    .click();
+
+  const panel = page.locator("[data-features-panel]");
+  // DejaVu draws `fi`, so it is offered under that name and without "new".
+  const existing = panel.locator("[data-make-ligature='fi']");
+  await expect(existing).toBeVisible();
+  await expect(existing).not.toContainText("new");
+
+  await page.getByRole("button", { name: "Font", exact: true }).click();
+  const countBefore = await page.locator("[data-glyph-cell]").count();
+
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await page
+    .getByRole("group", { name: "Inspector scope" })
+    .getByRole("button", { name: "build" })
+    .click();
+  await panel.locator("[data-make-ligature='fi']").click();
+  await expect(panel.locator("[data-ligature='fi']")).toBeVisible();
+
+  // No glyph was made: the rule points at the one that was already there.
+  await page.getByRole("button", { name: "Font", exact: true }).click();
+  expect(await page.locator("[data-glyph-cell]").count()).toBe(countBefore);
+});
+
+test("a font brought in from a file is not accused of dead letters", async ({ page }) => {
+  /*
+   * A check that is wrong about a correct font is worse than no check. An
+   * imported font brings its own GSUB -- ligatures, positional forms, the lot
+   * -- which this document does not model and the exporter hands back
+   * untouched, so its glyphs are reached through tables nothing here can see.
+   * Counting them reported two hundred and sixty-five dead letters in DejaVu
+   * Sans: Arabic initial and final forms, every one of them fine.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Checks", exact: true }).click();
+  await page.getByRole("button", { name: "Run checks", exact: true }).click();
+  await expect(page.getByText(/glyphs checked/)).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("drawn but nothing can reach", { exact: false })).toHaveCount(0);
+});
+
+test("the proof sets the joined letters, and can be asked not to", async ({ page }) => {
+  /*
+   * A proof laid out character by character shows a font nobody will ever see:
+   * every ligature in it sitting unused while the letters it replaces are set
+   * side by side. And the switch matters as much as the substitution -- what a
+   * ligature is *for* is the collision it takes out, and the only way to judge
+   * the joined drawing is against the pair standing beside it.
+   *
+   * Proved by ink rather than by eye. A ligature whose drawing this font has
+   * not got is made empty, so where it fires the letters vanish: fewer pixels
+   * covered with it on than with it off, which no amount of anti-aliasing
+   * explains away.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await page
+    .getByRole("group", { name: "Inspector scope" })
+    .getByRole("button", { name: "build" })
+    .click();
+
+  await page.getByLabel("Letters to join").fill("t h");
+  await page.getByRole("button", { name: "Join", exact: true }).click();
+  await expect(page.getByText("t h now draws as t_h", { exact: false })).toBeVisible();
+
+  await page.getByRole("button", { name: "Proof", exact: true }).click();
+  await page.locator("textarea").first().fill("the thin the other the thing");
+  await page.waitForTimeout(700);
+
+  const joined = await measureInk(page);
+  await page.locator("[data-proof-ligatures]").click();
+  await page.waitForTimeout(700);
+  const separate = await measureInk(page);
+
+  expect(separate).toBeGreaterThan(joined);
+});
+
+test("the ligature switch stays away until the font has one", async ({ page }) => {
+  // A switch that changes nothing is furniture.
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Proof", exact: true }).click();
+  await expect(page.locator("[data-proof-ligatures]")).toHaveCount(0);
+});

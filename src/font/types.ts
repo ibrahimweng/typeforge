@@ -272,8 +272,45 @@ export interface Typeface {
    * export orders them.
    */
   alternates: NamedRule[];
+  /**
+   * The letters this font draws for more than one character.
+   *
+   * `fi`, `ffi`, `fl` -- a run of letters replaced by one drawing of them
+   * together. Named rather than indexed, for the same reason the rules above
+   * are: glyph ids are not settled until the export orders them.
+   *
+   * Optional because every document written before this existed has none, and
+   * a reader that demands the field turns those away at the door.
+   */
+  ligatures?: NamedLigature[];
+  /**
+   * Second drawings a reader can switch on: a single-storey `a`, old-style
+   * figures, small capitals.
+   *
+   * Not on by default and that is the whole of what makes them a choice rather
+   * than the face. The tag is what a person switches on by name, so it is kept
+   * rather than derived.
+   */
+  sets?: NamedSet[];
   params: GlyphParams;
   source: SourceFont | null;
+}
+
+/** A run of letters drawn as one, in glyph names. */
+export interface NamedLigature {
+  /** What has to appear, in order. Two names at least. */
+  components: string[];
+  /** The letter they become. */
+  ligature: string;
+}
+
+/** A second drawing of some letters, under the tag that switches it on. */
+export interface NamedSet {
+  /** The four-character feature tag: `ss01`, `salt`, `smcp`. */
+  tag: string;
+  /** What the tag is called on screen, which the tag itself does not say. */
+  label: string;
+  swaps: Array<{ plain: string; alternate: string }>;
 }
 
 /** One contextual rule, in glyph names. */
