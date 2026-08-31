@@ -22,7 +22,15 @@ import type { Anchor, Contour, Glyph, GlyphNode, Typeface, Vec2 } from "@/font/t
 import { slice } from "@/font/knife";
 import { extremesMissing, nearlySmooth } from "@/font/marks";
 import { A_DRAG, draggedPoint, segmentAt } from "@/font/pen";
-import { CLOSES_WITHIN, cursorFor as cursorClass, toolStateFor, type Doing } from "@/font/tools";
+import {
+  CLOSES_WITHIN,
+  NOTHING_UNDER,
+  cursorFor as cursorClass,
+  toolStateFor,
+  type Doing,
+  type Under,
+} from "@/font/tools";
+import { editsWhatIsThere } from "@/font/toolset";
 import {
   applyView,
   prepareCanvas,
@@ -103,7 +111,15 @@ type Drag =
    * was drawn. Thinning it is `freehand.ts`'s business, not this one's: what
    * is recorded here is everything the pointer said.
    */
-  | { kind: "pencil"; trail: Vec2[] }
+  | { kind: "freehand"; trail: Vec2[] }
+  /*
+   * The lasso's ring, in canvas units.
+   *
+   * A box cannot pick the points on one side of a curve without taking the
+   * other side too, and on a letter drawn at two hundred points that is the
+   * usual case rather than the awkward one.
+   */
+  | { kind: "lasso"; trail: Vec2[]; additive: boolean }
   /*
    * The pen, mid-gesture: a point has been put down and the pointer is pulling
    * its handles out of it. `from` is where it was pressed, in canvas units, so
@@ -147,6 +163,19 @@ export function GlyphEditorView(): React.JSX.Element {
    * open, so it is set on move and cleared on leave rather than kept live.
    */
   const [at, setAt] = React.useState<Vec2 | null>(null);
+  /*
+   * The same position in a ref, for the handlers that run without an event.
+   *
+   * `handlePointerUp` takes no pointer position and `at` is state, so reading
+   * it there gives whatever the last render saw -- which is the staleness that
+   * has now bitten this file three times. The ref is written wherever the state
+   * is, and is the one of the pair that is safe to read inside a handler.
+   */
+  const atRef = React.useRef<Vec2 | null>(null);
+  const noteAt = (where: Vec2 | null): void => {
+    atRef.current = where;
+    setAt(where);
+  };
   const [, forceRender] = React.useReducer((n: number) => n + 1, 0);
 
   /*
@@ -305,7 +334,7 @@ export function GlyphEditorView(): React.JSX.Element {
      * unless the thing about to be cut is shown: there is no node there to aim
      * at, so without this a person has to click and look at what happened.
      */
-    if (state.tool === "pen" && at && !openOutline(glyph)) {
+    if (at && editsWhatIsThere(state.tool)) {
       const on = segmentUnder(glyph, view, at);
       if (on) drawSegmentUnder(context, glyph.contours[on.contour], on.index, view);
     }
@@ -317,7 +346,8 @@ export function GlyphEditorView(): React.JSX.Element {
     if (drag?.kind === "marquee") drawMarquee(context, drag);
     if (drag?.kind === "shape") drawShapePreview(context, drag, view, modifiersRef.current);
     if (drag?.kind === "knife") drawKnifePreview(context, drag);
-    if (drag?.kind === "pencil") drawPencilPreview(context, drag, view);
+    if (drag?.kind === "freehand") drawFreehandPreview(context, drag, view);
+    if (drag?.kind === "lasso") drawLasso(context, drag);
     /*
      * The pen's line to wherever the pointer is, and the point that would close
      * the outline marked when it is worth closing.
@@ -367,6 +397,82 @@ export function GlyphEditorView(): React.JSX.Element {
     const onGuide = guideAt(state.guides, view, canvasPoint);
     if (onGuide !== null) {
       dragRef.current = { kind: "guide", index: onGuide };
+      return;
+    }
+
+    /*
+     * The four tools that work on something already drawn.
+     *
+     * Each was a modifier on the pen or nothing at all: adding a point was a
+     * plain click that also had to mean "start a new outline here", which is
+     * two jobs on one gesture and the reason the pen kept editing a letter
+     * when it was asked to draw beside one. As their own tools each click
+     * means one thing, and the pen's click is free to always start an outline.
+     */
+    if (state.tool === "addPoint") {
+      const on = segmentUnder(glyph, view, canvasPoint);
+      if (on) store.addPointOn(glyph.name, on.contour, on.index, on.t);
+      else store.say("Nothing there to add a point to. Point at an edge.", "info");
+      reportPhase(canvasPoint);
+      return;
+    }
+    if (state.tool === "deletePoint") {
+      const hit = hitTestNode(glyph, view, canvasPoint);
+      if (hit) store.removePoints(glyph.name, [hit]);
+      else store.say("Nothing there to take out. Point at a point.", "info");
+      reportPhase(canvasPoint);
+      return;
+    }
+    if (state.tool === "convertPoint") {
+      const hit = hitTestNode(glyph, view, canvasPoint);
+      if (!hit) {
+        store.say("Nothing there to change. Point at a point.", "info");
+        reportPhase(canvasPoint);
+        return;
+      }
+      /*
+       * Held rather than acted on, because this tool has two gestures: a click
+       * switches the point between a curve and a corner, and a pull brings a
+       * handle out of it. Which one it was is not known until the pointer
+       * either moves or does not, so the click is settled on release.
+       */
+      dragRef.current = {
+        kind: "pen",
+        from: canvasPoint,
+        contour: hit.contour,
+        node: hit.node,
+        keepIn: glyph.contours[hit.contour]?.nodes[hit.node]?.handleIn ?? null,
+        pulled: false,
+        before: store.snapshotGlyph(glyph.name) ?? glyph,
+      };
+      return;
+    }
+    if (state.tool === "scissors") {
+      const hit = hitTestNode(glyph, view, canvasPoint);
+      const on = hit ? null : segmentUnder(glyph, view, canvasPoint);
+      if (hit) store.openContourAt(glyph.name, hit.contour, hit.node);
+      else if (on) {
+        // On an edge rather than a point: put a point in first, then open at
+        // it, so a cut can land anywhere rather than only where a point is.
+        store.addPointOn(glyph.name, on.contour, on.index, on.t);
+        store.openContourAt(glyph.name, on.contour, on.index + 1);
+      } else store.say("Nothing there to open. Point at a point or an edge.", "info");
+      reportPhase(canvasPoint);
+      return;
+    }
+    if (state.tool === "selectPath") {
+      const hit = hitTestNode(glyph, view, canvasPoint) ?? segmentUnder(glyph, view, canvasPoint);
+      if (hit) store.selectAllNodes(glyph.name, hit.contour);
+      else store.setSelectedNodes([]);
+      reportPhase(canvasPoint);
+      return;
+    }
+    if (state.tool === "lasso") {
+      dragRef.current = {
+        kind: "lasso",
+        trail: [canvasPoint],
+        additive: event.shiftKey,
+      };
       return;
     }
 
@@ -452,7 +558,7 @@ export function GlyphEditorView(): React.JSX.Element {
      * picked up a node the moment it started on one would be a knife that
      * could not cut through a corner.
      */
-    if (state.tool === "rectangle" || state.tool === "ellipse") {
+    if (state.tool === "rectangle" || state.tool === "ellipse" || state.tool === "polygon") {
       dragRef.current = { kind: "shape", kind2: state.tool, from: canvasPoint, to: canvasPoint };
       return;
     }
@@ -460,9 +566,9 @@ export function GlyphEditorView(): React.JSX.Element {
       dragRef.current = { kind: "knife", from: canvasPoint, to: canvasPoint };
       return;
     }
-    if (state.tool === "pencil") {
+    if (state.tool === "freehand") {
       dragRef.current = {
-        kind: "pencil",
+        kind: "freehand",
         trail: [{ x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) }],
       };
       return;
@@ -565,7 +671,7 @@ export function GlyphEditorView(): React.JSX.Element {
           wouldCut: drag.kind === "knife" ? knifeWouldCut(glyph, view, drag) : undefined,
           pulling: drag.kind === "pen" ? drag.pulled : undefined,
           wouldClose:
-            drag.kind === "pencil"
+            drag.kind === "freehand"
               ? drag.trail.length > 8 &&
                 Math.hypot(
                   drag.trail[drag.trail.length - 1].x - drag.trail[0].x,
@@ -575,16 +681,54 @@ export function GlyphEditorView(): React.JSX.Element {
         }
       : null;
 
-    const under = {
-      grabbable: found !== null,
-      closingPoint: Boolean(glyph && canvasPoint && onClosingPoint(glyph, view, canvasPoint)),
-      pathOpen: Boolean(glyph && openOutline(glyph)),
-    };
-    store.setToolState(toolStateFor(state.tool, under, doing, held));
+    store.setToolState(toolStateFor(state.tool, whatIsUnder(canvasPoint, found), doing, held));
   };
 
+  /**
+   * Everything the tools ask about the place under the pointer.
+   *
+   * One function because the sentence, the cursor and the highlight all have to
+   * agree about what is there, and three readings of the same pixel is three
+   * chances to disagree. It costs a hit test or two per pointer move, which is
+   * nothing beside the repaint that follows.
+   */
+  const whatIsUnder = (canvasPoint: Vec2 | null, found: Hover = hover): Under => {
+    if (!glyph || !canvasPoint) return { ...NOTHING_UNDER, grabbable: found !== null };
+    const open = openOutline(glyph);
+    /*
+     * The node and edge tests run for every tool rather than only the select
+     * tool's hover, because five of the thirteen work on a point or an edge and
+     * each has to know whether there is one before the click, not after.
+     */
+    const node = hitTestNode(glyph, view, canvasPoint);
+    return {
+      grabbable: found !== null,
+      closingPoint: onClosingPoint(glyph, view, canvasPoint),
+      pathOpen: Boolean(open),
+      openPoints: open?.nodes.length ?? 0,
+      node: node !== null,
+      edge: node === null && segmentUnder(glyph, view, canvasPoint) !== null,
+      shape: glyph.contours.some((one) => one.closed && one.nodes.length >= 3),
+      lastPoint: onLastPoint(glyph, view, canvasPoint),
+    };
+  };
+
+  /*
+   * The latest `reportPhase`, for the handlers that outlive the render.
+   *
+   * The keyboard effect is bound once per glyph and re-uses whatever closure it
+   * captured, so calling `reportPhase` from inside it reported the phase of the
+   * tool that was in hand when the effect last ran -- pressing Escape with the
+   * pen put the *select* tool's sentence under the canvas. This is the third
+   * staleness bug in this file and they all have the same shape: state read
+   * inside a handler that was built on an earlier render. A ref is the version
+   * of the pair that is always current.
+   */
+  const reportPhaseRef = React.useRef(reportPhase);
+  reportPhaseRef.current = reportPhase;
+
   const updateHover = (canvasPoint: Vec2): Hover => {
-    setAt(canvasPoint);
+    noteAt(canvasPoint);
     if (!glyph || state.tool !== "select") {
       setHover((current) => (current === null ? current : null));
       return null;
@@ -623,11 +767,30 @@ export function GlyphEditorView(): React.JSX.Element {
    * nothing. Somebody who picks a tool and reads the line before moving is
    * exactly the person the line is for.
    */
+  /*
+   * Picking up another tool finishes whatever the pen was drawing.
+   *
+   * Reaching for the knife mid-outline is a person saying they are done with
+   * that outline, and leaving it open meant the next pen click carried on a
+   * shape they had walked away from -- or, more often, left a two-point stub
+   * that drew as nothing and stayed in the list.
+   */
+  const wasTool = React.useRef(state.tool);
+  React.useEffect(() => {
+    if (wasTool.current !== state.tool && glyph) store.finishOutline(glyph.name);
+    wasTool.current = state.tool;
+  }, [state.tool, glyph]);
+
   React.useEffect(() => {
     store.setToolState(
       toolStateFor(
         state.tool,
-        { grabbable: false, closingPoint: false, pathOpen: Boolean(glyph && openOutline(glyph)) },
+        {
+          ...NOTHING_UNDER,
+          pathOpen: Boolean(glyph && openOutline(glyph)),
+          openPoints: glyph ? (openOutline(glyph)?.nodes.length ?? 0) : 0,
+          shape: Boolean(glyph?.contours.some((one) => one.closed && one.nodes.length >= 3)),
+        },
         null,
         { shift: false, alt: false },
       ),
@@ -756,7 +919,7 @@ export function GlyphEditorView(): React.JSX.Element {
         forceRender();
         break;
       }
-      case "pencil": {
+      case "freehand": {
         drag.trail.push({ x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) });
         forceRender();
         break;
@@ -772,6 +935,11 @@ export function GlyphEditorView(): React.JSX.Element {
        * exists for exactly this, and `commitGlyphEdit` closes it on release so
        * the whole gesture is one thing to take back.
        */
+      case "lasso":
+        drag.trail.push(canvasPoint);
+        forceRender();
+        break;
+
       case "pen": {
         const moved = Math.hypot(canvasPoint.x - drag.from.x, canvasPoint.y - drag.from.y);
         if (!drag.pulled && moved < A_DRAG) break;
@@ -891,7 +1059,7 @@ export function GlyphEditorView(): React.JSX.Element {
         ),
       );
       forceRender();
-    } else if (drag.kind === "pencil") {
+    } else if (drag.kind === "freehand") {
       if (!store.addStroke(glyph.name, drag.trail)) {
         store.say("That was a click rather than a stroke. Drag to draw.", "error");
       }
@@ -903,7 +1071,29 @@ export function GlyphEditorView(): React.JSX.Element {
         { x: toFontX(view, drag.to.x), y: toFontY(view, drag.to.y) },
       );
       forceRender();
+    } else if (drag.kind === "lasso") {
+      const picked = new Set(drag.additive ? state.selectedNodes : []);
+      glyph.contours.forEach((contour, contourIndex) => {
+        contour.nodes.forEach((node, nodeIndex) => {
+          if (inside(drag.trail, toScreen(view, node.point))) {
+            picked.add(nodeKey({ contour: contourIndex, node: nodeIndex }));
+          }
+        });
+      });
+      store.setSelectedNodes(picked);
+      forceRender();
     }
+
+    /*
+     * The sentence, refreshed now the gesture is over.
+     *
+     * It never was, so the line kept whatever the drag had been saying until
+     * the pointer next moved: let go of a pen pull and it went on reading
+     * `Let go for a corner, or pull to curve out of it` over a point that had
+     * already been placed. The one moment a person is most likely to look at
+     * the line is the moment they finish something.
+     */
+    reportPhase(atRef.current);
   };
 
   // Keyboard: nudge the selection, delete points, undo and redo.
@@ -938,6 +1128,28 @@ export function GlyphEditorView(): React.JSX.Element {
         store.pasteOutlines(glyph.name);
         return;
       }
+      /*
+       * The two keys that finish an outline, and the reason a session used to
+       * end with a list full of two-point stubs.
+       *
+       * There was no way to stop drawing. Not Escape, not Enter, not picking up
+       * another tool -- the only exit was a click inside seven pixels of the
+       * first point, and every attempt that missed or was thought better of
+       * stayed in the letter for ever. Escape finishes and leaves it open;
+       * Enter finishes by closing it. Both drop an outline too short to be one.
+       */
+      if (event.key === "Escape" || event.key === "Enter") {
+        if (store.finishOutline(glyph.name, event.key === "Enter")) {
+          event.preventDefault();
+          forceRender();
+          // The line has to catch up here too: finishing changes what the next
+          // click does, and a person who has just pressed Escape is looking
+          // straight at it.
+          reportPhaseRef.current(atRef.current);
+        }
+        return;
+      }
+
       /*
        * Select-all and Tab, which have to come before the guard below: both are
        * ways of picking points when none are picked, and the guard exists for
@@ -1173,7 +1385,7 @@ export function GlyphEditorView(): React.JSX.Element {
           onDoubleClick={handleDoubleClick}
           onPointerLeave={() => {
             setHover(null);
-            setAt(null);
+            noteAt(null);
             store.setToolState({ phase: "idle", says: "" });
           }}
           onWheel={(event) => {
@@ -1721,11 +1933,25 @@ function drawPenReach(
   if (open.nodes.length >= 3) {
     const first = open.nodes[0].point;
     const ring = { x: view.originX + first.x * view.scale, y: view.originY - first.y * view.scale };
-    const near = Math.hypot(at.x - ring.x, at.y - ring.y) <= HIT_RADIUS;
-    context.strokeStyle = readToken("--inspect", "#7aa2f7");
-    context.lineWidth = near ? 2 : 1;
+    /*
+     * Filled once a click would close, rather than merely thicker.
+     *
+     * The ring used to grow by two pixels inside a seven-pixel window, which
+     * is a signal you can only read if you already know to look for it. It is
+     * now the same radius as the click that closes, and it fills -- so "this
+     * will close" is a shape change you cannot miss, and the target and the
+     * mark are the same size, which is the part that was actually wrong.
+     */
+    const colour = readToken("--inspect", "#9149f5", context.canvas);
+    const near = Math.hypot(at.x - ring.x, at.y - ring.y) <= CLOSING_RADIUS;
     context.beginPath();
-    context.arc(ring.x, ring.y, near ? HIT_RADIUS + 2 : HIT_RADIUS - 1, 0, Math.PI * 2);
+    context.arc(ring.x, ring.y, near ? CLOSING_RADIUS : HIT_RADIUS - 1, 0, Math.PI * 2);
+    if (near) {
+      context.fillStyle = withAlpha(colour, 0.3);
+      context.fill();
+    }
+    context.strokeStyle = colour;
+    context.lineWidth = near ? 2 : 1;
     context.stroke();
   }
   context.restore();
@@ -1833,9 +2059,37 @@ function drawMarks(
   context.restore();
 }
 
-function drawPencilPreview(
+/**
+ * The lasso's ring as it is drawn, closed back to where it started.
+ *
+ * Closed while still being drawn because that is what will be tested when the
+ * button comes up -- an open ring would be a picture of something the tool
+ * does not do, and the points near the closing line are exactly the ones a
+ * person is unsure about.
+ */
+function drawLasso(
   context: CanvasRenderingContext2D,
-  drag: Extract<Drag, { kind: "pencil" }>,
+  drag: Extract<Drag, { kind: "lasso" }>,
+): void {
+  if (drag.trail.length < 2) return;
+  const colour = readToken("--accent", "#0c8ce9", context.canvas);
+  context.save();
+  context.beginPath();
+  context.moveTo(drag.trail[0].x, drag.trail[0].y);
+  for (const point of drag.trail.slice(1)) context.lineTo(point.x, point.y);
+  context.closePath();
+  context.fillStyle = withAlpha(colour, 0.12);
+  context.fill();
+  context.strokeStyle = colour;
+  context.lineWidth = 1;
+  context.setLineDash([4, 3]);
+  context.stroke();
+  context.restore();
+}
+
+function drawFreehandPreview(
+  context: CanvasRenderingContext2D,
+  drag: Extract<Drag, { kind: "freehand" }>,
   view: GlyphView,
 ): void {
   if (drag.trail.length < 2) return;
@@ -1908,6 +2162,18 @@ function knifeWouldCut(
  * next click would extend.
  */
 function openOutline(glyph: Glyph): Contour | null {
+  /*
+   * Being drawn, not merely open.
+   *
+   * This used to ask only whether the last contour was closed, which is a fact
+   * about the shape rather than about what the hand is doing. An outline
+   * finished and left open is a legitimate thing to have, and with one test for
+   * both a pen click anywhere on the canvas reached back and extended it: ten
+   * abandoned attempts joined into one contour wandering across the letter,
+   * whose first point was then so far from its last that the closing ring could
+   * never be found.
+   */
+  if (!store.getSnapshot().drawing) return null;
   const last = glyph.contours[glyph.contours.length - 1];
   return last && !last.closed && last.nodes.length > 0 ? last : null;
 }
@@ -1926,14 +2192,19 @@ function openOutline(glyph: Glyph): Contour | null {
  * pulled stays on the segment arriving and the one leaving goes, so the next
  * click draws a straight line out of a curve.
  */
-function onLastPoint(glyph: Glyph, view: GlyphView, canvasPoint: Vec2): boolean {
-  const open = openOutline(glyph);
-  if (!open) return false;
-  const last = open.nodes[open.nodes.length - 1].point;
-  const dx = canvasPoint.x - (view.originX + last.x * view.scale);
-  const dy = canvasPoint.y - (view.originY - last.y * view.scale);
-  return Math.hypot(dx, dy) <= HIT_RADIUS;
-}
+/**
+ * How near the first point a click has to land to close the outline.
+ *
+ * Twice the radius a node answers to, and deliberately. Closing was on the
+ * ordinary seven pixels, which is a fine target for "grab this exact point"
+ * and a poor one for "finish". The difference is that closing is an intention
+ * already declared -- there is one open outline and one point that closes it,
+ * and no other point within reach means anything -- so the cost of being
+ * generous is nothing and the cost of being strict is a stray point every time
+ * a hand is a few pixels out. Missing it silently added a point instead, which
+ * is how an attempt at a triangle becomes a four-point blob.
+ */
+const CLOSING_RADIUS = 14;
 
 function onClosingPoint(glyph: Glyph, view: GlyphView, canvasPoint: Vec2): boolean {
   const open = openOutline(glyph);
@@ -1941,7 +2212,26 @@ function onClosingPoint(glyph: Glyph, view: GlyphView, canvasPoint: Vec2): boole
   const first = open.nodes[0].point;
   const dx = canvasPoint.x - (view.originX + first.x * view.scale);
   const dy = canvasPoint.y - (view.originY - first.y * view.scale);
-  return Math.hypot(dx, dy) <= HIT_RADIUS;
+  return Math.hypot(dx, dy) <= CLOSING_RADIUS;
+}
+
+/**
+ * Whether the pointer is on the point the pen last placed, and that point has
+ * a handle to take off.
+ *
+ * The handle check is the whole of the difference from a plain node hit. A
+ * click here retracts the outgoing handle so the next segment leaves straight;
+ * on a point that has no handle there is nothing to retract, and reporting it
+ * as a thing about to happen puts `Click again to end the curve` over a click
+ * that would do nothing at all.
+ */
+function onLastPoint(glyph: Glyph, view: GlyphView, canvasPoint: Vec2): boolean {
+  const open = openOutline(glyph);
+  if (!open || open.nodes.length < 2) return false;
+  const last = open.nodes[open.nodes.length - 1];
+  if (!last.handleOut) return false;
+  const screen = toScreen(view, last.point);
+  return Math.hypot(screen.x - canvasPoint.x, screen.y - canvasPoint.y) <= HIT_RADIUS;
 }
 
 function hitTestNode(glyph: Glyph, view: GlyphView, canvasPoint: Vec2): NodeRef | null {
@@ -2005,8 +2295,10 @@ function parseNodeKey(key: string): NodeRef {
 /** Pen tool: append a point to the last contour, or start a new one. */
 function addPoint(glyph: Glyph, view: GlyphView, canvasPoint: Vec2): void {
   const point = { x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) };
+  const carryOn = openOutline(glyph) !== null;
+  store.startDrawing();
   store.editGlyph(glyph.name, "Add point", (editing) => {
-    const contour = editing.contours[editing.contours.length - 1];
+    const contour = carryOn ? editing.contours[editing.contours.length - 1] : null;
     const node: GlyphNode = { point, handleIn: null, handleOut: null, type: "corner" };
     if (!contour || contour.closed) {
       editing.contours.push({ nodes: [node], closed: false });
@@ -2048,6 +2340,29 @@ function deleteSelectedNodes(glyph: Glyph, selected: ReadonlySet<string>): void 
    * is the difference between an outline you can thin out and one you cannot.
    */
   store.removePoints(glyph.name, [...selected].map(parseNodeKey));
+}
+
+/**
+ * Whether a point falls inside a drawn ring.
+ *
+ * A ray cast to the right, counting crossings: odd is in. The ring is whatever
+ * the hand drew and need not be convex or even tidy -- a lasso that only
+ * worked on well-behaved rings would be a rectangle with extra steps.
+ */
+function inside(ring: Vec2[], point: Vec2): boolean {
+  let within = false;
+  for (let at = 0, before = ring.length - 1; at < ring.length; before = at++) {
+    const a = ring[at];
+    const b = ring[before];
+    // The half-open rule on y: a vertex exactly level with the ray counts for
+    // the edge below it and not the one above, so a ray through a vertex is
+    // counted once rather than twice or not at all.
+    if (a.y > point.y !== b.y > point.y) {
+      const crossing = a.x + ((point.y - a.y) / (b.y - a.y)) * (b.x - a.x);
+      if (point.x < crossing) within = !within;
+    }
+  }
+  return within;
 }
 
 function clamp(value: number, min: number, max: number): number {

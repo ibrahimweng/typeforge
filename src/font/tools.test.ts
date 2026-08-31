@@ -12,9 +12,10 @@
 
 import { describe, expect, it } from "vitest";
 
-import { cursorFor, toolStateFor, type Doing, type Held, type Under } from "./tools";
+import { NOTHING_UNDER, cursorFor, toolStateFor, type Doing, type Held, type Under } from "./tools";
+import { TOOLS } from "./toolset";
 
-const NOTHING: Under = { grabbable: false, closingPoint: false, pathOpen: false };
+const NOTHING: Under = NOTHING_UNDER;
 const NONE: Held = { shift: false, alt: false };
 
 describe("the select tool", () => {
@@ -43,20 +44,33 @@ describe("the pen", () => {
    * the pointer and the line said the same thing for all three.
    */
   it("starts, extends, and closes, and says which", () => {
-    expect(toolStateFor("pen", NOTHING, null, NONE).says).toContain("start an outline");
+    /*
+     * `Click to start an outline` is gone on purpose.
+     *
+     * It was the sentence the pen said over an existing edge while a click
+     * there put a point on that edge instead, and it said nothing about the
+     * one gesture nobody guesses. What is left names both things a press can
+     * be, because the pen has exactly two.
+     */
+    const fresh = toolStateFor("pen", NOTHING, null, NONE).says;
+    expect(fresh).toContain("corner");
+    expect(fresh).toContain("pull");
 
-    const open = toolStateFor("pen", { ...NOTHING, pathOpen: true }, null, NONE);
+    const open = toolStateFor("pen", { ...NOTHING, pathOpen: true, openPoints: 3 }, null, NONE);
     expect(open.phase).toBe("ready");
     expect(open.says).toContain("close");
+    // The way out, said while there is something to get out of. Its absence is
+    // what left a dozen half-drawn stubs in a letter.
+    expect(open.says).toContain("Escape");
 
-    const closing = toolStateFor("pen", { grabbable: false, closingPoint: true, pathOpen: true }, null, NONE);
+    const closing = toolStateFor("pen", { ...NOTHING, closingPoint: true, pathOpen: true, openPoints: 3 }, null, NONE);
     expect(closing.phase).toBe("willDo");
     expect(closing.says).toBe("Click to close the outline.");
   });
 
   it("points differently when the click would close rather than add", () => {
-    const adding = toolStateFor("pen", { ...NOTHING, pathOpen: true }, null, NONE);
-    const closing = toolStateFor("pen", { grabbable: false, closingPoint: true, pathOpen: true }, null, NONE);
+    const adding = toolStateFor("pen", { ...NOTHING, pathOpen: true, openPoints: 3 }, null, NONE);
+    const closing = toolStateFor("pen", { ...NOTHING, closingPoint: true, pathOpen: true, openPoints: 3 }, null, NONE);
     expect(cursorFor("pen", adding, false)).not.toBe(cursorFor("pen", closing, false));
   });
 });
@@ -111,13 +125,13 @@ describe("the shape tools", () => {
   });
 });
 
-describe("the pencil", () => {
+describe("freehand", () => {
   it("says when letting go would close the loop", () => {
-    const drawing = toolStateFor("pencil", NOTHING, { kind: "pencil", wouldClose: false }, NONE);
+    const drawing = toolStateFor("freehand", NOTHING, { kind: "freehand", wouldClose: false }, NONE);
     expect(drawing.phase).toBe("active");
     expect(drawing.says).toContain("Come back to where you began");
 
-    const closing = toolStateFor("pencil", NOTHING, { kind: "pencil", wouldClose: true }, NONE);
+    const closing = toolStateFor("freehand", NOTHING, { kind: "freehand", wouldClose: true }, NONE);
     expect(closing.phase).toBe("willDo");
     expect(closing.says).toContain("closes into a loop");
   });
@@ -127,7 +141,7 @@ describe("the pointer", () => {
   it("is different for every tool, where it used to be one crosshair for five", () => {
     const armed = (tool: Parameters<typeof cursorFor>[0]) =>
       cursorFor(tool, toolStateFor(tool, NOTHING, null, NONE), false);
-    const all = ["select", "pen", "pencil", "rectangle", "ellipse", "knife"] as const;
+    const all = TOOLS.map((one) => one.id);
     const cursors = all.map(armed);
     // Not all identical, which is what it was: `crosshair` for everything but
     // select, so the pointer said "a tool is armed" and never which one.
@@ -148,10 +162,90 @@ describe("what wins", () => {
   it("prefers the gesture in progress to whatever is under the pointer", () => {
     const state = toolStateFor(
       "select",
-      { grabbable: true, closingPoint: true, pathOpen: true },
+      { ...NOTHING, grabbable: true, closingPoint: true, pathOpen: true },
       { kind: "pan" },
       NONE,
     );
     expect(state.says).toBe("Moving the page.");
+  });
+});
+
+/*
+ * The four that work on what is already there, and the one rule they share:
+ * over empty canvas they must not look armed.
+ *
+ * Each of these used to be a modifier on the pen or nothing at all, and the
+ * complaint that produced them -- twelve junk paths in one sitting -- came
+ * from a pen whose single click had to mean three things at once. As separate
+ * tools each click means one thing, which only helps if the tool says clearly
+ * when it can do nothing.
+ */
+describe("the tools that need something under them", () => {
+  const NEEDS_A_TARGET = ["addPoint", "deletePoint", "convertPoint", "scissors"] as const;
+
+  it("never promises anything over empty canvas", () => {
+    for (const tool of NEEDS_A_TARGET) {
+      const state = toolStateFor(tool, NOTHING, null, NONE);
+      expect(state.phase, tool).not.toBe("willDo");
+      expect(cursorFor(tool, state, false), tool).toBe("cursor-not-allowed");
+    }
+  });
+
+  it("arms over the thing each one works on", () => {
+    expect(toolStateFor("addPoint", { ...NOTHING, edge: true }, null, NONE).phase).toBe("willDo");
+    expect(toolStateFor("deletePoint", { ...NOTHING, node: true }, null, NONE).phase).toBe("willDo");
+    expect(toolStateFor("convertPoint", { ...NOTHING, node: true }, null, NONE).phase).toBe("willDo");
+    expect(toolStateFor("scissors", { ...NOTHING, node: true }, null, NONE).phase).toBe("willDo");
+  });
+
+  it("does not arm add-point over a bare point, which has no edge to split", () => {
+    expect(toolStateFor("addPoint", { ...NOTHING, node: true }, null, NONE).phase).toBe("ready");
+  });
+});
+
+describe("the knife knows whether there is anything to cut", () => {
+  /*
+   * It said `Drag a line right across a shape to cut it in two` over an empty
+   * canvas and over a letter alike, which is a sentence that has stopped being
+   * advice: identical everywhere, so it carries nothing about anywhere.
+   */
+  it("goes quiet where there is no shape", () => {
+    const empty = toolStateFor("knife", NOTHING, null, NONE);
+    expect(empty.phase).toBe("idle");
+    expect(empty.says).toContain("Nothing to cut");
+    expect(cursorFor("knife", empty, false)).toBe("cursor-not-allowed");
+  });
+
+  it("arms where there is one", () => {
+    const over = toolStateFor("knife", { ...NOTHING, shape: true }, null, NONE);
+    expect(over.phase).toBe("ready");
+    expect(over.says).toContain("across a shape");
+  });
+});
+
+describe("every tool answers", () => {
+  /*
+   * The guard that would have caught the pen going dead: a tool with no case
+   * in the switch returned undefined, the caller read `.phase` of nothing and
+   * threw inside the pointer handler, and the tool simply stopped working with
+   * no error on the page. Thirteen tools is enough that the next one added
+   * will be forgotten somewhere.
+   */
+  it("with a state and a cursor, for every tool in the set", () => {
+    for (const tool of TOOLS) {
+      const state = toolStateFor(tool.id, NOTHING, null, NONE);
+      expect(state, tool.id).toBeDefined();
+      expect(typeof state.phase, tool.id).toBe("string");
+      expect(typeof state.says, tool.id).toBe("string");
+      expect(cursorFor(tool.id, state, false), tool.id).toMatch(/^cursor-/);
+    }
+  });
+
+  it("and every tool has a name and a hint worth reading", () => {
+    for (const tool of TOOLS) {
+      expect(tool.name.length, tool.id).toBeGreaterThan(2);
+      // The flyout is the only place most of these are ever explained.
+      expect(tool.hint.length, tool.id).toBeGreaterThan(20);
+    }
   });
 });
