@@ -3464,7 +3464,12 @@ test("changing what a point is: round, tidy, and the guards on the rest", async 
 
   // Smoothing every point in a letter with no curves in it is not what
   // pressing a button once means, so it waits to be told which.
-  await expect(panel.getByRole("button", { name: "Smooth" })).toBeDisabled();
+  //
+  // Exact, for the same reason as the line below it: the picking row above
+  // these carries `Pick every smooth point`, and a name matched loosely finds
+  // both. The two buttons are properly distinguishable -- one is named for the
+  // operation and one for the selection -- and the test has to say which.
+  await expect(panel.getByRole("button", { name: "Smooth", exact: true })).toBeDisabled();
   // Exact, because "Open corner" carries the word too.
   await expect(panel.getByRole("button", { name: "Corner", exact: true })).toBeDisabled();
   // These two are about a specific corner and a specific pair.
@@ -3475,7 +3480,7 @@ test("changing what a point is: round, tidy, and the guards on the rest", async 
   // and too many for the corner pair.
   await page.locator('[data-path-row="0"]').getByRole("button").first().click();
   await expect(page.locator("[data-points-scope]")).toContainText("points");
-  await expect(panel.getByRole("button", { name: "Smooth" })).toBeEnabled();
+  await expect(panel.getByRole("button", { name: "Smooth", exact: true })).toBeEnabled();
   await expect(panel.getByRole("button", { name: "Open corner" })).toBeDisabled();
   await expect(panel.getByRole("button", { name: "Reconnect" })).toBeDisabled();
 });
@@ -4401,4 +4406,103 @@ test("a font that was opened can be shipped as one file that varies", async ({ p
     }
   }, [...bytes]);
   expect(loaded).toBe(true);
+});
+
+test("the pen can close an outline, which nothing here could do", async ({ page }) => {
+  /*
+   * Not a missing state but a missing action. `addPoint` appended to the last
+   * open contour or started a new one, and nothing anywhere in this application
+   * ever set `closed` -- so every outline drawn with the pen stayed open, and
+   * an open contour does not fill. Somebody could draw a perfectly good `o` and
+   * watch it stay a wire.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await page.waitForTimeout(400);
+  const box = (await page.locator("canvas").first().boundingBox())!;
+
+  await page.locator('[data-tool="pen"]').click();
+  await expect(page.locator("[data-tool-says]")).toHaveText(/start an outline/);
+
+  const a = { x: box.x + 850, y: box.y + 180 };
+  await page.mouse.click(a.x, a.y);
+  await page.mouse.click(a.x + 90, a.y);
+  await page.mouse.click(a.x + 90, a.y + 90);
+
+  // Three points down, so there is something worth closing.
+  await page.mouse.move(a.x + 40, a.y + 40);
+  await expect(page.locator("[data-tool-says]")).toHaveText(/click the first one to close/);
+
+  // On the point that would close it, the pen says so before the click.
+  await page.mouse.move(a.x, a.y);
+  await expect(page.locator("[data-tool-says]")).toHaveText("Click to close the outline.");
+  await expect(page.locator('[data-tool="pen"]')).toHaveAttribute("data-phase", "willDo");
+
+  await page.mouse.click(a.x, a.y);
+  await expect(page.getByText("Outline closed.", { exact: false })).toBeVisible();
+
+  // And the outline really is closed: the pen is back to starting a new one.
+  // Moved well inside the canvas rather than out towards its edge, where
+  // leaving it clears the line and the test would be reading that instead.
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 4 });
+  await expect(page.locator("[data-tool-says]")).toHaveText(/start an outline/);
+});
+
+test("the knife says whether the line would cut before you let go", async ({ page }) => {
+  /*
+   * A knife drawn short, or down beside a stem rather than across it, does
+   * nothing at all -- and did it silently. The only way to find out was to let
+   * go and watch nothing happen.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await page.waitForTimeout(400);
+  const box = (await page.locator("canvas").first().boundingBox())!;
+  const mid = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+  await page.locator('[data-tool="knife"]').click();
+  // Armed the moment it is picked up, rather than waiting for a pointer move.
+  await expect(page.locator("[data-tool-says]")).toHaveText(/right across a shape/);
+
+  await page.mouse.move(box.x + 30, box.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 60, box.y + 40, { steps: 4 });
+  await expect(page.locator("[data-tool-says]")).toHaveText(/has to cross a shape/);
+  await expect(page.locator('[data-tool="knife"]')).toHaveAttribute("data-phase", "active");
+
+  await page.mouse.move(mid.x + 300, mid.y, { steps: 8 });
+  await expect(page.locator("[data-tool-says]")).toHaveText("Let go to cut here.");
+  await expect(page.locator('[data-tool="knife"]')).toHaveAttribute("data-phase", "willDo");
+  await page.mouse.up();
+  await expect(page.getByText("Cut into", { exact: false })).toBeVisible();
+});
+
+test("a tool says what it is for the moment it is picked up", async ({ page }) => {
+  /*
+   * `setTool` clears the phase and nothing reported a new one until the pointer
+   * next moved, so choosing the knife left the status line still offering to
+   * type a point's position. Somebody who picks a tool and reads the line
+   * before moving is exactly the person the line is for.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await page.waitForTimeout(400);
+
+  for (const [tool, expected] of [
+    ["pencil", /Drag to draw/],
+    ["rectangle", /Drag out a rectangle/],
+    ["ellipse", /Drag out an ellipse/],
+    ["knife", /right across a shape/],
+  ] as const) {
+    await page.locator(`[data-tool="${tool}"]`).click();
+    await expect(page.locator("[data-tool-says]"), `${tool} said nothing`).toHaveText(expected);
+  }
+
+  // And select over nothing says nothing, which is the state most time is
+  // spent in and does not need narrating.
+  await page.locator('[data-tool="select"]').click();
+  await expect(page.locator("[data-tool-says]")).toHaveText(/Select one point/);
 });

@@ -51,6 +51,17 @@ const SHORTCUTS: Array<[string, string]> = [
   ["⌘K", "Quick actions, even while typing"],
   ["V", "Select tool"],
   ["P", "Pen tool"],
+  /*
+   * The pen's own gesture, in the shortcut list because that is where somebody
+   * looks for "what am I not doing". It is not a key, but a pen that is only
+   * ever clicked draws polygons, and nobody guesses the drag.
+   */
+  ["Click-drag", "Pull a curve out of the point you are placing"],
+  ["Alt-drag", "Break the handle, so the outline turns at that point"],
+  ["Shift-drag", "Hold the handle to an eighth turn"],
+  ["Tab", "The next point along the path"],
+  ["⌘A", "Every point in the letter"],
+  ["Double-click", "The whole shape under the pointer"],
   ["⌘Z", "Undo"],
   ["⇧⌘Z", "Redo"],
   ["Esc", "Close a dialog"],
@@ -695,11 +706,67 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
           </p>
         </Section>
 
+        <Section title="Drawing by hand, in the Glyph view">
+          <p>
+            <Term>The pen makes curves by holding.</Term> Click and a corner
+            goes down; press, hold and pull, and a handle comes out of the point
+            you are placing, so the outline leaves it as a curve. This is the
+            gesture every drawing program has had since the eighties and the one
+            nobody guesses: a pen that is only ever clicked draws polygons. Hold
+            alt while pulling to break the pair, so the curve arrives one way
+            and leaves another — which is how a bowl meets a stem. Hold shift to
+            keep the handle on an eighth turn.
+          </p>
+          <p>
+            Click the first point again to close the outline, and it fills. An
+            open contour has no inside, so a shape that will not fill is almost
+            always a shape that was never closed. Click the point you have just
+            placed to take its outgoing handle off, and the next segment runs
+            straight out of a curve.
+          </p>
+          <p>
+            <Term>A click on an edge puts a point on it.</Term> The segment
+            under the pointer lights up first, and the curve either side comes
+            out exactly where it was — nothing moves, you simply have somewhere
+            to pull from. Deleting a point is the same bargain backwards: the
+            curve through its neighbours is drawn again so the shape survives,
+            rather than the two sides collapsing into a straight line.
+          </p>
+          <p>
+            <Term>Simplify</Term> asks how few points describe the same outline.
+            Tidy up is not this: tidy removes points that are carrying nothing,
+            and a curve held up by forty points none of which is redundant stays
+            at forty. Simplify re-draws each run between corners within a
+            tolerance you choose — a unit, four units, twelve — and tells you
+            what it will cost before you press it. Corners are never crossed, so
+            a stem end stays square.
+          </p>
+          <p>
+            <Term>Faults</Term> rings the two things you cannot see by looking.
+            A curve that reaches its widest point without a point on it renders
+            worse at small sizes, and the rasteriser works from those extremes.
+            A point a degree or two off smooth looks identical at any zoom you
+            draw at and puts a flat spot on the edge of a letter at reading
+            size. Both are off until you ask, because a letter halfway through
+            being drawn is covered in them and does not need telling.
+          </p>
+        </Section>
+
         <Section title="Keyboard">
           <dl className="space-y-1">
             {SHORTCUTS.map(([key, what]) => (
               <div key={key} className="flex items-baseline gap-3">
-                <dt className="w-14 shrink-0 font-mono text-2xs text-foreground">{key}</dt>
+                {/*
+                  Wide enough for a gesture, and never broken across lines.
+
+                  The column was `w-14`, which fits `⇧⌘Z` and every other key on
+                  the list. The pen's gestures are words, and at fourteen units
+                  `Click-drag` wrapped at its own hyphen into `Click-` over
+                  `drag` — which reads as two shortcuts.
+                */}
+                <dt className="w-24 shrink-0 whitespace-nowrap font-mono text-2xs text-foreground">
+                  {key}
+                </dt>
                 <dd className="text-2xs text-muted-foreground">{what}</dd>
               </div>
             ))}

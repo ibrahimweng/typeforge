@@ -37,6 +37,8 @@ import {
   removeLigature as takeLigatureOut,
 } from "@/font/features";
 import { reverse as reverseContour } from "@/font/outline";
+import { NEARLY_STRAIGHT, offSmooth } from "@/font/marks";
+import { retracted, simplified, withPointOn, withoutPoint } from "@/font/pen";
 import {
   deriveParams,
   isControlGlyph,
@@ -115,6 +117,42 @@ export type ViewId = "grid" | "glyph" | "kerning" | "metrics" | "proof" | "repor
  */
 export type ToolId = "select" | "pen" | "pencil" | "rectangle" | "ellipse" | "knife";
 
+/**
+ * What the tool in hand is doing, in the terms that change what the next click
+ * does.
+ *
+ * Not a uniform four states bolted onto six buttons. A tool's phases are its
+ * own: the pen's second click means something different from its first, and
+ * the knife's line either crosses a shape or it does not. What they have in
+ * common is only that each is a moment where the answer to "what happens if I
+ * press now" changes.
+ *
+ * Kept here rather than in the canvas's own `dragRef` because a ref is
+ * invisible to React: everything a tool was doing mid-gesture lived in one,
+ * and so the palette, the cursor and the status line could not have shown it
+ * even if they had wanted to.
+ *
+ *   `idle`     nothing in progress
+ *   `ready`    a gesture would start something -- the select tool over a node
+ *   `active`   a gesture is under way
+ *   `willDo`   under way, and about to do the tool's particular thing: close
+ *              the path, cut the shape, snap to a square
+ */
+export type ToolPhase = "idle" | "ready" | "active" | "willDo";
+
+/**
+ * The phase, and one line saying what pressing now would do.
+ *
+ * The sentence lives with the phase rather than being derived from it in three
+ * places, because the two always change together and a status line that
+ * disagrees with the cursor is worse than neither.
+ */
+export interface ToolState {
+  phase: ToolPhase;
+  /** What happens if you act now, in the tool's own words. */
+  says: string;
+}
+
 /** A node's address within a glyph, used for selection. */
 export interface NodeRef {
   contour: number;
@@ -128,6 +166,8 @@ export interface AppState {
   fileName: string;
   view: ViewId;
   tool: ToolId;
+  /** What that tool is doing, for the palette, the cursor and the status line. */
+  toolState: ToolState;
   /**
    * The letters drawn either side of the one being edited.
    *
@@ -161,6 +201,15 @@ export interface AppState {
   guides: Array<{ axis: "x" | "y"; at: number }>;
   /** Whether a dragged point is pulled onto the lines worth landing on. */
   snapping: boolean;
+  /**
+   * Whether the canvas rings the faults nobody can see by looking.
+   *
+   * Off by default, and a toggle rather than always-on, because these are
+   * advice about a drawing in progress: a letter halfway through being drawn is
+   * covered in missing extremes and does not need telling. Turned on it is the
+   * pass you make before calling a letter finished.
+   */
+  marks: boolean;
   /**
    * Which ground the type is drawn on, where type is looked at.
    *
@@ -232,6 +281,7 @@ class Store {
     fileName: "",
     view: "grid",
     tool: "select",
+    toolState: { phase: "idle", says: "" },
     /*
      * `n` on both sides, which is where a type designer starts.
      *
@@ -243,6 +293,7 @@ class Store {
     context: { before: "n", after: "n" },
     guides: [],
     snapping: true,
+    marks: false,
     ground: "dark",
     selectedGlyph: null,
     selectedNodes: new Set(),
@@ -535,8 +586,25 @@ class Store {
   setView(view: ViewId): void {
     this.set({ view });
   }
+  /**
+   * What the tool in hand is doing.
+   *
+   * Set from the canvas as a gesture runs. Compared before it is stored,
+   * because this fires on every pointer move and a `set` that changes nothing
+   * still re-renders every subscriber -- which on a canvas redrawing six
+   * thousand glyph outlines is the difference between a drag that follows the
+   * pointer and one that does not.
+   */
+  setToolState(next: ToolState): void {
+    const now = this.state.toolState;
+    if (now.phase === next.phase && now.says === next.says) return;
+    this.set({ toolState: next });
+  }
+
   setTool(tool: ToolId): void {
-    this.set({ tool });
+    // A tool picked up mid-anything starts from nothing, which is also what
+    // stops a stale sentence from the last tool sitting under the new one.
+    this.set({ tool, toolState: { phase: "idle", says: "" } });
   }
   /** Change what stands either side of the glyph being edited. */
   setContext(context: Partial<AppState["context"]>): void {
@@ -595,6 +663,11 @@ class Store {
   setSnapping(snapping: boolean): void {
     this.set({ snapping });
   }
+
+  /** Whether the canvas rings the faults that cannot be seen by looking. */
+  setMarks(marks: boolean): void {
+    this.set({ marks });
+  }
   setSearch(search: string): void {
     this.set({ search });
   }
@@ -615,6 +688,101 @@ class Store {
 
   setSelectedNodes(keys: Iterable<string>): void {
     this.set({ selectedNodes: new Set(keys) });
+  }
+
+  /*
+   * Picking points when there are a great many of them.
+   *
+   * A marquee and a click are the whole of what this had, which works up to
+   * about a dozen points and stops working entirely on a traced or imported
+   * outline of two hundred. The three below are what every editor offers
+   * instead, and each answers a question a rubber band cannot: "this shape, not
+   * the one behind it", "every corner, wherever they are", "the next one along
+   * so I can walk the path".
+   */
+
+  /** Every point in the letter, or every point in one contour. */
+  selectAllNodes(glyphName: string, contour?: number): void {
+    const glyph = this.glyph(glyphName);
+    if (!glyph) return;
+    const keys: string[] = [];
+    glyph.contours.forEach((one, at) => {
+      if (contour !== undefined && at !== contour) return;
+      one.nodes.forEach((_, node) => keys.push(nodeKey({ contour: at, node })));
+    });
+    this.setSelectedNodes(keys);
+    this.say(
+      keys.length === 0
+        ? "Nothing to pick."
+        : `${keys.length} ${keys.length === 1 ? "point" : "points"} picked.`,
+      "info",
+    );
+  }
+
+  /**
+   * Every point of one kind.
+   *
+   * The one that saves the most work: "make every corner smooth" and "round
+   * every corner onto the grid" are both a single operation once the corners
+   * are picked, and picking them by hand on a letter with forty of them is the
+   * reason nobody does it.
+   *
+   * Asks the geometry rather than the stored type where the two can disagree: a
+   * node typed `smooth` whose handles are twenty degrees apart is a corner to
+   * everything that reads the font, whatever the file calls it.
+   *
+   * A point with fewer than two handles has no angle to measure and counts as a
+   * corner, which is right for the case that matters -- every point of a square
+   * -- and arguable for a tangent, where a straight runs into a curve. `Smooth`
+   * is the operation somebody reaches for after picking, and running it on a
+   * tangent does nothing, so the cost of the arguable case is nothing.
+   */
+  selectNodesOfKind(glyphName: string, kind: "corner" | "smooth" | "handleless"): void {
+    const glyph = this.glyph(glyphName);
+    if (!glyph) return;
+    const keys: string[] = [];
+    glyph.contours.forEach((one, at) => {
+      one.nodes.forEach((node, index) => {
+        const off = offSmooth(node);
+        const matches =
+          kind === "handleless"
+            ? !node.handleIn && !node.handleOut
+            : off === null
+              ? kind === "corner"
+              : kind === "smooth"
+                ? off <= NEARLY_STRAIGHT
+                : off > NEARLY_STRAIGHT;
+        if (matches) keys.push(nodeKey({ contour: at, node: index }));
+      });
+    });
+    this.setSelectedNodes(keys);
+    const named = kind === "handleless" ? "straight-line points" : `${kind} points`;
+    this.say(keys.length === 0 ? `No ${named}.` : `${keys.length} ${named} picked.`, "info");
+  }
+
+  /**
+   * The next point along the path, which is how a path gets walked.
+   *
+   * Tab in every drawing program there is, and the only way to inspect a
+   * hundred-point outline point by point without hunting for each with the
+   * pointer. Wraps within the contour rather than running off the end, because
+   * a contour is a loop and walking one should be able to go round.
+   */
+  stepSelection(glyphName: string, by: 1 | -1): void {
+    const glyph = this.glyph(glyphName);
+    if (!glyph || glyph.contours.length === 0) return;
+
+    const picked = [...this.state.selectedNodes].map((key) => {
+      const [contour, node] = key.split(":").map(Number);
+      return { contour, node };
+    });
+    // From nothing, start at the first point rather than nowhere.
+    const from = picked[picked.length - 1] ?? { contour: 0, node: by === 1 ? -1 : 0 };
+    const contour = glyph.contours[from.contour];
+    if (!contour || contour.nodes.length === 0) return;
+    const count = contour.nodes.length;
+    const next = ((from.node + by) % count + count) % count;
+    this.setSelectedNodes([nodeKey({ contour: from.contour, node: next })]);
   }
 
   toggleGlyphSelection(name: string, additive: boolean): void {
@@ -1236,6 +1404,123 @@ class Store {
         }
         glyph.advanceWidth = Math.max(0, glyph.advanceWidth + delta);
       },
+    );
+  }
+
+  /**
+   * Close the outline the pen is drawing.
+   *
+   * The pen's second action, and it did not exist. `addPoint` appends to the
+   * last open contour or starts a new one, and nothing anywhere in this
+   * application ever set `closed` -- so every outline drawn with the pen stayed
+   * open, and an open contour does not fill. A person could draw a perfectly
+   * good `o` and watch it stay a wire.
+   *
+   * Refused under three points, because two points closed is a line drawn twice
+   * and a font full of them is a font full of contours with no area.
+   */
+  closeOutline(name: string): boolean {
+    const glyph = this.glyph(name);
+    const contour = glyph?.contours[glyph.contours.length - 1];
+    if (!contour || contour.closed || contour.nodes.length < 3) return false;
+
+    this.editGlyph(name, "Close the outline", (editing) => {
+      const last = editing.contours[editing.contours.length - 1];
+      if (last) last.closed = true;
+    });
+    this.say("Outline closed.", "success");
+    return true;
+  }
+
+  /**
+   * Take the outgoing handle off the point the pen last placed.
+   *
+   * Clicking that point is how a curve is ended: the handle on the arriving
+   * side stays and the leaving one goes, so the next click draws a straight
+   * line out of a curve. Without it a curve could only ever be followed by
+   * another curve.
+   */
+  retractLast(glyphName: string): boolean {
+    const glyph = this.glyph(glyphName);
+    const contour = glyph?.contours[glyph.contours.length - 1];
+    if (!glyph || !contour || contour.closed || contour.nodes.length === 0) return false;
+    const last = contour.nodes[contour.nodes.length - 1];
+    if (!last.handleOut) return false;
+
+    this.editGlyph(glyphName, "End the curve", (one) => {
+      const editing = one.contours[one.contours.length - 1];
+      const node = editing?.nodes[editing.nodes.length - 1];
+      if (node) Object.assign(node, retracted(node));
+    });
+    return true;
+  }
+
+  /** Put a point on a segment, leaving the curve exactly where it was. */
+  addPointOn(glyphName: string, contour: number, segment: number, t: number): boolean {
+    const glyph = this.glyph(glyphName);
+    if (!glyph?.contours[contour]) return false;
+    this.editGlyph(glyphName, "Add a point", (one) => {
+      one.contours[contour] = withPointOn(one.contours[contour], segment, t);
+    });
+    return true;
+  }
+
+  /**
+   * Take points out, keeping the curve that ran through them.
+   *
+   * The old delete removed the nodes and let the shape jump, which is what
+   * makes an outline something you cannot thin out: every point you take costs
+   * you the curve. Re-fitting costs a little accuracy instead.
+   *
+   * Highest index first, so the earlier ones are still where they were said to
+   * be -- and one re-fit per removal rather than one for the lot, because the
+   * curve either side of each has to be measured as it stands when that point
+   * goes.
+   */
+  removePoints(glyphName: string, refs: NodeRef[]): boolean {
+    const glyph = this.glyph(glyphName);
+    if (!glyph || refs.length === 0) return false;
+
+    const byContour = new Map<number, number[]>();
+    for (const ref of refs) {
+      byContour.set(ref.contour, [...(byContour.get(ref.contour) ?? []), ref.node]);
+    }
+    this.editGlyph(glyphName, refs.length === 1 ? "Take a point out" : "Take points out", (one) => {
+      for (const [at, nodes] of byContour) {
+        let contour = one.contours[at];
+        if (!contour) continue;
+        for (const node of [...nodes].sort((a, b) => b - a)) {
+          contour = withoutPoint(contour, node);
+        }
+        one.contours[at] = contour;
+      }
+      one.contours = one.contours.filter((contour) => contour.nodes.length > 1);
+    });
+    this.setSelectedNodes([]);
+    return true;
+  }
+
+  /**
+   * The same outlines in fewer points.
+   *
+   * What `Tidy up` never did: tidying drops points that are exactly redundant,
+   * so a curve carried by forty points none of which is redundant stays at
+   * forty. This asks how few describe the same run to within a tolerance.
+   */
+  simplifyGlyph(glyphName: string, tolerance?: number): void {
+    const glyph = this.glyph(glyphName);
+    if (!glyph) return;
+    const before = glyph.contours.reduce((total, one) => total + one.nodes.length, 0);
+    this.editGlyph(glyphName, "Simplify", (one) => {
+      one.contours = one.contours.map((contour) => simplified(contour, tolerance));
+    });
+    const after = this.glyph(glyphName)!.contours.reduce((total, one) => total + one.nodes.length, 0);
+    this.setSelectedNodes([]);
+    this.say(
+      before === after
+        ? "Nothing to take out at this tolerance."
+        : `${before - after} ${before - after === 1 ? "point" : "points"} out, ${after} left.`,
+      before === after ? "info" : "success",
     );
   }
 

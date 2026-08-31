@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { contourArea, contoursBounds } from "@/font/geometry";
 import { hasLetters } from "@/font/library";
+import { KEEPS_THE_SHAPE } from "@/font/pen";
 import { directionIsCorrect } from "@/font/outline";
 import { mirror, slanted } from "@/font/reshape";
 import { emptyTypeface, type Contour, type Glyph } from "@/font/types";
@@ -1108,5 +1109,191 @@ describe("the last three things the audit found", () => {
 
   it("refuses a part the font does not have", () => {
     expect(store.addComponent("a", "zzz")).toBe(false);
+  });
+});
+
+/*
+ * The pen's edits and the selections that make a large outline workable.
+ *
+ * Through the store rather than against `pen.ts` directly, because the maths is
+ * covered there and what is untested here is the wiring: which contour gets
+ * edited, what happens to the selection afterwards, whether an operation that
+ * cannot run says so instead of half-running.
+ */
+describe("editing points through the store", () => {
+  /** A circle of radius 100 with a point at each extreme. */
+  function circle(): Contour {
+    const k = 100 * 0.5523;
+    const at = (x: number, y: number, into: [number, number], out: [number, number]) => ({
+      point: { x, y },
+      handleIn: { x: into[0], y: into[1] },
+      handleOut: { x: out[0], y: out[1] },
+      type: "smooth" as const,
+    });
+    return {
+      closed: true,
+      nodes: [
+        at(100, 0, [100, -k], [100, k]),
+        at(0, 100, [k, 100], [-k, 100]),
+        at(-100, 0, [-100, k], [-100, -k]),
+        at(0, -100, [-k, -100], [k, -100]),
+      ],
+    };
+  }
+
+  beforeEach(() => {
+    seed(["o", "n"]);
+    store.editGlyph("o", "seed", (one) => {
+      one.contours = [circle()];
+    });
+    store.setSelectedNodes([]);
+  });
+
+  it("puts a point on a segment without moving the curve", () => {
+    const before = contoursBounds(store.glyph("o")!.contours);
+    expect(store.addPointOn("o", 0, 0, 0.5)).toBe(true);
+    expect(store.glyph("o")!.contours[0].nodes).toHaveLength(5);
+    const after = contoursBounds(store.glyph("o")!.contours);
+    expect(after.xMin).toBeCloseTo(before.xMin, 6);
+    expect(after.yMax).toBeCloseTo(before.yMax, 6);
+  });
+
+  it("refuses to add a point to a contour that is not there", () => {
+    expect(store.addPointOn("o", 7, 0, 0.5)).toBe(false);
+  });
+
+  it("takes a point out and keeps the shape close", () => {
+    expect(store.removePoints("o", [{ contour: 0, node: 1 }])).toBe(true);
+    const nodes = store.glyph("o")!.contours[0].nodes;
+    expect(nodes).toHaveLength(3);
+    // A circle carried on three points is a worse circle, not a triangle.
+    const bounds = contoursBounds(store.glyph("o")!.contours);
+    expect(bounds.yMax).toBeGreaterThan(90);
+    expect(store.getSnapshot().selectedNodes.size).toBe(0);
+  });
+
+  it("says nothing to remove when asked for nothing", () => {
+    expect(store.removePoints("o", [])).toBe(false);
+  });
+
+  it("simplifies a heavily-pointed circle and says how many went", () => {
+    // The same circle, carried on twenty points instead of four.
+    store.editGlyph("o", "overload", (one) => {
+      const r = 100;
+      const count = 20;
+      const k = ((4 / 3) * Math.tan(Math.PI / count) * r);
+      one.contours = [
+        {
+          closed: true,
+          nodes: Array.from({ length: count }, (_, at) => {
+            const angle = (at / count) * Math.PI * 2;
+            const point = { x: Math.cos(angle) * r, y: Math.sin(angle) * r };
+            const along = { x: -Math.sin(angle), y: Math.cos(angle) };
+            return {
+              point,
+              handleIn: { x: point.x - along.x * k, y: point.y - along.y * k },
+              handleOut: { x: point.x + along.x * k, y: point.y + along.y * k },
+              type: "smooth" as const,
+            };
+          }),
+        },
+      ];
+    });
+    store.simplifyGlyph("o");
+    const nodes = store.glyph("o")!.contours[0].nodes;
+    expect(nodes.length).toBeLessThan(20);
+    expect(nodes.length).toBeGreaterThanOrEqual(4);
+    expect(store.getSnapshot().status?.message).toMatch(/points out/);
+    /*
+     * Still a circle, to within the tolerance it was given.
+     *
+     * Asserted against the tolerance rather than to a decimal place, because a
+     * tolerance of four units is a promise that the outline may move up to four
+     * units and a test that demands less is testing something nobody asked for.
+     */
+    const bounds = contoursBounds(store.glyph("o")!.contours);
+    expect(Math.abs(bounds.yMax - 100)).toBeLessThanOrEqual(KEEPS_THE_SHAPE);
+    expect(Math.abs(bounds.xMin + 100)).toBeLessThanOrEqual(KEEPS_THE_SHAPE);
+  });
+
+  it("says so rather than churning when there is nothing to simplify", () => {
+    store.simplifyGlyph("o", 0.0001);
+    expect(store.getSnapshot().status?.message).toMatch(/Nothing to take out/);
+  });
+
+  it("closes an outline of three points and refuses one of two", () => {
+    store.editGlyph("n", "open", (one) => {
+      one.contours = [
+        { closed: false, nodes: circle().nodes.slice(0, 2).map((node) => ({ ...node })) },
+      ];
+    });
+    expect(store.closeOutline("n")).toBe(false);
+    store.editGlyph("n", "another", (one) => {
+      one.contours[0].nodes.push({ ...circle().nodes[2] });
+    });
+    expect(store.closeOutline("n")).toBe(true);
+    expect(store.glyph("n")!.contours[0].closed).toBe(true);
+    // And not twice.
+    expect(store.closeOutline("n")).toBe(false);
+  });
+
+  it("takes the leaving handle off the last point, once", () => {
+    store.editGlyph("n", "open", (one) => {
+      one.contours = [{ closed: false, nodes: circle().nodes.slice(0, 2).map((n) => ({ ...n })) }];
+    });
+    expect(store.retractLast("n")).toBe(true);
+    expect(store.glyph("n")!.contours[0].nodes[1].handleOut).toBeNull();
+    expect(store.retractLast("n")).toBe(false);
+  });
+});
+
+describe("picking points at scale", () => {
+  beforeEach(() => {
+    seed(["o"]);
+    store.editGlyph("o", "seed", (one) => {
+      const square = (size: number): Contour => ({
+        closed: true,
+        nodes: [
+          { point: { x: 0, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+          { point: { x: size, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+          { point: { x: size, y: size }, handleIn: null, handleOut: null, type: "corner" },
+          { point: { x: 0, y: size }, handleIn: null, handleOut: null, type: "corner" },
+        ],
+      });
+      one.contours = [square(100), square(50)];
+    });
+    store.setSelectedNodes([]);
+  });
+
+  it("picks every point in the letter", () => {
+    store.selectAllNodes("o");
+    expect(store.getSnapshot().selectedNodes.size).toBe(8);
+  });
+
+  it("picks one contour, which a marquee cannot do", () => {
+    store.selectAllNodes("o", 1);
+    expect([...store.getSnapshot().selectedNodes]).toEqual(["1:0", "1:1", "1:2", "1:3"]);
+  });
+
+  it("picks by kind", () => {
+    store.selectNodesOfKind("o", "handleless");
+    expect(store.getSnapshot().selectedNodes.size).toBe(8);
+    store.selectNodesOfKind("o", "smooth");
+    expect(store.getSnapshot().selectedNodes.size).toBe(0);
+  });
+
+  it("walks the contour, and goes round the end", () => {
+    store.setSelectedNodes(["0:2"]);
+    store.stepSelection("o", 1);
+    expect([...store.getSnapshot().selectedNodes]).toEqual(["0:3"]);
+    store.stepSelection("o", 1);
+    expect([...store.getSnapshot().selectedNodes]).toEqual(["0:0"]);
+    store.stepSelection("o", -1);
+    expect([...store.getSnapshot().selectedNodes]).toEqual(["0:3"]);
+  });
+
+  it("starts at the first point when nothing is picked", () => {
+    store.stepSelection("o", 1);
+    expect([...store.getSnapshot().selectedNodes]).toEqual(["0:0"]);
   });
 });
