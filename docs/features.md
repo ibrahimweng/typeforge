@@ -125,3 +125,43 @@ glyph's name was written in six places, and the two new rule shapes make it
 eight. The store's `editFont` was holding five of them for undo -- right until
 a ligature could be made by hand, and after that an undo that took the letter
 back and left the rule pointing at it.
+
+---
+
+# Variable, from a font somebody opened
+
+The `fvar`/`gvar`/`STAT` writer has been here since the forge learned to ship a
+family in one file, and `VariableOptions` takes masters as whole typefaces --
+so nothing about it was ever particular to a drawn-from-nothing face. Only the
+forge could reach it. A font imported or drawn by hand could not be shipped as
+a varying one at all, though `variable.ts` says in its own opening paragraph
+that this half of the application is "already a machine for drawing the same
+alphabet at any weight".
+
+A master is that same typeface with one parameter moved, and it works because
+of a fact about `applyWeight`: it walks the nodes a contour already has and
+offsets each one along its own normal. It moves points; it does not make or
+remove them. So two weights of a letter come out with the same points in the
+same order, which is the one thing a variable font cannot do without. Where
+that is not true the export already copes -- `buildGvar` hands back the glyphs
+whose masters did not line up, they stay at the default, and the exporter says
+which.
+
+## The fault it cost to find
+
+The first version produced a variable font whose bold and light were the same
+letters to four decimal places, in a file that was otherwise perfectly formed:
+correct axis, correct instances, `STAT` in order, more than a hundred glyphs
+carrying deltas, and fontTools reading all of it without complaint.
+
+`params.weight` is kept in **font units**. The slider's own range is a fraction
+of the em -- `-0.04` to `0.06` -- and the inspector multiplies by `unitsPerEm`
+on the way in. Both halves of that are in the code and neither is in the type,
+so masters built at the raw fraction moved a twenty-fifth of a font unit
+instead of eighty-two. On DejaVu Sans that is a change of 0.08%: real, provably
+non-zero, and invisible.
+
+Nothing about the file said so. It took pinning the font at each end with
+fontTools and measuring signed area -- ink rather than width, because a bold
+and a light reach the same distance -- to see that `H` came back byte-identical
+at 100 and at 900.

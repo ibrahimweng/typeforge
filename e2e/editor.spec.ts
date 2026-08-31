@@ -4311,3 +4311,62 @@ test("Trace says what it is holding, as the other three modes do", async ({ page
     await expect(toolbar.getByText(says, { exact: false }).first()).toBeVisible();
   }
 });
+
+test("a font that was opened can be shipped as one file that varies", async ({ page }) => {
+  /*
+   * The `fvar`/`gvar`/`STAT` writer has been here since the forge learned to
+   * put a family in one file, and it takes masters as whole typefaces -- so
+   * nothing about it was ever particular to a drawn-from-nothing face. Only the
+   * forge could reach it, so an imported or hand-drawn font could not be
+   * shipped as a varying one at all.
+   *
+   * What the file actually draws is settled by fontTools in
+   * `varying-drawn.integration.test.ts`, which pins it at each end and measures
+   * the ink. This is the browser half: that the choice is offered, and that
+   * what comes down the wire is a font a browser will parse with an axis in it.
+   */
+  await page.goto("/");
+  await openFont(page);
+
+  await page.getByRole("button", { name: "Export" }).click();
+  const dialog = page.getByRole("dialog", { name: "Download font" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByText("Variable (.ttf)").click();
+
+  // The compiling questions go: a varying font is always a rebuild, because
+  // every master has to split its curves the same number of ways.
+  await expect(dialog.getByText("What to carry over")).toHaveCount(0);
+
+  const download = await Promise.race([
+    page.waitForEvent("download", { timeout: 120_000 }),
+    dialog
+      .getByRole("button", { name: "Download" })
+      .click()
+      .then(() => page.waitForEvent("download", { timeout: 120_000 })),
+  ]);
+
+  const bytes = readFileSync((await download.path())!);
+  expect([...bytes.subarray(0, 4)]).toEqual([0, 1, 0, 0]);
+
+  // The table that makes it a variable font, found by name in the directory.
+  const tags: string[] = [];
+  const count = (bytes[4] << 8) | bytes[5];
+  for (let i = 0; i < count; i++) {
+    tags.push(String.fromCharCode(...bytes.subarray(12 + i * 16, 16 + i * 16)));
+  }
+  expect(tags).toContain("fvar");
+  expect(tags).toContain("gvar");
+  expect(tags).toContain("STAT");
+
+  // And a browser will take it, which nothing malformed gets past.
+  const loaded = await page.evaluate(async (data) => {
+    const face = new FontFace("TypeforgeVariable", new Uint8Array(data).buffer);
+    try {
+      await face.load();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [...bytes]);
+  expect(loaded).toBe(true);
+});
