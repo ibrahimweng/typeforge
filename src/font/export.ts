@@ -34,6 +34,7 @@ import {
   type Master,
 } from "./variable";
 import { buildGposTable, type ResolvedClassKern, type ResolvedPair } from "./kern";
+import { featuresMatchSource } from "./features";
 import { buildGsubTable, type ChainRule, type GlyphSet, type Ligature } from "./gsub";
 import { anythingCut, effectiveParams, paramsAreDefault, resolveGlyphContours } from "./transform";
 import { ready as readyToCut } from "./boolean";
@@ -482,7 +483,7 @@ async function exportTrueType(
   }
 
   applyKerning(tables, typeface, context.includeKerning);
-  applyAlternates(tables, typeface);
+  applyAlternates(tables, typeface, false, !preserving, !featuresMatchSource(typeface), context.notes);
 
   const font: SfntFont = { sfntVersion: SFNT_TRUETYPE, tables };
   return writeSfnt(font);
@@ -558,7 +559,9 @@ async function exportOpenType(
   const written = new Uint8Array(font.toArrayBuffer());
   const sfnt = readSfnt(written);
   applyKerning(sfnt.tables, typeface, context.includeKerning, glyphs.length !== resolved.length);
-  applyAlternates(sfnt.tables, typeface, glyphs.length !== resolved.length);
+  // OpenType is always a rebuild: the curves are re-encoded, so there is no
+  // source table in here to trade against.
+  applyAlternates(sfnt.tables, typeface, glyphs.length !== resolved.length, true, true, context.notes);
   return writeSfnt(sfnt);
 }
 
@@ -579,6 +582,9 @@ function applyAlternates(
   tables: Map<string, Uint8Array>,
   typeface: Typeface,
   shifted = false,
+  rebuilt = false,
+  changed = false,
+  notes: string[] = [],
 ): void {
   const offset = shifted ? 1 : 0;
   const idFor = (name: string): number | null => {
@@ -652,7 +658,37 @@ function applyAlternates(
    * part of what an import is promised it will keep.
    */
   const gsub = buildGsubTable({ ligatures, sets, contextual: rules });
-  if (gsub) tables.set("GSUB", gsub);
+  if (!gsub) return;
+
+  /*
+   * On a preserve export, a rebuilt table is a trade rather than an addition.
+   *
+   * The source font's own `GSUB` is in `tables` already and holds everything:
+   * positional forms, discretionary ligatures, the contextual rules a script
+   * needs -- most of which this document does not model and none of which the
+   * writer above can put back. Setting a table built from the model over the
+   * top swaps all of that for the handful of rules the document knows about.
+   *
+   * It could not happen while an import read no features at all. Now that one
+   * does, the two are the same shape and the swap would be silent, so it is
+   * said out loud instead: a preserve export keeps what the font came with
+   * unless somebody has actually changed the features, and says which it did.
+   */
+  const preserving = tables.has("GSUB") && !rebuilt;
+  if (preserving && !changed) {
+    notes.push(
+      "The font's own ligatures and alternates were kept as they arrived. Nothing here changed them.",
+    );
+    return;
+  }
+  if (preserving) {
+    notes.push(
+      "The features were rebuilt from what is on screen, so any the source font had that this " +
+        "editor does not model — positional forms, discretionary ligatures, contextual rules — " +
+        "are not in the file. Export without preserving to avoid the question.",
+    );
+  }
+  tables.set("GSUB", gsub);
 }
 
 /**

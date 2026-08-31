@@ -165,3 +165,39 @@ Nothing about the file said so. It took pinning the font at each end with
 fontTools and measuring signed area -- ink rather than width, because a bold
 and a light reach the same distance -- to see that `H` came back byte-identical
 at 100 and at 900.
+
+---
+
+# Reading a font's own features
+
+An import set `alternates: []` and read nothing else, so a font that plainly
+draws `fi` arrived with no features at all. The panel said "None yet" about a
+face that has had ligatures for twenty years, and a rebuild export dropped
+every one of them.
+
+What made it survivable is also what made it invisible: a **preserve** export
+hands back the source tables untouched, so the ligatures came through that way.
+The two halves of the export disagreed about what the font contained and
+neither said so.
+
+The reader is deliberately partial and it is worth being plain about which
+part. It reads the two lookup types the document can hold -- 4, a run of glyphs
+becoming one, and 1, a glyph becoming another -- under the tags they were found
+under, and ignores everything else. Only `liga` becomes a ligature here:
+`dlig` and `hlig` are a different promise, and reading them in would turn every
+discretionary ligature in a font into a mandatory one.
+
+## The interaction it opened
+
+Once the model can hold what a font arrived with, `applyAlternates` writing a
+rebuilt `GSUB` over a preserved one stops being harmless and becomes a quiet,
+total loss. DejaVu's own table carries Arabic positional forms among much else;
+a table built from the model holds two ligatures. Setting one over the other is
+a trade, and it could not happen while an import read nothing.
+
+So a preserve export now keeps the font's own table when nothing here has
+changed the features, and says so. Change them and it rebuilds -- and says
+exactly what that costs, rather than doing it silently.
+
+Which is worth stating as a rule: **a reader is not only a feature, it is a new
+way for a writer to be wrong.** The reader was the easy half.

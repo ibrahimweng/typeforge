@@ -412,3 +412,184 @@ export function buildGsubTable(features: Features): Uint8Array | null {
   gsub.bytesFrom(scriptBytes).bytesFrom(featureBytes).bytesFrom(lookupBytes);
   return gsub.toUint8Array();
 }
+
+// ---------------------------------------------------------------------------
+// Reading one back
+// ---------------------------------------------------------------------------
+
+/**
+ * The ligatures and the sets a font already carries.
+ *
+ * A font opened here arrived with `alternates: []` and nothing else, so the
+ * features panel told a face that plainly draws `fi` that it had no ligatures,
+ * and a rebuild export dropped every one of them. Preserve kept them, which is
+ * what made it survivable and also what made it invisible: the two halves of
+ * the export disagreed and neither said so.
+ *
+ * Deliberately partial, and it is worth being plain about which part. This
+ * reads the two lookup types the document can hold -- 4, a run of glyphs
+ * becoming one, and 1, a glyph becoming another -- and ignores the rest.
+ * Everything else stays in the source tables and goes back out untouched on a
+ * preserve export, which is what that mode is for.
+ *
+ * Written by hand rather than taken from a library for the same reason the
+ * writer was: what it has to agree with is the writer, and a reader that
+ * reads back exactly what was written is a claim the tests can hold both ends
+ * of. Every offset is bounds-checked, because this is the one place in the
+ * application that reads a stranger's bytes.
+ */
+export interface ReadFeatures {
+  /** Ligatures, by the tag they were found under. */
+  ligatures: Array<{ tag: string; components: number[]; ligature: number }>;
+  /** Single substitutions, by tag. */
+  sets: Array<{ tag: string; swaps: Swap[] }>;
+}
+
+/** A bounds-checked big-endian reader. Out of range reads as nothing. */
+class Bytes {
+  constructor(private readonly data: Uint8Array) {}
+  u16(at: number): number {
+    if (at < 0 || at + 1 >= this.data.length) return -1;
+    return (this.data[at] << 8) | this.data[at + 1];
+  }
+  tag(at: number): string {
+    if (at < 0 || at + 3 >= this.data.length) return "";
+    return String.fromCharCode(...this.data.subarray(at, at + 4));
+  }
+  get length(): number {
+    return this.data.length;
+  }
+}
+
+/** Which glyphs a coverage table covers, in the order the format lists them. */
+function coveredBy(bytes: Bytes, at: number): number[] {
+  const format = bytes.u16(at);
+  const out: number[] = [];
+  if (format === 1) {
+    const count = bytes.u16(at + 2);
+    if (count < 0) return out;
+    for (let index = 0; index < count; index++) {
+      const glyph = bytes.u16(at + 4 + index * 2);
+      if (glyph < 0) return out;
+      out.push(glyph);
+    }
+    return out;
+  }
+  if (format === 2) {
+    const count = bytes.u16(at + 2);
+    if (count < 0) return out;
+    for (let index = 0; index < count; index++) {
+      const record = at + 4 + index * 6;
+      const first = bytes.u16(record);
+      const last = bytes.u16(record + 2);
+      if (first < 0 || last < 0 || last < first) return out;
+      // A range covering the whole id space is a corrupt table, not a font.
+      if (last - first > 0xffff) return out;
+      for (let glyph = first; glyph <= last; glyph++) out.push(glyph);
+    }
+  }
+  return out;
+}
+
+export function readGsubFeatures(raw: Uint8Array): ReadFeatures {
+  const found: ReadFeatures = { ligatures: [], sets: [] };
+  const bytes = new Bytes(raw);
+  if (raw.length < 10) return found;
+
+  const featureListAt = bytes.u16(6);
+  const lookupListAt = bytes.u16(8);
+  if (featureListAt < 0 || lookupListAt < 0) return found;
+
+  /*
+   * Which lookups each feature fires, so a ligature can be reported under the
+   * tag it actually belongs to. A `liga` and a `dlig` are different promises --
+   * one is on by default and one is not -- and reading both as the same thing
+   * would turn every discretionary ligature in a font into a mandatory one.
+   */
+  const byLookup = new Map<number, string>();
+  const featureCount = bytes.u16(featureListAt);
+  for (let index = 0; index < featureCount; index++) {
+    const record = featureListAt + 2 + index * 6;
+    const tag = bytes.tag(record);
+    const featureAt = featureListAt + bytes.u16(record + 4);
+    const indexCount = bytes.u16(featureAt + 2);
+    if (!tag || indexCount < 0) continue;
+    for (let one = 0; one < indexCount; one++) {
+      const lookup = bytes.u16(featureAt + 4 + one * 2);
+      // First tag wins: a lookup shared between features is reported under the
+      // one that reached it first, which beats reporting it twice.
+      if (lookup >= 0 && !byLookup.has(lookup)) byLookup.set(lookup, tag.trimEnd());
+    }
+  }
+
+  const lookupCount = bytes.u16(lookupListAt);
+  for (let index = 0; index < lookupCount; index++) {
+    const tag = byLookup.get(index);
+    // A lookup no feature reaches is invoked from a chain, and a chain is not
+    // something this document can hold.
+    if (!tag) continue;
+    const lookupAt = lookupListAt + bytes.u16(lookupListAt + 2 + index * 2);
+    const type = bytes.u16(lookupAt);
+    const subtableCount = bytes.u16(lookupAt + 4);
+    if (type !== SINGLE && type !== LIGATURE) continue;
+
+    for (let sub = 0; sub < subtableCount; sub++) {
+      const subAt = lookupAt + bytes.u16(lookupAt + 6 + sub * 2);
+      if (subAt <= lookupAt || subAt >= bytes.length) continue;
+      if (type === SINGLE) readSingle(bytes, subAt, tag, found);
+      else readLigatures(bytes, subAt, tag, found);
+    }
+  }
+  return found;
+}
+
+function readSingle(bytes: Bytes, at: number, tag: string, into: ReadFeatures): void {
+  const format = bytes.u16(at);
+  const covered = coveredBy(bytes, at + bytes.u16(at + 2));
+  const swaps: Swap[] = [];
+  if (format === 1) {
+    // Format 1 stores one delta added to every glyph it covers, which is a
+    // sixteen-bit signed number and wraps.
+    const raw = bytes.u16(at + 4);
+    const delta = raw > 0x7fff ? raw - 0x10000 : raw;
+    for (const plain of covered) swaps.push({ plain, alternate: (plain + delta) & 0xffff });
+  } else if (format === 2) {
+    const count = bytes.u16(at + 4);
+    for (let index = 0; index < count && index < covered.length; index++) {
+      const alternate = bytes.u16(at + 6 + index * 2);
+      if (alternate >= 0) swaps.push({ plain: covered[index], alternate });
+    }
+  }
+  if (swaps.length > 0) into.sets.push({ tag, swaps });
+}
+
+function readLigatures(bytes: Bytes, at: number, tag: string, into: ReadFeatures): void {
+  if (bytes.u16(at) !== 1) return;
+  const covered = coveredBy(bytes, at + bytes.u16(at + 2));
+  const setCount = bytes.u16(at + 4);
+
+  for (let index = 0; index < setCount && index < covered.length; index++) {
+    const setAt = at + bytes.u16(at + 6 + index * 2);
+    const count = bytes.u16(setAt);
+    if (count < 0) continue;
+    for (let one = 0; one < count; one++) {
+      const recordAt = setAt + bytes.u16(setAt + 2 + one * 2);
+      const ligature = bytes.u16(recordAt);
+      const componentCount = bytes.u16(recordAt + 2);
+      // The count includes the first glyph, which coverage supplied and the
+      // record does not repeat. One component is not a ligature.
+      if (ligature < 0 || componentCount < 2) continue;
+      const components = [covered[index]];
+      let whole = true;
+      for (let part = 1; part < componentCount; part++) {
+        const glyph = bytes.u16(recordAt + 2 + part * 2);
+        if (glyph < 0) {
+          whole = false;
+          break;
+        }
+        components.push(glyph);
+      }
+      if (whole) into.ligatures.push({ tag, components, ligature });
+    }
+  }
+}

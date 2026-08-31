@@ -113,16 +113,31 @@ suite("export pipeline", { timeout: FONT_SUITE_TIMEOUT }, () => {
     expect(result.fidelity).toBe("preserve");
   });
 
-  it("drops unmodelled tables in a clean rebuild, as documented", async () => {
+  it("drops unmodelled tables in a clean rebuild, and keeps what is modelled", async () => {
     const { typeface } = await importFont(source!, "DejaVuSans.ttf");
     const result = await exportFont(typeface, { format: "ttf", fidelity: "rebuild", now: 0 });
     const report = inspectFont(result.bytes);
 
     expect(report.error).toBeUndefined();
     expect(report.recompiles).toBe(true);
-    expect(report.tables).not.toContain("GSUB");
-    // Kerning is ours, so it survives a rebuild even though GSUB does not.
+    // The hinting is nobody's here, and a rebuild is a clean file.
+    for (const table of ["cvt ", "fpgm", "prep"]) expect(report.tables).not.toContain(table);
+    // Kerning is ours, so it survives a rebuild.
     expect(Object.keys(report.gposKernPairs).length).toBeGreaterThan(2000);
+
+    /*
+     * And so are the ligatures now, which they were not.
+     *
+     * This asserted no `GSUB` at all, which was the truth while an import read
+     * no features: `alternates` came back empty from every font and there was
+     * nothing to write. So a rebuild of a face that plainly draws `fi` dropped
+     * it, while a preserve kept it, and the two halves of the export disagreed
+     * without either saying so. A rebuild now carries the ligatures and sets
+     * the document holds -- and only those. Everything else in the source's own
+     * table is what preserving is for.
+     */
+    expect(report.tables).toContain("GSUB");
+    expect((typeface.ligatures ?? []).length).toBeGreaterThan(0);
   });
 
   it("carries an edited advance width into the exported file", async () => {

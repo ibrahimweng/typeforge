@@ -18,6 +18,7 @@
  * that has to be written in the thing a rename rewrites.
  */
 
+import { readGsubFeatures } from "./gsub";
 import type { NamedLigature, Typeface } from "./types";
 
 /** The standard ligatures, in the order a font usually gets them. */
@@ -342,4 +343,47 @@ export function unreachableGlyphs(typeface: Typeface): string[] {
 
   const mine = typeface.source === null ? typeface.glyphs : typeface.glyphs.filter((one) => one.dirty);
   return mine.filter((one) => !reached.has(one.name)).map((one) => one.name);
+}
+
+
+/**
+ * Whether the features on screen are still the ones the font arrived with.
+ *
+ * Asked at export time, and only to decide whether a preserve export may keep
+ * the source's own `GSUB` -- which holds far more than this document models --
+ * or has to trade it for one built from what is here. Compared by re-reading
+ * the source rather than by remembering, because remembering means another
+ * field to keep in step through every rename, delete and undo, and this is
+ * cheap and cannot drift.
+ */
+export function featuresMatchSource(typeface: Typeface): boolean {
+  const raw = typeface.source?.tables.get("GSUB");
+  if (!raw) return false;
+
+  const read = readGsubFeatures(raw);
+  const nameOf = (id: number): string | null => typeface.glyphs[id]?.name ?? null;
+
+  const wasLigatures = read.ligatures
+    .filter((one) => one.tag === "liga")
+    .map((one) => `${one.components.map(nameOf).join(" ")}>${nameOf(one.ligature)}`)
+    .sort();
+  const nowLigatures = (typeface.ligatures ?? [])
+    .map((one) => `${one.components.join(" ")}>${one.ligature}`)
+    .sort();
+  if (wasLigatures.join("|") !== nowLigatures.join("|")) return false;
+
+  const asText = (tag: string, swaps: ReadonlyArray<{ plain: string; alternate: string }>) =>
+    `${tag}:${swaps.map((one) => `${one.plain}>${one.alternate}`).sort().join(",")}`;
+  const wasSets = read.sets
+    .map((set) =>
+      asText(
+        set.tag,
+        set.swaps
+          .map((one) => ({ plain: nameOf(one.plain) ?? "", alternate: nameOf(one.alternate) ?? "" }))
+          .filter((one) => one.plain && one.alternate && one.plain !== one.alternate),
+      ),
+    )
+    .sort();
+  const nowSets = (typeface.sets ?? []).map((set) => asText(set.tag, set.swaps)).sort();
+  return wasSets.join("|") === nowSets.join("|");
 }
