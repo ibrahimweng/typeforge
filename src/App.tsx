@@ -346,7 +346,7 @@ export function App(): React.JSX.Element {
    * a wrong answer costs the click back to Edit and nothing else, and a right
    * one still leaves the outlines there to be compared against.
    */
-  const sendScriptToTrace = React.useCallback((bytes: Uint8Array, name: string) => {
+  const sendScriptToTrace = React.useCallback((bytes: Uint8Array, name: string): boolean => {
     /*
      * The font that was just opened, and a check that it really was.
      *
@@ -357,14 +357,37 @@ export function App(): React.JSX.Element {
      * and start tracing the font that was already there.
      */
     const { typeface, fileName } = store.getSnapshot();
-    if (!typeface || fileName !== name) return;
+    if (!typeface || fileName !== name) return false;
     const verdict = looksJoined(typeface);
-    if (!verdict.joined) return;
+    if (!verdict.joined) return false;
     setMode("quill");
     // Not awaited: this is most of a minute of arithmetic in a worker, and it
     // reports its own progress. Holding the drop open until it finished would
     // freeze the door every font comes through.
     void quillStore.trace(bytes, name, verdict);
+    return true;
+  }, []);
+
+  /*
+   * Go to where the thing that was just opened actually is.
+   *
+   * Every other door does this already -- a UFO, a saved project, a typeface
+   * adopted from the library -- and a plain font was the one that did not. So
+   * opening one from the toolbar while standing in Draw, Assemble or Trace
+   * loaded it into the editor's document and left you exactly where you were:
+   * the status line reporting `Opened -- 6,253 glyphs` over a view that says
+   * `Nothing traced yet`. Two statements about the same action, contradicting
+   * each other on the same screen, with the font itself perfectly fine and one
+   * mode away.
+   *
+   * Only when it really opened. `loadFont` reports a file it could not read by
+   * setting a status and leaving the previous font in place, and switching mode
+   * on that would walk somebody away from their work to look at the document
+   * they already had.
+   */
+  const showWhatOpened = React.useCallback((name: string) => {
+    const { typeface, fileName } = store.getSnapshot();
+    if (typeface && fileName === name) setMode("edit");
   }, []);
 
   /*
@@ -480,7 +503,9 @@ export function App(): React.JSX.Element {
       const bytes = new Uint8Array(await file.arrayBuffer());
       if (detectFormat(bytes) !== "unknown") {
         await store.loadFont(bytes, file.name);
-        sendScriptToTrace(bytes, file.name);
+        // A joined script is taken to Trace and traced; everything else is a
+        // font to edit, and the editor is where it now lives.
+        if (!sendScriptToTrace(bytes, file.name)) showWhatOpened(file.name);
         return;
       }
       // A `.ufoz` is a zipped UFO and part of the format; a folder somebody
@@ -494,7 +519,7 @@ export function App(): React.JSX.Element {
       }
       await openProject(file, bytes);
     },
-    [openProject, openUfo, sendScriptToTrace],
+    [openProject, openUfo, sendScriptToTrace, showWhatOpened],
   );
 
   /*

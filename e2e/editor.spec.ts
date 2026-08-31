@@ -4255,3 +4255,59 @@ test("the ligature switch stays away until the font has one", async ({ page }) =
   await page.getByRole("button", { name: "Proof", exact: true }).click();
   await expect(page.locator("[data-proof-ligatures]")).toHaveCount(0);
 });
+
+test("a font opened from another mode takes you to where it opened", async ({ page }) => {
+  /*
+   * Found by touring Draw, Assemble and Trace, which had never been looked at.
+   *
+   * Every other door already did this -- a UFO, a saved project, a typeface
+   * adopted from the library all set the mode to the one that now holds the
+   * work. A plain font was the one that did not, so opening one from the
+   * toolbar while standing in Trace loaded it into the editor's document and
+   * left you where you were: the status line reporting `Opened — 6,253 glyphs`
+   * over a view saying `Nothing traced yet`. Two statements about the same
+   * action, contradicting each other on the same screen, with the font itself
+   * perfectly fine and one mode away.
+   */
+  await page.goto("/");
+  for (const mode of ["Trace", "Draw", "Assemble"]) {
+    await page.getByRole("button", { name: mode, exact: true }).click();
+    await expect(page.getByRole("button", { name: mode, exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await openFont(page);
+    await expect(
+      page.getByRole("button", { name: "Edit", exact: true }),
+      `opening a font from ${mode} left the person in ${mode}`,
+    ).toHaveAttribute("aria-pressed", "true");
+    // And the font really is there, rather than the mode having switched to an
+    // empty editor.
+    await expect(page.locator("[data-font-name]")).toContainText("DejaVu Sans");
+  }
+});
+
+test("Trace says what it is holding, as the other three modes do", async ({ page }) => {
+  /*
+   * Three of the four named their document in the toolbar -- `Untitled
+   * Regular`, `Untitled Sans`, `Untitled 0 drawings` -- and the fourth left the
+   * space blank. The one mode whose whole subject is a font somebody else made
+   * was the one that never said which font.
+   */
+  await page.goto("/");
+  await page.getByRole("button", { name: "Trace", exact: true }).click();
+  // Scoped to the toolbar: the canvas beside it also says "Nothing traced yet",
+  // which is the empty state and a different sentence doing a different job.
+  const toolbar = page.getByRole("banner");
+  await expect(toolbar.getByText("nothing traced", { exact: false })).toBeVisible();
+
+  // The other three name theirs too, which is the point of adding the fourth.
+  for (const [mode, says] of [
+    ["Draw", "Sans"],
+    ["Assemble", "drawings"],
+  ]) {
+    await page.getByRole("button", { name: mode, exact: true }).click();
+    await expect(toolbar.getByText(says, { exact: false }).first()).toBeVisible();
+  }
+});
