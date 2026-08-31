@@ -78,7 +78,11 @@ test("the sentence under the canvas follows the tool", async ({ page }) => {
 
   await page.locator("[data-tool='pen']").click();
   await page.mouse.move(950, 250);
-  await expect(says).toContainText("outline");
+  // Both things a press can be, which is what replaced `Click to start an
+  // outline` -- a sentence that also appeared over an edge where the click
+  // would instead put a point on that edge.
+  await expect(says).toContainText("corner");
+  await expect(says).toContainText("pull");
 
   await page.locator("[data-tool='knife']").click();
   await page.mouse.move(950, 250);

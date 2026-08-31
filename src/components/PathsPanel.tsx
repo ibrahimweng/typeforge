@@ -120,6 +120,17 @@ export function PathsPanel(): React.JSX.Element | null {
               <li
                 key={index}
                 data-path-row={index}
+                /*
+                  Pointing at a row lights that shape on the canvas.
+
+                  The list and the drawing are two views of one thing and
+                  neither pointed at the other: a dozen rows of `4 points cw
+                  226x226` are indistinguishable, and the only way to find out
+                  which was which was to click one and watch the points change
+                  colour -- which costs whatever selection you had.
+                */
+                onPointerEnter={() => store.setHighlightPath(index)}
+                onPointerLeave={() => store.setHighlightPath(null)}
                 className={cn(
                   "flex items-center gap-1.5 rounded px-1.5 py-1 text-2xs transition-colors",
                   on ? "bg-card text-foreground" : "text-muted-foreground hover:bg-card",

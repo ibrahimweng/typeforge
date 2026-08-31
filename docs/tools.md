@@ -162,3 +162,88 @@ dark ground and opposite on the light one, so it read correctly right up until
 somebody pressed "On white" and got a black halo. The light ground now also
 darkens `--inspect` and `--attention`, which were picked to carry against a
 near-black panel and washed out on a near-white canvas.
+
+---
+
+# The tools, grouped
+
+## What a screenshot said
+
+Twelve paths in one letter, most of them three or four points, several
+overlapping, the sidebearings eight hundred units negative, and the faults
+overlay ringing everything. It was sent with the words "make it more
+intuitive", and every one of those twelve paths had the same cause.
+
+**The pen had no verb for "I am done with this."** Not Escape, not Enter, not
+picking up another tool. The only exit was a click landing inside seven pixels
+of the outline's first point. Miss it -- and a hand aiming at a seven-pixel
+target misses often -- and you silently got another point rather than a closed
+shape. Think better of the whole thing and the half-drawn contour stayed in the
+letter for ever: an open contour of two points draws as nothing, so it is
+invisible on the canvas and permanent in the Paths list.
+
+Five attempts, five stubs. Twelve paths is an afternoon.
+
+## What was hiding behind it
+
+Three things, each invisible until the first was fixed.
+
+**"Open" was being read off the shape rather than off the session.** The editor
+asked whether the last contour was closed, which is a fact about the geometry.
+Whether the hand is part way through drawing it is a different question, and
+with one test for both, a pen click anywhere on the canvas reached back and
+extended an outline that had been abandoned ten minutes earlier. Five attempts
+did not make five stubs; they made one contour wandering across the letter,
+whose first point was by then so far from its last that the ring which closes
+it could never be found. The fix is a `drawing` flag on the session.
+
+**The status line was describing a different program.** With nothing being
+drawn, hovering an edge, it said `Click to start an outline` -- and that click
+put a point on the edge under the pointer instead. It also never refreshed when
+a gesture ended, so letting go of a pen pull left `Let go for a corner, or pull
+to curve out of it` sitting under a point already placed.
+
+**The knife said the same sentence everywhere.** `Drag a line right across a
+shape to cut it in two`, over a letter and over blank canvas alike. A sentence
+that is identical everywhere carries no information about anywhere, and the one
+case worth warning about -- a cut that will do nothing -- looked exactly like
+the case that works.
+
+## Thirteen tools, four groups
+
+The pen has four jobs and had one button. Adding a point was a plain click that
+*also* had to mean "start a new outline here", which is two jobs on one gesture
+and the whole reason a pen kept editing the letter it was drawn beside. Taking
+one out was a keypress. Converting one did not exist.
+
+So they are tools: **Pen**, **Freehand**, **Add point**, **Delete point**,
+**Convert point**. That is the set Illustrator shipped in 1988 and every editor
+since has kept, for the reason that keeps it: they are four verbs of one idea,
+and somebody looking for "take this point out" looks under the nib.
+
+`Pencil` became `Freehand` and moved under the pen, because that is what it is
+-- a pen that takes a drawn line instead of a series of clicks. Two ways of
+drawing the same outline were in two different places on the rail.
+
+The other three groups got the same treatment: **Select path** and **Lasso**
+beside Select; **Polygon** beside the rectangle and ellipse; **Scissors**, which
+opens a shape at one place, beside the Knife, which cuts one into two. Thirteen
+icons will not fit down a rail, so one button per group shows the tool you last
+used from it and a flyout holds the rest -- named and explained, because the
+reason to open it is not knowing which icon you want.
+
+## The numbers that changed
+
+- **Closing: 7px to 14px.** Closing is an intention already declared -- one open
+  outline, one point that ends it, nothing else in reach that means anything --
+  so being generous costs nothing and being strict costs a stray point every
+  time a hand is a few pixels out. The ring is now the same size as the target
+  and fills when a click would close, because a two-pixel thickening inside a
+  seven-pixel window is a signal only somebody who knows to look for it can read.
+- **Fewer than three points is never kept.** The single rule that clears the
+  litter, and safe because three points is also the least that can enclose any
+  area at all.
+- **Faults speak only about closed shapes.** An open contour is half a drawing
+  and is missing most of its extremes by definition, so the switch used to cover
+  a work in progress in rings that all said "you have not finished". A person
+  who learns to ignore the rings has stopped seeing the real ones.

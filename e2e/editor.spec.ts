@@ -39,6 +39,23 @@ async function paramSlider(page: Page, label: string) {
 }
 
 /** Open the test font through the file input the toolbar drives. */
+/**
+ * Take up a tool, through the group it lives in.
+ *
+ * The palette was a flat row of six and is now four groups of thirteen, so a
+ * tool is reached either by its group button -- which carries whichever of the
+ * group's tools was last used -- or through the flyout. This does what a person
+ * does: press the group, and if what you want is not already showing, press
+ * again for the list.
+ */
+async function takeUpTool(page: Page, group: string, tool: string): Promise<void> {
+  const button = page.locator(`[data-tool-group="${group}"]`);
+  await button.click();
+  if ((await page.locator(`[data-flyout-tool="${tool}"]`).count()) === 0) await button.click();
+  await page.locator(`[data-flyout-tool="${tool}"]`).click();
+  await expect(page.locator("[data-tool-flyout]")).toHaveCount(0);
+}
+
 async function openFont(page: Page): Promise<void> {
   await page.setInputFiles("[data-open-input]", FONT_PATH!);
   // The toolbar reports the family once parsing finishes.
@@ -3559,7 +3576,7 @@ test("dragging a shape into a letter, and cutting it back out", async ({ page })
   const paths = page.locator("[data-paths-panel]");
   const before = await paths.innerText();
 
-  await tools.getByRole("button", { name: "Rectangle" }).click();
+  await takeUpTool(page, "shape", "rectangle");
   // Everything that draws starts from a point rather than from something
   // already on the canvas, so everything that draws gets a crosshair.
   await expect(canvas).toHaveClass(/cursor-crosshair/);
@@ -3574,7 +3591,7 @@ test("dragging a shape into a letter, and cutting it back out", async ({ page })
   // does with one is move it or scale it.
   await expect(page.locator("[data-transform-scope]")).toContainText("4 points");
 
-  await tools.getByRole("button", { name: "Knife" }).click();
+  await takeUpTool(page, "knife", "knife");
   await page.mouse.move(area.x + 20, area.y + 95);
   await page.mouse.down();
   await page.mouse.move(area.x + 200, area.y + 95, { steps: 5 });
@@ -3614,22 +3631,39 @@ test("the tools answer to a single key, as in every drawing application", async 
   await openFont(page);
   await page.getByRole("button", { name: "Glyph", exact: true }).click();
 
+  /*
+   * One key per group, and the second press walks the group.
+   *
+   * It used to be one key per tool, which works for six and cannot work for
+   * thirteen: there are not thirteen letters to spare beside everything else
+   * the editor binds, and the group is what somebody means anyway -- `P` for
+   * "the pen, whichever of them I had".
+   */
   const tools = page.getByRole("group", { name: "Tool" });
+  const armed = (group: string) => tools.locator(`[data-tool-group="${group}"]`);
+
   await page.keyboard.press("k");
-  await expect(tools.getByRole("button", { name: "Knife" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await page.keyboard.press("o");
-  await expect(tools.getByRole("button", { name: "Ellipse" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(armed("knife")).toHaveAttribute("aria-pressed", "true");
+
+  await page.keyboard.press("r");
+  await expect(armed("shape")).toHaveAttribute("aria-pressed", "true");
+  await expect(armed("shape")).toHaveAttribute("data-tool", "rectangle");
+
+  // Again, and it walks: rectangle to ellipse to polygon and round.
+  await page.keyboard.press("r");
+  await expect(armed("shape")).toHaveAttribute("data-tool", "ellipse");
+  await page.keyboard.press("r");
+  await expect(armed("shape")).toHaveAttribute("data-tool", "polygon");
+  await page.keyboard.press("r");
+  await expect(armed("shape")).toHaveAttribute("data-tool", "rectangle");
+
   await page.keyboard.press("v");
-  await expect(tools.getByRole("button", { name: "Select" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(armed("select")).toHaveAttribute("aria-pressed", "true");
+
+  // And the group remembers: coming back to the shapes hands you the one you
+  // left it on, rather than starting at the top every time.
+  await page.keyboard.press("r");
+  await expect(armed("shape")).toHaveAttribute("data-tool", "rectangle");
 });
 
 test("the way to the tools is the same from every view that shows a letter", async ({ page }) => {
@@ -3946,7 +3980,7 @@ test("a dragged point is pulled onto the lines worth landing on", async ({ page 
   await expect(snap).toHaveAttribute("aria-pressed", "true");
 });
 
-test("the pencil draws freehand, and the line becomes an outline", async ({ page }) => {
+test("freehand draws by hand, and the line becomes an outline", async ({ page }) => {
   /*
    * The last tool, deferred when the canvas tools were built. A pointer
    * reports every few milliseconds, so a stroke drawn in a second arrives as
@@ -3961,7 +3995,7 @@ test("the pencil draws freehand, and the line becomes an outline", async ({ page
   const paths = page.locator("[data-paths-panel]");
   const before = await paths.innerText();
 
-  await page.getByRole("group", { name: "Tool" }).getByRole("button", { name: "Pencil" }).click();
+  await takeUpTool(page, "pen", "freehand");
   const canvas = page.locator("canvas").first();
   const area = (await canvas.boundingBox())!;
   await page.mouse.move(area.x + 60, area.y + 200);
@@ -4423,7 +4457,14 @@ test("the pen can close an outline, which nothing here could do", async ({ page 
   const box = (await page.locator("canvas").first().boundingBox())!;
 
   await page.locator('[data-tool="pen"]').click();
-  await expect(page.locator("[data-tool-says]")).toHaveText(/start an outline/);
+  /*
+   * `Click to start an outline` is gone deliberately.
+   *
+   * It was the sentence the pen showed over an existing edge while a click
+   * there put a point on that edge instead, and it named neither of the two
+   * things a press can actually be. What replaced it names both.
+   */
+  await expect(page.locator("[data-tool-says]")).toHaveText(/hold and pull for a curve/);
 
   const a = { x: box.x + 850, y: box.y + 180 };
   await page.mouse.click(a.x, a.y);
@@ -4432,7 +4473,7 @@ test("the pen can close an outline, which nothing here could do", async ({ page 
 
   // Three points down, so there is something worth closing.
   await page.mouse.move(a.x + 40, a.y + 40);
-  await expect(page.locator("[data-tool-says]")).toHaveText(/click the first one to close/);
+  await expect(page.locator("[data-tool-says]")).toHaveText(/The first point closes it/);
 
   // On the point that would close it, the pen says so before the click.
   await page.mouse.move(a.x, a.y);
@@ -4446,7 +4487,7 @@ test("the pen can close an outline, which nothing here could do", async ({ page 
   // Moved well inside the canvas rather than out towards its edge, where
   // leaving it clears the line and the test would be reading that instead.
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 4 });
-  await expect(page.locator("[data-tool-says]")).toHaveText(/start an outline/);
+  await expect(page.locator("[data-tool-says]")).toHaveText(/hold and pull for a curve/);
 });
 
 test("the knife says whether the line would cut before you let go", async ({ page }) => {
@@ -4491,18 +4532,33 @@ test("a tool says what it is for the moment it is picked up", async ({ page }) =
   await page.getByRole("button", { name: "Glyph", exact: true }).click();
   await page.waitForTimeout(400);
 
-  for (const [tool, expected] of [
-    ["pencil", /Drag to draw/],
-    ["rectangle", /Drag out a rectangle/],
-    ["ellipse", /Drag out an ellipse/],
-    ["knife", /right across a shape/],
+  /*
+   * Through the flyout, because the tools are grouped now.
+   *
+   * A group button carries `data-tool` for whichever of its tools was last
+   * used, so the four defaults are still reachable by that selector and the
+   * other nine are not. `pencil` is `freehand` and lives under the pen, being
+   * a pen that takes a drawn line rather than a series of clicks.
+   */
+  const takeUp = async (group: string, tool: string) => {
+    const button = page.locator(`[data-tool-group="${group}"]`);
+    await button.click();
+    if ((await page.locator(`[data-flyout-tool="${tool}"]`).count()) === 0) await button.click();
+    await page.locator(`[data-flyout-tool="${tool}"]`).click();
+  };
+
+  for (const [group, tool, expected] of [
+    ["pen", "freehand", /Drag to draw/],
+    ["shape", "rectangle", /Drag out a rectangle/],
+    ["shape", "ellipse", /Drag out an ellipse/],
+    ["knife", "knife", /right across a shape/],
   ] as const) {
-    await page.locator(`[data-tool="${tool}"]`).click();
+    await takeUp(group, tool);
     await expect(page.locator("[data-tool-says]"), `${tool} said nothing`).toHaveText(expected);
   }
 
   // And select over nothing says nothing, which is the state most time is
   // spent in and does not need narrating.
-  await page.locator('[data-tool="select"]').click();
+  await takeUp("select", "select");
   await expect(page.locator("[data-tool-says]")).toHaveText(/Select one point/);
 });

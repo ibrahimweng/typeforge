@@ -49,8 +49,18 @@ const FAMILY_CONTROLS: Record<Family, string> = {
 const SHORTCUTS: Array<[string, string]> = [
   ["Space", "Quick actions"],
   ["⌘K", "Quick actions, even while typing"],
-  ["V", "Select tool"],
-  ["P", "Pen tool"],
+  /*
+   * One key per group, and the second press walks it. Thirteen tools cannot
+   * have thirteen single keys without colliding with everything else the
+   * editor binds, and the group is what somebody means anyway: `P` for "the
+   * pen, whichever of them I had".
+   */
+  ["V", "Select tools — again for path, lasso"],
+  ["P", "Pen tools — again for freehand, add, delete, convert"],
+  ["R", "Shape tools — again for ellipse, polygon"],
+  ["K", "Knife tools — again for scissors"],
+  ["Escape", "Finish the outline you are drawing"],
+  ["Enter", "Finish it by closing it"],
   /*
    * The pen's own gesture, in the shortcut list because that is where somebody
    * looks for "what am I not doing". It is not a key, but a pen that is only
@@ -723,6 +733,27 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): React.JSX.Elem
             always a shape that was never closed. Click the point you have just
             placed to take its outgoing handle off, and the next segment runs
             straight out of a curve.
+          </p>
+          <p>
+            <Term>Escape finishes.</Term> It leaves the outline open, which is
+            a real thing to have — half a letter, a spine to build on — and
+            Enter finishes by closing it instead. Either way an outline of
+            fewer than three points is dropped rather than kept: two points
+            closed is a line drawn twice, with no area to fill, and a letter
+            quietly collecting those is a letter whose Paths list fills with
+            shapes you cannot see and did not mean.
+          </p>
+          <p>
+            <Term>The pen is five tools</Term>, under one button on the rail —
+            click it again for the rest. The pen itself places points;{" "}
+            <Term>Freehand</Term> takes a drawn line instead of a series of
+            clicks and fits it to curves; <Term>Add point</Term> and{" "}
+            <Term>Delete point</Term> do those two things on their own, so
+            neither is a modifier you have to know about; and{" "}
+            <Term>Convert point</Term> switches a point between a curve and a
+            corner, or pulls a handle out of one that has none. Every group on
+            the rail works the same way, and the flyout says what each tool is
+            for.
           </p>
           <p>
             <Term>A click on an edge puts a point on it.</Term> The segment

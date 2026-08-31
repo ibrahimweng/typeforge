@@ -100,7 +100,10 @@ describe("points a hair from smooth", () => {
     const off = 2;
     const radians = (off * Math.PI) / 180;
     const kink: Contour = {
-      closed: false,
+      // Closed, because the marks now speak only about finished shapes: a
+      // point in a drawing still being made is not a fault, it is a point that
+      // has not been placed yet.
+      closed: true,
       nodes: [
         node(0, 0, null, [0, 30], "corner"),
         // Arriving straight up; leaving two degrees off straight up.
@@ -118,7 +121,7 @@ describe("points a hair from smooth", () => {
     // Typed a corner, drawn smooth-ish: still a hair off, still reported.
     const radians = (1 * Math.PI) / 180;
     const mislabelled: Contour = {
-      closed: false,
+      closed: true,
       nodes: [
         node(0, 0, null, [0, 30], "corner"),
         node(0, 100, [0, 70], [30 * Math.sin(radians), 100 + 30 * Math.cos(radians)], "corner"),
@@ -135,5 +138,51 @@ describe("points a hair from smooth", () => {
 
   it("keeps the threshold where a deliberate corner is safe", () => {
     expect(NEARLY_STRAIGHT).toBeLessThan(10);
+  });
+});
+
+describe("a shape still being drawn", () => {
+  /*
+   * The noise that made the switch useless.
+   *
+   * Turned on part way through a letter, every unfinished contour was ringed
+   * at every place its curve had not reached a point yet -- which is most of
+   * them, since it is half a drawing. Twenty rings all saying "you have not
+   * finished" is not advice, and a person who learns to ignore the rings has
+   * stopped seeing the real ones.
+   */
+  /*
+   * An arch: the first segment bulges upward, so its highest place falls
+   * halfway along rather than on either end point. Closed, that is a missing
+   * extreme; open, it is a drawing somebody is still making.
+   */
+  const halfDrawn: Contour = {
+    closed: false,
+    nodes: [
+      node(0, 0, null, [0, 100], "smooth"),
+      node(100, 0, [100, 100], null, "smooth"),
+      node(50, -50, null, null, "corner"),
+    ],
+  };
+
+  it("has no missing extremes, because it is not finished", () => {
+    expect(extremesMissing([halfDrawn])).toEqual([]);
+    // The same run closed does have one, so the silence above is the open
+    // contour rule rather than a curve that happens to turn nowhere.
+    expect(extremesMissing([{ ...halfDrawn, closed: true }]).length).toBeGreaterThan(0);
+  });
+
+  it("has no kinks either", () => {
+    const radians = (2 * Math.PI) / 180;
+    const kinked: Contour = {
+      closed: false,
+      nodes: [
+        node(0, 0, null, [0, 30], "corner"),
+        node(0, 100, [0, 70], [30 * Math.sin(radians), 100 + 30 * Math.cos(radians)], "smooth"),
+        node(0, 200, [0, 170], null, "corner"),
+      ],
+    };
+    expect(nearlySmooth([kinked])).toEqual([]);
+    expect(nearlySmooth([{ ...kinked, closed: true }])).toHaveLength(1);
   });
 });

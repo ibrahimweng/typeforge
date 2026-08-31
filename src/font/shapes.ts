@@ -171,14 +171,62 @@ export function ellipse(box: Box, clockwise: boolean): Contour {
 }
 
 /** Which shape a tool draws. */
-export type ShapeKind = "rectangle" | "ellipse";
+export type ShapeKind = "rectangle" | "ellipse" | "polygon";
+
+/**
+ * How many sides a polygon gets unless told otherwise.
+ *
+ * Six, because the two a type designer actually reaches for are the triangle
+ * and the hexagon, and of those the hexagon is the one that is tedious to
+ * build by hand. Three is two clicks of the counter away.
+ */
+export const POLYGON_SIDES = 6;
+
+/**
+ * A regular polygon inscribed in the box, first vertex at the top.
+ *
+ * Corners all the way round with no handles: a polygon is the one shape here
+ * whose whole character is that it does not curve, and giving it handles set
+ * to its own points would leave a shape that looks right and behaves oddly the
+ * first time somebody smooths a point on it.
+ *
+ * Fitted to the box rather than to a circle, so dragging a wide box gives a
+ * wide hexagon. A polygon tool that only made regular ones would be a tool for
+ * one shape.
+ */
+export function polygon(box: Box, clockwise: boolean, sides = POLYGON_SIDES): Contour {
+  const count = Math.max(3, Math.round(sides));
+  const midX = (box.xMin + box.xMax) / 2;
+  const midY = (box.yMin + box.yMax) / 2;
+  const reachX = (box.xMax - box.xMin) / 2;
+  const reachY = (box.yMax - box.yMin) / 2;
+
+  const nodes: GlyphNode[] = [];
+  for (let at = 0; at < count; at++) {
+    // From the top, going anticlockwise in font space, which is the winding
+    // `rectangle` and `ellipse` both build in before the flip below.
+    const angle = Math.PI / 2 + (at / count) * Math.PI * 2;
+    nodes.push({
+      point: { x: midX + Math.cos(angle) * reachX, y: midY + Math.sin(angle) * reachY },
+      handleIn: null,
+      handleOut: null,
+      type: "corner",
+    });
+  }
+
+  const wound = clockwise ? nodes.slice().reverse() : nodes;
+  return { closed: true, nodes: wound.map(rounded) };
+}
 
 /** The contour a shape tool's drag produces, or null when it was a click. */
 export function shapeFrom(
   kind: ShapeKind,
   box: Box,
   clockwise: boolean,
+  sides = POLYGON_SIDES,
 ): Contour | null {
   if (!worthDrawing(box)) return null;
-  return kind === "rectangle" ? rectangle(box, clockwise) : ellipse(box, clockwise);
+  if (kind === "rectangle") return rectangle(box, clockwise);
+  if (kind === "polygon") return polygon(box, clockwise, sides);
+  return ellipse(box, clockwise);
 }

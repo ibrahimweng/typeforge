@@ -38,6 +38,7 @@ import {
 } from "@/font/features";
 import { reverse as reverseContour } from "@/font/outline";
 import { NEARLY_STRAIGHT, offSmooth } from "@/font/marks";
+import { groupOf, nextIn, toolsIn, type GroupId as Group, type ToolId as Tool } from "@/font/toolset";
 import { retracted, simplified, withPointOn, withoutPoint } from "@/font/pen";
 import {
   deriveParams,
@@ -80,7 +81,7 @@ import { correctDirection, dominantConvention, insertExtrema } from "@/font/outl
 import { strokeToContour } from "@/font/freehand";
 import { isClockwise, reverseContour as flipContour } from "@/font/geometry";
 import { slice } from "@/font/knife";
-import { shapeFrom, type Box, type ShapeKind } from "@/font/shapes";
+import { POLYGON_SIDES, shapeFrom, type Box, type ShapeKind } from "@/font/shapes";
 import {
   cornered,
   isOnGrid,
@@ -115,7 +116,15 @@ export type ViewId = "grid" | "glyph" | "kerning" | "metrics" | "proof" | "repor
  * to pick before you can move the page is a tool that takes your place in the
  * work away every time you look at something.
  */
-export type ToolId = "select" | "pen" | "pencil" | "rectangle" | "ellipse" | "knife";
+/*
+ * The tools live in `@/font/toolset` and are re-exported here.
+ *
+ * Everything in the application already imports `ToolId` from the store, and
+ * the tools grew a shape of their own -- groups, an order, a hint each -- that
+ * has no business in a state container. Re-exported rather than moved outright
+ * so that the twenty files naming `ToolId` from here go on working.
+ */
+export type { ToolId, GroupId } from "@/font/toolset";
 
 /**
  * What the tool in hand is doing, in the terms that change what the next click
@@ -165,7 +174,14 @@ export interface AppState {
   typeface: Typeface | null;
   fileName: string;
   view: ViewId;
-  tool: ToolId;
+  tool: Tool;
+  /*
+   * The tool each group was last on, so a group button comes back to where you
+   * left it. Pressing `P` after using Delete point should hand you Delete
+   * point, not start you at the pen again -- a group that forgets is a group
+   * you have to open every time.
+   */
+  lastInGroup: Record<Group, Tool>;
   /** What that tool is doing, for the palette, the cursor and the status line. */
   toolState: ToolState;
   /**
@@ -210,6 +226,37 @@ export interface AppState {
    * pass you make before calling a letter finished.
    */
   marks: boolean;
+  /**
+   * How many sides the polygon tool draws.
+   *
+   * On the state rather than in the tool because it is a setting somebody
+   * chooses once for a job -- six for a run of hexagons, three for arrows --
+   * and a count that reset with every drag would be a count nobody could use.
+   */
+  polygonSides: number;
+  /**
+   * Whether the pen is part way through an outline.
+   *
+   * Not the same question as "is the last contour open", which is what the
+   * editor asked and is a fact about the shape rather than about the session.
+   * An outline finished with Escape and left open is a real thing to have --
+   * half a letter, a spine to build on -- but the next pen click somewhere
+   * else must start a new outline rather than reach back and extend it. With
+   * one flag for both, ten abandoned attempts joined into a single contour
+   * wandering across the letter, and its first point was so far from the last
+   * that the ring which closes it could never be found.
+   */
+  drawing: boolean;
+  /**
+   * The path the pointer is over in the Paths list, lit on the canvas.
+   *
+   * Twelve rows reading `4 points cw 226x226` and no way to tell which shape
+   * each is: the only way to find out was to click one and watch which points
+   * turned orange, which costs a selection you may have wanted to keep. The
+   * list and the drawing are two views of the same thing and neither pointed
+   * at the other.
+   */
+  highlightPath: number | null;
   /**
    * Which ground the type is drawn on, where type is looked at.
    *
@@ -281,6 +328,7 @@ class Store {
     fileName: "",
     view: "grid",
     tool: "select",
+    lastInGroup: { select: "select", pen: "pen", shape: "rectangle", knife: "knife" },
     toolState: { phase: "idle", says: "" },
     /*
      * `n` on both sides, which is where a type designer starts.
@@ -294,6 +342,9 @@ class Store {
     guides: [],
     snapping: true,
     marks: false,
+    polygonSides: POLYGON_SIDES,
+    drawing: false,
+    highlightPath: null,
     ground: "dark",
     selectedGlyph: null,
     selectedNodes: new Set(),
@@ -601,10 +652,38 @@ class Store {
     this.set({ toolState: next });
   }
 
-  setTool(tool: ToolId): void {
+  setTool(tool: Tool): void {
+    /*
+     * Picking the tool you already have changes nothing, and must say nothing.
+     *
+     * Clearing the phase is what stops a stale sentence from the last tool
+     * sitting under the new one, and the editor fills it back in on a change of
+     * tool. Cleared without a change there is nothing to fill it back in, so the
+     * line went blank and fell through to its default -- which is how choosing
+     * the rectangle from the flyout while already holding the rectangle left
+     * `Select one point to type its position` under a rectangle tool.
+     */
+    if (tool === this.state.tool) return;
     // A tool picked up mid-anything starts from nothing, which is also what
     // stops a stale sentence from the last tool sitting under the new one.
-    this.set({ tool, toolState: { phase: "idle", says: "" } });
+    this.set({
+      tool,
+      lastInGroup: { ...this.state.lastInGroup, [groupOf(tool)]: tool },
+      toolState: { phase: "idle", says: "" },
+    });
+  }
+
+  /**
+   * Take up a group: the tool you last used from it, or the next one along if
+   * you are already in it.
+   *
+   * What the group's single key does, and what its button does. The second
+   * press walking the group is how every drawing program spends it, and it is
+   * the only way to reach a tool without opening the flyout.
+   */
+  takeUpGroup(group: Group): void {
+    const inGroup = toolsIn(group).some((one) => one.id === this.state.tool);
+    this.setTool(inGroup ? nextIn(group, this.state.tool) : this.state.lastInGroup[group]);
   }
   /** Change what stands either side of the glyph being edited. */
   setContext(context: Partial<AppState["context"]>): void {
@@ -665,6 +744,22 @@ class Store {
   }
 
   /** Whether the canvas rings the faults that cannot be seen by looking. */
+  /** Light one path on the canvas, or none. Compared before storing, because
+   * this fires on every pointer move across the list and each change repaints
+   * the whole canvas. */
+  setHighlightPath(index: number | null): void {
+    if (this.state.highlightPath !== index) this.set({ highlightPath: index });
+  }
+
+  /** The pen has begun, or gone on with, an outline. */
+  startDrawing(): void {
+    if (!this.state.drawing) this.set({ drawing: true });
+  }
+
+  setPolygonSides(sides: number): void {
+    this.set({ polygonSides: Math.max(3, Math.min(24, Math.round(sides))) });
+  }
+
   setMarks(marks: boolean): void {
     this.set({ marks });
   }
@@ -984,9 +1079,10 @@ class Store {
     const typeface = this.state.typeface;
     if (!typeface) return;
     const clockwise = dominantConvention(typeface.glyphs) === "truetype";
-    const shape = shapeFrom(kind, box, clockwise);
+    const shape = shapeFrom(kind, box, clockwise, this.state.polygonSides);
     if (!shape) return;
-    this.editGlyph(glyphName, kind === "rectangle" ? "Draw a rectangle" : "Draw an ellipse", (one) => {
+    const named = { rectangle: "a rectangle", ellipse: "an ellipse", polygon: "a polygon" }[kind];
+    this.editGlyph(glyphName, `Draw ${named}`, (one) => {
       one.contours = [...one.contours, shape];
     });
     // Left selected, because the next thing anybody does with a shape they
@@ -1428,6 +1524,7 @@ class Store {
       const last = editing.contours[editing.contours.length - 1];
       if (last) last.closed = true;
     });
+    this.set({ drawing: false });
     this.say("Outline closed.", "success");
     return true;
   }
@@ -1452,6 +1549,107 @@ class Store {
       const node = editing?.nodes[editing.nodes.length - 1];
       if (node) Object.assign(node, retracted(node));
     });
+    return true;
+  }
+
+  /**
+   * Stop drawing, and never leave a stub behind.
+   *
+   * The verb the pen did not have, and the whole reason a session ends with a
+   * dozen paths of litter in the list. There was exactly one way to finish an
+   * outline -- a click landing within seven pixels of its first point -- and
+   * nothing at all for "I have changed my mind": no Escape, no Enter, no
+   * effect from picking up another tool. So every abandoned attempt stayed,
+   * and an open contour of one or two points draws as nothing while sitting in
+   * the Paths list for ever.
+   *
+   * A contour of fewer than three points is not a drawing anybody is going to
+   * come back to, so finishing drops it. That single rule is what keeps the
+   * list clean, and it is safe because three points is also the least that can
+   * enclose any area at all.
+   */
+  finishOutline(glyphName: string, andClose = false): boolean {
+    const glyph = this.glyph(glyphName);
+    const contour = glyph?.contours[glyph.contours.length - 1];
+    if (!glyph || !contour || contour.closed || !this.state.drawing) return false;
+
+    this.set({ drawing: false });
+
+    if (contour.nodes.length < 3) {
+      this.editGlyph(glyphName, "Stop drawing", (one) => {
+        one.contours = one.contours.slice(0, -1);
+      });
+      this.say("Stopped drawing. The unfinished outline was dropped.", "info");
+      return true;
+    }
+    if (andClose) return this.closeOutline(glyphName);
+
+    /*
+     * Left open, deliberately.
+     *
+     * Escape means "I am done adding to this", not "close it into a shape I
+     * did not draw". An open contour of three or more points is a real thing
+     * to have -- half a letter, a spine to be built on -- and the Paths list
+     * shows it as one. Enter is the key that closes.
+     */
+    this.say("Finished. The outline is still open: press Enter over it to close.", "info");
+    this.touch();
+    return true;
+  }
+
+  /**
+   * Take a point out and leave the shape open where it was, rather than
+   * cutting it in two.
+   *
+   * What scissors do and the knife cannot: the knife needs a line right across
+   * a shape and gives you two shapes, and there was no way at all to simply
+   * open one. Opening is how you join two shapes by hand, and how you take the
+   * lid off a counter to redraw it.
+   */
+  openContourAt(glyphName: string, contour: number, node: number): boolean {
+    const glyph = this.glyph(glyphName);
+    const one = glyph?.contours[contour];
+    if (!glyph || !one || !one.closed || one.nodes.length < 3) return false;
+
+    this.editGlyph(glyphName, "Open the shape", (editing) => {
+      const it = editing.contours[contour];
+      if (!it) return;
+      // Rotated so the cut lands at the ends: the node clicked becomes the
+      // last point, and the one after it the first.
+      it.nodes = [...it.nodes.slice(node + 1), ...it.nodes.slice(0, node + 1)];
+      it.closed = false;
+    });
+    this.say("Opened. The two ends are loose where you clicked.", "success");
+    return true;
+  }
+
+  /**
+   * Turn a point from a curve into a corner, or back.
+   *
+   * `retypeSelection` does this for a selection, from a panel. As a tool it
+   * wants no selection and no panel: point at it, click it. The direction is
+   * read from the geometry rather than the stored type, so a node labelled
+   * smooth whose handles are twenty degrees apart becomes properly smooth on
+   * the first click rather than needing two.
+   */
+  convertPoint(glyphName: string, ref: NodeRef): boolean {
+    const glyph = this.glyph(glyphName);
+    const node = glyph?.contours[ref.contour]?.nodes[ref.node];
+    if (!glyph || !node) return false;
+
+    const off = offSmooth(node);
+    const makeSmooth = off === null || off > NEARLY_STRAIGHT;
+    this.editGlyph(glyphName, makeSmooth ? "Make it a curve" : "Make it a corner", (one) => {
+      const it = one.contours[ref.contour]?.nodes[ref.node];
+      if (!it) return;
+      Object.assign(it, makeSmooth ? smoothed(it) : cornered(it));
+    });
+
+    // A corner with no handles cannot be smoothed by moving anything, and
+    // saying so beats a click that silently does nothing.
+    if (makeSmooth && !node.handleIn && !node.handleOut) {
+      this.say("That point has no handles to line up. Pull from it to bring one out.", "info");
+    }
     return true;
   }
 
