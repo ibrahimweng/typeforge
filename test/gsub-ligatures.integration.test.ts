@@ -146,18 +146,134 @@ suite("a ligature made in the document reaches the file", () => {
        * test is whether the rule selects it -- so it borrows the `l`, which
        * makes the answer easy to read in the shaped output.
        */
-      const made = addGlyph(typeface, "f_i")!;
+      /*
+       * `t h`, not `f i`. DejaVu already draws `fi` and the import now reads
+       * that rule in, so asking for a second one is rightly refused -- which is
+       * the guard doing its job and not what is under test here.
+       */
+      const made = addGlyph(typeface, "t_h")!;
       made.contours = typeface.glyphs[typeface.glyphIndex.get("l")!].contours;
       made.advanceWidth = 900;
-      expect(addLigature(typeface, ["f", "i"], "f_i")).toBe(true);
+      expect(addLigature(typeface, ["t", "h"], "t_h")).toBe(true);
 
-      // Rebuilt rather than preserved: preserving hands back the source font's
-      // own GSUB, which would answer a question nobody asked.
       const built = await exportFont(typeface, { format: "ttf", fidelity: "rebuild" });
-      const shaped = shapeWords(built.bytes, ["fi", "fin", "if"]);
-      expect(shaped.fi).toEqual(["f_i"]);
-      expect(shaped.fin).toEqual(["f_i", "n"]);
+      const shaped = shapeWords(built.bytes, ["th", "then", "ht"]);
+      expect(shaped.th).toEqual(["t_h"]);
+      expect(shaped.then).toEqual(["t_h", "e", "n"]);
+      expect(shaped.ht).toEqual(["h", "t"]);
+    },
+    FONT_SUITE_TIMEOUT,
+  );
+});
+
+/**
+ * The features a font arrives with, which it used to arrive without.
+ *
+ * Every import set `alternates: []` and read nothing else, so the features
+ * panel told a face that plainly draws `fi` that it had no ligatures, and a
+ * rebuild export dropped every one of them -- while a preserve export kept
+ * them, which is what made it survivable and also what made it invisible: the
+ * two halves of the export disagreed and neither said so.
+ */
+suite("a font brought in keeps what it came with", () => {
+  const opened = async () => {
+    const { importFont } = await import("../src/font/parse");
+    return (await importFont(new Uint8Array(readFileSync(FONT_PATH!)), "DejaVuSans.ttf")).typeface;
+  };
+
+  it(
+    "reads the ligatures the font already has",
+    async () => {
+      const typeface = await opened();
+      const joined = (typeface.ligatures ?? []).map((one) => one.components.join(""));
+      // DejaVu draws both, under `liga`, and named them the shipped way.
+      expect(joined).toContain("fi");
+      expect(joined).toContain("fl");
+      // And they point at drawings the font really has.
+      for (const one of typeface.ligatures ?? []) {
+        expect(typeface.glyphIndex.has(one.ligature)).toBe(true);
+        for (const part of one.components) expect(typeface.glyphIndex.has(part)).toBe(true);
+      }
+    },
+    FONT_SUITE_TIMEOUT,
+  );
+
+  it(
+    "reads only the tags that mean a second drawing somebody switches on",
+    async () => {
+      const typeface = await opened();
+      const tags = (typeface.sets ?? []).map((one) => one.tag);
+
+      /*
+       * A single substitution is not by itself a stylistic set. DejaVu carries
+       * `init`, `medi` and `fina` -- the Arabic positional forms, a hundred and
+       * sixteen in one -- plus `locl`, `case` and `aalt`, every one a single
+       * substitution and none of them a choice made in a panel. Read in without
+       * filtering, the features panel listed fourteen sets nobody had made.
+       */
+      for (const unwanted of ["init", "medi", "fina", "locl", "case", "aalt"]) {
+        expect(tags, `${unwanted} is not a stylistic set`).not.toContain(unwanted);
+      }
+
+      /*
+       * And one entry per tag, however many lookups the font spread it across.
+       * DejaVu reaches three separate substitutions under `salt`; read as three
+       * sets they are three rows with one name and three feature records under
+       * one tag in anything rebuilt from them, which is a malformed list.
+       */
+      expect(new Set(tags).size).toBe(tags.length);
+    },
+    FONT_SUITE_TIMEOUT,
+  );
+
+  it(
+    "carries them through a rebuild, which used to drop them",
+    async () => {
+      const { exportFont } = await import("../src/font/export");
+      const typeface = await opened();
+      const built = await exportFont(typeface, { format: "ttf", fidelity: "rebuild" });
+      const shaped = shapeWords(built.bytes, ["fi", "fl", "if"]);
+      expect(shaped.fi).toHaveLength(1);
+      expect(shaped.fl).toHaveLength(1);
       expect(shaped.if).toEqual(["i", "f"]);
+    },
+    FONT_SUITE_TIMEOUT,
+  );
+
+  /*
+   * A preserve export keeps the font's own table rather than trading it for
+   * one built from the handful of rules this document models. DejaVu's `GSUB`
+   * carries Arabic positional forms among much else, and swapping it for two
+   * ligatures would be a quiet, total loss.
+   */
+  it(
+    "leaves the source table alone when nothing here changed the features",
+    async () => {
+      const { exportFont } = await import("../src/font/export");
+      const typeface = await opened();
+      const built = await exportFont(typeface, { format: "ttf", fidelity: "preserve" });
+      expect(built.notes.join(" ")).toContain("kept as they arrived");
+
+      // The whole of what the font came with, not the two rules we read.
+      const shaped = shapeWords(built.bytes, ["fi", "fl"]);
+      expect(shaped.fi).toHaveLength(1);
+      expect(shaped.fl).toHaveLength(1);
+    },
+    FONT_SUITE_TIMEOUT,
+  );
+
+  it(
+    "says what it is trading when the features were changed",
+    async () => {
+      const { exportFont } = await import("../src/font/export");
+      const { addLigature } = await import("../src/font/features");
+      const typeface = await opened();
+      expect(addLigature(typeface, ["t", "h"], "fi")).toBe(true);
+
+      const built = await exportFont(typeface, { format: "ttf", fidelity: "preserve" });
+      expect(built.notes.join(" ")).toContain("rebuilt from what is on screen");
+      // And the new rule is really in the file.
+      expect(shapeWords(built.bytes, ["th"]).th).toHaveLength(1);
     },
     FONT_SUITE_TIMEOUT,
   );

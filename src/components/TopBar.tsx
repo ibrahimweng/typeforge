@@ -211,6 +211,25 @@ export function TopBar({
         </span>
       )}
       {/*
+        And Trace, which was the one mode that named nothing.
+
+        Three of the four said what was open -- `Untitled Regular`, `Untitled
+        Sans`, `Untitled 0 drawings` -- and the fourth left the space blank, so
+        the one mode whose whole subject is a font somebody else made was also
+        the one that never said which font. It says what it was traced from,
+        because that is the thing a person needs to be sure of here.
+      */}
+      {mode === "quill" && (
+        <span className="min-w-16 shrink truncate text-2xs text-muted-foreground">
+          {quill.document.name || "Untitled"}{" "}
+          <span className="opacity-60">
+            {quill.document.letters.length === 0
+              ? "nothing traced"
+              : `${quill.document.letters.length} letters from ${quill.document.from}`}
+          </span>
+        </span>
+      )}
+      {/*
         The font's name, which is now the way to change it.
 
         It has always been shown here and done nothing. A thing you can read is

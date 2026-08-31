@@ -12,6 +12,7 @@
 
 import { readComposites } from "./composite";
 import { contoursBounds } from "./geometry";
+import { featuresFromGsub } from "./features";
 import { readGposKerning, toKernClasses, writtenPairs } from "./gpos";
 import { classifyNodes } from "./quadratic";
 import { readSfnt, SFNT_CFF } from "./sfnt";
@@ -22,6 +23,8 @@ import {
   type GlyphNode,
   type KernClass,
   type KernPair,
+  type NamedLigature,
+  type NamedSet,
   type SourceFont,
   type Typeface,
   type Vec2,
@@ -103,6 +106,39 @@ async function toSfntBytes(bytes: Uint8Array, format: FontFormat): Promise<Uint8
   // the browser; the Node typings describe the Buffer variant instead.
   const written = font.write({ type: "ttf" }) as unknown;
   return new Uint8Array(written as ArrayBuffer);
+}
+
+/**
+ * The ligatures and stylistic sets a font arrives with.
+ *
+ * It arrived with none. Every import set `alternates: []` and said nothing
+ * about the rest, so the features panel told a face that plainly draws `fi`
+ * that it had no ligatures, and a rebuild export dropped every one of them --
+ * while a preserve export kept them, which is what made it survivable and also
+ * what made it invisible: the two halves of the export disagreed and neither
+ * said so.
+ *
+ * Names rather than ids, because that is what the document is written in and
+ * what a rename has to be able to rewrite. A rule naming a glyph this font does
+ * not have is dropped: it can only come from a table that disagrees with its
+ * own glyph count, and a rule pointing at nothing fires somewhere it should not.
+ *
+ * Only what the document can hold -- the ligatures and the single
+ * substitutions. Everything else stays in the source tables and goes back out
+ * untouched on a preserve export, which is what that mode is for.
+ */
+function featuresOf(
+  source: SourceFont | null,
+  glyphs: Glyph[],
+): { ligatures?: NamedLigature[]; sets?: NamedSet[] } {
+  const raw = source?.tables.get("GSUB");
+  if (!raw) return {};
+
+  const { ligatures, sets } = featuresFromGsub(raw, glyphs);
+  return {
+    ...(ligatures.length > 0 ? { ligatures } : {}),
+    ...(sets.length > 0 ? { sets } : {}),
+  };
 }
 
 export async function importFont(
@@ -294,6 +330,7 @@ export async function importFont(
     kerning,
     kernClasses,
     alternates: [],
+    ...featuresOf(source, glyphs),
     params: { ...DEFAULT_PARAMS },
     source,
   };

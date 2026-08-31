@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { buildGsubTable, type ChainRule, type Ligature } from "./gsub";
+import { buildGsubTable, readGsubFeatures, type ChainRule, type Ligature } from "./gsub";
 
 const swap = (from: number, to: number) => ({ plain: from, alternate: to });
 
@@ -276,5 +276,62 @@ describe("more than one feature in a font", () => {
     const table = buildGsubTable({ sets: [{ tag: "aa", swaps: [swap(F, FI)] }] })!;
     const featureList = at(table, 6);
     expect(String.fromCharCode(...table.slice(featureList + 2, featureList + 6))).toBe("aa  ");
+  });
+});
+
+describe("reading one back", () => {
+  /*
+   * The strongest thing a reader can be held to: it agrees with the writer.
+   * A font opened here arrived with no features at all, so the panel told a
+   * face that plainly draws `fi` that it had none and a rebuild export dropped
+   * every one of them.
+   */
+  it("finds the ligatures that were written, under their own tag", () => {
+    const table = buildGsubTable({
+      ligatures: [liga([F, I], FI), liga([F, F, I], FFI)],
+    })!;
+    const read = readGsubFeatures(table);
+    expect(read.ligatures.map((one) => ({ ...one }))).toEqual(
+      expect.arrayContaining([
+        { tag: "liga", components: [F, I], ligature: FI },
+        { tag: "liga", components: [F, F, I], ligature: FFI },
+      ]),
+    );
+    expect(read.ligatures).toHaveLength(2);
+  });
+
+  it("finds the sets that were written, under their own tag", () => {
+    const table = buildGsubTable({
+      sets: [
+        { tag: "ss01", swaps: [swap(F, FI), swap(I, FF)] },
+        { tag: "salt", swaps: [swap(L, FL)] },
+      ],
+    })!;
+    const read = readGsubFeatures(table);
+    expect(read.sets.find((one) => one.tag === "ss01")?.swaps).toEqual([
+      swap(F, FI),
+      swap(I, FF),
+    ]);
+    expect(read.sets.find((one) => one.tag === "salt")?.swaps).toEqual([swap(L, FL)]);
+  });
+
+  /*
+   * A lookup no feature reaches is invoked from a chain, and a chain is not
+   * something this document can hold. Reported as a set, every letter in a
+   * joined script would be listed as a stylistic alternate of itself.
+   */
+  it("leaves the substitutions a chain reaches alone", () => {
+    const read = readGsubFeatures(buildGsubTable({ contextual: [JOIN] })!);
+    expect(read.sets).toEqual([]);
+    expect(read.ligatures).toEqual([]);
+  });
+
+  it("says nothing about bytes that are not a table", () => {
+    expect(readGsubFeatures(new Uint8Array())).toEqual({ ligatures: [], sets: [] });
+    expect(readGsubFeatures(new Uint8Array(9))).toEqual({ ligatures: [], sets: [] });
+    // Offsets pointing past the end read as nothing rather than throwing: this
+    // is the one place here that reads a stranger's bytes.
+    const nonsense = new Uint8Array(64).fill(0xff);
+    expect(() => readGsubFeatures(nonsense)).not.toThrow();
   });
 });

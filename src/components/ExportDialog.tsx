@@ -12,6 +12,7 @@ import * as React from "react";
 import { enter, refuse } from "@/anim/motion";
 import { CoachMark } from "@/components/CoachMark";
 import { exportFont, toDownloadBlob, type ExportFidelity, type ExportFormat } from "@/font/export";
+import { varyByWeight } from "@/font/masters";
 import { store, useAppState } from "@/state/useStore";
 import { ufoNameFor, zipUfo } from "@/ufo/intake";
 import { cn } from "@/ui/lib/utils";
@@ -28,7 +29,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
    * Widening it there would put a case in the encoder for a format that never
    * reaches it.
    */
-  const [format, setFormat] = React.useState<ExportFormat | "ufo">("ttf");
+  const [format, setFormat] = React.useState<ExportFormat | "ufo" | "variable">("ttf");
   const [fidelity, setFidelity] = React.useState<ExportFidelity>("preserve");
   const [includeKerning, setIncludeKerning] = React.useState(true);
   const [mergeOverlaps, setMergeOverlaps] = React.useState(true);
@@ -54,6 +55,17 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
   // PostScript. Say so rather than letting the choice look available.
   const preserveAvailable =
     format === "ttf" && typeface.source !== null && !typeface.source.isCFF;
+
+  /*
+   * Whether this font has anywhere left to go on the weight axis.
+   *
+   * The masters are the two ends of the weight slider, so a font already at one
+   * of them has a slider that only runs one way -- and an axis whose default
+   * sits on its own limit is worse than no axis. Said here rather than refused
+   * at the end, because a choice that is going to fail should look unavailable
+   * before it is made.
+   */
+  const canVary = varyByWeight(typeface) !== null;
 
   const handleExport = async (): Promise<void> => {
     setWorking(true);
@@ -84,13 +96,22 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
         return;
       }
 
+      /*
+       * A varying font is a TrueType file: the movement lives in `gvar`, which
+       * describes points, and a `.otf` has none to describe. And it is always a
+       * rebuild -- the outlines are re-encoded so that every master splits its
+       * curves the same number of ways, which is the whole reason the points
+       * line up between them. See `PIECES_PER_CURVE` in `variable.ts`.
+       */
+      const varying = format === "variable" ? varyByWeight(typeface) : null;
       const result = await exportFont(typeface, {
         // Narrowed by the branch above, which returns for the one value this
         // does not accept.
-        format,
-        fidelity: preserveAvailable ? fidelity : "rebuild",
+        format: format === "variable" ? "ttf" : format,
+        fidelity: varying ? "rebuild" : preserveAvailable ? fidelity : "rebuild",
         includeKerning,
         mergeOverlaps,
+        ...(varying ? { variable: varying } : {}),
       });
 
       const url = URL.createObjectURL(toDownloadBlob(result));
@@ -148,7 +169,33 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
             description="PostScript curves, matching how the outlines are drawn here. Preferred by print workflows."
           />
           {/*
-            The third one is not a font, and that is the point of it.
+            One file that holds every weight, and a slider between them.
+
+            The machinery to write it has been here since the forge learned to
+            ship a family, and it takes masters as whole typefaces -- so nothing
+            about it was ever particular to a font drawn from nothing. Only the
+            forge could reach it, and a font somebody opened or drew here could
+            not be shipped as a varying one at all, though this half of the
+            application is already a machine for drawing the same alphabet at
+            any weight.
+
+            The masters are the two ends of the weight slider, which is why a
+            font already sitting at one of them cannot have this: an axis whose
+            default is its own limit is a slider that only runs one way.
+          */}
+          <Choice
+            selected={format === "variable"}
+            onSelect={() => canVary && setFormat("variable")}
+            disabled={!canVary}
+            title="Variable (.ttf)"
+            description={
+              canVary
+                ? "One file, every weight, and a slider between them. The two ends of the Weight control become the ends of the axis."
+                : "Needs room on the Weight control. This font is already at one end of it, so there is nothing for an axis to reach."
+            }
+          />
+          {/*
+            The fourth one is not a font, and that is the point of it.
 
             A `.ttf` and a `.otf` are what a font becomes at the end; a UFO is
             what it is while somebody is still drawing it, and it is the file
@@ -174,7 +221,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
           are what a source file is supposed to keep. Hiding them is better
           than showing two controls that quietly do nothing.
         */}
-        {format !== "ufo" && (
+        {format !== "ufo" && format !== "variable" && (
         <>
         <Field label="What to carry over">
           <Choice

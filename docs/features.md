@@ -125,3 +125,79 @@ glyph's name was written in six places, and the two new rule shapes make it
 eight. The store's `editFont` was holding five of them for undo -- right until
 a ligature could be made by hand, and after that an undo that took the letter
 back and left the rule pointing at it.
+
+---
+
+# Variable, from a font somebody opened
+
+The `fvar`/`gvar`/`STAT` writer has been here since the forge learned to ship a
+family in one file, and `VariableOptions` takes masters as whole typefaces --
+so nothing about it was ever particular to a drawn-from-nothing face. Only the
+forge could reach it. A font imported or drawn by hand could not be shipped as
+a varying one at all, though `variable.ts` says in its own opening paragraph
+that this half of the application is "already a machine for drawing the same
+alphabet at any weight".
+
+A master is that same typeface with one parameter moved, and it works because
+of a fact about `applyWeight`: it walks the nodes a contour already has and
+offsets each one along its own normal. It moves points; it does not make or
+remove them. So two weights of a letter come out with the same points in the
+same order, which is the one thing a variable font cannot do without. Where
+that is not true the export already copes -- `buildGvar` hands back the glyphs
+whose masters did not line up, they stay at the default, and the exporter says
+which.
+
+## The fault it cost to find
+
+The first version produced a variable font whose bold and light were the same
+letters to four decimal places, in a file that was otherwise perfectly formed:
+correct axis, correct instances, `STAT` in order, more than a hundred glyphs
+carrying deltas, and fontTools reading all of it without complaint.
+
+`params.weight` is kept in **font units**. The slider's own range is a fraction
+of the em -- `-0.04` to `0.06` -- and the inspector multiplies by `unitsPerEm`
+on the way in. Both halves of that are in the code and neither is in the type,
+so masters built at the raw fraction moved a twenty-fifth of a font unit
+instead of eighty-two. On DejaVu Sans that is a change of 0.08%: real, provably
+non-zero, and invisible.
+
+Nothing about the file said so. It took pinning the font at each end with
+fontTools and measuring signed area -- ink rather than width, because a bold
+and a light reach the same distance -- to see that `H` came back byte-identical
+at 100 and at 900.
+
+---
+
+# Reading a font's own features
+
+An import set `alternates: []` and read nothing else, so a font that plainly
+draws `fi` arrived with no features at all. The panel said "None yet" about a
+face that has had ligatures for twenty years, and a rebuild export dropped
+every one of them.
+
+What made it survivable is also what made it invisible: a **preserve** export
+hands back the source tables untouched, so the ligatures came through that way.
+The two halves of the export disagreed about what the font contained and
+neither said so.
+
+The reader is deliberately partial and it is worth being plain about which
+part. It reads the two lookup types the document can hold -- 4, a run of glyphs
+becoming one, and 1, a glyph becoming another -- under the tags they were found
+under, and ignores everything else. Only `liga` becomes a ligature here:
+`dlig` and `hlig` are a different promise, and reading them in would turn every
+discretionary ligature in a font into a mandatory one.
+
+## The interaction it opened
+
+Once the model can hold what a font arrived with, `applyAlternates` writing a
+rebuilt `GSUB` over a preserved one stops being harmless and becomes a quiet,
+total loss. DejaVu's own table carries Arabic positional forms among much else;
+a table built from the model holds two ligatures. Setting one over the other is
+a trade, and it could not happen while an import read nothing.
+
+So a preserve export now keeps the font's own table when nothing here has
+changed the features, and says so. Change them and it rebuilds -- and says
+exactly what that costs, rather than doing it silently.
+
+Which is worth stating as a rule: **a reader is not only a feature, it is a new
+way for a writer to be wrong.** The reader was the easy half.

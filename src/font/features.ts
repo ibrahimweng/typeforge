@@ -18,7 +18,8 @@
  * that has to be written in the thing a rename rewrites.
  */
 
-import type { NamedLigature, Typeface } from "./types";
+import { readGsubFeatures } from "./gsub";
+import type { NamedLigature, NamedSet, Typeface } from "./types";
 
 /** The standard ligatures, in the order a font usually gets them. */
 export const COMMON_LIGATURES: ReadonlyArray<readonly string[]> = [
@@ -342,4 +343,98 @@ export function unreachableGlyphs(typeface: Typeface): string[] {
 
   const mine = typeface.source === null ? typeface.glyphs : typeface.glyphs.filter((one) => one.dirty);
   return mine.filter((one) => !reached.has(one.name)).map((one) => one.name);
+}
+
+
+/**
+ * The ligatures and sets a font's own `GSUB` amounts to, in this document's terms.
+ *
+ * One function, called both by the import that fills the document and by the
+ * comparison that decides whether a preserve export may keep the source table.
+ * They were two readings of the same bytes and they drifted the moment one
+ * learned to filter and the other did not: an untouched font came back as
+ * "changed", and a preserve export would have traded away a table nobody had
+ * touched.
+ */
+export function featuresFromGsub(
+  raw: Uint8Array,
+  glyphs: ReadonlyArray<{ name: string }>,
+): { ligatures: NamedLigature[]; sets: NamedSet[] } {
+  const read = readGsubFeatures(raw);
+  const nameOf = (id: number): string | null => glyphs[id]?.name ?? null;
+
+  const ligatures: NamedLigature[] = [];
+  for (const one of read.ligatures) {
+    // Only the ligatures a reader gets without asking. `dlig` and `hlig` are
+    // real features and a different promise, and reading them in here would
+    // turn every discretionary ligature in a font into a mandatory one.
+    if (one.tag !== "liga") continue;
+    const components = one.components.map(nameOf);
+    const ligature = nameOf(one.ligature);
+    if (!ligature || components.some((name) => name === null)) continue;
+    ligatures.push({ components: components as string[], ligature });
+  }
+
+  /*
+   * One set per tag, and only the tags that mean "a second drawing somebody
+   * switches on".
+   *
+   * A single substitution is not by itself a stylistic set. DejaVu's table
+   * carries `init`, `medi` and `fina` -- the Arabic positional forms, a hundred
+   * and sixteen in one -- plus `locl`, `case` and `aalt`, every one a single
+   * substitution and none of them a choice made in a panel. Read in without
+   * this the panel listed fourteen sets nobody had made, and a rebuild would
+   * have written positional forms back out stripped of the script and language
+   * context that is the whole of what makes them correct.
+   *
+   * And one entry per tag however many lookups a feature is spread across:
+   * DejaVu reaches three separate substitutions under `salt`, which read as
+   * three sets are three rows with one name and three feature records under one
+   * tag in anything rebuilt from them.
+   */
+  const byTag = new Map<string, NamedSet>();
+  for (const set of read.sets) {
+    if (!SET_TAGS.some((one) => one.tag === set.tag)) continue;
+    const into = byTag.get(set.tag) ?? { tag: set.tag, label: labelFor(set.tag), swaps: [] };
+    for (const one of set.swaps) {
+      const plain = nameOf(one.plain);
+      const alternate = nameOf(one.alternate);
+      if (!plain || !alternate || plain === alternate) continue;
+      if (into.swaps.some((had) => had.plain === plain)) continue;
+      into.swaps.push({ plain, alternate });
+    }
+    if (into.swaps.length > 0) byTag.set(set.tag, into);
+  }
+
+  return { ligatures, sets: [...byTag.values()] };
+}
+
+/**
+ * Whether the features on screen are still the ones the font arrived with.
+ *
+ * Asked at export time, and only to decide whether a preserve export may keep
+ * the source's own `GSUB` -- which holds far more than this document models --
+ * or has to trade it for one built from what is here. Compared by re-reading
+ * the source rather than by remembering, because remembering means another
+ * field to keep in step through every rename, delete and undo, and this is
+ * cheap and cannot drift.
+ */
+export function featuresMatchSource(typeface: Typeface): boolean {
+  const raw = typeface.source?.tables.get("GSUB");
+  if (!raw) return false;
+
+  const was = featuresFromGsub(raw, typeface.glyphs);
+  const asLigatures = (list: ReadonlyArray<NamedLigature>) =>
+    list.map((one) => `${one.components.join(" ")}>${one.ligature}`).sort().join("|");
+  if (asLigatures(was.ligatures) !== asLigatures(typeface.ligatures ?? [])) return false;
+
+  const asSets = (list: ReadonlyArray<NamedSet>) =>
+    list
+      .map(
+        (set) =>
+          `${set.tag}:${set.swaps.map((one) => `${one.plain}>${one.alternate}`).sort().join(",")}`,
+      )
+      .sort()
+      .join("|");
+  return asSets(was.sets) === asSets(typeface.sets ?? []);
 }

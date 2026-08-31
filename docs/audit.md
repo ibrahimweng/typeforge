@@ -216,3 +216,36 @@ decide what fills, printed over a letter with no paths at all.
 
 Every one of these was found by looking at a screenshot. None of them would
 have been found by reading the code, and none of them was on any list.
+
+---
+
+# A third tour: Draw, Assemble and Trace
+
+Edit has been toured twice. The other three modes had never been looked at
+once. Two faults, and the first is the worst thing either tour has found.
+
+**A font opened from the toolbar left you where you were.** Every other door
+already went to the mode that now holds the work -- a UFO, a saved project, a
+typeface adopted from the library all set it. A plain font was the one that did
+not. So pressing Open while standing in Trace loaded the font into the editor's
+document and left the screen exactly as it was: the status line reporting
+`Opened -- 6,253 glyphs` above a view saying `Nothing traced yet`. Two
+statements about the same action, contradicting each other in the same
+screenshot, with the font itself perfectly fine and one mode away.
+
+It is the sort of thing that is invisible from inside the code. The line that
+opens a font is correct, the line that switches to Trace for a joined script is
+correct, and the fault is the case neither of them covers.
+
+**Trace named nothing.** Three of the four modes say what is open in the
+toolbar -- `Untitled Regular`, `Untitled Sans`, `Untitled 0 drawings` -- and
+the fourth left the space blank. The one mode whose whole subject is a font
+somebody else made was the one that never said which font.
+
+Two more things were looked at and left alone, which is worth writing down
+because a tour that reports everything it noticed is a tour nobody reads twice.
+Assemble's Export button is disabled with nothing to export, which is right.
+And Trace's panel is mostly empty before anything is traced -- a flex column
+with a pinned footer, and the one action it has sits at the top with the
+explanation filling the canvas beside it. Filling that space would mean
+inventing content.
