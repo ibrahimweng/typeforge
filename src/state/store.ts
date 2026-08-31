@@ -115,6 +115,42 @@ export type ViewId = "grid" | "glyph" | "kerning" | "metrics" | "proof" | "repor
  */
 export type ToolId = "select" | "pen" | "pencil" | "rectangle" | "ellipse" | "knife";
 
+/**
+ * What the tool in hand is doing, in the terms that change what the next click
+ * does.
+ *
+ * Not a uniform four states bolted onto six buttons. A tool's phases are its
+ * own: the pen's second click means something different from its first, and
+ * the knife's line either crosses a shape or it does not. What they have in
+ * common is only that each is a moment where the answer to "what happens if I
+ * press now" changes.
+ *
+ * Kept here rather than in the canvas's own `dragRef` because a ref is
+ * invisible to React: everything a tool was doing mid-gesture lived in one,
+ * and so the palette, the cursor and the status line could not have shown it
+ * even if they had wanted to.
+ *
+ *   `idle`     nothing in progress
+ *   `ready`    a gesture would start something -- the select tool over a node
+ *   `active`   a gesture is under way
+ *   `willDo`   under way, and about to do the tool's particular thing: close
+ *              the path, cut the shape, snap to a square
+ */
+export type ToolPhase = "idle" | "ready" | "active" | "willDo";
+
+/**
+ * The phase, and one line saying what pressing now would do.
+ *
+ * The sentence lives with the phase rather than being derived from it in three
+ * places, because the two always change together and a status line that
+ * disagrees with the cursor is worse than neither.
+ */
+export interface ToolState {
+  phase: ToolPhase;
+  /** What happens if you act now, in the tool's own words. */
+  says: string;
+}
+
 /** A node's address within a glyph, used for selection. */
 export interface NodeRef {
   contour: number;
@@ -128,6 +164,8 @@ export interface AppState {
   fileName: string;
   view: ViewId;
   tool: ToolId;
+  /** What that tool is doing, for the palette, the cursor and the status line. */
+  toolState: ToolState;
   /**
    * The letters drawn either side of the one being edited.
    *
@@ -232,6 +270,7 @@ class Store {
     fileName: "",
     view: "grid",
     tool: "select",
+    toolState: { phase: "idle", says: "" },
     /*
      * `n` on both sides, which is where a type designer starts.
      *
@@ -535,8 +574,25 @@ class Store {
   setView(view: ViewId): void {
     this.set({ view });
   }
+  /**
+   * What the tool in hand is doing.
+   *
+   * Set from the canvas as a gesture runs. Compared before it is stored,
+   * because this fires on every pointer move and a `set` that changes nothing
+   * still re-renders every subscriber -- which on a canvas redrawing six
+   * thousand glyph outlines is the difference between a drag that follows the
+   * pointer and one that does not.
+   */
+  setToolState(next: ToolState): void {
+    const now = this.state.toolState;
+    if (now.phase === next.phase && now.says === next.says) return;
+    this.set({ toolState: next });
+  }
+
   setTool(tool: ToolId): void {
-    this.set({ tool });
+    // A tool picked up mid-anything starts from nothing, which is also what
+    // stops a stale sentence from the last tool sitting under the new one.
+    this.set({ tool, toolState: { phase: "idle", says: "" } });
   }
   /** Change what stands either side of the glyph being edited. */
   setContext(context: Partial<AppState["context"]>): void {
@@ -1237,6 +1293,31 @@ class Store {
         glyph.advanceWidth = Math.max(0, glyph.advanceWidth + delta);
       },
     );
+  }
+
+  /**
+   * Close the outline the pen is drawing.
+   *
+   * The pen's second action, and it did not exist. `addPoint` appends to the
+   * last open contour or starts a new one, and nothing anywhere in this
+   * application ever set `closed` -- so every outline drawn with the pen stayed
+   * open, and an open contour does not fill. A person could draw a perfectly
+   * good `o` and watch it stay a wire.
+   *
+   * Refused under three points, because two points closed is a line drawn twice
+   * and a font full of them is a font full of contours with no area.
+   */
+  closeOutline(name: string): boolean {
+    const glyph = this.glyph(name);
+    const contour = glyph?.contours[glyph.contours.length - 1];
+    if (!contour || contour.closed || contour.nodes.length < 3) return false;
+
+    this.editGlyph(name, "Close the outline", (editing) => {
+      const last = editing.contours[editing.contours.length - 1];
+      if (last) last.closed = true;
+    });
+    this.say("Outline closed.", "success");
+    return true;
   }
 
   editGlyph(name: string, label: string, mutate: (glyph: Glyph) => void): void {

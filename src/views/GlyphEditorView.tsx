@@ -19,6 +19,8 @@ import { linesFor, snapPoint, type Lines } from "@/font/snap";
 import { resolveComponents } from "@/font/composite";
 import { resolveAdvanceWidth, resolveGlyphContours } from "@/font/transform";
 import type { Anchor, Contour, Glyph, GlyphNode, Typeface, Vec2 } from "@/font/types";
+import { slice } from "@/font/knife";
+import { CLOSES_WITHIN, cursorFor as cursorClass, toolStateFor, type Doing } from "@/font/tools";
 import {
   applyView,
   prepareCanvas,
@@ -27,7 +29,7 @@ import {
   toFontY,
   type GlyphView,
 } from "@/components/glyph-render";
-import { nodeKey, store, useAppState, type NodeRef } from "@/state/useStore";
+import { nodeKey, store, useAppState, type NodeRef, type ToolState } from "@/state/useStore";
 import { CoachMark } from "@/components/CoachMark";
 import { GroundToggle } from "@/components/GroundToggle";
 import { NumberField } from "@/components/NumberField";
@@ -123,6 +125,12 @@ export function GlyphEditorView(): React.JSX.Element {
     fromCentre: false,
   });
   const [hover, setHover] = React.useState<Hover>(null);
+  /*
+   * Where the pointer is, for the tools that draw from the last thing they did
+   * to wherever it now is. Only the pen needs it and only while an outline is
+   * open, so it is set on move and cleared on leave rather than kept live.
+   */
+  const [at, setAt] = React.useState<Vec2 | null>(null);
   const [, forceRender] = React.useReducer((n: number) => n + 1, 0);
 
   /*
@@ -283,6 +291,16 @@ export function GlyphEditorView(): React.JSX.Element {
     if (drag?.kind === "knife") drawKnifePreview(context, drag);
     if (drag?.kind === "pencil") drawPencilPreview(context, drag, view);
     /*
+     * The pen's line to wherever the pointer is, and the point that would close
+     * the outline marked when it is worth closing.
+     *
+     * Every other tool drew a live preview and this one did not: the pen
+     * committed a point per click with nothing at all between the last one and
+     * the pointer, so the only way to see where a segment would land was to
+     * place it and undo.
+     */
+    if (state.tool === "pen" && at && !drag) drawPenReach(context, glyph, view, at);
+    /*
      * `state.ground` is in here for the reason it is in the proof view: every
      * colour on this canvas comes from `readToken`, which reads a custom
      * property rather than taking a prop, so nothing else in this list changes
@@ -325,7 +343,19 @@ export function GlyphEditorView(): React.JSX.Element {
     }
 
     if (state.tool === "pen") {
+      /*
+       * Clicking the point it started from closes the outline, which is the
+       * pen's second action and did not exist. Without it every outline drawn
+       * here stayed open, and an open contour does not fill -- somebody could
+       * draw a perfectly good `o` and watch it stay a wire.
+       */
+      if (onClosingPoint(glyph, view, canvasPoint)) {
+        store.closeOutline(glyph.name);
+        reportPhase(canvasPoint);
+        return;
+      }
       addPoint(glyph, view, canvasPoint);
+      reportPhase(canvasPoint);
       return;
     }
 
@@ -422,10 +452,45 @@ export function GlyphEditorView(): React.JSX.Element {
    * dozens of times a second and every state change here repaints the whole
    * canvas, so comparing first is what keeps hovering free.
    */
-  const updateHover = (canvasPoint: Vec2): void => {
+  /*
+   * What the tool in hand is doing, said once and read by three things.
+   *
+   * The palette, the cursor and the status line all have to agree, and three
+   * readings of the same gesture is three chances to disagree -- a cursor
+   * saying "this will cut" over a line that will not is worse than a cursor
+   * saying nothing. `toolStateFor` decides; this only gathers what it needs.
+   */
+  const reportPhase = (canvasPoint: Vec2 | null, found: Hover = hover): void => {
+    const drag = dragRef.current;
+    const held = { shift: modifiersRef.current.square, alt: modifiersRef.current.fromCentre };
+    const doing: Doing | null = drag
+      ? {
+          kind: drag.kind === "shape" ? "shape" : (drag.kind as Doing["kind"]),
+          wouldCut: drag.kind === "knife" ? knifeWouldCut(glyph, view, drag) : undefined,
+          wouldClose:
+            drag.kind === "pencil"
+              ? drag.trail.length > 8 &&
+                Math.hypot(
+                  drag.trail[drag.trail.length - 1].x - drag.trail[0].x,
+                  drag.trail[drag.trail.length - 1].y - drag.trail[0].y,
+                ) <= CLOSES_WITHIN
+              : undefined,
+        }
+      : null;
+
+    const under = {
+      grabbable: found !== null,
+      closingPoint: Boolean(glyph && canvasPoint && onClosingPoint(glyph, view, canvasPoint)),
+      pathOpen: Boolean(glyph && openOutline(glyph)),
+    };
+    store.setToolState(toolStateFor(state.tool, under, doing, held));
+  };
+
+  const updateHover = (canvasPoint: Vec2): Hover => {
+    setAt(canvasPoint);
     if (!glyph || state.tool !== "select") {
       setHover((current) => (current === null ? current : null));
-      return;
+      return null;
     }
 
     const anchorHit = hitTestAnchor(glyph, view, canvasPoint);
@@ -441,12 +506,49 @@ export function GlyphEditorView(): React.JSX.Element {
           : null;
 
     setHover((current) => (hoverKey(current) === hoverKey(next) ? current : next));
+    /*
+     * Handed back rather than left to be read off state.
+     *
+     * `setHover` does not change `hover` until the next render, so a phase read
+     * from it was always one move behind -- the select tool never reported
+     * anything grabbable, because by the time `hover` held a node the pointer
+     * had already been asked about somewhere else.
+     */
+    return next;
   };
+
+  /*
+   * A tool says what it is for the moment it is picked up.
+   *
+   * `setTool` clears the phase, and nothing reported a new one until the
+   * pointer next moved -- so choosing the knife left the status line still
+   * offering to type a point's position, and the palette showing a tool doing
+   * nothing. Somebody who picks a tool and reads the line before moving is
+   * exactly the person the line is for.
+   */
+  React.useEffect(() => {
+    store.setToolState(
+      toolStateFor(
+        state.tool,
+        { grabbable: false, closingPoint: false, pathOpen: Boolean(glyph && openOutline(glyph)) },
+        null,
+        { shift: false, alt: false },
+      ),
+    );
+    // Only on a change of tool or of letter: within one tool the pointer
+    // handlers below own the phase, and running this on every glyph edit would
+    // stamp on a gesture in progress.
+  }, [state.tool, glyph?.name]);
 
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     const drag = dragRef.current;
     if (!drag) {
-      updateHover(pointerPosition(event));
+      const where = pointerPosition(event);
+      reportPhase(where, updateHover(where));
+      // The pen draws from its last point to wherever the pointer is, so an
+      // open outline has to repaint as the pointer moves rather than only when
+      // something is pressed.
+      if (state.tool === "pen" && glyph && openOutline(glyph)) forceRender();
       return;
     }
     const canvasPoint = pointerPosition(event);
@@ -563,6 +665,17 @@ export function GlyphEditorView(): React.JSX.Element {
         break;
       }
     }
+
+    /*
+     * After the gesture has taken the move in, not before.
+     *
+     * Reported first, the phase was always one move behind what the drag
+     * actually held -- which for most tools is invisible and for the pencil is
+     * the whole thing: the trail's last point is what decides whether letting
+     * go closes the loop, and asking before it was pushed meant the answer
+     * never arrived for the move that mattered.
+     */
+    reportPhase(canvasPoint);
   };
 
   /*
@@ -849,13 +962,17 @@ export function GlyphEditorView(): React.JSX.Element {
         <canvas
           ref={canvasRef}
           style={{ width: size.width, height: size.height }}
-          className={cursorFor(state.tool, hover)}
+          className={cursorClass(state.tool, state.toolState, dragRef.current !== null)}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
           onDoubleClick={handleDoubleClick}
-          onPointerLeave={() => setHover(null)}
+          onPointerLeave={() => {
+            setHover(null);
+            setAt(null);
+            store.setToolState({ phase: "idle", says: "" });
+          }}
           onWheel={(event) => {
             // Ctrl or command with the wheel zooms, matching every design tool.
             if (event.ctrlKey || event.metaKey) {
@@ -871,7 +988,12 @@ export function GlyphEditorView(): React.JSX.Element {
         </div>
       </div>
       </div>
-      <Numbers glyph={glyph} typeface={typeface} selected={state.selectedNodes} />
+      <Numbers
+        glyph={glyph}
+        typeface={typeface}
+        selected={state.selectedNodes}
+        toolState={state.toolState}
+      />
     </div>
   );
 }
@@ -894,10 +1016,13 @@ function Numbers({
   glyph,
   typeface,
   selected,
+  toolState,
 }: {
   glyph: Glyph;
   typeface: Typeface;
   selected: ReadonlySet<string>;
+  /** What the tool in hand would do now, which takes this row when it has something to say. */
+  toolState: ToolState;
 }): React.JSX.Element {
   const one = selected.size === 1 ? parseNodeKey([...selected][0]) : null;
   const node = one ? glyph.contours[one.contour]?.nodes[one.node] : null;
@@ -961,10 +1086,25 @@ function Numbers({
           </label>
         </>
       ) : (
-        <span className="opacity-70">
-          {selected.size === 0
-            ? "Select one point to type its position."
-            : `${selected.size} points selected — one at a time can be typed.`}
+        /*
+          What the tool in hand would do if you acted now, in its own words, and
+          the point-typing hint only when there is no tool with anything to say.
+          A line that changes as the gesture changes is worth more than a
+          standing instruction: the knife saying "not across anything yet" is
+          the difference between letting go and finding out, and finding out
+          before you let go.
+        */
+        <span
+          className={cn(
+            "opacity-70",
+            toolState.phase === "willDo" && "text-[color:var(--attention)] opacity-100",
+          )}
+          data-tool-says
+        >
+          {toolState.says ||
+            (selected.size === 0
+              ? "Select one point to type its position."
+              : `${selected.size} points selected — one at a time can be typed.`)}
         </span>
       )}
 
@@ -1030,19 +1170,6 @@ function guideAt(
   return null;
 }
 
-/**
- * The cursor says whether there is something to grab before you press.
- *
- * Without this the canvas looks identical whether the pointer is over a point
- * or over empty space, so the only way to find out is to click and see.
- */
-function cursorFor(tool: string, hover: Hover): string {
-  // Everything that draws gets a crosshair, because everything that draws
-  // starts from a point rather than from something already on the canvas --
-  // and the arrow's tip is not where the arrow appears to be pointing.
-  if (tool !== "select") return "cursor-crosshair";
-  return hover ? "cursor-grab" : "cursor-default";
-}
 
 // --- drawing ------------------------------------------------------------
 
@@ -1358,6 +1485,49 @@ function drawShapePreview(
  * difference between the two only shows up when the fitting is wrong -- which
  * is exactly when it is worth seeing.
  */
+/**
+ * Where the pen's next segment would land, and the point that would close it.
+ *
+ * Dashed, because it is not there yet -- the same language the marquee and the
+ * knife line already use for a thing that is being decided rather than drawn.
+ * The closing point gets a ring rather than a colour so it reads at any zoom
+ * and on either ground.
+ */
+function drawPenReach(
+  context: CanvasRenderingContext2D,
+  glyph: Glyph | null,
+  view: GlyphView,
+  at: Vec2,
+): void {
+  const open = glyph ? openOutline(glyph) : null;
+  if (!open) return;
+
+  const last = open.nodes[open.nodes.length - 1].point;
+  const from = { x: view.originX + last.x * view.scale, y: view.originY - last.y * view.scale };
+
+  context.save();
+  context.strokeStyle = readToken("--inspect", "#7aa2f7");
+  context.lineWidth = 1;
+  context.setLineDash([4, 3]);
+  context.beginPath();
+  context.moveTo(from.x, from.y);
+  context.lineTo(at.x, at.y);
+  context.stroke();
+  context.setLineDash([]);
+
+  if (open.nodes.length >= 3) {
+    const first = open.nodes[0].point;
+    const ring = { x: view.originX + first.x * view.scale, y: view.originY - first.y * view.scale };
+    const near = Math.hypot(at.x - ring.x, at.y - ring.y) <= HIT_RADIUS;
+    context.strokeStyle = readToken("--inspect", "#7aa2f7");
+    context.lineWidth = near ? 2 : 1;
+    context.beginPath();
+    context.arc(ring.x, ring.y, near ? HIT_RADIUS + 2 : HIT_RADIUS - 1, 0, Math.PI * 2);
+    context.stroke();
+  }
+  context.restore();
+}
+
 function drawPencilPreview(
   context: CanvasRenderingContext2D,
   drag: Extract<Drag, { kind: "pencil" }>,
@@ -1400,6 +1570,58 @@ const toScreen = (view: GlyphView, point: Vec2): Vec2 => ({
   x: view.originX + point.x * view.scale,
   y: view.originY - point.y * view.scale,
 });
+
+/**
+ * Whether the line as drawn would actually cut anything.
+ *
+ * Asked of `slice` itself rather than guessed at, so what the cursor promises
+ * and what letting go does are decided by one piece of code. A knife drawn
+ * short, or down beside a stem rather than across it, does nothing at all --
+ * and did it silently, so the only way to find out was to let go and watch
+ * nothing happen.
+ *
+ * Cheap enough to ask on every move: it walks one glyph's contours looking for
+ * crossings, and it only runs while the knife is actually being dragged.
+ */
+function knifeWouldCut(
+  glyph: Glyph | null,
+  view: GlyphView,
+  drag: { from: Vec2; to: Vec2 },
+): boolean {
+  if (!glyph) return false;
+  const from = { x: toFontX(view, drag.from.x), y: toFontY(view, drag.from.y) };
+  const to = { x: toFontX(view, drag.to.x), y: toFontY(view, drag.to.y) };
+  if (Math.hypot(to.x - from.x, to.y - from.y) < 1) return false;
+  return slice(glyph.contours, from, to) !== null;
+}
+
+/**
+ * The outline the pen is part way through, if there is one.
+ *
+ * The last contour, and only while it is still open: `addPoint` appends to that
+ * one and starts a new one when it is closed, so this is the same contour the
+ * next click would extend.
+ */
+function openOutline(glyph: Glyph): Contour | null {
+  const last = glyph.contours[glyph.contours.length - 1];
+  return last && !last.closed && last.nodes.length > 0 ? last : null;
+}
+
+/**
+ * Whether the pointer is on the point that would close the open outline.
+ *
+ * The same reach a node answers to, so the point that looks catchable is the
+ * one that is. Under three points there is nothing to close: two points closed
+ * is a line drawn twice, with no area to fill.
+ */
+function onClosingPoint(glyph: Glyph, view: GlyphView, canvasPoint: Vec2): boolean {
+  const open = openOutline(glyph);
+  if (!open || open.nodes.length < 3) return false;
+  const first = open.nodes[0].point;
+  const dx = canvasPoint.x - (view.originX + first.x * view.scale);
+  const dy = canvasPoint.y - (view.originY - first.y * view.scale);
+  return Math.hypot(dx, dy) <= HIT_RADIUS;
+}
 
 function hitTestNode(glyph: Glyph, view: GlyphView, canvasPoint: Vec2): NodeRef | null {
   for (let contourIndex = 0; contourIndex < glyph.contours.length; contourIndex++) {

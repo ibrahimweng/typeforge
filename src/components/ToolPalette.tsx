@@ -126,14 +126,50 @@ export function ToolPalette(): React.JSX.Element {
           aria-pressed={state.tool === tool.id}
           title={`${tool.name} — ${tool.hint} (${tool.key})`}
           onClick={() => store.setTool(tool.id)}
+          data-tool={tool.id}
+          data-phase={state.tool === tool.id ? state.toolState.phase : "off"}
           className={cn(
-            "flex h-7 w-7 items-center justify-center rounded text-xs-plus leading-none transition-colors",
-            state.tool === tool.id
-              ? "bg-accent text-accent-foreground"
-              : "text-muted-foreground hover:bg-background hover:text-foreground",
+            "relative flex h-7 w-7 items-center justify-center rounded text-xs-plus leading-none",
+            "transition-colors",
+            /*
+              Hover did nothing at all. The class was `hover:bg-background` and
+              the rail it sits in *is* `bg-background`, so pointing at a tool
+              changed exactly nothing -- it looked deliberate and had been dead
+              the whole time. `bg-card` is the surface everything else here uses
+              for a thing under the pointer.
+            */
+            state.tool !== tool.id && "text-muted-foreground hover:bg-card hover:text-foreground",
+            /*
+              And what the tool in hand is doing. Held apart from selected
+              rather than replacing it: a tool mid-gesture is still the tool
+              that is picked, and losing the accent while drawing would read as
+              the tool letting go.
+            */
+            state.tool === tool.id && "bg-accent text-accent-foreground",
+            state.tool === tool.id && state.toolState.phase === "active" && "ring-1 ring-accent/60",
+            state.tool === tool.id &&
+              state.toolState.phase === "willDo" &&
+              "ring-2 ring-[color:var(--attention)]",
           )}
         >
           <tool.mark size={15} weight={state.tool === tool.id ? "fill" : "regular"} />
+          {/*
+            One dot for "this tool is part way through something", which is the
+            state a tool used to have no way of showing at all. Under the icon
+            rather than over it, so it never covers the mark somebody is
+            reading the button by.
+          */}
+          {state.tool === tool.id && state.toolState.phase !== "idle" && (
+            <span
+              aria-hidden
+              className={cn(
+                "pointer-events-none absolute bottom-0.5 h-0.5 w-0.5 rounded-full",
+                state.toolState.phase === "willDo"
+                  ? "bg-[color:var(--attention)]"
+                  : "bg-accent-foreground/70",
+              )}
+            />
+          )}
         </button>
       ))}
     </div>

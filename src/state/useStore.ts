@@ -8,4 +8,4 @@ export function useAppState(): AppState {
 }
 
 export { store, nodeKey } from "./store";
-export type { AppState, NodeRef, ToolId, ViewId } from "./store";
+export type { AppState, NodeRef, ToolId, ToolPhase, ToolState, ViewId } from "./store";
