@@ -290,3 +290,37 @@ anybody noticed the sign.
 
 Three faults, none of which a fifth reading would have found, and all three
 were sitting in front of the first person to actually draw with the tool.
+
+# A fifth tour: driven as a beginner, from a screenshot
+
+The first four tours were made by somebody who knew what the code did. This one
+started from a screenshot of a letter somebody else had made a mess of, and the
+mess turned out to be a straight reading of the interface's own instructions.
+
+Reproducing it took four minutes and no guessing. Take the pen, place three
+points, aim at the first to close, miss by twelve pixels -- which is a normal
+miss on a seven-pixel target -- and get a fourth point with no warning. Press
+Escape: nothing. Press Enter: nothing. Take another tool: the half-drawn
+contour stays. There was no way to stop drawing, so every attempt anybody
+thought better of was permanent, and permanent things accumulate.
+
+Two lessons worth keeping.
+
+**A missing verb is invisible from inside the code.** Every function here was
+correct. `addPoint` added a point, `closeOutline` closed an outline, `retract`
+retracted. Nothing was broken; something was absent, and absence does not show
+up in a file you are reading -- only in a session you are having. Four rounds of
+reading this code had not found it.
+
+**The same fix twice, in two places, is a sign the model is wrong.** The
+staleness bugs in this view have now happened three times, and the tool phase
+had two of them in one round: a handler bound on an earlier render calling a
+closure built on an earlier render. Each was fixed locally and the next one
+arrived anyway. They stopped when the position and the reporter both moved into
+refs -- which is to say, when the rule became "state read inside a handler is
+read from a ref" rather than "remember to add this dependency".
+
+And one that is worth saying plainly: the fault the tour found was not in a
+feature that had been rushed. The pen work of the previous round was tested,
+documented, and correct. It was also unusable for its actual purpose, because
+nobody had sat down and drawn a letter with it.

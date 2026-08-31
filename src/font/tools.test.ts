@@ -199,7 +199,22 @@ describe("the tools that need something under them", () => {
   });
 
   it("does not arm add-point over a bare point, which has no edge to split", () => {
-    expect(toolStateFor("addPoint", { ...NOTHING, node: true }, null, NONE).phase).toBe("ready");
+    // `idle` rather than `ready`: a tool that can do nothing where it is
+    // pointing is not ready for anything, and the palette dot should be dark.
+    expect(toolStateFor("addPoint", { ...NOTHING, node: true }, null, NONE).phase).toBe("idle");
+  });
+
+  it("says what is wrong and then what would fix it, in one voice", () => {
+    /*
+     * Four tools inventing four phrasings for one situation is how an
+     * interface stops sounding like one person wrote it. This is the shape the
+     * knife's sentence already had.
+     */
+    for (const tool of NEEDS_A_TARGET) {
+      const says = toolStateFor(tool, NOTHING, null, NONE).says;
+      expect(says, tool).toMatch(/^Nothing here to /);
+      expect(says, tool).toContain("Point at");
+    }
   });
 });
 

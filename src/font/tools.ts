@@ -159,6 +159,14 @@ export function toolStateFor(
     case "freehand":
       return { phase: "ready", says: "Drag to draw. Come back to where you began to close it." };
 
+    /*
+     * The four that need a target say the same two things in the same order:
+     * what is wrong, then what would fix it. It is the shape the knife's
+     * sentence already had, and having four tools invent four phrasings for
+     * one situation is how an interface stops sounding like one person wrote
+     * it. `idle` rather than `ready`, because a tool that can do nothing where
+     * it is pointing is not ready for anything.
+     */
     case "addPoint":
       /*
        * An edge is enough, and a point sitting on it is neither here nor there:
@@ -167,12 +175,12 @@ export function toolStateFor(
        */
       return under.edge
         ? { phase: "willDo", says: "Click to put a point here. The curve will not move." }
-        : { phase: "ready", says: "Point at an edge to put a point on it." };
+        : { phase: "idle", says: "Nothing here to add to. Point at an edge." };
 
     case "deletePoint":
       return under.node
         ? { phase: "willDo", says: "Click to take this point out and redraw the curve." }
-        : { phase: "ready", says: "Point at a point to take it out." };
+        : { phase: "idle", says: "Nothing here to take out. Point at a point." };
 
     case "convertPoint":
       return under.node
@@ -180,7 +188,7 @@ export function toolStateFor(
             phase: "willDo",
             says: "Click to switch this between a curve and a corner, or pull to bring a handle out.",
           }
-        : { phase: "ready", says: "Point at a point to change what it is." };
+        : { phase: "idle", says: "Nothing here to change. Point at a point." };
 
     case "rectangle":
     case "ellipse":
@@ -205,7 +213,7 @@ export function toolStateFor(
     case "scissors":
       return under.node || under.edge
         ? { phase: "willDo", says: "Click to open the shape here, leaving the ends loose." }
-        : { phase: "ready", says: "Click a point or an edge to open the shape there." };
+        : { phase: "idle", says: "Nothing here to open. Point at a point or an edge." };
   }
 }
 

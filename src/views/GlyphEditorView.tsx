@@ -1366,6 +1366,40 @@ export function GlyphEditorView(): React.JSX.Element {
           >
             Faults
           </button>
+          {/*
+            The polygon's side count, shown only while the polygon is in hand.
+
+            A control for a tool nobody has picked up is a control in the way,
+            and this row is already the tightest in the view. Beside the tool
+            rather than in the Inspector because it changes what the very next
+            drag produces, and a person setting it is looking at the canvas.
+          */}
+          {state.tool === "polygon" && (
+            <span className="flex items-center gap-1" data-polygon-sides>
+              <span className="text-2xs text-muted-foreground">Sides</span>
+              <button
+                type="button"
+                onClick={() => store.setPolygonSides(state.polygonSides - 1)}
+                disabled={state.polygonSides <= 3}
+                aria-label="One side fewer"
+                className="rounded border border-border px-1.5 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground disabled:opacity-40"
+              >
+                −
+              </button>
+              <span className="w-4 text-center text-2xs tabular-nums text-foreground">
+                {state.polygonSides}
+              </span>
+              <button
+                type="button"
+                onClick={() => store.setPolygonSides(state.polygonSides + 1)}
+                disabled={state.polygonSides >= 24}
+                aria-label="One side more"
+                className="rounded border border-border px-1.5 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground disabled:opacity-40"
+              >
+                +
+              </button>
+            </span>
+          )}
           {state.guides.length > 0 && (
             <button
               type="button"
