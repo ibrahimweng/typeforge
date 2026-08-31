@@ -4210,3 +4210,48 @@ test("a font brought in from a file is not accused of dead letters", async ({ pa
   await expect(page.getByText(/glyphs checked/)).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText("drawn but nothing can reach", { exact: false })).toHaveCount(0);
 });
+
+test("the proof sets the joined letters, and can be asked not to", async ({ page }) => {
+  /*
+   * A proof laid out character by character shows a font nobody will ever see:
+   * every ligature in it sitting unused while the letters it replaces are set
+   * side by side. And the switch matters as much as the substitution -- what a
+   * ligature is *for* is the collision it takes out, and the only way to judge
+   * the joined drawing is against the pair standing beside it.
+   *
+   * Proved by ink rather than by eye. A ligature whose drawing this font has
+   * not got is made empty, so where it fires the letters vanish: fewer pixels
+   * covered with it on than with it off, which no amount of anti-aliasing
+   * explains away.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await page
+    .getByRole("group", { name: "Inspector scope" })
+    .getByRole("button", { name: "build" })
+    .click();
+
+  await page.getByLabel("Letters to join").fill("t h");
+  await page.getByRole("button", { name: "Join", exact: true }).click();
+  await expect(page.getByText("t h now draws as t_h", { exact: false })).toBeVisible();
+
+  await page.getByRole("button", { name: "Proof", exact: true }).click();
+  await page.locator("textarea").first().fill("the thin the other the thing");
+  await page.waitForTimeout(700);
+
+  const joined = await measureInk(page);
+  await page.locator("[data-proof-ligatures]").click();
+  await page.waitForTimeout(700);
+  const separate = await measureInk(page);
+
+  expect(separate).toBeGreaterThan(joined);
+});
+
+test("the ligature switch stays away until the font has one", async ({ page }) => {
+  // A switch that changes nothing is furniture.
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Proof", exact: true }).click();
+  await expect(page.locator("[data-proof-ligatures]")).toHaveCount(0);
+});

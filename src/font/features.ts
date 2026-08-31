@@ -243,6 +243,51 @@ export const labelFor = (tag: string): string =>
   SET_TAGS.find((one) => one.tag === tag)?.label ?? tag;
 
 /**
+ * A run of letters with the ligatures applied, as a shaper would.
+ *
+ * The same rule the format makes a shaper follow, and the same one the writer
+ * sorts for: at each position take the longest ligature that matches and carry
+ * on from after it. Take the shortest and `office` comes out as `o ff i c e`
+ * with the `ffi` in the font and never used.
+ *
+ * Here so the proof can show the face as it will actually be read. Laying out
+ * character by character -- which is what the proof did -- shows a font nobody
+ * will ever see: every ligature in it sitting unused while the letters it
+ * replaces are set side by side.
+ */
+export function applyLigatures(typeface: Typeface, run: readonly string[]): string[] {
+  const rules = typeface.ligatures;
+  if (!rules || rules.length === 0) return [...run];
+
+  const byFirst = new Map<string, NamedLigature[]>();
+  for (const one of rules) {
+    const list = byFirst.get(one.components[0]);
+    if (list) list.push(one);
+    else byFirst.set(one.components[0], [one]);
+  }
+  for (const list of byFirst.values()) {
+    list.sort((one, other) => other.components.length - one.components.length);
+  }
+
+  const out: string[] = [];
+  let at = 0;
+  while (at < run.length) {
+    const candidates = byFirst.get(run[at]);
+    const hit = candidates?.find((one) =>
+      one.components.every((part, index) => run[at + index] === part),
+    );
+    if (hit) {
+      out.push(hit.ligature);
+      at += hit.components.length;
+    } else {
+      out.push(run[at]);
+      at += 1;
+    }
+  }
+  return out;
+}
+
+/**
  * The names a font carries that no character has ever mapped to.
  *
  * `.notdef` is what a renderer draws for a character the font has not got.

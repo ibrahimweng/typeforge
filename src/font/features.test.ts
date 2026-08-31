@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   addLigature,
+  applyLigatures,
   addToSet,
   canJoin,
   ligatureFor,
@@ -267,5 +268,46 @@ describe("the letters nothing can reach", () => {
     });
     built.components = [placed("a", 0, 0), placed("acute", 100, 400)];
     expect(unreachableGlyphs(typeface)).toEqual([]);
+  });
+});
+
+describe("laying out a run the way a reader will see it", () => {
+  const run = (typeface: Typeface, word: string) =>
+    applyLigatures(typeface, [...word]).join(" ");
+
+  it("leaves a font with no ligatures exactly as it was", () => {
+    const typeface = lettered();
+    expect(run(typeface, "fill")).toBe("f i l l");
+  });
+
+  it("draws the pair as one where it occurs", () => {
+    const typeface = lettered();
+    addLigature(typeface, ["f", "i"], "f_i");
+    expect(run(typeface, "fi")).toBe("f_i");
+    expect(run(typeface, "fill")).toBe("f_i l l");
+    expect(run(typeface, "if")).toBe("i f");
+  });
+
+  /*
+   * The same rule the writer sorts the table for, and for the same reason. Take
+   * the shortest match and `office` comes out as `o ff i c e`, with the `ffi`
+   * in the font and never used.
+   */
+  it("takes the longest run at each position", () => {
+    const typeface = lettered(["f", "i", "l", "c", "e", "o", "f_i", "f_f", "f_f_i"]);
+    addLigature(typeface, ["f", "i"], "f_i");
+    addLigature(typeface, ["f", "f"], "f_f");
+    addLigature(typeface, ["f", "f", "i"], "f_f_i");
+
+    expect(run(typeface, "office")).toBe("o f_f_i c e");
+    expect(run(typeface, "offer")).toBe("o f_f e r");
+    expect(run(typeface, "fi")).toBe("f_i");
+  });
+
+  it("carries on from after what it matched", () => {
+    const typeface = lettered(["f", "i", "f_i"]);
+    addLigature(typeface, ["f", "i"], "f_i");
+    // Not `f_i` then a stray `i`: the shaper resumes past the whole match.
+    expect(run(typeface, "fifi")).toBe("f_i f_i");
   });
 });
