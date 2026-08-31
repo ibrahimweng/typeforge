@@ -621,7 +621,7 @@ function applyAlternates(
    * be none, and the ligatures and alternates the source font came with are
    * part of what an import is promised it will keep.
    */
-  const gsub = buildGsubTable(rules);
+  const gsub = buildGsubTable({ contextual: rules });
   if (gsub) tables.set("GSUB", gsub);
 }
 
