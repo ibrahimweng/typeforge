@@ -626,58 +626,61 @@ function widthProfile(
    * fifteen, which is only the part the field could not see.
    */
   /*
-   * How far in the reading is untrustworthy, found from the shape of the climb
-   * rather than from its size.
+   * How far in the reading is untrustworthy, found from how fast it climbs.
    *
-   * Near a free end the field is measuring the end. At distance d along the
-   * spine from the cut, the nearest boundary *is* the cut, so the reading is
-   * proportional to d -- twice it for a square cut, less for an angled one,
-   * but a straight line through the origin either way. Once d passes half the
-   * stroke's width the sides become nearer than the end and the reading stops
-   * following that line. So the corrupted stretch is the stretch where the
-   * reading is still proportional to the distance, and it ends where the ratio
-   * between them starts to fall.
+   * Near a free end the field is measuring the end rather than the sides, so
+   * the reading climbs steeply as it leaves: two units of width per unit of
+   * distance from a square cut, 2cos(the angle) from one cut at an angle, and
+   * it stops climbing the moment the sides become the nearer boundary. A
+   * stroke that is genuinely widening climbs far more slowly -- a taper from
+   * thirty units to a hundred and ten over the length of a letter climbs at a
+   * third of a unit -- so the rate separates the two with room on both sides,
+   * and eight tenths sits in the gap.
    *
-   * Three cruder rules were tried first and each failed on a case the others
-   * survived. A fixed point settling downwards -- the guard becomes half the
-   * width found *at* the guard -- walks to nothing, because the readings near a
-   * terminal are small precisely when the guard is too short to have cleared
-   * them: a `c` a hundred and ninety units wide settled on fifteen samples and
-   * called itself thirty wide at both ends. Settled upwards it stalls on the
-   * first step, since proportionality is exactly the critical rate for that
-   * iteration. And asking merely whether the climb has *stopped* cannot tell a
-   * terminal from a stroke that is genuinely widening, so it swallowed a third
-   * of every tapered stroke -- which is what a written script is made of.
+   * Four cruder rules were tried and each failed on a case the others survived.
+   * A fixed point settling downwards -- the guard becomes half the width found
+   * *at* the guard -- walks to nothing, because the readings near a terminal are
+   * small precisely when the guard is too short to have cleared them: a `c` a
+   * hundred and ninety units wide settled on fifteen samples and called itself
+   * thirty wide at both ends. Settled upwards it stalls on the first step.
+   * Asking merely whether the climb has *stopped* cannot tell a terminal from a
+   * stroke that is widening, and swallowed a third of every tapered stroke.
    *
-   * The ratio does not care how steep the line is, so it does not care whether
-   * the end was cut square or at an angle, and a taper leaves it immediately
-   * because a taper's own width is not proportional to the distance from its
-   * tip. The cost of getting this wrong is not subtle: a round cap is a disc of
-   * half the width at that end, so thirty units read on a stroke that is really
-   * a hundred and ninety puts a fifteen-unit disc where a ninety-five unit one
-   * belongs, and the outline loops back on itself getting there. That loop was
-   * hanging off the tip of every `a`, `c`, `s`, `v` and `z`.
+   * And asking whether the reading is *proportional* to the distance -- which
+   * is what the geometry above says, and what this did until the `w` was
+   * measured -- assumes the reading falls to nothing at the tip. It does not:
+   * thinning stops a little short of the end, so the reading there is already
+   * twice that much, the ratio starts high and falls from the first step
+   * whatever the stroke is doing. The top right arm of a `w` got a guard of
+   * three samples where its terminal ran sixty, and was drawn seventeen units
+   * wide where the letter is a hundred and seventy-nine.
+   *
+   * The cost of getting this wrong is not subtle. A round cap is a disc of half
+   * the width at that end, so thirty units read on a stroke that is really a
+   * hundred and ninety puts a fifteen-unit disc where a ninety-five unit one
+   * belongs, and the outline loops back on itself getting there.
    */
   const guardFrom = (fromStart: boolean): number => {
     if (!(fromStart ? free.start : free.end)) return 0;
     const ceiling = Math.floor(widths.length / 3);
     const at = (step: number) => (fromStart ? step : widths.length - 1 - step);
-    let away = 0;
-    let steepest = 0;
-    for (let step = 1; step <= ceiling; step++) {
-      const index = at(step);
-      const previous = at(step - 1);
-      away +=
-        Math.hypot(
-          path[index][0] - path[previous][0],
-          path[index][1] - path[previous][1],
-        ) * grid.scale;
-      // The first pixel or two are noise, and a ratio taken over nothing is
-      // nothing but noise amplified.
-      if (away < grid.scale * 2) continue;
-      const slope = widths[index] / away;
-      if (steepest > 0 && slope < steepest * 0.85) return step;
-      steepest = Math.max(steepest, slope);
+    const gap = (step: number) => {
+      const [ax, ay] = path[at(step)];
+      const [bx, by] = path[at(step + 1)];
+      return Math.hypot(bx - ax, by - ay) * grid.scale;
+    };
+    /*
+     * Over a short window rather than between neighbours, because the field is
+     * read off a grid: two adjacent samples on a diagonal differ by a step or
+     * by nothing depending on which pixels they landed on.
+     */
+    const span = 8;
+    for (let step = 0; step + span <= ceiling; step++) {
+      let along = 0;
+      for (let k = step; k < step + span; k++) along += gap(k);
+      if (along < 1e-9) continue;
+      const climb = (widths[at(step + span)] - widths[at(step)]) / along;
+      if (climb < 0.8) return step;
     }
     return ceiling;
   };
@@ -1174,7 +1177,9 @@ export function fitGlyph(
             half * 3,
           ) - back,
         );
-      const reach = (reachOn(1) + reachOn(-1)) / 2;
+      const onLeft = reachOn(1);
+      const onRight = reachOn(-1);
+      const reach = (onLeft + onRight) / 2;
 
       /*
        * Cut or rounded, settled by asking which of the two describes the ink.
@@ -1204,7 +1209,16 @@ export function fitGlyph(
       const agreement = (rounded: boolean): number => {
         let agree = 0;
         let asked = 0;
-        const grain = Math.max(half / 5, grid.scale);
+        /*
+         * Fine enough that the corners decide it, which is the whole question.
+         *
+         * A disc and a rectangle of the same width differ only in the two
+         * corners, and a grid coarse enough to step over them is a coin toss:
+         * at a fifth of the half-width the square-cut descender of a `p` scored
+         * 0.798 as a disc and 0.762 as the rectangle it actually is, and was
+         * drawn ninety units short.
+         */
+        const grain = Math.max(half / 12, grid.scale);
         for (let a = -half * 1.2; a <= half * 1.2; a += grain) {
           for (
             let along = 0;
@@ -1227,8 +1241,19 @@ export function fitGlyph(
 
       if (agreement(true) > agreement(false))
         return { cap: { kind: "round" } as const, tip };
+      /*
+       * The angle of the cut, carried across as the difference between the two
+       * sides rather than thrown away.
+       *
+       * The probes stand at 0.85 of the half-width off the centre-line, so the
+       * difference they see is 0.85 of the difference at the edges of the
+       * stroke; dividing puts it back. Without this the cut is drawn square
+       * whatever the letter does, which lands one corner short of the ink and
+       * the other out past it -- a small flag off the end of every `c`, `s`,
+       * `v`, `w`, `y` and `z`, and worth up to half a stroke width.
+       */
       return {
-        cap: { kind: "butt" } as const,
+        cap: { kind: "butt" as const, lead: (onLeft - onRight) / 0.85 },
         tip: { x: tip.x + out.x * reach, y: tip.y + out.y * reach },
       };
     };

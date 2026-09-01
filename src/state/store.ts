@@ -200,6 +200,14 @@ export interface Loan {
   letter: string;
   /** What the font it came from is called, for saying so. */
   family: string;
+  /**
+   * Which generator it came out of, so it goes back where it came from.
+   *
+   * This store has no idea there is a forge or a tracer and should not gain
+   * one: it holds a letter and hands it back, and the name is carried through
+   * for whoever is listening rather than acted on here.
+   */
+  from: "forge" | "quill";
 }
 
 export interface AppState {

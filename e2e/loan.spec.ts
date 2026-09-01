@@ -174,3 +174,47 @@ test("the palette cannot walk out of a loan either", async ({ page }) => {
   await expect(page.locator("[data-on-loan=n]")).toBeVisible();
   await expect(page.getByText("Finish with n first", { exact: false })).toBeVisible();
 });
+
+test("a traced letter can be worked on with the tools too", async ({ page }) => {
+  /*
+   * Trace needs this at least as much as Draw does. What comes back from a
+   * trace is a guess about how a shape was made rather than a record of it, so
+   * there is always a letter no set of strokes reaches -- and until now the
+   * only way to move a point on one of them was to take all seventy letters out
+   * of the engine that drew them.
+   */
+  test.skip(!FONT_PATH, "needs a system font to read");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Trace", exact: true }).click();
+  await page
+    .getByRole("complementary", { name: "Quill" })
+    .locator("input[type=file]")
+    .setInputFiles(FONT_PATH!);
+  await page.waitForSelector('[data-quill-control="weight"]', { timeout: 180_000 });
+  await page.locator("[data-quill-trip] button").first().waitFor();
+
+  const traced = () => page.locator("[data-quill-stage=a] path").last().getAttribute("d");
+  const before = await traced();
+
+  await page.locator("[data-quill-draw-here=a]").click();
+  await expect(page.locator("[data-on-loan=a]")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Tool" })).toBeVisible();
+  // It says which half it came out of, because it goes back to that one.
+  await expect(page.locator("[data-on-loan=a]")).toContainText("on loan from Trace");
+
+  expect(await dragAPoint(page, 60)).toBe(true);
+  await page.locator("[data-loan-keep]").click();
+
+  // Back in Trace, and the letter is the drawing rather than the strokes.
+  await expect(page.getByRole("button", { name: "Trace", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.locator("[data-quill-byhand=a]")).toBeVisible();
+  expect(await traced()).not.toBe(before);
+
+  // The strokes never went anywhere, so giving the letter back costs one press.
+  await page.locator("[data-quill-redraw=a]").click();
+  await expect(page.locator("[data-quill-byhand=a]")).toHaveCount(0);
+  expect(await traced()).toBe(before);
+});

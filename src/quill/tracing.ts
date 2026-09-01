@@ -26,6 +26,21 @@ export interface Traced {
   deviation: number;
   /** The outline it was read from, kept so the two can be compared on screen. */
   source: Contour[];
+  /**
+   * An outline somebody drew, standing where the strokes would be.
+   *
+   * The one thing a recovered stroke cannot do is the letter you have in your
+   * head that no set of strokes reaches -- and there is always one, because
+   * what came back is a guess about how a shape was made rather than a record
+   * of it. So a letter can be taken to the point tools and handed back, and
+   * from then on it is what was drawn.
+   *
+   * Kept beside the strokes rather than replacing them, so it is one call to
+   * put the letter back under the hand: the strokes never went anywhere.
+   * Absent on almost every letter, which is why it is optional and why a
+   * document saved before there was one reads correctly without it.
+   */
+  byHand?: { contours: Contour[]; advanceWidth: number };
 }
 
 /** How far through the font the tracing is. */

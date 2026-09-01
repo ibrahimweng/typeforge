@@ -95,6 +95,7 @@ function Large({ traced }: { traced: Traced }): React.JSX.Element {
         style={{ transform: "scaleY(-1)" }}
         role="img"
         aria-label={`The letter ${traced.glyph.name}`}
+        data-quill-stage={traced.glyph.name}
       >
         {/* The lines the letter was written between, so the eye has something
             fixed to judge the slant and the height against. */}

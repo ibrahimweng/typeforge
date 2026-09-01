@@ -1311,7 +1311,7 @@ describe("picking points at scale", () => {
 describe("a letter on loan", () => {
   const desk = (name: string): Glyph => ({ ...glyph(name), advanceWidth: 640 });
   const lend = (name = "n"): void =>
-    store.borrowLetter({ letter: name, family: "Untitled" }, desk(name), {
+    store.borrowLetter({ letter: name, family: "Untitled", from: "forge" }, desk(name), {
       unitsPerEm: 1000,
       metrics: {
         ascender: 800,
@@ -1330,7 +1330,7 @@ describe("a letter on loan", () => {
   it("puts the letter on the desk on its own", () => {
     lend();
     const state = store.getSnapshot();
-    expect(state.loan).toEqual({ letter: "n", family: "Untitled" });
+    expect(state.loan).toEqual({ letter: "n", family: "Untitled", from: "forge" });
     expect(state.typeface?.glyphs.map((one) => one.name)).toEqual(["n"]);
     expect(state.selectedGlyph).toBe("n");
     // Straight to the letter, because that is the whole of what a loan is for.

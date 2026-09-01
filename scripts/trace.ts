@@ -41,6 +41,7 @@ const { typeface } = await importFont(
   new Uint8Array(readFileSync(process.env.FONT!)),
   "ref.ttf",
 );
+const upm = typeface.unitsPerEm ?? 1000;
 const byChar = new Map<string, (typeof typeface.glyphs)[number]>();
 for (const g of typeface.glyphs)
   for (const u of g.unicodes ?? []) byChar.set(String.fromCodePoint(u), g);
@@ -63,7 +64,17 @@ for (const ch of letters) {
     continue;
   }
   const t0 = Date.now();
-  const fit = fitGlyph(ch, g.contours, g.advanceWidth, {});
+  /*
+   * Told how big the em is, because that is what decides everything.
+   *
+   * The fitter sizes its raster against the em, and the em is how it knows how
+   * finely to fit the spine and how loosely to sweep the outline. Left to
+   * default, this measured a two-thousand-unit font at one pixel per unit --
+   * twice the resolution the application uses -- so every number it printed was
+   * for a configuration nothing runs, and it disagreed with the pictures beside
+   * it for a whole afternoon.
+   */
+  const fit = fitGlyph(ch, g.contours, g.advanceWidth, { unitsPerEm: upm });
   if (!fit) {
     console.log(`  ${ch}     -- no fit`);
     continue;

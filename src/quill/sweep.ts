@@ -25,12 +25,21 @@
 
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { contourArea } from "@/font/geometry";
-import { alongSpine, fitCubics, leftOf, walkOf, type SpineWalk } from "./curve";
+import {
+  alongSpine,
+  fitCubics,
+  headingOn,
+  leftOf,
+  pointOn,
+  walkOf,
+  type SpineWalk,
+} from "./curve";
 import type {
   DrawnStroke,
   Exactness,
   Nib,
   QuillCap,
+  QuillJoinKind,
   QuillSpine,
   QuillStroke,
   WidthProfile,
@@ -147,6 +156,172 @@ export function reachAcross(heading: Vec2, half: number, nib: Nib): number {
 // The two sides
 // ---------------------------------------------------------------------------
 
+/** Where a spine changes direction, and by how much. */
+interface Corner {
+  /** How far along the whole spine it sits, by length. */
+  at: number;
+  point: Vec2;
+  incoming: Vec2;
+  outgoing: Vec2;
+  /** Positive when the spine turns anticlockwise. */
+  turn: number;
+}
+
+/**
+ * How far a mitre may run before it is given up on.
+ *
+ * The two sides of a corner meet at `r / sin(half the angle between them)`, so
+ * as a corner closes the meeting point runs away without limit: at ten degrees
+ * it is eleven and a half half-widths out, which is a spike rather than an
+ * apex. Four is the usual limit and is comfortably past the sharpest thing in
+ * an alphabet -- the apex of a `v` is 2.9 half-widths and a `w`'s is much the
+ * same.
+ */
+const MITRE_LIMIT = 4;
+
+/**
+ * Every place the spine changes direction, and nowhere it does not.
+ *
+ * Most joins are not corners: a fitted curve runs smoothly from one cubic to
+ * the next, and a bowl and an arch are built to. Only the ones that actually
+ * turn need anything between their two offsets.
+ *
+ * The wrap of a closed spine is left out on purpose. A ring's seam is where the
+ * fit wrapped itself, which is smooth by construction, and a ring with a real
+ * corner at exactly that point would want splitting rather than joining.
+ */
+function cornersOf(spine: QuillSpine, walk: SpineWalk): Corner[] {
+  const found: Corner[] = [];
+  if (walk.total <= 0) return found;
+  let covered = 0;
+  for (let index = 0; index < spine.segments.length - 1; index++) {
+    covered += walk.lengths[index];
+    const incoming = headingOn(spine.segments[index], 1);
+    const outgoing = headingOn(spine.segments[index + 1], 0);
+    const turn = incoming.x * outgoing.y - incoming.y * outgoing.x;
+    const along = incoming.x * outgoing.x + incoming.y * outgoing.y;
+    /*
+     * Fifteen degrees, which is well clear of both answers.
+     *
+     * A run of cubics fitted to a curve turns by a few degrees at every join --
+     * a traced `o` turns ten degrees at its sharpest and a `v` nine -- and a
+     * corner somebody drew turns by forty or more. Nothing between fifteen and
+     * forty happens in a letter, so this is a gap rather than a tuning.
+     *
+     * It is set from a measurement rather than from the reasoning above, which
+     * is worth saying because the reasoning would have got it wrong. Treating
+     * every join over a degree and a half as a corner does not change the ink
+     * -- a mitre across a ten degree turn lands four parts in a thousand from
+     * the chord -- but a traced alphabet came to 1,553 nodes that way against
+     * 1,385 at fifteen degrees, for outlines that agree to three hundredths of
+     * a unit. Why the extra nodes appear is not established: on a curve walked
+     * as twelve straight pieces the count moves the other way, so it is not
+     * simply one node per join.
+     */
+    if (Math.abs(turn) < 0.26 && along > 0) continue;
+    found.push({
+      at: covered / walk.total,
+      point: pointOn(spine.segments[index], 1),
+      incoming,
+      outgoing,
+      turn,
+    });
+  }
+  return found;
+}
+
+/** Where two lines, each through a point along a direction, meet. */
+function meeting(from: Vec2, along: Vec2, to: Vec2, other: Vec2): Vec2 | null {
+  const denominator = along.x * other.y - along.y * other.x;
+  if (Math.abs(denominator) < 1e-9) return null;
+  const t = ((to.x - from.x) * other.y - (to.y - from.y) * other.x) / denominator;
+  return at(from.x + along.x * t, from.y + along.y * t);
+}
+
+/**
+ * The outside of one corner, filled the way the stroke says to fill it.
+ *
+ * Only the outside. On the inside of a turn the two offsets cross, and the
+ * chord between them -- which is what comes out of emitting both and nothing
+ * between -- runs across the fold at about the right place. Carrying the inner
+ * sides out to *their* meeting point is exact and puts a spike back through the
+ * stroke on any corner sharp enough to matter, which the fill rule then has to
+ * unpick. The outside is where the ink actually goes missing.
+ */
+function joinAt(
+  corner: Corner,
+  profile: WidthProfile,
+  nib: Nib,
+  side: 1 | -1,
+  join: QuillJoinKind,
+): Vec2[] {
+  const half = widthAt(profile, corner.at) / 2;
+  const before = leftOf(corner.incoming);
+  const after = leftOf(corner.outgoing);
+  const reachIn = reachAcross(corner.incoming, half, nib);
+  const reachOut = reachAcross(corner.outgoing, half, nib);
+  const from = at(
+    corner.point.x + before.x * reachIn * side,
+    corner.point.y + before.y * reachIn * side,
+  );
+  const to = at(
+    corner.point.x + after.x * reachOut * side,
+    corner.point.y + after.y * reachOut * side,
+  );
+  // Inside the turn: the two offsets and the chord between them are the whole
+  // of it, and a bevel is that everywhere by definition.
+  if (side * corner.turn > 0 || join === "bevel") return [from, to];
+
+  if (join === "miter") {
+    const met = meeting(from, corner.incoming, to, corner.outgoing);
+    if (!met) return [from, to];
+    const out = Math.hypot(met.x - corner.point.x, met.y - corner.point.y);
+    // Past the limit the point is a spike rather than an apex, and the chord is
+    // the better answer -- which is what every stroking library does here.
+    if (!(out <= Math.max(reachIn, reachOut) * MITRE_LIMIT)) return [from, to];
+    return [from, met, to];
+  }
+
+  /*
+   * Round: the pen itself, sitting at the corner.
+   *
+   * Exact rather than approximate for a round nib -- the boundary of what a
+   * disc sweeps through a corner *is* this arc. Taken the short way round,
+   * because the long way sweeps the pen back through the stroke it just came
+   * out of.
+   */
+  const start = Math.atan2(from.y - corner.point.y, from.x - corner.point.x);
+  let finish = Math.atan2(to.y - corner.point.y, to.x - corner.point.x);
+  while (finish - start > Math.PI) finish -= Math.PI * 2;
+  while (finish - start < -Math.PI) finish += Math.PI * 2;
+  const points: Vec2[] = [from];
+  /*
+   * Enough chords that the arc is inside a tenth of a unit of the circle.
+   *
+   * A chord across an angle a on a circle of radius r falls short of it by
+   * r(1 - cos(a/2)), so the number of them wanted depends on how big the corner
+   * is and how wide the stroke is, and not on the turn alone. Eight to the
+   * half-turn regardless -- which is what this counted first -- puts a corner
+   * on a ninety-unit stroke seven tenths of a unit inside where the pen
+   * actually reaches, which is worse than the tolerance the rest of the outline
+   * is fitted to and makes the join the least accurate thing in the letter.
+   */
+  const sweptBy = Math.abs(finish - start);
+  const widest = Math.max(reachIn, reachOut, 1e-6);
+  const chord = 2 * Math.acos(Math.max(-1, Math.min(1, 1 - 0.1 / widest)));
+  const steps = Math.max(2, Math.min(64, Math.ceil(sweptBy / Math.max(chord, 1e-6))));
+  for (let step = 1; step < steps; step++) {
+    const angle = start + ((finish - start) * step) / steps;
+    // Between the two reaches as it turns, which matters only with contrast.
+    const radius = reachIn + ((reachOut - reachIn) * step) / steps;
+    points.push(
+      at(corner.point.x + Math.cos(angle) * radius, corner.point.y + Math.sin(angle) * radius),
+    );
+  }
+  points.push(to);
+  return points;
+}
+
 /** One side of the stroke, sampled: the offset points in order. */
 function sideOf(
   spine: QuillSpine,
@@ -155,10 +330,30 @@ function sideOf(
   nib: Nib,
   side: 1 | -1,
   steps: number,
+  corners: Corner[],
+  join: QuillJoinKind,
 ): Vec2[] {
   const points: Vec2[] = [];
+  let next = 0;
+  const joinsUpTo = (fraction: number): void => {
+    while (next < corners.length && corners[next].at <= fraction) {
+      points.push(...joinAt(corners[next], profile, nib, side, join));
+      next += 1;
+    }
+  };
   for (let step = 0; step <= steps; step++) {
     const fraction = step / steps;
+    /*
+     * Corners first, and at their own place rather than at whichever sample
+     * happens to follow them.
+     *
+     * A corner is a discontinuity in the heading, so it cannot be sampled: at
+     * one fraction the stroke is going one way and at the next it is going
+     * another, and no number of samples ever lands on the turn itself. Walking
+     * the corners alongside the samples puts each join exactly where the spine
+     * bends, whatever the step size.
+     */
+    joinsUpTo(fraction);
     const { point, heading } = alongSpine(spine, walk, fraction);
     const half = widthAt(profile, fraction) / 2;
     const reach = reachAcross(heading, half, nib);
@@ -167,6 +362,7 @@ function sideOf(
       at(point.x + normal.x * reach * side, point.y + normal.y * reach * side),
     );
   }
+  joinsUpTo(Infinity);
   return points;
 }
 
@@ -192,7 +388,21 @@ function capPoints(
 ): Vec2[] {
   const way = at(heading.x * outward, heading.y * outward);
   const normal = leftOf(way);
-  if (cap.kind === "butt" || reach <= 1e-9) return [];
+  if (reach <= 1e-9) return [];
+  if (cap.kind === "butt") {
+    /*
+     * A square cut contributes nothing and lets the two sides meet directly.
+     * An angled one is the same cut turned, so the two corners are where that
+     * turned line crosses the two offsets: half the lead further on one side
+     * and half of it back on the other.
+     */
+    const lead = cap.lead ?? 0;
+    if (Math.abs(lead) < 1e-6) return [];
+    return [
+      at(end.x + normal.x * reach + way.x * (lead / 2), end.y + normal.y * reach + way.y * (lead / 2)),
+      at(end.x - normal.x * reach - way.x * (lead / 2), end.y - normal.y * reach - way.y * (lead / 2)),
+    ];
+  }
   if (cap.kind === "pointed") {
     const extend = (cap.extend ?? 1) * reach;
     return [at(end.x + way.x * extend, end.y + way.y * extend)];
@@ -358,6 +568,9 @@ function sweepRing(
   const steps = stepsFor(walk.total);
   const exact = isExact(stroke);
 
+  const corners = cornersOf(stroke.spine, walk);
+  const join = stroke.join ?? "miter";
+
   const loopOf = (side: 1 | -1) => {
     const points = sideOf(
       stroke.spine,
@@ -366,6 +579,8 @@ function sweepRing(
       stroke.nib,
       side,
       steps,
+      corners,
+      join,
     );
     // The sample at one is the sample at nought; fitting the run with the first
     // point repeated is what carries the tangent across the seam.
@@ -412,8 +627,17 @@ export function sweep(stroke: QuillStroke, tolerance = TOLERANCE): DrawnStroke {
   if (stroke.spine.closed) return sweepRing(stroke, walk, tolerance);
 
   const steps = stepsFor(walk.total);
-  const left = sideOf(stroke.spine, walk, stroke.width, stroke.nib, 1, steps);
-  const right = sideOf(stroke.spine, walk, stroke.width, stroke.nib, -1, steps);
+  /*
+   * The corners, worked out once and given to both sides.
+   *
+   * They are a property of the spine rather than of a side -- which side of a
+   * turn is the outside is the only thing that differs, and `joinAt` decides
+   * that from the sign it is handed.
+   */
+  const corners = cornersOf(stroke.spine, walk);
+  const join = stroke.join ?? "miter";
+  const left = sideOf(stroke.spine, walk, stroke.width, stroke.nib, 1, steps, corners, join);
+  const right = sideOf(stroke.spine, walk, stroke.width, stroke.nib, -1, steps, corners, join);
 
   const exact = isExact(stroke);
   const fittedLeft = fitCubics(left, tolerance);

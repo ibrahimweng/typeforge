@@ -814,7 +814,7 @@ function Trip({ letter }: { letter: string }): React.JSX.Element {
       setProblem(`${letter} has nothing drawn in it to work on.`);
       return;
     }
-    store.borrowLetter({ letter, family: state.familyName }, lent.glyph, {
+    store.borrowLetter({ letter, family: state.familyName, from: "forge" }, lent.glyph, {
       unitsPerEm: lent.unitsPerEm,
       metrics: lent.metrics,
     });

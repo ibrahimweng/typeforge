@@ -19,6 +19,7 @@
 import * as React from "react";
 
 import { forgeStore } from "@/state/useForge";
+import { quillStore } from "@/state/useQuill";
 import { store, useAppState } from "@/state/useStore";
 
 export function OnLoan(): React.JSX.Element | null {
@@ -26,8 +27,9 @@ export function OnLoan(): React.JSX.Element | null {
   if (!loan) return null;
 
   const keep = (): void => {
+    const from = loan.from;
     const kept = store.keepLoan();
-    if (kept) {
+    if (kept && from === "forge") {
       /*
        * In through the same door a file comes in by.
        *
@@ -48,12 +50,16 @@ export function OnLoan(): React.JSX.Element | null {
         "the tools here",
       );
     }
-    store.askForMode("forge");
+    if (kept && from === "quill") {
+      quillStore.takeLetter(kept.letter, kept.contours, kept.advanceWidth);
+    }
+    store.askForMode(from);
   };
 
   const drop = (): void => {
+    const from = loan.from;
     store.dropLoan();
-    store.askForMode("forge");
+    store.askForMode(from);
   };
 
   return (
@@ -63,9 +69,9 @@ export function OnLoan(): React.JSX.Element | null {
     >
       <p className="min-w-0 flex-1 truncate text-2xs text-muted-foreground">
         <span className="font-medium text-foreground">{loan.letter}</span> of{" "}
-        {loan.family || "Untitled"}, on loan from Draw. Keeping it makes this
-        letter your drawing: it holds its advance and stops answering the
-        controls that drew it.
+        {loan.family || "Untitled"}, on loan from{" "}
+        {loan.from === "forge" ? "Draw" : "Trace"}. Keeping it makes this letter your drawing: it
+        holds its advance and stops answering the controls that drew it.
       </p>
       <button
         type="button"

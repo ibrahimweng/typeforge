@@ -111,7 +111,7 @@ function median(values: number[]): number {
  * whole lowercase is a font this cannot measure and a plausible number beats
  * nothing at all in a file that has to declare one.
  */
-function linesOf(drawn: Map<string, { contours: Contour[] }>, em: number) {
+export function linesOf(drawn: Map<string, { contours: Contour[] }>, em: number) {
   const topsOf = (names: string[]): number[] =>
     names
       .map((name) => drawn.get(name))

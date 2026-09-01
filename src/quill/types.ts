@@ -139,8 +139,41 @@ export const ROUND_NIB: Nib = { contrast: 0, angle: 0 };
 /** How a stroke ends. Kept deliberately smaller than the forge's set. */
 export type QuillCapKind = "butt" | "round" | "pointed";
 
+/**
+ * What fills the outside of a corner, where the spine changes direction.
+ *
+ * Nothing filled it until it was measured. The sweep walks the spine and steps
+ * over a corner in one sample, so the outside of the turn came back as the
+ * chord between the last offset before it and the first after -- a chamfer
+ * across the corner, which at the apex of a `v` cuts off nearly two thirds of
+ * the ink that belongs there. The apex of a DejaVu `v` sits 2.9 half-widths
+ * from its centre-line and was being drawn at one.
+ *
+ * Three answers, and which is right is a fact about the letter rather than a
+ * setting. `round` is the pen itself sitting at the corner and is the exact
+ * boundary of what a round nib sweeps; it is also wrong for every apex a type
+ * designer drew to a point. `miter` carries the two sides out to where they
+ * meet, which is what a sharp apex is. `bevel` is the chord, which is what a
+ * cut-off apex is and what this did to all three.
+ */
+export type QuillJoinKind = "miter" | "round" | "bevel";
+
 export interface QuillCap {
   kind: QuillCapKind;
+  /**
+   * How much further one side of a square cut runs than the other, in units.
+   *
+   * Nought is a cut square across, which is what a stem has. Most terminals in
+   * most faces are not that: a `c`, an `s`, a `v` and a `z` are cut at an angle,
+   * and the two sides of the stroke reach different distances past the point
+   * the thinning gave out at. Drawn square anyway, the cut lands halfway
+   * between -- one corner short of the ink and the other out past it, flying a
+   * small flag off the end of the letter.
+   *
+   * Measured from the left of the outward direction, so it means the same thing
+   * at both ends of a stroke without the caller having to know which end it is.
+   */
+  lead?: number;
   /**
    * How far a pointed cap runs past the end, in widths at that end.
    *
@@ -160,6 +193,14 @@ export interface QuillStroke {
   nib: Nib;
   start: QuillCap;
   end: QuillCap;
+  /**
+   * What fills the outside of a corner. Absent is the same as `miter`.
+   *
+   * Optional because a stroke with no corner in its spine has no use for it,
+   * which is most of them: a script runs smoothly from one piece of a fitted
+   * curve to the next, and the corners are in the letters a hand lifts inside.
+   */
+  join?: QuillJoinKind;
 }
 
 /**
