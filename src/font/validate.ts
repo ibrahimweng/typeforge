@@ -55,7 +55,14 @@ export interface Finding {
 export interface ValidateOptions {
   /** Which winding convention to judge contour direction against. */
   format?: OutlineFormat;
-  /** Cap on how many glyphs are examined, for responsiveness on huge fonts. */
+  /**
+   * Cap on how many glyphs are examined.
+   *
+   * Defaulted to the whole font. It was five thousand, which kept the tab from
+   * freezing by the simple method of not checking a fifth of a large one --
+   * `validateWholeTypeface` below does that properly, and this is left for the
+   * callers that want an answer in one go and know how big their font is.
+   */
   limit?: number;
 }
 
@@ -92,13 +99,124 @@ export function validateTypeface(
    * reading it.
    */
   const format = options.format ?? dominantConvention(typeface.glyphs);
-  const limit = options.limit ?? 5000;
+  const limit = options.limit ?? typeface.glyphs.length;
   const glyphs = typeface.glyphs.slice(0, limit);
+  const faults = noFaults();
+  gatherGlyphFaults(typeface, glyphs, format, faults);
+  return assemble(typeface, glyphs.length, faults, format);
+}
+
+/**
+ * The same check, done a piece at a time so the tab stays usable.
+ *
+ * Checking a font is two seconds of arithmetic on six thousand glyphs and more
+ * on a bigger one, and it was all spent in one go on the thread that draws the
+ * page. What stopped that from freezing the tab was a cap of five thousand --
+ * which is not a fix, it is a decision to check four fifths of somebody's font
+ * and print "0 errors" underneath. Broken into batches with a breath between
+ * them the whole font gets looked at, nothing blocks for longer than a batch,
+ * and there is something to show while it runs.
+ *
+ * `breathe` is a parameter so a test can drive this to completion without
+ * waiting on real timers.
+ */
+export async function validateWholeTypeface(
+  typeface: Typeface,
+  options: ValidateOptions = {},
+  onProgress?: (progress: CheckProgress) => void,
+  breathe: () => Promise<unknown> = takeABreath,
+): Promise<ValidationReport> {
+  const format = options.format ?? dominantConvention(typeface.glyphs);
+  const glyphs = typeface.glyphs;
+  const faults = noFaults();
+  for (let from = 0; from < glyphs.length; from += BATCH) {
+    onProgress?.({ done: from, total: glyphs.length });
+    gatherGlyphFaults(typeface, glyphs.slice(from, from + BATCH), format, faults);
+    // Between batches and not after the last, so a font that fits in one batch
+    // costs no wait at all.
+    if (from + BATCH < glyphs.length) await breathe();
+  }
+  onProgress?.({ done: glyphs.length, total: glyphs.length });
+  return assemble(typeface, glyphs.length, faults, format);
+}
+
+/*
+ * How many glyphs are looked at between one breath and the next.
+ *
+ * Twenty-five, because the work turns out not to care. Over a six thousand
+ * glyph font the arithmetic totals about two and a half seconds at every batch
+ * size tried -- 2538ms at twenty-five, 2489ms at two hundred and fifty -- while
+ * the longest unbroken stretch, which is what a person actually feels, runs
+ * from 106ms to 410ms across the same range. So the small batch is free.
+ *
+ * Two hundred and fifty was the first guess and the comment here claimed it
+ * cost eighty milliseconds a batch. It cost four hundred and ten: glyphs are
+ * nothing like equal, and a batch holding one accented capital with a hundred
+ * nodes costs more than a batch of twenty-five plain ones. The hundred
+ * milliseconds left at twenty-five is one such glyph, and getting under it
+ * would mean breaking up the middle of a glyph rather than the run of them.
+ */
+const BATCH = 25;
+
+/**
+ * Let the page have the thread back, without paying the timer's toll.
+ *
+ * `setTimeout(0)` is not nought: a browser clamps a timer nested more than a
+ * few deep to four milliseconds, and this nests once per batch. Two hundred
+ * and fifty batches of a six thousand glyph font would spend a second of
+ * wall-clock waiting for permission to continue -- more than a third of the
+ * check, all of it idle. A message posted to oneself is the same yield to the
+ * event loop with no floor under it, which is what makes a small batch free.
+ *
+ * The timer is kept for anywhere without `MessageChannel`, which is every
+ * test runner that stubs the DOM away.
+ */
+let breaths: MessageChannel | null = null;
+const waking: Array<() => void> = [];
+
+function takeABreath(): Promise<void> {
+  if (typeof MessageChannel !== "function") {
+    return new Promise((wake) => setTimeout(wake, 0));
+  }
+  /*
+   * One channel for the life of the page, not one per breath.
+   *
+   * A channel is two ports and a message queue, and this is called once per
+   * batch -- two hundred and fifty times for a six thousand glyph font, every
+   * time the check runs. Building and closing that many is work the check does
+   * not need to do, and it holds two ports per breath until the collector gets
+   * to them, which is the sort of thing that is free on an idle machine and
+   * not on a busy one.
+   */
+  if (!breaths) {
+    breaths = new MessageChannel();
+    breaths.port1.onmessage = () => waking.shift()?.();
+  }
+  return new Promise((wake) => {
+    waking.push(wake);
+    breaths!.port2.postMessage(null);
+  });
+}
+
+/** How far through the glyphs a check has got. */
+export interface CheckProgress {
+  done: number;
+  total: number;
+}
+
+/** Everything that is not the walk: the cheap checks, and the wording. */
+function assemble(
+  typeface: Typeface,
+  examined: number,
+  faults: GlyphFaults,
+  _format: OutlineFormat,
+): ValidationReport {
+  const glyphs = typeface.glyphs.slice(0, examined);
   const findings: Finding[] = [];
 
   findings.push(...checkFontStructure(typeface));
   findings.push(...checkVerticalMetrics(typeface, glyphs.length > 0 ? glyphs : typeface.glyphs));
-  findings.push(...checkGlyphs(typeface, glyphs, format));
+  findings.push(...wordGlyphFaults(faults));
   /*
    * The optical advice, last and separately.
    *
@@ -115,7 +233,7 @@ export function validateTypeface(
     findings,
     errors: findings.filter((f) => f.severity === "error").length,
     warnings: findings.filter((f) => f.severity === "warning").length,
-    examined: glyphs.length,
+    examined,
     held: typeface.glyphs.length,
   };
 }
@@ -336,20 +454,52 @@ function checkVerticalMetrics(typeface: Typeface, glyphs: Typeface["glyphs"]): F
 // Per glyph
 // ---------------------------------------------------------------------------
 
-function checkGlyphs(
+/**
+ * What a walk over the glyphs collects, before any of it is worded.
+ *
+ * Kept apart from the wording because the walk is the slow half and the
+ * wording is not: over six thousand glyphs the walk is two seconds and the
+ * roll-up is nothing, so the walk is what has to be done a piece at a time
+ * while the tab stays usable, and the roll-up is what happens once at the end.
+ * Rolled up per batch instead, a font would report the same fault five times
+ * over with a fifth of its glyphs named in each.
+ */
+export interface GlyphFaults {
+  openContours: string[];
+  strayPoints: string[];
+  duplicatePoints: string[];
+  wrongDirection: string[];
+  missingPoints: string[];
+  negativeWidth: string[];
+  selfIntersecting: string[];
+}
+
+export const noFaults = (): GlyphFaults => ({
+  openContours: [],
+  strayPoints: [],
+  duplicatePoints: [],
+  wrongDirection: [],
+  missingPoints: [],
+  negativeWidth: [],
+  selfIntersecting: [],
+});
+
+/** Look at these glyphs and add what is wrong with them to the pile. */
+export function gatherGlyphFaults(
   typeface: Typeface,
   glyphs: Typeface["glyphs"],
   format: OutlineFormat,
-): Finding[] {
-  const findings: Finding[] = [];
-
-  const openContours: string[] = [];
-  const strayPoints: string[] = [];
-  const duplicatePoints: string[] = [];
-  const wrongDirection: string[] = [];
-  const missingPoints: string[] = [];
-  const negativeWidth: string[] = [];
-  const selfIntersecting: string[] = [];
+  into: GlyphFaults,
+): void {
+  const {
+    openContours,
+    strayPoints,
+    duplicatePoints,
+    wrongDirection,
+    missingPoints,
+    negativeWidth,
+    selfIntersecting,
+  } = into;
 
   for (const glyph of glyphs) {
     const contours = resolveGlyphContours(glyph, typeface);
@@ -375,6 +525,20 @@ function checkGlyphs(
     if (glyph.advanceWidth < 0) negativeWidth.push(glyph.name);
     if (contours.length > 0 && contoursIntersect(contours)) selfIntersecting.push(glyph.name);
   }
+}
+
+/** The pile, worded. */
+export function wordGlyphFaults(faults: GlyphFaults): Finding[] {
+  const findings: Finding[] = [];
+  const {
+    openContours,
+    strayPoints,
+    duplicatePoints,
+    wrongDirection,
+    missingPoints,
+    negativeWidth,
+    selfIntersecting,
+  } = faults;
 
   const rollUp = (
     names: string[],
