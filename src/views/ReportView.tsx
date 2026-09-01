@@ -127,6 +127,20 @@ export function ReportView(): React.JSX.Element {
               {report.examined.toLocaleString()} {report.examined === 1 ? "glyph" : "glyphs"}{" "}
               checked
             </span>
+            {/*
+              What was *not* checked, which the count above cannot say on its
+              own. The check stops at five thousand glyphs to stay responsive on
+              a large font, and on a font of six and a quarter thousand that
+              left a quarter of it unexamined behind a headline of "0 errors".
+              A limit nobody is told about is indistinguishable from a clean
+              result.
+            */}
+            {report.held > report.examined && (
+              <span className="text-2xs text-[var(--attention)] tabular-nums">
+                {(report.held - report.examined).toLocaleString()} not checked — this stops at{" "}
+                {report.examined.toLocaleString()} to stay quick
+              </span>
+            )}
           </>
         )}
         {stale && (
@@ -145,6 +159,37 @@ export function ReportView(): React.JSX.Element {
       </div>
 
       <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto p-4">
+        {/*
+          What the importer had to say about the file, which had nowhere to be
+          said.
+
+          These were appended to the status line in the top bar, which is capped
+          at ten rem and truncates: a warning about the font somebody had just
+          opened appeared as four characters and an ellipsis, and the rest of it
+          lived in a tooltip nobody had a reason to hover. Here they sit above
+          the findings and outside them, because they are facts about the *file*
+          rather than about the drawing -- nothing in the letters is going to
+          fix one, and running the checks again will not clear one either.
+        */}
+        {state.openWarnings.length > 0 && (
+          <div
+            data-open-warnings
+            className="mb-4 rounded-md border border-[color:var(--attention)] bg-card p-3"
+          >
+            <p className="pb-1 text-2xs font-medium text-[var(--attention)]">
+              {state.openWarnings.length === 1
+                ? "One thing about the file this came from"
+                : `${state.openWarnings.length} things about the file this came from`}
+            </p>
+            <ul className="space-y-1">
+              {state.openWarnings.map((warning) => (
+                <li key={warning} className="text-2xs leading-snug text-muted-foreground">
+                  {warning}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {report && report.findings.length === 0 && (
           <p className="py-16 text-center text-xs-plus text-muted-foreground">
             Nothing to report. Every check passed.

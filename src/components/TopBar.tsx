@@ -370,7 +370,23 @@ export function TopBar({
           title={KEEPING[keeping]}
           data-save-project
           data-keeping={keeping}
-          className={OUTLINE_ACTION}
+          /*
+            Nothing to carry on with, nothing to save.
+
+            The same four conditions Export takes below, and for the same
+            reason: an imported font has to have been imported, an assembled one
+            needs drawings in the pile, a traced one needs a font to have been
+            read, and a drawn one is always ready because the forge always has a
+            family. Export had them and this did not, so on the front door --
+            with no font open and Export properly greyed beside it -- Save was
+            lit and offered to write out an empty project.
+          */
+          disabled={
+            (mode === "edit" && !state.typeface) ||
+            (mode === "assemble" && assemble.assembly.pieces.length === 0) ||
+            (mode === "quill" && quill.document.letters.length === 0)
+          }
+          className={cn(OUTLINE_ACTION, "disabled:opacity-40")}
         >
           Save
         </button>

@@ -65,6 +65,15 @@ export interface ValidationReport {
   warnings: number;
   /** Glyphs actually examined, which may be fewer than the font holds. */
   examined: number;
+  /**
+   * How many the font holds, so the two can be compared.
+   *
+   * `examined` on its own reads as a fact about the font rather than a limit on
+   * the check: "5,000 glyphs checked" beside "0 errors" is a clean bill of
+   * health for a font of five thousand and a quarter of one for a font of six
+   * and a quarter thousand, and nothing on screen said which it was.
+   */
+  held: number;
 }
 
 export function validateTypeface(
@@ -107,6 +116,7 @@ export function validateTypeface(
     errors: findings.filter((f) => f.severity === "error").length,
     warnings: findings.filter((f) => f.severity === "warning").length,
     examined: glyphs.length,
+    held: typeface.glyphs.length,
   };
 }
 

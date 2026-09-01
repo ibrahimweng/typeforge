@@ -213,6 +213,17 @@ export interface Loan {
 export interface AppState {
   typeface: Typeface | null;
   fileName: string;
+  /**
+   * What the importer had to say about the file, kept rather than glanced at.
+   *
+   * These had exactly one reader: the first of them was appended to the status
+   * line in the top bar, which is capped at ten rem and truncates -- so a
+   * warning about the font somebody had just opened showed up as four
+   * characters and an ellipsis, and the rest of it existed only in a tooltip
+   * nobody had a reason to hover. They belong where a person goes to find out
+   * what is wrong with a font, which is Checks.
+   */
+  openWarnings: string[];
   view: ViewId;
   tool: Tool;
   /*
@@ -389,6 +400,7 @@ class Store {
   private state: AppState = {
     typeface: null,
     fileName: "",
+    openWarnings: [],
     view: "grid",
     tool: "select",
     lastInGroup: { select: "select", pen: "pen", shape: "rectangle", knife: "knife" },
@@ -478,6 +490,8 @@ class Store {
     this.set({
       typeface,
       fileName,
+      // Whatever the last file had to say belongs to the last file.
+      openWarnings: [],
       selectedGlyph: firstLetterName(typeface),
       selectedNodes: new Set(),
       selectedGlyphs: new Set(),
@@ -565,6 +579,7 @@ class Store {
       this.set({
         typeface,
         fileName,
+        openWarnings: warnings,
         selectedGlyph: firstLetterName(typeface),
         selectedNodes: new Set(),
         selectedGlyphs: new Set(),
@@ -580,7 +595,7 @@ class Store {
            * the open document is the label's job, and it already does it.
            */
           message: `Opened — ${typeface.glyphs.length.toLocaleString()} glyphs${
-            warnings.length ? `. ${warnings[0]}` : ""
+            warnings.length ? `, with ${warnings.length === 1 ? "a note" : `${warnings.length} notes`} in Checks` : ""
           }`,
           tone: "success",
         },
@@ -708,6 +723,7 @@ class Store {
     this.set({
       typeface: fresh,
       fileName: "",
+      openWarnings: [],
       selectedGlyph: null,
       selectedNodes: new Set(),
       selectedGlyphs: new Set(),
@@ -764,6 +780,7 @@ class Store {
     this.set({
       typeface: desk,
       fileName: "",
+      openWarnings: [],
       view: "glyph",
       selectedGlyph: glyph.name,
       selectedNodes: new Set(),

@@ -1,6 +1,6 @@
 # What is missing
 
-> All four are done.
+> All four are done. A later sweep of every screen added three more, also done.
 
 An audit of what this application cannot do, taken by reading its capability
 surface rather than by looking at it. That distinction is the point: a tour of
@@ -354,3 +354,51 @@ stopped being true and the comment had not. One command against the existing
 harness settled it in under a minute. **A comment claiming work is undone is a
 liability of exactly the same kind as one claiming work is done** — and neither
 survives a harness that can be run.
+
+---
+
+# A sweep of every screen — *three found, three fixed*
+
+Driven rather than read: the four modes, the six views inside Edit, the four
+tool groups and their flyouts, the command palette, both drawers and the
+dialogs, captured at 1440 by 900 and looked at. Everything below was on screen
+and wrong.
+
+## S1. The checks stopped a quarter of the way through the font and said "0 errors" — *done*
+
+`validate.ts` caps at five thousand glyphs to stay responsive, and the report
+said "5,000 glyphs checked". On this font — six thousand two hundred and
+fifty-three — that is a quarter of it never examined, under a headline of no
+errors. The count reads as a fact about the font rather than a limit on the
+check, and there is no way to tell the two apart. The report now names the
+number it did not look at, and says why.
+
+## S2. Save was lit with nothing to save — *done*
+
+Export is guarded per mode with a paragraph of reasoning beside it: an imported
+font has to have been imported, an assembled one needs drawings, a traced one
+needs a font to have been read, and a drawn one is always ready. Save takes the
+same four conditions and had none of them, so on the front door — no font open,
+Export correctly dark — Save was lit and offered to write out an empty project.
+
+## S3. A warning about the file went into a box ten rem wide — *done*
+
+`importFont` returns warnings. Their only reader appended the first of them to
+the status line in the top bar, which is capped and truncates: opening the test
+font put `Opened — 6,253 glyphs. 2,6…` on screen. Four characters of a sentence
+about somebody's font, with the rest in a tooltip nobody has a reason to hover.
+They are now in Checks, where a person goes to find out what is wrong with a
+font, kept apart from the findings because they are facts about the *file* —
+nothing in the letters will fix one and running the checks again will not clear
+one.
+
+## What the sweep cleared
+
+Worth recording, because a sweep that only lists faults reads as if everything
+it did not mention is unexamined. The tool flyouts open as designed and name
+every tool with a sentence each; the palette, both drawers, the export dialogs
+and the library open and close cleanly; the Checks list, the proof, the kerning
+and spacing views and the Draw and Assemble panels all held up. Two things that
+looked wrong were not: the top bar's truncation is a deliberate fix for Export
+being pushed off the right-hand edge, and the tool flyout wants a second click
+on a group you are already in, which is documented where it is decided.
