@@ -43,12 +43,13 @@ test("Save is dark until there is something to save", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Save" })).toBeEnabled();
 });
 
-test("the checks say what they did not look at", async ({ page }) => {
+test("the checks look at the whole font", async ({ page }) => {
   /*
-   * The check stops at five thousand glyphs to stay responsive. On a font of
-   * six and a quarter thousand that leaves a quarter of it unexamined behind a
-   * headline of "0 errors", and the only thing on screen was "5,000 glyphs
-   * checked" -- which reads as a fact about the font rather than a limit.
+   * This used to stop at five thousand glyphs, which on a font of six and a
+   * quarter thousand left a quarter of it unexamined behind a headline of "0
+   * errors" -- the only thing on screen was "5,000 glyphs checked", which reads
+   * as a fact about the font rather than a limit on the check. Saying so was
+   * the first fix; checking the rest is this one.
    */
   await page.goto("/");
   await openFont(page);
@@ -57,7 +58,9 @@ test("the checks say what they did not look at", async ({ page }) => {
   await expect(page.getByText("glyphs checked", { exact: false })).toBeVisible({
     timeout: 120_000,
   });
-  await expect(page.getByText("not checked", { exact: false })).toBeVisible();
+  // Every glyph the grid counts, and nothing left over to report as skipped.
+  await expect(page.getByText("6,253 glyphs checked", { exact: false })).toBeVisible();
+  await expect(page.getByText("not checked", { exact: false })).toHaveCount(0);
 });
 
 test("what the importer said about the file is somewhere it can be read", async ({

@@ -364,14 +364,32 @@ tool groups and their flyouts, the command palette, both drawers and the
 dialogs, captured at 1440 by 900 and looked at. Everything below was on screen
 and wrong.
 
-## S1. The checks stopped a quarter of the way through the font and said "0 errors" — *done*
+## S1. The checks stopped a quarter of the way through the font and said "0 errors" — *done, twice*
 
-`validate.ts` caps at five thousand glyphs to stay responsive, and the report
+`validate.ts` capped at five thousand glyphs to stay responsive, and the report
 said "5,000 glyphs checked". On this font — six thousand two hundred and
 fifty-three — that is a quarter of it never examined, under a headline of no
 errors. The count reads as a fact about the font rather than a limit on the
-check, and there is no way to tell the two apart. The report now names the
-number it did not look at, and says why.
+check, and there was no way to tell the two apart.
+
+Saying so was the first fix and it was the wrong one to stop at: a person with
+a large font still could not check a quarter of it. The cap was there because
+the whole check ran in one synchronous call on the thread that draws the page —
+about two and a half seconds on this font, more on a bigger one — so the choice
+looked like a frozen tab or a partial answer. It is neither. The glyph walk is
+now done twenty-five at a time with a breath between batches, the wording
+happens once at the end so a fault is still one finding rather than one per
+batch, and the button counts up while it works. The whole font is checked, the
+longest unbroken stretch is a hundred and twenty-four milliseconds instead of
+two and a half seconds, and the total is unchanged.
+
+Two numbers in that were guesses before they were measurements, and both were
+wrong. A batch of two hundred and fifty was annotated as "about eighty
+milliseconds"; it was four hundred and ten, because glyphs are nothing like
+equal and one accented capital costs more than twenty-five plain ones. And the
+smaller batch was assumed to cost throughput: it does not — the total is flat
+from twenty-five to two hundred and fifty, so the only thing batch size buys is
+the length of the freeze.
 
 ## S2. Save was lit with nothing to save — *done*
 

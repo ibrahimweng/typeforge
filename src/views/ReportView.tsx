@@ -13,7 +13,13 @@ import * as React from "react";
 
 import { enterStaggered } from "@/anim/motion";
 import { CoachMark } from "@/components/CoachMark";
-import { validateTypeface, type Finding, type Severity, type ValidationReport } from "@/font/validate";
+import {
+  validateWholeTypeface,
+  type CheckProgress,
+  type Finding,
+  type Severity,
+  type ValidationReport,
+} from "@/font/validate";
 import { NothingDrawnYet } from "@/components/NothingDrawnYet";
 import { hasLetters } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";
@@ -30,6 +36,7 @@ export function ReportView(): React.JSX.Element {
   const state = useAppState();
   const [report, setReport] = React.useState<ValidationReport | null>(null);
   const [running, setRunning] = React.useState(false);
+  const [progress, setProgress] = React.useState<CheckProgress | null>(null);
   const [ranAt, setRanAt] = React.useState<number | null>(null);
   const [shown, setShown] = React.useState<Record<Severity, boolean>>({
     error: true,
@@ -56,10 +63,23 @@ export function ReportView(): React.JSX.Element {
   const run = React.useCallback(async () => {
     if (!state.typeface) return;
     setRunning(true);
+    setProgress({ done: 0, total: state.typeface.glyphs.length });
     // Let the pending state paint before the main thread goes to work.
     await new Promise((resolve) => setTimeout(resolve, 0));
-    setReport(validateTypeface(state.typeface, { format: "truetype" }));
+    /*
+     * The whole font, a batch at a time.
+     *
+     * This used to be one synchronous call capped at five thousand glyphs,
+     * which kept the tab from freezing by not checking a fifth of a large font
+     * and printing "0 errors" underneath. Now it breathes between batches: the
+     * page stays usable, the count runs up while it works, and nothing is left
+     * out.
+     */
+    setReport(
+      await validateWholeTypeface(state.typeface, { format: "truetype" }, setProgress),
+    );
     setRanAt(state.revision);
+    setProgress(null);
     setRunning(false);
   }, [state.typeface, state.revision]);
 
@@ -128,17 +148,19 @@ export function ReportView(): React.JSX.Element {
               checked
             </span>
             {/*
-              What was *not* checked, which the count above cannot say on its
-              own. The check stops at five thousand glyphs to stay responsive on
-              a large font, and on a font of six and a quarter thousand that
-              left a quarter of it unexamined behind a headline of "0 errors".
-              A limit nobody is told about is indistinguishable from a clean
-              result.
+              Kept, though nothing reaches it any more.
+
+              The check used to stop at five thousand glyphs and say nothing
+              about it, so a quarter of a large font went unexamined behind a
+              headline of "0 errors"; this is what said so. It now checks the
+              whole font, so `held` and `examined` agree and this stays dark --
+              but the report can still be built with a limit, and a limit
+              nobody is told about is indistinguishable from a clean result.
             */}
             {report.held > report.examined && (
               <span className="text-2xs text-[var(--attention)] tabular-nums">
-                {(report.held - report.examined).toLocaleString()} not checked — this stops at{" "}
-                {report.examined.toLocaleString()} to stay quick
+                {(report.held - report.examined).toLocaleString()} not checked — this stopped at{" "}
+                {report.examined.toLocaleString()}
               </span>
             )}
           </>
@@ -154,7 +176,22 @@ export function ReportView(): React.JSX.Element {
           disabled={running}
           className="ml-auto rounded-md border border-border px-2.5 py-1 text-2xs transition-colors hover:border-accent hover:text-foreground disabled:opacity-50"
         >
-          {running ? "Checking…" : stale ? "Check again" : "Run checks"}
+          {/*
+            How far through, rather than merely that it is working.
+
+            The same reasoning the tracer's progress bar is built on: this now
+            walks the whole font instead of the first five thousand, so on a
+            large one it has something to say for a few seconds, and a button
+            that says only "Checking…" for that long is indistinguishable from
+            one that has hung.
+          */}
+          {running
+            ? progress && progress.total > 0
+              ? `Checking… ${Math.round((progress.done / progress.total) * 100)}%`
+              : "Checking…"
+            : stale
+              ? "Check again"
+              : "Run checks"}
         </button>
       </div>
 

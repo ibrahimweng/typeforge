@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { emptyTypeface, type Contour, type Glyph, type Typeface } from "./types";
-import { validateTypeface } from "./validate";
+import { validateTypeface, validateWholeTypeface } from "./validate";
 
 function glyph(name: string, contours: Contour[] = [], unicodes: number[] = []): Glyph {
   return {
@@ -171,5 +171,111 @@ describe("a font drawn on top of somebody else's", () => {
     const one = glyph("A", [square()]);
     one.dirty = true;
     expect(has(font([glyph(".notdef", [square()]), one]), "derivative-unnamed")).toBe(false);
+  });
+});
+
+/*
+ * Checking a whole font without stopping the page.
+ *
+ * The check is two seconds of arithmetic on six thousand glyphs and it was all
+ * spent in one go on the thread that draws the page. What kept that from
+ * freezing the tab was a cap of five thousand -- which is not a fix. It is a
+ * decision to check four fifths of somebody's font and print "0 errors"
+ * underneath, and nothing on screen could tell that apart from a clean result.
+ */
+describe("checking the whole font", () => {
+  /** A font of `n` glyphs, every one of them with an unclosed contour. */
+  const manyBroken = (n: number): Typeface => {
+    const open = (name: string) =>
+      glyph(name, [
+        {
+          nodes: [
+            { point: { x: 0, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+            { point: { x: 100, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+            { point: { x: 100, y: 100 }, handleIn: null, handleOut: null, type: "corner" },
+          ],
+          closed: false,
+        },
+      ]);
+    return font([glyph(".notdef"), ...Array.from({ length: n }, (_, i) => open(`g${i}`))]);
+  };
+
+  it("looks at every glyph, past where the cap used to be", async () => {
+    /*
+     * Five thousand and one, which is the only size that tests this: the cap
+     * was five thousand, so a font of six hundred is examined whole either
+     * way and a test built on one would pass with the cap still in place.
+     * These carry no contours, which is what keeps a font this size cheap
+     * enough to check twice in a unit test.
+     */
+    const typeface = font([
+      glyph(".notdef"),
+      ...Array.from({ length: 5001 }, (_, i) => glyph(`g${i}`)),
+    ]);
+    const report = await validateWholeTypeface(typeface, { format: "truetype" }, undefined, () =>
+      Promise.resolve(),
+    );
+    expect(report.examined).toBe(5002);
+    expect(report.held).toBe(5002);
+    // And the synchronous one no longer stops there either.
+    expect(validateTypeface(typeface).examined).toBe(5002);
+  });
+
+  /*
+   * One finding for the font, not one per batch.
+   *
+   * The faults are gathered a batch at a time and worded once at the end, and
+   * the order matters: worded per batch, a font would report the same fault
+   * three times over with a third of its glyphs named in each, and the count
+   * beside it would be wrong every time.
+   */
+  it("rolls a fault up across batches, not within one", async () => {
+    const report = await validateWholeTypeface(manyBroken(600), { format: "truetype" }, undefined, () =>
+      Promise.resolve(),
+    );
+    const open = report.findings.filter((one) => one.check === "open-contour");
+    expect(open).toHaveLength(1);
+    expect(open[0].count).toBe(600);
+  });
+
+  it("says how far through it is, and finishes at the end", async () => {
+    const seen: number[] = [];
+    const typeface = manyBroken(600);
+    await validateWholeTypeface(
+      typeface,
+      { format: "truetype" },
+      (progress) => {
+        expect(progress.total).toBe(typeface.glyphs.length);
+        seen.push(progress.done);
+      },
+      () => Promise.resolve(),
+    );
+    // Rising, starting at nothing, and ending on the whole font: a bar that
+    // stops short of its own end is how a finished job looks stuck.
+    expect(seen[0]).toBe(0);
+    expect(seen[seen.length - 1]).toBe(typeface.glyphs.length);
+    expect([...seen].sort((a, b) => a - b)).toEqual(seen);
+    expect(seen.length).toBeGreaterThan(1);
+  });
+
+  it("finishes on its own breath, without one being handed in", async () => {
+    /*
+     * The other tests here drive it with an instant breath so they do not wait
+     * on real timers, which means none of them touches the one it uses by
+     * itself -- and that is the one that runs in the application.
+     */
+    const report = await validateWholeTypeface(manyBroken(60), { format: "truetype" });
+    expect(report.examined).toBe(61);
+    expect(report.findings.some((one) => one.check === "open-contour")).toBe(true);
+  });
+
+  it("gives the same answer as doing it in one go", async () => {
+    const typeface = manyBroken(600);
+    const chunked = await validateWholeTypeface(typeface, { format: "truetype" }, undefined, () =>
+      Promise.resolve(),
+    );
+    const straight = validateTypeface(typeface, { format: "truetype" });
+    expect(chunked.findings).toEqual(straight.findings);
+    expect(chunked.examined).toBe(straight.examined);
   });
 });
