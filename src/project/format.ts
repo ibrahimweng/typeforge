@@ -110,6 +110,14 @@ export interface TracedProject {
     deviation: number;
     /** The strokes, exactly as the engine holds them. */
     strokes: unknown[];
+    /**
+     * An outline somebody drew, standing where the strokes would be.
+     *
+     * Written beside them rather than instead of them, so putting the letter
+     * back under the hand costs a keystroke on reopening as well as during the
+     * session it was drawn in.
+     */
+    byHand?: { contours: unknown[]; advanceWidth: number };
   }>;
 }
 

@@ -44,8 +44,10 @@ import {
   widthLimit,
 } from "./sweep";
 import { looksJoined } from "./joined";
+import { drawTraced } from "@/state/quill-store";
+import type { Traced } from "./tracing";
 import { ROUND_NIB, type QuillStroke } from "./types";
-import type { Glyph, GlyphNode, Typeface } from "@/font/types";
+import type { Contour, Glyph, GlyphNode, Typeface } from "@/font/types";
 
 const straight = (from: [number, number], to: [number, number]) => ({
   segments: [
@@ -211,6 +213,80 @@ describe("the sweep", () => {
     expect(reachAcross({ x: 1, y: 0 }, 50, ROUND_NIB)).toBeCloseTo(50, 6);
     expect(reachAcross({ x: 0.6, y: 0.8 }, 50, ROUND_NIB)).toBeCloseTo(50, 6);
   });
+});
+
+/*
+ * Corners, which the sweep had no answer for.
+ *
+ * It walks the spine and offsets point by point, and a corner is a
+ * discontinuity in the heading: at one sample the stroke is going one way and
+ * at the next it is going another, and no number of samples ever lands on the
+ * turn itself. So the outside of every corner came back as the chord between
+ * the last offset before it and the first after -- a chamfer. At the apex of a
+ * `v` that is nearly two thirds of the ink missing: the two sides meet 2.9
+ * half-widths from the centre-line and were being drawn at one.
+ */
+describe("the sweep at a corner", () => {
+  /** Two arms meeting at the origin, forty degrees apart, at one width. */
+  const vee = (join?: "miter" | "round" | "bevel"): QuillStroke => {
+    const lean = Math.tan((20 * Math.PI) / 180) * 700;
+    return {
+      spine: {
+        segments: [
+          { kind: "line", from: { x: -lean, y: 700 }, to: { x: 0, y: 0 } },
+          { kind: "line", from: { x: 0, y: 0 }, to: { x: lean, y: 700 } },
+        ],
+        closed: false,
+      },
+      width: [{ at: 0, width: 90 }],
+      nib: { ...ROUND_NIB },
+      start: { kind: "butt" },
+      end: { kind: "butt" },
+      ...(join ? { join } : {}),
+    };
+  };
+
+  /** How far below the corner the ink reaches. */
+  const reachOf = (stroke: QuillStroke): number =>
+    -contoursBounds(sweep(stroke).contours).yMin;
+
+  it("carries a mitred corner out to where its two sides meet", () => {
+    /*
+     * The arms are forty degrees apart, so the outer sides meet at
+     * 45 / sin(20°) = 131.6 units below the corner. Anything appreciably less
+     * is a chamfer, which is what this drew before.
+     */
+    expect(reachOf(vee("miter"))).toBeCloseTo(45 / Math.sin((20 * Math.PI) / 180), 0);
+  });
+
+  it("takes the chord across a bevelled one", () => {
+    // The chord runs between the two offsets, both of which are 45 out along
+    // their own normals: it never goes below where they sit.
+    expect(reachOf(vee("bevel"))).toBeLessThan(50);
+  });
+
+  it("sits the pen at a rounded one", () => {
+    // The pen itself, at the corner: half a width and not a unit more, which
+    // is the exact boundary of what a disc sweeps through a corner.
+    expect(reachOf(vee("round"))).toBeCloseTo(45, 0);
+  });
+
+  it("mitres by default, and gives up on a spike", () => {
+    expect(reachOf(vee())).toBeCloseTo(reachOf(vee("miter")), 6);
+    /*
+     * Two arms four degrees apart meet twenty-eight half-widths out, which is
+     * a spike rather than an apex. Past the limit the chord is the better
+     * answer, and is what every stroking library falls back to.
+     */
+    const spike = vee("miter");
+    const lean = Math.tan((2 * Math.PI) / 180) * 700;
+    spike.spine.segments = [
+      { kind: "line", from: { x: -lean, y: 700 }, to: { x: 0, y: 0 } },
+      { kind: "line", from: { x: 0, y: 0 }, to: { x: lean, y: 700 } },
+    ];
+    expect(reachOf(spike)).toBeLessThan(45 * 4);
+  });
+
 });
 
 describe("the fitter", () => {
@@ -1163,5 +1239,68 @@ describe("telling a joined script from a text face", () => {
       boxGlyph("y", 500, -60, 560),
     ];
     expect(looksJoined(fontOf(glyphs)).joined).toBe(false);
+  });
+});
+
+/*
+ * A traced letter drawn by hand instead.
+ *
+ * What comes back from a trace is a guess about how a shape was made rather
+ * than a record of it, so there is always a letter that no set of strokes
+ * reaches. One can be taken to the point tools and handed back, and from then
+ * on the letter is what was drawn -- which is a real loss as well as a gain,
+ * and is why the strokes are kept beside the drawing rather than replaced by
+ * it: giving the letter back to the hand costs one press.
+ */
+describe("a traced letter drawn by hand", () => {
+  const square: Contour[] = [
+    {
+      nodes: [
+        { point: { x: 0, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+        { point: { x: 400, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+        { point: { x: 400, y: 400 }, handleIn: null, handleOut: null, type: "corner" },
+        { point: { x: 0, y: 400 }, handleIn: null, handleOut: null, type: "corner" },
+      ],
+      closed: true,
+    },
+  ];
+  const traced = (byHand?: Traced["byHand"]): Traced => ({
+    glyph: { name: "n", advanceWidth: 600, strokes: [plainStroke(90)], unitsPerEm: 1000 },
+    deviation: 0,
+    source: [],
+    ...(byHand ? { byHand } : {}),
+  });
+
+  it("draws what was drawn rather than what was read", () => {
+    const swept = drawTraced(traced(), PLAIN_HAND);
+    const drawn = drawTraced(traced({ contours: square, advanceWidth: 555 }), PLAIN_HAND);
+    expect(drawn.advanceWidth).toBe(555);
+    expect(contoursBounds(drawn.contours)).toEqual({ xMin: 0, yMin: 0, xMax: 400, yMax: 400 });
+    expect(contoursBounds(swept.contours)).not.toEqual(contoursBounds(drawn.contours));
+  });
+
+  /*
+   * The hand does not reach it, and says so rather than appearing to.
+   *
+   * A letter that answered the sliders in the specimen strip and not on the
+   * canvas would be worse than one that answered them nowhere: the two views
+   * are of the same letter and both go through this function, which is why it
+   * exists.
+   */
+  it("stops answering the hand", () => {
+    const heavy = { ...PLAIN_HAND, weight: PLAIN_HAND.weight + 0.4 };
+    const one = traced({ contours: square, advanceWidth: 555 });
+    expect(drawTraced(one, heavy).contours).toEqual(drawTraced(one, PLAIN_HAND).contours);
+    // Where the strokes are still the letter, the same change does reach it.
+    const plain = traced();
+    expect(contoursBounds(drawTraced(plain, heavy).contours)).not.toEqual(
+      contoursBounds(drawTraced(plain, PLAIN_HAND).contours),
+    );
+  });
+
+  it("says it is exact, because a drawing is not a fit", () => {
+    expect(drawTraced(traced({ contours: square, advanceWidth: 555 }), PLAIN_HAND).exactness).toEqual(
+      { exact: true, deviation: 0 },
+    );
   });
 });

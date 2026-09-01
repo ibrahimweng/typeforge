@@ -20,6 +20,7 @@ import { drawTraced, quillStore, useQuill, type Phase } from "@/state/useQuill";
 import { OUTLINE_ACTION, segment, SEGMENT_TRACK } from "./controls";
 import { SliderControl as Slider } from "@/ui/components/controls/slider";
 import { TakeToEditor } from "@/components/TakeToEditor";
+import { store } from "@/state/useStore";
 import { WIDE_PANEL } from "@/components/controls";
 import { cn } from "@/ui/lib/utils";
 
@@ -150,6 +151,7 @@ export function QuillPanel({ onEdit }: { onEdit: () => Promise<void> }): React.J
                   </button>
                 ))}
               </div>
+              <QuillTrip key={letter} letter={letter} byHand={Boolean(traced?.byHand)} />
             </section>
 
             <section className="border-b border-border p-3">
@@ -328,6 +330,73 @@ function Hand({ control }: { control: (typeof QUILL_CONTROLS)[number] }): React.
         }}
       />
       <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">{control.hint}</p>
+    </div>
+  );
+}
+
+/**
+ * Taking one traced letter to the tools, and putting it back.
+ *
+ * The one thing a recovered stroke cannot do is the letter you have in your
+ * head that no set of strokes reaches -- and there is always one, because what
+ * came back is a guess about how a shape was made rather than a record of it.
+ * Draw has had this for a while and Trace, which needs it at least as much,
+ * had only the whole-font hand-over at the bottom of the panel: the only way to
+ * move a point on one traced letter was to take all seventy of them out of the
+ * engine that drew them.
+ *
+ * What it costs is said rather than discovered. A letter that comes back is an
+ * outline, and the hand above cannot reach it -- there are no strokes left
+ * underneath to reshape. Putting it back under the hand is one button, and the
+ * strokes are still there when it is: they never went anywhere.
+ */
+function QuillTrip({ letter, byHand }: { letter: string; byHand: boolean }): React.JSX.Element {
+  const [problem, setProblem] = React.useState<string | null>(null);
+
+  const here = (): void => {
+    const lent = quillStore.letterAsGlyph(letter);
+    if (!lent) {
+      setProblem(`${letter} has nothing drawn in it to work on.`);
+      return;
+    }
+    store.borrowLetter({ letter, family: lent.family, from: "quill" }, lent.glyph, {
+      unitsPerEm: lent.unitsPerEm,
+      metrics: lent.metrics,
+    });
+    store.askForMode("edit");
+  };
+
+  return (
+    <div className="pt-2" data-quill-trip={letter}>
+      <button
+        type="button"
+        onClick={here}
+        data-quill-draw-here={letter}
+        title={`Puts ${letter} on the canvas on its own, with the pen, the knife, the shapes and every other tool pointed at it. It comes back into this slot at the width it left with, as an outline — the hand above has no strokes left to reshape, and one button gives them back.`}
+        className="w-full rounded-md border border-border px-2 py-1.5 text-2xs transition-colors hover:border-accent hover:bg-card"
+      >
+        {byHand ? `Work on ${letter} with the tools` : `Draw ${letter} with the tools`}
+      </button>
+      {problem && (
+        <p className="pt-2 text-2xs leading-snug text-[color:var(--destructive)]">{problem}</p>
+      )}
+      {byHand && (
+        <div className="pt-2" data-quill-byhand={letter}>
+          <p className="text-2xs leading-snug text-muted-foreground">
+            {letter} is your drawing. It keeps its advance, and the hand above no longer reaches it
+            — there are no strokes left underneath to reshape. The strokes it was read from are
+            still here, so giving it back costs one press.
+          </p>
+          <button
+            type="button"
+            onClick={() => quillStore.redrawLetter(letter)}
+            data-quill-redraw={letter}
+            className="mt-1.5 w-full rounded-md border border-border px-2 py-1.5 text-2xs transition-colors hover:border-muted-foreground hover:bg-card"
+          >
+            Draw it from its strokes again
+          </button>
+        </div>
+      )}
     </div>
   );
 }

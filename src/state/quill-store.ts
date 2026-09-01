@@ -19,6 +19,8 @@
 import { PLAIN_HAND, restyle, type QuillStyle } from "@/quill/controls";
 import type { JoinedVerdict } from "@/quill/joined";
 import { sweepAll, toleranceFor } from "@/quill/sweep";
+import { linesOf } from "@/quill/typeface";
+import type { Contour, Glyph, VerticalMetrics } from "@/font/types";
 import type { QuillGlyph } from "@/quill/types";
 import type { TracedProject } from "@/project/format";
 import { traceFont, type TraceMessage, type TraceProgress, type Traced } from "@/quill/tracing";
@@ -371,6 +373,16 @@ class QuillStore {
         advanceWidth: one.glyph.advanceWidth,
         deviation: one.deviation,
         strokes: one.glyph.strokes as unknown[],
+        /*
+         * Written down, because a field this enumerates is a field it can lose.
+         *
+         * Everything else about a traced letter is here by name, so a drawing
+         * left out would be gone the moment somebody saved -- and would look
+         * like the drawing had never been made rather than like a bug.
+         */
+        ...(one.byHand
+          ? { byHand: { contours: one.byHand.contours as unknown[], advanceWidth: one.byHand.advanceWidth } }
+          : {}),
       })),
     };
   }
@@ -393,6 +405,14 @@ class QuillStore {
       },
       deviation: one.deviation,
       source: [],
+      ...(one.byHand
+        ? {
+            byHand: {
+              contours: one.byHand.contours as Contour[],
+              advanceWidth: one.byHand.advanceWidth,
+            },
+          }
+        : {}),
     }));
     this.restore({
       letters,
@@ -445,6 +465,110 @@ class QuillStore {
     this.set({ trouble: null });
   }
 
+  // --- one letter, by hand ------------------------------------------------
+
+  /**
+   * This letter as a glyph, ready to be put on the editor's desk.
+   *
+   * The letter as it is currently drawn, hand and all, because that is what a
+   * person looking at it has in front of them and what they mean when they ask
+   * to move a point on it. Where the forge sends its *solid* letter -- the one
+   * its cuts have not been applied to -- there is no equivalent here: a traced
+   * face has no cuts, so what is on screen is the whole of it.
+   */
+  letterAsGlyph(letter?: string): {
+    glyph: Glyph;
+    unitsPerEm: number;
+    metrics: VerticalMetrics;
+    family: string;
+  } | null {
+    const name = letter ?? this.state.letter;
+    const { document } = this.state;
+    const traced = document.letters.find((one) => one.glyph.name === name);
+    if (!traced) return null;
+    const drawn = drawTraced(traced, document.style);
+    const em = document.unitsPerEm;
+    return {
+      glyph: {
+        name,
+        unicodes: [...name].map((one) => one.codePointAt(0)!),
+        advanceWidth: drawn.advanceWidth,
+        contours: drawn.contours.map((one) => ({
+          ...one,
+          nodes: one.nodes.map((node) => ({ ...node })),
+        })),
+        components: [],
+        anchors: [],
+        params: {},
+        dirty: false,
+      },
+      unitsPerEm: em,
+      /*
+       * Read off the letters rather than declared, because a traced font has no
+       * metrics of its own: what came in was outlines, and what is known about
+       * where its lines fall is where its letters actually reach.
+       */
+      metrics: {
+        ...linesOf(
+          new Map(
+            document.letters.map((one) => [
+              one.glyph.name,
+              { contours: drawTraced(one, document.style).contours },
+            ]),
+          ),
+          em,
+        ),
+        lineGap: 0,
+      },
+      family: document.name,
+    };
+  }
+
+  /**
+   * Take a drawn letter into the font, standing where its strokes were.
+   *
+   * Undoable like every other change here, and it needs to be more than most:
+   * this is the one edit that puts an outline where a description was, and
+   * finding out you would rather have kept the strokes should cost one
+   * keystroke.
+   */
+  takeLetter(letter: string, contours: Contour[], advanceWidth: number): void {
+    const { document } = this.state;
+    this.commit(
+      {
+        ...document,
+        letters: document.letters.map((one) =>
+          one.glyph.name === letter ? { ...one, byHand: { contours, advanceWidth } } : one,
+        ),
+      },
+      "single",
+    );
+    this.set({ letter });
+  }
+
+  /** Put a drawn letter back under the hand, to be swept from its strokes again. */
+  redrawLetter(letter?: string): void {
+    const name = letter ?? this.state.letter;
+    const { document } = this.state;
+    this.commit(
+      {
+        ...document,
+        letters: document.letters.map((one) => {
+          if (one.glyph.name !== name || !one.byHand) return one;
+          const { byHand: _gone, ...rest } = one;
+          return rest;
+        }),
+      },
+      "single",
+    );
+  }
+
+  /** Whether this letter is an outline somebody drew rather than strokes. */
+  drawnByHand(letter?: string): boolean {
+    const name = letter ?? this.state.letter;
+    return Boolean(this.state.document.letters.find((one) => one.glyph.name === name)?.byHand);
+  }
+
   undo(): void {
     const back = this.past.pop();
     if (!back) return;
@@ -482,6 +606,21 @@ export const quillStore = new QuillStore();
  * disagree about what the sliders mean.
  */
 export function drawTraced(traced: Traced, style: QuillStyle) {
+  /*
+   * A letter somebody drew is what it is, and the hand does not reach it.
+   *
+   * Said here rather than at each caller because every one of them goes through
+   * this function -- which is why it exists -- and a letter that answered the
+   * sliders in the specimen strip and not on the canvas would be worse than one
+   * that answered them nowhere.
+   */
+  if (traced.byHand) {
+    return {
+      contours: traced.byHand.contours,
+      advanceWidth: traced.byHand.advanceWidth,
+      exactness: { exact: true, deviation: 0 },
+    };
+  }
   const moved = restyle(traced.glyph, style);
   const drawn = sweepAll(moved.strokes, toleranceFor(moved.unitsPerEm));
   return { contours: drawn.contours, advanceWidth: moved.advanceWidth, exactness: drawn.exactness };
