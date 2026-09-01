@@ -665,6 +665,46 @@ describe("the fitter", () => {
      */
   });
 
+  /*
+   * A short branch that draws ink of its own is not a whisker.
+   *
+   * Thinning leaves a branch reaching towards every corner of an outline, and
+   * most of them are noise: swept, they add nothing the stroke they hang off
+   * does not already cover. What made one a whisker used to be its length
+   * against the local width -- and that width is read at the middle of the
+   * branch, which on a short branch is the junction, where the field balloons
+   * to take in every stroke meeting there. Both feet of a `w` were thrown away
+   * that way: twenty-two units long against a floor of a hundred and
+   * eighty-seven, and the letter came back resting on nothing, missing
+   * ninety-three units of ink along the baseline.
+   */
+  it("keeps a short branch that reaches ink nothing else covers", () => {
+    const stem: QuillStroke = {
+      spine: straight([300, 60], [300, 700]),
+      width: [{ at: 0, width: 90 }],
+      nib: { ...ROUND_NIB },
+      start: { kind: "butt" },
+      end: { kind: "butt" },
+    };
+    // A foot, twice the stem's width and much shorter than it: exactly the
+    // shape the length rule cannot tell from a whisker.
+    const foot: QuillStroke = {
+      spine: straight([210, 60], [390, 60]),
+      width: [{ at: 0, width: 120 }],
+      nib: { ...ROUND_NIB },
+      start: { kind: "butt" },
+      end: { kind: "butt" },
+    };
+    const drawn = sweepAll([stem, foot]);
+    const fit = fitGlyph("foot", drawn.contours, 600, {})!;
+    const again = sweepAll(fit.glyph.strokes);
+    const box = contoursBounds(again.contours);
+    // The foot spans 180 units; with it thrown away this is the stem alone,
+    // ninety wide about x = 300.
+    expect(box.xMax - box.xMin, "the foot was pruned as a whisker").toBeGreaterThan(150);
+    expect(box.yMin).toBeLessThan(10);
+  });
+
   it("keeps a mark that stands on its own rather than pruning it", () => {
     /*
      * The dot of an `i`, which is short and has two free ends and is therefore
