@@ -44,6 +44,8 @@ export function TopBar({
   onFontInfo,
   onToggleHelp,
   helpOpen,
+  onToggleAcademy,
+  academyOpen,
   mode,
   onMode,
   onSave,
@@ -55,6 +57,8 @@ export function TopBar({
   onFontInfo: () => void;
   onToggleHelp: () => void;
   helpOpen: boolean;
+  onToggleAcademy: () => void;
+  academyOpen: boolean;
   mode: Mode;
   onMode: (mode: Mode) => void;
   onSave: () => void;
@@ -285,6 +289,22 @@ export function TopBar({
             Not kept — save a file
           </span>
         )}
+        {/*
+          Before Help rather than after it, because it is the one somebody
+          arriving needs and Help is the one they need later. `Help` answers
+          "what does this control do"; `Learn` answers "I have never made a
+          typeface", which is the question a first visit actually brings.
+        */}
+        <button
+          type="button"
+          onClick={onToggleAcademy}
+          aria-pressed={academyOpen}
+          data-open-academy
+          title="Type Academy — four short courses on making type, done in the tool"
+          className={cn(TOOLBAR_ACTION, academyOpen && "bg-card text-foreground")}
+        >
+          Learn
+        </button>
         <button
           type="button"
           onClick={onToggleHelp}
