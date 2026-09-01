@@ -23,6 +23,14 @@ font = TTFont(buf)
 order = font.getGlyphOrder()
 alts = [n for n in order if n.endswith(".init") or n.endswith(".medi")]
 print("glyphs:", len(order), " alternates:", len(alts))
+
+# The two required runs, which the format stores separately from the input
+# and which backtrack stores in reverse. A wrong order here still parses.
+def runs(st):
+    back = [sorted(c.glyphs) for c in getattr(st, "BacktrackCoverage", [])]
+    ahead = [sorted(c.glyphs) for c in getattr(st, "LookAheadCoverage", [])]
+    return back, ahead
+
 print("sample alternates:", alts[:6], "..." if len(alts) > 6 else "")
 
 if "GSUB" not in font:
@@ -38,7 +46,14 @@ for i, lk in enumerate(g.LookupList.Lookup):
             pairs = sorted(sub.mapping.items())
             print("lookup", i, "single:", len(pairs), "e.g.", pairs[:3])
         elif lk.LookupType == 6:
-            print("lookup", i, "chain input:", [sorted(c.glyphs) for c in sub.InputCoverage])
+            back, ahead = runs(sub)
+            short = lambda runs_: [(len(r), r[0], r[-1]) for r in runs_]
+            print(
+                "lookup", i,
+                "chain: before", short(back),
+                "input", short([sorted(c.glyphs) for c in sub.InputCoverage]),
+                "after", short(ahead),
+            )
             print("        records:", [(r.SequenceIndex, r.LookupListIndex) for r in sub.SubstLookupRecord])
 
 # And that the alternates are real glyphs with real outlines, not empty boxes

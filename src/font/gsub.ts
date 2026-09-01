@@ -39,6 +39,12 @@
  *   - a **ligature**: this run of glyphs becomes this one glyph (`liga`)
  *   - a **set**: this glyph becomes that one, wherever it stands (`ss01`…)
  *   - a **context**: this sequence, with some positions redrawn (`calt`)
+ *
+ * The context now carries backtrack and lookahead, which is the difference
+ * between matching a glyph and requiring one. A rule that consumes the space
+ * before a word has spent it, and the next rule looking for a space finds none
+ * -- so a run of one-letter words came out with only every other one drawn as
+ * a word of one.
  */
 
 import { ByteWriter } from "./sfnt";
@@ -69,6 +75,23 @@ export interface AtPosition {
 export interface ChainRule {
   input: number[][];
   swaps: AtPosition[];
+  /**
+   * What must stand before the sequence, and after it, without being part of it.
+   *
+   * The difference between matching a glyph and requiring one. A rule that
+   * *consumes* the space before a word has spent it, so the next rule looking
+   * for a space finds none -- which is why a run of one-letter words came out
+   * with only every other one drawn as a word of one. Required rather than
+   * matched, the space is still there for the rule after.
+   *
+   * Backtrack is written in the order the format wants it, which is *away* from
+   * the sequence: the position nearest the input comes first. That is the
+   * opposite of how anybody writes it down, so this takes it in reading order
+   * and reverses it on the way out -- the one thing about this format that is
+   * a genuine trap rather than merely fiddly.
+   */
+  before?: number[][];
+  after?: number[][];
 }
 
 /**
@@ -221,25 +244,52 @@ function ligatureSubst(ligatures: Ligature[]): Uint8Array {
  * for twenty-six letters after four others is a hundred and four rules all
  * saying the same thing.
  */
-function chainContext(input: Uint8Array[], records: Array<[number, number]>): Uint8Array {
-  // backtrackCount, inputCount and one offset each, lookaheadCount,
-  // recordCount, and two shorts per record.
-  const header = 2 + 2 + 2 + input.length * 2 + 2 + 2 + records.length * 4;
+function chainContext(
+  input: Uint8Array[],
+  records: Array<[number, number]>,
+  before: Uint8Array[] = [],
+  after: Uint8Array[] = [],
+): Uint8Array {
+  /*
+   * The order the three runs are written in is not the order they are read in.
+   *
+   * The format puts backtrack first, then input, then lookahead -- and the
+   * backtrack coverages count *backwards* from the sequence, so the glyph
+   * immediately before the match is offset zero. Everything else here counts
+   * forwards. Reversing on the way out rather than asking callers to do it
+   * keeps the one confusing thing about this format in one place.
+   */
+  const backtrack = [...before].reverse();
+  const all = [...backtrack, ...input, ...after];
+  // backtrackCount and one offset each, inputCount and one offset each,
+  // lookaheadCount and one offset each, recordCount, two shorts per record.
+  const header =
+    2 + 2 + backtrack.length * 2 + 2 + input.length * 2 + 2 + after.length * 2 + 2 +
+    records.length * 4;
+
   const out = new ByteWriter();
   out.uint16(3); // substFormat 3
-  out.uint16(0); // backtrackGlyphCount
-  out.uint16(input.length);
+
   let cursor = header;
-  for (const one of input) {
-    out.uint16(cursor);
+  const offsets = all.map((one) => {
+    const here = cursor;
     cursor += one.length;
-  }
-  out.uint16(0); // lookaheadGlyphCount
+    return here;
+  });
+  let at = 0;
+
+  out.uint16(backtrack.length);
+  for (const _ of backtrack) out.uint16(offsets[at++]);
+  out.uint16(input.length);
+  for (const _ of input) out.uint16(offsets[at++]);
+  out.uint16(after.length);
+  for (const _ of after) out.uint16(offsets[at++]);
+
   out.uint16(records.length);
   for (const [position, lookupIndex] of records) {
     out.uint16(position).uint16(lookupIndex);
   }
-  for (const one of input) out.bytesFrom(one);
+  for (const one of all) out.bytesFrom(one);
   return out.toUint8Array();
 }
 
@@ -350,6 +400,10 @@ const usableLigature = (one: Ligature): boolean =>
 const usableChain = (rule: ChainRule): boolean =>
   rule.input.length > 0 &&
   rule.input.every((one) => one.length > 0) &&
+  // An empty set in a required run is a run nothing can satisfy, which makes
+  // the whole rule dead -- and dead silently, which is worse than absent.
+  (rule.before ?? []).every((one) => one.length > 0) &&
+  (rule.after ?? []).every((one) => one.length > 0) &&
   rule.swaps.length > 0 &&
   rule.swaps.every((one) => one.swap.length > 0 && one.at < rule.input.length);
 
@@ -391,7 +445,17 @@ export function buildGsubTable(features: Features): Uint8Array | null {
       lookups.push(lookup(SINGLE, singleSubst(position.swap)));
     }
     chains.push(lookups.length);
-    lookups.push(lookup(CHAIN, chainContext(rule.input.map(coverage), records)));
+    lookups.push(
+      lookup(
+        CHAIN,
+        chainContext(
+          rule.input.map(coverage),
+          records,
+          (rule.before ?? []).map(coverage),
+          (rule.after ?? []).map(coverage),
+        ),
+      ),
+    );
   }
   if (chains.length > 0) built.push({ tag: "calt", lookups: chains });
 

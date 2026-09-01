@@ -319,6 +319,16 @@ export interface NamedRule {
   input: string[][];
   /** Which positions are redrawn, and into what. */
   swaps: Array<{ at: number; swap: Array<{ plain: string; alternate: string }> }>;
+  /**
+   * What must stand before and after the sequence without being part of it.
+   *
+   * Required rather than matched, which is the whole difference: a rule that
+   * consumes the space before a word has spent it, and the next rule looking
+   * for a space finds none. Written in reading order here; the writer reverses
+   * the backtrack for the format.
+   */
+  before?: string[][];
+  after?: string[][];
 }
 
 export function emptyTypeface(): Typeface {

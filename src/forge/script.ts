@@ -33,13 +33,19 @@
  * the `i` without knowing about dots and the `o` without knowing it is a ring,
  * and it keeps working when the shoulder springs higher or the bowl narrows.
  *
- * What it does not do yet is choose a *different* join depending on the letter
- * that follows -- the high exit an `o`, `v`, `w` and `b` want, against the low
- * one everything else takes. That is a contextual substitution, it needs a GSUB
- * table this exporter cannot yet write, and it is the next piece of work rather
- * than a shortcoming of this one. The exit here leaves from wherever the ink
- * actually ends, which on an `o` is already high and on an `n` is already low;
- * what is missing is the *pair*, not the single letter.
+ * Choosing a *different* join depending on the letter that follows -- the high
+ * exit an `o`, `v`, `w` and `b` want, against the low one everything else takes
+ * -- is not done here. It is a fact about the pair rather than the letter, so
+ * it lives in a second drawing that a shaper swaps in: `joins.ts` decides which
+ * letters get one and what the rule says, `document.ts` draws them, and
+ * `font/gsub.ts` writes the chained context that reaches them. The exit here
+ * leaves from wherever the ink actually ends, which on an `o` is already high
+ * and on an `n` is already low.
+ *
+ * This paragraph used to say that was the next piece of work and that the
+ * exporter could not write the table. Both stopped being true and the comment
+ * did not, which cost a reader a morning: `scripts/joinsub.ts` exports a face
+ * and shapes it, and `oa` has been coming out `o.medi a.init` for some time.
  */
 
 import type { Vec2 } from "@/font/types";

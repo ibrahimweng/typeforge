@@ -160,9 +160,18 @@ export function joinSides(names: string[]): { noExit: string[]; noEntry: string[
  * match:
  *
  *   - The very first glyph of a run and the very last. Nothing precedes the one
- *     or follows the other.
- *   - A one-letter word. `a` between two spaces is swapped by the first rule,
- *     and the second rule is looking for a plain `a`, which is no longer there.
+ *     or follows the other, and no rule can require what is not there: GSUB has
+ *     no way to say "the start of the string". This is the one case that stays,
+ *     and it is the shaper's to solve rather than the font's.
+ *
+ * A third used to be listed here and was never true: a run of one-letter words,
+ * said to catch only every other one because the rules matched the spaces
+ * either side and so spent them. They are separate rules and so separate
+ * lookups, and a lookup makes its own pass over the string -- `a a a a a` was
+ * already coming out with every interior word drawn as one. The rules require
+ * their spaces now rather than consuming them, which changes no output and is
+ * worth having anyway: it says what they mean, instead of leaning on a subtle
+ * property of how lookups are applied.
  */
 export function boundaryRules(
   wanted: Array<[string, Without]>,
@@ -186,33 +195,47 @@ export function boundaryRules(
    * and it goes ahead of them: once the letter is `a.alone` neither of them
    * sees it, which is exactly what is wanted.
    *
-   * Two spaces in the input and one letter between them, so a run of
-   * one-letter words shares its spaces and only every other one is caught --
-   * `a a` gets the first. Backtrack and lookahead are what this wants and this
-   * font writer emits neither.
+   * The spaces are required rather than matched, and the sequence is one glyph
+   * long: the letter itself.
+   *
+   * This changes no output. Matched, the two spaces were part of the sequence
+   * and were spent on it, which looks as though it should leave the next word
+   * short of the space it needs -- and the comment above this function said so
+   * for a long time. It does not, because these are separate lookups and each
+   * makes its own pass over the string. The rule is written this way because it
+   * is what the rule means, not because the other one was broken: leaning on
+   * the pass order is a thing that is true until somebody merges two lookups.
    */
   if (alone.length > 0 && noExit.length > 0 && noEntry.length > 0) {
     rules.push({
-      input: [noExit, alone, noEntry],
+      before: [noExit],
+      input: [alone],
+      after: [noEntry],
       swaps: [{
-        at: 1,
+        at: 0,
         swap: alone.map((letter) => ({ plain: letter, alternate: boundaryName(letter, "alone") })),
       }],
     });
   }
 
+  /*
+   * The same for the two halves, and for the same reason: the space between two
+   * words is a condition on both rules rather than a glyph either of them owns.
+   */
   if (beginning.length > 0 && noExit.length > 0) {
     rules.push({
-      input: [noExit, beginning],
+      before: [noExit],
+      input: [beginning],
       swaps: [{
-        at: 1,
+        at: 0,
         swap: beginning.map((letter) => ({ plain: letter, alternate: boundaryName(letter, "begin") })),
       }],
     });
   }
   if (ending.length > 0 && noEntry.length > 0) {
     rules.push({
-      input: [ending, noEntry],
+      input: [ending],
+      after: [noEntry],
       swaps: [{
         at: 0,
         swap: ending.map((letter) => ({ plain: letter, alternate: boundaryName(letter, "end") })),
