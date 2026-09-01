@@ -3726,13 +3726,18 @@ test("letters drawn in Draw can be taken to the tools", async ({ page }) => {
   /*
    * The connection this application did not have. Draw holds no outlines -- a
    * letter there is a skeleton, a pen and a set of parts, redrawn from scratch
-   * every time a slider moves -- so the point tools cannot live in it: a
-   * dragged node would be undone by the next parameter change.
+   * every time a slider moves -- so the point tools cannot be pointed straight
+   * at one: a dragged node would be undone by the next parameter change.
    *
    * The engine already knew how to build a real typeface, because that is what
    * its export dialog does. Until now that typeface only ever went into a
    * file, so the only way to move a point on a letter you had drawn was to
    * export it and open the file you had just written.
+   *
+   * One letter at a time can now be lent to the tools without leaving Draw, and
+   * that is a different thing rather than a smaller one: it works by taking
+   * that letter out of the parametric system for good, which a whole family
+   * cannot do without leaving nothing to be parametric.
    */
   await page.goto("/");
   await openFont(page);

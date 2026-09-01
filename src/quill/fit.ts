@@ -30,10 +30,23 @@
 
 import type { Contour } from "@/font/types";
 import type { Vec2 } from "@/font/types";
-import { fitCubics } from "./curve";
-import { distanceAt, distances, inside, rasterise, thin, toUnits, type Grid } from "./raster";
+import { fitCubics, walkOf } from "./curve";
+import {
+  distanceAt,
+  distances,
+  inside,
+  rasterise,
+  thin,
+  toUnits,
+  type Grid,
+} from "./raster";
 import { widthAt } from "./sweep";
-import { ROUND_NIB, type QuillGlyph, type QuillStroke, type WidthProfile } from "./types";
+import {
+  ROUND_NIB,
+  type QuillGlyph,
+  type QuillStroke,
+  type WidthProfile,
+} from "./types";
 
 export interface FitOptions {
   /**
@@ -78,7 +91,12 @@ const NEIGHBOURS: Array<[number, number]> = [
   [1, -1],
 ];
 
-function neighboursOf(skeleton: Uint8Array, grid: Grid, x: number, y: number): Array<[number, number]> {
+function neighboursOf(
+  skeleton: Uint8Array,
+  grid: Grid,
+  x: number,
+  y: number,
+): Array<[number, number]> {
   const found: Array<[number, number]> = [];
   for (const [dx, dy] of NEIGHBOURS) {
     const nx = x + dx;
@@ -97,7 +115,10 @@ function neighboursOf(skeleton: Uint8Array, grid: Grid, x: number, y: number): A
  * run touches, and is therefore a stroke -- or a piece of one, in the case the
  * note at the top of this file is about.
  */
-function tracePaths(skeleton: Uint8Array, grid: Grid): Array<Array<[number, number]>> {
+function tracePaths(
+  skeleton: Uint8Array,
+  grid: Grid,
+): Array<Array<[number, number]>> {
   const degree = new Uint8Array(grid.width * grid.height);
   const nodes: Array<[number, number]> = [];
   for (let y = 0; y < grid.height; y++) {
@@ -112,6 +133,25 @@ function tracePaths(skeleton: Uint8Array, grid: Grid): Array<Array<[number, numb
   const walked = new Uint8Array(grid.width * grid.height);
   const paths: Array<Array<[number, number]>> = [];
 
+  /**
+   * Walk the skeleton from a starting pixel until it ends, branches, or
+   * arrives back where it began.
+   *
+   * That last case is the one that was missing, and it was expensive. The walk
+   * stopped at any pixel whose degree was not two -- an end or a junction --
+   * which is every way a line can finish except the way a ring does. A ring has
+   * degree two at every pixel including its start, so the walk went round, came
+   * back to the pixel it began at, found degree two there as well, and set off
+   * again. It only stopped when the guard ran out.
+   *
+   * The guard is the size of the grid, so an `o` on a seven-hundred-unit em
+   * came back as a path of one million two hundred thousand points: the ring
+   * traced some five hundred times over. Nothing crashed and nothing was
+   * reported. What it produced was a spine of two hundred and seventy-seven
+   * cubics deviating a thousand units from a letter seven hundred units tall,
+   * an outline of three hundred and eighty-four nodes, and fifteen seconds of
+   * work where every other letter took three.
+   */
   const walkFrom = (start: [number, number], first: [number, number]) => {
     const path: Array<[number, number]> = [start];
     let previous = start;
@@ -119,6 +159,8 @@ function tracePaths(skeleton: Uint8Array, grid: Grid): Array<Array<[number, numb
     for (let guard = 0; guard < grid.width * grid.height; guard++) {
       path.push(here);
       walked[here[1] * grid.width + here[0]] = 1;
+      // Back at the beginning: a ring, and it is finished.
+      if (here[0] === start[0] && here[1] === start[1]) break;
       if (degree[here[1] * grid.width + here[0]] !== 2) break;
       const next = neighboursOf(skeleton, grid, here[0], here[1]).find(
         (one) => !(one[0] === previous[0] && one[1] === previous[1]),
@@ -146,7 +188,8 @@ function tracePaths(skeleton: Uint8Array, grid: Grid): Array<Array<[number, numb
   for (let y = 0; y < grid.height; y++) {
     for (let x = 0; x < grid.width; x++) {
       const index = y * grid.width + x;
-      if (skeleton[index] !== 1 || walked[index] === 1 || degree[index] !== 2) continue;
+      if (skeleton[index] !== 1 || walked[index] === 1 || degree[index] !== 2)
+        continue;
       const step = neighboursOf(skeleton, grid, x, y)[0];
       walked[index] = 1;
       const path = walkFrom([x, y], step);
@@ -210,9 +253,12 @@ function components(skeleton: Uint8Array, grid: Grid): Int32Array {
 function spliceAtJunctions(
   paths: Array<Array<[number, number]>>,
   grid: Grid,
-): Array<Array<[number, number]>> {
+): Run[] {
   const key = ([x, y]: [number, number]) => y * grid.width + x;
-  const headingOf = (path: Array<[number, number]>, fromStart: boolean): Vec2 => {
+  const headingOf = (
+    path: Array<[number, number]>,
+    fromStart: boolean,
+  ): Vec2 => {
     const look = Math.min(8, path.length - 1);
     const a = fromStart ? path[0] : path[path.length - 1];
     const b = fromStart ? path[look] : path[path.length - 1 - look];
@@ -277,8 +323,11 @@ function spliceAtJunctions(
    * being added always drops its first point.
    */
   const spent = new Set<number>();
-  const out: Array<Array<[number, number]>> = [];
-  const chainFrom = (from: number, enterAt: boolean): Array<[number, number]> => {
+  const out: Run[] = [];
+  const chainFrom = (
+    from: number,
+    enterAt: boolean,
+  ): Array<[number, number]> => {
     let run: Array<[number, number]> = [];
     let path = from;
     let start = enterAt;
@@ -300,30 +349,129 @@ function spliceAtJunctions(
 
   // Chains with a loose end first, entered from that end, so each is walked
   // once and in order. Anything still unspent afterwards is a closed loop.
+  /*
+   * Whether a run is a ring is a question about the run, not about which loop
+   * below caught it.
+   *
+   * The first version asked the second loop -- "anything still unspent is a
+   * closed loop" -- and that is true of a cycle made of several pieces chained
+   * through junctions. It is not true of the shape that matters most here. An
+   * `o` is one unbroken ring with no junction anywhere on it, so both its ends
+   * are unpartnered and the *first* loop takes it, as an open run. The flag
+   * never fired on the one letter it was written for.
+   *
+   * Asked of the geometry it is one line and cannot miss: a run whose last
+   * point is back where its first began has no ends.
+   */
+  const isRing = (run: Array<[number, number]>): boolean => {
+    if (run.length < 8) return false;
+    const [ax, ay] = run[0];
+    const [bx, by] = run[run.length - 1];
+    // Within a pixel or two: the walk stops when it meets its own start, which
+    // it reaches as a neighbour rather than by landing on it exactly.
+    return Math.hypot(ax - bx, ay - by) <= 2;
+  };
+
   for (let index = 0; index < paths.length; index++) {
     if (spent.has(index)) continue;
     for (const start of [true, false]) {
       if (partner.has(tag(index, start))) continue;
       const run = chainFrom(index, start);
-      if (run.length >= 2) out.push(run);
+      if (run.length >= 2) out.push({ points: run, closed: isRing(run) });
       break;
     }
   }
+  /*
+   * What is left has no loose end anywhere, which is what a ring is.
+   *
+   * This was already known here -- the comment above has said "anything still
+   * unspent afterwards is a closed loop" for as long as the function has
+   * existed -- and then thrown away, because the run went into the same list
+   * as every other and the spine was built with `closed: false` regardless.
+   *
+   * The cost was the worst number in the whole harness. An `o` is one ring, and
+   * fitted as though it were an open line its two ends are the same point with
+   * opposite tangents: the fitter is asked for a curve that leaves a point
+   * heading one way and arrives back at it heading the other, and it answers
+   * with something wild. The spine deviation on a DejaVu `o` was 1016 units on
+   * a 1000-unit em, and the sweep then spent three hundred and eighty-four
+   * nodes drawing it.
+   */
   for (let index = 0; index < paths.length; index++) {
     if (spent.has(index)) continue;
     const run = chainFrom(index, true);
-    if (run.length >= 2) out.push(run);
+    if (run.length >= 2) out.push({ points: run, closed: true });
   }
   return out;
+}
+
+/**
+ * One run of skeleton, and whether it comes back to where it started.
+ *
+ * A ring has no ends, so it has no terminals to cap and no tangent
+ * discontinuity anywhere along it. Both facts matter downstream and neither
+ * survives being reduced to a list of points.
+ */
+interface Run {
+  points: Array<[number, number]>;
+  closed: boolean;
 }
 
 /** How long a pixel path is, in font units. */
 function pathLength(path: Array<[number, number]>, grid: Grid): number {
   let total = 0;
   for (let index = 1; index < path.length; index++) {
-    total += Math.hypot(path[index][0] - path[index - 1][0], path[index][1] - path[index - 1][1]);
+    total += Math.hypot(
+      path[index][0] - path[index - 1][0],
+      path[index][1] - path[index - 1][1],
+    );
   }
   return total * grid.scale;
+}
+
+/**
+ * A ring, fitted in halves so its seam is not a corner.
+ *
+ * `fitCubics` takes an open run and reads the tangent at each end from the
+ * points nearest it. On a ring the two ends are the same place and their
+ * tangents are opposite -- the curve leaves heading one way round and comes
+ * back heading the other -- so asking for a single open fit is asking for a
+ * curve that does something impossible, and the answer is wild: a DejaVu `o`
+ * came back with its centre-line a thousand units off a letter seven hundred
+ * units tall, and the sweep then spent three hundred and eighty-four nodes
+ * drawing the mistake.
+ *
+ * Cut in half, each piece is an ordinary open arc whose end tangents are read
+ * from real neighbours on both sides, and the two pieces meet where the ring
+ * genuinely continues. The seam is placed at the halfway point rather than
+ * anywhere clever because a ring has no distinguished place on it; what matters
+ * is only that there are two seams rather than one, so neither is asked to be a
+ * reversal.
+ */
+function fitRing(
+  points: Vec2[],
+  tolerance: number,
+): { curves: ReturnType<typeof fitCubics>["curves"]; deviation: number } {
+  if (points.length < 6) return fitCubics(points, tolerance);
+
+  /*
+   * Closed properly before it is cut, because a walk of a ring stops one pixel
+   * short of its own start: the first pixel is already spent. Without the
+   * wrap the second half ends a step early and the sweep leaves a notch.
+   */
+  const loop = [...points];
+  const first = loop[0];
+  const last = loop[loop.length - 1];
+  if (Math.hypot(first.x - last.x, first.y - last.y) > 1e-9)
+    loop.push({ ...first });
+
+  const half = Math.floor(loop.length / 2);
+  const front = fitCubics(loop.slice(0, half + 1), tolerance);
+  const back = fitCubics(loop.slice(half), tolerance);
+  return {
+    curves: [...front.curves, ...back.curves],
+    deviation: Math.max(front.deviation, back.deviation),
+  };
 }
 
 /**
@@ -335,6 +483,64 @@ function pathLength(path: Array<[number, number]>, grid: Grid): number {
  * the line off the middle: the ends are held exactly, because where a stroke
  * starts and stops is the one thing not to average away.
  */
+/**
+ * The last stretch of a skeleton at a free end, straightened out.
+ *
+ * The width profile already refuses to believe the readings within half a width
+ * of a terminal, because the distance field there is measuring the end of the
+ * stroke rather than its sides. The *geometry* is no better and was trusted
+ * anyway. Thinning an end that is cut at an angle -- which is most terminals on
+ * most faces -- leaves the medial axis curling away towards the sharper of the
+ * two corners, and that curl is not in the letter. Swept, it came back as a
+ * loop hanging off the tip of every `a`, `s`, `v`, `c` and `z` in the alphabet:
+ * the spine turned through most of a circle inside half a stroke width, so the
+ * inner side of the offset crossed itself.
+ *
+ * So the corrupted stretch is replaced rather than removed. The direction the
+ * stroke was travelling before it reached the terminal is measured where that
+ * is still readable, and the tail is laid out straight along it, keeping the
+ * spacing it had -- which puts the tip back where the skeleton put it, without
+ * the curl it acquired getting there.
+ *
+ * Only at a free end. A run that stops at a junction is not near a boundary and
+ * has nothing wrong with it.
+ */
+function steadyEnds(
+  points: Vec2[],
+  free: { start: boolean; end: boolean },
+  guard: number,
+): Vec2[] {
+  if (guard < 2 || points.length < guard * 2 + 3) return points;
+  const out = [...points];
+
+  /*
+   * The curl is taken out by drawing the chord, which keeps both of its ends.
+   *
+   * What must not change is where the tail finishes: the skeleton's last point
+   * is on the medial axis and everything downstream -- how wide the terminal
+   * is, how far past it the ink runs, whether it was cut or rounded -- is
+   * measured from there and has to start inside the letter. Straightening the
+   * tail while keeping its *length* instead does not: a curl covers far more
+   * ground than it gets anywhere, so laid out straight it shot ninety-five
+   * units past the end of a `c` and landed outside the ink, where every probe
+   * that followed found nothing and every terminal in the font read as round.
+   */
+  const chord = (tip: number, anchor: number) => {
+    const step = tip < anchor ? 1 : -1;
+    for (let index = tip; index !== anchor; index += step) {
+      const t = Math.abs(index - anchor) / Math.abs(tip - anchor);
+      out[index] = {
+        x: points[anchor].x + (points[tip].x - points[anchor].x) * t,
+        y: points[anchor].y + (points[tip].y - points[anchor].y) * t,
+      };
+    }
+  };
+
+  if (free.start) chord(0, guard);
+  if (free.end) chord(points.length - 1, points.length - 1 - guard);
+  return out;
+}
+
 function smoothed(points: Vec2[], passes = 2): Vec2[] {
   let run = points;
   for (let pass = 0; pass < passes; pass++) {
@@ -372,13 +578,24 @@ function widthProfile(
   grid: Grid,
   field: Float64Array,
   budget: number,
+  free: { start: boolean; end: boolean },
 ): WidthProfile {
-  const widths = path.map(([x, y]) => distanceAt(grid, field, x, y) * 2 * grid.scale);
+  const widths = path.map(
+    ([x, y]) => distanceAt(grid, field, x, y) * 2 * grid.scale,
+  );
   if (widths.length === 0) return [{ at: 0, width: 0 }];
   if (widths.length === 1) return [{ at: 0, width: widths[0] }];
 
   /*
    * The last half-width at each free end is not a reading of the stroke.
+   *
+   * Only at a *free* end. Thinning stops short of a boundary, and a junction is
+   * not a boundary: where the shoulder of an `n` runs into its stem the field
+   * does not fall away, it swells, because the largest circle that fits at a
+   * join spans both strokes. A ring has no free ends at all, so none of this
+   * applies to one -- the reading at the seam of an `o` is as good as the
+   * reading anywhere else on it, and holding it flat would put a false step
+   * where the profile wraps.
    *
    * The distance field says how far a point is from the nearest edge, and
    * within half a width of the end of a stroke the nearest edge is the end
@@ -408,21 +625,224 @@ function widthProfile(
    * fifty-five points flat, which erases a real taper, and holding the last
    * fifteen, which is only the part the field could not see.
    */
-  let guard = Math.round(widths.reduce((most, one) => Math.max(most, one), 0) / 2 / grid.scale);
-  for (let settle = 0; settle < 2; settle++) {
-    const reach = Math.min(guard, widths.length - 1);
-    guard = Math.round(widths[reach] / 2 / grid.scale);
-  }
-  guard = Math.min(Math.floor(widths.length / 3), Math.max(0, guard));
-  if (guard > 0) {
-    for (let index = 0; index < guard; index++) {
-      widths[index] = widths[guard];
-      widths[widths.length - 1 - index] = widths[widths.length - 1 - guard];
+  /*
+   * How far in the reading is untrustworthy, found from the shape of the climb
+   * rather than from its size.
+   *
+   * Near a free end the field is measuring the end. At distance d along the
+   * spine from the cut, the nearest boundary *is* the cut, so the reading is
+   * proportional to d -- twice it for a square cut, less for an angled one,
+   * but a straight line through the origin either way. Once d passes half the
+   * stroke's width the sides become nearer than the end and the reading stops
+   * following that line. So the corrupted stretch is the stretch where the
+   * reading is still proportional to the distance, and it ends where the ratio
+   * between them starts to fall.
+   *
+   * Three cruder rules were tried first and each failed on a case the others
+   * survived. A fixed point settling downwards -- the guard becomes half the
+   * width found *at* the guard -- walks to nothing, because the readings near a
+   * terminal are small precisely when the guard is too short to have cleared
+   * them: a `c` a hundred and ninety units wide settled on fifteen samples and
+   * called itself thirty wide at both ends. Settled upwards it stalls on the
+   * first step, since proportionality is exactly the critical rate for that
+   * iteration. And asking merely whether the climb has *stopped* cannot tell a
+   * terminal from a stroke that is genuinely widening, so it swallowed a third
+   * of every tapered stroke -- which is what a written script is made of.
+   *
+   * The ratio does not care how steep the line is, so it does not care whether
+   * the end was cut square or at an angle, and a taper leaves it immediately
+   * because a taper's own width is not proportional to the distance from its
+   * tip. The cost of getting this wrong is not subtle: a round cap is a disc of
+   * half the width at that end, so thirty units read on a stroke that is really
+   * a hundred and ninety puts a fifteen-unit disc where a ninety-five unit one
+   * belongs, and the outline loops back on itself getting there. That loop was
+   * hanging off the tip of every `a`, `c`, `s`, `v` and `z`.
+   */
+  const guardFrom = (fromStart: boolean): number => {
+    if (!(fromStart ? free.start : free.end)) return 0;
+    const ceiling = Math.floor(widths.length / 3);
+    const at = (step: number) => (fromStart ? step : widths.length - 1 - step);
+    let away = 0;
+    let steepest = 0;
+    for (let step = 1; step <= ceiling; step++) {
+      const index = at(step);
+      const previous = at(step - 1);
+      away +=
+        Math.hypot(
+          path[index][0] - path[previous][0],
+          path[index][1] - path[previous][1],
+        ) * grid.scale;
+      // The first pixel or two are noise, and a ratio taken over nothing is
+      // nothing but noise amplified.
+      if (away < grid.scale * 2) continue;
+      const slope = widths[index] / away;
+      if (steepest > 0 && slope < steepest * 0.85) return step;
+      steepest = Math.max(steepest, slope);
+    }
+    return ceiling;
+  };
+
+  /*
+   * The corrupted stretch filled in by carrying the stroke's own trend into it,
+   * rather than by holding one reading flat across it.
+   *
+   * Everything from the guard inwards is a true reading, so the two readings
+   * either side of the guard say what the stroke is doing there -- steady, or
+   * widening, or narrowing -- and continuing that to the tip is the best that
+   * can be said about a stretch the field could not see. On a stroke of one
+   * width the trend is flat and this holds it flat, which is what a square cut
+   * wants. On one that tapers it keeps tapering: a stroke swelling from thirty
+   * at its cut to a hundred and ten in its middle was read as thirty-eight at
+   * the cut when the widest reading in the zone was held there instead, and
+   * thirty-eight against thirty is a cap a quarter too big, which is enough for
+   * a round one to describe the end better than the square one it actually has.
+   *
+   * Clamped either side of the reading at the guard, because an extrapolation
+   * is a guess and a guess should not be allowed to run away with a terminal.
+   */
+  const carryInto = (fromStart: boolean, guard: number) => {
+    if (guard <= 0) return;
+    const at = (step: number) => (fromStart ? step : widths.length - 1 - step);
+    const gap = (step: number) => {
+      const [ax, ay] = path[at(step)];
+      const [bx, by] = path[at(step + 1)];
+      return Math.hypot(bx - ax, by - ay) * grid.scale;
+    };
+    const reach = Math.min(guard * 2, widths.length - 1);
+    let span = 0;
+    for (let step = guard; step < reach; step++) span += gap(step);
+    const anchor = widths[at(guard)];
+    const slope = span > 1e-9 ? (widths[at(reach)] - anchor) / span : 0;
+    const floor = anchor * 0.4;
+    const ceiling = anchor * 1.6;
+    let away = 0;
+    for (let step = guard - 1; step >= 0; step--) {
+      away += gap(step);
+      widths[at(step)] = Math.min(
+        ceiling,
+        Math.max(floor, anchor - slope * away),
+      );
+    }
+  };
+
+  const headGuard = guardFrom(true);
+  const footGuard = guardFrom(false);
+
+  /*
+   * A single reading is not evidence, and near a join it is a lie.
+   *
+   * The field says how far a point is from the nearest edge of the *union* of
+   * the strokes, so where the bowl of a `p` meets its stem the largest circle
+   * that fits is bigger than either of them, and a little further on -- where
+   * the spine has been pulled off the medial axis by the same join -- it is
+   * smaller. The `p` read a bowl of a steady hundred and eighty-six as
+   * 186, 234, 103, 104, 234, 192, and drawn from that it came back with four
+   * fifths of the ink the letter has.
+   *
+   * A median rejects such an excursion outright instead of averaging it in,
+   * provided the window is wider than the excursion is long -- and the
+   * excursion is about as long as the joining stroke is wide, which is about as
+   * wide as this one. So the window is the stroke's own width, which makes it
+   * twice what it has to be on the letters that need it and keeps it in
+   * proportion on a hairline. Capped at a quarter of the run, so a short stroke
+   * is not flattened to a single number by its own rule.
+   *
+   * Run after the guards are decided and before they are filled in: the climb
+   * at a free end is real and the guard has to see it, and what is carried into
+   * that stretch afterwards should be the readings rather than a median of the
+   * readings against the empty space past the terminal.
+   */
+  const sorted = [...widths].sort((one, other) => one - other);
+  const typical = sorted[widths.length >> 1];
+  const window = Math.min(
+    Math.floor(widths.length / 4),
+    Math.max(1, Math.round(typical / grid.scale)),
+  );
+  if (widths.length > window * 2 + 1) {
+    const raw = [...widths];
+    const sorting: number[] = [];
+    for (let index = 0; index < widths.length; index++) {
+      /*
+       * Kept symmetric about the point, even where that means a shorter window.
+       *
+       * A window clipped at an end is a window looking only inwards, and on a
+       * stroke that widens as it leaves its terminal that reads high: a taper
+       * genuinely thirty units wide at its cut came back thirty-eight, which
+       * was enough for a round cap to describe its square end better than a
+       * square one did. Symmetric, the median of a run that is climbing is the
+       * reading in the middle of it, so a terminal is left exactly as measured
+       * and only a bump with stroke either side of it is rejected -- which is
+       * the only thing this is here to reject.
+       */
+      const reach = Math.min(window, index, raw.length - 1 - index);
+      if (reach < 1) continue;
+      sorting.length = 0;
+      for (let i = index - reach; i <= index + reach; i++) sorting.push(raw[i]);
+      sorting.sort((one, other) => one - other);
+      widths[index] = sorting[sorting.length >> 1];
     }
   }
 
-  const places = widths.map((_, index) => index / (widths.length - 1));
+  carryInto(true, headGuard);
+  carryInto(false, footGuard);
+
+  /*
+   * An end that is a join has the opposite problem, and needed saying
+   * separately.
+   *
+   * The median above rejects a join in the middle of a run because it can look
+   * at the stroke either side of it. At an end there is no either side: the run
+   * stops inside the swelling, so half the window is swelling and the median
+   * keeps it. The two arms of an `x` end at their crossing and read two hundred
+   * and thirty where they are a hundred and seventy-two, and the letter came
+   * back with a fifth more ink than it has, all of it piled at the middle.
+   *
+   * Held instead at the first reading past the swelling, which the median has
+   * already cleaned: the stroke does not change width in the length of a join,
+   * and where it does, that is the joining stroke's doing rather than its own.
+   */
+  const join = Math.min(Math.floor(widths.length / 6), Math.round(window / 2));
+  if (!free.start && join > 0) {
+    const width = widths[join];
+    for (let index = 0; index < join; index++) widths[index] = width;
+  }
+  if (!free.end && join > 0) {
+    const width = widths[widths.length - 1 - join];
+    for (let index = 0; index < join; index++)
+      widths[widths.length - 1 - index] = width;
+  }
+
+  /*
+   * Where each reading sits along the stroke, by arc length rather than by
+   * count.
+   *
+   * The sweep reads a profile by arc length -- that is the whole point of a
+   * profile, so that a swelling halfway along is halfway along the ink. The
+   * readings come from an eight-connected walk over the skeleton, where a
+   * diagonal step is half again as long as an orthogonal one, so counting them
+   * puts a stop as much as twenty-nine per cent away from where it was read.
+   */
+  const run = [0];
+  for (let index = 1; index < path.length; index++) {
+    const [ax, ay] = path[index - 1];
+    const [bx, by] = path[index];
+    run.push(run[index - 1] + Math.hypot(bx - ax, by - ay));
+  }
+  const total = run[run.length - 1];
+  const places =
+    total > 0
+      ? run.map((one) => one / total)
+      : widths.map((_, index) => index / (widths.length - 1));
+
   const kept = [0, widths.length - 1];
+  /*
+   * Read back the way the sweep will read it, easing included.
+   *
+   * The reduction is only worth its name if the error it minimises is the error
+   * that will be drawn. Thinned against a straight interpolation and then drawn
+   * with a smoothstep, a profile certified within a unit everywhere is nothing
+   * of the sort.
+   */
   const readAt = (index: number): number => {
     const place = places[index];
     let before = kept[0];
@@ -436,7 +856,8 @@ function widthProfile(
     if (before === after) return widths[before];
     const span = places[after] - places[before];
     const t = span > 0 ? (place - places[before]) / span : 0;
-    return widths[before] + (widths[after] - widths[before]) * t;
+    const eased = t * t * (3 - 2 * t);
+    return widths[before] + (widths[after] - widths[before]) * eased;
   };
 
   while (kept.length < budget) {
@@ -455,7 +876,10 @@ function widthProfile(
     kept.sort((one, other) => one - other);
   }
 
-  return kept.map((index) => ({ at: places[index], width: Math.max(0, widths[index]) }));
+  return kept.map((index) => ({
+    at: places[index],
+    width: Math.max(0, widths[index]),
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -493,12 +917,32 @@ export function fitGlyph(
    * half. Sized against the em it is the same work and the same proportional
    * accuracy for either.
    */
-  const scale = options.scale ?? Math.max(1, (options.unitsPerEm ?? 1000) / 1000);
-  const tolerance = options.tolerance ?? 1.2;
+  const scale =
+    options.scale ?? Math.max(1, (options.unitsPerEm ?? 1000) / 1000);
   const budget = options.widthStops ?? 6;
 
   const grid = rasterise(contours, scale);
   if (!grid) return null;
+  /*
+   * How closely the spine is fitted, and why it is not as closely as asked.
+   *
+   * The centre-line being fitted is a walk over a grid of pixels: it is a
+   * staircase, and it is not known to better than about a pixel wherever it
+   * runs diagonally. Fitted to a fifth of that, the fitter does not follow the
+   * letter more faithfully -- it follows the *staircase*, splitting again and
+   * again to chase quantisation that is not in the drawing at all. The `o` of
+   * a sans came back as a forty-five segment centre-line, which is a circle
+   * described eleven times over, and every one of those segments then paid for
+   * itself twice in the outline swept from it.
+   *
+   * Floored at three pixels the same `o` is four segments, the alphabet loses
+   * three quarters of its nodes, and the redrawing moves by a tenth of a unit.
+   * A caller asking for something finer is honoured -- a test fitting a spine
+   * that was not read off a grid has every right to -- but nothing here asks
+   * for an accuracy the reading cannot support.
+   */
+  const tolerance = options.tolerance ?? Math.max(1.2, 3 * grid.scale);
+
   const field = distances(grid);
   const skeleton = thin(grid);
   const cut = tracePaths(skeleton, grid);
@@ -516,8 +960,8 @@ export function fitGlyph(
    */
   const label = components(skeleton, grid);
   const share = new Map<number, number>();
-  for (const path of paths) {
-    const which = label[path[0][1] * grid.width + path[0][0]];
+  for (const run of paths) {
+    const which = label[run.points[0][1] * grid.width + run.points[0][0]];
     share.set(which, (share.get(which) ?? 0) + 1);
   }
 
@@ -534,10 +978,12 @@ export function fitGlyph(
   const strokes: QuillStroke[] = [];
   let spineDeviation = 0;
 
-  for (const path of paths) {
+  for (const run of paths) {
+    const path = run.points;
     const length = pathLength(path, grid);
     const middle = path[Math.floor(path.length / 2)];
-    const localWidth = distanceAt(grid, field, middle[0], middle[1]) * 2 * grid.scale;
+    const localWidth =
+      distanceAt(grid, field, middle[0], middle[1]) * 2 * grid.scale;
     /*
      * How short is too short.
      *
@@ -549,19 +995,58 @@ export function fitGlyph(
      * every stroke under a hundred and twenty units and took real ones with it.
      */
     const floor = prune ?? Math.max(localWidth * 0.75, 4 * scale);
-    const ends = path.filter(([x, y]) => neighboursOf(skeleton, grid, x, y).length === 1).length;
-    const alone = (share.get(label[path[0][1] * grid.width + path[0][0]]) ?? 1) <= 1;
+    const ends = path.filter(
+      ([x, y]) => neighboursOf(skeleton, grid, x, y).length === 1,
+    ).length;
+    /*
+     * Which ends of this run are ends of the *letter* rather than joins.
+     *
+     * A run is cut at every junction, so each of its two ends is either a free
+     * terminal -- one skeleton neighbour, nothing beyond it -- or a place where
+     * it meets other strokes. Everything below that reasons about terminals
+     * has to ask this first, and did not: treated as a terminal, the shoulder
+     * of an `n` had its end probed for square corners, found ink on both sides
+     * because it was standing in the middle of the stem, concluded the stroke
+     * was cut square and ran the spine half a width further -- out through the
+     * far side of the stem, where it drew a blob.
+     */
+    const freeAt = (point: [number, number]) =>
+      !run.closed &&
+      neighboursOf(skeleton, grid, point[0], point[1]).length === 1;
+    const free = { start: freeAt(path[0]), end: freeAt(path[path.length - 1]) };
+    const alone =
+      (share.get(label[path[0][1] * grid.width + path[0][0]]) ?? 1) <= 1;
     // A run joined at both ends is load-bearing however short. A run that is
     // the whole of its own piece of skeleton is a mark, not a whisker.
     if (!alone && ends > 0 && length < floor) continue;
 
-    const points = smoothed(path.map(([x, y]) => toUnits(grid, x, y)));
+    /*
+     * How much of each end is the terminal rather than the stroke, in samples.
+     *
+     * The same half-a-width rule the width profile uses, and for the same
+     * reason: within that distance of a free end the field and the thinning are
+     * both describing the end of the stroke rather than its sides.
+     */
+    const guard = Math.min(
+      Math.floor(path.length / 3),
+      Math.max(0, Math.round(localWidth / 2 / grid.scale)),
+    );
+    const points = smoothed(
+      steadyEnds(
+        path.map(([x, y]) => toUnits(grid, x, y)),
+        free,
+        guard,
+      ),
+      2,
+    );
     if (points.length < 2) continue;
-    const fitted = fitCubics(points, tolerance);
+    const fitted = run.closed
+      ? fitRing(points, tolerance)
+      : fitCubics(points, tolerance);
     if (fitted.curves.length === 0) continue;
     spineDeviation = Math.max(spineDeviation, fitted.deviation);
 
-    const profile = widthProfile(path, grid, field, budget);
+    const profile = widthProfile(path, grid, field, budget, free);
     const segments = [...fitted.curves];
 
     /*
@@ -584,11 +1069,32 @@ export function fitGlyph(
      * of anything cut square, which a sans is made of.
      */
     const endCap = (which: "start" | "end") => {
-      const edge = which === "start" ? segments[0] : segments[segments.length - 1];
+      const edge =
+        which === "start" ? segments[0] : segments[segments.length - 1];
+      // A join is not a terminal: nothing to run out to, and nothing to cap.
+      if (!free[which]) return { cap: { kind: "butt" } as const, tip: null };
       const tip = which === "start" ? edge.from : edge.to;
-      const inward = which === "start" ? edge.c1 : edge.c2;
-      const dx = tip.x - inward.x;
-      const dy = tip.y - inward.y;
+      /*
+       * Which way the stroke was heading when it ran out, taken from the
+       * skeleton rather than from the curve fitted to it.
+       *
+       * A cubic's control point is not a direction. Where the fit falls back --
+       * a run that doubles back, two samples on top of each other -- the handle
+       * is placed a third of the chord along a tangent that was itself read off
+       * two points a fraction of a unit apart, and it can come out anywhere.
+       * At the foot of a `c` it came out pointing straight up the page, so the
+       * probe that is meant to look past the end of the stroke looked back
+       * along it, found no ink where it expected some, and reported a round
+       * terminal. Every angled cut in the font was called round that way.
+       *
+       * The skeleton has no such problem: it is a run of points, and the
+       * direction over the last stretch of it is a measurement.
+       */
+      const span = Math.max(4, Math.min(guard, points.length - 1));
+      const from =
+        which === "start" ? points[span] : points[points.length - 1 - span];
+      const dx = tip.x - from.x;
+      const dy = tip.y - from.y;
       const run = Math.hypot(dx, dy);
       if (run < 1e-9) return { cap: { kind: "round" } as const, tip };
       const out = { x: dx / run, y: dy / run };
@@ -596,46 +1102,177 @@ export function fitGlyph(
       if (half <= grid.scale) return { cap: { kind: "round" } as const, tip };
       const across = { x: -out.y, y: out.x };
       /*
-       * Probed inside the corner rather than at it.
+       * How far the ink actually runs past the skeleton, measured on each side
+       * rather than guessed from the shape of the corners.
        *
-       * Where exactly the thinning stopped is not known to better than a pixel
-       * or two, so a probe placed at the corner the stroke *would* end in falls
-       * outside the ink whenever the skeleton was worn back a little further
-       * than half a width, and reads a square end as a round one.
+       * Thinning stops half a width short of any terminal, because the end is a
+       * boundary like the sides are, so a stroke cut square and one rounded off
+       * leave the same skeleton and the difference is entirely in the ink past
+       * it. Asked whether the ink covers *both* corners of the rectangle the
+       * stroke would end in -- which is what this did -- only a terminal cut
+       * dead square says yes, and most terminals on most faces are not: DejaVu
+       * cuts the ends of its `c`, `s`, `z` and `v` at an angle, so one corner
+       * is covered and one is not, every one of them was called round, and a
+       * semicircle of ninety-five units was drawn where an angled cut belongs.
        *
-       * Nine tenths along and seven tenths across clears both ways. On a square
-       * end that point is a tenth of a width short of the cut and well inside
-       * the sides, so it answers yes even when the reading of the width is a
-       * unit or two generous. On a round one it is 1.14 radii from the centre
-       * of the end disc, and the disc stops at one, so it answers no. Both
-       * margins were needed: at six tenths and nine tenths the probe sat
-       * exactly on the edge of a thirty-unit stroke and the answer was a
-       * coin toss.
+       * Measured instead: walk out along the stroke's heading on each side and
+       * see how far the ink goes. Square gives half a width on both sides, an
+       * angled cut gives more on one and less on the other about the same mean,
+       * and a rounded end -- where the ink at this distance across the stroke
+       * has already run out -- gives about half of that on both. The mean is
+       * what decides, and it is also how far the spine is then run out, so an
+       * angled cut is cut square through its middle rather than rounded off.
        */
-      const corners = [1, -1].map((side) => ({
-        x: tip.x + out.x * half * 0.9 + across.x * half * 0.7 * side,
-        y: tip.y + out.y * half * 0.9 + across.y * half * 0.7 * side,
-      }));
-      if (corners.every((corner) => coversPoint(grid, corner))) {
-        // Square. Run the spine out to the cut so the flat end lands on the ink.
-        return {
-          cap: { kind: "butt" } as const,
-          tip: { x: tip.x + out.x * half, y: tip.y + out.y * half },
-        };
-      }
-      return { cap: { kind: "round" } as const, tip };
+      const step = Math.max(grid.scale, 1);
+      /*
+       * How far the ink runs in a direction, from a point that is in it.
+       * Nought when the starting point is already outside.
+       */
+      const inkFrom = (
+        fromX: number,
+        fromY: number,
+        wayX: number,
+        wayY: number,
+        cap: number,
+      ) => {
+        if (!coversPoint(grid, { x: fromX, y: fromY })) return 0;
+        let far = 0;
+        for (let out2 = 1; out2 <= Math.ceil(cap / step); out2++) {
+          const along = out2 * step;
+          if (
+            !coversPoint(grid, {
+              x: fromX + wayX * along,
+              y: fromY + wayY * along,
+            })
+          )
+            break;
+          far = along;
+        }
+        return far;
+      };
+
+      /*
+       * How far past the tip the ink runs, measured on both sides.
+       *
+       * Thinning stops short of any terminal, because the end of a stroke is a
+       * boundary like its sides are, and how far short is not fixed: a stem cut
+       * square runs half a width past where the skeleton gave out, while the
+       * foot of an `x`, whose arm reaches the baseline first, runs no distance
+       * at all. Started half a width back down the spine, which is on the
+       * medial axis and so inside the letter by construction, and that distance
+       * taken off again.
+       */
+      const back = half * 0.5;
+      const reachOn = (side: 1 | -1) =>
+        Math.max(
+          0,
+          inkFrom(
+            tip.x - out.x * back + across.x * half * 0.85 * side,
+            tip.y - out.y * back + across.y * half * 0.85 * side,
+            out.x,
+            out.y,
+            half * 3,
+          ) - back,
+        );
+      const reach = (reachOn(1) + reachOn(-1)) / 2;
+
+      /*
+       * Cut or rounded, settled by asking which of the two describes the ink.
+       *
+       * Every rule tried before this was a threshold on some single number, and
+       * each one failed on a case the others handled. Are both corners of the
+       * end rectangle covered? Only for a cut dead square, and DejaVu cuts its
+       * `c`, `s`, `v` and `z` at an angle -- all of them read round, and a
+       * semicircle of ninety-five units went where an angled cut belongs. Does
+       * the ink run far enough past the tip? Not at the foot of an `x`, where
+       * the arm reaches the baseline before the thinning gives out -- those
+       * read round too and hung half a disc below the line, a fifth more ink
+       * than the letter has. Is the stroke its full width across, just inside
+       * the tip? A round end is full width just inside the tip as well, because
+       * the disc is centred there.
+       *
+       * There is no single number that separates a square cut, an angled cut
+       * and a rounded end, and there does not need to be one: the two caps can
+       * simply be drawn and compared against the letter. Points are sampled
+       * over the ground past the tip that either cap could claim, and each cap
+       * is scored on how often it agrees with the ink -- covered where there is
+       * ink, clear where there is none. A disc scores badly on a cut end
+       * because of the two corners it leaves empty; a rectangle scores badly on
+       * a rounded one because of the same two corners filled in. Whichever
+       * describes the letter wins, and neither needs tuning.
+       */
+      const agreement = (rounded: boolean): number => {
+        let agree = 0;
+        let asked = 0;
+        const grain = Math.max(half / 5, grid.scale);
+        for (let a = -half * 1.2; a <= half * 1.2; a += grain) {
+          for (
+            let along = 0;
+            along <= Math.max(reach, half) * 1.3;
+            along += grain
+          ) {
+            const claimed = rounded
+              ? Math.hypot(along, a) <= half
+              : along <= reach && Math.abs(a) <= half;
+            asked++;
+            const point = {
+              x: tip.x + out.x * along + across.x * a,
+              y: tip.y + out.y * along + across.y * a,
+            };
+            if (claimed === coversPoint(grid, point)) agree++;
+          }
+        }
+        return asked > 0 ? agree / asked : 0;
+      };
+
+      if (agreement(true) > agreement(false))
+        return { cap: { kind: "round" } as const, tip };
+      return {
+        cap: { kind: "butt" } as const,
+        tip: { x: tip.x + out.x * reach, y: tip.y + out.y * reach },
+      };
     };
 
     const head = endCap("start");
     const foot = endCap("end");
-    if (head.cap.kind === "butt") segments[0] = { ...segments[0], from: head.tip };
-    if (foot.cap.kind === "butt") {
-      segments[segments.length - 1] = { ...segments[segments.length - 1], to: foot.tip };
+    const wasAt = segments[0].from;
+    const before = walkOf({ segments, closed: run.closed }).total;
+    if (head.cap.kind === "butt" && head.tip)
+      segments[0] = { ...segments[0], from: head.tip };
+    if (foot.cap.kind === "butt" && foot.tip) {
+      segments[segments.length - 1] = {
+        ...segments[segments.length - 1],
+        to: foot.tip,
+      };
     }
 
+    /*
+     * A spine run out to a square cut is longer than the one the widths were
+     * read along, and the profile is read by arc length.
+     *
+     * Left as it was, every stop slid towards the start of the stroke by as
+     * much as half a width -- ninety units on a DejaVu stem, which on a bowl
+     * four hundred long is a fifth of the way round it. The stops are put back
+     * where they were read by mapping them through the new length.
+     */
+    const after = walkOf({ segments, closed: run.closed }).total;
+    const shifted =
+      after > before + 1e-9 && before > 1e-9
+        ? (() => {
+            const lead =
+              head.cap.kind === "butt" && head.tip
+                ? Math.hypot(head.tip.x - wasAt.x, head.tip.y - wasAt.y)
+                : 0;
+            return profile.map((stop) => ({
+              ...stop,
+              at: Math.max(0, Math.min(1, (stop.at * before + lead) / after)),
+            }));
+          })()
+        : profile;
+
     strokes.push({
-      spine: { segments, closed: false },
-      width: profile,
+      spine: { segments, closed: run.closed },
+      width: shifted,
       nib: { ...ROUND_NIB },
       start: head.cap,
       end: foot.cap,
@@ -643,7 +1280,12 @@ export function fitGlyph(
   }
 
   return {
-    glyph: { name, advanceWidth, strokes, unitsPerEm: options.unitsPerEm ?? 1000 },
+    glyph: {
+      name,
+      advanceWidth,
+      strokes,
+      unitsPerEm: options.unitsPerEm ?? 1000,
+    },
     found: paths.length,
     kept: strokes.length,
     spineDeviation,

@@ -13,6 +13,14 @@
  * that typeface only ever went into a file. This takes it into the editor
  * instead, where every tool in the application is waiting for it.
  *
+ * A single letter has a second way across, which is not this one and is not a
+ * smaller version of it. Draw can lend one letter to the tools and take the
+ * drawing back into the slot it left, and the reason that works is the reason
+ * this cannot be done letter by letter: what comes back is an outline standing
+ * where a description used to be, so the rest of the font goes on answering the
+ * sliders and that one letter does not. Handing over a whole family the same
+ * way would leave nothing behind to answer them.
+ *
  * It is a one-way door and says so. The letters that arrive are outlines and
  * have stopped answering to the sliders that drew them, which is exactly what
  * somebody who wants to move a point is asking for, and exactly what somebody

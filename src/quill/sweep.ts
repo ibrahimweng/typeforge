@@ -24,6 +24,7 @@
  */
 
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
+import { contourArea } from "@/font/geometry";
 import { alongSpine, fitCubics, leftOf, walkOf, type SpineWalk } from "./curve";
 import type {
   DrawnStroke,
@@ -39,6 +40,27 @@ const at = (x: number, y: number): Vec2 => ({ x, y });
 
 /** How accurate a fitted offset has to be, in font units. */
 export const TOLERANCE = 0.4;
+
+/**
+ * How closely to fit the outline of a stroke that was *read* rather than drawn.
+ *
+ * A tolerance is a distance, and a distance means nothing without a scale --
+ * the same argument that keeps `unitsPerEm` on the glyph rather than beside it.
+ * Four tenths of a unit is a fine fit on a thousand-unit em and twice as fine
+ * on a two-thousand-unit one, for no gain any reader could see.
+ *
+ * And there is a second scale that matters more: a spine recovered from ink is
+ * a walk over a grid of pixels, known to about a pixel. Fitting its offset five
+ * times finer than the spine it is offset *from* does not make the letter more
+ * faithful; it spends nodes describing a staircase. Held level with the spine's
+ * own accuracy, a traced alphabet loses three quarters of its nodes -- two
+ * thousand and ninety-four to five hundred and twelve -- and moves by a tenth
+ * of a unit. That is the difference between an outline a person can edit and a
+ * recording of one.
+ */
+export function toleranceFor(unitsPerEm: number): number {
+  return Math.max(TOLERANCE, 3 * Math.max(1, unitsPerEm / 1000));
+}
 
 /*
  * How finely a stroke is walked when it has to be sampled.
@@ -141,7 +163,9 @@ function sideOf(
     const half = widthAt(profile, fraction) / 2;
     const reach = reachAcross(heading, half, nib);
     const normal = leftOf(heading);
-    points.push(at(point.x + normal.x * reach * side, point.y + normal.y * reach * side));
+    points.push(
+      at(point.x + normal.x * reach * side, point.y + normal.y * reach * side),
+    );
   }
   return points;
 }
@@ -159,7 +183,13 @@ function sideOf(
  * other two cannot fake -- a hairline that stops square still has a width, and
  * at the size a script is set at that reads as a blunt end.
  */
-function capPoints(end: Vec2, heading: Vec2, reach: number, cap: QuillCap, outward: 1 | -1): Vec2[] {
+function capPoints(
+  end: Vec2,
+  heading: Vec2,
+  reach: number,
+  cap: QuillCap,
+  outward: 1 | -1,
+): Vec2[] {
   const way = at(heading.x * outward, heading.y * outward);
   const normal = leftOf(way);
   if (cap.kind === "butt" || reach <= 1e-9) return [];
@@ -231,7 +261,8 @@ export function widthLimit(spine: QuillSpine): number {
           6 * t * (segment.to.y - 2 * segment.c2.y + segment.c1.y);
         const speed = Math.hypot(dx, dy);
         if (speed < 1e-9) continue;
-        const curvature = Math.abs(dx * ddy - dy * ddx) / (speed * speed * speed);
+        const curvature =
+          Math.abs(dx * ddy - dy * ddx) / (speed * speed * speed);
         if (curvature > 1e-9) tightest = Math.min(tightest, 1 / curvature);
       }
     }
@@ -243,12 +274,23 @@ export function widthLimit(spine: QuillSpine): number {
 // The sweep
 // ---------------------------------------------------------------------------
 
-function nodeAt(point: Vec2, handleIn: Vec2 | null, handleOut: Vec2 | null): GlyphNode {
-  return { point, handleIn, handleOut, type: handleIn || handleOut ? "smooth" : "corner" };
+function nodeAt(
+  point: Vec2,
+  handleIn: Vec2 | null,
+  handleOut: Vec2 | null,
+): GlyphNode {
+  return {
+    point,
+    handleIn,
+    handleOut,
+    type: handleIn || handleOut ? "smooth" : "corner",
+  };
 }
 
 /** A run of fitted cubics as outline nodes, ending where it began. */
-function nodesFrom(curves: ReturnType<typeof fitCubics>["curves"]): GlyphNode[] {
+function nodesFrom(
+  curves: ReturnType<typeof fitCubics>["curves"],
+): GlyphNode[] {
   const nodes: GlyphNode[] = [];
   for (let index = 0; index < curves.length; index++) {
     const curve = curves[index];
@@ -261,6 +303,101 @@ function nodesFrom(curves: ReturnType<typeof fitCubics>["curves"]): GlyphNode[] 
 }
 
 /**
+ * A run of fitted cubics as one closed contour.
+ *
+ * The run is expected to end where it began -- it was fitted from a loop with
+ * its first point repeated at the end -- so the last node and the first are the
+ * same place, and leaving both in would put a zero-length segment at the seam.
+ * The last node's incoming handle moves onto the first node and the duplicate
+ * goes, which is what makes the seam a smooth join rather than a corner.
+ */
+function ringFrom(curves: ReturnType<typeof fitCubics>["curves"]): GlyphNode[] {
+  const nodes = nodesFrom(curves);
+  if (nodes.length < 2) return nodes;
+  const last = nodes[nodes.length - 1];
+  const first = nodes[0];
+  first.handleIn = last.handleIn;
+  if (first.handleIn && first.handleOut) first.type = "smooth";
+  nodes.pop();
+  return nodes;
+}
+
+/** The same loop the other way round, handles swapped with it. */
+function reversed(nodes: GlyphNode[]): GlyphNode[] {
+  return [...nodes]
+    .reverse()
+    .map((node) => ({
+      ...node,
+      handleIn: node.handleOut,
+      handleOut: node.handleIn,
+    }));
+}
+
+/**
+ * A stroke whose spine is a ring, drawn.
+ *
+ * The two sides of a closed stroke are two closed loops, and that is the whole
+ * of the difference: there are no ends, so there are no caps, and the sides
+ * never meet. Swept as though it were open -- which is what this did until the
+ * `o` was measured -- a ring comes back as one contour that runs all the way
+ * round the outside, cuts across the stroke, runs all the way back round the
+ * inside and cuts across again, leaving a blob at the seam where the two caps
+ * pile up and a counter that is not a hole at all. That was sixty-four units of
+ * spilt ink at the bottom of every bowl in the font.
+ *
+ * The inner loop is turned round so the two wind oppositely, which is what
+ * makes the counter a counter under either fill rule, and the outer is left
+ * clockwise, which is the direction TrueType wants and what the paths list
+ * reports.
+ */
+function sweepRing(
+  stroke: QuillStroke,
+  walk: SpineWalk,
+  tolerance: number,
+): DrawnStroke {
+  const steps = stepsFor(walk.total);
+  const exact = isExact(stroke);
+
+  const loopOf = (side: 1 | -1) => {
+    const points = sideOf(
+      stroke.spine,
+      walk,
+      stroke.width,
+      stroke.nib,
+      side,
+      steps,
+    );
+    // The sample at one is the sample at nought; fitting the run with the first
+    // point repeated is what carries the tangent across the seam.
+    points.pop();
+    return fitCubics([...points, points[0]], tolerance);
+  };
+
+  const left = loopOf(1);
+  const right = loopOf(-1);
+  const contours: Contour[] = [
+    { nodes: ringFrom(left.curves), closed: true } as Contour,
+    { nodes: reversed(ringFrom(right.curves)), closed: true } as Contour,
+  ];
+  const usable = contours.filter((one) => one.nodes.length >= 2);
+  // Outer clockwise, inner anticlockwise, whichever side of the spine each fell on.
+  if (usable.length === 2) {
+    const areas = usable.map(contourArea);
+    const outer = Math.abs(areas[0]) >= Math.abs(areas[1]) ? 0 : 1;
+    if (areas[outer] > 0)
+      for (const one of usable) one.nodes = reversed(one.nodes);
+  }
+
+  return {
+    contours: usable,
+    exactness: {
+      exact,
+      deviation: exact ? 0 : Math.max(left.deviation, right.deviation),
+    },
+  };
+}
+
+/**
  * A stroke, drawn.
  *
  * The left side forward, the end cap, the right side back, the start cap: one
@@ -270,7 +407,9 @@ function nodesFrom(curves: ReturnType<typeof fitCubics>["curves"]): GlyphNode[] 
  */
 export function sweep(stroke: QuillStroke, tolerance = TOLERANCE): DrawnStroke {
   const walk = walkOf(stroke.spine);
-  if (walk.total <= 1e-9) return { contours: [], exactness: { exact: true, deviation: 0 } };
+  if (walk.total <= 1e-9)
+    return { contours: [], exactness: { exact: true, deviation: 0 } };
+  if (stroke.spine.closed) return sweepRing(stroke, walk, tolerance);
 
   const steps = stepsFor(walk.total);
   const left = sideOf(stroke.spine, walk, stroke.width, stroke.nib, 1, steps);
@@ -291,21 +430,43 @@ export function sweep(stroke: QuillStroke, tolerance = TOLERANCE): DrawnStroke {
    */
   const exactness: Exactness = {
     exact,
-    deviation: exact ? 0 : Math.max(fittedLeft.deviation, fittedRight.deviation),
+    deviation: exact
+      ? 0
+      : Math.max(fittedLeft.deviation, fittedRight.deviation),
   };
 
   const startEnd = alongSpine(stroke.spine, walk, 0);
   const finishEnd = alongSpine(stroke.spine, walk, 1);
-  const startReach = reachAcross(startEnd.heading, widthAt(stroke.width, 0) / 2, stroke.nib);
-  const finishReach = reachAcross(finishEnd.heading, widthAt(stroke.width, 1) / 2, stroke.nib);
+  const startReach = reachAcross(
+    startEnd.heading,
+    widthAt(stroke.width, 0) / 2,
+    stroke.nib,
+  );
+  const finishReach = reachAcross(
+    finishEnd.heading,
+    widthAt(stroke.width, 1) / 2,
+    stroke.nib,
+  );
 
   const nodes: GlyphNode[] = [];
   nodes.push(...nodesFrom(fittedLeft.curves));
-  for (const point of capPoints(finishEnd.point, finishEnd.heading, finishReach, stroke.end, 1)) {
+  for (const point of capPoints(
+    finishEnd.point,
+    finishEnd.heading,
+    finishReach,
+    stroke.end,
+    1,
+  )) {
     nodes.push(nodeAt(point, null, null));
   }
   nodes.push(...nodesFrom(fittedRight.curves));
-  for (const point of capPoints(startEnd.point, startEnd.heading, startReach, stroke.start, -1)) {
+  for (const point of capPoints(
+    startEnd.point,
+    startEnd.heading,
+    startReach,
+    stroke.start,
+    -1,
+  )) {
     nodes.push(nodeAt(point, null, null));
   }
 
@@ -313,7 +474,10 @@ export function sweep(stroke: QuillStroke, tolerance = TOLERANCE): DrawnStroke {
 }
 
 /** Every stroke of a glyph, drawn, with the weakest promise among them. */
-export function sweepAll(strokes: QuillStroke[], tolerance = TOLERANCE): DrawnStroke {
+export function sweepAll(
+  strokes: QuillStroke[],
+  tolerance = TOLERANCE,
+): DrawnStroke {
   const contours: Contour[] = [];
   let exact = true;
   let deviation = 0;

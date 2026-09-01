@@ -32,6 +32,7 @@ import {
   importLetter,
   relinkLetter,
   setFamily,
+  solid,
   startFrom,
   type Forge,
 } from "@/forge/document";
@@ -49,6 +50,8 @@ import {
 } from "@/forge/document";
 import type { Family } from "@/forge/family";
 import { letterSvg, readLetterSvg, type Arrival } from "@/forge/exchange";
+import { codepointsFor } from "@/forge/typeface";
+import type { Contour, Glyph, GlyphNode, VerticalMetrics } from "@/font/types";
 import type { PartName } from "@/forge/parts";
 import { baseNamed } from "@/forge/document";
 import { SANS, type Metrics, type Parts, type Style } from "@/forge/style";
@@ -678,6 +681,57 @@ class ForgeStore {
   /** Put an imported letter back under the family's control, to be drawn again. */
   redrawLetter(letter?: string): void {
     this.commit(relinkLetter(this.state.forge, letter ?? this.state.letter));
+  }
+
+  /**
+   * This letter as a glyph, ready to be put on the editor's desk.
+   *
+   * The same trip the SVG sheet makes, without the file. What goes out is the
+   * *solid* letter rather than the drawn one -- the letter the cuts are applied
+   * to, not the letter after them -- for the reason the sheet uses it: a slot or
+   * a saw is a description of what the font takes out of every letter, and a
+   * drawing that arrived with its slots already cut into it would be cut again
+   * the moment it came back.
+   *
+   * An imported letter hands back what it already is, so opening a hand-drawn
+   * letter a second time carries on from the drawing rather than starting over
+   * from a skeleton it has not had for some time.
+   */
+  letterAsGlyph(
+    letter?: string,
+  ): { glyph: Glyph; unitsPerEm: number; metrics: VerticalMetrics; family: string } | null {
+    const name = letter ?? this.state.letter;
+    const forge = this.state.forge;
+    const outside = forge.imported[name];
+    const drawn = outside
+      ? { contours: outside.contours, advanceWidth: outside.advanceWidth }
+      : solid(name, forge);
+    if (!drawn) return null;
+    const { metrics } = forge.style;
+    return {
+      glyph: {
+        name,
+        unicodes: codepointsFor(name),
+        advanceWidth: drawn.advanceWidth,
+        contours: drawn.contours.map((one: Contour) => ({
+          ...one,
+          nodes: one.nodes.map((node: GlyphNode) => ({ ...node })),
+        })),
+        components: [],
+        anchors: [],
+        params: {},
+        dirty: false,
+      },
+      unitsPerEm: metrics.unitsPerEm,
+      metrics: {
+        ascender: metrics.ascender,
+        descender: metrics.descender,
+        capHeight: metrics.capHeight,
+        xHeight: metrics.xHeight,
+        lineGap: 0,
+      },
+      family: this.state.familyName,
+    };
   }
 
   // --- history ------------------------------------------------------------

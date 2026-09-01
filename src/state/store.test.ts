@@ -1297,3 +1297,113 @@ describe("picking points at scale", () => {
     expect([...store.getSnapshot().selectedNodes]).toEqual(["0:0"]);
   });
 });
+
+/*
+ * A letter borrowed from a generator.
+ *
+ * Draw holds no outlines, so a letter that needs a hand is drawn once, put on
+ * the desk on its own with every tool pointed at it, and handed back into the
+ * slot it left. The desk is a typeface with one glyph in it, and the document
+ * that was open goes behind it -- which is the part with teeth, because
+ * everything downstream of this store asks the same question and has to keep
+ * getting the same answer while the parenthesis is open.
+ */
+describe("a letter on loan", () => {
+  const desk = (name: string): Glyph => ({ ...glyph(name), advanceWidth: 640 });
+  const lend = (name = "n"): void =>
+    store.borrowLetter({ letter: name, family: "Untitled" }, desk(name), {
+      unitsPerEm: 1000,
+      metrics: {
+        ascender: 800,
+        descender: -200,
+        capHeight: 700,
+        xHeight: 500,
+        lineGap: 0,
+      },
+    });
+
+  beforeEach(() => {
+    store.dropLoan();
+    seed(["A", "B", "C"]);
+  });
+
+  it("puts the letter on the desk on its own", () => {
+    lend();
+    const state = store.getSnapshot();
+    expect(state.loan).toEqual({ letter: "n", family: "Untitled" });
+    expect(state.typeface?.glyphs.map((one) => one.name)).toEqual(["n"]);
+    expect(state.selectedGlyph).toBe("n");
+    // Straight to the letter, because that is the whole of what a loan is for.
+    expect(state.view).toBe("glyph");
+  });
+
+  /*
+   * The one that would have cost somebody their work.
+   *
+   * The session is written down on a timer as well as on the button, and what
+   * it writes for the edited half is whatever this store calls its document. A
+   * minute spent moving points on a borrowed `n` would have replaced the font
+   * that was open with a font containing an `n`.
+   */
+  it("is not what gets written down", () => {
+    const held = store.snapshot();
+    expect(held?.typeface.glyphs.map((one) => one.name)).toEqual([
+      "A",
+      "B",
+      "C",
+    ]);
+    lend();
+    expect(store.snapshot()?.typeface.glyphs.map((one) => one.name)).toEqual([
+      "A",
+      "B",
+      "C",
+    ]);
+  });
+
+  it("gives back the letter and the width it left with", () => {
+    lend();
+    const kept = store.keepLoan();
+    expect(kept?.letter).toBe("n");
+    expect(kept?.advanceWidth).toBe(640);
+    expect(store.getSnapshot().loan).toBeNull();
+  });
+
+  it("puts the document back, whichever way the loan ends", () => {
+    const was = store.getSnapshot().typeface;
+    lend();
+    store.dropLoan();
+    expect(store.getSnapshot().typeface).toBe(was);
+    lend();
+    store.keepLoan();
+    expect(store.getSnapshot().typeface).toBe(was);
+  });
+
+  /*
+   * Opening something else is not a way of ending a loan and getting the old
+   * document back: it is a way of replacing the document. Putting the held one
+   * back afterwards would restore the font somebody had just chosen to leave,
+   * over the top of the one they had just chosen to open.
+   */
+  it("is forgotten when a document replaces it rather than restored over it", () => {
+    lend();
+    seed(["X", "Y"]);
+    expect(store.getSnapshot().loan).toBeNull();
+    expect(store.getSnapshot().typeface?.glyphs.map((one) => one.name)).toEqual(
+      ["X", "Y"],
+    );
+    store.dropLoan();
+    expect(store.getSnapshot().typeface?.glyphs.map((one) => one.name)).toEqual(
+      ["X", "Y"],
+    );
+  });
+
+  it("lends one letter at a time", () => {
+    lend("n");
+    lend("o");
+    expect(store.getSnapshot().loan?.letter).toBe("n");
+  });
+
+  it("hands nothing back when there is no loan", () => {
+    expect(store.keepLoan()).toBeNull();
+  });
+});

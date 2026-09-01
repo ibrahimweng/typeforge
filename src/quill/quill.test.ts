@@ -24,17 +24,37 @@
 
 import { describe, expect, it } from "vitest";
 
-import { contoursBounds, flattenContour } from "@/font/geometry";
-import { PLAIN_HAND, QUILL_CONTROLS, restyle, restyleWidth, type QuillStyle } from "./controls";
-import { furthestFrom } from "./curve";
+import { contourArea, contoursBounds, flattenContour } from "@/font/geometry";
+import {
+  PLAIN_HAND,
+  QUILL_CONTROLS,
+  restyle,
+  restyleWidth,
+  type QuillStyle,
+} from "./controls";
+import { furthestFromPath } from "./curve";
 import { fitGlyph } from "./fit";
-import { isConstant, isExact, reachAcross, sweep, sweepAll, widthAt, widthLimit } from "./sweep";
+import {
+  isConstant,
+  isExact,
+  reachAcross,
+  sweep,
+  sweepAll,
+  widthAt,
+  widthLimit,
+} from "./sweep";
 import { looksJoined } from "./joined";
 import { ROUND_NIB, type QuillStroke } from "./types";
 import type { Glyph, GlyphNode, Typeface } from "@/font/types";
 
 const straight = (from: [number, number], to: [number, number]) => ({
-  segments: [{ kind: "line" as const, from: { x: from[0], y: from[1] }, to: { x: to[0], y: to[1] } }],
+  segments: [
+    {
+      kind: "line" as const,
+      from: { x: from[0], y: from[1] },
+      to: { x: to[0], y: to[1] },
+    },
+  ],
   closed: false,
 });
 
@@ -55,7 +75,10 @@ describe("the sweep", () => {
   });
 
   it("says so when it could have been exact", () => {
-    expect(sweep(plainStroke(100)).exactness).toEqual({ exact: true, deviation: 0 });
+    expect(sweep(plainStroke(100)).exactness).toEqual({
+      exact: true,
+      deviation: 0,
+    });
   });
 
   it("draws an arc of one width between the right two radii", () => {
@@ -114,9 +137,15 @@ describe("the sweep", () => {
   });
 
   it("a varying width is never exact, however simple the spine", () => {
-    expect(isExact({ ...plainStroke(100), width: [{ at: 0, width: 100 }, { at: 1, width: 20 }] })).toBe(
-      false,
-    );
+    expect(
+      isExact({
+        ...plainStroke(100),
+        width: [
+          { at: 0, width: 100 },
+          { at: 1, width: 20 },
+        ],
+      }),
+    ).toBe(false);
     expect(isExact(plainStroke(100))).toBe(true);
   });
 
@@ -157,7 +186,12 @@ describe("the sweep", () => {
     expect(widthAt(profile, 0.5)).toBeCloseTo(50, 6);
     // Held rather than extrapolated outside the outermost stops.
     expect(widthAt([{ at: 0.3, width: 42 }], 0)).toBe(42);
-    expect(isConstant([{ at: 0, width: 9 }, { at: 1, width: 9 }])).toBe(true);
+    expect(
+      isConstant([
+        { at: 0, width: 9 },
+        { at: 1, width: 9 },
+      ]),
+    ).toBe(true);
   });
 
   /*
@@ -194,10 +228,24 @@ describe("the fitter", () => {
     const fit = fitGlyph("test", drawn.contours, 600, {});
     expect(fit, "the fitter found nothing to read").not.toBeNull();
     const again = sweepAll(fit!.glyph.strokes);
-    const before = drawn.contours.flatMap((one) => flattenContour(one, 40));
-    const after = again.contours.flatMap((one) => flattenContour(one, 40));
-    expect(after.length, "redrew nothing").toBeGreaterThan(0);
-    const off = Math.max(furthestFrom(before, after), furthestFrom(after, before));
+    const before = drawn.contours.map((one) => flattenContour(one, 40));
+    const after = again.contours.map((one) => flattenContour(one, 40));
+    expect(after.flat().length, "redrew nothing").toBeGreaterThan(0);
+    /*
+     * Point to *outline*, not point to point.
+     *
+     * A flattened outline puts samples along a curve and none along a straight
+     * run, because a straight run needs none to describe it. Compared cloud to
+     * cloud, two drawings that agree on a stem to within a unit report half its
+     * length as their difference -- the nearest sampled point to the middle of
+     * a stem is the corner at the end of it. That number is the sampling rather
+     * than the shape, and it hid the real errors in this engine behind
+     * imaginary ones for as long as it was used.
+     */
+    const off = Math.max(
+      furthestFromPath(before.flat(), after),
+      furthestFromPath(after.flat(), before),
+    );
     expect(off, `redrew ${off.toFixed(1)} units off`).toBeLessThan(tolerance);
     return fit!;
   };
@@ -224,7 +272,11 @@ describe("the fitter", () => {
      * medial point, so the redrawn disc sits slightly inside the original. Half
      * a dozen units on a stroke ninety wide.
      */
-    const round: QuillStroke = { ...plainStroke(90), start: { kind: "round" }, end: { kind: "round" } };
+    const round: QuillStroke = {
+      ...plainStroke(90),
+      start: { kind: "round" },
+      end: { kind: "round" },
+    };
     const fit = roundTrip([round], 8);
     expect(fit.glyph.strokes[0].start.kind).toBe("round");
   });
@@ -247,6 +299,296 @@ describe("the fitter", () => {
     expect(middle).toBeGreaterThan(80);
   });
 
+  /*
+   * A ring, which is the shape the sweep had no notion of.
+   *
+   * An `o` drawn in one closed motion has no ends, so it has no caps and its
+   * two sides never meet. Swept as though it were open it came back as one
+   * contour that ran round the outside, cut across the stroke, ran back round
+   * the inside and cut across again -- a blob at the seam where the two caps
+   * piled up, and a counter that was not a hole. It was sixty-four units of
+   * spilt ink at the bottom of every bowl in a traced font.
+   */
+  it("sweeps a closed spine as a ring rather than a capped band", () => {
+    const ring: QuillStroke = {
+      spine: {
+        segments: [
+          {
+            kind: "arc",
+            centre: { x: 0, y: 0 },
+            radius: 200,
+            startAngle: 0,
+            endAngle: Math.PI,
+            sweepPositive: true,
+          },
+          {
+            kind: "arc",
+            centre: { x: 0, y: 0 },
+            radius: 200,
+            startAngle: Math.PI,
+            endAngle: Math.PI * 2,
+            sweepPositive: true,
+          },
+        ],
+        closed: true,
+      },
+      width: [{ at: 0, width: 60 }],
+      nib: { ...ROUND_NIB },
+      start: { kind: "butt" },
+      end: { kind: "butt" },
+    };
+    const drawn = sweep(ring);
+    expect(drawn.contours.length, "a ring is an outside and an inside").toBe(2);
+    // Opposite windings, or the counter is filled in rather than a hole.
+    const areas = drawn.contours.map(contourArea);
+    expect(Math.sign(areas[0]) * Math.sign(areas[1])).toBe(-1);
+    const outer = Math.abs(areas[0]) >= Math.abs(areas[1]) ? 0 : 1;
+    expect(areas[outer], "the outside of a letter is clockwise").toBeLessThan(
+      0,
+    );
+    // The ring is 230 out and 170 in, all the way round, with nothing sticking
+    // out at the seam.
+    for (const contour of drawn.contours) {
+      for (const node of contour.nodes) {
+        const radius = Math.hypot(node.point.x, node.point.y);
+        expect(radius).toBeGreaterThan(168);
+        expect(radius).toBeLessThan(232);
+      }
+    }
+  });
+
+  it("reads a ring back as a ring", () => {
+    const ring: QuillStroke = {
+      spine: {
+        segments: [
+          {
+            kind: "arc",
+            centre: { x: 0, y: 0 },
+            radius: 200,
+            startAngle: 0,
+            endAngle: Math.PI,
+            sweepPositive: true,
+          },
+          {
+            kind: "arc",
+            centre: { x: 0, y: 0 },
+            radius: 200,
+            startAngle: Math.PI,
+            endAngle: Math.PI * 2,
+            sweepPositive: true,
+          },
+        ],
+        closed: true,
+      },
+      width: [{ at: 0, width: 60 }],
+      nib: { ...ROUND_NIB },
+      start: { kind: "butt" },
+      end: { kind: "butt" },
+    };
+    const fit = roundTrip([ring], 12);
+    expect(fit.glyph.strokes.length).toBe(1);
+    expect(fit.glyph.strokes[0].spine.closed, "an `o` has no ends").toBe(true);
+  });
+
+  /*
+   * How many nodes it costs, which is the difference between an outline a
+   * person can edit and a recording of one.
+   *
+   * The spine being fitted is a walk over a grid of pixels: a staircase, known
+   * to about a pixel wherever it runs diagonally. Fitted five times finer than
+   * that, the fitter chases quantisation rather than the letter -- a plain ring
+   * came back as a forty-five segment centre-line, which is a circle described
+   * eleven times over, and every one of those segments paid for itself twice
+   * again in the outline swept from it.
+   */
+  it("does not fit a spine finer than the grid it was read from", () => {
+    const ring: QuillStroke = {
+      spine: {
+        segments: [
+          {
+            kind: "arc",
+            centre: { x: 0, y: 0 },
+            radius: 200,
+            startAngle: 0,
+            endAngle: Math.PI,
+            sweepPositive: true,
+          },
+          {
+            kind: "arc",
+            centre: { x: 0, y: 0 },
+            radius: 200,
+            startAngle: Math.PI,
+            endAngle: Math.PI * 2,
+            sweepPositive: true,
+          },
+        ],
+        closed: true,
+      },
+      width: [{ at: 0, width: 60 }],
+      nib: { ...ROUND_NIB },
+      start: { kind: "butt" },
+      end: { kind: "butt" },
+    };
+    const fit = fitGlyph("o", sweepAll([ring]).contours, 600, {})!;
+    expect(
+      fit.glyph.strokes[0].spine.segments.length,
+      "a circle is not forty-five curves",
+    ).toBeLessThan(12);
+  });
+
+  /*
+   * A stroke that stops inside another one is joined to it, not ended.
+   *
+   * Thinning stops short of a boundary, and a junction is not a boundary: where
+   * the shoulder of an `n` runs into its stem the field does not fall away, it
+   * swells. Treated as a terminal, that end was probed for square corners,
+   * found ink on both sides because it was standing in the middle of the stem,
+   * concluded the stroke was cut square and ran the spine half a width further
+   * -- out through the far side of the stem, where it drew a blob.
+   */
+  it("does not run a stroke out past the one it joins", () => {
+    const stem: QuillStroke = {
+      spine: straight([0, 0], [0, 700]),
+      width: [{ at: 0, width: 80 }],
+      nib: { ...ROUND_NIB },
+      start: { kind: "butt" },
+      end: { kind: "butt" },
+    };
+    const arm: QuillStroke = {
+      spine: straight([0, 350], [400, 350]),
+      width: [{ at: 0, width: 80 }],
+      nib: { ...ROUND_NIB },
+      start: { kind: "butt" },
+      end: { kind: "butt" },
+    };
+    const fit = fitGlyph("T", sweepAll([stem, arm]).contours, 600, {})!;
+    const across = fit.glyph.strokes.find((one) => {
+      const [first] = one.spine.segments;
+      const last = one.spine.segments[one.spine.segments.length - 1];
+      if (first.kind !== "cubic" || last.kind !== "cubic") return false;
+      return (
+        Math.abs(last.to.x - first.from.x) > Math.abs(last.to.y - first.from.y)
+      );
+    });
+    expect(across, "the arm was not found at all").toBeDefined();
+    const start = across!.spine.segments[0];
+    expect(start.kind).toBe("cubic");
+    /*
+     * The arm's spine stops at the stem's centre-line, where the skeleton put
+     * it. Run out as though it were a terminal it goes half a width further --
+     * and the width read at a join is the join's, not the arm's, so "half a
+     * width" is half of something wider than either stroke.
+     */
+    expect(
+      start.kind === "cubic" ? start.from.x : 0,
+      "the arm was run out past the stroke it joins",
+    ).toBeGreaterThan(-12);
+  });
+
+  /*
+   * An end cut at an angle, which is most terminals on most faces.
+   *
+   * Thinning leaves the same skeleton whether an end was cut or rounded, so the
+   * difference is entirely in the ink past it -- and no single measurement of
+   * that ink separates a square cut, an angled cut and a rounded end. Asked
+   * whether both corners of the end rectangle are covered, only a dead-square
+   * cut says yes. Asked how far the ink runs past the tip, an arm that reaches
+   * the baseline before the thinning gives out says none, exactly as a rounded
+   * end does. So the two caps are drawn and compared against the letter
+   * instead, and whichever describes it wins.
+   */
+  it("reads an angled cut as a cut rather than a rounded end", () => {
+    const bar: QuillStroke = {
+      spine: straight([0, 0], [600, 0]),
+      width: [{ at: 0, width: 120 }],
+      nib: { ...ROUND_NIB },
+      start: { kind: "butt" },
+      end: { kind: "butt" },
+    };
+    const drawn = sweepAll([bar]);
+    // Slice the right-hand end off at forty-five degrees, which is what a face
+    // does to the terminal of a `c` or a `z` and what used to read as round.
+    const angled = drawn.contours.map((one) => ({
+      ...one,
+      nodes: one.nodes.map((node) =>
+        node.point.x > 540
+          ? {
+              ...node,
+              point: { x: 600 - Math.abs(node.point.y), y: node.point.y },
+            }
+          : node,
+      ),
+    }));
+    const fit = fitGlyph("bar", angled, 700, {})!;
+    expect(fit.glyph.strokes[0].end.kind, "an angled cut is a cut").toBe(
+      "butt",
+    );
+  });
+
+  /*
+   * A corner in the drawing is a corner in the centre-line read back from it.
+   *
+   * Schneider's method splits a run where the error is worst and fits the two
+   * halves separately, each taking its tangents from its own points, so a
+   * corner survives it without being looked for -- which is worth pinning
+   * precisely because nothing in the fitter mentions corners, and a change that
+   * made the two halves share a tangent would smooth the bottom of every `v`,
+   * `w` and `z` in a traced font without failing anything else.
+   *
+   * Detecting corners explicitly and cutting the fit at them was tried and
+   * removed: over an alphabet it moved the mean error by three hundredths of a
+   * unit and saved seventeen nodes in fourteen hundred, and no test could tell
+   * whether it was there.
+   */
+  it("keeps the corner at the bottom of a v", () => {
+    const vee: QuillStroke = {
+      spine: {
+        segments: [
+          { kind: "line", from: { x: 0, y: 700 }, to: { x: 250, y: 0 } },
+          { kind: "line", from: { x: 250, y: 0 }, to: { x: 500, y: 700 } },
+        ],
+        closed: false,
+      },
+      width: [{ at: 0, width: 90 }],
+      nib: { ...ROUND_NIB },
+      start: { kind: "butt" },
+      end: { kind: "butt" },
+    };
+    const drawn = sweepAll([vee]);
+    const fit = fitGlyph("v", drawn.contours, 600, {})!;
+    const spine = fit.glyph.strokes.flatMap((one) => one.spine.segments);
+    // Somewhere along it the run turns by more than a right angle, which is
+    // what a corner is and what a smoothed fit does not have.
+    const heading = (index: number) => {
+      const one = spine[index];
+      const from = one.kind === "cubic" ? one.from : { x: 0, y: 0 };
+      const to = one.kind === "cubic" ? one.to : { x: 0, y: 0 };
+      return Math.atan2(to.y - from.y, to.x - from.x);
+    };
+    let sharpest = 0;
+    for (let index = 1; index < spine.length; index++) {
+      let turn = Math.abs(heading(index) - heading(index - 1));
+      if (turn > Math.PI) turn = Math.PI * 2 - turn;
+      sharpest = Math.max(sharpest, turn);
+    }
+    expect(sharpest, "the bottom of the v was rounded off").toBeGreaterThan(
+      Math.PI / 2,
+    );
+
+    /*
+     * What the corner is *not* checked for, and why it is said rather than left
+     * to be discovered.
+     *
+     * The corner now survives the fit -- that is what is pinned above -- but it
+     * does not survive the sweep, which walks the spine and offsets point by
+     * point. A corner in a centre-line wants a mitre on its outside and a fold
+     * on its inside, and a walk produces neither: it rounds the outside and
+     * lets the inside cross itself. So the ink redrawn from this `v` is some
+     * sixty units out at the vertex, and no tolerance passed to the fitter
+     * changes that. Mitreing the sweep is the fix and it is not done here.
+     */
+  });
+
   it("keeps a mark that stands on its own rather than pruning it", () => {
     /*
      * The dot of an `i`, which is short and has two free ends and is therefore
@@ -267,7 +609,9 @@ describe("the fitter", () => {
     const fit = fitGlyph("i", drawn.contours, 300, {})!;
     expect(fit).not.toBeNull();
     const high = fit.glyph.strokes.filter((one) =>
-      one.spine.segments.some((segment) => segment.kind === "cubic" && segment.from.y > 600),
+      one.spine.segments.some(
+        (segment) => segment.kind === "cubic" && segment.from.y > 600,
+      ),
     );
     expect(high.length, "the dot was pruned away").toBeGreaterThan(0);
   });
@@ -304,7 +648,8 @@ describe("the hand", () => {
     expect(widthAt(flat, 0)).toBeCloseTo(widthAt(flat, 0.5), 6);
     expect(widthAt(flat, 0.5)).toBeCloseTo(widthAt(flat, 1), 6);
     // And the average is where it was: pressure is about the variation.
-    const mean = (one: typeof before) => one.reduce((s, x) => s + x.width, 0) / one.length;
+    const mean = (one: typeof before) =>
+      one.reduce((s, x) => s + x.width, 0) / one.length;
     expect(mean(flat)).toBeCloseTo(mean(before), 6);
 
     const more = restyleWidth(before, { ...PLAIN_HAND, pressure: 2 });
@@ -320,7 +665,12 @@ describe("the hand", () => {
   });
 
   it("slant leans the letter and keeps the baseline where it was", () => {
-    const glyph = { name: "l", advanceWidth: 300, strokes: [plainStroke(80)], unitsPerEm: 1000 };
+    const glyph = {
+      name: "l",
+      advanceWidth: 300,
+      strokes: [plainStroke(80)],
+      unitsPerEm: 1000,
+    };
     const leaned = restyle(glyph, { ...PLAIN_HAND, slant: 20 });
     const before = contoursBounds(sweepAll(glyph.strokes).contours);
     const after = contoursBounds(sweepAll(leaned.strokes).contours);
@@ -339,7 +689,12 @@ describe("the hand", () => {
   });
 
   it("tracking moves the room and not the strokes", () => {
-    const glyph = { name: "n", advanceWidth: 400, strokes: [plainStroke(80)], unitsPerEm: 1000 };
+    const glyph = {
+      name: "n",
+      advanceWidth: 400,
+      strokes: [plainStroke(80)],
+      unitsPerEm: 1000,
+    };
     const wider = restyle(glyph, { ...PLAIN_HAND, tracking: 1.5 });
     expect(wider.advanceWidth).toBeCloseTo(600, 6);
     expect(contoursBounds(sweepAll(wider.strokes).contours)).toEqual(
@@ -355,8 +710,15 @@ describe("the hand", () => {
      * full bounce -- which is correct behaviour and useless for asking whether
      * the letter moved at all. `l` sits near the top of the scatter.
      */
-    const glyph = { name: "l", advanceWidth: 400, strokes: [plainStroke(80)], unitsPerEm: 1000 };
-    const level = contoursBounds(sweepAll(restyle(glyph, PLAIN_HAND).strokes).contours);
+    const glyph = {
+      name: "l",
+      advanceWidth: 400,
+      strokes: [plainStroke(80)],
+      unitsPerEm: 1000,
+    };
+    const level = contoursBounds(
+      sweepAll(restyle(glyph, PLAIN_HAND).strokes).contours,
+    );
     const lifted = contoursBounds(
       sweepAll(restyle(glyph, { ...PLAIN_HAND, bounce: 1 }).strokes).contours,
     );
@@ -368,7 +730,9 @@ describe("the hand", () => {
     // The letter is the same letter: it was carried, not stretched.
     expect(lifted.yMax - lifted.yMin).toBeCloseTo(level.yMax - level.yMin, 6);
     // And it takes up no more room across than it did on the line.
-    expect(restyle(glyph, { ...PLAIN_HAND, bounce: 1 }).advanceWidth).toBeCloseTo(400, 6);
+    expect(
+      restyle(glyph, { ...PLAIN_HAND, bounce: 1 }).advanceWidth,
+    ).toBeCloseTo(400, 6);
   });
 
   it("bounce sends different letters different ways", () => {
@@ -380,9 +744,15 @@ describe("the hand", () => {
      * the forge's own bounce did for as long as its seed would not scatter.
      */
     const lifts = "abcdefghijklmnop".split("").map((name) => {
-      const glyph = { name, advanceWidth: 400, strokes: [plainStroke(80)], unitsPerEm: 1000 };
-      return contoursBounds(sweepAll(restyle(glyph, { ...PLAIN_HAND, bounce: 1 }).strokes).contours)
-        .yMin;
+      const glyph = {
+        name,
+        advanceWidth: 400,
+        strokes: [plainStroke(80)],
+        unitsPerEm: 1000,
+      };
+      return contoursBounds(
+        sweepAll(restyle(glyph, { ...PLAIN_HAND, bounce: 1 }).strokes).contours,
+      ).yMin;
     });
     const spread = Math.max(...lifts) - Math.min(...lifts);
     expect(spread).toBeGreaterThan(20);
@@ -401,7 +771,12 @@ describe("the hand", () => {
       contoursBounds(
         sweepAll(
           restyle(
-            { name, advanceWidth: 400, strokes: [plainStroke(80)], unitsPerEm: 1000 },
+            {
+              name,
+              advanceWidth: 400,
+              strokes: [plainStroke(80)],
+              unitsPerEm: 1000,
+            },
             { ...PLAIN_HAND, bounce: 1 },
           ).strokes,
         ).contours,
@@ -413,11 +788,19 @@ describe("the hand", () => {
     // The same slider on a 2048-unit font has to move a letter twice as far in
     // units and the same distance on the page. The em travels on the glyph for
     // exactly this reason.
-    const small = { name: "q", advanceWidth: 400, strokes: [plainStroke(80)], unitsPerEm: 1000 };
+    const small = {
+      name: "q",
+      advanceWidth: 400,
+      strokes: [plainStroke(80)],
+      unitsPerEm: 1000,
+    };
     const large = { ...small, unitsPerEm: 2000 };
     const lift = (glyph: typeof small) =>
-      contoursBounds(sweepAll(restyle(glyph, { ...PLAIN_HAND, bounce: 1 }).strokes).contours).yMin -
-      contoursBounds(sweepAll(restyle(glyph, PLAIN_HAND).strokes).contours).yMin;
+      contoursBounds(
+        sweepAll(restyle(glyph, { ...PLAIN_HAND, bounce: 1 }).strokes).contours,
+      ).yMin -
+      contoursBounds(sweepAll(restyle(glyph, PLAIN_HAND).strokes).contours)
+        .yMin;
     expect(lift(large)).toBeCloseTo(lift(small) * 2, 4);
   });
 
@@ -427,7 +810,12 @@ describe("the hand", () => {
      * left the advance alone would put the exit stroke of one letter somewhere
      * the next letter's entry is not, and come apart at every join.
      */
-    const glyph = { name: "n", advanceWidth: 400, strokes: [plainStroke(80)], unitsPerEm: 1000 };
+    const glyph = {
+      name: "n",
+      advanceWidth: 400,
+      strokes: [plainStroke(80)],
+      unitsPerEm: 1000,
+    };
     const wide = restyle(glyph, { ...PLAIN_HAND, width: 1.5 });
     expect(wide.advanceWidth).toBeCloseTo(600, 6);
 
@@ -446,7 +834,12 @@ describe("the hand", () => {
   });
 
   it("width and tracking are different things and compose", () => {
-    const glyph = { name: "n", advanceWidth: 400, strokes: [plainStroke(80)], unitsPerEm: 1000 };
+    const glyph = {
+      name: "n",
+      advanceWidth: 400,
+      strokes: [plainStroke(80)],
+      unitsPerEm: 1000,
+    };
     const both = restyle(glyph, { ...PLAIN_HAND, width: 1.25, tracking: 1.2 });
     expect(both.advanceWidth).toBeCloseTo(400 * 1.25 * 1.2, 6);
   });
@@ -470,11 +863,18 @@ describe("the hand", () => {
     const inside: QuillStroke = {
       ...stroke(),
       spine: {
-        segments: [{ kind: "line", from: { x: 150, y: 0 }, to: { x: 150, y: 400 } }],
+        segments: [
+          { kind: "line", from: { x: 150, y: 0 }, to: { x: 150, y: 400 } },
+        ],
         closed: false,
       },
     };
-    const glyph = { name: "n", advanceWidth: 400, strokes: [joining, inside], unitsPerEm: 1000 };
+    const glyph = {
+      name: "n",
+      advanceWidth: 400,
+      strokes: [joining, inside],
+      unitsPerEm: 1000,
+    };
 
     const reached = restyle(glyph, { ...PLAIN_HAND, reach: 1 });
     // The joining stroke gained a segment; the one inside did not.
@@ -497,21 +897,27 @@ describe("the hand", () => {
     const rightwards: QuillStroke = {
       ...stroke(),
       spine: {
-        segments: [{ kind: "line", from: { x: 100, y: 100 }, to: { x: 399, y: 100 } }],
+        segments: [
+          { kind: "line", from: { x: 100, y: 100 }, to: { x: 399, y: 100 } },
+        ],
         closed: false,
       },
     };
     const drawnBackwards: QuillStroke = {
       ...stroke(),
       spine: {
-        segments: [{ kind: "line", from: { x: 399, y: 100 }, to: { x: 100, y: 100 } }],
+        segments: [
+          { kind: "line", from: { x: 399, y: 100 }, to: { x: 100, y: 100 } },
+        ],
         closed: false,
       },
     };
     const style = { ...PLAIN_HAND, reach: 1 };
     const segmentsOf = (one: QuillStroke) =>
-      restyle({ name: "o", advanceWidth: 400, strokes: [one], unitsPerEm: 1000 }, style).strokes[0]
-        .spine.segments.length;
+      restyle(
+        { name: "o", advanceWidth: 400, strokes: [one], unitsPerEm: 1000 },
+        style,
+      ).strokes[0].spine.segments.length;
     expect(segmentsOf(rightwards)).toBe(2);
     expect(segmentsOf(drawnBackwards)).toBe(2);
   });
@@ -534,7 +940,12 @@ describe("the hand", () => {
         closed: false,
       },
     };
-    const glyph = { name: "o", advanceWidth: 400, strokes: [bowl], unitsPerEm: 1000 };
+    const glyph = {
+      name: "o",
+      advanceWidth: 400,
+      strokes: [bowl],
+      unitsPerEm: 1000,
+    };
     const reached = restyle(glyph, { ...PLAIN_HAND, reach: 1 });
     expect(reached.strokes[0].spine.segments.length).toBe(2);
     expect(reached.advanceWidth).toBeCloseTo(400, 6);
@@ -581,7 +992,9 @@ describe("the hand", () => {
        * dead control and is the opposite of one.
        */
       const base =
-        control.key === "nibAngle" ? { ...PLAIN_HAND, contrast: 0.6 } : PLAIN_HAND;
+        control.key === "nibAngle"
+          ? { ...PLAIN_HAND, contrast: 0.6 }
+          : PLAIN_HAND;
       /*
        * Three stops rather than two, because a nib is symmetrical.
        *
@@ -592,9 +1005,15 @@ describe("the hand", () => {
        * question worth asking.
        */
       const seen = new Set<string>();
-      for (const value of [control.min, (control.min + control.max) / 2, control.max]) {
+      for (const value of [
+        control.min,
+        (control.min + control.max) / 2,
+        control.max,
+      ]) {
         const style = { ...base, [control.key]: value } as QuillStyle;
-        seen.add(`${shapeOf(style)}|${restyle(glyph, style).advanceWidth.toFixed(4)}`);
+        seen.add(
+          `${shapeOf(style)}|${restyle(glyph, style).advanceWidth.toFixed(4)}`,
+        );
       }
       if (seen.size < 2) dead.push(`${control.key} (${control.label})`);
     }
@@ -604,8 +1023,12 @@ describe("the hand", () => {
   it("every control starts inside its own range", () => {
     const outside: string[] = [];
     for (const control of QUILL_CONTROLS) {
-      const value = (PLAIN_HAND as unknown as Record<string, number>)[control.key];
-      expect(typeof value, `${control.key} has no starting value`).toBe("number");
+      const value = (PLAIN_HAND as unknown as Record<string, number>)[
+        control.key
+      ];
+      expect(typeof value, `${control.key} has no starting value`).toBe(
+        "number",
+      );
       if (value < control.min || value > control.max) outside.push(control.key);
     }
     expect(outside).toEqual([]);
@@ -623,7 +1046,12 @@ describe("the hand", () => {
  * against the advance, so a box says that as plainly as a letter would and says
  * it without a drawing that would have to be trusted.
  */
-function boxGlyph(name: string, advanceWidth: number, from: number, to: number): Glyph {
+function boxGlyph(
+  name: string,
+  advanceWidth: number,
+  from: number,
+  to: number,
+): Glyph {
   const at = (x: number, y: number): GlyphNode => ({
     point: { x, y },
     handleIn: null,
@@ -634,7 +1062,12 @@ function boxGlyph(name: string, advanceWidth: number, from: number, to: number):
     name,
     unicodes: [name.codePointAt(0)!],
     advanceWidth,
-    contours: [{ nodes: [at(from, 0), at(to, 0), at(to, 500), at(from, 500)], closed: true }],
+    contours: [
+      {
+        nodes: [at(from, 0), at(to, 0), at(to, 500), at(from, 500)],
+        closed: true,
+      },
+    ],
     components: [],
     anchors: [],
     params: {},
@@ -652,7 +1085,13 @@ function fontOf(glyphs: Glyph[]): Typeface {
       weightClass: 400,
     } as Typeface["meta"],
     unitsPerEm: 1000,
-    metrics: { ascender: 800, descender: -200, capHeight: 700, xHeight: 500, lineGap: 0 },
+    metrics: {
+      ascender: 800,
+      descender: -200,
+      capHeight: 700,
+      xHeight: 500,
+      lineGap: 0,
+    },
     glyphs,
     glyphIndex: new Map(glyphs.map((one, index) => [one.name, index])),
     kerning: [],
@@ -669,7 +1108,9 @@ describe("telling a joined script from a text face", () => {
   it("calls a face with clear sidebearings a text face", () => {
     // Ink from 60 to 440 in an advance of 500: a tenth of the em clear on each
     // side, which is an ordinary text fit.
-    const verdict = looksJoined(fontOf(LOWERCASE.map((one) => boxGlyph(one, 500, 60, 440))));
+    const verdict = looksJoined(
+      fontOf(LOWERCASE.map((one) => boxGlyph(one, 500, 60, 440))),
+    );
     expect(verdict.joined).toBe(false);
     expect(verdict.tested).toBe(LOWERCASE.length);
     expect(verdict.reaching).toBe(0);
@@ -679,7 +1120,9 @@ describe("telling a joined script from a text face", () => {
   it("calls a face whose ink overhangs its advance a joined script", () => {
     // Ink from -20 to 520 in an advance of 500: the exit stroke runs past the
     // edge to meet the next letter, which is what joining is.
-    const verdict = looksJoined(fontOf(LOWERCASE.map((one) => boxGlyph(one, 500, -20, 520))));
+    const verdict = looksJoined(
+      fontOf(LOWERCASE.map((one) => boxGlyph(one, 500, -20, 520))),
+    );
     expect(verdict.joined).toBe(true);
     expect(verdict.reaching).toBe(LOWERCASE.length);
     expect(verdict.sidebearing).toBeCloseTo(-0.02, 5);
@@ -691,7 +1134,7 @@ describe("telling a joined script from a text face", () => {
      * runs to the advance -- is still a text face. A detector triggered by any
      * one letter would send it to the tracer, so the rule is most of them.
      */
-     const glyphs = LOWERCASE.map((one) =>
+    const glyphs = LOWERCASE.map((one) =>
       one === "r" ? boxGlyph(one, 500, 60, 500) : boxGlyph(one, 500, 60, 440),
     );
     expect(looksJoined(fontOf(glyphs)).joined).toBe(false);
@@ -700,7 +1143,9 @@ describe("telling a joined script from a text face", () => {
   it("says no rather than guessing when there is too little to go on", () => {
     // Four letters is not an alphabet, and no is the answer that opens the font
     // where every font can already be opened.
-    const verdict = looksJoined(fontOf(["a", "c", "e", "h"].map((one) => boxGlyph(one, 500, -20, 520))));
+    const verdict = looksJoined(
+      fontOf(["a", "c", "e", "h"].map((one) => boxGlyph(one, 500, -20, 520))),
+    );
     expect(verdict.joined).toBe(false);
     expect(verdict.tested).toBe(0);
   });

@@ -21,6 +21,7 @@ import { HelpDrawer } from "@/components/HelpDrawer";
 import { LibraryDialog } from "@/components/LibraryDialog";
 import { QuickActions, useQuickActionShortcut, type Shell } from "@/palette";
 import { Inspector } from "@/components/Inspector";
+import { OnLoan } from "@/components/OnLoan";
 import { TopBar } from "@/components/TopBar";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
 import type { Typeface } from "@/font/types";
@@ -579,10 +580,41 @@ export function App(): React.JSX.Element {
    * Every one of these is already a button somewhere: the palette is a second
    * door to the same rooms, not a second set of rooms.
    */
+  /**
+   * Going to another half of the application, by any of the doors people use.
+   *
+   * The tabs are one door and they are held shut over a borrowed letter, which
+   * the strip above the canvas depends on being true: it tells somebody the
+   * only ways out are keeping the drawing and throwing it away. The command
+   * palette is a second door to the same rooms and went straight past that, and
+   * so did the course drawer's "take me there" -- either would have left the
+   * loan on the desk and the real document in a drawer, with nothing on screen
+   * to say why.
+   *
+   * So the refusal lives at the one place a person's navigation turns into a
+   * change of mode, rather than at each door in turn, and says why rather than
+   * doing nothing. The doors that *replace* the document -- opening a font,
+   * restoring a project, starting a blank one, handing a whole family to the
+   * editor -- go on calling `setMode` directly and are right to: each of them
+   * lets go of the loan first, because choosing to open something else is a
+   * decision about the same work.
+   */
+  const goToMode = React.useCallback((next: Mode) => {
+    const { loan } = store.getSnapshot();
+    if (loan) {
+      store.say(
+        `Finish with ${loan.letter} first — keep the drawing or throw it away.`,
+        "info",
+      );
+      return;
+    }
+    setMode(next);
+  }, []);
+
   const shell: Shell = React.useMemo(
     () => ({
       mode,
-      setMode,
+      setMode: goToMode,
       view: state.view,
       setView: (view) => store.setView(view),
       openFile: () => inputRef.current?.click(),
@@ -702,7 +734,7 @@ export function App(): React.JSX.Element {
         onToggleAcademy={() => setLearning((open) => !open)}
         academyOpen={learning}
         mode={mode}
-        onMode={setMode}
+        onMode={goToMode}
         onSave={saveProject}
         keeping={keeping}
       />
@@ -714,6 +746,7 @@ export function App(): React.JSX.Element {
           {mode === "assemble" && <AssembleView />}
           {mode === "edit" && (
             <>
+              <OnLoan />
               {state.view === "grid" && <FontGridView />}
               {state.view === "glyph" && <GlyphEditorView />}
               {state.view === "kerning" && <KerningView />}
@@ -738,7 +771,7 @@ export function App(): React.JSX.Element {
             mode={mode}
             onClose={() => setLearning(false)}
             onGo={(where) => {
-              if (where.mode) setMode(where.mode as Mode);
+              if (where.mode) goToMode(where.mode as Mode);
               if (where.view) store.setView(where.view as ViewId);
             }}
           />

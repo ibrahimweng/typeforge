@@ -53,6 +53,7 @@ import {
 } from "@/forge/parts";
 import { BASES, FAMILIES } from "@/forge/style";
 import { forgeStore, useForge, type Phase } from "@/state/useForge";
+import { store } from "@/state/useStore";
 import { SliderControl as Slider } from "@/ui/components/controls/slider";
 import { cn } from "@/ui/lib/utils";
 
@@ -793,9 +794,45 @@ function Trip({ letter }: { letter: string }): React.JSX.Element {
     }
   };
 
+  /*
+   * The same trip, made without leaving.
+   *
+   * Everything below this hands the letter to another program and waits for it
+   * to come back. That is worth keeping -- the tool somebody draws best in is
+   * the tool they already have -- but it is a strange first answer to "I want to
+   * move this point", when the application it is being asked of has a pen, a
+   * knife and eleven other tools sitting one tab away.
+   *
+   * So the letter is drawn once, put on the desk on its own, and handed back
+   * into the slot it left at the width it left with, exactly as the file would
+   * have been. What it costs is the same thing the file costs and is said in the
+   * same words: the letter stops being a description.
+   */
+  const here = (): void => {
+    const lent = forgeStore.letterAsGlyph(letter);
+    if (!lent) {
+      setProblem(`${letter} has nothing drawn in it to work on.`);
+      return;
+    }
+    store.borrowLetter({ letter, family: state.familyName }, lent.glyph, {
+      unitsPerEm: lent.unitsPerEm,
+      metrics: lent.metrics,
+    });
+    store.askForMode("edit");
+  };
+
   return (
     <section className="border-b border-border p-3" data-forge-trip={letter}>
       <h3 className="pb-2 text-2xs font-medium">Draw {letter} yourself</h3>
+      <button
+        type="button"
+        onClick={here}
+        data-forge-draw-here={letter}
+        title={`Puts ${letter} on the canvas on its own, with the pen, the knife, the shapes and every other tool pointed at it. It comes back into this slot at the width it left with. Like a drawing brought in from outside, it stops answering the controls above — and one button puts it back under the family's control.`}
+        className="mb-1.5 w-full rounded-md border border-border px-2 py-1.5 text-2xs transition-colors hover:border-accent hover:bg-card"
+      >
+        {outside ? `Work on ${letter} with the tools` : `Draw ${letter} with the tools`}
+      </button>
       <div className="flex gap-1.5">
         <button
           type="button"
@@ -852,9 +889,11 @@ function Trip({ letter }: { letter: string }): React.JSX.Element {
         </div>
       ) : (
         <p className="pt-2 text-2xs leading-snug text-muted-foreground">
-          The sheet carries the baseline, the x-height and the sidebearings as
-          guides. Edit the black outline anywhere, and it comes back into this
-          letter's space at the width it left with.
+          Either way {letter} leaves the sliders and comes back into its own
+          space at the width it left with. The tools here put it on the canvas
+          with the pen, the knife and the shapes on it; the sheet carries the
+          baseline, the x-height and the sidebearings as guides for whatever you
+          draw in elsewhere.
         </p>
       )}
     </section>
