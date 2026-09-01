@@ -46,7 +46,8 @@ export function pointOn(segment: QuillSegment, t: number): Vec2 {
     );
   }
   if (segment.kind === "arc") {
-    const angle = segment.startAngle + (segment.endAngle - segment.startAngle) * t;
+    const angle =
+      segment.startAngle + (segment.endAngle - segment.startAngle) * t;
     return at(
       segment.centre.x + Math.cos(angle) * segment.radius,
       segment.centre.y + Math.sin(angle) * segment.radius,
@@ -54,8 +55,14 @@ export function pointOn(segment: QuillSegment, t: number): Vec2 {
   }
   const s = 1 - t;
   return at(
-    s * s * s * segment.from.x + 3 * s * s * t * segment.c1.x + 3 * s * t * t * segment.c2.x + t * t * t * segment.to.x,
-    s * s * s * segment.from.y + 3 * s * s * t * segment.c1.y + 3 * s * t * t * segment.c2.y + t * t * t * segment.to.y,
+    s * s * s * segment.from.x +
+      3 * s * s * t * segment.c1.x +
+      3 * s * t * t * segment.c2.x +
+      t * t * t * segment.to.x,
+    s * s * s * segment.from.y +
+      3 * s * s * t * segment.c1.y +
+      3 * s * t * t * segment.c2.y +
+      t * t * t * segment.to.y,
   );
 }
 
@@ -63,7 +70,8 @@ export function pointOn(segment: QuillSegment, t: number): Vec2 {
 export function headingOn(segment: QuillSegment, t: number): Vec2 {
   if (segment.kind === "line") return unit(sub(segment.to, segment.from));
   if (segment.kind === "arc") {
-    const angle = segment.startAngle + (segment.endAngle - segment.startAngle) * t;
+    const angle =
+      segment.startAngle + (segment.endAngle - segment.startAngle) * t;
     const way = segment.endAngle >= segment.startAngle ? 1 : -1;
     return unit(at(-Math.sin(angle) * way, Math.cos(angle) * way));
   }
@@ -86,7 +94,9 @@ export function headingOn(segment: QuillSegment, t: number): Vec2 {
   );
   if (len(d) > 1e-9) return unit(d);
   const nudge = t < 0.5 ? Math.min(t + 1e-3, 1) : Math.max(t - 1e-3, 0);
-  return unit(sub(pointOn(segment, nudge), pointOn(segment, t < 0.5 ? t : nudge)));
+  return unit(
+    sub(pointOn(segment, nudge), pointOn(segment, t < 0.5 ? t : nudge)),
+  );
 }
 
 /*
@@ -102,7 +112,8 @@ const STEPS = 32;
 /** How long a segment is, in font units. */
 export function segmentLength(segment: QuillSegment): number {
   if (segment.kind === "line") return len(sub(segment.to, segment.from));
-  if (segment.kind === "arc") return Math.abs(segment.endAngle - segment.startAngle) * segment.radius;
+  if (segment.kind === "arc")
+    return Math.abs(segment.endAngle - segment.startAngle) * segment.radius;
   let total = 0;
   let previous = pointOn(segment, 0);
   for (let step = 1; step <= STEPS; step++) {
@@ -147,8 +158,12 @@ export function alongSpine(
   for (let index = 0; index < spine.segments.length; index++) {
     const length = walk.lengths[index];
     if (length <= 0) continue;
-    if (covered + length >= wanted - 1e-9 || index === spine.segments.length - 1) {
-      const t = length > 0 ? Math.max(0, Math.min(1, (wanted - covered) / length)) : 0;
+    if (
+      covered + length >= wanted - 1e-9 ||
+      index === spine.segments.length - 1
+    ) {
+      const t =
+        length > 0 ? Math.max(0, Math.min(1, (wanted - covered) / length)) : 0;
       /*
        * The parameter is taken as the fraction of *this* segment's length,
        * which is exact for a line and an arc and very slightly out for a
@@ -167,7 +182,10 @@ export function alongSpine(
           if (run + piece >= target - 1e-9) {
             const inside = piece > 0 ? (target - run) / piece : 0;
             const exact = (step - 1 + inside) / STEPS;
-            return { point: pointOn(segment, exact), heading: headingOn(segment, exact) };
+            return {
+              point: pointOn(segment, exact),
+              heading: headingOn(segment, exact),
+            };
           }
           run += piece;
           previous = here;
@@ -193,7 +211,12 @@ export function alongSpine(
  * is what makes two fitted pieces meet smoothly instead of kinking, and a
  * general least-squares fit would not.
  */
-function fitOne(points: Vec2[], us: number[], leaving: Vec2, arriving: Vec2): QuillCubic {
+function fitOne(
+  points: Vec2[],
+  us: number[],
+  leaving: Vec2,
+  arriving: Vec2,
+): QuillCubic {
   const first = points[0];
   const last = points[points.length - 1];
   let c11 = 0;
@@ -213,7 +236,10 @@ function fitOne(points: Vec2[], us: number[], leaving: Vec2, arriving: Vec2): Qu
     c11 += dot(a1, a1);
     c12 += dot(a1, a2);
     c22 += dot(a2, a2);
-    const target = sub(points[index], add(mul(first, b0 + b1), mul(last, b2 + b3)));
+    const target = sub(
+      points[index],
+      add(mul(first, b0 + b1), mul(last, b2 + b3)),
+    );
     x1 += dot(a1, target);
     x2 += dot(a2, target);
   }
@@ -231,7 +257,12 @@ function fitOne(points: Vec2[], us: number[], leaving: Vec2, arriving: Vec2): Qu
    * the same two points with those two tangents would produce.
    */
   const chord = len(sub(last, first));
-  if (!(alpha1 > 0) || !(alpha2 > 0) || alpha1 > chord * 3 || alpha2 > chord * 3) {
+  if (
+    !(alpha1 > 0) ||
+    !(alpha2 > 0) ||
+    alpha1 > chord * 3 ||
+    alpha2 > chord * 3
+  ) {
     alpha1 = chord / 3;
     alpha2 = chord / 3;
   }
@@ -245,7 +276,11 @@ function fitOne(points: Vec2[], us: number[], leaving: Vec2, arriving: Vec2): Qu
 }
 
 /** How far the worst of these points falls from that cubic, and where. */
-function worstOff(points: Vec2[], us: number[], curve: QuillCubic): { far: number; at: number } {
+function worstOff(
+  points: Vec2[],
+  us: number[],
+  curve: QuillCubic,
+): { far: number; at: number } {
   let far = 0;
   let where = Math.floor(points.length / 2);
   for (let index = 1; index < points.length - 1; index++) {
@@ -266,7 +301,9 @@ function parametrise(points: Vec2[]): number[] {
     run += len(sub(points[index], points[index - 1]));
     us.push(run);
   }
-  return run > 0 ? us.map((one) => one / run) : us.map((_, index) => index / (us.length - 1 || 1));
+  return run > 0
+    ? us.map((one) => one / run)
+    : us.map((_, index) => index / (us.length - 1 || 1));
 }
 
 /**
@@ -307,11 +344,18 @@ export function fitCubics(
   }
 
   const leaving = unit(sub(points[1], points[0]));
-  const arriving = unit(sub(points[points.length - 2], points[points.length - 1]));
+  const arriving = unit(
+    sub(points[points.length - 2], points[points.length - 1]),
+  );
   const us = parametrise(points);
   const curve = fitOne(points, us, leaving, arriving);
   const { far, at: worst } = worstOff(points, us, curve);
-  if (far <= tolerance || depth >= 16 || worst <= 0 || worst >= points.length - 1) {
+  if (
+    far <= tolerance ||
+    depth >= 16 ||
+    worst <= 0 ||
+    worst >= points.length - 1
+  ) {
     return { curves: [curve], deviation: far };
   }
   const before = fitCubics(points.slice(0, worst + 1), tolerance, depth + 1);
@@ -334,4 +378,56 @@ export function furthestFrom(points: Vec2[], from: Vec2[]): number {
     worst = Math.max(worst, Math.sqrt(near));
   }
   return worst;
+}
+
+/**
+ * The furthest any of these points sits from the nearest of those *outlines*.
+ *
+ * The difference from `furthestFrom` is the one that matters when comparing a
+ * drawing to the drawing it was read from, and it is not a refinement: it is
+ * the difference between measuring the shape and measuring how densely each
+ * shape happened to be sampled.
+ *
+ * A flattened outline puts points along a curve and nothing along a straight
+ * run, because a straight run needs no points to describe it. Compare two such
+ * clouds point to point and a stem that both drawings agree on to within a unit
+ * reports half its own length as the error -- the redraw samples the stem, the
+ * source does not, and the nearest source *point* to the middle of the stem is
+ * the corner at its end. Measured against the source's *edges* instead, the
+ * same pair reports the unit they actually differ by.
+ *
+ * Each polyline is closed, which is what an outline is.
+ */
+export function furthestFromPath(points: Vec2[], outlines: Vec2[][]): number {
+  let worst = 0;
+  for (const one of points)
+    worst = Math.max(worst, nearestOnPaths(one, outlines));
+  return worst;
+}
+
+/** How far this point sits from the nearest edge of any of those outlines. */
+export function nearestOnPaths(point: Vec2, outlines: Vec2[][]): number {
+  let near = Infinity;
+  for (const outline of outlines) {
+    if (outline.length === 0) continue;
+    if (outline.length === 1) {
+      near = Math.min(near, len(sub(point, outline[0])));
+      continue;
+    }
+    for (let index = 0; index < outline.length; index++) {
+      const a = outline[index];
+      const b = outline[(index + 1) % outline.length];
+      near = Math.min(near, toSegment(point, a, b));
+    }
+  }
+  return near === Infinity ? 0 : near;
+}
+
+/** Distance from a point to a line segment, clamped to the segment's ends. */
+function toSegment(point: Vec2, a: Vec2, b: Vec2): number {
+  const along = sub(b, a);
+  const squared = dot(along, along);
+  if (squared < 1e-18) return len(sub(point, a));
+  const t = Math.max(0, Math.min(1, dot(sub(point, a), along) / squared));
+  return len(sub(point, add(a, mul(along, t))));
 }

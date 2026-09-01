@@ -18,7 +18,7 @@
 
 import { PLAIN_HAND, restyle, type QuillStyle } from "@/quill/controls";
 import type { JoinedVerdict } from "@/quill/joined";
-import { sweepAll } from "@/quill/sweep";
+import { sweepAll, toleranceFor } from "@/quill/sweep";
 import type { QuillGlyph } from "@/quill/types";
 import type { TracedProject } from "@/project/format";
 import { traceFont, type TraceMessage, type TraceProgress, type Traced } from "@/quill/tracing";
@@ -483,6 +483,6 @@ export const quillStore = new QuillStore();
  */
 export function drawTraced(traced: Traced, style: QuillStyle) {
   const moved = restyle(traced.glyph, style);
-  const drawn = sweepAll(moved.strokes);
+  const drawn = sweepAll(moved.strokes, toleranceFor(moved.unitsPerEm));
   return { contours: drawn.contours, advanceWidth: moved.advanceWidth, exactness: drawn.exactness };
 }

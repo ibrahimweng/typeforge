@@ -35,7 +35,7 @@ import { removeOverlaps } from "@/font/overlap";
 import { DEFAULT_PARAMS, emptyTypeface, type Glyph, type Typeface } from "@/font/types";
 import type { Contour } from "@/font/types";
 import { restyle, type QuillStyle } from "./controls";
-import { sweepAll } from "./sweep";
+import { sweepAll, toleranceFor } from "./sweep";
 import type { Traced } from "./tracing";
 
 /**
@@ -214,7 +214,7 @@ export async function toTypeface(
   const drawn = new Map<string, { contours: Contour[]; advanceWidth: number }>();
   for (const one of letters) {
     const moved = restyle(one.glyph, style);
-    const swept = sweepAll(moved.strokes);
+    const swept = sweepAll(moved.strokes, toleranceFor(moved.unitsPerEm));
     if (swept.contours.length === 0) continue;
     drawn.set(one.glyph.name, {
       contours: swept.contours,
