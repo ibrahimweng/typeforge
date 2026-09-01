@@ -988,15 +988,40 @@ export function fitGlyph(
     const localWidth =
       distanceAt(grid, field, middle[0], middle[1]) * 2 * grid.scale;
     /*
-     * How short is too short.
+     * How short is too short, asked as whether the branch draws any ink of its
+     * own.
      *
-     * Measured against the stroke's own width, because a whisker left by
-     * thinning is about as long as the stroke is wide -- it is the corner of
-     * the outline reaching further from the middle than its neighbours. Three
-     * quarters of the width catches those and leaves genuine short strokes
-     * alone. It was twice the width to begin with, which on a script pruned
-     * every stroke under a hundred and twenty units and took real ones with it.
+     * A whisker left by thinning is a branch reaching towards a corner of the
+     * outline, and what makes it a whisker is not its length but that the pen
+     * at its far end is already inside the pen at the junction it hangs off:
+     * swept, it adds nothing the rest of the letter does not already cover.
+     * That is what is asked here, and it is exact -- the distance between the
+     * two ends plus the radius at the far one against the radius at the root --
+     * costs two readings of a field that is already built, and does not care
+     * how long the branch is.
+     *
+     * Length against width was the rule before and it threw away the feet of
+     * the `w`. Both bottom vertices of that letter rest flat on the baseline,
+     * and the branch of skeleton describing each foot is twenty-two units long
+     * against a floor of a hundred and eighty-seven -- because the width it was
+     * compared against is read at the *middle* of the branch, which on a branch
+     * that short is the junction, where the field balloons to take in every
+     * stroke meeting there. The letter came back with no feet, missing
+     * ninety-three units of ink along the baseline, and was six times worse
+     * than anything else in the alphabet.
+     *
+     * An explicit `prune` still means a length in units, because that is what
+     * the tests that pass one are asking for.
      */
+    const radiusAt = (point: [number, number]) =>
+      distanceAt(grid, field, point[0], point[1]) * grid.scale;
+    const looseEnd = path.find(([x, y]) => neighboursOf(skeleton, grid, x, y).length === 1);
+    const heldEnd = path.find(([x, y]) => neighboursOf(skeleton, grid, x, y).length > 2) ?? path[0];
+    const covered =
+      looseEnd !== undefined &&
+      Math.hypot(looseEnd[0] - heldEnd[0], looseEnd[1] - heldEnd[1]) * grid.scale +
+        radiusAt(looseEnd) <=
+        radiusAt(heldEnd);
     const floor = prune ?? Math.max(localWidth * 0.75, 4 * scale);
     const ends = path.filter(
       ([x, y]) => neighboursOf(skeleton, grid, x, y).length === 1,
@@ -1021,7 +1046,7 @@ export function fitGlyph(
       (share.get(label[path[0][1] * grid.width + path[0][0]]) ?? 1) <= 1;
     // A run joined at both ends is load-bearing however short. A run that is
     // the whole of its own piece of skeleton is a mark, not a whisker.
-    if (!alone && ends > 0 && length < floor) continue;
+    if (!alone && ends > 0 && (prune !== undefined ? length < floor : covered)) continue;
 
     /*
      * How much of each end is the terminal rather than the stroke, in samples.
@@ -1093,7 +1118,36 @@ export function fitGlyph(
        * The skeleton has no such problem: it is a run of points, and the
        * direction over the last stretch of it is a measurement.
        */
-      const span = Math.max(4, Math.min(guard, points.length - 1));
+      /*
+       * A known-wrong measurement, left alone because correcting it is worse.
+       *
+       * This reads the heading over the last stretch up to the tip, and that
+       * stretch is inside the zone the width profile refuses to believe. A
+       * medial axis approaching a terminal bends towards the corner it is
+       * running into, so what comes back is somewhere between where the stroke
+       * was going and where the corner is: at the top of a `v`, whose arm
+       * climbs at sixty-three degrees, this reads twenty-nine. Everything
+       * downstream is then measured across a stroke running the wrong way --
+       * which side of the cut is which, how far the ink runs past it, and so
+       * the angle of the cut.
+       *
+       * Measuring it over the stretch just *inside* the zone instead gives the
+       * arm's true sixty-three degrees, and was tried: the `v`'s worst error
+       * falls from sixty units to forty-six and the alphabet gets *worse*,
+       * 7.15 units to 7.19 and twenty nodes heavier, with the other three
+       * angled-terminal letters unmoved to the eye. So something downstream is
+       * leaning on the bend -- most likely the reach, whose mean lands the cut
+       * in about the right place along a bent heading by cancellation. Finding
+       * what, rather than swapping one compensation for another, is the work.
+       */
+      /*
+       * At least four samples, at most the guard, and never off the end of the
+       * run -- which the floor of four could do on its own, and did as soon as
+       * short branches started being kept: a two-point run asked for the point
+       * three before its last and got nothing, and a whole font stopped tracing
+       * with an error about a property of undefined.
+       */
+      const span = Math.min(points.length - 1, Math.max(4, guard));
       const from =
         which === "start" ? points[span] : points[points.length - 1 - span];
       const dx = tip.x - from.x;
