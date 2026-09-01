@@ -171,17 +171,30 @@ const BATCH = 25;
  * The timer is kept for anywhere without `MessageChannel`, which is every
  * test runner that stubs the DOM away.
  */
+let breaths: MessageChannel | null = null;
+const waking: Array<() => void> = [];
+
 function takeABreath(): Promise<void> {
   if (typeof MessageChannel !== "function") {
     return new Promise((wake) => setTimeout(wake, 0));
   }
+  /*
+   * One channel for the life of the page, not one per breath.
+   *
+   * A channel is two ports and a message queue, and this is called once per
+   * batch -- two hundred and fifty times for a six thousand glyph font, every
+   * time the check runs. Building and closing that many is work the check does
+   * not need to do, and it holds two ports per breath until the collector gets
+   * to them, which is the sort of thing that is free on an idle machine and
+   * not on a busy one.
+   */
+  if (!breaths) {
+    breaths = new MessageChannel();
+    breaths.port1.onmessage = () => waking.shift()?.();
+  }
   return new Promise((wake) => {
-    const channel = new MessageChannel();
-    channel.port1.onmessage = () => {
-      channel.port1.close();
-      wake();
-    };
-    channel.port2.postMessage(null);
+    waking.push(wake);
+    breaths!.port2.postMessage(null);
   });
 }
 
