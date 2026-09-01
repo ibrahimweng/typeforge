@@ -414,8 +414,25 @@ function EmptyState(): React.JSX.Element {
       <p className="max-w-sm text-xs-plus text-muted-foreground">
         A UFO is a folder rather than a file. Drop the whole folder in, or pick it below.
       </p>
+      {/*
+        The one thing this screen never offered, and the reason it is first.
+
+        Three doors were here and all three of them wanted a font you already
+        had: drop a file, open a folder, try the sample. Somebody arriving to
+        *make* a typeface -- which is the thing this tool is best at, and the
+        whole of what Draw does -- was told to bring one, and had to find the
+        mode switch on their own to learn otherwise.
+      */}
       <div className="flex flex-wrap items-center justify-center gap-2">
-        <button type="button" onClick={() => void store.loadSample()} className={PRIMARY_ACTION}>
+        <button
+          type="button"
+          onClick={() => store.askForMode("forge")}
+          data-start-drawing
+          className={PRIMARY_ACTION}
+        >
+          Draw one from nothing
+        </button>
+        <button type="button" onClick={() => void store.loadSample()} className={OUTLINE_ACTION}>
           Try the sample font
         </button>
         <button
@@ -428,8 +445,9 @@ function EmptyState(): React.JSX.Element {
         </button>
       </div>
       <p className="max-w-sm text-2xs text-muted-foreground">
-        A small Latin face to take the controls for a run. Nothing is uploaded — every font you open
-        stays in this browser.
+        Draw starts from one of twenty families and gives you a whole alphabet before you touch
+        anything; the sample is a small Latin face to take the controls for a run. Nothing is
+        uploaded — every font you open stays in this browser.
       </p>
     </div>
   );

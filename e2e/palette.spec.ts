@@ -21,7 +21,7 @@ const dialog = (page: import("@playwright/test").Page) =>
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: /draw/i }).first().click();
+  await page.getByRole("button", { name: "Draw", exact: true }).click();
 });
 
 test("opens on the shortcut and closes on escape", async ({ page }) => {

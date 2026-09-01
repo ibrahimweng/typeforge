@@ -324,3 +324,33 @@ And one that is worth saying plainly: the fault the tour found was not in a
 feature that had been rushed. The pen work of the previous round was tested,
 documented, and correct. It was also unusable for its actual purpose, because
 nobody had sat down and drawn a letter with it.
+
+# A sixth tour: arriving knowing nothing
+
+The five tours before this were made by somebody who knew what the code did.
+This one was made pretending not to, with one goal: make a typeface, having
+never made one.
+
+**The front door does not offer it.** Drop a font file, open a UFO folder, try
+the sample. Three doors and all three want a typeface you already have. Draw
+mode makes one from nothing, has twenty families under it and a complete
+alphabet before you touch a control, and the landing page has never mentioned
+it — you have to find the mode switch and guess.
+
+That is the whole finding, and it is worth more than a longer list. The rest of
+the journey works: the views are there in Draw, export offers a name and weights
+and a format, and a file comes out that installs. Nothing is broken. The thing
+this tool is best at was simply not on the door.
+
+The second finding is not a fault, it is an absence, and it produced the
+academy: **there is no path from "I know nothing about type" to "I made a
+font".** There is a reference manual, a tip per view, and a deep toolset with
+about thirty live controls, and nothing that says which order to meet them in.
+
+Worth recording alongside those: this tour began by trying to build a feature
+the code told me was missing. `script.ts` said contextual joins were "the next
+piece of work" and that the exporter "cannot yet write" the table; both had
+stopped being true and the comment had not. One command against the existing
+harness settled it in under a minute. **A comment claiming work is undone is a
+liability of exactly the same kind as one claiming work is done** — and neither
+survives a harness that can be run.

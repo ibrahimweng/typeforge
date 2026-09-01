@@ -615,7 +615,23 @@ function applyAlternates(
       }
       swaps.push({ at: position.at, swap });
     }
-    if (whole) rules.push({ input, swaps });
+
+    /*
+     * The two required runs, translated the same way and held to the same bar.
+     *
+     * A backtrack whose glyphs are not all in this font is not a weaker rule,
+     * it is a different one: it would fire where the real rule should not.
+     */
+    const runOf = (positions: string[][] | undefined): number[][] =>
+      (positions ?? []).map((position) => {
+        const ids = position.map(idFor);
+        if (ids.some((id) => id === null)) whole = false;
+        return ids.filter((id): id is number => id !== null);
+      });
+    const before = runOf(rule.before);
+    const after = runOf(rule.after);
+
+    if (whole) rules.push({ input, swaps, before, after });
   }
 
   /*

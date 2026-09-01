@@ -258,6 +258,21 @@ export interface AppState {
    */
   highlightPath: number | null;
   /**
+   * A mode a view has asked to be taken to, for the app to act on and clear.
+   *
+   * Which document kind is on screen belongs to the app rather than to this
+   * store -- Draw and Assemble have their own documents entirely, and putting
+   * the switch here would give a font store an opinion about fonts it does not
+   * hold. But a view sometimes knows where somebody should be going and cannot
+   * take them: the empty font grid is the clearest case, because the person
+   * standing in front of it may well have arrived wanting to draw a typeface
+   * rather than open one, and that lives in a mode this view cannot reach.
+   *
+   * So it asks. One field, set by the view and cleared by the app the moment it
+   * has acted, which keeps the request from firing twice.
+   */
+  wantsMode: string | null;
+  /**
    * Which ground the type is drawn on, where type is looked at.
    *
    * Only the canvas and the proof page change: the chrome stays dark, because
@@ -345,6 +360,7 @@ class Store {
     polygonSides: POLYGON_SIDES,
     drawing: false,
     highlightPath: null,
+    wantsMode: null,
     ground: "dark",
     selectedGlyph: null,
     selectedNodes: new Set(),
@@ -749,6 +765,16 @@ class Store {
    * the whole canvas. */
   setHighlightPath(index: number | null): void {
     if (this.state.highlightPath !== index) this.set({ highlightPath: index });
+  }
+
+  /** Ask the app to change document kind, from a view that cannot. */
+  askForMode(mode: string): void {
+    this.set({ wantsMode: mode });
+  }
+
+  /** The app has acted on the request and it must not fire again. */
+  modeAsked(): void {
+    if (this.state.wantsMode !== null) this.set({ wantsMode: null });
   }
 
   /** The pen has begun, or gone on with, an outline. */

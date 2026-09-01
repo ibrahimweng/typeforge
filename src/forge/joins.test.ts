@@ -107,15 +107,29 @@ describe("the two sides of a join that is not there", () => {
    * backtrack or a lookahead. Two rules and so two lookups: one that consumed
    * the space would leave the word after it unlooked at.
    */
-  it("matches on the neighbour and leaves the neighbour alone", () => {
+  it("requires the neighbour rather than consuming it", () => {
+    /*
+     * The distinction the whole thing turns on. Matched, the space is part of
+     * the sequence and is spent on it, so the one space between two words can
+     * only serve the rule that gets there first -- and `a bat` had either the
+     * `b` drawn as a beginning or the `a` drawn as an ending, never both.
+     * Required, it is a condition on the match and is still there afterwards.
+     */
     const rules = boundaryRules(boundaryEnds(forge), letterNames());
     expect(rules.length).toBe(3);
     const [, begins, ends] = rules;
-    expect(begins.input[0]).toContain("space");
-    expect(begins.swaps.map((one) => one.at)).toEqual([1]);
-    expect(ends.input[1]).toContain("space");
+
+    expect(begins.before?.[0]).toContain("space");
+    expect(begins.input).toHaveLength(1);
+    expect(begins.swaps.map((one) => one.at)).toEqual([0]);
+
+    expect(ends.after?.[0]).toContain("space");
+    expect(ends.input).toHaveLength(1);
     expect(ends.swaps.map((one) => one.at)).toEqual([0]);
-    // Nothing in either rule redraws the glyph that provided the context.
+
+    // Nothing in either rule redraws the glyph that provided the context, and
+    // now it could not: the swaps can only reach the input, and the space is
+    // not in it.
     expect(begins.swaps.flatMap((one) => one.swap).some((one) => one.plain === "space")).toBe(false);
     expect(ends.swaps.flatMap((one) => one.swap).some((one) => one.plain === "space")).toBe(false);
   });
@@ -199,8 +213,13 @@ describe("the two sides of a join that is not there", () => {
     const rules = boundaryRules(boundaryEnds(forge), letterNames());
     expect(rules).toHaveLength(3);
     const [lone] = rules;
-    expect(lone.input).toHaveLength(3);
-    expect(lone.swaps.map((one) => one.at)).toEqual([1]);
+    // One glyph in the sequence -- the letter -- with a space required either
+    // side. Both spaces used to be in the input, which is why a run of
+    // one-letter words came out with only every other one caught.
+    expect(lone.input).toHaveLength(1);
+    expect(lone.before?.[0]).toContain("space");
+    expect(lone.after?.[0]).toContain("space");
+    expect(lone.swaps.map((one) => one.at)).toEqual([0]);
     expect(lone.swaps[0].swap).toContainEqual({ plain: "a", alternate: "a.alone" });
     // A capital is not in it: with no lead-in to lose, alone and last are the
     // same drawing and it already has one.

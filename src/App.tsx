@@ -16,6 +16,7 @@ import { FontInfoDialog } from "@/components/FontInfoDialog";
 import { ForgePanel } from "@/components/ForgePanel";
 import { QuillExportDialog } from "@/components/QuillExportDialog";
 import { QuillPanel } from "@/components/QuillPanel";
+import { AcademyDrawer } from "@/components/AcademyDrawer";
 import { HelpDrawer } from "@/components/HelpDrawer";
 import { LibraryDialog } from "@/components/LibraryDialog";
 import { QuickActions, useQuickActionShortcut, type Shell } from "@/palette";
@@ -132,6 +133,21 @@ export function App(): React.JSX.Element {
    * outlines that none of them reach.
    */
   const [mode, setMode] = React.useState<Mode>("edit");
+  const [learning, setLearning] = React.useState(false);
+
+  /*
+   * A view asking to be somewhere else.
+   *
+   * The empty font grid is the one that needs it: somebody looking at "no font
+   * open" may have arrived wanting to draw a typeface rather than open one, and
+   * that is a different document kind which the grid has no way to reach.
+   * Cleared as soon as it is acted on, so it cannot fire twice.
+   */
+  React.useEffect(() => {
+    if (!state.wantsMode) return;
+    setMode(state.wantsMode as Mode);
+    store.modeAsked();
+  }, [state.wantsMode]);
   const [dragging, setDragging] = React.useState(false);
   const [keeping, setKeeping] = React.useState<Keeping>("unknown");
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -683,6 +699,8 @@ export function App(): React.JSX.Element {
         onFontInfo={() => setNaming(true)}
         onToggleHelp={() => setHelping((open) => !open)}
         helpOpen={helping}
+        onToggleAcademy={() => setLearning((open) => !open)}
+        academyOpen={learning}
         mode={mode}
         onMode={setMode}
         onSave={saveProject}
@@ -710,6 +728,21 @@ export function App(): React.JSX.Element {
         {mode === "assemble" && <AssemblePanel onEdit={editAssembled} />}
         {mode === "edit" && SHOWS_INSPECTOR.has(state.view) && <Inspector />}
         {helping && <HelpDrawer onClose={() => setHelping(false)} />}
+        {/*
+          One drawer at a time, and the courses win where both are asked for.
+          Two four-hundred-pixel panels beside the work leaves the work with
+          nothing, and of the two the course is the one being followed.
+        */}
+        {learning && !helping && (
+          <AcademyDrawer
+            mode={mode}
+            onClose={() => setLearning(false)}
+            onGo={(where) => {
+              if (where.mode) setMode(where.mode as Mode);
+              if (where.view) store.setView(where.view as ViewId);
+            }}
+          />
+        )}
       </div>
 
       {/*
