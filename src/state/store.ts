@@ -68,6 +68,7 @@ import {
   type KernClass,
   type KernPair,
   type Typeface,
+  type VerticalMetrics,
   type Vec2,
 } from "@/font/types";
 /**
@@ -169,6 +170,37 @@ export interface NodeRef {
 }
 
 export const nodeKey = (ref: NodeRef): string => `${ref.contour}:${ref.node}`;
+
+/**
+ * A letter borrowed from a generator, so the point tools can reach it.
+ *
+ * Draw holds no outlines. A letter there is a description -- a skeleton, a pen,
+ * a set of parts -- redrawn from nothing every time a slider moves, which is why
+ * the point tools cannot simply be pointed at it: a dragged node would be undone
+ * by the next parameter change, and a tool that loses your work as soon as you
+ * touch anything else is worse than no tool.
+ *
+ * What can be done is to take the letter out. Draw has always been able to hand
+ * a letter to another program as an SVG sheet and take the drawing back into the
+ * slot it left, keeping its advance so the rhythm of the font does not move
+ * under it. This is the same trip with the same destination, made without
+ * leaving: the letter is drawn once, put on the desk on its own, worked on with
+ * every tool in the application, and handed back into `imported` exactly as a
+ * file would have been.
+ *
+ * A loan and not a copy, because the desk is already occupied. There is one
+ * document here, and somebody who had a font open in Edit and went to look at
+ * Draw has not abandoned it. So what was open is put aside whole -- the
+ * typeface, which letter was selected, the guides drawn against it, and both
+ * history stacks -- and comes back untouched when the loan ends, whichever way
+ * it ends.
+ */
+export interface Loan {
+  /** Which letter of the drawn font is on the desk. */
+  letter: string;
+  /** What the font it came from is called, for saying so. */
+  family: string;
+}
 
 export interface AppState {
   typeface: Typeface | null;
@@ -294,6 +326,14 @@ export interface AppState {
   busy: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  /**
+   * The letter on loan from a generator, or nothing.
+   *
+   * Read by the editor so it can say whose letter this is and offer the two ways
+   * out, and by the application so the tabs cannot be used to walk away from a
+   * loan without answering for it.
+   */
+  loan: Loan | null;
   /** Bumped whenever the document changes, so views can memoise against it. */
   revision: number;
   /**
@@ -372,10 +412,19 @@ class Store {
     busy: false,
     canUndo: false,
     canRedo: false,
+    loan: null,
     revision: 0,
   };
 
   private listeners = new Set<() => void>();
+  /** What was on the desk before a letter was borrowed, put aside whole. */
+  private held: {
+    state: AppState;
+    undoStack: HistoryEntry[];
+    redoStack: HistoryEntry[];
+    ufo: UfoCarried | null;
+    controlBaseline: ControlReadings | null;
+  } | null = null;
   private undoStack: HistoryEntry[] = [];
   private redoStack: HistoryEntry[] = [];
 
@@ -410,6 +459,7 @@ class Store {
    * happening for no reason at all.
    */
   adopt(typeface: Typeface, fileName: string): void {
+    this.forgetLoan();
     this.undoStack = [];
     this.redoStack = [];
     this.controlBaseline = readControls(typeface);
@@ -449,7 +499,17 @@ class Store {
 
   /** The edited half, for writing down. */
   snapshot(): { typeface: Typeface; fileName: string } | undefined {
-    const { typeface, fileName } = this.state;
+    /*
+     * The document of record, which during a loan is not the one on screen.
+     *
+     * A letter borrowed from Draw sits in a typeface of its own with one glyph
+     * in it. That is a desk, not a document, and it must never be what gets
+     * written down: the session is saved on a timer as well as on the button, so
+     * without this a minute spent moving points on a borrowed `n` would quietly
+     * replace whatever font was open with a font containing an `n`. The drawing
+     * goes back to Draw and is saved as part of *that* half.
+     */
+    const { typeface, fileName } = this.held ? this.held.state : this.state;
     return typeface ? { typeface, fileName } : undefined;
   }
 
@@ -481,6 +541,7 @@ class Store {
   }
 
   async loadFont(bytes: Uint8Array, fileName: string): Promise<void> {
+    this.forgetLoan();
     this.set({ busy: true, status: { message: `Reading ${fileName}…`, tone: "info" } });
     try {
       const { typeface, warnings } = await importFont(bytes, fileName);
@@ -620,6 +681,7 @@ class Store {
   }
 
   startBlank(): void {
+    this.forgetLoan();
     this.undoStack = [];
     this.redoStack = [];
     /*
@@ -645,6 +707,144 @@ class Store {
       status: null,
     });
     this.captureControlBaseline();
+    this.touch();
+  }
+
+  // --- a letter on loan ---------------------------------------------------
+
+  /**
+   * Put a generator's letter on the desk, on its own, with the tools on it.
+   *
+   * The metrics come across with it and are not a detail. A letter is drawn
+   * against its own baseline, x-height and cap height; dropped into a document
+   * whose lines are somewhere else it would arrive floating in the wrong place
+   * with every guide lying about it -- and the tools that snap would snap it to
+   * the lie.
+   *
+   * Whatever was open goes into `held` whole rather than being saved field by
+   * field, because a loan is a parenthesis: what comes back has to be what went
+   * in, including the two history stacks. Undoing past the start of a loan and
+   * finding yourself unpicking a font you opened an hour ago would be the worst
+   * kind of surprise, so the loan starts with an empty history of its own and
+   * the real one is handed back at the end.
+   */
+  borrowLetter(
+    loan: Loan,
+    glyph: Glyph,
+    of: { unitsPerEm: number; metrics: VerticalMetrics },
+  ): void {
+    if (this.held) return;
+    this.held = {
+      state: this.state,
+      undoStack: this.undoStack,
+      redoStack: this.redoStack,
+      ufo: this.ufo,
+      controlBaseline: this.controlBaseline,
+    };
+    this.undoStack = [];
+    this.redoStack = [];
+    this.ufo = null;
+    this.controlBaseline = null;
+
+    const desk = emptyTypeface();
+    desk.meta = { ...desk.meta, familyName: loan.family || "Untitled" };
+    desk.unitsPerEm = of.unitsPerEm;
+    desk.metrics = { ...of.metrics };
+    desk.glyphs = [glyph];
+    desk.glyphIndex = new Map([[glyph.name, 0]]);
+
+    this.set({
+      typeface: desk,
+      fileName: "",
+      view: "glyph",
+      selectedGlyph: glyph.name,
+      selectedNodes: new Set(),
+      selectedGlyphs: new Set(),
+      /*
+       * The guides belonged to the font that has just been put aside, and a
+       * guide is a number of font units: at 500 it is the x-height of a
+       * thousand-unit font and a quarter of the way up a two-thousand-unit one.
+       * Left in place they would stand over this letter meaning something else.
+       */
+      guides: [],
+      drawing: false,
+      highlightPath: null,
+      loan,
+      status: {
+        /*
+         * What is true now, rather than what will be true if it is kept.
+         *
+         * The letter has not left anything yet: nothing has changed in the
+         * drawn font, and throwing the loan away leaves it exactly as it was.
+         * Saying it has already gone would be the same sentence whether you
+         * went on to keep it or not, which makes it useless for telling.
+         */
+        message: `${loan.letter} is on the desk — keep the drawing or throw it away when you are done`,
+        tone: "info",
+      },
+    });
+    this.touch();
+  }
+
+  /**
+   * Take the letter off the desk and give back what it turned into.
+   *
+   * The advance goes back with the outline, because the letter has to keep its
+   * place in the rhythm of the font: a shape drawn a little narrower than the
+   * one it replaces should still sit in the width it was given, or the spacing
+   * gains a hole nobody asked for. What the caller does with the pair is the
+   * caller's business -- this store has no idea there is a forge.
+   */
+  keepLoan(): { letter: string; contours: Contour[]; advanceWidth: number } | null {
+    const loan = this.state.loan;
+    if (!loan) return null;
+    /*
+     * Found by name rather than by what happens to be selected.
+     *
+     * Reading the selection would hand back nothing at all if the last click had
+     * landed on empty canvas, and "nothing" here means the drawing is thrown
+     * away -- which is not a thing to leave resting on where a pointer was. The
+     * desk holds one glyph and its name is the letter.
+     */
+    const drawn = this.glyph(loan.letter) ?? this.state.typeface?.glyphs[0] ?? null;
+    const kept = drawn
+      ? {
+          letter: loan.letter,
+          contours: cloneGlyph(drawn).contours,
+          advanceWidth: drawn.advanceWidth,
+        }
+      : null;
+    this.dropLoan();
+    return kept;
+  }
+
+  /**
+   * Let go of a loan without putting anything back, because something else has
+   * taken the desk.
+   *
+   * Opening a font, restoring a project or starting a blank one all replace the
+   * document outright -- they clear the history stacks too, which is the same
+   * decision about the same work. Putting the held document back afterwards
+   * would restore the font somebody had just chosen to leave, over the top of
+   * the one they had just chosen to open.
+   */
+  private forgetLoan(): void {
+    this.held = null;
+    if (this.state.loan) this.set({ loan: null });
+  }
+
+  /** End the loan and put back what was on the desk, keeping nothing. */
+  dropLoan(): void {
+    const held = this.held;
+    if (!held) return;
+    this.held = null;
+    this.undoStack = held.undoStack;
+    this.redoStack = held.redoStack;
+    this.ufo = held.ufo;
+    this.controlBaseline = held.controlBaseline;
+    this.state = { ...held.state, loan: null };
+    // `touch` is what tells everybody, and it recomputes whether undo and redo
+    // are live from the stacks that have just come back.
     this.touch();
   }
 

@@ -156,8 +156,23 @@ export function TopBar({
             type="button"
             aria-pressed={mode === id}
             onClick={() => onMode(id)}
-            title={hint}
-            className={segment(mode === id)}
+            /*
+             * Held shut over a borrowed letter.
+             *
+             * A letter lent to the tools from Draw has the document that was
+             * open put aside behind it. Walking to another tab would leave the
+             * loan on the desk and the real font in a drawer, with nothing on
+             * screen to say why -- and the strip above the canvas says the only
+             * ways out are keeping the drawing and throwing it away, which had
+             * better be true.
+             */
+            disabled={state.loan !== null && id !== mode}
+            title={
+              state.loan === null
+                ? hint
+                : `Finish with ${state.loan.letter} first — keep the drawing or throw it away.`
+            }
+            className={cn(segment(mode === id), "disabled:opacity-40")}
           >
             {label}
           </button>
