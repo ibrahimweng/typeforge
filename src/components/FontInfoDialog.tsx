@@ -31,11 +31,22 @@ function Text({
   label,
   value,
   hint,
+  lines,
   onCommit,
 }: {
   label: string;
   value: string;
   hint?: string;
+  /**
+   * How many lines the field stands, for the ones that hold a paragraph.
+   *
+   * A copyright notice and a licence are sentences, and DejaVu's are both
+   * longer than the box: "Copyright (c) 2003 by Bitstream, Inc. All Rights
+   * Reserve" was where the first one stopped being visible. A field somebody
+   * cannot read is a field they cannot check, and these two are the ones the
+   * type licences care about.
+   */
+  lines?: number;
   onCommit: (next: string) => void;
 }): React.JSX.Element {
   /*
@@ -51,19 +62,40 @@ function Text({
   return (
     <label className="flex flex-col gap-1 pb-3">
       <span className="text-2xs text-muted-foreground">{label}</span>
-      <input
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={() => onCommit(draft)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") event.currentTarget.blur();
-          if (event.key === "Escape") setDraft(value);
-        }}
-        className={cn(
-          "h-8 rounded-md border border-input bg-card px-2.5 text-xs-plus text-foreground",
-          "outline-none focus-visible:border-accent",
-        )}
-      />
+      {lines ? (
+        <textarea
+          value={draft}
+          rows={lines}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => onCommit(draft)}
+          /*
+            No Enter to finish, because Enter is a line here. Escape still puts
+            it back, and leaving the field still commits, which is how every
+            other field in this dialog behaves.
+          */
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setDraft(value);
+          }}
+          className={cn(
+            "resize-y rounded-md border border-input bg-card px-2.5 py-1.5 text-xs-plus text-foreground",
+            "outline-none focus-visible:border-accent",
+          )}
+        />
+      ) : (
+        <input
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => onCommit(draft)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+            if (event.key === "Escape") setDraft(value);
+          }}
+          className={cn(
+            "h-8 rounded-md border border-input bg-card px-2.5 text-xs-plus text-foreground",
+            "outline-none focus-visible:border-accent",
+          )}
+        />
+      )}
       {hint && <span className="text-2xs leading-snug text-muted-foreground">{hint}</span>}
     </label>
   );
@@ -187,11 +219,13 @@ export function FontInfoDialog({ onClose }: { onClose: () => void }): React.JSX.
         <Text
           label="Copyright"
           value={meta.copyright}
+          lines={2}
           onCommit={(copyright) => store.setMeta({ copyright })}
         />
         <Text
           label="Licence"
           value={meta.license}
+          lines={4}
           hint="The terms the font goes out under. A font drawn on top of somebody else's is bound by theirs."
           onCommit={(license) => store.setMeta({ license })}
         />

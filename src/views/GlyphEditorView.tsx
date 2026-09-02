@@ -1274,8 +1274,19 @@ export function GlyphEditorView(): React.JSX.Element {
           a narrow window or a long glyph name, but `newGlyph` is a long glyph
           name and it is the one every new letter starts with.
         */}
+        {/*
+          Gone rather than clipped, once there is no room to say anything.
+
+          Truncation is fine while a few words survive; it is not fine at two.
+          In a nine-hundred-pixel window this row is a label, three letter
+          boxes, six controls and then whatever is left, and what was left was
+          "Dr…" -- which says nothing and reads as a rendering fault rather than
+          as a sentence that did not fit. The whole of it is still on the hover,
+          where it was already, and the three letter boxes beside it are the
+          thing the sentence is about.
+        */}
         <span
-          className="min-w-0 flex-1 truncate pl-1 text-muted-foreground"
+          className="hidden min-w-0 flex-1 truncate pl-1 text-muted-foreground lg:block"
           title="Drawn flat and not editable — they are what this letter is spaced against, at their real advances and kerning."
         >
           Drawn flat and not editable — they are what this letter is spaced against, at their real

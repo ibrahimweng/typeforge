@@ -74,7 +74,7 @@ export function TransformPanel(): React.JSX.Element | null {
         </ToolButton>
       </div>
 
-      <div className="flex items-center gap-2 pb-2">
+      <div className="flex flex-wrap items-center gap-2 pb-2">
         <span className="w-14 shrink-0 text-2xs text-muted-foreground">Angle</span>
         <NumberField
           label="Rotation in degrees"
@@ -91,7 +91,7 @@ export function TransformPanel(): React.JSX.Element | null {
         roman leaned over between eight and sixteen degrees, and twelve is the
         middle of that.
       */}
-      <div className="flex items-center gap-2 pb-2">
+      <div className="flex flex-wrap items-center gap-2 pb-2">
         <span className="w-14 shrink-0 text-2xs text-muted-foreground">Slant</span>
         <NumberField label="Slant in degrees" className="w-16" value={lean} onCommit={setLean} />
         <ToolButton

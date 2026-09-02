@@ -1,6 +1,6 @@
 # What is missing
 
-> All four are done. A later sweep of every screen added three more, also done.
+> All four are done. Two later sweeps of every screen added seven more, also done.
 
 An audit of what this application cannot do, taken by reading its capability
 surface rather than by looking at it. That distinction is the point: a tour of
@@ -357,7 +357,7 @@ survives a harness that can be run.
 
 ---
 
-# A sweep of every screen — *three found, three fixed*
+# A sweep of every screen — *three found, three fixed, and a third of it looked at*
 
 Driven rather than read: the four modes, the six views inside Edit, the four
 tool groups and their flyouts, the command palette, both drawers and the
@@ -409,6 +409,82 @@ They are now in Checks, where a person goes to find out what is wrong with a
 font, kept apart from the findings because they are facts about the *file* —
 nothing in the letters will fix one and running the checks again will not clear
 one.
+
+# Finishing that sweep — *five more, five fixed*
+
+The sweep above captured twenty-one screens and examined seven. What follows
+came from the other fourteen — all four export dialogs, the library, help, the
+academy drawer, the palette, Trace's own view, three of the four tool flyouts,
+and the Kerning, Spacing and Proof views — plus a nine-hundred-pixel window,
+which nothing had been looked at in.
+
+## S4. The export dialog never said what name the file would go out under — *done*
+
+Of the four export dialogs this was the only one that did not. Draw, Assemble
+and Trace all name the font on the way out. In Edit the name came from whatever
+file was opened, and with "Everything from the original" chosen above it so did
+the designer, the copyright and the licence — so a person could open somebody
+else's font, redraw every letter and ship a file still claiming to be theirs,
+without a word about it at the moment of shipping.
+
+This is section A1 above, half-done. That entry was closed when `setMeta` gained
+callers, and it did: the name *can* be changed, in a dialog a page away. It just
+could not be changed, or seen, where the decision is actually taken.
+
+## S5. A licence was a one-line box — *done*
+
+A copyright notice and a licence are sentences, and both of DejaVu's are longer
+than the field they sat in: the first stopped being visible at "Copyright (c)
+2003 by Bitstream, Inc. All Rights Reserve". A field somebody cannot read is a
+field they cannot check, and these two are the ones the type licences care
+about.
+
+## S6. One document's news showed over another's — *done*
+
+"Opened — 6,253 glyphs" is about the edited font. It sat in the bar over Draw
+with "Untitled Sans" named a few inches to its left: two documents in one strip,
+and the louder of them not the one on screen. A status now names the half it
+belongs to, and the ones that belong everywhere — a refusal to leave a borrowed
+letter, say — go on showing everywhere.
+
+## S7. Two findings only a narrow window has — *done*
+
+At nine hundred pixels the inspector clipped its own controls: the Transform
+row ran off the edge and the "Back" button read "Bac". And the context strip,
+which is a label, three letter boxes and six controls before it gets to its
+sentence, had "Dr…" left for the sentence. Truncation is fine while a few words
+survive; at two characters it says nothing and reads as a rendering fault. The
+rows wrap now, and the sentence stands down where there is no room for it —
+it was already on the hover.
+
+## S8. A dialog too tall for the window could not be scrolled — *done*
+
+Found by breaking it, and older than the break. All four export dialogs are
+flex children centred in a full-screen backdrop with no height of their own,
+and a centred flex child taller than its container is clipped at *both* ends
+with nothing scrollable anywhere: the overflow is above the top edge as well as
+below the bottom one, and no ancestor scrolls. So the part past the fold is not
+awkward to reach — it is unreachable, and a click aimed at it lands on the
+backdrop, whose job is to close the dialog.
+
+Measured, at 1280 wide. The editor's export dialog was 805 pixels tall before
+any of this, so on a 600-pixel window its Download button sat at y 653–683 —
+entirely off screen, with the dialog's whole purpose behind a fold that does
+not move. On a 720-pixel window it sat at 713–743: seven pixels of it showing,
+which was enough. Adding the name field for S4 above put another 157 pixels
+over it and took those seven away, and the export test — which had passed for
+months — stopped exporting. Draw's is 560, which overflows a 600-pixel window
+by a little; Assemble's and Trace's could not be measured, because their Export
+is dark until there is something to export, but neither had a bound either.
+
+All four are bounded now and scroll inside themselves, and a test opens the
+editor's on a 600-pixel window, scrolls to the button, exports, and scrolls
+back to the field at the top.
+
+The lesson is the one worth keeping. The fix for S4 was two inputs and a
+sentence, in a dialog that plainly had room for them, and it took out the one
+thing that dialog exists to do. The suite caught it; reading the diff would
+not have.
 
 ## What the sweep cleared
 
