@@ -37,9 +37,9 @@ time for a welcome they needed once.
 3. One line under the top bar with the next thing to do and a button that does
    it. **Done.**
 4. Move the tools and controls out of the side panels and onto the screens where
-   you use them.
+   you use them. **Done, and half of it was wrong. See E3.**
 5. In each panel, put the few controls for the current job at the top and the
-   rest below a labelled line.
+   rest below a labelled line. **Done.**
 6. After every action, show what changed. Show mistakes as you make them instead
    of on a separate page.
 7. Add keyboard shortcuts for everything, so an experienced user never needs the
@@ -167,3 +167,72 @@ font" rather than the toolbar's "Export", "Turn this off" rather than a "stop",
 and "Nothing is drawn yet" rather than the grid's "No letters yet". Two buttons
 reading the same word is a thing a person has to look twice at. It also made
 fourteen browser tests ambiguous, which is how each collision was found.
+
+
+---
+
+# E3. Ranking the two panels somebody lives in — *done*
+
+## Where I was wrong about step 4
+
+The plan said "the drawing tools only appear in one view out of six". That is
+true and it is not a defect. Of the editor's six views only Glyph edits
+outlines, so the palette is where it belongs, and Draw and Trace already reach
+it: each lends a letter to the editor and takes it back. I had not checked that
+before writing the step.
+
+So step 4 loses its tools half. What is left of it is the real complaint:
+controls that sit in a panel in no particular order.
+
+## What was wrong
+
+Measured, at a 1,440 by 900 window.
+
+**Draw's panel is 8,647 pixels tall.** The panel shows about 810 of them at a
+time, so that is ten and a half screens. It had no ranking at all:
+
+| | starts at |
+|---|---|
+| Start from, the twenty styles you choose once | 0 |
+| The pen | 660 |
+| nine sections about parts of letters | 1,125 |
+| **Proportions** | **4,983** |
+| Joining | 6,582 |
+| Cut, Cast, the tool | 7,230 |
+
+**The editor's panel is 3,521 pixels.** It opened with seven hundred and forty
+pixels of guidance about which letters to draw first, so the parameters -- which
+the panel is named for and the reason anybody opens it -- began at 914, below
+the fold.
+
+## What is there now
+
+Draw's panel opens with the three things that decide what the whole font looks
+like: **Start from, The pen, Proportions**. Proportions begins at 1,860 instead
+of 4,983. Everything else is grouped under a rule that says what the group is
+for: **Shape the parts**, **Finishing**, and **n alone** for the ones that reach
+only the letter on screen.
+
+The editor's panel opens with the parameters. The control letters are one scroll
+down under a rule reading **Where to start**.
+
+Nothing is hidden. Scrolling past a rule is one gesture, and the rule tells you
+whether what you want is under it. A test asserts the order of both panels and a
+second one asserts that Joining, Cut, Cast and "Draw n yourself" are all still
+there.
+
+## The order is pinned on marks, not on prose
+
+The first version of the test searched the panel's own text and got two false
+answers: the Sans blurb says "ordinary proportions" above the Proportions
+heading, and the scope switch says "n alone" above the rule that says the same.
+Each section carries a `data-panel-section` name now and the test reads them in
+document order.
+
+## One sentence out of the Draw tip
+
+The tip above the canvas ran to five sentences. The second of them said that
+changing a part changes every letter that has it, which is what the "Shape the
+parts" rule now says a few inches to the right, so it came out. The other four
+are gestures and facts with no home yet: what to double-click, how the accented
+letters follow, and what Skeleton and the specimen line are for.

@@ -244,8 +244,6 @@ export function Inspector(): React.JSX.Element {
         </div>
       ) : (
       <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
-      {scope === "family" && <ControlLetters />}
-      {scope === "family" && <CoachMark id="family" />}
       {/*
         Under the letter's own scope, because that is what it is about, and in
         the view where a path is what you are handling.
@@ -277,7 +275,7 @@ export function Inspector(): React.JSX.Element {
         to the smallest.
       */}
       {editingGlyph && state.view === "glyph" && <PointsPanel />}
-      <div ref={listRef} className="p-3">
+      <div ref={listRef} className="p-3" data-panel-section="params">
         {PARAMS.map((spec) => {
           const scaleFactor = spec.emRelative ? typeface.unitsPerEm : 1;
           const value = resolved[spec.key];
@@ -345,6 +343,31 @@ export function Inspector(): React.JSX.Element {
       </div>
 
       <Cutting scope={scope} glyphName={glyphName} />
+
+      {/*
+        Where to start, below what the panel is for rather than above it.
+        
+        This block is seven hundred and forty pixels of guidance about which
+        letters to draw first, and it sat above the parameters -- which is what
+        this panel is named for and the reason anybody opens it. Somebody
+        adjusting the weight of a font they have been drawing for a week met it
+        every time. It is one scroll down now, under a rule that says what it
+        is, so a beginner can still find it by reading rather than by knowing.
+      */}
+      {scope === "family" && (
+        <>
+          <div className="border-y border-border bg-card/40 px-3 py-2" data-panel-section="where-to-start">
+            <h3 className="text-2xs font-medium uppercase tracking-wide text-foreground">
+              Where to start
+            </h3>
+            <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">
+              The handful of letters that set the shape of all the rest.
+            </p>
+          </div>
+          <ControlLetters />
+          <CoachMark id="family" />
+        </>
+      )}
 
       <div className="p-3">
         <button
