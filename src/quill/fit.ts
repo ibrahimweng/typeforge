@@ -43,6 +43,7 @@ import {
 import { widthAt } from "./sweep";
 import {
   ROUND_NIB,
+  type QuillCubic,
   type QuillGlyph,
   type QuillStroke,
   type WidthProfile,
@@ -1303,11 +1304,11 @@ export function fitGlyph(
       const dy = tip.y - from.y;
       const run = Math.hypot(dx, dy);
       if (run < 1e-9) return { cap: { kind: "round" } as const, tip };
-      const out = { x: dx / run, y: dy / run };
+      let out = { x: dx / run, y: dy / run };
       const half = widthAt(profile, which === "start" ? 0 : 1) / 2;
 
       if (half <= grid.scale) return { cap: { kind: "round" } as const, tip };
-      const across = { x: -out.y, y: out.x };
+      let across = { x: -out.y, y: out.x };
       /*
        * How far the ink actually runs past the skeleton, measured on each side
        * rather than guessed from the shape of the corners.
@@ -1370,19 +1371,112 @@ export function fitGlyph(
        * taken off again.
        */
       const back = half * 0.5;
-      const reachOn = (side: 1 | -1) =>
-        Math.max(
-          0,
-          inkFrom(
-            tip.x - out.x * back + across.x * half * 0.85 * side,
-            tip.y - out.y * back + across.y * half * 0.85 * side,
-            out.x,
-            out.y,
-            half * 3,
-          ) - back,
-        );
-      const onLeft = reachOn(1);
-      const onRight = reachOn(-1);
+      /*
+       * A probe that starts outside the letter has not measured anything.
+       *
+       * It reads nought, which is a *claim* -- that no ink runs past this end
+       * -- and downstream that claim cuts the stroke square exactly where the
+       * thinning gave out, across a heading that is already the wrong one. So
+       * a probe says whether it stood anywhere it could measure from, and
+       * nought and "could not tell" stop being the same answer.
+       */
+      let seat = tip;
+      const probe = (way: Vec2, side: 1 | -1): number | null => {
+        const sideways = { x: -way.y, y: way.x };
+        const x = seat.x - way.x * back + sideways.x * half * 0.85 * side;
+        const y = seat.y - way.y * back + sideways.y * half * 0.85 * side;
+        if (!coversPoint(grid, { x, y })) return null;
+        return Math.max(0, inkFrom(x, y, way.x, way.y, half * 3) - back);
+      };
+
+      let onLeft = probe(out, 1);
+      let onRight = probe(out, -1);
+
+      /*
+       * Both probes outside the ink means the heading is wrong, not the ink.
+       *
+       * The heading is read over the last stretch up to the tip, which is
+       * inside the zone where the medial axis is bending towards the corner it
+       * is running into: at the top of a `v`, whose arm climbs at sixty-three
+       * degrees, it reads twenty-nine. Usually that is a tilt and the probes
+       * still stand in the stroke. Sometimes -- every angled terminal on the
+       * `v`, the `w` and the `y` -- it is enough to swing both of them clean
+       * out of the letter, and then reach and lead both come back nought and
+       * the end is cut dead square across a heading sixty degrees off the arm.
+       * That is the flap of ink those three letters carried above their own
+       * x-height: sixty units on the `v`, fifty-nine on the `y`.
+       *
+       * The stretch *beyond* the guard is out of the bend and gives the arm's
+       * true angle. Using it everywhere was tried and made the alphabet
+       * slightly worse -- 6.13 units of mean to 6.21 -- so it is used only
+       * here, where the reading it replaces is not a reading at all.
+       */
+      if (onLeft === null && onRight === null) {
+        const far = Math.min(points.length - 1, span * 2);
+        const outer = which === "start" ? points[far] : points[points.length - 1 - far];
+        const inner = which === "start" ? points[span] : points[points.length - 1 - span];
+        const ax = inner.x - outer.x;
+        const ay = inner.y - outer.y;
+        const along = Math.hypot(ax, ay);
+        if (along > 1e-9) {
+          const way = { x: ax / along, y: ay / along };
+          const sideways = { x: -way.y, y: way.x };
+          /*
+           * And measured from the middle of the stroke rather than from the
+           * tip, because the tip is not on the middle either.
+           *
+           * Thinning runs into a corner, so at an end cut at an angle the
+           * skeleton's last point is up in the sharper of the two corners
+           * rather than on the centre-line: the `v`'s is eighty-nine units off
+           * it, which is more than a half-width. Standing at the point one
+           * half-width back -- the last one outside the bend -- and walking
+           * across the ink both ways gives the middle by measurement.
+           */
+          const edgeAt = (dir: 1 | -1) => {
+            let gone = 0;
+            for (let out2 = 1; out2 <= Math.ceil((half * 2) / step); out2++) {
+              const at = out2 * step;
+              if (
+                !coversPoint(grid, {
+                  x: inner.x + sideways.x * at * dir,
+                  y: inner.y + sideways.y * at * dir,
+                })
+              )
+                break;
+              gone = at;
+            }
+            return gone;
+          };
+          const middle = (edgeAt(1) - edgeAt(-1)) / 2;
+          const centred = {
+            x: inner.x + sideways.x * middle,
+            y: inner.y + sideways.y * middle,
+          };
+          const from = seat;
+          seat = centred;
+          out = way;
+          across = sideways;
+          const left = probe(way, 1);
+          const right = probe(way, -1);
+          if (left === null && right === null) {
+            seat = from;
+            out = { x: dx / run, y: dy / run };
+            across = { x: -out.y, y: out.x };
+          } else {
+            onLeft = left;
+            onRight = right;
+          }
+        }
+      }
+
+      /*
+       * One probe standing and one not is a stroke narrower than the pair of
+       * them, or a tip off the centre-line. Either way the side that measured
+       * is the only reading there is, so both are taken from it -- which makes
+       * the cut square rather than inventing an angle out of a failure.
+       */
+      if (onLeft === null) onLeft = onRight ?? 0;
+      if (onRight === null) onRight = onLeft;
       const reach = (onLeft + onRight) / 2;
 
       /*
@@ -1412,9 +1506,19 @@ export function fitGlyph(
        * Probing *without* the half-width bound was tried and is worse. Past a
        * junction the ink does not stop, so the probe runs on until it hits the
        * far side of whatever this is joining -- which is how the shoulder of an
-       * `n` came out through its stem and drew a blob there -- and holding that
-       * to one and a half half-widths instead cost 6.17 units of mean against
-       * 6.15 and thirteen nodes.
+       * `n` came out through its stem and drew a blob there.
+       *
+       * How far it should be is not settled, and the evidence says a single
+       * distance cannot settle it. A `q` has a notch a hundred units deep at
+       * the bowl-and-stem join and wants its strokes to overlap further; the
+       * `d`, the `n` and the `w` want them not to. One and a half half-widths
+       * fixes the `q` (100.6 to 40.6) and costs the alphabet 6.14 to 6.50; half
+       * a width or half the ink straight ahead, whichever is more -- the
+       * angle-aware version, and the one that ought to work -- fixes it again
+       * (to 38.9) and takes the `d`'s worst from 38.1 to 100.1 and the `w`'s
+       * mean from 15.2 to 19.7. What separates them is the angle the two
+       * strokes meet at, which is the one thing a run cut at a junction is
+       * never told.
        *
        * What this does *not* fix, said plainly, because four attempts at it
        * were rejected by measurement and the next person should not spend the
@@ -1504,8 +1608,8 @@ export function fitGlyph(
               : along <= reach && Math.abs(a) <= half;
             asked++;
             const point = {
-              x: tip.x + out.x * along + across.x * a,
-              y: tip.y + out.y * along + across.y * a,
+              x: seat.x + out.x * along + across.x * a,
+              y: seat.y + out.y * along + across.y * a,
             };
             if (claimed === coversPoint(grid, point)) agree++;
           }
@@ -1514,7 +1618,7 @@ export function fitGlyph(
       };
 
       if (agreement(true) > agreement(false))
-        return { cap: { kind: "round" } as const, tip };
+        return { cap: { kind: "round" } as const, tip: seat };
       /*
        * The angle of the cut, carried across as the difference between the two
        * sides rather than thrown away.
@@ -1528,7 +1632,8 @@ export function fitGlyph(
        */
       return {
         cap: { kind: "butt" as const, lead: (onLeft - onRight) / 0.85 },
-        tip: { x: tip.x + out.x * reach, y: tip.y + out.y * reach },
+        tip: { x: seat.x + out.x * reach, y: seat.y + out.y * reach },
+        reseated: seat !== tip,
       };
     };
 
@@ -1536,13 +1641,58 @@ export function fitGlyph(
     const foot = endCap("end");
     const wasAt = segments[0].from;
     const before = walkOf({ segments, closed: run.closed }).total;
-    if (head.cap.kind === "butt" && head.tip)
-      segments[0] = { ...segments[0], from: head.tip };
+    /*
+     * The last stretch laid straight, when the end was measured from a seat
+     * rather than from the tip.
+     *
+     * Moving only the endpoint leaves the cubic's handles still reaching for
+     * where the tip used to be, and a tip that has moved a half-width sideways
+     * turns that into a hook: a little curl of ink off the end of every angled
+     * terminal, which is worse than the flap it replaced. The stretch being
+     * replaced is the one inside the guard, which `steadyEnds` has already
+     * straightened on the skeleton for the same reason -- so a straight run to
+     * the new end is what was there anyway.
+     */
+    const runTo = (edge: QuillCubic, to: Vec2): QuillCubic => ({
+      kind: "cubic",
+      from: edge.from,
+      c1: {
+        x: edge.from.x + (to.x - edge.from.x) / 3,
+        y: edge.from.y + (to.y - edge.from.y) / 3,
+      },
+      c2: {
+        x: edge.from.x + ((to.x - edge.from.x) * 2) / 3,
+        y: edge.from.y + ((to.y - edge.from.y) * 2) / 3,
+      },
+      to,
+    });
+    const runFrom = (edge: QuillCubic, from: Vec2): QuillCubic => ({
+      kind: "cubic",
+      from,
+      c1: {
+        x: from.x + (edge.to.x - from.x) / 3,
+        y: from.y + (edge.to.y - from.y) / 3,
+      },
+      c2: {
+        x: from.x + ((edge.to.x - from.x) * 2) / 3,
+        y: from.y + ((edge.to.y - from.y) * 2) / 3,
+      },
+      to: edge.to,
+    });
+    if (head.cap.kind === "butt" && head.tip) {
+      const edge = segments[0];
+      segments[0] =
+        head.reseated && edge.kind === "cubic"
+          ? runFrom(edge, head.tip)
+          : { ...edge, from: head.tip };
+    }
     if (foot.cap.kind === "butt" && foot.tip) {
-      segments[segments.length - 1] = {
-        ...segments[segments.length - 1],
-        to: foot.tip,
-      };
+      const last = segments.length - 1;
+      const edge = segments[last];
+      segments[last] =
+        foot.reseated && edge.kind === "cubic"
+          ? runTo(edge, foot.tip)
+          : { ...edge, to: foot.tip };
     }
 
     /*

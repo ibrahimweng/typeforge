@@ -661,6 +661,54 @@ describe("the fitter", () => {
     expect(worst, "the corner where the bar meets the stem is hollow").toBeLessThan(8);
   });
 
+  /*
+   * An end cut across the arm it finishes, which is most terminals on a sans.
+   *
+   * DejaVu's `v` is seven points and its two arms are cut off flat by the
+   * x-height, so each terminal is a horizontal edge across an arm climbing at
+   * sixty-three degrees. The heading that decides how that end is drawn is read
+   * over the last stretch up to the skeleton's tip -- and that stretch is inside
+   * the zone where the medial axis is bending towards the corner it is running
+   * into, so it read twenty-nine degrees. The tip itself is up in that corner
+   * too, eighty-nine units off the centre-line. Together those swung both of the
+   * probes that measure the ink past the end clean out of the letter; they read
+   * nought, which the code took for "no ink runs past here", and the arm was cut
+   * dead square across a heading sixty degrees wrong. Sixty units of ink hung
+   * above the letter's own x-height, and the same on the `w` and the `y`.
+   *
+   * Written out as coordinates rather than swept from strokes, because what
+   * makes this case is the flat cut across a diagonal, and a stroke swept from
+   * a spine cannot have one.
+   */
+  it("cuts an angled terminal across the arm, not across the whisker", () => {
+    const vee: Contour = {
+      nodes: [
+        [481, 0],
+        [61, 1120],
+        [256, 1120],
+        [606, 180],
+        [956, 1120],
+        [1151, 1120],
+        [731, 0],
+      ].map(
+        ([x, y]): GlyphNode => ({
+          point: { x, y },
+          handleIn: null,
+          handleOut: null,
+          type: "corner",
+        }),
+      ),
+      closed: true,
+    };
+    const fit = fitGlyph("v", [vee], 1212, { unitsPerEm: 2048 })!;
+    const drawn = sweepAll(fit.glyph.strokes).contours;
+    const above = Math.max(
+      ...drawn.flatMap((one) => one.nodes.map((node) => node.point.y)),
+    );
+    // Sixty units of flap before, thirty after, on a letter 1,120 tall.
+    expect(above - 1120, "ink above the x-height at the terminal").toBeLessThan(45);
+  });
+
   it("keeps the corner at the bottom of a v", () => {
     const vee: QuillStroke = {
       spine: {

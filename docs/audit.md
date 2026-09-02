@@ -606,3 +606,115 @@ smooth spine, because the skeleton is connected through it. No cap and no join
 can put a flat on a round-nibbed sweep of a smooth spine. Splitting a run where
 the letter has a flat is the work, and it is a bigger piece than a cap rule.
 
+# Trace again: the terminals — *one found and fixed, one found and not*
+
+Where the last pass left off: `v`, `w`, `z`, `r` and `x` carry two to three
+times the alphabet's error and it is all at their corners. Before going after
+that, both directions of the harness's measurement were looked at separately --
+how far the source strays from the redraw, and how far the redraw strays from
+the source -- because they are different faults and only the first had been
+read.
+
+## A correction, first
+
+The second direction is bigger on twenty-one of twenty-six letters, and it was
+read as "the redraw draws outside the letter" on all of them. That was wrong. A
+point of the redraw's outline far from the source's outline can be outside the
+letter -- ink where there is none -- or *inside* it, which is a notch or a
+narrow place in the redraw and the opposite fault. Asked of the fill rather than
+inferred, **eighteen of the twenty-six sit inside the letter**: `a`, `b`, `d`,
+`e`, `f`, `g`, `h`, `k`, `m`, `n`, `o`, `p`, `q`, `r`, `u`, `w`, `x`, `z`. Only
+`c`, `i`, `j`, `l`, `s`, `t`, `v` and `y` are ink drawn where the letter has
+none. The measurement says which outline is far from which; it does not say
+which side, and it was read as though it did.
+
+## T4. Every angled terminal had a flap of ink hanging off it — *done*
+
+`v` 60.3 units, `y` 59.3, `w` 53.9 -- all of it drawn **above the letter's own
+x-height** -- and the same fault at the terminals of the `c`, the `s` and the
+`r`. Visible in `scripts/traceshot.ts` as a triangle off the end of each.
+
+This is the "angled cut's zero lead" recorded above as root-cause-found and
+fix-rejected, and the missing piece was that two separate readings fail
+together. The heading that decides how an end is drawn is read over the last
+stretch up to the skeleton's tip, and that stretch is inside the zone where the
+medial axis bends towards the corner it is running into: at the top of a `v`,
+whose arm climbs at sixty-three degrees, it reads twenty-nine. The tip itself is
+in that corner rather than on the centre-line -- the `v`'s is eighty-nine units
+off it, more than a half-width. Together those two swing both of the probes that
+measure the ink past the end clean out of the letter.
+
+And a probe that starts outside the letter was reading nought, which is not
+"could not tell" but a *claim* -- that no ink runs past this end. Downstream that
+claim cuts the stroke square exactly where the thinning gave out, across a
+heading sixty degrees off the arm. So: a probe now says whether it stood
+anywhere it could measure from, and when neither could, the terminal is read a
+second way -- heading from the stretch beyond the guard, standing at the middle
+of the stroke one half-width back, found by walking across the ink rather than
+assumed. The last stretch of spine is then laid straight to the new end, because
+moving only the endpoint leaves the cubic's handles reaching for where the tip
+used to be, and that turns the flap into a hook, which is worse.
+
+|  | before | after |
+|---|---|---|
+| `c` max | 55.1 | **24.5** |
+| `s` max | 58.2 | **31.7** |
+| `v` max | 60.3 | **35.3** |
+| `y` max | 59.3 | **34.8** |
+| alphabet mean | 6.16 | **6.14** |
+| nodes | 1112 | **1106** |
+
+Dancing Script does not move at all: 34.0 worst, 2.30 mean, 1945 nodes, before
+and after. Two letters are worse and it is worth saying which: the `r`'s mean
+goes 12.65 to 14.52 and the `e`'s 4.45 to 5.26, and both of those now fall
+*short* at the terminal where they used to overshoot it. In the drawing that is
+the better of the two, but the harness weighs them the same and it is a real
+cost, not a rounding.
+
+Using the second reading everywhere, rather than only where the first cannot
+measure, was tried twice and rejected both times: picking whichever reading
+scores better against the ink took the alphabet from 6.14 to 6.66, and taking
+the second always took it to 6.21 for the heading alone and 6.51 with the tail
+laid along it.
+
+## T5. The `q` and the `u`, twice their eight siblings — *found, not fixed*
+
+Ten letters have a notch just right of the stem where the bowl springs. Eight of
+them -- `a`, `b`, `d`, `g`, `h`, `m`, `n`, `p` -- are 35 to 41 units. The `q` is
+100.6 and the `u` 91.7, the two largest numbers left in the alphabet, on the
+same structure.
+
+What the `q` is doing, exactly. It comes back as three strokes: the descender,
+which runs up to y=361; a long one that goes round the bowl and up the stem; and
+a 207-unit stub across the stem at the junction. The long one's width profile
+dips to 130 where the letter is 184 wide, because at that point its path is
+running through the bowl's wall rather than up the stem -- a true reading of a
+narrow place. So between the descender's end and where the long stroke widens
+again, the stem is drawn a third too narrow, and that is the notch.
+
+Five fixes were tried and measurement rejected all five.
+
+  Folding the inside of a spine's turn to the meeting point of its two offsets,
+  instead of the chord across it. **No measurable effect at all** -- the turn
+  there is a smooth fitted curve, so nothing in the sweep sees a corner.
+
+  Uniting each stroke with itself before uniting the letter, in case the inner
+  offset had folded through itself. No effect either, so it has not.
+
+  Running each stroke past its junction by one and a half half-widths instead of
+  one. Fixes the `q` -- 100.6 to 40.6 -- and costs the alphabet 6.14 to 6.50.
+
+  Running it out to wherever the stroke's full width leaves the ink, with no
+  half-width cap. A hundred and sixty-one units of blob appears.
+
+  Running it out by half a width or half the ink straight ahead, whichever is
+  more -- which is the angle-aware version, and the one that ought to work.
+  Fixes the `q` again, 100.6 to 38.9, and takes the `d`'s worst from 38.1 to
+  100.1 and the `w`'s mean from 15.2 to 19.7.
+
+The pattern in those last three is worth keeping: the `q` wants its strokes to
+overlap further past the junction and the `d`, `n` and `w` want them not to, and
+no single distance in half-widths separates them. What does separate them is the
+angle the two strokes meet at, which this fitter does not know, because a run is
+cut at a junction and never told what it was cut from.
+
