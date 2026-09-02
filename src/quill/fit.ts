@@ -417,6 +417,132 @@ interface Run {
   closed: boolean;
 }
 
+/**
+ * The runs that draw ink no other run already draws.
+ *
+ * Where a stroke crosses itself -- which every script's descender loop does --
+ * the four-way meeting rasterises into a knot a pixel or two across, and
+ * thinning leaves a handful of scraps around it: two nearly identical rails a
+ * pixel apart, a stub between two junctions, a single pixel standing alone.
+ * Dancing Script's `g` came back as fourteen strokes, of which three are the
+ * letter -- eight hundred and ninety-three units, seven hundred and eleven, two
+ * hundred and seventy-five -- and eleven are that knot, none longer than
+ * forty-five units. Its `y` was fourteen and its `j` twelve; every letter with
+ * no loop in it was one to three. They are invisible in the ink and a line each
+ * in a panel somebody has to read.
+ *
+ * The test is the whisker test's, one point at a time, and exact for the same
+ * reason: the pen at a point of one run sits inside the pen at a point of
+ * another when the distance between them plus the first radius is no more than
+ * the second. True at every point of a run, and that run's ink is a subset of
+ * the other's -- it can be dropped without losing a unit of ink, whatever it
+ * is joined to and however long it is.
+ *
+ * Only short runs are offered to it: a run longer than three times its own
+ * widest reach is a stroke going somewhere, and asking the question of every
+ * pair of long runs would cost more than the fit does. Longest first, so a
+ * scrap is always tested against the letter rather than the letter against a
+ * scrap.
+ */
+function dropCovered(runs: Run[], grid: Grid, field: Float64Array): Run[] {
+  if (runs.length < 2) return runs;
+  /*
+   * Every reach read once, and a box round every run.
+   *
+   * Read on demand instead, this asked the distance field for the same point
+   * thousands of times and made a whole-font trace a quarter slower. The boxes
+   * do the rest: a pair can only cover each other if they come within the wider
+   * one's own reach, which almost no pair in a letter does.
+   */
+  const reaches = runs.map((run) => {
+    const out = new Float64Array(run.points.length);
+    run.points.forEach(([x, y], at) => {
+      out[at] = distanceAt(grid, field, x, y) * grid.scale;
+    });
+    return out;
+  });
+  const widest = reaches.map((one) => {
+    let most = 0;
+    for (const value of one) most = Math.max(most, value);
+    return most;
+  });
+  const boxes = runs.map((run) => {
+    let left = Infinity;
+    let right = -Infinity;
+    let bottom = Infinity;
+    let top = -Infinity;
+    for (const [x, y] of run.points) {
+      left = Math.min(left, x);
+      right = Math.max(right, x);
+      bottom = Math.min(bottom, y);
+      top = Math.max(top, y);
+    }
+    return { left, right, bottom, top };
+  });
+  const apart = (one: number, other: number) => {
+    const a = boxes[one];
+    const b = boxes[other];
+    const x = Math.max(0, Math.max(a.left - b.right, b.left - a.right));
+    const y = Math.max(0, Math.max(a.bottom - b.top, b.bottom - a.top));
+    return Math.hypot(x, y) * grid.scale;
+  };
+
+  const order = runs
+    .map((_, index) => index)
+    .sort((a, b) => runs[b].points.length - runs[a].points.length);
+  const keep = runs.map(() => true);
+
+  for (const index of order) {
+    if (!keep[index]) continue;
+    const run = runs[index];
+    // A run that goes somewhere is not a scrap, whatever else is near it.
+    if (pathLength(run.points, grid) > widest[index] * 3) continue;
+    for (const other of order) {
+      if (other === index || !keep[other]) continue;
+      if (runs[other].points.length < run.points.length) continue;
+      // Too far apart for the wider pen to reach across, whatever the shapes.
+      if (apart(index, other) > widest[other]) continue;
+      /*
+       * And not where the scrap is the fattest thing about it.
+       *
+       * The field balloons at a junction to take in every stroke meeting there,
+       * so the scrap left sitting on one carries a wider pen than either of the
+       * strokes it joins -- and the sweep draws each stroke's *profile*, which
+       * is read along the whole of that stroke and does not keep the balloon.
+       * Dropped, nothing drew it: the bottom right of a `u`, where the bowl
+       * meets the stem, lost four per cent of the letter's ink to a notch.
+       * A scrap no wider than the stroke covering it is genuinely covered.
+       */
+      const middle = Math.floor(runs[other].points.length / 2);
+      if (widest[index] > reaches[other][middle]) continue;
+      let inside = true;
+      // Every fourth point: a run this short is a few pixels either way.
+      for (let at = 0; at < run.points.length && inside; at += 4) {
+        const [x, y] = run.points[at];
+        const radius = reaches[index][at];
+        let covered = false;
+        for (let against = 0; against < runs[other].points.length; against++) {
+          const [ax, ay] = runs[other].points[against];
+          const room = reaches[other][against] - radius;
+          if (room <= 0) continue;
+          const dx = (x - ax) * grid.scale;
+          const dy = (y - ay) * grid.scale;
+          if (dx * dx + dy * dy <= room * room) {
+            covered = true;
+            break;
+          }
+        }
+        inside = covered;
+      }
+      if (inside) {
+        keep[index] = false;
+        break;
+      }
+    }
+  }
+  return runs.filter((_, index) => keep[index]);
+}
+
 /** How long a pixel path is, in font units. */
 function pathLength(path: Array<[number, number]>, grid: Grid): number {
   let total = 0;
@@ -949,7 +1075,7 @@ export function fitGlyph(
   const field = distances(grid);
   const skeleton = thin(grid);
   const cut = tracePaths(skeleton, grid);
-  const paths = spliceAtJunctions(cut, grid);
+  const paths = dropCovered(spliceAtJunctions(cut, grid), grid, field);
 
   /*
    * How many paths share each piece of skeleton.
@@ -1022,6 +1148,31 @@ export function fitGlyph(
       Math.hypot(looseEnd[0] - heldEnd[0], looseEnd[1] - heldEnd[1]) * grid.scale +
         radiusAt(looseEnd) <=
         radiusAt(heldEnd);
+    /*
+     * A run the raster cannot describe a stroke with.
+     *
+     * The medial axis of a stroke carries a radius of at least half that
+     * stroke's width, so a run whose widest point is a pixel from the edge is
+     * not the axis of anything: it is the scrap thinning leaves where a script
+     * crosses itself and the four-way meeting rasterises into a knot a pixel
+     * or two across. Those come out as strokes three units long and two wide --
+     * invisible in the ink, and a line each in a panel a person has to read.
+     *
+     * Two of the tests below let them through by design and neither is wrong to.
+     * A run with a junction at both ends is not a whisker, because a whisker is
+     * a thing with a loose end. A run that is the whole of its own scrap of
+     * skeleton is kept because a mark standing alone is the dot of an `i`. The
+     * dot of an `i` is forty units across; this is one pixel. Dancing Script's
+     * `g` came back as fourteen strokes -- three that are the letter, of eight
+     * hundred and ninety-three, seven hundred and eleven and two hundred and
+     * seventy-five units, and eleven of nought to forty-five clustered on its
+     * three crossings. Its `y` was fourteen and its `j` twelve, against one to
+     * three for every letter with no loop in it.
+     */
+    let widest = 0;
+    for (const point of path) widest = Math.max(widest, radiusAt(point));
+    if (widest <= grid.scale * 1.5) continue;
+
     const floor = prune ?? Math.max(localWidth * 0.75, 4 * scale);
     const ends = path.filter(
       ([x, y]) => neighboursOf(skeleton, grid, x, y).length === 1,
@@ -1099,8 +1250,6 @@ export function fitGlyph(
     const endCap = (which: "start" | "end") => {
       const edge =
         which === "start" ? segments[0] : segments[segments.length - 1];
-      // A join is not a terminal: nothing to run out to, and nothing to cap.
-      if (!free[which]) return { cap: { kind: "butt" } as const, tip: null };
       const tip = which === "start" ? edge.from : edge.to;
       /*
        * Which way the stroke was heading when it ran out, taken from the
@@ -1156,6 +1305,7 @@ export function fitGlyph(
       if (run < 1e-9) return { cap: { kind: "round" } as const, tip };
       const out = { x: dx / run, y: dy / run };
       const half = widthAt(profile, which === "start" ? 0 : 1) / 2;
+
       if (half <= grid.scale) return { cap: { kind: "round" } as const, tip };
       const across = { x: -out.y, y: out.x };
       /*
@@ -1234,6 +1384,76 @@ export function fitGlyph(
       const onLeft = reachOn(1);
       const onRight = reachOn(-1);
       const reach = (onLeft + onRight) / 2;
+
+      /*
+       * A join is not a terminal, and stopping dead at one leaves a notch.
+       *
+       * A run is cut at every junction, so where two strokes meet, both of them
+       * end at the same point -- and both were being finished with a square cut
+       * across their own direction, there. Two rectangles meeting at an angle
+       * and each cut off at the meeting point cover everything inside the turn
+       * twice over and leave a wedge outside it empty: the hollow where a
+       * crossbar meets a stem, worth a hundred and eight units on the `m`,
+       * seventy on the `f` and seventy-three on the `t`.
+       *
+       * So each stroke is run on past the junction instead, and the two
+       * overlap the way a hand's two strokes do.
+       *
+       * How far is half a width, held back to wherever the stroke's own full
+       * width leaves the ink. Half a width on its own is right for filling a
+       * corner and too much at a crossing: where a script's loop crosses itself
+       * the two branches leave an acute wedge, and a square end run the whole
+       * way into it hangs out either side -- a small diamond outside the ink at
+       * every loop crossing in Dancing Script's `b`, `h`, `k` and `z`. The two
+       * probes that measure a terminal's ink answer this too: each walks along
+       * the heading from one edge of the stroke, so the shorter of them is how
+       * far this end can go and still be covered.
+       *
+       * Probing *without* the half-width bound was tried and is worse. Past a
+       * junction the ink does not stop, so the probe runs on until it hits the
+       * far side of whatever this is joining -- which is how the shoulder of an
+       * `n` came out through its stem and drew a blob there -- and holding that
+       * to one and a half half-widths instead cost 6.17 units of mean against
+       * 6.15 and thirteen nodes.
+       *
+       * What this does *not* fix, said plainly, because four attempts at it
+       * were rejected by measurement and the next person should not spend the
+       * afternoon again. The letters whose strokes meet at a shallow angle --
+       * `v`, `w`, `x`, `z`, `r` -- are still two to three times the alphabet's
+       * error, all of it at their corners, and none of these helped:
+       *
+       *   Reading the outline's own corners and bending the spine to a vertex
+       *   at each. Right in principle and wrong in fact: DejaVu's `v` has no
+       *   apex, it has a two-hundred-and-fifty-unit flat foot between two
+       *   hundred-and-ten-degree corners, and a mitred vertex placed there
+       *   drove a spike two hundred and ten units below the baseline.
+       *
+       *   Measuring the terminal's heading beyond the guard instead of inside
+       *   it, which is the known-wrong measurement documented above. 6.13 to
+       *   6.21.
+       *
+       *   Laying the straightened tail along that heading rather than along the
+       *   chord to the skeleton's tip, so the tip lands on the centre-line.
+       *   6.13 to 6.51.
+       *
+       *   Treating a free tip within a quarter-width of a junction as a join
+       *   rather than a terminal -- which is what the whisker into the corner
+       *   of a `z` is. 6.15 to 6.36, and the `z` alone from 14.2 to 18.8.
+       *
+       * The diagnosis that survives all four: a flat foot or a square elbow is
+       * two strokes each cut off at a boundary, and this fitter gives that
+       * region one smooth spine because the skeleton is connected through it.
+       * No cap and no join can put a flat on a round-nibbed sweep of a smooth
+       * spine. Splitting a run where the letter has a flat is the work.
+       */
+      if (!free[which]) {
+        const on = Math.min(half, onLeft, onRight);
+        return {
+          cap: { kind: "butt" } as const,
+          tip: { x: tip.x + out.x * on, y: tip.y + out.y * on },
+        };
+      }
+
 
       /*
        * Cut or rounded, settled by asking which of the two describes the ink.
