@@ -90,7 +90,7 @@ test("loads with no console errors and prompts for a font", async ({ page }) => 
   // The wordmark itself, not the word wherever it appears -- the empty state
   // mentions the project format by name, and matching loosely picked up both.
   await expect(page.getByText("Typeforge", { exact: true })).toBeVisible();
-  await expect(page.getByText("No font open")).toBeVisible();
+  await expect(page.getByText("Make a typeface")).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -1939,7 +1939,7 @@ const PILE = [
 
 async function openAssemble(page: Page): Promise<void> {
   await page.goto("/");
-  await page.getByRole("button", { name: "Assemble" }).click();
+  await page.getByRole("button", { name: "Assemble", exact: true }).click();
   await expect(page.locator("[data-assemble-instructions]")).toBeVisible();
 }
 
