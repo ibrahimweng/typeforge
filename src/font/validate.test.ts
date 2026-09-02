@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { emptyTypeface, type Contour, type Glyph, type Typeface } from "./types";
-import { validateTypeface, validateWholeTypeface } from "./validate";
+import { faultsOfGlyph, validateTypeface, validateWholeTypeface } from "./validate";
 
 function glyph(name: string, contours: Contour[] = [], unicodes: number[] = []): Glyph {
   return {
@@ -277,5 +277,70 @@ describe("checking the whole font", () => {
     const straight = validateTypeface(typeface, { format: "truetype" });
     expect(chunked.findings).toEqual(straight.findings);
     expect(chunked.examined).toBe(straight.examined);
+  });
+});
+
+describe("one letter, asked about itself", () => {
+  /*
+   * The same seven checks the whole-font report runs, asked of a single glyph
+   * so the answer can be shown over the canvas while the pen is in your hand.
+   * What is being pinned is that it says something about *this* letter and
+   * nothing about any other, and that a sound letter produces nothing at all.
+   */
+  /*
+   * Wound clockwise, which is what TrueType wants of an outer contour and
+   * which the `square` above is not: writing this found that the "clean"
+   * letter these tests were built on was tripping the direction check, and a
+   * test of "says nothing" has to be handed something there is nothing to say
+   * about.
+   */
+  const sound = (size = 100): Contour => ({
+    closed: true,
+    nodes: [
+      { point: { x: 0, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+      { point: { x: 0, y: size }, handleIn: null, handleOut: null, type: "corner" },
+      { point: { x: size, y: size }, handleIn: null, handleOut: null, type: "corner" },
+      { point: { x: size, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+    ],
+  });
+
+  const open = (): Contour => ({
+    closed: false,
+    nodes: [
+      { point: { x: 0, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+      { point: { x: 100, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+      { point: { x: 100, y: 100 }, handleIn: null, handleOut: null, type: "corner" },
+    ],
+  });
+
+  it("says nothing about a letter with nothing wrong", () => {
+    const good = glyph("o", [sound()]);
+    expect(faultsOfGlyph(font([good]), good)).toEqual([]);
+  });
+
+  it("names the fault, in the second person, about the letter", () => {
+    const bad = glyph("e", [open()]);
+    const found = faultsOfGlyph(font([bad]), bad);
+    expect(found.map((f) => f.check)).toContain("open-contour");
+    const contour = found.find((f) => f.check === "open-contour")!;
+    expect(contour.severity).toBe("error");
+    expect(contour.glyph).toBe("e");
+    // The report says "3 glyphs have an unclosed contour. First: a, e, n";
+    // in front of one letter the useful sentence counts nothing.
+    expect(contour.title).toBe("An outline is not closed");
+    expect(contour.count).toBeUndefined();
+  });
+
+  it("asks only about the letter it was handed", () => {
+    const good = glyph("o", [sound()]);
+    const bad = glyph("e", [open()]);
+    expect(faultsOfGlyph(font([good, bad]), good)).toEqual([]);
+  });
+
+  it("reports a negative width, which is the fault that runs text backwards", () => {
+    const bad = { ...glyph("n", [sound()]), advanceWidth: -10 };
+    const found = faultsOfGlyph(font([bad]), bad);
+    expect(found[0].check).toBe("negative-advance");
+    expect(found[0].severity).toBe("error");
   });
 });

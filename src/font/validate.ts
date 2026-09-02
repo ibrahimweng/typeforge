@@ -623,3 +623,89 @@ function hasDuplicatePoints(contour: Contour): boolean {
   return false;
 }
 
+
+/**
+ * What is wrong with one letter, said about the letter rather than the font.
+ *
+ * The same seven checks the whole-font report runs, asked of a single glyph and
+ * worded for somebody looking at it. The report says "3 glyphs have an
+ * unclosed contour. First: a, e, n" because it is describing a font; standing
+ * in front of the `e` with the pen in your hand, the useful sentence is "this
+ * outline is not closed".
+ *
+ * Cheap enough to run on every edit -- one glyph rather than six thousand -- so
+ * nothing here is cached and nothing goes stale. That is the point: a fault
+ * shown on a separate page is a fault you find after you have moved on.
+ */
+export function faultsOfGlyph(
+  typeface: Typeface,
+  glyph: Typeface["glyphs"][number],
+  format: OutlineFormat = "truetype",
+): Finding[] {
+  const found = noFaults();
+  gatherGlyphFaults(typeface, [glyph], format, found);
+
+  const findings: Finding[] = [];
+  const say = (
+    hit: string[],
+    check: string,
+    severity: Severity,
+    title: string,
+    detail: string,
+  ): void => {
+    if (hit.length === 0) return;
+    findings.push({ check, severity, title, detail, glyph: glyph.name });
+  };
+
+  say(
+    found.negativeWidth,
+    "negative-advance",
+    "error",
+    "Its width is negative",
+    "The next letter would be drawn back over this one. Set the width to at least zero.",
+  );
+  say(
+    found.openContours,
+    "open-contour",
+    "error",
+    "An outline is not closed",
+    "A fill is only defined inside a closed path. Join the two loose ends with the pen.",
+  );
+  say(
+    found.strayPoints,
+    "stray-points",
+    "warning",
+    "Something here draws nothing",
+    "A stray point, or a path collapsed onto itself, encloses no area. Delete it.",
+  );
+  say(
+    found.duplicatePoints,
+    "duplicate-points",
+    "warning",
+    "Two points sit on top of each other",
+    "The second one adds nothing to the shape and can confuse hinting and interpolation.",
+  );
+  say(
+    found.wrongDirection,
+    "contour-direction",
+    "warning",
+    "It is wound the wrong way",
+    "A counter has to run against the shape around it or it fills in solid. Export corrects this, so it is about what you are drawing rather than what ships.",
+  );
+  say(
+    found.missingPoints,
+    "missing-extrema",
+    "warning",
+    "A curve turns between points",
+    "Both outline formats want a point where a curve reaches its highest, lowest, leftmost or rightmost place. Export adds them, so it is about the drawing rather than the file.",
+  );
+  say(
+    found.selfIntersecting,
+    "overlapping-contours",
+    "info",
+    "Two contours overlap",
+    "A normal way to draw, and they have to be merged in the exported file or they can render as holes. Typeforge does not merge them yet.",
+  );
+
+  return findings;
+}

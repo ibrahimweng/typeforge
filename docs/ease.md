@@ -41,9 +41,9 @@ time for a welcome they needed once.
 5. In each panel, put the few controls for the current job at the top and the
    rest below a labelled line. **Done.**
 6. After every action, show what changed. Show mistakes as you make them instead
-   of on a separate page.
+   of on a separate page. **Done.**
 7. Add keyboard shortcuts for everything, so an experienced user never needs the
-   mouse.
+   mouse. **Done, and most of it was already there. See E5.**
 
 ## Not doing
 
@@ -236,3 +236,133 @@ changing a part changes every letter that has it, which is what the "Shape the
 parts" rule now says a few inches to the right, so it came out. The other four
 are gestures and facts with no home yet: what to double-click, how the accented
 letters follow, and what Skeleton and the specimen line are for.
+
+
+---
+
+# E4. Mistakes shown where they are made — *done*
+
+## What was wrong
+
+The application could already find every fault it now reports here. It had
+seven checks on a glyph's outline -- unclosed contours, points on top of each
+other, paths that draw nothing, a curve turning between points, a negative
+width, contours wound the wrong way, contours overlapping -- and it said so in
+exactly one place: a separate page, reached by a tab, after a run that walks the
+whole font.
+
+That is the wrong moment twice over. A beginner does not know to go and check;
+and an unclosed outline is a thing to fix while the pen is still in your hand,
+not something to be told about an hour later next to two hundred other findings.
+
+The code said so itself. A comment in `App.tsx` read: "Checks holds its findings
+in the view rather than in the store, so a panel out here could not say anything
+about them even if it wanted to."
+
+## What is there now
+
+**Over the canvas, the faults of the letter in front of you.** The same seven
+checks, asked of one glyph rather than six thousand, which costs nothing and so
+runs again after every edit. Nothing is cached, so nothing can be stale. Worded
+in the second person and about the letter: the report says "3 glyphs have an
+unclosed contour. First: a, e, n" because it is describing a font; standing in
+front of the `e`, the useful sentence is "an outline is not closed".
+
+**Laid over the canvas rather than above it.** The first version took its own row
+in the column, so the moment a fault appeared the canvas moved down by the
+height of the strip -- while the pen was still in the hand that had just caused
+it. Drawing the third point of an open contour shifted the drawing thirty pixels
+under the pointer. The first test written for this caught it by then missing the
+point it was aiming at. It is `pointer-events-none` for the same reason: this
+sits on the one surface in the application that is drawn on.
+
+**Nothing at all when there is nothing wrong.** Measured across the sample's `o`,
+`a`, `e`, `n` and `s`: no strip on any of them. A warning that is on screen all
+the time is a warning nobody reads.
+
+**The Checks tab carries the count.** The number is hidden from the tab's
+accessible name and reaches a screen reader as the button's description instead,
+because "Checks 3" is a different tab from "Checks" to a screen reader and to
+every test that asks for one.
+
+**Two more rungs on the line.** The report now lives in the store, so the line
+under the top bar can say "nothing has checked this font yet" and then "N things
+to fix. A font with errors may not install." Both are facts about the font
+rather than about the person, which is the rule the line was built on. E2 said
+this rung was waiting for step 6; this is it.
+
+**Undo and redo say what they moved.** Neither said anything, and the change
+they make is often invisible from where you are standing: a point put back in a
+letter you are no longer looking at, a path direction corrected. Every entry on
+the stack already carried a name and nothing had ever shown it. Now the status
+line says "Undone: Close the outline" and the button's hover says what it will
+take back. The label is quoted rather than bent into the past tense, because
+every one of them is written in the imperative for an undo menu.
+
+The three generators are left alone. Their history is a snapshot of the whole
+parameter set with no names on it, and undoing one redraws the alphabet in front
+of you, so there is nothing that needs saying.
+
+
+---
+
+# E5. The keyboard — *done, and most of it was already there*
+
+## Where I was wrong about step 7
+
+The step said "add keyboard shortcuts for everything, so an experienced user
+never needs the mouse". Measured before writing any of it, with the harness that
+already exists for this (`npx vite-node scripts/reach.ts`):
+
+| kind | reachable by its own description |
+|---|---|
+| control | 74/75 |
+| action | 7/7 |
+| view | 7/7 |
+| face | 21/21 |
+| alternate | 21/21 |
+| letter | 10/10 |
+
+582 entries. Space or ⌘K opens the palette, from anywhere, and everything in
+that table is one query away. "Everything is reachable from the keyboard" was
+true before this step started.
+
+## What was actually missing
+
+The keys a hand already knows. There was no ⌘S, no ⌘E, no ⌘O, no number for a
+view, and no key for the one action the line under the toolbar is offering.
+Somebody who saves forty times an afternoon should not open a search to do it.
+
+And discovery. The only list of shortcuts in the product was inside the help
+drawer, which is a list somebody has to decide to go and study.
+
+## What is there now
+
+- **⌘S, ⌘E, ⌘O** — save, export, open. These stand through typing, as ⌘K does: a
+  chord is never mistaken for a character, and somebody halfway through naming a
+  glyph who presses ⌘S means to save.
+- **1 – 6** — the six views, in the order the tabs sit in. A bare key, so it
+  stands aside for anything being typed into: a `2` in the pair filter is a
+  number, not a request to go to the second tab.
+- **⌘⏎** — do what the line under the toolbar says. Bound only while that line is
+  on screen with something to do, because a key whose effect is not visible is a
+  key nobody can learn.
+
+The test that says aside for typing is the one the palette's space bar needed
+first, so it moved out of the palette into `src/keys/typing.ts` and both use it.
+
+## Where a shortcut is learnt
+
+Beside the slow way to the same thing. The palette now prints the key on any row
+that has one, so somebody who opens it and types "save" is shown ⌘S at the exact
+moment they are taking the long way round. The buttons say it on their hover,
+and the help drawer's list has all five.
+
+## What is deliberately not bound
+
+⌘1 to ⌘9 switch browser tabs and a page cannot take that back in Chrome, so the
+modes have no direct key -- switching mode is opening a different document, and
+the palette is the right speed for it. The thirteen drawing tools already share
+four group keys (`V`, `P`, `R`, `K`, pressed again to walk the group), which is
+the arrangement that fits thirteen tools into a keyboard the editor has already
+spent.

@@ -322,6 +322,21 @@ function Row({ item, at, chosen, adjusting, first, onHover, onPick }: RowProps):
           {item.destructive && (
             <span className="shrink-0 text-[10px] text-muted-foreground">asks first</span>
           )}
+          {/*
+            And the key, for the next time.
+
+            A shortcut is learnt at the moment somebody takes the slow way to
+            the thing it is for, which is exactly here. Pushed to the right, so
+            the column of them reads down.
+          */}
+          {item.keys && (
+            <kbd
+              data-item-keys
+              className="ml-auto shrink-0 rounded border border-border px-1.5 py-0.5 font-sans text-[10px] text-muted-foreground"
+            >
+              {item.keys}
+            </kbd>
+          )}
         </div>
         {/*
           * The hint is the reason the result came back, so it is shown rather

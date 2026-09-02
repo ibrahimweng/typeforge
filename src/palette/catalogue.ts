@@ -34,6 +34,7 @@ import type { CutName } from "@/forge/cut";
 import { BASES } from "@/forge/style";
 import type { Mode } from "@/App";
 import type { ViewId } from "@/state/store";
+import { viewKey } from "@/keys/useAppKeys";
 import type { Entry, EntryKind } from "./search";
 
 /** A number the palette can move without leaving itself. */
@@ -68,6 +69,15 @@ export interface Item extends Entry {
   short?: string;
   /** Where picking it will take you, when that is somewhere else. */
   where?: string;
+  /**
+   * The key that does this without opening the palette at all.
+   *
+   * Shown on the row, which is the one place it is certain to be read: a
+   * shortcut is learnt at the moment somebody takes the slow way to the thing
+   * it is for. A list of keys in the help drawer is a list somebody has to
+   * decide to go and study.
+   */
+  keys?: string;
   /** Runs it. Absent for a control, which is adjusted in place instead. */
   run?: () => void;
   adjust?: Adjustable;
@@ -196,6 +206,7 @@ export function catalogue(shell: Shell): Item[] {
   });
   add({
     id: "action:open",
+    keys: "⌘O",
     kind: "action",
     group: "Actions",
     label: "Upload a font",
@@ -225,6 +236,7 @@ export function catalogue(shell: Shell): Item[] {
   });
   add({
     id: "action:save",
+    keys: "⌘S",
     kind: "action",
     group: "Actions",
     label: "Save the project",
@@ -234,6 +246,7 @@ export function catalogue(shell: Shell): Item[] {
   });
   add({
     id: "action:export",
+    keys: "⌘E",
     kind: "action",
     group: "Actions",
     label:
@@ -276,6 +289,8 @@ export function catalogue(shell: Shell): Item[] {
       group: "Go to",
       label: view.label,
       hint: view.hint,
+      // The six tabs answer to their own numbers, in the order they sit in.
+      keys: viewKey(view.id) ?? undefined,
       where: shell.mode === "edit" ? undefined : "Editing a font",
       run: () => {
         shell.setMode("edit");

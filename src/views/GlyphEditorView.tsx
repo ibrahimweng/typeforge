@@ -41,6 +41,7 @@ import {
 } from "@/components/glyph-render";
 import { nodeKey, store, useAppState, type NodeRef, type ToolState } from "@/state/useStore";
 import { CoachMark } from "@/components/CoachMark";
+import { GlyphFaults } from "@/components/GlyphFaults";
 import { GroundToggle } from "@/components/GroundToggle";
 import { NumberField } from "@/components/NumberField";
 import { NothingDrawnYet } from "@/components/NothingDrawnYet";
@@ -1471,6 +1472,17 @@ export function GlyphEditorView(): React.JSX.Element {
             }
           }}
         />
+        {/*
+          And what is wrong with this letter, over the letter.
+
+          Every one of these faults was already found by the checker and only
+          ever said on a separate page, which is a page somebody has to know to
+          go and visit. An unclosed outline is a thing to fix while the pen is
+          still in your hand. Nothing is drawn when there is nothing wrong.
+        */}
+        {typeface && glyph && (
+          <GlyphFaults typeface={typeface} glyph={glyph} revision={state.revision} />
+        )}
         <div className="pointer-events-none absolute bottom-3 left-3 flex gap-3 text-2xs text-muted-foreground tabular-nums">
           <span>{Math.round(zoom * 100)}%</span>
           {state.selectedNodes.size > 1 && <span>{state.selectedNodes.size} points</span>}

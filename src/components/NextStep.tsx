@@ -27,6 +27,7 @@ import { useAssemble } from "@/state/useAssemble";
 import { useForge } from "@/state/useForge";
 import { useQuill } from "@/state/useQuill";
 import { store, useAppState } from "@/state/useStore";
+import { cn } from "@/ui/lib/utils";
 
 const OFF = "typeforge.nextStep.off";
 
@@ -158,15 +159,44 @@ export function NextStep({
       };
 
     /*
-     * And no rung for the checks, on purpose, until they are live.
+     * The checks, now that the report is somewhere the rest of the app can see.
      *
-     * The obvious one -- "you have not looked at Checks yet" -- is a claim
-     * about a person rather than about a font, which is the one thing this line
-     * does not do. The honest version is "this font has faults", and that means
-     * running a whole-font validation, which is the slow job with a progress
-     * bar. It joins the ladder when the report becomes something the rest of
-     * the app can read rather than something one view computes for itself.
+     * Both of these are facts about the font rather than about the person. A
+     * report either exists for this font or it does not, and it either found
+     * errors or it did not. Neither says "you have not looked", which is the
+     * one thing this line will not claim.
+     *
+     * A report read from an older revision is left alone rather than
+     * re-demanded. It is out of date and still information, and a line that
+     * asked for the checks again after every point moved would be noise.
      */
+    if (state.checks === null)
+      return {
+        id: "edit-check",
+        said: "Nothing has checked this font yet. It is worth doing before you export.",
+        action: {
+          label: "Run the checks",
+          go: () => {
+            store.setView("report");
+          },
+        },
+      };
+
+    const errors = state.checks.findings.filter(
+      (finding) => finding.severity === "error",
+    ).length;
+    if (errors > 0)
+      return {
+        id: "edit-fix",
+        said: `${errors} thing${errors === 1 ? "" : "s"} to fix. A font with errors may not install.`,
+        action: {
+          label: "See what is wrong",
+          go: () => {
+            store.setView("report");
+          },
+        },
+      };
+
     return {
       id: "edit-export",
       said: "That is a font. Write it out and install it.",
@@ -178,12 +208,35 @@ export function NextStep({
     quill.document.letters.length,
     assemble.assembly.pieces.length,
     state.typeface,
+    state.checks,
     onName,
     onExport,
     onEditForged,
     onEditTraced,
     onEditAssembled,
   ]);
+
+  /*
+   * And the key, for somebody who does this all day.
+   *
+   * Bound only while the line is on screen with something to do, because a key
+   * whose effect is not visible is a key nobody can learn: press it with the
+   * line turned off and it would do a different thing every time, unannounced.
+   * The button says which key it is.
+   */
+  const go = off ? null : (step?.action?.go ?? null);
+  React.useEffect(() => {
+    if (!go) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.repeat || event.key !== "Enter") return;
+      if (!event.metaKey && !event.ctrlKey) return;
+      if (event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      go();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [go]);
 
   if (off || !step) return null;
 
@@ -194,8 +247,24 @@ export function NextStep({
     >
       <span className="min-w-0 flex-1 truncate text-2xs text-foreground">{step.said}</span>
       {step.action && (
-        <button type="button" onClick={step.action.go} className={PRIMARY_ACTION}>
+        <button
+          type="button"
+          onClick={step.action.go}
+          title={`${step.action.label} (⌘⏎)`}
+          className={cn(PRIMARY_ACTION, "inline-flex items-center gap-1.5")}
+        >
           {step.action.label}
+          {/*
+            Out of the name, into the description.
+
+            The name is what a screen reader calls this button and what every
+            test asks for, and "Open kerning ⌘⏎" is a different button from
+            "Open kerning" to both of them. The key reaches a screen reader
+            through the title instead.
+          */}
+          <kbd aria-hidden="true" className="font-sans text-[10px] opacity-70">
+            ⌘⏎
+          </kbd>
         </button>
       )}
       <button
