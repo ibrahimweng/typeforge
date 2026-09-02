@@ -24,6 +24,8 @@
 
 import { describe, expect, it } from "vitest";
 
+import { ready, unite } from "@/font/boolean";
+
 import { contourArea, contoursBounds, flattenContour } from "@/font/geometry";
 import {
   PLAIN_HAND,
@@ -547,18 +549,23 @@ describe("the fitter", () => {
       );
     });
     expect(across, "the arm was not found at all").toBeDefined();
-    const start = across!.spine.segments[0];
-    expect(start.kind).toBe("cubic");
     /*
-     * The arm's spine stops at the stem's centre-line, where the skeleton put
-     * it. Run out as though it were a terminal it goes half a width further --
-     * and the width read at a join is the join's, not the arm's, so "half a
-     * width" is half of something wider than either stroke.
+     * Asked of the ink rather than of the spine, because the ink is what went
+     * wrong. The arm *is* run out past the junction, on purpose -- two strokes
+     * that both stop dead at the point they meet leave the outside of the turn
+     * empty -- and how far is the whole question. Half its own width takes it
+     * to the far side of the stem and no further, so the union is the stem it
+     * already was. Run out by a *terminal's* reach it goes further: that probes
+     * for ink, finds the whole stem, and comes out the other side, which is the
+     * blob this is here to catch.
      */
-    expect(
-      start.kind === "cubic" ? start.from.x : 0,
-      "the arm was run out past the stroke it joins",
-    ).toBeGreaterThan(-12);
+    const redrawn = sweepAll(fit.glyph.strokes).contours;
+    const leftmost = Math.min(
+      ...redrawn.flatMap((one) => one.nodes.map((node) => node.point.x)),
+    );
+    expect(leftmost, "the arm came out the far side of the stem").toBeGreaterThan(
+      -44,
+    );
   });
 
   /*
@@ -616,6 +623,44 @@ describe("the fitter", () => {
    * unit and saved seventeen nodes in fourteen hundred, and no test could tell
    * whether it was there.
    */
+  /*
+   * Two strokes that meet, and the wedge between them where neither goes.
+   *
+   * A run is cut at every junction, so where a crossbar meets a stem both of
+   * them end at the same point -- and each was finished there with a square cut
+   * across its own direction, or with a disc, and neither fills the outside of
+   * the turn. On DejaVu that hollow was worth a hundred and eight units on the
+   * `m`, seventy on the `f` and seventy-three on the `t`; here it is the corner
+   * where the bar crosses the stem, and it is smaller because a synthetic
+   * crossing is cleaner than a drawn one. Each stroke now runs on past the
+   * junction by its own half width, so the two overlap the way a hand's do.
+   */
+  it("runs a stroke on past the one it meets, so the corner fills", async () => {
+    await ready();
+    const bar = (
+      from: [number, number],
+      to: [number, number],
+    ): QuillStroke => ({
+      spine: straight(from, to),
+      width: [{ at: 0, width: 90 }],
+      nib: { ...ROUND_NIB },
+      start: { kind: "butt" },
+      end: { kind: "butt" },
+    });
+    const source = sweepAll([bar([0, -300], [0, 500]), bar([-200, 300], [200, 300])])
+      .contours;
+    const fit = fitGlyph("t", source, 900, {})!;
+    const redrawn = sweepAll(fit.glyph.strokes).contours;
+    const flat = (contours: Contour[]) =>
+      contours.map((one) => flattenContour(one, 40));
+    const worst = Math.max(
+      furthestFromPath(flat(unite(source)).flat(), flat(unite(redrawn))),
+      furthestFromPath(flat(unite(redrawn)).flat(), flat(unite(source))),
+    );
+    // Twenty-four and four fifths of it before, and six and a third after.
+    expect(worst, "the corner where the bar meets the stem is hollow").toBeLessThan(8);
+  });
+
   it("keeps the corner at the bottom of a v", () => {
     const vee: QuillStroke = {
       spine: {

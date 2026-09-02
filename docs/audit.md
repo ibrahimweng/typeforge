@@ -496,3 +496,113 @@ and spacing views and the Draw and Assemble panels all held up. Two things that
 looked wrong were not: the top bar's truncation is a deliberate fix for Export
 being pushed off the right-hand edge, and the tool flyout wants a second click
 on a group you are already in, which is documented where it is decided.
+
+# Trace, measured letter by letter — *two found, one fixed, four rejected*
+
+The sweep above was of the interface. This is of the engine under Trace, and it
+starts from the harness rather than from a screen: `scripts/trace.ts` reads a
+font, recovers strokes from every lowercase letter, redraws them and measures
+how far the redrawing strays. Two fonts, because they fail differently — DejaVu
+Sans, which is straight lines and square cuts, and Dancing Script, which is
+loops.
+
+## T1. Where two strokes meet, neither filled the corner — *done*
+
+A run is cut at every junction, so where a crossbar meets a stem both pieces end
+at the same point, and both were being finished there with a square cut across
+their own direction, going no further. Two rectangles meeting at an angle and
+each cut off at the meeting point cover everything inside the turn twice over
+and leave the wedge outside it empty. That hollow was worth **a hundred and
+eight units on the `m`, seventy-three on the `t` and seventy on the `f`** — on
+a two-thousand-unit em, so half a millimetre at reading size, and plainly
+visible in `scripts/traceshot.ts`.
+
+Each stroke now runs on past the junction by its own half width, held back to
+wherever its full width leaves the ink. Both halves of that are needed. Without
+the run-on the wedge stays empty; without the bound, a square end driven into
+the acute wedge where a script's loop crosses itself hangs out either side, and
+a probe with no bound at all takes the shoulder of an `n` out through the far
+side of its stem, which is a defect this fitter had once already.
+
+## T2. A `g` that came back as fourteen strokes — *done*
+
+Dancing Script traces accurately and unusably. Its `g` was **fourteen strokes**,
+of which three are the letter — eight hundred and ninety-three units, seven
+hundred and eleven, two hundred and seventy-five — and eleven are debris from
+the three places the letter crosses itself, none longer than forty-five units
+and some three units long and two wide. The `y` was fourteen and the `j` twelve,
+against one to three for every letter with no loop in it. The harness's own
+header says it: a fit can be arithmetically excellent and useless, and what is
+wanted is the handful a hand would have used.
+
+Where a stroke crosses itself the four-way meeting rasterises into a knot a
+pixel or two across, and thinning leaves scraps around it: two nearly identical
+rails a pixel apart, a stub between two junctions, a single pixel standing
+alone. Every existing test let them through, and none of those tests is wrong.
+A run with a junction at both ends is not a whisker, because a whisker is a
+thing with a loose end. A run that is the whole of its own scrap of skeleton is
+kept because a mark standing alone is the dot of an `i` — and the dot of an `i`
+is forty units across, where this is one pixel.
+
+Two rules, both stated as facts about the raster rather than as thresholds. A
+run whose widest reach is a pixel from the edge is not the medial axis of
+anything, because a real axis carries a radius of at least half its stroke's
+width. And a short run every point of which lies inside the pen at some point of
+another run draws no ink that run does not already draw — the whisker test,
+applied one point at a time.
+
+The second needs a guard that cost a `u` four per cent of its ink before it was
+found. The field balloons at a junction to take in every stroke meeting there,
+so the scrap sitting on one carries a wider pen than either stroke it joins, and
+the sweep draws each stroke's *profile*, which is read along the whole of that
+stroke and does not keep the balloon. Dropped, nothing drew it, and the bottom
+right of the `u` came back with a notch in it. A scrap is only covered if it is
+no wider than the stroke covering it.
+
+## What the two changes did, measured
+
+| | DejaVu Sans | | Dancing Script | |
+|---|---|---|---|---|
+| | before | after | before | after |
+| worst deviation | 108.6 | **100.6** | 38.8 | **34.0** |
+| mean of means | 6.13 | 6.16 | 2.31 | **2.30** |
+| nodes | 1134 | **1112** | 1995 | **1945** |
+| strokes, whole alphabet | — | — | 131 | **105** |
+
+Letter by letter, where it moved most. DejaVu: `f` 70.2 to **11.6**, `t` 73.4 to
+**10.9**, `m` 108.6 to **38.5**, `d` 105.0 to **38.1**, `h` and `n` 6.04 to 5.51
+mean. Dancing Script: `g` **14 strokes to 7**, `y` **14 to 9**, `j` **12 to 9**,
+`d` 7 to 3, `m` 9 to 7, `f` 6 to 5.
+
+The mean on DejaVu is three hundredths worse, which is worth saying rather than
+hiding. That mean is taken over the *source outline's own sample points*, and a
+straight-sided letter is flattened to its corners alone — a `v` is seven points,
+all of them corners — so for half this alphabet "mean" and "max" are both
+measurements of corners, and corners are what T3 below is about. The fitter is
+seven per cent slower on a whole alphabet (6.81 to 7.29 seconds), the cost of
+two extra ink probes at every join.
+
+## T3. The letters whose strokes meet at a shallow angle — *found, not fixed*
+
+`v` 18.97, `w` 15.32, `z` 14.18, `r` 12.50, `x` 10.78, against an alphabet mean
+of 6.13. Two to three times everything else, and measurably all in one place:
+each letter's worst point sits on a corner of its outline — the `v`'s at 0 per
+cent of the way up the letter, the `z`'s and `w`'s at 100 per cent, the `r`'s at
+85 — while the sharpest turn anywhere in that letter's *spine* is between 8.6
+and 20.9 degrees. The redraw rounds off what the letter does square.
+
+Four fixes were tried and all four were rejected by measurement. They are
+written into `src/quill/fit.ts` beside the code so the next person does not
+spend the afternoon again, and the shortest of them is the most useful: reading
+the outline's own corners and bending the spine to a vertex at each is right in
+principle and wrong in fact, because **DejaVu's `v` has no apex**. It has a
+two-hundred-and-fifty-unit flat foot between two hundred-and-ten-degree corners,
+and a mitred vertex placed there drove a spike two hundred and ten units below
+the baseline.
+
+What survives all four attempts is the diagnosis. A flat foot or a square elbow
+is two strokes each cut off at a boundary; this fitter gives that region one
+smooth spine, because the skeleton is connected through it. No cap and no join
+can put a flat on a round-nibbed sweep of a smooth spine. Splitting a run where
+the letter has a flat is the work, and it is a bigger piece than a cap rule.
+
