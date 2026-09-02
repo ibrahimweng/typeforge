@@ -309,7 +309,7 @@ test("exports a TrueType file the browser can use as a font", async ({ page }) =
   await page.goto("/");
   await openFont(page);
 
-  await page.getByRole("button", { name: "Export" }).click();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Download font" })).toBeVisible();
 
   const download = await Promise.race([
@@ -2230,7 +2230,7 @@ test("writes a real font out of the pile", async ({ page }) => {
   await dropFolder(page, PILE);
   await expect(page.locator('[data-assemble-filled="yes"]')).toHaveCount(5);
 
-  await page.getByRole("button", { name: "Export" }).click();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Download font" })).toBeVisible();
 
   const download = await Promise.race([
@@ -4404,7 +4404,7 @@ test("a font that was opened can be shipped as one file that varies", async ({ p
   await page.goto("/");
   await openFont(page);
 
-  await page.getByRole("button", { name: "Export" }).click();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Download font" });
   await expect(dialog).toBeVisible();
   await dialog.getByText("Variable (.ttf)").click();

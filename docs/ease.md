@@ -35,7 +35,7 @@ time for a welcome they needed once.
 2. Rename the four modes so they say what you do in them, and put them in the
    order you do them. **Done.**
 3. One line under the top bar with the next thing to do and a button that does
-   it.
+   it. **Done.**
 4. Move the tools and controls out of the side panels and onto the screens where
    you use them.
 5. In each panel, put the few controls for the current job at the top and the
@@ -100,3 +100,70 @@ Nothing needed doing. A session is already put back before the first frame is
 drawn, in whichever mode it was left in, and the status line already says
 "Picked up where you left off". This screen is only ever seen when there is no
 font to go back to.
+
+
+---
+
+# E2. One line saying what to do next — *done*
+
+## What was wrong
+
+Everything this tool can do was reachable, and nothing said which of it to do
+first. The order of the work had to be known before you arrived.
+
+What stood in for it was a coach mark: a five-line paragraph above the canvas,
+shown once, dismissed with "Got it". In Draw it read "Nothing here came from
+another font. Pick a base, then change a part -- a serif, a shoulder, a corner
+-- and every letter that has that part follows..." and ran to four sentences
+before it mentioned anything you could press. A beginner does not read that.
+
+## What is there now
+
+One line under the top bar, across the whole width, with the next unfinished
+thing and the button that starts it.
+
+- **Draw.** Nothing touched yet, so: pick a style, then drag Weight. Once
+  something is on the undo stack it changes to offering the way on to the
+  editor.
+- **Trace.** No font read yet, so: choose one. Once there are strokes, the way
+  on to the editor.
+- **Assemble.** No drawings yet, so: add them. Then the way on.
+- **Edit.** No letters, then no name, then nothing kerned, then export.
+
+## What it will not do
+
+It does not guess, and it does not record what you have looked at. Every rung is
+read off the document itself: how many letters there are, what the font is
+called, whether anything is kerned, whether there is a drawing to hand over. A
+rung saying "you have not visited Spacing" would be a claim about a person
+rather than about a font, and this line only makes claims about the font. A test
+walks four views with the same font and the line does not move.
+
+That is also why there is no rung for the checks yet. The honest version is
+"this font has faults", which means running the whole-font validation, and that
+is the slow job with the progress bar. It joins the ladder at step 6, when the
+report becomes state the rest of the app can read rather than something one view
+computes for itself.
+
+## The tips, and a change of mind
+
+The first version had the line hold the tips back while it was up, on the
+grounds that two banners stacked is worse than either. Reading the tips again
+settled it the other way. A tip says what a *screen* is for and the one gesture
+it needs, e.g. "click the gap between two letters, not the letters, then drag".
+The line says what the *font* still needs. They are different things and a
+beginner wants both, so the suppression came out.
+
+What is true is that the tip in Draw runs to five lines before it names anything
+you can press. That is one tip being too long rather than tips being wrong, and
+it is fixed at step 5, where what a coach mark says about a panel goes into that
+panel beside the control it is about.
+
+## Four labels chosen not to collide
+
+Every action on the line reads differently from every button already on screen:
+"Open in the editor" rather than the panel's "Edit these letters", "Export the
+font" rather than the toolbar's "Export", "Turn this off" rather than a "stop",
+and "Nothing is drawn yet" rather than the grid's "No letters yet". Two buttons
+reading the same word is a thing a person has to look twice at. It also made
+fourteen browser tests ambiguous, which is how each collision was found.

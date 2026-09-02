@@ -21,6 +21,7 @@ import { HelpDrawer } from "@/components/HelpDrawer";
 import { LibraryDialog } from "@/components/LibraryDialog";
 import { QuickActions, useQuickActionShortcut, type Shell } from "@/palette";
 import { Inspector } from "@/components/Inspector";
+import { NextStep } from "@/components/NextStep";
 import { OnLoan } from "@/components/OnLoan";
 import { TopBar } from "@/components/TopBar";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
@@ -737,6 +738,23 @@ export function App(): React.JSX.Element {
         onMode={goToMode}
         onSave={saveProject}
         keeping={keeping}
+      />
+
+      {/*
+        What to do next, under the bar and above the work.
+
+        Across the whole strip rather than inside one view, because the answer
+        is about the font and not about the screen you happen to be standing
+        on, and because a beginner who does not know the order of the work
+        cannot be expected to find the line that would tell them.
+      */}
+      <NextStep
+        mode={mode}
+        onName={() => setNaming(true)}
+        onExport={() => setExporting(true)}
+        onEditForged={() => void editForged()}
+        onEditTraced={() => void editTraced()}
+        onEditAssembled={() => void editAssembled()}
       />
 
       <div className="flex min-h-0 flex-1">
