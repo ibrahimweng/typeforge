@@ -155,6 +155,44 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
 
         <CoachMark id="export" className="-mx-5 mb-4 border-t border-border" />
 
+        {/*
+          What the file will say it is, where the decision is actually taken.
+
+          This is the one dialog of the four that never mentioned it. Draw,
+          Assemble and Trace all name the font on the way out; here the name
+          came from whatever file was opened, and with "Everything from the
+          original" above it so did the designer, the copyright and the licence.
+          So a person could open somebody else's font, redraw every letter, and
+          ship a file still claiming to be theirs -- without a word about it at
+          the moment of shipping.
+
+          It is the same `setMeta` the font dialog uses, so the two cannot come
+          to disagree, and it is here as well as there because "what is this
+          font called" is a question you answer when you name a file, not one
+          you remember to have answered a page away.
+        */}
+        <Field label="Name">
+          <input
+            value={typeface.meta.familyName}
+            onChange={(event) => store.setMeta({ familyName: event.target.value })}
+            data-export-family
+            aria-label="Family name"
+            className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-xs-plus outline-none focus:border-accent"
+          />
+          <input
+            value={typeface.meta.styleName}
+            onChange={(event) => store.setMeta({ styleName: event.target.value })}
+            data-export-style
+            aria-label="Style name"
+            className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-xs-plus outline-none focus:border-accent"
+          />
+          <p className="text-2xs leading-snug text-muted-foreground">
+            The name every menu will list this under. A font drawn on top of somebody else's is a
+            derivative work and has to say what it is — the designer, copyright and licence are in{" "}
+            <span className="text-foreground">This font</span>, in the bar above.
+          </p>
+        </Field>
+
         <Field label="Format">
           <Choice
             selected={format === "ttf"}

@@ -341,7 +341,21 @@ export interface AppState {
   selectedGlyphs: ReadonlySet<string>;
   search: string;
   previewText: string;
-  status: { message: string; tone: "info" | "error" | "success" } | null;
+  /**
+   * What just happened, and where it happened if that matters.
+   *
+   * `about` names the half of the application the message belongs to, and is
+   * left off for the ones that belong everywhere -- a refusal to navigate, for
+   * instance, which is about the person's next move rather than about a
+   * document. Without it the line is global, so "Opened — 6,253 glyphs" from
+   * the editor sat in the bar over Draw with "Untitled Sans" named beside it:
+   * two documents in one strip, one of them not the one on screen.
+   */
+  status: {
+    message: string;
+    tone: "info" | "error" | "success";
+    about?: "edit" | "forge" | "assemble" | "quill";
+  } | null;
   busy: boolean;
   canUndo: boolean;
   canRedo: boolean;
@@ -509,6 +523,7 @@ class Store {
       status: {
         message: `Opened — ${typeface.glyphs.length.toLocaleString()} glyphs`,
         tone: "success",
+        about: "edit",
       },
     });
     this.touch();
@@ -598,6 +613,7 @@ class Store {
             warnings.length ? `, with ${warnings.length === 1 ? "a note" : `${warnings.length} notes`} in Checks` : ""
           }`,
           tone: "success",
+          about: "edit",
         },
       });
       this.touch();
@@ -650,6 +666,7 @@ class Store {
         status: {
           message: `Opened — ${typeface.glyphs.length.toLocaleString()} glyphs`,
           tone: "success",
+          about: "edit",
         },
       });
       this.touch();

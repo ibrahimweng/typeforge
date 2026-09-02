@@ -272,7 +272,17 @@ export function TopBar({
       </div>
 
       <div className="flex items-center gap-2">
-        {state.status && (
+        {/*
+          Shown where it belongs, which for most of them is everywhere.
+
+          A message that names a document -- "Opened — 6,253 glyphs" -- is about
+          one half of the application, and sat in the bar over the other three
+          regardless: in Draw it appeared beside "Untitled Sans", two documents
+          named in one strip and the louder one not the one on screen. A message
+          with nothing to say about a document, such as a refusal to leave a
+          borrowed letter, carries no `about` and goes on showing anywhere.
+        */}
+        {state.status && (state.status.about === undefined || state.status.about === mode) && (
           <span
             className={cn(
               // Capped tight and allowed to shrink. At twenty-eight rem this

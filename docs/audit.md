@@ -1,6 +1,6 @@
 # What is missing
 
-> All four are done. A later sweep of every screen added three more, also done.
+> All four are done. Two later sweeps of every screen added seven more, also done.
 
 An audit of what this application cannot do, taken by reading its capability
 surface rather than by looking at it. That distinction is the point: a tour of
@@ -357,7 +357,7 @@ survives a harness that can be run.
 
 ---
 
-# A sweep of every screen — *three found, three fixed*
+# A sweep of every screen — *three found, three fixed, and a third of it looked at*
 
 Driven rather than read: the four modes, the six views inside Edit, the four
 tool groups and their flyouts, the command palette, both drawers and the
@@ -409,6 +409,53 @@ They are now in Checks, where a person goes to find out what is wrong with a
 font, kept apart from the findings because they are facts about the *file* —
 nothing in the letters will fix one and running the checks again will not clear
 one.
+
+# Finishing that sweep — *four more, four fixed*
+
+The sweep above captured twenty-one screens and examined seven. What follows
+came from the other fourteen — all four export dialogs, the library, help, the
+academy drawer, the palette, Trace's own view, three of the four tool flyouts,
+and the Kerning, Spacing and Proof views — plus a nine-hundred-pixel window,
+which nothing had been looked at in.
+
+## S4. The export dialog never said what name the file would go out under — *done*
+
+Of the four export dialogs this was the only one that did not. Draw, Assemble
+and Trace all name the font on the way out. In Edit the name came from whatever
+file was opened, and with "Everything from the original" chosen above it so did
+the designer, the copyright and the licence — so a person could open somebody
+else's font, redraw every letter and ship a file still claiming to be theirs,
+without a word about it at the moment of shipping.
+
+This is section A1 above, half-done. That entry was closed when `setMeta` gained
+callers, and it did: the name *can* be changed, in a dialog a page away. It just
+could not be changed, or seen, where the decision is actually taken.
+
+## S5. A licence was a one-line box — *done*
+
+A copyright notice and a licence are sentences, and both of DejaVu's are longer
+than the field they sat in: the first stopped being visible at "Copyright (c)
+2003 by Bitstream, Inc. All Rights Reserve". A field somebody cannot read is a
+field they cannot check, and these two are the ones the type licences care
+about.
+
+## S6. One document's news showed over another's — *done*
+
+"Opened — 6,253 glyphs" is about the edited font. It sat in the bar over Draw
+with "Untitled Sans" named a few inches to its left: two documents in one strip,
+and the louder of them not the one on screen. A status now names the half it
+belongs to, and the ones that belong everywhere — a refusal to leave a borrowed
+letter, say — go on showing everywhere.
+
+## S7. Two findings only a narrow window has — *done*
+
+At nine hundred pixels the inspector clipped its own controls: the Transform
+row ran off the edge and the "Back" button read "Bac". And the context strip,
+which is a label, three letter boxes and six controls before it gets to its
+sentence, had "Dr…" left for the sentence. Truncation is fine while a few words
+survive; at two characters it says nothing and reads as a rendering fault. The
+rows wrap now, and the sentence stands down where there is no room for it —
+it was already on the hover.
 
 ## What the sweep cleared
 
