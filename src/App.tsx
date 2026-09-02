@@ -759,7 +759,14 @@ export function App(): React.JSX.Element {
         {mode === "forge" && <ForgePanel onEdit={editForged} />}
         {mode === "quill" && <QuillPanel onEdit={editTraced} />}
         {mode === "assemble" && <AssemblePanel onEdit={editAssembled} />}
-        {mode === "edit" && SHOWS_INSPECTOR.has(state.view) && <Inspector />}
+        {/*
+          And no panel of parameters before there is anything to have them.
+
+          It said "Parameters appear once a font is open" down a column three
+          hundred pixels wide, which is a fifth of the first screen given over
+          to explaining its own emptiness.
+        */}
+        {mode === "edit" && state.typeface && SHOWS_INSPECTOR.has(state.view) && <Inspector />}
         {helping && <HelpDrawer onClose={() => setHelping(false)} />}
         {/*
           One drawer at a time, and the courses win where both are asked for.

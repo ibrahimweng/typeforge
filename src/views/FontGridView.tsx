@@ -9,13 +9,13 @@
 
 import * as React from "react";
 
-import { enterStaggered } from "@/anim/motion";
+import { StartScreen } from "@/components/StartScreen";
 import { drawGlyph, fitEmSquare, formatCodepoint, glyphLabel, prepareCanvas, readToken } from "@/components/glyph-render";
 import { groupGlyphs } from "@/font/groups";
 import type { Glyph, Typeface } from "@/font/types";
 import { freeNameNear, hasLetters } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";
-import { OUTLINE_ACTION, PRIMARY_ACTION, tile } from "@/components/controls";
+import { tile } from "@/components/controls";
 import { CoachMark } from "@/components/CoachMark";
 import { cn } from "@/ui/lib/utils";
 
@@ -134,7 +134,7 @@ export function FontGridView(): React.JSX.Element {
   const lastRow = Math.min(rows.length, rowAt(scrollTop + viewportHeight) + 1 + OVERSCAN_ROWS);
   const visible = rows.slice(firstRow, lastRow);
 
-  if (!typeface) return <EmptyState />;
+  if (!typeface) return <StartScreen />;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -380,75 +380,4 @@ function filterGlyphs(typeface: Typeface | null, search: string): Glyph[] {
     if (query.length === 1 && asChar !== undefined && glyph.unicodes.includes(asChar)) return true;
     return glyph.name.toLowerCase().includes(lower);
   });
-}
-
-/**
- * What there is to look at before a font is open.
- *
- * Which used to be nothing but an instruction to go and find a file. Someone
- * arriving to see what this is should be able to see it, so there is a font
- * here to open; the sample makes the difference between reading about a weight
- * slider and moving one.
- */
-function EmptyState(): React.JSX.Element {
-  const ref = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => {
-    if (ref.current) enterStaggered(Array.from(ref.current.children) as Element[]);
-  }, []);
-  return (
-    <div ref={ref} className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-      <h2 className="text-sm font-medium text-foreground">No font open</h2>
-      <p className="max-w-sm text-xs-plus text-muted-foreground">
-        Drop a TrueType, OpenType, WOFF or WOFF2 file anywhere in this window, or use Open in the
-        toolbar. Open takes a saved Typeforge project too.
-      </p>
-      {/*
-        Said here because here is where somebody who has one is standing.
-
-        A UFO is the file a designer is actually working in, and the first
-        thing they will try is to open it. It cannot go through the button
-        beside it -- an input that picks folders cannot pick files -- so it
-        needs its own, and the empty state is the one screen where there is
-        room to explain why there are two.
-      */}
-      <p className="max-w-sm text-xs-plus text-muted-foreground">
-        A UFO is a folder rather than a file. Drop the whole folder in, or pick it below.
-      </p>
-      {/*
-        The one thing this screen never offered, and the reason it is first.
-
-        Three doors were here and all three of them wanted a font you already
-        had: drop a file, open a folder, try the sample. Somebody arriving to
-        *make* a typeface -- which is the thing this tool is best at, and the
-        whole of what Draw does -- was told to bring one, and had to find the
-        mode switch on their own to learn otherwise.
-      */}
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        <button
-          type="button"
-          onClick={() => store.askForMode("forge")}
-          data-start-drawing
-          className={PRIMARY_ACTION}
-        >
-          Draw one from nothing
-        </button>
-        <button type="button" onClick={() => void store.loadSample()} className={OUTLINE_ACTION}>
-          Try the sample font
-        </button>
-        <button
-          type="button"
-          onClick={() => document.querySelector<HTMLInputElement>("[data-open-folder-input]")?.click()}
-          data-open-folder
-          className={OUTLINE_ACTION}
-        >
-          Open a UFO folder
-        </button>
-      </div>
-      <p className="max-w-sm text-2xs text-muted-foreground">
-        Draw starts from one of twenty families and gives you a whole alphabet before you touch
-        anything; the sample is a small Latin face to take the controls for a run. Nothing is
-        uploaded — every font you open stays in this browser.
-      </p>
-    </div>
-  );
 }

@@ -134,21 +134,29 @@ export function TopBar({
       <span className="text-xs-plus font-medium tracking-tight">Typeforge</span>
 
       {/*
-        The three jobs this does, which are not three views of one document.
+        Four documents, in the order somebody works in them.
 
         One word each rather than three. They were "Edit a font", "Draw a font"
         and "Assemble a font", which read better and cost about a hundred and
         thirty pixels of a toolbar that has none to spare: at thirteen hundred
         wide the name of the open font was squeezed to nothing at all. The
         group says what these are, and the longer phrasing is on the hover.
+
+        Edit came first for as long as this bar has existed, and it is the one
+        of the four you cannot use until you have been somewhere else: it works
+        on a font that is already open. Three of these make a font and the
+        fourth is where you then work on it, so they are in that order, and each
+        hover says what the mode takes and what it leaves you with. They are
+        four separate documents rather than four views of one, which is the
+        thing a beginner gets wrong, so the hovers say that too.
       */}
       <div className={SEGMENT_TRACK} role="group" aria-label="Mode">
         {(
           [
-            ["edit", "Edit", "Edit a font somebody else made"],
-            ["forge", "Draw", "Draw a font from nothing"],
-            ["assemble", "Assemble", "Assemble a font from drawings"],
-            ["quill", "Trace", "Read a font back into strokes and reshape it"],
+            ["forge", "Draw", "Start a new font from one of twenty styles"],
+            ["quill", "Trace", "Start a new font by reading an existing one back into strokes"],
+            ["assemble", "Assemble", "Start a new font from drawings you made elsewhere"],
+            ["edit", "Edit", "Work on the font that is open: letters, spacing, kerning, checks"],
           ] as Array<[Mode, string, string]>
         ).map(([id, label, hint]) => (
           <button
@@ -179,7 +187,17 @@ export function TopBar({
         ))}
       </div>
 
-      <div className={cn(SEGMENT_TRACK, mode !== "edit" && "hidden")} role="group" aria-label="View">
+      {/*
+        And the six views of the open font, which are nothing to look at
+        without one. Six dead tabs were the second thing on the first screen
+        somebody ever sees, above an empty stage, and none of the six could be
+        pressed to any effect.
+      */}
+      <div
+        className={cn(SEGMENT_TRACK, (mode !== "edit" || !state.typeface) && "hidden")}
+        role="group"
+        aria-label="View"
+      >
         {VIEWS.map((view) => (
           <button
             key={view.id}
@@ -193,7 +211,13 @@ export function TopBar({
         ))}
       </div>
 
-      <div className="flex items-center gap-0.5">
+      {/* Nothing to take back before there is anything to have done. */}
+      <div
+        className={cn(
+          "flex items-center gap-0.5",
+          mode === "edit" && !state.typeface && "hidden",
+        )}
+      >
         <button
           type="button"
           onClick={history.undo}

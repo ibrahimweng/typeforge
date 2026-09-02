@@ -33,8 +33,8 @@ test("the front door offers to draw one from nothing", async ({ page }) => {
    * thing this tool is best at -- making one -- was behind a mode switch
    * nobody had been told about.
    */
-  await expect(page.locator("[data-start-drawing]")).toBeVisible();
-  await page.locator("[data-start-drawing]").click();
+  await expect(page.locator('[data-start-route="draw"]')).toBeVisible();
+  await page.locator('[data-start-route="draw"]').click();
   await expect(page.getByText("Start from")).toBeVisible();
 });
 
