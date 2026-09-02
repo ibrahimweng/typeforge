@@ -103,7 +103,14 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
       <div
         ref={panelRef}
         onClick={(event) => event.stopPropagation()}
-        className="floating-popup-surface w-[28rem] rounded-xl border border-border bg-popover p-5 shadow-2xl"
+        /*
+          Bounded, and scrolling inside itself, for the reason the editor's
+          export dialog is: a centred flex child taller than the window is
+          clipped at both ends and cannot be scrolled to, so anything past the
+          fold is unreachable and a click aimed at it lands on the backdrop --
+          which closes the dialog rather than pressing the button.
+        */
+        className="floating-popup-surface toolcraft-scrollbar max-h-[calc(100vh-3rem)] w-[28rem] overflow-y-auto rounded-xl border border-border bg-popover p-5 shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-label="Download font"

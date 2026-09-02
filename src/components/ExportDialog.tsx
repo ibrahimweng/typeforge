@@ -146,7 +146,19 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
       <div
         ref={panelRef}
         onClick={(event) => event.stopPropagation()}
-        className="floating-popup-surface w-[30rem] rounded-xl border border-border bg-popover p-5 shadow-2xl"
+        /*
+          Bounded, and scrolling inside itself.
+
+          A centred flex child taller than the window is clipped at both ends
+          and cannot be scrolled to, so anything past the fold is not merely
+          hard to reach -- it is not reachable at all, and a click aimed at it
+          lands on the backdrop, which closes the dialog. This is 805 pixels
+          tall without the name field and 963 with it, so on a 600-pixel window
+          the Download button was already off the bottom before either; at 720
+          it had seven pixels showing, and the field above took those away and
+          stopped the export happening at all.
+        */
+        className="floating-popup-surface toolcraft-scrollbar max-h-[calc(100vh-3rem)] w-[30rem] overflow-y-auto rounded-xl border border-border bg-popover p-5 shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-label="Download font"

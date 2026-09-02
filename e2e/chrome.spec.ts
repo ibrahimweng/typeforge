@@ -163,3 +163,34 @@ test("a sentence with no room to be said is not said in two letters", async ({ p
   await page.setViewportSize({ width: 900, height: 800 });
   await expect(said).toBeHidden();
 });
+
+test("an export dialog can be used on a short window", async ({ page }) => {
+  /*
+   * These are centred flex children with no height of their own, and a centred
+   * flex child taller than the window is clipped at *both* ends -- with nothing
+   * scrollable anywhere, so what is past the fold cannot be reached at all and
+   * a click aimed at it never lands. The editor's is 963 pixels tall, and was
+   * 805 before a name field was added to it, so its Download button was off a
+   * 600-pixel window either way; at 720 the field was what took it under. None
+   * of the four had a height of any kind.
+   */
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Export" }).click();
+
+  // The bottom of the dialog: reachable, and the button there still exports.
+  const download = page.getByRole("dialog").getByRole("button", { name: "Download" });
+  await download.scrollIntoViewIfNeeded();
+  await expect(download).toBeInViewport();
+  const file = await Promise.race([
+    page.waitForEvent("download", { timeout: 60_000 }),
+    download.click().then(() => page.waitForEvent("download", { timeout: 60_000 })),
+  ]);
+  expect(file.suggestedFilename()).toMatch(/\.ttf$/);
+
+  // And the top of it: the panel scrolls rather than clipping what it cannot fit.
+  const family = page.locator("[data-export-family]");
+  await family.scrollIntoViewIfNeeded();
+  await expect(family).toBeInViewport();
+});

@@ -410,7 +410,7 @@ font, kept apart from the findings because they are facts about the *file* —
 nothing in the letters will fix one and running the checks again will not clear
 one.
 
-# Finishing that sweep — *four more, four fixed*
+# Finishing that sweep — *five more, five fixed*
 
 The sweep above captured twenty-one screens and examined seven. What follows
 came from the other fourteen — all four export dialogs, the library, help, the
@@ -456,6 +456,35 @@ sentence, had "Dr…" left for the sentence. Truncation is fine while a few word
 survive; at two characters it says nothing and reads as a rendering fault. The
 rows wrap now, and the sentence stands down where there is no room for it —
 it was already on the hover.
+
+## S8. A dialog too tall for the window could not be scrolled — *done*
+
+Found by breaking it, and older than the break. All four export dialogs are
+flex children centred in a full-screen backdrop with no height of their own,
+and a centred flex child taller than its container is clipped at *both* ends
+with nothing scrollable anywhere: the overflow is above the top edge as well as
+below the bottom one, and no ancestor scrolls. So the part past the fold is not
+awkward to reach — it is unreachable, and a click aimed at it lands on the
+backdrop, whose job is to close the dialog.
+
+Measured, at 1280 wide. The editor's export dialog was 805 pixels tall before
+any of this, so on a 600-pixel window its Download button sat at y 653–683 —
+entirely off screen, with the dialog's whole purpose behind a fold that does
+not move. On a 720-pixel window it sat at 713–743: seven pixels of it showing,
+which was enough. Adding the name field for S4 above put another 157 pixels
+over it and took those seven away, and the export test — which had passed for
+months — stopped exporting. Draw's is 560, which overflows a 600-pixel window
+by a little; Assemble's and Trace's could not be measured, because their Export
+is dark until there is something to export, but neither had a bound either.
+
+All four are bounded now and scroll inside themselves, and a test opens the
+editor's on a 600-pixel window, scrolls to the button, exports, and scrolls
+back to the field at the top.
+
+The lesson is the one worth keeping. The fix for S4 was two inputs and a
+sentence, in a dialog that plainly had room for them, and it took out the one
+thing that dialog exists to do. The suite caught it; reading the diff would
+not have.
 
 ## What the sweep cleared
 
