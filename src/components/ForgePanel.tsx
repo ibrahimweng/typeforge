@@ -90,7 +90,7 @@ export function ForgePanel({ onEdit }: { onEdit: () => Promise<void> }): React.J
       className={cn(WIDE_PANEL, "toolcraft-panel-surface flex shrink-0 flex-col border-l border-border")}
     >
       <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
-        <Section title="Start from">
+        <Section title="Start from" mark="start">
           {/*
             Under headings rather than in one grid. A dozen and a half starting
             points in a single block is a dozen and a half guesses; the same
@@ -137,13 +137,12 @@ export function ForgePanel({ onEdit }: { onEdit: () => Promise<void> }): React.J
             {BASES.find((base) => base.name === forge.base)?.blurb}
           </p>
           <p className="pt-1.5 text-2xs leading-snug text-muted-foreground">
-            One set of skeletons under all of them. Not one letter is drawn
-            differently between these, and every control below stays live
-            whichever you pick. Choosing one starts again from it.
+            One set of skeletons under all of them, so every control below stays
+            live whichever you pick. Choosing one starts again from it.
           </p>
         </Section>
 
-        <Section title="The pen">
+        <Section title="The pen" mark="pen">
           {PEN_CONTROLS.map((control) => (
             <Field
               key={control.key}
@@ -154,6 +153,25 @@ export function ForgePanel({ onEdit }: { onEdit: () => Promise<void> }): React.J
             />
           ))}
         </Section>
+
+        <Section title="Proportions" mark="proportions">
+          {METRIC_CONTROLS.map((control) => (
+            <Field
+              key={control.key}
+              on="metrics"
+              control={control}
+              value={(forge.style.metrics as unknown as Record<string, number | boolean>)[control.key]}
+              onChange={(next, phase) => forgeStore.changeMetrics({ [control.key]: next } as never, phase)}
+            />
+          ))}
+        </Section>
+
+
+        <Group
+          title="Shape the parts"
+          mark="parts"
+          said="A serif, a shoulder, a corner. Change one and every letter that has it follows."
+        />
 
         <div className="border-b border-border p-3">
           <div className="mb-2 flex items-baseline justify-between">
@@ -200,27 +218,29 @@ export function ForgePanel({ onEdit }: { onEdit: () => Promise<void> }): React.J
           <Part key={spec.name} part={spec.name} mine={mine.has(spec.name)} />
         ))}
 
-        <Section title="Proportions">
-          {METRIC_CONTROLS.map((control) => (
-            <Field
-              key={control.key}
-              on="metrics"
-              control={control}
-              value={(forge.style.metrics as unknown as Record<string, number | boolean>)[control.key]}
-              onChange={(next, phase) => forgeStore.changeMetrics({ [control.key]: next } as never, phase)}
-            />
-          ))}
-        </Section>
-
         <Joining />
 
         <KitPanel />
+
+
+        <Group
+          title="Finishing"
+          mark="finishing"
+          said="What is taken away from the letters, what is added on top, and what the pen is made of."
+        />
 
         <Cuts />
 
         <Cast />
 
         <Tool />
+
+
+        <Group
+          title={`${letter} alone`}
+          mark="letter"
+          said="These reach only the letter on screen. Everything above reaches the whole font."
+        />
 
         <Forms letter={letter} />
 
@@ -1161,15 +1181,49 @@ function Joining(): React.JSX.Element {
   );
 }
 
+/**
+ * A rule across the panel saying what the next stretch of it is for.
+ *
+ * This panel is eight thousand six hundred pixels tall in an eight hundred
+ * pixel window, which is ten and a half screens, and it had no ranking at all:
+ * the twenty starting points you choose once sat above the pen you drag every
+ * minute, and the nine sections about parts of letters sat between the pen and
+ * the proportions. Everything was reachable and nothing said what to look at.
+ *
+ * So the three that decide what the whole font looks like come first, and the
+ * rest is grouped under rules that say what each group is. Nothing is hidden:
+ * scrolling past a rule is one gesture, and the rule tells you whether the
+ * thing you want is under it.
+ */
+function Group({
+  title,
+  said,
+  mark,
+}: {
+  title: string;
+  said: string;
+  mark: string;
+}): React.JSX.Element {
+  return (
+    <div className="border-b border-border bg-card/40 px-3 py-2" data-panel-section={mark}>
+      <h3 className="text-2xs font-medium uppercase tracking-wide text-foreground">{title}</h3>
+      <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">{said}</p>
+    </div>
+  );
+}
+
 function Section({
   title,
+  mark,
   children,
 }: {
   title: string;
+  /** A name for this stretch of the panel, so its place in the order can be pinned. */
+  mark?: string;
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <section className="border-b border-border p-3">
+    <section className="border-b border-border p-3" data-panel-section={mark}>
       <h3 className="pb-2 text-2xs font-medium">{title}</h3>
       {children}
     </section>
