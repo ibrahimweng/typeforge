@@ -9,7 +9,7 @@ import type { Mode } from "@/App";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
 import { forgeStore, useForge } from "@/state/useForge";
 import { quillStore, useQuill } from "@/state/useQuill";
-import { store, useAppState, type ViewId } from "@/state/useStore";
+import { store, useAppState, type AppState, type ViewId } from "@/state/useStore";
 import {
   OUTLINE_ACTION,
   PRIMARY_ACTION,
@@ -17,6 +17,7 @@ import {
   TOOLBAR_ACTION,
   segment,
 } from "@/components/controls";
+import { viewKey } from "@/keys/useAppKeys";
 import { cn } from "@/ui/lib/utils";
 
 const VIEWS: Array<{ id: ViewId; label: string }> = [
@@ -27,6 +28,47 @@ const VIEWS: Array<{ id: ViewId; label: string }> = [
   { id: "proof", label: "Proof" },
   { id: "report", label: "Checks" },
 ];
+
+/** How many errors the last run of the checks found, if it has ever run. */
+function errorsIn(checks: AppState["checks"]): number {
+  if (!checks) return 0;
+  return checks.findings.filter((finding) => finding.severity === "error").length;
+}
+
+/**
+ * What a view tab says when you rest on it: the key it answers to, and for
+ * Checks what it last found and whether that is still true.
+ */
+function tabTitle(
+  id: ViewId,
+  label: string,
+  checks: AppState["checks"],
+  revision: number,
+): string {
+  const key = viewKey(id);
+  const named = key ? `${label} (${key})` : label;
+  if (id !== "report") return named;
+  if (!checks) return `${named} — the faults that stop a font installing`;
+  const errors = errorsIn(checks);
+  const found =
+    errors === 0
+      ? "the checks found no errors"
+      : `the checks found ${errors} error${errors === 1 ? "" : "s"}`;
+  /*
+   * And whether the font has moved since. The count on the tab is not dropped
+   * when it goes out of date, because "there were three errors a moment ago"
+   * is far closer to the truth than showing nothing; but it is not left
+   * standing as a current fact either.
+   */
+  const stale = checks.at !== revision ? ", before the font changed" : "";
+  return `${named} — ${found}${stale}`;
+}
+
+/** "Undo (⌘Z)", or "Undo close the outline (⌘Z)" when the step has a name. */
+function undoing(verb: string, label: string | null, key: string): string {
+  if (!label) return `${verb} (${key})`;
+  return `${verb} ${label.charAt(0).toLowerCase()}${label.slice(1)} (${key})`;
+}
 
 /** Whether the work is being written down between visits. */
 export type Keeping = "kept" | "off" | "unknown";
@@ -105,6 +147,15 @@ export function TopBar({
             redo: () => store.redo(),
             canUndo: state.canUndo,
             canRedo: state.canRedo,
+            /*
+             * Named, in the editor only, because only the editor's stack has
+             * names on it. The three generators undo a whole set of parameters
+             * at once and the alphabet redraws in front of you; in here the
+             * step taken back can be a point in a letter you are no longer
+             * looking at, and "Undo" alone does not say which.
+             */
+            undoLabel: state.undoLabel,
+            redoLabel: state.redoLabel,
           };
 
   return (
@@ -204,9 +255,30 @@ export function TopBar({
             type="button"
             aria-pressed={state.view === view.id}
             onClick={() => store.setView(view.id)}
+            title={tabTitle(view.id, view.label, state.checks, state.revision)}
             className={segment(state.view === view.id)}
           >
             {view.label}
+            {/*
+              How many things are wrong, on the tab, so nobody has to go and
+              look to find out that there is something to find.
+
+              Hidden from the accessible name rather than added to it: the name
+              is what a screen reader calls the tab and what every test asks
+              for, and "Checks 3" is a different tab from "Checks" to both of
+              them. The count reaches a screen reader as the button's
+              description instead, through the title above -- which is also
+              where a count that has gone out of date says so.
+            */}
+            {view.id === "report" && errorsIn(state.checks) > 0 && (
+              <span
+                aria-hidden="true"
+                data-check-count={errorsIn(state.checks)}
+                className="ml-1.5 rounded-full bg-destructive/15 px-1.5 py-px text-2xs font-medium tabular-nums text-destructive"
+              >
+                {errorsIn(state.checks)}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -222,7 +294,7 @@ export function TopBar({
           type="button"
           onClick={history.undo}
           disabled={!history.canUndo}
-          title="Undo (⌘Z)"
+          title={undoing("Undo", "undoLabel" in history ? (history.undoLabel ?? null) : null, "⌘Z")}
           className={TOOLBAR_ACTION}
         >
           Undo
@@ -231,7 +303,7 @@ export function TopBar({
           type="button"
           onClick={history.redo}
           disabled={!history.canRedo}
-          title="Redo (⇧⌘Z)"
+          title={undoing("Redo", "redoLabel" in history ? (history.redoLabel ?? null) : null, "⇧⌘Z")}
           className={TOOLBAR_ACTION}
         >
           Redo
@@ -383,7 +455,7 @@ export function TopBar({
         <button
           type="button"
           onClick={onOpenFile}
-          title="Open a font or a saved Typeforge project"
+          title="Open a font or a saved Typeforge project (⌘O)"
           data-open-file
           className={OUTLINE_ACTION}
         >
@@ -401,7 +473,7 @@ export function TopBar({
         <button
           type="button"
           onClick={onSave}
-          title={KEEPING[keeping]}
+          title={`${KEEPING[keeping]} (⌘S)`}
           data-save-project
           data-keeping={keeping}
           /*
@@ -427,6 +499,7 @@ export function TopBar({
         <button
           type="button"
           onClick={onExport}
+          title="Write a font file out (⌘E)"
           /*
             A drawn font is always ready to leave, because the forge always
             has a family. The other three have to have something in them: an

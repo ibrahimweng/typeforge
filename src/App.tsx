@@ -20,6 +20,7 @@ import { AcademyDrawer } from "@/components/AcademyDrawer";
 import { HelpDrawer } from "@/components/HelpDrawer";
 import { LibraryDialog } from "@/components/LibraryDialog";
 import { QuickActions, useQuickActionShortcut, type Shell } from "@/palette";
+import { useAppKeys } from "@/keys/useAppKeys";
 import { Inspector } from "@/components/Inspector";
 import { NextStep } from "@/components/NextStep";
 import { OnLoan } from "@/components/OnLoan";
@@ -83,10 +84,10 @@ function libraryMode(mode: Mode): Exclude<SavedMode, "quill"> {
  * pixels wide, taken off the thing you are looking at.
  *
  * Kerning already has a panel of its own about the pairs, so the parameters
- * were a third column and the canvas was the one paying for it. Checks holds
- * its findings in the view rather than in the store, so a panel out here could
- * not say anything about them even if it wanted to; what that view needed was
- * a way to narrow the list, and that belongs beside the list.
+ * were a third column and the canvas was the one paying for it. What Checks
+ * needed was a way to narrow the list, and that belongs beside the list. (Its
+ * findings do reach the store now, but for the tab's count and the line under
+ * the top bar, not for a panel out here.)
  *
  * The other three keep it. In the grid and the glyph view the parameters are
  * the subject. In the proof they are not the subject but they do reach it: the
@@ -699,6 +700,17 @@ export function App(): React.JSX.Element {
   );
 
   useQuickActionShortcut(React.useCallback(() => setQuick(true), []));
+  /*
+   * And the handful that are done constantly, by the names every other
+   * application has already taught: Cmd-S, Cmd-E, Cmd-O, and the six views by
+   * number. The palette is still the way to everything else.
+   */
+  useAppKeys({
+    onSave: saveProject,
+    onExport: React.useCallback(() => setExporting(true), []),
+    onOpenFile: React.useCallback(() => inputRef.current?.click(), []),
+    editing: mode === "edit" && state.typeface !== null,
+  });
 
   return (
     <div

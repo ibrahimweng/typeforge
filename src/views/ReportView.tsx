@@ -21,16 +21,15 @@ import {
   type ValidationReport,
 } from "@/font/validate";
 import { NothingDrawnYet } from "@/components/NothingDrawnYet";
+import {
+  SEVERITY_BADGE,
+  SEVERITY_EDGE,
+  SEVERITY_LABEL,
+  SEVERITY_TEXT,
+} from "@/components/severity";
 import { hasLetters } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";
 import { cn } from "@/ui/lib/utils";
-
-const SEVERITY_LABEL: Record<Severity, string> = {
-  error: "Error",
-  warning: "Warning",
-  advice: "Advice",
-  info: "Note",
-};
 
 export function ReportView(): React.JSX.Element {
   const state = useAppState();
@@ -75,10 +74,21 @@ export function ReportView(): React.JSX.Element {
      * page stays usable, the count runs up while it works, and nothing is left
      * out.
      */
-    setReport(
-      await validateWholeTypeface(state.typeface, { format: "truetype" }, setProgress),
+    const found = await validateWholeTypeface(
+      state.typeface,
+      { format: "truetype" },
+      setProgress,
     );
+    setReport(found);
     setRanAt(state.revision);
+    /*
+     * And told to the store, so the rest of the application can say so.
+     *
+     * This view knowing about the faults and nothing else knowing is how a
+     * fault ships: the line under the top bar cannot point at one, the tab
+     * cannot carry a count, and somebody has to remember to come here.
+     */
+    store.checked(found.findings, state.revision);
     setProgress(null);
     setRunning(false);
   }, [state.typeface, state.revision]);
@@ -266,14 +276,7 @@ function Count({
   on: boolean;
   onToggle: () => void;
 }): React.JSX.Element {
-  const colour =
-    tone === "error"
-      ? "text-destructive"
-      : tone === "warning"
-        ? "text-[var(--attention)]"
-        : tone === "advice"
-          ? "text-accent"
-          : "text-foreground";
+  const colour = SEVERITY_TEXT[tone];
   // "1 piece of advice" and "4 pieces of advice": the plural is not on the end.
   const words = value === 1 ? `${value} ${label}` : `${value} ${label.replace("piece of", "pieces of")}${label.startsWith("piece") ? "" : "s"}`;
 
@@ -304,26 +307,14 @@ function FindingRow({ finding }: { finding: Finding }): React.JSX.Element {
       data-finding={finding.severity}
       className={cn(
         "rounded-md border bg-card/40 p-3",
-        finding.severity === "error"
-          ? "border-destructive/50"
-          : finding.severity === "warning"
-            ? "border-[var(--attention)]/40"
-            : finding.severity === "advice"
-              ? "border-accent/40"
-              : "border-border",
+        SEVERITY_EDGE[finding.severity],
       )}
     >
       <div className="flex items-baseline gap-2.5">
         <span
           className={cn(
             "shrink-0 rounded px-1.5 py-0.5 text-2xs font-medium",
-            finding.severity === "error"
-              ? "bg-destructive/15 text-destructive"
-              : finding.severity === "warning"
-                ? "bg-[var(--attention)]/15 text-[var(--attention)]"
-                : finding.severity === "advice"
-                  ? "bg-accent/15 text-accent"
-                  : "bg-muted text-muted-foreground",
+            SEVERITY_BADGE[finding.severity],
           )}
         >
           {SEVERITY_LABEL[finding.severity]}

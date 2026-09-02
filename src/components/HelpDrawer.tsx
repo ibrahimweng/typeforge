@@ -50,6 +50,17 @@ const SHORTCUTS: Array<[string, string]> = [
   ["Space", "Quick actions"],
   ["⌘K", "Quick actions, even while typing"],
   /*
+   * The four that are done constantly, under the names every other application
+   * has already taught. Everything else is reached through the palette, which
+   * prints the key beside any entry that has one -- so these are learnt where
+   * they are used rather than by studying this list.
+   */
+  ["⌘S", "Save the project"],
+  ["⌘E", "Export the font"],
+  ["⌘O", "Open a font"],
+  ["⌘⏎", "Do what the line under the toolbar says"],
+  ["1 – 6", "The six views: letters, one letter, kerning, spacing, proof, checks"],
+  /*
    * One key per group, and the second press walks it. Thirteen tools cannot
    * have thirteen single keys without colliding with everything else the
    * editor binds, and the group is what somebody means anyway: `P` for "the

@@ -49,6 +49,7 @@ import {
 } from "@/font/control";
 import { buildLinks, pointsThatMoved, propagateMoves, type LinkMap } from "@/font/link";
 import { importFont } from "@/font/parse";
+import type { Finding } from "@/font/validate";
 import { effectiveParams } from "@/font/transform";
 import {
   noCuts,
@@ -360,6 +361,16 @@ export interface AppState {
   canUndo: boolean;
   canRedo: boolean;
   /**
+   * What Undo would take back, and what Redo would put back, by name.
+   *
+   * Every entry on the stack already carried a label and nothing ever showed
+   * it, so pressing Undo took something back without saying what -- which on a
+   * screen where the change was small, or off the top of a panel, or in another
+   * letter entirely, is indistinguishable from pressing nothing at all.
+   */
+  undoLabel: string | null;
+  redoLabel: string | null;
+  /**
    * The letter on loan from a generator, or nothing.
    *
    * Read by the editor so it can say whose letter this is and offer the two ways
@@ -369,6 +380,18 @@ export interface AppState {
   loan: Loan | null;
   /** Bumped whenever the document changes, so views can memoise against it. */
   revision: number;
+  /**
+   * What the checks last said, and which revision of the font they said it of.
+   *
+   * This used to live inside the Checks view, which meant nothing else could
+   * know whether a font had faults. The line under the top bar could not point
+   * at them, the tab could not carry a count, and a person had to remember to
+   * go and look. A fault nobody is told about is a fault that ships.
+   *
+   * `at` is the revision the findings were read from, so a font edited since is
+   * a report known to be stale rather than one quietly believed.
+   */
+  checks: { findings: Finding[]; at: number } | null;
   /**
    * What the last edit to a control letter pushed out to the rest of the font,
    * so the change can be shown rather than just silently happening.
@@ -446,8 +469,11 @@ class Store {
     busy: false,
     canUndo: false,
     canRedo: false,
+    undoLabel: null,
+    redoLabel: null,
     loan: null,
     revision: 0,
+    checks: null,
   };
 
   private listeners = new Set<() => void>();
@@ -480,6 +506,8 @@ class Store {
       revision: this.state.revision + 1,
       canUndo: this.undoStack.length > 0,
       canRedo: this.redoStack.length > 0,
+      undoLabel: this.undoStack[this.undoStack.length - 1]?.label ?? null,
+      redoLabel: this.redoStack[this.redoStack.length - 1]?.label ?? null,
     });
   }
 
@@ -506,6 +534,15 @@ class Store {
       fileName,
       // Whatever the last file had to say belongs to the last file.
       openWarnings: [],
+      /*
+       * And whatever the last font's checks found belongs to the last font.
+       *
+       * Left in place, the tab would carry the previous font's error count over
+       * a font nothing has looked at, and the line under the bar would offer to
+       * fix faults that are not there. Every one of the five places a document
+       * is replaced clears this for the same reason.
+       */
+      checks: null,
       selectedGlyph: firstLetterName(typeface),
       selectedNodes: new Set(),
       selectedGlyphs: new Set(),
@@ -532,6 +569,11 @@ class Store {
   /** Say something in the toolbar, for anything that has no view of its own. */
   say(message: string, tone: "info" | "error" | "success" = "success"): void {
     this.set({ status: { message, tone } });
+  }
+
+  /** What the checks found, for anything that wants to say so. */
+  checked(findings: Finding[], at: number): void {
+    this.set({ checks: { findings, at } });
   }
 
   /** The edited half, for writing down. */
@@ -595,6 +637,8 @@ class Store {
         typeface,
         fileName,
         openWarnings: warnings,
+        // A different font, so the last one's findings go with it.
+        checks: null,
         selectedGlyph: firstLetterName(typeface),
         selectedNodes: new Set(),
         selectedGlyphs: new Set(),
@@ -659,6 +703,8 @@ class Store {
       this.set({
         typeface,
         fileName: folderName,
+        // A different font, so the last one's findings go with it.
+        checks: null,
         selectedGlyph: firstLetterName(typeface),
         selectedNodes: new Set(),
         selectedGlyphs: new Set(),
@@ -740,6 +786,8 @@ class Store {
     this.set({
       typeface: fresh,
       fileName: "",
+      // A different font, so the last one's findings go with it.
+      checks: null,
       openWarnings: [],
       selectedGlyph: null,
       selectedNodes: new Set(),
@@ -797,6 +845,8 @@ class Store {
     this.set({
       typeface: desk,
       fileName: "",
+      // A different document, so the last one's findings go with it.
+      checks: null,
       openWarnings: [],
       view: "glyph",
       selectedGlyph: glyph.name,
@@ -3178,12 +3228,27 @@ class Store {
     this.redoStack = [];
   }
 
+  /*
+   * Both of these now say what they moved.
+   *
+   * Neither said anything, and the change they make is often invisible from
+   * where you are standing: a point put back in a letter you are no longer
+   * looking at, a parameter returned to what it was, a path direction
+   * corrected. Pressing Undo and seeing nothing happen is the same experience
+   * as pressing a dead button, and a beginner's next move is to press it again.
+   *
+   * The label is quoted rather than conjugated. Every one of them is written in
+   * the imperative for the undo stack -- "Close the outline", "Align points" --
+   * and naming the action is honest where bending it into the past tense would
+   * be a guess at English this does not need to make.
+   */
   undo(): void {
     const entry = this.undoStack.pop();
     if (!entry) return;
     entry.undo();
     this.redoStack.push(entry);
     this.touch();
+    this.say(`Undone: ${entry.label}`, "info");
   }
 
   redo(): void {
@@ -3192,6 +3257,7 @@ class Store {
     entry.redo();
     this.undoStack.push(entry);
     this.touch();
+    this.say(`Redone: ${entry.label}`, "info");
   }
 
   /** Snapshot a glyph so a drag can be committed to history when it ends. */
