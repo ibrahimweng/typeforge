@@ -29,7 +29,7 @@ async function openFont(page: Page): Promise<void> {
 test("Save is dark until there is something to save", async ({ page }) => {
   await page.goto("/");
   // The front door: Export knows there is nothing to write and Save did not.
-  await expect(page.getByRole("button", { name: "Export" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Export", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
 
   await openFont(page);
@@ -99,7 +99,7 @@ test("the export dialog says what name the file will go out under", async ({ pag
    */
   await page.goto("/");
   await openFont(page);
-  await page.getByRole("button", { name: "Export" }).click();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
   const family = page.locator("[data-export-family]");
   await expect(family).toHaveValue("DejaVu Sans");
 
@@ -177,7 +177,7 @@ test("an export dialog can be used on a short window", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 600 });
   await page.goto("/");
   await openFont(page);
-  await page.getByRole("button", { name: "Export" }).click();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
 
   // The bottom of the dialog: reachable, and the button there still exports.
   const download = page.getByRole("dialog").getByRole("button", { name: "Download" });
