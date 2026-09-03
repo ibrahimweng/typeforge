@@ -222,3 +222,84 @@ export function agrees(one: Glyph, other: Glyph): boolean {
   }
   return true;
 }
+
+/**
+ * Why this letter will not blend, said about the letter.
+ *
+ * Compared against the first weight, because that is what the file compares
+ * against: `gvar` stores every other master as a difference from the default,
+ * so a letter that disagrees with the default has no difference to store no
+ * matter how well the others agree with each other.
+ *
+ * Returns the first disagreement rather than all of them. One sentence is what
+ * fits above a canvas, and a letter that does not match the Bold usually does
+ * not match the Black either for the same reason.
+ */
+export function whyItCannotVary(
+  name: string,
+  masters: Master[],
+): { weight: string; said: string } | null {
+  if (masters.length < 2) return null;
+  const first = masters[0].typeface;
+  const at = first.glyphIndex.get(name);
+  if (at === undefined) return null;
+  const base = first.glyphs[at];
+
+  for (const master of masters.slice(1)) {
+    const here = master.typeface.glyphIndex.get(name);
+    if (here === undefined) continue;
+    const other = master.typeface.glyphs[here];
+    if (agrees(base, other)) continue;
+
+    const said =
+      base.contours.length !== other.contours.length
+        ? `${base.contours.length} path${base.contours.length === 1 ? "" : "s"} in ${masters[0].name} and ${other.contours.length} in ${master.name}`
+        : base.components.length !== other.components.length
+          ? `${base.components.length} piece${base.components.length === 1 ? "" : "s"} in ${masters[0].name} and ${other.components.length} in ${master.name}`
+          : pointsDiffer(base, other, masters[0].name, master.name);
+    return { weight: master.name, said };
+  }
+  return null;
+}
+
+/** The first path whose points do not line up, counted. */
+function pointsDiffer(base: Glyph, other: Glyph, from: string, to: string): string {
+  for (let at = 0; at < base.contours.length; at += 1) {
+    const one = base.contours[at].nodes.length;
+    const two = other.contours[at]?.nodes.length ?? 0;
+    if (one !== two) {
+      return `path ${at + 1} has ${one} point${one === 1 ? "" : "s"} in ${from} and ${two} in ${to}`;
+    }
+    if (base.contours[at].closed !== other.contours[at]?.closed) {
+      return `path ${at + 1} is ${base.contours[at].closed ? "closed" : "open"} in ${from} and ${other.contours[at]?.closed ? "closed" : "open"} in ${to}`;
+    }
+  }
+  // Something the comparison catches and the wording above does not, which is
+  // still a real answer: the letter cannot vary and this says so plainly.
+  return `${from} and ${to} draw it differently`;
+}
+
+/**
+ * Every letter that will be left standing still while the rest of the font
+ * moves.
+ *
+ * Cheap enough to ask on every render of the grid: contour and component counts
+ * only, no geometry, so it is a walk over the glyph list rather than over the
+ * drawing.
+ */
+export function lettersThatCannotVary(masters: Master[]): Set<string> {
+  const stuck = new Set<string>();
+  if (masters.length < 2) return stuck;
+  const first = masters[0].typeface;
+
+  for (const base of first.glyphs) {
+    for (const master of masters.slice(1)) {
+      const at = master.typeface.glyphIndex.get(base.name);
+      if (at === undefined) continue;
+      if (agrees(base, master.typeface.glyphs[at])) continue;
+      stuck.add(base.name);
+      break;
+    }
+  }
+  return stuck;
+}

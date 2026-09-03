@@ -18,7 +18,7 @@
 import * as React from "react";
 
 import { OUTLINE_ACTION, SEGMENT_TRACK, segment } from "@/components/controls";
-import { WGHT } from "@/font/master";
+import { lettersThatCannotVary, WGHT } from "@/font/master";
 import { store, useAppState } from "@/state/useStore";
 import { cn } from "@/ui/lib/utils";
 
@@ -28,6 +28,17 @@ export function Weights({ compact = false }: { compact?: boolean }): React.JSX.E
 
   const masters = state.masters;
   const here = masters.find((one) => one.id === state.master);
+  /*
+   * How much of the font will actually move, said before the export rather than
+   * in its notes afterwards. Contour and component counts only, so this is a
+   * walk over the glyph list rather than over the drawing.
+   */
+  const stuck = React.useMemo(
+    // The revision is in here because it is what says a drawing changed: the
+    // master list is the same array of the same objects across an edit.
+    () => lettersThatCannotVary(masters),
+    [masters, state.revision],
+  );
 
   // A switch with one thing to switch to is furniture, so above the canvas
   // this waits until there is a second weight. The line in the whole-font
@@ -81,6 +92,17 @@ export function Weights({ compact = false }: { compact?: boolean }): React.JSX.E
       >
         Add a weight
       </button>
+      {/*
+        And what it will cost, if anything. A letter whose weights are not the
+        same points in the same order has no difference to store, so it stands
+        still while the rest of the font moves -- and that is a thing to know
+        now rather than in the export's notes.
+      */}
+      {stuck.size > 0 && (
+        <span data-weights-stuck={stuck.size} className="text-[var(--attention)]">
+          {stuck.size} letter{stuck.size === 1 ? "" : "s"} will not vary
+        </span>
+      )}
 
       {/*
         And what to do with the one in hand, beside it rather than behind a

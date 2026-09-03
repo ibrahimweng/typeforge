@@ -18,6 +18,7 @@ import { store, useAppState } from "@/state/useStore";
 import { tile } from "@/components/controls";
 import { CoachMark } from "@/components/CoachMark";
 import { Weights } from "@/components/Weights";
+import { lettersThatCannotVary } from "@/font/master";
 import { cn } from "@/ui/lib/utils";
 
 const CELL_SIZE = 104;
@@ -84,6 +85,18 @@ export function FontGridView(): React.JSX.Element {
   React.useEffect(() => () => observerRef.current?.disconnect(), []);
 
   const glyphs = React.useMemo(() => filterGlyphs(typeface, state.search), [typeface, state.search, state.revision]);
+  /*
+   * Which letters will be left standing while the rest of the font moves.
+   *
+   * Empty, and free, in the font that has one weight -- which is almost all of
+   * them. With two it is a walk over the glyph list comparing contour and
+   * component counts, no geometry, done once for the view rather than once per
+   * cell.
+   */
+  const stuck = React.useMemo(
+    () => lettersThatCannotVary(state.masters),
+    [state.masters, state.revision],
+  );
 
   /*
    * The grid, as a list of rows that are not all the same height.
@@ -228,6 +241,10 @@ export function FontGridView(): React.JSX.Element {
                     revision={state.revision}
                     active={state.selectedGlyph === glyph.name}
                     selected={state.selectedGlyphs.has(glyph.name)}
+                    // A boolean rather than the set, for the reason the props
+                    // above are the shape they are: eighty memoised cells that
+                    // all take the same object all re-render together.
+                    stuck={stuck.has(glyph.name)}
                   />
                 ))}
               </div>
@@ -279,6 +296,14 @@ interface GlyphCellProps {
   revision: number;
   active: boolean;
   selected: boolean;
+  /**
+   * Whether this letter will be left standing while the rest of the font moves.
+   *
+   * Only ever true in a font with a second weight drawn, and the whole reason it
+   * is here: a letter that cannot vary is invisible in the drawing and only
+   * shows up in the exported file, which is after everything.
+   */
+  stuck: boolean;
 }
 
 const GlyphCell = React.memo(function GlyphCell({
@@ -286,6 +311,7 @@ const GlyphCell = React.memo(function GlyphCell({
   revision,
   active,
   selected,
+  stuck,
 }: GlyphCellProps): React.JSX.Element | null {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   /*
@@ -333,6 +359,7 @@ const GlyphCell = React.memo(function GlyphCell({
       // The same thing the dot in the corner says, in a form something other
       // than an eye can read.
       data-glyph-changed={glyph.dirty ? "yes" : "no"}
+      data-glyph-varies={stuck ? "no" : undefined}
       className={cn(
         "group relative flex flex-col items-center justify-between rounded-md border pt-1",
         tile(active, "bg-card/40"),
@@ -361,6 +388,20 @@ const GlyphCell = React.memo(function GlyphCell({
         <span
           className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-attention"
           title="Edited"
+        />
+      )}
+      {/*
+        The other corner, for the other kind of news.
+
+        Edited is about this drawing; this is about two of them not lining up,
+        which is a fault of the pair rather than of either. Opposite corners so
+        a letter can carry both, which is the usual case -- the letter that will
+        not vary is generally the one just drawn differently.
+      */}
+      {stuck && (
+        <span
+          className="absolute left-1.5 top-1.5 size-1.5 rounded-full bg-destructive"
+          title="Will not vary: the weights are not the same points in the same order"
         />
       )}
     </button>

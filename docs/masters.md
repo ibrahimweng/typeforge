@@ -68,7 +68,8 @@ six-thousand-glyph font costs nothing until you draw in it.
    is taken. **Done. See M1.**
 2. **Compatibility, where you draw.** Two masters interpolate only if a letter
    has the same contours with the same points in the same order. Say so on the
-   letter, in the grid and in the checks -- not at export, which is far too late.
+   letter, in the grid and in the checks -- not at export, which is far too
+   late. **Done. See M2.**
 3. **Interpolation.** A slider that draws the letter, and the proof, at any
    point between the masters. The payoff, and the thing that makes a mistake in
    step 2 visible rather than theoretical.
@@ -161,3 +162,56 @@ itself is a set of exceptions to the file it came from: only the letters
 actually drawn in it. A weight added to a six-thousand-glyph font and drawn in
 forty places is forty letters on disk. A font with one weight is written exactly
 as it always was, with neither field present, so nothing older reads differently.
+
+
+---
+
+# M2. Saying which letters will not vary — *done*
+
+## What was wrong
+
+A weight is stored as the difference from the first one, and there is no
+difference to store between two drawings that are not the same paths with the
+same points in the same order. The exporter has always coped with this
+honestly -- the letter stands at the default, `buildGvar` hands it back in
+`held`, and the export's notes name it -- but the notes are written *after* the
+file is. By then the drawing is finished and the person has gone.
+
+And it is invisible until then. A Bold `o` drawn with one counter instead of two
+looks like a Bold `o`. Nothing on screen said the exported font would leave it
+standing still while every letter around it moved.
+
+## What is there now
+
+The same fact, in the three places somebody would meet it, before the export:
+
+- **On the letter.** The strip over the canvas gains one more line: *"This letter
+  will not vary — 2 paths in Regular and 1 in Bold."* Compared against the first
+  weight, because that is what the file compares against.
+- **In the grid.** A red dot in the top-left corner of the cell, opposite the
+  amber one that means edited. Opposite corners so a letter can carry both,
+  which is the usual case: the letter that will not vary is generally the one
+  just drawn differently.
+- **On the whole-font screen.** The Weights line counts them: *"1 letter will not
+  vary."*
+- **In the checks**, as a warning naming the first five.
+
+## What it costs to ask
+
+Contour and component counts, and node counts per contour. No geometry. So it is
+a walk over the glyph list rather than over the drawing, computed once per view
+rather than once per cell, and it is free in a font with one weight -- which is
+almost all of them -- because it returns before looking at anything.
+
+The grid cell takes a boolean rather than the set, for the reason its other props
+are the shape they are: eighty memoised cells that all take the same object all
+re-render together.
+
+## What the test caught about the test
+
+The first version made the mismatch by pressing **Add extremes** on the sample's
+`o` and asserting the point count changed. It did not: the sample is well drawn
+and has its extremes already, so the operation was a no-op and the test would
+have proved nothing. Its own guard -- reading the counts before and after --
+caught it. It deletes the `o`'s counter instead, which is a change no well-drawn
+letter can absorb.
