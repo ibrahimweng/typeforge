@@ -28,6 +28,7 @@ import { PARAMS } from "@/components/param-specs";
 import type { VariableOptions } from "./export";
 import type { Axis, Instance } from "./variable";
 import type { Typeface } from "./types";
+import { glyphAcross, type Master } from "./master";
 
 /**
  * The weight axis, as the format numbers it.
@@ -130,5 +131,75 @@ export function varyByWeight(typeface: Typeface): VariableOptions | null {
       { at: { wght: WEIGHT_AXIS.min }, typeface: at(typeface, limits.min) },
       { at: { wght: WEIGHT_AXIS.max }, typeface: at(typeface, limits.max) },
     ],
+  };
+}
+
+/**
+ * What the font is at one place on the axis, as a whole typeface.
+ *
+ * Two things want this and they want the same thing: a static instance -- "the
+ * Medium, as a file" -- and a proof somebody is scrubbing. Both are the font at
+ * a position rather than a letter at one, which is why it is written once here
+ * rather than twice.
+ *
+ * A letter whose weights do not line up keeps the first weight's drawing, which
+ * is exactly what the variable export does with the same letter: it stands
+ * still while the rest of the font moves. The two halves of the application
+ * should not disagree about what a font at 550 looks like.
+ */
+export function typefaceAt(masters: Master[], at: number): Typeface {
+  const first = masters[0].typeface;
+  if (masters.length < 2) return first;
+  return {
+    ...first,
+    glyphs: first.glyphs.map((glyph) => glyphAcross(glyph.name, masters, at) ?? glyph),
+  };
+}
+
+/**
+ * The font as a varying one, built out of the weights somebody drew.
+ *
+ * The other `varyByWeight` above synthesises its masters by moving one number,
+ * which is a machine-made bold: even where a drawn one is optical, thickening a
+ * hairline and a stem by the same amount. This takes the drawings instead.
+ *
+ * The default is the first weight, because that is what the document treats as
+ * the original everywhere else and what `gvar` stores every other master as a
+ * difference from. The instances are the weights that were actually drawn, by
+ * the names they were given -- not the nine standard ones, because a menu entry
+ * for a Thin this font does not have lands on whatever the axis reaches at 100
+ * and calls it a Thin.
+ *
+ * Nothing when there is one weight: there is no axis, and the caller falls back
+ * to the synthesised pair.
+ */
+export function varyByDrawnWeights(masters: Master[]): VariableOptions | null {
+  if (masters.length < 2) return null;
+  const sorted = [...masters].sort((one, two) => (one.at.wght ?? 400) - (two.at.wght ?? 400));
+  const places = sorted.map((one) => one.at.wght ?? 400);
+  const here = masters[0].at.wght ?? 400;
+
+  // Two weights in the same place is not an axis, and the document refuses to
+  // make one -- this is the second door, for a file that arrived with one.
+  if (new Set(places).size !== places.length) return null;
+
+  const axes: Axis[] = [
+    {
+      tag: "wght",
+      label: "Weight",
+      min: places[0],
+      default: here,
+      max: places[places.length - 1],
+    },
+  ];
+
+  return {
+    axes,
+    instances: sorted.map((one) => ({ label: one.name, at: { wght: one.at.wght ?? 400 } })),
+    // The first weight is the default and the exporter uses what it was handed,
+    // so it is deliberately not in here.
+    masters: masters
+      .filter((one) => one.id !== masters[0].id)
+      .map((one) => ({ at: { wght: one.at.wght ?? 400 }, typeface: one.typeface })),
   };
 }

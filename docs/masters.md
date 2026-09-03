@@ -75,7 +75,7 @@ six-thousand-glyph font costs nothing until you draw in it.
    rather than theoretical. **Done, for the grid. See M3.**
 4. **Export from the masters you drew.** The variable export uses them when
    they exist and falls back to the synthesised weights when they do not, and
-   says which. Verified by pinning the result with fontTools.
+   says which. Verified by pinning the result with fontTools. **Done. See M4.**
 5. **A second axis.** Width, or a custom one, once one axis is right.
 
 ## Not doing
@@ -278,3 +278,65 @@ letters on screen, so previewing it means building a whole typeface at a
 position rather than a letter at one. That is the same object a **static
 instance export** needs — "the font at 550, as a file" — so it belongs with step
 4 rather than being written twice.
+
+
+---
+
+# M4. The font shipped from the weights you drew — *done*
+
+## What changed
+
+`varyByDrawnWeights` takes the masters the document holds and hands them to the
+exporter that has been waiting for them since the forge learned to ship a
+family. The dialog prefers it and falls back to the synthesised pair, so a font
+with one weight behaves exactly as it did.
+
+Three decisions, and each of them shows up in the file:
+
+- **The axis is where the weights were put.** A Regular at 400 and a Bold at 700
+  give an axis of 400 to 700, not 100 to 900. That number is also the proof that
+  the drawings were used: the synthesised path gives 100 to 900 whatever the
+  font holds.
+- **The default is the first weight**, because that is what the document treats
+  as the original everywhere else, and what `gvar` stores every other master as
+  a difference from.
+- **The instances are the weights that were drawn, by the names they were
+  given** -- not the nine standard ones. A menu entry for a Thin this font does
+  not have lands on whatever the axis reaches at its lightest and calls it a
+  Thin.
+
+## And the dialog says which
+
+Choosing Variable now reads either *"Built from the 2 weights you drew: Regular,
+Bold"* or, without a second weight, *"a calculated bold rather than a drawn one.
+Add a weight on the Font screen to draw the other end yourself."* The second is
+the honest description of what that path has always done, and it was not being
+said.
+
+## What is measured
+
+`test/varying-masters.integration.test.ts` builds the file from two drawn
+weights, pins it at 400, 550 and 700 with fontTools, and measures **ink** at
+each -- because a bold and a light reach the same distance, so a width says
+nothing. Every letter is heavier at 700 than at 400 and the middle is genuinely
+in the middle, which is the claim a well-formed variable font has got silently
+wrong here before: correct axis, correct instances, `STAT` in order, a hundred
+glyphs carrying deltas, and both ends drawing the same letters.
+
+Writing it also found that the first weight is called **Book** rather than
+Regular for DejaVu, because a master takes the name the font arrived with. The
+test's expectation was wrong and the code was right, which is the same point the
+instance naming makes: these names come from the document, not from a list.
+
+## And the proof, now that the object exists
+
+`typefaceAt(masters, at)` is the font at one place on the axis, and both halves
+wanted it: a static instance is that object written to a file, and a proof
+somebody is scrubbing is that object drawn. So it is written once, and the
+Weights line now sits on the proof as well -- which is where a weight is really
+judged, because a letter tells you about a letter and a paragraph tells you
+about a face.
+
+One pass over the font per position of the slider, memoised. On the sample that
+is nothing; on a six-thousand-glyph font it is a visible cost, and it is the
+honest one: the layout walks the document, so the document is what has to move.

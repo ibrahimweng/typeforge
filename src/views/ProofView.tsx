@@ -26,6 +26,8 @@ import { prepareCanvas, readToken } from "@/components/glyph-render";
 import { GroundToggle } from "@/components/GroundToggle";
 import { NothingDrawnYet } from "@/components/NothingDrawnYet";
 import { hasLetters } from "@/font/library";
+import { typefaceAt } from "@/font/masters";
+import { Weights } from "@/components/Weights";
 import { store, useAppState } from "@/state/useStore";
 import { cn } from "@/ui/lib/utils";
 
@@ -135,7 +137,24 @@ function layout(
 
 export function ProofView(): React.JSX.Element {
   const state = useAppState();
-  const typeface = state.typeface;
+  const drawing = state.typeface;
+  /*
+   * The font at the place on the axis being looked at, or the font as drawn.
+   *
+   * The proof is where a weight is actually judged -- a letter tells you about
+   * a letter and a paragraph tells you about a face -- so the slider that moves
+   * the grid moves this too. The whole font rather than a letter, because the
+   * layout walks the document; it is one pass per position of the slider, and
+   * it is the same object a static instance of this font would be, which is
+   * `typefaceAt`'s reason for existing.
+   */
+  const typeface = React.useMemo(
+    () =>
+      drawing && state.preview !== null && state.masters.length > 1
+        ? typefaceAt(state.masters, state.preview)
+        : drawing,
+    [drawing, state.masters, state.preview, state.revision],
+  );
 
   const [text, setText] = React.useState(OPENING);
   const [size, setSize] = React.useState(14);
@@ -229,6 +248,17 @@ export function ProofView(): React.JSX.Element {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {/*
+        And the weights, here as well as on the whole-font screen.
+
+        This is where a weight is actually judged: a letter tells you about a
+        letter and a paragraph tells you about a face. Putting the slider only
+        beside the grid would mean scrubbing the axis on the one screen where
+        the answer is hardest to see.
+      */}
+      <div data-print-away>
+        <Weights />
+      </div>
       <div
         className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-border px-4 py-2 text-2xs"
         data-print-away

@@ -313,3 +313,69 @@ test("going to a weight stops looking between them", async ({ page }) => {
   await expect(page.locator("[data-weight-stop-preview]")).toHaveCount(0);
   await expect(page.locator("[data-weight-previewing]")).toHaveCount(0);
 });
+
+test("the export says which weights the varying font will be built from", async ({ page }) => {
+  await sample(page);
+
+  /*
+   * Without a second weight the ends of the axis are worked out rather than
+   * drawn -- `applyWeight` offsets every node along its own normal, which
+   * thickens a hairline and a stem by the same amount. That is worth saying out
+   * loud on the button rather than shipping quietly.
+   */
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const before = page.getByRole("button", { name: /^Variable \(\.ttf\)/ });
+  await expect(before).toContainText("calculated bold rather than a drawn one");
+  await expect(before).toContainText("Add a weight");
+  await page.keyboard.press("Escape");
+
+  await page.locator("[data-add-weight]").click();
+  await page.locator("[data-weight-name]").fill("Black");
+
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const after = page.getByRole("button", { name: /^Variable \(\.ttf\)/ });
+  await expect(after).toContainText("Built from the 2 weights you drew");
+  await expect(after).toContainText("Black");
+});
+
+test("the proof follows the slider too, because that is where a weight is judged", async ({
+  page,
+}) => {
+  await sample(page);
+  await page.locator("[data-add-weight]").click();
+
+  // A Bold that is genuinely bolder, made without adding or removing a point.
+  await page.locator("[data-glyph-cell='o']").dblclick();
+  await expect(page.locator("[data-points-panel]")).toBeVisible();
+  const bigger = page.getByRole("button", { name: "Bigger", exact: true });
+  for (let press = 0; press < 12; press += 1) await bigger.click();
+
+  await page.getByRole("button", { name: "Proof", exact: true }).click();
+  await expect(page.locator('[data-weights="full"]')).toBeVisible();
+
+  /*
+   * A letter tells you about a letter and a paragraph tells you about a face,
+   * so the slider that moves the grid has to move this. Measured off the
+   * proof's own canvas, in ink.
+   */
+  const inkOfProof = async (): Promise<number> =>
+    page.evaluate(() => {
+      const canvas = document.querySelector("canvas");
+      if (!(canvas instanceof HTMLCanvasElement)) return -1;
+      const context = canvas.getContext("2d");
+      if (!context) return -1;
+      const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+      let lit = 0;
+      for (let at = 3; at < data.length; at += 4) if (data[at] > 0) lit += 1;
+      return lit;
+    });
+
+  const slider = page.locator("[data-weight-preview]");
+  await slider.fill("400");
+  await expect(page.locator("[data-weight-previewing]")).toHaveText("400");
+  const light = await inkOfProof();
+
+  await slider.fill("700");
+  await expect(page.locator("[data-weight-previewing]")).toHaveText("700");
+  expect(await inkOfProof()).toBeGreaterThan(light);
+});
