@@ -76,7 +76,9 @@ export function ReportView(): React.JSX.Element {
      */
     const found = await validateWholeTypeface(
       state.typeface,
-      { format: "truetype" },
+      // The weights go in as well, because whether a letter can vary is a fact
+      // about two drawings and this is the one place that reads the whole font.
+      { format: "truetype", masters: state.masters },
       setProgress,
     );
     setReport(found);
@@ -91,7 +93,7 @@ export function ReportView(): React.JSX.Element {
     store.checked(found.findings, state.revision);
     setProgress(null);
     setRunning(false);
-  }, [state.typeface, state.revision]);
+  }, [state.typeface, state.revision, state.masters]);
 
   // Check once when a font is first opened, so the view is never empty.
   React.useEffect(() => {

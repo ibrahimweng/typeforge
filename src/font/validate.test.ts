@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { emptyTypeface, type Contour, type Glyph, type Typeface } from "./types";
 import { faultsOfGlyph, validateTypeface, validateWholeTypeface } from "./validate";
+import { masterFrom, soleMaster } from "./master";
 
 function glyph(name: string, contours: Contour[] = [], unicodes: number[] = []): Glyph {
   return {
@@ -342,5 +343,53 @@ describe("one letter, asked about itself", () => {
     const found = faultsOfGlyph(font([bad]), bad);
     expect(found[0].check).toBe("negative-advance");
     expect(found[0].severity).toBe("error");
+  });
+});
+
+describe("how much of the font will move", () => {
+  /*
+   * A weight is stored as the difference from the first one, and there is none
+   * to store where two drawings are not the same points in the same order. The
+   * exporter copes -- the letter stands at the default and is named in the
+   * notes -- but the notes are written after the file is.
+   */
+  const closed = (nodes: number): Contour => ({
+    closed: true,
+    nodes: Array.from({ length: nodes }, (_, at) => ({
+      point: { x: at * 10, y: 0 },
+      handleIn: null,
+      handleOut: null,
+      type: "corner" as const,
+    })),
+  });
+
+  it("says nothing at all about a font with one weight", () => {
+    const one = font([glyph("a", [closed(4)])]);
+    expect(has(one, "will-not-vary")).toBe(false);
+  });
+
+  it("counts the letters that will stand still, and names the first", () => {
+    const one = font([glyph("a", [closed(4)]), glyph("b", [closed(4)])]);
+    const bold = masterFrom(one, "Bold", {}, "m2");
+    bold.typeface.glyphs[0].contours = [closed(6)];
+
+    const report = validateTypeface(one, { masters: [soleMaster(one), bold] });
+    const finding = report.findings.find((one) => one.check === "will-not-vary")!;
+    expect(finding).toBeDefined();
+    expect(finding.severity).toBe("warning");
+    expect(finding.count).toBe(1);
+    expect(finding.glyph).toBe("a");
+    expect(finding.detail).toContain("Regular");
+  });
+
+  it("says nothing when the weights only moved the points", () => {
+    const one = font([glyph("a", [closed(4)])]);
+    const bold = masterFrom(one, "Bold", {}, "m2");
+    bold.typeface.glyphs[0].contours[0].nodes[1].point.x = 400;
+    expect(
+      validateTypeface(one, { masters: [soleMaster(one), bold] }).findings.some(
+        (finding) => finding.check === "will-not-vary",
+      ),
+    ).toBe(false);
   });
 });

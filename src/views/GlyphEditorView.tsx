@@ -1491,7 +1491,12 @@ export function GlyphEditorView(): React.JSX.Element {
           still in your hand. Nothing is drawn when there is nothing wrong.
         */}
         {typeface && glyph && (
-          <GlyphFaults typeface={typeface} glyph={glyph} revision={state.revision} />
+          <GlyphFaults
+            typeface={typeface}
+            glyph={glyph}
+            revision={state.revision}
+            masters={state.masters}
+          />
         )}
         <div className="pointer-events-none absolute bottom-3 left-3 flex gap-3 text-2xs text-muted-foreground tabular-nums">
           <span>{Math.round(zoom * 100)}%</span>

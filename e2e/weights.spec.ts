@@ -181,3 +181,56 @@ test("both weights are still there after coming back", async ({ page }) => {
   await page.locator('[data-weights="compact"] [data-weight]').first().click();
   await expect(back).toHaveValue(was);
 });
+
+test("a letter whose weights do not line up says so where it is drawn", async ({ page }) => {
+  await sample(page);
+  await page.locator("[data-add-weight]").click();
+  await expect(page.locator('[data-weights="full"] [data-weight]')).toHaveCount(2);
+
+  await page.locator("[data-glyph-cell='o']").dblclick();
+  await expect(page.locator("[data-points-panel]")).toBeVisible();
+  // Nothing to say yet: the Bold started as a copy, so it matches exactly.
+  await expect(page.locator('[data-glyph-fault]').filter({ hasText: "will not vary" })).toHaveCount(
+    0,
+  );
+
+  /*
+   * Change what the letter is made of in this weight and not the other. A
+   * weight is stored as the difference from the first one, and there is none to
+   * store between drawings that are not the same paths with the same points in
+   * the same order -- which is the failure this whole step exists to make
+   * visible before the export finds it.
+   *
+   * Taking the counter out of the `o` rather than adding extremes to it: the
+   * sample is well drawn, so it has its extremes already, and the first version
+   * of this test proved nothing until its own guard caught that.
+   */
+  await expect(page.locator("[data-path-row]")).toHaveCount(2);
+  await page.getByRole("button", { name: "Delete path 2" }).click();
+  await expect(page.locator("[data-path-row]")).toHaveCount(1);
+
+  const fault = page.locator("[data-glyph-fault]").filter({ hasText: "will not vary" });
+  await expect(fault).toHaveCount(1);
+  await expect(fault).toContainText("Regular");
+  await expect(fault).toContainText("Bold");
+
+  // And on the whole-font screen, as a count, and on the letter in the grid.
+  await page.getByRole("button", { name: "Font", exact: true }).click();
+  await expect(page.locator("[data-weights-stuck]")).toHaveText("1 letter will not vary");
+  await expect(page.locator('[data-glyph-cell="o"]')).toHaveAttribute("data-glyph-varies", "no");
+  await expect(page.locator('[data-glyph-cell="e"]')).not.toHaveAttribute("data-glyph-varies", "no");
+});
+
+test("and the checks say how much of the font will actually move", async ({ page }) => {
+  await sample(page);
+  await page.locator("[data-add-weight]").click();
+  await page.locator("[data-glyph-cell='o']").dblclick();
+  await expect(page.locator("[data-points-panel]")).toBeVisible();
+  await page.getByRole("button", { name: "Delete path 2" }).click();
+  await expect(page.locator("[data-path-row]")).toHaveCount(1);
+
+  await page.getByRole("button", { name: "Checks", exact: true }).click();
+  const finding = page.locator("[data-finding]").filter({ hasText: "will not vary" });
+  await expect(finding).toHaveCount(1, { timeout: 60_000 });
+  await expect(finding).toContainText("1 letter will not vary between the weights");
+});

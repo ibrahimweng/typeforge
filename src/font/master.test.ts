@@ -5,11 +5,13 @@ import {
   alignMasters,
   freeMasterId,
   freeMasterName,
+  lettersThatCannotVary,
   masterFrom,
   mastersFrom,
   shareAcross,
   soleMaster,
   WGHT,
+  whyItCannotVary,
 } from "./master";
 import { addGlyph } from "./library";
 import { emptyTypeface, type Contour, type Glyph, type Typeface } from "./types";
@@ -222,5 +224,58 @@ describe("whether two drawings of a letter can be blended", () => {
     });
     expect(agrees(piece("a"), piece("a"))).toBe(true);
     expect(agrees(piece("a"), piece("e"))).toBe(false);
+  });
+});
+
+describe("saying which letters will not vary, and why", () => {
+  it("says nothing about a font with one weight", () => {
+    const base = font(["a"]);
+    expect(lettersThatCannotVary([soleMaster(base)]).size).toBe(0);
+    expect(whyItCannotVary("a", [soleMaster(base)])).toBeNull();
+  });
+
+  it("names the weight and counts the points that do not line up", () => {
+    const base = font(["a", "b"]);
+    const bold = masterFrom(base, "Bold", {}, "m2");
+    bold.typeface.glyphs[0].contours = [box(6)];
+    const masters = [soleMaster(base), bold];
+
+    expect([...lettersThatCannotVary(masters)]).toEqual(["a"]);
+    const why = whyItCannotVary("a", masters);
+    expect(why?.weight).toBe("Bold");
+    // The sentence is about the letter, not about the font: which path, how
+    // many points, and in which weight.
+    expect(why?.said).toBe("path 1 has 4 points in Regular and 6 in Bold");
+  });
+
+  it("says which weight has more paths when the count itself differs", () => {
+    const base = font(["a"]);
+    const bold = masterFrom(base, "Bold", {}, "m2");
+    bold.typeface.glyphs[0].contours = [box(), box()];
+    const why = whyItCannotVary("a", [soleMaster(base), bold]);
+    expect(why?.said).toBe("1 path in Regular and 2 in Bold");
+  });
+
+  it("compares against the first weight, because that is what the file does", () => {
+    /*
+     * `gvar` stores every other master as a difference from the default, so a
+     * letter that disagrees with the default has no difference to store however
+     * well the others agree with each other.
+     */
+    const base = font(["a"]);
+    const bold = masterFrom(base, "Bold", {}, "m2");
+    const black = masterFrom(base, "Black", {}, "m3");
+    bold.typeface.glyphs[0].contours = [box(6)];
+    black.typeface.glyphs[0].contours = [box(6)];
+
+    expect([...lettersThatCannotVary([soleMaster(base), bold, black])]).toEqual(["a"]);
+  });
+
+  it("leaves a letter alone when every weight agrees", () => {
+    const base = font(["a"]);
+    const bold = masterFrom(base, "Bold", {}, "m2");
+    // Moved, not restructured: the whole point of a second weight.
+    bold.typeface.glyphs[0].contours[0].nodes[1].point.x = 400;
+    expect(lettersThatCannotVary([soleMaster(base), bold]).size).toBe(0);
   });
 });

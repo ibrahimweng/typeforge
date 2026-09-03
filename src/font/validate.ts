@@ -12,6 +12,7 @@
  */
 
 import { unreachableGlyphs } from "./features";
+import { lettersThatCannotVary, type Master } from "./master";
 import { contourArea, contoursBounds, distance } from "./geometry";
 import {
   contoursIntersect,
@@ -64,6 +65,16 @@ export interface ValidateOptions {
    * callers that want an answer in one go and know how big their font is.
    */
   limit?: number;
+  /**
+   * Every weight of this typeface, when there is more than one.
+   *
+   * Checked because a letter whose weights are not the same points in the same
+   * order has no difference to store, so the exported font leaves it standing
+   * still while everything around it moves. The export already reports this in
+   * its notes, which is after the file has been written; this is the same fact
+   * offered before anybody presses the button.
+   */
+  masters?: Master[];
 }
 
 export interface ValidationReport {
@@ -103,7 +114,7 @@ export function validateTypeface(
   const glyphs = typeface.glyphs.slice(0, limit);
   const faults = noFaults();
   gatherGlyphFaults(typeface, glyphs, format, faults);
-  return assemble(typeface, glyphs.length, faults, format);
+  return assemble(typeface, glyphs.length, faults, format, options.masters);
 }
 
 /**
@@ -137,7 +148,7 @@ export async function validateWholeTypeface(
     if (from + BATCH < glyphs.length) await breathe();
   }
   onProgress?.({ done: glyphs.length, total: glyphs.length });
-  return assemble(typeface, glyphs.length, faults, format);
+  return assemble(typeface, glyphs.length, faults, format, options.masters);
 }
 
 /*
@@ -210,6 +221,7 @@ function assemble(
   examined: number,
   faults: GlyphFaults,
   _format: OutlineFormat,
+  masters?: Master[],
 ): ValidationReport {
   const glyphs = typeface.glyphs.slice(0, examined);
   const findings: Finding[] = [];
@@ -225,6 +237,7 @@ function assemble(
    * and does not take the `limit` the rest of this respects.
    */
   findings.push(...opticalAdvice(typeface));
+  findings.push(...checkWeightsLineUp(masters));
 
   const order: Record<Severity, number> = { error: 0, warning: 1, advice: 2, info: 3 };
   findings.sort((a, b) => order[a.severity] - order[b.severity] || a.check.localeCompare(b.check));
@@ -365,6 +378,36 @@ function checkFontStructure(typeface: Typeface): Finding[] {
   }
 
   return findings;
+}
+
+/**
+ * How much of the font will actually move, when there is more than one weight.
+ *
+ * A weight is stored as the difference from the first one, and there is no
+ * difference to store between two drawings that are not the same points in the
+ * same order. The exporter already copes -- the letter stands at the default
+ * and is named in the notes -- but the notes are written after the file is,
+ * which is after everything.
+ */
+function checkWeightsLineUp(masters: Master[] | undefined): Finding[] {
+  if (!masters || masters.length < 2) return [];
+  const stuck = [...lettersThatCannotVary(masters)];
+  if (stuck.length === 0) return [];
+
+  return [
+    {
+      check: "will-not-vary",
+      severity: "warning",
+      title: `${stuck.length} letter${stuck.length === 1 ? "" : "s"} will not vary between the weights`,
+      detail:
+        `A weight is stored as the difference from ${masters[0].name}, and there is none to store ` +
+        `where two drawings are not the same points in the same order. ${stuck.length === 1 ? "It stands" : "They stand"} ` +
+        `at ${masters[0].name} while the rest of the font moves. First: ` +
+        `${stuck.slice(0, 5).join(", ")}${stuck.length > 5 ? `, and ${stuck.length - 5} more` : ""}.`,
+      glyph: stuck[0],
+      count: stuck.length,
+    },
+  ];
 }
 
 // ---------------------------------------------------------------------------

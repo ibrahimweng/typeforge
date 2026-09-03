@@ -17,6 +17,7 @@ import * as React from "react";
 
 import { SEVERITY_BADGE, SEVERITY_EDGE, SEVERITY_LABEL } from "@/components/severity";
 import { faultsOfGlyph } from "@/font/validate";
+import { whyItCannotVary, type Master } from "@/font/master";
 import type { Glyph, Typeface } from "@/font/types";
 import { cn } from "@/ui/lib/utils";
 
@@ -24,11 +25,14 @@ export function GlyphFaults({
   typeface,
   glyph,
   revision,
+  masters,
 }: {
   typeface: Typeface;
   glyph: Glyph;
   /** Bumped on every edit, so this is asked again after every one of them. */
   revision: number;
+  /** Every weight of this typeface, for the one fault that is about two of them. */
+  masters: Master[];
 }): React.JSX.Element | null {
   /*
    * The revision is in here on purpose, and it is the dependency that matters.
@@ -42,7 +46,33 @@ export function GlyphFaults({
     [typeface, glyph, revision],
   );
 
-  if (findings.length === 0) return null;
+  /*
+   * And the one fault that is not about this drawing but about two of them.
+   *
+   * A letter whose weights do not have the same points in the same order has no
+   * difference to store, so the exported font leaves it standing still while
+   * everything around it moves. That is discovered at export today, which is
+   * after the drawing is finished and the person has gone.
+   */
+  const stuck = React.useMemo(
+    () => whyItCannotVary(glyph.name, masters),
+    [glyph.name, masters, revision],
+  );
+
+  const all = stuck
+    ? [
+        ...findings,
+        {
+          check: "will-not-vary",
+          severity: "warning" as const,
+          title: `This letter will not vary`,
+          detail: `${stuck.said}. A weight is stored as the difference from the first one, and there is no difference to store between drawings that are not the same points in the same order. It will stand still while the rest of the font moves.`,
+          glyph: glyph.name,
+        },
+      ]
+    : findings;
+
+  if (all.length === 0) return null;
 
   /*
    * Laid over the canvas rather than above it, which is not a decoration.
@@ -62,14 +92,14 @@ export function GlyphFaults({
    */
   return (
     <div
-      data-glyph-faults={findings.length}
+      data-glyph-faults={all.length}
       aria-label={`What is wrong with ${glyph.name}`}
       className={cn(
         "pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col gap-1 border-b bg-background/85 px-4 py-1.5 backdrop-blur-sm",
-        SEVERITY_EDGE[findings[0].severity],
+        SEVERITY_EDGE[all[0].severity],
       )}
     >
-      {findings.map((finding) => (
+      {all.map((finding) => (
         <div
           key={finding.check}
           data-glyph-fault={finding.severity}
