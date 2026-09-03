@@ -327,6 +327,66 @@ harness, letter by letter, and kept only if it is better.
 **Done when** the harness says so, or the attempt is recorded as rejected with
 its numbers.
 
+### The reading works. Applying it does not, and here are the numbers
+
+**It looks like this cannot be done at all.** A round pen with a free width
+profile draws any ink a broad pen can, so nothing in one stroke says which was
+used. What makes it decidable is that a pen has one angle and a letter's strokes
+run every way: only a real pen explains all of them at once. So the pen wanted
+is the one that **makes the pressure flattest** -- divide the pen's reach out of
+the measured width at every sample and see how much variation is left.
+
+Read out of the whole alphabet at once rather than letter by letter, which is
+both the principled reading -- a hand holds one pen -- and much the more robust
+one. Per letter, DejaVu Serif's `o` gives a blade of 0.17 at 5° and a 72 per
+cent flatter pressure, which is exactly its horizontal modulation; its `x`, two
+crossing diagonals and a junction, gives 0.93, which is nonsense from too little
+evidence.
+
+Pooled, on the five faces to hand:
+
+| face | pen read | pressure flatter by | |
+|---|---|---|---|
+| DejaVu Serif | blade 0.38 at 10° | **35%** | read as written with a pen |
+| DejaVu Serif Bold | blade 0.53 at 7° | **29%** | read as written with a pen |
+| DejaVu Sans Bold | blade 0.20 at 10° | 9% | declined |
+| DejaVu Sans | blade 0.15 at 19° | 7% | declined |
+| DejaVu Sans Mono | blade 0.11 at 11° | 5% | declined |
+
+Which is right on every count. It separates the serifs from the sanses, puts the
+pen nearly horizontal on both serifs, where a transitional serif's thins
+actually are, and finds more of a blade in the Bold than the Regular, which is
+also true of the drawing.
+
+**And rewriting the strokes with it is not worth doing.** Dividing the pen out of
+the profile and letting the sweep multiply it back should be the same ink and is
+not: a profile is a handful of stops with the width interpolated between them,
+and the pen's reach varies continuously with the heading, so the two do not
+commute. Measured on the Serif, against the same harness:
+
+| | round pen | with the pen read out |
+|---|---|---|
+| worst | 446.7 | 447.1 |
+| mean of means | 14.31 | **13.03** |
+| width stops | 517 | **517** |
+| the `z`'s mean | 6.93 | 12.63 |
+| `v`, `w`, `x`, `y` means | | all worse |
+
+The mean comes down nine per cent and individual letters get materially worse,
+and the stop count does not move at all -- which was the whole point. A simpler
+description needs the pen divided out **before** the profile is thinned, which
+means tracing the font twice: once to find the pen, once to fit against it. That
+is the work and it is more than a rule about a profile.
+
+So the pen is **read and reported, not applied**. Trace says "this face reads as
+a pen held at 10° with a blade of 0.38, which explains 35 per cent of the width
+it varies by", above the two nib sliders -- which are the hardest pair in that
+panel to use blind, and now have somewhere to start.
+
+There is no turning pen here, and that is the same finding a level down: one
+angle per font is what the evidence supports. A per-letter fit already
+over-fits, so a per-stroke turning fit would over-fit harder.
+
 ## Step 6 — Blend the pen, not the outline
 
 Masters interpolate outlines by walking each node along its normal. That is

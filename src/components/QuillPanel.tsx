@@ -114,6 +114,30 @@ export function QuillPanel({ onEdit }: { onEdit: () => Promise<void> }): React.J
                     : `Fitted rather than exact, to within ${drawn.exactness.deviation.toFixed(2)} units.`}
                 </p>
               )}
+              {/*
+                What pen this font reads as having been written with.
+
+                Read out of the whole alphabet at once by asking which pen makes
+                the pressure along the strokes flattest -- because a pen has one
+                angle and a letter's strokes run every way, so only a real pen
+                explains all of them at once. Reported and not applied, for the
+                reasons in `tracing.ts`.
+
+                Worth saying because of the two sliders below it. "Nib contrast"
+                and "Nib angle" are the hardest pair here to use blind, and a
+                person told that the face they just read is a blade of 0.38 held
+                at ten degrees has somewhere to start rather than a guess.
+              */}
+              {doc.hand && (
+                <p className="pt-1 text-2xs leading-snug text-muted-foreground" data-quill-hand>
+                  This face reads as a pen held at{" "}
+                  <span className="text-foreground">{Math.round(doc.hand.angle)}°</span> with a
+                  blade of{" "}
+                  <span className="text-foreground">{doc.hand.contrast.toFixed(2)}</span>, which
+                  explains {Math.round(doc.hand.flatter * 100)} per cent of the width it varies by.
+                  The two nib controls below start there.
+                </p>
+              )}
             </>
           ) : (
             <p className="pt-2 text-2xs leading-snug text-muted-foreground">
