@@ -264,3 +264,57 @@ describe("every tool answers", () => {
     }
   });
 });
+
+/*
+ * Writing, which is the one tool group that makes a letter rather than editing
+ * one, and the one whose sentence has to carry an idea.
+ *
+ * The line being drawn is the middle of the letter and not its edge. Somebody
+ * who reads it as an outline tool draws a wire frame and concludes the tool is
+ * broken, so the words have to say where the ink comes from before the first
+ * click rather than after it.
+ */
+describe("the write tools", () => {
+  it("says where the ink comes from before anything is drawn", () => {
+    const state = toolStateFor("skeleton", NOTHING, null, NONE);
+    expect(state.phase).toBe("ready");
+    expect(state.says).toMatch(/down the middle/);
+    expect(state.says).toMatch(/pen/);
+  });
+
+  it("offers to close the stroke only when it is back at its start", () => {
+    const writing: Under = { ...NOTHING, strokeOpen: true };
+    expect(toolStateFor("skeleton", writing, null, NONE).says).toMatch(/Escape finishes/);
+    const round: Under = { ...writing, closingPoint: true };
+    const state = toolStateFor("skeleton", round, null, NONE);
+    expect(state.phase).toBe("willDo");
+    expect(state.says).toMatch(/close the stroke/);
+  });
+
+  /*
+   * And the pen can only take hold of a stroke that is there, so on a letter
+   * with none it says how to get one rather than looking armed and doing
+   * nothing -- which is what made the first version of Add point feel broken.
+   */
+  it("tells the pen tool to write something first", () => {
+    const state = toolStateFor("nib", NOTHING, null, NONE);
+    expect(state.phase).toBe("idle");
+    expect(state.says).toMatch(/Write a stroke first/);
+  });
+
+  it("offers the two things a pen handle does, once there is one", () => {
+    const onePen: Under = { ...NOTHING, written: true, penHandle: true };
+    const state = toolStateFor("nib", onePen, null, NONE);
+    expect(state.phase).toBe("willDo");
+    expect(state.says).toMatch(/width/);
+    expect(state.says).toMatch(/turn/);
+  });
+
+  it("says what a pen drag is doing, and that shift holds the angle", () => {
+    const doing = { kind: "penHandle" as const };
+    expect(toolStateFor("nib", NOTHING, doing, NONE).says).toMatch(/wider/);
+    expect(toolStateFor("nib", NOTHING, doing, { shift: true, alt: false }).says).toMatch(
+      /fifteen degrees/,
+    );
+  });
+});

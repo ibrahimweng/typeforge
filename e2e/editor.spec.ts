@@ -4567,3 +4567,78 @@ test("a tool says what it is for the moment it is picked up", async ({ page }) =
   await takeUp("select", "select");
   await expect(page.locator("[data-tool-says]")).toHaveText(/Select one point/);
 });
+
+/**
+ * Writing a letter with a pen, which is the fourth way into a letterform.
+ *
+ * The other three each ask for something a person may not have: the forge gives
+ * no way back to your own letter because you never touched it, Trace needs the
+ * font you are trying to make, and the outline tools need the one skill this is
+ * meant to make unnecessary. This one asks what a calligrapher already knows --
+ * draw the line down the middle and let the pen have the width.
+ *
+ * Driven through the palette and the canvas rather than through the store,
+ * because the whole claim is that a person can do it.
+ */
+test("writes a letter with a pen, down the middle", async ({ page }) => {
+  await page.goto("/");
+  await startBlank(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  // A blank font has no letters, so there is nothing to write on until one is
+  // made. This is the state somebody starting a font from nothing is in.
+  await page.getByRole("button", { name: "New letter" }).first().click();
+  await page.waitForTimeout(400);
+
+  const canvas = page.locator("canvas").first();
+  const box = (await canvas.boundingBox())!;
+  const at = (x: number, y: number) => ({ x: box.x + x, y: box.y + y });
+
+  await takeUpTool(page, "write", "skeleton");
+  await expect(page.locator("[data-tool-says]")).toHaveText(/down the middle of the letter/);
+
+  // The pen's three numbers are there before anything is drawn, because the
+  // pen is what somebody sets first.
+  await expect(page.locator("[data-pen-panel]")).toBeVisible();
+  await expect(page.locator("[data-pen-scope]")).toHaveText("for the next stroke");
+
+  const blank = await measureInk(page);
+
+  /*
+   * Three clicks down the middle of the letter, which is a stem with a bend.
+   * The ink appears from the second: one point is a place and two are a stroke.
+   */
+  const first = at(box.width * 0.35, box.height * 0.7);
+  await page.mouse.click(first.x, first.y);
+  await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.45);
+  await page.mouse.click(box.x + box.width * 0.55, box.y + box.height * 0.25);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+
+  const written = await measureInk(page);
+  expect(written).toBeGreaterThan(blank);
+
+  /*
+   * And the pen can be taken hold of and turned, which is the thing three
+   * numbers cannot teach. Picking up the pen tool shows an ellipse at every
+   * point that was put down; clicking one puts it in the panel.
+   */
+  await takeUpTool(page, "write", "nib");
+  await expect(page.locator("[data-tool-says]")).toHaveText(/pen/);
+
+  await page.mouse.click(first.x, first.y);
+  await page.waitForTimeout(200);
+  await expect(page.locator("[data-pen-scope]")).toHaveText(/stroke 1, point 1/);
+
+  // Turned at one point only, the pen now turns along the stroke -- and the
+  // panel says so, which is how somebody knows the letter is doing it.
+  await expect(page.locator("[data-pen-along]")).toHaveText(/held the same way/);
+  const angle = page.getByRole("textbox", { name: "Angle" });
+  await angle.fill("110");
+  await angle.press("Enter");
+  await page.waitForTimeout(300);
+  await expect(page.locator("[data-pen-along]")).toHaveText(/turns from/);
+
+  const turned = await measureInk(page);
+  // Turning the pen moves ink. Nothing else about the stroke changed.
+  expect(Math.abs(turned - written)).toBeGreaterThan(0);
+});

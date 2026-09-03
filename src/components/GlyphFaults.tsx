@@ -41,9 +41,23 @@ export function GlyphFaults({
    * point being dragged and this would answer with the outline as it was when
    * the letter was opened. The revision is what says an edit happened.
    */
+  /*
+   * And nothing about the outlines of a letter nobody drew as outlines.
+   *
+   * A written letter's contours are what its pen swept, so every point in them
+   * was placed by the fitter. Checking those is checking the sweep's arithmetic
+   * and reporting it as though the person had done it: a plain stem written
+   * with one stroke arrives with "two points sit on top of each other" and "a
+   * curve turns between points" over it, neither of which the person can act
+   * on and neither of which is about the letter they wrote.
+   *
+   * Once the ink has been taken -- expanded -- the outlines *are* the letter
+   * and are theirs to answer for, so the checks come back.
+   */
+  const derived = Boolean(glyph.written) && !glyph.written?.expanded;
   const findings = React.useMemo(
-    () => faultsOfGlyph(typeface, glyph),
-    [typeface, glyph, revision],
+    () => (derived ? [] : faultsOfGlyph(typeface, glyph)),
+    [typeface, glyph, revision, derived],
   );
 
   /*

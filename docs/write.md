@@ -210,6 +210,49 @@ Choosing it puts the glyph into strokes rather than outlines.
 **Done when** somebody can draw a blackletter `n` with a pen at 40°, width 60
 and no thickness, and it looks like blackletter.
 
+### Done
+
+A fifth tool group, `W`, with three tools: **Write** draws the line, **Write
+freehand** draws it in one movement, and **Pen** shows the ellipse at every
+place the pen is set and lets it be dragged. The ellipse's axis ends are the
+handles: pull one out and the pen widens, pull it round and the pen turns. The
+panel beside it carries the same three numbers for typing exact ones, and says
+which pen it is showing -- a chosen stop, or the hand's own pen for the next
+stroke.
+
+Four things came out of building it that were not in the plan.
+
+**A written letter's outlines are not its own.** `glyph.written` holds the
+strokes and `glyph.contours` is kept in step with them, re-swept on every
+change. That was chosen so nothing downstream has to learn about pens: the
+proof page, the exporter, the masters and all fourteen path tools go on reading
+contours. The cost is that the letter has two representations, and the rule that
+keeps them honest is that the strokes are the source and only Expand breaks the
+link.
+
+**The fault checker had to be told.** A plain stem written with one stroke
+arrived with "two points sit on top of each other" and "a curve turns between
+points" over it, because the checker was reading points the *fitter* had placed.
+Neither is something the person can act on and neither is about the letter they
+wrote, so a written letter's outline checks are off until its ink is taken.
+
+**`cloneGlyph` was dropping three fields.** It is what undo restores from, and
+it copied neither `cuts` nor `cast` nor the new strokes -- so a letter cut its
+own way went back to the font's on the next undo, and a written letter would
+have lost its pen. The cuts and cast bug was already there and is fixed with
+this one.
+
+**"Is a stroke open" is not "is somebody writing".** The pen next door learned
+this once already and it is written on its own flag. Reusing the shape's own
+state meant a stroke finished with Escape was still the open one, so the next
+click reached back and extended it -- and the two strokes of an `n` came out as
+one zig-zag through the middle of the letter.
+
+The grid is three buttons: 3, 4.5 and 5 pen widths of x-height, with two more
+each way for the ascender and descender, and a vertical guide one pen width in.
+It sets the font's vertical metrics to match, so the guides, the proof and the
+export agree.
+
 ## Step 3 — Saved pens
 
 Named pens, bound to stops rather than copied into them. Change the thick pen

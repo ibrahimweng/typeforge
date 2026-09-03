@@ -27,6 +27,9 @@ import {
   MinusCircleIcon,
   PenNibIcon,
   PencilSimpleIcon,
+  PenNibStraightIcon,
+  EggIcon,
+  ScribbleIcon,
   PlusCircleIcon,
   PolygonIcon,
   RectangleIcon,
@@ -62,6 +65,9 @@ const MARKS: Record<ToolId, Icon> = {
   polygon: PolygonIcon,
   knife: KnifeIcon,
   scissors: ScissorsIcon,
+  skeleton: PenNibStraightIcon,
+  skeletonFreehand: ScribbleIcon,
+  nib: EggIcon,
 };
 
 const BY_KEY = new Map(GROUPS.map((group) => [group.key.toLowerCase(), group.id]));

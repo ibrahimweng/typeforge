@@ -376,10 +376,27 @@ export function emptyTypeface(): Typeface {
  * then undoing an edit restores the edit.
  */
 export function cloneGlyph(glyph: Glyph): Glyph {
+  /*
+   * A letter's own cuts, cast and strokes come along, which they did not.
+   *
+   * This is what undo restores from and what a master is copied with, so
+   * anything it drops is quietly deleted by the next edit. It dropped three
+   * things. Cuts and cast were the standing bug -- a letter cut its own way
+   * went back to the font's on the next undo -- and the strokes are the one
+   * that made it worth fixing now: a written letter whose strokes were lost on
+   * undo is a letter that cannot be written.
+   *
+   * Structured clone rather than a hand-written copy for these three, because
+   * they are deep trees of plain data whose shapes change, and a copy written
+   * out by hand goes stale silently the next time a field is added to either.
+   */
   return {
     name: glyph.name,
     unicodes: [...glyph.unicodes],
     advanceWidth: glyph.advanceWidth,
+    cuts: glyph.cuts ? structuredClone(glyph.cuts) : undefined,
+    cast: glyph.cast ? structuredClone(glyph.cast) : undefined,
+    written: glyph.written ? structuredClone(glyph.written) : undefined,
     components: glyph.components.map((component) => ({ ...component, transform: { ...component.transform } })),
     anchors: glyph.anchors.map((anchor) => ({ ...anchor })),
     params: { ...glyph.params },
