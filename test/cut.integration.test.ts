@@ -37,6 +37,15 @@ import { hasFontTools, inspectFont } from "./fonttools";
  */
 const suite = hasFontTools() ? describe : describe.skip;
 
+/*
+ * One suite below cuts a font it did not draw, so it needs a font off the
+ * system as well as fontTools. The other four draw their own and need only
+ * fontTools, so gating the whole file on a system font would skip fourteen
+ * tests that do not depend on one.
+ */
+const source = loadTestFont();
+const suiteWithFont = hasFontTools() && source !== null ? describe : describe.skip;
+
 suite("a cut font, read from outside", { timeout: FONT_SUITE_TIMEOUT }, () => {
   it("writes the slots into the outlines", async () => {
     const plain = await deliver(startFrom(SANS), { familyName: "Plain", format: "ttf" });
@@ -138,7 +147,7 @@ suite("a cut font, read from outside", { timeout: FONT_SUITE_TIMEOUT }, () => {
 });
 
 
-suite("a font somebody opened, cut and written back out", { timeout: FONT_SUITE_TIMEOUT }, () => {
+suiteWithFont("a font somebody opened, cut and written back out", { timeout: FONT_SUITE_TIMEOUT }, () => {
   /*
    * The other two halves of the application cut the same description with the
    * same code, and the thing that could still go wrong is different: here the
@@ -146,11 +155,7 @@ suite("a font somebody opened, cut and written back out", { timeout: FONT_SUITE_
    * which way a counter is wound, and the stem every size is a multiple of has
    * to be measured rather than asked for. So it is read back from outside.
    */
-  const opened = async () => {
-    const bytes = loadTestFont();
-    if (!bytes) throw new Error("no font to open");
-    return (await importFont(bytes, "test.ttf")).typeface;
-  };
+  const opened = async () => (await importFont(source!, "test.ttf")).typeface;
 
   const written = async (face: Awaited<ReturnType<typeof opened>>) =>
     inspectFont((await exportFont(face, { format: "ttf", fidelity: "rebuild" })).bytes);
