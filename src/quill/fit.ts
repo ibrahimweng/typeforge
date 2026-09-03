@@ -1508,17 +1508,31 @@ export function fitGlyph(
        * far side of whatever this is joining -- which is how the shoulder of an
        * `n` came out through its stem and drew a blob there.
        *
-       * How far it should be is not settled, and the evidence says a single
-       * distance cannot settle it. A `q` has a notch a hundred units deep at
-       * the bowl-and-stem join and wants its strokes to overlap further; the
-       * `d`, the `n` and the `w` want them not to. One and a half half-widths
-       * fixes the `q` (100.6 to 40.6) and costs the alphabet 6.14 to 6.50; half
-       * a width or half the ink straight ahead, whichever is more -- the
-       * angle-aware version, and the one that ought to work -- fixes it again
-       * (to 38.9) and takes the `d`'s worst from 38.1 to 100.1 and the `w`'s
-       * mean from 15.2 to 19.7. What separates them is the angle the two
-       * strokes meet at, which is the one thing a run cut at a junction is
-       * never told.
+       * Every one of those distances was a distance, and no distance works.
+       * One and a half half-widths fixed the `q` (100.6 to 40.6) and cost the
+       * alphabet 6.14 to 6.50; half a width or half the ink straight ahead,
+       * whichever is more, fixed it again (38.9) and took the `d`'s worst from
+       * 38.1 to 100.1 and the `w`'s mean from 15.2 to 19.7. Bounding the
+       * run-on by the length of skeleton the heading was read from fixed it a
+       * third time and took six per cent of the `u`'s ink, because there the
+       * run-on is filling a corner nothing else reaches.
+       *
+       * So it is not asked as a distance at all. The end of a run-on is a
+       * rectangle, and a rectangle either lands in the ink or it does not: the
+       * two leading corners are walked back from half a width until both stand
+       * on ink, and that is where the stroke stops. It needs no threshold, it
+       * costs a dozen readings of a field already built, and it is the same
+       * move as the cap test below -- draw the thing and ask the letter.
+       *
+       * What it is worth. The `q` comes back as a bowl, a stem, and a two-unit
+       * scrap of skeleton where they meet carrying the balloon the field makes
+       * at a junction, two hundred and thirteen units wide. Run on by half of
+       * that along a heading read from two units, the scrap swept a rectangle
+       * two hundred and eight by two hundred and nine that poked into the
+       * counter: 100.6 units, the largest number in the alphabet, and none of
+       * it anything the skeleton said. Cornered, 38.9 -- the `d` it is built
+       * like is 38.1 -- and with it the `f` 11.6 to 8.6, the `t` 10.9 to 6.6,
+       * the `o` a point of ink, and the alphabet 6.14 to 6.11.
        *
        * What this does *not* fix, said plainly, because four attempts at it
        * were rejected by measurement and the next person should not spend the
@@ -1552,9 +1566,36 @@ export function fitGlyph(
        */
       if (!free[which]) {
         const on = Math.min(half, onLeft, onRight);
+        /*
+         * And no further than the end of it lands in the ink.
+         *
+         * Half a width is a long way when the run is two units long, and the
+         * heading it is laid along was read from those two units. The `q`'s
+         * scrap at the bowl-and-stem meeting swept a rectangle two hundred
+         * across that poked into the counter -- so the rectangle is walked
+         * back until both of its leading corners stand on ink, which is the
+         * question the letter can answer and a distance never could.
+         */
+        let reach = 0;
+        const grain = Math.max(grid.scale, on / 12);
+        for (let at = on; at > 0; at -= grain) {
+          const ahead = { x: tip.x + out.x * at, y: tip.y + out.y * at };
+          const left = {
+            x: ahead.x + across.x * half,
+            y: ahead.y + across.y * half,
+          };
+          const right = {
+            x: ahead.x - across.x * half,
+            y: ahead.y - across.y * half,
+          };
+          if (coversPoint(grid, left) && coversPoint(grid, right)) {
+            reach = at;
+            break;
+          }
+        }
         return {
           cap: { kind: "butt" } as const,
-          tip: { x: tip.x + out.x * on, y: tip.y + out.y * on },
+          tip: { x: tip.x + out.x * reach, y: tip.y + out.y * reach },
         };
       }
 

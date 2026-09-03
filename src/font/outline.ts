@@ -215,10 +215,38 @@ export function classifyContours(contours: Contour[]): boolean[] {
     for (let other = 0; other < contours.length; other++) {
       if (other === index) continue;
       if (!boxContains(boxes[other], boxes[index])) continue;
-      if (pointInPolygon(polygons[other], insidePoints[index])) enclosing++;
+      if (enclosedBy(polygons[other], polygons[index], insidePoints[index]))
+        enclosing++;
     }
     return enclosing % 2 === 0; // even nesting depth means outer
   });
+}
+
+/**
+ * Whether the whole of one contour lies inside another, rather than a point of
+ * it, which is the difference between a counter and an overlap.
+ *
+ * One interior point was the test, and one interior point cannot tell the two
+ * apart: a counter lies wholly within the shape it is cut from, and two strokes
+ * that cross share ground without either being inside the other. A traced `u`
+ * is the case. It comes back as three overlapping pieces -- the bowl and both
+ * stems in one, the foot of the right stem, and the knot where they meet --
+ * and an interior point of that foot lands in the bowl's piece, so the foot was
+ * read as a counter and punched out of its own letter. The union gave the
+ * letter back in four pieces with a seam across the stem, which is ninety-two
+ * units of error on the harness and a hole in the exported outline.
+ *
+ * Sampled rather than exhaustive, because the question is whether any part of
+ * the shape is outside and a shape that leaves has to cross the boundary: two
+ * dozen points spread along a flattened contour will not miss an excursion big
+ * enough to matter, and this runs on every letter of every export.
+ */
+function enclosedBy(outer: Vec2[], inner: Vec2[], seat: Vec2): boolean {
+  if (!pointInPolygon(outer, seat)) return false;
+  const step = Math.max(1, Math.floor(inner.length / 24));
+  for (let at = 0; at < inner.length; at += step)
+    if (!pointInPolygon(outer, inner[at])) return false;
+  return true;
 }
 
 /**

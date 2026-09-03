@@ -81,6 +81,41 @@ describe("classifyContours", () => {
       true,
     ]);
   });
+
+  it("does not call an overlapping piece a counter", () => {
+    /*
+     * A `C` and a bar laid across its mouth, which is the shape of a traced
+     * letter: strokes that overlap without either being inside the other. The
+     * bar's box fits inside the `C`'s and the middle of the bar stands on the
+     * `C`'s ink, so on one interior point it read as a counter -- and the foot
+     * of a traced `u` was punched out of its own letter, which handed the
+     * union back four pieces with a seam across the stem.
+     */
+    const at = (x: number, y: number) => ({
+      point: { x, y },
+      handleIn: null,
+      handleOut: null,
+      type: "corner" as const,
+    });
+    const cee: Contour = {
+      closed: true,
+      nodes: [
+        at(0, 0),
+        at(1000, 0),
+        at(1000, 300),
+        at(300, 300),
+        at(300, 700),
+        at(1000, 700),
+        at(1000, 1000),
+        at(0, 1000),
+      ],
+    };
+    const bar: Contour = {
+      closed: true,
+      nodes: [at(50, 400), at(500, 400), at(500, 600), at(50, 600)],
+    };
+    expect(classifyContours([cee, bar])).toEqual([true, true]);
+  });
 });
 
 describe("correctDirection", () => {

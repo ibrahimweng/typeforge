@@ -606,7 +606,24 @@ smooth spine, because the skeleton is connected through it. No cap and no join
 can put a flat on a round-nibbed sweep of a smooth spine. Splitting a run where
 the letter has a flat is the work, and it is a bigger piece than a cap rule.
 
-# Trace again: the terminals — *one found and fixed, one found and not*
+Measured again for T5, in both directions this time, and it holds. These five
+are the only letters left whose error is mostly ink the redraw **fails to
+reach**, and every one of those places is a corner of the outline:
+
+| | missing ink | spilt ink |
+|---|---|---|
+| `r` | **74.1** at 100% across, 83% up | 36.5 |
+| `w` | **61.6** at 57% across, 100% up | 47.4 |
+| `z` | **38.2** at 100% across, 100% up | 28.3 |
+| `v` | **35.3** at 61% across, 0% up | 30.4 |
+| `x` | 24.5 at 80% across, 0% up | 31.4 |
+
+The tip of the `r`'s arm, the apex of the `w`, the top right of the `z`, the
+foot of the `v`, the foot of the `x`. Nothing in T5's work moved any of them,
+which is the right outcome: T5 was ink drawn where the letter has none, and this
+is ink the letter has and the redraw does not.
+
+# Trace again: the terminals — *two found, two fixed*
 
 Where the last pass left off: `v`, `w`, `z`, `r` and `x` carry two to three
 times the alphabet's error and it is all at their corners. Before going after
@@ -677,7 +694,7 @@ scores better against the ink took the alphabet from 6.14 to 6.66, and taking
 the second always took it to 6.21 for the heading alone and 6.51 with the tail
 laid along it.
 
-## T5. The `q` and the `u`, twice their eight siblings — *found, not fixed*
+## T5. The `q` and the `u`, twice their eight siblings — *done, on the third diagnosis*
 
 Ten letters have a notch just right of the stem where the bowl springs. Eight of
 them -- `a`, `b`, `d`, `g`, `h`, `m`, `n`, `p` -- are 35 to 41 units. The `q` is
@@ -717,4 +734,120 @@ overlap further past the junction and the `d`, `n` and `w` want them not to, and
 no single distance in half-widths separates them. What does separate them is the
 angle the two strokes meet at, which this fitter does not know, because a run is
 cut at a junction and never told what it was cut from.
+
+### That diagnosis was wrong, and here is the right one
+
+The paragraph above is kept because it is what the evidence looked like from the
+run-on rules, and because the reasoning that replaced it started by testing it.
+It does not survive.
+
+**The angle is not what separates them.** The `q` and the `d` are built alike --
+a bowl, a stem, and a scrap where they meet -- and their junctions were measured
+arm by arm. Each end of each run, with the dot product between the run's own
+heading and every other arm at that meeting:
+
+| | `q` | `d` |
+|---|---|---|
+| end, half 94 | 0.994, 0.110 | 0.984, 0.176 |
+| start, half 59 | 0.880, 0.958 | 0.874, 0.962 |
+| start, half 104 | 0.000, 0.486 | 0.000, 0.486 |
+| end, half 106 | −0.707, 0.832 | −0.707, 0.874 |
+
+The same junctions to two decimal places, and 100.6 units of error against 38.1.
+An angle the two letters share cannot be what tells them apart.
+
+**It is not a notch either.** `scripts/worst.ts` reports both directions
+separately with the place each happens, as a percentage across and up the
+letter's own box. The `q`'s fault is not ink the redraw is missing:
+
+| | missing | spilt |
+|---|---|---|
+| `q` | 32.9 at 77% across, 78% up | **100.6 at 90% across, 51% up** |
+| `u` | 23.3 at 76% across, 28% up | **91.7 at 90% across, 17% up** |
+| `d` | 33.2 at 77% across, 53% up | 38.1 at 80% across, 54% up |
+
+The whole of the `q`'s error is the redraw standing where the letter has no ink,
+on the stem side at mid-height.
+
+**And it is one stroke.** Swept without it, the `q` goes from 100.6 to 39.7 --
+in line with the `d` it is built like. That stroke is the "207-unit stub" named
+above, and the length is where the first reading went wrong: its *skeleton* is
+two units long. It is a knot at the meeting, not a stroke. The 208 by 209
+rectangle that pokes twenty-two units into the counter is made entirely by the
+run-on, which extends a two-unit scrap by a half-width at each end along a
+heading read from two units of skeleton.
+
+**The `q` and the `u` do not belong in the same entry.** Dropping the knot fixes
+the `q` and does nothing at all for the `u`'s 91.7, which survives the removal of
+any single stroke. Two faults were filed as one because two letters had large
+numbers on the same structure.
+
+### They were two faults, and neither one was a notch
+
+**The `q` was the run-on, and the run-on was asked the wrong question.** Every
+attempt above set a *distance*: one half-width, one and a half, half the ink
+ahead, the length of the skeleton the heading came from. Each fixed the `q` and
+broke something, because a distance that fills the `u`'s corner also pokes
+through the `q`'s.
+
+It is not a distance. The end of a run-on is a rectangle, and a rectangle either
+lands in the ink or it does not, which is a thing the letter can simply be
+asked: the two leading corners are walked back from half a width until both
+stand on ink. No threshold, a dozen readings of a field already built, and it is
+the move the cap test beside it already makes -- draw the thing and ask.
+
+| | before | after |
+|---|---|---|
+| `q` | 100.6 | **38.9** |
+| `d`, built like it | 38.1 | 38.1 |
+| `f` | 11.6 | **8.6** |
+| `t` | 10.9 | **6.6** |
+| the alphabet | 6.14 | **6.11** |
+| nodes | 1106 | 1101 |
+
+**The `u` was not the tracer at all.** With the `q` fixed the `u` had not moved,
+which is what the tables above already said: a different fault wearing the same
+number. It comes back as three overlapping pieces -- the bowl and both stems,
+the foot of the right stem, and the knot where they meet -- and united, those
+gave back **four contours**, of 30929, 252, −51 and 450326 units: the letter in
+pieces, with a seam across the stem and a hole where its foot should be.
+
+The union was doing as it was told. `classifyContours` decides which contours
+are counters by nesting, and it decided on **one interior point**: a point
+inside the foot lands inside the bowl's piece, so the foot was a counter and was
+punched out of its own letter. One point cannot tell a counter from an overlap.
+A counter lies wholly within the shape it is cut from; two strokes that cross
+share ground without either being inside the other. Asked whether the *whole*
+contour is inside -- two dozen samples along it, since a shape that leaves has
+to cross the boundary -- the `u` unites to one piece.
+
+| | before | after |
+|---|---|---|
+| `u` | 91.7 | **33.3** |
+| its ink | 98% | 99% |
+| contours the union returns | 4 | 1 |
+| every other letter | | unchanged |
+
+That last row is the point of the fix and was measured before it was kept: all
+twenty-six letters were classified both ways and the two readings differ on the
+`u` alone. The `o`, whose counter really is a counter, reads the same either way.
+
+Nor was this ever only a harness number. `src/quill/typeface.ts` hands a traced
+letter to `removeOverlaps` and `correctDirection` under the same nesting rule on
+the way to a font file, so the exported `u` had the hole in it too.
+
+### What it cost to get here
+
+Three diagnoses, and the first two are left standing above because the reasoning
+that replaced each of them began by testing it. It was filed as a notch and it
+is a blob; it was filed as one fault and it is two; the angle the strokes meet
+at was named as what separates the `q` from the `d`, and measured, the two
+junctions agree to two decimal places.
+
+What found it was asking the harness which *direction* the error ran in.
+`scripts/worst.ts` reports ink the redraw is missing and ink it spills
+separately, each with the place it happens as a percentage across and up the
+letter's own box. The first number this entry ever had, 100.6, is spilt ink on
+the stem side at mid-height, and the whole of the wrong diagnosis followed from
+reading it as a notch.
 
