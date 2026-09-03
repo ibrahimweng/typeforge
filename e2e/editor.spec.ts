@@ -4710,3 +4710,65 @@ test("names a pen, and one change reaches every letter using it", async ({ page 
   await page.waitForTimeout(200);
   await expect(page.locator("[data-pen-follows]")).toHaveCount(0);
 });
+
+/**
+ * Taking a written letter's ink, and putting it back.
+ *
+ * This is what makes writing safe to start with: it does not have to be able
+ * to draw everything, because the fourteen outline tools are one button away.
+ * Write the letter, take its ink, fix the one curve that is wrong.
+ *
+ * And the way back is kept for exactly as long as it is true. Every other tool
+ * with an Expand tells its users to save a copy first and leaves them with
+ * undo; here the button is there until the outlines are edited by hand, and
+ * then it is gone rather than offering to throw the edit away.
+ */
+test("takes a written letter's ink, and gives it back until it is edited", async ({ page }) => {
+  await page.goto("/");
+  await startBlank(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await page.getByRole("button", { name: "New letter" }).first().click();
+  await page.waitForTimeout(400);
+
+  const canvas = page.locator("canvas").first();
+  const box = (await canvas.boundingBox())!;
+  await takeUpTool(page, "write", "skeleton");
+
+  // Nothing to take before anything is written.
+  await expect(page.locator("[data-expand]")).toHaveCount(0);
+
+  await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.3);
+  await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.7);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+  const written = await measureInk(page);
+
+  await expect(page.locator("[data-expand]")).toBeVisible();
+  await page.locator("[data-expand]").click();
+  await page.waitForTimeout(300);
+
+  // The ink is the same ink: taking it changes nothing about the drawing.
+  expect(Math.abs((await measureInk(page)) - written)).toBeLessThan(written * 0.02);
+  // And the pen says so rather than pretending it still moves the letter.
+  await expect(page.locator("[data-pen-expanded]")).toHaveText(/no longer moves it/);
+  await expect(page.locator("[data-unexpand]")).toBeVisible();
+
+  // Back to strokes, and the pen moves it again.
+  await page.locator("[data-unexpand]").click();
+  await page.waitForTimeout(300);
+  await expect(page.locator("[data-pen-expanded]")).toHaveCount(0);
+  await expect(page.locator("[data-expand]")).toBeVisible();
+
+  /*
+   * Take it again, then edit the outlines by hand. The way back goes, because
+   * putting it back would re-sweep and throw the edit away.
+   */
+  await page.locator("[data-expand]").click();
+  await page.waitForTimeout(200);
+  await takeUpTool(page, "select", "select");
+  await page.locator("[data-panel-section='params']").first().waitFor();
+  await page.getByRole("button", { name: "Flip", exact: false }).first().click();
+  await page.waitForTimeout(400);
+  await takeUpTool(page, "write", "skeleton");
+  await expect(page.locator("[data-unexpand]")).toHaveCount(0);
+});

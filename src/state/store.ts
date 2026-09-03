@@ -240,6 +240,16 @@ export interface Loan {
   from: "forge" | "quill";
 }
 
+/**
+ * The two edits that may touch an expanded letter's outlines and still leave
+ * the way back to its strokes.
+ *
+ * Everything else that changes those contours is a person editing the ink,
+ * which is the point of expanding, and which means the strokes no longer
+ * describe the letter. These two are the expand and un-expand themselves.
+ */
+const KEEPS_STROKES = new Set(["Take the ink", "Back to strokes"]);
+
 export interface AppState {
   typeface: Typeface | null;
   fileName: string;
@@ -2975,6 +2985,25 @@ class Store {
 
     const before = cloneGlyph(typeface.glyphs[index]);
     mutate(typeface.glyphs[index]);
+    /*
+     * An expanded letter whose outlines were edited by hand is no longer a way
+     * back to its strokes, and this is where that is noticed.
+     *
+     * Un-expand re-sweeps, so it would throw away whatever was done to the
+     * outlines. Every other tool with an Expand tells its users to save a copy
+     * first and leaves them with undo; the honest answer is to keep the way
+     * back exactly as long as it is true, and to say so on the button. So the
+     * strokes go the moment the outlines are touched by anything other than the
+     * sweep -- which is every edit through here, since the sweep writes through
+     * `reswept` and not through a labelled edit.
+     */
+    const edited = typeface.glyphs[index];
+    if (edited.written?.expanded && !KEEPS_STROKES.has(label)) {
+      const changed =
+        edited.contours.length !== before.contours.length ||
+        JSON.stringify(edited.contours) !== JSON.stringify(before.contours);
+      if (changed) edited.written = undefined;
+    }
     typeface.glyphs[index].dirty = true;
     const after = cloneGlyph(typeface.glyphs[index]);
 

@@ -305,6 +305,18 @@ exporter, all of which take outlines already.
 **Done when** a written letter expands, hand-edits cleanly, and un-expands
 until it has been touched.
 
+### Done
+
+Two buttons, "Take the ink" and "Back to strokes", and one rule behind them:
+the way back is kept for exactly as long as it is true. Un-expand re-sweeps, so
+it would throw away whatever was done to the outlines -- and the moment they are
+edited by anything other than the sweep, the strokes stop describing the letter
+and the button goes. It is noticed in `editGlyph`, by comparing the contours
+before and after any labelled edit, which is every edit a person can make.
+
+The alternative is what every other tool with an Expand does: warn people to
+save a copy first and leave them with undo.
+
 ## Step 5 — Trace reads a turning pen
 
 Today the tracer recovers one nib angle for a whole stroke. With stops on the

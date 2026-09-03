@@ -91,6 +91,7 @@ export function PenPanel({ glyphName }: { glyphName: string }): React.JSX.Elemen
    */
   const following = stop ? (stop.pen ?? null) : state.usingPen;
   const followed = following ? state.pens.find((one) => one.id === following) : undefined;
+  const expanded = Boolean(store.glyph(glyphName)?.written?.expanded);
 
   /*
    * Editing a number while following a saved pen edits the saved pen.
@@ -139,6 +140,13 @@ export function PenPanel({ glyphName }: { glyphName: string }): React.JSX.Elemen
         </span>
       </div>
 
+      {expanded ? (
+        <p className="text-2xs text-muted-foreground" data-pen-expanded>
+          The ink is the letter now, so the pen no longer moves it. Go back to strokes to write
+          with it again.
+        </p>
+      ) : null}
+
       <Field
         label="Width"
         hint="How wide the pen is across the edge it is held on. The whole stroke's width, because a pen does not change size between one point and the next without being told to."
@@ -175,6 +183,41 @@ export function PenPanel({ glyphName }: { glyphName: string }): React.JSX.Elemen
         much, and a stroke that does not turn says so too -- otherwise its
         absence reads as a feature that is missing rather than one not in use.
       */}
+      {/*
+        Taking the ink, and putting it back.
+
+        The escape hatch, and the reason writing does not have to be able to
+        draw everything: write the letter, take its ink, and fix the one curve
+        that is wrong with the fourteen outline tools already here. The way back
+        is kept for exactly as long as it is true -- the moment the outlines are
+        edited by hand the strokes no longer describe the letter, and the button
+        goes rather than offering to throw the edit away.
+
+        Which every other tool with an Expand handles by telling people to save
+        a copy first.
+      */}
+      {expanded ? (
+        <button
+          type="button"
+          data-unexpand
+          onClick={() => store.unexpandWritten(glyphName)}
+          title="Go back to the strokes. Available until the outlines are edited by hand."
+          className="rounded border border-border px-1.5 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+        >
+          Back to strokes
+        </button>
+      ) : strokes.length > 0 ? (
+        <button
+          type="button"
+          data-expand
+          onClick={() => store.expandWritten(glyphName)}
+          title="Keep the ink and stop it following the strokes, so the outline tools can reach it. The strokes are kept, so this can be undone until the outlines are edited."
+          className="rounded border border-border px-1.5 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+        >
+          Take the ink
+        </button>
+      ) : null}
+
       {/*
         The grid a written alphabet is actually built on.
 
