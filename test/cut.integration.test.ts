@@ -28,9 +28,16 @@ import { letterSvg, readLetterSvg } from "../src/forge/exchange";
 import type { MotifShape } from "../src/forge/cut";
 import { SANS } from "../src/forge/style";
 import { FONT_SUITE_TIMEOUT, loadTestFont } from "./fixtures";
-import { inspectFont } from "./fonttools";
+import { hasFontTools, inspectFont } from "./fonttools";
 
-describe("a cut font, read from outside", { timeout: FONT_SUITE_TIMEOUT }, () => {
+/*
+ * Every suite in this file reads its result through fontTools, so without it
+ * there is nothing here to run. Skip rather than fail, as the other suites
+ * that need it do.
+ */
+const suite = hasFontTools() ? describe : describe.skip;
+
+suite("a cut font, read from outside", { timeout: FONT_SUITE_TIMEOUT }, () => {
   it("writes the slots into the outlines", async () => {
     const plain = await deliver(startFrom(SANS), { familyName: "Plain", format: "ttf" });
     const whole = inspectFont(plain.bytes);
@@ -131,7 +138,7 @@ describe("a cut font, read from outside", { timeout: FONT_SUITE_TIMEOUT }, () =>
 });
 
 
-describe("a font somebody opened, cut and written back out", { timeout: FONT_SUITE_TIMEOUT }, () => {
+suite("a font somebody opened, cut and written back out", { timeout: FONT_SUITE_TIMEOUT }, () => {
   /*
    * The other two halves of the application cut the same description with the
    * same code, and the thing that could still go wrong is different: here the
@@ -180,7 +187,7 @@ describe("a font somebody opened, cut and written back out", { timeout: FONT_SUI
   });
 });
 
-describe("a pile of drawings, cut and written out", { timeout: FONT_SUITE_TIMEOUT }, () => {
+suite("a pile of drawings, cut and written out", { timeout: FONT_SUITE_TIMEOUT }, () => {
   const svg = (d: string) =>
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="${d}"/></svg>`;
 
@@ -218,7 +225,7 @@ describe("a pile of drawings, cut and written out", { timeout: FONT_SUITE_TIMEOU
   });
 });
 
-describe("a letter drawn elsewhere, cut with the rest", { timeout: FONT_SUITE_TIMEOUT }, () => {
+suite("a letter drawn elsewhere, cut with the rest", { timeout: FONT_SUITE_TIMEOUT }, () => {
   /** Take a letter out, flatten its curves so it is visibly somebody's drawing, put it back. */
   function handDrawn(forge: Forge, letter: string): Forge {
     const arrival = readLetterSvg(letterSvg(letter, forge) as string, forge);
@@ -257,7 +264,7 @@ describe("a letter drawn elsewhere, cut with the rest", { timeout: FONT_SUITE_TI
   });
 });
 
-describe("a font built on a grid", { timeout: FONT_SUITE_TIMEOUT }, () => {
+suite("a font built on a grid", { timeout: FONT_SUITE_TIMEOUT }, () => {
   const laid = (): Forge => useKit(layOut(startFrom(SANS)), true);
 
   it("writes letters made of cells into a real font file", async () => {

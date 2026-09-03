@@ -23,7 +23,7 @@ import { deliver } from "../src/forge/deliver";
 import { setFamily, startFrom } from "../src/forge/document";
 import { SANS } from "../src/forge/style";
 import { FONT_SUITE_TIMEOUT } from "./fixtures";
-import { inspectFont } from "./fonttools";
+import { hasFontTools, inspectFont } from "./fonttools";
 
 function unpack(archive: Uint8Array): Record<string, Uint8Array> {
   const where = mkdtempSync(join(tmpdir(), "family-"));
@@ -42,7 +42,14 @@ function unpack(archive: Uint8Array): Record<string, Uint8Array> {
   return out;
 }
 
-describe("a family of files", { timeout: FONT_SUITE_TIMEOUT }, () => {
+/*
+ * fontTools reads every assertion in this file, so without it there is nothing
+ * here to run. Skip rather than fail: that is what every other suite that
+ * needs it does, and a missing tool is not a broken build.
+ */
+const suite = hasFontTools() ? describe : describe.skip;
+
+suite("a family of files", { timeout: FONT_SUITE_TIMEOUT }, () => {
   it("writes one font when there is one weight", async () => {
     const written = await deliver(startFrom(SANS), { familyName: "Solo", format: "ttf" });
     expect(written.fileName).toBe("Solo-Regular.ttf");
