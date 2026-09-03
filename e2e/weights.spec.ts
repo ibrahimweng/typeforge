@@ -234,3 +234,82 @@ test("and the checks say how much of the font will actually move", async ({ page
   await expect(finding).toHaveCount(1, { timeout: 60_000 });
   await expect(finding).toContainText("1 letter will not vary between the weights");
 });
+
+/**
+ * How much ink a cell in the grid is drawing, in pixels.
+ *
+ * Measured rather than eyeballed, and measured as ink rather than as a bounding
+ * box, because that is the question actually being asked of an axis: whether
+ * the strokes got heavier between one end and the other.
+ */
+async function inkOf(page: Page, letter: string): Promise<number> {
+  return page.evaluate((name) => {
+    const cell = document.querySelector(`[data-glyph-cell="${name}"] canvas`);
+    if (!(cell instanceof HTMLCanvasElement)) return -1;
+    const context = cell.getContext("2d");
+    if (!context) return -1;
+    const { data } = context.getImageData(0, 0, cell.width, cell.height);
+    let lit = 0;
+    for (let at = 3; at < data.length; at += 4) if (data[at] > 0) lit += 1;
+    return lit;
+  }, letter);
+}
+
+test("the middle of the axis can be looked at, and is between the ends", async ({ page }) => {
+  await sample(page);
+  await page.locator("[data-add-weight]").click();
+
+  // A Bold that is actually bolder, made with an operation that moves points
+  // without adding or removing any -- which is the one thing a weight cannot
+  // survive.
+  await page.locator("[data-glyph-cell='o']").dblclick();
+  await expect(page.locator("[data-points-panel]")).toBeVisible();
+  const bigger = page.getByRole("button", { name: "Bigger", exact: true });
+  for (let press = 0; press < 12; press += 1) await bigger.click();
+
+  await page.getByRole("button", { name: "Font", exact: true }).click();
+  await expect(page.locator('[data-glyph-cell="o"]')).toBeVisible();
+  // Compatible, so there is something to look at between them.
+  await expect(page.locator("[data-weights-stuck]")).toHaveCount(0);
+
+  const slider = page.locator("[data-weight-preview]");
+  await slider.fill("400");
+  await expect(page.locator("[data-weight-previewing]")).toHaveText("400");
+  const light = await inkOf(page, "o");
+
+  await slider.fill("700");
+  await expect(page.locator("[data-weight-previewing]")).toHaveText("700");
+  const heavy = await inkOf(page, "o");
+  expect(heavy).toBeGreaterThan(light);
+
+  /*
+   * And the middle is the middle. A reader will show somebody 550 as readily as
+   * either end, so 550 has to be a font -- which is the whole reason for
+   * drawing two.
+   */
+  await slider.fill("550");
+  const between = await inkOf(page, "o");
+  expect(between).toBeGreaterThan(light);
+  expect(between).toBeLessThan(heavy);
+
+  // Looking, not editing: the drawing underneath is untouched and pressing
+  // this puts the grid back to it.
+  await page.locator("[data-weight-stop-preview]").click();
+  await expect(page.locator("[data-weight-stop-preview]")).toHaveCount(0);
+  expect(await inkOf(page, "o")).toBe(heavy);
+});
+
+test("going to a weight stops looking between them", async ({ page }) => {
+  await sample(page);
+  await page.locator("[data-add-weight]").click();
+  await page.locator("[data-weight-preview]").fill("523");
+  await expect(page.locator("[data-weight-previewing]")).toHaveText("523");
+
+  /*
+   * The two answer the same question. A preview left standing over a different
+   * master is a screen showing neither what is drawn nor what was asked for.
+   */
+  await page.locator('[data-weights="full"] [data-weight]').first().click();
+  await expect(page.locator("[data-weight-stop-preview]")).toHaveCount(0);
+  await expect(page.locator("[data-weight-previewing]")).toHaveCount(0);
+});

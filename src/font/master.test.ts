@@ -5,6 +5,7 @@ import {
   alignMasters,
   freeMasterId,
   freeMasterName,
+  glyphAcross,
   lettersThatCannotVary,
   masterFrom,
   mastersFrom,
@@ -15,6 +16,7 @@ import {
 } from "./master";
 import { addGlyph } from "./library";
 import { emptyTypeface, type Contour, type Glyph, type Typeface } from "./types";
+import type { Master } from "./master";
 
 const box = (nodes = 4): Contour => ({
   closed: true,
@@ -277,5 +279,72 @@ describe("saying which letters will not vary, and why", () => {
     // Moved, not restructured: the whole point of a second weight.
     bold.typeface.glyphs[0].contours[0].nodes[1].point.x = 400;
     expect(lettersThatCannotVary([soleMaster(base), bold]).size).toBe(0);
+  });
+});
+
+describe("looking between the weights", () => {
+  const at = (x: number, y: number) => ({
+    point: { x, y },
+    handleIn: null,
+    handleOut: null,
+    type: "corner" as const,
+  });
+
+  /** Two weights of one letter, a hundred units apart at one point. */
+  function pair(): Master[] {
+    const base = font(["a"]);
+    base.glyphs[0].contours = [{ closed: true, nodes: [at(0, 0), at(100, 0), at(0, 100)] }];
+    base.glyphs[0].advanceWidth = 500;
+    const first = soleMaster(base);
+    first.at = { [WGHT]: 400 };
+
+    const bold = masterFrom(base, "Bold", { [WGHT]: 900 }, "m2");
+    bold.typeface.glyphs[0].contours[0].nodes[1].point.x = 200;
+    bold.typeface.glyphs[0].advanceWidth = 700;
+    return [first, bold];
+  }
+
+  it("says nothing to look at in a font with one weight", () => {
+    expect(glyphAcross("a", [soleMaster(font(["a"]))], 500)).toBeNull();
+  });
+
+  it("draws the halfway letter halfway between them", () => {
+    const halfway = glyphAcross("a", pair(), 650)!;
+    expect(halfway.contours[0].nodes[1].point.x).toBe(150);
+    // The advance blends too, because a bold letter is a wider letter and the
+    // format varies it by the same machinery: a phantom point in `gvar`.
+    expect(halfway.advanceWidth).toBe(600);
+  });
+
+  it("draws a quarter of the way a quarter of the way", () => {
+    expect(glyphAcross("a", pair(), 525)!.contours[0].nodes[1].point.x).toBe(125);
+  });
+
+  it("stands at the nearest end rather than extrapolating past it", () => {
+    /*
+     * Past the last weight drawn there is no drawing, and inventing one would
+     * be showing somebody a letter nobody made and no reader will produce --
+     * the format clamps to the axis, so this does.
+     */
+    expect(glyphAcross("a", pair(), 100)!.contours[0].nodes[1].point.x).toBe(100);
+    expect(glyphAcross("a", pair(), 900)!.contours[0].nodes[1].point.x).toBe(200);
+  });
+
+  it("has nothing to draw between two drawings that do not line up", () => {
+    const masters = pair();
+    masters[1].typeface.glyphs[0].contours = [box(6)];
+    expect(glyphAcross("a", masters, 650)).toBeNull();
+  });
+
+  it("uses the pair either side, and not the ones beyond them", () => {
+    const masters = pair();
+    const middle = masterFrom(masters[0].typeface, "Medium", { [WGHT]: 500 }, "m3");
+    // Drawn deliberately off the straight line between the other two, so a
+    // reading that ignored it would give a different answer.
+    middle.typeface.glyphs[0].contours[0].nodes[1].point.x = 180;
+
+    const between = glyphAcross("a", [...masters, middle], 450)!;
+    // Halfway from 400 to 500 is halfway from 100 to 180, not from 100 to 200.
+    expect(between.contours[0].nodes[1].point.x).toBe(140);
   });
 });

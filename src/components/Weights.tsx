@@ -105,6 +105,47 @@ export function Weights({ compact = false }: { compact?: boolean }): React.JSX.E
       )}
 
       {/*
+        And everything between them, which is the reason for drawing two.
+
+        A reader will show somebody 437 as readily as 400, so 437 is worth
+        looking at -- and until you can see one, the middle of the axis is being
+        drawn on faith. Looking rather than editing: the letters go blended, the
+        drawing underneath is untouched, and pressing a weight puts it back.
+      */}
+      {masters.length > 1 && (
+        <label className="flex items-center gap-2 text-muted-foreground">
+          Look at
+          <input
+            type="range"
+            min={100}
+            max={900}
+            step={1}
+            value={state.preview ?? (here?.at[WGHT] ?? 400)}
+            data-weight-preview
+            aria-label="Look at a weight between the ones drawn"
+            onChange={(event) => store.setPreview(Number(event.target.value))}
+            className="h-1 w-32 cursor-pointer accent-[color:var(--accent)]"
+          />
+          <span
+            data-weight-previewing={state.preview ?? undefined}
+            className={cn("tabular-nums", state.preview !== null && "text-accent")}
+          >
+            {state.preview ?? (here?.at[WGHT] ?? 400)}
+          </span>
+          {state.preview !== null && (
+            <button
+              type="button"
+              data-weight-stop-preview
+              onClick={() => store.setPreview(null)}
+              className="text-accent underline-offset-2 hover:underline"
+            >
+              Back to the drawing
+            </button>
+          )}
+        </label>
+      )}
+
+      {/*
         And what to do with the one in hand, beside it rather than behind a
         dialog: its name, where it sits on the axis, and the way to be rid of
         it. All three are meaningless with one weight, so none of them is drawn.

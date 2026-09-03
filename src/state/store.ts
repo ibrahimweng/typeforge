@@ -411,6 +411,19 @@ export interface AppState {
   masters: Master[];
   /** The id of the one being drawn. */
   master: string;
+  /**
+   * A place on the weight axis to *look* at, as opposed to the one being drawn.
+   *
+   * Null almost always, and null is not a position: the grid draws what is
+   * drawn. Set while somebody scrubs the axis, and then every letter is shown
+   * blended between the weights either side of it, which is what a reader will
+   * do with the exported file. Drawing two ends and never seeing the middle is
+   * drawing an axis on faith.
+   *
+   * Looking, not editing. Nothing writes through this -- the letters on screen
+   * are a calculation and the drawing underneath is untouched.
+   */
+  preview: number | null;
   /** Bumped whenever the document changes, so views can memoise against it. */
   revision: number;
   /**
@@ -507,6 +520,7 @@ class Store {
     loan: null,
     masters: [],
     master: "",
+    preview: null,
     revision: 0,
     checks: null,
   };
@@ -588,6 +602,7 @@ class Store {
        */
       masters: [soleMaster(typeface)],
       master: "m1",
+      preview: null,
       /*
        * And whatever the last font's checks found belongs to the last font.
        *
@@ -697,9 +712,26 @@ class Store {
       typeface: master.typeface,
       selectedNodes: new Set(),
       selectedGlyphs: new Set(),
+      // Asking to draw a weight is asking to stop looking between them.
+      preview: null,
     });
     this.touch();
     return true;
+  }
+
+  /**
+   * Look at a place on the axis rather than at a weight that was drawn.
+   *
+   * Cleared by moving to a weight, because the two answer the same question and
+   * a preview left standing over a different master is a screen showing neither
+   * what is drawn nor what was asked for.
+   */
+  setPreview(at: number | null): void {
+    if (at === null) {
+      if (this.state.preview !== null) this.set({ preview: null });
+      return;
+    }
+    this.set({ preview: Math.round(Math.min(900, Math.max(100, at))) });
   }
 
   /** Call this weight something else. */
@@ -865,6 +897,7 @@ class Store {
         checks: null,
         masters: [soleMaster(typeface)],
         master: "m1",
+        preview: null,
         selectedGlyph: firstLetterName(typeface),
         selectedNodes: new Set(),
         selectedGlyphs: new Set(),
@@ -933,6 +966,7 @@ class Store {
         checks: null,
         masters: [soleMaster(typeface)],
         master: "m1",
+        preview: null,
         selectedGlyph: firstLetterName(typeface),
         selectedNodes: new Set(),
         selectedGlyphs: new Set(),
@@ -1018,6 +1052,7 @@ class Store {
       checks: null,
       masters: [soleMaster(fresh)],
       master: "m1",
+      preview: null,
       openWarnings: [],
       selectedGlyph: null,
       selectedNodes: new Set(),
@@ -1079,6 +1114,7 @@ class Store {
       checks: null,
       masters: [soleMaster(desk)],
       master: "m1",
+      preview: null,
       openWarnings: [],
       view: "glyph",
       selectedGlyph: glyph.name,
