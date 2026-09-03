@@ -113,6 +113,14 @@ export interface Shell {
   export: () => void;
   save: () => void;
   newProject: () => void;
+  /**
+   * Ask for another weight of this typeface, drawn rather than calculated.
+   *
+   * Here as well as on the whole-font screen because everything else the
+   * application can do is reachable from this one search box, and a control
+   * that is only in one place is a control somebody has to already know about.
+   */
+  addWeight: () => void;
   toggleHelp: () => void;
   library: () => void;
   selectGlyph: (name: string) => void;
@@ -224,6 +232,15 @@ export function catalogue(shell: Shell): Item[] {
     also: ["ufo", "folder", "directory", "source", "robofont", "glyphs", "designspace", "import"],
     destructive: true,
     run: shell.openFolder,
+  });
+  add({
+    id: "action:weight",
+    kind: "action",
+    group: "Actions",
+    label: "Add a weight",
+    hint: "Copy this weight of the typeface into another one you draw differently — a Bold beside the Regular — and the exported font blends between them.",
+    also: ["master", "bold", "light", "black", "variable", "axis", "interpolate", "family", "second"],
+    run: shell.addWeight,
   });
   add({
     id: "action:library",

@@ -37,6 +37,7 @@ const shell: Shell = {
   export: () => {},
   save: () => {},
   newProject: () => {},
+  addWeight: () => {},
   toggleHelp: () => {},
   library: () => {},
   selectGlyph: () => {},

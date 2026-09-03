@@ -42,6 +42,7 @@ import {
 import { nodeKey, store, useAppState, type NodeRef, type ToolState } from "@/state/useStore";
 import { CoachMark } from "@/components/CoachMark";
 import { GlyphFaults } from "@/components/GlyphFaults";
+import { Weights } from "@/components/Weights";
 import { GroundToggle } from "@/components/GroundToggle";
 import { NumberField } from "@/components/NumberField";
 import { NothingDrawnYet } from "@/components/NothingDrawnYet";
@@ -1239,6 +1240,15 @@ export function GlyphEditorView(): React.JSX.Element {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <CoachMark id="glyph" />
+      {/*
+        Which weight this letter is being drawn in, above the letter.
+
+        The same argument the sidebearings below make: it is a decision about
+        what you are looking at, taken while looking at it, and a control for
+        that on the far side of the window is one somebody has to go and find.
+        Nothing at all until there is a second weight to switch to.
+      */}
+      <Weights compact />
       {/*
         What stands either side, above the canvas rather than in the panel.
 

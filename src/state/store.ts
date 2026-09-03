@@ -11,7 +11,12 @@
  * take on every drag.
  */
 
-import { applyEdits, fromBase64, type EditedProject } from "@/project/format";
+import {
+  applyEdits,
+  fromBase64,
+  type EditedProject,
+  type SavedMaster,
+} from "@/project/format";
 import { buildAccents, deriveAnchors, suggestAnchors, looksLikeMark } from "@/font/accents";
 import { buildsOn, dependentsOf } from "@/font/composite";
 /*
@@ -49,6 +54,18 @@ import {
 } from "@/font/control";
 import { buildLinks, pointsThatMoved, propagateMoves, type LinkMap } from "@/font/link";
 import { importFont } from "@/font/parse";
+import { cloneGlyph } from "@/font/types";
+import {
+  alignMasters,
+  freeMasterId,
+  freeMasterName,
+  masterFrom,
+  mastersFrom,
+  shareAcross,
+  soleMaster,
+  WGHT,
+  type Master,
+} from "@/font/master";
 import type { Finding } from "@/font/validate";
 import { effectiveParams } from "@/font/transform";
 import {
@@ -378,6 +395,22 @@ export interface AppState {
    * loan without answering for it.
    */
   loan: Loan | null;
+  /**
+   * Every weight of this typeface that is drawn rather than calculated, and
+   * which of them is being drawn now.
+   *
+   * There is always at least one while a font is open, including in the
+   * overwhelmingly common case of a font that will only ever have one -- so
+   * nothing anywhere has to ask whether this is a document with masters. The
+   * interface shows nothing at all until there are two.
+   *
+   * `typeface` above is the active master's own typeface object, not a copy of
+   * it, so every edit lands in the weight it was made in without anything
+   * having to be written back.
+   */
+  masters: Master[];
+  /** The id of the one being drawn. */
+  master: string;
   /** Bumped whenever the document changes, so views can memoise against it. */
   revision: number;
   /**
@@ -472,6 +505,8 @@ class Store {
     undoLabel: null,
     redoLabel: null,
     loan: null,
+    masters: [],
+    master: "",
     revision: 0,
     checks: null,
   };
@@ -502,6 +537,18 @@ class Store {
 
   /** Signal that the document changed, so views re-render. */
   private touch(): void {
+    /*
+     * And every other weight gets whatever of that was not the drawing.
+     *
+     * Here rather than at each write, because there is no list of the writes:
+     * kerning, features, the metrics, the family name and undo itself all
+     * reach the shared half, and one of them missing this is a Bold that is
+     * quietly a different font. Twelve reference assignments against a change
+     * that already re-rendered the application.
+     */
+    if (this.state.masters.length > 1 && this.state.typeface) {
+      shareAcross(this.state.typeface, this.state.masters);
+    }
     this.set({
       revision: this.state.revision + 1,
       canUndo: this.undoStack.length > 0,
@@ -534,6 +581,13 @@ class Store {
       fileName,
       // Whatever the last file had to say belongs to the last file.
       openWarnings: [],
+      /*
+       * One weight, and it is this one. Every place a document is replaced
+       * resets this, because a master list is a description of the font that
+       * was open and means nothing about the one arriving.
+       */
+      masters: [soleMaster(typeface)],
+      master: "m1",
       /*
        * And whatever the last font's checks found belongs to the last font.
        *
@@ -571,13 +625,152 @@ class Store {
     this.set({ status: { message, tone } });
   }
 
+  // --- weights ------------------------------------------------------------
+
+  /*
+   * A second weight, drawn rather than calculated.
+   *
+   * What the export could do already was synthesise one: move `params.weight`
+   * and let `applyWeight` offset every node along its own normal. That is even
+   * where a drawn bold is optical -- it thickens a hairline and a stem by the
+   * same amount -- and the `g` it produces is the Regular's `g` inflated.
+   *
+   * So a master here is a real copy of the drawing, which you then change. The
+   * copy is deep in the glyphs and shared in everything else: the family name,
+   * the vertical metrics, the kerning and the features are one set of objects
+   * held by every master, because the format writes one of each for the whole
+   * variable font and a document that let them drift would describe a font that
+   * cannot exist.
+   */
+
+  /** The one being drawn, which is always one of them while a font is open. */
+  currentMaster(): Master | null {
+    return this.state.masters.find((one) => one.id === this.state.master) ?? null;
+  }
+
+  /**
+   * Copy this weight into a new one and go to it.
+   *
+   * Placed at the far end of the axis from where the font already sits, because
+   * a second weight beside the first is nobody's intention -- and because two
+   * masters at the same place on an axis is a font that cannot be built.
+   */
+  addMaster(name = "Bold"): string | null {
+    const typeface = this.state.typeface;
+    const masters = this.state.masters;
+    if (!typeface || masters.length === 0) return null;
+
+    const here = this.currentMaster();
+    const from = here?.at[WGHT] ?? 400;
+    const taken = new Set(masters.map((one) => one.at[WGHT]));
+    let at = from < 550 ? 700 : 300;
+    // A hundred either way until it lands somewhere nothing else is standing.
+    while (taken.has(at) && at > 100 && at < 900) at += from < 550 ? 50 : -50;
+
+    const made = masterFrom(
+      typeface,
+      freeMasterName(masters, name),
+      { [WGHT]: at },
+      freeMasterId(masters),
+    );
+    this.set({ masters: [...masters, made] });
+    this.goToMaster(made.id);
+    this.say(`${made.name} added at ${at}. It starts as a copy of ${here?.name ?? "this weight"}.`);
+    return made.id;
+  }
+
+  /**
+   * Draw a different weight.
+   *
+   * Nothing is written back, because nothing was ever copied out: the active
+   * master's typeface *is* `state.typeface`, so every edit has been landing in
+   * the right weight all along and this only changes which object that is.
+   */
+  goToMaster(id: string): boolean {
+    const master = this.state.masters.find((one) => one.id === id);
+    if (!master || master.id === this.state.master) return false;
+    // The control letters are read afresh, or every later derivation in this
+    // weight would be measured against the last one's.
+    this.controlBaseline = readControls(master.typeface);
+    this.set({
+      master: id,
+      typeface: master.typeface,
+      selectedNodes: new Set(),
+      selectedGlyphs: new Set(),
+    });
+    this.touch();
+    return true;
+  }
+
+  /** Call this weight something else. */
+  nameMaster(id: string, name: string): boolean {
+    const masters = this.state.masters;
+    const master = masters.find((one) => one.id === id);
+    const wanted = name.trim();
+    if (!master || wanted === "" || wanted === master.name) return false;
+    if (masters.some((one) => one.id !== id && one.name.toLowerCase() === wanted.toLowerCase())) {
+      this.say(`There is already a weight called ${wanted}.`, "error");
+      return false;
+    }
+    master.name = wanted;
+    this.set({ masters: [...masters] });
+    return true;
+  }
+
+  /**
+   * Move this weight along the axis.
+   *
+   * Two masters in the same place cannot both be a corner of the design space,
+   * so the second one is refused rather than quietly moved aside.
+   */
+  placeMaster(id: string, at: number): boolean {
+    const masters = this.state.masters;
+    const master = masters.find((one) => one.id === id);
+    if (!master) return false;
+    const to = Math.round(Math.min(900, Math.max(100, at)));
+    if (to === master.at[WGHT]) return false;
+    if (masters.some((one) => one.id !== id && one.at[WGHT] === to)) {
+      this.say(`${masters.find((one) => one.id !== id && one.at[WGHT] === to)!.name} is already at ${to}.`, "error");
+      return false;
+    }
+    master.at = { ...master.at, [WGHT]: to };
+    this.set({ masters: [...masters] });
+    return true;
+  }
+
+  /**
+   * Throw a weight away, with everything drawn in it.
+   *
+   * Not undoable and not pretending to be: this is a whole alphabet, and an
+   * undo stack that can hold one is a different piece of work. The interface
+   * asks first.
+   */
+  removeMaster(id: string): boolean {
+    const masters = this.state.masters;
+    if (masters.length < 2) return false;
+    const going = masters.find((one) => one.id === id);
+    if (!going) return false;
+
+    const left = masters.filter((one) => one.id !== id);
+    this.set({ masters: left });
+    if (this.state.master === id) {
+      // Nothing is being drawn any more, so move before saying so.
+      this.set({ master: "" });
+      this.goToMaster(left[0].id);
+    }
+    this.say(`${going.name} removed.`);
+    return true;
+  }
+
   /** What the checks found, for anything that wants to say so. */
   checked(findings: Finding[], at: number): void {
     this.set({ checks: { findings, at } });
   }
 
   /** The edited half, for writing down. */
-  snapshot(): { typeface: Typeface; fileName: string } | undefined {
+  snapshot():
+    | { typeface: Typeface; fileName: string; masters?: SavedMaster[]; drawing?: string }
+    | undefined {
     /*
      * The document of record, which during a loan is not the one on screen.
      *
@@ -588,8 +781,30 @@ class Store {
      * replace whatever font was open with a font containing an `n`. The drawing
      * goes back to Draw and is saved as part of *that* half.
      */
-    const { typeface, fileName } = this.held ? this.held.state : this.state;
-    return typeface ? { typeface, fileName } : undefined;
+    const { fileName, masters, master } = this.held ? this.held.state : this.state;
+    /*
+     * The first weight is what gets written as the font, not whichever one was
+     * on screen when the timer went off.
+     *
+     * Everything the document holds beyond the drawing is shared, so any master
+     * would give the same meta and the same kerning -- but `glyphs` is the one
+     * thing that is not, and taking it from the Bold would save the Bold as the
+     * font and the Regular as an exception to it.
+     */
+    const typeface = masters[0]?.typeface ?? (this.held ? this.held.state : this.state).typeface;
+    if (!typeface) return undefined;
+    return {
+      typeface,
+      fileName,
+      drawing: master,
+      masters: masters.map((one) => ({
+        id: one.id,
+        name: one.name,
+        at: one.at,
+        // Only what has been drawn in it, on the same terms as the font above.
+        glyphs: one.typeface.glyphs.filter((glyph) => glyph.dirty),
+      })),
+    };
   }
 
   /**
@@ -606,6 +821,15 @@ class Store {
     const { typeface } = this.state;
     if (!typeface) return;
     applyEdits(typeface, saved);
+    /*
+     * And the weights, after the letters, because every one of them is built by
+     * copying this typeface -- so it has to be the restored one rather than the
+     * one the file arrived as.
+     */
+    const masters = mastersFrom(typeface, saved.weight, saved.masters ?? []);
+    // And back into the weight that was in hand, not the first one.
+    const drawing = masters.find((one) => one.id === saved.drawing) ?? masters[0];
+    this.set({ masters, master: drawing.id, typeface: drawing.typeface });
     this.undoStack = [];
     this.redoStack = [];
     this.set({
@@ -639,6 +863,8 @@ class Store {
         openWarnings: warnings,
         // A different font, so the last one's findings go with it.
         checks: null,
+        masters: [soleMaster(typeface)],
+        master: "m1",
         selectedGlyph: firstLetterName(typeface),
         selectedNodes: new Set(),
         selectedGlyphs: new Set(),
@@ -705,6 +931,8 @@ class Store {
         fileName: folderName,
         // A different font, so the last one's findings go with it.
         checks: null,
+        masters: [soleMaster(typeface)],
+        master: "m1",
         selectedGlyph: firstLetterName(typeface),
         selectedNodes: new Set(),
         selectedGlyphs: new Set(),
@@ -788,6 +1016,8 @@ class Store {
       fileName: "",
       // A different font, so the last one's findings go with it.
       checks: null,
+      masters: [soleMaster(fresh)],
+      master: "m1",
       openWarnings: [],
       selectedGlyph: null,
       selectedNodes: new Set(),
@@ -847,6 +1077,8 @@ class Store {
       fileName: "",
       // A different document, so the last one's findings go with it.
       checks: null,
+      masters: [soleMaster(desk)],
+      master: "m1",
       openWarnings: [],
       view: "glyph",
       selectedGlyph: glyph.name,
@@ -2904,10 +3136,33 @@ class Store {
     if (!mutate(typeface)) return false;
     const after = hold(typeface);
 
+    /*
+     * Adding, removing or renaming a letter is a change to the document rather
+     * than to the drawing, so it lands in every weight.
+     *
+     * The glyph list is the one thing a master copies rather than shares and
+     * still has to agree about: a letter added in the Regular and missing from
+     * the Bold cannot vary, and is a difference nobody would think to look for.
+     * Detected off the array's identity, which the library's own add and remove
+     * replace rather than mutate, so a kerning or feature edit through here
+     * costs nothing.
+     */
+    const structural = before.glyphs !== after.glyphs;
+    const spread = () => {
+      if (structural) alignMasters(typeface, this.state.masters);
+    };
+    spread();
+
     this.push({
       label,
-      undo: () => Object.assign(typeface, before),
-      redo: () => Object.assign(typeface, after),
+      undo: () => {
+        Object.assign(typeface, before);
+        spread();
+      },
+      redo: () => {
+        Object.assign(typeface, after);
+        spread();
+      },
     });
     this.touch();
     return true;
@@ -3276,26 +3531,6 @@ class Store {
   }
 }
 
-export function cloneGlyph(glyph: Glyph): Glyph {
-  return {
-    name: glyph.name,
-    unicodes: [...glyph.unicodes],
-    advanceWidth: glyph.advanceWidth,
-    components: glyph.components.map((component) => ({ ...component, transform: { ...component.transform } })),
-    anchors: glyph.anchors.map((anchor) => ({ ...anchor })),
-    params: { ...glyph.params },
-    dirty: glyph.dirty,
-    contours: glyph.contours.map((contour) => ({
-      closed: contour.closed,
-      nodes: contour.nodes.map((node) => ({
-        point: { ...node.point },
-        handleIn: node.handleIn ? { ...node.handleIn } : null,
-        handleOut: node.handleOut ? { ...node.handleOut } : null,
-        type: node.type,
-      })),
-    })),
-  };
-}
 
 /** Open on a recognisable letter rather than `.notdef` when a font loads. */
 function firstLetterName(typeface: Typeface): string | null {

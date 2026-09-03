@@ -1,0 +1,226 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  agrees,
+  alignMasters,
+  freeMasterId,
+  freeMasterName,
+  masterFrom,
+  mastersFrom,
+  shareAcross,
+  soleMaster,
+  WGHT,
+} from "./master";
+import { addGlyph } from "./library";
+import { emptyTypeface, type Contour, type Glyph, type Typeface } from "./types";
+
+const box = (nodes = 4): Contour => ({
+  closed: true,
+  nodes: Array.from({ length: nodes }, (_, at) => ({
+    point: { x: at * 10, y: at * 10 },
+    handleIn: null,
+    handleOut: null,
+    type: "corner" as const,
+  })),
+});
+
+function glyph(name: string, contours: Contour[] = [box()]): Glyph {
+  return {
+    name,
+    unicodes: [],
+    advanceWidth: 500,
+    contours,
+    components: [],
+    anchors: [],
+    params: {},
+    dirty: false,
+  };
+}
+
+function font(names: string[]): Typeface {
+  const typeface = emptyTypeface();
+  typeface.meta.familyName = "Test";
+  typeface.meta.styleName = "Regular";
+  typeface.glyphs = names.map((name) => glyph(name));
+  typeface.glyphIndex = new Map(typeface.glyphs.map((one, at) => [one.name, at]));
+  return typeface;
+}
+
+describe("a second weight of the same typeface", () => {
+  it("copies the drawing and shares everything the format writes once", () => {
+    const base = font(["a", "b"]);
+    const bold = masterFrom(base, "Bold", { [WGHT]: 700 }, "m2");
+
+    /*
+     * The line between copied and shared is drawn by what the format can
+     * express: one `name`, one set of vertical metrics and one `GPOS` for the
+     * whole variable font, so a document that let those drift would be
+     * describing a font that cannot exist.
+     */
+    expect(bold.typeface.meta).toBe(base.meta);
+    expect(bold.typeface.metrics).toBe(base.metrics);
+    expect(bold.typeface.kerning).toBe(base.kerning);
+
+    // And the drawing is the point of a second master, so it is its own.
+    expect(bold.typeface.glyphs).not.toBe(base.glyphs);
+    expect(bold.typeface.glyphs[0]).not.toBe(base.glyphs[0]);
+    expect(bold.typeface.glyphs[0].contours[0].nodes[1].point).toEqual({ x: 10, y: 10 });
+  });
+
+  it("a drawing changed in one weight leaves the other alone", () => {
+    const base = font(["a"]);
+    const bold = masterFrom(base, "Bold", { [WGHT]: 700 }, "m2");
+
+    bold.typeface.glyphs[0].contours[0].nodes[1].point.x = 999;
+    expect(base.glyphs[0].contours[0].nodes[1].point.x).toBe(10);
+  });
+
+  it("a font that never asks for a second weight still has one", () => {
+    const base = font(["a"]);
+    base.meta.weightClass = 400;
+    const only = soleMaster(base);
+    expect(only.typeface).toBe(base);
+    expect(only.name).toBe("Regular");
+    expect(only.at[WGHT]).toBe(400);
+  });
+
+  it("will not hand out an id or a name another master is using", () => {
+    const base = font(["a"]);
+    const masters = [soleMaster(base), masterFrom(base, "Bold", {}, "m2")];
+    expect(freeMasterId(masters)).not.toBe("m1");
+    expect(freeMasterId(masters)).not.toBe("m2");
+    // Two weights called Bold are two instances of the same name in the file,
+    // which a reader resolves by picking one and dropping the other.
+    expect(freeMasterName(masters, "Bold")).toBe("Bold 2");
+    expect(freeMasterName(masters, "Light")).toBe("Light");
+  });
+});
+
+describe("every weight holds the same letters", () => {
+  it("a letter added in one arrives in the others, drawn as it was there", () => {
+    const base = font(["a"]);
+    const bold = masterFrom(base, "Bold", {}, "m2");
+    // Something to tell the two drawings of `a` apart afterwards.
+    bold.typeface.glyphs[0].advanceWidth = 700;
+
+    addGlyph(base, "b");
+    alignMasters(base, [bold]);
+
+    expect(bold.typeface.glyphs.map((one) => one.name)).toEqual(["a", "b"]);
+    expect(bold.typeface.glyphIndex.get("b")).toBe(1);
+    // The letter it already had is the letter it already had.
+    expect(bold.typeface.glyphs[0].advanceWidth).toBe(700);
+    // And the new one is a copy rather than the same object, or editing it in
+    // one weight would edit it in both.
+    expect(bold.typeface.glyphs[1]).not.toBe(base.glyphs[1]);
+  });
+
+  it("a letter taken out of one goes from the others", () => {
+    const base = font(["a", "b"]);
+    const bold = masterFrom(base, "Bold", {}, "m2");
+
+    base.glyphs = base.glyphs.filter((one) => one.name !== "a");
+    base.glyphIndex = new Map(base.glyphs.map((one, at) => [one.name, at]));
+    alignMasters(base, [bold]);
+
+    expect(bold.typeface.glyphs.map((one) => one.name)).toEqual(["b"]);
+    expect(bold.typeface.glyphIndex.get("a")).toBeUndefined();
+  });
+
+  it("leaves the master it was changed in alone", () => {
+    const base = font(["a"]);
+    const only = soleMaster(base);
+    alignMasters(base, [only]);
+    expect(only.typeface.glyphs[0]).toBe(base.glyphs[0]);
+  });
+});
+
+describe("weights put back from what was written down", () => {
+  it("copies the first weight and lays the drawn letters over it", () => {
+    const base = font(["a", "b"]);
+    const drawn: Glyph = { ...glyph("b"), advanceWidth: 800 };
+
+    const [first, bold] = mastersFrom(
+      base,
+      { name: "Text", at: { [WGHT]: 350 } },
+      [{ id: "m2", name: "Bold", at: { [WGHT]: 700 }, glyphs: [drawn] }],
+    );
+
+    // The first weight keeps its own name, which is why it is written down at
+    // all: "Text" is something the style name does not say.
+    expect(first.name).toBe("Text");
+    expect(first.at[WGHT]).toBe(350);
+    expect(first.typeface).toBe(base);
+
+    expect(bold.name).toBe("Bold");
+    expect(bold.typeface.glyphs[1].advanceWidth).toBe(800);
+    // And the letter it says nothing about follows the first weight.
+    expect(bold.typeface.glyphs[0].advanceWidth).toBe(500);
+  });
+
+  it("ignores a weight naming a letter the font does not have", () => {
+    const base = font(["a"]);
+    const [, bold] = mastersFrom(base, undefined, [
+      { id: "m2", name: "Bold", at: {}, glyphs: [glyph("zzz")] },
+    ]);
+    expect(bold.typeface.glyphs.map((one) => one.name)).toEqual(["a"]);
+  });
+
+  it("refuses two weights claiming one id", () => {
+    const base = font(["a"]);
+    const masters = mastersFrom(base, undefined, [
+      { id: "m2", name: "Bold", at: {}, glyphs: [] },
+      { id: "m2", name: "Black", at: {}, glyphs: [] },
+    ]);
+    expect(masters.map((one) => one.id)).toEqual(["m1", "m2"]);
+  });
+});
+
+describe("a master owns its drawing and shares the rest", () => {
+  it("hands over a replaced field without touching the glyphs", () => {
+    const base = font(["a"]);
+    const bold = masterFrom(base, "Bold", {}, "m2");
+    bold.typeface.glyphs[0].advanceWidth = 700;
+
+    // Kerning a pair replaces the array rather than pushing onto it, which is
+    // how sharing the object at creation stopped being enough.
+    base.kerning = [{ left: "a", right: "a", value: -40 }];
+    base.meta.familyName = "Renamed";
+    shareAcross(base, [bold]);
+
+    expect(bold.typeface.kerning).toBe(base.kerning);
+    expect(bold.typeface.meta.familyName).toBe("Renamed");
+    expect(bold.typeface.glyphs).not.toBe(base.glyphs);
+    expect(bold.typeface.glyphs[0].advanceWidth).toBe(700);
+  });
+});
+
+describe("whether two drawings of a letter can be blended", () => {
+  it("agrees when the contours and the points line up", () => {
+    expect(agrees(glyph("a"), glyph("a"))).toBe(true);
+  });
+
+  it("refuses a different number of points", () => {
+    expect(agrees(glyph("a", [box(4)]), glyph("a", [box(5)]))).toBe(false);
+  });
+
+  it("refuses a different number of contours", () => {
+    expect(agrees(glyph("a", [box()]), glyph("a", [box(), box()]))).toBe(false);
+  });
+
+  it("refuses an open path against a closed one", () => {
+    const open = glyph("a", [{ ...box(), closed: false }]);
+    expect(agrees(open, glyph("a"))).toBe(false);
+  });
+
+  it("refuses composites built out of different pieces", () => {
+    const piece = (name: string): Glyph => ({
+      ...glyph("aacute", []),
+      components: [
+        { glyphName: name, transform: { a: 1, b: 0, c: 0, d: 1, dx: 0, dy: 0 } },
+      ],
+    });
+    expect(agrees(piece("a"), piece("a"))).toBe(true);
+    expect(agrees(piece("a"), piece("e"))).toBe(false);
+  });
+});

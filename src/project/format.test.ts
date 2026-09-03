@@ -167,6 +167,51 @@ describe("an edited font", () => {
     expect(fresh.glyphs[fresh.glyphIndex.get("A")!].advanceWidth).toBe(500);
   });
 
+  /*
+   * A second weight is a set of exceptions to the first, on the same terms as
+   * the first is a set of exceptions to the file it came from. A font with one
+   * weight -- which is almost all of them -- is written exactly as it always
+   * was, with neither field present.
+   */
+  it("writes nothing about weights when there is only one", () => {
+    const one = fontWith(["B"]);
+    const saved = toProject(
+      snapshot({
+        mode: "edit",
+        edit: { ...one, masters: [{ id: "m1", name: "Regular", at: { wght: 400 }, glyphs: [] }] },
+      }),
+      WHEN,
+    ).edit!;
+    expect(saved.masters).toBeUndefined();
+    expect(saved.weight).toEqual({ name: "Regular", at: { wght: 400 } });
+  });
+
+  it("writes a second weight as the letters drawn in it, and no others", () => {
+    const one = fontWith(["B"]);
+    const bold: Glyph = { ...one.typeface.glyphs[0], advanceWidth: 800, dirty: true };
+    const saved = toProject(
+      snapshot({
+        mode: "edit",
+        edit: {
+          ...one,
+          masters: [
+            { id: "m1", name: "Regular", at: { wght: 400 }, glyphs: [] },
+            { id: "m2", name: "Bold", at: { wght: 700 }, glyphs: [bold] },
+          ],
+        },
+      }),
+      WHEN,
+    ).edit!;
+
+    expect(saved.masters).toHaveLength(1);
+    expect(saved.masters![0].id).toBe("m2");
+    expect(saved.masters![0].at).toEqual({ wght: 700 });
+    expect(saved.masters![0].glyphs).toHaveLength(1);
+    expect(saved.masters![0].glyphs[0].advanceWidth).toBe(800);
+    // And the font itself is still the first weight's own letters.
+    expect(saved.glyphs.map((one) => one.name)).toEqual(["B"]);
+  });
+
   it("adds a glyph the saved document has and the font does not", () => {
     const saved = toProject(snapshot({ mode: "edit", edit: fontWith(["B"]) }), WHEN).edit!;
     saved.glyphs[0] = { ...saved.glyphs[0], name: "aacute" };

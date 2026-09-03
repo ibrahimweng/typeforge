@@ -1407,3 +1407,96 @@ describe("a letter on loan", () => {
     expect(store.keepLoan()).toBeNull();
   });
 });
+
+describe("more than one weight in a document", () => {
+  beforeEach(() => seed(["a", "b"]));
+
+  it("a font nobody has asked a second weight of still has one", () => {
+    const state = store.getSnapshot();
+    expect(state.masters).toHaveLength(1);
+    expect(state.master).toBe(state.masters[0].id);
+    // The active master's typeface is the open one rather than a copy of it,
+    // which is what makes every edit land in the weight it was made in.
+    expect(state.masters[0].typeface).toBe(state.typeface);
+  });
+
+  it("adds a second at the far end of the axis and goes to it", () => {
+    const id = store.addMaster("Bold");
+    const state = store.getSnapshot();
+    expect(id).not.toBeNull();
+    expect(state.masters).toHaveLength(2);
+    expect(state.master).toBe(id);
+    expect(state.masters[1].at.wght).toBe(700);
+    expect(state.typeface).toBe(state.masters[1].typeface);
+  });
+
+  it("a letter drawn in one weight leaves the other alone", () => {
+    const regular = store.getSnapshot().masters[0];
+    store.addMaster("Bold");
+    store.editGlyph("a", "Widen", (one) => {
+      one.advanceWidth = 900;
+    });
+
+    expect(store.glyph("a")!.advanceWidth).toBe(900);
+    expect(regular.typeface.glyphIndex.get("a")).toBe(0);
+    expect(regular.typeface.glyphs[0].advanceWidth).toBe(500);
+  });
+
+  it("a letter added in one weight arrives in all of them", () => {
+    const regular = store.getSnapshot().masters[0];
+    store.addMaster("Bold");
+    store.addGlyph("c");
+
+    expect(store.glyph("c")).not.toBeNull();
+    expect(regular.typeface.glyphIndex.get("c")).toBe(2);
+    // Copied rather than shared, or drawing it in one would draw it in both.
+    expect(regular.typeface.glyphs[2]).not.toBe(store.glyph("c"));
+  });
+
+  it("and taking it out again takes it out of all of them", () => {
+    const regular = store.getSnapshot().masters[0];
+    store.addMaster("Bold");
+    store.addGlyph("c");
+    store.removeGlyph("c");
+
+    expect(store.glyph("c")).toBeNull();
+    expect(regular.typeface.glyphIndex.get("c")).toBeUndefined();
+  });
+
+  it("kerning is one set of pairs for the whole font", () => {
+    const regular = store.getSnapshot().masters[0];
+    store.addMaster("Bold");
+    store.setKerning("a", "b", -40);
+    /*
+     * Shared rather than copied, because the format writes one `GPOS` for the
+     * whole variable font. Kerning the Bold and finding the Regular unkerned
+     * would be a document describing a font that cannot be built.
+     */
+    expect(regular.typeface.kerning).toBe(store.getSnapshot().typeface!.kerning);
+    expect(regular.typeface.kerning).toHaveLength(1);
+  });
+
+  it("refuses a name or a place another weight is already using", () => {
+    store.addMaster("Bold");
+    const [regular, bold] = store.getSnapshot().masters;
+
+    expect(store.nameMaster(bold.id, regular.name)).toBe(false);
+    expect(store.getSnapshot().masters[1].name).toBe("Bold");
+    // Two masters at one place on an axis is a font that cannot be built.
+    expect(store.placeMaster(bold.id, regular.at.wght)).toBe(false);
+    expect(store.placeMaster(bold.id, 850)).toBe(true);
+    expect(store.getSnapshot().masters[1].at.wght).toBe(850);
+  });
+
+  it("will not throw away the only weight, and moves off one it does", () => {
+    const [regular] = store.getSnapshot().masters;
+    expect(store.removeMaster(regular.id)).toBe(false);
+
+    const bold = store.addMaster("Bold")!;
+    expect(store.getSnapshot().master).toBe(bold);
+    expect(store.removeMaster(bold)).toBe(true);
+    expect(store.getSnapshot().masters).toHaveLength(1);
+    expect(store.getSnapshot().master).toBe(regular.id);
+    expect(store.getSnapshot().typeface).toBe(regular.typeface);
+  });
+});

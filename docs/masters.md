@@ -1,0 +1,163 @@
+# Drawing more than one weight
+
+A record of teaching Typeforge the thing it is furthest from Glyphs on: masters
+you draw yourself, and a font that interpolates between them. `docs/ease.md` is
+the list of things that were hard to use. This is a thing that was not there.
+
+## Where this starts from, measured
+
+Half of it is already built and tested, which is why this is worth doing now.
+
+- `fvar`, `gvar` and `STAT` are written, and `gvar` carries the four **phantom
+  points**, so an advance width varies between masters as well as an outline.
+- `buildGvar(axes, defaults, masters)` already takes a list of masters, and
+  `VariableOptions.masters` already takes each as a whole typeface at a
+  location. Nothing in the writer is particular to one axis or two masters.
+- A glyph whose masters do not line up is already handled honestly: it is left
+  at the default, handed back in `held`, and named in the export's notes.
+- `test/variable.integration.test.ts` and `test/varying-drawn.integration.test.ts`
+  pin the result with fontTools, measuring ink rather than width because a bold
+  and a light reach the same distance.
+
+## What is missing
+
+You cannot draw the other end. The masters are **synthesised** from one number:
+`varyByWeight` moves `params.weight`, and `applyWeight` offsets every node along
+its own normal. That is a machine-made bold. It is even where a drawn bold is
+optical, it thickens a hairline and a stem by the same amount, and the `g` it
+produces is the Regular's `g` inflated. Nobody ships that.
+
+So the file-format half exists and the document half does not: a font here has
+one set of outlines and no way to say "and here is the Bold".
+
+## What varies and what cannot, and why
+
+The line is drawn by what the format can express with the tables that are
+written, not by taste.
+
+| | |
+|---|---|
+| **Per master** | every glyph's outline, and every glyph's advance width |
+| **Shared** | family name, designer, licence, units per em, the vertical metrics, kerning, features, ligatures, sets, and which glyphs exist at all |
+
+The vertical metrics are shared because varying them needs `MVAR`, which is not
+written. Kerning is shared for the same reason on `GPOS`. Both are worth saying
+out loud rather than discovering at export, and both are candidates for later.
+
+## The rule
+
+Carried from `docs/ease.md`, with one addition: **a font with one weight shows
+nothing about masters at all.** This is the advanced feature the plan there
+promised to place rather than hide -- it appears where you draw, the moment you
+ask for a second weight, and not before.
+
+## A master starts empty and fills up
+
+A new master does not copy the whole font. It holds only the letters actually
+drawn in it, and falls back to the default for the rest -- which is the same
+thing the exporter already does with a glyph that will not interpolate, and it
+means the honest state of the work is always visible: *forty letters drawn in
+Bold, a hundred and eighty still following the Regular.* Adding a weight to a
+six-thousand-glyph font costs nothing until you draw in it.
+
+## The steps
+
+1. **The model.** A document can hold more than one master: add one, name it,
+   place it on the weight axis, switch between them, delete one. Saved and
+   restored with the project. The chips sit above the canvas, where the decision
+   is taken. **Done. See M1.**
+2. **Compatibility, where you draw.** Two masters interpolate only if a letter
+   has the same contours with the same points in the same order. Say so on the
+   letter, in the grid and in the checks -- not at export, which is far too late.
+3. **Interpolation.** A slider that draws the letter, and the proof, at any
+   point between the masters. The payoff, and the thing that makes a mistake in
+   step 2 visible rather than theoretical.
+4. **Export from the masters you drew.** The variable export uses them when
+   they exist and falls back to the synthesised weights when they do not, and
+   says which. Verified by pinning the result with fontTools.
+5. **A second axis.** Width, or a custom one, once one axis is right.
+
+## Not doing
+
+No per-master vertical metrics or kerning until `MVAR` and `GPOS` variations are
+written. No automatic interpolation of a missing master's letters into a real
+drawing -- a letter is drawn or it follows, and the difference is stated.
+
+
+---
+
+# M1. More than one weight in a document — *done*
+
+## What is there now
+
+A font opens with one weight and says so, in one line on the whole-font screen:
+its name, and a button that adds another. Press it and you get a copy of what
+you have, placed at the far end of the axis -- 700 if you were at 400 -- with
+its name and its position beside it and a way to be rid of it. Chips to switch
+between them appear above the canvas the moment there are two, because which
+weight you are drawing is a decision about what you are looking at.
+
+Everything the application already does works in whichever weight is in hand.
+Nothing had to learn about masters: the active master's typeface **is**
+`state.typeface`, not a copy of it, so every edit has been landing in the right
+weight all along and switching only changes which object that is.
+
+## The rule the document rests on
+
+**A weight owns its letters and shares everything else.** The family name, the
+vertical metrics, the kerning, the features and the glyph list are one set of
+objects held by every weight; only the drawing is copied.
+
+That is not a convenience. The file this becomes carries one `name` table, one
+set of vertical metrics and one `GPOS`, so a document that let them drift would
+be describing a font that cannot be built. Two things follow:
+
+- **The glyph list is copied and still has to agree.** A letter added in the
+  Regular and missing from the Bold cannot vary, and is a difference nobody
+  would think to look for. So adding, removing or renaming a letter lands in
+  every weight, detected off the glyph array's identity -- which the library's
+  own add and remove replace rather than mutate, so a kerning edit costs
+  nothing.
+- **Sharing the objects once was not enough.** Kerning a pair *replaces*
+  `typeface.kerning` rather than pushing onto it, so the moment anything shared
+  was written the two weights held different arrays and the Bold was unkerned.
+  Undo has the same shape, assigning old fields back onto one typeface. A test
+  found the first door; the second was found by looking for the rest. So the
+  rule is enforced after every change instead of at creation, written as "copy
+  all of it, then put the drawing back" -- which means a field added to
+  `Typeface` later is shared by default, and that is the right default.
+
+## A change of mind about hiding
+
+The plan above said a font with one weight should show nothing at all about
+masters. That is how a feature stays undiscovered. `docs/ease.md`'s rule is that
+an advanced tool is *placed*, not hidden, and the user's own words for it were
+"not hidden but available when the user wants to take the type design a step
+further".
+
+So: the line is on the whole-font screen from the first visit, under a label
+that says what it is for, and it is the smallest thing that can say a second
+weight is possible -- a name and a button. What is genuinely meaningless with
+one weight is not drawn: no rename, no axis position, no remove, and no chips
+above the canvas, because a switch with one thing to switch to is furniture.
+It is also in the palette, where everything else in the application is.
+
+## What the tests caught
+
+**Coming back put you on the first weight.** The document already promises to
+put somebody back in the mode they left in, on the letter they were drawing.
+Coming back to the Regular after an afternoon in the Black is the same broken
+promise one level down. Which weight was in hand is written down now.
+
+**A "clean" master was not clean.** Writing the unit tests found that the square
+those tests were built on is wound counter-clockwise, which is the wrong
+direction for a TrueType outer contour -- so the letter being used as "nothing
+to report" was tripping the direction check.
+
+## What is on disk
+
+A weight is a set of exceptions to the first one, on the same terms as the font
+itself is a set of exceptions to the file it came from: only the letters
+actually drawn in it. A weight added to a six-thousand-glyph font and drawn in
+forty places is forty letters on disk. A font with one weight is written exactly
+as it always was, with neither field present, so nothing older reads differently.

@@ -354,3 +354,32 @@ export function emptyTypeface(): Typeface {
     source: null,
   };
 }
+
+/**
+ * A letter copied down to its last point, sharing nothing with the original.
+ *
+ * Everything that keeps a glyph's before-and-after -- undo, a drag that is
+ * committed when it ends, a second master of the same typeface -- depends on
+ * this being deep. A shallow copy leaves the two sharing their contours, and
+ * then undoing an edit restores the edit.
+ */
+export function cloneGlyph(glyph: Glyph): Glyph {
+  return {
+    name: glyph.name,
+    unicodes: [...glyph.unicodes],
+    advanceWidth: glyph.advanceWidth,
+    components: glyph.components.map((component) => ({ ...component, transform: { ...component.transform } })),
+    anchors: glyph.anchors.map((anchor) => ({ ...anchor })),
+    params: { ...glyph.params },
+    dirty: glyph.dirty,
+    contours: glyph.contours.map((contour) => ({
+      closed: contour.closed,
+      nodes: contour.nodes.map((node) => ({
+        point: { ...node.point },
+        handleIn: node.handleIn ? { ...node.handleIn } : null,
+        handleOut: node.handleOut ? { ...node.handleOut } : null,
+        type: node.type,
+      })),
+    })),
+  };
+}

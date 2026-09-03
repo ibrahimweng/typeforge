@@ -17,6 +17,7 @@ import { freeNameNear, hasLetters } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";
 import { tile } from "@/components/controls";
 import { CoachMark } from "@/components/CoachMark";
+import { Weights } from "@/components/Weights";
 import { cn } from "@/ui/lib/utils";
 
 const CELL_SIZE = 104;
@@ -139,6 +140,12 @@ export function FontGridView(): React.JSX.Element {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <CoachMark id="grid" />
+      {/*
+        The weights of this typeface, on the screen that is about the typeface
+        rather than about a letter. One quiet line, always -- a feature nobody
+        can see is a feature nobody has.
+      */}
+      <Weights />
       <div className="flex items-center gap-3 border-b border-border px-4 py-2.5">
         <input
           value={state.search}
