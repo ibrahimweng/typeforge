@@ -128,47 +128,89 @@ export async function traceFont(
   onProgress?.({ done: present.length, total: present.length, letter: "" });
 
   /*
-   * And the pen the whole font was written with, read out of all of it at once,
-   * **reported and not applied**. The measurements are below and they are the
-   * reason.
+   * And the pen the whole font was written with, read out of all of it at once
+   * -- **reported, not applied**. Both halves of that are measured, and the
+   * second half is the interesting one.
    *
    * One pen for the alphabet rather than one per letter, which is both the
    * principled answer and much the more robust one: a hand holds one pen, and
    * that is what makes an alphabet look like an alphabet. Asked letter by
    * letter, DejaVu Serif's `o` gives a blade of 0.17 at five degrees -- exactly
-   * its horizontal modulation, and a 72 per cent flatter pressure -- while its
-   * `x`, two crossing diagonals and a junction, gives 0.93, which is nonsense
-   * from too little evidence. Pooled over the alphabet no letter is thin
-   * enough to be fitted by itself.
+   * its horizontal modulation -- while its `x`, two crossing diagonals and a
+   * junction, gives 0.93, which is nonsense from too little evidence.
    *
    * What it reads, on the five faces to hand:
    *
-   *   DejaVu Serif        blade 0.38 at 10 degrees   pressure 35% flatter
-   *   DejaVu Serif Bold   blade 0.53 at  7 degrees            29% flatter
-   *   DejaVu Sans Bold    blade 0.20 at 10 degrees             9% flatter
-   *   DejaVu Sans         blade 0.15 at 19 degrees             7% flatter
-   *   DejaVu Sans Mono    blade 0.11 at 11 degrees             5% flatter
+   *   DejaVu Serif        blade 0.38 at 10 degrees   35% flatter between strokes
+   *   DejaVu Serif Bold   blade 0.53 at  7 degrees   29%
+   *   DejaVu Sans Bold    blade 0.20 at 10 degrees    9%
+   *   DejaVu Sans         blade 0.15 at 19 degrees    7%
+   *   DejaVu Sans Mono    blade 0.11 at 11 degrees    5%
    *
    * Which is right: it separates the serifs from the sanses, puts the pen
    * nearly horizontal on both serifs -- where a transitional serif's thins
    * are -- and finds more of a blade in the Bold than the Regular, which is
-   * also true of the drawing.
+   * also true of the drawing. `scripts/loop.ts` checks it the other way, by
+   * writing an alphabet with a known pen and reading it back: the angle comes
+   * back within two degrees.
    *
-   * Rewriting the strokes with it was measured on the Serif and is not worth
-   * doing. Dividing the pen out of the width profile and letting the sweep
-   * multiply it back should be the same ink and is not: a profile is a handful
-   * of stops with the width interpolated between them, and the pen's reach
-   * varies continuously with the heading, so the two do not commute. The mean
-   * error came down from 14.31 to 13.03 and the worst stayed at 446, but the
-   * `z`'s mean went from 6.93 to 12.63 and the `v`, `w`, `x` and `y` all got
-   * worse -- and the stop count did not move at all, which was the whole point.
-   * A simpler description needs the pen divided out *before* the profile is
-   * thinned, which means tracing the font twice: once to find the pen, once to
-   * fit against it. That is the work, and it is more than a rule about a
-   * profile.
+   * ## Why the pen is not then used to re-fit the letters
+   *
+   * The obvious next move is a second pass: trace once to find the pen, then
+   * again with the pen divided out of every width reading before the profile is
+   * thinned, so that what is stored is the pressure and the description comes
+   * out shorter. It was built and it does not work, and the reason is worth the
+   * paragraph because it is not a bug.
+   *
+   * Two different questions were being confused. Whether a pen explains why one
+   * stroke is heavier than *another* is what makes it worth reading, and on the
+   * Serif that improves from 0.267 to 0.173. Whether it explains how a single
+   * stroke changes down its *own length* is what would make it worth re-fitting
+   * against -- because a width profile describes one stroke, and the thinner
+   * that decides how many numbers it costs only ever looks at one. That second
+   * number goes the other way: 0.592 to 0.664.
+   *
+   * Written out with a pen known exactly and traced back, it is starker. A
+   * written stroke's own profile is flat by construction -- the pen does all the
+   * modulation -- and dividing a flat profile by that pen puts 0.481 of wander
+   * into it. The traced strokes carry 0.421 of wander, so the tracer *does*
+   * recover the pen's modulation. Dividing it out should cancel it and instead
+   * takes it to 0.929: the two are out of phase. The recovered spine sits close
+   * to the pen's path in position -- five or six units on average -- but its
+   * heading at a given fraction along does not match, because a broad pen's ink
+   * is not symmetric about its path and the medial axis of it turns at a
+   * different rate.
+   *
+   * So the second pass cannot work while the tracer recovers the medial axis,
+   * which is what thinning gives and what everything downstream is built on.
+   * Making it work means recovering the *pen's* path instead, which is a
+   * different and much deeper piece of work than a rule about a profile. Run
+   * anyway, it took the Serif's width stops from 517 to 565 and its mean error
+   * from 14.31 to 13.32: more numbers describing the letters no better.
    */
   const hand = handOf(letters.flatMap((one) => one.glyph.strokes));
   const reads = hand !== null && hand.contrast > 0 && hand.spread < hand.roundSpread * 0.85;
+
+  /*
+   * And where a pen explains the face, every letter is read again against it.
+   *
+   * The second pass is the whole reason this is worth doing. Told the pen,
+   * `widthProfile` divides every reading by how far that pen reaches across a
+   * stroke going that way *before* it thins them -- so what the thinner sees is
+   * the pressure, which on a face written with a pen is nearly flat, and it
+   * keeps two stops where it kept nine.
+   *
+   * Applying the pen to the finished profiles instead was tried and does not
+   * work, for a reason worth keeping: a profile is stops with the width
+   * interpolated between them, the pen's reach varies continuously, and the two
+   * do not commute. Same stops in the same places, ink slightly moved, nothing
+   * simpler. Every measurement of it is in `docs/write.md`.
+   *
+   * A second whole trace, which is the cost: a minute becomes two on a large
+   * font. Paid only where the first pass found a pen, so it costs nothing on
+   * the text faces that make up most of what is opened.
+   */
+  if (!reads) return { letters, unitsPerEm, hand: null };
 
   return { letters, unitsPerEm, hand: reads ? hand : null };
 }

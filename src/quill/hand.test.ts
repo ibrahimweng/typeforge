@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { handOf, withHand } from "./hand";
+import { handOf, wanderOf, withHand } from "./hand";
+import { ready, unite } from "@/font/boolean";
+import { fitGlyph } from "./fit";
+import { sweepAll, toleranceFor } from "./sweep";
 import { ROUND_NIB } from "./types";
 import type { QuillSpine, QuillStroke } from "./types";
 
@@ -115,5 +118,105 @@ describe("the pen a traced letter was written with", () => {
     const spread = Math.max(...pressures) - Math.min(...pressures);
     expect(spread).toBeLessThan(half * 2 * 0.06);
     expect(rewritten.every((one) => one.nib[0].contrast > 0.4)).toBe(true);
+  });
+});
+
+/*
+ * The reading checked the other way round: written with a pen whose numbers are
+ * known, swept, and read back.
+ *
+ * Against a real font the only test is whether the answer looks plausible,
+ * because nobody knows what pen DejaVu Serif was drawn with -- it was drawn
+ * rather than written. Here there is a right answer.
+ *
+ * `scripts/loop.ts` is the same check over more letters, with the two numbers
+ * that say why the pen is reported and not used to re-fit the letters.
+ */
+describe("a pen written, swept, and read back", () => {
+  const upm = 1000;
+  const line = (from: [number, number], to: [number, number]): QuillSpine => ({
+    segments: [{ kind: "line", from: { x: from[0], y: from[1] }, to: { x: to[0], y: to[1] } }],
+    closed: false,
+  });
+  const writtenWith = (blade: number, angle: number): QuillStroke[] =>
+    [
+      line([160, 40], [160, 700]),
+      line([120, 700], [520, 60]),
+      line([120, 60], [520, 700]),
+      line([120, 640], [520, 640]),
+    ].map((spine) => ({
+      spine,
+      width: [{ at: 0, width: 150 }],
+      nib: [{ at: 0, contrast: blade, angle }],
+      start: { kind: "butt" as const },
+      end: { kind: "butt" as const },
+      join: "round" as const,
+    }));
+
+  it("reads back the angle the letters were written at", async () => {
+    await ready();
+    const strokes = writtenWith(0.7, 40);
+    const contours = unite(sweepAll(strokes, toleranceFor(upm)).contours);
+    const fit = fitGlyph("written", contours, 640, { unitsPerEm: upm });
+    expect(fit).not.toBeNull();
+    const found = handOf(fit!.glyph.strokes);
+    expect(found).not.toBeNull();
+    /*
+     * The angle comes back close. The blade does not, and it under-reads rather
+     * than over-reads -- the tracer smooths the width along each stroke, so
+     * some of the modulation is gone before it is ever measured. Pinned as it
+     * is rather than as it should be, so that a change either way is noticed.
+     */
+    const turned = Math.abs((((found!.angle - 40) % 180) + 270) % 180) - 90;
+    expect(Math.abs(turned)).toBeLessThan(8);
+    expect(found!.contrast).toBeGreaterThan(0.2);
+    expect(found!.contrast).toBeLessThan(0.7);
+  });
+
+  /*
+   * And why the pen is not then used to re-fit the letters, in two numbers.
+   *
+   * A written stroke's own profile is flat, because the pen does all the
+   * modulation. Divide that flat profile by the pen it was written with, and
+   * variation appears where there was none -- which is what a second pass would
+   * be handing the thinner.
+   *
+   * Only where the stroke curves, which is the sharp version of the claim. A
+   * straight stroke has one heading, so the pen's reach along it is one number
+   * and dividing by a constant cannot add anything. It is a bend that turns the
+   * pen through its own thick and thin, and a written alphabet is mostly bends.
+   */
+  const bend: QuillSpine = {
+    segments: [
+      {
+        kind: "cubic",
+        from: { x: 150, y: 80 },
+        c1: { x: 150, y: 500 },
+        c2: { x: 450, y: 700 },
+        to: { x: 700, y: 700 },
+      },
+    ],
+    closed: false,
+  };
+  const curved = (blade: number, angle: number): QuillStroke[] => [
+    {
+      spine: bend,
+      width: [{ at: 0, width: 150 }],
+      nib: [{ at: 0, contrast: blade, angle }],
+      start: { kind: "butt" },
+      end: { kind: "butt" },
+      join: "round",
+    },
+  ];
+
+  it("shows that dividing a written curve by its own pen adds variation", () => {
+    expect(wanderOf(curved(0.7, 40), 0, 0)).toBeCloseTo(0, 6);
+    expect(wanderOf(curved(0.7, 40), 0.7, 40)).toBeGreaterThan(0.2);
+  });
+
+  it("and leaves a straight stroke alone, which is why it takes a letter to see", () => {
+    const straight = writtenWith(0.7, 40);
+    expect(wanderOf(straight, 0, 0)).toBeCloseTo(0, 6);
+    expect(wanderOf(straight, 0.7, 40)).toBeCloseTo(0, 6);
   });
 });
