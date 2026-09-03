@@ -22,6 +22,70 @@ beforeAll(async () => {
   await ready();
 });
 
+/*
+ * A shape that crosses itself is not one shape, and unite says so.
+ *
+ * The sweep makes them: a stroke whose spine runs back over ink it has already
+ * laid comes out as a single outline with a fold in it, and the traced `e` --
+ * bowl and crossbar in one stroke -- is the letter that does it. Filled
+ * non-zero such an outline draws correctly, which is why it went unnoticed;
+ * but it has no counter as far as anything reading an outline is concerned,
+ * and handed to a second boolean it answers nonsense.
+ */
+describe("unite, given one shape that crosses itself", () => {
+  /*
+   * The outline of a band forty wide whose centre-line goes round a square and
+   * then carries on past where it started -- written the way a sweep writes
+   * one, down the left side and back up the right, so the fold is the real
+   * thing and not two lines drawn to cross. It encloses a hundred and sixty
+   * square, which is the counter that used to go missing.
+   */
+  const lapped: Contour = {
+    closed: true,
+    nodes: [
+      // Down the left of the travel, from the start round to the far end.
+      { x: 0, y: 20 },
+      { x: 180, y: 20 },
+      { x: 180, y: 180 },
+      { x: 20, y: 180 },
+      { x: 20, y: -60 },
+      // Across the end, and back up the right of the travel.
+      { x: -20, y: -60 },
+      { x: -20, y: 220 },
+      { x: 220, y: 220 },
+      { x: 220, y: -20 },
+      { x: 0, y: -20 },
+    ].map((point) => ({ point, handleIn: null, handleOut: null, type: "corner" as const })),
+  };
+
+  it("resolves the fold into a shape with its counter", () => {
+    const one = unite([lapped]);
+    const holes = one.filter((contour) => contourArea(contour) < 0);
+    expect(holes.length).toBe(1);
+    expect(Math.abs(contourArea(holes[0]))).toBeCloseTo(160 * 160, 3);
+    expect(pieces(one)).toBe(1);
+  });
+
+  /*
+   * And the ink is the ink, which the fold's own arithmetic gets wrong.
+   *
+   * Where the band laps itself -- twenty by forty, at the corner it came back
+   * to -- a self-crossing outline counts the same ground twice, so its signed
+   * area reads eight hundred more than the shape covers. That is what made a
+   * traced `e` report a hundred per cent of its letter's ink while missing a
+   * corner of it.
+   */
+  it("and comes to the ink it covers, not the ink it counts twice", () => {
+    expect(Math.abs(contourArea(lapped))).toBeCloseTo(34400, 3);
+    expect(Math.abs(ink(unite([lapped])))).toBeCloseTo(34400 - 20 * 40, 3);
+  });
+
+  it("leaves a shape that does not cross itself exactly as it was", () => {
+    const plain = rect(0, 0, 100, 100);
+    expect(unite([plain])).toEqual([plain]);
+  });
+});
+
 describe("subtract", () => {
   it("cuts a hole through the middle", () => {
     const cut = subtract([rect(0, 0, 100, 100)], [rect(40, 40, 20, 20)]);

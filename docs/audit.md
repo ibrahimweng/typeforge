@@ -623,6 +623,11 @@ foot of the `v`, the foot of the `x`. Nothing in T5's work moved any of them,
 which is the right outcome: T5 was ink drawn where the letter has none, and this
 is ink the letter has and the redraw does not.
 
+**The `e` joined this list at T6**, once the fold in its outline was resolved
+and what was underneath could be seen: 52.7 units, at the square elbow where its
+crossbar runs off the wall of its bowl. Same shape of fault, same diagnosis, and
+the list is now six letters long.
+
 # Trace again: the terminals — *two found, two fixed*
 
 Where the last pass left off: `v`, `w`, `z`, `r` and `x` carry two to three
@@ -851,3 +856,125 @@ letter's own box. The first number this entry ever had, 100.6, is spilt ink on
 the stem side at mid-height, and the whole of the wrong diagnosis followed from
 reading it as a notch.
 
+
+# Trace a third time: the `e` — *one found, one fixed*
+
+## T6. The `e`, the worst letter left, and the slit that was never ink — *done*
+
+With the `q` and the `u` fixed, the `e` was the largest number in the alphabet
+at **93.6**, and the largest on five other faces besides. `scripts/worst.ts` put
+it at 9% across and 47% up, which is not the edge of the letter -- it is
+(207, 529), the middle of the left wall of the bowl, and that is solid ink. The
+harness measures a redraw point's distance to the source *outline*, so a
+boundary standing deep inside the ink reads as spilt. The reading was right and
+the word for it was wrong: there was a boundary where the letter is solid.
+
+**The `e` comes back as one stroke, and that stroke laps itself.** Its skeleton
+is a loop with a tail, so the splice makes a spiral: out of the tail, round the
+bottom, up the left wall, over the top, down the right wall, and back along the
+crossbar. The crossbar's run ends at a junction standing on the left wall's own
+centre-line, at (218, 609). Then the run-on carries it 73 units further, to
+(148, 627) -- the full half-width, and the corner test lets it, because both
+leading corners of the end rectangle stand on ink. The ink they stand on is the
+wall the stroke set out up.
+
+One stroke sweeps one band: the left offset forward, a cap, the right offset
+back. Where a band crosses itself the two passes run opposite ways round, and a
+non-zero fill takes the overlap *out*. So the redraw came back as a single
+contour of thirty-seven nodes with no counter at all -- a keyhole, the outside
+of the letter reached through a slit in the left of its bowl.
+
+`unite` was handing that straight back, on the strength of one line:
+
+    if (drawable.length < 2) { ... }   // one shape is already its own union
+
+True of a shape. False of an outline that crosses itself, which is not one.
+
+### The drawing was never wrong
+
+This is the part worth keeping. Rasterised at four hundred samples to the em and
+filled non-zero, the `e` covers **94.8%** of its letter before the fix and
+**94.8%** after, to the tenth of a per cent. Nothing on the screen or in an
+exported file ever looked different, which is why a fold could sit in the middle
+of a letter for as long as it did.
+
+What was wrong was the outline, and three things read an outline rather than
+filling it.
+
+**The counter.** `classifyContours` found none: one contour, no hole. Every
+feature that asks a letter where its counters are -- the inline, the counter
+motif, the paths list, anything counting the pieces of a glyph -- was told the
+`e` has none.
+
+**A second boolean.** This is the one with teeth, and the module's own comment
+had already named it: a folded outline "is not a shape, and a second boolean
+handed one gives back nothing at all". Measured on the traced `e`, a slot cut
+straight through it left **142%** of the area it started with on DejaVu Sans and
+**151%** on the Serif -- impossible for a subtraction, and exactly what happens
+when a counter is read as solid and filled in on the way through. After the fix:
+91% and 93%, which is a slot's worth taken out.
+
+**The harness**, which is the only reason any of it was noticed.
+
+### The fix, and what it costs
+
+`unite` now asks whether its lone shape crosses itself, and one that does goes
+the long way round -- through the same compound and the same fuse as every other
+union, and comes back resolved.
+
+`crossesItself` is in `geometry.ts` and is asked of the curves rather than of a
+polyline. Two segments whose control-polygon boxes miss each other cannot meet,
+and on an outline almost every pair misses, so a shape that does not double back
+pays a few hundred rectangle comparisons and stops: **ten microseconds an
+outline**, against a sixteen-millisecond frame. Segments sharing an end are
+skipped, since every contour touches itself there and a touch is not a crossing.
+
+It does not fire on drawings. Of the **18,679** contours in four DejaVu faces
+and this application's own sample font, **none** report crossing themselves; the
+ones that do are all swept bands, which fold at their inner corners as a matter
+of course.
+
+### What it is worth
+
+The `e` of six faces, max deviation in units:
+
+| face | before | after |
+|---|---|---|
+| DejaVu Sans | 93.6 | **52.7** |
+| DejaVu Sans Bold | 180.1 | **121.7** |
+| DejaVu Serif | 106.5 | **70.5** |
+| DejaVu Serif Bold | 192.8 | **141.7** |
+| DejaVu Sans Mono | 95.7 | **49.3** |
+| DejaVu Sans Mono Bold | 139.7 | **100.1** |
+
+Four of the six faces had the `e` as their worst letter, so four alphabet worsts
+move with it: Sans 93.6 to **74.1**, Sans Bold 180.1 to **150.4**, Mono 95.7 to
+**58.3**, Mono Bold 139.7 to **126.9**. Every other letter is unchanged to a
+hundredth, and the means with them: Sans 6.11 to 6.11, Serif 26.01 to 26.01,
+Sans Bold 14.38 to 14.42.
+
+**The ink column now tells the truth, and it reads lower.** It said the Sans `e`
+was 100% of its letter and the Serif's 106%; both were the fold's own
+arithmetic, which counts the same ground twice everywhere a band laps itself.
+Honest, the Sans `e` covers 96% -- which is where its `o` (96%) and its `c`
+(97%) were all along.
+
+The union leaves two specks on the Sans `e`, of 14.5 and 0.17 square units, at
+the tail's tip and the crossbar's corner. That is the fuse's known residue
+rather than anything new here -- the `u`, which has always gone the long way
+round because it is three strokes, has carried two of 123 and 107 units since
+long before this -- and both of the `e`'s are under what a font file can hold
+once outlines are rounded to integers.
+
+### What is left of the `e`, and whose problem it is
+
+52.7 units, and all of it at one place: the right-hand end of the crossbar,
+where the bowl's wall comes down and the bar runs off it at a right angle. The
+letter has a square corner there. The redraw rounds it, misses the letter's
+rightmost point by 45.9, and cuts the corner off the counter by 52.7.
+
+That is T3 exactly -- "a flat foot or a square elbow is two strokes each cut off
+at a boundary, and this fitter gives that region one smooth spine because the
+skeleton is connected through it. No cap and no join can put a flat on a
+round-nibbed sweep of a smooth spine." Four fixes for it are listed there and
+all four were rejected by measurement. None was tried again here.

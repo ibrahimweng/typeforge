@@ -294,6 +294,91 @@ export function reverseContour(contour: Contour): Contour {
   return { nodes, closed: contour.closed };
 }
 
+/**
+ * Whether a contour runs back over its own ink.
+ *
+ * A shape is its own boundary, so an outline that crosses itself is not one:
+ * the region it encloses depends on a fill rule rather than on the drawing, and
+ * where the two passes run opposite ways round the fill rule takes the ink out.
+ * That is not a hypothetical -- it is how the `e` of a traced font came back
+ * with a slit through the left side of its bowl, because the crossbar and the
+ * bowl are one swept stroke there and the crossbar's pass runs the other way.
+ *
+ * Asked of the curves rather than of a polyline, and asked cheaply: two
+ * segments whose control boxes miss each other cannot meet, and on a letter
+ * almost every pair misses. Only the survivors are flattened and tested, so an
+ * outline that does not double back pays a few hundred rectangle comparisons.
+ *
+ * Segments that share an end are skipped. Every contour touches itself there,
+ * and a touch is not a crossing.
+ */
+export function crossesItself(contour: Contour): boolean {
+  const segments = contourSegments(contour);
+  if (segments.length < 4) return false;
+
+  /* The control polygon bounds the curve, which is all a rejection needs. */
+  const boxes = segments.map((segment) => {
+    const points =
+      segment.kind === "line"
+        ? [segment.from, segment.to]
+        : [segment.from, segment.c1, segment.c2, segment.to];
+    return {
+      xMin: Math.min(...points.map((one) => one.x)),
+      xMax: Math.max(...points.map((one) => one.x)),
+      yMin: Math.min(...points.map((one) => one.y)),
+      yMax: Math.max(...points.map((one) => one.y)),
+    };
+  });
+
+  const STEPS = 8;
+  const flattened = new Map<number, Vec2[]>();
+  const flatOf = (index: number): Vec2[] => {
+    const had = flattened.get(index);
+    if (had) return had;
+    const segment = segments[index];
+    const points: Vec2[] = [segment.from];
+    if (segment.kind === "line") points.push(segment.to);
+    else
+      for (let step = 1; step <= STEPS; step++)
+        points.push(cubicAt(segment.from, segment.c1, segment.c2, segment.to, step / STEPS));
+    flattened.set(index, points);
+    return points;
+  };
+
+  const count = segments.length;
+  for (let one = 0; one < count; one++) {
+    for (let other = one + 1; other < count; other++) {
+      // Neighbours share an end, and on a closed contour so do the two ends.
+      if (other === one + 1) continue;
+      if (contour.closed && one === 0 && other === count - 1) continue;
+      const a = boxes[one];
+      const b = boxes[other];
+      if (a.xMax < b.xMin || b.xMax < a.xMin || a.yMax < b.yMin || b.yMax < a.yMin) continue;
+      if (meets(flatOf(one), flatOf(other))) return true;
+    }
+  }
+  return false;
+}
+
+/** Whether two polylines properly cross, ends touching not counted. */
+function meets(one: Vec2[], other: Vec2[]): boolean {
+  for (let i = 0; i + 1 < one.length; i++) {
+    for (let j = 0; j + 1 < other.length; j++) {
+      if (crossing(one[i], one[i + 1], other[j], other[j + 1])) return true;
+    }
+  }
+  return false;
+}
+
+function crossing(a: Vec2, b: Vec2, c: Vec2, d: Vec2): boolean {
+  const side = (p: Vec2, q: Vec2, r: Vec2) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  const one = side(a, b, c);
+  const two = side(a, b, d);
+  const three = side(c, d, a);
+  const four = side(c, d, b);
+  return one * two < 0 && three * four < 0;
+}
+
 /** Even-odd containment test, used to tell counters from outer shapes. */
 export function contourContainsPoint(contour: Contour, point: Vec2): boolean {
   const polygon = flattenContour(contour, 8);

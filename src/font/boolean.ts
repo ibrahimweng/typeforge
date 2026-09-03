@@ -30,6 +30,7 @@ import {
   contourArea,
   contourContainsPoint,
   contoursBounds,
+  crossesItself,
   flattenContour,
   reverseContour,
 } from "./geometry";
@@ -201,8 +202,21 @@ export function unite(
    * read the whole letter as a hole, found no ink to keep, and subtracted the
    * H into nothing. Under `winding` the caller has promised the roles are
    * already right and is left alone.
+   *
+   * Unless that one shape runs back over itself, in which case it is not one
+   * shape. A stroke swept along a spine that doubles back -- the crossbar of a
+   * traced `e` runs straight back into the bowl it came from, a script's loop
+   * crosses its own stem -- comes out of the sweep as a single outline that
+   * crosses itself, with the two passes running opposite ways round. Handed
+   * back untouched that outline draws correctly under a non-zero fill and is
+   * not a shape to anything that reads it: it has no counter, and a second
+   * boolean given one answers nonsense. A slot cut through the traced `e` came
+   * back holding 142% of the area it started with. So a self-crossing outline
+   * goes the long way round and comes back resolved, which is what this
+   * function promises. `docs/audit.md` T6 has the measurements.
    */
-  if (drawable.length < 2) {
+  const lapped = drawable.length === 1 && crossesItself(drawable[0]);
+  if (drawable.length < 2 && !lapped) {
     if (roles === "winding") return contours;
     return contours.map((contour) =>
       contour.nodes.length >= 2 && contourArea(contour) < 0 ? reverseContour(contour) : contour,

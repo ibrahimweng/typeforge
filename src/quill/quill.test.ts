@@ -26,7 +26,7 @@ import { describe, expect, it } from "vitest";
 
 import { ready, unite } from "@/font/boolean";
 
-import { contourArea, contoursBounds, flattenContour } from "@/font/geometry";
+import { contourArea, contoursBounds, crossesItself, flattenContour } from "@/font/geometry";
 import {
   PLAIN_HAND,
   QUILL_CONTROLS,
@@ -494,6 +494,52 @@ describe("the sweep at a corner", () => {
     expect(reachOf(spike)).toBeLessThan(45 * 4);
   });
 
+  /*
+   * A stroke that runs back over its own ink still draws a shape.
+   *
+   * The `e` is the letter that does it: bowl and crossbar are one run of
+   * skeleton, so the crossbar's end lands back inside the wall the stroke
+   * started up. Swept, that is one outline with a fold in it, and the two
+   * passes go opposite ways round -- so the letter's counter was not a counter,
+   * it was the outside reached through a slit in the left of the bowl. Filled
+   * non-zero it drew correctly, which is why nothing on screen ever showed it;
+   * the harness, which measures the outline, called it the worst letter in the
+   * alphabet at ninety-four units.
+   */
+  it("closes the counter of a stroke that laps itself", async () => {
+    await ready();
+    const lapping: QuillStroke = {
+      spine: {
+        segments: [
+          {
+            kind: "arc",
+            centre: { x: 0, y: 0 },
+            radius: 200,
+            startAngle: Math.PI,
+            endAngle: Math.PI * 2,
+            sweepPositive: true,
+          },
+          // The crossbar, run back past the wall the arc set out from.
+          { kind: "line", from: { x: 200, y: 0 }, to: { x: -260, y: 0 } },
+        ],
+        closed: false,
+      },
+      width: [{ at: 0, width: 60 }],
+      nib: [{ ...ROUND_NIB, at: 0 }],
+      start: { kind: "butt" },
+      end: { kind: "butt" },
+    };
+    const drawn = sweepAll([lapping]).contours;
+    expect(drawn.length, "one stroke sweeps one band").toBe(1);
+    expect(crossesItself(drawn[0]), "and this band laps itself").toBe(true);
+
+    const shape = unite(drawn);
+    const holes = shape.filter((one) => contourArea(one) < 0);
+    expect(holes.length, "the counter is a counter").toBe(1);
+    // Roughly the half-disc inside the arc and under the bar: not exact,
+    // because the sweep fits the offsets rather than solving them.
+    expect(Math.abs(contourArea(holes[0]))).toBeGreaterThan(30000);
+  });
 });
 
 describe("the fitter", () => {
