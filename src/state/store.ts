@@ -57,6 +57,9 @@ import { importFont } from "@/font/parse";
 import { cloneGlyph } from "@/font/types";
 import {
   alignMasters,
+  AXES,
+  axesOf,
+  axisSpec,
   freeMasterId,
   freeMasterName,
   masterFrom,
@@ -412,18 +415,17 @@ export interface AppState {
   /** The id of the one being drawn. */
   master: string;
   /**
-   * A place on the weight axis to *look* at, as opposed to the one being drawn.
+   * A place in the design space to *look* at, as opposed to a version drawn.
    *
-   * Null almost always, and null is not a position: the grid draws what is
-   * drawn. Set while somebody scrubs the axis, and then every letter is shown
-   * blended between the weights either side of it, which is what a reader will
-   * do with the exported file. Drawing two ends and never seeing the middle is
-   * drawing an axis on faith.
+   * A location rather than a number, because there can be more than one axis: a
+   * font with a Bold and a Condensed is looked at somewhere in a square, not
+   * somewhere along a line. Null almost always, and null is not a position --
+   * the grid draws what is drawn.
    *
-   * Looking, not editing. Nothing writes through this -- the letters on screen
+   * Looking, not editing. Nothing writes through this: the letters on screen
    * are a calculation and the drawing underneath is untouched.
    */
-  preview: number | null;
+  preview: Record<string, number> | null;
   /** Bumped whenever the document changes, so views can memoise against it. */
   revision: number;
   /**
@@ -640,7 +642,7 @@ class Store {
     this.set({ status: { message, tone } });
   }
 
-  // --- weights ------------------------------------------------------------
+  // --- versions ------------------------------------------------------------
 
   /*
    * A second weight, drawn rather than calculated.
@@ -664,33 +666,76 @@ class Store {
   }
 
   /**
-   * Copy this weight into a new one and go to it.
+   * Copy this version into a new one, moved along one axis, and go to it.
    *
-   * Placed at the far end of the axis from where the font already sits, because
-   * a second weight beside the first is nobody's intention -- and because two
-   * masters at the same place on an axis is a font that cannot be built.
+   * One axis, which is what a master is here and what the exporter is built
+   * for: every version is the whole font drawn again with a single setting
+   * moved, so it stands in the middle of every axis but its own. That is what
+   * makes a design space a star rather than a grid -- a Bold and a Condensed
+   * between them describe a Bold Condensed without anybody drawing one.
+   *
+   * Placed away from where the font already sits, because a second version on
+   * top of the first is nobody's intention, and because two masters in the same
+   * place is a font that cannot be built.
    */
-  addMaster(name = "Bold"): string | null {
+  addMaster(tag = WGHT, name?: string): string | null {
     const typeface = this.state.typeface;
     const masters = this.state.masters;
     if (!typeface || masters.length === 0) return null;
 
+    /*
+     * A registered axis or nothing.
+     *
+     * `axisSpec` is deliberately lenient -- a document that arrives with an
+     * axis this build has never heard of should still open -- and that
+     * leniency is a trap on the way in: `addMaster("Bold")` read the name as a
+     * tag and quietly gave the font an axis called Bold, with `fvar` ready to
+     * declare it. A test caught it, which is the only reason it is not shipped.
+     */
+    if (!AXES.some((axis) => axis.tag === tag)) {
+      this.say(`There is no ${tag} axis to add a version along.`, "error");
+      return null;
+    }
+    const spec = axisSpec(tag);
     const here = this.currentMaster();
-    const from = here?.at[WGHT] ?? 400;
-    const taken = new Set(masters.map((one) => one.at[WGHT]));
-    let at = from < 550 ? 700 : 300;
-    // A hundred either way until it lands somewhere nothing else is standing.
-    while (taken.has(at) && at > 100 && at < 900) at += from < 550 ? 50 : -50;
+    const middle = masters[0].at[tag] ?? spec.normal;
+    const taken = new Set(masters.map((one) => one.at[tag] ?? spec.normal));
 
-    const made = masterFrom(
-      typeface,
-      freeMasterName(masters, name),
-      { [WGHT]: at },
-      freeMasterId(masters),
+    /*
+     * Where a second version along this axis usually goes, and then further
+     * out in the axis's own steps until it lands somewhere nothing else is
+     * standing. Away from the middle rather than towards it, so a third weight
+     * is a Black beyond the Bold rather than a Medium squeezed inside it.
+     */
+    const stride = Math.sign(spec.second.at - middle) * spec.step || spec.step;
+    let at = spec.second.at;
+    let guard = 0;
+    while ((taken.has(at) || at <= spec.min || at >= spec.max) && guard < 200) {
+      at += stride;
+      guard += 1;
+    }
+    if (at <= spec.min || at >= spec.max) {
+      this.say(`There is no room left on the ${spec.label.toLowerCase()} axis.`, "error");
+      return null;
+    }
+
+    const wanted = name ?? spec.second.name;
+    /*
+     * Every version stands somewhere on every axis, including the ones added
+     * after it. Written down rather than left missing, so a document says where
+     * its Regular sits on the width axis instead of implying it.
+     */
+    const at_ = { ...Object.fromEntries(Object.keys(masters[0].at).map((one) => [one, masters[0].at[one]])), [tag]: at };
+    const made = masterFrom(typeface, freeMasterName(masters, wanted), at_, freeMasterId(masters));
+    const filled = masters.map((one) =>
+      one.at[tag] === undefined ? { ...one, at: { ...one.at, [tag]: middle } } : one,
     );
-    this.set({ masters: [...masters, made] });
+
+    this.set({ masters: [...filled, made] });
     this.goToMaster(made.id);
-    this.say(`${made.name} added at ${at}. It starts as a copy of ${here?.name ?? "this weight"}.`);
+    this.say(
+      `${made.name} added at ${spec.label.toLowerCase()} ${at}. It starts as a copy of ${here?.name ?? "this version"}.`,
+    );
     return made.id;
   }
 
@@ -720,18 +765,32 @@ class Store {
   }
 
   /**
-   * Look at a place on the axis rather than at a weight that was drawn.
+   * Look at a place in the design space rather than at a version that was drawn.
    *
-   * Cleared by moving to a weight, because the two answer the same question and
-   * a preview left standing over a different master is a screen showing neither
-   * what is drawn nor what was asked for.
+   * One axis at a time from the interface -- there is a slider per axis -- and
+   * the axes not named keep whatever they were at, which starts as where the
+   * version in hand stands. Cleared by moving to a version, because the two
+   * answer the same question and a preview left standing over a different
+   * master is a screen showing neither what is drawn nor what was asked for.
    */
-  setPreview(at: number | null): void {
-    if (at === null) {
+  setPreview(tag: string | null, value?: number): void {
+    if (tag === null) {
       if (this.state.preview !== null) this.set({ preview: null });
       return;
     }
-    this.set({ preview: Math.round(Math.min(900, Math.max(100, at))) });
+    const axes = axesOf(this.state.masters);
+    const axis = axes.find((one) => one.tag === tag);
+    if (!axis || value === undefined) return;
+    const here = this.currentMaster();
+    // Everything not being moved sits where the version in hand does, so
+    // nudging one slider does not silently move the others.
+    const from = this.state.preview ?? { ...(here?.at ?? {}) };
+    this.set({
+      preview: {
+        ...from,
+        [tag]: Math.round(Math.min(axis.max, Math.max(axis.min, value))),
+      },
+    });
   }
 
   /** Call this weight something else. */
@@ -750,22 +809,30 @@ class Store {
   }
 
   /**
-   * Move this weight along the axis.
+   * Move this version along one of its axes.
    *
-   * Two masters in the same place cannot both be a corner of the design space,
+   * Two versions in the same place cannot both be a corner of the design space,
    * so the second one is refused rather than quietly moved aside.
    */
-  placeMaster(id: string, at: number): boolean {
+  placeMaster(id: string, tag: string, at: number): boolean {
     const masters = this.state.masters;
     const master = masters.find((one) => one.id === id);
     if (!master) return false;
-    const to = Math.round(Math.min(900, Math.max(100, at)));
-    if (to === master.at[WGHT]) return false;
-    if (masters.some((one) => one.id !== id && one.at[WGHT] === to)) {
-      this.say(`${masters.find((one) => one.id !== id && one.at[WGHT] === to)!.name} is already at ${to}.`, "error");
+    const spec = axisSpec(tag);
+    const to = Math.round(Math.min(spec.max, Math.max(spec.min, at)));
+    if (to === master.at[tag]) return false;
+
+    const moved = { ...master.at, [tag]: to };
+    const clash = masters.find(
+      (one) =>
+        one.id !== id &&
+        Object.keys(moved).every((key) => (one.at[key] ?? spec.normal) === moved[key]),
+    );
+    if (clash) {
+      this.say(`${clash.name} is already there.`, "error");
       return false;
     }
-    master.at = { ...master.at, [WGHT]: to };
+    master.at = moved;
     this.set({ masters: [...masters] });
     return true;
   }

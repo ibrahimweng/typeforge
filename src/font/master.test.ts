@@ -4,6 +4,7 @@ import {
   agrees,
   alignMasters,
   freeMasterId,
+  axesOf,
   freeMasterName,
   glyphAcross,
   lettersThatCannotVary,
@@ -305,11 +306,11 @@ describe("looking between the weights", () => {
   }
 
   it("says nothing to look at in a font with one weight", () => {
-    expect(glyphAcross("a", [soleMaster(font(["a"]))], 500)).toBeNull();
+    expect(glyphAcross("a", [soleMaster(font(["a"]))], { [WGHT]: 500 })).toBeNull();
   });
 
   it("draws the halfway letter halfway between them", () => {
-    const halfway = glyphAcross("a", pair(), 650)!;
+    const halfway = glyphAcross("a", pair(), { [WGHT]: 650 })!;
     expect(halfway.contours[0].nodes[1].point.x).toBe(150);
     // The advance blends too, because a bold letter is a wider letter and the
     // format varies it by the same machinery: a phantom point in `gvar`.
@@ -317,7 +318,7 @@ describe("looking between the weights", () => {
   });
 
   it("draws a quarter of the way a quarter of the way", () => {
-    expect(glyphAcross("a", pair(), 525)!.contours[0].nodes[1].point.x).toBe(125);
+    expect(glyphAcross("a", pair(), { [WGHT]: 525 })!.contours[0].nodes[1].point.x).toBe(125);
   });
 
   it("stands at the nearest end rather than extrapolating past it", () => {
@@ -326,14 +327,22 @@ describe("looking between the weights", () => {
      * be showing somebody a letter nobody made and no reader will produce --
      * the format clamps to the axis, so this does.
      */
-    expect(glyphAcross("a", pair(), 100)!.contours[0].nodes[1].point.x).toBe(100);
-    expect(glyphAcross("a", pair(), 900)!.contours[0].nodes[1].point.x).toBe(200);
+    expect(glyphAcross("a", pair(), { [WGHT]: 100 })!.contours[0].nodes[1].point.x).toBe(100);
+    expect(glyphAcross("a", pair(), { [WGHT]: 900 })!.contours[0].nodes[1].point.x).toBe(200);
   });
 
-  it("has nothing to draw between two drawings that do not line up", () => {
+  it("stands at the first version where the drawings do not line up", () => {
+    /*
+     * The same thing the exported file does with that letter: `buildGvar`
+     * leaves out a master whose drawing does not line up and the glyph stands
+     * at the default. The screen used to fall back to whichever version was in
+     * hand instead, which is neither what is drawn at this position nor what a
+     * reader will show.
+     */
     const masters = pair();
     masters[1].typeface.glyphs[0].contours = [box(6)];
-    expect(glyphAcross("a", masters, 650)).toBeNull();
+    const stuck = glyphAcross("a", masters, { [WGHT]: 650 })!;
+    expect(stuck.contours[0].nodes[1].point.x).toBe(100);
   });
 
   it("uses the pair either side, and not the ones beyond them", () => {
@@ -343,8 +352,90 @@ describe("looking between the weights", () => {
     // reading that ignored it would give a different answer.
     middle.typeface.glyphs[0].contours[0].nodes[1].point.x = 180;
 
-    const between = glyphAcross("a", [...masters, middle], 450)!;
+    const between = glyphAcross("a", [...masters, middle], { [WGHT]: 450 })!;
     // Halfway from 400 to 500 is halfway from 100 to 180, not from 100 to 200.
     expect(between.contours[0].nodes[1].point.x).toBe(140);
+  });
+});
+
+describe("a second axis", () => {
+  const at = (x: number, y: number) => ({
+    point: { x, y },
+    handleIn: null,
+    handleOut: null,
+    type: "corner" as const,
+  });
+
+  /**
+   * A star, which is what a design space here is: every version is the whole
+   * font drawn again with a single setting moved, so it stands in the middle of
+   * every axis but its own. A Bold and a Condensed between them describe a Bold
+   * Condensed without anybody drawing one.
+   */
+  function star(): Master[] {
+    const base = font(["a"]);
+    base.glyphs[0].contours = [{ closed: true, nodes: [at(0, 0), at(100, 0), at(0, 100)] }];
+    const regular = soleMaster(base);
+    regular.at = { wght: 400, wdth: 100 };
+
+    const bold = masterFrom(base, "Bold", { wght: 700, wdth: 100 }, "m2");
+    bold.typeface.glyphs[0].contours[0].nodes[1].point.x = 200;
+
+    const condensed = masterFrom(base, "Condensed", { wght: 400, wdth: 50 }, "m3");
+    condensed.typeface.glyphs[0].contours[0].nodes[2].point.y = 300;
+    return [regular, bold, condensed];
+  }
+
+  it("reads the axes off where the versions stand", () => {
+    const axes = axesOf(star());
+    expect(axes.map((one) => one.tag)).toEqual(["wght", "wdth"]);
+    expect(axes[0]).toMatchObject({ label: "Weight", min: 400, default: 400, max: 700 });
+    // The width runs down from the first version rather than up, which is what
+    // "condensed" means and what the numbers have to say.
+    expect(axes[1]).toMatchObject({ label: "Width", min: 50, default: 100, max: 100 });
+  });
+
+  it("claims no axis nothing was drawn away from", () => {
+    /*
+     * The way this goes wrong: a `wdth` in `fvar` with no master to reach it is
+     * a slider that does nothing. An axis exists because something was drawn
+     * off the middle of it, and not because a number was written down.
+     */
+    const base = font(["a"]);
+    const flat = [soleMaster(base), masterFrom(base, "Bold", { wght: 400, wdth: 100 }, "m2")];
+    flat[0].at = { wght: 400, wdth: 100 };
+    expect(axesOf(flat)).toEqual([]);
+  });
+
+  it("lets each version apply where it has something to say", () => {
+    const masters = star();
+
+    // At the Bold's own place, the Bold's own drawing.
+    const bold = glyphAcross("a", masters, { wght: 700, wdth: 100 })!;
+    expect(bold.contours[0].nodes[1].point.x).toBe(200);
+    expect(bold.contours[0].nodes[2].point.y).toBe(100);
+
+    // And at the Condensed's, the Condensed's.
+    const narrow = glyphAcross("a", masters, { wght: 400, wdth: 50 })!;
+    expect(narrow.contours[0].nodes[1].point.x).toBe(100);
+    expect(narrow.contours[0].nodes[2].point.y).toBe(300);
+  });
+
+  it("draws the corner nobody drew, out of the two that were", () => {
+    /*
+     * The whole reason a star works. A Condensed says nothing about weight, so
+     * it applies at every weight; a Bold says nothing about width, so it
+     * applies at every width. At the corner both apply in full, and the letter
+     * is bold and condensed without anybody having drawn one.
+     */
+    const corner = glyphAcross("a", star(), { wght: 700, wdth: 50 })!;
+    expect(corner.contours[0].nodes[1].point.x).toBe(200);
+    expect(corner.contours[0].nodes[2].point.y).toBe(300);
+  });
+
+  it("gives half of each halfway along both", () => {
+    const middle = glyphAcross("a", star(), { wght: 550, wdth: 75 })!;
+    expect(middle.contours[0].nodes[1].point.x).toBe(150);
+    expect(middle.contours[0].nodes[2].point.y).toBe(200);
   });
 });

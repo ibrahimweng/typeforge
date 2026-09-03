@@ -42,7 +42,7 @@ import {
 import { nodeKey, store, useAppState, type NodeRef, type ToolState } from "@/state/useStore";
 import { CoachMark } from "@/components/CoachMark";
 import { GlyphFaults } from "@/components/GlyphFaults";
-import { Weights } from "@/components/Weights";
+import { Versions } from "@/components/Versions";
 import { GroundToggle } from "@/components/GroundToggle";
 import { NumberField } from "@/components/NumberField";
 import { NothingDrawnYet } from "@/components/NothingDrawnYet";
@@ -1248,7 +1248,7 @@ export function GlyphEditorView(): React.JSX.Element {
         that on the far side of the window is one somebody has to go and find.
         Nothing at all until there is a second weight to switch to.
       */}
-      <Weights compact />
+      <Versions compact />
       {/*
         What stands either side, above the canvas rather than in the panel.
 

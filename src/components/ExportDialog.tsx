@@ -12,7 +12,7 @@ import * as React from "react";
 import { enter, refuse } from "@/anim/motion";
 import { CoachMark } from "@/components/CoachMark";
 import { exportFont, toDownloadBlob, type ExportFidelity, type ExportFormat } from "@/font/export";
-import { varyByDrawnWeights, varyByWeight } from "@/font/masters";
+import { varyByDrawnVersions, varyByWeight } from "@/font/masters";
 import { store, useAppState } from "@/state/useStore";
 import { ufoNameFor, zipUfo } from "@/ufo/intake";
 import { cn } from "@/ui/lib/utils";
@@ -69,7 +69,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
    * than refused at the end, because a choice that is going to fail should look
    * unavailable before it is made.
    */
-  const drawn = varyByDrawnWeights(state.masters);
+  const drawn = varyByDrawnVersions(state.masters);
   const varyingOptions = drawn ?? varyByWeight(typeface);
   const canVary = varyingOptions !== null;
 
@@ -252,10 +252,10 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
             title="Variable (.ttf)"
             description={
               drawn
-                ? `One file, every weight, and a slider between them. Built from the ${state.masters.length} weights you drew: ${state.masters.map((one) => one.name).join(", ")}.`
+                ? `One file, every weight and width, and sliders between them. Built from the ${state.masters.length} versions you drew: ${state.masters.map((one) => one.name).join(", ")}.`
                 : canVary
-                  ? "One file, every weight, and a slider between them. The two ends of the Weight control become the ends of the axis — a calculated bold rather than a drawn one. Add a weight on the Font screen to draw the other end yourself."
-                  : "Needs room on the Weight control, or a second weight drawn on the Font screen. This font is at one end of the control, so there is nothing for an axis to reach."
+                  ? "One file, every weight, and a slider between them. The two ends of the Weight control become the ends of the axis — a calculated bold rather than a drawn one. Add a version on the Font screen to draw the other end yourself."
+                  : "Needs room on the Weight control, or a second version drawn on the Font screen. This font is at one end of the control, so there is nothing for an axis to reach."
             }
           />
           {/*

@@ -76,13 +76,15 @@ six-thousand-glyph font costs nothing until you draw in it.
 4. **Export from the masters you drew.** The variable export uses them when
    they exist and falls back to the synthesised weights when they do not, and
    says which. Verified by pinning the result with fontTools. **Done. See M4.**
-5. **A second axis.** Width, or a custom one, once one axis is right.
+5. **A second axis.** Width, or a slant, once one axis is right. **Done. See M5.**
 
 ## Not doing
 
 No per-master vertical metrics or kerning until `MVAR` and `GPOS` variations are
 written. No automatic interpolation of a missing master's letters into a real
-drawing -- a letter is drawn or it follows, and the difference is stated.
+drawing -- a letter is drawn or it follows, and the difference is stated. No
+custom axis tags: four letters of somebody's own is a perfectly good thing to
+want and a thing readers do nothing with unless the font says what it means.
 
 
 ---
@@ -340,3 +342,98 @@ about a face.
 One pass over the font per position of the slider, memoised. On the sample that
 is nothing; on a six-thousand-glyph font it is a visible cost, and it is the
 honest one: the layout walks the document, so the document is what has to move.
+
+
+---
+
+# M5. A second axis — *done*
+
+## What is there now
+
+The row is called **Versions** rather than Weights, because a version can now
+differ by weight, width, slant or optical size. One preview slider appears per
+axis, because a font with a Bold and a Condensed is looked at somewhere in a
+square rather than somewhere along a line.
+
+A font nobody has made a second version of is still offered exactly one route:
+**Add a weight**. The other three appear once there are two versions, which is
+the moment the idea has been met. Four buttons on the first screen of a first
+font is placing an advanced control in the way rather than in reach, and the
+first version of this did that -- `docs/ease.md`'s rule is that such a control
+is *placed*, and placed is not the same as present. After that, weight stays
+offered because a third weight is an ordinary thing to want, and each new axis
+is offered once.
+
+"Versions" and not "masters" is the same choice `docs/ease.md` makes everywhere:
+a person drawing their first typeface has a Regular and a Bold, and those are
+two versions of one thing. The trade's word is on the hover.
+
+## The axes are read off the drawings
+
+There is no list of axes to keep in step with anything. An axis exists because
+something was drawn away from the middle of it; its ends are the furthest
+anything was drawn; its default is where the first version stands, which is what
+`gvar` stores everything else as a difference from. So a document cannot claim
+an axis it has no drawing for, which is exactly how this goes wrong: a `wdth` in
+`fvar` with nothing behind it is a slider that does nothing.
+
+It also means the sliders on screen only reach where the font actually goes.
+Adding a Condensed at 75 gives a width axis of 75 to 100 and not 25 to 200.
+
+## A star, not a grid
+
+A version moves **one** axis off the default and stands in the middle of every
+other. That is not a simplification: it is the arrangement `gvar` is written
+for, and its payoff is the corner. A Condensed says nothing about weight, so it
+applies at every weight; a Bold says nothing about width, so it applies at every
+width. At the corner both apply in full and the letter is bold and condensed,
+without anybody having drawn a Bold Condensed.
+
+That rule is one line in the format -- an axis whose peak is nought contributes
+one rather than nothing -- and it is the line the whole feature rests on. A
+sabotage that makes it contribute nothing fails the corner test.
+
+## The screen and the file now compute the same thing
+
+The preview used to walk a straight line between the pair of versions either
+side, which is right and only right along one axis. It is now the reader's own
+arithmetic: the default's drawing, plus each other version's difference scaled
+by `scalarAt`, which is built on the same `normalise` and `regionOf` that `gvar`
+is written from. The letter on screen and the letter in the file are one
+computation rather than two readings of a specification.
+
+Two things fell out of that:
+
+- **A letter whose versions do not line up now stands at the first version**,
+  not at whichever version is in hand. That is what the exported font does with
+  the same letter, and the screen was disagreeing with it.
+- The one-axis tests written for step 3 pass unchanged, which is the check that
+  the generalisation did not move anything: with masters at 400, 700 and 900,
+  neighbour-bounded tents cross at exactly the height a straight line does.
+
+## Two things the tests caught
+
+**`addMaster("Bold")` gave the font an axis called Bold.** The signature grew an
+axis tag in front of the name, and the old call read the name as a tag --
+`axisSpec` is deliberately lenient so an unknown axis still opens a document,
+and that leniency is a trap on the way in. It refuses an unregistered tag now.
+
+**The width axis went up while the name said Condensed.** The first version of
+the placement reasoned its way to a direction -- away from the middle, towards
+whichever side had more room -- and put a "Condensed" at 125. It would have got
+the slant backwards too, since an italic lean is a *negative* `slnt` and the
+room either side of nought is equal. Where a second version goes and what it is
+called are one fact, so they are now one entry in the axis table.
+
+## What is measured
+
+`test/varying-axes.integration.test.ts` builds a real two-axis font from three
+drawings, pins it at all four corners with fontTools and measures ink. The
+corner comes out narrower than the Bold and heavier than the Condensed, which is
+the claim a file can get silently wrong: two axes can be declared, deltas
+carried for both, fontTools satisfied completely, and the Regular still drawn at
+the corner because the regions were written so one master cancels the other.
+
+The browser test makes the same font by hand -- twelve presses of Bigger in one
+version and Smaller in the other -- and measures the same four places off the
+grid's own canvas.

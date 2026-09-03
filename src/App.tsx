@@ -623,7 +623,7 @@ export function App(): React.JSX.Element {
       openFolder: () => folderRef.current?.click(),
       export: () => setExporting(true),
       save: saveProject,
-      addWeight: () => void store.addMaster(),
+      addVersion: (axis: string) => void store.addMaster(axis),
       newProject: () => {
         store.startBlank();
         setMode("edit");

@@ -28,7 +28,7 @@ import { PARAMS } from "@/components/param-specs";
 import type { VariableOptions } from "./export";
 import type { Axis, Instance } from "./variable";
 import type { Typeface } from "./types";
-import { glyphAcross, type Master } from "./master";
+import { axesOf, glyphAcross, type Master } from "./master";
 
 /**
  * The weight axis, as the format numbers it.
@@ -147,7 +147,7 @@ export function varyByWeight(typeface: Typeface): VariableOptions | null {
  * still while the rest of the font moves. The two halves of the application
  * should not disagree about what a font at 550 looks like.
  */
-export function typefaceAt(masters: Master[], at: number): Typeface {
+export function typefaceAt(masters: Master[], at: Record<string, number>): Typeface {
   const first = masters[0].typeface;
   if (masters.length < 2) return first;
   return {
@@ -157,49 +157,53 @@ export function typefaceAt(masters: Master[], at: number): Typeface {
 }
 
 /**
- * The font as a varying one, built out of the weights somebody drew.
+ * The font as a varying one, built out of the versions somebody drew.
  *
  * The other `varyByWeight` above synthesises its masters by moving one number,
  * which is a machine-made bold: even where a drawn one is optical, thickening a
  * hairline and a stem by the same amount. This takes the drawings instead.
  *
- * The default is the first weight, because that is what the document treats as
- * the original everywhere else and what `gvar` stores every other master as a
- * difference from. The instances are the weights that were actually drawn, by
- * the names they were given -- not the nine standard ones, because a menu entry
- * for a Thin this font does not have lands on whatever the axis reaches at 100
- * and calls it a Thin.
+ * Every axis the document has, not only weight. The axes come from where the
+ * versions actually stand -- see `axesOf` -- so the file can never claim a
+ * slider it has no drawing to reach, which is the way this goes wrong: a `wdth`
+ * in `fvar` with nothing behind it is a control that does nothing.
  *
- * Nothing when there is one weight: there is no axis, and the caller falls back
- * to the synthesised pair.
+ * The default is the first version, because that is what the document treats as
+ * the original everywhere else and what `gvar` stores every other one as a
+ * difference from. The instances are the versions that were drawn, by the names
+ * they were given -- not a standard list, because a menu entry for a Thin this
+ * font does not have lands on whatever the axis reaches at its lightest and
+ * calls it a Thin.
+ *
+ * Nothing when there is one version, or when nothing was drawn away from the
+ * middle of any axis: there is no axis, and the caller falls back to the
+ * synthesised pair.
  */
-export function varyByDrawnWeights(masters: Master[]): VariableOptions | null {
+export function varyByDrawnVersions(masters: Master[]): VariableOptions | null {
   if (masters.length < 2) return null;
-  const sorted = [...masters].sort((one, two) => (one.at.wght ?? 400) - (two.at.wght ?? 400));
-  const places = sorted.map((one) => one.at.wght ?? 400);
-  const here = masters[0].at.wght ?? 400;
+  const axes = axesOf(masters);
+  if (axes.length === 0) return null;
 
-  // Two weights in the same place is not an axis, and the document refuses to
-  // make one -- this is the second door, for a file that arrived with one.
-  if (new Set(places).size !== places.length) return null;
+  /*
+   * Two versions standing in the same place is not a design space, and the
+   * document refuses to make one -- this is the second door, for a file that
+   * arrived with one.
+   */
+  const seen = new Set<string>();
+  for (const master of masters) {
+    const key = axes.map((axis) => master.at[axis.tag] ?? axis.default).join(",");
+    if (seen.has(key)) return null;
+    seen.add(key);
+  }
 
-  const axes: Axis[] = [
-    {
-      tag: "wght",
-      label: "Weight",
-      min: places[0],
-      default: here,
-      max: places[places.length - 1],
-    },
-  ];
+  const place = (master: Master): Record<string, number> =>
+    Object.fromEntries(axes.map((axis) => [axis.tag, master.at[axis.tag] ?? axis.default]));
 
   return {
     axes,
-    instances: sorted.map((one) => ({ label: one.name, at: { wght: one.at.wght ?? 400 } })),
-    // The first weight is the default and the exporter uses what it was handed,
-    // so it is deliberately not in here.
-    masters: masters
-      .filter((one) => one.id !== masters[0].id)
-      .map((one) => ({ at: { wght: one.at.wght ?? 400 }, typeface: one.typeface })),
+    instances: masters.map((one) => ({ label: one.name, at: place(one) })),
+    // The first version is the default and the exporter uses what it was
+    // handed, so it is deliberately not in here.
+    masters: masters.slice(1).map((one) => ({ at: place(one), typeface: one.typeface })),
   };
 }
