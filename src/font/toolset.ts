@@ -36,9 +36,13 @@ export type ToolId =
   | "polygon"
   // Knife
   | "knife"
-  | "scissors";
+  | "scissors"
+  // Write
+  | "skeleton"
+  | "skeletonFreehand"
+  | "nib";
 
-export type GroupId = "select" | "pen" | "shape" | "knife";
+export type GroupId = "select" | "pen" | "shape" | "knife" | "write";
 
 export interface ToolInfo {
   id: ToolId;
@@ -134,6 +138,25 @@ export const TOOLS: ToolInfo[] = [
     hint: "Drag a line right across a shape to cut it in two.",
   },
   {
+    id: "skeleton",
+    group: "write",
+    name: "Write",
+    hint: "Draw the line the pen travels, down the middle of the letter. The ink follows it. Escape finishes.",
+  },
+  {
+    id: "skeletonFreehand",
+    group: "write",
+    name: "Write freehand",
+    hint: "Write the line as you would with a pen, in one movement. It is fitted to curves when you let go.",
+  },
+  {
+    id: "nib",
+    group: "write",
+    name: "Pen",
+    hint: "Show the pen at every point of a written stroke. Drag an end to resize it, drag off the end to turn it.",
+  },
+
+  {
     id: "scissors",
     group: "knife",
     name: "Scissors",
@@ -176,7 +199,21 @@ export const GROUPS: { id: GroupId; name: string; key: string }[] = [
   { id: "pen", name: "Pen", key: "P" },
   { id: "shape", name: "Shapes", key: "R" },
   { id: "knife", name: "Knife", key: "K" },
+  { id: "write", name: "Write", key: "W" },
 ];
+
+/**
+ * Which tools work on strokes rather than on outlines.
+ *
+ * A written letter carries both -- the strokes somebody drew and the ink they
+ * sweep to -- and the two are edited by different tools. The canvas asks this
+ * to decide which of the two to draw handles on, because showing outline nodes
+ * while somebody is turning a pen is showing them the thing they are not
+ * editing.
+ */
+export function writesStrokes(id: ToolId): boolean {
+  return groupOf(id) === "write";
+}
 
 /** The next tool in the group, for the second press of the group's key. */
 export function nextIn(group: GroupId, current: ToolId): ToolId {

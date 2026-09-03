@@ -22,12 +22,22 @@ export function NumberField({
   label,
   className,
   disabled,
+  decimals = 0,
 }: {
   value: number;
   onCommit: (next: number) => void;
   label: string;
   className?: string;
   disabled?: boolean;
+  /**
+   * How many decimal places this field keeps. Nought, and it rounds.
+   *
+   * Every number this held was a font unit, where a fraction of a unit means
+   * nothing and rounding is right. The pen's blade is not: it runs nought to
+   * one, so rounding turned every value a person typed into one of the two
+   * ends -- a pen asked for at 0.55 came back a blade with no thickness.
+   */
+  decimals?: number;
 }): React.JSX.Element {
   const [draft, setDraft] = React.useState(String(value));
   // Follows the value when it changes underneath -- a nudge with the arrow
@@ -44,7 +54,9 @@ export function NumberField({
       onClick={(event) => event.stopPropagation()}
       onBlur={() => {
         const parsed = Number(draft);
-        if (Number.isFinite(parsed) && parsed !== value) onCommit(Math.round(parsed));
+        const settled =
+          decimals > 0 ? Number(parsed.toFixed(decimals)) : Math.round(parsed);
+        if (Number.isFinite(parsed) && settled !== value) onCommit(settled);
         else setDraft(String(value));
       }}
       onKeyDown={(event) => {

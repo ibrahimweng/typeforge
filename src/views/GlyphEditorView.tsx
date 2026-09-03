@@ -35,6 +35,8 @@ import {
   applyView,
   prepareCanvas,
   readToken,
+  toCanvasX,
+  toCanvasY,
   toFontX,
   toFontY,
   type GlyphView,
@@ -49,6 +51,14 @@ import { NothingDrawnYet } from "@/components/NothingDrawnYet";
 import { hasLetters } from "@/font/library";
 import { ToolPalette } from "@/components/ToolPalette";
 import { cn } from "@/ui/lib/utils";
+import { writesStrokes } from "@/font/toolset";
+import {
+  drawWritten,
+  hitTestPen,
+  hitTestStrokePoint,
+  penDrag,
+  type PenHandle,
+} from "./write-canvas";
 
 /** How close a click has to land, in screen pixels, to grab a node. */
 const HIT_RADIUS = 7;
@@ -122,6 +132,17 @@ type Drag =
    * usual case rather than the awkward one.
    */
   | { kind: "lasso"; trail: Vec2[]; additive: boolean }
+  /*
+   * Writing: the same three gestures the outline tools have, pointed at a
+   * spine instead of a contour. `pen` takes hold of the pen itself, which is
+   * the one gesture with no outline equivalent -- the ellipse is dragged by
+   * its axis ends, and pulling one out widens the pen while pulling it
+   * sideways turns it.
+   */
+  | { kind: "writePull"; from: Vec2; stroke: number; node: number; before: Glyph }
+  | { kind: "penHandle"; handle: PenHandle; before: Glyph }
+  | { kind: "strokePoint"; stroke: number; node: number; before: Glyph }
+  | { kind: "writeTrail"; trail: Vec2[] }
   /*
    * The pen, mid-gesture: a point has been put down and the pointer is pulling
    * its handles out of it. `from` is where it was pressed, in canvas units, so
@@ -350,9 +371,25 @@ export function GlyphEditorView(): React.JSX.Element {
     if (state.highlightPath !== null) {
       drawPathOutline(context, glyph.contours[state.highlightPath], view);
     }
-    drawNodes(context, glyph.contours, view, state.selectedNodes, hover);
-    if (state.marks) drawMarks(context, glyph.contours, view);
-    drawAnchors(context, glyph.anchors, view, hover);
+    /*
+     * A written letter's nodes are the sweep's, not anybody's.
+     *
+     * The contours of a written letter are what the pen swept, so their points
+     * were placed by the fitter and mean nothing to the person who wrote it.
+     * Shown while a write tool is in hand they are two hundred dots over the
+     * three handles that actually do something. So the letter shows one set or
+     * the other: the pen's while writing, the outline's the rest of the time.
+     */
+    const writing = writesStrokes(state.tool);
+    if (!writing) {
+      drawNodes(context, glyph.contours, view, state.selectedNodes, hover);
+      if (state.marks) drawMarks(context, glyph.contours, view);
+      drawAnchors(context, glyph.anchors, view, hover);
+    }
+    drawWritten(context, glyph, view, {
+      handles: writing,
+      selected: state.stop,
+    });
 
     const drag = dragRef.current;
     if (drag?.kind === "marquee") drawMarquee(context, drag);
@@ -586,6 +623,94 @@ export function GlyphEditorView(): React.JSX.Element {
       return;
     }
 
+    /*
+     * Writing, which draws the line the pen travels rather than the edge of the
+     * letter.
+     *
+     * Deliberately the pen's own gesture -- click for a corner, hold and pull
+     * for a curve, click the first point to close -- because the thing that is
+     * new here is what the line means and not how it is drawn, and making the
+     * drawing unfamiliar too would put two new ideas in front of somebody at
+     * once.
+     */
+    if (state.tool === "skeleton") {
+      const at = { x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) };
+      const strokes = store.strokesOf(glyph.name);
+      const open = strokes[strokes.length - 1];
+      const writing = store.writing;
+      /*
+       * Back on the first point closes the stroke, which is how an `o` is
+       * written: one movement all the way round with no ends to cap.
+       */
+      if (writing && open && open.spine.segments.length >= 2) {
+        const first = open.spine.segments[0];
+        const start = first.kind === "arc" ? null : first.from;
+        if (start) {
+          const screen = {
+            x: toCanvasX(view, start.x),
+            y: toCanvasY(view, start.y),
+          };
+          if (Math.hypot(screen.x - canvasPoint.x, screen.y - canvasPoint.y) <= 10) {
+            store.closeStroke(glyph.name);
+            reportPhase(canvasPoint);
+            return;
+          }
+        }
+      }
+      store.writePoint(glyph.name, at);
+      const after = store.glyph(glyph.name);
+      const written = after?.written?.strokes ?? [];
+      const which = Math.max(0, written.length - 1);
+      dragRef.current = {
+        kind: "writePull",
+        from: canvasPoint,
+        stroke: which,
+        node: Math.max(0, (written[which]?.spine.segments.length ?? 0)),
+        before: store.snapshotGlyph(glyph.name) ?? glyph,
+      };
+      reportPhase(canvasPoint);
+      return;
+    }
+
+    if (state.tool === "skeletonFreehand") {
+      dragRef.current = {
+        kind: "writeTrail",
+        trail: [{ x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) }],
+      };
+      return;
+    }
+
+    /*
+     * The pen tool: take hold of the ellipse, not of the letter.
+     *
+     * A handle first, because that is the finer target and the one somebody
+     * aiming at it means; the spine point second, so the stroke can be moved
+     * without changing tools.
+     */
+    if (state.tool === "nib") {
+      const handle = hitTestPen(glyph, view, canvasPoint);
+      if (handle) {
+        store.pickStop(handle.stroke, handle.stop);
+        dragRef.current = {
+          kind: "penHandle",
+          handle,
+          before: store.snapshotGlyph(glyph.name) ?? glyph,
+        };
+        return;
+      }
+      const point = hitTestStrokePoint(glyph, view, canvasPoint);
+      if (point) {
+        dragRef.current = {
+          kind: "strokePoint",
+          stroke: point.stroke,
+          node: point.node,
+          before: store.snapshotGlyph(glyph.name) ?? glyph,
+        };
+        return;
+      }
+      return;
+    }
+
     const anchorHit = hitTestAnchor(glyph, view, canvasPoint);
     if (anchorHit) {
       dragRef.current = {
@@ -705,7 +830,20 @@ export function GlyphEditorView(): React.JSX.Element {
    * nothing beside the repaint that follows.
    */
   const whatIsUnder = (canvasPoint: Vec2 | null, found: Hover = hover): Under => {
-    if (!glyph || !canvasPoint) return { ...NOTHING_UNDER, grabbable: found !== null };
+    /*
+     * With no pointer on the canvas there is nothing under it -- except the two
+     * facts that are about the letter rather than about the place. Whether this
+     * letter was written at all is one of them, and leaving it out of this case
+     * made the pen tool say "nothing written here yet" about a letter with two
+     * strokes in it, for as long as the pointer was off the canvas.
+     */
+    if (!glyph || !canvasPoint)
+      return {
+        ...NOTHING_UNDER,
+        grabbable: found !== null,
+        written: (glyph?.written?.strokes.length ?? 0) > 0,
+        strokeOpen: store.writing !== null && store.writing.name === glyph?.name,
+      };
     const open = openOutline(glyph);
     /*
      * The node and edge tests run for every tool rather than only the select
@@ -713,12 +851,21 @@ export function GlyphEditorView(): React.JSX.Element {
      * each has to know whether there is one before the click, not after.
      */
     const node = hitTestNode(glyph, view, canvasPoint);
+    const writing = store.writing;
     return {
       grabbable: found !== null,
       closingPoint: onClosingPoint(glyph, view, canvasPoint),
       pathOpen: Boolean(open),
       openPoints: open?.nodes.length ?? 0,
       node: node !== null,
+      /*
+       * The three the write tools ask about. Asked here with everything else
+       * rather than in the tools, so the sentence, the cursor and the handles
+       * cannot disagree about whether there is a pen to take hold of.
+       */
+      penHandle: hitTestPen(glyph, view, canvasPoint) !== null,
+      written: (glyph.written?.strokes.length ?? 0) > 0,
+      strokeOpen: writing !== null && writing.name === glyph.name,
       /*
        * Asked without regard to whether a point is here too.
        *
@@ -946,6 +1093,62 @@ export function GlyphEditorView(): React.JSX.Element {
         forceRender();
         break;
       }
+      case "writeTrail": {
+        drag.trail.push({ x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) });
+        forceRender();
+        break;
+      }
+      /*
+       * The pen, taken hold of by one of its axis ends.
+       *
+       * Written live and recorded once on release, as every other drag here
+       * is: the whole point of dragging an ellipse rather than typing a number
+       * is watching the letter change while you do it.
+       */
+      case "penHandle": {
+        const to = { x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) };
+        const stroke = store.strokesOf(glyph.name)[drag.handle.stroke];
+        const stop = stroke?.nib[drag.handle.stop];
+        if (!stroke || !stop) break;
+        const held = {
+          width: stroke.width[0]?.width ?? 0,
+          contrast: stop.contrast,
+          angle: stop.angle,
+        };
+        const next = penDrag(drag.handle, to, held, { shift: event.shiftKey });
+        store.setStrokePen(
+          glyph.name,
+          drag.handle.stroke,
+          drag.handle.stop,
+          next,
+          true,
+        );
+        forceRender();
+        break;
+      }
+      case "strokePoint": {
+        const to = { x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) };
+        store.moveStrokePoint(glyph.name, drag.stroke, drag.node, to, true);
+        forceRender();
+        break;
+      }
+      /*
+       * Writing's own pull, which shapes the segment just laid down.
+       *
+       * The spine is a list of cubics, so the handle being pulled is the one
+       * *leaving* the point just placed -- which is `c1` of the segment that
+       * will follow it, and `c2` of the one that arrived, mirrored, so the
+       * stroke runs through smoothly. A pull that moved only one of them would
+       * put a corner where the person asked for a curve.
+       */
+      case "writePull": {
+        const moved = Math.hypot(canvasPoint.x - drag.from.x, canvasPoint.y - drag.from.y);
+        if (moved < A_DRAG) break;
+        const to = { x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) };
+        store.pullStroke(glyph.name, drag.stroke, drag.node, to);
+        forceRender();
+        break;
+      }
       /*
        * The pen's handles, pulled out of the point just placed.
        *
@@ -1047,6 +1250,17 @@ export function GlyphEditorView(): React.JSX.Element {
       // `addPoint`, which recorded itself, and a second entry for a gesture
       // that changed nothing more is an undo press that appears to do nothing.
       if (drag.pulled) store.commitGlyphEdit(glyph.name, "Draw a curve", drag.before);
+    } else if (drag.kind === "writePull") {
+      // Only if it was a pull. A plain click already recorded its own point,
+      // and a second entry for a gesture that added nothing is an undo press
+      // that appears to do nothing.
+      if (drag.node > 0) store.commitGlyphEdit(glyph.name, "Write a curve", drag.before);
+    } else if (drag.kind === "penHandle") {
+      store.commitGlyphEdit(glyph.name, "Change the pen", drag.before);
+    } else if (drag.kind === "strokePoint") {
+      store.commitGlyphEdit(glyph.name, "Move the stroke", drag.before);
+    } else if (drag.kind === "writeTrail") {
+      store.writeTrail(glyph.name, drag.trail);
     } else if (drag.kind === "marquee") {
       const selection = new Set(drag.additive ? state.selectedNodes : []);
       const left = Math.min(drag.from.x, drag.to.x);
@@ -1161,6 +1375,21 @@ export function GlyphEditorView(): React.JSX.Element {
        * Enter finishes by closing it. Both drop an outline too short to be one.
        */
       if (event.key === "Escape" || event.key === "Enter") {
+        /*
+         * A stroke being written finishes on the same two keys, for the same
+         * reason and with the same difference between them: Escape leaves the
+         * ends loose and Enter closes the stroke into a ring. Taken first,
+         * because while a stroke is being written there is no open outline for
+         * `finishOutline` to find and the key would do nothing at all.
+         */
+        if (store.writing) {
+          if (event.key === "Enter") store.closeStroke(glyph.name);
+          else store.finishStroke();
+          event.preventDefault();
+          forceRender();
+          reportPhaseRef.current(atRef.current);
+          return;
+        }
         if (store.finishOutline(glyph.name, event.key === "Enter")) {
           event.preventDefault();
           forceRender();

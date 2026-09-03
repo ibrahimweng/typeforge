@@ -17,6 +17,8 @@ import { CompositionPanel } from "@/components/CompositionPanel";
 import { FeaturesPanel } from "@/components/FeaturesPanel";
 import { LetterPanel } from "@/components/LetterPanel";
 import { PathsPanel } from "@/components/PathsPanel";
+import { PenPanel } from "@/components/PenPanel";
+import { writesStrokes } from "@/font/toolset";
 import { PointsPanel } from "@/components/PointsPanel";
 import { TransformPanel } from "@/components/TransformPanel";
 import { CoachMark } from "@/components/CoachMark";
@@ -261,6 +263,20 @@ export function Inspector(): React.JSX.Element {
         and what it is called.
       */}
       {editingGlyph && <LetterPanel />}
+      {/*
+        The pen, above the paths, and only while a write tool is in hand.
+
+        Above them because a written letter's paths are the sweep's rather than
+        anybody's -- the pen is the thing that was drawn and the paths are what
+        came out of it, so the pen is the higher-level object. Only while
+        writing because three numbers about a pen mean nothing on a letter that
+        was not written with one, and this rail is already full.
+      */}
+      {editingGlyph && state.view === "glyph" && writesStrokes(state.tool) && (
+        <div className="border-b border-border p-3">
+          <PenPanel glyphName={glyphName!} />
+        </div>
+      )}
       {editingGlyph && state.view === "glyph" && <PathsPanel />}
       {/*
         Under the same scope and the same view as the paths, and for the same

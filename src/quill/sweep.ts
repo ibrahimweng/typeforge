@@ -23,6 +23,7 @@
  * nowhere else.
  */
 
+import { ROUND_NIB } from "./types";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { contourArea } from "@/font/geometry";
 import {
@@ -38,6 +39,8 @@ import type {
   DrawnStroke,
   Exactness,
   Nib,
+  NibProfile,
+  NibStop,
   QuillCap,
   QuillJoinKind,
   QuillSpine,
@@ -125,31 +128,97 @@ export function isConstant(profile: WidthProfile): boolean {
 }
 
 /**
+ * The pen at one place along the spine.
+ *
+ * The contrast runs linearly between stops. The angle takes **the short way
+ * round**, which is the whole of the difficulty: a pen going from 350 degrees
+ * to 10 has turned twenty degrees and not three hundred and forty, and a blend
+ * that does not know it turns the letter inside out on the way between. Asked
+ * for a turn of a full circle or more the difference is taken as written, so
+ * somebody who means a whole revolution gets one rather than nothing.
+ */
+export function nibAt(profile: NibProfile, fraction: number): Nib {
+  const plain = (stop: NibStop): Nib => ({
+    contrast: stop.contrast,
+    angle: stop.angle,
+  });
+  if (profile.length === 0) return ROUND_NIB;
+  if (profile.length === 1) return plain(profile[0]);
+  const stops = [...profile].sort((a, b) => a.at - b.at);
+  if (fraction <= stops[0].at) return plain(stops[0]);
+  const last = stops[stops.length - 1];
+  if (fraction >= last.at) return plain(last);
+  for (let index = 1; index < stops.length; index++) {
+    const to = stops[index];
+    if (fraction > to.at) continue;
+    const from = stops[index - 1];
+    const span = to.at - from.at;
+    const across = span <= 0 ? 1 : (fraction - from.at) / span;
+    let turn = to.angle - from.angle;
+    if (Math.abs(turn) < 360) {
+      while (turn > 180) turn -= 360;
+      while (turn < -180) turn += 360;
+    }
+    return {
+      contrast: from.contrast + (to.contrast - from.contrast) * across,
+      angle: from.angle + turn * across,
+    };
+  }
+  return plain(last);
+}
+
+/** True when the profile says one pen, held one way, all the way along. */
+export function isOnePen(profile: NibProfile): boolean {
+  if (profile.length <= 1) return true;
+  const first = profile[0];
+  return profile.every(
+    (stop) =>
+      Math.abs(stop.contrast - first.contrast) < 1e-9 &&
+      Math.abs(stop.angle - first.angle) < 1e-9,
+  );
+}
+
+/**
  * How far the ink stands off the spine at one point, given the nib.
  *
  * With no contrast the nib is a circle and this is half the width whichever way
  * the stroke is heading. With contrast it is an ellipse, and how far it reaches
  * across the stroke depends on the angle between the stroke's heading and the
  * nib's own axis -- which is what gives a broad-edged pen its thicks and thins.
+ *
+ * The quantity wanted is the ellipse's **support** in the direction of the
+ * stroke's normal -- how far the furthest point of the pen stands out that way
+ * -- and not its radius in that direction, which is what this computed for a
+ * long time and which is only the same thing on the two axes themselves. In
+ * between it is badly short. Measured against the boundary a swept ellipse
+ * actually has, a pen a hundred units along by twenty across, run at forty-five
+ * degrees to its own axis, reaches 72.1 units and was being drawn at 27.7. That
+ * is a diagonal at two fifths of the weight it was asked for, which is why the
+ * contrast control was unusable above about a third: every diagonal in the
+ * alphabet collapsed while the stems stayed put.
+ *
+ * A contrast of one is a blade with no thickness across, and is not an error to
+ * be clamped away from -- it is the value a calligrapher reaches for, and the
+ * mark a broad-nib pen leaves when it is set down and drawn straight along its
+ * own edge. The support is nought there rather than undefined, so it needs no
+ * special case.
  */
 export function reachAcross(heading: Vec2, half: number, nib: Nib): number {
-  const contrast = Math.min(Math.max(nib.contrast, 0), 0.95);
+  const contrast = Math.min(Math.max(nib.contrast, 0), 1);
   if (contrast <= 0) return half;
-  const across = half;
-  const along = half * (1 - contrast);
+  /*
+   * The pen's two semi-axes: `wide` in the direction the angle points, `thin`
+   * across it. Naming them by which axis they are rather than by which way the
+   * stroke happens to be running, because the old names said the second and
+   * meant the first.
+   */
+  const wide = half;
+  const thin = half * (1 - contrast);
   // The normal to the stroke, in the nib's own frame.
   const angle = (nib.angle * Math.PI) / 180;
   const normal = leftOf(heading);
   const inNib = Math.atan2(normal.y, normal.x) - angle;
-  /*
-   * The ellipse's radius in the direction of the stroke's normal. Written out
-   * rather than approximated because this is what decides the weight of every
-   * stroke on a face with contrast, and a cheap version of it puts the thin
-   * strokes in the wrong place.
-   */
-  const c = Math.cos(inNib);
-  const s = Math.sin(inNib);
-  return (across * along) / Math.hypot(along * c, across * s);
+  return Math.hypot(wide * Math.cos(inNib), thin * Math.sin(inNib));
 }
 
 // ---------------------------------------------------------------------------
@@ -251,11 +320,12 @@ function meeting(from: Vec2, along: Vec2, to: Vec2, other: Vec2): Vec2 | null {
 function joinAt(
   corner: Corner,
   profile: WidthProfile,
-  nib: Nib,
+  pen: NibProfile,
   side: 1 | -1,
   join: QuillJoinKind,
 ): Vec2[] {
   const half = widthAt(profile, corner.at) / 2;
+  const nib = nibAt(pen, corner.at);
   const before = leftOf(corner.incoming);
   const after = leftOf(corner.outgoing);
   const reachIn = reachAcross(corner.incoming, half, nib);
@@ -327,7 +397,7 @@ function sideOf(
   spine: QuillSpine,
   walk: SpineWalk,
   profile: WidthProfile,
-  nib: Nib,
+  pen: NibProfile,
   side: 1 | -1,
   steps: number,
   corners: Corner[],
@@ -337,7 +407,7 @@ function sideOf(
   let next = 0;
   const joinsUpTo = (fraction: number): void => {
     while (next < corners.length && corners[next].at <= fraction) {
-      points.push(...joinAt(corners[next], profile, nib, side, join));
+      points.push(...joinAt(corners[next], profile, pen, side, join));
       next += 1;
     }
   };
@@ -356,7 +426,7 @@ function sideOf(
     joinsUpTo(fraction);
     const { point, heading } = alongSpine(spine, walk, fraction);
     const half = widthAt(profile, fraction) / 2;
-    const reach = reachAcross(heading, half, nib);
+    const reach = reachAcross(heading, half, nibAt(pen, fraction));
     const normal = leftOf(heading);
     points.push(
       at(point.x + normal.x * reach * side, point.y + normal.y * reach * side),
@@ -432,7 +502,8 @@ function capPoints(
 export function isExact(stroke: QuillStroke): boolean {
   return (
     isConstant(stroke.width) &&
-    stroke.nib.contrast <= 0 &&
+    isOnePen(stroke.nib) &&
+    nibAt(stroke.nib, 0).contrast <= 0 &&
     stroke.spine.segments.every((segment) => segment.kind !== "cubic")
   );
 }
@@ -664,12 +735,12 @@ export function sweep(stroke: QuillStroke, tolerance = TOLERANCE): DrawnStroke {
   const startReach = reachAcross(
     startEnd.heading,
     widthAt(stroke.width, 0) / 2,
-    stroke.nib,
+    nibAt(stroke.nib, 0),
   );
   const finishReach = reachAcross(
     finishEnd.heading,
     widthAt(stroke.width, 1) / 2,
-    stroke.nib,
+    nibAt(stroke.nib, 1),
   );
 
   const nodes: GlyphNode[] = [];

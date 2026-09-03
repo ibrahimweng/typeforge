@@ -10,6 +10,7 @@
 
 import type { Cast } from "./cast";
 import type { Cuts } from "./cuts";
+import type { Written } from "@/quill/written";
 
 export interface Vec2 {
   x: number;
@@ -97,6 +98,17 @@ export interface Glyph {
   cuts?: Cuts;
   /** This glyph's own cast, standing in for the font's on the same terms. */
   cast?: Cast;
+  /**
+   * The strokes this letter was written with, when it was written rather than
+   * drawn.
+   *
+   * Present alongside the contours rather than instead of them, and the
+   * contours are kept in step: they are what these strokes sweep to. So a
+   * written letter is an ordinary letter as far as the proof page, the
+   * exporter, the masters and every path tool are concerned, and only the
+   * things that want to *edit* the pen have to know about this.
+   */
+  written?: Written;
   /** Set when the user has touched this glyph, used for "changed only" export. */
   dirty: boolean;
 }
@@ -364,10 +376,27 @@ export function emptyTypeface(): Typeface {
  * then undoing an edit restores the edit.
  */
 export function cloneGlyph(glyph: Glyph): Glyph {
+  /*
+   * A letter's own cuts, cast and strokes come along, which they did not.
+   *
+   * This is what undo restores from and what a master is copied with, so
+   * anything it drops is quietly deleted by the next edit. It dropped three
+   * things. Cuts and cast were the standing bug -- a letter cut its own way
+   * went back to the font's on the next undo -- and the strokes are the one
+   * that made it worth fixing now: a written letter whose strokes were lost on
+   * undo is a letter that cannot be written.
+   *
+   * Structured clone rather than a hand-written copy for these three, because
+   * they are deep trees of plain data whose shapes change, and a copy written
+   * out by hand goes stale silently the next time a field is added to either.
+   */
   return {
     name: glyph.name,
     unicodes: [...glyph.unicodes],
     advanceWidth: glyph.advanceWidth,
+    cuts: glyph.cuts ? structuredClone(glyph.cuts) : undefined,
+    cast: glyph.cast ? structuredClone(glyph.cast) : undefined,
+    written: glyph.written ? structuredClone(glyph.written) : undefined,
     components: glyph.components.map((component) => ({ ...component, transform: { ...component.transform } })),
     anchors: glyph.anchors.map((anchor) => ({ ...anchor })),
     params: { ...glyph.params },

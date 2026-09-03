@@ -23,7 +23,13 @@ import { linesOf } from "@/quill/typeface";
 import type { Contour, Glyph, VerticalMetrics } from "@/font/types";
 import type { QuillGlyph } from "@/quill/types";
 import type { TracedProject } from "@/project/format";
-import { traceFont, type TraceMessage, type TraceProgress, type Traced } from "@/quill/tracing";
+import {
+  traceFont,
+  type TraceMessage,
+  type TraceProgress,
+  type Traced,
+  type TraceResult,
+} from "@/quill/tracing";
 
 export type { Traced, TraceProgress } from "@/quill/tracing";
 
@@ -76,6 +82,17 @@ export interface QuillDocument {
   /** Where the letters came from, for the panel to say. */
   from: string;
   /**
+   * The pen this font reads as having been written with, if one explains it.
+   *
+   * Read out of the whole alphabet at once and reported rather than applied,
+   * for the reasons `tracing.ts` sets out beside the measurement. Worth saying
+   * even so: "this face reads as a pen held at ten degrees with a blade of
+   * 0.38" is a fact about the drawing that somebody about to reshape it wants,
+   * and it is the difference between a slider they are guessing with and one
+   * they know what to do with.
+   */
+  hand: { contrast: number; angle: number; flatter: number } | null;
+  /**
    * What the font going out is called.
    *
    * Separate from `from`, and it has to be. `from` is the file the strokes were
@@ -125,6 +142,7 @@ const EMPTY: QuillDocument = {
   letters: [],
   style: { ...PLAIN_HAND },
   from: "",
+  hand: null,
   name: "",
   unitsPerEm: 1000,
 };
@@ -230,7 +248,7 @@ class QuillStore {
     const mine = this.reading;
     this.set({ progress: { done: 0, total: 0, letter: "" }, trouble: null, routed });
 
-    const arrived = (result: { letters: Traced[]; unitsPerEm: number }) => {
+    const arrived = (result: TraceResult) => {
       if (mine !== this.reading) return;
       if (result.letters.length === 0) {
         this.set({ progress: null, trouble: "Nothing in that font came back as strokes." });
@@ -243,6 +261,13 @@ class QuillStore {
           letters: result.letters,
           style: { ...PLAIN_HAND },
           from: name,
+          hand: result.hand
+            ? {
+                contrast: result.hand.contrast,
+                angle: result.hand.angle,
+                flatter: 1 - result.hand.spread / result.hand.roundSpread,
+              }
+            : null,
           // A first guess rather than a decision: the source file's name with
           // "Traced" on it, so the field is never empty and never silently the
           // other font's name either.
@@ -418,6 +443,13 @@ class QuillStore {
       letters,
       style: { ...PLAIN_HAND, ...(saved.style as unknown as Partial<QuillStyle>) },
       from: saved.from,
+      /*
+       * Not saved, and read again would need the source font, which a project
+       * file does not carry. Null rather than a stale reading: the pen is a
+       * measurement of the font that was traced, and a number from a font
+       * somebody no longer has is worse than none.
+       */
+      hand: null,
       name: saved.name,
       unitsPerEm: saved.unitsPerEm || 1000,
     });

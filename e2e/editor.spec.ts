@@ -4567,3 +4567,208 @@ test("a tool says what it is for the moment it is picked up", async ({ page }) =
   await takeUp("select", "select");
   await expect(page.locator("[data-tool-says]")).toHaveText(/Select one point/);
 });
+
+/**
+ * Writing a letter with a pen, which is the fourth way into a letterform.
+ *
+ * The other three each ask for something a person may not have: the forge gives
+ * no way back to your own letter because you never touched it, Trace needs the
+ * font you are trying to make, and the outline tools need the one skill this is
+ * meant to make unnecessary. This one asks what a calligrapher already knows --
+ * draw the line down the middle and let the pen have the width.
+ *
+ * Driven through the palette and the canvas rather than through the store,
+ * because the whole claim is that a person can do it.
+ */
+test("writes a letter with a pen, down the middle", async ({ page }) => {
+  await page.goto("/");
+  await startBlank(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  // A blank font has no letters, so there is nothing to write on until one is
+  // made. This is the state somebody starting a font from nothing is in.
+  await page.getByRole("button", { name: "New letter" }).first().click();
+  await page.waitForTimeout(400);
+
+  const canvas = page.locator("canvas").first();
+  const box = (await canvas.boundingBox())!;
+  const at = (x: number, y: number) => ({ x: box.x + x, y: box.y + y });
+
+  await takeUpTool(page, "write", "skeleton");
+  await expect(page.locator("[data-tool-says]")).toHaveText(/down the middle of the letter/);
+
+  // The pen's three numbers are there before anything is drawn, because the
+  // pen is what somebody sets first.
+  await expect(page.locator("[data-pen-panel]")).toBeVisible();
+  await expect(page.locator("[data-pen-scope]")).toHaveText("for the next stroke");
+
+  const blank = await measureInk(page);
+
+  /*
+   * Three clicks down the middle of the letter, which is a stem with a bend.
+   * The ink appears from the second: one point is a place and two are a stroke.
+   */
+  const first = at(box.width * 0.35, box.height * 0.7);
+  await page.mouse.click(first.x, first.y);
+  await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.45);
+  await page.mouse.click(box.x + box.width * 0.55, box.y + box.height * 0.25);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+
+  const written = await measureInk(page);
+  expect(written).toBeGreaterThan(blank);
+
+  /*
+   * And the pen can be taken hold of and turned, which is the thing three
+   * numbers cannot teach. Picking up the pen tool shows an ellipse at every
+   * point that was put down; clicking one puts it in the panel.
+   */
+  await takeUpTool(page, "write", "nib");
+  await expect(page.locator("[data-tool-says]")).toHaveText(/pen/);
+
+  await page.mouse.click(first.x, first.y);
+  await page.waitForTimeout(200);
+  await expect(page.locator("[data-pen-scope]")).toHaveText(/stroke 1, point 1/);
+
+  // Turned at one point only, the pen now turns along the stroke -- and the
+  // panel says so, which is how somebody knows the letter is doing it.
+  await expect(page.locator("[data-pen-along]")).toHaveText(/held the same way/);
+  const angle = page.locator("[data-pen-panel]").getByRole("textbox", { name: "Angle" });
+  await angle.fill("110");
+  await angle.press("Enter");
+  await page.waitForTimeout(300);
+  await expect(page.locator("[data-pen-along]")).toHaveText(/turns from/);
+
+  const turned = await measureInk(page);
+  // Turning the pen moves ink. Nothing else about the stroke changed.
+  expect(Math.abs(turned - written)).toBeGreaterThan(0);
+});
+
+/**
+ * Three named pens, and one edit that reaches every letter using one.
+ *
+ * This is the answer to the complaint that making a font here needed too much
+ * technical know-how. An alphabet looks like one family because its letters
+ * share a few pens, and keeping forty sets of numbers in line by hand is
+ * exactly the expertise nobody should need. So the pen is named, the letters
+ * follow it, and changing it changes them.
+ */
+test("names a pen, and one change reaches every letter using it", async ({ page }) => {
+  await page.goto("/");
+  await startBlank(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await page.getByRole("button", { name: "New letter" }).first().click();
+  await page.waitForTimeout(400);
+
+  const canvas = page.locator("canvas").first();
+  const box = (await canvas.boundingBox())!;
+  await takeUpTool(page, "write", "skeleton");
+
+  // The pens a written alphabet starts with are real hands, not placeholders.
+  await expect(page.locator("[data-saved-pen='textura']")).toHaveText(/Textura/);
+  await expect(page.locator("[data-saved-pen='textura']")).toHaveText(/40°/);
+
+  // Write with the Textura pen, so the stroke follows it rather than holding
+  // its own numbers.
+  await page.locator("[data-saved-pen='textura']").click();
+  await expect(page.locator("[data-saved-pen='textura']")).toHaveAttribute("data-on", "true");
+  await expect(page.locator("[data-pen-follows]")).toHaveText(/every stroke written with it/);
+
+  await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.3);
+  await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.7);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+  const written = await measureInk(page);
+  expect(written).toBeGreaterThan(0);
+
+  /*
+   * Now change the pen itself. Typing into the fields while a pen is being
+   * followed changes the pen, which is what makes one edit reach an alphabet --
+   * and the status line says how many letters moved, so it is not a silent act.
+   */
+  const width = page
+    .locator("[data-pen-panel]")
+    .getByRole("textbox", { name: "Width", exact: true });
+  await width.fill("160");
+  await width.press("Enter");
+  await page.waitForTimeout(400);
+
+  const heavier = await measureInk(page);
+  expect(heavier).toBeGreaterThan(written);
+  // And the saved pen itself now reads 160, so the row and the letter agree.
+  await expect(page.locator("[data-saved-pen='textura']")).toHaveText(/160/);
+
+  /*
+   * And a stroke that has to be its own can be freed, after which the saved
+   * pen no longer moves it. That is the escape hatch that makes following safe
+   * to do by default.
+   */
+  await takeUpTool(page, "write", "nib");
+  await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.3);
+  await page.waitForTimeout(200);
+  await expect(page.locator("[data-pen-scope]")).toHaveText(/stroke 1/);
+  await page.locator("[data-free-pen]").click();
+  await page.waitForTimeout(200);
+  await expect(page.locator("[data-pen-follows]")).toHaveCount(0);
+});
+
+/**
+ * Taking a written letter's ink, and putting it back.
+ *
+ * This is what makes writing safe to start with: it does not have to be able
+ * to draw everything, because the fourteen outline tools are one button away.
+ * Write the letter, take its ink, fix the one curve that is wrong.
+ *
+ * And the way back is kept for exactly as long as it is true. Every other tool
+ * with an Expand tells its users to save a copy first and leaves them with
+ * undo; here the button is there until the outlines are edited by hand, and
+ * then it is gone rather than offering to throw the edit away.
+ */
+test("takes a written letter's ink, and gives it back until it is edited", async ({ page }) => {
+  await page.goto("/");
+  await startBlank(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await page.getByRole("button", { name: "New letter" }).first().click();
+  await page.waitForTimeout(400);
+
+  const canvas = page.locator("canvas").first();
+  const box = (await canvas.boundingBox())!;
+  await takeUpTool(page, "write", "skeleton");
+
+  // Nothing to take before anything is written.
+  await expect(page.locator("[data-expand]")).toHaveCount(0);
+
+  await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.3);
+  await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.7);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+  const written = await measureInk(page);
+
+  await expect(page.locator("[data-expand]")).toBeVisible();
+  await page.locator("[data-expand]").click();
+  await page.waitForTimeout(300);
+
+  // The ink is the same ink: taking it changes nothing about the drawing.
+  expect(Math.abs((await measureInk(page)) - written)).toBeLessThan(written * 0.02);
+  // And the pen says so rather than pretending it still moves the letter.
+  await expect(page.locator("[data-pen-expanded]")).toHaveText(/no longer moves it/);
+  await expect(page.locator("[data-unexpand]")).toBeVisible();
+
+  // Back to strokes, and the pen moves it again.
+  await page.locator("[data-unexpand]").click();
+  await page.waitForTimeout(300);
+  await expect(page.locator("[data-pen-expanded]")).toHaveCount(0);
+  await expect(page.locator("[data-expand]")).toBeVisible();
+
+  /*
+   * Take it again, then edit the outlines by hand. The way back goes, because
+   * putting it back would re-sweep and throw the edit away.
+   */
+  await page.locator("[data-expand]").click();
+  await page.waitForTimeout(200);
+  await takeUpTool(page, "select", "select");
+  await page.locator("[data-panel-section='params']").first().waitFor();
+  await page.getByRole("button", { name: "Flip", exact: false }).first().click();
+  await page.waitForTimeout(400);
+  await takeUpTool(page, "write", "skeleton");
+  await expect(page.locator("[data-unexpand]")).toHaveCount(0);
+});

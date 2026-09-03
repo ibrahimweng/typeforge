@@ -70,7 +70,8 @@ const SHORTCUTS: Array<[string, string]> = [
   ["P", "Pen tools — again for freehand, add, delete, convert"],
   ["R", "Shape tools — again for ellipse, polygon"],
   ["K", "Knife tools — again for scissors"],
-  ["Escape", "Finish the outline you are drawing"],
+  ["W", "Write with a pen — again for freehand, then the pen itself"],
+  ["Escape", "Finish the outline or the stroke you are drawing"],
   ["Enter", "Finish it by closing it"],
   /*
    * The pen's own gesture, in the shortcut list because that is where somebody

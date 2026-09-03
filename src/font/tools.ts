@@ -59,6 +59,12 @@ export interface Under {
   shape: boolean;
   /** The point the pen last placed, which a click would take the handle off. */
   lastPoint: boolean;
+  /** A pen handle of a written stroke, for the nib tool to take hold of. */
+  penHandle: boolean;
+  /** Whether this letter has any written strokes at all, for the nib tool. */
+  written: boolean;
+  /** Whether a written stroke is open and waiting for more points. */
+  strokeOpen: boolean;
 }
 
 /** Nothing under the pointer, for the callers that have not looked yet. */
@@ -71,6 +77,9 @@ export const NOTHING_UNDER: Under = {
   edge: false,
   shape: false,
   lastPoint: false,
+  penHandle: false,
+  written: false,
+  strokeOpen: false,
 };
 
 /** What a gesture in progress amounts to, if there is one. */
@@ -86,6 +95,10 @@ export interface Doing {
     | "knife"
     | "freehand"
     | "pen"
+    | "writePull"
+    | "penHandle"
+    | "strokePoint"
+    | "writeTrail"
     | "lasso";
   /** For the knife: whether the line as drawn crosses anything. */
   wouldCut?: boolean;
@@ -210,6 +223,50 @@ export function toolStateFor(
         ? { phase: "ready", says: "Drag a line right across a shape to cut it in two." }
         : { phase: "idle", says: "Nothing to cut here. The line has to cross a shape." };
 
+    /*
+     * Writing, which is the one tool here that makes a letter rather than
+     * editing one.
+     *
+     * The sentence has to carry the idea, because the idea is the unfamiliar
+     * part: the line being drawn is not the edge of the letter, it is the
+     * middle of it, and the ink comes from the pen. Somebody who reads this as
+     * an outline tool draws a wire frame and concludes it is broken.
+     */
+    case "skeleton":
+      if (under.strokeOpen)
+        return under.closingPoint
+          ? { phase: "willDo", says: "Click to close the stroke into a loop." }
+          : {
+              phase: "active",
+              says: "Writing. Click for a corner, pull for a curve. Escape finishes.",
+            };
+      return {
+        phase: "ready",
+        says: "Draw the line down the middle of the letter. The pen fills it in.",
+      };
+
+    case "skeletonFreehand":
+      return {
+        phase: "ready",
+        says: "Write the line in one movement, down the middle of the letter.",
+      };
+
+    /*
+     * And turning the pen, which can only take hold of a stroke already there.
+     */
+    case "nib":
+      if (!under.written)
+        return {
+          phase: "idle",
+          says: "Nothing written here yet. Write a stroke first, then the pen appears on it.",
+        };
+      return under.penHandle
+        ? {
+            phase: "willDo",
+            says: "Drag the end to change the pen's width, or off it to turn the pen.",
+          }
+        : { phase: "ready", says: "Take hold of one of the pen's ends to change it." };
+
     case "scissors":
       return under.node || under.edge
         ? { phase: "willDo", says: "Click to open the shape here, leaving the ends loose." }
@@ -261,6 +318,27 @@ function whileDoing(tool: ToolId, doing: Doing, held: Held): ToolState {
       return doing.wouldCut
         ? { phase: "willDo", says: "Let go to cut here." }
         : { phase: "active", says: "Not across anything yet. The line has to cross a shape." };
+    /*
+     * Writing, mid-gesture. The same three sentences the outline tools use for
+     * the same three gestures, so the two halves of the editor sound like one
+     * thing.
+     */
+    case "writePull":
+      return doing.pulling
+        ? { phase: "active", says: "Pulling the stroke's curve out. Let go to keep it." }
+        : { phase: "active", says: "Let go for a corner, or pull to curve out of it." };
+    case "writeTrail":
+      return { phase: "active", says: "Writing. Let go and the pen follows the line." };
+    case "penHandle":
+      return {
+        phase: "active",
+        says: held.shift
+          ? "Turning the pen, held to fifteen degrees."
+          : "Out from the middle makes the pen wider; round makes it turn. Shift holds the angle.",
+      };
+    case "strokePoint":
+      return { phase: "active", says: "Moving the stroke. The ink follows it." };
+
     case "pen":
       /*
        * The gesture that makes a curve rather than a corner: hold and pull, and
@@ -332,5 +410,16 @@ export function cursorFor(tool: ToolId, state: ToolState, dragging: boolean): st
 
     case "knife":
       return state.phase === "idle" ? "cursor-not-allowed" : "cursor-crosshair";
+
+    /*
+     * Writing crosses, as the pen does, because it draws where you put it.
+     * Turning a pen points, because it can only take hold of one already there.
+     */
+    case "skeleton":
+      return state.phase === "willDo" ? "cursor-pointer" : "cursor-crosshair";
+    case "skeletonFreehand":
+      return "cursor-cell";
+    case "nib":
+      return state.phase === "idle" ? "cursor-not-allowed" : "cursor-grab";
   }
 }

@@ -122,15 +122,63 @@ export type WidthProfile = WidthStop[];
  * which axis, exactly as the forge's pen does; the profile then scales what
  * that pen is doing at each point along the stroke. With no contrast the nib is
  * a circle and the profile is the whole story.
+ *
+ * The width profile gives the axis the pen is held *along*. `contrast` gives
+ * the axis across it, as `width * (1 - contrast)`. So the two axes are set
+ * independently without a second profile to keep in step: press harder and both
+ * grow, add contrast and only the one across narrows.
  */
 export interface Nib {
-  /** Nought is a round pen. Up to one narrows it to a line across one axis. */
+  /** Nought is a round pen. One narrows it to a blade with no thickness. */
   contrast: number;
   /** Degrees. Zero is broadest vertically, thinning the horizontals. */
   angle: number;
 }
 
 export const ROUND_NIB: Nib = { contrast: 0, angle: 0 };
+
+/**
+ * The pen at one place along the spine, as a `WidthStop` is the width there.
+ *
+ * A pen that turns in the hand as the stroke travels is Noordzij's third way of
+ * making a letter, beside moving the pen and changing its size, and it is half
+ * of what makes a Roundhand or a Ruqaa look written rather than drawn. It was
+ * missing: the nib hung off the stroke and was one pen for the whole of it, so
+ * a stroke could swell, and could be held at an angle, and could not turn.
+ *
+ * Positioned by arc length for the same reason the width is, and it is the
+ * reason these are stops on the spine rather than values on its nodes -- which
+ * is where the pen sits in every other engine that has this. A stop halfway
+ * along is halfway along the *ink*. It stays where it was put when a handle
+ * moves, and the pen may change somewhere the spine has no node, which is what
+ * a hand does: nothing about turning the pen says the stroke must bend there.
+ */
+export interface NibStop extends Nib {
+  /** Nought at the start of the whole spine, one at its end, by length. */
+  at: number;
+  /**
+   * The saved pen this stop follows, by id, if it follows one.
+   *
+   * A stop that names a pen takes its values from that pen and its own
+   * `contrast` and `angle` are only a fallback for a pen that has been deleted.
+   * `penOf` in `written.ts` is the one place that resolves it, and nothing else
+   * should read the two fields directly on a stop that has a name.
+   */
+  pen?: string;
+}
+
+/**
+ * The pen along a stroke.
+ *
+ * One stop is a pen held the same way from end to end, which is every stroke
+ * the tracer recovers and every stroke this engine could describe before.
+ * Between stops the contrast runs linearly and the angle takes the short way
+ * round.
+ */
+export type NibProfile = NibStop[];
+
+/** A round pen, held nowhere in particular, all the way along. */
+export const ROUND_PEN: NibProfile = [{ at: 0, contrast: 0, angle: 0 }];
 
 // ---------------------------------------------------------------------------
 // Strokes
@@ -190,7 +238,8 @@ export interface QuillStroke {
   spine: QuillSpine;
   /** At least one stop. One stop is a stroke of constant width. */
   width: WidthProfile;
-  nib: Nib;
+  /** At least one stop. One stop is a pen held the same way all the way along. */
+  nib: NibProfile;
   start: QuillCap;
   end: QuillCap;
   /**
