@@ -17,7 +17,7 @@ import { freeNameNear, hasLetters } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";
 import { tile } from "@/components/controls";
 import { CoachMark } from "@/components/CoachMark";
-import { Weights } from "@/components/Weights";
+import { Versions } from "@/components/Versions";
 import { glyphAcross, lettersThatCannotVary } from "@/font/master";
 import { cn } from "@/ui/lib/utils";
 
@@ -158,7 +158,7 @@ export function FontGridView(): React.JSX.Element {
         rather than about a letter. One quiet line, always -- a feature nobody
         can see is a feature nobody has.
       */}
-      <Weights />
+      <Versions />
       <div className="flex items-center gap-3 border-b border-border px-4 py-2.5">
         <input
           value={state.search}
@@ -308,13 +308,15 @@ interface GlyphCellProps {
    */
   stuck: boolean;
   /**
-   * Where on the weight axis to draw this letter, or null for as it is drawn.
+   * Where in the design space to draw this letter, or null for as it is drawn.
    *
-   * A number rather than the masters, for the reason the props above are the
-   * shape they are: a component handed the document re-renders whenever any of
-   * it moves, and there are eighty of these on screen.
+   * The location rather than the masters, for the reason the props above are
+   * the shape they are: a component handed the document re-renders whenever any
+   * of it moves, and there are eighty of these on screen. The object identity
+   * is stable between renders because the store only replaces it when the
+   * slider moves.
    */
-  preview: number | null;
+  preview: Record<string, number> | null;
 }
 
 const GlyphCell = React.memo(function GlyphCell({

@@ -18,9 +18,96 @@
  */
 
 import { cloneGlyph, type Glyph, type Typeface, type Vec2 } from "./types";
+import { normalise, regionOf, scalarAt, type Axis } from "./variable";
 
 /** The axis a second weight sits on, as the format numbers it. */
 export const WGHT = "wght";
+
+/**
+ * The axes a person can add a version along, and what each is called.
+ *
+ * Four-letter tags because that is what the format registers and what every
+ * reader looks for; the labels are what goes in the interface and into `name`.
+ * `normal` is where a typeface sits when nobody has said otherwise, and `step`
+ * is what the number field nudges by -- five units of width is a visible change
+ * and one unit is not.
+ *
+ * `second` is where a second version along this axis usually goes and what the
+ * trade calls it, and the two belong together rather than being worked out
+ * separately. The first version of this reasoned its way to a direction --
+ * away from the middle, towards whichever side had more room -- and put the
+ * width axis at 125 while calling it Condensed, which means the opposite. It
+ * would have got the slant backwards too: an italic lean is a *negative* slnt,
+ * and the room either side of nought is equal.
+ *
+ * Registered tags only. A custom axis is four letters of somebody's own and a
+ * perfectly good thing to want; it is also a thing readers do nothing with
+ * unless the font says what it means, so it is not offered here.
+ */
+export const AXES: ReadonlyArray<{
+  tag: string;
+  label: string;
+  normal: number;
+  min: number;
+  max: number;
+  step: number;
+  second: { at: number; name: string };
+}> = [
+  { tag: "wght", label: "Weight", normal: 400, min: 1, max: 1000, step: 50, second: { at: 700, name: "Bold" } },
+  { tag: "wdth", label: "Width", normal: 100, min: 25, max: 200, step: 5, second: { at: 75, name: "Condensed" } },
+  { tag: "slnt", label: "Slant", normal: 0, min: -90, max: 90, step: 2, second: { at: -12, name: "Italic" } },
+  { tag: "opsz", label: "Optical size", normal: 14, min: 5, max: 144, step: 2, second: { at: 60, name: "Display" } },
+];
+
+/** What a tag is called on screen, and what it does when nobody has said. */
+export function axisSpec(tag: string): (typeof AXES)[number] {
+  return (
+    AXES.find((one) => one.tag === tag) ?? {
+      tag,
+      label: tag,
+      normal: 0,
+      min: -1000,
+      max: 1000,
+      step: 1,
+      second: { at: 1, name: tag },
+    }
+  );
+}
+
+/**
+ * The axes this typeface varies on, read off where its versions sit.
+ *
+ * Not a second list to keep in step. An axis exists because something was drawn
+ * away from the middle of it, its ends are the furthest anything was drawn, and
+ * its default is where the first version stands -- which is the same version
+ * `gvar` stores everything else as a difference from. A document cannot then
+ * claim an axis it has no drawing for, which is the way this goes wrong: a
+ * `wdth` in `fvar` with no master to reach it is a slider that does nothing.
+ */
+export function axesOf(masters: Master[]): Axis[] {
+  const tags: string[] = [];
+  for (const master of masters) {
+    for (const tag of Object.keys(master.at)) if (!tags.includes(tag)) tags.push(tag);
+  }
+
+  const axes: Axis[] = [];
+  for (const tag of tags) {
+    const spec = axisSpec(tag);
+    const places = masters.map((one) => one.at[tag] ?? spec.normal);
+    const min = Math.min(...places);
+    const max = Math.max(...places);
+    // An axis nothing was drawn away from is not an axis.
+    if (min === max) continue;
+    axes.push({
+      tag,
+      label: spec.label,
+      min,
+      default: masters[0]?.at[tag] ?? spec.normal,
+      max,
+    });
+  }
+  return axes;
+}
 
 export interface Master {
   /** Stable through renaming, so the chips and the store agree about which. */
@@ -305,95 +392,114 @@ export function lettersThatCannotVary(masters: Master[]): Set<string> {
 }
 
 /**
- * The same letter somewhere between the weights it was drawn at.
+ * The same letter somewhere between the versions it was drawn at.
  *
  * The point of drawing two: everything between them is a font as well, and
- * until you can see one you are drawing the ends of an axis on faith. A reader
- * will show a person 437 as readily as 400, so 437 is worth looking at.
+ * until you can see one you are drawing the corners of a design space on faith.
+ * A reader will show a person 437 as readily as 400, so 437 is worth looking at.
  *
- * Straight lines between the bracketing pair, which is exactly what the format
- * does along one axis: `gvar` stores each master as a difference from the
- * default and a reader scales that difference by how far along it is. With more
- * than two weights the pair either side of the position is the pair that
- * matters, and the ones beyond them do not enter into it.
+ * This is the reader's own arithmetic rather than an approximation of it: the
+ * default's drawing, plus each other version's difference from it scaled by how
+ * much that version has to say here. The scale comes from `scalarAt`, which is
+ * built on the same `normalise` and `regionOf` that `gvar` is written from, so
+ * the letter on screen and the letter in the file are the same computation and
+ * not two readings of one specification.
  *
- * Answers null where there is nothing to draw between -- one weight, or a
- * letter whose drawings do not line up. The second is not a failure to report
- * here: `whyItCannotVary` reports it, in words, on the letter.
+ * It replaced a straight line between the pair either side, which was right and
+ * only right along one axis. Two axes are not a line: a Condensed says nothing
+ * about weight and applies at every weight, which is a product of tents rather
+ * than a walk along a row -- and it is what makes a design space a star rather
+ * than a grid, so a Bold Condensed need never be drawn.
+ *
+ * A version whose drawing does not line up is left out, exactly as `buildGvar`
+ * leaves it out: the letter still varies with whatever agrees, and M2 is what
+ * says so on the letter. Where nothing agrees the default's own drawing stands,
+ * which is what the exported font does with the same letter.
  */
-export function glyphAcross(name: string, masters: Master[], at: number): Glyph | null {
+export function glyphAcross(
+  name: string,
+  masters: Master[],
+  at: Record<string, number>,
+): Glyph | null {
   if (masters.length < 2) return null;
-  const sorted = [...masters].sort((one, two) => (one.at[WGHT] ?? 400) - (two.at[WGHT] ?? 400));
+  const axes = axesOf(masters);
+  if (axes.length === 0) return null;
 
-  const drawn = sorted
-    .map((master) => {
-      const index = master.typeface.glyphIndex.get(name);
-      return index === undefined
-        ? null
-        : { at: master.at[WGHT] ?? 400, glyph: master.typeface.glyphs[index] };
-    })
-    .filter((one): one is { at: number; glyph: Glyph } => one !== null);
-  if (drawn.length < 2) return null;
+  const index = masters[0].typeface.glyphIndex.get(name);
+  if (index === undefined) return null;
+  const base = masters[0].typeface.glyphs[index];
 
-  // Outside the drawn range the nearest end stands, rather than the shape being
-  // extrapolated into one nobody drew.
-  if (at <= drawn[0].at) return drawn[0].glyph;
-  if (at >= drawn[drawn.length - 1].at) return drawn[drawn.length - 1].glyph;
-
-  let low = drawn[0];
-  let high = drawn[drawn.length - 1];
-  for (let index = 0; index < drawn.length - 1; index += 1) {
-    if (at >= drawn[index].at && at <= drawn[index + 1].at) {
-      low = drawn[index];
-      high = drawn[index + 1];
-      break;
-    }
+  const here = normalise(axes, at);
+  const others: Array<{ glyph: Glyph; scalar: number }> = [];
+  for (const master of masters.slice(1)) {
+    const found = master.typeface.glyphIndex.get(name);
+    if (found === undefined) continue;
+    const glyph = master.typeface.glyphs[found];
+    if (!agrees(base, glyph)) continue;
+    const scalar = scalarAt(regionOf(axes, master.at, masters), here);
+    if (scalar !== 0) others.push({ glyph, scalar });
   }
-  if (!agrees(low.glyph, high.glyph)) return null;
+  if (others.length === 0) return base;
 
-  const span = high.at - low.at;
-  const t = span === 0 ? 0 : (at - low.at) / span;
-  return blend(low.glyph, high.glyph, t);
+  return moved(base, others);
 }
 
-/** Two drawings of one letter, mixed. Assumes they agree; `agrees` says so. */
-function blend(one: Glyph, other: Glyph, t: number): Glyph {
-  const mix = (a: number, b: number): number => a + (b - a) * t;
-  const point = (a: Vec2, b: Vec2): Vec2 => ({ x: mix(a.x, b.x), y: mix(a.y, b.y) });
-  const handle = (a: Vec2 | null, b: Vec2 | null): Vec2 | null =>
-    a && b ? point(a, b) : a ? { ...a } : b ? { ...b } : null;
+/**
+ * The default's drawing with every other version's difference added in, each
+ * scaled by how much it has to say here.
+ *
+ * Assumes every glyph handed in lines up with the base; `agrees` is what says
+ * so, and `glyphAcross` above asks it first.
+ */
+function moved(base: Glyph, others: Array<{ glyph: Glyph; scalar: number }>): Glyph {
+  const sum = (read: (glyph: Glyph) => number): number => {
+    let total = read(base);
+    for (const other of others) total += (read(other.glyph) - read(base)) * other.scalar;
+    return total;
+  };
+
+  const point = (read: (glyph: Glyph) => Vec2): Vec2 => ({
+    x: sum((glyph) => read(glyph).x),
+    y: sum((glyph) => read(glyph).y),
+  });
 
   return {
-    ...one,
-    advanceWidth: mix(one.advanceWidth, other.advanceWidth),
-    contours: one.contours.map((contour, at) => ({
+    ...base,
+    advanceWidth: sum((glyph) => glyph.advanceWidth),
+    contours: base.contours.map((contour, at) => ({
       closed: contour.closed,
       nodes: contour.nodes.map((node, index) => {
-        const twin = other.contours[at].nodes[index];
+        const of = (glyph: Glyph): (typeof node) => glyph.contours[at].nodes[index];
         return {
-          point: point(node.point, twin.point),
-          handleIn: handle(node.handleIn, twin.handleIn),
-          handleOut: handle(node.handleOut, twin.handleOut),
-          // The node's kind belongs to the drawing rather than to the position
-          // between two of them, and both drawings claim it. The first wins.
+          point: point((glyph) => of(glyph).point),
+          /*
+           * A handle only moves where every version has one. Two drawings that
+           * agree about their points can still disagree about whether a node is
+           * curved, and half a handle is not a shape.
+           */
+          handleIn: others.every((other) => of(other.glyph).handleIn) && node.handleIn
+            ? point((glyph) => of(glyph).handleIn!)
+            : node.handleIn && { ...node.handleIn },
+          handleOut: others.every((other) => of(other.glyph).handleOut) && node.handleOut
+            ? point((glyph) => of(glyph).handleOut!)
+            : node.handleOut && { ...node.handleOut },
+          // The node's kind belongs to the drawing rather than to a place
+          // between drawings, and every version claims it. The default wins.
           type: node.type,
         };
       }),
     })),
-    components: one.components.map((component, at) => {
-      const twin = other.components[at];
-      return {
-        glyphName: component.glyphName,
-        transform: {
-          a: mix(component.transform.a, twin.transform.a),
-          b: mix(component.transform.b, twin.transform.b),
-          c: mix(component.transform.c, twin.transform.c),
-          d: mix(component.transform.d, twin.transform.d),
-          dx: mix(component.transform.dx, twin.transform.dx),
-          dy: mix(component.transform.dy, twin.transform.dy),
-        },
-      };
-    }),
-    anchors: one.anchors.map((anchor) => ({ ...anchor })),
+    components: base.components.map((component, at) => ({
+      glyphName: component.glyphName,
+      transform: {
+        a: sum((glyph) => glyph.components[at].transform.a),
+        b: sum((glyph) => glyph.components[at].transform.b),
+        c: sum((glyph) => glyph.components[at].transform.c),
+        d: sum((glyph) => glyph.components[at].transform.d),
+        dx: sum((glyph) => glyph.components[at].transform.dx),
+        dy: sum((glyph) => glyph.components[at].transform.dy),
+      },
+    })),
+    anchors: base.anchors.map((anchor) => ({ ...anchor })),
   };
 }

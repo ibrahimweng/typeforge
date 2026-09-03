@@ -26,7 +26,7 @@ import { describe, expect, it } from "vitest";
 
 import { exportFont } from "../src/font/export";
 import { masterFrom, soleMaster, WGHT } from "../src/font/master";
-import { varyByDrawnWeights } from "../src/font/masters";
+import { varyByDrawnVersions } from "../src/font/masters";
 import { importFont } from "../src/font/parse";
 import { FONT_SUITE_TIMEOUT } from "./fixtures";
 import { hasFontTools, inspectVariable } from "./fonttools";
@@ -87,7 +87,7 @@ suite("a font shipped from the weights somebody drew", () => {
       }
     }
 
-    const variable = varyByDrawnWeights([regular, bold]);
+    const variable = varyByDrawnVersions([regular, bold]);
     expect(variable, "two drawn weights should make an axis").not.toBeNull();
     return await exportFont(typeface, {
       format: "ttf",

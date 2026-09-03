@@ -1421,7 +1421,7 @@ describe("more than one weight in a document", () => {
   });
 
   it("adds a second at the far end of the axis and goes to it", () => {
-    const id = store.addMaster("Bold");
+    const id = store.addMaster();
     const state = store.getSnapshot();
     expect(id).not.toBeNull();
     expect(state.masters).toHaveLength(2);
@@ -1432,7 +1432,7 @@ describe("more than one weight in a document", () => {
 
   it("a letter drawn in one weight leaves the other alone", () => {
     const regular = store.getSnapshot().masters[0];
-    store.addMaster("Bold");
+    store.addMaster();
     store.editGlyph("a", "Widen", (one) => {
       one.advanceWidth = 900;
     });
@@ -1444,7 +1444,7 @@ describe("more than one weight in a document", () => {
 
   it("a letter added in one weight arrives in all of them", () => {
     const regular = store.getSnapshot().masters[0];
-    store.addMaster("Bold");
+    store.addMaster();
     store.addGlyph("c");
 
     expect(store.glyph("c")).not.toBeNull();
@@ -1455,7 +1455,7 @@ describe("more than one weight in a document", () => {
 
   it("and taking it out again takes it out of all of them", () => {
     const regular = store.getSnapshot().masters[0];
-    store.addMaster("Bold");
+    store.addMaster();
     store.addGlyph("c");
     store.removeGlyph("c");
 
@@ -1465,7 +1465,7 @@ describe("more than one weight in a document", () => {
 
   it("kerning is one set of pairs for the whole font", () => {
     const regular = store.getSnapshot().masters[0];
-    store.addMaster("Bold");
+    store.addMaster();
     store.setKerning("a", "b", -40);
     /*
      * Shared rather than copied, because the format writes one `GPOS` for the
@@ -1477,14 +1477,14 @@ describe("more than one weight in a document", () => {
   });
 
   it("refuses a name or a place another weight is already using", () => {
-    store.addMaster("Bold");
+    store.addMaster();
     const [regular, bold] = store.getSnapshot().masters;
 
     expect(store.nameMaster(bold.id, regular.name)).toBe(false);
     expect(store.getSnapshot().masters[1].name).toBe("Bold");
     // Two masters at one place on an axis is a font that cannot be built.
-    expect(store.placeMaster(bold.id, regular.at.wght)).toBe(false);
-    expect(store.placeMaster(bold.id, 850)).toBe(true);
+    expect(store.placeMaster(bold.id, "wght", regular.at.wght)).toBe(false);
+    expect(store.placeMaster(bold.id, "wght", 850)).toBe(true);
     expect(store.getSnapshot().masters[1].at.wght).toBe(850);
   });
 
@@ -1492,7 +1492,7 @@ describe("more than one weight in a document", () => {
     const [regular] = store.getSnapshot().masters;
     expect(store.removeMaster(regular.id)).toBe(false);
 
-    const bold = store.addMaster("Bold")!;
+    const bold = store.addMaster()!;
     expect(store.getSnapshot().master).toBe(bold);
     expect(store.removeMaster(bold)).toBe(true);
     expect(store.getSnapshot().masters).toHaveLength(1);

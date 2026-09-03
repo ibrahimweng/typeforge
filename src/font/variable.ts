@@ -320,11 +320,17 @@ interface Tuple {
   deltas: Array<{ x: number; y: number }>;
 }
 
-function regionOf(
+export interface Region {
+  peak: number[];
+  start: number[];
+  end: number[];
+}
+
+export function regionOf(
   axes: Axis[],
   at: Record<string, number>,
   all: Array<{ at: Record<string, number> }>,
-): { peak: number[]; start: number[]; end: number[] } {
+): Region {
   const peak = normalise(axes, at);
   const start = peak.map(() => 0);
   const end = peak.map(() => 0);
@@ -483,4 +489,34 @@ export function buildStat(axes: Axis[], axisNameIds: number[]): Uint8Array {
     w.uint16(index); // ordering: the order they were declared in
   }
   return w.toUint8Array();
+}
+
+/**
+ * How much of one master's say applies at a place in the design space.
+ *
+ * This is the reader's own arithmetic, written down here so that the preview on
+ * screen and the file on disk cannot disagree about what the font looks like at
+ * 550. Everything it needs -- `normalise` and `regionOf` -- is what `gvar` was
+ * written from, so the two are the same computation rather than two readings of
+ * the same specification.
+ *
+ * An axis the master does not move contributes one rather than nothing. That is
+ * the format's rule and it is the whole reason a design space can be a star
+ * rather than a grid: a Condensed drawn at the Regular's weight still applies
+ * at every weight, because it says nothing about weight.
+ */
+export function scalarAt(region: Region, location: number[]): number {
+  let scalar = 1;
+  for (let axis = 0; axis < region.peak.length; axis += 1) {
+    const peak = region.peak[axis];
+    // A peak of nought is an axis this master has no opinion about.
+    if (peak === 0) continue;
+    const here = location[axis] ?? 0;
+    if (here === peak) continue;
+    const start = region.start[axis];
+    const end = region.end[axis];
+    if (here <= start || here >= end) return 0;
+    scalar *= here < peak ? (here - start) / (peak - start) : (end - here) / (end - peak);
+  }
+  return scalar;
 }

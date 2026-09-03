@@ -27,7 +27,7 @@ import { GroundToggle } from "@/components/GroundToggle";
 import { NothingDrawnYet } from "@/components/NothingDrawnYet";
 import { hasLetters } from "@/font/library";
 import { typefaceAt } from "@/font/masters";
-import { Weights } from "@/components/Weights";
+import { Versions } from "@/components/Versions";
 import { store, useAppState } from "@/state/useStore";
 import { cn } from "@/ui/lib/utils";
 
@@ -257,7 +257,7 @@ export function ProofView(): React.JSX.Element {
         the answer is hardest to see.
       */}
       <div data-print-away>
-        <Weights />
+        <Versions />
       </div>
       <div
         className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-border px-4 py-2 text-2xs"

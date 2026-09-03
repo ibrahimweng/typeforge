@@ -34,6 +34,7 @@ import type { CutName } from "@/forge/cut";
 import { BASES } from "@/forge/style";
 import type { Mode } from "@/App";
 import type { ViewId } from "@/state/store";
+import { AXES } from "@/font/master";
 import { viewKey } from "@/keys/useAppKeys";
 import type { Entry, EntryKind } from "./search";
 
@@ -114,13 +115,13 @@ export interface Shell {
   save: () => void;
   newProject: () => void;
   /**
-   * Ask for another weight of this typeface, drawn rather than calculated.
+   * Ask for another version of this typeface, drawn rather than calculated.
    *
    * Here as well as on the whole-font screen because everything else the
    * application can do is reachable from this one search box, and a control
    * that is only in one place is a control somebody has to already know about.
    */
-  addWeight: () => void;
+  addVersion: (axis: string) => void;
   toggleHelp: () => void;
   library: () => void;
   selectGlyph: (name: string) => void;
@@ -233,15 +234,30 @@ export function catalogue(shell: Shell): Item[] {
     destructive: true,
     run: shell.openFolder,
   });
-  add({
-    id: "action:weight",
-    kind: "action",
-    group: "Actions",
-    label: "Add a weight",
-    hint: "Copy this weight of the typeface into another one you draw differently — a Bold beside the Regular — and the exported font blends between them.",
-    also: ["master", "bold", "light", "black", "variable", "axis", "interpolate", "family", "second"],
-    run: shell.addWeight,
-  });
+  for (const axis of AXES) {
+    add({
+      id: `action:version:${axis.tag}`,
+      kind: "action",
+      group: "Actions",
+      label: `Add a ${axis.label.toLowerCase()}`,
+      hint: `Copy this version of the typeface into another one you draw ${axis.label.toLowerCase()} away from it, and the exported font blends between them. A Bold beside the Regular, a Condensed beside the wide one.`,
+      also: [
+        "master",
+        "version",
+        "variable",
+        "axis",
+        "interpolate",
+        "family",
+        "second",
+        axis.tag,
+        ...(axis.tag === "wght" ? ["bold", "light", "black", "weight"] : []),
+        ...(axis.tag === "wdth" ? ["condensed", "narrow", "wide", "extended"] : []),
+        ...(axis.tag === "slnt" ? ["italic", "oblique", "lean"] : []),
+        ...(axis.tag === "opsz" ? ["display", "caption", "text size"] : []),
+      ],
+      run: () => shell.addVersion(axis.tag),
+    });
+  }
   add({
     id: "action:library",
     kind: "action",
