@@ -44,15 +44,65 @@ import { libraryStore } from "@/state/useLibrary";
 import { store, useAppState, type ViewId } from "@/state/useStore";
 import type { UfoFiles } from "@/ufo/font";
 import { filesFromDrop, filesFromPicker, filesFromZip, looksZipped } from "@/ufo/intake";
-import { FontGridView } from "@/views/FontGridView";
-import { GlyphEditorView } from "@/views/GlyphEditorView";
-import { KerningView } from "@/views/KerningView";
-import { MetricsView } from "@/views/MetricsView";
-import { ProofView } from "@/views/ProofView";
-import { AssembleView } from "@/views/AssembleView";
-import { ForgeView } from "@/views/ForgeView";
-import { QuillView } from "@/views/QuillView";
-import { ReportView } from "@/views/ReportView";
+
+/*
+ * The nine views are fetched when they are first shown, rather than with the
+ * first screen.
+ *
+ * None of them is on screen when the application opens. It opens on a chooser
+ * offering three ways to start, and every view sits behind a mode or a view
+ * button. Fetching all nine to draw that chooser is work done for a screen
+ * none of them appear on. It takes the first chunk from 1,384 kB to 1,078 kB,
+ * and the part of it that travels compressed from 436 kB to 343 kB.
+ *
+ * What this does not move is the drawing engine. `src/forge/` is reached from
+ * `font/transform.ts` and `project/format.ts`, and the first screen needs
+ * both, so the engine stays in the first chunk however the views are loaded.
+ * Only the views themselves are split here. Moving the engine means untangling
+ * those two, which is a larger job than this one.
+ *
+ * The drawers and the export dialogs are deliberately left alone, though they
+ * are worth a further 76 kB compressed. Each of them opens from a button, and
+ * with nothing to show while a chunk is on its way the button reads as dead.
+ * A view has a whole stage to arrive on and a transition already playing over
+ * it, which is why the views are split and these are not.
+ */
+
+/**
+ * One boundary per view, wrapped where the view is shown.
+ *
+ * React holds on to a suspended boundary's previous children instead of
+ * dropping them, so a single boundary around the whole stage would keep the
+ * view being left in the document until the arriving view had loaded. For that
+ * moment the page would hold both, and a search for a word the two screens
+ * share would find it twice. A boundary that mounts with the view inside it
+ * has no previous children to hold.
+ */
+const Wait = ({ children }: { children: React.ReactNode }) => (
+  <React.Suspense fallback={null}>{children}</React.Suspense>
+);
+
+const FontGridView = React.lazy(() =>
+  import("@/views/FontGridView").then((m) => ({ default: m.FontGridView })),
+);
+const GlyphEditorView = React.lazy(() =>
+  import("@/views/GlyphEditorView").then((m) => ({ default: m.GlyphEditorView })),
+);
+const KerningView = React.lazy(() =>
+  import("@/views/KerningView").then((m) => ({ default: m.KerningView })),
+);
+const MetricsView = React.lazy(() =>
+  import("@/views/MetricsView").then((m) => ({ default: m.MetricsView })),
+);
+const ProofView = React.lazy(() => import("@/views/ProofView").then((m) => ({ default: m.ProofView })));
+const ReportView = React.lazy(() =>
+  import("@/views/ReportView").then((m) => ({ default: m.ReportView })),
+);
+const AssembleView = React.lazy(() =>
+  import("@/views/AssembleView").then((m) => ({ default: m.AssembleView })),
+);
+const ForgeView = React.lazy(() => import("@/views/ForgeView").then((m) => ({ default: m.ForgeView })));
+const QuillView = React.lazy(() => import("@/views/QuillView").then((m) => ({ default: m.QuillView })));
 
 /** Which of the three jobs is in front. */
 export type Mode = "edit" | "forge" | "assemble" | "quill";
@@ -772,18 +822,18 @@ export function App(): React.JSX.Element {
 
       <div className="flex min-h-0 flex-1">
         <div ref={stageRef} className="flex min-w-0 flex-1 flex-col">
-          {mode === "forge" && <ForgeView />}
-          {mode === "quill" && <QuillView />}
-          {mode === "assemble" && <AssembleView />}
+          {mode === "forge" && <Wait><ForgeView /></Wait>}
+          {mode === "quill" && <Wait><QuillView /></Wait>}
+          {mode === "assemble" && <Wait><AssembleView /></Wait>}
           {mode === "edit" && (
             <>
               <OnLoan />
-              {state.view === "grid" && <FontGridView />}
-              {state.view === "glyph" && <GlyphEditorView />}
-              {state.view === "kerning" && <KerningView />}
-              {state.view === "metrics" && <MetricsView />}
-              {state.view === "proof" && <ProofView />}
-              {state.view === "report" && <ReportView />}
+              {state.view === "grid" && <Wait><FontGridView /></Wait>}
+              {state.view === "glyph" && <Wait><GlyphEditorView /></Wait>}
+              {state.view === "kerning" && <Wait><KerningView /></Wait>}
+              {state.view === "metrics" && <Wait><MetricsView /></Wait>}
+              {state.view === "proof" && <Wait><ProofView /></Wait>}
+              {state.view === "report" && <Wait><ReportView /></Wait>}
             </>
           )}
         </div>
