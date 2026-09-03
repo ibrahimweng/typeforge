@@ -30,6 +30,7 @@ function Field({
   most,
   suffix,
   decimals,
+  held,
   onChange,
 }: {
   label: string;
@@ -39,6 +40,16 @@ function Field({
   most: number;
   suffix?: string;
   decimals?: number;
+  /**
+   * Greyed out, because typing in it would do nothing a person could see.
+   *
+   * Which is the case on a letter whose ink has been taken: the outlines are
+   * the letter now and no longer follow the pen. Left live, the three fields
+   * accepted numbers and the letter did not move -- or, worse, the pen being
+   * followed was a saved one and every *other* letter in the font moved
+   * instead, from a panel that had just said this one would not.
+   */
+  held?: boolean;
   onChange: (value: number) => void;
 }): React.JSX.Element {
   return (
@@ -48,6 +59,7 @@ function Field({
         value={value}
         label={label}
         decimals={decimals}
+        disabled={held}
         className="w-16"
         onCommit={(next) => onChange(Math.min(most, Math.max(least, next)))}
       />
@@ -153,6 +165,7 @@ export function PenPanel({ glyphName }: { glyphName: string }): React.JSX.Elemen
         value={Math.round(showing.width)}
         least={1}
         most={600}
+        held={expanded}
         onChange={(width) => change({ width })}
       />
       <Field
@@ -162,6 +175,7 @@ export function PenPanel({ glyphName }: { glyphName: string }): React.JSX.Elemen
         least={0}
         most={1}
         decimals={2}
+        held={expanded}
         onChange={(contrast) => change({ contrast })}
       />
       <Field
@@ -171,78 +185,19 @@ export function PenPanel({ glyphName }: { glyphName: string }): React.JSX.Elemen
         least={-180}
         most={360}
         suffix="°"
+        held={expanded}
         onChange={(angle) => change({ angle })}
       />
 
       {/*
-        What the pen is doing along the stroke, said in one line.
+        What typing in those three fields will actually reach, said under them.
 
-        A turning pen is the one thing here somebody cannot see from three
-        numbers, because three numbers describe one place and turning is a
-        difference between two. So the line says whether it turns and by how
-        much, and a stroke that does not turn says so too -- otherwise its
-        absence reads as a feature that is missing rather than one not in use.
+        The one thing about a saved pen somebody cannot guess: the same three
+        numbers change one stop when nothing is being followed and change every
+        letter in the font when something is. The product this idea comes from
+        puts that behind a mode switch and has to shout a NOTICE about which way
+        it is set. This says it instead, where the typing happens.
       */}
-      {/*
-        Taking the ink, and putting it back.
-
-        The escape hatch, and the reason writing does not have to be able to
-        draw everything: write the letter, take its ink, and fix the one curve
-        that is wrong with the fourteen outline tools already here. The way back
-        is kept for exactly as long as it is true -- the moment the outlines are
-        edited by hand the strokes no longer describe the letter, and the button
-        goes rather than offering to throw the edit away.
-
-        Which every other tool with an Expand handles by telling people to save
-        a copy first.
-      */}
-      {expanded ? (
-        <button
-          type="button"
-          data-unexpand
-          onClick={() => store.unexpandWritten(glyphName)}
-          title="Go back to the strokes. Available until the outlines are edited by hand."
-          className="rounded border border-border px-1.5 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
-        >
-          Back to strokes
-        </button>
-      ) : strokes.length > 0 ? (
-        <button
-          type="button"
-          data-expand
-          onClick={() => store.expandWritten(glyphName)}
-          title="Keep the ink and stop it following the strokes, so the outline tools can reach it. The strokes are kept, so this can be undone until the outlines are edited."
-          className="rounded border border-border px-1.5 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
-        >
-          Take the ink
-        </button>
-      ) : null}
-
-      {/*
-        The grid a written alphabet is actually built on.
-
-        An x-height in pen widths rather than in units, because that is how the
-        proportion is held: four and a half for a Textura, five for a
-        Roundhand, three for a display hand. Somebody who knows the craft had
-        to convert it by hand before this, and somebody who does not had no way
-        to find out that the proportion is the thing that matters.
-      */}
-      <div className="flex items-center gap-1.5 pt-1" data-written-grid>
-        <span className="w-16 shrink-0 text-2xs text-muted-foreground">Grid</span>
-        {[3, 4.5, 5].map((nibs) => (
-          <button
-            key={nibs}
-            type="button"
-            onClick={() => store.writtenGrid(nibs)}
-            title={`Guides for an x-height of ${nibs} pen widths, with two more each way for the ascender and descender.`}
-            className="rounded border border-border px-1.5 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
-          >
-            {nibs}×
-          </button>
-        ))}
-        <span className="text-2xs text-muted-foreground">pen widths</span>
-      </div>
-
       {following ? (
         <p className="text-2xs text-muted-foreground" data-pen-follows>
           Following <span className="text-foreground">{followed?.name}</span>. Changing these
@@ -251,13 +206,36 @@ export function PenPanel({ glyphName }: { glyphName: string }): React.JSX.Elemen
       ) : null}
 
       {/*
+        What the pen is doing along the stroke.
+
+        A turning pen is the one thing here somebody cannot see from three
+        numbers, because three numbers describe one place and turning is a
+        difference between two. So the line says whether it turns and by how
+        much -- and a stroke that does not turn says so too, or its absence
+        reads as a feature that is missing rather than one not in use.
+      */}
+      {stroke ? (
+        <p className="text-2xs text-muted-foreground" data-pen-along>
+          {turning
+            ? `The pen turns from ${Math.round(nibAt(stroke.nib, 0).angle)}° to ${Math.round(
+                nibAt(stroke.nib, 1).angle,
+              )}° along this stroke.`
+            : "The pen is held the same way along the whole stroke. Turn it at one point to change that."}
+        </p>
+      ) : (
+        <p className="text-2xs text-muted-foreground" data-pen-along>
+          Draw a stroke down the middle of the letter and the pen fills it in.
+        </p>
+      )}
+
+      {/*
         The saved pens, which are the answer to the complaint this whole thing
         exists to fix.
 
         Three named pens shared across forty letters is what keeps an alphabet
         consistent, and it is work nobody should have to do with numbers. A row
-        is picked to write with; the pen in hand is saved under a name; a stop
-        that has to be its own is freed from the pen it follows.
+        is picked to write with, renamed by typing in it, and thrown away by the
+        cross beside it.
       */}
       <div className="flex flex-col gap-1 pt-1" data-saved-pens>
         <div className="flex items-baseline justify-between">
@@ -281,58 +259,126 @@ export function PenPanel({ glyphName }: { glyphName: string }): React.JSX.Elemen
         {state.pens.map((saved) => {
           const on = following === saved.id;
           return (
-            <button
+            <div
               key={saved.id}
-              type="button"
               data-saved-pen={saved.id}
               data-on={on ? "true" : undefined}
-              onClick={() =>
-                chosen
-                  ? store.setStopPen(glyphName, chosen.stroke, chosen.stop, saved.id)
-                  : store.usePen(saved.id)
-              }
-              title={`${saved.width} wide, blade ${saved.contrast}, held at ${saved.angle}°. Change it and every stroke using it follows.`}
               className={cn(
-                "flex items-center justify-between rounded border px-1.5 py-1 text-left text-2xs transition-colors",
-                on
-                  ? "border-[color:var(--accent)] text-foreground"
-                  : "border-border text-muted-foreground hover:bg-card hover:text-foreground",
+                "flex items-center gap-1 rounded border px-1 py-0.5 transition-colors",
+                on ? "border-[color:var(--accent)]" : "border-border",
               )}
             >
-              <span>{saved.name}</span>
-              <span className="tabular-nums text-muted-foreground">
+              {/*
+                Picking and renaming are the same row, which is why the name is
+                a field and the rest of the row is the button. A pen named by a
+                browser prompt was the first version: the only one in the
+                application, unstyled, blocking, and no way to change the name
+                afterwards.
+              */}
+              <input
+                value={saved.name}
+                aria-label={`What the pen ${saved.name} is called`}
+                onChange={(event) => store.editPen(saved.id, { name: event.target.value })}
+                className="h-5 min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 text-2xs text-foreground outline-none hover:border-border focus-visible:border-accent focus-visible:bg-card"
+              />
+              <button
+                type="button"
+                data-use-pen={saved.id}
+                onClick={() =>
+                  chosen
+                    ? store.setStopPen(glyphName, chosen.stroke, chosen.stop, saved.id)
+                    : store.usePen(saved.id)
+                }
+                title={`${Math.round(saved.width)} wide, blade ${saved.contrast}, held at ${saved.angle}°. Change it and every stroke using it follows.`}
+                className={cn(
+                  "shrink-0 rounded px-1 py-0.5 text-2xs tabular-nums transition-colors",
+                  on ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
                 {Math.round(saved.width)} · {saved.angle}°
-              </span>
-            </button>
+              </button>
+              <button
+                type="button"
+                data-delete-pen={saved.id}
+                onClick={() => store.deletePen(saved.id)}
+                aria-label={`Throw away the pen ${saved.name}`}
+                title="Throw this pen away. Strokes written with it keep the shape they have."
+                className="shrink-0 rounded px-1 text-2xs text-muted-foreground transition-colors hover:text-[color:var(--attention)]"
+              >
+                ×
+              </button>
+            </div>
           );
         })}
         <button
           type="button"
           data-save-pen
-          onClick={() => {
-            const name = window.prompt("Name this pen");
-            if (name) store.savePen(name);
-          }}
-          title="Keep the pen in hand under a name, so other strokes can be written with the same one."
+          onClick={() => store.savePen(`Pen ${state.pens.length + 1}`)}
+          title="Keep the pen in hand under a name, so other strokes can be written with the same one. Type over the name to change it."
           className="rounded border border-dashed border-border px-1.5 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
         >
           Save this pen
         </button>
       </div>
 
-      {stroke ? (
-        <p className="text-2xs text-muted-foreground" data-pen-along>
-          {turning
-            ? `The pen turns from ${Math.round(nibAt(stroke.nib, 0).angle)}° to ${Math.round(
-                nibAt(stroke.nib, 1).angle,
-              )}° along this stroke.`
-            : "The pen is held the same way along the whole stroke. Turn it at one point to change that."}
-        </p>
-      ) : (
-        <p className="text-2xs text-muted-foreground" data-pen-along>
-          Draw a stroke down the middle of the letter and the pen fills it in.
-        </p>
-      )}
+      {/*
+        The grid a written alphabet is actually built on.
+
+        An x-height in pen widths rather than in units, because that is how the
+        proportion is held: four and a half for a Textura, five for a
+        Roundhand, three for a display hand. Somebody who knows the craft had to
+        convert it by hand before this, and somebody who does not had no way to
+        find out that the proportion is the thing that matters.
+      */}
+      <div className="flex items-center gap-1.5 pt-1" data-written-grid>
+        <span className="w-16 shrink-0 text-2xs text-muted-foreground">Grid</span>
+        {[3, 4.5, 5].map((nibs) => (
+          <button
+            key={nibs}
+            type="button"
+            onClick={() => store.writtenGrid(nibs)}
+            title={`Guides for an x-height of ${nibs} pen widths, with two more each way for the ascender and descender.`}
+            className="rounded border border-border px-1.5 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+          >
+            {nibs}×
+          </button>
+        ))}
+        <span className="text-2xs text-muted-foreground">pen widths</span>
+      </div>
+
+      {/*
+        Taking the ink, and putting it back. Last, because it is the least
+        frequent thing here and the only one that changes what kind of letter
+        this is.
+
+        The escape hatch, and the reason writing does not have to be able to
+        draw everything: write the letter, take its ink, and fix the one curve
+        that is wrong with the fourteen outline tools already here. The way back
+        is kept for exactly as long as it is true -- the moment the outlines are
+        edited by hand the strokes no longer describe the letter, and the button
+        goes rather than offering to throw the edit away.
+      */}
+      {expanded ? (
+        <button
+          type="button"
+          data-unexpand
+          onClick={() => store.unexpandWritten(glyphName)}
+          title="Go back to the strokes. Available until the outlines are edited by hand."
+          className="rounded border border-border px-1.5 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+        >
+          Back to strokes
+        </button>
+      ) : strokes.length > 0 ? (
+        <button
+          type="button"
+          data-expand
+          onClick={() => store.expandWritten(glyphName)}
+          title="Keep the ink and stop it following the strokes, so the outline tools can reach it. The strokes are kept, so this can be undone until the outlines are edited."
+          className="rounded border border-border px-1.5 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+        >
+          Take the ink
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -2304,6 +2304,18 @@ class Store {
   writePoint(name: string, at: Vec2): void {
     const glyph = this.glyph(name);
     if (!glyph) return;
+    /*
+     * Writing on a letter whose ink has been taken puts it back to strokes.
+     *
+     * Because otherwise the stroke goes in and the letter does not move: the
+     * ink stopped following the strokes when it was taken, so `reswept` is a
+     * no-op and the person is drawing into nothing while the status line
+     * cheerfully offers to fill it in. Nothing is lost by going back, and this
+     * is why: an expanded letter still carrying its strokes is one nobody has
+     * hand-edited, since the first edit clears them. So the outlines here are
+     * exactly what the sweep made and re-sweeping them changes nothing.
+     */
+    if (glyph.written?.expanded) this.unexpandWritten(name);
     const { width, contrast, angle } = this.state.pen;
     const using = this.state.usingPen ?? undefined;
     const going = this.state.writing;
@@ -2443,17 +2455,31 @@ class Store {
    * was picked or the hand's own -- so "make this a pen" works from a letter
    * that came out well, which is how somebody who is not thinking in numbers
    * arrives at a set of pens.
+   *
+   * The name is a starting point rather than a question. Asked for up front it
+   * was a browser prompt, the only one in the application: unstyled, blocking,
+   * and with no way to change the answer afterwards. Given a name straight away
+   * the pen exists, and the row it lands in is a field to type over -- which is
+   * how a version is named next door, and means renaming works for the five
+   * pens that ship as well as the ones somebody makes.
    */
   savePen(name: string): string | null {
-    const trimmed = name.trim();
-    if (!trimmed) return null;
+    const taken = new Set(this.state.pens.map((one) => one.name));
+    let trimmed = name.trim() || "Pen";
+    // A duplicate name is not wrong, but two rows reading the same thing are
+    // two rows nobody can tell apart.
+    if (taken.has(trimmed)) {
+      let at = 2;
+      while (taken.has(`${trimmed} ${at}`)) at += 1;
+      trimmed = `${trimmed} ${at}`;
+    }
     const { width, contrast, angle } = this.state.pen;
     const id = `pen-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     this.set({
       pens: [...this.state.pens, { id, name: trimmed, width, contrast, angle }],
       usingPen: id,
     });
-    this.say(`Saved the pen as ${trimmed}.`, "success");
+    this.say(`Saved as ${trimmed}. Type over the name to change it.`, "success");
     return id;
   }
 

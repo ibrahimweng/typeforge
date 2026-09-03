@@ -4623,7 +4623,16 @@ test("writes a letter with a pen, down the middle", async ({ page }) => {
    * point that was put down; clicking one puts it in the panel.
    */
   await takeUpTool(page, "write", "nib");
-  await expect(page.locator("[data-tool-says]")).toHaveText(/pen/);
+  /*
+   * And it says there is a pen to take hold of, rather than that nothing is
+   * written here. The facts about the letter -- has it strokes, is one being
+   * written -- have to reach the sentence the moment the tool is picked up, and
+   * not only once the pointer moves: picking up the pen on a letter with two
+   * strokes in it said "nothing written here yet, write a stroke first", which
+   * is the sentence for an empty letter. Matched on the whole phrase, because
+   * the wrong sentence has the word "pen" in it too and a loose match passed.
+   */
+  await expect(page.locator("[data-tool-says]")).toHaveText(/Take hold of/);
 
   await page.mouse.click(first.x, first.y);
   await page.waitForTimeout(200);
@@ -4663,13 +4672,18 @@ test("names a pen, and one change reaches every letter using it", async ({ page 
   const box = (await canvas.boundingBox())!;
   await takeUpTool(page, "write", "skeleton");
 
-  // The pens a written alphabet starts with are real hands, not placeholders.
-  await expect(page.locator("[data-saved-pen='textura']")).toHaveText(/Textura/);
-  await expect(page.locator("[data-saved-pen='textura']")).toHaveText(/40°/);
+  /*
+   * The pens a written alphabet starts with are real hands, not placeholders.
+   * The name is a field rather than a label, because a pen is renamed by typing
+   * over it -- so it is read as a value.
+   */
+  const textura = page.locator("[data-saved-pen='textura']");
+  await expect(textura.getByRole("textbox")).toHaveValue("Textura");
+  await expect(textura).toContainText("40°");
 
   // Write with the Textura pen, so the stroke follows it rather than holding
   // its own numbers.
-  await page.locator("[data-saved-pen='textura']").click();
+  await page.locator("[data-use-pen='textura']").click();
   await expect(page.locator("[data-saved-pen='textura']")).toHaveAttribute("data-on", "true");
   await expect(page.locator("[data-pen-follows]")).toHaveText(/every stroke written with it/);
 
@@ -4695,7 +4709,7 @@ test("names a pen, and one change reaches every letter using it", async ({ page 
   const heavier = await measureInk(page);
   expect(heavier).toBeGreaterThan(written);
   // And the saved pen itself now reads 160, so the row and the letter agree.
-  await expect(page.locator("[data-saved-pen='textura']")).toHaveText(/160/);
+  await expect(page.locator("[data-saved-pen='textura']")).toContainText("160");
 
   /*
    * And a stroke that has to be its own can be freed, after which the saved
@@ -4709,6 +4723,24 @@ test("names a pen, and one change reaches every letter using it", async ({ page 
   await page.locator("[data-free-pen]").click();
   await page.waitForTimeout(200);
   await expect(page.locator("[data-pen-follows]")).toHaveCount(0);
+
+  /*
+   * A pen is renamed by typing in its row and thrown away by the cross beside
+   * it. Both were missing: the name was asked for once by a browser prompt --
+   * the only one in the application -- and could never be changed, and there
+   * was no way at all to remove a pen from a list that only ever grew.
+   */
+  const row = page.locator("[data-saved-pen='textura']");
+  await row.getByRole("textbox").fill("Blackletter");
+  await page.waitForTimeout(200);
+  await expect(row.getByRole("textbox")).toHaveValue("Blackletter");
+
+  await page.locator("[data-delete-pen='ruqaa']").click();
+  await page.waitForTimeout(200);
+  await expect(page.locator("[data-saved-pen='ruqaa']")).toHaveCount(0);
+  // And the letter is untouched: a pen thrown away leaves the strokes written
+  // with it exactly as they were.
+  await expect(page.locator("[data-saved-pen='textura']")).toHaveCount(1);
 });
 
 /**
@@ -4771,4 +4803,54 @@ test("takes a written letter's ink, and gives it back until it is edited", async
   await page.waitForTimeout(400);
   await takeUpTool(page, "write", "skeleton");
   await expect(page.locator("[data-unexpand]")).toHaveCount(0);
+});
+
+/**
+ * The two things an expanded letter must not pretend about.
+ *
+ * Its ink no longer follows the pen, so the three numbers must not accept
+ * edits that move nothing -- or, worse, move every *other* letter following the
+ * same saved pen. And writing a new stroke on it means the person wants the pen
+ * back, so it goes back to strokes rather than drawing into nothing.
+ */
+test("an expanded letter says the pen is idle, and writing brings it back", async ({ page }) => {
+  await page.goto("/");
+  await startBlank(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await page.getByRole("button", { name: "New letter" }).first().click();
+  await page.waitForTimeout(400);
+
+  const canvas = page.locator("canvas").first();
+  const box = (await canvas.boundingBox())!;
+  await takeUpTool(page, "write", "skeleton");
+  await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.3);
+  await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.7);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+
+  await page.locator("[data-expand]").click();
+  await page.waitForTimeout(300);
+
+  // The numbers are held, because typing in them would move nothing here.
+  const width = page
+    .locator("[data-pen-panel]")
+    .getByRole("textbox", { name: "Width", exact: true });
+  await expect(width).toBeDisabled();
+
+  /*
+   * And nothing is reported about the outlines, which the person did not draw.
+   * Taking the ink changes no point of the letter -- only what it is called --
+   * so a page of warnings about the fitter's points is a page of warnings for
+   * an act that moved nothing.
+   */
+  await expect(page.getByText("Two points sit on top of each other")).toHaveCount(0);
+
+  // Writing again brings the letter back to its strokes rather than drawing
+  // into ink that no longer follows them.
+  await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.3);
+  await page.mouse.click(box.x + box.width * 0.62, box.y + box.height * 0.7);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+  await expect(page.locator("[data-pen-expanded]")).toHaveCount(0);
+  await expect(width).toBeEnabled();
 });

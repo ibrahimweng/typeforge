@@ -234,8 +234,22 @@ export function drawWritten(
 ): void {
   const strokes = glyph.written?.strokes ?? [];
   if (strokes.length === 0) return;
-  const accent = readToken("--accent", "#0c8ce9", context.canvas);
-  const quiet = readToken("--muted-foreground", "#8a8f98", context.canvas);
+  /*
+   * The canvas's own colours, not the chrome's.
+   *
+   * `--accent` and `--muted-foreground` are picked to carry against a near-black
+   * panel, and this is drawn on a canvas that has a white ground as well as a
+   * black one. `styles.css` redefines every colour the canvas draws with under
+   * `[data-ground="light"]` for exactly that reason -- the guides, the glyph
+   * fill, both advice colours -- and neither of those two is in the list, so on
+   * white the pen came out a pale wash you had to hunt for.
+   *
+   * The node pair is what the outline's own handles use, so the pen's handles
+   * are the same colours as every other handle in the editor, which is a better
+   * answer than inventing a pairing that happens to have both grounds covered.
+   */
+  const accent = readToken("--node-on-curve", "#0c8ce9", context.canvas);
+  const quiet = readToken("--node-off-curve", "#9aa0ad", context.canvas);
 
   context.save();
   for (const stroke of strokes) {
