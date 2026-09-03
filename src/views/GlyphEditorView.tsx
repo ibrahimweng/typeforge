@@ -959,6 +959,18 @@ export function GlyphEditorView(): React.JSX.Element {
           pathOpen: Boolean(glyph && openOutline(glyph)),
           openPoints: glyph ? (openOutline(glyph)?.nodes.length ?? 0) : 0,
           shape: Boolean(glyph?.contours.some((one) => one.closed && one.nodes.length >= 3)),
+          /*
+           * The two that are about the letter rather than about the pointer,
+           * which is the whole rule for what belongs in this list.
+           *
+           * Left out, picking up the pen tool on a letter with two strokes in
+           * it said "nothing written here yet, write a stroke first" -- which
+           * is the sentence for an empty letter, over a letter that is not.
+           * `penHandle` is a pointer fact and stays false: nothing is under a
+           * pointer that has not moved yet.
+           */
+          written: (glyph?.written?.strokes.length ?? 0) > 0,
+          strokeOpen: store.writing !== null && store.writing.name === glyph?.name,
         },
         null,
         { shift: false, alt: false },

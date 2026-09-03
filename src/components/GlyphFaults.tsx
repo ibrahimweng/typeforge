@@ -51,10 +51,15 @@ export function GlyphFaults({
    * curve turns between points" over it, neither of which the person can act
    * on and neither of which is about the letter they wrote.
    *
-   * Once the ink has been taken -- expanded -- the outlines *are* the letter
-   * and are theirs to answer for, so the checks come back.
+   * Taking the ink is not the moment they become theirs, which was the first
+   * rule here and is a sentence too early. Nothing about the letter changes
+   * when the ink is taken: the outlines are still exactly what the sweep made,
+   * and blaming somebody for the fitter's points the instant they press a
+   * button is a page of warnings for an act that moved nothing. The moment is
+   * the first hand edit -- and that clears the strokes outright, so there is
+   * nothing to ask here: the checks come back on their own.
    */
-  const derived = Boolean(glyph.written) && !glyph.written?.expanded;
+  const derived = Boolean(glyph.written);
   const findings = React.useMemo(
     () => (derived ? [] : faultsOfGlyph(typeface, glyph)),
     [typeface, glyph, revision, derived],

@@ -511,3 +511,63 @@ The anti-patterns in its §17 are worth reading in full. Four of them are traps
 this plan would walk into: the naïve angle blend in step 1, the clamp on
 thickness in step 1, assuming the held axis is the longer one, and blending
 outlines instead of pens in step 6.
+
+
+---
+
+## Step 8 -- A look at the whole surface
+
+Every page, modal and component the writing work touched, on both grounds and at
+900 pixels wide as well as 1400. Nine things, and none of them was visible from
+the tests that were already passing.
+
+**The pen was a pale wash on the white ground.** `drawWritten` used `--accent`
+and `--muted-foreground`, which are the chrome's colours. `styles.css`
+redefines every colour the canvas draws with under `[data-ground="light"]` --
+the guides, the glyph fill, both advice colours -- precisely because a colour
+picked to carry against a near-black panel does not carry on a near-white
+canvas. Neither of those two is in that list. Now the pen uses the node pair,
+which is defined for both grounds and is what the outline's own handles use, so
+a pen handle and a Bézier handle are the same colour.
+
+**Picking up the pen tool on a letter with two strokes said "nothing written
+here yet".** The effect that reports a tool's sentence the moment it is picked
+up builds its own `Under` from a fixed list of facts that are about the *letter*
+rather than the pointer, and the two new ones were not added to it. The e2e test
+passed anyway, because the wrong sentence has the word "pen" in it and the
+assertion matched loosely; it now matches the phrase.
+
+**A pen was named by a browser prompt** -- the only one in the application,
+unstyled, blocking, and with no way to change the answer afterwards. Naming is
+an inline field here, as it is for a version next door. So a pen is saved
+straight away under a free name and the row is a field to type over, which also
+gives the five that ship a rename they did not have.
+
+**There was no way to throw a pen away.** `deletePen` existed in the store and
+nothing could reach it, so the list only ever grew. A cross on each row.
+
+**The three numbers stayed live on a letter whose ink had been taken.** Typing in
+them moved nothing -- or, when a saved pen was being followed, moved every
+*other* letter in the font, from a panel that had just said this one would not.
+They are held now.
+
+**Writing on such a letter drew into nothing.** The stroke went in, the ink did
+not follow, and the status line cheerfully offered to fill it in. Writing takes
+the letter back to its strokes instead, which loses nothing: an expanded letter
+still carrying its strokes is one nobody has hand-edited, because the first edit
+clears them.
+
+**The outline warnings arrived a sentence too early.** They were suppressed
+while a letter was written and came back when its ink was taken -- but nothing
+about the letter changes at that moment, so pressing the button produced a page
+of warnings about the fitter's points for an act that moved nothing. They come
+back on the first hand edit, which clears the strokes anyway.
+
+**A comment had been orphaned** by an earlier edit, describing code that was no
+longer beneath it, and **the panel's order made no argument**: the line saying
+what typing would reach sat four blocks below the fields it was about. The
+order is now the fields, what they will reach, what the pen is doing along the
+stroke, the saved pens, the grid, and last the one button that changes what kind
+of letter this is.
+
+**And five inputs shared one accessible name.** Each says which pen it is.
