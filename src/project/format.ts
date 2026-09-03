@@ -165,6 +165,47 @@ export interface EditedProject {
   sets?: NamedSet[];
   /** Only the glyphs that have been touched. */
   glyphs: Glyph[];
+  /**
+   * What the first weight is called and where it sits on the axis.
+   *
+   * Derivable from `meta.styleName` and `meta.weightClass` and saved anyway,
+   * because a master's name is its own: somebody who calls the drawing they
+   * started with "Text" has said something the style name does not.
+   */
+  weight?: SavedWeight;
+  /**
+   * The other weights of this typeface, if there are any.
+   *
+   * Each holds only the letters drawn in it, on the same terms as the font
+   * above: a weight added to a six-thousand-glyph font and drawn in forty
+   * places is forty letters on disk, not six thousand.
+   *
+   * Optional, because every document written before this has none and a reader
+   * that demands the field turns those away at the door.
+   */
+  masters?: SavedMaster[];
+  /**
+   * Which weight was in hand.
+   *
+   * The document already promises to put somebody back where they were, in the
+   * mode they left in and on the letter they were drawing. Coming back to the
+   * Regular after an afternoon in the Black is the same broken promise one
+   * level down, and it was written this way first: a test asked for the weight
+   * it had been drawing and got the other one.
+   */
+  drawing?: string;
+}
+
+/** A weight's name and where it sits, without its drawing. */
+export interface SavedWeight {
+  name: string;
+  at: Record<string, number>;
+}
+
+export interface SavedMaster extends SavedWeight {
+  id: string;
+  /** The letters drawn in this weight. The rest follow the first one. */
+  glyphs: Glyph[];
 }
 
 // ---------------------------------------------------------------------------
@@ -226,7 +267,20 @@ export interface Snapshot {
   mode: Mode;
   draw?: DrawnProject;
   assemble?: AssembledProject;
-  edit?: { typeface: Typeface; fileName: string };
+  /**
+   * The edited half, and every weight of it.
+   *
+   * `masters` is all of them including the first, whose typeface is the one
+   * above -- so what gets written as the font is always the first weight, not
+   * whichever one happened to be on screen when the timer went off.
+   */
+  edit?: {
+    typeface: Typeface;
+    fileName: string;
+    masters?: SavedMaster[];
+    /** Which of them was in hand. */
+    drawing?: string;
+  };
   traced?: TracedProject;
 }
 
@@ -249,7 +303,12 @@ export function toProject(snapshot: Snapshot, at: Date): Project {
     project.assemble = snapshot.assemble;
   }
   if (snapshot.edit?.typeface.source) {
-    project.edit = toEdited(snapshot.edit.typeface, snapshot.edit.fileName);
+    project.edit = toEdited(
+      snapshot.edit.typeface,
+      snapshot.edit.fileName,
+      snapshot.edit.masters,
+      snapshot.edit.drawing,
+    );
   }
   if (snapshot.traced && snapshot.traced.letters.length > 0) project.traced = snapshot.traced;
   return project;
@@ -297,8 +356,14 @@ function hasDrawing(drawn: DrawnProject): boolean {
   );
 }
 
-function toEdited(typeface: Typeface, fileName: string): EditedProject | undefined {
+function toEdited(
+  typeface: Typeface,
+  fileName: string,
+  masters?: SavedMaster[],
+  drawing?: string,
+): EditedProject | undefined {
   if (!typeface.source) return undefined;
+  const [first, ...rest] = masters ?? [];
   return {
     fileName,
     font: keptBase64(typeface.source.bytes),
@@ -313,6 +378,11 @@ function toEdited(typeface: Typeface, fileName: string): EditedProject | undefin
     ligatures: typeface.ligatures,
     sets: typeface.sets,
     glyphs: typeface.glyphs.filter((glyph) => glyph.dirty),
+    weight: first ? { name: first.name, at: first.at } : undefined,
+    drawing,
+    // Left out entirely when there is one weight, so the ordinary document is
+    // the shape it has always been.
+    masters: rest.length > 0 ? rest : undefined,
   };
 }
 

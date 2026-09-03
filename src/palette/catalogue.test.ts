@@ -40,6 +40,7 @@ const shell = {
   export: () => {},
   save: () => {},
   newProject: () => {},
+  addWeight: () => {},
   toggleHelp: () => {},
   library: () => {},
   selectGlyph: () => {},
