@@ -18,7 +18,7 @@ import { store, useAppState } from "@/state/useStore";
 import { tile } from "@/components/controls";
 import { CoachMark } from "@/components/CoachMark";
 import { Weights } from "@/components/Weights";
-import { lettersThatCannotVary } from "@/font/master";
+import { glyphAcross, lettersThatCannotVary } from "@/font/master";
 import { cn } from "@/ui/lib/utils";
 
 const CELL_SIZE = 104;
@@ -245,6 +245,9 @@ export function FontGridView(): React.JSX.Element {
                     // above are the shape they are: eighty memoised cells that
                     // all take the same object all re-render together.
                     stuck={stuck.has(glyph.name)}
+                    // Where on the axis to draw it, when somebody is looking
+                    // between the weights rather than at one of them.
+                    preview={state.preview}
                   />
                 ))}
               </div>
@@ -304,6 +307,14 @@ interface GlyphCellProps {
    * shows up in the exported file, which is after everything.
    */
   stuck: boolean;
+  /**
+   * Where on the weight axis to draw this letter, or null for as it is drawn.
+   *
+   * A number rather than the masters, for the reason the props above are the
+   * shape they are: a component handed the document re-renders whenever any of
+   * it moves, and there are eighty of these on screen.
+   */
+  preview: number | null;
 }
 
 const GlyphCell = React.memo(function GlyphCell({
@@ -312,6 +323,7 @@ const GlyphCell = React.memo(function GlyphCell({
   active,
   selected,
   stuck,
+  preview,
 }: GlyphCellProps): React.JSX.Element | null {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   /*
@@ -320,9 +332,21 @@ const GlyphCell = React.memo(function GlyphCell({
    * that revision refers to. Eighty cells each holding their own subscription
    * would re-render eighty times for a keystroke in the search box.
    */
-  const typeface = store.getSnapshot().typeface;
+  const state = store.getSnapshot();
+  const typeface = state.typeface;
   const at = typeface?.glyphIndex.get(name);
-  const glyph = typeface && at !== undefined ? typeface.glyphs[at] : undefined;
+  const drawn = typeface && at !== undefined ? typeface.glyphs[at] : undefined;
+  /*
+   * What to draw: the letter as it was drawn, or the letter as a reader would
+   * show it at the place on the axis being looked at.
+   *
+   * Blended per cell rather than for the whole font, because the grid is
+   * virtualised -- eighty letters are on screen and six thousand are not, and
+   * blending a font nobody is looking at to answer a slider is the wrong
+   * arithmetic by two orders of magnitude.
+   */
+  const glyph =
+    preview === null ? drawn : (glyphAcross(name, state.masters, preview) ?? drawn);
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
@@ -334,7 +358,7 @@ const GlyphCell = React.memo(function GlyphCell({
     drawGlyph(context, glyph, typeface, view, {
       fill: readToken("--glyph-fill", "#eeeeee"),
     });
-  }, [glyph, typeface, revision]);
+  }, [glyph, typeface, revision, preview]);
 
   // A name with nothing behind it means the font changed under the row while
   // it was on screen; the next render has the right letters in it.

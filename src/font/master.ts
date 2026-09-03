@@ -17,7 +17,7 @@
  * rather than by taste. See `docs/masters.md`.
  */
 
-import { cloneGlyph, type Glyph, type Typeface } from "./types";
+import { cloneGlyph, type Glyph, type Typeface, type Vec2 } from "./types";
 
 /** The axis a second weight sits on, as the format numbers it. */
 export const WGHT = "wght";
@@ -302,4 +302,98 @@ export function lettersThatCannotVary(masters: Master[]): Set<string> {
     }
   }
   return stuck;
+}
+
+/**
+ * The same letter somewhere between the weights it was drawn at.
+ *
+ * The point of drawing two: everything between them is a font as well, and
+ * until you can see one you are drawing the ends of an axis on faith. A reader
+ * will show a person 437 as readily as 400, so 437 is worth looking at.
+ *
+ * Straight lines between the bracketing pair, which is exactly what the format
+ * does along one axis: `gvar` stores each master as a difference from the
+ * default and a reader scales that difference by how far along it is. With more
+ * than two weights the pair either side of the position is the pair that
+ * matters, and the ones beyond them do not enter into it.
+ *
+ * Answers null where there is nothing to draw between -- one weight, or a
+ * letter whose drawings do not line up. The second is not a failure to report
+ * here: `whyItCannotVary` reports it, in words, on the letter.
+ */
+export function glyphAcross(name: string, masters: Master[], at: number): Glyph | null {
+  if (masters.length < 2) return null;
+  const sorted = [...masters].sort((one, two) => (one.at[WGHT] ?? 400) - (two.at[WGHT] ?? 400));
+
+  const drawn = sorted
+    .map((master) => {
+      const index = master.typeface.glyphIndex.get(name);
+      return index === undefined
+        ? null
+        : { at: master.at[WGHT] ?? 400, glyph: master.typeface.glyphs[index] };
+    })
+    .filter((one): one is { at: number; glyph: Glyph } => one !== null);
+  if (drawn.length < 2) return null;
+
+  // Outside the drawn range the nearest end stands, rather than the shape being
+  // extrapolated into one nobody drew.
+  if (at <= drawn[0].at) return drawn[0].glyph;
+  if (at >= drawn[drawn.length - 1].at) return drawn[drawn.length - 1].glyph;
+
+  let low = drawn[0];
+  let high = drawn[drawn.length - 1];
+  for (let index = 0; index < drawn.length - 1; index += 1) {
+    if (at >= drawn[index].at && at <= drawn[index + 1].at) {
+      low = drawn[index];
+      high = drawn[index + 1];
+      break;
+    }
+  }
+  if (!agrees(low.glyph, high.glyph)) return null;
+
+  const span = high.at - low.at;
+  const t = span === 0 ? 0 : (at - low.at) / span;
+  return blend(low.glyph, high.glyph, t);
+}
+
+/** Two drawings of one letter, mixed. Assumes they agree; `agrees` says so. */
+function blend(one: Glyph, other: Glyph, t: number): Glyph {
+  const mix = (a: number, b: number): number => a + (b - a) * t;
+  const point = (a: Vec2, b: Vec2): Vec2 => ({ x: mix(a.x, b.x), y: mix(a.y, b.y) });
+  const handle = (a: Vec2 | null, b: Vec2 | null): Vec2 | null =>
+    a && b ? point(a, b) : a ? { ...a } : b ? { ...b } : null;
+
+  return {
+    ...one,
+    advanceWidth: mix(one.advanceWidth, other.advanceWidth),
+    contours: one.contours.map((contour, at) => ({
+      closed: contour.closed,
+      nodes: contour.nodes.map((node, index) => {
+        const twin = other.contours[at].nodes[index];
+        return {
+          point: point(node.point, twin.point),
+          handleIn: handle(node.handleIn, twin.handleIn),
+          handleOut: handle(node.handleOut, twin.handleOut),
+          // The node's kind belongs to the drawing rather than to the position
+          // between two of them, and both drawings claim it. The first wins.
+          type: node.type,
+        };
+      }),
+    })),
+    components: one.components.map((component, at) => {
+      const twin = other.components[at];
+      return {
+        glyphName: component.glyphName,
+        transform: {
+          a: mix(component.transform.a, twin.transform.a),
+          b: mix(component.transform.b, twin.transform.b),
+          c: mix(component.transform.c, twin.transform.c),
+          d: mix(component.transform.d, twin.transform.d),
+          dx: mix(component.transform.dx, twin.transform.dx),
+          dy: mix(component.transform.dy, twin.transform.dy),
+        },
+      };
+    }),
+    anchors: one.anchors.map((anchor) => ({ ...anchor })),
+  };
 }

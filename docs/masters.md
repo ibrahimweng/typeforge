@@ -70,9 +70,9 @@ six-thousand-glyph font costs nothing until you draw in it.
    has the same contours with the same points in the same order. Say so on the
    letter, in the grid and in the checks -- not at export, which is far too
    late. **Done. See M2.**
-3. **Interpolation.** A slider that draws the letter, and the proof, at any
-   point between the masters. The payoff, and the thing that makes a mistake in
-   step 2 visible rather than theoretical.
+3. **Interpolation.** A slider that draws the letters at any point between the
+   masters. The payoff, and the thing that makes a mistake in step 2 visible
+   rather than theoretical. **Done, for the grid. See M3.**
 4. **Export from the masters you drew.** The variable export uses them when
    they exist and falls back to the synthesised weights when they do not, and
    says which. Verified by pinning the result with fontTools.
@@ -215,3 +215,66 @@ and has its extremes already, so the operation was a no-op and the test would
 have proved nothing. Its own guard -- reading the counts before and after --
 caught it. It deletes the `o`'s counter instead, which is a change no well-drawn
 letter can absorb.
+
+
+---
+
+# M3. Seeing between the weights — *done, in the grid*
+
+## Why it matters
+
+A reader will show somebody 437 as readily as 400. Drawing two ends and never
+looking at the middle is drawing an axis on faith — and it is where the mistakes
+are, because the middle is the only place a badly matched pair of drawings
+actually looks wrong.
+
+## What is there now
+
+A slider on the Weights line: **Look at 550**, and the whole grid redraws at 550,
+every letter blended between the two weights either side of it. Pressing a
+weight, or **Back to the drawing**, puts it back.
+
+Looking rather than editing, and the code says so: nothing writes through the
+preview, the letters on screen are a calculation, and the drawing underneath is
+untouched. Going to a weight clears it, because the two answer the same question
+and a preview left standing over a different master is a screen showing neither
+what is drawn nor what was asked for.
+
+## How it blends
+
+Straight lines between the bracketing pair, which is what the format does along
+one axis: `gvar` stores each master as a difference from the default and a
+reader scales that difference by how far along it is. Three decisions worth
+stating:
+
+- **The pair either side, not the ends.** With a Medium drawn deliberately off
+  the straight line between Regular and Bold, looking at 450 gives the Medium's
+  answer, not the Bold's. A test pins that.
+- **The nearest end, past the last weight drawn.** Extrapolating would show
+  somebody a letter nobody drew and no reader will produce; the format clamps to
+  the axis, so this does.
+- **Nothing at all where the drawings do not line up.** Which is not a silent
+  failure — M2 says so, in words, on the letter.
+
+Blended per cell rather than for the whole font, because the grid is virtualised:
+eighty letters are on screen and six thousand are not, and blending a font nobody
+is looking at to answer a slider is the wrong arithmetic by two orders of
+magnitude.
+
+## What is measured
+
+The browser test makes a Bold that is genuinely bolder — twelve presses of
+**Bigger**, an operation that moves points without adding or removing any — and
+then counts the lit pixels in the grid's own canvas at 400, at 700 and at 550.
+Ink rather than a bounding box, because the question an axis is asked is whether
+the strokes got heavier. 550 comes out between the two, and pressing *Back to
+the drawing* returns exactly the ink that was there before.
+
+## Why the proof waits
+
+The proof is where a weight is judged in text, and it should have this slider.
+It does not yet, on purpose: the proof lays out the whole font rather than the
+letters on screen, so previewing it means building a whole typeface at a
+position rather than a letter at one. That is the same object a **static
+instance export** needs — "the font at 550, as a file" — so it belongs with step
+4 rather than being written twice.
