@@ -18,6 +18,7 @@
  */
 
 import { cloneGlyph, type Glyph, type Typeface, type Vec2 } from "./types";
+import { blendStrokes, inkOf, strokesAgree } from "@/quill/written";
 import { normalise, regionOf, scalarAt, type Axis } from "./variable";
 
 /** The axis a second weight sits on, as the format numbers it. */
@@ -435,11 +436,51 @@ export function glyphAcross(
     const found = master.typeface.glyphIndex.get(name);
     if (found === undefined) continue;
     const glyph = master.typeface.glyphs[found];
-    if (!agrees(base, glyph)) continue;
     const scalar = scalarAt(regionOf(axes, master.at, masters), here);
-    if (scalar !== 0) others.push({ glyph, scalar });
+    if (scalar === 0) continue;
+    /*
+     * Written letters are compared by their strokes and drawn ones by their
+     * outlines, because for a written letter the strokes are what was drawn
+     * and the outline is what came out of them. Two versions written with the
+     * same pen at different angles have outlines with different numbers of
+     * points and would be turned away by `agrees`, while the strokes line up
+     * exactly.
+     */
+    const written =
+      base.written && !base.written.expanded && glyph.written && !glyph.written.expanded;
+    if (written) {
+      if (strokesAgree(base.written!.strokes, glyph.written!.strokes))
+        others.push({ glyph, scalar });
+      continue;
+    }
+    if (agrees(base, glyph)) others.push({ glyph, scalar });
   }
   if (others.length === 0) return base;
+
+  /*
+   * Between two written letters, blend the pen and sweep the result -- and this
+   * is the one place the difference is not a nicety.
+   *
+   * Two versions of a letter written with the same pen held at forty degrees
+   * and at a hundred and ten do not differ by moved points. At forty the thick
+   * is on one diagonal and at a hundred and ten it is on the other, so halfway
+   * between the *outlines* puts the thick in neither place: a letter no pen
+   * ever made, and thinner overall than either version, because the two thicks
+   * cancel. Halfway between the *pens* is what a hand holding it at
+   * seventy-five degrees would write.
+   */
+  if (base.written && !base.written.expanded) {
+    const strokes = blendStrokes(
+      base.written.strokes,
+      others.map((one) => ({ strokes: one.glyph.written!.strokes, scalar: one.scalar })),
+    );
+    const outline = moved(base, others);
+    return {
+      ...outline,
+      written: { strokes },
+      contours: inkOf(strokes, masters[0].typeface.unitsPerEm ?? 1000),
+    };
+  }
 
   return moved(base, others);
 }

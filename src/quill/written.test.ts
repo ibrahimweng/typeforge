@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  blendStrokes,
   followPens,
   inkOf,
   nearestStop,
@@ -9,6 +10,7 @@ import {
   penOf,
   reswept,
   STARTING_PENS,
+  strokesAgree,
   type SavedPen,
 } from "./written";
 import { nibAt } from "./sweep";
@@ -214,5 +216,146 @@ describe("a pen with a name", () => {
     expect(textura.angle).toBe(40);
     expect(textura.width).toBe(60);
     expect(textura.contrast).toBe(1);
+  });
+});
+
+/*
+ * Blending the pen rather than the outline, which is not a nicety.
+ *
+ * Two versions of a letter written with the same pen held at forty degrees and
+ * at a hundred and ten do not differ by moved points. At forty the thick is on
+ * one diagonal and at a hundred and ten it is on the other, so the two swept
+ * outlines do not even have the same number of nodes -- which means a variable
+ * font cannot store the difference and the letter would be left standing still.
+ * Blending the pens is exact.
+ */
+describe("blending between two written versions", () => {
+  const heldAt = (angle: number): QuillStroke[] => {
+    const spine: QuillSpine = {
+      segments: [
+        {
+          kind: "cubic",
+          from: { x: 120, y: 0 },
+          c1: { x: 140, y: 240 },
+          c2: { x: 320, y: 520 },
+          to: { x: 540, y: 700 },
+        },
+      ],
+      closed: false,
+    };
+    return [
+      {
+        spine,
+        width: [{ at: 0, width: 150 }],
+        nib: [
+          { at: 0, contrast: 0.75, angle },
+          { at: 1, contrast: 0.75, angle },
+        ],
+        start: { kind: "butt" },
+        end: { kind: "butt" },
+        join: "round",
+      },
+    ];
+  };
+
+  it("lands on the letter the blended pen would actually write", () => {
+    const blended = blendStrokes(heldAt(40), [{ strokes: heldAt(110), scalar: 0.5 }]);
+    // Seventy-five degrees, which is halfway, and exactly rather than nearly.
+    expect(blended[0].nib[0].angle).toBeCloseTo(75, 6);
+    expect(blended[0].nib[1].angle).toBeCloseTo(75, 6);
+    expect(blended[0].width[0].width).toBeCloseTo(150, 6);
+    const truth = inkOf(heldAt(75), 1000);
+    const drawn = inkOf(blended, 1000);
+    expect(drawn.length).toBe(truth.length);
+    expect(drawn[0].nodes.length).toBe(truth[0].nodes.length);
+  });
+
+  /*
+   * And on a real letter the outlines will not blend at all, which is the other
+   * half of the argument: this is not a better answer to a question that
+   * already had one.
+   *
+   * Not on every shape. A single stroke turned from forty to a hundred and ten
+   * happens to sweep to the same number of nodes either way, and there the
+   * outlines *can* be blended -- wrongly, since the thick ends up on neither
+   * diagonal. It is a letter that breaks it: an `n` of a stem and a shoulder
+   * comes back as nineteen nodes at forty degrees and twenty-two at a hundred
+   * and ten, and a variable font cannot store a difference between two
+   * drawings with different numbers of points. The letter would be left
+   * standing still.
+   */
+  const nAt = (angle: number): QuillStroke[] => {
+    const pen = { contrast: 0.75, angle };
+    const stem: QuillSpine = {
+      segments: [
+        {
+          kind: "cubic",
+          from: { x: 120, y: 0 },
+          c1: { x: 120, y: 200 },
+          c2: { x: 120, y: 500 },
+          to: { x: 120, y: 700 },
+        },
+      ],
+      closed: false,
+    };
+    const shoulder: QuillSpine = {
+      segments: [
+        {
+          kind: "cubic",
+          from: { x: 120, y: 480 },
+          c1: { x: 200, y: 700 },
+          c2: { x: 480, y: 700 },
+          to: { x: 540, y: 480 },
+        },
+        {
+          kind: "cubic",
+          from: { x: 540, y: 480 },
+          c1: { x: 540, y: 320 },
+          c2: { x: 540, y: 160 },
+          to: { x: 540, y: 0 },
+        },
+      ],
+      closed: false,
+    };
+    const one = (spine: QuillSpine, stops: number): QuillStroke => ({
+      spine,
+      width: [{ at: 0, width: 150 }],
+      nib: Array.from({ length: stops }, (_ignored, index) => ({
+        at: index / (stops - 1),
+        ...pen,
+      })),
+      start: { kind: "butt" },
+      end: { kind: "butt" },
+      join: "round",
+    });
+    return [one(stem, 2), one(shoulder, 3)];
+  };
+
+  it("cannot be done on a real letter's outlines at all", () => {
+    const light = inkOf(nAt(40), 1000);
+    const heavy = inkOf(nAt(110), 1000);
+    const nodesIn = (contours: typeof light) =>
+      contours.reduce((total, one) => total + one.nodes.length, 0);
+    expect(nodesIn(light)).not.toBe(nodesIn(heavy));
+    // And the pens still blend, on the letter the outlines could not.
+    const blended = blendStrokes(nAt(40), [{ strokes: nAt(110), scalar: 0.5 }]);
+    expect(blended[1].nib[1].angle).toBeCloseTo(75, 6);
+  });
+
+  /*
+   * The short way round, as it is along a stroke. A version at 350 degrees and
+   * one at 10 are twenty degrees apart, and read as written they blend through
+   * every angle the letter does not want.
+   */
+  it("turns the short way between two versions", () => {
+    const blended = blendStrokes(heldAt(350), [{ strokes: heldAt(10), scalar: 0.5 }]);
+    expect(blended[0].nib[0].angle).toBeCloseTo(360, 6);
+  });
+
+  it("leaves the base alone where the strokes do not line up", () => {
+    const one = heldAt(40);
+    const other = [...heldAt(110), ...heldAt(20)];
+    expect(strokesAgree(one, other)).toBe(false);
+    expect(blendStrokes(one, [{ strokes: other, scalar: 0.5 }])).toBe(one);
   });
 });

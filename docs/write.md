@@ -398,6 +398,42 @@ the result.
 **Done when** an instance halfway between a 40° pen and a 110° pen is drawn
 both ways, and the outline-blended one is visibly worse.
 
+### Done, and the result is stronger than that
+
+`scripts/blend.ts` writes an `n` twice with the same pen, held at 40° and at
+110°, and asks for the letter halfway between:
+
+```
+the pen at 40 degrees:   19 nodes
+the pen at 110 degrees:  22 nodes
+same points in the same order? NO
+
+written at 75 degrees, which is the truth:  122667 units of ink
+the pen blended halfway:                    122667 units, straying 0.0 units from it
+the outlines blended halfway:               impossible.
+```
+
+**The pen blended halfway is exactly the letter written at 75°** -- nought units
+of stray, the same ink to the unit -- because blending the pens and then
+sweeping is the same arithmetic as sweeping a pen that was set to the blend.
+
+**And the outlines cannot be blended at all.** Nineteen nodes against
+twenty-two: the two versions do not have the same points in the same order, so
+`agrees` turns them away, `gvar` has no difference to store, and the letter is
+left standing still in the exported font. So this is not a better answer to a
+question that already had one -- for a written letter whose pen turns, it is an
+answer where there was none.
+
+Not on every shape, and the test says so: a *single* stroke turned from 40° to
+110° happens to sweep to the same node count either way, and there the outlines
+can be blended -- wrongly, with the thick on neither diagonal. It takes a
+letter to break it outright.
+
+So `glyphAcross` now compares written letters by their **strokes** rather than
+their outlines, and where they line up it blends the spine and the pen and
+sweeps the result. A drawn letter is unaffected, and a written letter whose
+strokes do not line up falls back to the outline blend exactly as before.
+
 ---
 
 ## What this plan does not take from the spec
