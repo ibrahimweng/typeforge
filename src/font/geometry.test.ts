@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { rayHitDistance } from "./geometry";
-import type { Vec2 } from "./types";
+import { crossesItself, rayHitDistance } from "./geometry";
+import type { Contour, Vec2 } from "./types";
 
 /** A square, wound however; only its edges matter here. */
 const square = (x: number, y: number, size: number): Vec2[] => [
@@ -65,5 +65,84 @@ describe("rayHitDistance", () => {
     const near = square(200, 0, 100);
     const far = square(400, 0, 100);
     expect(rayHitDistance([far, near], { x: 0, y: 50 }, { x: 1, y: 0 })).toBeCloseTo(200, 6);
+  });
+});
+
+/** A closed contour through the given corners, all of them corner nodes. */
+const corners = (points: Vec2[]): Contour => ({
+  closed: true,
+  nodes: points.map((point) => ({ point, handleIn: null, handleOut: null, type: "corner" })),
+});
+
+describe("crossesItself", () => {
+  it("a square does not", () => {
+    expect(crossesItself(corners(square(0, 0, 100)))).toBe(false);
+  });
+
+  it("a bowtie does", () => {
+    expect(
+      crossesItself(
+        corners([
+          { x: 0, y: 0 },
+          { x: 100, y: 100 },
+          { x: 100, y: 0 },
+          { x: 0, y: 100 },
+        ]),
+      ),
+    ).toBe(true);
+  });
+
+  /*
+   * The shape a swept `e` makes: the outline of a band whose centre-line goes
+   * round a square and then carries on past where it started, written down one
+   * side and back up the other the way a sweep writes one. The crossings are
+   * the real ones rather than a pair of lines drawn to cross.
+   */
+  it("a band that laps its own start does", () => {
+    expect(
+      crossesItself(
+        corners([
+          { x: 0, y: 20 },
+          { x: 180, y: 20 },
+          { x: 180, y: 180 },
+          { x: 20, y: 180 },
+          { x: 20, y: -60 },
+          { x: -20, y: -60 },
+          { x: -20, y: 220 },
+          { x: 220, y: 220 },
+          { x: 220, y: -20 },
+          { x: 0, y: -20 },
+        ]),
+      ),
+    ).toBe(true);
+  });
+
+  /*
+   * Curves whose boxes overlap but which never meet. The cheap rejection has
+   * to be a rejection and not the answer, or a C would be called self-crossing
+   * because the boxes of its two ends sit on top of each other.
+   */
+  it("a C whose ends face each other does not", () => {
+    const arc = (radius: number, from: number, to: number, steps: number): Vec2[] =>
+      Array.from({ length: steps + 1 }, (_, i) => {
+        const angle = from + ((to - from) * i) / steps;
+        return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+      });
+    expect(
+      crossesItself(
+        corners([...arc(200, -1.2, 1.2, 12), ...arc(140, 1.2, -1.2, 12)]),
+      ),
+    ).toBe(false);
+  });
+
+  it("two nodes cannot cross anything", () => {
+    expect(
+      crossesItself(
+        corners([
+          { x: 0, y: 0 },
+          { x: 10, y: 10 },
+        ]),
+      ),
+    ).toBe(false);
   });
 });
