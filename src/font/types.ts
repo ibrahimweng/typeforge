@@ -10,6 +10,7 @@
 
 import type { Cast } from "./cast";
 import type { Cuts } from "./cuts";
+import type { Written } from "@/quill/written";
 
 export interface Vec2 {
   x: number;
@@ -97,6 +98,17 @@ export interface Glyph {
   cuts?: Cuts;
   /** This glyph's own cast, standing in for the font's on the same terms. */
   cast?: Cast;
+  /**
+   * The strokes this letter was written with, when it was written rather than
+   * drawn.
+   *
+   * Present alongside the contours rather than instead of them, and the
+   * contours are kept in step: they are what these strokes sweep to. So a
+   * written letter is an ordinary letter as far as the proof page, the
+   * exporter, the masters and every path tool are concerned, and only the
+   * things that want to *edit* the pen have to know about this.
+   */
+  written?: Written;
   /** Set when the user has touched this glyph, used for "changed only" export. */
   dirty: boolean;
 }

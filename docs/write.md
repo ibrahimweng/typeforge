@@ -87,138 +87,191 @@ way to say it.
 
 ---
 
-## What I would build
+## The decisions
 
-Five steps. Each is a merge on its own and each is worth having if the next one
-never happens.
+The four questions above were put and answered, and they are what this plan is
+built to.
 
-### 1. The nib per node
+| Question | Answer |
+|---|---|
+| A mode of its own, or a tool in the editor? | **A tool under the glyph drawing page**, with its own parameters beside it. Writing is a way of making a letter, not a separate room. |
+| Keep pressure as well as the pen? | **Keep both, done properly rather than cheaply.** They multiply, exactly as they do in a hand that both holds a broad pen at an angle and presses harder. |
+| Should Trace read a *turning* pen out of a font? | **Yes.** |
+| Illustrator plugin? | **Not yet.** |
 
-`Nib` moves from the stroke to the spine, and gains its second axis:
+And one instruction about the reference picture: all four of its arches must
+work. That is the acceptance test for step 1 and it is the reason step 1 comes
+first.
+
+---
+
+## Step 1 — The turning pen
+
+The nib moves off the stroke and onto the spine, as a profile of stops:
 
 ```ts
-/** The pen at one point along the spine. */
+/** The pen at one place along the spine. */
 interface NibStop {
-  at: number;        // arc length along the whole spine, 0..1 -- as WidthStop
-  width: number;     // the axis aligned with `angle`
-  height: number;    // the axis across it. 0 is legal: a razor blade.
-  angle: number;     // degrees, absolute or relative per the spine's mode
+  at: number;        // by arc length along the whole spine, 0..1
+  contrast: number;  // 0 is a circle, 1 is a blade with no thickness
+  angle: number;     // degrees, which way the blade is held
 }
+type NibProfile = NibStop[];
 ```
 
-This is deliberately shaped like `WidthStop`, which already exists and already
-interpolates along arc length. The two merge: a `WidthProfile` becomes the
-degenerate `NibProfile` where every stop shares an angle and a height ratio, and
-the migration is mechanical. Keeping stops at arc-length positions rather than
-per-node is our answer to the spec's §5.6.1 — it is what the sweep already does
-and it survives a handle drag better than per-segment linear.
+Shaped like `WidthStop`, which already exists, already interpolates by arc
+length, and is already what the sweep asks at every sample. One stop is exactly
+today's stroke, so nothing that Trace produces changes.
 
-Angle interpolation takes the spec's rule verbatim (§5.6.2): shortest arc under
-a full turn, raw difference at or beyond one, `+180` on the tie. That rule is
-right, it is cheap, and getting it wrong is invisible until a letter rotates the
-wrong way round.
+Three things have to be right.
 
-Cost: `sweep.ts` reads one nib where it will read a profile; `fit.ts` writes one
-where it will write several. The tracer keeps emitting single-stop profiles and
-nothing about Trace changes.
+**Arc length, not per segment.** The spec interpolates the nib linearly across
+each Bézier segment between two node nibs. Stops at arc-length positions are
+better and are what is here already: a stop halfway along is halfway along the
+*ink*, it survives a handle drag without moving, and it does not need a node
+where the pen happens to change.
 
-### 2. Write — the mode that is missing
+**The angle interpolates the short way.** 350° to 10° is twenty degrees, not
+three hundred and forty. Under a full turn take the shortest arc; at or beyond
+one take the difference as written, so somebody who asks for a full rotation
+gets one. This is `§5.6.2` of the spec and item 4 of its anti-patterns, and it
+is invisible until a letter turns the wrong way round.
 
-A fourth mode beside Draw, Trace and Assemble, and the front door to the whole
-thing. You draw a skeleton and the pen follows it.
+**Contrast may reach one.** The sweep clamps it to 0.95 today. A blade with no
+thickness is not an error, it is the value calligraphers reach for and the
+fourth arch in the picture. The clamp goes, and the degenerate case is handled
+where it arises rather than smoothed over.
 
-- **Skeleton pen.** The existing `pen` and `freehand` tools, pointed at a spine
-  instead of a contour. Click for a corner, drag for a smooth node, draw a line
-  freehand and have it fitted. This is the tool people already know.
-- **Nib tool.** The spec's signature tool and the reason this is not just a
-  panel of numbers. Every node's ellipse drawn on the canvas; drag an axis
-  endpoint to change that axis, drag off-axis to rotate, drag the body to move
-  the node. Shift snaps the angle to 15°. §10.4 gives the arithmetic and it is
-  four lines.
-- **Live sweep.** The letter under the skeleton, redrawn on every pointer move,
-  off the main thread — the tracing worker already exists and takes the same
-  shape of job.
-- **The grid.** A document preset that takes a nib width and an x-height in nib
-  widths and lays the four guides. Textura at 4.5 nibs, Roundhand at 5, and one
-  nib width between stems. This is a small thing that makes the mode legible to
-  somebody who has held a broad-nib pen and has never opened a font editor.
+`width` stays what it is: the axis the nib is held along. `contrast` gives the
+axis across it, as `width × (1 − contrast)`. So the two axes are independently
+controllable, which is what the third arch needs, without a second profile to
+keep in step.
 
-### 3. Stroke styles
+**Done when** the four arches of the reference picture are drawn from one
+skeleton by four nib profiles, in a test and in a picture, and the trace harness
+has not moved.
 
-This is the answer to "requires too much technical know-how", more than any
-other single item.
+### Done, and one thing found on the way
 
-Three named nibs — thick, middle, thin — bound to nodes rather than copied into
-them. Edit the thick one and every stem in the alphabet follows. Detach a node
-when it needs to be its own. That is how a person keeps forty letters
-consistent without knowing what consistent means numerically, and it is the
-difference between ten sliders that move everything and a tool that moves the
-right things.
+`scripts/arches.ts` draws all four arches from one skeleton. The trace harness
+did not move: worst 93.6, mean of means 6.11, 1101 nodes, because every stroke
+the tracer recovers carries a round pen and a round pen is the one case where
+none of this changes anything.
 
-Model, operations, the resolver and the adjustment-mode gate are §8 of the spec
-and I would follow it closely. Ship the calligraphic presets of §19 as the
-starting set.
+**The reach across a stroke was wrong, and badly.** What the sweep wants at each
+sample is the pen's *support* in the direction of the stroke's normal, meaning
+how far the furthest point of the pen stands out that way. It was computing the
+pen's *radius* in that direction. Those are the same number on the pen's own two
+axes, which is the only place the test looked, and nowhere else:
 
-### 4. Expand, and back
+| stroke, to the pen's own axis | the swept pen truly reaches | it was drawn at |
+|---|---|---|
+| 0° | 20.0 | 20.0 |
+| 15° | 32.3 | 20.7 |
+| 30° | 52.9 | 22.9 |
+| 45° | **72.1** | **27.7** |
+| 60° | 87.2 | 37.8 |
+| 75° | 96.7 | 61.9 |
+| 90° | 100.0 | 100.0 |
 
-Bake a stroke to outlines with the skeleton kept in the glyph, so **un-expand**
-works until the outlines have been hand-edited. Then the fourteen outline tools
-become the escape hatch they should always have been: write the letter with a
-pen, expand it, and nudge the one curve that is wrong.
+A pen a hundred units along by twenty across, run at forty-five degrees to its
+own edge, was drawn at two fifths of the weight it has. This is why the nib
+contrast control was unusable above about a third: every diagonal in the
+alphabet collapsed while the stems stayed exactly where they were, so the
+control read as "break the letter" rather than as "hold the pen at an angle".
+The numbers in the table are the boundary of an actual swept ellipse, found by
+walking the pen's outline, and the support formula matches all seven to three
+decimal places.
 
-That path — write, expand, edit — is the whole product argument. It is also the
-route by which a Write letter reaches Masters, the proof page and the exporter,
-all of which take outlines already.
+The contrast control now reaches one, where it was clamped to 0.9, because a
+blade with no thickness is the fourth arch and the value blackletter and Ruqaa
+are written with.
 
-### 5. Interpolate the nib
+## Step 2 — Write, the tool
 
-Masters currently interpolate outlines by walking nodes along their normals,
-which is right for a forge letter and wrong for a written one: two masters that
-differ in pen angle interpolate through shapes no pen ever made. Where both
-masters are stroke-drawn and compatible, interpolate the **spine and the nib
-profile** and sweep the result. The spec's §9 is the model and its Phase 9 DoD
-— expand each master separately, interpolate the outlines, and show that it is
-visibly worse — is a test worth writing.
+A fifth tool group in the glyph editor beside select, pen, shape and knife.
+Choosing it puts the glyph into strokes rather than outlines.
+
+- **Skeleton pen.** The existing `pen` and `freehand`, pointed at a spine
+  instead of a contour. Click for a corner, drag for a smooth node, or draw the
+  line freehand and have it fitted.
+- **Nib tool.** Every stop's ellipse drawn on the canvas. Drag an axis end to
+  change that axis. Drag off the axis to turn the pen. Drag the middle to move
+  the point. Shift snaps the angle to fifteen degrees.
+- **The letter, live.** The ink under the skeleton, redrawn as you drag, off the
+  main thread. The tracing worker already takes this shape of job.
+- **The parameters.** Width, contrast and angle for the selected stop, and the
+  hand's own controls for the whole letter, in the panel where the drawing
+  controls already are.
+- **A written grid.** A guide preset that takes a pen width and an x-height in
+  pen widths and lays the four lines. Textura at four and a half, one pen width
+  between stems.
+
+**Done when** somebody can draw a blackletter `n` with a pen at 40°, width 60
+and no thickness, and it looks like blackletter.
+
+## Step 3 — Saved pens
+
+Named pens, bound to stops rather than copied into them. Change the thick pen
+and every stem in the alphabet follows. Detach a stop when it has to be its own.
+
+This is the answer to the complaint that started this. Forty letters stay a
+family because they share three pens, not because somebody kept forty sets of
+numbers in line by hand.
+
+Ship the calligraphic set as the starting pens: Textura, Ruqaa, Roundhand
+thick, middle and thin.
+
+**Done when** three pens applied across a word, one of them edited, changes
+every letter that used it and leaves the rest alone.
+
+## Step 4 — Expand, and back
+
+Bake the strokes of a glyph to outlines, keeping the skeleton in the glyph so
+**un-expand** works until the outlines have been edited by hand. Then the
+fourteen outline tools are the escape hatch: write the letter, expand it, fix
+the one curve that is wrong.
+
+That path is also how a written letter reaches Masters, the proof page and the
+exporter, all of which take outlines already.
+
+**Done when** a written letter expands, hand-edits cleanly, and un-expands
+until it has been touched.
+
+## Step 5 — Trace reads a turning pen
+
+Today the tracer recovers one nib angle for a whole stroke. With stops on the
+spine it can recover the angle where the stroke's own thick and thin say it
+turned, which is what a script face actually does. Measured against the trace
+harness, letter by letter, and kept only if it is better.
+
+**Done when** the harness says so, or the attempt is recorded as rejected with
+its numbers.
+
+## Step 6 — Blend the pen, not the outline
+
+Masters interpolate outlines by walking each node along its normal. That is
+right for a forge letter and wrong for a written one: two masters that differ in
+pen angle pass through shapes no pen ever made. Where both masters are written
+and their skeletons line up, interpolate the spine and the nib profile and sweep
+the result.
+
+**Done when** an instance halfway between a 40° pen and a 110° pen is drawn
+both ways, and the outline-blended one is visibly worse.
 
 ---
 
-## What I would not take from the spec
+## What this plan does not take from the spec
 
-- **The pipeline.** §5.12's thirteen steps describe what `sweep.ts` and
-  `fit.ts` already do, with a different vocabulary and one genuinely good idea
-  (§5.9's reconcile-by-envelope-samples) that is worth reading before touching
-  the sweep, and no reason to rewrite around.
-- **The monorepo, the plugin, `.quill`.** We have a document format, an export
-  path and no Illustrator ambitions.
-- **The phase order.** It assumes a cold start.
-- **`evenodd`, the node budget number, the tolerance formula.** Ours are
-  measured against real fonts.
+- **The pipeline.** Its thirteen steps describe what `sweep.ts` and `fit.ts`
+  already do. One idea in it is worth reading before touching the sweep, which
+  is reconciling by envelope samples rather than by ring vertices.
+- **The monorepo, `.quill`, the Illustrator plugin.** We have a document format
+  and an export path, and the plugin is not wanted yet.
+- **The phase order, the tolerance formula, the node budget number.** They
+  assume a cold start. Ours are measured against real fonts.
 
-The anti-patterns in §17 are worth reading in full regardless. Four of them —
-naïve angle lerp, clamping height to a minimum, assuming the long axis is the
-width, interpolating outlines instead of nibs — are traps we would walk into
-in step 1 and step 5 if nobody had written them down.
-
----
-
-## Questions
-
-1. **Where does Write live?** A fourth mode beside Draw, Trace and Assemble, or
-   a tool group inside the editor? A mode gets its own canvas and its own
-   panel, which suits a nib tool; a tool group means one letter at a time in a
-   font that already exists, which suits fixing a `g`. I lean mode, and would
-   put a "write this letter" action in the editor pointing at it.
-
-2. **Does the width profile survive?** The per-node nib can express most of what
-   pressure does, and the spec has no equivalent. Keeping both is more model
-   than either alone needs, and the width profile is what Trace produces. I lean
-   keep — profile and nib multiply, exactly as they do in the hand — but it is
-   two things to teach instead of one.
-
-3. **How far does the traced font come along?** Once nibs are per node, Trace
-   could recover a *varying* angle from the outline rather than a constant one,
-   which is a genuinely better fit for a script face and a piece of work in its
-   own right. Step 1 makes it possible; I have not costed it.
-
-4. **Is the Illustrator plugin ever wanted?** It is a third of the spec. I have
-   assumed not.
+The anti-patterns in its §17 are worth reading in full. Four of them are traps
+this plan would walk into: the naïve angle blend in step 1, the clamp on
+thickness in step 1, assuming the held axis is the longer one, and blending
+outlines instead of pens in step 6.

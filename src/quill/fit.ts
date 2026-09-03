@@ -1763,7 +1763,7 @@ export function fitGlyph(
     strokes.push({
       spine: { segments, closed: run.closed },
       width: shifted,
-      nib: { ...ROUND_NIB },
+      nib: [{ ...ROUND_NIB, at: 0 }],
       start: head.cap,
       end: foot.cap,
     });

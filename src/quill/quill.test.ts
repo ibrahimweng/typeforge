@@ -39,6 +39,8 @@ import { fitGlyph } from "./fit";
 import {
   isConstant,
   isExact,
+  isOnePen,
+  nibAt,
   reachAcross,
   sweep,
   sweepAll,
@@ -48,7 +50,7 @@ import {
 import { looksJoined } from "./joined";
 import { drawTraced } from "@/state/quill-store";
 import type { Traced } from "./tracing";
-import { ROUND_NIB, type QuillStroke } from "./types";
+import { ROUND_NIB, type NibProfile, type QuillStroke } from "./types";
 import type { Contour, Glyph, GlyphNode, Typeface } from "@/font/types";
 
 const straight = (from: [number, number], to: [number, number]) => ({
@@ -65,7 +67,7 @@ const straight = (from: [number, number], to: [number, number]) => ({
 const plainStroke = (width: number): QuillStroke => ({
   spine: straight([0, 0], [0, 500]),
   width: [{ at: 0, width }],
-  nib: { ...ROUND_NIB },
+  nib: [{ ...ROUND_NIB, at: 0 }],
   start: { kind: "butt" },
   end: { kind: "butt" },
 });
@@ -215,6 +217,209 @@ describe("the sweep", () => {
     expect(reachAcross({ x: 1, y: 0 }, 50, ROUND_NIB)).toBeCloseTo(50, 6);
     expect(reachAcross({ x: 0.6, y: 0.8 }, 50, ROUND_NIB)).toBeCloseTo(50, 6);
   });
+
+  /*
+   * And its thicks and thins in between the two axes, which is where it was
+   * wrong.
+   *
+   * The test above checks the pen on its own two axes, and on those the reach
+   * this engine computed for a long time and the reach a swept pen actually has
+   * are the same number -- which is why the test passed while every diagonal in
+   * the alphabet was drawn light. What is wanted is the pen's *support* in the
+   * direction of the stroke's normal, meaning how far its furthest point stands
+   * out that way, and not its radius in that direction.
+   *
+   * The numbers below are the true boundary of a swept ellipse, found by
+   * walking the pen's outline and taking the furthest projection, at half a
+   * unit in ten thousand. A pen a hundred long by twenty across, run at
+   * forty-five degrees to its own axis, reaches 72.111 units. The radius there
+   * is 27.735, which is two fifths of it.
+   */
+  it("reaches as far across as a swept pen actually does", () => {
+    const nib = { contrast: 0.8, angle: 0 };
+    const along = (degrees: number) => ({
+      x: Math.cos((degrees * Math.PI) / 180),
+      y: Math.sin((degrees * Math.PI) / 180),
+    });
+    expect(reachAcross(along(0), 100, nib)).toBeCloseTo(20, 3);
+    expect(reachAcross(along(15), 100, nib)).toBeCloseTo(32.297, 3);
+    expect(reachAcross(along(30), 100, nib)).toBeCloseTo(52.915, 3);
+    expect(reachAcross(along(45), 100, nib)).toBeCloseTo(72.111, 3);
+    expect(reachAcross(along(60), 100, nib)).toBeCloseTo(87.178, 3);
+    expect(reachAcross(along(75), 100, nib)).toBeCloseTo(96.731, 3);
+    expect(reachAcross(along(90), 100, nib)).toBeCloseTo(100, 3);
+  });
+
+  /*
+   * A blade with no thickness, which used to be clamped away from.
+   *
+   * Contrast was held at 0.95 whatever was asked for, on the reasoning that a
+   * pen of no thickness draws nothing. It draws the mark a broad-nib pen leaves
+   * when it is set down, and it is the value a calligrapher reaches for -- the
+   * blackletter entry stroke and the Ruqaa thin are both this. The reach is
+   * nought along the blade and the full half-width across it.
+   */
+  it("lets the pen be a blade with no thickness across", () => {
+    const blade = { contrast: 1, angle: 0 };
+    expect(reachAcross({ x: 0, y: 1 }, 50, blade)).toBeCloseTo(50, 6);
+    expect(reachAcross({ x: 1, y: 0 }, 50, blade)).toBeCloseTo(0, 6);
+  });
+});
+
+/*
+ * The pen along the stroke, which is Noordzij's third way of making a letter.
+ *
+ * A hand does three things to a pen: it moves it, it changes its size, and it
+ * turns it. This engine could say the first two -- a spine, and a width profile
+ * that swells -- and could not say the third, because the nib hung off the
+ * whole stroke and was one pen from end to end. So a stroke could be held at
+ * forty degrees and could not go from forty to a hundred and ten, which is what
+ * a Roundhand or a Ruqaa does and half of what makes either look written.
+ */
+describe("the pen along the stroke", () => {
+  it("holds one pen all the way along when it is given one stop", () => {
+    const one: NibProfile = [{ at: 0, contrast: 0.5, angle: 30 }];
+    expect(nibAt(one, 0)).toEqual({ contrast: 0.5, angle: 30 });
+    expect(nibAt(one, 0.5)).toEqual({ contrast: 0.5, angle: 30 });
+    expect(nibAt(one, 1)).toEqual({ contrast: 0.5, angle: 30 });
+    expect(isOnePen(one)).toBe(true);
+  });
+
+  it("turns the pen and narrows it between two stops", () => {
+    const turning: NibProfile = [
+      { at: 0, contrast: 0.2, angle: 40 },
+      { at: 1, contrast: 0.8, angle: 110 },
+    ];
+    expect(nibAt(turning, 0).angle).toBeCloseTo(40, 6);
+    expect(nibAt(turning, 0.5).angle).toBeCloseTo(75, 6);
+    expect(nibAt(turning, 1).angle).toBeCloseTo(110, 6);
+    expect(nibAt(turning, 0.5).contrast).toBeCloseTo(0.5, 6);
+    expect(isOnePen(turning)).toBe(false);
+  });
+
+  it("holds the pen outside the outermost stops rather than running on", () => {
+    const middle: NibProfile = [
+      { at: 0.25, contrast: 0, angle: 0 },
+      { at: 0.75, contrast: 1, angle: 90 },
+    ];
+    expect(nibAt(middle, 0).contrast).toBeCloseTo(0, 6);
+    expect(nibAt(middle, 0.1).angle).toBeCloseTo(0, 6);
+    expect(nibAt(middle, 1).contrast).toBeCloseTo(1, 6);
+    expect(nibAt(middle, 0.5).angle).toBeCloseTo(45, 6);
+  });
+
+  /*
+   * The short way round, which is the whole of the difficulty.
+   *
+   * A pen going from three hundred and fifty degrees to ten has turned twenty,
+   * and a blend that reads the numbers as they stand turns it three hundred and
+   * forty the other way -- through every angle the letter does not want, so the
+   * stroke's thick swings all the way round and back. Invisible in a test of
+   * either end and unmistakable in the middle.
+   */
+  it("turns the pen the short way round", () => {
+    const across: NibProfile = [
+      { at: 0, contrast: 0.8, angle: 350 },
+      { at: 1, contrast: 0.8, angle: 10 },
+    ];
+    // 360, which is 0: twenty degrees of turn, not three hundred and forty.
+    expect(nibAt(across, 0.5).angle).toBeCloseTo(360, 6);
+    expect(nibAt(across, 0.25).angle).toBeCloseTo(355, 6);
+  });
+
+  /*
+   * Unless a whole turn was asked for, in which case it was meant.
+   *
+   * The short way is right for a pen that drifts and wrong for a pen somebody
+   * has deliberately wound round: read the short way, nought to three hundred
+   * and sixty is no turn at all, and the stroke a full revolution was asked for
+   * comes back monoline.
+   */
+  it("takes a full turn as written", () => {
+    const whole: NibProfile = [
+      { at: 0, contrast: 0.8, angle: 0 },
+      { at: 1, contrast: 0.8, angle: 360 },
+    ];
+    expect(nibAt(whole, 0.5).angle).toBeCloseTo(180, 6);
+    expect(nibAt(whole, 0.25).angle).toBeCloseTo(90, 6);
+  });
+
+  it("is not exact once the pen turns, and says so", () => {
+    const turning: QuillStroke = {
+      ...plainStroke(100),
+      nib: [
+        { at: 0, contrast: 0, angle: 0 },
+        { at: 1, contrast: 0, angle: 90 },
+      ],
+    };
+    expect(isExact(turning)).toBe(false);
+    expect(isExact(plainStroke(100))).toBe(true);
+  });
+
+  /*
+   * And the ink is different, which is the point of all of it.
+   *
+   * Noordzij's three modes, swept from one skeleton, measured rather than
+   * looked at: each has to differ from the plain pen, and differ from each
+   * other. `scripts/arches.ts` draws the same four as a picture.
+   */
+  it("draws Noordzij's three modes differently from one skeleton", () => {
+    const spine = {
+      segments: [
+        {
+          kind: "cubic" as const,
+          from: { x: 0, y: 0 },
+          c1: { x: 0, y: 400 },
+          c2: { x: 200, y: 500 },
+          to: { x: 400, y: 500 },
+        },
+      ],
+      closed: false,
+    };
+    const inkOf = (width: QuillStroke["width"], nib: NibProfile) => {
+      const drawn = sweep({
+        spine,
+        width,
+        nib,
+        start: { kind: "butt" },
+        end: { kind: "butt" },
+        join: "round",
+      });
+      const box = contoursBounds(drawn.contours);
+      return {
+        wide: box.xMax - box.xMin,
+        tall: box.yMax - box.yMin,
+        ink: Math.abs(
+          drawn.contours.reduce((total, one) => total + contourArea(one), 0),
+        ),
+      };
+    };
+    const held = [{ at: 0, width: 200 }];
+    const translation = inkOf(held, [{ at: 0, contrast: 0.8, angle: 40 }]);
+    const rotation = inkOf(held, [
+      { at: 0, contrast: 0.8, angle: 40 },
+      { at: 1, contrast: 0.8, angle: 110 },
+    ]);
+    const expansion = inkOf(
+      [
+        { at: 0, width: 200 },
+        { at: 1, width: 20 },
+      ],
+      [{ at: 0, contrast: 0.8, angle: 40 }],
+    );
+    const blade = inkOf(held, [{ at: 0, contrast: 1, angle: 40 }]);
+
+    // Turning the pen moves ink. Nothing else about the stroke changed.
+    expect(Math.abs(rotation.tall - translation.tall)).toBeGreaterThan(5);
+    expect(Math.abs(rotation.ink - translation.ink)).toBeGreaterThan(100);
+    // Shrinking it takes ink away at the end that shrank.
+    expect(expansion.ink).toBeLessThan(translation.ink);
+    // A blade with no thickness holds less ink than a pen that has some, and
+    // is inside it: no part of the letter grew.
+    expect(blade.ink).toBeLessThan(translation.ink);
+    expect(blade.wide).toBeLessThanOrEqual(translation.wide + 1e-6);
+    expect(blade.tall).toBeLessThanOrEqual(translation.tall + 1e-6);
+  });
 });
 
 /*
@@ -241,7 +446,7 @@ describe("the sweep at a corner", () => {
         closed: false,
       },
       width: [{ at: 0, width: 90 }],
-      nib: { ...ROUND_NIB },
+      nib: [{ ...ROUND_NIB, at: 0 }],
       start: { kind: "butt" },
       end: { kind: "butt" },
       ...(join ? { join } : {}),
@@ -411,7 +616,7 @@ describe("the fitter", () => {
         closed: true,
       },
       width: [{ at: 0, width: 60 }],
-      nib: { ...ROUND_NIB },
+      nib: [{ ...ROUND_NIB, at: 0 }],
       start: { kind: "butt" },
       end: { kind: "butt" },
     };
@@ -459,7 +664,7 @@ describe("the fitter", () => {
         closed: true,
       },
       width: [{ at: 0, width: 60 }],
-      nib: { ...ROUND_NIB },
+      nib: [{ ...ROUND_NIB, at: 0 }],
       start: { kind: "butt" },
       end: { kind: "butt" },
     };
@@ -503,7 +708,7 @@ describe("the fitter", () => {
         closed: true,
       },
       width: [{ at: 0, width: 60 }],
-      nib: { ...ROUND_NIB },
+      nib: [{ ...ROUND_NIB, at: 0 }],
       start: { kind: "butt" },
       end: { kind: "butt" },
     };
@@ -528,14 +733,14 @@ describe("the fitter", () => {
     const stem: QuillStroke = {
       spine: straight([0, 0], [0, 700]),
       width: [{ at: 0, width: 80 }],
-      nib: { ...ROUND_NIB },
+      nib: [{ ...ROUND_NIB, at: 0 }],
       start: { kind: "butt" },
       end: { kind: "butt" },
     };
     const arm: QuillStroke = {
       spine: straight([0, 350], [400, 350]),
       width: [{ at: 0, width: 80 }],
-      nib: { ...ROUND_NIB },
+      nib: [{ ...ROUND_NIB, at: 0 }],
       start: { kind: "butt" },
       end: { kind: "butt" },
     };
@@ -584,7 +789,7 @@ describe("the fitter", () => {
     const bar: QuillStroke = {
       spine: straight([0, 0], [600, 0]),
       width: [{ at: 0, width: 120 }],
-      nib: { ...ROUND_NIB },
+      nib: [{ ...ROUND_NIB, at: 0 }],
       start: { kind: "butt" },
       end: { kind: "butt" },
     };
@@ -643,7 +848,7 @@ describe("the fitter", () => {
     ): QuillStroke => ({
       spine: straight(from, to),
       width: [{ at: 0, width: 90 }],
-      nib: { ...ROUND_NIB },
+      nib: [{ ...ROUND_NIB, at: 0 }],
       start: { kind: "butt" },
       end: { kind: "butt" },
     });
@@ -719,7 +924,7 @@ describe("the fitter", () => {
         closed: false,
       },
       width: [{ at: 0, width: 90 }],
-      nib: { ...ROUND_NIB },
+      nib: [{ ...ROUND_NIB, at: 0 }],
       start: { kind: "butt" },
       end: { kind: "butt" },
     };
@@ -775,7 +980,7 @@ describe("the fitter", () => {
     const stem: QuillStroke = {
       spine: straight([300, 60], [300, 700]),
       width: [{ at: 0, width: 90 }],
-      nib: { ...ROUND_NIB },
+      nib: [{ ...ROUND_NIB, at: 0 }],
       start: { kind: "butt" },
       end: { kind: "butt" },
     };
@@ -784,7 +989,7 @@ describe("the fitter", () => {
     const foot: QuillStroke = {
       spine: straight([210, 60], [390, 60]),
       width: [{ at: 0, width: 120 }],
-      nib: { ...ROUND_NIB },
+      nib: [{ ...ROUND_NIB, at: 0 }],
       start: { kind: "butt" },
       end: { kind: "butt" },
     };
@@ -810,7 +1015,7 @@ describe("the fitter", () => {
     const dot: QuillStroke = {
       spine: straight([0, 640], [0, 660]),
       width: [{ at: 0, width: 70 }],
-      nib: { ...ROUND_NIB },
+      nib: [{ ...ROUND_NIB, at: 0 }],
       start: { kind: "round" },
       end: { kind: "round" },
     };

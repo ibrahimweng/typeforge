@@ -175,9 +175,9 @@ export const QUILL_CONTROLS: FieldControl[] = [
   {
     key: "contrast",
     label: "Nib contrast",
-    hint: "How narrow the pen is across its own axis. Nought is round, and then the pressure profile is the whole story. Turned up, the strokes running one way thin and the strokes running the other stay full, which is a broad-edged pen.",
+    hint: "How narrow the pen is across its own axis. Nought is round, and then the pressure profile is the whole story. Turned up, the strokes running one way thin and the strokes running the other stay full, which is a broad-edged pen. All the way up is a blade with no thickness at all, which is what gives blackletter and Ruqaa their hairlines.",
     min: 0,
-    max: 0.9,
+    max: 1,
     step: 0.01,
   },
   {
@@ -541,7 +541,7 @@ export function restyleStroke(
       segments: reached.spine.segments.map((segment) => mapSegment(segment, map)),
     },
     width: restyleWidth(stroke.width, style),
-    nib: { contrast: style.contrast, angle: style.nibAngle },
+    nib: [{ at: 0, contrast: style.contrast, angle: style.nibAngle }],
     start: style.taper > 0.5 ? { kind: "pointed", extend: 0.5 } : stroke.start,
     end: style.taper > 0.5 ? { kind: "pointed", extend: 0.5 } : stroke.end,
   };
