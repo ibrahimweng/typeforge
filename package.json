@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "A fast, browser-based font editor. Import a typeface, reshape it, and export a valid TrueType or OpenType file.",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "engines": {
     "node": ">=20"
