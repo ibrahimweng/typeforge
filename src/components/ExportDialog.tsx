@@ -12,7 +12,7 @@ import * as React from "react";
 import { enter, refuse } from "@/anim/motion";
 import { CoachMark } from "@/components/CoachMark";
 import { exportFont, toDownloadBlob, type ExportFidelity, type ExportFormat } from "@/font/export";
-import { varyByWeight } from "@/font/masters";
+import { varyByDrawnWeights, varyByWeight } from "@/font/masters";
 import { store, useAppState } from "@/state/useStore";
 import { ufoNameFor, zipUfo } from "@/ufo/intake";
 import { cn } from "@/ui/lib/utils";
@@ -57,15 +57,21 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
     format === "ttf" && typeface.source !== null && !typeface.source.isCFF;
 
   /*
-   * Whether this font has anywhere left to go on the weight axis.
+   * How this font would vary, and whether it can at all.
    *
-   * The masters are the two ends of the weight slider, so a font already at one
-   * of them has a slider that only runs one way -- and an axis whose default
-   * sits on its own limit is worse than no axis. Said here rather than refused
-   * at the end, because a choice that is going to fail should look unavailable
-   * before it is made.
+   * Two ways, and the drawn one wins. If somebody has drawn a second weight,
+   * those drawings are the masters and there is nothing to work out. If not,
+   * the ends of the weight slider are synthesised -- which is a machine-made
+   * bold, even where a drawn one is optical, and worth saying so.
+   *
+   * A font already at one end of that slider has nowhere to go, and an axis
+   * whose default sits on its own limit is worse than no axis. Said here rather
+   * than refused at the end, because a choice that is going to fail should look
+   * unavailable before it is made.
    */
-  const canVary = varyByWeight(typeface) !== null;
+  const drawn = varyByDrawnWeights(state.masters);
+  const varyingOptions = drawn ?? varyByWeight(typeface);
+  const canVary = varyingOptions !== null;
 
   const handleExport = async (): Promise<void> => {
     setWorking(true);
@@ -103,7 +109,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
        * curves the same number of ways, which is the whole reason the points
        * line up between them. See `PIECES_PER_CURVE` in `variable.ts`.
        */
-      const varying = format === "variable" ? varyByWeight(typeface) : null;
+      const varying = format === "variable" ? varyingOptions : null;
       const result = await exportFont(typeface, {
         // Narrowed by the branch above, which returns for the one value this
         // does not accept.
@@ -229,9 +235,15 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
             application is already a machine for drawing the same alphabet at
             any weight.
 
-            The masters are the two ends of the weight slider, which is why a
-            font already sitting at one of them cannot have this: an axis whose
-            default is its own limit is a slider that only runs one way.
+            Two ways to get the masters, and the drawn one wins. A font with a
+            second weight drawn uses those drawings; a font without one falls
+            back to the two ends of the weight slider, which is a machine-made
+            bold -- even where a drawn one is optical, and thickening a hairline
+            and a stem by the same amount. That is worth saying out loud in the
+            description rather than shipping quietly, and it is why a font
+            already sitting at one end of that slider cannot have this at all:
+            an axis whose default is its own limit is a slider that only runs
+            one way.
           */}
           <Choice
             selected={format === "variable"}
@@ -239,9 +251,11 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
             disabled={!canVary}
             title="Variable (.ttf)"
             description={
-              canVary
-                ? "One file, every weight, and a slider between them. The two ends of the Weight control become the ends of the axis."
-                : "Needs room on the Weight control. This font is already at one end of it, so there is nothing for an axis to reach."
+              drawn
+                ? `One file, every weight, and a slider between them. Built from the ${state.masters.length} weights you drew: ${state.masters.map((one) => one.name).join(", ")}.`
+                : canVary
+                  ? "One file, every weight, and a slider between them. The two ends of the Weight control become the ends of the axis — a calculated bold rather than a drawn one. Add a weight on the Font screen to draw the other end yourself."
+                  : "Needs room on the Weight control, or a second weight drawn on the Font screen. This font is at one end of the control, so there is nothing for an axis to reach."
             }
           />
           {/*
