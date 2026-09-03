@@ -89,34 +89,110 @@ function spreadUnder(readings: Reading[], contrast: number, angle: number): numb
 
 /** Every reading a set of strokes offers, sampled along their spines. */
 function readingsOf(strokes: QuillStroke[], perStroke = 24): Reading[] {
-  const readings: Reading[] = [];
+  return strokeReadings(strokes, perStroke).flat();
+}
+
+/** The same readings, kept one list per stroke. */
+function strokeReadings(strokes: QuillStroke[], perStroke = 24): Reading[][] {
+  const all: Reading[][] = [];
   for (const stroke of strokes) {
     if (stroke.spine.segments.length === 0) continue;
     const walk = walkOf(stroke.spine);
     if (walk.total <= 0) continue;
+    const along: Reading[] = [];
     for (let step = 0; step <= perStroke; step++) {
       const fraction = step / perStroke;
       const { heading } = alongSpine(stroke.spine, walk, fraction);
       const half = widthAt(stroke.width, fraction) / 2;
       if (half <= 0) continue;
-      readings.push({
+      along.push({
         half,
         // The normal is the heading turned a quarter turn, which is the
         // direction the reach is measured along.
         normal: Math.atan2(heading.x, -heading.y),
       });
     }
+    if (along.length > 1) all.push(along);
   }
-  return readings;
+  return all;
+}
+
+/**
+ * How much the pressure wanders along a stroke, averaged over the strokes.
+ *
+ * Step to step rather than about a mean, because that is what a thinner sees: a
+ * profile that climbs steadily takes two stops however far it climbs, and one
+ * that goes up and down takes a stop for every turn. So the total swing is the
+ * number that predicts how many numbers the description will cost.
+ */
+function wanderUnder(
+  perStroke: Reading[][],
+  contrast: number,
+  angle: number,
+): number {
+  let total = 0;
+  let count = 0;
+  for (const along of perStroke) {
+    const implied = along.map((one) => {
+      const reach = reachFor(one.normal - angle, contrast);
+      return one.half / Math.max(0.08, reach);
+    });
+    const mean = implied.reduce((sum, one) => sum + one, 0) / implied.length;
+    if (mean <= 1e-9) continue;
+    let swing = 0;
+    for (let index = 1; index < implied.length; index += 1)
+      swing += Math.abs(implied[index] - implied[index - 1]);
+    total += swing / mean;
+    count += 1;
+  }
+  return count === 0 ? Infinity : total / count;
+}
+
+/**
+ * How much the pressure wanders along each stroke under a given pen.
+ *
+ * Exposed so the question can be asked of a pen somebody already knows, which
+ * is what separates a bad fit from a dead idea: told the pen a letter was
+ * actually written with, does dividing it out flatten the profile or not?
+ */
+export function wanderOf(
+  strokes: QuillStroke[],
+  contrast: number,
+  angleDegrees: number,
+): number {
+  return wanderUnder(strokeReadings(strokes), contrast, (angleDegrees * Math.PI) / 180);
 }
 
 export interface HandFound {
   contrast: number;
   /** Degrees, as a nib angle is written everywhere else. */
   angle: number;
-  /** How flat the pressure is under this pen, and under a round one. */
+  /** How much the pressure varies *between* strokes, under this pen and a round one. */
   spread: number;
   roundSpread: number;
+  /**
+   * How much the pressure wanders *along* each stroke, under this pen and a
+   * round one.
+   *
+   * A second measurement because it answers a second question, and confusing
+   * the two cost an afternoon. `spread` says whether a pen explains why one
+   * stroke is heavier than another, which is what makes the pen worth reading.
+   * This says whether a pen explains how a single stroke changes down its own
+   * length, which is what makes the pen worth *re-fitting against* -- because a
+   * width profile describes one stroke, and the thinner that decides how many
+   * numbers it takes only ever looks at one.
+   *
+   * They can point opposite ways, and on every face here they do. DejaVu Serif
+   * reads as a blade of 0.38 at ten degrees: between strokes that takes the
+   * variation from 0.267 to 0.173, and along each stroke it takes it from 0.591
+   * to **0.736**. Which is a fact about the drawing rather than about the
+   * arithmetic. A pen's thick and thin follow the heading continuously, so a
+   * curve written with one changes width all the way round; a drawn serif holds
+   * each stroke at an even width and varies between them instead. Dividing a
+   * pen out of an evenly drawn curve puts a wobble into a profile that was flat.
+   */
+  wander: number;
+  roundWander: number;
 }
 
 /**
@@ -153,12 +229,16 @@ export function handOf(strokes: QuillStroke[]): HandFound | null {
   };
   if (spanOf(spread) < (30 * Math.PI) / 180) return null;
 
+  const perStroke = strokeReadings(strokes);
   const roundSpread = spreadUnder(readings, 0, 0);
+  const roundWander = wanderUnder(perStroke, 0, 0);
   let best: HandFound = {
     contrast: 0,
     angle: 0,
     spread: roundSpread,
     roundSpread,
+    wander: roundWander,
+    roundWander,
   };
   const tryPen = (contrast: number, radians: number): void => {
     const found = spreadUnder(readings, contrast, radians);
@@ -168,6 +248,8 @@ export function handOf(strokes: QuillStroke[]): HandFound | null {
         angle: (radians * 180) / Math.PI,
         spread: found,
         roundSpread,
+        wander: wanderUnder(perStroke, contrast, radians),
+        roundWander,
       };
     }
   };

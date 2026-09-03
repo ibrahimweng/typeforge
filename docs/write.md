@@ -387,6 +387,67 @@ There is no turning pen here, and that is the same finding a level down: one
 angle per font is what the evidence supports. A per-letter fit already
 over-fits, so a per-stroke turning fit would over-fit harder.
 
+## Step 7 -- The two-pass trace, built and rejected
+
+The obvious next move, and the one this doc said was the work: trace once to
+find the pen, then again with the pen divided out of every width reading
+**before** the profile is thinned, so what is stored is the pressure and the
+description comes out shorter. It was built. It does not work, and the reason
+is a fact about tracing rather than a bug.
+
+**Two different questions were being confused.** Whether a pen explains why one
+stroke is heavier than *another* is what makes it worth reading. Whether it
+explains how a single stroke changes down its *own length* is what would make it
+worth re-fitting against -- because a width profile describes one stroke, and the
+thinner that decides how many numbers it costs only ever looks at one. On DejaVu
+Serif they point opposite ways:
+
+| | round pen | with the pen |
+|---|---|---|
+| variation **between** strokes | 0.267 | **0.173** |
+| wander **along** each stroke | 0.592 | **0.664** |
+
+**Written out with a pen known exactly and traced back, it is starker.**
+`scripts/loop.ts` writes an alphabet with a blade of 0.70 at 40°, sweeps it, and
+hands the outlines to the tracer:
+
+```
+written with:  blade 0.70 at 40°
+read back as:  blade 0.38 at 42.0°
+  along each stroke:  0.421 -> 0.503   under the pen that was found
+  under the TRUE pen: 0.421 -> 0.929
+  the written strokes, whose profile is flat: 0.000 -> 0.481
+```
+
+The angle comes back within two degrees. Then: a written stroke's own profile is
+**flat**, because the pen does all the modulation, and dividing that flat profile
+by its own pen puts 0.481 of wander into it. The traced strokes carry 0.421 of
+wander, so the tracer *does* recover the pen's modulation. Dividing it out should
+cancel it and instead takes it to **0.929** -- the two are out of phase.
+
+**Why.** The recovered spine sits close to the pen's path in position, five or
+six units on average, no further for a broad pen than for a round one. But its
+*heading at a given fraction along* does not match, because a broad pen's ink is
+not symmetric about its path: the medial axis of it turns at a different rate. So
+the width the tracer records and the reach the heading predicts are the same
+variation landing in different places, and dividing one by the other doubles it
+instead of cancelling.
+
+Only where the stroke curves, which is the sharp version and is in the test: a
+straight stroke has one heading, so the pen's reach along it is one number and
+dividing by a constant cannot add anything. It takes a bend, and a written
+alphabet is mostly bends.
+
+**So the second pass cannot work while the tracer recovers the medial axis** --
+which is what thinning gives and what everything downstream is built on. Making
+it work means recovering the *pen's* path instead. That is a different and much
+deeper piece of work than a rule about a profile, and it is where this stops.
+
+Run anyway, it took the Serif's width stops from 517 to **565** and its mean
+error from 14.31 to 13.32: more numbers describing the letters no better. The
+code is gone; the measurement, the closed-loop script and the `wander` reading
+that predicts it are kept.
+
 ## Step 6 — Blend the pen, not the outline
 
 Masters interpolate outlines by walking each node along its normal. That is
