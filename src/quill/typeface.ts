@@ -263,6 +263,14 @@ export async function toTypeface(
      * of a letter cross, the winding of the crossing is an accident of which
      * stroke the fitter happened to recover first. Nesting asks the question
      * the shape can actually answer -- which contour lies inside which.
+     *
+     * It has to be asked properly. Nesting used to be settled by one interior
+     * point, and one point cannot tell a counter from an overlap: a traced `u`
+     * comes back as the bowl and both stems, the foot of the right stem, and
+     * the knot where they meet, and a point inside that foot lands in the
+     * bowl's piece. The foot was read as a counter, punched out of its own
+     * letter, and the union handed back four pieces with a seam across the
+     * stem. `classifyContours` now asks whether the whole contour is inside.
      */
     const merged = await removeOverlaps(ink.contours, "nesting");
     const contours = correctDirection(merged.length > 0 ? merged : ink.contours, "truetype", "nesting");
