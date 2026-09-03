@@ -100,7 +100,14 @@ import {
 import sampleFontUrl from "@/assets/typeforge-sample.ttf?url";
 import { readUfo, writeUfo, type UfoCarried, type UfoFiles } from "@/ufo/font";
 import { correctDirection, dominantConvention, insertExtrema } from "@/font/outline";
-import { inkOf, penAtNodes, STARTING_WIDTH } from "@/quill/written";
+import {
+  followPens,
+  inkOf,
+  penAtNodes,
+  STARTING_PENS,
+  STARTING_WIDTH,
+  type SavedPen,
+} from "@/quill/written";
 import type { QuillSegment, QuillStroke } from "@/quill/types";
 import { strokeToContour } from "@/font/freehand";
 import { isClockwise, reverseContour as flipContour } from "@/font/geometry";
@@ -332,6 +339,16 @@ export interface AppState {
    */
   pen: { width: number; contrast: number; angle: number };
   /**
+   * The pens this font is written with, by name.
+   *
+   * With the font rather than with the letter, because that is what makes them
+   * worth having: three pens shared across forty letters is what keeps an
+   * alphabet consistent, and a pen kept per letter is a copy of a number.
+   */
+  pens: SavedPen[];
+  /** Which saved pen the next stroke follows, if it follows one. */
+  usingPen: string | null;
+  /**
    * The stroke being written, if one is part-written.
    *
    * Carries the first point, because a stroke of one point has no segment to
@@ -526,6 +543,8 @@ class Store {
       write: "skeleton",
     },
     pen: { width: STARTING_WIDTH, contrast: 0.55, angle: 30 },
+    pens: STARTING_PENS.map((one) => ({ ...one })),
+    usingPen: null,
     writing: null,
     stop: null,
     toolState: { phase: "idle", says: "" },
@@ -2276,6 +2295,7 @@ class Store {
     const glyph = this.glyph(name);
     if (!glyph) return;
     const { width, contrast, angle } = this.state.pen;
+    const using = this.state.usingPen ?? undefined;
     const going = this.state.writing;
 
     /*
@@ -2297,7 +2317,7 @@ class Store {
         written.strokes.push({
           spine: { segments: [], closed: false },
           width: [{ at: 0, width }],
-          nib: [{ at: 0, contrast, angle }],
+          nib: [{ at: 0, contrast, angle, ...(using ? { pen: using } : {}) }],
           start: { kind: "butt" },
           end: { kind: "butt" },
           join: "round",
@@ -2376,6 +2396,152 @@ class Store {
       `Guides at ${nibs} pen widths: x-height ${xHeight}, and ${beyond} beyond each way.`,
       "success",
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Saved pens
+  // -------------------------------------------------------------------------
+
+  get pens(): SavedPen[] {
+    return this.state.pens;
+  }
+
+  /**
+   * Write the next stroke with a saved pen, or with the hand's own again.
+   *
+   * Also sets the hand's three numbers to the pen's, so the panel shows what
+   * will actually be drawn rather than a set of numbers the saved pen is about
+   * to override.
+   */
+  usePen(id: string | null): void {
+    if (!id) {
+      this.set({ usingPen: null });
+      return;
+    }
+    const saved = this.state.pens.find((one) => one.id === id);
+    if (!saved) return;
+    this.set({
+      usingPen: id,
+      pen: { width: saved.width, contrast: saved.contrast, angle: saved.angle },
+    });
+  }
+
+  /**
+   * Save the pen in hand under a name.
+   *
+   * From whatever the panel is currently showing, which is either a stop that
+   * was picked or the hand's own -- so "make this a pen" works from a letter
+   * that came out well, which is how somebody who is not thinking in numbers
+   * arrives at a set of pens.
+   */
+  savePen(name: string): string | null {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    const { width, contrast, angle } = this.state.pen;
+    const id = `pen-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    this.set({
+      pens: [...this.state.pens, { id, name: trimmed, width, contrast, angle }],
+      usingPen: id,
+    });
+    this.say(`Saved the pen as ${trimmed}.`, "success");
+    return id;
+  }
+
+  /**
+   * Change a saved pen, and with it every stroke that follows it.
+   *
+   * The whole point of the feature and the one operation that has to reach
+   * outside the letter in hand: every written glyph in the font is brought back
+   * into line, and their outlines re-swept. One history entry for all of it,
+   * because it is one act.
+   */
+  editPen(id: string, change: Partial<Omit<SavedPen, "id">>): void {
+    const typeface = this.state.typeface;
+    const before = this.state.pens;
+    const after = before.map((one) => (one.id === id ? { ...one, ...change } : one));
+    this.set({ pens: after });
+    if (change.name !== undefined && Object.keys(change).length === 1) return;
+    if (!typeface) return;
+
+    const touched: Array<{ index: number; was: Glyph }> = [];
+    typeface.glyphs.forEach((glyph, index) => {
+      if (!glyph.written?.strokes.some((one) => one.nib.some((stop) => stop.pen === id))) return;
+      touched.push({ index, was: cloneGlyph(glyph) });
+      glyph.written.strokes = followPens(glyph.written.strokes, after);
+      this.reswept(glyph);
+      glyph.dirty = true;
+    });
+    if (touched.length === 0) return;
+
+    const now = touched.map(({ index }) => cloneGlyph(typeface.glyphs[index]));
+    this.push({
+      label: "Change the pen",
+      undo: () => {
+        this.set({ pens: before });
+        touched.forEach(({ index, was }) => {
+          typeface.glyphs[index] = cloneGlyph(was);
+        });
+      },
+      redo: () => {
+        this.set({ pens: after });
+        touched.forEach(({ index }, at) => {
+          typeface.glyphs[index] = cloneGlyph(now[at]);
+        });
+      },
+    });
+    this.touch();
+    this.say(
+      `${touched.length} letter${touched.length === 1 ? "" : "s"} followed the pen.`,
+      "success",
+    );
+  }
+
+  /**
+   * Put a saved pen on a stop, or take a stop off the pen it follows.
+   *
+   * Detaching keeps the numbers rather than resetting them, because the point
+   * of detaching is that this one place is nearly right and needs to be its
+   * own -- and a detach that reset the pen would throw away the thing being
+   * kept.
+   */
+  setStopPen(name: string, stroke: number, stop: number, id: string | null): void {
+    const saved = id ? this.state.pens.find((one) => one.id === id) : undefined;
+    this.editGlyph(name, id ? "Use the pen" : "Free the pen", (editing) => {
+      const one = editing.written?.strokes[stroke];
+      const held = one?.nib[stop];
+      if (!one || !held) return;
+      if (saved) {
+        held.pen = saved.id;
+        held.contrast = saved.contrast;
+        held.angle = saved.angle;
+        one.width = [{ at: 0, width: saved.width }];
+      } else {
+        delete held.pen;
+      }
+      this.reswept(editing);
+    });
+  }
+
+  /** Take a saved pen away. Strokes that followed it keep the shape they had. */
+  deletePen(id: string): void {
+    const typeface = this.state.typeface;
+    this.set({
+      pens: this.state.pens.filter((one) => one.id !== id),
+      usingPen: this.state.usingPen === id ? null : this.state.usingPen,
+    });
+    if (!typeface) return;
+    /*
+     * Detached rather than left pointing at nothing. `penOf` falls back to the
+     * stop's own values for a pen that is gone, so the letters would look right
+     * either way -- but a stop that names a pen the font does not have is a
+     * thing somebody has to explain later.
+     */
+    for (const glyph of typeface.glyphs) {
+      for (const one of glyph.written?.strokes ?? []) {
+        for (const stop of one.nib) if (stop.pen === id) delete stop.pen;
+      }
+    }
+    this.touch();
   }
 
   /** Which pen the panel is showing. */
@@ -2543,6 +2709,7 @@ class Store {
     const fitted = strokeToContour(trail, { closeWithin: 0 });
     if (!fitted || fitted.nodes.length < 2) return false;
     const { width, contrast, angle } = this.state.pen;
+    const using = this.state.usingPen ?? undefined;
     const segments: QuillSegment[] = [];
     for (let index = 1; index < fitted.nodes.length; index++) {
       const from = fitted.nodes[index - 1];
@@ -2562,7 +2729,9 @@ class Store {
       written.strokes.push({
         spine,
         width: [{ at: 0, width }],
-        nib: penAtNodes(spine, [{ at: 0, contrast, angle }]),
+        nib: penAtNodes(spine, [
+          { at: 0, contrast, angle, ...(using ? { pen: using } : {}) },
+        ]),
         start: { kind: "butt" },
         end: { kind: "butt" },
         join: "round",

@@ -19,6 +19,7 @@ import * as React from "react";
 import { NumberField } from "./NumberField";
 import { store, useAppState } from "@/state/useStore";
 import { isOnePen, nibAt } from "@/quill/sweep";
+import { cn } from "@/ui/lib/utils";
 
 /** One number of the pen, with its name and its unit. */
 function Field({
@@ -28,6 +29,7 @@ function Field({
   least,
   most,
   suffix,
+  decimals,
   onChange,
 }: {
   label: string;
@@ -36,6 +38,7 @@ function Field({
   least: number;
   most: number;
   suffix?: string;
+  decimals?: number;
   onChange: (value: number) => void;
 }): React.JSX.Element {
   return (
@@ -44,6 +47,7 @@ function Field({
       <NumberField
         value={value}
         label={label}
+        decimals={decimals}
         className="w-16"
         onCommit={(next) => onChange(Math.min(most, Math.max(least, next)))}
       />
@@ -77,7 +81,37 @@ export function PenPanel({ glyphName }: { glyphName: string }): React.JSX.Elemen
         }
       : state.pen;
 
+  /*
+   * Which saved pen the thing on screen follows, if it follows one.
+   *
+   * A chosen stop follows what its own `pen` says. With nothing chosen it is
+   * the hand that follows one, because the hand is what the next stroke will be
+   * written with -- so the two cases answer the same question about different
+   * subjects, and the row lights either way.
+   */
+  const following = stop ? (stop.pen ?? null) : state.usingPen;
+  const followed = following ? state.pens.find((one) => one.id === following) : undefined;
+
+  /*
+   * Editing a number while following a saved pen edits the saved pen.
+   *
+   * Which is how one edit reaches forty letters, and it is done here rather
+   * than behind a switch. The reference product this idea comes from has an
+   * "adjustment mode" that has to be off to apply a style and on to edit one,
+   * and its own documentation has to shout a NOTICE about which -- because
+   * there is no way to guess, from a panel of three numbers, which of the two
+   * things typing in them will do.
+   *
+   * This says it instead: the row is lit, the line under the fields says how
+   * many letters follow it, and "Free it" is right there for the case where
+   * this one place has to be its own.
+   */
   const change = (pen: Partial<{ width: number; contrast: number; angle: number }>): void => {
+    if (following) {
+      store.editPen(following, pen);
+      if (!chosen) store.setPen(pen);
+      return;
+    }
     if (chosen && stroke && stop) store.setStrokePen(glyphName, chosen.stroke, chosen.stop, pen);
     else store.setPen(pen);
   };
@@ -119,6 +153,7 @@ export function PenPanel({ glyphName }: { glyphName: string }): React.JSX.Elemen
         value={Number(showing.contrast.toFixed(2))}
         least={0}
         most={1}
+        decimals={2}
         onChange={(contrast) => change({ contrast })}
       />
       <Field
@@ -163,6 +198,83 @@ export function PenPanel({ glyphName }: { glyphName: string }): React.JSX.Elemen
           </button>
         ))}
         <span className="text-2xs text-muted-foreground">pen widths</span>
+      </div>
+
+      {following ? (
+        <p className="text-2xs text-muted-foreground" data-pen-follows>
+          Following <span className="text-foreground">{followed?.name}</span>. Changing these
+          numbers changes the pen, so every stroke written with it follows.
+        </p>
+      ) : null}
+
+      {/*
+        The saved pens, which are the answer to the complaint this whole thing
+        exists to fix.
+
+        Three named pens shared across forty letters is what keeps an alphabet
+        consistent, and it is work nobody should have to do with numbers. A row
+        is picked to write with; the pen in hand is saved under a name; a stop
+        that has to be its own is freed from the pen it follows.
+      */}
+      <div className="flex flex-col gap-1 pt-1" data-saved-pens>
+        <div className="flex items-baseline justify-between">
+          <span className="text-2xs text-muted-foreground">Saved pens</span>
+          {following ? (
+            <button
+              type="button"
+              onClick={() =>
+                chosen
+                  ? store.setStopPen(glyphName, chosen.stroke, chosen.stop, null)
+                  : store.usePen(null)
+              }
+              data-free-pen
+              title="Let this one hold its own numbers, so changing the saved pen no longer moves it."
+              className="text-2xs text-muted-foreground underline decoration-dotted hover:text-foreground"
+            >
+              Free it
+            </button>
+          ) : null}
+        </div>
+        {state.pens.map((saved) => {
+          const on = following === saved.id;
+          return (
+            <button
+              key={saved.id}
+              type="button"
+              data-saved-pen={saved.id}
+              data-on={on ? "true" : undefined}
+              onClick={() =>
+                chosen
+                  ? store.setStopPen(glyphName, chosen.stroke, chosen.stop, saved.id)
+                  : store.usePen(saved.id)
+              }
+              title={`${saved.width} wide, blade ${saved.contrast}, held at ${saved.angle}°. Change it and every stroke using it follows.`}
+              className={cn(
+                "flex items-center justify-between rounded border px-1.5 py-1 text-left text-2xs transition-colors",
+                on
+                  ? "border-[color:var(--accent)] text-foreground"
+                  : "border-border text-muted-foreground hover:bg-card hover:text-foreground",
+              )}
+            >
+              <span>{saved.name}</span>
+              <span className="tabular-nums text-muted-foreground">
+                {Math.round(saved.width)} · {saved.angle}°
+              </span>
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          data-save-pen
+          onClick={() => {
+            const name = window.prompt("Name this pen");
+            if (name) store.savePen(name);
+          }}
+          title="Keep the pen in hand under a name, so other strokes can be written with the same one."
+          className="rounded border border-dashed border-border px-1.5 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+        >
+          Save this pen
+        </button>
       </div>
 
       {stroke ? (

@@ -268,6 +268,30 @@ thick, middle and thin.
 **Done when** three pens applied across a word, one of them edited, changes
 every letter that used it and leaves the rest alone.
 
+### Done
+
+Five pens ship with a written font, from real hands rather than invented
+values: Textura at 60 wide and 40° with no thickness, Ruqaa at 100 and 55°,
+Ruqaa soft, and a Roundhand thick and thin. A stroke written while a pen is
+picked *follows* it, and following is resolved on every read -- `penOf` -- so a
+stop that names a pen holds nothing of its own worth reading. Storing the
+resolved numbers on the stop as well is how these caches drift, and it would
+let a font quietly claim a pen whose numbers it no longer has.
+
+**Editing the numbers while following a pen edits the pen**, and that is the
+decision worth recording. The reference product this comes from puts the same
+choice behind an "adjustment mode" that has to be off to apply a style and on
+to edit one, and its own documentation has to shout a NOTICE about which --
+because there is no way to guess, from three numbers, which of the two typing
+in them will do. Here the row is lit, a line under the fields says the change
+will reach every stroke written with the pen, and "Free it" is beside it for
+the one place that has to be its own. Freeing keeps the numbers rather than
+resetting them, because the point of freeing is that this place is nearly right.
+
+One bug found: `NumberField` rounded everything it was given, which is right
+for a font unit and wrong for the blade, since that runs nought to one. A pen
+asked for at 0.55 came back a blade with no thickness at all.
+
 ## Step 4 — Expand, and back
 
 Bake the strokes of a glyph to outlines, keeping the skeleton in the glyph so

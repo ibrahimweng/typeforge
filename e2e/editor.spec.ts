@@ -4632,7 +4632,7 @@ test("writes a letter with a pen, down the middle", async ({ page }) => {
   // Turned at one point only, the pen now turns along the stroke -- and the
   // panel says so, which is how somebody knows the letter is doing it.
   await expect(page.locator("[data-pen-along]")).toHaveText(/held the same way/);
-  const angle = page.getByRole("textbox", { name: "Angle" });
+  const angle = page.locator("[data-pen-panel]").getByRole("textbox", { name: "Angle" });
   await angle.fill("110");
   await angle.press("Enter");
   await page.waitForTimeout(300);
@@ -4641,4 +4641,72 @@ test("writes a letter with a pen, down the middle", async ({ page }) => {
   const turned = await measureInk(page);
   // Turning the pen moves ink. Nothing else about the stroke changed.
   expect(Math.abs(turned - written)).toBeGreaterThan(0);
+});
+
+/**
+ * Three named pens, and one edit that reaches every letter using one.
+ *
+ * This is the answer to the complaint that making a font here needed too much
+ * technical know-how. An alphabet looks like one family because its letters
+ * share a few pens, and keeping forty sets of numbers in line by hand is
+ * exactly the expertise nobody should need. So the pen is named, the letters
+ * follow it, and changing it changes them.
+ */
+test("names a pen, and one change reaches every letter using it", async ({ page }) => {
+  await page.goto("/");
+  await startBlank(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await page.getByRole("button", { name: "New letter" }).first().click();
+  await page.waitForTimeout(400);
+
+  const canvas = page.locator("canvas").first();
+  const box = (await canvas.boundingBox())!;
+  await takeUpTool(page, "write", "skeleton");
+
+  // The pens a written alphabet starts with are real hands, not placeholders.
+  await expect(page.locator("[data-saved-pen='textura']")).toHaveText(/Textura/);
+  await expect(page.locator("[data-saved-pen='textura']")).toHaveText(/40°/);
+
+  // Write with the Textura pen, so the stroke follows it rather than holding
+  // its own numbers.
+  await page.locator("[data-saved-pen='textura']").click();
+  await expect(page.locator("[data-saved-pen='textura']")).toHaveAttribute("data-on", "true");
+  await expect(page.locator("[data-pen-follows]")).toHaveText(/every stroke written with it/);
+
+  await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.3);
+  await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.7);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+  const written = await measureInk(page);
+  expect(written).toBeGreaterThan(0);
+
+  /*
+   * Now change the pen itself. Typing into the fields while a pen is being
+   * followed changes the pen, which is what makes one edit reach an alphabet --
+   * and the status line says how many letters moved, so it is not a silent act.
+   */
+  const width = page
+    .locator("[data-pen-panel]")
+    .getByRole("textbox", { name: "Width", exact: true });
+  await width.fill("160");
+  await width.press("Enter");
+  await page.waitForTimeout(400);
+
+  const heavier = await measureInk(page);
+  expect(heavier).toBeGreaterThan(written);
+  // And the saved pen itself now reads 160, so the row and the letter agree.
+  await expect(page.locator("[data-saved-pen='textura']")).toHaveText(/160/);
+
+  /*
+   * And a stroke that has to be its own can be freed, after which the saved
+   * pen no longer moves it. That is the escape hatch that makes following safe
+   * to do by default.
+   */
+  await takeUpTool(page, "write", "nib");
+  await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.3);
+  await page.waitForTimeout(200);
+  await expect(page.locator("[data-pen-scope]")).toHaveText(/stroke 1/);
+  await page.locator("[data-free-pen]").click();
+  await page.waitForTimeout(200);
+  await expect(page.locator("[data-pen-follows]")).toHaveCount(0);
 });

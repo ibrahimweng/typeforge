@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { inkOf, nearestStop, nodeFractions, penAtNodes, reswept } from "./written";
+import {
+  followPens,
+  inkOf,
+  nearestStop,
+  nodeFractions,
+  penAtNodes,
+  penOf,
+  reswept,
+  STARTING_PENS,
+  type SavedPen,
+} from "./written";
 import { nibAt } from "./sweep";
 import { DEFAULT_PARAMS, type Glyph } from "@/font/types";
 import type { QuillSpine, QuillStroke } from "./types";
@@ -123,5 +133,86 @@ describe("a letter written with a pen", () => {
     expect(inkOf([], 1000)).toEqual([]);
     const glyph = glyphWith([]);
     expect(reswept(glyph, 1000).contours).toHaveLength(0);
+  });
+});
+
+/*
+ * Saved pens, which are the answer to the complaint that started all of this.
+ *
+ * Forty letters look like one family because they share three pens, and not
+ * because somebody kept forty sets of numbers in line by hand -- which is the
+ * work that needs the expertise nobody should have to have.
+ */
+describe("a pen with a name", () => {
+  const thick: SavedPen = {
+    id: "thick",
+    name: "Thick",
+    width: 120,
+    contrast: 0.8,
+    angle: 40,
+  };
+
+  it("gives a stop that names it its own values", () => {
+    const stop = { at: 0, contrast: 0, angle: 0, pen: "thick" };
+    expect(penOf(stop, [thick])).toEqual({ contrast: 0.8, angle: 40 });
+  });
+
+  /*
+   * The saved pen wins, always. A stop that named a pen and also held its own
+   * numbers would be a font quietly lying about which pen it uses, which is how
+   * these caches drift in every tool that has them.
+   */
+  it("ignores what the stop holds of its own", () => {
+    const stale = { at: 0, contrast: 0.1, angle: 90, pen: "thick" };
+    expect(penOf(stale, [thick])).toEqual({ contrast: 0.8, angle: 40 });
+  });
+
+  it("leaves a stop that names nothing alone", () => {
+    const own = { at: 0, contrast: 0.3, angle: 15 };
+    expect(penOf(own, [thick])).toEqual({ contrast: 0.3, angle: 15 });
+  });
+
+  /*
+   * And a name that no longer exists falls back to the stop, so deleting a pen
+   * leaves the letters looking as they did rather than resetting them all to
+   * round.
+   */
+  it("falls back to the stop for a pen that is gone", () => {
+    const orphan = { at: 0, contrast: 0.6, angle: 22, pen: "deleted" };
+    expect(penOf(orphan, [thick])).toEqual({ contrast: 0.6, angle: 22 });
+  });
+
+  it("brings every stroke that follows a pen back into line with it", () => {
+    const spine = bent();
+    const stroke: QuillStroke = {
+      spine,
+      width: [{ at: 0, width: 20 }],
+      nib: penAtNodes(spine, [{ at: 0, contrast: 0, angle: 0, pen: "thick" }]),
+      start: { kind: "butt" },
+      end: { kind: "butt" },
+      join: "round",
+    };
+    const [followed] = followPens([stroke], [thick]);
+    // The width comes from the pen too: a "thick" that is thick only in its
+    // blade ratio is not what anybody means by the word.
+    expect(followed.width[0].width).toBe(120);
+    expect(followed.nib.every((stop) => stop.contrast === 0.8 && stop.angle === 40)).toBe(true);
+  });
+
+  it("leaves a stroke that follows nothing where it is", () => {
+    const spine = bent();
+    const stroke = written(spine);
+    const [same] = followPens([stroke], [thick]);
+    expect(same.width[0].width).toBe(90);
+    expect(same.nib[0].angle).toBe(30);
+  });
+
+  it("ships pens from real hands rather than invented ones", () => {
+    const textura = STARTING_PENS.find((one) => one.name === "Textura")!;
+    // The blackletter tutorial's own numbers: forty degrees, sixty wide, and a
+    // thickness of nought, which is what gives the hand its hairlines.
+    expect(textura.angle).toBe(40);
+    expect(textura.width).toBe(60);
+    expect(textura.contrast).toBe(1);
   });
 });

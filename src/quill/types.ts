@@ -156,6 +156,15 @@ export const ROUND_NIB: Nib = { contrast: 0, angle: 0 };
 export interface NibStop extends Nib {
   /** Nought at the start of the whole spine, one at its end, by length. */
   at: number;
+  /**
+   * The saved pen this stop follows, by id, if it follows one.
+   *
+   * A stop that names a pen takes its values from that pen and its own
+   * `contrast` and `angle` are only a fallback for a pen that has been deleted.
+   * `penOf` in `written.ts` is the one place that resolves it, and nothing else
+   * should read the two fields directly on a stop that has a name.
+   */
+  pen?: string;
 }
 
 /**

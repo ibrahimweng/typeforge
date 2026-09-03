@@ -55,8 +55,93 @@ export interface Written {
 /** The default pen: a broad nib at thirty degrees, which is a usable hand. */
 export const STARTING_PEN: NibProfile = [{ at: 0, contrast: 0.55, angle: 30 }];
 
+/**
+ * A pen with a name, kept by the font rather than by the letter.
+ *
+ * The answer to the complaint that started all of this. Forty letters look like
+ * one family because they share three pens, and not because somebody kept forty
+ * sets of numbers in line by hand -- which is the work that needs the expertise,
+ * and which nobody should have to do.
+ *
+ * A stop that names a pen takes its values from that pen and cannot hold its
+ * own: `penOf` below resolves it. So changing the thick pen changes every stem
+ * in the alphabet, and a stop that has to be its own is detached rather than
+ * overridden. Overriding was the alternative and it is the trap -- a stop that
+ * quietly holds different numbers from the pen it claims to use is a pen the
+ * font is lying about.
+ */
+export interface SavedPen {
+  /** Stable across renames, because a stop refers to it. */
+  id: string;
+  name: string;
+  width: number;
+  contrast: number;
+  angle: number;
+}
+
+/**
+ * The pens a written alphabet starts with.
+ *
+ * Real values from real hands rather than invented ones, so that somebody who
+ * picks "Textura" gets a Textura and not an approximation of the idea of one.
+ * The thickness of nought on three of the four is not a rounding -- a blade
+ * with no thickness is what those hands are written with, and it is what gives
+ * them their hairlines.
+ */
+export const STARTING_PENS: SavedPen[] = [
+  { id: "textura", name: "Textura", width: 60, contrast: 1, angle: 40 },
+  { id: "ruqaa", name: "Ruqaa", width: 100, contrast: 1, angle: 55 },
+  { id: "ruqaa-soft", name: "Ruqaa, soft", width: 100, contrast: 0.8, angle: 55 },
+  { id: "round-thick", name: "Roundhand thick", width: 90, contrast: 0.75, angle: 35 },
+  { id: "round-thin", name: "Roundhand thin", width: 30, contrast: 0.4, angle: 35 },
+];
+
 /** The default pen width, in units of a thousand-unit em. */
 export const STARTING_WIDTH = 90;
+
+/**
+ * The pen a stop is actually written with, following its name if it has one.
+ *
+ * Called wherever a stop's values are read, and it is the one rule that keeps a
+ * named pen honest: the saved pen wins, always, and a stop that names one holds
+ * nothing of its own worth reading. Storing the resolved values on the stop as
+ * well was the alternative -- it saves a lookup and it is how caches drift, so
+ * that a font ends up with stops claiming a pen whose numbers they no longer
+ * have.
+ *
+ * A name that no longer exists falls back to the stop, so deleting a pen leaves
+ * the letters looking as they did rather than resetting them.
+ */
+export function penOf(
+  stop: { contrast: number; angle: number; pen?: string },
+  pens: SavedPen[],
+): { contrast: number; angle: number } {
+  if (!stop.pen) return { contrast: stop.contrast, angle: stop.angle };
+  const saved = pens.find((one) => one.id === stop.pen);
+  return saved
+    ? { contrast: saved.contrast, angle: saved.angle }
+    : { contrast: stop.contrast, angle: stop.angle };
+}
+
+/**
+ * Every stop that names a pen brought back into line with it.
+ *
+ * Run after a saved pen is edited, which is how one edit reaches the whole
+ * alphabet. The stroke's width comes from the pen too, because width is the
+ * pen's own axis and a "thick" that is thick only in its blade ratio is not
+ * what anybody means by the word.
+ */
+export function followPens(strokes: QuillStroke[], pens: SavedPen[]): QuillStroke[] {
+  return strokes.map((stroke) => {
+    const named = stroke.nib.find((stop) => stop.pen);
+    const saved = named ? pens.find((one) => one.id === named.pen) : undefined;
+    return {
+      ...stroke,
+      width: saved ? [{ at: 0, width: saved.width }] : stroke.width,
+      nib: stroke.nib.map((stop) => ({ ...stop, ...penOf(stop, pens) })),
+    };
+  });
+}
 
 /**
  * The ink a set of strokes makes.
@@ -144,5 +229,6 @@ export function penAtNodes(spine: QuillSpine, pen: NibProfile): NibProfile {
     at,
     contrast: held.contrast,
     angle: held.angle,
+    ...(held.pen ? { pen: held.pen } : {}),
   }));
 }
