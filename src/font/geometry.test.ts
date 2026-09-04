@@ -131,11 +131,9 @@ describe("crossesItself", () => {
         const angle = from + ((to - from) * i) / steps;
         return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
       });
-    expect(
-      crossesItself(
-        corners([...arc(200, -1.2, 1.2, 12), ...arc(140, 1.2, -1.2, 12)]),
-      ),
-    ).toBe(false);
+    expect(crossesItself(corners([...arc(200, -1.2, 1.2, 12), ...arc(140, 1.2, -1.2, 12)]))).toBe(
+      false,
+    );
   });
 
   it("two nodes cannot cross anything", () => {
