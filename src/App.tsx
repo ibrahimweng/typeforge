@@ -8,6 +8,8 @@
 import * as React from "react";
 
 import { attachPressFeedback, switchView } from "@/anim/motion";
+import { GlyphEditorView } from "@/views/GlyphEditorView";
+import { KerningView } from "@/views/KerningView";
 import { AssemblePanel } from "@/components/AssemblePanel";
 import { ForgePanel } from "@/components/ForgePanel";
 import { QuillPanel } from "@/components/QuillPanel";
@@ -39,19 +41,27 @@ import type { UfoFiles } from "@/ufo/font";
 import { filesFromDrop, filesFromPicker, filesFromZip, looksZipped } from "@/ufo/intake";
 
 /*
- * The nine views and the seven overlays are fetched when they are first
+ * Seven of the views and all seven overlays are fetched when they are first
  * shown, rather than with the first screen.
  *
  * None of them is on screen when the application opens. It opens on a chooser
  * offering three ways to start, and every one of them sits behind a mode, a
- * view or a button. Fetching all sixteen to draw that chooser is work done for
+ * view or a button. Fetching all fourteen to draw that chooser is work done for
  * a screen none of them appear on. It takes the first chunk from 1,384 kB to
- * 838 kB, and the part of it that travels compressed from 436 kB to 267 kB.
+ * 964 kB, and the part of it that travels compressed from 436 kB to 303 kB.
  *
  * The overlays are warmed a moment after the first screen is up, in
- * `warmOverlays` below, because each of them opens from a button and a button
+ * `warmDeferred` below, because each of them opens from a button and a button
  * that shows nothing until a chunk arrives reads as dead. Deferring them keeps
  * the weight off the first load. Warming them means nobody waits for one.
+ *
+ * Two views are left out of it. GlyphEditorView and KerningView each put a
+ * keydown listener on the window, so the tools and the nudges are theirs to
+ * answer. Fetched on demand they answer nothing until the chunk lands, and a
+ * key pressed in that gap is not late, it is gone: pressing `k` for the knife
+ * straight after opening the glyph view did nothing at all. Warming the chunk
+ * shortens the gap without closing it, and a dropped keystroke is not a thing
+ * to fix by being quick. They load with the shell that owns the keyboard.
  *
  * What this does not move is the drawing engine. `src/forge/` is 287 kB of the
  * graph and it is reached from `font/transform.ts`, `project/format.ts` and
@@ -78,12 +88,6 @@ const Wait = ({ children }: { children: React.ReactNode }) => (
 
 const FontGridView = React.lazy(() =>
   import("@/views/FontGridView").then((m) => ({ default: m.FontGridView })),
-);
-const GlyphEditorView = React.lazy(() =>
-  import("@/views/GlyphEditorView").then((m) => ({ default: m.GlyphEditorView })),
-);
-const KerningView = React.lazy(() =>
-  import("@/views/KerningView").then((m) => ({ default: m.KerningView })),
 );
 const MetricsView = React.lazy(() =>
   import("@/views/MetricsView").then((m) => ({ default: m.MetricsView })),
@@ -121,14 +125,15 @@ const HelpDrawer = React.lazy(() =>
 );
 
 /**
- * Fetch the overlay chunks once the first screen is up and the browser is idle.
+ * Fetch the deferred chunks once the first screen is up and the browser is idle.
  *
- * These are the ones that open from a button, so they are the ones worth
- * having in hand before the button is pressed. A failure here is ignored on
- * purpose: nothing is waiting on it, and opening the thing for real imports it
- * again and reports the failure then.
+ * The overlays are the ones worth having in hand, because each opens from a
+ * button and a button that shows nothing while a chunk arrives reads as dead.
+ * The views are warmed for the same reason, a beat less urgently. A failure
+ * here is ignored on purpose: nothing is waiting on it, and opening the thing
+ * for real imports it again and reports the failure then.
  */
-function warmOverlays(): void {
+function warmDeferred(): void {
   const nothing = () => {};
   void import("@/components/HelpDrawer").catch(nothing);
   void import("@/components/AcademyDrawer").catch(nothing);
@@ -137,6 +142,13 @@ function warmOverlays(): void {
   void import("@/components/ForgeExportDialog").catch(nothing);
   void import("@/components/AssembleExportDialog").catch(nothing);
   void import("@/components/QuillExportDialog").catch(nothing);
+  void import("@/views/FontGridView").catch(nothing);
+  void import("@/views/ForgeView").catch(nothing);
+  void import("@/views/QuillView").catch(nothing);
+  void import("@/views/AssembleView").catch(nothing);
+  void import("@/views/MetricsView").catch(nothing);
+  void import("@/views/ProofView").catch(nothing);
+  void import("@/views/ReportView").catch(nothing);
 }
 
 /** Which of the three jobs is in front. */
@@ -238,7 +250,7 @@ export function App(): React.JSX.Element {
   }, [state.wantsMode]);
 
   /*
-   * Warm the overlays once, after the first screen has had the browser to
+   * Warm the deferred chunks once, after the first screen has had the browser to
    * itself. `requestIdleCallback` is the right moment for it and Safari only
    * shipped it in 18.4, so where it is missing a timeout stands in. Two
    * seconds is long after the first screen is up and long before anybody has
@@ -246,10 +258,10 @@ export function App(): React.JSX.Element {
    */
   React.useEffect(() => {
     if (typeof window.requestIdleCallback !== "function") {
-      const timer = window.setTimeout(warmOverlays, 2_000);
+      const timer = window.setTimeout(warmDeferred, 2_000);
       return () => window.clearTimeout(timer);
     }
-    const handle = window.requestIdleCallback(warmOverlays, { timeout: 5_000 });
+    const handle = window.requestIdleCallback(warmDeferred, { timeout: 5_000 });
     return () => window.cancelIdleCallback(handle);
   }, []);
   const [dragging, setDragging] = React.useState(false);
@@ -880,8 +892,8 @@ export function App(): React.JSX.Element {
             <>
               <OnLoan />
               {state.view === "grid" && <Wait><FontGridView /></Wait>}
-              {state.view === "glyph" && <Wait><GlyphEditorView /></Wait>}
-              {state.view === "kerning" && <Wait><KerningView /></Wait>}
+              {state.view === "glyph" && <GlyphEditorView />}
+              {state.view === "kerning" && <KerningView />}
               {state.view === "metrics" && <Wait><MetricsView /></Wait>}
               {state.view === "proof" && <Wait><ProofView /></Wait>}
               {state.view === "report" && <Wait><ReportView /></Wait>}
