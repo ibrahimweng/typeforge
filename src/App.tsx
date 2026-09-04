@@ -8,6 +8,7 @@
 import * as React from "react";
 
 import { attachPressFeedback, switchView } from "@/anim/motion";
+import { loadingTwice } from "@/deferred";
 import { GlyphEditorView } from "@/views/GlyphEditorView";
 import { KerningView } from "@/views/KerningView";
 import { AssemblePanel } from "@/components/AssemblePanel";
@@ -55,6 +56,12 @@ import { filesFromDrop, filesFromPicker, filesFromZip, looksZipped } from "@/ufo
  * that shows nothing until a chunk arrives reads as dead. Deferring them keeps
  * the weight off the first load. Warming them means nobody waits for one.
  *
+ * Every one of them is fetched through `loadingTwice`, which asks a second time
+ * if the first ask fails. That is not belt and braces: a module that fails to
+ * fetch is remembered as failed, so warming turns one dropped response into a
+ * screen that stays broken for the rest of the session. `deferred.ts` has the
+ * whole of it.
+ *
  * Two views are left out of it. GlyphEditorView and KerningView each put a
  * keydown listener on the window, so the tools and the nudges are theirs to
  * answer. Fetched on demand they answer nothing until the chunk lands, and a
@@ -87,41 +94,89 @@ const Wait = ({ children }: { children: React.ReactNode }) => (
 );
 
 const FontGridView = React.lazy(() =>
-  import("@/views/FontGridView").then((m) => ({ default: m.FontGridView })),
+  loadingTwice(
+    () => import("@/views/FontGridView"),
+    (m) => m.FontGridView,
+  ),
 );
 const MetricsView = React.lazy(() =>
-  import("@/views/MetricsView").then((m) => ({ default: m.MetricsView })),
+  loadingTwice(
+    () => import("@/views/MetricsView"),
+    (m) => m.MetricsView,
+  ),
 );
-const ProofView = React.lazy(() => import("@/views/ProofView").then((m) => ({ default: m.ProofView })));
+const ProofView = React.lazy(() =>
+  loadingTwice(
+    () => import("@/views/ProofView"),
+    (m) => m.ProofView,
+  ),
+);
 const ReportView = React.lazy(() =>
-  import("@/views/ReportView").then((m) => ({ default: m.ReportView })),
+  loadingTwice(
+    () => import("@/views/ReportView"),
+    (m) => m.ReportView,
+  ),
 );
 const AssembleView = React.lazy(() =>
-  import("@/views/AssembleView").then((m) => ({ default: m.AssembleView })),
+  loadingTwice(
+    () => import("@/views/AssembleView"),
+    (m) => m.AssembleView,
+  ),
 );
-const ForgeView = React.lazy(() => import("@/views/ForgeView").then((m) => ({ default: m.ForgeView })));
-const QuillView = React.lazy(() => import("@/views/QuillView").then((m) => ({ default: m.QuillView })));
+const ForgeView = React.lazy(() =>
+  loadingTwice(
+    () => import("@/views/ForgeView"),
+    (m) => m.ForgeView,
+  ),
+);
+const QuillView = React.lazy(() =>
+  loadingTwice(
+    () => import("@/views/QuillView"),
+    (m) => m.QuillView,
+  ),
+);
 
 const AssembleExportDialog = React.lazy(() =>
-  import("@/components/AssembleExportDialog").then((m) => ({ default: m.AssembleExportDialog })),
+  loadingTwice(
+    () => import("@/components/AssembleExportDialog"),
+    (m) => m.AssembleExportDialog,
+  ),
 );
 const ExportDialog = React.lazy(() =>
-  import("@/components/ExportDialog").then((m) => ({ default: m.ExportDialog })),
+  loadingTwice(
+    () => import("@/components/ExportDialog"),
+    (m) => m.ExportDialog,
+  ),
 );
 const ForgeExportDialog = React.lazy(() =>
-  import("@/components/ForgeExportDialog").then((m) => ({ default: m.ForgeExportDialog })),
+  loadingTwice(
+    () => import("@/components/ForgeExportDialog"),
+    (m) => m.ForgeExportDialog,
+  ),
 );
 const FontInfoDialog = React.lazy(() =>
-  import("@/components/FontInfoDialog").then((m) => ({ default: m.FontInfoDialog })),
+  loadingTwice(
+    () => import("@/components/FontInfoDialog"),
+    (m) => m.FontInfoDialog,
+  ),
 );
 const QuillExportDialog = React.lazy(() =>
-  import("@/components/QuillExportDialog").then((m) => ({ default: m.QuillExportDialog })),
+  loadingTwice(
+    () => import("@/components/QuillExportDialog"),
+    (m) => m.QuillExportDialog,
+  ),
 );
 const AcademyDrawer = React.lazy(() =>
-  import("@/components/AcademyDrawer").then((m) => ({ default: m.AcademyDrawer })),
+  loadingTwice(
+    () => import("@/components/AcademyDrawer"),
+    (m) => m.AcademyDrawer,
+  ),
 );
 const HelpDrawer = React.lazy(() =>
-  import("@/components/HelpDrawer").then((m) => ({ default: m.HelpDrawer })),
+  loadingTwice(
+    () => import("@/components/HelpDrawer"),
+    (m) => m.HelpDrawer,
+  ),
 );
 
 /**
