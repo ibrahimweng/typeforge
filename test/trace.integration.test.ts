@@ -53,8 +53,14 @@ describeWithFont("tracing a whole font", { timeout: 180_000 }, () => {
 
     // Every letter it returned has strokes, or returning it said nothing.
     for (const one of result.letters) {
-      expect(one.glyph.strokes.length, `${one.glyph.name} came back with no strokes`).toBeGreaterThan(0);
-      expect(one.source.length, `${one.glyph.name} lost the outline it was read from`).toBeGreaterThan(0);
+      expect(
+        one.glyph.strokes.length,
+        `${one.glyph.name} came back with no strokes`,
+      ).toBeGreaterThan(0);
+      expect(
+        one.source.length,
+        `${one.glyph.name} lost the outline it was read from`,
+      ).toBeGreaterThan(0);
     }
 
     expect(seen.length).toBeGreaterThan(1);
@@ -195,6 +201,7 @@ describeWithFont("what a traced font can be turned into", { timeout: 180_000 }, 
       letters,
       style: { ...PLAIN_HAND, weight: 1.2, slant: 8, bounce: 0.4 },
       from: "test.ttf",
+      hand: null,
       name: "Test Traced",
       unitsPerEm,
     });
@@ -224,6 +231,7 @@ describeWithFont("what a traced font can be turned into", { timeout: 180_000 }, 
       letters: [],
       style: { ...PLAIN_HAND },
       from: "",
+      hand: null,
       name: "",
       unitsPerEm: 1000,
     });
@@ -248,7 +256,10 @@ describeWithFont("what a traced font can be turned into", { timeout: 180_000 }, 
      */
     const after = pathsOf(back.letters, back.style);
     for (const [index, path] of after.entries()) {
-      expect(path.length, `letter ${back.letters[index].glyph.name} came back empty`).toBeGreaterThan(0);
+      expect(
+        path.length,
+        `letter ${back.letters[index].glyph.name} came back empty`,
+      ).toBeGreaterThan(0);
     }
     expect(after).toEqual(before);
 

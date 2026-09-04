@@ -76,7 +76,13 @@ export async function deliver(
    * A family of one weight records its own page and reads it back, which is the
    * same drawing it would have had without a book at all.
    */
-  const waves: WaveBook = { lengths: new Map(), bowls: new Map(), balls: new Map(), corners: new Map(), recording: true };
+  const waves: WaveBook = {
+    lengths: new Map(),
+    bowls: new Map(),
+    balls: new Map(),
+    corners: new Map(),
+    recording: true,
+  };
   const order = [family.drawn, ...weights.filter((weight) => weight !== family.drawn)];
   for (const weight of order) {
     const member = memberOf(familyName, weight);
@@ -177,7 +183,13 @@ async function varying(
    * number of them at the two ends: 26 of the Wavy's letters, and no way to
    * count differently that does not move the boundary rather than remove it.
    */
-  const waves: WaveBook = { lengths: new Map(), bowls: new Map(), balls: new Map(), corners: new Map(), recording: true };
+  const waves: WaveBook = {
+    lengths: new Map(),
+    bowls: new Map(),
+    balls: new Map(),
+    corners: new Map(),
+    recording: true,
+  };
 
   const drawing = async (weight: number) =>
     await toTypeface(weighted(forge, weight), {

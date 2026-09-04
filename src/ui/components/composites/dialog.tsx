@@ -70,11 +70,7 @@ function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) 
   );
 }
 
-function DialogCloseButton({
-  className,
-}: {
-  className?: string;
-} = {}): React.JSX.Element {
+function DialogCloseButton({ className }: { className?: string } = {}): React.JSX.Element {
   return (
     <DialogPrimitive.Close
       data-slot="dialog-close"

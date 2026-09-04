@@ -89,4 +89,6 @@ writeFileSync(
    small { color: #bbb; font-size: 8px }
   </style>${rows.join("")}`,
 );
-console.log(`wrote ${process.env.SHEET_OUT ?? "/tmp/sheet.html"} — ${names.length} glyphs across ${BASES.length} bases`);
+console.log(
+  `wrote ${process.env.SHEET_OUT ?? "/tmp/sheet.html"} — ${names.length} glyphs across ${BASES.length} bases`,
+);

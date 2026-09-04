@@ -83,10 +83,7 @@ function GradientStopPin({
         fill="none"
         viewBox="0 0 10 4"
       >
-        <path
-          d="M0 0H10L5.72 3.42Q5 4.08 4.28 3.42L0 0Z"
-          fill="currentColor"
-        />
+        <path d="M0 0H10L5.72 3.42Q5 4.08 4.28 3.42L0 0Z" fill="currentColor" />
       </svg>
     </button>
   );
@@ -110,24 +107,16 @@ export function GradientStopsTrack({
   onDragEnd: () => void;
   onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void;
   onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void;
-  onRemoveStop: (
-    index: number,
-    event: React.MouseEvent<HTMLButtonElement>,
-  ) => void;
-  onRemoveStopByKey: (
-    index: number,
-    event: React.KeyboardEvent<HTMLButtonElement>,
-  ) => void;
-  onStartDrag: (
-    index: number,
-    event: React.PointerEvent<HTMLButtonElement>,
-  ) => void;
+  onRemoveStop: (index: number, event: React.MouseEvent<HTMLButtonElement>) => void;
+  onRemoveStopByKey: (index: number, event: React.KeyboardEvent<HTMLButtonElement>) => void;
+  onStartDrag: (index: number, event: React.PointerEvent<HTMLButtonElement>) => void;
   selectedIndex: number | null;
   stops: readonly IndexedGradientStop[];
   trackRef: React.RefObject<HTMLDivElement | null>;
 }): React.JSX.Element {
   return (
     <div
+      role="group"
       aria-label="Gradient stops track"
       className="app-no-drag relative mt-1 h-12 w-full touch-none cursor-crosshair"
       onPointerCancel={onDragEnd}

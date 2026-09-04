@@ -115,56 +115,56 @@ export function ControlLetters(): React.JSX.Element | null {
     <>
       <CoachMark id="controls" />
       <section className="border-b border-border p-3">
-      <div className="mb-2 flex items-baseline justify-between">
-        <h3 className="text-2xs font-medium">Control letters</h3>
-        <span className="text-2xs text-muted-foreground">{present} of {CONTROL_GLYPHS.length}</span>
-      </div>
-      <p className="mb-2.5 text-2xs leading-relaxed text-muted-foreground">
-        Draw these and the rest follows. Their stem, height and counter set the
-        family
-        {others === 0
-          ? ". "
-          : others === 1
-            ? "; one other glyph matches them. "
-            : `; ${others.toLocaleString()} other glyphs match them. `}
-        A badge counts the letters built on that one point for point, which take
-        an edit exactly rather than approximately.
-      </p>
+        <div className="mb-2 flex items-baseline justify-between">
+          <h3 className="text-2xs font-medium">Control letters</h3>
+          <span className="text-2xs text-muted-foreground">
+            {present} of {CONTROL_GLYPHS.length}
+          </span>
+        </div>
+        <p className="mb-2.5 text-2xs leading-relaxed text-muted-foreground">
+          Draw these and the rest follows. Their stem, height and counter set the family
+          {others === 0
+            ? ". "
+            : others === 1
+              ? "; one other glyph matches them. "
+              : `; ${others.toLocaleString()} other glyphs match them. `}
+          A badge counts the letters built on that one point for point, which take an edit exactly
+          rather than approximately.
+        </p>
 
-      {Object.entries(CONTROL_GROUPS).map(([group, names]) => (
-        <div key={group} className="mb-2 last:mb-0">
-          <div className="mb-1 text-2xs text-muted-foreground">{GROUP_LABELS[group] ?? group}</div>
-          <div className="flex gap-1.5">
-            {names.map((name) => (
-              <ControlThumb key={name} name={name} />
-            ))}
+        {Object.entries(CONTROL_GROUPS).map(([group, names]) => (
+          <div key={group} className="mb-2 last:mb-0">
+            <div className="mb-1 text-2xs text-muted-foreground">
+              {GROUP_LABELS[group] ?? group}
+            </div>
+            <div className="flex gap-1.5">
+              {names.map((name) => (
+                <ControlThumb key={name} name={name} />
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
 
-      {changes.length > 0 && (
-        <div
-          ref={noticeRef}
-          className="mt-2.5 rounded-md border border-border bg-card/60 p-2"
-        >
-          <div className="mb-1 text-2xs font-medium">Last change carried across</div>
-          <ul className="space-y-0.5">
-            {changes.map((change, index) => (
-              <li
-                key={`${change.glyph}-${change.quality}-${index}`}
-                className="flex items-baseline justify-between gap-2 text-2xs text-muted-foreground tabular-nums"
-              >
-                <span>
-                  {DISPLAY[change.glyph] ?? change.glyph} {change.quality}
-                </span>
-                <span>
-                  {Math.round(change.from)} → {Math.round(change.to)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+        {changes.length > 0 && (
+          <div ref={noticeRef} className="mt-2.5 rounded-md border border-border bg-card/60 p-2">
+            <div className="mb-1 text-2xs font-medium">Last change carried across</div>
+            <ul className="space-y-0.5">
+              {changes.map((change, index) => (
+                <li
+                  key={`${change.glyph}-${change.quality}-${index}`}
+                  className="flex items-baseline justify-between gap-2 text-2xs text-muted-foreground tabular-nums"
+                >
+                  <span>
+                    {DISPLAY[change.glyph] ?? change.glyph} {change.quality}
+                  </span>
+                  <span>
+                    {Math.round(change.from)} → {Math.round(change.to)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
     </>
   );

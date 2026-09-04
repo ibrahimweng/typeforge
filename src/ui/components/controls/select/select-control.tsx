@@ -38,9 +38,7 @@ type SelectControlGroupProps = {
   layout?: never;
 };
 
-export type SelectControlProps =
-  | SelectControlSingleProps
-  | SelectControlGroupProps;
+export type SelectControlProps = SelectControlSingleProps | SelectControlGroupProps;
 
 const WIDE_SELECT_OPTION_LABEL_LENGTH = 32;
 
@@ -48,9 +46,7 @@ function hasWideSelectContent(options: readonly ControlOption[]): boolean {
   return options.some((option) => option.label.length >= WIDE_SELECT_OPTION_LABEL_LENGTH);
 }
 
-function isSelectControlGroupProps(
-  props: SelectControlProps,
-): props is SelectControlGroupProps {
+function isSelectControlGroupProps(props: SelectControlProps): props is SelectControlGroupProps {
   return Array.isArray((props as SelectControlGroupProps).inputs);
 }
 
@@ -178,9 +174,7 @@ function SelectControlField({
   );
 }
 
-export function SelectControl(
-  props: SelectControlProps,
-): React.JSX.Element {
+export function SelectControl(props: SelectControlProps): React.JSX.Element {
   if (isSelectControlGroupProps(props)) {
     const inputsPerRow = getInputsPerRow(props.inputsPerRow);
 
@@ -193,10 +187,7 @@ export function SelectControl(
         }}
       >
         {props.inputs.map((input, index) => (
-          <SelectControlField
-            key={`${input.name}-${index}`}
-            {...input}
-          />
+          <SelectControlField key={`${input.name}-${index}`} {...input} />
         ))}
       </div>
     );

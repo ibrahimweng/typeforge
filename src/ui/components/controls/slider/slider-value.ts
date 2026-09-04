@@ -1,8 +1,4 @@
-export function clampSliderValue(
-  value: number,
-  min: number,
-  max: number,
-): number {
+export function clampSliderValue(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
@@ -49,16 +45,10 @@ export function getSliderValueUnitSeparator(unit: string): "" | " " {
   return " ";
 }
 
-export function applySliderValueLabelUnit(
-  valueLabel: string,
-  unit?: string,
-): string {
+export function applySliderValueLabelUnit(valueLabel: string, unit?: string): string {
   const normalizedUnit = unit?.trim();
 
-  if (
-    !normalizedUnit ||
-    typeof parseSliderValueLabel(valueLabel) !== "number"
-  ) {
+  if (!normalizedUnit || typeof parseSliderValueLabel(valueLabel) !== "number") {
     return valueLabel;
   }
 
@@ -74,11 +64,7 @@ export function applySliderValueLabelUnit(
   );
 }
 
-export function formatSliderValueWithUnit(
-  value: number,
-  step: number,
-  unit?: string,
-): string {
+export function formatSliderValueWithUnit(value: number, step: number, unit?: string): string {
   return applySliderValueLabelUnit(formatSliderValue(value, step), unit);
 }
 
@@ -89,9 +75,7 @@ export function parseSliderValueLabel(valueLabel: string): number | undefined {
   return Number.isFinite(parsedValue) ? parsedValue : undefined;
 }
 
-export function getSliderControlValue(
-  nextValue: number | readonly number[],
-): number | undefined {
+export function getSliderControlValue(nextValue: number | readonly number[]): number | undefined {
   const resolvedValue = Array.isArray(nextValue) ? nextValue[0] : nextValue;
 
   return typeof resolvedValue === "number" ? resolvedValue : undefined;

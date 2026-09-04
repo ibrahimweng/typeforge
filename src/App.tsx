@@ -772,10 +772,7 @@ export function App(): React.JSX.Element {
   const goToMode = React.useCallback((next: Mode) => {
     const { loan } = store.getSnapshot();
     if (loan) {
-      store.say(
-        `Finish with ${loan.letter} first — keep the drawing or throw it away.`,
-        "info",
-      );
+      store.say(`Finish with ${loan.letter} first — keep the drawing or throw it away.`, "info");
       return;
     }
     setMode(next);
@@ -865,7 +862,7 @@ export function App(): React.JSX.Element {
     }),
     // Only what changes the shape of the catalogue: which job is in front and
     // which view it is showing. The values themselves are read live, above.
-    [mode, state.view, state.typeface, saveProject],
+    [mode, goToMode, state.view, state.typeface, saveProject],
   );
 
   useQuickActionShortcut(React.useCallback(() => setQuick(true), []));
@@ -882,6 +879,7 @@ export function App(): React.JSX.Element {
   });
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: the page is a drop target for a font file; the Open button is the keyboard path.
     <div
       className="flex h-full flex-col"
       onDragOver={(event) => {
@@ -940,18 +938,46 @@ export function App(): React.JSX.Element {
 
       <div className="flex min-h-0 flex-1">
         <div ref={stageRef} className="flex min-w-0 flex-1 flex-col">
-          {mode === "forge" && <Wait><ForgeView /></Wait>}
-          {mode === "quill" && <Wait><QuillView /></Wait>}
-          {mode === "assemble" && <Wait><AssembleView /></Wait>}
+          {mode === "forge" && (
+            <Wait>
+              <ForgeView />
+            </Wait>
+          )}
+          {mode === "quill" && (
+            <Wait>
+              <QuillView />
+            </Wait>
+          )}
+          {mode === "assemble" && (
+            <Wait>
+              <AssembleView />
+            </Wait>
+          )}
           {mode === "edit" && (
             <>
               <OnLoan />
-              {state.view === "grid" && <Wait><FontGridView /></Wait>}
+              {state.view === "grid" && (
+                <Wait>
+                  <FontGridView />
+                </Wait>
+              )}
               {state.view === "glyph" && <GlyphEditorView />}
               {state.view === "kerning" && <KerningView />}
-              {state.view === "metrics" && <Wait><MetricsView /></Wait>}
-              {state.view === "proof" && <Wait><ProofView /></Wait>}
-              {state.view === "report" && <Wait><ReportView /></Wait>}
+              {state.view === "metrics" && (
+                <Wait>
+                  <MetricsView />
+                </Wait>
+              )}
+              {state.view === "proof" && (
+                <Wait>
+                  <ProofView />
+                </Wait>
+              )}
+              {state.view === "report" && (
+                <Wait>
+                  <ReportView />
+                </Wait>
+              )}
             </>
           )}
         </div>

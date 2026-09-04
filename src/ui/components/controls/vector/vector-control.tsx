@@ -1,6 +1,6 @@
 "use client";
 
-import * as React from "react";
+import type * as React from "react";
 
 import { VectorPadField } from "./vector-pad-field";
 import { VectorSizeField } from "./vector-size-field";

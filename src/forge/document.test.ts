@@ -104,7 +104,9 @@ describe("which letters have which parts", () => {
       },
     };
     for (const spec of PART_SPECS) {
-      expect(lettersUsing(spec.name, waving).length, `nothing uses ${spec.name}`).toBeGreaterThan(0);
+      expect(lettersUsing(spec.name, waving).length, `nothing uses ${spec.name}`).toBeGreaterThan(
+        0,
+      );
     }
   });
 });
@@ -143,10 +145,21 @@ describe("editing a part", () => {
     // an n with an apostrophe in front of it -- so each is its own letter to
     // `decidedBy` and has to be named here.
     const arched = [
-      "h", "hbar", "m", "n", "r", "u", "U", "eng", "napostrophe",
+      "h",
+      "hbar",
+      "m",
+      "n",
+      "r",
+      "u",
+      "U",
+      "eng",
+      "napostrophe",
       // Greek: the eta is an n with a longer leg, and the mu, upsilon and
       // omega are all troughs, which are arches the other way up.
-      "\u03b7", "\u03bc", "\u03c5", "\u03c9",
+      "\u03b7",
+      "\u03bc",
+      "\u03c5",
+      "\u03c9",
     ];
     for (const letter of arched) {
       expect(changed, `${letter} did not follow the shoulder`).toContain(letter);
@@ -193,7 +206,9 @@ describe("editing a part", () => {
     const raised = editPart(before, "crossbar", { height: 0.65 });
     const lightened = editPart(before, "crossbar", { weight: 0.6 });
     for (const letter of ["t", "f"]) {
-      expect(partsOf(letter, before), `${letter} should be a crossbar letter`).toContain("crossbar");
+      expect(partsOf(letter, before), `${letter} should be a crossbar letter`).toContain(
+        "crossbar",
+      );
       expect(moved(before, raised), `${letter} moved with the height`).not.toContain(letter);
       expect(moved(before, lightened), `${letter} ignored the weight`).toContain(letter);
     }
@@ -353,7 +368,9 @@ describe("cutting", () => {
 
     const released = clearCutException(held, "H");
     expect(isCutException(released, "H")).toBe(false);
-    expect(shapeOf("H", released)).toBe(shapeOf("H", editCut(startFrom(SANS), "slot", { on: true })));
+    expect(shapeOf("H", released)).toBe(
+      shapeOf("H", editCut(startFrom(SANS), "slot", { on: true })),
+    );
   });
 
   it("fills the cuts in on a document saved before there were any", () => {

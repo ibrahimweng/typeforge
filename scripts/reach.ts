@@ -23,7 +23,7 @@
 
 import { catalogue, type Item, type Shell } from "@/palette/catalogue";
 import { buildIndex, search } from "@/palette/search";
-import { uniqueWords, wordsOf } from "@/palette/words";
+import { uniqueWords } from "@/palette/words";
 
 const SEEN = 8;
 
@@ -112,7 +112,9 @@ console.log("Reachable by their own description, by kind:");
 for (const [kind, tally] of [...byKind].sort((a, b) => b[1].lost - a[1].lost)) {
   const found = tally.total - tally.lost;
   const share = ((found / tally.total) * 100).toFixed(0);
-  console.log(`  ${kind.padEnd(10)} ${String(found).padStart(4)}/${String(tally.total).padEnd(4)} ${share}%`);
+  console.log(
+    `  ${kind.padEnd(10)} ${String(found).padStart(4)}/${String(tally.total).padEnd(4)} ${share}%`,
+  );
 }
 
 console.log(`\n${lost.length} entries no wording of their own description reaches:\n`);

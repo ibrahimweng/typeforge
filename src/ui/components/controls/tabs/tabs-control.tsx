@@ -30,11 +30,7 @@ export function doesTabsControlOverflow(list: HTMLElement): boolean {
     list.querySelectorAll<HTMLElement>(
       '[data-slot="tabs-trigger"], [data-slot="tabs-trigger-label"]',
     ),
-  ).some(
-    (tab) =>
-      tab.clientWidth > 0 &&
-      tab.scrollWidth > tab.clientWidth + OVERFLOW_TOLERANCE_PX,
-  );
+  ).some((tab) => tab.clientWidth > 0 && tab.scrollWidth > tab.clientWidth + OVERFLOW_TOLERANCE_PX);
 }
 
 export function TabsControl({
@@ -47,9 +43,7 @@ export function TabsControl({
   const listRef = React.useRef<HTMLDivElement>(null);
   const wrapperRef = React.useRef<HTMLDivElement>(null);
   const [usesSelect, setUsesSelect] = React.useState(false);
-  const [currentValue, setCurrentValue] = React.useState(
-    () => value ?? options[0]?.value ?? "",
-  );
+  const [currentValue, setCurrentValue] = React.useState(() => value ?? options[0]?.value ?? "");
   const selectedValue =
     options.find((option) => option.value === (value ?? currentValue))?.value ??
     options[0]?.value ??
@@ -78,9 +72,7 @@ export function TabsControl({
       const nextUsesSelect = doesTabsControlOverflow(list);
 
       setUsesSelect((currentUsesSelect) =>
-        currentUsesSelect === nextUsesSelect
-          ? currentUsesSelect
-          : nextUsesSelect,
+        currentUsesSelect === nextUsesSelect ? currentUsesSelect : nextUsesSelect,
       );
     };
 
@@ -113,8 +105,7 @@ export function TabsControl({
       <Tabs
         className={cn(
           "w-full gap-0",
-          usesSelect &&
-            "pointer-events-none invisible absolute inset-x-0 top-0",
+          usesSelect && "pointer-events-none invisible absolute inset-x-0 top-0",
         )}
         onValueChange={(nextValue) => {
           if (typeof nextValue === "string") {

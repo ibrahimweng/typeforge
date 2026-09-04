@@ -26,10 +26,7 @@ export function AssembleExportDialog({ onClose }: { onClose: () => void }): Reac
   const [problem, setProblem] = React.useState<string | null>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
 
-  const assembled = React.useMemo(
-    () => build(state.assembly),
-    [state.assembly, state.revision],
-  );
+  const assembled = React.useMemo(() => build(state.assembly), [state.assembly, state.revision]);
 
   React.useEffect(() => {
     if (panelRef.current) enter(panelRef.current, { distance: 10 });
@@ -75,13 +72,24 @@ export function AssembleExportDialog({ onClose }: { onClose: () => void }): Reac
   };
 
   return (
+    /*
+      Clicking the dark behind the panel closes it, and that is all the dark
+      does: it is not a control, there is nothing on it to announce or tab to,
+      and Escape closes from the keyboard. Marked as presentation to say so.
+      The close fires only for a click that landed on the backdrop itself,
+      which is the job the panel below used to do with a stopPropagation --
+      the panel reads better not handling clicks it has no interest in.
+    */
+    // biome-ignore lint/a11y/noStaticElementInteractions: the backdrop is presentation; Escape is the keyboard path.
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6"
-      onClick={onClose}
+      role="presentation"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
     >
       <div
         ref={panelRef}
-        onClick={(event) => event.stopPropagation()}
         /*
           Bounded, and scrolling inside itself, for the reason the editor's
           export dialog is: a centred flex child taller than the window is
@@ -147,9 +155,9 @@ export function AssembleExportDialog({ onClose }: { onClose: () => void }): Reac
         </p>
 
         <p className="pb-4 text-2xs leading-relaxed text-muted-foreground">
-          These outlines are the drawings you brought in. Typeforge has put them
-          on the same lines and worked out the spacing; it has not drawn
-          anything, so whatever the drawings were yours to do, the font is too.
+          These outlines are the drawings you brought in. Typeforge has put them on the same lines
+          and worked out the spacing; it has not drawn anything, so whatever the drawings were yours
+          to do, the font is too.
         </p>
 
         {problem && <p className="pb-3 text-2xs text-destructive">{problem}</p>}

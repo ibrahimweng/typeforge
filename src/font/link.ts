@@ -182,11 +182,7 @@ export function pointsThatMoved(before: Glyph, after: Glyph): PointMove[] {
  *
  * Returns the names of the glyphs that changed.
  */
-export function propagateMoves(
-  typeface: Typeface,
-  links: LinkMap,
-  moves: PointMove[],
-): string[] {
+export function propagateMoves(typeface: Typeface, links: LinkMap, moves: PointMove[]): string[] {
   const touched = new Set<string>();
 
   for (const move of moves) {

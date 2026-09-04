@@ -61,8 +61,16 @@ if (!REF) throw new Error("Set REF to the reference font file. See the note at t
 /** A thin upright slice, to see what a vertical line through the letter crosses. */
 const slice = (from: number, to: number): Contour => ({
   closed: true,
-  nodes: [[from, -4000], [to, -4000], [to, 4000], [from, 4000]].map(([x, y]) => ({
-    point: { x, y }, type: "line" as const,
+  nodes: [
+    [from, -4000],
+    [to, -4000],
+    [to, 4000],
+    [from, 4000],
+  ].map(([x, y]) => ({
+    point: { x, y },
+    handleIn: null,
+    handleOut: null,
+    type: "corner" as const,
   })),
 });
 
@@ -78,7 +86,7 @@ async function across(name: string, contours: Contour[], x: number) {
       .sort((a, b) => a[0] - b[0]);
     console.log(
       `    x ${at.toFixed(2).padStart(5)}   ` +
-      (runs.map(([low, high]) => `${low.toFixed(2)}..${high.toFixed(2)}`).join("  ") || "-"),
+        (runs.map(([low, high]) => `${low.toFixed(2)}..${high.toFixed(2)}`).join("  ") || "-"),
     );
   }
 }

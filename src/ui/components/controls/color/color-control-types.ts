@@ -20,10 +20,7 @@ export type ColorOpacityControlProps = {
   showLabel?: boolean;
 };
 
-export type ColorControlInputPair = readonly [
-  ColorControlInput,
-  ColorControlInput,
-];
+export type ColorControlInputPair = readonly [ColorControlInput, ColorControlInput];
 
 type ColorControlSingleProps = ColorControlInput & {
   inputs?: never;
@@ -33,6 +30,4 @@ export type ColorControlGroupProps = {
   inputs: ColorControlInputPair;
 };
 
-export type ColorControlProps =
-  | ColorControlSingleProps
-  | ColorControlGroupProps;
+export type ColorControlProps = ColorControlSingleProps | ColorControlGroupProps;

@@ -207,8 +207,7 @@ export function kernsFor(glyphs: KernInput[], unitsPerEm: number): Kerning {
   // `.notdef` is the box a shaper draws for a character the font has not got.
   // It is in every font and it is not a letter, so it is not kerned either.
   const inked = glyphs.filter(
-    (one) =>
-      !one.mark && one.name !== ".notdef" && one.contours.some((c) => c.nodes.length > 1),
+    (one) => !one.mark && one.name !== ".notdef" && one.contours.some((c) => c.nodes.length > 1),
   );
   const drawn = inked.filter((one) => !one.sameAs);
   if (drawn.length === 0) return none;
@@ -249,9 +248,7 @@ export function kernsFor(glyphs: KernInput[], unitsPerEm: number): Kerning {
       const nearest = nearestBetween(one, other);
       if (nearest !== null) found.push(nearest);
     }
-    return found.length === 0
-      ? null
-      : found.reduce((total, one) => total + one, 0) / found.length;
+    return found.length === 0 ? null : found.reduce((total, one) => total + one, 0) / found.length;
   };
   const small = normOf(PLAIN_SMALL);
   const tall = normOf(PLAIN_TALL);

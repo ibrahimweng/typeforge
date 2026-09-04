@@ -54,10 +54,42 @@ export const AXES: ReadonlyArray<{
   step: number;
   second: { at: number; name: string };
 }> = [
-  { tag: "wght", label: "Weight", normal: 400, min: 1, max: 1000, step: 50, second: { at: 700, name: "Bold" } },
-  { tag: "wdth", label: "Width", normal: 100, min: 25, max: 200, step: 5, second: { at: 75, name: "Condensed" } },
-  { tag: "slnt", label: "Slant", normal: 0, min: -90, max: 90, step: 2, second: { at: -12, name: "Italic" } },
-  { tag: "opsz", label: "Optical size", normal: 14, min: 5, max: 144, step: 2, second: { at: 60, name: "Display" } },
+  {
+    tag: "wght",
+    label: "Weight",
+    normal: 400,
+    min: 1,
+    max: 1000,
+    step: 50,
+    second: { at: 700, name: "Bold" },
+  },
+  {
+    tag: "wdth",
+    label: "Width",
+    normal: 100,
+    min: 25,
+    max: 200,
+    step: 5,
+    second: { at: 75, name: "Condensed" },
+  },
+  {
+    tag: "slnt",
+    label: "Slant",
+    normal: 0,
+    min: -90,
+    max: 90,
+    step: 2,
+    second: { at: -12, name: "Italic" },
+  },
+  {
+    tag: "opsz",
+    label: "Optical size",
+    normal: 14,
+    min: 5,
+    max: 144,
+    step: 2,
+    second: { at: 60, name: "Display" },
+  },
 ];
 
 /** What a tag is called on screen, and what it does when nobody has said. */
@@ -142,7 +174,12 @@ export interface Master {
  * Copied: the glyphs, deeply, and the index into them. Those are the drawing,
  * and the drawing is the whole point of a second master.
  */
-export function masterFrom(base: Typeface, name: string, at: Record<string, number>, id: string): Master {
+export function masterFrom(
+  base: Typeface,
+  name: string,
+  at: Record<string, number>,
+  id: string,
+): Master {
   return {
     id,
     name,
@@ -510,7 +547,7 @@ function moved(base: Glyph, others: Array<{ glyph: Glyph; scalar: number }>): Gl
     contours: base.contours.map((contour, at) => ({
       closed: contour.closed,
       nodes: contour.nodes.map((node, index) => {
-        const of = (glyph: Glyph): (typeof node) => glyph.contours[at].nodes[index];
+        const of = (glyph: Glyph): typeof node => glyph.contours[at].nodes[index];
         return {
           point: point((glyph) => of(glyph).point),
           /*
@@ -518,12 +555,14 @@ function moved(base: Glyph, others: Array<{ glyph: Glyph; scalar: number }>): Gl
            * agree about their points can still disagree about whether a node is
            * curved, and half a handle is not a shape.
            */
-          handleIn: others.every((other) => of(other.glyph).handleIn) && node.handleIn
-            ? point((glyph) => of(glyph).handleIn!)
-            : node.handleIn && { ...node.handleIn },
-          handleOut: others.every((other) => of(other.glyph).handleOut) && node.handleOut
-            ? point((glyph) => of(glyph).handleOut!)
-            : node.handleOut && { ...node.handleOut },
+          handleIn:
+            others.every((other) => of(other.glyph).handleIn) && node.handleIn
+              ? point((glyph) => of(glyph).handleIn!)
+              : node.handleIn && { ...node.handleIn },
+          handleOut:
+            others.every((other) => of(other.glyph).handleOut) && node.handleOut
+              ? point((glyph) => of(glyph).handleOut!)
+              : node.handleOut && { ...node.handleOut },
           // The node's kind belongs to the drawing rather than to a place
           // between drawings, and every version claims it. The default wins.
           type: node.type,

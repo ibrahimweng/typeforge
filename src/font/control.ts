@@ -18,13 +18,7 @@
 
 import { measureGlyph, type GlyphMeasurements } from "./measure";
 import { resolveGlyphContours } from "./transform";
-import {
-  DEFAULT_PARAMS,
-  type Contour,
-  type Glyph,
-  type GlyphParams,
-  type Typeface,
-} from "./types";
+import { DEFAULT_PARAMS, type Contour, type Glyph, type GlyphParams, type Typeface } from "./types";
 
 /** The letters that drive the rest, in the order they are worth drawing. */
 export const CONTROL_GLYPHS = ["n", "o", "H", "O", "zero", "one", "three"] as const;

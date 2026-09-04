@@ -1,8 +1,15 @@
+/*
+ * Every @import first. CSS requires it -- an @import after any other at-rule
+ * is ignored -- and @source sitting in the middle of the list put the three
+ * below it on the wrong side of that line. Tailwind hoists them itself, so
+ * nothing was broken; nothing says so to a reader, or to a linter, either.
+ */
 @import "tailwindcss";
-@source ".";
 @import "tw-animate-css";
 @import "@fontsource-variable/inter";
 @import "./ui/styles.css";
+
+@source ".";
 
 @theme {
   --spacing-field-control: 0.3125rem;

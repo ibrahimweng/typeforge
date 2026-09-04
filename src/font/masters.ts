@@ -116,9 +116,7 @@ export function varyByWeight(typeface: Typeface): VariableOptions | null {
     },
   ];
 
-  const named = NAMED.filter(
-    (one) => one.at >= WEIGHT_AXIS.min && one.at <= WEIGHT_AXIS.max,
-  );
+  const named = NAMED.filter((one) => one.at >= WEIGHT_AXIS.min && one.at <= WEIGHT_AXIS.max);
   const instances: Instance[] = named.map((one) => ({
     label: one.label,
     at: { wght: one.at },

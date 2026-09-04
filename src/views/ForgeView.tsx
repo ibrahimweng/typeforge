@@ -20,14 +20,7 @@ import { CoachMark } from "@/components/CoachMark";
 import { Reference } from "@/components/Reference";
 import { contoursToSvgPath } from "@/font/geometry";
 import { letterNames, skeletonOf } from "@/forge/build";
-import {
-  cellBox,
-  cellKey,
-  PORTS,
-  portAt,
-  rowsOf,
-  unitOf,
-} from "@/forge/kit";
+import { cellBox, cellKey, PORTS, portAt, rowsOf, unitOf } from "@/forge/kit";
 import { anyEffect } from "@/font/effects";
 import { effectsOf, familyOf, proof, unshaped, weighted, type Forge } from "@/forge/document";
 import { nameOfWeight, weightsOf } from "@/forge/family";
@@ -46,7 +39,7 @@ import {
 } from "@/forge/document";
 import { handlesFor, valueAfter, type Handle } from "@/forge/handles";
 import { familyWalk, type Trouble } from "@/forge/health";
-import { driveId, valueOf, whatGoverns, type Governing } from "@/forge/probe";
+import { driveId, settingOf, whatGoverns, type Governing } from "@/forge/probe";
 import { segment, tile } from "@/components/controls";
 import { forgeStore, useForge, type Phase } from "@/state/useForge";
 import { useLibrary } from "@/state/useLibrary";
@@ -57,10 +50,7 @@ export function ForgeView(): React.JSX.Element {
   const { forge, letter } = state;
 
   const names = React.useMemo(() => letterNames(), []);
-  const parts = React.useMemo(
-    () => partsOf(letter, forge),
-    [letter, forge, state.revision],
-  );
+  const parts = React.useMemo(() => partsOf(letter, forge), [letter, forge, state.revision]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -153,9 +143,7 @@ function Stage({
   );
   const bones = React.useMemo(
     () =>
-      state.showSkeleton && !own
-        ? skeletonOf(letter, styleFor(letter, state.forge), form)
-        : [],
+      state.showSkeleton && !own ? skeletonOf(letter, styleFor(letter, state.forge), form) : [],
     [letter, state.forge, form, own, state.showSkeleton, revision],
   );
 
@@ -192,7 +180,7 @@ function Stage({
   const probed = React.useMemo<Handle | null>(() => {
     if (!found) return null;
     const style = styleFor(letter, state.forge);
-    return { ...found.handle, value: valueOf(style, found.handle.drive) };
+    return { ...found.handle, value: settingOf(style, found.handle.drive) };
   }, [found, letter, state.forge, revision]);
 
   /*
@@ -228,7 +216,10 @@ function Stage({
     const box = svgRef.current?.getBoundingClientRect();
     if (!box) return;
     const zoom = Math.min(CLOSEST, Math.max(FURTHEST, view.zoom * Math.exp(-event.deltaY / 400)));
-    const at = { x: (event.clientX - box.left) / box.width, y: (event.clientY - box.top) / box.height };
+    const at = {
+      x: (event.clientX - box.left) / box.width,
+      y: (event.clientY - box.top) / box.height,
+    };
     setView((was) => ({
       zoom,
       x: was.x + width * (1 / was.zoom - 1 / zoom) * at.x,
@@ -384,11 +375,7 @@ function Stage({
           ))}
 
           {/* Under the letter, so the letter stays the thing being looked at. */}
-          <Reference
-            loaded={reference}
-            character={letter}
-            unitsPerEm={metrics.unitsPerEm}
-          />
+          <Reference loaded={reference} character={letter} unitsPerEm={metrics.unitsPerEm} />
 
           <path
             d={contoursToSvgPath(drawn.contours)}
@@ -447,6 +434,7 @@ function Stage({
                   opacity={held === handle.id ? 0.9 : 0.45}
                 />
               )}
+              {/* biome-ignore lint/a11y/noStaticElementInteractions: an SVG handle dragged directly; the sliders beside the canvas are the keyboard path. */}
               <circle
                 cx={handle.at.x}
                 cy={handle.at.y}
@@ -491,6 +479,7 @@ function Stage({
                 strokeLinecap="round"
                 opacity={0.75}
               />
+              {/* biome-ignore lint/a11y/noStaticElementInteractions: an SVG handle dragged directly; the sliders beside the canvas are the keyboard path. */}
               <circle
                 cx={probed.at.x}
                 cy={probed.at.y}
@@ -515,10 +504,7 @@ function Stage({
 
       <div className="pointer-events-none absolute bottom-3 left-4 flex flex-wrap gap-1.5">
         {parts.map((part) => (
-          <span
-            key={part}
-            className="rounded bg-card px-1.5 py-0.5 text-2xs text-muted-foreground"
-          >
+          <span key={part} className="rounded bg-card px-1.5 py-0.5 text-2xs text-muted-foreground">
             {part}
           </span>
         ))}
@@ -591,7 +577,10 @@ function apply(handle: Handle, value: number, phase: Phase): void {
 }
 
 /** One line of the specimen, set in one weight of the family. */
-function setLine(forge: Forge, text: string): { pieces: Array<{ d: string; x: number }>; width: number } {
+function setLine(
+  forge: Forge,
+  text: string,
+): { pieces: Array<{ d: string; x: number }>; width: number } {
   let x = 0;
   const pieces: Array<{ d: string; x: number }> = [];
   for (const character of text) {
@@ -637,6 +626,7 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
    * family has, so a line of twenty characters is eighty letters a frame.
    */
   const shown = state.resting ? state.forge : unshaped(state.forge);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: weights.join() compares the weights by content; the array itself is new every render.
   const lines = React.useMemo(
     () =>
       weights.map((weight) => ({
@@ -677,7 +667,9 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
                 <span
                   className={cn(
                     "w-16 shrink-0 truncate text-right text-2xs tabular-nums",
-                    state.reversed ? "text-[color:var(--canvas)] opacity-60" : "text-muted-foreground",
+                    state.reversed
+                      ? "text-[color:var(--canvas)] opacity-60"
+                      : "text-muted-foreground",
                   )}
                   data-forge-weight-label={one.weight}
                 >
@@ -750,7 +742,12 @@ function Proof({ letter }: { letter: string }): React.JSX.Element | null {
    * same reason -- one letter is cheap next to four hundred and fifty, and it
    * is not cheap next to a frame.
    */
-  const [made, setMade] = React.useState<{ of: Forge; d: string; width: number; points: number } | null>(null);
+  const [made, setMade] = React.useState<{
+    of: Forge;
+    d: string;
+    width: number;
+    points: number;
+  } | null>(null);
   React.useEffect(() => {
     if (!anyEffect(effects) || !state.resting) return;
     let live = true;
@@ -829,7 +826,12 @@ function Proof({ letter }: { letter: string }): React.JSX.Element | null {
       {/* The same drawing again and again, small, because a texture that reads
           at poster size can be mud at twelve point and this is where to find
           that out. */}
-      <div className={cn("mt-1 flex justify-center rounded bg-[var(--canvas)] py-1", stale && "opacity-40")}>
+      <div
+        className={cn(
+          "mt-1 flex justify-center rounded bg-[var(--canvas)] py-1",
+          stale && "opacity-40",
+        )}
+      >
         <svg
           viewBox={`0 ${-top} ${Math.max((made?.width ?? 1) * PROOF_RUN, 1)} ${top - bottom}`}
           className="h-5 w-full"
@@ -884,7 +886,6 @@ for (const name of letterNames()) {
 function nameOf(character: string): string | null {
   return BY_CHARACTER.get(character) ?? null;
 }
-
 
 /**
  * The grid, over the letter, with every place a stroke can leave a cell.
@@ -982,7 +983,11 @@ function Cells({ letter, scale }: { letter: string; scale: number }): React.JSX.
               forgeStore.togglePort(key, port);
             };
             return (
-              <g key={`${key}:${port}`} data-forge-port={`${key}:${port}`} className="cursor-pointer">
+              <g
+                key={`${key}:${port}`}
+                data-forge-port={`${key}:${port}`}
+                className="cursor-pointer"
+              >
                 {/* Twice the size, and invisible: the dot itself is five pixels
                     across at the default zoom, which is not a target. */}
                 <circle
@@ -1163,7 +1168,7 @@ function Warnings({ revision }: { revision: number }): React.JSX.Element | null 
  */
 const FIRST_SCREEN = 128;
 
-function whatIsNear(names: string[]): {
+function useWhatIsNear(names: string[]): {
   near: ReadonlySet<string>;
   watch: (node: HTMLElement | null) => void;
 } {
@@ -1253,13 +1258,7 @@ function cellsOf(names: string[], near: ReadonlySet<string>, forge: Forge): Cell
 }
 
 /** Every glyph in the font, small, so a change can be seen spreading. */
-function Alphabet({
-  names,
-  selected,
-}: {
-  names: string[];
-  selected: string;
-}): React.JSX.Element {
+function Alphabet({ names, selected }: { names: string[]; selected: string }): React.JSX.Element {
   const state = useForge();
   /*
    * Four hundred and fifty-two letters, so this is where a drag is won or lost.
@@ -1279,12 +1278,15 @@ function Alphabet({
   const held = React.useRef(state.settled);
   if (state.resting) held.current = state.settled;
   const settled = held.current;
-  const { near, watch } = whatIsNear(names);
+  const { near, watch } = useWhatIsNear(names);
 
   // Without the layers, which is what the strip shows the instant a change
   // lands. Cheap enough to work out in a render: a letter with nothing cast on
   // it is a handful of contours and a short path.
-  const plain = React.useMemo(() => cellsOf(names, near, unshaped(settled)), [names, near, settled]);
+  const plain = React.useMemo(
+    () => cellsOf(names, near, unshaped(settled)),
+    [names, near, settled],
+  );
   /*
    * The shapes arrive a few frames after the letters do.
    *
@@ -1350,7 +1352,7 @@ function Alphabet({
     const before = new Map(ripe.cells.map((cell) => [cell.name, cell]));
     return plain.map((cell) => {
       const was = before.get(cell.name);
-      return was && was.d ? was : cell;
+      return was?.d ? was : cell;
     });
   }, [ripe, settled, plain]);
 

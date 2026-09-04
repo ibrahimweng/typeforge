@@ -71,10 +71,7 @@ export function useSliderInteractionValueChange<Value extends number | readonly 
   }, [values]);
 
   return React.useCallback(
-    (
-      nextValue: SliderValue<Value>,
-      eventDetails: SliderPrimitive.Root.ChangeEventDetails,
-    ) => {
+    (nextValue: SliderValue<Value>, eventDetails: SliderPrimitive.Root.ChangeEventDetails) => {
       handleValueChange(nextValue, eventDetails);
 
       if (disabled) {

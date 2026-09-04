@@ -217,7 +217,12 @@ export function buildGlyfTables(
     loca: loca.toUint8Array(),
     indexToLocFormat: useLongLoca ? 1 : 0,
     bounds: Number.isFinite(xMin)
-      ? { xMin: Math.floor(xMin), yMin: Math.floor(yMin), xMax: Math.ceil(xMax), yMax: Math.ceil(yMax) }
+      ? {
+          xMin: Math.floor(xMin),
+          yMin: Math.floor(yMin),
+          xMax: Math.ceil(xMax),
+          yMax: Math.ceil(yMax),
+        }
       : { xMin: 0, yMin: 0, xMax: 0, yMax: 0 },
     maxPoints,
     maxContours,
@@ -407,7 +412,9 @@ export function splitGlyf(
   for (let i = 0; i < numGlyphs; i++) {
     const start = offsetAt(i);
     const end = offsetAt(i + 1);
-    records.push(end > start ? glyf.subarray(start, Math.min(end, glyf.length)) : new Uint8Array(0));
+    records.push(
+      end > start ? glyf.subarray(start, Math.min(end, glyf.length)) : new Uint8Array(0),
+    );
   }
   return records;
 }

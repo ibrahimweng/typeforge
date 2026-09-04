@@ -1,0 +1,42 @@
+# Keeps the dependency updates arriving as reviewable pull requests rather than
+# as a surprise the next time someone runs an audit. Grouped so a week of patch
+# releases is one pull request to read, not thirty.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # The pieces that move together anyway. Splitting them produces pull
+      # requests that cannot pass on their own.
+      react:
+        patterns:
+          - react
+          - react-dom
+          - '@types/react'
+          - '@types/react-dom'
+      build-tools:
+        patterns:
+          - vite
+          - '@vitejs/*'
+          - vitest
+          - typescript
+          - '@tailwindcss/*'
+          - tailwindcss
+      # Everything else, by how big the jump is, so a patch sweep never hides a
+      # major version among it.
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - '*'

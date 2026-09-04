@@ -223,8 +223,8 @@ suite("export pipeline", { timeout: FONT_SUITE_TIMEOUT }, () => {
     // DejaVu builds most of its accented set from parts, and so should we:
     // storing `a` once means correcting it once.
     expect(report.compositeGlyphs).toBeGreaterThan(2000);
-    expect(report.componentsOf["aacute"]).toEqual(["a", "acute"]);
-    expect(report.componentsOf["ccedilla"]).toEqual(["c", "cedilla"]);
+    expect(report.componentsOf.aacute).toEqual(["a", "acute"]);
+    expect(report.componentsOf.ccedilla).toEqual(["c", "cedilla"]);
   });
 
   it("flattens composites when a parameter reshapes the letters", async () => {
@@ -325,15 +325,9 @@ suite("export pipeline", { timeout: FONT_SUITE_TIMEOUT }, () => {
 
   it("makes the slabbed letters wider than the bare ones", async () => {
     const { typeface } = await importFont(source!, "DejaVuSans.ttf");
-    const bare = resolveGlyphContours(
-      typeface.glyphs[typeface.glyphIndex.get("I")!],
-      typeface,
-    );
+    const bare = resolveGlyphContours(typeface.glyphs[typeface.glyphIndex.get("I")!], typeface);
     typeface.params = { ...typeface.params, slab: 90 };
-    const slabbed = resolveGlyphContours(
-      typeface.glyphs[typeface.glyphIndex.get("I")!],
-      typeface,
-    );
+    const slabbed = resolveGlyphContours(typeface.glyphs[typeface.glyphIndex.get("I")!], typeface);
 
     const width = (contours: ReturnType<typeof resolveGlyphContours>) => {
       const xs = contours.flatMap((c) => c.nodes.map((n) => n.point.x));

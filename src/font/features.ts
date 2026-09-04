@@ -67,11 +67,7 @@ export const ligatureFor = (
  * rule turning `f i` into `f` is a font where every `fi` loses its `i`, which
  * is a valid file and a broken one.
  */
-export function addLigature(
-  typeface: Typeface,
-  components: string[],
-  ligature: string,
-): boolean {
+export function addLigature(typeface: Typeface, components: string[], ligature: string): boolean {
   if (!canJoin(typeface, components)) return false;
   if (!typeface.glyphIndex.has(ligature)) return false;
   if (components.includes(ligature)) return false;
@@ -219,7 +215,9 @@ export function drawingFor(typeface: Typeface, components: readonly string[]): s
  * and the plain letter has to exist: `a.ss01` with no `a` is a drawing of
  * something else that happens to be named like a set.
  */
-export function suggestedSets(typeface: Typeface): Map<string, Array<{ plain: string; alternate: string }>> {
+export function suggestedSets(
+  typeface: Typeface,
+): Map<string, Array<{ plain: string; alternate: string }>> {
   const found = new Map<string, Array<{ plain: string; alternate: string }>>();
   for (const glyph of typeface.glyphs) {
     const dot = glyph.name.lastIndexOf(".");
@@ -229,7 +227,9 @@ export function suggestedSets(typeface: Typeface): Map<string, Array<{ plain: st
     if (!tagIsWellFormed(tag)) continue;
     if (!SET_TAGS.some((one) => one.tag === tag)) continue;
     if (!typeface.glyphIndex.has(plain)) continue;
-    if (typeface.sets?.some((set) => set.tag === tag && set.swaps.some((one) => one.plain === plain)))
+    if (
+      typeface.sets?.some((set) => set.tag === tag && set.swaps.some((one) => one.plain === plain))
+    )
       continue;
 
     const list = found.get(tag);
@@ -341,10 +341,10 @@ export function unreachableGlyphs(typeface: Typeface): string[] {
     for (const component of glyph.components) reached.add(component.glyphName);
   }
 
-  const mine = typeface.source === null ? typeface.glyphs : typeface.glyphs.filter((one) => one.dirty);
+  const mine =
+    typeface.source === null ? typeface.glyphs : typeface.glyphs.filter((one) => one.dirty);
   return mine.filter((one) => !reached.has(one.name)).map((one) => one.name);
 }
-
 
 /**
  * The ligatures and sets a font's own `GSUB` amounts to, in this document's terms.
@@ -425,14 +425,20 @@ export function featuresMatchSource(typeface: Typeface): boolean {
 
   const was = featuresFromGsub(raw, typeface.glyphs);
   const asLigatures = (list: ReadonlyArray<NamedLigature>) =>
-    list.map((one) => `${one.components.join(" ")}>${one.ligature}`).sort().join("|");
+    list
+      .map((one) => `${one.components.join(" ")}>${one.ligature}`)
+      .sort()
+      .join("|");
   if (asLigatures(was.ligatures) !== asLigatures(typeface.ligatures ?? [])) return false;
 
   const asSets = (list: ReadonlyArray<NamedSet>) =>
     list
       .map(
         (set) =>
-          `${set.tag}:${set.swaps.map((one) => `${one.plain}>${one.alternate}`).sort().join(",")}`,
+          `${set.tag}:${set.swaps
+            .map((one) => `${one.plain}>${one.alternate}`)
+            .sort()
+            .join(",")}`,
       )
       .sort()
       .join("|");

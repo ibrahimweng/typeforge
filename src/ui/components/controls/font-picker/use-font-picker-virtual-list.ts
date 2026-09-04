@@ -44,12 +44,12 @@ export function useFontPickerVirtualList({
   visibleFonts: readonly FontPickerFontCatalogEntry[];
 } {
   const [query, setQuery] = React.useState("");
-  const [category, setCategory] =
-    React.useState<FontPickerFontFilterValue>("sans-serif");
+  const [category, setCategory] = React.useState<FontPickerFontFilterValue>("sans-serif");
   const [scrollTop, setScrollTop] = React.useState(0);
   const [viewportHeight, setViewportHeight] = React.useState(0);
-  const [scrollViewportElement, setScrollViewportElement] =
-    React.useState<HTMLDivElement | null>(null);
+  const [scrollViewportElement, setScrollViewportElement] = React.useState<HTMLDivElement | null>(
+    null,
+  );
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const scrollViewportRef = React.useRef<HTMLDivElement | null>(null);
   const previousScrollTopRef = React.useRef(0);
@@ -68,10 +68,8 @@ export function useFontPickerVirtualList({
 
     return filteredFonts.findIndex((font) => font.id === selectedFont.id);
   }, [filteredFonts, selectedFont]);
-  const resolvedViewportHeight =
-    viewportHeight > 0 ? viewportHeight : fontListHeightWithFooterPx;
-  const selectedFontTop =
-    selectedFontIndex >= 0 ? selectedFontIndex * fontVirtualItemStepPx : 0;
+  const resolvedViewportHeight = viewportHeight > 0 ? viewportHeight : fontListHeightWithFooterPx;
+  const selectedFontTop = selectedFontIndex >= 0 ? selectedFontIndex * fontVirtualItemStepPx : 0;
   const selectedFontBottom = selectedFontTop + fontItemHeightPx;
   const selectedFontVisible =
     selectedFontIndex >= 0 &&
@@ -83,10 +81,7 @@ export function useFontPickerVirtualList({
         ? "top"
         : "bottom"
       : null;
-  const visibleItemCount = Math.max(
-    1,
-    Math.ceil(resolvedViewportHeight / fontVirtualItemStepPx),
-  );
+  const visibleItemCount = Math.max(1, Math.ceil(resolvedViewportHeight / fontVirtualItemStepPx));
   const virtualStartIndex = Math.max(
     0,
     Math.floor(scrollTop / fontVirtualItemStepPx) - fontListOverscanItems,
@@ -123,9 +118,7 @@ export function useFontPickerVirtualList({
 
     const nextScrollTop = index * fontVirtualItemStepPx;
     scrollDirectionRef.current =
-      nextScrollTop >= scrollViewportRef.current.scrollTop
-        ? "forward"
-        : "backward";
+      nextScrollTop >= scrollViewportRef.current.scrollTop ? "forward" : "backward";
     previousScrollTopRef.current = nextScrollTop;
     scrollViewportRef.current.scrollTop = nextScrollTop;
     setScrollTop(nextScrollTop);
@@ -138,13 +131,9 @@ export function useFontPickerVirtualList({
       }
 
       const backwardItems =
-        direction === "forward"
-          ? fontPreloadBufferBehindItems
-          : fontPreloadBufferAheadItems;
+        direction === "forward" ? fontPreloadBufferBehindItems : fontPreloadBufferAheadItems;
       const forwardItems =
-        direction === "forward"
-          ? fontPreloadBufferAheadItems
-          : fontPreloadBufferBehindItems;
+        direction === "forward" ? fontPreloadBufferAheadItems : fontPreloadBufferBehindItems;
       const preloadStart = Math.max(0, virtualStartIndex - backwardItems);
       const preloadEnd = Math.min(filteredFonts.length, virtualEndIndex + forwardItems);
 

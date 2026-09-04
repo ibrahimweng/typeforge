@@ -9,33 +9,22 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
-import { type HsvColor } from "../../../lib/style-guide-color-utils";
+import type { HsvColor } from "../../../lib/style-guide-color-utils";
 import { cn } from "../../../lib/utils";
-import {
-  getColorChannels,
-  type ColorSurfaceModel,
-} from "./style-guide-color-picker-channel-utils";
+import { getColorChannels, type ColorSurfaceModel } from "./style-guide-color-picker-channel-utils";
 
 const HUE_RAIL_BACKGROUND =
   "linear-gradient(90deg, #ff0000 0%, #ffff00 16.67%, #00ff00 33.33%, #00ffff 50%, #0000ff 66.67%, #ff00ff 83.33%, #ff0000 100%)";
-const RGB_BLUE_RAIL_BACKGROUND =
-  "linear-gradient(90deg, rgb(0 0 0), rgb(0 0 255))";
+const RGB_BLUE_RAIL_BACKGROUND = "linear-gradient(90deg, rgb(0 0 0), rgb(0 0 255))";
 
 function clampSliderValue(value: number, max: number): number {
   return Math.min(max, Math.max(0, value));
 }
 
-function getSliderValueFromClientX(
-  clientX: number,
-  bounds: DOMRect,
-  max: number,
-): number {
+function getSliderValueFromClientX(clientX: number, bounds: DOMRect, max: number): number {
   if (bounds.width === 0) return 0;
 
-  return clampSliderValue(
-    Math.round(((clientX - bounds.left) / bounds.width) * max),
-    max,
-  );
+  return clampSliderValue(Math.round(((clientX - bounds.left) / bounds.width) * max), max);
 }
 
 type ColorModelSliderProps = {
@@ -100,8 +89,7 @@ export function ColorModelSlider({
   const callbacksRef = useRef({ onCommit, onDragStateChange, onPreviewChange });
   const [isDragging, setIsDragging] = useState(false);
   const activeValue = isDragging ? latestDragValueRef.current : value;
-  const valuePercent =
-    max === 0 ? 0 : (clampSliderValue(activeValue, max) / max) * 100;
+  const valuePercent = max === 0 ? 0 : (clampSliderValue(activeValue, max) / max) * 100;
 
   useEffect(() => {
     callbacksRef.current = { onCommit, onDragStateChange, onPreviewChange };
@@ -210,10 +198,7 @@ export function ColorModelSlider({
   return (
     <div
       data-slot="style-guide-color-hue"
-      className={cn(
-        "relative w-full",
-        disabled && "cursor-not-allowed opacity-60",
-      )}
+      className={cn("relative w-full", disabled && "cursor-not-allowed opacity-60")}
     >
       <div
         data-slot="style-guide-color-hue-rail"

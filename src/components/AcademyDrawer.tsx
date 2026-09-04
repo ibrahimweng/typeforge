@@ -54,8 +54,7 @@ export function AcademyDrawer({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  const done = (lesson: Lesson): boolean =>
-    lesson.done ? lesson.done(at) : isMarked(lesson.id);
+  const done = (lesson: Lesson): boolean => (lesson.done ? lesson.done(at) : isMarked(lesson.id));
   const countDone = (course: Course) => course.lessons.filter(done).length;
   const finished = COURSES.reduce((total, one) => total + countDone(one), 0);
   const all = COURSES.reduce((total, one) => total + one.lessons.length, 0);

@@ -172,7 +172,6 @@ let borrowing: string | undefined;
  */
 const BEHIND = new WeakMap<(style: Style) => Recipe, LetterName>();
 
-
 function uses(part: PartName): void {
   recording?.add(part);
   pending.push(part);
@@ -321,13 +320,21 @@ function bendWidth(f: Frame, radius: number): number {
   return Math.max(radius * f.wide, f.least);
 }
 
-function bend(f: Frame, centre: Vec2, radius: number, fromDegrees: number, toDegrees: number): Spine {
+function bend(
+  f: Frame,
+  centre: Vec2,
+  radius: number,
+  fromDegrees: number,
+  toDegrees: number,
+): Spine {
   const halfWidth = bendWidth(f, radius);
   const roundness = 1 - f.square;
   if (toDegrees >= fromDegrees) {
     return bowlBetween(centre, halfWidth, radius, roundness, f.half, fromDegrees, toDegrees);
   }
-  return reversed(bowlBetween(centre, halfWidth, radius, roundness, f.half, toDegrees, fromDegrees));
+  return reversed(
+    bowlBetween(centre, halfWidth, radius, roundness, f.half, toDegrees, fromDegrees),
+  );
 }
 
 /**
@@ -362,7 +369,14 @@ function bowed(f: Frame, from: Vec2, to: Vec2, amount: number): Spine {
   while (sweep < -Math.PI) sweep += Math.PI * 2;
   return {
     segments: [
-      { kind: "arc", centre, radius, startAngle, endAngle: startAngle + sweep, sweepPositive: sweep > 0 },
+      {
+        kind: "arc",
+        centre,
+        radius,
+        startAngle,
+        endAngle: startAngle + sweep,
+        sweepPositive: sweep > 0,
+      },
     ],
     closed: false,
   };
@@ -837,7 +851,12 @@ function capped(frame: Frame, stroke: Stroke): Stroke {
   const startLean = leaning(first, "start");
   const endLean = leaning(last, "end");
 
-  const back = (terminal: Terminal, segment: SpineSegment, which: "start" | "end", lean: number): number => {
+  const back = (
+    terminal: Terminal,
+    segment: SpineSegment,
+    which: "start" | "end",
+    lean: number,
+  ): number => {
     if (terminal.kind !== "round" || segment.kind !== "line") return 0;
     // Far enough back that the far side of the cap lands on the line, which on
     // a stroke arriving at an angle is further than the cap is deep.
@@ -996,15 +1015,12 @@ function through(f: Frame, tips: Vec2[]): Vec2[] {
         Math.hypot(points[index].x - before.x, points[index].y - before.y),
         Math.hypot(points[index].x - after.x, points[index].y - after.y),
       );
-      const wanted = Math.max(-arm, Math.min(arm, overhang(f, halfAngle, points[index], before, after)));
-      const target = at(
-        tips[index].x + bisector.x * wanted,
-        tips[index].y + bisector.y * wanted,
+      const wanted = Math.max(
+        -arm,
+        Math.min(arm, overhang(f, halfAngle, points[index], before, after)),
       );
-      points[index] = at(
-        (points[index].x + target.x) / 2,
-        (points[index].y + target.y) / 2,
-      );
+      const target = at(tips[index].x + bisector.x * wanted, tips[index].y + bisector.y * wanted);
+      points[index] = at((points[index].x + target.x) / 2, (points[index].y + target.y) / 2);
     }
   }
   return points;
@@ -1144,11 +1160,7 @@ function junction(f: Frame, arm: Vec2, stem: number, height: number, leg: Vec2):
  * the corner has been rounded off the way the recipe is about to round it.
  */
 function rounded(f: Frame, arm: Vec2, meet: Vec2, leg: Vec2): number {
-  const spine = roundCorners(
-    chain(straight(arm, meet), straight(meet, leg)),
-    f.radius,
-    f.half,
-  );
+  const spine = roundCorners(chain(straight(arm, meet), straight(meet, leg)), f.radius, f.half);
   let least = Infinity;
   for (const segment of spine.segments) {
     if (segment.kind === "line") {
@@ -1771,7 +1783,12 @@ function cyrDe(f: Frame, top: number): Stroke[] {
     ink(f, straight(at(left + width * 0.26, roof), at(left + width * 0.12, shelf)), BUTT, BUTT),
     thin(f, straight(at(left, shelf), at(left + width, shelf)), BUTT, BUTT),
     ink(f, straight(at(left + f.half, shelf), at(left + f.half, -drop)), BUTT, f.end),
-    ink(f, straight(at(left + width - f.half, shelf), at(left + width - f.half, -drop)), BUTT, f.end),
+    ink(
+      f,
+      straight(at(left + width - f.half, shelf), at(left + width - f.half, -drop)),
+      BUTT,
+      f.end,
+    ),
   ];
 }
 
@@ -1870,8 +1887,18 @@ function cyrTse(f: Frame, top: number): Stroke[] {
   const drop = cyrDrop(f, top);
   return [
     ...cyrPe(f, top),
-    ink(f, straight(at(right + f.half * 1.6, f.sits(0, f.bar)), at(right + f.half * 1.6, -drop)), BUTT, f.end),
-    thin(f, straight(at(right - f.half, f.sits(0, f.bar)), at(right + f.half * 1.6, f.sits(0, f.bar))), BUTT, BUTT),
+    ink(
+      f,
+      straight(at(right + f.half * 1.6, f.sits(0, f.bar)), at(right + f.half * 1.6, -drop)),
+      BUTT,
+      f.end,
+    ),
+    thin(
+      f,
+      straight(at(right - f.half, f.sits(0, f.bar)), at(right + f.half * 1.6, f.sits(0, f.bar))),
+      BUTT,
+      BUTT,
+    ),
   ];
 }
 
@@ -1925,7 +1952,6 @@ function cyrSoft(f: Frame, top: number): Stroke[] {
   return cyrSoftAt(f, top, f.edge);
 }
 
-
 /** A bowl open to the right, with a bar reaching in: the Ukrainian ye. */
 function cyrIe(f: Frame, top: number): Stroke[] {
   const radius = Math.max(top / 2, f.least);
@@ -1933,7 +1959,12 @@ function cyrIe(f: Frame, top: number): Stroke[] {
   const centre = at(f.edge + wide, top / 2);
   return [
     ink(f, bend(f, centre, radius, 55, 305), f.end, f.end),
-    thin(f, straight(at(centre.x - wide, centre.y), at(centre.x + wide * 0.2, centre.y)), BUTT, f.end),
+    thin(
+      f,
+      straight(at(centre.x - wide, centre.y), at(centre.x + wide * 0.2, centre.y)),
+      BUTT,
+      f.end,
+    ),
   ];
 }
 
@@ -1945,7 +1976,15 @@ function cyrTsheAt(f: Frame, top: number, stem: number, tail: number): Stroke[] 
   const radius = Math.max(Math.min(wide * 0.55, (top - waist) * 0.9), f.least);
   return [
     ink(f, straight(at(stem, 0), at(stem, top)), f.end, f.end),
-    thin(f, straight(at(stem - wide * 0.5, f.hangs(top, f.bar)), at(stem + wide * 0.7, f.hangs(top, f.bar))), f.end, f.end),
+    thin(
+      f,
+      straight(
+        at(stem - wide * 0.5, f.hangs(top, f.bar)),
+        at(stem + wide * 0.7, f.hangs(top, f.bar)),
+      ),
+      f.end,
+      f.end,
+    ),
     ink(
       f,
       chain(
@@ -2043,10 +2082,7 @@ function cyrHard(f: Frame, top: number): Stroke[] {
 function cyrYeru(f: Frame, top: number): Stroke[] {
   const bowl = Math.max(top * 0.29, f.least);
   const apart = f.edge + bowl * f.wide + f.style.metrics.counterWidth * 0.55 + f.style.pen.weight;
-  return [
-    ...cyrSoft(f, top),
-    ink(f, straight(at(apart, 0), at(apart, top)), f.end, f.end),
-  ];
+  return [...cyrSoft(f, top), ink(f, straight(at(apart, 0), at(apart, top)), f.end, f.end)];
 }
 
 /** A bowl open to the left, with a bar reaching in from the right. */
@@ -2057,7 +2093,12 @@ function cyrE(f: Frame, top: number): Stroke[] {
   const centre = at(f.edge + wide * 0.574, top / 2);
   return [
     ink(f, bend(f, centre, radius, -125, 125), f.end, f.end),
-    thin(f, straight(at(centre.x - wide * 0.2, centre.y), at(centre.x + wide, centre.y)), f.end, BUTT),
+    thin(
+      f,
+      straight(at(centre.x - wide * 0.2, centre.y), at(centre.x + wide, centre.y)),
+      f.end,
+      BUTT,
+    ),
   ];
 }
 
@@ -2190,12 +2231,10 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
      * standing clear and half is the air around it. See `air`.
      */
     return {
-      ...finish(
-        f,
-        [
-          ink(f, ring(f, centre, f.bowl, f.bowlH)),
-          ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
-        ]),
+      ...finish(f, [
+        ink(f, ring(f, centre, f.bowl, f.bowlH)),
+        ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
+      ]),
       air: 0.45,
     };
   },
@@ -2209,7 +2248,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
         ink(f, ring(f, at(stem + f.bowl, f.x / 2), f.bowl, f.bowlH)),
       ],
-      true);
+      true,
+    );
   },
 
   c: (style) => {
@@ -2228,12 +2268,10 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
      * `d` and 1.19 for an `a`. Swept at 0.45, 0.75 and 0.95 against that.
      */
     return {
-      ...finish(
-        f,
-        [
-          ink(f, ring(f, centre, f.bowl, f.bowlH)),
-          ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
-        ]),
+      ...finish(f, [
+        ink(f, ring(f, centre, f.bowl, f.bowlH)),
+        ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
+      ]),
       air: 0.95,
     };
   },
@@ -2283,33 +2321,31 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const left = Math.max(f.arch * 0.42, f.least);
     const stem = f.edge + left;
     const top = f.crest(f.asc) - radius;
-    return finish(
-      f,
-      [
-        /*
-         * Straight up, then a quarter turn right into the hook.
-         *
-         * Right, because that is the only side an f's hook has ever been on.
-         * Turned the other way -- which is how this was written -- every scrap
-         * of ink above the bar sat to the left of the stem, where a t has
-         * nothing and an f has the whole of what tells them apart. `fox` set
-         * as `tox` on all sixteen faces.
-         */
-        ink(
-          f,
-          chain(
-            straight(at(stem, 0), at(stem, top)),
-            // Set down by the pen's own reach across a horizontal, so the top
-            // of the hook lands on the ascender rather than setting off from it.
-            turn(at(stem + radius, top), radius, 180, 88),
-          ),
-          f.end,
-          f.end,
+    return finish(f, [
+      /*
+       * Straight up, then a quarter turn right into the hook.
+       *
+       * Right, because that is the only side an f's hook has ever been on.
+       * Turned the other way -- which is how this was written -- every scrap
+       * of ink above the bar sat to the left of the stem, where a t has
+       * nothing and an f has the whole of what tells them apart. `fox` set
+       * as `tox` on all sixteen faces.
+       */
+      ink(
+        f,
+        chain(
+          straight(at(stem, 0), at(stem, top)),
+          // Set down by the pen's own reach across a horizontal, so the top
+          // of the hook lands on the ascender rather than setting off from it.
+          turn(at(stem + radius, top), radius, 180, 88),
         ),
-        // Reaching further right than left, as the t's bar does, so the two are
-        // told apart by more than the hook at the sizes text is set at.
-        crossbar(f, stem - left, stem + f.arch * 0.62),
-      ]);
+        f.end,
+        f.end,
+      ),
+      // Reaching further right than left, as the t's bar does, so the two are
+      // told apart by more than the hook at the sizes text is set at.
+      crossbar(f, stem - left, stem + f.arch * 0.62),
+    ]);
   },
 
   g: (style) => {
@@ -2324,9 +2360,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
      * 1.07 of its own `o`'s advance for a `g`. See `air`.
      */
     return {
-      ...finish(
-      f,
-      [
+      ...finish(f, [
         ink(f, ring(f, centre, f.bowl, f.bowlH)),
         // Down the right and round into the tail, which is one stroke so the
         // descender cannot part company with the bowl.
@@ -2349,20 +2383,19 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   h: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    return finish(
-      f,
-      [ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end), arch(f, stem, f.x)]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
+      arch(f, stem, f.x),
+    ]);
   },
 
   i: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
-        dot(f, at(stem, f.x + f.half * 1.5 + f.half * 0.55), f.half * 0.55),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
+      dot(f, at(stem, f.x + f.half * 1.5 + f.half * 0.55), f.half * 0.55),
+    ]);
   },
 
   /*
@@ -2382,22 +2415,20 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const radius = Math.max(f.arch * 0.62, f.least);
     const stem = f.edge + radius;
-    return finish(
-      f,
-      [
-        ink(
-          f,
-          chain(
-            straight(at(stem, f.x), at(stem, f.dip(f.desc) + radius)),
-            // Set up by the pen's own reach across a horizontal, so the ink
-            // stops at the descender rather than starting there.
-            turn(at(stem - radius, f.dip(f.desc) + radius), radius, 0, -95),
-          ),
-          f.end,
-          f.end,
+    return finish(f, [
+      ink(
+        f,
+        chain(
+          straight(at(stem, f.x), at(stem, f.dip(f.desc) + radius)),
+          // Set up by the pen's own reach across a horizontal, so the ink
+          // stops at the descender rather than starting there.
+          turn(at(stem - radius, f.dip(f.desc) + radius), radius, 0, -95),
         ),
-        dot(f, at(stem, f.x + f.half * 1.5 + f.half * 0.55), f.half * 0.55),
-      ]);
+        f.end,
+        f.end,
+      ),
+      dot(f, at(stem, f.x + f.half * 1.5 + f.half * 0.55), f.half * 0.55),
+    ]);
   },
 
   dotlessj: (style) => {
@@ -2425,39 +2456,34 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const arm = at(reach, f.x);
     const leg = at(reach, 0);
     const meet = junction(f, arm, stem, waist, leg);
-    return finish(
-      f,
-      [
-        ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
-        ink(f, chain(straight(arm, meet), straight(meet, leg)), f.end, f.end),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
+      ink(f, chain(straight(arm, meet), straight(meet, leg)), f.end, f.end),
+    ]);
   },
 
   l: (style) => {
     const f = frame(style);
-    return finish(
-      f,
-      [ink(f, straight(at(f.edge, 0), at(f.edge, f.asc)), f.end, f.end)]);
+    return finish(f, [ink(f, straight(at(f.edge, 0), at(f.edge, f.asc)), f.end, f.end)]);
   },
 
   m: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(stem, 0), at(stem, f.crown)), f.end, f.end),
-        arch(f, stem, f.x),
-        arch(f, stem + f.arch * 2, f.x),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.crown)), f.end, f.end),
+      arch(f, stem, f.x),
+      arch(f, stem + f.arch * 2, f.x),
+    ]);
   },
 
   n: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    return finish(
-      f,
-      [ink(f, straight(at(stem, 0), at(stem, f.crown)), f.end, f.end), arch(f, stem, f.x)]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.crown)), f.end, f.end),
+      arch(f, stem, f.x),
+    ]);
   },
 
   o: (style) => {
@@ -2475,19 +2501,18 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(f, straight(at(stem, f.desc), at(stem, f.x)), f.end, f.end),
         ink(f, ring(f, at(stem + f.bowl, f.x / 2), f.bowl, f.bowlH)),
       ],
-      true);
+      true,
+    );
   },
 
   q: (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
     const stem = centre.x + f.bowl;
-    return finish(
-      f,
-      [
-        ink(f, ring(f, centre, f.bowl, f.bowlH)),
-        ink(f, straight(at(stem, f.desc), at(stem, f.x)), f.end, f.end),
-      ]);
+    return finish(f, [
+      ink(f, ring(f, centre, f.bowl, f.bowlH)),
+      ink(f, straight(at(stem, f.desc), at(stem, f.x)), f.end, f.end),
+    ]);
   },
 
   r: (style) => {
@@ -2505,29 +2530,24 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
      * the x-height rather than a fault in the r.
      */
     const reach = f.arch;
-    const radius = Math.max(
-      f.half,
-      Math.min(reach, f.x * (1 - f.style.parts.shoulder.spring)),
-    );
+    const radius = Math.max(f.half, Math.min(reach, f.x * (1 - f.style.parts.shoulder.spring)));
     const crest = Math.max(f.crest(f.x), radius);
     const landing = stem + Math.max(reach, radius * 2);
-    return finish(
-      f,
-      [
-        ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
-        ink(
-          f,
-          chain(
-            turn(at(stem + radius, crest - radius), radius, 180, 90),
-            straight(at(stem + radius, crest), at(landing - radius, crest)),
-            // Carried a little past the top, so the arm droops rather than
-            // stopping dead level, which is what tells an r from a bracket.
-            turn(at(landing - radius, crest - radius), radius, 90, 55),
-          ),
-          BUTT,
-          f.end,
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
+      ink(
+        f,
+        chain(
+          turn(at(stem + radius, crest - radius), radius, 180, 90),
+          straight(at(stem + radius, crest), at(landing - radius, crest)),
+          // Carried a little past the top, so the arm droops rather than
+          // stopping dead level, which is what tells an r from a bracket.
+          turn(at(landing - radius, crest - radius), radius, 90, 55),
         ),
-      ]);
+        BUTT,
+        f.end,
+      ),
+    ]);
   },
 
   s: (style) => {
@@ -2548,27 +2568,25 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const radius = Math.max(f.arch * 0.42, f.least);
     const reach = f.arch * 0.7;
     const stem = tStem(f);
-    return finish(
-      f,
-      [
-        /*
-         * Down the stem and out along the baseline, as one run.
-         *
-         * Without the foot a t is a cross: a vertical and a bar, identical to
-         * an f with the hook taken off, and at a heavy weight the two were
-         * telling themselves apart by the width of the bar alone.
-         */
-        ink(
-          f,
-          chain(
-            straight(at(stem, f.asc * 0.78), at(stem, f.dip(0) + radius)),
-            turn(at(stem + radius, f.dip(0) + radius), radius, 180, 270),
-          ),
-          f.end,
-          f.end,
+    return finish(f, [
+      /*
+       * Down the stem and out along the baseline, as one run.
+       *
+       * Without the foot a t is a cross: a vertical and a bar, identical to
+       * an f with the hook taken off, and at a heavy weight the two were
+       * telling themselves apart by the width of the bar alone.
+       */
+      ink(
+        f,
+        chain(
+          straight(at(stem, f.asc * 0.78), at(stem, f.dip(0) + radius)),
+          turn(at(stem + radius, f.dip(0) + radius), radius, 180, 270),
         ),
-        crossbar(f, stem - reach * 0.7, stem + reach),
-      ]);
+        f.end,
+        f.end,
+      ),
+      crossbar(f, stem - reach * 0.7, stem + reach),
+    ]);
   },
 
   u: (style) => {
@@ -2584,9 +2602,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const top = at(left, f.x);
     const other = at(middle + half, f.x);
     const point = corner(f, top, at(middle, 0), other);
-    return finish(
-      f,
-      [ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end)]);
+    return finish(f, [ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end)]);
   },
 
   w: (style) => {
@@ -2621,12 +2637,10 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const width = f.arch * 1.7;
     const left = f.edge;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(left, f.x), at(left + width, 0)), f.end, f.end),
-        ink(f, straight(at(left, 0), at(left + width, f.x)), f.end, f.end),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(left, f.x), at(left + width, 0)), f.end, f.end),
+      ink(f, straight(at(left, 0), at(left + width, f.x)), f.end, f.end),
+    ]);
   },
 
   y: (style) => {
@@ -2638,37 +2652,30 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     // square end is inside the other stroke rather than standing out of it.
     const past = f.half * 1.1;
     const drop = past / Math.hypot(1, f.x / half);
-    return finish(
-      f,
-      [
-        ink(
-          f,
-          straight(at(left, f.x), at(middle + (drop * half) / f.x, -drop)),
-          f.end,
-          BUTT,
-        ),
-        /*
-         * One straight run: down from the x-height, through the apex the left
-         * diagonal ends at, and on into the descender at the angle it arrived
-         * on. That is what it always meant to be, and it was not: reckoned
-         * from the wrong slope it reached the baseline four tenths of an arm
-         * to the right of the apex, so the two diagonals of the vee crossed
-         * nowhere near each other.
-         *
-         * A fat enough pen covered the miss and nothing showed. Measured
-         * across the sixteen faces the arms overlapped by four units on
-         * Geometric, five on Marker, six on Serif and seven on Sans -- held
-         * together by luck -- while Fairground missed by thirty-five and drew
-         * a broken vee, and Wavy missed by forty-four and lost its left
-         * diagonal altogether when the letter was fused.
-         */
-        ink(
-          f,
-          straight(at(middle + half, f.x), at(middle + (half * f.desc) / f.x, f.desc)),
-          f.end,
-          f.end,
-        ),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(left, f.x), at(middle + (drop * half) / f.x, -drop)), f.end, BUTT),
+      /*
+       * One straight run: down from the x-height, through the apex the left
+       * diagonal ends at, and on into the descender at the angle it arrived
+       * on. That is what it always meant to be, and it was not: reckoned
+       * from the wrong slope it reached the baseline four tenths of an arm
+       * to the right of the apex, so the two diagonals of the vee crossed
+       * nowhere near each other.
+       *
+       * A fat enough pen covered the miss and nothing showed. Measured
+       * across the sixteen faces the arms overlapped by four units on
+       * Geometric, five on Marker, six on Serif and seven on Sans -- held
+       * together by luck -- while Fairground missed by thirty-five and drew
+       * a broken vee, and Wavy missed by forty-four and lost its left
+       * diagonal altogether when the letter was fused.
+       */
+      ink(
+        f,
+        straight(at(middle + half, f.x), at(middle + (half * f.desc) / f.x, f.desc)),
+        f.end,
+        f.end,
+      ),
+    ]);
   },
 
   z: (style) => {
@@ -2690,16 +2697,14 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const [across, back] = corners(f, [start, at(left + width, f.x), at(left, 0), end]);
     const upper = at(across.x, start.y);
     const lower = at(back.x, end.y);
-    return finish(
-      f,
-      [
-        ink(
-          f,
-          chain(straight(start, upper), straight(upper, lower), straight(lower, end)),
-          f.end,
-          f.end,
-        ),
-      ]);
+    return finish(f, [
+      ink(
+        f,
+        chain(straight(start, upper), straight(upper, lower), straight(lower, end)),
+        f.end,
+        f.end,
+      ),
+    ]);
   },
 
   // --- capitals ----------------------------------------------------------
@@ -2743,12 +2748,10 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
      * at a pen of 8 the bar came away as a piece of its own on all four faces.
      */
     const inset = (half * bar) / Math.max(peak.y, f.least);
-    return finish(
-      f,
-      [
-        ink(f, chain(straight(foot, peak), straight(peak, other)), f.end, f.end),
-        thin(f, straight(at(left + inset, bar), at(middle + half - inset, bar))),
-      ]);
+    return finish(f, [
+      ink(f, chain(straight(foot, peak), straight(peak, other)), f.end, f.end),
+      thin(f, straight(at(left + inset, bar), at(middle + half - inset, bar))),
+    ]);
   },
 
   B: (style) => {
@@ -2772,13 +2775,11 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
      * what stops the upper one looking like a mistake beside the lower.
      */
     const reach = f.capBowl * 0.84;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        belly(f, at(stem, top - upperR), reach, upperR, -90, 90),
-        belly(f, at(stem, base + lowerR), reach, lowerR, -90, 90),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+      belly(f, at(stem, top - upperR), reach, upperR, -90, 90),
+      belly(f, at(stem, base + lowerR), reach, lowerR, -90, 90),
+    ]);
   },
 
   C: (style) => {
@@ -2810,44 +2811,31 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
         belly(f, at(stem, f.cap / 2), radius * f.wide, radius, -90, 90),
       ],
-      true);
+      true,
+    );
   },
 
   E: (style) => {
     const f = frame(style);
     const stem = f.edge;
     const reach = f.capBowl * 1.15;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        arm(f, stem, stem + reach, f.hangs(f.cap, f.bar)),
-        arm(
-          f,
-          stem,
-          stem + reach * 0.86,
-          f.cap * f.style.parts.crossbar.height,
-        ),
-        arm(f, stem, stem + reach, f.sits(0, f.bar)),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+      arm(f, stem, stem + reach, f.hangs(f.cap, f.bar)),
+      arm(f, stem, stem + reach * 0.86, f.cap * f.style.parts.crossbar.height),
+      arm(f, stem, stem + reach, f.sits(0, f.bar)),
+    ]);
   },
 
   F: (style) => {
     const f = frame(style);
     const stem = f.edge;
     const reach = f.capBowl * 1.15;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        arm(f, stem, stem + reach, f.hangs(f.cap, f.bar)),
-        arm(
-          f,
-          stem,
-          stem + reach * 0.86,
-          f.cap * f.style.parts.crossbar.height,
-        ),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+      arm(f, stem, stem + reach, f.hangs(f.cap, f.bar)),
+      arm(f, stem, stem + reach * 0.86, f.cap * f.style.parts.crossbar.height),
+    ]);
   },
 
   G: (style) => {
@@ -2885,26 +2873,25 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         openBowl(f, centre, f.capBowl, f.capBowlH, opens, 360, past),
         ink(f, straight(at(right, centre.y), at(right - f.capBowl * 0.55, centre.y)), BUTT, f.end),
       ],
-      true);
+      true,
+    );
   },
 
   H: (style) => {
     const f = frame(style);
     const left = f.edge;
     const right = left + f.style.metrics.counterWidth + f.style.pen.weight;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
-        ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
-        thin(
-          f,
-          straight(
-            at(left, f.cap * f.style.parts.crossbar.height),
-            at(right, f.cap * f.style.parts.crossbar.height),
-          ),
+    return finish(f, [
+      ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
+      ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
+      thin(
+        f,
+        straight(
+          at(left, f.cap * f.style.parts.crossbar.height),
+          at(right, f.cap * f.style.parts.crossbar.height),
         ),
-      ]);
+      ),
+    ]);
   },
 
   I: (style) => {
@@ -2916,19 +2903,17 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const radius = Math.max(f.capBowl * 0.55, f.least);
     const stem = f.edge + radius;
-    return finish(
-      f,
-      [
-        ink(
-          f,
-          chain(
-            straight(at(stem, f.cap), at(stem, f.dip(0) + radius)),
-            turn(at(stem - radius, f.dip(0) + radius), radius, 0, -90),
-          ),
-          f.end,
-          f.end,
+    return finish(f, [
+      ink(
+        f,
+        chain(
+          straight(at(stem, f.cap), at(stem, f.dip(0) + radius)),
+          turn(at(stem - radius, f.dip(0) + radius), radius, 0, -90),
         ),
-      ]);
+        f.end,
+        f.end,
+      ),
+    ]);
   },
 
   K: (style) => {
@@ -2941,24 +2926,20 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     // Arm and leg are one run meeting at the stem, so the corner between them
     // is turned rather than left as two square ends.
     const meet = junction(f, arm, stem, waist, leg);
-    return finish(
-      f,
-      [
-        ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        ink(f, chain(straight(arm, meet), straight(meet, leg)), f.end, f.end),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+      ink(f, chain(straight(arm, meet), straight(meet, leg)), f.end, f.end),
+    ]);
   },
 
   L: (style) => {
     const f = frame(style);
     const stem = f.edge;
     const reach = f.capBowl * 1.05;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        arm(f, stem, stem + reach, f.sits(0, f.bar)),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+      arm(f, stem, stem + reach, f.sits(0, f.bar)),
+    ]);
   },
 
   M: (style) => {
@@ -2986,21 +2967,19 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       at(right, f.cap),
       end,
     ]);
-    return finish(
-      f,
-      [
-        ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
-        ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
-        ink(
-          f,
-          chain(
-            straight(start, topLeft),
-            straight(topLeft, vertex),
-            straight(vertex, topRight),
-            straight(topRight, end),
-          ),
+    return finish(f, [
+      ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
+      ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
+      ink(
+        f,
+        chain(
+          straight(start, topLeft),
+          straight(topLeft, vertex),
+          straight(vertex, topRight),
+          straight(topRight, end),
         ),
-      ]);
+      ),
+    ]);
   },
 
   N: (style) => {
@@ -3011,13 +2990,11 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const start = at(left, f.cap - into);
     const end = at(right, into);
     const [top, foot] = corners(f, [start, at(left, f.cap), at(right, 0), end]);
-    return finish(
-      f,
-      [
-        ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
-        ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
-        ink(f, chain(straight(start, top), straight(top, foot), straight(foot, end))),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
+      ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
+      ink(f, chain(straight(start, top), straight(top, foot), straight(foot, end))),
+    ]);
   },
 
   O: (style) => {
@@ -3030,12 +3007,10 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const stem = f.edge;
     const radius = Math.max(f.cap * 0.27, f.least);
-    return finish(
-      f,
-      [
-        ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        belly(f, at(stem, f.crest(f.cap) - radius), radius * f.wide, radius, -90, 90),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+      belly(f, at(stem, f.crest(f.cap) - radius), radius * f.wide, radius, -90, 90),
+    ]);
   },
 
   Q: (style) => {
@@ -3054,14 +3029,10 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       f,
       [
         ink(f, ring(f, centre, f.capBowl, f.capBowlH)),
-        ink(
-          f,
-          straight(leaves, at(centre.x + f.capBowl * 1.02, -f.cap * 0.15)),
-          BUTT,
-          f.end,
-        ),
+        ink(f, straight(leaves, at(centre.x + f.capBowl * 1.02, -f.cap * 0.15)), BUTT, f.end),
       ],
-      true);
+      true,
+    );
   },
 
   R: (style) => {
@@ -3071,15 +3042,13 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const eye = f.crest(f.cap) - radius;
     const junction = eye - radius;
     const reach = stem + radius * 1.9;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        belly(f, at(stem, eye), radius * f.wide, radius, -90, 90),
-        // From the stem's own centre-line, where the bowl lands, so the leg
-        // grows out of the junction rather than starting beside it.
-        ink(f, straight(at(stem, junction), at(reach, 0)), BUTT, f.end),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+      belly(f, at(stem, eye), radius * f.wide, radius, -90, 90),
+      // From the stem's own centre-line, where the bowl lands, so the leg
+      // grows out of the junction rather than starting beside it.
+      ink(f, straight(at(stem, junction), at(reach, 0)), BUTT, f.end),
+    ]);
   },
 
   S: (style) => {
@@ -3092,20 +3061,18 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const half = f.capBowl * 0.95;
     const middle = f.edge + half;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(middle, 0), at(middle, f.cap)), f.end, BUTT),
-        thin(
-          f,
-          straight(
-            at(middle - half, f.hangs(f.cap, f.bar)),
-            at(middle + half, f.hangs(f.cap, f.bar)),
-          ),
-          f.end,
-          f.end,
+    return finish(f, [
+      ink(f, straight(at(middle, 0), at(middle, f.cap)), f.end, BUTT),
+      thin(
+        f,
+        straight(
+          at(middle - half, f.hangs(f.cap, f.bar)),
+          at(middle + half, f.hangs(f.cap, f.bar)),
         ),
-      ]);
+        f.end,
+        f.end,
+      ),
+    ]);
   },
 
   U: (style) => {
@@ -3121,9 +3088,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const top = at(left, f.cap);
     const other = at(middle + half, f.cap);
     const point = corner(f, top, at(middle, 0), other);
-    return finish(
-      f,
-      [ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end)]);
+    return finish(f, [ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end)]);
   },
 
   W: (style) => {
@@ -3158,12 +3123,10 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const width = f.capBowl * 1.55;
     const left = f.edge;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(left, f.cap), at(left + width, 0)), f.end, f.end),
-        ink(f, straight(at(left, 0), at(left + width, f.cap)), f.end, f.end),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(left, f.cap), at(left + width, 0)), f.end, f.end),
+      ink(f, straight(at(left, 0), at(left + width, f.cap)), f.end, f.end),
+    ]);
   },
 
   Y: (style) => {
@@ -3176,29 +3139,27 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const other = at(middle + half, f.cap);
     const point = corner(f, top, at(middle, junction), other);
     const low = dips(f, top, point, other);
-    return finish(
-      f,
-      [
-        ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end),
-        /*
-         * The stem stands under the vee and runs up past where it bottoms out,
-         * so its square top is buried rather than showing as a step.
-         *
-         * Under where the vee really bottoms out, which is not under the tip
-         * the recipe named: `dips` explains the two places that only look like
-         * it. Standing at the tip put this stem thirty-two units to one side of
-         * its own vee on the Formal Script, and only the width of the vee's ink
-         * was holding the letter together -- thirty-six square units of overlap
-         * at the bowl width it used to ship, none at all at the one it ships
-         * now.
-         *
-         * Half a pen-half past the meeting point, so the two are overlapping
-         * over an area rather than touching along a line. Measured from a point
-         * both strokes' spines pass through, that is a full pen's footprint of
-         * shared ink on every face here.
-         */
-        ink(f, straight(at(low.x, 0), at(low.x, low.y + f.half * 0.5)), f.end, BUTT),
-      ]);
+    return finish(f, [
+      ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end),
+      /*
+       * The stem stands under the vee and runs up past where it bottoms out,
+       * so its square top is buried rather than showing as a step.
+       *
+       * Under where the vee really bottoms out, which is not under the tip
+       * the recipe named: `dips` explains the two places that only look like
+       * it. Standing at the tip put this stem thirty-two units to one side of
+       * its own vee on the Formal Script, and only the width of the vee's ink
+       * was holding the letter together -- thirty-six square units of overlap
+       * at the bowl width it used to ship, none at all at the one it ships
+       * now.
+       *
+       * Half a pen-half past the meeting point, so the two are overlapping
+       * over an area rather than touching along a line. Measured from a point
+       * both strokes' spines pass through, that is a full pen's footprint of
+       * shared ink on every face here.
+       */
+      ink(f, straight(at(low.x, 0), at(low.x, low.y + f.half * 0.5)), f.end, BUTT),
+    ]);
   },
 
   Z: (style) => {
@@ -3234,16 +3195,14 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const [across, back] = corners(f, [start, at(left + width, f.cap), at(left, 0), end]);
     const upper = at(across.x, start.y);
     const lower = at(back.x, end.y);
-    return finish(
-      f,
-      [
-        ink(
-          f,
-          chain(straight(start, upper), straight(upper, lower), straight(lower, end)),
-          f.end,
-          f.end,
-        ),
-      ]);
+    return finish(f, [
+      ink(
+        f,
+        chain(straight(start, upper), straight(upper, lower), straight(lower, end)),
+        f.end,
+        f.end,
+      ),
+    ]);
   },
 
   // --- figures -----------------------------------------------------------
@@ -3258,18 +3217,16 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   one: (style) => {
     const f = frame(style);
     const stem = f.edge + figureWidth(f) * 0.5;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, BUTT),
-        // The flag, which is what stops a one reading as a lowercase l.
-        ink(
-          f,
-          straight(at(stem - figureWidth(f) * 0.42, f.cap * 0.78), at(stem, f.hangs(f.cap))),
-          f.end,
-          BUTT,
-        ),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, BUTT),
+      // The flag, which is what stops a one reading as a lowercase l.
+      ink(
+        f,
+        straight(at(stem - figureWidth(f) * 0.42, f.cap * 0.78), at(stem, f.hangs(f.cap))),
+        f.end,
+        BUTT,
+      ),
+    ]);
   },
 
   two: (style) => {
@@ -3311,7 +3268,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(f, bend(f, at(middle, top - radius), radius, 160, -90), f.end, BUTT),
         ink(f, bend(f, at(middle, base + radius), radius, 90, -160), BUTT, f.end),
       ],
-      true);
+      true,
+    );
   },
 
   four: (style) => {
@@ -3323,12 +3281,10 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const top = at(stem, f.hangs(f.cap));
     const end = at(left + width, bar);
     const meet = corner(f, top, at(left, bar), end);
-    return finish(
-      f,
-      [
-        ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        ink(f, chain(straight(top, meet), straight(meet, end)), BUTT, f.end),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+      ink(f, chain(straight(top, meet), straight(meet, end)), BUTT, f.end),
+    ]);
   },
 
   five: (style) => {
@@ -3337,18 +3293,16 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const left = f.edge;
     const shoulder = f.cap * 0.56;
     const radius = Math.max(Math.min(shoulder, width / 2), f.least);
-    return finish(
-      f,
-      [
-        thin(
-          f,
-          straight(at(left, f.hangs(f.cap, f.bar)), at(left + width, f.hangs(f.cap, f.bar))),
-          f.end,
-          f.end,
-        ),
-        ink(f, straight(at(left, f.cap), at(left, shoulder)), BUTT, BUTT),
-        ink(f, bend(f, at(left + radius, f.dip(0) + radius), radius, 100, -150), BUTT, f.end),
-      ]);
+    return finish(f, [
+      thin(
+        f,
+        straight(at(left, f.hangs(f.cap, f.bar)), at(left + width, f.hangs(f.cap, f.bar))),
+        f.end,
+        f.end,
+      ),
+      ink(f, straight(at(left, f.cap), at(left, shoulder)), BUTT, BUTT),
+      ink(f, bend(f, at(left + radius, f.dip(0) + radius), radius, 100, -150), BUTT, f.end),
+    ]);
   },
 
   six: (style) => {
@@ -3388,7 +3342,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
           BUTT,
         ),
       ],
-      true);
+      true,
+    );
   },
 
   seven: (style) => {
@@ -3398,9 +3353,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const start = at(left, f.hangs(f.cap));
     const end = at(left + width * 0.28, 0);
     const meet = at(corner(f, start, at(left + width, f.cap), end).x, start.y);
-    return finish(
-      f,
-      [ink(f, chain(straight(start, meet), straight(meet, end)), f.end, f.end)]);
+    return finish(f, [ink(f, chain(straight(start, meet), straight(meet, end)), f.end, f.end)]);
   },
 
   eight: (style) => {
@@ -3418,7 +3371,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(f, ring(f, at(left + width / 2, f.crest(f.cap) - upper), bendWidth(f, upper), upper)),
         ink(f, ring(f, at(left + width / 2, f.dip(0) + lower), bendWidth(f, lower), lower)),
       ],
-      true);
+      true,
+    );
   },
 
   nine: (style) => {
@@ -3447,7 +3401,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
           f.end,
         ),
       ],
-      true);
+      true,
+    );
   },
 
   // --- punctuation -------------------------------------------------------
@@ -3466,41 +3421,31 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   comma: (style) => {
     const f = frame(style);
     const radius = f.half * 0.95;
-    return finish(
-      f,
-      [
-        tail(f, radius),
-      ]);
+    return finish(f, [tail(f, radius)]);
   },
 
   colon: (style) => {
     const f = frame(style);
     const radius = f.half * 0.95;
-    return finish(
-      f,
-      [dot(f, at(f.edge, radius), radius), dot(f, at(f.edge, f.x - radius), radius)]);
+    return finish(f, [
+      dot(f, at(f.edge, radius), radius),
+      dot(f, at(f.edge, f.x - radius), radius),
+    ]);
   },
 
   semicolon: (style) => {
     const f = frame(style);
     const radius = f.half * 0.95;
-    return finish(
-      f,
-      [
-        tail(f, radius),
-        dot(f, at(f.edge, f.x - radius), radius),
-      ]);
+    return finish(f, [tail(f, radius), dot(f, at(f.edge, f.x - radius), radius)]);
   },
 
   exclam: (style) => {
     const f = frame(style);
     const radius = f.half * 0.95;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(f.edge, radius * 3), at(f.edge, f.cap)), f.end, f.end),
-        dot(f, at(f.edge, radius), radius),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(f.edge, radius * 3), at(f.edge, f.cap)), f.end, f.end),
+      dot(f, at(f.edge, radius), radius),
+    ]);
   },
 
   question: (style) => {
@@ -3508,65 +3453,57 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const radius = Math.max(figureWidth(f) * 0.42, f.least);
     const centre = at(f.edge + radius, f.crest(f.cap) - radius);
     const radiusDot = f.half * 0.95;
-    return finish(
-      f,
-      [
-        ink(f, turn(centre, radius, 190, -35), f.end, BUTT),
-        ink(f, straight(pointOn(centre, radius, -35), at(centre.x, f.cap * 0.3)), BUTT, f.end),
-        dot(f, at(centre.x, radiusDot), radiusDot),
-      ]);
+    return finish(f, [
+      ink(f, turn(centre, radius, 190, -35), f.end, BUTT),
+      ink(f, straight(pointOn(centre, radius, -35), at(centre.x, f.cap * 0.3)), BUTT, f.end),
+      dot(f, at(centre.x, radiusDot), radiusDot),
+    ]);
   },
 
   hyphen: (style) => {
     const f = frame(style);
     const width = f.arch * 0.7;
-    return finish(
-      f,
-      [thin(f, straight(at(f.edge, axis(f)), at(f.edge + width, axis(f))), f.plain, f.plain)]);
+    return finish(f, [
+      thin(f, straight(at(f.edge, axis(f)), at(f.edge + width, axis(f))), f.plain, f.plain),
+    ]);
   },
 
   parenleft: (style) => {
     const f = frame(style);
     const radius = Math.max(f.cap * 0.72, f.least);
     const centre = at(f.edge + radius, f.cap * 0.4);
-    return finish(
-      f,
-      [ink(f, turn(centre, radius, 145, 215), f.end, f.end)]);
+    return finish(f, [ink(f, turn(centre, radius, 145, 215), f.end, f.end)]);
   },
 
   parenright: (style) => {
     const f = frame(style);
     const radius = Math.max(f.cap * 0.72, f.least);
     const centre = at(f.edge - radius + f.arch * 0.32, f.cap * 0.4);
-    return finish(
-      f,
-      [ink(f, turn(centre, radius, 35, -35), f.end, f.end)]);
+    return finish(f, [ink(f, turn(centre, radius, 35, -35), f.end, f.end)]);
   },
 
   slash: (style) => {
     const f = frame(style);
     const lean = f.arch * 0.75;
-    return finish(
-      f,
-      [ink(f, straight(at(f.edge, f.desc * 0.6), at(f.edge + lean, f.cap)), f.plain, f.plain)]);
+    return finish(f, [
+      ink(f, straight(at(f.edge, f.desc * 0.6), at(f.edge + lean, f.cap)), f.plain, f.plain),
+    ]);
   },
 
   quotesingle: (style) => {
     const f = frame(style);
-    return finish(
-      f,
-      [ink(f, straight(at(f.edge, f.cap * 0.72), at(f.edge, f.cap)), f.plain, f.plain)]);
+    return finish(f, [
+      ink(f, straight(at(f.edge, f.cap * 0.72), at(f.edge, f.cap)), f.plain, f.plain),
+    ]);
   },
 
   quotedbl: (style) => {
     const f = frame(style);
     const gap = f.style.pen.weight * 1.6;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(f.edge, f.cap * 0.72), at(f.edge, f.cap)), f.plain, f.plain),
-        ink(f, straight(at(f.edge + gap, f.cap * 0.72), at(f.edge + gap, f.cap)), f.plain, f.plain),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(f.edge, f.cap * 0.72), at(f.edge, f.cap)), f.plain, f.plain),
+      ink(f, straight(at(f.edge + gap, f.cap * 0.72), at(f.edge + gap, f.cap)), f.plain, f.plain),
+    ]);
   },
 
   // --- symbols -----------------------------------------------------------
@@ -3594,24 +3531,25 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const w = signWidth(f);
     const y = axis(f);
     const half = w / 2;
-    return finish(
-      f,
-      [
-        thin(f, straight(at(f.edge, y), at(f.edge + w, y)), f.plain, f.plain),
-        thin(f, straight(at(f.edge + half, y - half), at(f.edge + half, y + half)), shortEnd(f), shortEnd(f)),
-      ]);
+    return finish(f, [
+      thin(f, straight(at(f.edge, y), at(f.edge + w, y)), f.plain, f.plain),
+      thin(
+        f,
+        straight(at(f.edge + half, y - half), at(f.edge + half, y + half)),
+        shortEnd(f),
+        shortEnd(f),
+      ),
+    ]);
   },
 
   equal: (style) => {
     const f = frame(style);
     const w = signWidth(f);
     const gap = signGap(f);
-    return finish(
-      f,
-      [
-        thin(f, straight(at(f.edge, axis(f) - gap), at(f.edge + w, axis(f) - gap)), f.plain, f.plain),
-        thin(f, straight(at(f.edge, axis(f) + gap), at(f.edge + w, axis(f) + gap)), f.plain, f.plain),
-      ]);
+    return finish(f, [
+      thin(f, straight(at(f.edge, axis(f) - gap), at(f.edge + w, axis(f) - gap)), f.plain, f.plain),
+      thin(f, straight(at(f.edge, axis(f) + gap), at(f.edge + w, axis(f) + gap)), f.plain, f.plain),
+    ]);
   },
 
   multiply: (style) => {
@@ -3619,12 +3557,10 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const w = signWidth(f) * 0.82;
     const y = axis(f);
     const half = w / 2;
-    return finish(
-      f,
-      [
-        thin(f, straight(at(f.edge, y - half), at(f.edge + w, y + half)), shortEnd(f), shortEnd(f)),
-        thin(f, straight(at(f.edge, y + half), at(f.edge + w, y - half)), shortEnd(f), shortEnd(f)),
-      ]);
+    return finish(f, [
+      thin(f, straight(at(f.edge, y - half), at(f.edge + w, y + half)), shortEnd(f), shortEnd(f)),
+      thin(f, straight(at(f.edge, y + half), at(f.edge + w, y - half)), shortEnd(f), shortEnd(f)),
+    ]);
   },
 
   /*
@@ -3638,13 +3574,11 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const y = axis(f);
     const radius = f.half * 0.85;
     const reach = (f.style.pen.weight * f.bar) / 2 + signGap(f) * 0.85 + radius;
-    return finish(
-      f,
-      [
-        thin(f, straight(at(f.edge, y), at(f.edge + w, y)), f.plain, f.plain),
-        dot(f, at(f.edge + w / 2, y + reach), radius),
-        dot(f, at(f.edge + w / 2, y - reach), radius),
-      ]);
+    return finish(f, [
+      thin(f, straight(at(f.edge, y), at(f.edge + w, y)), f.plain, f.plain),
+      dot(f, at(f.edge + w / 2, y + reach), radius),
+      dot(f, at(f.edge + w / 2, y - reach), radius),
+    ]);
   },
 
   /*
@@ -3662,13 +3596,16 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const under = axis(f) - signWidth(f) * 0.5 - bar * 1.15;
     const y = axis(f) + bar * 0.35;
     const half = w / 2;
-    return finish(
-      f,
-      [
-        thin(f, straight(at(f.edge, y), at(f.edge + w, y)), f.plain, f.plain),
-        thin(f, straight(at(f.edge + half, y - half * 0.86), at(f.edge + half, y + half * 0.86)), shortEnd(f), shortEnd(f)),
-        thin(f, straight(at(f.edge, under), at(f.edge + w, under)), f.plain, f.plain),
-      ]);
+    return finish(f, [
+      thin(f, straight(at(f.edge, y), at(f.edge + w, y)), f.plain, f.plain),
+      thin(
+        f,
+        straight(at(f.edge + half, y - half * 0.86), at(f.edge + half, y + half * 0.86)),
+        shortEnd(f),
+        shortEnd(f),
+      ),
+      thin(f, straight(at(f.edge, under), at(f.edge + w, under)), f.plain, f.plain),
+    ]);
   },
 
   less: (style) => {
@@ -3676,17 +3613,15 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const w = signWidth(f) * 0.9;
     const y = axis(f);
     const rise = w * 0.78;
-    return finish(
-      f,
-      [
-        bent(
-          f,
-          chain(
-            straight(at(f.edge + w, y + rise), at(f.edge, y)),
-            straight(at(f.edge, y), at(f.edge + w, y - rise)),
-          ),
+    return finish(f, [
+      bent(
+        f,
+        chain(
+          straight(at(f.edge + w, y + rise), at(f.edge, y)),
+          straight(at(f.edge, y), at(f.edge + w, y - rise)),
         ),
-      ]);
+      ),
+    ]);
   },
 
   greater: (style) => {
@@ -3694,34 +3629,30 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const w = signWidth(f) * 0.9;
     const y = axis(f);
     const rise = w * 0.78;
-    return finish(
-      f,
-      [
-        bent(
-          f,
-          chain(
-            straight(at(f.edge, y + rise), at(f.edge + w, y)),
-            straight(at(f.edge + w, y), at(f.edge, y - rise)),
-          ),
+    return finish(f, [
+      bent(
+        f,
+        chain(
+          straight(at(f.edge, y + rise), at(f.edge + w, y)),
+          straight(at(f.edge + w, y), at(f.edge, y - rise)),
         ),
-      ]);
+      ),
+    ]);
   },
 
   logicalnot: (style) => {
     const f = frame(style);
     const w = signWidth(f);
     const y = axis(f) + signWidth(f) * 0.32;
-    return finish(
-      f,
-      [
-        bent(
-          f,
-          chain(
-            straight(at(f.edge, y), at(f.edge + w, y)),
-            straight(at(f.edge + w, y), at(f.edge + w, y - w * 0.36)),
-          ),
+    return finish(f, [
+      bent(
+        f,
+        chain(
+          straight(at(f.edge, y), at(f.edge + w, y)),
+          straight(at(f.edge + w, y), at(f.edge + w, y - w * 0.36)),
         ),
-      ]);
+      ),
+    ]);
   },
 
   underscore: (style) => {
@@ -3750,60 +3681,54 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const { foot, head } = tall(f);
     const middle = (foot + head) / 2;
     const gap = Math.max(f.style.pen.weight, (head - foot) * 0.11);
-    return finish(
-      f,
-      [
-        ink(f, straight(at(f.edge, foot), at(f.edge, middle - gap / 2)), f.plain, f.plain),
-        ink(f, straight(at(f.edge, middle + gap / 2), at(f.edge, head)), f.plain, f.plain),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(f.edge, foot), at(f.edge, middle - gap / 2)), f.plain, f.plain),
+      ink(f, straight(at(f.edge, middle + gap / 2), at(f.edge, head)), f.plain, f.plain),
+    ]);
   },
 
   bracketleft: (style) => {
     const f = frame(style);
     const w = f.arch * 0.52;
     const { foot, head } = tall(f);
-    return finish(
-      f,
-      [
-        ink(
-          f,
-          chain(
-            straight(at(f.edge + w, f.hangs(head)), at(f.edge, f.hangs(head))),
-            straight(at(f.edge, f.hangs(head)), at(f.edge, f.sits(foot))),
-            straight(at(f.edge, f.sits(foot)), at(f.edge + w, f.sits(foot))),
-          ),
-          shortEnd(f),
-          shortEnd(f),
+    return finish(f, [
+      ink(
+        f,
+        chain(
+          straight(at(f.edge + w, f.hangs(head)), at(f.edge, f.hangs(head))),
+          straight(at(f.edge, f.hangs(head)), at(f.edge, f.sits(foot))),
+          straight(at(f.edge, f.sits(foot)), at(f.edge + w, f.sits(foot))),
         ),
-      ]);
+        shortEnd(f),
+        shortEnd(f),
+      ),
+    ]);
   },
 
   bracketright: (style) => {
     const f = frame(style);
     const w = f.arch * 0.52;
     const { foot, head } = tall(f);
-    return finish(
-      f,
-      [
-        ink(
-          f,
-          chain(
-            straight(at(f.edge, f.hangs(head)), at(f.edge + w, f.hangs(head))),
-            straight(at(f.edge + w, f.hangs(head)), at(f.edge + w, f.sits(foot))),
-            straight(at(f.edge + w, f.sits(foot)), at(f.edge, f.sits(foot))),
-          ),
-          shortEnd(f),
-          shortEnd(f),
+    return finish(f, [
+      ink(
+        f,
+        chain(
+          straight(at(f.edge, f.hangs(head)), at(f.edge + w, f.hangs(head))),
+          straight(at(f.edge + w, f.hangs(head)), at(f.edge + w, f.sits(foot))),
+          straight(at(f.edge + w, f.sits(foot)), at(f.edge, f.sits(foot))),
         ),
-      ]);
+        shortEnd(f),
+        shortEnd(f),
+      ),
+    ]);
   },
 
   backslash: (style) => {
     const f = frame(style);
     const lean = f.arch * 0.75;
-    return finish(
-      f,
-      [ink(f, straight(at(f.edge, f.cap), at(f.edge + lean, f.desc * 0.6)), f.plain, f.plain)]);
+    return finish(f, [
+      ink(f, straight(at(f.edge, f.cap), at(f.edge + lean, f.desc * 0.6)), f.plain, f.plain),
+    ]);
   },
 
   /*
@@ -3820,17 +3745,15 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     // Short of the cap line, because a corner carried out to a miter reaches
     // past both the runs that make it -- and a flared face reaches further.
     const head = Math.min(foot + rise, f.cap * 0.92);
-    return finish(
-      f,
-      [
-        bent(
-          f,
-          chain(
-            straight(at(f.edge, foot), at(f.edge + w / 2, f.hangs(head))),
-            straight(at(f.edge + w / 2, f.hangs(head)), at(f.edge + w, foot)),
-          ),
+    return finish(f, [
+      bent(
+        f,
+        chain(
+          straight(at(f.edge, foot), at(f.edge + w / 2, f.hangs(head))),
+          straight(at(f.edge + w / 2, f.hangs(head)), at(f.edge + w, foot)),
         ),
-      ]);
+      ),
+    ]);
   },
 
   /*
@@ -3856,16 +3779,19 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const across = Math.max(f.style.pen.weight * f.bar * 1.7, f.x * 0.3);
     const w = down + Math.max(down * 0.62, lean + f.style.pen.weight * f.bar);
     const middle = axis(f) + f.x * 0.04;
-    return finish(
-      f,
-      [
-        ...[middle - across / 2, middle + across / 2].map((y) =>
-          thin(f, straight(at(f.edge, y), at(f.edge + w, y)), f.plain, f.plain),
+    return finish(f, [
+      ...[middle - across / 2, middle + across / 2].map((y) =>
+        thin(f, straight(at(f.edge, y), at(f.edge + w, y)), f.plain, f.plain),
+      ),
+      ...[(w - down) / 2, (w + down) / 2].map((x) =>
+        thin(
+          f,
+          straight(at(f.edge + x - lean / 2, foot), at(f.edge + x + lean / 2, head)),
+          shortEnd(f),
+          shortEnd(f),
         ),
-        ...[(w - down) / 2, (w + down) / 2].map((x) =>
-          thin(f, straight(at(f.edge + x - lean / 2, foot), at(f.edge + x + lean / 2, head)), shortEnd(f), shortEnd(f)),
-        ),
-      ]);
+      ),
+    ]);
   },
 
   /*
@@ -4097,7 +4023,10 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ...[45, 135, 225, 315].map((degrees) =>
           thin(
             f,
-            straight(pointOn(centre, radius * 0.86, degrees), pointOn(centre, radius + spoke, degrees)),
+            straight(
+              pointOn(centre, radius * 0.86, degrees),
+              pointOn(centre, radius + spoke, degrees),
+            ),
             BUTT,
             shortEnd(f),
           ),
@@ -4296,7 +4225,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         thin(f, straight(at(second.x - bowl + f.half, eye), spineStart(belt))),
         ink(f, belt, BUTT, f.end),
       ],
-      true);
+      true,
+    );
   },
 
   /** An O with a stroke through it, which is a letter in its own right. */
@@ -4316,7 +4246,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
           f.plain,
         ),
       ],
-      true);
+      true,
+    );
   },
 
   oslash: (style) => {
@@ -4335,7 +4266,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
           f.plain,
         ),
       ],
-      true);
+      true,
+    );
   },
 
   /** A D with a bar laid across its stem. */
@@ -4386,7 +4318,12 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     return finish(f, [
       ink(f, ring(f, centre, f.bowl, f.bowlH)),
       ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
-      thin(f, straight(at(stem - f.half * 2.2, bar), at(stem + f.half * 2.2, bar)), f.plain, f.plain),
+      thin(
+        f,
+        straight(at(stem - f.half * 2.2, bar), at(stem + f.half * 2.2, bar)),
+        f.plain,
+        f.plain,
+      ),
     ]);
   },
 
@@ -4418,7 +4355,12 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
       arch(f, stem, f.x),
-      thin(f, straight(at(stem - f.half * 2.2, bar), at(stem + f.half * 2.2, bar)), f.plain, f.plain),
+      thin(
+        f,
+        straight(at(stem - f.half * 2.2, bar), at(stem + f.half * 2.2, bar)),
+        f.plain,
+        f.plain,
+      ),
     ]);
   },
 
@@ -4458,7 +4400,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         arm(f, stem, stem + reach * 0.86, f.cap * f.style.parts.crossbar.height),
         arm(f, stem, stem + reach, f.sits(0, f.bar)),
       ],
-      true);
+      true,
+    );
   },
 
   /**
@@ -4486,7 +4429,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         thin(f, straight(at(second.x - bowl + f.half, eye), spineStart(belt))),
         ink(f, belt, BUTT, f.end),
       ],
-      true);
+      true,
+    );
   },
 
   /**
@@ -4505,20 +4449,18 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const apart = f.style.metrics.counterWidth * 0.55 + f.style.pen.weight;
     const first = f.edge;
     const stem = first + apart + radius;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(first, 0), at(first, f.cap)), f.end, f.end),
-        ink(
-          f,
-          chain(
-            straight(at(stem, f.cap), at(stem, f.dip(0) + radius)),
-            turn(at(stem - radius, f.dip(0) + radius), radius, 0, -90),
-          ),
-          f.end,
-          f.end,
+    return finish(f, [
+      ink(f, straight(at(first, 0), at(first, f.cap)), f.end, f.end),
+      ink(
+        f,
+        chain(
+          straight(at(stem, f.cap), at(stem, f.dip(0) + radius)),
+          turn(at(stem - radius, f.dip(0) + radius), radius, 0, -90),
         ),
-      ]);
+        f.end,
+        f.end,
+      ),
+    ]);
   },
 
   ij: (style) => {
@@ -4528,22 +4470,20 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const first = f.edge;
     const stem = first + apart + radius;
     const dotUp = f.x + f.half * 1.5 + f.half * 0.55;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(first, 0), at(first, f.x)), f.end, f.end),
-        dot(f, at(first, dotUp), f.half * 0.55),
-        ink(
-          f,
-          chain(
-            straight(at(stem, f.x), at(stem, f.dip(f.desc) + radius)),
-            turn(at(stem - radius, f.dip(f.desc) + radius), radius, 0, -95),
-          ),
-          f.end,
-          f.end,
+    return finish(f, [
+      ink(f, straight(at(first, 0), at(first, f.x)), f.end, f.end),
+      dot(f, at(first, dotUp), f.half * 0.55),
+      ink(
+        f,
+        chain(
+          straight(at(stem, f.x), at(stem, f.dip(f.desc) + radius)),
+          turn(at(stem - radius, f.dip(f.desc) + radius), radius, 0, -95),
         ),
-        dot(f, at(stem, dotUp), f.half * 0.55),
-      ]);
+        f.end,
+        f.end,
+      ),
+      dot(f, at(stem, dotUp), f.half * 0.55),
+    ]);
   },
 
   /**
@@ -4590,30 +4530,28 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
      */
     const hooks = room > f.least;
     const radius = hooks ? room : f.least;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
-        ink(
-          f,
-          chain(leg, {
-            segments: [
-              {
-                kind: "arc",
-                centre: at(landing - radius, spineEnd(leg).y),
-                radius,
-                startAngle: deg(0),
-                endAngle: deg(hooks ? -95 : 0),
-                sweepPositive: false,
-                pieces: 2,
-              },
-            ],
-            closed: false,
-          }),
-          BUTT,
-          f.end,
-        ),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
+      ink(
+        f,
+        chain(leg, {
+          segments: [
+            {
+              kind: "arc",
+              centre: at(landing - radius, spineEnd(leg).y),
+              radius,
+              startAngle: deg(0),
+              endAngle: deg(hooks ? -95 : 0),
+              sweepPositive: false,
+              pieces: 2,
+            },
+          ],
+          closed: false,
+        }),
+        BUTT,
+        f.end,
+      ),
+    ]);
   },
 
   /** The capital, which is an N with the same leg on it. */
@@ -4626,21 +4564,19 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const start = at(left, f.cap - into);
     const end = at(right, into);
     const [top, foot] = corners(f, [start, at(left, f.cap), at(right, 0), end]);
-    return finish(
-      f,
-      [
-        ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
-        ink(
-          f,
-          chain(
-            straight(at(right, f.cap), at(right, f.dip(f.desc) + radius)),
-            turn(at(right - radius, f.dip(f.desc) + radius), radius, 0, -95),
-          ),
-          f.end,
-          f.end,
+    return finish(f, [
+      ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
+      ink(
+        f,
+        chain(
+          straight(at(right, f.cap), at(right, f.dip(f.desc) + radius)),
+          turn(at(right - radius, f.dip(f.desc) + radius), radius, 0, -95),
         ),
-        ink(f, chain(straight(start, top), straight(top, foot), straight(foot, end))),
-      ]);
+        f.end,
+        f.end,
+      ),
+      ink(f, chain(straight(start, top), straight(top, foot), straight(foot, end))),
+    ]);
   },
 
   /**
@@ -4655,25 +4591,21 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const stem = f.edge;
     const reach = f.capBowl * 1.05;
     const radius = f.half * 0.62;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        arm(f, stem, stem + reach, f.sits(0, f.bar)),
-        dot(f, at(stem + f.half * 2.8, f.cap * 0.45), radius),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+      arm(f, stem, stem + reach, f.sits(0, f.bar)),
+      dot(f, at(stem + f.half * 2.8, f.cap * 0.45), radius),
+    ]);
   },
 
   ldot: (style) => {
     const f = frame(style);
     const stem = f.edge;
     const radius = f.half * 0.62;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
-        dot(f, at(stem + f.half * 2.8, f.x * 0.5), radius),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
+      dot(f, at(stem + f.half * 2.8, f.x * 0.5), radius),
+    ]);
   },
 
   /** The barred T, which Northern Sami needs beside the eth and the eng. */
@@ -4682,26 +4614,24 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const half = f.capBowl * 0.95;
     const middle = f.edge + half;
     const bar = f.cap * 0.42;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(middle, 0), at(middle, f.cap)), f.end, BUTT),
-        thin(
-          f,
-          straight(
-            at(middle - half, f.hangs(f.cap, f.bar)),
-            at(middle + half, f.hangs(f.cap, f.bar)),
-          ),
-          f.end,
-          f.end,
+    return finish(f, [
+      ink(f, straight(at(middle, 0), at(middle, f.cap)), f.end, BUTT),
+      thin(
+        f,
+        straight(
+          at(middle - half, f.hangs(f.cap, f.bar)),
+          at(middle + half, f.hangs(f.cap, f.bar)),
         ),
-        thin(
-          f,
-          straight(at(middle - f.half * 2.4, bar), at(middle + f.half * 2.4, bar)),
-          f.plain,
-          f.plain,
-        ),
-      ]);
+        f.end,
+        f.end,
+      ),
+      thin(
+        f,
+        straight(at(middle - f.half * 2.4, bar), at(middle + f.half * 2.4, bar)),
+        f.plain,
+        f.plain,
+      ),
+    ]);
   },
 
   /*
@@ -4740,12 +4670,10 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const arm = at(reach, f.x);
     const leg = at(reach, 0);
     const meet = junction(f, arm, stem, waist, leg);
-    return finish(
-      f,
-      [
-        ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
-        ink(f, chain(straight(arm, meet), straight(meet, leg)), f.end, f.end),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
+      ink(f, chain(straight(arm, meet), straight(meet, leg)), f.end, f.end),
+    ]);
   },
 
   /** An apostrophe and an n, which Afrikaans used to set as one character. */
@@ -4753,13 +4681,11 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const tick = f.edge;
     const stem = tick + f.half * 2 + f.arch * 0.5;
-    return finish(
-      f,
-      [
-        ink(f, straight(at(tick, f.asc * 0.72), at(tick, f.asc)), f.plain, f.plain),
-        ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
-        arch(f, stem, f.x),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(tick, f.asc * 0.72), at(tick, f.asc)), f.plain, f.plain),
+      ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
+      arch(f, stem, f.x),
+    ]);
   },
 
   /**
@@ -4772,25 +4698,23 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const radius = Math.max(f.arch * 0.66, f.least);
     const stem = f.edge + radius;
-    return finish(
-      f,
-      [
-        ink(
-          f,
-          chain(
-            straight(at(stem, 0), at(stem, f.crest(f.asc) - radius)),
-            turn(at(stem - radius, f.crest(f.asc) - radius), radius, 0, 92),
-          ),
-          f.end,
-          f.end,
+    return finish(f, [
+      ink(
+        f,
+        chain(
+          straight(at(stem, 0), at(stem, f.crest(f.asc) - radius)),
+          turn(at(stem - radius, f.crest(f.asc) - radius), radius, 0, 92),
         ),
-        thin(
-          f,
-          straight(at(stem - f.arch * 0.5, f.hangs(f.x, f.bar)), at(stem, f.hangs(f.x, f.bar))),
-          f.end,
-          BUTT,
-        ),
-      ]);
+        f.end,
+        f.end,
+      ),
+      thin(
+        f,
+        straight(at(stem - f.arch * 0.5, f.hangs(f.x, f.bar)), at(stem, f.hangs(f.x, f.bar))),
+        f.end,
+        BUTT,
+      ),
+    ]);
   },
 
   Eth: (style) => {
@@ -4803,9 +4727,15 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       [
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
         belly(f, at(stem, f.cap / 2), radius * f.wide, radius, -90, 90),
-        thin(f, straight(at(stem - f.half * 1.6, bar), at(stem + f.half * 2.2, bar)), f.plain, BUTT),
+        thin(
+          f,
+          straight(at(stem - f.half * 1.6, bar), at(stem + f.half * 2.2, bar)),
+          f.plain,
+          BUTT,
+        ),
       ],
-      true);
+      true,
+    );
   },
 
   /** A bowl with a stroke rising off it, crossed by a bar. */
@@ -4838,7 +4768,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
           f.plain,
         ),
       ],
-      true);
+      true,
+    );
   },
 
   /** A stem with the bowl in the middle rather than at the top. */
@@ -4846,12 +4777,10 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const stem = f.edge;
     const radius = Math.max(f.cap * 0.22, f.least);
-    return finish(
-      f,
-      [
-        ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        belly(f, at(stem, f.cap * 0.54), radius * f.wide, radius, -90, 90),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+      belly(f, at(stem, f.cap * 0.54), radius * f.wide, radius, -90, 90),
+    ]);
   },
 
   thorn: (style) => {
@@ -4863,7 +4792,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(f, straight(at(stem, f.dip(f.desc)), at(stem, f.asc)), f.end, f.end),
         ink(f, ring(f, at(stem + f.bowl, f.x / 2), f.bowl, f.bowlH)),
       ],
-      true);
+      true,
+    );
   },
 
   /**
@@ -4879,14 +4809,12 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const upperR = Math.max((top - waist) / 2 + f.half * 0.2, f.least);
     const lowerR = Math.max((waist - base) / 2 + f.half * 0.2, f.least);
     const reach = Math.max(f.bowl * 0.86, f.least);
-    return finish(
-      f,
-      [
-        ink(f, straight(at(stem, 0), at(stem, top - upperR)), f.end, BUTT),
-        belly(f, at(stem, top - upperR), reach, upperR, -90, 90),
-        // Opened at the bottom left rather than closed back onto the stem.
-        belly(f, at(stem, base + lowerR), reach, lowerR, -35, 90),
-      ]);
+    return finish(f, [
+      ink(f, straight(at(stem, 0), at(stem, top - upperR)), f.end, BUTT),
+      belly(f, at(stem, top - upperR), reach, upperR, -90, 90),
+      // Opened at the bottom left rather than closed back onto the stem.
+      belly(f, at(stem, base + lowerR), reach, lowerR, -35, 90),
+    ]);
   },
 
   // -------------------------------------------------------------------------
@@ -5036,10 +4964,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
      * held to the box alone it closed up, because what a ring is is the white
      * inside it and there was almost none left.
      */
-    const radius = Math.max(
-      Math.min(m.w * 0.82, (m.top - m.foot) / 2),
-      pen.weight,
-    );
+    const radius = Math.max(Math.min(m.w * 0.82, (m.top - m.foot) / 2), pen.weight);
     const centre = at(m.cx, m.foot + radius + pen.weight / 2);
     return finish(f, [{ spine: ring(f, centre, radius), pen, start: BUTT, end: BUTT }], true);
   },
@@ -5077,10 +5002,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       [-1, 1].map((side) =>
         ink(
           f,
-          straight(
-            at(m.cx + side * apart - wide, m.foot),
-            at(m.cx + side * apart + wide, m.top),
-          ),
+          straight(at(m.cx + side * apart - wide, m.foot), at(m.cx + side * apart + wide, m.top)),
           shortEnd(f),
           shortEnd(f),
         ),
@@ -5217,14 +5139,21 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(
           f,
           chain(
-            straight(at(centre.x - wide * 0.15, f.crest(f.asc)), at(centre.x + wide * 0.3, f.crest(f.asc))),
-            straight(at(centre.x + wide * 0.3, f.crest(f.asc)), at(centre.x - wide * 0.55, radius * 1.5)),
+            straight(
+              at(centre.x - wide * 0.15, f.crest(f.asc)),
+              at(centre.x + wide * 0.3, f.crest(f.asc)),
+            ),
+            straight(
+              at(centre.x + wide * 0.3, f.crest(f.asc)),
+              at(centre.x - wide * 0.55, radius * 1.5),
+            ),
           ),
           f.end,
           BUTT,
         ),
       ],
-      true);
+      true,
+    );
   },
 
   "\u0432": (style) => finish(frame(style), cyrVe(frame(style), frame(style).x), true),
@@ -5328,7 +5257,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
           BUTT,
         ),
       ],
-      true);
+      true,
+    );
   },
 
   /** The A without its crossbar, which is what a lambda is. */
@@ -5340,9 +5270,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const foot = at(left, 0);
     const other = at(middle + half, 0);
     const peak = corner(f, foot, at(middle, f.cap), other);
-    return finish(f, [
-      ink(f, chain(straight(foot, peak), straight(peak, other)), f.end, f.end),
-    ]);
+    return finish(f, [ink(f, chain(straight(foot, peak), straight(peak, other)), f.end, f.end)]);
   },
 
   /** Three bars and no stem, the middle one held in at both ends. */
@@ -5353,9 +5281,19 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const inset = reach * 0.13;
     const middle = f.cap * f.style.parts.crossbar.height;
     return finish(f, [
-      thin(f, straight(at(left, f.hangs(f.cap, f.bar)), at(left + reach, f.hangs(f.cap, f.bar))), f.end, f.end),
+      thin(
+        f,
+        straight(at(left, f.hangs(f.cap, f.bar)), at(left + reach, f.hangs(f.cap, f.bar))),
+        f.end,
+        f.end,
+      ),
       thin(f, straight(at(left + inset, middle), at(left + reach - inset, middle)), f.end, f.end),
-      thin(f, straight(at(left, f.sits(0, f.bar)), at(left + reach, f.sits(0, f.bar))), f.end, f.end),
+      thin(
+        f,
+        straight(at(left, f.sits(0, f.bar)), at(left + reach, f.sits(0, f.bar))),
+        f.end,
+        f.end,
+      ),
     ]);
   },
 
@@ -5367,7 +5305,12 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     return finish(f, [
       ink(f, straight(at(left, 0), at(left, f.cap)), f.end, BUTT),
       ink(f, straight(at(right, 0), at(right, f.cap)), f.end, BUTT),
-      thin(f, straight(at(left, f.hangs(f.cap, f.bar)), at(right, f.hangs(f.cap, f.bar))), BUTT, BUTT),
+      thin(
+        f,
+        straight(at(left, f.hangs(f.cap, f.bar)), at(right, f.hangs(f.cap, f.bar))),
+        BUTT,
+        BUTT,
+      ),
     ]);
   },
 
@@ -5420,7 +5363,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(f, ring(f, centre, f.capBowl, height)),
         ink(f, straight(at(centre.x, 0), at(centre.x, f.cap)), f.end, f.end),
       ],
-      true);
+      true,
+    );
   },
 
   /** A stem with a trough sitting on it, which is a u drawn at cap height. */
@@ -5473,7 +5417,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(f, ring(f, centre, f.bowl, f.bowlH)),
         ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
       ],
-      true);
+      true,
+    );
   },
 
   /** A stem from the descender to the ascender with two bowls hung off it. */
@@ -5491,7 +5436,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         belly(f, at(stem, f.x - upper), upper * f.wide, upper, -90, 90),
         belly(f, at(stem, lower), lower * f.wide, lower, -90, 90),
       ],
-      true);
+      true,
+    );
   },
 
   /** The y's vee, with the tail run straight rather than curled. */
@@ -5534,7 +5480,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     return finish(
       f,
       [ink(f, ring(f, centre, wide, radius)), ink(f, straight(tip, into), f.end, BUTT)],
-      true);
+      true,
+    );
   },
 
   /*
@@ -5600,7 +5547,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(f, ring(f, centre, wide, height)),
         thin(f, straight(at(centre.x - wide, height), at(centre.x + wide, height)), BUTT, BUTT),
       ],
-      true);
+      true,
+    );
   },
 
   /** A stroke of its own height and nothing else. */
@@ -5641,9 +5589,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const top = at(left, f.x);
     const other = at(middle + half, f.x);
     const point = corner(f, top, at(middle + half * 0.18, 0), other);
-    return finish(f, [
-      ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end),
-    ]);
+    return finish(f, [ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end)]);
   },
 
   /** The zeta with a curl over the top of it. */
@@ -5696,13 +5642,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const loop = openBowl(f, centre, f.bowl, f.bowlH, 60, 335);
     const from = spineEnd(loop.spine);
     // The tail is its own stroke, for the reason the zeta's is.
-    return finish(
-      f,
-      [
-        loop,
-        tailBelow(f, from.x, from.y + f.bowlH * 0.3),
-      ],
-      true);
+    return finish(f, [loop, tailBelow(f, from.x, from.y + f.bowlH * 0.3)], true);
   },
 
   /** A bowl with a bar running off the top of it to the right. */
@@ -5714,9 +5654,15 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
       f,
       [
         ink(f, ring(f, centre, f.bowl, f.bowlH)),
-        thin(f, straight(at(centre.x, bar), at(centre.x + f.bowl + f.arch * 0.5, bar)), BUTT, f.end),
+        thin(
+          f,
+          straight(at(centre.x, bar), at(centre.x + f.bowl + f.arch * 0.5, bar)),
+          BUTT,
+          f.end,
+        ),
       ],
-      true);
+      true,
+    );
   },
 
   /** A small t with no ascender and no foot: a stem under a bar. */
@@ -5747,7 +5693,8 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
         ink(f, ring(f, centre, f.bowl, f.bowlH)),
         ink(f, straight(at(centre.x, f.desc), at(centre.x, f.asc)), f.end, f.end),
       ],
-      true);
+      true,
+    );
   },
 
   /** The x, with both strokes carried on below the line. */
@@ -5793,10 +5740,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const wide = f.arch * 0.82;
     const left = f.edge;
-    return finish(f, [
-      trough(f, left, f.x),
-      trough(f, left + wide, f.x),
-    ]);
+    return finish(f, [trough(f, left, f.x), trough(f, left + wide, f.x)]);
   },
 
   /*
@@ -5825,12 +5769,9 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
     };
     return finish(
       f,
-      [
-        ink(f, loop, BUTT, BUTT),
-        foot(spineStart(loop), 1),
-        foot(spineEnd(loop), -1),
-      ],
-      true);
+      [ink(f, loop, BUTT, BUTT), foot(spineStart(loop), 1), foot(spineEnd(loop), -1)],
+      true,
+    );
   },
 };
 
@@ -6403,10 +6344,7 @@ function chevrons(f: Frame, facing: 1 | -1): Recipe {
     const tip = facing > 0 ? left + w : left;
     return bent(
       f,
-      chain(
-        straight(at(back, y + rise), at(tip, y)),
-        straight(at(tip, y), at(back, y - rise)),
-      ),
+      chain(straight(at(back, y + rise), at(tip, y)), straight(at(tip, y), at(back, y - rise))),
     );
   };
   return finish(f, [one(f.edge), one(f.edge + step)]);
@@ -6558,10 +6496,14 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const meets = f.x * 0.32;
         const across = f.bowl * Math.sqrt(Math.max(0, 1 - ((meets - centre.y) / f.bowlH) ** 2));
         return {
-          ...finish(f, [
-            ink(f, flick(f, at(centre.x - across, meets)), f.end, BUTT),
-            ink(f, ring(f, centre, f.bowl, f.bowlH)),
-          ], true),
+          ...finish(
+            f,
+            [
+              ink(f, flick(f, at(centre.x - across, meets)), f.end, BUTT),
+              ink(f, ring(f, centre, f.bowl, f.bowlH)),
+            ],
+            true,
+          ),
           entered: true,
         };
       },
@@ -6598,12 +6540,19 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
          * the last one arrived is a spine with a corner in it. Two strokes that
          * cross at the same weight read as one; a corner reads as a knot.
          */
-        const start = at(centre.x - f.bowl - f.half, seamsOf(f.style.parts.script, f.x, f.half).low);
+        const start = at(
+          centre.x - f.bowl - f.half,
+          seamsOf(f.style.parts.script, f.x, f.half).low,
+        );
         return {
-          ...finish(f, [
-            ink(f, bowed(f, start, spineStart(belt), 0.06), f.end, BUTT),
-            ink(f, belt, BUTT, f.end),
-          ], true),
+          ...finish(
+            f,
+            [
+              ink(f, bowed(f, start, spineStart(belt), 0.06), f.end, BUTT),
+              ink(f, belt, BUTT, f.end),
+            ],
+            true,
+          ),
           entered: true,
         };
       },
@@ -6694,16 +6643,16 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
       build: (style) => {
         const f = frame(style);
         /*
-     * Never narrower than the pen, however narrow the face is set.
-     *
-     * A bowl is measured by its ink now, so at a heavy weight the round
-     * capitals are drawn much smaller than they used to be -- correctly, since
-     * their ink has to fit between the same two lines -- and everything sized
-     * against them came down with them. An A of a hundred and eighteen units
-     * either side of its apex, drawn with a pen of two hundred and sixty, has
-     * its two legs closer together than the pen is wide.
-     */
-    const half = Math.max(f.capBowl * 0.86, f.least);
+         * Never narrower than the pen, however narrow the face is set.
+         *
+         * A bowl is measured by its ink now, so at a heavy weight the round
+         * capitals are drawn much smaller than they used to be -- correctly, since
+         * their ink has to fit between the same two lines -- and everything sized
+         * against them came down with them. An A of a hundred and eighteen units
+         * either side of its apex, drawn with a pen of two hundred and sixty, has
+         * its two legs closer together than the pen is wide.
+         */
+        const half = Math.max(f.capBowl * 0.86, f.least);
         const left = f.edge;
         const middle = left + half;
         const cut = f.capBowl * 0.34;
@@ -6742,26 +6691,20 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const f = frame(style);
         const left = f.edge;
         /*
-     * And wide enough that the vee is a vee.
-     *
-     * Every other letter narrows gracefully; an M does not, because its two
-     * diagonals meet the stems at a corner that sharpens as the letter closes
-     * up, and past a point the inside of that corner cannot be cut back inside
-     * the run it has to be cut back into.
-     */
-    const width = Math.max(f.capBowl * 1.7, f.half * 7);
+         * And wide enough that the vee is a vee.
+         *
+         * Every other letter narrows gracefully; an M does not, because its two
+         * diagonals meet the stems at a corner that sharpens as the letter closes
+         * up, and past a point the inside of that corner cannot be cut back inside
+         * the run it has to be cut back into.
+         */
+        const width = Math.max(f.capBowl * 1.7, f.half * 7);
         const middle = left + width / 2;
         const right = left + width;
         const into = stub(f);
         const start = at(left, f.cap - into);
         const end = at(right, f.cap - into);
-        const points = through(f, [
-          start,
-          at(left, f.cap),
-          at(middle, 0),
-          at(right, f.cap),
-          end,
-        ]);
+        const points = through(f, [start, at(left, f.cap), at(middle, 0), at(right, f.cap), end]);
         return finish(f, [
           ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
           ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
@@ -6813,12 +6756,7 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
           f,
           [
             ink(f, ring(f, centre, f.capBowl, f.capBowlH)),
-            ink(
-              f,
-              straight(leaves, at(leaves.x + f.capBowl * 0.62, -f.cap * 0.16)),
-              BUTT,
-              f.end,
-            ),
+            ink(f, straight(leaves, at(leaves.x + f.capBowl * 0.62, -f.cap * 0.16)), BUTT, f.end),
           ],
           true,
         );
@@ -7160,7 +7098,12 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         ]);
         return finish(f, [
           ink(f, chain(straight(first[0], first[1]), straight(first[1], first[2])), f.end, f.end),
-          ink(f, chain(straight(second[0], second[1]), straight(second[1], second[2])), f.end, f.end),
+          ink(
+            f,
+            chain(straight(second[0], second[1]), straight(second[1], second[2])),
+            f.end,
+            f.end,
+          ),
         ]);
       },
     },
@@ -7229,10 +7172,7 @@ export function everyFormOf(name: LetterName): Array<{ id: string; label: string
 }
 
 /** The recipe for a letter, in whichever form has been chosen. */
-export function recipeOf(
-  name: LetterName,
-  form?: string,
-): ((style: Style) => Recipe) | undefined {
+export function recipeOf(name: LetterName, form?: string): ((style: Style) => Recipe) | undefined {
   const build = form
     ? (ALTERNATES[name]?.find((alternate) => alternate.id === form)?.build ?? LETTERS[name])
     : LETTERS[name];
@@ -7555,7 +7495,11 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
     exit: takingHigh.exit && HANDS_OVER_HIGH.has(name) ? seams.high : seams.low,
   };
   const loops = planLoops(
-    recipe.strokes.map((stroke) => stroke.spine), room, script, takesLoop(name));
+    recipe.strokes.map((stroke) => stroke.spine),
+    room,
+    script,
+    takesLoop(name),
+  );
   /*
    * And the hand is only unsteady in the middle of a word.
    *
@@ -7566,18 +7510,26 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * the one thing every face here promises not to do.
    */
   const lift = ends.entry ? wobbleOf(name, script, f.x).lift : 0;
-  const body = [...recipe.strokes, ...loops.map((loop) => ink(f, loop, BUTT, BUTT))].map((stroke) => ({
-    ...stroke,
-    spine: movedSpine(stroke.spine, 0, lift),
-  }));
+  const body = [...recipe.strokes, ...loops.map((loop) => ink(f, loop, BUTT, BUTT))].map(
+    (stroke) => ({
+      ...stroke,
+      spine: movedSpine(stroke.spine, 0, lift),
+    }),
+  );
   const plan = planJoin(
-    body.map((stroke) => stroke.spine), room, script, crossing, ends, recipe.round,
+    body.map((stroke) => stroke.spine),
+    room,
+    script,
+    crossing,
+    ends,
+    recipe.round,
     // Where this letter's waist has ended up, so what rises above it can hang
     // over the letter beside it -- and `null` for a capital, which has no
     // letter set before it and is spaced off the whole of its own ink.
     has.entry ? f.x + lift : null,
     recipe.air,
-    recipe.entered === true);
+    recipe.entered === true,
+  );
   if (!plan) return recipe;
   /*
    * The letter moves over; the join does not.
@@ -7587,7 +7539,10 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * letter here is the join itself. So the letter is given that room by being
    * slid into it, and the join is drawn where it already belongs.
    */
-  const strokes = body.map((stroke) => ({ ...stroke, spine: movedSpine(stroke.spine, plan.inset, 0) }));
+  const strokes = body.map((stroke) => ({
+    ...stroke,
+    spine: movedSpine(stroke.spine, plan.inset, 0),
+  }));
   /*
    * Cut square at both ends, whatever the face's terminal is.
    *

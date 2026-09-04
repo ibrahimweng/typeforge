@@ -46,8 +46,8 @@ suite("web font import", { timeout: FONT_SUITE_TIMEOUT }, () => {
   });
 
   it("refuses a file that is not a font, with a message naming what it takes", async () => {
-    await expect(importFont(new Uint8Array([0x50, 0x4b, 0x03, 0x04]), "archive.zip")).rejects.toThrow(
-      /TrueType/,
-    );
+    await expect(
+      importFont(new Uint8Array([0x50, 0x4b, 0x03, 0x04]), "archive.zip"),
+    ).rejects.toThrow(/TrueType/);
   });
 });

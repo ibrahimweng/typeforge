@@ -41,12 +41,12 @@ const SMALL = cn(
   "transition-colors hover:border-accent hover:text-foreground",
 );
 
-export function FeaturesPanel(): React.JSX.Element {
+export function FeaturesPanel(): React.JSX.Element | null {
   const state = useAppState();
   const typeface = state.typeface;
   const [joining, setJoining] = React.useState("");
 
-  if (!typeface) return <></>;
+  if (!typeface) return null;
 
   const ligatures = typeface.ligatures ?? [];
   const sets = typeface.sets ?? [];
@@ -69,9 +69,15 @@ export function FeaturesPanel(): React.JSX.Element {
   };
 
   const joinTyped = (): void => {
-    const components = joining.trim().split(/[\s,]+/).filter(Boolean);
+    const components = joining
+      .trim()
+      .split(/[\s,]+/)
+      .filter(Boolean);
     if (components.length < 2) {
-      store.say("A ligature joins two letters or more. Write their names with spaces between.", "error");
+      store.say(
+        "A ligature joins two letters or more. Write their names with spaces between.",
+        "error",
+      );
       return;
     }
     const missing = components.filter((one) => !typeface.glyphIndex.has(one));
@@ -88,8 +94,8 @@ export function FeaturesPanel(): React.JSX.Element {
       <section>
         <Heading>Ligatures</Heading>
         <p className="pb-2 text-2xs leading-relaxed text-muted-foreground">
-          Letters a reader types separately and the font draws as one. On by
-          default, which is the point of them.
+          Letters a reader types separately and the font draws as one. On by default, which is the
+          point of them.
         </p>
 
         {ligatures.length === 0 ? (
@@ -161,9 +167,8 @@ export function FeaturesPanel(): React.JSX.Element {
       <section>
         <Heading>Stylistic sets</Heading>
         <p className="pb-2 text-2xs leading-relaxed text-muted-foreground">
-          Second drawings a reader switches on by name — a single-storey a, old
-          figures. Off unless asked for, which is what makes them a choice
-          rather than the face.
+          Second drawings a reader switches on by name — a single-storey a, old figures. Off unless
+          asked for, which is what makes them a choice rather than the face.
         </p>
 
         {sets.length === 0 ? (

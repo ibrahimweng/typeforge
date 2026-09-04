@@ -41,9 +41,15 @@ describe("what it writes at all", () => {
    * they are a feature the shaper spends time on to no effect.
    */
   it("drops a rule that cannot do anything", () => {
-    expect(buildGsubTable({ contextual: [{ input: [[], [1]], swaps: [{ at: 0, swap: [swap(1, 2)] }] }] })).toBeNull();
+    expect(
+      buildGsubTable({
+        contextual: [{ input: [[], [1]], swaps: [{ at: 0, swap: [swap(1, 2)] }] }],
+      }),
+    ).toBeNull();
     expect(buildGsubTable({ contextual: [{ input: [[1]], swaps: [] }] })).toBeNull();
-    expect(buildGsubTable({ contextual: [{ input: [[1]], swaps: [{ at: 0, swap: [] }] }] })).toBeNull();
+    expect(
+      buildGsubTable({ contextual: [{ input: [[1]], swaps: [{ at: 0, swap: [] }] }] }),
+    ).toBeNull();
   });
 
   /*
@@ -52,7 +58,9 @@ describe("what it writes at all", () => {
    * calls it undefined; in practice it is a font that crashes something.
    */
   it("drops a rule that changes a position it never matched", () => {
-    expect(buildGsubTable({ contextual: [{ input: [[1]], swaps: [{ at: 3, swap: [swap(1, 2)] }] }] })).toBeNull();
+    expect(
+      buildGsubTable({ contextual: [{ input: [[1]], swaps: [{ at: 3, swap: [swap(1, 2)] }] }] }),
+    ).toBeNull();
   });
 });
 
@@ -87,7 +95,9 @@ describe("the shape of the table", () => {
     // featureCount, tag, offset, then the feature table: params, count, list.
     const featureTable = feature + at(table, feature + 6);
     const count = at(table, featureTable + 2);
-    const named = Array.from({ length: count }, (_, index) => at(table, featureTable + 4 + index * 2));
+    const named = Array.from({ length: count }, (_, index) =>
+      at(table, featureTable + 4 + index * 2),
+    );
     expect(named).toEqual([2]);
 
     const lookupList = at(table, 8);
@@ -308,10 +318,7 @@ describe("reading one back", () => {
       ],
     })!;
     const read = readGsubFeatures(table);
-    expect(read.sets.find((one) => one.tag === "ss01")?.swaps).toEqual([
-      swap(F, FI),
-      swap(I, FF),
-    ]);
+    expect(read.sets.find((one) => one.tag === "ss01")?.swaps).toEqual([swap(F, FI), swap(I, FF)]);
     expect(read.sets.find((one) => one.tag === "salt")?.swaps).toEqual([swap(L, FL)]);
   });
 

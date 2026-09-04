@@ -61,7 +61,12 @@ function box(x: number, y: number, width: number, height: number): Contour {
   });
   return {
     closed: true,
-    nodes: [corner(x, y), corner(x + width, y), corner(x + width, y + height), corner(x, y + height)],
+    nodes: [
+      corner(x, y),
+      corner(x + width, y),
+      corner(x + width, y + height),
+      corner(x, y + height),
+    ],
   };
 }
 
@@ -93,10 +98,19 @@ function wedge(x: number, y: number, width: number, height: number): Contour {
     handleOut: null,
     type: "corner" as const,
   });
-  return { closed: true, nodes: [corner(x + width / 2, y), corner(x + width, y + height), corner(x, y + height)] };
+  return {
+    closed: true,
+    nodes: [corner(x + width / 2, y), corner(x + width, y + height), corner(x, y + height)],
+  };
 }
 
-function piece(file: string, character: string, contours: Contour[], viewWidth = 600, viewHeight = 800): Piece {
+function piece(
+  file: string,
+  character: string,
+  contours: Contour[],
+  viewWidth = 600,
+  viewHeight = 800,
+): Piece {
   return {
     id: file,
     file,
@@ -109,7 +123,6 @@ function piece(file: string, character: string, contours: Contour[], viewWidth =
 function from(pieces: Piece[], patch: Partial<Assembly> = {}): Assembly {
   return { ...addPieces(emptyAssembly(), pieces), ...patch };
 }
-
 
 describe("cutting a pile of drawings", () => {
   beforeAll(async () => {
@@ -124,7 +137,11 @@ describe("cutting a pile of drawings", () => {
   const pile = (): Assembly =>
     from([
       piece("I.svg", "I", [box(240, 100, 120, 600)]),
-      piece("H.svg", "H", [box(120, 100, 120, 600), box(240, 350, 120, 100), box(360, 100, 120, 600)]),
+      piece("H.svg", "H", [
+        box(120, 100, 120, 600),
+        box(240, 350, 120, 100),
+        box(360, 100, 120, 600),
+      ]),
       piece("O.svg", "O", [box(120, 100, 360, 600), box(200, 180, 200, 440)]),
     ]);
 
@@ -142,7 +159,12 @@ describe("cutting a pile of drawings", () => {
 
   it("takes ink out of every drawing in the pile", () => {
     const plain = pile();
-    const cut = editCuts(plain, cutWith((one) => { one.slot.on = true; }));
+    const cut = editCuts(
+      plain,
+      cutWith((one) => {
+        one.slot.on = true;
+      }),
+    );
     for (const character of ["I", "H", "O"]) {
       expect(inkOf(cut, character), character).toBeLessThan(inkOf(plain, character));
     }
@@ -156,11 +178,27 @@ describe("cutting a pile of drawings", () => {
      * a decision about how the letters look.
      */
     const plain = build(pile()).letters;
-    const cut = build(editCuts(pile(), cutWith((one) => { one.slot.on = true; }))).letters;
+    const cut = build(
+      editCuts(
+        pile(),
+        cutWith((one) => {
+          one.slot.on = true;
+        }),
+      ),
+    ).letters;
     // The letters really were cut, or the rest of this proves only that
     // nothing happened at all.
-    expect(inkOf(editCuts(pile(), cutWith((one) => { one.slot.on = true; })), "H"))
-      .toBeLessThan(inkOf(pile(), "H"));
+    expect(
+      inkOf(
+        editCuts(
+          pile(),
+          cutWith((one) => {
+            one.slot.on = true;
+          }),
+        ),
+        "H",
+      ),
+    ).toBeLessThan(inkOf(pile(), "H"));
     for (const was of plain) {
       const now = cut.find((one) => one.character === was.character)!;
       expect(now.advanceWidth, was.character).toBeCloseTo(was.advanceWidth, 6);
@@ -189,7 +227,9 @@ describe("cutting a pile of drawings", () => {
         viewBox: { x: 0, y: 0, width: 6000, height: 8000 },
       })),
     );
-    const cuts = cutWith((one) => { one.slot.on = true; });
+    const cuts = cutWith((one) => {
+      one.slot.on = true;
+    });
     const share = (assembly: Assembly): number =>
       1 - inkOf(editCuts(assembly, cuts), "H") / inkOf(assembly, "H");
     // A real share of the letter, not two zeroes agreeing with each other.
@@ -199,7 +239,9 @@ describe("cutting a pile of drawings", () => {
 
   it("lets one drawing be cut its own way instead of the pile's", () => {
     const plain = pile();
-    const cuts = cutWith((one) => { one.slot.on = true; });
+    const cuts = cutWith((one) => {
+      one.slot.on = true;
+    });
     const mixed = cutOneWay(editCuts(plain, cuts), "H", noCuts());
 
     // An exception standing in for the pile's rather than adding to them.
@@ -217,15 +259,21 @@ describe("cutting a pile of drawings", () => {
      * would say the drawing had been cut its own way six times over when
      * nothing had been changed at all.
      */
-    const cuts = cutWith((one) => { one.slot.on = true; });
+    const cuts = cutWith((one) => {
+      one.slot.on = true;
+    });
     const copied = cutOneWay(editCuts(pile(), cuts), "H", { ...noCuts(), slot: { ...cuts.slot } });
     const names: CutName[] = ["slot", "tooth", "chamfer", "split", "inline", "motif"];
     expect(names.filter((name) => cutHeldBy(copied, "H", name))).toEqual([]);
 
-    const changed = cutOneWay(copied, "H", cutWith((one) => {
-      one.slot.on = true;
-      one.tooth.on = true;
-    }));
+    const changed = cutOneWay(
+      copied,
+      "H",
+      cutWith((one) => {
+        one.slot.on = true;
+        one.tooth.on = true;
+      }),
+    );
     expect(changed.cutExceptions!.H.tooth.on).toBe(true);
     expect(cutHeldBy(changed, "H", "tooth")).toBe(true);
     expect(cutHeldBy(changed, "H", "slot")).toBe(false);
@@ -233,17 +281,29 @@ describe("cutting a pile of drawings", () => {
 
   it("does nothing with the two that are made out of a skeleton", () => {
     const plain = pile();
-    const cut = editCuts(plain, cutWith((one) => {
-      one.inline.on = true;
-      one.split.on = true;
-    }));
+    const cut = editCuts(
+      plain,
+      cutWith((one) => {
+        one.inline.on = true;
+        one.split.on = true;
+      }),
+    );
     // A drawing that arrived as an outline has no spine to sweep again and no
     // join to find, so the honest answer is the drawing unchanged.
     expect(inkOf(cut, "H")).toBeCloseTo(inkOf(plain, "H"), 6);
     // And the same pile with a cut that does reach an outline is changed, so
     // what is being shown is these two declining rather than nothing working.
-    expect(inkOf(editCuts(plain, cutWith((one) => { one.slot.on = true; })), "H"))
-      .toBeLessThan(inkOf(plain, "H"));
+    expect(
+      inkOf(
+        editCuts(
+          plain,
+          cutWith((one) => {
+            one.slot.on = true;
+          }),
+        ),
+        "H",
+      ),
+    ).toBeLessThan(inkOf(plain, "H"));
   });
 });
 
@@ -389,7 +449,8 @@ describe("fitting a set drawn on one canvas", () => {
     const clean = build(chooseFit(from(good), "together"));
     const dirty = build(chooseFit(from(withStray), "together"));
     const height = (result: ReturnType<typeof build>, character: string) =>
-      contoursBounds(result.letters.find((letter) => letter.character === character)!.contours).yMax;
+      contoursBounds(result.letters.find((letter) => letter.character === character)!.contours)
+        .yMax;
     expect(height(dirty, "H")).toBeCloseTo(height(clean, "H"), 3);
   });
 });
@@ -402,9 +463,18 @@ describe("fitting drawings made separately", () => {
    */
   const separate = () =>
     from([
-      { ...piece("H_.svg", "H", [box(0, 0, 300, 900)]), viewBox: { x: 0, y: 0, width: 300, height: 900 } },
-      { ...piece("x.svg", "x", [box(0, 0, 200, 200)]), viewBox: { x: 0, y: 0, width: 200, height: 200 } },
-      { ...piece("p.svg", "p", [box(0, 0, 250, 400)]), viewBox: { x: 0, y: 0, width: 250, height: 400 } },
+      {
+        ...piece("H_.svg", "H", [box(0, 0, 300, 900)]),
+        viewBox: { x: 0, y: 0, width: 300, height: 900 },
+      },
+      {
+        ...piece("x.svg", "x", [box(0, 0, 200, 200)]),
+        viewBox: { x: 0, y: 0, width: 200, height: 200 },
+      },
+      {
+        ...piece("p.svg", "p", [box(0, 0, 250, 400)]),
+        viewBox: { x: 0, y: 0, width: 250, height: 400 },
+      },
     ]);
 
   it("is what differing canvas heights ask for", () => {
@@ -425,7 +495,9 @@ describe("fitting drawings made separately", () => {
   });
 
   it("sits a character it has never heard of on the baseline", () => {
-    const { letters } = build(from([...separate().pieces, piece("amp.svg", "&", [box(0, 0, 300, 600)])]));
+    const { letters } = build(
+      from([...separate().pieces, piece("amp.svg", "&", [box(0, 0, 300, 600)])]),
+    );
     const amp = letters.find((letter) => letter.character === "&")!;
     expect(contoursBounds(amp.contours).yMin).toBeCloseTo(0, 3);
     expect(amp.measured).toBe(false);
@@ -519,10 +591,9 @@ describe("spacing by what the eye sees", () => {
     // A shape that is nearly all white on both sides asks for a negative
     // sidebearing. It does not get one: that is a kern's job, and a negative
     // sidebearing would apply to every pair at once.
-    const assembly = editSpacing(
-      from([piece("A_.svg", "A", [wedge(0, 0, 700, 700)])]),
-      { white: 0.005 },
-    );
+    const assembly = editSpacing(from([piece("A_.svg", "A", [wedge(0, 0, 700, 700)])]), {
+      white: 0.005,
+    });
     const [letter] = build(assembly).letters;
     expect(letter.bearings.left).toBeGreaterThanOrEqual(0);
     expect(letter.bearings.right).toBeGreaterThanOrEqual(0);
@@ -777,8 +848,10 @@ describe("assembling a real alphabet", () => {
       if (!FLAT_SIDED.includes(letter.character)) continue;
       const drawn = draw(letter.character, forge)!;
       const off = Math.abs(letter.advanceWidth - drawn.advanceWidth);
-      expect(off, `${letter.character}: ${letter.advanceWidth} vs ${drawn.advanceWidth}`)
-        .toBeLessThan(metrics.unitsPerEm * 0.025);
+      expect(
+        off,
+        `${letter.character}: ${letter.advanceWidth} vs ${drawn.advanceWidth}`,
+      ).toBeLessThan(metrics.unitsPerEm * 0.025);
     }
   });
 
@@ -828,7 +901,11 @@ describe("assembling a real alphabet", () => {
 
     // The pairs every font kerns, and by roughly the amount every font kerns
     // them by: eight hundredths of the em, give or take.
-    for (const [left, right] of [["A", "V"], ["V", "A"], ["L", "T"]] as const) {
+    for (const [left, right] of [
+      ["A", "V"],
+      ["V", "A"],
+      ["L", "T"],
+    ] as const) {
       const kern = value(left, right);
       expect(kern, `${left}${right}`).toBeLessThan(-metrics.unitsPerEm * 0.04);
       expect(kern, `${left}${right}`).toBeGreaterThan(-metrics.unitsPerEm * 0.14);
@@ -836,7 +913,12 @@ describe("assembling a real alphabet", () => {
 
     // And the ones no font kerns, which is the harder half to get right: an
     // area measure would close both of these and be wrong about both.
-    for (const [left, right] of [["H", "H"], ["o", "o"], ["n", "n"], ["m", "m"]] as const) {
+    for (const [left, right] of [
+      ["H", "H"],
+      ["o", "o"],
+      ["n", "n"],
+      ["m", "m"],
+    ] as const) {
       expect(value(left, right), `${left}${right}`).toBe(0);
     }
   });
@@ -961,7 +1043,9 @@ describe("filling a box", () => {
   });
 
   it("says nothing came of a file with no drawing in it", () => {
-    expect(pieceInto("A", "empty.svg", "<svg xmlns='http://www.w3.org/2000/svg'></svg>")).toBeNull();
+    expect(
+      pieceInto("A", "empty.svg", "<svg xmlns='http://www.w3.org/2000/svg'></svg>"),
+    ).toBeNull();
   });
 
   it("replaces what was in the box before", () => {
@@ -977,7 +1061,11 @@ describe("filling a box", () => {
     let assembly = putInSlot(emptyAssembly(), pieceInto("A", "artwork.svg", drawing)!);
     assembly = putInSlot(assembly, pieceInto("B", "artwork.svg", drawing)!);
     expect(assembly.pieces).toHaveLength(2);
-    expect(build(assembly).letters.map((letter) => letter.character).sort()).toEqual(["A", "B"]);
+    expect(
+      build(assembly)
+        .letters.map((letter) => letter.character)
+        .sort(),
+    ).toEqual(["A", "B"]);
   });
 
   it("empties one box and leaves the rest alone", () => {

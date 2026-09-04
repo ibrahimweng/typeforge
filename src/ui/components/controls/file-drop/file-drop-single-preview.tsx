@@ -1,6 +1,6 @@
 "use client";
 
-import * as React from "react";
+import type * as React from "react";
 import { XIcon } from "@phosphor-icons/react";
 
 import { cn } from "../../../lib/utils";

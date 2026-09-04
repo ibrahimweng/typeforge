@@ -38,14 +38,16 @@ interface PlacedGlyph {
   kern: number;
 }
 
-export function KerningView(): React.JSX.Element {
+export function KerningView(): React.JSX.Element | null {
   const state = useAppState();
   const typeface = state.typeface;
 
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [size, setSize] = React.useState({ width: 900, height: 260 });
-  const [selectedPair, setSelectedPair] = React.useState<{ left: string; right: string } | null>(null);
+  const [selectedPair, setSelectedPair] = React.useState<{ left: string; right: string } | null>(
+    null,
+  );
   const dragRef = React.useRef<{ startX: number; startValue: number } | null>(null);
   const [pairFilter, setPairFilter] = React.useState("");
   const [sidebar, setSidebar] = React.useState<"pairs" | "classes">("pairs");
@@ -149,7 +151,6 @@ export function KerningView(): React.JSX.Element {
       : typeface.kerning;
     return [...list].sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, MOST_ROWS);
   }, [typeface, pairFilter, state.revision]);
-
 
   if (!typeface) {
     return (
@@ -288,7 +289,9 @@ export function KerningView(): React.JSX.Element {
                 </button>
               ))}
               {pairs.length === 0 && (
-                <p className="px-3 py-6 text-center text-2xs text-muted-foreground">No pairs yet.</p>
+                <p className="px-3 py-6 text-center text-2xs text-muted-foreground">
+                  No pairs yet.
+                </p>
               )}
             </div>
           </>
@@ -412,7 +415,7 @@ function ClassList({
   selected,
 }: {
   selected: { left: string; right: string } | null;
-}): React.JSX.Element {
+}): React.JSX.Element | null {
   const state = useAppState();
   const typeface = state.typeface;
 
@@ -433,7 +436,7 @@ function ClassList({
       .slice(0, MOST_ROWS);
   }, [typeface, state.revision]);
 
-  if (!typeface) return <></>;
+  if (!typeface) return null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

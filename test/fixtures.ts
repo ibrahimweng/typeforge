@@ -78,7 +78,10 @@ export function loadWebFontFixtures(): WebFontFixtures | null {
   if (webFontCache !== undefined) return webFontCache;
 
   const source = findTestFont();
-  if (!source) return (webFontCache = null);
+  if (!source) {
+    webFontCache = null;
+    return webFontCache;
+  }
 
   const dir = mkdtempSync(join(tmpdir(), "typeforge-webfonts-"));
   const woff = join(dir, "DejaVuSans.woff");
@@ -105,11 +108,13 @@ export function loadWebFontFixtures(): WebFontFixtures | null {
   );
 
   if (build.status !== 0 || !existsSync(woff) || !existsSync(woff2)) {
-    return (webFontCache = null);
+    webFontCache = null;
+    return webFontCache;
   }
 
-  return (webFontCache = {
+  webFontCache = {
     woff: new Uint8Array(readFileSync(woff)),
     woff2: new Uint8Array(readFileSync(woff2)),
-  });
+  };
+  return webFontCache;
 }

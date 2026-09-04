@@ -249,7 +249,10 @@ async function resolvedGlyphs(
    */
   extremes = true,
 ) {
-  const out: Array<{ glyph: Typeface["glyphs"][number]; contours: ReturnType<typeof resolveGlyphContours> }> = [];
+  const out: Array<{
+    glyph: Typeface["glyphs"][number];
+    contours: ReturnType<typeof resolveGlyphContours>;
+  }> = [];
 
   for (const glyph of typeface.glyphs) {
     let contours = resolveGlyphContours(glyph, typeface);
@@ -361,7 +364,9 @@ async function exportTrueType(
     const loca = source.tables.get("loca");
     const head = source.tables.get("head");
     if (glyf && loca && head) {
-      const indexToLocFormat = new DataView(head.buffer, head.byteOffset, head.byteLength).getInt16(50);
+      const indexToLocFormat = new DataView(head.buffer, head.byteOffset, head.byteLength).getInt16(
+        50,
+      );
       originalRecords = splitGlyf(glyf, loca, indexToLocFormat, typeface.glyphs.length);
     }
   }
@@ -393,9 +398,7 @@ async function exportTrueType(
   });
   const { hmtx, numberOfHMetrics } = buildHmtx(metrics);
 
-  const tables = preserving
-    ? new Map(typeface.source!.tables)
-    : new Map<string, Uint8Array>();
+  const tables = preserving ? new Map(typeface.source!.tables) : new Map<string, Uint8Array>();
 
   tables.set("glyf", built.glyf);
   tables.set("loca", built.loca);
@@ -429,9 +432,7 @@ async function exportTrueType(
     // Two name ids for every axis and instance, taken from 256 upwards, which
     // is where the format says a font may invent its own.
     const axisNameIds = varying.axes.map((_, index) => 256 + index);
-    const instanceNameIds = varying.instances.map(
-      (_, index) => 256 + varying.axes.length + index,
-    );
+    const instanceNameIds = varying.instances.map((_, index) => 256 + varying.axes.length + index);
     for (const [index, axis] of varying.axes.entries()) {
       invented.push({ id: axisNameIds[index], value: axis.label });
     }
@@ -443,9 +444,7 @@ async function exportTrueType(
     tables.set("STAT", buildStat(varying.axes, axisNameIds));
 
     if (unvarying.length > 0) {
-      context.held.push(
-        ...unvarying.map((index) => typeface.glyphs[index]?.name ?? String(index)),
-      );
+      context.held.push(...unvarying.map((index) => typeface.glyphs[index]?.name ?? String(index)));
       const named = context.held.slice(0, 8);
       /*
        * Said as the weight rather than as the shape, because the weight is what
@@ -483,7 +482,14 @@ async function exportTrueType(
   }
 
   applyKerning(tables, typeface, context.includeKerning);
-  applyAlternates(tables, typeface, false, !preserving, !featuresMatchSource(typeface), context.notes);
+  applyAlternates(
+    tables,
+    typeface,
+    false,
+    !preserving,
+    !featuresMatchSource(typeface),
+    context.notes,
+  );
 
   const font: SfntFont = { sfntVersion: SFNT_TRUETYPE, tables };
   return writeSfnt(font);
@@ -537,7 +543,9 @@ async function exportOpenType(
 
   // opentype.js requires .notdef to be the first glyph.
   if (glyphs.length === 0 || (glyphs[0].name ?? "") !== ".notdef") {
-    glyphs.unshift(new OpenTypeGlyph({ name: ".notdef", advanceWidth: 0, path: new OpenTypePath() }));
+    glyphs.unshift(
+      new OpenTypeGlyph({ name: ".notdef", advanceWidth: 0, path: new OpenTypePath() }),
+    );
     context.notes.push("A .notdef glyph was added, which OpenType requires in first position.");
   }
 
@@ -561,7 +569,14 @@ async function exportOpenType(
   applyKerning(sfnt.tables, typeface, context.includeKerning, glyphs.length !== resolved.length);
   // OpenType is always a rebuild: the curves are re-encoded, so there is no
   // source table in here to trade against.
-  applyAlternates(sfnt.tables, typeface, glyphs.length !== resolved.length, true, true, context.notes);
+  applyAlternates(
+    sfnt.tables,
+    typeface,
+    glyphs.length !== resolved.length,
+    true,
+    true,
+    context.notes,
+  );
   return writeSfnt(sfnt);
 }
 

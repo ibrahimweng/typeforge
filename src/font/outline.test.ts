@@ -25,7 +25,12 @@ const square = (size = 100, offset = 0): Contour => ({
   nodes: [
     { point: { x: offset, y: offset }, handleIn: null, handleOut: null, type: "corner" },
     { point: { x: offset + size, y: offset }, handleIn: null, handleOut: null, type: "corner" },
-    { point: { x: offset + size, y: offset + size }, handleIn: null, handleOut: null, type: "corner" },
+    {
+      point: { x: offset + size, y: offset + size },
+      handleIn: null,
+      handleOut: null,
+      type: "corner",
+    },
     { point: { x: offset, y: offset + size }, handleIn: null, handleOut: null, type: "corner" },
   ],
 });

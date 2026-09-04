@@ -12,7 +12,13 @@ import { describe, expect, it } from "vitest";
 import { NEARLY_STRAIGHT, extremesMissing, nearlySmooth, offSmooth } from "@/font/marks";
 import type { Contour, GlyphNode } from "@/font/types";
 
-const node = (x: number, y: number, into: [number, number] | null, out: [number, number] | null, type: GlyphNode["type"] = "smooth"): GlyphNode => ({
+const node = (
+  x: number,
+  y: number,
+  into: [number, number] | null,
+  out: [number, number] | null,
+  type: GlyphNode["type"] = "smooth",
+): GlyphNode => ({
   point: { x, y },
   handleIn: into ? { x: into[0], y: into[1] } : null,
   handleOut: out ? { x: out[0], y: out[1] } : null,

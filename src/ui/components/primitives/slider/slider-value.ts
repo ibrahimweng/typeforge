@@ -98,12 +98,16 @@ export function snapSliderValue<Value extends number | readonly number[]>(
     return snapValue(nextValue, min, max, step) as Value;
   }
 
-  return nextValue.map((item) => (
-    snapValueToAllowedValues(item, min, max, snapValues) ?? snapValue(item, min, max, step)
-  )) as unknown as Value;
+  return nextValue.map(
+    (item) =>
+      snapValueToAllowedValues(item, min, max, snapValues) ?? snapValue(item, min, max, step),
+  ) as unknown as Value;
 }
 
-export function valuesMatch<Value extends number | readonly number[]>(left: Value, right: Value): boolean {
+export function valuesMatch<Value extends number | readonly number[]>(
+  left: Value,
+  right: Value,
+): boolean {
   if (Array.isArray(left) && Array.isArray(right)) {
     return (
       left.length === right.length && left.every((leftValue, index) => leftValue === right[index])

@@ -80,9 +80,7 @@ export function VectorSizeField({
           aria-label={`${name} ${xLabel}`}
           className="font-mono"
           onBlur={commitVector}
-          onChange={(event) =>
-            setDraftValue((current) => ({ ...current, x: event.target.value }))
-          }
+          onChange={(event) => setDraftValue((current) => ({ ...current, x: event.target.value }))}
           onKeyDown={handleKeyDown}
           size="default"
           value={draftValue.x}
@@ -91,9 +89,7 @@ export function VectorSizeField({
           aria-label={`${name} ${yLabel}`}
           className="font-mono"
           onBlur={commitVector}
-          onChange={(event) =>
-            setDraftValue((current) => ({ ...current, y: event.target.value }))
-          }
+          onChange={(event) => setDraftValue((current) => ({ ...current, y: event.target.value }))}
           onKeyDown={handleKeyDown}
           size="default"
           value={draftValue.y}

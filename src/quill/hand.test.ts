@@ -51,9 +51,7 @@ describe("the pen a traced letter was written with", () => {
     const reach = (degrees: number) => {
       // The normal of a stroke at `degrees` stands ninety degrees round.
       const fromAxis = ((degrees + 90) * Math.PI) / 180;
-      return (
-        half * Math.hypot(Math.cos(fromAxis), (1 - blade) * Math.sin(fromAxis)) * 2
-      );
+      return half * Math.hypot(Math.cos(fromAxis), (1 - blade) * Math.sin(fromAxis)) * 2;
     };
     const strokes = [0, 30, 60, 90, 120, 150].map((degrees) => at(degrees, reach(degrees)));
     const found = handOf(strokes)!;

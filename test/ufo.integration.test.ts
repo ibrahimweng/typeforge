@@ -121,7 +121,12 @@ suite("a UFO written by another tool", () => {
     const { typeface } = readUfo(files)!;
     const report = validateTypeface(typeface);
     const directions = report.findings.filter((one) => one.check === "contour-direction");
-    expect(directions, directions.map((one) => one.message).join("; ")).toEqual([]);
+    // A Finding carries a title and a detail; `message` was never a field, so
+    // this line used to report "undefined; undefined" on the day it failed.
+    expect(
+      directions,
+      directions.map((one) => `${one.glyph ?? "?"}: ${one.title}`).join("; "),
+    ).toEqual([]);
   });
 
   it("carries through the private key another tool left in the lib", () => {

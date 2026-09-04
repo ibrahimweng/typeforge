@@ -34,11 +34,12 @@ export interface Entry {
 export type EntryKind = "action" | "view" | "control" | "letter" | "face" | "alternate";
 
 /** What each prefix narrows the search to, and what to call it on screen. */
-export const PREFIXES: ReadonlyArray<{ mark: string; kinds: readonly EntryKind[]; label: string }> = [
-  { mark: ">", kinds: ["action", "view"], label: "actions" },
-  { mark: "#", kinds: ["letter"], label: "letters" },
-  { mark: "~", kinds: ["control"], label: "controls" },
-];
+export const PREFIXES: ReadonlyArray<{ mark: string; kinds: readonly EntryKind[]; label: string }> =
+  [
+    { mark: ">", kinds: ["action", "view"], label: "actions" },
+    { mark: "#", kinds: ["letter"], label: "letters" },
+    { mark: "~", kinds: ["control"], label: "controls" },
+  ];
 
 export interface Query {
   /** What is left after any prefix is taken off. */
@@ -286,9 +287,11 @@ export function search(index: Index, raw: string, limit = 40): Hit[] {
    * general is what somebody who typed a general word meant. "Weight" before
    * "Weight of the crossbar".
    */
-  hits.sort((one, other) =>
-    other.score - one.score || one.entry.label.length - other.entry.label.length ||
-    one.entry.label.localeCompare(other.entry.label),
+  hits.sort(
+    (one, other) =>
+      other.score - one.score ||
+      one.entry.label.length - other.entry.label.length ||
+      one.entry.label.localeCompare(other.entry.label),
   );
   return hits.slice(0, limit);
 }

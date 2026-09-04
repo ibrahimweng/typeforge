@@ -42,9 +42,7 @@ const panelActionIconComponents = {
   "wand-sparkles": MagicWandIcon,
 } as const;
 
-type PanelActionVariant = NonNullable<
-  React.ComponentProps<typeof Button>["variant"]
->;
+type PanelActionVariant = NonNullable<React.ComponentProps<typeof Button>["variant"]>;
 
 export type PanelActionObjectOption = {
   children?: ReactNode;
@@ -99,11 +97,7 @@ function getPanelActionAriaLabel(
   return action.name;
 }
 
-function shouldSpanFullActionRow(
-  index: number,
-  actionCount: number,
-  columns: 1 | 2,
-): boolean {
+function shouldSpanFullActionRow(index: number, actionCount: number, columns: 1 | 2): boolean {
   return columns === 2 && actionCount % 2 === 1 && index === actionCount - 1;
 }
 
@@ -130,9 +124,7 @@ export function PanelActions({
         ? actions.map((action, index) => {
             const actionContent = getPanelActionContent(action);
             const actionValue = getPanelActionValue(action);
-            const handleActionClick: React.MouseEventHandler<
-              HTMLButtonElement
-            > = (event) => {
+            const handleActionClick: React.MouseEventHandler<HTMLButtonElement> = (event) => {
               action.onClick?.(event);
 
               if (!event.defaultPrevented) {
@@ -145,8 +137,7 @@ export function PanelActions({
                 aria-label={getPanelActionAriaLabel(action, actionContent)}
                 className={cn(
                   "w-full",
-                  shouldSpanFullActionRow(index, actionCount, resolvedColumns) &&
-                    "col-span-2",
+                  shouldSpanFullActionRow(index, actionCount, resolvedColumns) && "col-span-2",
                   action.className,
                 )}
                 key={actionValue}

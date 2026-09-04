@@ -424,43 +424,45 @@ export function toKernClasses(
   let serial = 0;
 
   for (const [index, lookup] of kerning.lookups.entries()) {
-  for (const grid of lookup.subtables.filter((s) => s.kind === "grid")) {
-    const named = new Map<number, string[]>();
-    const namesFor = (side: "left" | "right", klass: number): string[] => {
-      const key = side === "left" ? klass : klass + 0x10000;
-      const kept = named.get(key);
-      if (kept) return kept;
-      const ids =
-        klass === 0
-          ? // Class zero is everything the subtable covers that no other class
-            // claimed, which is only knowable from the coverage.
-            [...grid.covered].filter((glyph) => (side === "left" ? grid.leftOf : grid.rightOf).get(glyph) === undefined)
-          : ((side === "left" ? grid.left : grid.right).get(klass) ?? []);
-      const list = ids.map(nameOf).filter((name): name is string => Boolean(name));
-      named.set(key, list);
-      return list;
-    };
+    for (const grid of lookup.subtables.filter((s) => s.kind === "grid")) {
+      const named = new Map<number, string[]>();
+      const namesFor = (side: "left" | "right", klass: number): string[] => {
+        const key = side === "left" ? klass : klass + 0x10000;
+        const kept = named.get(key);
+        if (kept) return kept;
+        const ids =
+          klass === 0
+            ? // Class zero is everything the subtable covers that no other class
+              // claimed, which is only knowable from the coverage.
+              [...grid.covered].filter(
+                (glyph) => (side === "left" ? grid.leftOf : grid.rightOf).get(glyph) === undefined,
+              )
+            : ((side === "left" ? grid.left : grid.right).get(klass) ?? []);
+        const list = ids.map(nameOf).filter((name): name is string => Boolean(name));
+        named.set(key, list);
+        return list;
+      };
 
-    for (const [cell, value] of grid.cells) {
-      const [first, second] = cell.split(",").map(Number);
-      // A right class of zero is every glyph the font has that no class
-      // claimed, which is not something coverage can answer -- coverage is
-      // about the left side only. Those cells are dropped rather than guessed
-      // at, since a wrong answer here moves letters.
-      if (second === 0) continue;
-      const left = namesFor("left", first);
-      const right = namesFor("right", second);
-      if (left.length === 0 || right.length === 0) continue;
-      classes.push({
-        id: `gpos-${serial++}`,
-        name: `${first}/${second}`,
-        left,
-        right,
-        value,
-        group: index,
-      });
+      for (const [cell, value] of grid.cells) {
+        const [first, second] = cell.split(",").map(Number);
+        // A right class of zero is every glyph the font has that no class
+        // claimed, which is not something coverage can answer -- coverage is
+        // about the left side only. Those cells are dropped rather than guessed
+        // at, since a wrong answer here moves letters.
+        if (second === 0) continue;
+        const left = namesFor("left", first);
+        const right = namesFor("right", second);
+        if (left.length === 0 || right.length === 0) continue;
+        classes.push({
+          id: `gpos-${serial++}`,
+          name: `${first}/${second}`,
+          left,
+          right,
+          value,
+          group: index,
+        });
+      }
     }
-  }
   }
   return classes;
 }

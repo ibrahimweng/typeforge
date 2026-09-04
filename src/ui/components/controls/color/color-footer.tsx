@@ -46,8 +46,7 @@ const colorFormatSelectWidth = `calc(${Math.max(
 
 const colorValueInputGroupClassName = "h-6 min-w-0 flex-1";
 
-const colorValueInputClassName =
-  "min-w-0 px-1 text-center text-xs font-mono";
+const colorValueInputClassName = "min-w-0 px-1 text-center text-xs font-mono";
 
 const colorValueCellSeparatorClassName =
   "pointer-events-none absolute top-0 bottom-0 w-px bg-[color:color-mix(in_oklab,var(--border)_12%,transparent)]";
@@ -130,12 +129,7 @@ function ColorValueCells({
     );
   }
 
-  const colorValues =
-    mode === "rgb"
-      ? channels.rgb
-      : mode === "hsl"
-        ? channels.hsl
-        : channels.hsb;
+  const colorValues = mode === "rgb" ? channels.rgb : mode === "hsl" ? channels.hsl : channels.hsb;
   const values = showOpacity ? [...colorValues, 100] : colorValues;
 
   return (
@@ -217,10 +211,7 @@ export function ColorFooter({
   onModeChange,
   showOpacity = false,
 }: ColorFooterProps) {
-  const channels = useMemo(
-    () => getColorChannels(draftHexValue),
-    [draftHexValue],
-  );
+  const channels = useMemo(() => getColorChannels(draftHexValue), [draftHexValue]);
 
   return (
     <div
@@ -231,11 +222,7 @@ export function ColorFooter({
         data-slot="style-guide-color-footer-row"
         className="flex w-full min-w-0 items-center gap-1.5"
       >
-        <ColorFormatSelect
-          disabled={disabled}
-          mode={mode}
-          onModeChange={onModeChange}
-        />
+        <ColorFormatSelect disabled={disabled} mode={mode} onModeChange={onModeChange} />
         {mode === "hex" ? (
           <InputGroup className="h-6 min-w-0 flex-1" size="sm">
             <InputGroupInput

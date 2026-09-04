@@ -16,9 +16,9 @@ export type PanelIconButtonProps = {
   tooltipSide?: "top" | "right" | "bottom" | "left";
 };
 
-export const stopPanelHeaderButtonPointerDown: React.PointerEventHandler<
-  HTMLButtonElement
-> = (event) => {
+export const stopPanelHeaderButtonPointerDown: React.PointerEventHandler<HTMLButtonElement> = (
+  event,
+) => {
   event.stopPropagation();
 };
 
@@ -48,13 +48,10 @@ export function PanelIconButton({
       animation.cancel();
     }
 
-    icon.animate(
-      [{ transform: "rotate(0deg)" }, { transform: "rotate(-360deg)" }],
-      {
-        duration: 420,
-        easing: "cubic-bezier(0.16, 1, 0.3, 1)",
-      },
-    );
+    icon.animate([{ transform: "rotate(0deg)" }, { transform: "rotate(-360deg)" }], {
+      duration: 420,
+      easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+    });
   }
 
   function handleClick(event: React.MouseEvent<HTMLButtonElement>): void {
@@ -72,10 +69,7 @@ export function PanelIconButton({
         render={
           <Button
             aria-label={label}
-            className={cn(
-              "data-[icon-active=true]:text-[color:var(--foreground)]",
-              className,
-            )}
+            className={cn("data-[icon-active=true]:text-[color:var(--foreground)]", className)}
             data-icon-active={false}
             disabled={disabled}
             onClick={handleClick}

@@ -28,7 +28,9 @@ const cell = Number(process.env.CELL ?? 96);
  * digit typed as "8" is not one of them -- it comes back as an empty box, which
  * looks exactly like an effect that erased the letter.
  */
-const letters = (process.env.SHEET_LETTERS ?? "a,e,n,o,R,S,eight,exclam").split(",").filter(Boolean);
+const letters = (process.env.SHEET_LETTERS ?? "a,e,n,o,R,S,eight,exclam")
+  .split(",")
+  .filter(Boolean);
 
 const with_ = (patch: (effects: Effects) => void): Effects => {
   const effects = noEffects();
@@ -38,18 +40,78 @@ const with_ = (patch: (effects: Effects) => void): Effects => {
 
 const rows: Array<{ label: string; effects: Effects | undefined }> = [
   { label: "plain", effects: undefined },
-  { label: "rough · default", effects: with_((e) => { e.rough.on = true; }) },
-  { label: "rough · fine and shallow", effects: with_((e) => { e.rough = { ...e.rough, on: true, amplitude: 0.025, wavelength: 0.22 }; }) },
-  { label: "rough · coarse wobble", effects: with_((e) => { e.rough = { ...e.rough, on: true, amplitude: 0.09, wavelength: 1.1 }; }) },
-  { label: "rough · outside only", effects: with_((e) => { e.rough = { ...e.rough, on: true, reach: "outside" }; }) },
-  { label: "pool · default", effects: with_((e) => { e.pool.on = true; }) },
-  { label: "pool · joins only", effects: with_((e) => { e.pool = { on: true, size: 0.7, where: "joins" }; }) },
-  { label: "pool · ends only", effects: with_((e) => { e.pool = { on: true, size: 0.7, where: "ends" }; }) },
-  { label: "skip · default", effects: with_((e) => { e.skip.on = true; }) },
-  { label: "skip · worn", effects: with_((e) => { e.skip = { ...e.skip, on: true, density: 0.6, length: 1.8 }; }) },
-  { label: "press · middle", effects: with_((e) => { e.press.on = true; }) },
-  { label: "press · start heavy", effects: with_((e) => { e.press = { on: true, at: "start", amount: 0.45 }; }) },
-  { label: "press · end heavy", effects: with_((e) => { e.press = { on: true, at: "end", amount: 0.45 }; }) },
+  {
+    label: "rough · default",
+    effects: with_((e) => {
+      e.rough.on = true;
+    }),
+  },
+  {
+    label: "rough · fine and shallow",
+    effects: with_((e) => {
+      e.rough = { ...e.rough, on: true, amplitude: 0.025, wavelength: 0.22 };
+    }),
+  },
+  {
+    label: "rough · coarse wobble",
+    effects: with_((e) => {
+      e.rough = { ...e.rough, on: true, amplitude: 0.09, wavelength: 1.1 };
+    }),
+  },
+  {
+    label: "rough · outside only",
+    effects: with_((e) => {
+      e.rough = { ...e.rough, on: true, reach: "outside" };
+    }),
+  },
+  {
+    label: "pool · default",
+    effects: with_((e) => {
+      e.pool.on = true;
+    }),
+  },
+  {
+    label: "pool · joins only",
+    effects: with_((e) => {
+      e.pool = { on: true, size: 0.7, where: "joins" };
+    }),
+  },
+  {
+    label: "pool · ends only",
+    effects: with_((e) => {
+      e.pool = { on: true, size: 0.7, where: "ends" };
+    }),
+  },
+  {
+    label: "skip · default",
+    effects: with_((e) => {
+      e.skip.on = true;
+    }),
+  },
+  {
+    label: "skip · worn",
+    effects: with_((e) => {
+      e.skip = { ...e.skip, on: true, density: 0.6, length: 1.8 };
+    }),
+  },
+  {
+    label: "press · middle",
+    effects: with_((e) => {
+      e.press.on = true;
+    }),
+  },
+  {
+    label: "press · start heavy",
+    effects: with_((e) => {
+      e.press = { on: true, at: "start", amount: 0.45 };
+    }),
+  },
+  {
+    label: "press · end heavy",
+    effects: with_((e) => {
+      e.press = { on: true, at: "end", amount: 0.45 };
+    }),
+  },
   {
     label: "MARKER · rough + pool",
     effects: with_((e) => {
@@ -72,7 +134,15 @@ const rows: Array<{ label: string; effects: Effects | undefined }> = [
       e.rough = { ...e.rough, on: true, amplitude: 0.02, wavelength: 0.9 };
     }),
   },
-  { label: "ALL FOUR at defaults", effects: with_((e) => { e.rough.on = true; e.pool.on = true; e.skip.on = true; e.press.on = true; }) },
+  {
+    label: "ALL FOUR at defaults",
+    effects: with_((e) => {
+      e.rough.on = true;
+      e.pool.on = true;
+      e.skip.on = true;
+      e.press.on = true;
+    }),
+  },
 ];
 
 const only = (process.env.SHEET_BASES ?? "Sans,Marker,Brush").split(",").filter(Boolean);

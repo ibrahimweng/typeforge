@@ -85,6 +85,7 @@ export interface FontToolsReport {
   error?: string;
 }
 
+// biome-ignore lint/complexity/noUselessStringRaw: embedded Python -- a backslash added here must stay literal.
 const INSPECT = String.raw`
 import json, sys
 from fontTools.ttLib import TTFont
@@ -254,6 +255,7 @@ print(json.dumps(out))
  * the specification and still be got wrong, so they are asked of the
  * implementation the whole world uses instead.
  */
+// biome-ignore lint/complexity/noUselessStringRaw: embedded Python -- a backslash added here must stay literal.
 const SHAPE = String.raw`
 import json, sys
 import uharfbuzz as hb
@@ -417,6 +419,7 @@ export interface VariableReport {
   error?: string;
 }
 
+// biome-ignore lint/complexity/noUselessStringRaw: embedded Python -- a backslash added here must stay literal.
 const INSTANCE = String.raw`
 import json, sys
 from fontTools.ttLib import TTFont

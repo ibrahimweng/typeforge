@@ -4,13 +4,7 @@ import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { Button } from "../primitives";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "./sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives";
 import { useIsMobile } from "../../hooks/use-mobile";
 import { cn } from "../../lib/utils";
@@ -91,6 +85,7 @@ function SidebarProvider({
         _setOpen(openState);
       }
 
+      // biome-ignore lint/suspicious/noDocumentCookie: document.cookie is supported everywhere this runs; CookieStore is not.
       document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
     },
     [setOpenProp, open],

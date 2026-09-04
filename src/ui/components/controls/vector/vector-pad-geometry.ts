@@ -1,9 +1,6 @@
 import type * as React from "react";
 
-import type {
-  VectorPadCoordinateMode,
-  VectorPadVariant,
-} from "./vector-control-types";
+import type { VectorPadCoordinateMode, VectorPadVariant } from "./vector-control-types";
 import { clamp } from "./vector-value";
 
 type VectorPadPoint = { x: number; y: number };
@@ -16,9 +13,7 @@ export type VectorPadStyle = React.CSSProperties & {
   "--xy-pad-y": string;
 };
 
-export function getDefaultPadCoordinateMode(
-  padVariant: VectorPadVariant,
-): VectorPadCoordinateMode {
+export function getDefaultPadCoordinateMode(padVariant: VectorPadVariant): VectorPadCoordinateMode {
   return padVariant === "default" ? "screen" : "cartesian";
 }
 

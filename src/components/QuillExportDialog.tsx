@@ -99,13 +99,24 @@ export function QuillExportDialog({ onClose }: { onClose: () => void }): React.J
     );
 
   return (
+    /*
+      Clicking the dark behind the panel closes it, and that is all the dark
+      does: it is not a control, there is nothing on it to announce or tab to,
+      and Escape closes from the keyboard. Marked as presentation to say so.
+      The close fires only for a click that landed on the backdrop itself,
+      which is the job the panel below used to do with a stopPropagation --
+      the panel reads better not handling clicks it has no interest in.
+    */
+    // biome-ignore lint/a11y/noStaticElementInteractions: the backdrop is presentation; Escape is the keyboard path.
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6"
-      onClick={onClose}
+      role="presentation"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
     >
       <div
         ref={panelRef}
-        onClick={(event) => event.stopPropagation()}
         /*
           Bounded, and scrolling inside itself, for the reason the editor's
           export dialog is: a centred flex child taller than the window is
@@ -160,10 +171,10 @@ export function QuillExportDialog({ onClose }: { onClose: () => void }): React.J
 
         <p className="pb-2 text-2xs leading-relaxed text-muted-foreground">
           {doc.letters.length} letters, redrawn from the strokes recovered from{" "}
-          <span className="text-foreground">{doc.from || "an unnamed font"}</span> with the hand
-          you have set. The lines of the font — x-height, cap height, ascender, descender — are
-          measured off these letters rather than carried over, so they describe what is actually
-          being written.
+          <span className="text-foreground">{doc.from || "an unnamed font"}</span> with the hand you
+          have set. The lines of the font — x-height, cap height, ascender, descender — are measured
+          off these letters rather than carried over, so they describe what is actually being
+          written.
         </p>
 
         {/*
@@ -180,9 +191,9 @@ export function QuillExportDialog({ onClose }: { onClose: () => void }): React.J
           data-quill-derivative
         >
           This file is a derivative work of{" "}
-          <span className="text-foreground">{doc.from || "the font you read in"}</span>. Its
-          licence governs what you may do with what comes out, and the copyright field in the
-          file says so. Point this only at a font you have the right to derive from.
+          <span className="text-foreground">{doc.from || "the font you read in"}</span>. Its licence
+          governs what you may do with what comes out, and the copyright field in the file says so.
+          Point this only at a font you have the right to derive from.
         </p>
 
         {problem && (

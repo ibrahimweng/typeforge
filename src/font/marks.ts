@@ -122,7 +122,10 @@ export function offSmooth(node: GlyphNode): number | null {
   // The arriving handle points back at the point; the leaving one points away.
   // Smooth means those two directions are the same.
   const arriving = { x: (point.x - handleIn.x) / inLength, y: (point.y - handleIn.y) / inLength };
-  const leaving = { x: (handleOut.x - point.x) / outLength, y: (handleOut.y - point.y) / outLength };
+  const leaving = {
+    x: (handleOut.x - point.x) / outLength,
+    y: (handleOut.y - point.y) / outLength,
+  };
   const dot = Math.max(-1, Math.min(1, arriving.x * leaving.x + arriving.y * leaving.y));
   return (Math.acos(dot) * 180) / Math.PI;
 }

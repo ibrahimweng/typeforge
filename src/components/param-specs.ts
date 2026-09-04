@@ -125,22 +125,23 @@ export const PARAMS: ParamSpec[] = [
 ];
 
 /** How the parameters are grouped when they are explained rather than used. */
-export const PARAM_GROUPS: Array<{ title: string; blurb: string; keys: Array<keyof GlyphParams> }> = [
-  {
-    title: "Weight and proportion",
-    blurb:
-      "The whole letter at once. These are the qualities a type family varies from one style to the next.",
-    keys: ["weight", "width", "xHeightScale", "slant", "tracking"],
-  },
-  {
-    title: "Anatomy",
-    blurb:
-      "The named parts of a letter, moved where they sit rather than by scaling the whole shape.",
-    keys: ["crossbar", "shoulder", "counterScale", "cornerRadius", "slab"],
-  },
-  {
-    title: "Output",
-    blurb: "What the letters are redrawn on before they leave.",
-    keys: ["pixelGrid"],
-  },
-];
+export const PARAM_GROUPS: Array<{ title: string; blurb: string; keys: Array<keyof GlyphParams> }> =
+  [
+    {
+      title: "Weight and proportion",
+      blurb:
+        "The whole letter at once. These are the qualities a type family varies from one style to the next.",
+      keys: ["weight", "width", "xHeightScale", "slant", "tracking"],
+    },
+    {
+      title: "Anatomy",
+      blurb:
+        "The named parts of a letter, moved where they sit rather than by scaling the whole shape.",
+      keys: ["crossbar", "shoulder", "counterScale", "cornerRadius", "slab"],
+    },
+    {
+      title: "Output",
+      blurb: "What the letters are redrawn on before they leave.",
+      keys: ["pixelGrid"],
+    },
+  ];

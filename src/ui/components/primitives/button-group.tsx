@@ -64,20 +64,13 @@ function ButtonGroup({
       role="group"
       data-slot="button-group"
       data-orientation={orientation}
-      className={cn(
-        buttonGroupVariants({ adjacentBorderTone, orientation }),
-        className,
-      )}
+      className={cn(buttonGroupVariants({ adjacentBorderTone, orientation }), className)}
       {...props}
     />
   );
 }
 
-function ButtonGroupText({
-  className,
-  render,
-  ...props
-}: useRender.ComponentProps<"div">) {
+function ButtonGroupText({ className, render, ...props }: useRender.ComponentProps<"div">) {
   return useRender({
     defaultTagName: "div",
     props: mergeProps<"div">(

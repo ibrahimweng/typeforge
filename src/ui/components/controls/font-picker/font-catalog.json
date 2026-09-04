@@ -4,7 +4,15 @@
     "family": "Inter",
     "nextImport": "Inter",
     "weights": ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -345,7 +353,15 @@
     "family": "Alegreya",
     "nextImport": "Alegreya",
     "weights": ["400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "serif"
   },
   {
@@ -353,7 +369,15 @@
     "family": "Alegreya Sans",
     "nextImport": "Alegreya_Sans",
     "weights": ["100", "300", "400", "500", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -361,7 +385,15 @@
     "family": "Alegreya Sans SC",
     "nextImport": "Alegreya_Sans_SC",
     "weights": ["100", "300", "400", "500", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -369,7 +401,15 @@
     "family": "Alegreya SC",
     "nextImport": "Alegreya_SC",
     "weights": ["400", "500", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "serif"
   },
   {
@@ -961,7 +1001,16 @@
     "family": "Arimo",
     "nextImport": "Arimo",
     "weights": ["400", "500", "600", "700"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "hebrew", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "hebrew",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -2409,7 +2458,16 @@
     "family": "Cardo",
     "nextImport": "Cardo",
     "weights": ["400", "700"],
-    "subsets": ["gothic", "greek", "greek-ext", "hebrew", "latin", "latin-ext", "old-italic", "runic"],
+    "subsets": [
+      "gothic",
+      "greek",
+      "greek-ext",
+      "hebrew",
+      "latin",
+      "latin-ext",
+      "old-italic",
+      "runic"
+    ],
     "category": "serif"
   },
   {
@@ -2417,7 +2475,15 @@
     "family": "Carlito",
     "nextImport": "Carlito",
     "weights": ["400", "700"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -2727,7 +2793,16 @@
     "family": "Chiron Hei HK",
     "nextImport": "Chiron_Hei_HK",
     "weights": ["200", "300", "400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "symbols2", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "symbols2",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -2735,7 +2810,15 @@
     "family": "Chiron Sung HK",
     "nextImport": "Chiron_Sung_HK",
     "weights": ["200", "300", "400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "latin", "latin-ext", "symbols2", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "latin",
+      "latin-ext",
+      "symbols2",
+      "vietnamese"
+    ],
     "category": "serif"
   },
   {
@@ -3071,7 +3154,16 @@
     "family": "Cousine",
     "nextImport": "Cousine",
     "weights": ["400", "700"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "hebrew", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "hebrew",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "monospace"
   },
   {
@@ -3543,7 +3635,15 @@
     "family": "EB Garamond",
     "nextImport": "EB_Garamond",
     "weights": ["400", "500", "600", "700", "800"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "serif"
   },
   {
@@ -4111,7 +4211,15 @@
     "family": "Fira Sans",
     "nextImport": "Fira_Sans",
     "weights": ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -4119,7 +4227,15 @@
     "family": "Fira Sans Condensed",
     "nextImport": "Fira_Sans_Condensed",
     "weights": ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -4127,7 +4243,15 @@
     "family": "Fira Sans Extra Condensed",
     "nextImport": "Fira_Sans_Extra_Condensed",
     "weights": ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -4511,7 +4635,15 @@
     "family": "Gentium Book Plus",
     "nextImport": "Gentium_Book_Plus",
     "weights": ["400", "700"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "serif"
   },
   {
@@ -4519,7 +4651,15 @@
     "family": "Gentium Plus",
     "nextImport": "Gentium_Plus",
     "weights": ["400", "700"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "serif"
   },
   {
@@ -4808,7 +4948,15 @@
     "family": "Gothic A1",
     "nextImport": "Gothic_A1",
     "weights": ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -5634,7 +5782,15 @@
     "family": "Inter Tight",
     "nextImport": "Inter_Tight",
     "weights": ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -5978,7 +6134,16 @@
     "family": "Jura",
     "nextImport": "Jura",
     "weights": ["300", "400", "500", "600", "700"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "kayah-li", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "kayah-li",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -6698,7 +6863,16 @@
     "family": "Libertinus Math",
     "nextImport": "Libertinus_Math",
     "weights": ["400"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "math", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "math",
+      "vietnamese"
+    ],
     "category": "display"
   },
   {
@@ -6714,7 +6888,15 @@
     "family": "Libertinus Sans",
     "nextImport": "Libertinus_Sans",
     "weights": ["400", "700"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -6722,7 +6904,16 @@
     "family": "Libertinus Serif",
     "nextImport": "Libertinus_Serif",
     "weights": ["400", "600", "700"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "hebrew", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "hebrew",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "serif"
   },
   {
@@ -6730,7 +6921,15 @@
     "family": "Libertinus Serif Display",
     "nextImport": "Libertinus_Serif_Display",
     "weights": ["400"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "display"
   },
   {
@@ -6850,7 +7049,15 @@
     "family": "Lilex",
     "nextImport": "Lilex",
     "weights": ["100", "200", "300", "400", "500", "600", "700"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "latin", "latin-ext", "symbols2", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "latin",
+      "latin-ext",
+      "symbols2",
+      "vietnamese"
+    ],
     "category": "monospace"
   },
   {
@@ -6914,7 +7121,15 @@
     "family": "Literata",
     "nextImport": "Literata",
     "weights": ["200", "300", "400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "serif"
   },
   {
@@ -7058,7 +7273,16 @@
     "family": "Lunasima",
     "nextImport": "Lunasima",
     "weights": ["400", "700"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "hebrew", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "hebrew",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -7098,7 +7322,15 @@
     "family": "LXGW Marker Gothic",
     "nextImport": "LXGW_Marker_Gothic",
     "weights": ["400"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "latin", "latin-ext", "symbols2", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "latin",
+      "latin-ext",
+      "symbols2",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -7106,7 +7338,16 @@
     "family": "LXGW WenKai Mono TC",
     "nextImport": "LXGW_WenKai_Mono_TC",
     "weights": ["300", "400", "700"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "lisu", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "lisu",
+      "vietnamese"
+    ],
     "category": "monospace"
   },
   {
@@ -7114,7 +7355,16 @@
     "family": "LXGW WenKai TC",
     "nextImport": "LXGW_WenKai_TC",
     "weights": ["300", "400", "700"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "lisu", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "lisu",
+      "vietnamese"
+    ],
     "category": "handwriting"
   },
   {
@@ -7138,7 +7388,16 @@
     "family": "M PLUS 1p",
     "nextImport": "M_PLUS_1p",
     "weights": ["100", "300", "400", "500", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "hebrew", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "hebrew",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -7162,7 +7421,16 @@
     "family": "M PLUS Rounded 1c",
     "nextImport": "M_PLUS_Rounded_1c",
     "weights": ["100", "300", "400", "500", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "hebrew", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "hebrew",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -8234,7 +8502,15 @@
     "family": "News Cycle",
     "nextImport": "News_Cycle",
     "weights": ["400", "700"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -8386,7 +8662,16 @@
     "family": "Noto Sans",
     "nextImport": "Noto_Sans",
     "weights": ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "devanagari", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "devanagari",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -8618,7 +8903,15 @@
     "family": "Noto Sans Display",
     "nextImport": "Noto_Sans_Display",
     "weights": ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -9074,7 +9367,15 @@
     "family": "Noto Sans Mono",
     "nextImport": "Noto_Sans_Mono",
     "weights": ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -9674,7 +9975,16 @@
     "family": "Noto Serif",
     "nextImport": "Noto_Serif",
     "weights": ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "math", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "math",
+      "vietnamese"
+    ],
     "category": "serif"
   },
   {
@@ -9722,7 +10032,15 @@
     "family": "Noto Serif Display",
     "nextImport": "Noto_Serif_Display",
     "weights": ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "serif"
   },
   {
@@ -10162,7 +10480,16 @@
     "family": "Oi",
     "nextImport": "Oi",
     "weights": ["400"],
-    "subsets": ["arabic", "cyrillic", "cyrillic-ext", "greek", "latin", "latin-ext", "tamil", "vietnamese"],
+    "subsets": [
+      "arabic",
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "latin",
+      "latin-ext",
+      "tamil",
+      "vietnamese"
+    ],
     "category": "display"
   },
   {
@@ -10626,7 +10953,15 @@
     "family": "Piazzolla",
     "nextImport": "Piazzolla",
     "weights": ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "serif"
   },
   {
@@ -10714,7 +11049,16 @@
     "family": "Playpen Sans",
     "nextImport": "Playpen_Sans",
     "weights": ["100", "200", "300", "400", "500", "600", "700", "800"],
-    "subsets": ["cyrillic", "cyrillic-ext", "emoji", "greek", "latin", "latin-ext", "math", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "emoji",
+      "greek",
+      "latin",
+      "latin-ext",
+      "math",
+      "vietnamese"
+    ],
     "category": "handwriting"
   },
   {
@@ -12338,7 +12682,15 @@
     "family": "Roboto Condensed",
     "nextImport": "Roboto_Condensed",
     "weights": ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -12370,7 +12722,15 @@
     "family": "Roboto Slab",
     "nextImport": "Roboto_Slab",
     "weights": ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "serif"
   },
   {
@@ -13570,7 +13930,15 @@
     "family": "Source Code Pro",
     "nextImport": "Source_Code_Pro",
     "weights": ["200", "300", "400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "monospace"
   },
   {
@@ -13578,7 +13946,15 @@
     "family": "Source Sans 3",
     "nextImport": "Source_Sans_3",
     "weights": ["200", "300", "400", "500", "600", "700", "800", "900"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -14250,7 +14626,16 @@
     "family": "Tinos",
     "nextImport": "Tinos",
     "weights": ["400", "700"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "hebrew", "latin", "latin-ext", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "hebrew",
+      "latin",
+      "latin-ext",
+      "vietnamese"
+    ],
     "category": "serif"
   },
   {
@@ -14450,7 +14835,15 @@
     "family": "Tuffy",
     "nextImport": "Tuffy",
     "weights": ["400", "700"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "greek-ext", "latin", "latin-ext", "phoenician"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "greek-ext",
+      "latin",
+      "latin-ext",
+      "phoenician"
+    ],
     "category": "sans-serif"
   },
   {
@@ -15114,7 +15507,16 @@
     "family": "Ysabeau",
     "nextImport": "Ysabeau",
     "weights": ["1", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "latin", "latin-ext", "math", "symbols", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "latin",
+      "latin-ext",
+      "math",
+      "symbols",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -15122,7 +15524,16 @@
     "family": "Ysabeau Infant",
     "nextImport": "Ysabeau_Infant",
     "weights": ["1", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "latin", "latin-ext", "math", "symbols", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "latin",
+      "latin-ext",
+      "math",
+      "symbols",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -15130,7 +15541,16 @@
     "family": "Ysabeau Office",
     "nextImport": "Ysabeau_Office",
     "weights": ["1", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "latin", "latin-ext", "math", "symbols", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "latin",
+      "latin-ext",
+      "math",
+      "symbols",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {
@@ -15138,7 +15558,16 @@
     "family": "Ysabeau SC",
     "nextImport": "Ysabeau_SC",
     "weights": ["1", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000"],
-    "subsets": ["cyrillic", "cyrillic-ext", "greek", "latin", "latin-ext", "math", "symbols", "vietnamese"],
+    "subsets": [
+      "cyrillic",
+      "cyrillic-ext",
+      "greek",
+      "latin",
+      "latin-ext",
+      "math",
+      "symbols",
+      "vietnamese"
+    ],
     "category": "sans-serif"
   },
   {

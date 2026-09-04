@@ -19,9 +19,7 @@ test.skip(!FONT_PATH, "needs a system font to open");
 
 async function openFont(page: Page): Promise<void> {
   await page.setInputFiles("[data-open-input]", FONT_PATH!);
-  await expect(
-    page.getByText("DejaVu Sans", { exact: false }).first(),
-  ).toBeVisible({
+  await expect(page.getByText("DejaVu Sans", { exact: false }).first()).toBeVisible({
     timeout: 60_000,
   });
 }
@@ -63,9 +61,7 @@ test("the checks look at the whole font", async ({ page }) => {
   await expect(page.getByText("not checked", { exact: false })).toHaveCount(0);
 });
 
-test("what the importer said about the file is somewhere it can be read", async ({
-  page,
-}) => {
+test("what the importer said about the file is somewhere it can be read", async ({ page }) => {
   /*
    * These had one reader: the first of them was appended to the status line in
    * the top bar, which is capped at ten rem and truncates. Opening this font

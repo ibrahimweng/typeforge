@@ -145,11 +145,9 @@ describe("weights put back from what was written down", () => {
     const base = font(["a", "b"]);
     const drawn: Glyph = { ...glyph("b"), advanceWidth: 800 };
 
-    const [first, bold] = mastersFrom(
-      base,
-      { name: "Text", at: { [WGHT]: 350 } },
-      [{ id: "m2", name: "Bold", at: { [WGHT]: 700 }, glyphs: [drawn] }],
-    );
+    const [first, bold] = mastersFrom(base, { name: "Text", at: { [WGHT]: 350 } }, [
+      { id: "m2", name: "Bold", at: { [WGHT]: 700 }, glyphs: [drawn] },
+    ]);
 
     // The first weight keeps its own name, which is why it is written down at
     // all: "Text" is something the style name does not say.
@@ -221,9 +219,7 @@ describe("whether two drawings of a letter can be blended", () => {
   it("refuses composites built out of different pieces", () => {
     const piece = (name: string): Glyph => ({
       ...glyph("aacute", []),
-      components: [
-        { glyphName: name, transform: { a: 1, b: 0, c: 0, d: 1, dx: 0, dy: 0 } },
-      ],
+      components: [{ glyphName: name, transform: { a: 1, b: 0, c: 0, d: 1, dx: 0, dy: 0 } }],
     });
     expect(agrees(piece("a"), piece("a"))).toBe(true);
     expect(agrees(piece("a"), piece("e"))).toBe(false);

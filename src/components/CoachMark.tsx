@@ -11,10 +11,23 @@
 
 import * as React from "react";
 
-import { holdTipSlot, markTipSeen, subscribeToTips, TIPS, tipOnDuty, type TipId } from "@/help/tips";
+import {
+  holdTipSlot,
+  markTipSeen,
+  subscribeToTips,
+  TIPS,
+  tipOnDuty,
+  type TipId,
+} from "@/help/tips";
 import { cn } from "@/ui/lib/utils";
 
-export function CoachMark({ id, className }: { id: TipId; className?: string }): React.JSX.Element | null {
+export function CoachMark({
+  id,
+  className,
+}: {
+  id: TipId;
+  className?: string;
+}): React.JSX.Element | null {
   // Say this mark is on screen, so the rule about showing one at a time knows
   // it is in the running.
   React.useEffect(() => holdTipSlot(id), [id]);

@@ -75,7 +75,12 @@ const POINT_BUDGET = { rim: 504, everything: 355 };
 describe("the shadow", () => {
   it("reaches as far as it is thrown, and no further", () => {
     const reach = 1.5;
-    const thrown = put("H", cast((one) => { one.extrude = { on: true, distance: reach, angle: 0 }; }));
+    const thrown = put(
+      "H",
+      cast((one) => {
+        one.extrude = { on: true, distance: reach, angle: 0 };
+      }),
+    );
     const was = contoursBounds(plain("H"));
     const now = contoursBounds(thrown);
 
@@ -119,7 +124,9 @@ describe("the shadow", () => {
       [box],
       [],
       scaleOf(SANS),
-      cast((one) => { one.extrude = { on: true, distance: 2, angle: -45 }; }),
+      cast((one) => {
+        one.extrude = { on: true, distance: 2, angle: -45 };
+      }),
       "winding",
     );
 
@@ -155,13 +162,22 @@ describe("the shadow", () => {
      * angle is exactly what happened to pass.
      */
     const hole = (contours: Contour[]): number =>
-      Math.abs(contours.filter((one) => contourArea(one) < 0).reduce((t, o) => t + contourArea(o), 0));
+      Math.abs(
+        contours.filter((one) => contourArea(one) < 0).reduce((t, o) => t + contourArea(o), 0),
+      );
 
     for (const angle of [0, -45, 90, 150]) {
       let last = hole(plain("o"));
       expect(last, `${angle}`).toBeGreaterThan(0);
       for (const distance of [0.1, 0.25, 0.5, 1, 1.5, 2]) {
-        const now = hole(put("o", cast((one) => { one.extrude = { on: true, distance, angle }; })));
+        const now = hole(
+          put(
+            "o",
+            cast((one) => {
+              one.extrude = { on: true, distance, angle };
+            }),
+          ),
+        );
         expect(now, `o at ${distance} stems, ${angle} degrees`).toBeGreaterThan(0);
         expect(now, `o at ${distance} stems, ${angle} degrees`).toBeLessThan(last);
         last = now;
@@ -181,12 +197,19 @@ describe("the shadow", () => {
      */
     const before = plain("O");
     const hole = (contours: Contour[]): number =>
-      Math.abs(contours.filter((one) => contourArea(one) < 0).reduce((t, o) => t + contourArea(o), 0));
+      Math.abs(
+        contours.filter((one) => contourArea(one) < 0).reduce((t, o) => t + contourArea(o), 0),
+      );
 
     let last = hole(before);
     expect(last).toBeGreaterThan(0);
     for (const distance of [0.5, 1, 1.5, 2]) {
-      const thrown = put("O", cast((one) => { one.extrude = { on: true, distance, angle: 0 }; }));
+      const thrown = put(
+        "O",
+        cast((one) => {
+          one.extrude = { on: true, distance, angle: 0 };
+        }),
+      );
       const now = hole(thrown);
       expect(now).toBeGreaterThan(0);
       expect(now).toBeLessThan(last);
@@ -196,8 +219,22 @@ describe("the shadow", () => {
 
   it("throws the way it is pointed", () => {
     const was = contoursBounds(plain("H"));
-    const up = contoursBounds(put("H", cast((one) => { one.extrude = { on: true, distance: 1, angle: 90 }; })));
-    const down = contoursBounds(put("H", cast((one) => { one.extrude = { on: true, distance: 1, angle: -90 }; })));
+    const up = contoursBounds(
+      put(
+        "H",
+        cast((one) => {
+          one.extrude = { on: true, distance: 1, angle: 90 };
+        }),
+      ),
+    );
+    const down = contoursBounds(
+      put(
+        "H",
+        cast((one) => {
+          one.extrude = { on: true, distance: 1, angle: -90 };
+        }),
+      ),
+    );
 
     expect(up.yMax).toBeGreaterThan(was.yMax);
     expect(up.yMin).toBeCloseTo(was.yMin, 0);
@@ -210,7 +247,14 @@ describe("the rim", () => {
   it("grows the letter out by what it is asked for", () => {
     const width = 0.3;
     const was = contoursBounds(plain("H"));
-    const now = contoursBounds(put("H", cast((one) => { one.outline = { on: true, width }; })));
+    const now = contoursBounds(
+      put(
+        "H",
+        cast((one) => {
+          one.outline = { on: true, width };
+        }),
+      ),
+    );
     const grew = width * SANS.pen.weight;
     // Every side, and each by the same amount, which is what makes it a rim
     // rather than a shadow. Loosely, because the figure it grows by is a
@@ -234,12 +278,21 @@ describe("the rim", () => {
      * light face will lose them altogether.
      */
     const hole = (contours: Contour[]): number =>
-      Math.abs(contours.filter((one) => contourArea(one) < 0).reduce((t, o) => t + contourArea(o), 0));
+      Math.abs(
+        contours.filter((one) => contourArea(one) < 0).reduce((t, o) => t + contourArea(o), 0),
+      );
 
     let last = hole(plain("o"));
     expect(last).toBeGreaterThan(0);
     for (const width of [0.1, 0.2, 0.3]) {
-      const now = hole(put("o", cast((one) => { one.outline = { on: true, width }; })));
+      const now = hole(
+        put(
+          "o",
+          cast((one) => {
+            one.outline = { on: true, width };
+          }),
+        ),
+      );
       expect(now).toBeLessThan(last);
       last = now;
     }
@@ -265,7 +318,13 @@ describe("the rim", () => {
     const drawn = drawLetter("k", flared)!;
     expect(points(drawn.contours)).toBeLessThan(60);
 
-    const rim = put("k", cast((one) => { one.outline = { on: true, width: 0.4 }; }), flared);
+    const rim = put(
+      "k",
+      cast((one) => {
+        one.outline = { on: true, width: 0.4 };
+      }),
+      flared,
+    );
     expect(points(rim)).toBeLessThan(POINT_BUDGET.rim);
 
     const everything = castInk(
@@ -292,7 +351,9 @@ describe("nothing added breaks a letter", () => {
      * which is exactly how the spike on a Sans a and the hairline through a
      * thrown H were found.
      */
-    const solid = letterNames().filter((name) => /^[A-Za-z]$/.test(name) && name !== "i" && name !== "j");
+    const solid = letterNames().filter(
+      (name) => /^[A-Za-z]$/.test(name) && name !== "i" && name !== "j",
+    );
     const everything = cast((one) => {
       one.extrude = { on: true, distance: 1.2, angle: -45 };
       one.spur = { on: true, size: 0.4 };
@@ -324,7 +385,9 @@ describe("which layer goes first", () => {
      */
     const cuts: Cuts = noCuts();
     cuts.slot = { on: true, count: 3, width: 0.34, angle: 0, inset: 0.1 };
-    const shadow = cast((one) => { one.extrude = { on: true, distance: 1.5, angle: 0 }; });
+    const shadow = cast((one) => {
+      one.extrude = { on: true, distance: 1.5, angle: 0 };
+    });
 
     const drawn = drawLetter("H", SANS)!;
     const scale = scaleOf(SANS);

@@ -14,7 +14,7 @@
  * pick.
  */
 
-import * as React from "react";
+import type * as React from "react";
 
 import { NumberField } from "./NumberField";
 import { store, useAppState } from "@/state/useStore";
@@ -154,8 +154,8 @@ export function PenPanel({ glyphName }: { glyphName: string }): React.JSX.Elemen
 
       {expanded ? (
         <p className="text-2xs text-muted-foreground" data-pen-expanded>
-          The ink is the letter now, so the pen no longer moves it. Go back to strokes to write
-          with it again.
+          The ink is the letter now, so the pen no longer moves it. Go back to strokes to write with
+          it again.
         </p>
       ) : null}
 
@@ -246,7 +246,8 @@ export function PenPanel({ glyphName }: { glyphName: string }): React.JSX.Elemen
               onClick={() =>
                 chosen
                   ? store.setStopPen(glyphName, chosen.stroke, chosen.stop, null)
-                  : store.usePen(null)
+                  : // biome-ignore lint/correctness/useHookAtTopLevel: store.usePen is a method on the document store, not a React hook.
+                    store.usePen(null)
               }
               data-free-pen
               title="Let this one hold its own numbers, so changing the saved pen no longer moves it."
@@ -287,7 +288,8 @@ export function PenPanel({ glyphName }: { glyphName: string }): React.JSX.Elemen
                 onClick={() =>
                   chosen
                     ? store.setStopPen(glyphName, chosen.stroke, chosen.stop, saved.id)
-                    : store.usePen(saved.id)
+                    : // biome-ignore lint/correctness/useHookAtTopLevel: store.usePen is a method on the document store, not a React hook.
+                      store.usePen(saved.id)
                 }
                 title={`${Math.round(saved.width)} wide, blade ${saved.contrast}, held at ${saved.angle}°. Change it and every stroke using it follows.`}
                 className={cn(

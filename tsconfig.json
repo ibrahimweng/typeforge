@@ -17,5 +17,15 @@
     "types": ["vite/client", "node"],
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["src", "vite.config.ts"]
+  /*
+   * The tests are checked too.
+   *
+   * They were not, and it showed: splitting editor.spec.ts left one file
+   * referring to a name it had not imported, `tsc -b --noEmit` said nothing,
+   * and it surfaced twenty minutes into a browser run as a ReferenceError.
+   * Five thousand lines of e2e and the whole of test/ had no type checking at
+   * all, which is a strange place to leave a project this strict everywhere
+   * else.
+   */
+  "include": ["src", "test", "e2e", "scripts", "vite.config.ts", "playwright.config.ts"]
 }

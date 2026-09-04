@@ -21,15 +21,7 @@ import { toTypeface } from "@/forge/typeface";
 import { startFrom } from "@/forge/document";
 import { drawLetter } from "@/forge/build";
 import { troubles } from "@/forge/health";
-import {
-  BASES,
-  DIDONE,
-  GEOMETRIC,
-  SANS,
-  SERIF,
-  TYPEWRITER,
-  type Style,
-} from "@/forge/style";
+import { BASES, DIDONE, GEOMETRIC, SANS, SERIF, TYPEWRITER, type Style } from "@/forge/style";
 import type { Typeface } from "@/font/types";
 import { idFor, search, type LibraryFont } from "./catalogue";
 import { nearestWeight } from "./download";
@@ -86,9 +78,7 @@ describe("measuring a font by looking at it", () => {
   it("reads a lean, and reads none where there is none", async () => {
     const upright = measure(await fontFrom(SANS));
     expect(upright.slant).toBe(0);
-    const leaning = measure(
-      await fontFrom({ ...SANS, metrics: { ...SANS.metrics, slant: 12 } }),
-    );
+    const leaning = measure(await fontFrom({ ...SANS, metrics: { ...SANS.metrics, slant: 12 } }));
     expect(leaning.slant).toBeGreaterThan(9);
     expect(leaning.slant).toBeLessThan(15);
   });
@@ -114,7 +104,16 @@ describe("measuring a font by looking at it", () => {
   it("says nothing rather than guessing when the letters are missing", () => {
     const bare: Typeface = {
       ...({} as Typeface),
-      meta: { familyName: "Bare", styleName: "", version: "", designer: "", manufacturer: "", copyright: "", license: "", weightClass: 400 },
+      meta: {
+        familyName: "Bare",
+        styleName: "",
+        version: "",
+        designer: "",
+        manufacturer: "",
+        copyright: "",
+        license: "",
+        weightClass: 400,
+      },
       unitsPerEm: 1000,
       metrics: { ascender: 750, descender: -250, capHeight: 700, xHeight: 500, lineGap: 0 },
       glyphs: [],
@@ -146,7 +145,17 @@ describe("seeding a drawing from a measurement", () => {
   });
 
   it("carries the proportions across, whatever the two fonts call an em", async () => {
-    const source = { ...SANS, metrics: { ...SANS.metrics, unitsPerEm: 2048, xHeight: 1100, capHeight: 1450, ascender: 1600, descender: -500 } };
+    const source = {
+      ...SANS,
+      metrics: {
+        ...SANS.metrics,
+        unitsPerEm: 2048,
+        xHeight: 1100,
+        capHeight: 1450,
+        ascender: 1600,
+        descender: -500,
+      },
+    };
     const seeded = seedFrom(measure(await fontFrom(source)));
     const em = seeded.style.metrics.unitsPerEm;
     // A ratio in, the same ratio out.
@@ -160,7 +169,9 @@ describe("seeding a drawing from a measurement", () => {
       for (const letter of "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ") {
         const drawn = drawLetter(letter, seeded.style, "");
         expect(drawn, `${base.name} -> ${seeded.base}: ${letter}`).not.toBeNull();
-        expect(drawn!.contours.length, `${base.name} -> ${seeded.base}: ${letter}`).toBeGreaterThan(0);
+        expect(drawn!.contours.length, `${base.name} -> ${seeded.base}: ${letter}`).toBeGreaterThan(
+          0,
+        );
       }
     }
   }, 120_000);
@@ -169,7 +180,10 @@ describe("seeding a drawing from a measurement", () => {
     for (const base of [SANS, SERIF, DIDONE, GEOMETRIC]) {
       const seeded = seedFrom(measure(await fontFrom(base)), "Seeded");
       const forge = { ...startFrom(seeded.style), style: seeded.style };
-      expect(troubles(forge).map((trouble) => trouble.what), base.name).toEqual([]);
+      expect(
+        troubles(forge).map((trouble) => trouble.what),
+        base.name,
+      ).toEqual([]);
     }
   }, 60_000);
 
@@ -254,10 +268,38 @@ describe("borrowing a font's rhythm", () => {
 
 describe("the catalogue", () => {
   const fonts: LibraryFont[] = [
-    { id: "roboto", family: "Roboto", category: "sans-serif", weights: [400], styles: ["normal"], variable: false },
-    { id: "roboto-slab", family: "Roboto Slab", category: "serif", weights: [400], styles: ["normal"], variable: false },
-    { id: "lora", family: "Lora", category: "serif", weights: [400, 700], styles: ["normal"], variable: false },
-    { id: "arvo", family: "Arvo", category: "serif", weights: [400], styles: ["normal"], variable: false },
+    {
+      id: "roboto",
+      family: "Roboto",
+      category: "sans-serif",
+      weights: [400],
+      styles: ["normal"],
+      variable: false,
+    },
+    {
+      id: "roboto-slab",
+      family: "Roboto Slab",
+      category: "serif",
+      weights: [400],
+      styles: ["normal"],
+      variable: false,
+    },
+    {
+      id: "lora",
+      family: "Lora",
+      category: "serif",
+      weights: [400, 700],
+      styles: ["normal"],
+      variable: false,
+    },
+    {
+      id: "arvo",
+      family: "Arvo",
+      category: "serif",
+      weights: [400],
+      styles: ["normal"],
+      variable: false,
+    },
   ];
 
   it("puts what you typed first, not merely somewhere", () => {

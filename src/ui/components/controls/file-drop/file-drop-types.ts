@@ -1,9 +1,6 @@
 import type { ReactElement, ReactNode } from "react";
 
-import type {
-  ActionControlIconName,
-  ActionsControlItemState,
-} from "../actions/actions-control";
+import type { ActionControlIconName, ActionsControlItemState } from "../actions/actions-control";
 
 export type FileDropAssetKind = "file" | "image";
 
@@ -81,19 +78,13 @@ export type FileDropCollectionActions = {
   itemLabel?: string;
   name: string;
   removeLabel?: string;
-  renderItemContent?: (
-    item: FileDropPresentationItem,
-    index: number,
-  ) => ReactNode;
+  renderItemContent?: (item: FileDropPresentationItem, index: number) => ReactNode;
 };
 
 type FileDropControlSharedProps<AssetKind extends string> = {
   collectionActions?: FileDropCollectionActions;
   onClear?: () => void;
-  onItemRemove?: (
-    item: FileDropPresentationItem<AssetKind>,
-    index: number,
-  ) => void;
+  onItemRemove?: (item: FileDropPresentationItem<AssetKind>, index: number) => void;
   onItemsReorder?: (items: FileDropPresentationItem<AssetKind>[]) => void;
 };
 
@@ -109,10 +100,7 @@ type FileDropPresentationControlProps<
   onFilesSelect: (files: File[]) => void;
   onFolderSelect?: (files: File[]) => void;
   onAction?: (value: string) => void;
-  onItemSelect?: (
-    item: FileDropPresentationItem<AssetKind>,
-    index: number,
-  ) => void;
+  onItemSelect?: (item: FileDropPresentationItem<AssetKind>, index: number) => void;
   onPreviewRemove?: never;
   onPreviewReorder?: never;
   onPreviewTransform?: never;
@@ -121,33 +109,30 @@ type FileDropPresentationControlProps<
   previews?: never;
 };
 
-type FileDropLegacyControlProps =
-  FileDropControlSharedProps<FileDropAssetKind> & {
-    accept?: string;
-    assetKind?: FileDropAssetKind;
-    multiple?: boolean;
-    onFileSelect?: (file: File) => void;
-    onFilesSelect?: (files: File[]) => void;
-    onFolderSelect?: never;
-    onAction?: never;
-    onItemRemove?: never;
-    onItemSelect?: never;
-    onItemsReorder?: never;
-    onPreviewRemove?: (preview: FileDropPreview, index: number) => void;
-    onPreviewReorder?: (orderedPreviews: FileDropPreview[]) => void;
-    onPreviewTransform?: (
-      preview: FileDropPreview,
-      operation: FileDropImageTransformOperation,
-    ) => void;
-    presentation?: undefined;
-    preview?: FileDropPreview;
-    previews?: readonly FileDropPreview[];
-  };
+type FileDropLegacyControlProps = FileDropControlSharedProps<FileDropAssetKind> & {
+  accept?: string;
+  assetKind?: FileDropAssetKind;
+  multiple?: boolean;
+  onFileSelect?: (file: File) => void;
+  onFilesSelect?: (files: File[]) => void;
+  onFolderSelect?: never;
+  onAction?: never;
+  onItemRemove?: never;
+  onItemSelect?: never;
+  onItemsReorder?: never;
+  onPreviewRemove?: (preview: FileDropPreview, index: number) => void;
+  onPreviewReorder?: (orderedPreviews: FileDropPreview[]) => void;
+  onPreviewTransform?: (
+    preview: FileDropPreview,
+    operation: FileDropImageTransformOperation,
+  ) => void;
+  presentation?: undefined;
+  preview?: FileDropPreview;
+  previews?: readonly FileDropPreview[];
+};
 
 export type FileDropControlProps<
   AssetKind extends string = FileDropAssetKind,
   Feedback = unknown,
   Status = unknown,
-> =
-  | FileDropLegacyControlProps
-  | FileDropPresentationControlProps<AssetKind, Feedback, Status>;
+> = FileDropLegacyControlProps | FileDropPresentationControlProps<AssetKind, Feedback, Status>;

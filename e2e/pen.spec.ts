@@ -38,9 +38,18 @@ test("draws a closed curve by holding and pulling", async ({ page }) => {
    * draw a perfectly good `o` and get a lozenge.
    */
   for (const [at, to] of [
-    [{ x: 950, y: 250 }, { x: 1000, y: 210 }],
-    [{ x: 1050, y: 350 }, { x: 1090, y: 400 }],
-    [{ x: 880, y: 380 }, { x: 850, y: 420 }],
+    [
+      { x: 950, y: 250 },
+      { x: 1000, y: 210 },
+    ],
+    [
+      { x: 1050, y: 350 },
+      { x: 1090, y: 400 },
+    ],
+    [
+      { x: 880, y: 380 },
+      { x: 850, y: 420 },
+    ],
   ] as const) {
     await page.mouse.move(at.x, at.y);
     await page.mouse.down();
@@ -111,7 +120,10 @@ test("picks points by kind, and walks the path", async ({ page }) => {
   await page.locator("[data-select-row] button", { hasText: "None" }).click();
   await expect(scope).toHaveText("none picked");
 
-  await page.locator("canvas").first().click({ position: { x: 40, y: 40 } });
+  await page
+    .locator("canvas")
+    .first()
+    .click({ position: { x: 40, y: 40 } });
   await page.keyboard.press("Tab");
   await expect(scope).toHaveText("1 point");
   await page.keyboard.press("ControlOrMeta+a");

@@ -19,17 +19,19 @@ import { ALSO_DRAWS, codepointOfAccented } from "./accents";
 import { ready as readyToCut } from "@/font/boolean";
 import { correctDirection } from "@/font/outline";
 import { removeOverlaps } from "@/font/overlap";
-import {
-  DEFAULT_PARAMS,
-  emptyTypeface,
-  type Glyph,
-  type Typeface,
-} from "@/font/types";
+import { DEFAULT_PARAMS, emptyTypeface, type Glyph, type Typeface } from "@/font/types";
 import { builtFrom, letterNames } from "./build";
 import { openWaveBook, type WaveBook } from "./shapes";
 import { kernsFor } from "./kern";
 import { anythingCut, draw, drawnEnds, drawnHigh, proof, type Forge } from "./document";
-import { alternateName, boundaryEnds, boundaryName, boundaryRules, joinRules, joinsUp } from "./joins";
+import {
+  alternateName,
+  boundaryEnds,
+  boundaryName,
+  boundaryRules,
+  joinRules,
+  joinsUp,
+} from "./joins";
 
 /**
  * What each drawn glyph is called in Unicode.
@@ -134,7 +136,6 @@ const ALSO: Record<string, number[]> = {
     ]),
   ),
 };
-
 
 /*
  * The rest of them, worked out rather than listed.
@@ -255,10 +256,7 @@ export interface ForgeExportOptions {
  * Slow enough to be worth doing on request rather than on every keystroke: the
  * boolean fuse is the expensive part, and it is only needed on the way out.
  */
-export async function toTypeface(
-  forge: Forge,
-  options: ForgeExportOptions,
-): Promise<Typeface> {
+export async function toTypeface(forge: Forge, options: ForgeExportOptions): Promise<Typeface> {
   /*
    * The library the cuts are made of, before a single letter is drawn.
    *
@@ -301,51 +299,51 @@ export async function toTypeface(
   // and whoever was using it is owed it back: see `WaveBook`.
   const hadWaves = openWaveBook(options.waves ?? null);
   try {
-  const names = letterNames();
-  for (let at = 0; at < names.length; at++) {
-    const name = names[at];
-    /*
-     * Handed back to the browser every so often, so a textured export does not
-     * look like a hung page.
-     *
-     * A plain font is drawn in a couple of seconds and would not need this. One
-     * with a rough edge on it is twenty times that, and twenty-five seconds of
-     * one unbroken task is a window that answers nothing -- no spinner turns,
-     * no button can be pressed, and some browsers offer to kill the tab. The
-     * work is not made any shorter by breaking it up; it is made survivable.
-     */
-    if (options.effects && at % 12 === 0) await Promise.resolve();
-    const drawn = options.effects ? proof(name, forge) : draw(name, forge);
-    if (!drawn) continue;
-    let contours = drawn.contours;
-    if (options.merge && contours.length > 1) {
+    const names = letterNames();
+    for (let at = 0; at < names.length; at++) {
+      const name = names[at];
       /*
-       * Believed rather than guessed at, and set afterwards rather than
-       * before. A letter out of the pen already says which of its contours is
-       * a counter, by which way round the sweep drew it -- so the fuse is told
-       * `winding` and reads it. Told to work it out by nesting instead it
-       * filled the counter of the single-storey a, because that counter sits
-       * inside the ring and inside the stem laid across it, and two is even.
+       * Handed back to the browser every so often, so a textured export does not
+       * look like a hung page.
        *
-       * Nothing sets the direction on the way in any more either. Nesting is
-       * exactly as unreliable there, and on overlapping strokes it is worse
-       * than unreliable: with no counter to be inside anything, an x is two
-       * bars crossing and which of them counts as enclosed by the other moves
-       * about with the weight.
+       * A plain font is drawn in a couple of seconds and would not need this. One
+       * with a rough edge on it is twenty times that, and twenty-five seconds of
+       * one unbroken task is a window that answers nothing -- no spinner turns,
+       * no button can be pressed, and some browsers offer to kill the tab. The
+       * work is not made any shorter by breaking it up; it is made survivable.
        */
-      contours = correctDirection(await removeOverlaps(contours, "winding"), "truetype");
+      if (options.effects && at % 12 === 0) await Promise.resolve();
+      const drawn = options.effects ? proof(name, forge) : draw(name, forge);
+      if (!drawn) continue;
+      let contours = drawn.contours;
+      if (options.merge && contours.length > 1) {
+        /*
+         * Believed rather than guessed at, and set afterwards rather than
+         * before. A letter out of the pen already says which of its contours is
+         * a counter, by which way round the sweep drew it -- so the fuse is told
+         * `winding` and reads it. Told to work it out by nesting instead it
+         * filled the counter of the single-storey a, because that counter sits
+         * inside the ring and inside the stem laid across it, and two is even.
+         *
+         * Nothing sets the direction on the way in any more either. Nesting is
+         * exactly as unreliable there, and on overlapping strokes it is worse
+         * than unreliable: with no counter to be inside anything, an x is two
+         * bars crossing and which of them counts as enclosed by the other moves
+         * about with the weight.
+         */
+        contours = correctDirection(await removeOverlaps(contours, "winding"), "truetype");
+      }
+      glyphs.push({
+        name,
+        unicodes: codepointsFor(name),
+        advanceWidth: drawn.advanceWidth,
+        contours,
+        components: [],
+        anchors: [],
+        params: {},
+        dirty: false,
+      });
     }
-    glyphs.push({
-      name,
-      unicodes: codepointsFor(name),
-      advanceWidth: drawn.advanceWidth,
-      contours,
-      components: [],
-      anchors: [],
-      params: {},
-      dirty: false,
-    });
-  }
   } finally {
     openWaveBook(hadWaves);
   }
@@ -487,12 +485,7 @@ function notdef(forge: Forge): Glyph {
     ],
   });
   const outer = box(metrics.sidebearing, 0, width, height);
-  const inner = box(
-    metrics.sidebearing + inset,
-    inset,
-    width - inset * 2,
-    height - inset * 2,
-  );
+  const inner = box(metrics.sidebearing + inset, inset, width - inset * 2, height - inset * 2);
   inner.nodes.reverse();
   return {
     name: ".notdef",

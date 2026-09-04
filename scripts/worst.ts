@@ -26,10 +26,7 @@ import { sweepAll, toleranceFor } from "@/quill/sweep";
 import { nearestOnPaths } from "@/quill/curve";
 
 await ready();
-const { typeface } = await importFont(
-  new Uint8Array(readFileSync(process.env.FONT!)),
-  "ref.ttf",
-);
+const { typeface } = await importFont(new Uint8Array(readFileSync(process.env.FONT!)), "ref.ttf");
 const upm = typeface.unitsPerEm ?? 1000;
 const byChar = new Map<string, (typeof typeface.glyphs)[number]>();
 for (const glyph of typeface.glyphs)

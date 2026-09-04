@@ -5,11 +5,7 @@ import { outlineControlSurfaceClassName } from "../../lib/control-outline";
 import { cn } from "../../lib/utils";
 import { Button } from "../primitives";
 import { PrimitiveArrowIcon } from "../primitives";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "../primitives";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "../primitives";
 import { ScrollFade } from "../primitives";
 import { XIcon, CheckIcon, MagnifyingGlassIcon } from "@phosphor-icons/react";
 const Combobox = ComboboxPrimitive.Root;
@@ -35,17 +31,11 @@ const comboboxPopupSurfaceClassName = cn(
   comboboxPopupSurfaceBaseClassName,
   "max-h-(--available-height) w-[min(var(--anchor-width),calc(var(--spacing)*64))] max-w-[min(var(--available-width),calc(var(--spacing)*64))] min-w-[min(calc(var(--anchor-width)+calc(var(--spacing)*7)),calc(var(--spacing)*64))] origin-(--transform-origin) duration-100 data-[chips=true]:min-w-[min(var(--anchor-width),calc(var(--spacing)*64))] data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
 );
-const ComboboxChipsSizeContext =
-  React.createContext<ComboboxFieldSize>("default");
-const useComboboxChipsSize = (): ComboboxFieldSize =>
-  React.useContext(ComboboxChipsSizeContext);
-const getComboboxInputButtonSize = (
-  size: ComboboxFieldSize,
-): "icon-xxs" | "icon-xs" =>
+const ComboboxChipsSizeContext = React.createContext<ComboboxFieldSize>("default");
+const useComboboxChipsSize = (): ComboboxFieldSize => React.useContext(ComboboxChipsSizeContext);
+const getComboboxInputButtonSize = (size: ComboboxFieldSize): "icon-xxs" | "icon-xs" =>
   size === "sm" || size === "default" ? "icon-xxs" : "icon-xs";
-const getComboboxPopupTypographyClassName = (
-  size: ComboboxFieldSize,
-): string =>
+const getComboboxPopupTypographyClassName = (size: ComboboxFieldSize): string =>
   size === "default"
     ? "text-[13px] leading-[1.125rem]"
     : size === "lg" || size === "xl"
@@ -100,10 +90,7 @@ function ComboboxClear({
       render={
         <Button
           data-slot="input-group-button"
-          className={cn(
-            "shadow-none",
-            comboboxButtonNoHoverBackgroundClassName,
-          )}
+          className={cn("shadow-none", comboboxButtonNoHoverBackgroundClassName)}
           size={buttonSize}
           variant="ghost-static"
         />
@@ -143,9 +130,7 @@ function ComboboxInput({
     >
       {isPopupSearch && (
         <InputGroupAddon align="inline-start">
-          <MagnifyingGlassIcon
-            className={cn(isLargeFieldSize ? "size-4" : "size-3.5")}
-          />
+          <MagnifyingGlassIcon className={cn(isLargeFieldSize ? "size-4" : "size-3.5")} />
         </InputGroupAddon>
       )}
       <ComboboxPrimitive.Input
@@ -252,11 +237,7 @@ function ComboboxList({ className, ...props }: ComboboxPrimitive.List.Props) {
   );
 }
 
-function ComboboxItem({
-  className,
-  children,
-  ...props
-}: ComboboxPrimitive.Item.Props) {
+function ComboboxItem({ className, children, ...props }: ComboboxPrimitive.Item.Props) {
   const itemContent =
     typeof children === "string" || typeof children === "number" ? (
       <ScrollFade
@@ -293,21 +274,11 @@ function ComboboxItem({
   );
 }
 
-const ComboboxGroup = ({
-  className,
-  ...props
-}: ComboboxPrimitive.Group.Props) => (
-  <ComboboxPrimitive.Group
-    data-slot="combobox-group"
-    className={cn(className)}
-    {...props}
-  />
+const ComboboxGroup = ({ className, ...props }: ComboboxPrimitive.Group.Props) => (
+  <ComboboxPrimitive.Group data-slot="combobox-group" className={cn(className)} {...props} />
 );
 
-function ComboboxLabel({
-  className,
-  ...props
-}: ComboboxPrimitive.GroupLabel.Props) {
+function ComboboxLabel({ className, ...props }: ComboboxPrimitive.GroupLabel.Props) {
   return (
     <ComboboxPrimitive.GroupLabel
       data-slot="combobox-label"
@@ -337,10 +308,7 @@ function ComboboxEmpty({ className, ...props }: ComboboxPrimitive.Empty.Props) {
   );
 }
 
-function ComboboxSeparator({
-  className,
-  ...props
-}: ComboboxPrimitive.Separator.Props) {
+function ComboboxSeparator({ className, ...props }: ComboboxPrimitive.Separator.Props) {
   return (
     <ComboboxPrimitive.Separator
       data-slot="combobox-separator"
@@ -401,13 +369,7 @@ function ComboboxChip({
 }) {
   const size = useComboboxChipsSize();
   const removeButtonSize =
-    size === "xl"
-      ? "icon-lg"
-      : size === "lg"
-        ? "icon-sm"
-        : size === "sm"
-          ? "icon-xxs"
-          : "icon-xs";
+    size === "xl" ? "icon-lg" : size === "lg" ? "icon-sm" : size === "sm" ? "icon-xxs" : "icon-xs";
 
   return (
     <ComboboxPrimitive.Chip
@@ -452,10 +414,7 @@ const comboboxChipVariants = cva(
   },
 );
 
-const ComboboxChipsInput = ({
-  className,
-  ...props
-}: ComboboxPrimitive.Input.Props) => (
+const ComboboxChipsInput = ({ className, ...props }: ComboboxPrimitive.Input.Props) => (
   <ComboboxPrimitive.Input
     data-slot="combobox-chip-input"
     className={cn("min-w-16 flex-1 outline-none", className)}

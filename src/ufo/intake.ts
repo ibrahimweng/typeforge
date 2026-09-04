@@ -155,7 +155,13 @@ export function filesFromZip(bytes: Uint8Array): UfoFiles | null {
 
 /** Whether some bytes are a zip, by the signature every zip opens with. */
 export function looksZipped(bytes: Uint8Array): boolean {
-  return bytes.length > 3 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
+  return (
+    bytes.length > 3 &&
+    bytes[0] === 0x50 &&
+    bytes[1] === 0x4b &&
+    bytes[2] === 0x03 &&
+    bytes[3] === 0x04
+  );
 }
 
 /**

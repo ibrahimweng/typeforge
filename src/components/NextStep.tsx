@@ -182,9 +182,7 @@ export function NextStep({
         },
       };
 
-    const errors = state.checks.findings.filter(
-      (finding) => finding.severity === "error",
-    ).length;
+    const errors = state.checks.findings.filter((finding) => finding.severity === "error").length;
     if (errors > 0)
       return {
         id: "edit-fix",
@@ -262,6 +260,7 @@ export function NextStep({
             "Open kerning" to both of them. The key reaches a screen reader
             through the title instead.
           */}
+          {/* biome-ignore lint/a11y/noAriaHiddenOnFocusable: kbd takes no focus; the button's own name carries the shortcut. */}
           <kbd aria-hidden="true" className="font-sans text-[10px] opacity-70">
             ⌘⏎
           </kbd>

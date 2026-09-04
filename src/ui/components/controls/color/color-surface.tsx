@@ -1,18 +1,11 @@
 "use client";
 
-import type {
-  CSSProperties,
-  PointerEvent as ReactPointerEvent,
-  RefObject,
-} from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent, RefObject } from "react";
 
-import { type HsvColor } from "../../../lib/style-guide-color-utils";
+import type { HsvColor } from "../../../lib/style-guide-color-utils";
 import { cn } from "../../../lib/utils";
-import {
-  getColorChannels,
-  type ColorSurfaceModel,
-} from "./style-guide-color-picker-channel-utils";
-import { type ColorSurfacePosition } from "./style-guide-color-picker-surface-geometry";
+import { getColorChannels, type ColorSurfaceModel } from "./style-guide-color-picker-channel-utils";
+import type { ColorSurfacePosition } from "./style-guide-color-picker-surface-geometry";
 
 type ColorSurfaceProps = {
   surfaceRef: RefObject<HTMLDivElement | null>;
@@ -110,9 +103,7 @@ export function getColorSurfaceStyle({
     return {
       backgroundImage: [
         "linear-gradient(to bottom, #fff 0%, transparent 50%, #000 100%)",
-        `linear-gradient(to right, hsl(${resolvedHue} 0% 50%), hsl(${
-          resolvedHue
-        } 100% 50%))`,
+        `linear-gradient(to right, hsl(${resolvedHue} 0% 50%), hsl(${resolvedHue} 100% 50%))`,
       ].join(", "),
     };
   }
@@ -148,6 +139,7 @@ export function ColorSurface({
       ref={surfaceRef}
       data-slot="style-guide-color-surface"
       data-color-model={colorModel}
+      role="group"
       aria-label={surfaceLabel}
       className={cn(
         "group/surface relative aspect-square w-full shrink-0 touch-none rounded-t-[8px]",

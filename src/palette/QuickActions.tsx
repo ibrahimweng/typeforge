@@ -42,7 +42,11 @@ export interface QuickActionsProps {
   shell: Shell;
 }
 
-export function QuickActions({ open, onClose, shell }: QuickActionsProps): React.JSX.Element | null {
+export function QuickActions({
+  open,
+  onClose,
+  shell,
+}: QuickActionsProps): React.JSX.Element | null {
   const [typed, setTyped] = React.useState("");
   const [at, setAt] = React.useState(0);
   /** The row whose slider is showing, if any. */
@@ -150,8 +154,10 @@ export function QuickActions({ open, onClose, shell }: QuickActionsProps): React
   const confirm = confirming;
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: the backdrop is presentation; Escape is the keyboard path.
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-6 pt-[12vh]"
+      role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -248,10 +254,7 @@ function SearchMark({ mark }: { mark: string | null }): React.JSX.Element {
   return (
     <span
       aria-hidden
-      className={cn(
-        "font-mono text-sm",
-        found ? "text-accent" : "text-muted-foreground",
-      )}
+      className={cn("font-mono text-sm", found ? "text-accent" : "text-muted-foreground")}
       title={found ? `Only ${found.label}` : undefined}
     >
       {mark ?? "⌘"}
@@ -264,11 +267,7 @@ function Footer({ mark, empty }: { mark: string | null; empty: boolean }): React
   return (
     <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-2 text-[11px] text-muted-foreground">
       <span>
-        {found
-          ? `Only ${found.label}`
-          : empty
-            ? "Recent, then somewhere to start"
-            : "Everything"}
+        {found ? `Only ${found.label}` : empty ? "Recent, then somewhere to start" : "Everything"}
       </span>
       <span className="flex items-center gap-3">
         {PREFIXES.map((one) => (
@@ -300,6 +299,7 @@ function Row({ item, at, chosen, adjusting, first, onHover, onPick }: RowProps):
           {item.group}
         </p>
       )}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: an option is driven from the listbox above it, by arrow keys and Enter. */}
       <div
         data-at={at}
         role="option"
@@ -307,10 +307,7 @@ function Row({ item, at, chosen, adjusting, first, onHover, onPick }: RowProps):
         tabIndex={-1}
         onMouseMove={onHover}
         onClick={onPick}
-        className={cn(
-          "cursor-pointer px-4 py-2",
-          chosen ? "bg-accent/15" : "hover:bg-muted/40",
-        )}
+        className={cn("cursor-pointer px-4 py-2", chosen ? "bg-accent/15" : "hover:bg-muted/40")}
       >
         <div className="flex items-baseline gap-2">
           <span className="truncate text-xs-plus text-foreground">{item.label}</span>
@@ -339,10 +336,10 @@ function Row({ item, at, chosen, adjusting, first, onHover, onPick }: RowProps):
           )}
         </div>
         {/*
-          * The hint is the reason the result came back, so it is shown rather
-          * than hidden behind a hover: a search that answers a description has
-          * to say what it thinks you asked for.
-          */}
+         * The hint is the reason the result came back, so it is shown rather
+         * than hidden behind a hover: a search that answers a description has
+         * to say what it thinks you asked for.
+         */}
         <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
           {item.hint}
         </p>
@@ -372,6 +369,8 @@ function Adjuster({ item }: { item: Item }): React.JSX.Element | null {
 
   if (item.adjust) {
     return (
+      // biome-ignore lint/a11y/useKeyWithClickEvents: not a control: it stops a click on the slider or buttons inside from picking the row.
+      // biome-ignore lint/a11y/noStaticElementInteractions: not a control: it stops a click on the slider or buttons inside from picking the row.
       <div className="mt-2" onClick={(event) => event.stopPropagation()}>
         <SliderControl
           name={item.short ?? item.label}
@@ -408,6 +407,8 @@ function Adjuster({ item }: { item: Item }): React.JSX.Element | null {
   if (item.choose) {
     const now = item.choose.read();
     return (
+      // biome-ignore lint/a11y/useKeyWithClickEvents: not a control: it stops a click on the slider or buttons inside from picking the row.
+      // biome-ignore lint/a11y/noStaticElementInteractions: not a control: it stops a click on the slider or buttons inside from picking the row.
       <div className="mt-2 flex flex-wrap gap-1" onClick={(event) => event.stopPropagation()}>
         {item.choose.options.map((option) => (
           <button
@@ -445,8 +446,10 @@ function Confirm({
   const goOn = React.useRef<HTMLButtonElement>(null);
   React.useEffect(() => goOn.current?.focus(), []);
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: the backdrop is presentation; Escape is the keyboard path.
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-6"
+      role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}

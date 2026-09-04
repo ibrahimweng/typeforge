@@ -5,19 +5,9 @@ import * as React from "react";
 import { cn } from "../../../lib/utils";
 import { ControlFieldLabel } from "../../control-layout";
 import { EditableSliderValueLabel, Field } from "../../primitives";
-import {
-  createControlHistoryGroupId,
-  type ControlChangeMeta,
-} from "../control-types";
-import type {
-  VectorControlProps,
-  VectorControlValue,
-} from "./vector-control-types";
-import {
-  getDefaultPadCoordinateMode,
-  getVectorPoint,
-  pointFromEvent,
-} from "./vector-pad-geometry";
+import { createControlHistoryGroupId, type ControlChangeMeta } from "../control-types";
+import type { VectorControlProps, VectorControlValue } from "./vector-control-types";
+import { getDefaultPadCoordinateMode, getVectorPoint, pointFromEvent } from "./vector-pad-geometry";
 import { VectorPadGuides, VectorPadHandle } from "./vector-pad-parts";
 import { vectorPadBackgroundImages } from "./vector-pad-variants";
 import {
@@ -49,8 +39,7 @@ export function VectorPadField({
   const [isPointerDragging, setIsPointerDragging] = React.useState(false);
   const normalizedX = formatVectorPadCoordinate(x);
   const normalizedY = formatVectorPadCoordinate(y);
-  const coordinateMode =
-    padCoordinateMode ?? getDefaultPadCoordinateMode(padVariant);
+  const coordinateMode = padCoordinateMode ?? getDefaultPadCoordinateMode(padVariant);
   const point = getVectorPoint(normalizedX, normalizedY, coordinateMode);
   const valueLabel = getVectorValueLabel(normalizedX, normalizedY);
   const vectorPadBackgroundImage = vectorPadBackgroundImages[padVariant];
@@ -60,11 +49,7 @@ export function VectorPadField({
   const resetX = formatVectorPadCoordinate(defaultValue?.x);
   const resetY = formatVectorPadCoordinate(defaultValue?.y);
   const accessibleName = name || "Vector";
-  const updateVector = (
-    nextX: string,
-    nextY: string,
-    meta?: ControlChangeMeta,
-  ) => {
+  const updateVector = (nextX: string, nextY: string, meta?: ControlChangeMeta) => {
     if (meta) {
       onValueChange?.({ x: nextX, y: nextY }, meta);
       return;
@@ -103,11 +88,7 @@ export function VectorPadField({
         const deltaY = event.clientY - dragStart.clientY;
 
         if (Math.hypot(deltaX, deltaY) < vectorPadAxisLockThresholdPx) {
-          updateVector(
-            dragStart.value.x,
-            dragStart.value.y,
-            getLiveHistoryMeta(),
-          );
+          updateVector(dragStart.value.x, dragStart.value.y, getLiveHistoryMeta());
           return;
         }
 
@@ -124,11 +105,7 @@ export function VectorPadField({
 
     axisLockRef.current = null;
 
-    updateVector(
-      nextValue.x,
-      nextValue.y,
-      getLiveHistoryMeta(),
-    );
+    updateVector(nextValue.x, nextValue.y, getLiveHistoryMeta());
   }
 
   function stopPointerDrag(): void {

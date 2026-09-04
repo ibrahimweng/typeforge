@@ -20,7 +20,8 @@ await ready();
 const { typeface } = await importFont(new Uint8Array(readFileSync(process.env.FONT!)), "ref.ttf");
 const upm = typeface.unitsPerEm ?? 1000;
 const byChar = new Map<string, (typeof typeface.glyphs)[number]>();
-for (const g of typeface.glyphs) for (const u of g.unicodes ?? []) byChar.set(String.fromCodePoint(u), g);
+for (const g of typeface.glyphs)
+  for (const u of g.unicodes ?? []) byChar.set(String.fromCodePoint(u), g);
 const paths = (cs: any[]) => cs.map((c) => flattenContour(c, 40));
 
 for (const ch of process.env.LETTERS ?? "vwy") {
@@ -35,7 +36,10 @@ for (const ch of process.env.LETTERS ?? "vwy") {
     let at = { x: 0, y: 0 };
     for (const p of from.flat()) {
       const d = nearestOnPaths(p, to);
-      if (d > far) { far = d; at = p; }
+      if (d > far) {
+        far = d;
+        at = p;
+      }
     }
     return `${far.toFixed(0)} at (${at.x.toFixed(0)},${at.y.toFixed(0)})`;
   };

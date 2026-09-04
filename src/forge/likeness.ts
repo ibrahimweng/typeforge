@@ -136,7 +136,13 @@ export function dialWidth(settings: Settings): number {
 
 /** The controls the dial moves, which are the controls the panel offers. */
 export interface Settings {
-  metrics: { xHeight: number; capHeight: number; ascender: number; descender: number; slant: number };
+  metrics: {
+    xHeight: number;
+    capHeight: number;
+    ascender: number;
+    descender: number;
+    slant: number;
+  };
   pen: { weight: number; contrast: number; angle: number };
   script: {
     height: number;

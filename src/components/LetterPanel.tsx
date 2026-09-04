@@ -43,7 +43,10 @@ const asText = (unicodes: number[]): string =>
   unicodes.map((one) => `U+${one.toString(16).toUpperCase().padStart(4, "0")}`).join(" ");
 
 export function parseCodepoints(text: string): number[] | null {
-  const parts = text.trim().split(/[\s,]+/).filter(Boolean);
+  const parts = text
+    .trim()
+    .split(/[\s,]+/)
+    .filter(Boolean);
   const out: number[] = [];
   for (const part of parts) {
     if (/^[Uu]\+[0-9a-fA-F]{1,6}$/.test(part)) {
@@ -93,7 +96,10 @@ export function LetterPanel(): React.JSX.Element | null {
   const commitCodes = (): void => {
     const parsed = parseCodepoints(codes);
     if (parsed === null) {
-      store.say("Write the character itself, or as U+0041. Several go separated by spaces.", "error");
+      store.say(
+        "Write the character itself, or as U+0041. Several go separated by spaces.",
+        "error",
+      );
       setCodes(asText(glyph.unicodes));
       return;
     }
@@ -138,12 +144,20 @@ export function LetterPanel(): React.JSX.Element | null {
       </label>
 
       <div className="flex flex-wrap gap-1">
-        <button type="button" onClick={() => store.duplicateGlyph(letter)} className={ACTION}
-          title="A copy of this letter under a new name. The copy answers to no character until you give it one.">
+        <button
+          type="button"
+          onClick={() => store.duplicateGlyph(letter)}
+          className={ACTION}
+          title="A copy of this letter under a new name. The copy answers to no character until you give it one."
+        >
           Duplicate
         </button>
-        <button type="button" onClick={() => state.typeface && store.addGlyph(freeNameNear(state.typeface, "newGlyph"))} className={ACTION}
-          title="A new, empty letter. Give it a name and a character, then draw in it.">
+        <button
+          type="button"
+          onClick={() => state.typeface && store.addGlyph(freeNameNear(state.typeface, "newGlyph"))}
+          className={ACTION}
+          title="A new, empty letter. Give it a name and a character, then draw in it."
+        >
           New letter
         </button>
         {/*
@@ -152,8 +166,12 @@ export function LetterPanel(): React.JSX.Element | null {
           the class memberships and the components of everything built on it --
           which is a better answer than a dialog nobody reads.
         */}
-        <button type="button" onClick={() => store.removeGlyph(letter)} className={ACTION}
-          title="Take this letter out of the font, along with its kerning and its place in anything built on it. Undo puts all of it back.">
+        <button
+          type="button"
+          onClick={() => store.removeGlyph(letter)}
+          className={ACTION}
+          title="Take this letter out of the font, along with its kerning and its place in anything built on it. Undo puts all of it back."
+        >
           Delete
         </button>
       </div>

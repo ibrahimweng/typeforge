@@ -67,7 +67,10 @@ export type { Traced, TraceProgress } from "@/quill/tracing";
  */
 
 export function suggestedName(fileName: string): string {
-  const stem = fileName.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+  const stem = fileName
+    .replace(/\.[^.]+$/, "")
+    .replace(/[_-]+/g, " ")
+    .trim();
   return stem ? `${stem} Traced` : "Traced";
 }
 
@@ -292,9 +295,11 @@ class QuillStore {
 
     if (typeof Worker === "undefined") {
       try {
-        arrived(await traceFont(bytes, name, (progress) => {
-          if (mine === this.reading) this.set({ progress });
-        }));
+        arrived(
+          await traceFont(bytes, name, (progress) => {
+            if (mine === this.reading) this.set({ progress });
+          }),
+        );
       } catch (trouble) {
         wentWrong(trouble instanceof Error ? trouble.message : "That file could not be read.");
       }
@@ -341,9 +346,11 @@ class QuillStore {
       // Some environments have `Worker` and refuse to build one. Falling back
       // is better than telling somebody their font is broken when it is not.
       try {
-        arrived(await traceFont(bytes, name, (progress) => {
-          if (mine === this.reading) this.set({ progress });
-        }));
+        arrived(
+          await traceFont(bytes, name, (progress) => {
+            if (mine === this.reading) this.set({ progress });
+          }),
+        );
       } catch (trouble) {
         wentWrong(trouble instanceof Error ? trouble.message : "That file could not be read.");
       }
@@ -406,7 +413,12 @@ class QuillStore {
          * like the drawing had never been made rather than like a bug.
          */
         ...(one.byHand
-          ? { byHand: { contours: one.byHand.contours as unknown[], advanceWidth: one.byHand.advanceWidth } }
+          ? {
+              byHand: {
+                contours: one.byHand.contours as unknown[],
+                advanceWidth: one.byHand.advanceWidth,
+              },
+            }
           : {}),
       })),
     };

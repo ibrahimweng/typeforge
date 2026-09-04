@@ -17,7 +17,7 @@ import { store, useAppState } from "@/state/useStore";
 import { ufoNameFor, zipUfo } from "@/ufo/intake";
 import { cn } from "@/ui/lib/utils";
 
-export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.Element {
+export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.Element | null {
   const state = useAppState();
   const typeface = state.typeface;
 
@@ -49,12 +49,11 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  if (!typeface) return <></>;
+  if (!typeface) return null;
 
   // OpenType is always a rebuild, because the curves have to be re-encoded as
   // PostScript. Say so rather than letting the choice look available.
-  const preserveAvailable =
-    format === "ttf" && typeface.source !== null && !typeface.source.isCFF;
+  const preserveAvailable = format === "ttf" && typeface.source !== null && !typeface.source.isCFF;
 
   /*
    * How this font would vary, and whether it can at all.
@@ -145,13 +144,24 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
   };
 
   return (
+    /*
+      Clicking the dark behind the panel closes it, and that is all the dark
+      does: it is not a control, there is nothing on it to announce or tab to,
+      and Escape closes from the keyboard. Marked as presentation to say so.
+      The close fires only for a click that landed on the backdrop itself,
+      which is the job the panel below used to do with a stopPropagation --
+      the panel reads better not handling clicks it has no interest in.
+    */
+    // biome-ignore lint/a11y/noStaticElementInteractions: the backdrop is presentation; Escape is the keyboard path.
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
-      onClick={onClose}
+      role="presentation"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
     >
       <div
         ref={panelRef}
-        onClick={(event) => event.stopPropagation()}
         /*
           Bounded, and scrolling inside itself.
 
@@ -286,63 +296,63 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
           than showing two controls that quietly do nothing.
         */}
         {format !== "ufo" && format !== "variable" && (
-        <>
-        <Field label="What to carry over">
-          <Choice
-            selected={fidelity === "preserve" && preserveAvailable}
-            onSelect={() => setFidelity("preserve")}
-            disabled={!preserveAvailable}
-            title="Everything from the original"
-            description={
-              preserveAvailable
-                ? "Ligatures, alternates and hinting are kept, and untouched glyphs are copied across unchanged."
-                : format === "otf"
-                  ? "Not available for OpenType: the curves are re-encoded, so the font is rebuilt."
-                  : "Not available: there is no imported TrueType font to preserve from."
-            }
-          />
-          <Choice
-            selected={fidelity === "rebuild" || !preserveAvailable}
-            onSelect={() => setFidelity("rebuild")}
-            title="Only what this editor manages"
-            description="Outlines, spacing, kerning and names. Smaller and fully predictable, but ligatures, alternates and hinting are dropped."
-          />
-        </Field>
+          <>
+            <Field label="What to carry over">
+              <Choice
+                selected={fidelity === "preserve" && preserveAvailable}
+                onSelect={() => setFidelity("preserve")}
+                disabled={!preserveAvailable}
+                title="Everything from the original"
+                description={
+                  preserveAvailable
+                    ? "Ligatures, alternates and hinting are kept, and untouched glyphs are copied across unchanged."
+                    : format === "otf"
+                      ? "Not available for OpenType: the curves are re-encoded, so the font is rebuilt."
+                      : "Not available: there is no imported TrueType font to preserve from."
+                }
+              />
+              <Choice
+                selected={fidelity === "rebuild" || !preserveAvailable}
+                onSelect={() => setFidelity("rebuild")}
+                title="Only what this editor manages"
+                description="Outlines, spacing, kerning and names. Smaller and fully predictable, but ligatures, alternates and hinting are dropped."
+              />
+            </Field>
 
-        <div className="grid gap-2 pb-4">
-          <label className="flex cursor-pointer items-center gap-2 text-xs-plus">
-            <input
-              type="checkbox"
-              checked={includeKerning}
-              onChange={(event) => setIncludeKerning(event.target.checked)}
-              className="size-3.5 accent-[var(--accent)]"
-            />
-            <span>
-              Include kerning{" "}
-              <span className="text-2xs text-muted-foreground tabular-nums">
-                {typeface.kerning.length.toLocaleString()} pairs
-              </span>
-            </span>
-          </label>
+            <div className="grid gap-2 pb-4">
+              <label className="flex cursor-pointer items-center gap-2 text-xs-plus">
+                <input
+                  type="checkbox"
+                  checked={includeKerning}
+                  onChange={(event) => setIncludeKerning(event.target.checked)}
+                  className="size-3.5 accent-[var(--accent)]"
+                />
+                <span>
+                  Include kerning{" "}
+                  <span className="text-2xs text-muted-foreground tabular-nums">
+                    {typeface.kerning.length.toLocaleString()} pairs
+                  </span>
+                </span>
+              </label>
 
-          <label className="flex cursor-pointer items-start gap-2 text-xs-plus">
-            <input
-              type="checkbox"
-              checked={mergeOverlaps}
-              onChange={(event) => setMergeOverlaps(event.target.checked)}
-              className="mt-1 size-3.5 shrink-0 accent-[var(--accent)]"
-            />
-            <span>
-              Merge overlapping contours
-              <span className="block text-2xs leading-snug text-muted-foreground">
-                Drawing letters as overlapping pieces is normal, but a font file cannot carry
-                them: some renderers drop the overlap out as a hole. Turning this off writes your
-                contours exactly as drawn, and takes a few seconds less.
-              </span>
-            </span>
-          </label>
-        </div>
-        </>
+              <label className="flex cursor-pointer items-start gap-2 text-xs-plus">
+                <input
+                  type="checkbox"
+                  checked={mergeOverlaps}
+                  onChange={(event) => setMergeOverlaps(event.target.checked)}
+                  className="mt-1 size-3.5 shrink-0 accent-[var(--accent)]"
+                />
+                <span>
+                  Merge overlapping contours
+                  <span className="block text-2xs leading-snug text-muted-foreground">
+                    Drawing letters as overlapping pieces is normal, but a font file cannot carry
+                    them: some renderers drop the overlap out as a hole. Turning this off writes
+                    your contours exactly as drawn, and takes a few seconds less.
+                  </span>
+                </span>
+              </label>
+            </div>
+          </>
         )}
 
         {notes.length > 0 && (
@@ -377,7 +387,13 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
   return (
     <div className="pb-4">
       <p className="pb-1.5 text-2xs text-muted-foreground">{label}</p>
@@ -411,7 +427,9 @@ function Choice({
       )}
     >
       <span className="block text-xs-plus text-foreground">{title}</span>
-      <span className="block pt-0.5 text-2xs leading-snug text-muted-foreground">{description}</span>
+      <span className="block pt-0.5 text-2xs leading-snug text-muted-foreground">
+        {description}
+      </span>
     </button>
   );
 }

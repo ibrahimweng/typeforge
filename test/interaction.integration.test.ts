@@ -21,7 +21,8 @@ const source = loadTestFont();
 const suite = source ? describe : describe.skip;
 
 suite("controls used together", { timeout: FONT_SUITE_TIMEOUT }, () => {
-  const open = async (): Promise<Typeface> => (await importFont(source!, "DejaVuSans.ttf")).typeface;
+  const open = async (): Promise<Typeface> =>
+    (await importFont(source!, "DejaVuSans.ttf")).typeface;
   const resolve = (typeface: Typeface, name: string, params: Partial<typeof DEFAULT_PARAMS>) => {
     typeface.params = { ...DEFAULT_PARAMS, ...params };
     const glyph = typeface.glyphs[typeface.glyphIndex.get(name)!];

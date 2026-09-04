@@ -13,7 +13,10 @@ const square = (x: number, y: number, size: number): Vec2[] => [
 
 describe("rayHitDistance", () => {
   it("measures the distance to the first edge in the way", () => {
-    expect(rayHitDistance([square(0, 0, 100)], { x: 50, y: 50 }, { x: 1, y: 0 })).toBeCloseTo(50, 6);
+    expect(rayHitDistance([square(0, 0, 100)], { x: 50, y: 50 }, { x: 1, y: 0 })).toBeCloseTo(
+      50,
+      6,
+    );
   });
 
   it("says nothing is in the way when nothing is", () => {
@@ -128,11 +131,9 @@ describe("crossesItself", () => {
         const angle = from + ((to - from) * i) / steps;
         return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
       });
-    expect(
-      crossesItself(
-        corners([...arc(200, -1.2, 1.2, 12), ...arc(140, 1.2, -1.2, 12)]),
-      ),
-    ).toBe(false);
+    expect(crossesItself(corners([...arc(200, -1.2, 1.2, 12), ...arc(140, 1.2, -1.2, 12)]))).toBe(
+      false,
+    );
   });
 
   it("two nodes cannot cross anything", () => {

@@ -99,11 +99,7 @@ suite("a font that varies in two directions", () => {
       expect(byTag.wdth).toMatchObject({ name: "Width", min: 50, default: 100, max: 100 });
       expect(report.statAxes.slice().sort()).toEqual(["wdth", "wght"]);
 
-      expect(report.instances.map((one) => one.name).sort()).toEqual([
-        "Bold",
-        "Book",
-        "Condensed",
-      ]);
+      expect(report.instances.map((one) => one.name).sort()).toEqual(["Bold", "Book", "Condensed"]);
     },
     FONT_SUITE_TIMEOUT,
   );

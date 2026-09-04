@@ -82,8 +82,10 @@ suite("a real font's kerning, in and out again", { timeout: FONT_SUITE_TIMEOUT }
     expect(kerned, "the test font has kerning to lose").toBeGreaterThan(100);
 
     const lost = EVERY_PAIR.filter((pair) => before[pair] !== after[pair]).slice(0, 10);
-    expect(lost, `pairs that changed: ${lost.map((p) => `${p} ${before[p]}->${after[p]}`).join(", ")}`)
-      .toEqual([]);
+    expect(
+      lost,
+      `pairs that changed: ${lost.map((p) => `${p} ${before[p]}->${after[p]}`).join(", ")}`,
+    ).toEqual([]);
   });
 
   /*

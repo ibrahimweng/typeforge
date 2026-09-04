@@ -1,13 +1,10 @@
 "use client";
 
-import * as React from "react";
+import type * as React from "react";
 import { ArrowCounterClockwiseIcon } from "@phosphor-icons/react";
 
 import { PrimitiveArrowIcon } from "../primitives";
-import {
-  PanelIconButton,
-  stopPanelHeaderButtonPointerDown,
-} from "./panel-icon-button";
+import { PanelIconButton, stopPanelHeaderButtonPointerDown } from "./panel-icon-button";
 
 type PanelHeaderProps = {
   collapsed: boolean;

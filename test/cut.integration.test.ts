@@ -110,10 +110,10 @@ suite("a cut font, read from outside", { timeout: FONT_SUITE_TIMEOUT }, () => {
     };
     const plain = await deliver(startFrom(SANS), { familyName: "Plain", format: "ttf" });
     const round = inspectFont(plain.bytes);
-    const nested = await deliver(
-      editCut(startFrom(SANS), "motif", { on: true, shape: "nested" }),
-      { familyName: "Nested", format: "ttf" },
-    );
+    const nested = await deliver(editCut(startFrom(SANS), "motif", { on: true, shape: "nested" }), {
+      familyName: "Nested",
+      format: "ttf",
+    });
 
     // The bowl, the diamond hole, and the diamond standing inside it.
     expect(inspectFont(nested.bytes).contoursOf.o).toBe(3);
@@ -146,51 +146,54 @@ suite("a cut font, read from outside", { timeout: FONT_SUITE_TIMEOUT }, () => {
   });
 });
 
+suiteWithFont(
+  "a font somebody opened, cut and written back out",
+  { timeout: FONT_SUITE_TIMEOUT },
+  () => {
+    /*
+     * The other two halves of the application cut the same description with the
+     * same code, and the thing that could still go wrong is different: here the
+     * outlines came out of a file rather than off a pen, nothing has promised
+     * which way a counter is wound, and the stem every size is a multiple of has
+     * to be measured rather than asked for. So it is read back from outside.
+     */
+    const opened = async () => (await importFont(source!, "test.ttf")).typeface;
 
-suiteWithFont("a font somebody opened, cut and written back out", { timeout: FONT_SUITE_TIMEOUT }, () => {
-  /*
-   * The other two halves of the application cut the same description with the
-   * same code, and the thing that could still go wrong is different: here the
-   * outlines came out of a file rather than off a pen, nothing has promised
-   * which way a counter is wound, and the stem every size is a multiple of has
-   * to be measured rather than asked for. So it is read back from outside.
-   */
-  const opened = async () => (await importFont(source!, "test.ttf")).typeface;
+    const written = async (face: Awaited<ReturnType<typeof opened>>) =>
+      inspectFont((await exportFont(face, { format: "ttf", fidelity: "rebuild" })).bytes);
 
-  const written = async (face: Awaited<ReturnType<typeof opened>>) =>
-    inspectFont((await exportFont(face, { format: "ttf", fidelity: "rebuild" })).bytes);
+    it("writes the slots into the outlines of a font it did not draw", async () => {
+      const plain = await opened();
+      expect((await written(plain)).contoursOf.H).toBe(1);
 
-  it("writes the slots into the outlines of a font it did not draw", async () => {
-    const plain = await opened();
-    expect((await written(plain)).contoursOf.H).toBe(1);
+      const cut = await opened();
+      cut.cuts = { ...noCuts(), slot: { on: true, count: 2, width: 0.34, angle: 0, inset: 0.14 } };
+      // Two bands across both stems and the bar leaves an H in five pieces, and
+      // a piece count is the one thing a reader outside can be sure of.
+      expect((await written(cut)).contoursOf.H).toBe(5);
+    });
 
-    const cut = await opened();
-    cut.cuts = { ...noCuts(), slot: { on: true, count: 2, width: 0.34, angle: 0, inset: 0.14 } };
-    // Two bands across both stems and the bar leaves an H in five pieces, and
-    // a piece count is the one thing a reader outside can be sure of.
-    expect((await written(cut)).contoursOf.H).toBe(5);
-  });
+    it("does not respace the font it cut", async () => {
+      const plain = await opened();
+      const before = plain.glyphs[plain.glyphIndex.get("H")!].advanceWidth;
+      const cut = await opened();
+      cut.cuts = { ...noCuts(), slot: { on: true, count: 3, width: 0.4, angle: 0, inset: 0.1 } };
+      const read = await written(cut);
+      expect(read.contoursOf.H).toBeGreaterThan(1);
+      expect(cut.glyphs[cut.glyphIndex.get("H")!].advanceWidth).toBe(before);
+    });
 
-  it("does not respace the font it cut", async () => {
-    const plain = await opened();
-    const before = plain.glyphs[plain.glyphIndex.get("H")!].advanceWidth;
-    const cut = await opened();
-    cut.cuts = { ...noCuts(), slot: { on: true, count: 3, width: 0.4, angle: 0, inset: 0.1 } };
-    const read = await written(cut);
-    expect(read.contoursOf.H).toBeGreaterThan(1);
-    expect(cut.glyphs[cut.glyphIndex.get("H")!].advanceWidth).toBe(before);
-  });
-
-  it("lets one letter keep out of it", async () => {
-    const cut = await opened();
-    cut.cuts = { ...noCuts(), slot: { on: true, count: 2, width: 0.34, angle: 0, inset: 0.14 } };
-    cut.glyphs[cut.glyphIndex.get("H")!].cuts = noCuts();
-    const read = await written(cut);
-    expect(read.contoursOf.H).toBe(1);
-    // And the rest of the font was still cut.
-    expect(read.contoursOf.I).toBeGreaterThan(1);
-  });
-});
+    it("lets one letter keep out of it", async () => {
+      const cut = await opened();
+      cut.cuts = { ...noCuts(), slot: { on: true, count: 2, width: 0.34, angle: 0, inset: 0.14 } };
+      cut.glyphs[cut.glyphIndex.get("H")!].cuts = noCuts();
+      const read = await written(cut);
+      expect(read.contoursOf.H).toBe(1);
+      // And the rest of the font was still cut.
+      expect(read.contoursOf.I).toBeGreaterThan(1);
+    });
+  },
+);
 
 suite("a pile of drawings, cut and written out", { timeout: FONT_SUITE_TIMEOUT }, () => {
   const svg = (d: string) =>
@@ -210,17 +213,26 @@ suite("a pile of drawings, cut and written out", { timeout: FONT_SUITE_TIMEOUT }
   };
 
   it("writes the cuts into a font built from drawings", async () => {
-    const plain = await toTypeface(pile(), { familyName: "Pile", styleName: "Regular", merge: true });
+    const plain = await toTypeface(pile(), {
+      familyName: "Pile",
+      styleName: "Regular",
+      merge: true,
+    });
     const before = inspectFont(
       (await exportFont(plain, { format: "ttf", fidelity: "rebuild" })).bytes,
     );
     expect(before.contoursOf.I).toBe(1);
 
     const cut = await toTypeface(
-      editCuts(pile(), { ...noCuts(), slot: { on: true, count: 2, width: 0.34, angle: 0, inset: 0.14 } }),
+      editCuts(pile(), {
+        ...noCuts(),
+        slot: { on: true, count: 2, width: 0.34, angle: 0, inset: 0.14 },
+      }),
       { familyName: "Pile", styleName: "Regular", merge: true },
     );
-    const after = inspectFont((await exportFont(cut, { format: "ttf", fidelity: "rebuild" })).bytes);
+    const after = inspectFont(
+      (await exportFont(cut, { format: "ttf", fidelity: "rebuild" })).bytes,
+    );
     // A stem with two bands through it arrives as three pieces.
     expect(after.contoursOf.I).toBe(3);
     // And the drawing was still spaced as the solid shape it was drawn as.
@@ -247,11 +259,10 @@ suite("a letter drawn elsewhere, cut with the rest", { timeout: FONT_SUITE_TIMEO
 
   it("writes the slots into it too", async () => {
     const own = handDrawn(startFrom(SANS), "g");
-    const before = inspectFont(
-      (await deliver(own, { familyName: "Own", format: "ttf" })).bytes,
-    );
+    const before = inspectFont((await deliver(own, { familyName: "Own", format: "ttf" })).bytes);
     const cut = inspectFont(
-      (await deliver(editCut(own, "slot", { on: true }), { familyName: "Own", format: "ttf" })).bytes,
+      (await deliver(editCut(own, "slot", { on: true }), { familyName: "Own", format: "ttf" }))
+        .bytes,
     );
     expect(cut.contoursOf.g).toBeGreaterThan(before.contoursOf.g);
     expect(cut.recompiles).toBe(true);

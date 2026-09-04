@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "../../primitives/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "../../primitives/popover";
 import { StyleGuideColorPicker } from "./style-guide-color-picker";
 import { cn } from "../../../lib/utils";
 import { useCallback, useRef, useState } from "react";
@@ -66,9 +62,7 @@ export function ColorPickerPopover({
         className={cn(
           "group/button inline-flex shrink-0 cursor-pointer items-center justify-center rounded-lg border font-medium whitespace-nowrap transition-colors outline-none select-none focus-visible:border-[color:var(--ring)] focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_oklab,var(--ring)_30%,transparent)]",
           "border-[color:color-mix(in_oklab,var(--border)_12%,transparent)] bg-[color:color-mix(in_oklab,var(--input)_5%,transparent)]",
-          size === "sm"
-            ? "size-6 text-xs/relaxed"
-            : "size-7 text-[13px] leading-[1.125rem]",
+          size === "sm" ? "size-6 text-xs/relaxed" : "size-7 text-[13px] leading-[1.125rem]",
           "relative aspect-square flex-none p-0 [&:not(:focus):not([aria-expanded=true]):not([data-open]):not([data-popup-open]):not([data-state=open]):hover]:!border-[color:color-mix(in_oklab,var(--border)_20%,transparent)] [&:not(:focus):not([aria-expanded=true]):not([data-open]):not([data-popup-open]):not([data-state=open]):hover]:text-[color:var(--foreground)] aria-expanded:border-[color:color-mix(in_oklab,var(--border)_30%,transparent)] data-open:border-[color:color-mix(in_oklab,var(--border)_30%,transparent)] data-popup-open:border-[color:color-mix(in_oklab,var(--border)_30%,transparent)] data-[state=open]:border-[color:color-mix(in_oklab,var(--border)_30%,transparent)] disabled:pointer-events-none disabled:opacity-50",
         )}
         data-slot="button"

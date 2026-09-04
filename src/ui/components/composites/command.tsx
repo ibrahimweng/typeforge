@@ -4,13 +4,7 @@ import * as React from "react";
 import { Command as CommandPrimitive } from "cmdk";
 
 import { cn } from "../../lib/utils";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "./dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./dialog";
 import { MagnifyingGlassIcon, CheckIcon } from "@phosphor-icons/react";
 import { ScrollFade } from "../primitives";
 
@@ -85,6 +79,7 @@ const CommandInput = React.forwardRef<
   }
 >(({ className, leadingVisual, ...props }, ref) => {
   return (
+    // biome-ignore lint/a11y/noLabelWithoutControl: it wraps the command input, which the rule cannot see through the component.
     <label
       data-slot="command-input-wrapper"
       className="flex w-full items-center gap-3 px-4 py-3 text-[color:var(--foreground)]"

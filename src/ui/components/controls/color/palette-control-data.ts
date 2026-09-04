@@ -1,4 +1,16 @@
-export const PALETTE_SHADE_STEPS = ["50", "100", "200", "300", "400", "500", "600", "700", "800", "900", "950"] as const;
+export const PALETTE_SHADE_STEPS = [
+  "50",
+  "100",
+  "200",
+  "300",
+  "400",
+  "500",
+  "600",
+  "700",
+  "800",
+  "900",
+  "950",
+] as const;
 
 export type PaletteShadeStep = (typeof PALETTE_SHADE_STEPS)[number];
 
@@ -431,6 +443,8 @@ export type PaletteControlValue = {
 export const STYLE_GUIDE_PRIMARY_FAMILY_OPTIONS = TAILWIND_COLOR_PALETTE.slice(0, -1);
 
 export function getPaletteHex(value: PaletteControlValue): string {
-  const palette = TAILWIND_COLOR_PALETTE.find((entry) => entry.name === value.family) ?? TAILWIND_COLOR_PALETTE[0];
+  const palette =
+    TAILWIND_COLOR_PALETTE.find((entry) => entry.name === value.family) ??
+    TAILWIND_COLOR_PALETTE[0];
   return palette.shades[value.shade].toLowerCase();
 }

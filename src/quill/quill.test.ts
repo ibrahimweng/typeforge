@@ -27,13 +27,7 @@ import { describe, expect, it } from "vitest";
 import { ready, unite } from "@/font/boolean";
 
 import { contourArea, contoursBounds, crossesItself, flattenContour } from "@/font/geometry";
-import {
-  PLAIN_HAND,
-  QUILL_CONTROLS,
-  restyle,
-  restyleWidth,
-  type QuillStyle,
-} from "./controls";
+import { PLAIN_HAND, QUILL_CONTROLS, restyle, restyleWidth, type QuillStyle } from "./controls";
 import { furthestFromPath } from "./curve";
 import { fitGlyph } from "./fit";
 import {
@@ -389,9 +383,7 @@ describe("the pen along the stroke", () => {
       return {
         wide: box.xMax - box.xMin,
         tall: box.yMax - box.yMin,
-        ink: Math.abs(
-          drawn.contours.reduce((total, one) => total + contourArea(one), 0),
-        ),
+        ink: Math.abs(drawn.contours.reduce((total, one) => total + contourArea(one), 0)),
       };
     };
     const held = [{ at: 0, width: 200 }];
@@ -454,8 +446,7 @@ describe("the sweep at a corner", () => {
   };
 
   /** How far below the corner the ink reaches. */
-  const reachOf = (stroke: QuillStroke): number =>
-    -contoursBounds(sweep(stroke).contours).yMin;
+  const reachOf = (stroke: QuillStroke): number => -contoursBounds(sweep(stroke).contours).yMin;
 
   it("carries a mitred corner out to where its two sides meet", () => {
     /*
@@ -672,9 +663,7 @@ describe("the fitter", () => {
     const areas = drawn.contours.map(contourArea);
     expect(Math.sign(areas[0]) * Math.sign(areas[1])).toBe(-1);
     const outer = Math.abs(areas[0]) >= Math.abs(areas[1]) ? 0 : 1;
-    expect(areas[outer], "the outside of a letter is clockwise").toBeLessThan(
-      0,
-    );
+    expect(areas[outer], "the outside of a letter is clockwise").toBeLessThan(0);
     // The ring is 230 out and 170 in, all the way round, with nothing sticking
     // out at the seam.
     for (const contour of drawn.contours) {
@@ -795,9 +784,7 @@ describe("the fitter", () => {
       const [first] = one.spine.segments;
       const last = one.spine.segments[one.spine.segments.length - 1];
       if (first.kind !== "cubic" || last.kind !== "cubic") return false;
-      return (
-        Math.abs(last.to.x - first.from.x) > Math.abs(last.to.y - first.from.y)
-      );
+      return Math.abs(last.to.x - first.from.x) > Math.abs(last.to.y - first.from.y);
     });
     expect(across, "the arm was not found at all").toBeDefined();
     /*
@@ -811,12 +798,8 @@ describe("the fitter", () => {
      * blob this is here to catch.
      */
     const redrawn = sweepAll(fit.glyph.strokes).contours;
-    const leftmost = Math.min(
-      ...redrawn.flatMap((one) => one.nodes.map((node) => node.point.x)),
-    );
-    expect(leftmost, "the arm came out the far side of the stem").toBeGreaterThan(
-      -44,
-    );
+    const leftmost = Math.min(...redrawn.flatMap((one) => one.nodes.map((node) => node.point.x)));
+    expect(leftmost, "the arm came out the far side of the stem").toBeGreaterThan(-44);
   });
 
   /*
@@ -854,9 +837,7 @@ describe("the fitter", () => {
       ),
     }));
     const fit = fitGlyph("bar", angled, 700, {})!;
-    expect(fit.glyph.strokes[0].end.kind, "an angled cut is a cut").toBe(
-      "butt",
-    );
+    expect(fit.glyph.strokes[0].end.kind, "an angled cut is a cut").toBe("butt");
   });
 
   /*
@@ -888,22 +869,17 @@ describe("the fitter", () => {
    */
   it("runs a stroke on past the one it meets, so the corner fills", async () => {
     await ready();
-    const bar = (
-      from: [number, number],
-      to: [number, number],
-    ): QuillStroke => ({
+    const bar = (from: [number, number], to: [number, number]): QuillStroke => ({
       spine: straight(from, to),
       width: [{ at: 0, width: 90 }],
       nib: [{ ...ROUND_NIB, at: 0 }],
       start: { kind: "butt" },
       end: { kind: "butt" },
     });
-    const source = sweepAll([bar([0, -300], [0, 500]), bar([-200, 300], [200, 300])])
-      .contours;
+    const source = sweepAll([bar([0, -300], [0, 500]), bar([-200, 300], [200, 300])]).contours;
     const fit = fitGlyph("t", source, 900, {})!;
     const redrawn = sweepAll(fit.glyph.strokes).contours;
-    const flat = (contours: Contour[]) =>
-      contours.map((one) => flattenContour(one, 40));
+    const flat = (contours: Contour[]) => contours.map((one) => flattenContour(one, 40));
     const worst = Math.max(
       furthestFromPath(flat(unite(source)).flat(), flat(unite(redrawn))),
       furthestFromPath(flat(unite(redrawn)).flat(), flat(unite(source))),
@@ -953,9 +929,7 @@ describe("the fitter", () => {
     };
     const fit = fitGlyph("v", [vee], 1212, { unitsPerEm: 2048 })!;
     const drawn = sweepAll(fit.glyph.strokes).contours;
-    const above = Math.max(
-      ...drawn.flatMap((one) => one.nodes.map((node) => node.point.y)),
-    );
+    const above = Math.max(...drawn.flatMap((one) => one.nodes.map((node) => node.point.y)));
     // Sixty units of flap before, thirty after, on a letter 1,120 tall.
     expect(above - 1120, "ink above the x-height at the terminal").toBeLessThan(45);
   });
@@ -991,9 +965,7 @@ describe("the fitter", () => {
       if (turn > Math.PI) turn = Math.PI * 2 - turn;
       sharpest = Math.max(sharpest, turn);
     }
-    expect(sharpest, "the bottom of the v was rounded off").toBeGreaterThan(
-      Math.PI / 2,
-    );
+    expect(sharpest, "the bottom of the v was rounded off").toBeGreaterThan(Math.PI / 2);
 
     /*
      * What the corner is *not* checked for, and why it is said rather than left
@@ -1069,9 +1041,7 @@ describe("the fitter", () => {
     const fit = fitGlyph("i", drawn.contours, 300, {})!;
     expect(fit).not.toBeNull();
     const high = fit.glyph.strokes.filter((one) =>
-      one.spine.segments.some(
-        (segment) => segment.kind === "cubic" && segment.from.y > 600,
-      ),
+      one.spine.segments.some((segment) => segment.kind === "cubic" && segment.from.y > 600),
     );
     expect(high.length, "the dot was pruned away").toBeGreaterThan(0);
   });
@@ -1108,8 +1078,7 @@ describe("the hand", () => {
     expect(widthAt(flat, 0)).toBeCloseTo(widthAt(flat, 0.5), 6);
     expect(widthAt(flat, 0.5)).toBeCloseTo(widthAt(flat, 1), 6);
     // And the average is where it was: pressure is about the variation.
-    const mean = (one: typeof before) =>
-      one.reduce((s, x) => s + x.width, 0) / one.length;
+    const mean = (one: typeof before) => one.reduce((s, x) => s + x.width, 0) / one.length;
     expect(mean(flat)).toBeCloseTo(mean(before), 6);
 
     const more = restyleWidth(before, { ...PLAIN_HAND, pressure: 2 });
@@ -1176,9 +1145,7 @@ describe("the hand", () => {
       strokes: [plainStroke(80)],
       unitsPerEm: 1000,
     };
-    const level = contoursBounds(
-      sweepAll(restyle(glyph, PLAIN_HAND).strokes).contours,
-    );
+    const level = contoursBounds(sweepAll(restyle(glyph, PLAIN_HAND).strokes).contours);
     const lifted = contoursBounds(
       sweepAll(restyle(glyph, { ...PLAIN_HAND, bounce: 1 }).strokes).contours,
     );
@@ -1190,9 +1157,7 @@ describe("the hand", () => {
     // The letter is the same letter: it was carried, not stretched.
     expect(lifted.yMax - lifted.yMin).toBeCloseTo(level.yMax - level.yMin, 6);
     // And it takes up no more room across than it did on the line.
-    expect(
-      restyle(glyph, { ...PLAIN_HAND, bounce: 1 }).advanceWidth,
-    ).toBeCloseTo(400, 6);
+    expect(restyle(glyph, { ...PLAIN_HAND, bounce: 1 }).advanceWidth).toBeCloseTo(400, 6);
   });
 
   it("bounce sends different letters different ways", () => {
@@ -1210,9 +1175,8 @@ describe("the hand", () => {
         strokes: [plainStroke(80)],
         unitsPerEm: 1000,
       };
-      return contoursBounds(
-        sweepAll(restyle(glyph, { ...PLAIN_HAND, bounce: 1 }).strokes).contours,
-      ).yMin;
+      return contoursBounds(sweepAll(restyle(glyph, { ...PLAIN_HAND, bounce: 1 }).strokes).contours)
+        .yMin;
     });
     const spread = Math.max(...lifts) - Math.min(...lifts);
     expect(spread).toBeGreaterThan(20);
@@ -1256,11 +1220,8 @@ describe("the hand", () => {
     };
     const large = { ...small, unitsPerEm: 2000 };
     const lift = (glyph: typeof small) =>
-      contoursBounds(
-        sweepAll(restyle(glyph, { ...PLAIN_HAND, bounce: 1 }).strokes).contours,
-      ).yMin -
-      contoursBounds(sweepAll(restyle(glyph, PLAIN_HAND).strokes).contours)
-        .yMin;
+      contoursBounds(sweepAll(restyle(glyph, { ...PLAIN_HAND, bounce: 1 }).strokes).contours).yMin -
+      contoursBounds(sweepAll(restyle(glyph, PLAIN_HAND).strokes).contours).yMin;
     expect(lift(large)).toBeCloseTo(lift(small) * 2, 4);
   });
 
@@ -1314,18 +1275,14 @@ describe("the hand", () => {
     const joining: QuillStroke = {
       ...stroke(),
       spine: {
-        segments: [
-          { kind: "line", from: { x: 200, y: 100 }, to: { x: 398, y: 160 } },
-        ],
+        segments: [{ kind: "line", from: { x: 200, y: 100 }, to: { x: 398, y: 160 } }],
         closed: false,
       },
     };
     const inside: QuillStroke = {
       ...stroke(),
       spine: {
-        segments: [
-          { kind: "line", from: { x: 150, y: 0 }, to: { x: 150, y: 400 } },
-        ],
+        segments: [{ kind: "line", from: { x: 150, y: 0 }, to: { x: 150, y: 400 } }],
         closed: false,
       },
     };
@@ -1357,27 +1314,21 @@ describe("the hand", () => {
     const rightwards: QuillStroke = {
       ...stroke(),
       spine: {
-        segments: [
-          { kind: "line", from: { x: 100, y: 100 }, to: { x: 399, y: 100 } },
-        ],
+        segments: [{ kind: "line", from: { x: 100, y: 100 }, to: { x: 399, y: 100 } }],
         closed: false,
       },
     };
     const drawnBackwards: QuillStroke = {
       ...stroke(),
       spine: {
-        segments: [
-          { kind: "line", from: { x: 399, y: 100 }, to: { x: 100, y: 100 } },
-        ],
+        segments: [{ kind: "line", from: { x: 399, y: 100 }, to: { x: 100, y: 100 } }],
         closed: false,
       },
     };
     const style = { ...PLAIN_HAND, reach: 1 };
     const segmentsOf = (one: QuillStroke) =>
-      restyle(
-        { name: "o", advanceWidth: 400, strokes: [one], unitsPerEm: 1000 },
-        style,
-      ).strokes[0].spine.segments.length;
+      restyle({ name: "o", advanceWidth: 400, strokes: [one], unitsPerEm: 1000 }, style).strokes[0]
+        .spine.segments.length;
     expect(segmentsOf(rightwards)).toBe(2);
     expect(segmentsOf(drawnBackwards)).toBe(2);
   });
@@ -1451,10 +1402,7 @@ describe("the hand", () => {
        * against the plain hand it correctly does nothing, which would read as a
        * dead control and is the opposite of one.
        */
-      const base =
-        control.key === "nibAngle"
-          ? { ...PLAIN_HAND, contrast: 0.6 }
-          : PLAIN_HAND;
+      const base = control.key === "nibAngle" ? { ...PLAIN_HAND, contrast: 0.6 } : PLAIN_HAND;
       /*
        * Three stops rather than two, because a nib is symmetrical.
        *
@@ -1465,15 +1413,9 @@ describe("the hand", () => {
        * question worth asking.
        */
       const seen = new Set<string>();
-      for (const value of [
-        control.min,
-        (control.min + control.max) / 2,
-        control.max,
-      ]) {
+      for (const value of [control.min, (control.min + control.max) / 2, control.max]) {
         const style = { ...base, [control.key]: value } as QuillStyle;
-        seen.add(
-          `${shapeOf(style)}|${restyle(glyph, style).advanceWidth.toFixed(4)}`,
-        );
+        seen.add(`${shapeOf(style)}|${restyle(glyph, style).advanceWidth.toFixed(4)}`);
       }
       if (seen.size < 2) dead.push(`${control.key} (${control.label})`);
     }
@@ -1483,12 +1425,8 @@ describe("the hand", () => {
   it("every control starts inside its own range", () => {
     const outside: string[] = [];
     for (const control of QUILL_CONTROLS) {
-      const value = (PLAIN_HAND as unknown as Record<string, number>)[
-        control.key
-      ];
-      expect(typeof value, `${control.key} has no starting value`).toBe(
-        "number",
-      );
+      const value = (PLAIN_HAND as unknown as Record<string, number>)[control.key];
+      expect(typeof value, `${control.key} has no starting value`).toBe("number");
       if (value < control.min || value > control.max) outside.push(control.key);
     }
     expect(outside).toEqual([]);
@@ -1506,12 +1444,7 @@ describe("the hand", () => {
  * against the advance, so a box says that as plainly as a letter would and says
  * it without a drawing that would have to be trusted.
  */
-function boxGlyph(
-  name: string,
-  advanceWidth: number,
-  from: number,
-  to: number,
-): Glyph {
+function boxGlyph(name: string, advanceWidth: number, from: number, to: number): Glyph {
   const at = (x: number, y: number): GlyphNode => ({
     point: { x, y },
     handleIn: null,
@@ -1568,9 +1501,7 @@ describe("telling a joined script from a text face", () => {
   it("calls a face with clear sidebearings a text face", () => {
     // Ink from 60 to 440 in an advance of 500: a tenth of the em clear on each
     // side, which is an ordinary text fit.
-    const verdict = looksJoined(
-      fontOf(LOWERCASE.map((one) => boxGlyph(one, 500, 60, 440))),
-    );
+    const verdict = looksJoined(fontOf(LOWERCASE.map((one) => boxGlyph(one, 500, 60, 440))));
     expect(verdict.joined).toBe(false);
     expect(verdict.tested).toBe(LOWERCASE.length);
     expect(verdict.reaching).toBe(0);
@@ -1580,9 +1511,7 @@ describe("telling a joined script from a text face", () => {
   it("calls a face whose ink overhangs its advance a joined script", () => {
     // Ink from -20 to 520 in an advance of 500: the exit stroke runs past the
     // edge to meet the next letter, which is what joining is.
-    const verdict = looksJoined(
-      fontOf(LOWERCASE.map((one) => boxGlyph(one, 500, -20, 520))),
-    );
+    const verdict = looksJoined(fontOf(LOWERCASE.map((one) => boxGlyph(one, 500, -20, 520))));
     expect(verdict.joined).toBe(true);
     expect(verdict.reaching).toBe(LOWERCASE.length);
     expect(verdict.sidebearing).toBeCloseTo(-0.02, 5);
@@ -1683,8 +1612,8 @@ describe("a traced letter drawn by hand", () => {
   });
 
   it("says it is exact, because a drawing is not a fit", () => {
-    expect(drawTraced(traced({ contours: square, advanceWidth: 555 }), PLAIN_HAND).exactness).toEqual(
-      { exact: true, deviation: 0 },
-    );
+    expect(
+      drawTraced(traced({ contours: square, advanceWidth: 555 }), PLAIN_HAND).exactness,
+    ).toEqual({ exact: true, deviation: 0 });
   });
 });

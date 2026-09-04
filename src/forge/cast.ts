@@ -548,10 +548,7 @@ function spurTool(shape: Contour[], spur: Cast["spur"], stem: number): Contour[]
 
       // Never more of the edge than there is edge to take, or the base of one
       // spike reaches the next corner and the two run together.
-      const room = Math.min(
-        distance(here.point, previous.point),
-        distance(here.point, next.point),
-      );
+      const room = Math.min(distance(here.point, previous.point), distance(here.point, next.point));
       const base = Math.min(size * 0.7, room * 0.45);
       if (base <= 0) continue;
 
@@ -652,10 +649,26 @@ function poly(points: Vec2[]): Contour {
 function disc(centre: Vec2, radius: number): Contour {
   const pull = radius * 0.5522847498;
   const around: Array<[Vec2, Vec2, Vec2]> = [
-    [{ x: centre.x + radius, y: centre.y }, { x: 0, y: -pull }, { x: 0, y: pull }],
-    [{ x: centre.x, y: centre.y + radius }, { x: pull, y: 0 }, { x: -pull, y: 0 }],
-    [{ x: centre.x - radius, y: centre.y }, { x: 0, y: pull }, { x: 0, y: -pull }],
-    [{ x: centre.x, y: centre.y - radius }, { x: -pull, y: 0 }, { x: pull, y: 0 }],
+    [
+      { x: centre.x + radius, y: centre.y },
+      { x: 0, y: -pull },
+      { x: 0, y: pull },
+    ],
+    [
+      { x: centre.x, y: centre.y + radius },
+      { x: pull, y: 0 },
+      { x: -pull, y: 0 },
+    ],
+    [
+      { x: centre.x - radius, y: centre.y },
+      { x: 0, y: pull },
+      { x: 0, y: -pull },
+    ],
+    [
+      { x: centre.x, y: centre.y - radius },
+      { x: -pull, y: 0 },
+      { x: pull, y: 0 },
+    ],
   ];
   return {
     closed: true,

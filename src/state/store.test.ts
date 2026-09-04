@@ -513,7 +513,12 @@ describe("changing what a point is", () => {
     const kinked: Contour = {
       closed: true,
       nodes: [
-        { point: { x: 0, y: 0 }, handleIn: { x: -100, y: 10 }, handleOut: { x: 10, y: 0 }, type: "corner" },
+        {
+          point: { x: 0, y: 0 },
+          handleIn: { x: -100, y: 10 },
+          handleOut: { x: 10, y: 0 },
+          type: "corner",
+        },
         { point: { x: 200, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
         { point: { x: 200, y: 200 }, handleIn: null, handleOut: null, type: "corner" },
       ],
@@ -546,7 +551,12 @@ describe("changing what a point is", () => {
       {
         closed: true,
         nodes: [
-          { point: { x: 0.4, y: 0.6 }, handleIn: null, handleOut: { x: 10.5, y: 0.2 }, type: "corner" },
+          {
+            point: { x: 0.4, y: 0.6 },
+            handleIn: null,
+            handleOut: { x: 10.5, y: 0.2 },
+            type: "corner",
+          },
           { point: { x: 99.5, y: 0.4 }, handleIn: null, handleOut: null, type: "corner" },
           { point: { x: 50.2, y: 80.7 }, handleIn: null, handleOut: null, type: "corner" },
         ],
@@ -861,9 +871,7 @@ describe("making and unmaking letters", () => {
      * something they had no way to do anything about.
      */
     store.startBlank();
-    const checks = validateTypeface(store.getSnapshot().typeface!).findings.map(
-      (one) => one.check,
-    );
+    const checks = validateTypeface(store.getSnapshot().typeface!).findings.map((one) => one.check);
     expect(checks).not.toContain("notdef-missing");
     expect(checks).not.toContain("notdef-position");
   });
@@ -1181,7 +1189,7 @@ describe("editing points through the store", () => {
     store.editGlyph("o", "overload", (one) => {
       const r = 100;
       const count = 20;
-      const k = ((4 / 3) * Math.tan(Math.PI / count) * r);
+      const k = (4 / 3) * Math.tan(Math.PI / count) * r;
       one.contours = [
         {
           closed: true,
@@ -1224,7 +1232,12 @@ describe("editing points through the store", () => {
   it("closes an outline of three points and refuses one of two", () => {
     store.editGlyph("n", "open", (one) => {
       one.contours = [
-        { closed: false, nodes: circle().nodes.slice(0, 2).map((node) => ({ ...node })) },
+        {
+          closed: false,
+          nodes: circle()
+            .nodes.slice(0, 2)
+            .map((node) => ({ ...node })),
+        },
       ];
     });
     expect(store.closeOutline("n")).toBe(false);
@@ -1239,7 +1252,14 @@ describe("editing points through the store", () => {
 
   it("takes the leaving handle off the last point, once", () => {
     store.editGlyph("n", "open", (one) => {
-      one.contours = [{ closed: false, nodes: circle().nodes.slice(0, 2).map((n) => ({ ...n })) }];
+      one.contours = [
+        {
+          closed: false,
+          nodes: circle()
+            .nodes.slice(0, 2)
+            .map((n) => ({ ...n })),
+        },
+      ];
     });
     expect(store.retractLast("n")).toBe(true);
     expect(store.glyph("n")!.contours[0].nodes[1].handleOut).toBeNull();
@@ -1347,17 +1367,9 @@ describe("a letter on loan", () => {
    */
   it("is not what gets written down", () => {
     const held = store.snapshot();
-    expect(held?.typeface.glyphs.map((one) => one.name)).toEqual([
-      "A",
-      "B",
-      "C",
-    ]);
+    expect(held?.typeface.glyphs.map((one) => one.name)).toEqual(["A", "B", "C"]);
     lend();
-    expect(store.snapshot()?.typeface.glyphs.map((one) => one.name)).toEqual([
-      "A",
-      "B",
-      "C",
-    ]);
+    expect(store.snapshot()?.typeface.glyphs.map((one) => one.name)).toEqual(["A", "B", "C"]);
   });
 
   it("gives back the letter and the width it left with", () => {
@@ -1388,13 +1400,9 @@ describe("a letter on loan", () => {
     lend();
     seed(["X", "Y"]);
     expect(store.getSnapshot().loan).toBeNull();
-    expect(store.getSnapshot().typeface?.glyphs.map((one) => one.name)).toEqual(
-      ["X", "Y"],
-    );
+    expect(store.getSnapshot().typeface?.glyphs.map((one) => one.name)).toEqual(["X", "Y"]);
     store.dropLoan();
-    expect(store.getSnapshot().typeface?.glyphs.map((one) => one.name)).toEqual(
-      ["X", "Y"],
-    );
+    expect(store.getSnapshot().typeface?.glyphs.map((one) => one.name)).toEqual(["X", "Y"]);
   });
 
   it("lends one letter at a time", () => {

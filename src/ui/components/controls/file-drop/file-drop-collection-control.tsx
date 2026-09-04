@@ -3,10 +3,7 @@
 import * as React from "react";
 
 import { cn } from "../../../lib/utils";
-import {
-  CollectionActionsControl,
-  CollectionItemGroups,
-} from "../collection-actions";
+import { CollectionActionsControl, CollectionItemGroups } from "../collection-actions";
 import { Field } from "../../primitives";
 import { FileDropPresentationMessages } from "./file-drop-presentation-messages";
 import type {
@@ -44,9 +41,7 @@ export function FileDropCollectionControl({
   SlotControl,
 }: FileDropCollectionControlProps): React.JSX.Element {
   const pendingBaseCountRef = React.useRef(entries.length);
-  const [hasPendingSlot, setHasPendingSlot] = React.useState(
-    () => entries.length === 0,
-  );
+  const [hasPendingSlot, setHasPendingSlot] = React.useState(() => entries.length === 0);
   const itemLabel = actions.itemLabel ?? "file";
 
   React.useEffect(() => {
@@ -121,17 +116,10 @@ export function FileDropCollectionControl({
         removeLabel={actions.removeLabel}
       />
       <CollectionItemGroups>
-        {entries.map((entry, index) =>
-          renderSlot(entry.item, index, entry.key),
-        )}
-        {hasPendingSlot
-          ? renderSlot(null, entries.length, `pending-${entries.length}`)
-          : null}
+        {entries.map((entry, index) => renderSlot(entry.item, index, entry.key))}
+        {hasPendingSlot ? renderSlot(null, entries.length, `pending-${entries.length}`) : null}
       </CollectionItemGroups>
-      <FileDropPresentationMessages
-        feedback={presentation.feedback}
-        status={presentation.status}
-      />
+      <FileDropPresentationMessages feedback={presentation.feedback} status={presentation.status} />
     </Field>
   );
 }

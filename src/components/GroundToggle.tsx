@@ -7,13 +7,13 @@
  * in the places where a letter is being judged rather than operated.
  */
 
-import * as React from "react";
+import type * as React from "react";
 
 import { store, useAppState } from "@/state/useStore";
 import { segment, SEGMENT_TRACK } from "@/components/controls";
 
 export function GroundToggle(): React.JSX.Element {
-  const ground = useAppState().ground;
+  const ground = useAppState((state) => state.ground);
   return (
     <div className={SEGMENT_TRACK} role="group" aria-label="Ground" data-ground-toggle>
       {(["dark", "light"] as const).map((which) => (

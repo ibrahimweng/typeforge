@@ -384,10 +384,7 @@ export function buildName(
     typographicStyle: named.typographicStyle,
   };
 
-  const entries = [
-    ...NAME_IDS.map(([id, key]) => ({ id, value: values[key] ?? "" })),
-    ...invented,
-  ]
+  const entries = [...NAME_IDS.map(([id, key]) => ({ id, value: values[key] ?? "" })), ...invented]
     .filter((entry) => entry.value.length > 0)
     // In order of id, which the format requires of the records and which the
     // list above is only in by luck once anything is added to it.
@@ -476,7 +473,9 @@ export function buildPost(
     // A Pascal string: one byte of length, then the bytes. Names are ASCII by
     // the specification, and anything else is cut back to it rather than
     // written as something no reader will agree about.
-    const bytes = [...name].map((one) => one.charCodeAt(0)).filter((code) => code > 0x20 && code < 0x7f);
+    const bytes = [...name]
+      .map((one) => one.charCodeAt(0))
+      .filter((code) => code > 0x20 && code < 0x7f);
     writer.uint8(Math.min(bytes.length, 63));
     for (const code of bytes.slice(0, 63)) writer.uint8(code);
   }

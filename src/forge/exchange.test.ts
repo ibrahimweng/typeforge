@@ -215,7 +215,12 @@ describe("a letter that is no longer drawn", () => {
           nodes: [
             { point: { x: 0, y: 0 }, handleIn: null, handleOut: null, type: "corner" as const },
             { point: { x: 300, y: 0 }, handleIn: null, handleOut: null, type: "corner" as const },
-            { point: { x: 300, y: tall }, handleIn: null, handleOut: null, type: "corner" as const },
+            {
+              point: { x: 300, y: tall },
+              handleIn: null,
+              handleOut: null,
+              type: "corner" as const,
+            },
           ],
         },
       ],

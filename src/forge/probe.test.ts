@@ -234,7 +234,9 @@ describe("whatever comes back", () => {
   const known = new Set<string>([
     ...PEN_CONTROLS.map((control) => `pen:${control.key}`),
     ...METRIC_CONTROLS.map((control) => `metrics:${control.key}`),
-    ...PART_SPECS.flatMap((spec) => spec.controls.map((control) => `part:${spec.name}:${control.key}`)),
+    ...PART_SPECS.flatMap((spec) =>
+      spec.controls.map((control) => `part:${spec.name}:${control.key}`),
+    ),
   ]);
 
   /*
@@ -308,10 +310,11 @@ describe("whatever comes back", () => {
     for (const letter of ["n", "o", "H", "l"]) {
       for (const at of edgeOf(letter, SANS).filter((_, index) => index % 17 === 0)) {
         const found = whatGoverns(letter, SANS, at);
-        if (!found || found.handle.drive.on !== "part") continue;
+        if (found?.handle.drive.on !== "part") continue;
         const part = found.handle.drive.part;
         // The serif lives on a terminal, so a run wearing one may answer with it.
-        const allowed = part === "slab" ? found.parts.includes("terminal") : found.parts.includes(part);
+        const allowed =
+          part === "slab" ? found.parts.includes("terminal") : found.parts.includes(part);
         expect(allowed).toBe(true);
       }
     }

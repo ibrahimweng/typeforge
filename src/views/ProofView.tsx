@@ -98,7 +98,10 @@ function layout(
        * than two -- measure first and the line breaks in the wrong place.
        */
       const run = joining
-        ? applyLigatures(typeface, typed.map((one) => one.name))
+        ? applyLigatures(
+            typeface,
+            typed.map((one) => one.name),
+          )
             .map((name) => typeface.glyphs[typeface.glyphIndex.get(name)!])
             .filter(Boolean)
         : typed;
@@ -392,7 +395,10 @@ function Dial({
         step={step}
         aria-label={label}
         onChange={(event) => onChange(Number(event.target.value))}
-        className={cn("h-1 w-28 cursor-pointer appearance-none rounded-full bg-border", "accent-[color:var(--accent)]")}
+        className={cn(
+          "h-1 w-28 cursor-pointer appearance-none rounded-full bg-border",
+          "accent-[color:var(--accent)]",
+        )}
       />
       <span className="w-14 tabular-nums text-foreground">
         {step < 1 ? value.toFixed(2) : value}

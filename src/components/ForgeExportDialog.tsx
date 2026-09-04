@@ -96,13 +96,24 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
   };
 
   return (
+    /*
+      Clicking the dark behind the panel closes it, and that is all the dark
+      does: it is not a control, there is nothing on it to announce or tab to,
+      and Escape closes from the keyboard. Marked as presentation to say so.
+      The close fires only for a click that landed on the backdrop itself,
+      which is the job the panel below used to do with a stopPropagation --
+      the panel reads better not handling clicks it has no interest in.
+    */
+    // biome-ignore lint/a11y/noStaticElementInteractions: the backdrop is presentation; Escape is the keyboard path.
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6"
-      onClick={onClose}
+      role="presentation"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
     >
       <div
         ref={panelRef}
-        onClick={(event) => event.stopPropagation()}
         /*
           Bounded, and scrolling inside itself, for the reason the editor's
           export dialog is: a centred flex child taller than the window is
@@ -207,10 +218,9 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
            * halfway along.
            */
           <p className="pb-3 text-2xs leading-snug text-[color:var(--accent)]" data-tool-note>
-            The tool is baked into every letter on the way out, which takes a
-            few seconds a weight. It cannot be a variable font: the rough edge
-            is drawn to the stem, so two weights come out with different points
-            and there is nothing to slide between.
+            The tool is baked into every letter on the way out, which takes a few seconds a weight.
+            It cannot be a variable font: the rough edge is drawn to the stem, so two weights come
+            out with different points and there is nothing to slide between.
           </p>
         )}
 
@@ -264,9 +274,9 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
         </div>
 
         <p className="pb-4 text-2xs leading-relaxed text-muted-foreground">
-          Every shape in this file was drawn from a skeleton here. Nothing is traced from or
-          derived from another typeface, so there is nobody to credit and nothing to license — it
-          is yours to use, sell or give away.
+          Every shape in this file was drawn from a skeleton here. Nothing is traced from or derived
+          from another typeface, so there is nobody to credit and nothing to license — it is yours
+          to use, sell or give away.
         </p>
 
         {problem && <p className="pb-3 text-2xs text-destructive">{problem}</p>}
@@ -282,7 +292,11 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
             data-download-family
             className={PRIMARY_ACTION}
           >
-            {working ? "Writing…" : weights.length === 1 ? "Download" : `Download ${weights.length}`}
+            {working
+              ? "Writing…"
+              : weights.length === 1
+                ? "Download"
+                : `Download ${weights.length}`}
           </button>
         </div>
       </div>

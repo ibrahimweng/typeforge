@@ -42,8 +42,9 @@ async function pointsAt(weight: number) {
   });
   const built = buildGlyfTables(
     typeface.glyphs.map((glyph) => ({
-      contours: correctDirection(glyph.contours, "winding"),
+      contours: correctDirection(glyph.contours, "truetype", "winding"),
       advanceWidth: glyph.advanceWidth,
+      rebuild: true,
     })),
     0.5,
     // What the varying path asks for, taken from the varying path rather than
@@ -96,7 +97,8 @@ for (const name of names) {
   for (let i = 0; i < WEIGHTS.length; i++) {
     if (kinds[i] === base) continue;
     let front = 0;
-    while (front < kinds[i].length && front < base.length && kinds[i][front] === base[front]) front++;
+    while (front < kinds[i].length && front < base.length && kinds[i][front] === base[front])
+      front++;
     let back = 0;
     while (
       back < kinds[i].length - front &&
@@ -114,4 +116,6 @@ for (const name of names) {
 
 const missed = [...held].filter((one) => !drifted.includes(one));
 console.log(`\n${face.name}: the file leaves ${held.size} standing: ${[...held].sort().join(" ")}`);
-console.log(`  the replica finds ${drifted.length}${missed.length ? `, and misses ${missed.join(" ")}` : ""}`);
+console.log(
+  `  the replica finds ${drifted.length}${missed.length ? `, and misses ${missed.join(" ")}` : ""}`,
+);

@@ -37,10 +37,7 @@ import { unite } from "@/font/boolean";
 import { furthestFromPath, nearestOnPaths } from "@/quill/curve";
 
 await ready();
-const { typeface } = await importFont(
-  new Uint8Array(readFileSync(process.env.FONT!)),
-  "ref.ttf",
-);
+const { typeface } = await importFont(new Uint8Array(readFileSync(process.env.FONT!)), "ref.ttf");
 const upm = typeface.unitsPerEm ?? 1000;
 const byChar = new Map<string, (typeof typeface.glyphs)[number]>();
 for (const g of typeface.glyphs)
@@ -48,18 +45,15 @@ for (const g of typeface.glyphs)
 
 const paths = (cs: any[]) => cs.map((c) => flattenContour(c, 40));
 const letters = process.env.LETTERS ?? "abcdefghijklmnopqrstuvwxyz";
-const area = (cs: any[]) =>
-  Math.abs(cs.reduce((sum, c) => sum + contourArea(c), 0));
-console.log(
-  "letter  strokes  found/kept   spine dev   OUTLINE ERROR (max, mean)   ink%  units",
-);
+const area = (cs: any[]) => Math.abs(cs.reduce((sum, c) => sum + contourArea(c), 0));
+console.log("letter  strokes  found/kept   spine dev   OUTLINE ERROR (max, mean)   ink%  units");
 let worst = 0,
   sum = 0,
   n = 0,
   nodes = 0;
 for (const ch of letters) {
   const g = byChar.get(ch);
-  if (!g || !g.contours?.length) {
+  if (!g?.contours?.length) {
     console.log(`  ${ch}     -- missing`);
     continue;
   }
@@ -79,10 +73,7 @@ for (const ch of letters) {
     console.log(`  ${ch}     -- no fit`);
     continue;
   }
-  const drawn = sweepAll(
-    fit.glyph.strokes,
-    toleranceFor(typeface.unitsPerEm ?? 1000),
-  );
+  const drawn = sweepAll(fit.glyph.strokes, toleranceFor(typeface.unitsPerEm ?? 1000));
   // United, because the source is one outline and the redraw is a pile of
   // overlapping strokes. Measured un-united, every seam buried inside another
   // stroke's ink reads as half a stem of error on a letter that is in fact right.
@@ -93,10 +84,7 @@ for (const ch of letters) {
     continue;
   }
   // symmetric: how far each outline strays from the other, point to edge
-  const max = Math.max(
-    furthestFromPath(src.flat(), out),
-    furthestFromPath(out.flat(), src),
-  );
+  const max = Math.max(furthestFromPath(src.flat(), out), furthestFromPath(out.flat(), src));
   // mean deviation of source points from the redrawn outline
   const flat = src.flat();
   let acc = 0;
@@ -106,8 +94,7 @@ for (const ch of letters) {
   sum += mean;
   n++;
   nodes += drawn.contours.reduce((sum, c) => sum + c.nodes.length, 0);
-  const ink =
-    (area(unite(drawn.contours)) / Math.max(1, area(unite(g.contours)))) * 100;
+  const ink = (area(unite(drawn.contours)) / Math.max(1, area(unite(g.contours)))) * 100;
   console.log(
     `  ${ch}     ${String(fit.glyph.strokes.length).padStart(3)}    ${String(fit.found).padStart(3)}/${String(fit.kept).padStart(3)}     ${fit.spineDeviation.toFixed(2).padStart(6)}      ${max.toFixed(1).padStart(6)}   ${mean.toFixed(2).padStart(6)}  ${ink.toFixed(0).padStart(4)}%   ${Date.now() - t0}ms`,
   );

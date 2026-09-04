@@ -189,9 +189,7 @@ function withCrossings(
 
   for (const crossing of ordered) {
     const scale =
-      previousOnSegment && previousOnSegment.segment === crossing.segment
-        ? previousOnSegment.t
-        : 1;
+      previousOnSegment && previousOnSegment.segment === crossing.segment ? previousOnSegment.t : 1;
     const local = crossing.t / scale;
     previousOnSegment = crossing;
 
@@ -272,10 +270,7 @@ function splitClosed(
 }
 
 /** The pieces one open contour falls into: no chords, just shorter paths. */
-function splitOpen(
-  nodes: GlyphNode[],
-  marks: Array<{ index: number; along: number }>,
-): Contour[] {
+function splitOpen(nodes: GlyphNode[], marks: Array<{ index: number; along: number }>): Contour[] {
   const at = [...marks].map((mark) => mark.index).sort((one, other) => one - other);
   const edges = [0, ...at, nodes.length - 1];
   const pieces: Contour[] = [];

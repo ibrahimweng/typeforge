@@ -27,9 +27,7 @@ async function dragAPoint(page: Page, by: number): Promise<boolean> {
   for (let y = box.height * 0.15; y < box.height * 0.75; y += 6) {
     for (let x = box.width * 0.3; x < box.width * 0.7; x += 6) {
       await page.mouse.move(box.x + x, box.y + y);
-      if (
-        ((await canvas.getAttribute("class")) ?? "").includes("cursor-grab")
-      ) {
+      if (((await canvas.getAttribute("class")) ?? "").includes("cursor-grab")) {
         await page.mouse.down();
         await page.mouse.move(box.x + x, box.y + y - by, { steps: 6 });
         await page.mouse.up();
@@ -40,16 +38,13 @@ async function dragAPoint(page: Page, by: number): Promise<boolean> {
   return false;
 }
 
-test("a drawn letter can be worked on with the tools and kept", async ({
-  page,
-}) => {
+test("a drawn letter can be worked on with the tools and kept", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Draw", exact: true }).click();
 
   // What the letter looks like before anybody touches it, so the assertion at
   // the end is that it looks different rather than that a button was pressed.
-  const drawnLetter = () =>
-    page.locator("[data-forge-stage=n] path").first().getAttribute("d");
+  const drawnLetter = () => page.locator("[data-forge-stage=n] path").first().getAttribute("d");
   const before = await drawnLetter();
   expect(before).toBeTruthy();
 
@@ -58,9 +53,10 @@ test("a drawn letter can be worked on with the tools and kept", async ({
   // It arrives on the canvas, on its own, with every tool pointed at it.
   await expect(page.locator("[data-on-loan=n]")).toBeVisible();
   await expect(page.getByRole("group", { name: "Tool" })).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Glyph", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Glyph", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await expect(page.locator("[data-paths-panel]")).toContainText("paths");
 
   /*
@@ -70,12 +66,8 @@ test("a drawn letter can be worked on with the tools and kept", async ({
    * tab would leave the borrowed letter on the desk and the real font in a
    * drawer with nothing on screen to say why.
    */
-  await expect(
-    page.getByRole("button", { name: "Assemble", exact: true }),
-  ).toBeDisabled();
-  await expect(
-    page.getByRole("button", { name: "Trace", exact: true }),
-  ).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Assemble", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Trace", exact: true })).toBeDisabled();
 
   const canvas = page.locator("canvas").first();
   const box = (await canvas.boundingBox())!;
@@ -84,13 +76,12 @@ test("a drawn letter can be worked on with the tools and kept", async ({
   await page.locator("[data-loan-keep]").click();
 
   // Back in Draw, and the letter says what it has become.
-  await expect(
-    page.getByRole("button", { name: "Draw", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("[data-forge-imported=n]")).toBeVisible();
-  await expect(page.locator("[data-forge-imported=n]")).toContainText(
-    "your drawing",
+  await expect(page.getByRole("button", { name: "Draw", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
   );
+  await expect(page.locator("[data-forge-imported=n]")).toBeVisible();
+  await expect(page.locator("[data-forge-imported=n]")).toContainText("your drawing");
 
   // The whole point: the letter in the drawn font is now the one that was
   // drawn by hand, and it is not the one the skeleton makes.
@@ -106,8 +97,7 @@ test("a drawn letter can be worked on with the tools and kept", async ({
 test("a loan thrown away leaves the letter as it was", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Draw", exact: true }).click();
-  const drawnLetter = () =>
-    page.locator("[data-forge-stage=n] path").first().getAttribute("d");
+  const drawnLetter = () => page.locator("[data-forge-stage=n] path").first().getAttribute("d");
   const before = await drawnLetter();
 
   await page.locator("[data-forge-draw-here=n]").click();
@@ -115,9 +105,10 @@ test("a loan thrown away leaves the letter as it was", async ({ page }) => {
   expect(await dragAPoint(page, 40)).toBe(true);
 
   await page.locator("[data-loan-drop]").click();
-  await expect(
-    page.getByRole("button", { name: "Draw", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Draw", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   // Still a description, still answering the sliders, and unmoved.
   await expect(page.locator("[data-forge-imported=n]")).toHaveCount(0);
   expect(await drawnLetter()).toBe(before);
@@ -133,9 +124,7 @@ test("the font that was open comes back untouched", async ({ page }) => {
   await page.goto("/");
   test.skip(!FONT_PATH, "needs a system font to open");
   await page.setInputFiles("[data-open-input]", FONT_PATH!);
-  await expect(
-    page.getByText("DejaVu Sans", { exact: false }).first(),
-  ).toBeVisible({
+  await expect(page.getByText("DejaVu Sans", { exact: false }).first()).toBeVisible({
     timeout: 45_000,
   });
 
@@ -147,9 +136,7 @@ test("the font that was open comes back untouched", async ({ page }) => {
 
   await page.locator("[data-loan-drop]").click();
   await page.getByRole("button", { name: "Edit", exact: true }).click();
-  await expect(
-    page.getByText("DejaVu Sans", { exact: false }).first(),
-  ).toBeVisible();
+  await expect(page.getByText("DejaVu Sans", { exact: false }).first()).toBeVisible();
 });
 
 test("the palette cannot walk out of a loan either", async ({ page }) => {

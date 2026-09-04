@@ -44,9 +44,10 @@ function setWord(style: Style, word: string, contextual: boolean): { path: strin
     const letter = word[at];
     const leaves = contextual && high.has(letter) && at + 1 < word.length;
     const arrives = contextual && at > 0 && high.has(word[at - 1]);
-    const drawn = leaves || arrives
-      ? joiningHigh({ entry: arrives, exit: leaves }, () => drawLetter(letter, style))
-      : drawLetter(letter, style);
+    const drawn =
+      leaves || arrives
+        ? joiningHigh({ entry: arrives, exit: leaves }, () => drawLetter(letter, style))
+        : drawLetter(letter, style);
     if (!drawn) continue;
     parts.push(contoursToSvgPath(slid(drawn.contours, x)));
     x += drawn.advanceWidth;

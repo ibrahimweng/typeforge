@@ -95,8 +95,7 @@ export function AnchorGridControl({
               aria-hidden="true"
               className={cn(
                 "pointer-events-none inline-flex size-2 rounded-full bg-[color:color-mix(in_oklab,var(--foreground)_18%,transparent)] transition-[background-color,border-color,box-shadow,transform] duration-150 ease-out",
-                currentValue === option &&
-                  "scale-110 bg-[color:var(--foreground)]",
+                currentValue === option && "scale-110 bg-[color:var(--foreground)]",
               )}
             />
           </Button>

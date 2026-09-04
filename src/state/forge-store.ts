@@ -429,7 +429,9 @@ class ForgeStore {
     const base = baseNamed(name);
     if (!base) return;
     this.commit(startFrom(base));
-    this.set({ familyName: this.state.familyName === "Untitled" ? `My ${name}` : this.state.familyName });
+    this.set({
+      familyName: this.state.familyName === "Untitled" ? `My ${name}` : this.state.familyName,
+    });
   }
 
   /**

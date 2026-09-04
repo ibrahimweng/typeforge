@@ -1,4 +1,4 @@
-import * as React from "react";
+import type * as React from "react";
 
 import { CaretLeftIcon, CaretRightIcon, DotsThreeIcon } from "@phosphor-icons/react";
 import { Button } from "../primitives";

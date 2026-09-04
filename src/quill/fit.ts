@@ -31,15 +31,7 @@
 import type { Contour } from "@/font/types";
 import type { Vec2 } from "@/font/types";
 import { fitCubics, walkOf } from "./curve";
-import {
-  distanceAt,
-  distances,
-  inside,
-  rasterise,
-  thin,
-  toUnits,
-  type Grid,
-} from "./raster";
+import { distanceAt, distances, inside, rasterise, thin, toUnits, type Grid } from "./raster";
 import { widthAt } from "./sweep";
 import {
   ROUND_NIB,
@@ -116,10 +108,7 @@ function neighboursOf(
  * run touches, and is therefore a stroke -- or a piece of one, in the case the
  * note at the top of this file is about.
  */
-function tracePaths(
-  skeleton: Uint8Array,
-  grid: Grid,
-): Array<Array<[number, number]>> {
+function tracePaths(skeleton: Uint8Array, grid: Grid): Array<Array<[number, number]>> {
   const degree = new Uint8Array(grid.width * grid.height);
   const nodes: Array<[number, number]> = [];
   for (let y = 0; y < grid.height; y++) {
@@ -189,8 +178,7 @@ function tracePaths(
   for (let y = 0; y < grid.height; y++) {
     for (let x = 0; x < grid.width; x++) {
       const index = y * grid.width + x;
-      if (skeleton[index] !== 1 || walked[index] === 1 || degree[index] !== 2)
-        continue;
+      if (skeleton[index] !== 1 || walked[index] === 1 || degree[index] !== 2) continue;
       const step = neighboursOf(skeleton, grid, x, y)[0];
       walked[index] = 1;
       const path = walkFrom([x, y], step);
@@ -251,15 +239,9 @@ function components(skeleton: Uint8Array, grid: Grid): Int32Array {
  * that merely touch is a worse error than leaving one stroke in two pieces: the
  * first invents a shape nobody drew, the second only adds a node.
  */
-function spliceAtJunctions(
-  paths: Array<Array<[number, number]>>,
-  grid: Grid,
-): Run[] {
+function spliceAtJunctions(paths: Array<Array<[number, number]>>, grid: Grid): Run[] {
   const key = ([x, y]: [number, number]) => y * grid.width + x;
-  const headingOf = (
-    path: Array<[number, number]>,
-    fromStart: boolean,
-  ): Vec2 => {
+  const headingOf = (path: Array<[number, number]>, fromStart: boolean): Vec2 => {
     const look = Math.min(8, path.length - 1);
     const a = fromStart ? path[0] : path[path.length - 1];
     const b = fromStart ? path[look] : path[path.length - 1 - look];
@@ -325,10 +307,7 @@ function spliceAtJunctions(
    */
   const spent = new Set<number>();
   const out: Run[] = [];
-  const chainFrom = (
-    from: number,
-    enterAt: boolean,
-  ): Array<[number, number]> => {
+  const chainFrom = (from: number, enterAt: boolean): Array<[number, number]> => {
     let run: Array<[number, number]> = [];
     let path = from;
     let start = enterAt;
@@ -548,10 +527,7 @@ function dropCovered(runs: Run[], grid: Grid, field: Float64Array): Run[] {
 function pathLength(path: Array<[number, number]>, grid: Grid): number {
   let total = 0;
   for (let index = 1; index < path.length; index++) {
-    total += Math.hypot(
-      path[index][0] - path[index - 1][0],
-      path[index][1] - path[index - 1][1],
-    );
+    total += Math.hypot(path[index][0] - path[index - 1][0], path[index][1] - path[index - 1][1]);
   }
   return total * grid.scale;
 }
@@ -589,8 +565,7 @@ function fitRing(
   const loop = [...points];
   const first = loop[0];
   const last = loop[loop.length - 1];
-  if (Math.hypot(first.x - last.x, first.y - last.y) > 1e-9)
-    loop.push({ ...first });
+  if (Math.hypot(first.x - last.x, first.y - last.y) > 1e-9) loop.push({ ...first });
 
   const half = Math.floor(loop.length / 2);
   const front = fitCubics(loop.slice(0, half + 1), tolerance);
@@ -632,11 +607,7 @@ function fitRing(
  * Only at a free end. A run that stops at a junction is not near a boundary and
  * has nothing wrong with it.
  */
-function steadyEnds(
-  points: Vec2[],
-  free: { start: boolean; end: boolean },
-  guard: number,
-): Vec2[] {
+function steadyEnds(points: Vec2[], free: { start: boolean; end: boolean }, guard: number): Vec2[] {
   if (guard < 2 || points.length < guard * 2 + 3) return points;
   const out = [...points];
 
@@ -707,9 +678,7 @@ function widthProfile(
   budget: number,
   free: { start: boolean; end: boolean },
 ): WidthProfile {
-  const widths = path.map(
-    ([x, y]) => distanceAt(grid, field, x, y) * 2 * grid.scale,
-  );
+  const widths = path.map(([x, y]) => distanceAt(grid, field, x, y) * 2 * grid.scale);
   if (widths.length === 0) return [{ at: 0, width: 0 }];
   if (widths.length === 1) return [{ at: 0, width: widths[0] }];
 
@@ -848,10 +817,7 @@ function widthProfile(
     let away = 0;
     for (let step = guard - 1; step >= 0; step--) {
       away += gap(step);
-      widths[at(step)] = Math.min(
-        ceiling,
-        Math.max(floor, anchor - slope * away),
-      );
+      widths[at(step)] = Math.min(ceiling, Math.max(floor, anchor - slope * away));
     }
   };
 
@@ -938,8 +904,7 @@ function widthProfile(
   }
   if (!free.end && join > 0) {
     const width = widths[widths.length - 1 - join];
-    for (let index = 0; index < join; index++)
-      widths[widths.length - 1 - index] = width;
+    for (let index = 0; index < join; index++) widths[widths.length - 1 - index] = width;
   }
 
   /*
@@ -1047,8 +1012,7 @@ export function fitGlyph(
    * half. Sized against the em it is the same work and the same proportional
    * accuracy for either.
    */
-  const scale =
-    options.scale ?? Math.max(1, (options.unitsPerEm ?? 1000) / 1000);
+  const scale = options.scale ?? Math.max(1, (options.unitsPerEm ?? 1000) / 1000);
   const budget = options.widthStops ?? 6;
 
   const grid = rasterise(contours, scale);
@@ -1112,8 +1076,7 @@ export function fitGlyph(
     const path = run.points;
     const length = pathLength(path, grid);
     const middle = path[Math.floor(path.length / 2)];
-    const localWidth =
-      distanceAt(grid, field, middle[0], middle[1]) * 2 * grid.scale;
+    const localWidth = distanceAt(grid, field, middle[0], middle[1]) * 2 * grid.scale;
     /*
      * How short is too short, asked as whether the branch draws any ink of its
      * own.
@@ -1175,9 +1138,7 @@ export function fitGlyph(
     if (widest <= grid.scale * 1.5) continue;
 
     const floor = prune ?? Math.max(localWidth * 0.75, 4 * scale);
-    const ends = path.filter(
-      ([x, y]) => neighboursOf(skeleton, grid, x, y).length === 1,
-    ).length;
+    const ends = path.filter(([x, y]) => neighboursOf(skeleton, grid, x, y).length === 1).length;
     /*
      * Which ends of this run are ends of the *letter* rather than joins.
      *
@@ -1191,11 +1152,9 @@ export function fitGlyph(
      * far side of the stem, where it drew a blob.
      */
     const freeAt = (point: [number, number]) =>
-      !run.closed &&
-      neighboursOf(skeleton, grid, point[0], point[1]).length === 1;
+      !run.closed && neighboursOf(skeleton, grid, point[0], point[1]).length === 1;
     const free = { start: freeAt(path[0]), end: freeAt(path[path.length - 1]) };
-    const alone =
-      (share.get(label[path[0][1] * grid.width + path[0][0]]) ?? 1) <= 1;
+    const alone = (share.get(label[path[0][1] * grid.width + path[0][0]]) ?? 1) <= 1;
     // A run joined at both ends is load-bearing however short. A run that is
     // the whole of its own piece of skeleton is a mark, not a whisker.
     if (!alone && ends > 0 && (prune !== undefined ? length < floor : covered)) continue;
@@ -1220,9 +1179,7 @@ export function fitGlyph(
       2,
     );
     if (points.length < 2) continue;
-    const fitted = run.closed
-      ? fitRing(points, tolerance)
-      : fitCubics(points, tolerance);
+    const fitted = run.closed ? fitRing(points, tolerance) : fitCubics(points, tolerance);
     if (fitted.curves.length === 0) continue;
     spineDeviation = Math.max(spineDeviation, fitted.deviation);
 
@@ -1249,8 +1206,7 @@ export function fitGlyph(
      * of anything cut square, which a sans is made of.
      */
     const endCap = (which: "start" | "end") => {
-      const edge =
-        which === "start" ? segments[0] : segments[segments.length - 1];
+      const edge = which === "start" ? segments[0] : segments[segments.length - 1];
       const tip = which === "start" ? edge.from : edge.to;
       /*
        * Which way the stroke was heading when it ran out, taken from the
@@ -1298,8 +1254,7 @@ export function fitGlyph(
        * with an error about a property of undefined.
        */
       const span = Math.min(points.length - 1, Math.max(4, guard));
-      const from =
-        which === "start" ? points[span] : points[points.length - 1 - span];
+      const from = which === "start" ? points[span] : points[points.length - 1 - span];
       const dx = tip.x - from.x;
       const dy = tip.y - from.y;
       const run = Math.hypot(dx, dy);
@@ -1336,13 +1291,7 @@ export function fitGlyph(
        * How far the ink runs in a direction, from a point that is in it.
        * Nought when the starting point is already outside.
        */
-      const inkFrom = (
-        fromX: number,
-        fromY: number,
-        wayX: number,
-        wayY: number,
-        cap: number,
-      ) => {
+      const inkFrom = (fromX: number, fromY: number, wayX: number, wayY: number, cap: number) => {
         if (!coversPoint(grid, { x: fromX, y: fromY })) return 0;
         let far = 0;
         for (let out2 = 1; out2 <= Math.ceil(cap / step); out2++) {
@@ -1599,7 +1548,6 @@ export function fitGlyph(
         };
       }
 
-
       /*
        * Cut or rounded, settled by asking which of the two describes the ink.
        *
@@ -1639,11 +1587,7 @@ export function fitGlyph(
          */
         const grain = Math.max(half / 12, grid.scale);
         for (let a = -half * 1.2; a <= half * 1.2; a += grain) {
-          for (
-            let along = 0;
-            along <= Math.max(reach, half) * 1.3;
-            along += grain
-          ) {
+          for (let along = 0; along <= Math.max(reach, half) * 1.3; along += grain) {
             const claimed = rounded
               ? Math.hypot(along, a) <= half
               : along <= reach && Math.abs(a) <= half;
@@ -1658,8 +1602,7 @@ export function fitGlyph(
         return asked > 0 ? agree / asked : 0;
       };
 
-      if (agreement(true) > agreement(false))
-        return { cap: { kind: "round" } as const, tip: seat };
+      if (agreement(true) > agreement(false)) return { cap: { kind: "round" } as const, tip: seat };
       /*
        * The angle of the cut, carried across as the difference between the two
        * sides rather than thrown away.
@@ -1731,9 +1674,7 @@ export function fitGlyph(
       const last = segments.length - 1;
       const edge = segments[last];
       segments[last] =
-        foot.reseated && edge.kind === "cubic"
-          ? runTo(edge, foot.tip)
-          : { ...edge, to: foot.tip };
+        foot.reseated && edge.kind === "cubic" ? runTo(edge, foot.tip) : { ...edge, to: foot.tip };
     }
 
     /*

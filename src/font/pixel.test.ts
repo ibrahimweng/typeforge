@@ -57,10 +57,30 @@ describe("pixelate", () => {
     const circle: Contour = {
       closed: true,
       nodes: [
-        { point: { x: 100, y: 500 }, handleIn: { x: 100, y: 279 }, handleOut: { x: 100, y: 721 }, type: "smooth" },
-        { point: { x: 500, y: 900 }, handleIn: { x: 279, y: 900 }, handleOut: { x: 721, y: 900 }, type: "smooth" },
-        { point: { x: 900, y: 500 }, handleIn: { x: 900, y: 721 }, handleOut: { x: 900, y: 279 }, type: "smooth" },
-        { point: { x: 500, y: 100 }, handleIn: { x: 721, y: 100 }, handleOut: { x: 279, y: 100 }, type: "smooth" },
+        {
+          point: { x: 100, y: 500 },
+          handleIn: { x: 100, y: 279 },
+          handleOut: { x: 100, y: 721 },
+          type: "smooth",
+        },
+        {
+          point: { x: 500, y: 900 },
+          handleIn: { x: 279, y: 900 },
+          handleOut: { x: 721, y: 900 },
+          type: "smooth",
+        },
+        {
+          point: { x: 900, y: 500 },
+          handleIn: { x: 900, y: 721 },
+          handleOut: { x: 900, y: 279 },
+          type: "smooth",
+        },
+        {
+          point: { x: 500, y: 100 },
+          handleIn: { x: 721, y: 100 },
+          handleOut: { x: 279, y: 100 },
+          type: "smooth",
+        },
       ],
     };
     const result = pixelate([circle], grid(10));
@@ -133,9 +153,7 @@ describe("pixelate", () => {
     const covers = (point: Vec2): boolean =>
       result.some((contour) => {
         const box = contoursBounds([contour]);
-        return (
-          point.x > box.xMin && point.x < box.xMax && point.y > box.yMin && point.y < box.yMax
-        );
+        return point.x > box.xMin && point.x < box.xMax && point.y > box.yMin && point.y < box.yMax;
       });
     // Inside the counter: nothing may cover it.
     expect(covers({ x: 250, y: 250 })).toBe(false);

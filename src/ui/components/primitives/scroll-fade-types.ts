@@ -7,10 +7,8 @@ export type ScrollFadePreset = "compact" | "default" | "large";
 export type ScrollFadeScrollBoundaryBehavior = "contain" | "chain";
 export type ScrollFadeVisibilityMode = "overflow" | "terminal";
 
-export interface ScrollFadeProps extends Omit<
-  React.ComponentProps<"div">,
-  "children" | "className"
-> {
+export interface ScrollFadeProps
+  extends Omit<React.ComponentProps<"div">, "children" | "className"> {
   children: ReactNode;
   className?: string;
   containerClassName?: string;

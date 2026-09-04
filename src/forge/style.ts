@@ -549,7 +549,8 @@ export const FAIRGROUND: Style = {
   ...SANS,
   name: "Fairground",
   family: "display",
-  blurb: "Circus and western wood type: the pen turned a quarter, so the horizontals carry the weight and the verticals thin away.",
+  blurb:
+    "Circus and western wood type: the pen turned a quarter, so the horizontals carry the weight and the verticals thin away.",
   /*
    * Already the one face here drawn with reverse contrast, and that was never
    * the problem: it moved six numbers of thirty-six and drew the same letters
@@ -581,7 +582,8 @@ export const MARKER: Style = {
   ...SANS,
   name: "Marker",
   family: "hand",
-  blurb: "A felt tip on paper: one width whichever way it goes, and an edge that followed the grain.",
+  blurb:
+    "A felt tip on paper: one width whichever way it goes, and an edge that followed the grain.",
   metrics: {
     ...SANS.metrics,
     // A hand leans a little; thirteen degrees was a typeface being italic.
@@ -958,7 +960,8 @@ export const HANDWRITING: Style = {
   ...SANS,
   name: "Handwriting",
   family: "script",
-  blurb: "A plain joined hand. A line that bows as it goes, a pen that swells on the downstroke, and a lean that will not sit quite still.",
+  blurb:
+    "A plain joined hand. A line that bows as it goes, a pen that swells on the downstroke, and a lean that will not sit quite still.",
   /*
    * The capitals come down and the ascenders go up, to leave room for the
    * bounce.
@@ -1069,7 +1072,17 @@ export const HANDWRITING: Style = {
   // eye is the join layer's to draw, so a tail that curls round as well draws
   // it twice. Plain, this face set its `y` at 1.44 to 1.68 of its own `o`
   // against the reference's 1.06.
-  forms: { k: "standing", l: "tailed", t: "straight", y: "straight", f: "descending", n: "written", o: "written", a: "written", e: "written" },
+  forms: {
+    k: "standing",
+    l: "tailed",
+    t: "straight",
+    y: "straight",
+    f: "descending",
+    n: "written",
+    o: "written",
+    a: "written",
+    e: "written",
+  },
   parts: {
     ...SANS.parts,
     /*
@@ -1107,7 +1120,7 @@ export const HANDWRITING: Style = {
      *
      * Swept: 0.90 puts the `n` at 0.89 and the `u` at 0.91.
      */
-    shoulder: { spring: 0.55, reach: 0.75, crest: 0.90 },
+    shoulder: { spring: 0.55, reach: 0.75, crest: 0.9 },
     /*
      * Narrower than a circle, which is what a script's round letters are.
      *
@@ -1285,7 +1298,6 @@ export const HANDWRITING: Style = {
   },
 };
 
-
 /**
  * The formal script: a pointed pen held at an angle and moved slowly.
  *
@@ -1303,7 +1315,8 @@ export const FORMAL_SCRIPT: Style = {
   ...SANS,
   name: "Formal Script",
   family: "script",
-  blurb: "A pointed pen held at an angle and moved slowly. Long loops, deep contrast, and a steep even lean.",
+  blurb:
+    "A pointed pen held at an angle and moved slowly. Long loops, deep contrast, and a steep even lean.",
   /*
    * The lowercase brought down under the extenders, as on the Handwriting and
    * for the reason set out there, and taken the whole way: 0.330 of the em in
@@ -1395,7 +1408,17 @@ export const FORMAL_SCRIPT: Style = {
   // eye is the join layer's to draw, so a tail that curls round as well draws
   // it twice. Plain, this face set its `y` at 1.44 to 1.68 of its own `o`
   // against the reference's 1.06.
-  forms: { k: "standing", a: "double", l: "tailed", y: "straight", f: "descending", one: "footed", n: "written", o: "written", e: "written" },
+  forms: {
+    k: "standing",
+    a: "double",
+    l: "tailed",
+    y: "straight",
+    f: "descending",
+    one: "footed",
+    n: "written",
+    o: "written",
+    e: "written",
+  },
   parts: {
     ...SANS.parts,
     // Square, for the reason set out on the Handwriting above.
@@ -1516,7 +1539,8 @@ export const CASUAL_SCRIPT: Style = {
   ...SANS,
   name: "Casual Script",
   family: "script",
-  blurb: "A felt tip moving fast. High joins, short reach, small loops, and a line that bows and will not sit still.",
+  blurb:
+    "A felt tip moving fast. High joins, short reach, small loops, and a line that bows and will not sit still.",
   // Bounces hardest of the four, so it needs the most room between its
   // capitals and its ascenders. See the note on the Handwriting.
   // The lowercase brought down under the extenders, as on the Handwriting. This
@@ -1584,7 +1608,17 @@ export const CASUAL_SCRIPT: Style = {
    * x-height wide. It set the `g` at 1.26 to 1.41 of this family's own `o`
    * against the reference's 1.07; plain, it is 1.00.
    */
-  forms: { k: "standing", t: "straight", y: "straight", f: "descending", l: "tailed", n: "written", o: "written", a: "written", e: "written" },
+  forms: {
+    k: "standing",
+    t: "straight",
+    y: "straight",
+    f: "descending",
+    l: "tailed",
+    n: "written",
+    o: "written",
+    a: "written",
+    e: "written",
+  },
   parts: {
     ...SANS.parts,
     // Square, for the reason set out on the Handwriting above.
@@ -1727,7 +1761,8 @@ export const MONOLINE_SCRIPT: Style = {
   ...SANS,
   name: "Monoline Script",
   family: "script",
-  blurb: "A hairline of one thickness, drawn rather than written. Long looped ascenders, a hard lean, and a drop of ink on every open end.",
+  blurb:
+    "A hairline of one thickness, drawn rather than written. Long looped ascenders, a hard lean, and a drop of ink on every open end.",
   metrics: {
     ...SANS.metrics,
     // Over the line, as on the Handwriting. Never named here before; it was
@@ -1767,7 +1802,18 @@ export const MONOLINE_SCRIPT: Style = {
   // The straight-tailed `y`, for the reason set out on the Handwriting: this
   // face's eye is the join layer's, and a tail that curls as well draws it
   // twice -- 1.68 of its own `o` against the reference's 1.06.
-  forms: { k: "standing", l: "tailed", y: "straight", f: "descending", seven: "barred", four: "open", n: "written", o: "written", a: "written", e: "written" },
+  forms: {
+    k: "standing",
+    l: "tailed",
+    y: "straight",
+    f: "descending",
+    seven: "barred",
+    four: "open",
+    n: "written",
+    o: "written",
+    a: "written",
+    e: "written",
+  },
   parts: {
     ...SANS.parts,
     // Square, for the reason set out on the Handwriting above.

@@ -12,10 +12,7 @@ export type ControlChangeMeta = {
   historyGroup?: string;
 };
 
-export type ControlValueChangeHandler<Value> = (
-  value: Value,
-  meta?: ControlChangeMeta,
-) => void;
+export type ControlValueChangeHandler<Value> = (value: Value, meta?: ControlChangeMeta) => void;
 
 export type CurveChannel = "RGB" | "R" | "G" | "B";
 

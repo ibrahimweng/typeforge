@@ -70,9 +70,7 @@ function FileDropControlBase<
   const inputRef = React.useRef<HTMLInputElement>(null);
   const folderInputRef = React.useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = React.useState(false);
-  const [selectedItemKey, setSelectedItemKey] = React.useState<string | null>(
-    null,
-  );
+  const [selectedItemKey, setSelectedItemKey] = React.useState<string | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -91,11 +89,13 @@ function FileDropControlBase<
     previews,
   });
   const usesLegacyPresentation = providedPresentation === undefined;
-  const presentation = (providedPresentation ??
-    legacy.presentation) as FileDropPresentation<string, unknown, unknown>;
+  const presentation = (providedPresentation ?? legacy.presentation) as FileDropPresentation<
+    string,
+    unknown,
+    unknown
+  >;
   const isImagePresenter =
-    presentation.presenter === "image-grid" ||
-    presentation.presenter === "single-image";
+    presentation.presenter === "image-grid" || presentation.presenter === "single-image";
   const requiresPreviewSource = usesLegacyPresentation || isImagePresenter;
   const {
     entries: itemEntries,
@@ -113,16 +113,13 @@ function FileDropControlBase<
     ? Boolean(onPreviewTransform)
     : Boolean(onItemSelect);
   const requiresItemSelection =
-    presentation.presenter === "image-grid" &&
-    itemEntries.length > 1 &&
-    canSelectImageItem;
+    presentation.presenter === "image-grid" && itemEntries.length > 1 && canSelectImageItem;
   const selectedItemEntry = requiresItemSelection
     ? itemEntries.find((entry) => entry.key === selectedItemKey)
     : itemEntries[0];
   const shouldRenderLegacyImageActions =
     usesLegacyPresentation &&
-    (presentation.presenter === "image-grid" ||
-      presentation.presenter === "single-image") &&
+    (presentation.presenter === "image-grid" || presentation.presenter === "single-image") &&
     hasContent &&
     Boolean(onPreviewTransform) &&
     Boolean(selectedItemEntry) &&
@@ -185,7 +182,9 @@ function FileDropControlBase<
         return;
       }
 
-      files.forEach((file) => onFileSelect?.(file));
+      files.forEach((file) => {
+        onFileSelect?.(file);
+      });
       return;
     }
 
@@ -220,14 +219,12 @@ function FileDropControlBase<
     }
 
     if (usesLegacyPresentation) {
-      const orderedPreviews = orderedPresentationItems.flatMap(
-        (item, index) => {
-          const key = getPresentationItemKey(item, index);
-          const legacyPreview = legacyPreviewByKey.get(key);
+      const orderedPreviews = orderedPresentationItems.flatMap((item, index) => {
+        const key = getPresentationItemKey(item, index);
+        const legacyPreview = legacyPreviewByKey.get(key);
 
-          return legacyPreview ? [legacyPreview] : [];
-        },
-      );
+        return legacyPreview ? [legacyPreview] : [];
+      });
 
       if (orderedPreviews.length === legacy.previews.length) {
         onPreviewReorder?.(orderedPreviews);
@@ -235,19 +232,12 @@ function FileDropControlBase<
       return;
     }
 
-    onItemsReorder?.(
-      orderedPresentationItems as FileDropPresentationItem<AssetKind>[],
-    );
+    onItemsReorder?.(orderedPresentationItems as FileDropPresentationItem<AssetKind>[]);
   }
 
-  function handleCollectionItemRemove(
-    item: FileDropPresentationItem,
-    index: number,
-  ): void {
+  function handleCollectionItemRemove(item: FileDropPresentationItem, index: number): void {
     if (usesLegacyPresentation) {
-      const legacyPreview = legacyPreviewByKey.get(
-        getPresentationItemKey(item, index),
-      );
+      const legacyPreview = legacyPreviewByKey.get(getPresentationItemKey(item, index));
 
       if (legacyPreview) {
         onPreviewRemove?.(legacyPreview, index);
@@ -274,19 +264,14 @@ function FileDropControlBase<
     }
 
     if (entry && onItemRemove) {
-      onItemRemove(
-        entry.item as FileDropPresentationItem<AssetKind>,
-        entry.sourceIndex,
-      );
+      onItemRemove(entry.item as FileDropPresentationItem<AssetKind>, entry.sourceIndex);
       return;
     }
 
     onClear?.();
   }
 
-  function runLegacyImageTransform(
-    operation: FileDropImageTransformOperation,
-  ): void {
+  function runLegacyImageTransform(operation: FileDropImageTransformOperation): void {
     if (!selectedItemEntry) {
       return;
     }
@@ -353,11 +338,7 @@ function FileDropControlBase<
           "group/file-upload relative flex min-h-16 w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-[color:color-mix(in_oklab,var(--border)_18%,transparent)] bg-[color:color-mix(in_oklab,var(--foreground)_3%,transparent)] text-center shadow-none transition-[background-color,border-color,box-shadow] duration-150 ease-out data-[drag-over=true]:border-[color:color-mix(in_oklab,var(--link)_28%,transparent)] data-[drag-over=true]:bg-[color:color-mix(in_oklab,var(--link)_13%,transparent)] data-[drag-over=true]:shadow-none",
           !isListPresenter &&
             "hover:border-[color:color-mix(in_oklab,var(--border)_35%,transparent)] hover:bg-[color:color-mix(in_oklab,var(--foreground)_6%,transparent)]",
-          hasContent
-            ? isListPresenter
-              ? "overflow-hidden p-1.5"
-              : "overflow-hidden p-2"
-            : "p-0",
+          hasContent ? (isListPresenter ? "overflow-hidden p-1.5" : "overflow-hidden p-2") : "p-0",
         )}
         data-drag-over={dragOver}
         role="group"
@@ -367,9 +348,7 @@ function FileDropControlBase<
           <FileDropEmptyState
             description={presentation.emptyDescription}
             onActivate={openFileDialog}
-            onFolderActivate={
-              presentation.allowsFolderSelection ? openFolderDialog : undefined
-            }
+            onFolderActivate={presentation.allowsFolderSelection ? openFolderDialog : undefined}
             title={presentation.emptyTitle}
           />
         ) : presentation.presenter === "file-list" ? (
@@ -391,24 +370,18 @@ function FileDropControlBase<
             isSortable={hasReorderHandler && itemEntries.length > 1}
             onAddImages={openFileDialog}
             onDragEnd={handleItemDragEnd}
-            onItemRemove={
-              canRemoveCollectionItem ? handleCollectionItemRemove : undefined
-            }
+            onItemRemove={canRemoveCollectionItem ? handleCollectionItemRemove : undefined}
             onPreviewSelect={
               canSelectImageItem
                 ? (key) => {
-                    const entry = itemEntries.find(
-                      (candidate) => candidate.key === key,
-                    );
+                    const entry = itemEntries.find((candidate) => candidate.key === key);
 
                     if (!entry) {
                       return;
                     }
 
                     if (usesLegacyPresentation) {
-                      setSelectedItemKey((currentKey) =>
-                        currentKey === key ? null : key,
-                      );
+                      setSelectedItemKey((currentKey) => (currentKey === key ? null : key));
                       return;
                     }
 
@@ -430,9 +403,7 @@ function FileDropControlBase<
             isSortable={false}
             onDragEnd={handleItemDragEnd}
             onItemActivate={openFileDialog}
-            onItemRemove={
-              canRemoveCollectionItem ? handleCollectionItemRemove : undefined
-            }
+            onItemRemove={canRemoveCollectionItem ? handleCollectionItemRemove : undefined}
             previewEntries={itemEntries}
             previewKeys={itemKeys}
             sensors={sensors}
@@ -453,10 +424,7 @@ function FileDropControlBase<
           />
         )}
       </div>
-      <FileDropPresentationMessages
-        feedback={presentation.feedback}
-        status={presentation.status}
-      />
+      <FileDropPresentationMessages feedback={presentation.feedback} status={presentation.status} />
       {secondaryActions.length > 0 ? (
         <ActionsControl
           actionStates={actionModel.states}

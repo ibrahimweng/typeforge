@@ -19,7 +19,7 @@
  * than leaving somebody to work it out from a drawing that did not change.
  */
 
-import * as React from "react";
+import type * as React from "react";
 
 import { segment } from "@/components/controls";
 import { SliderControl as Slider } from "@/ui/components/controls/slider";
@@ -115,8 +115,16 @@ export type CutPanelProps =
     });
 
 export function CutPanel(props: CutPanelProps): React.JSX.Element {
-  const { cuts, unitsPerEm, scopeNote, reach = null, tag = "cuts", layer = "cut", header, footer } =
-    props;
+  const {
+    cuts,
+    unitsPerEm,
+    scopeNote,
+    reach = null,
+    tag = "cuts",
+    layer = "cut",
+    header,
+    footer,
+  } = props;
   // Widened once, here, so everything below is written for one panel rather
   // than for two that happen to look alike.
   const onChange = props.onChange as (
@@ -124,7 +132,10 @@ export function CutPanel(props: CutPanelProps): React.JSX.Element {
     patch: Record<string, unknown>,
     phase: Phase,
   ) => void;
-  const held = props as { heldNote?: (name: string) => string | null; onRelease?: (name: string) => void };
+  const held = props as {
+    heldNote?: (name: string) => string | null;
+    onRelease?: (name: string) => void;
+  };
   const heldNote = held.heldNote;
   const onRelease = held.onRelease;
   const cast = layer === "cast";
@@ -165,7 +176,9 @@ export function CutPanel(props: CutPanelProps): React.JSX.Element {
           unitsPerEm={unitsPerEm}
           reach={reach}
           fromSkeleton={skeleton}
-          valuesOf={values as (name: string, from: never) => Record<string, number | boolean | string>}
+          valuesOf={
+            values as (name: string, from: never) => Record<string, number | boolean | string>
+          }
           held={heldNote?.(spec.name) ?? null}
           onRelease={onRelease}
         />

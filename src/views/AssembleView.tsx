@@ -41,10 +41,7 @@ type Built = ReturnType<typeof build>;
 
 export function AssembleView(): React.JSX.Element {
   const state = useAssemble();
-  const assembled = React.useMemo(
-    () => build(state.assembly),
-    [state.assembly, state.revision],
-  );
+  const assembled = React.useMemo(() => build(state.assembly), [state.assembly, state.revision]);
   const filled = assembled.letters.length > 0;
 
   return (
@@ -72,15 +69,12 @@ function Instructions(): React.JSX.Element {
         {state.reading ? "Reading…" : "Double-click a box and choose its drawing"}
       </p>
       <p className="max-w-xl text-center text-2xs leading-relaxed text-muted-foreground">
-        One SVG per character. Whatever the file is called, it goes in the box
-        you picked. Typeforge puts them all on the same baseline, sizes them
-        against each other, and fits the spacing and the kerning — and every bit
-        of that can be changed afterwards. Dropping a whole folder in at once
-        still works for the files it can name.
+        One SVG per character. Whatever the file is called, it goes in the box you picked. Typeforge
+        puts them all on the same baseline, sizes them against each other, and fits the spacing and
+        the kerning — and every bit of that can be changed afterwards. Dropping a whole folder in at
+        once still works for the files it can name.
       </p>
-      {state.problem && (
-        <p className="text-2xs text-[color:var(--destructive)]">{state.problem}</p>
-      )}
+      {state.problem && <p className="text-2xs text-[color:var(--destructive)]">{state.problem}</p>}
     </div>
   );
 }
@@ -151,7 +145,11 @@ function Stage({ assembled }: { assembled: Built }): React.JSX.Element {
             unitsPerEm={metrics.unitsPerEm}
           />
 
-          <path d={contoursToSvgPath(letter.contours)} fill="var(--foreground)" fillRule="nonzero" />
+          <path
+            d={contoursToSvgPath(letter.contours)}
+            fill="var(--foreground)"
+            fillRule="nonzero"
+          />
         </g>
       </svg>
 

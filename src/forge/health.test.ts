@@ -114,7 +114,9 @@ describe("what a cut did", () => {
   });
 
   it("counts the letters a break has taken apart", () => {
-    const stencil = withCuts(startFrom(SANS), (cuts) => { cuts.split.on = true; });
+    const stencil = withCuts(startFrom(SANS), (cuts) => {
+      cuts.split.on = true;
+    });
     const said = troubles(stencil).find((one) => one.what.includes("cut into pieces"));
     expect(said).toBeDefined();
     // Every letter with two strokes running into each other, which is most of
@@ -141,7 +143,9 @@ describe("what a cut did", () => {
 
   it("does not call the space a letter cut away to nothing", () => {
     // It has no ink and never had any, which is exactly right for a space.
-    const cut = withCuts(startFrom(SANS), (cuts) => { cuts.slot.on = true; });
+    const cut = withCuts(startFrom(SANS), (cuts) => {
+      cuts.slot.on = true;
+    });
     const gone = troubles(cut).find((one) => one.what === "Cut away to nothing");
     expect(gone?.letters ?? []).not.toContain("space");
   });

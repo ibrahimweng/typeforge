@@ -1,15 +1,8 @@
 "use client";
 
 import { cn } from "../../../lib/utils";
-import {
-  PALETTE_SHADE_STEPS,
-  STYLE_GUIDE_PRIMARY_FAMILY_OPTIONS,
-} from "./palette-control-data";
-import {
-  PALETTE_CELL_SIZE,
-  PALETTE_COLUMNS,
-  SHADE_RAIL_WIDTH,
-} from "./palette-control-layout";
+import { PALETTE_SHADE_STEPS, STYLE_GUIDE_PRIMARY_FAMILY_OPTIONS } from "./palette-control-data";
+import { PALETTE_CELL_SIZE, PALETTE_COLUMNS, SHADE_RAIL_WIDTH } from "./palette-control-layout";
 import type { PaletteControlViewProps } from "./palette-control-types";
 
 export function PaletteControlView(props: PaletteControlViewProps) {
@@ -156,18 +149,14 @@ export function PaletteControlView(props: PaletteControlViewProps) {
         </div>
       </div>
       <div className="inline-grid grid-cols-[auto_1px_auto] items-stretch">
-        <div className="px-4 py-4">
-          {paletteGrid}
-        </div>
+        <div className="px-4 py-4">{paletteGrid}</div>
 
         <div
           aria-hidden="true"
           className="h-full w-px bg-[color:color-mix(in_oklab,var(--muted-foreground)_20%,transparent)]"
         />
 
-        <div className="flex items-stretch px-4 py-4">
-          {shadeRail}
-        </div>
+        <div className="flex items-stretch px-4 py-4">{shadeRail}</div>
       </div>
     </div>
   );

@@ -6,7 +6,7 @@
  * behave differently reads as broken long before anybody can say why.
  */
 
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "@/ui/lib/utils";
 

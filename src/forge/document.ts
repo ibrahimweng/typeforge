@@ -306,7 +306,10 @@ export function startFrom(base: Style): Forge {
 
 /** Say which weights the typeface has. The one being drawn is always one. */
 export function setFamily(forge: Forge, family: Family): Forge {
-  return { ...forge, family: { drawn: family.drawn, also: [...new Set(family.also)].sort((a, b) => a - b) } };
+  return {
+    ...forge,
+    family: { drawn: family.drawn, also: [...new Set(family.also)].sort((a, b) => a - b) },
+  };
 }
 
 /**
@@ -830,8 +833,11 @@ export function unshaped(forge: Forge): Forge {
   // A font with nothing switched on is already this, and handing back a copy
   // of it would be a second document drawing the same letters -- every one of
   // them a fresh miss in a cache that had them.
-  if (!anyShaping(forge.cuts, forge.cast) && forge.cutExceptions === undefined
-      && forge.castExceptions === undefined) {
+  if (
+    !anyShaping(forge.cuts, forge.cast) &&
+    forge.cutExceptions === undefined &&
+    forge.castExceptions === undefined
+  ) {
     return forge;
   }
   const kept = plainly.get(forge);

@@ -1,14 +1,10 @@
 "use client";
 
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "../../../lib/utils";
 
-export function VectorPadGuides({
-  isDragging,
-}: {
-  isDragging: boolean;
-}): React.JSX.Element {
+export function VectorPadGuides({ isDragging }: { isDragging: boolean }): React.JSX.Element {
   const motionClass = isDragging
     ? "transition-none"
     : "transition-[top] duration-[260ms] ease-[cubic-bezier(0.34,1.56,0.64,1)]";
@@ -38,11 +34,7 @@ export function VectorPadGuides({
   );
 }
 
-export function VectorPadHandle({
-  isDragging,
-}: {
-  isDragging: boolean;
-}): React.JSX.Element {
+export function VectorPadHandle({ isDragging }: { isDragging: boolean }): React.JSX.Element {
   return (
     <div
       aria-hidden="true"

@@ -55,10 +55,7 @@ const SHARED_INPUT_CONTROL_SIZE_CSS_VALUES = {
     lineHeight: "1.625",
     padding: "0.375rem 0.75rem",
   },
-} as const satisfies Record<
-  SharedInputControlSize,
-  SharedInputControlCssSizeValue
->;
+} as const satisfies Record<SharedInputControlSize, SharedInputControlCssSizeValue>;
 
 export function buildSharedInputControlCss({
   extraDeclarations = [],

@@ -70,18 +70,24 @@ describe("the letters stand on their lines", () => {
         // and no diagonal at either extreme, so there is nothing else in them
         // that could be what is being measured.
         for (const name of ["E", "F", "H", "I", "L", "T", "one", "four", "exclam"]) {
-          expect(Math.abs(topOf(name, style) - capHeight), `${name} misses the cap line`)
-            .toBeLessThan(slack + bounce(name));
-          expect(Math.abs(footOf(name, style)), `${name} misses the baseline`)
-            .toBeLessThan(slack + bounce(name));
+          expect(
+            Math.abs(topOf(name, style) - capHeight),
+            `${name} misses the cap line`,
+          ).toBeLessThan(slack + bounce(name));
+          expect(Math.abs(footOf(name, style)), `${name} misses the baseline`).toBeLessThan(
+            slack + bounce(name),
+          );
         }
         for (const name of ["b", "d", "h", "k", "l"]) {
-          expect(Math.abs(topOf(name, style) - ascender), `${name} misses the ascender`)
-            .toBeLessThan(slack + bounce(name));
+          expect(
+            Math.abs(topOf(name, style) - ascender),
+            `${name} misses the ascender`,
+          ).toBeLessThan(slack + bounce(name));
         }
         for (const name of ["m", "n", "r", "i"]) {
-          expect(Math.abs(footOf(name, style)), `${name} misses the baseline`)
-            .toBeLessThan(slack + bounce(name));
+          expect(Math.abs(footOf(name, style)), `${name} misses the baseline`).toBeLessThan(
+            slack + bounce(name),
+          );
         }
       });
 
@@ -95,18 +101,45 @@ describe("the letters stand on their lines", () => {
          */
         const room = nib(style) + 4;
         for (const [name, line] of [
-          ["o", xHeight], ["c", xHeight], ["e", xHeight], ["s", xHeight], ["a", xHeight],
-          ["O", capHeight], ["C", capHeight], ["S", capHeight], ["G", capHeight],
-          ["D", capHeight], ["B", capHeight], ["P", capHeight],
-          ["zero", capHeight], ["three", capHeight], ["six", capHeight],
-          ["eight", capHeight], ["nine", capHeight],
+          ["o", xHeight],
+          ["c", xHeight],
+          ["e", xHeight],
+          ["s", xHeight],
+          ["a", xHeight],
+          ["O", capHeight],
+          ["C", capHeight],
+          ["S", capHeight],
+          ["G", capHeight],
+          ["D", capHeight],
+          ["B", capHeight],
+          ["P", capHeight],
+          ["zero", capHeight],
+          ["three", capHeight],
+          ["six", capHeight],
+          ["eight", capHeight],
+          ["nine", capHeight],
         ] as Array<[string, number]>) {
           expect(
             Math.abs(topOf(name, style) - line - overshoot),
             `${name} does not crest on its line`,
           ).toBeLessThan(room + bounce(name));
         }
-        for (const name of ["o", "c", "e", "s", "a", "u", "O", "C", "S", "G", "U", "J", "zero", "eight"]) {
+        for (const name of [
+          "o",
+          "c",
+          "e",
+          "s",
+          "a",
+          "u",
+          "O",
+          "C",
+          "S",
+          "G",
+          "U",
+          "J",
+          "zero",
+          "eight",
+        ]) {
           expect(
             Math.abs(footOf(name, style) + overshoot),
             `${name} does not dip to the baseline`,
@@ -137,8 +170,10 @@ describe("the letters stand on their lines", () => {
           ).toBeLessThan(slack + bounce(name));
         }
         for (const name of ["K", "R", "X", "Z", "k", "x", "z"]) {
-          expect(Math.abs(footOf(name, style)), `${name} does not stand on the baseline`)
-            .toBeLessThan(slack + bounce(name));
+          expect(
+            Math.abs(footOf(name, style)),
+            `${name} does not stand on the baseline`,
+          ).toBeLessThan(slack + bounce(name));
         }
       });
 

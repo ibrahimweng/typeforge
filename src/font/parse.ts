@@ -344,7 +344,9 @@ export async function importFont(
 }
 
 /** Turn opentype.js path commands into the node model the editor works with. */
-export function commandsToContours(commands: readonly import("opentype.js").PathCommand[]): Contour[] {
+export function commandsToContours(
+  commands: readonly import("opentype.js").PathCommand[],
+): Contour[] {
   const contours: Contour[] = [];
   let nodes: GlyphNode[] = [];
   let current: Vec2 = { x: 0, y: 0 };
@@ -355,7 +357,10 @@ export function commandsToContours(commands: readonly import("opentype.js").Path
     if (nodes.length > 1) {
       const first = nodes[0];
       const last = nodes[nodes.length - 1];
-      if (Math.abs(first.point.x - last.point.x) < 1e-6 && Math.abs(first.point.y - last.point.y) < 1e-6) {
+      if (
+        Math.abs(first.point.x - last.point.x) < 1e-6 &&
+        Math.abs(first.point.y - last.point.y) < 1e-6
+      ) {
         first.handleIn = last.handleIn;
         nodes.pop();
       }

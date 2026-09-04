@@ -65,9 +65,7 @@ export function ScrollFadeViewport({
       {...viewportProps}
       className={cn(
         isHorizontal ? "overflow-x-auto overflow-y-hidden" : "overflow-x-hidden overflow-y-auto",
-        scrollBoundaryBehavior === "chain"
-          ? "overscroll-auto"
-          : "overscroll-contain",
+        scrollBoundaryBehavior === "chain" ? "overscroll-auto" : "overscroll-contain",
         className,
       )}
       data-scroll-boundary-behavior={scrollBoundaryBehavior}

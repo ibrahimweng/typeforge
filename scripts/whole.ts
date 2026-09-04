@@ -44,7 +44,9 @@ for (const base of scripts) {
    * this weight was added and the same eight are there. They are a fault to
    * fix, not a reason to stop looking.
    */
-  for (const weight of [...new Set([8, 40, 60, 84, 100, 120, 145, 175, 210, base.pen.weight])].sort((a, b) => a - b)) {
+  for (const weight of [...new Set([8, 40, 60, 84, 100, 120, 145, 175, 210, base.pen.weight])].sort(
+    (a, b) => a - b,
+  )) {
     const style: Style = { ...base, pen: { ...base.pen, weight } };
     for (const name of solid) {
       for (const { id } of everyFormOf(name)) {
@@ -55,6 +57,8 @@ for (const base of scripts) {
     }
   }
   bad += broke.length;
-  console.log(`${base.name.padEnd(16)} ${broke.length ? broke.join(" ") : "whole at every weight"}`);
+  console.log(
+    `${base.name.padEnd(16)} ${broke.length ? broke.join(" ") : "whole at every weight"}`,
+  );
 }
 console.log(`\n${bad} breaks in all`);

@@ -32,17 +32,13 @@ export const FONT_PICKER_FILTER_OPTIONS: Array<{
   { label: "Script", value: "handwriting" },
 ];
 
-const fontCatalog: FontPickerFontCatalogEntry[] = (
-  catalogJson as FontPickerFontCatalogEntry[]
-).map((entry) => ({
-  ...entry,
-  subsets: Array.from(
-    new Set(entry.subsets.map((value) => value.trim()).filter(Boolean)),
-  ),
-  weights: Array.from(
-    new Set(entry.weights.map((value) => value.trim()).filter(Boolean)),
-  ),
-}));
+const fontCatalog: FontPickerFontCatalogEntry[] = (catalogJson as FontPickerFontCatalogEntry[]).map(
+  (entry) => ({
+    ...entry,
+    subsets: Array.from(new Set(entry.subsets.map((value) => value.trim()).filter(Boolean))),
+    weights: Array.from(new Set(entry.weights.map((value) => value.trim()).filter(Boolean))),
+  }),
+);
 
 const fontById = new Map(fontCatalog.map((entry) => [entry.id, entry]));
 
@@ -51,9 +47,7 @@ export function getFontPickerCatalog(): readonly FontPickerFontCatalogEntry[] {
 }
 
 export function getDefaultFontPickerFontId(): string {
-  return fontById.has(defaultFontId)
-    ? defaultFontId
-    : (fontCatalog[0]?.id ?? defaultFontId);
+  return fontById.has(defaultFontId) ? defaultFontId : (fontCatalog[0]?.id ?? defaultFontId);
 }
 
 export function getFontPickerFontById(
@@ -106,9 +100,7 @@ function resolveWeightAxis(entry: FontPickerFontCatalogEntry): string {
   return Array.from(new Set(entry.weights)).join(";");
 }
 
-export function buildFontPickerGoogleStylesheetHref(
-  entry: FontPickerFontCatalogEntry,
-): string {
+export function buildFontPickerGoogleStylesheetHref(entry: FontPickerFontCatalogEntry): string {
   const family = toCssFamilyToken(entry.family);
   const weightAxis = resolveWeightAxis(entry);
 

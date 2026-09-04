@@ -139,17 +139,11 @@ if (sameShape) {
       `straying ${strays(outlineBlend, truth).toFixed(1)} units from it`,
   );
 } else {
-  console.log(
-    "the outlines blended halfway:               impossible. The two versions do not",
-  );
+  console.log("the outlines blended halfway:               impossible. The two versions do not");
   console.log(
     "                                            have the same points in the same order,",
   );
-  console.log(
-    "                                            so a variable font cannot store the",
-  );
-  console.log(
-    "                                            difference at all and the letter would",
-  );
+  console.log("                                            so a variable font cannot store the");
+  console.log("                                            difference at all and the letter would");
   console.log("                                            be left standing still.");
 }

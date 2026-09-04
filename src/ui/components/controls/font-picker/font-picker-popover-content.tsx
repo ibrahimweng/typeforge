@@ -1,25 +1,15 @@
-import * as React from "react";
+import type * as React from "react";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 
-import {
-  Input,
-  PopoverContent,
-} from "../../primitives";
+import { Input, PopoverContent } from "../../primitives";
 import { cn } from "../../../lib/utils";
 import {
   FONT_PICKER_FILTER_OPTIONS,
   type FontPickerFontCatalogEntry,
   type FontPickerFontFilterValue,
 } from "./font-catalog";
-import {
-  FontPickerList,
-  type FontPickerPinnedSelectedRowSide,
-} from "./font-picker-list";
-import {
-  FontPickerFooterControl,
-  LetterSpacingIcon,
-  LineHeightIcon,
-} from "./font-picker-footer";
+import { FontPickerList, type FontPickerPinnedSelectedRowSide } from "./font-picker-list";
+import { FontPickerFooterControl, LetterSpacingIcon, LineHeightIcon } from "./font-picker-footer";
 
 type FontPickerStep = {
   label: string;
@@ -131,8 +121,7 @@ export function FontPickerPopoverContent({
                 <button
                   className={cn(
                     "relative z-10 h-10 shrink-0 px-0 text-xs font-normal leading-none tracking-normal text-[color:var(--muted-foreground)] transition-colors after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-[color:var(--foreground)] after:opacity-0 after:transition-opacity after:duration-200 after:ease-in-out after:content-[''] hover:text-[color:color-mix(in_oklab,var(--foreground)_80%,transparent)]",
-                    active &&
-                      "text-[color:var(--foreground)] after:opacity-100",
+                    active && "text-[color:var(--foreground)] after:opacity-100",
                   )}
                   data-state={active ? "active" : "inactive"}
                   key={option.value}

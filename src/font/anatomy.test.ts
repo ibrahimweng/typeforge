@@ -142,10 +142,30 @@ describe("findShoulders", () => {
     const circle: Contour = {
       closed: true,
       nodes: [
-        { point: { x: 100, y: 500 }, handleIn: { x: 100, y: 500 - k }, handleOut: { x: 100, y: 500 + k }, type: "smooth" },
-        { point: { x: 500, y: 900 }, handleIn: { x: 500 - k, y: 900 }, handleOut: { x: 500 + k, y: 900 }, type: "smooth" },
-        { point: { x: 900, y: 500 }, handleIn: { x: 900, y: 500 + k }, handleOut: { x: 900, y: 500 - k }, type: "smooth" },
-        { point: { x: 500, y: 100 }, handleIn: { x: 500 + k, y: 100 }, handleOut: { x: 500 - k, y: 100 }, type: "smooth" },
+        {
+          point: { x: 100, y: 500 },
+          handleIn: { x: 100, y: 500 - k },
+          handleOut: { x: 100, y: 500 + k },
+          type: "smooth",
+        },
+        {
+          point: { x: 500, y: 900 },
+          handleIn: { x: 500 - k, y: 900 },
+          handleOut: { x: 500 + k, y: 900 },
+          type: "smooth",
+        },
+        {
+          point: { x: 900, y: 500 },
+          handleIn: { x: 900, y: 500 + k },
+          handleOut: { x: 900, y: 500 - k },
+          type: "smooth",
+        },
+        {
+          point: { x: 500, y: 100 },
+          handleIn: { x: 500 + k, y: 100 },
+          handleOut: { x: 500 - k, y: 100 },
+          type: "smooth",
+        },
       ],
     };
     expect(findShoulders([circle])).toHaveLength(0);
@@ -159,7 +179,12 @@ describe("findShoulders", () => {
       nodes: [
         { point: { x: 0, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
         { point: { x: 0, y: 200 }, handleIn: null, handleOut: null, type: "corner" },
-        { point: { x: 800, y: 200 }, handleIn: null, handleOut: { x: 900, y: 200 }, type: "corner" },
+        {
+          point: { x: 800, y: 200 },
+          handleIn: null,
+          handleOut: { x: 900, y: 200 },
+          type: "corner",
+        },
         { point: { x: 800, y: 0 }, handleIn: { x: 900, y: 0 }, handleOut: null, type: "corner" },
       ],
     };

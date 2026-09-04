@@ -227,9 +227,7 @@ function getCurveTangents(
   points: readonly CurvePoint[],
   interpolation: CurveInterpolation,
 ): number[] {
-  return interpolation === "monotone"
-    ? getMonotoneTangents(points)
-    : getSmoothTangents(points);
+  return interpolation === "monotone" ? getMonotoneTangents(points) : getSmoothTangents(points);
 }
 
 function getSmoothTangents(points: readonly CurvePoint[]): number[] {
@@ -271,9 +269,9 @@ function getMonotoneTangents(points: readonly CurvePoint[]): number[] {
     return [slope, slope];
   }
 
-  const intervals = points.slice(0, -1).map((point, index) =>
-    Math.max(Number.EPSILON, (points[index + 1]?.x ?? point.x) - point.x),
-  );
+  const intervals = points
+    .slice(0, -1)
+    .map((point, index) => Math.max(Number.EPSILON, (points[index + 1]?.x ?? point.x) - point.x));
   const slopes = points.slice(0, -1).map((point, index) => getSlope(point, index, points));
 
   return points.map((_, index) => {
@@ -307,10 +305,7 @@ function getMonotoneTangents(points: readonly CurvePoint[]): number[] {
     const leftWeight = 2 * rightInterval + leftInterval;
     const rightWeight = rightInterval + 2 * leftInterval;
 
-    return (
-      (leftWeight + rightWeight) /
-      (leftWeight / leftSlope + rightWeight / rightSlope)
-    );
+    return (leftWeight + rightWeight) / (leftWeight / leftSlope + rightWeight / rightSlope);
   });
 }
 
@@ -333,10 +328,7 @@ function getEndpointTangent({
     return 0;
   }
 
-  if (
-    Math.sign(slope) !== Math.sign(adjacentSlope) &&
-    Math.abs(tangent) > Math.abs(3 * slope)
-  ) {
+  if (Math.sign(slope) !== Math.sign(adjacentSlope) && Math.abs(tangent) > Math.abs(3 * slope)) {
     return 3 * slope;
   }
 

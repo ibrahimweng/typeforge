@@ -52,7 +52,9 @@ function anatomyOfN(style: Style): { stem: number; counter: number; ink: number 
           y: u * u * u * a.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * b.y,
         };
         if ((previous.y <= cut && point.y > cut) || (point.y <= cut && previous.y > cut)) {
-          crossings.push(previous.x + ((cut - previous.y) / (point.y - previous.y)) * (point.x - previous.x));
+          crossings.push(
+            previous.x + ((cut - previous.y) / (point.y - previous.y)) * (point.x - previous.x),
+          );
         }
         previous = point;
       }
@@ -224,12 +226,36 @@ describe("naming the members", () => {
  * about families in general, and this is where it meets some.
  */
 const REAL: Array<[string, string, string]> = [
-  ["DejaVu Sans", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"],
-  ["DejaVu Serif", "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"],
-  ["Liberation Sans", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"],
-  ["Liberation Serif", "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf", "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf"],
-  ["FreeSans", "/usr/share/fonts/truetype/freefont/FreeSans.ttf", "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf"],
-  ["FreeSerif", "/usr/share/fonts/truetype/freefont/FreeSerif.ttf", "/usr/share/fonts/truetype/freefont/FreeSerifBold.ttf"],
+  [
+    "DejaVu Sans",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+  ],
+  [
+    "DejaVu Serif",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+  ],
+  [
+    "Liberation Sans",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+  ],
+  [
+    "Liberation Serif",
+    "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
+  ],
+  [
+    "FreeSans",
+    "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+  ],
+  [
+    "FreeSerif",
+    "/usr/share/fonts/truetype/freefont/FreeSerif.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSerifBold.ttf",
+  ],
 ];
 
 const present = REAL.filter(([, regular, bold]) => existsSync(regular) && existsSync(bold));
@@ -252,106 +278,126 @@ interface Anatomy {
   x: number;
 }
 
-describe.skipIf(present.length < 3)("against families somebody else drew", { timeout: 120_000 }, () => {
-  /** The stem, the counter and the n's ink, off a real font. */
-  function anatomyOfFile(path: string): Promise<Anatomy> {
-    const known = read.get(path);
-    if (known) return known;
-    const measuring = measureFile(path);
-    read.set(path, measuring);
-    return measuring;
-  }
+describe.skipIf(present.length < 3)(
+  "against families somebody else drew",
+  { timeout: 120_000 },
+  () => {
+    /** The stem, the counter and the n's ink, off a real font. */
+    function anatomyOfFile(path: string): Promise<Anatomy> {
+      const known = read.get(path);
+      if (known) return known;
+      const measuring = measureFile(path);
+      read.set(path, measuring);
+      return measuring;
+    }
 
-  async function measureFile(path: string): Promise<Anatomy> {
-    const { typeface } = await importFont(new Uint8Array(readFileSync(path)), path);
-    const em = typeface.unitsPerEm;
-    const scale = 1000 / em;
-    const x = (typeface.metrics.xHeight || em * 0.52) * scale;
-    const cut = (x / scale) * 0.42;
-    const crossings = crossingsAt(typeface, "n", cut);
-    const glyph = typeface.glyphs[typeface.glyphIndex.get("n")!];
-    const box = contoursBounds(resolveGlyphContours(glyph, typeface));
-    return {
-      stem: (crossings[1] - crossings[0]) * scale,
-      counter: (crossings[2] - crossings[1]) * scale,
-      ink: (box.xMax - box.xMin) * scale,
-      x,
-    };
-  }
+    async function measureFile(path: string): Promise<Anatomy> {
+      const { typeface } = await importFont(new Uint8Array(readFileSync(path)), path);
+      const em = typeface.unitsPerEm;
+      const scale = 1000 / em;
+      const x = (typeface.metrics.xHeight || em * 0.52) * scale;
+      const cut = (x / scale) * 0.42;
+      const crossings = crossingsAt(typeface, "n", cut);
+      const glyph = typeface.glyphs[typeface.glyphIndex.get("n")!];
+      const box = contoursBounds(resolveGlyphContours(glyph, typeface));
+      return {
+        stem: (crossings[1] - crossings[0]) * scale,
+        counter: (crossings[2] - crossings[1]) * scale,
+        ink: (box.xMax - box.xMin) * scale,
+        x,
+      };
+    }
 
-  function crossingsAt(typeface: Typeface, name: string, y: number): number[] {
-    const glyph = typeface.glyphs[typeface.glyphIndex.get(name)!];
-    const found: number[] = [];
-    for (const contour of resolveGlyphContours(glyph, typeface)) {
-      const nodes = contour.nodes;
-      for (let index = 0; index < nodes.length; index++) {
-        const a = nodes[index];
-        const b = nodes[(index + 1) % nodes.length];
-        const steps = a.handleOut || b.handleIn ? 32 : 1;
-        let previous = a.point;
-        for (let step = 1; step <= steps; step++) {
-          const t = step / steps;
-          const u = 1 - t;
-          const c1 = a.handleOut ?? a.point;
-          const c2 = b.handleIn ?? b.point;
-          const point = {
-            x: u * u * u * a.point.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * b.point.x,
-            y: u * u * u * a.point.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * b.point.y,
-          };
-          if ((previous.y <= y && point.y > y) || (point.y <= y && previous.y > y)) {
-            found.push(previous.x + ((y - previous.y) / (point.y - previous.y)) * (point.x - previous.x));
+    function crossingsAt(typeface: Typeface, name: string, y: number): number[] {
+      const glyph = typeface.glyphs[typeface.glyphIndex.get(name)!];
+      const found: number[] = [];
+      for (const contour of resolveGlyphContours(glyph, typeface)) {
+        const nodes = contour.nodes;
+        for (let index = 0; index < nodes.length; index++) {
+          const a = nodes[index];
+          const b = nodes[(index + 1) % nodes.length];
+          const steps = a.handleOut || b.handleIn ? 32 : 1;
+          let previous = a.point;
+          for (let step = 1; step <= steps; step++) {
+            const t = step / steps;
+            const u = 1 - t;
+            const c1 = a.handleOut ?? a.point;
+            const c2 = b.handleIn ?? b.point;
+            const point = {
+              x:
+                u * u * u * a.point.x +
+                3 * u * u * t * c1.x +
+                3 * u * t * t * c2.x +
+                t * t * t * b.point.x,
+              y:
+                u * u * u * a.point.y +
+                3 * u * u * t * c1.y +
+                3 * u * t * t * c2.y +
+                t * t * t * b.point.y,
+            };
+            if ((previous.y <= y && point.y > y) || (point.y <= y && previous.y > y)) {
+              found.push(
+                previous.x + ((y - previous.y) / (point.y - previous.y)) * (point.x - previous.x),
+              );
+            }
+            previous = point;
           }
-          previous = point;
         }
       }
+      return found.sort((one, other) => one - other);
     }
-    return found.sort((one, other) => one - other);
-  }
 
-  it("takes back the counter at the rate they do", async () => {
-    const rates: number[] = [];
-    for (const [, regular, bold] of present) {
-      const light = await anatomyOfFile(regular);
-      const heavy = await anatomyOfFile(bold);
-      rates.push((heavy.counter - light.counter) / (heavy.stem - light.stem));
-    }
-    const middle = rates.sort((one, other) => one - other)[Math.floor(rates.length / 2)];
-    // Every one of them is between two thirds and one; ours is four fifths.
-    expect(middle).toBeLessThan(-0.6);
-    expect(middle).toBeGreaterThan(-1.0);
+    it("takes back the counter at the rate they do", async () => {
+      const rates: number[] = [];
+      for (const [, regular, bold] of present) {
+        const light = await anatomyOfFile(regular);
+        const heavy = await anatomyOfFile(bold);
+        rates.push((heavy.counter - light.counter) / (heavy.stem - light.stem));
+      }
+      const middle = rates.sort((one, other) => one - other)[Math.floor(rates.length / 2)];
+      // Every one of them is between two thirds and one; ours is four fifths.
+      expect(middle).toBeLessThan(-0.6);
+      expect(middle).toBeGreaterThan(-1.0);
 
-    const before = anatomyOfN(SANS);
-    const after = anatomyOfN(weightedStyle(SANS, 400, 700));
-    const ours = (after.counter - before.counter) / (after.stem - before.stem);
-    expect(Math.abs(ours - middle), `ours ${ours.toFixed(2)}, theirs ${middle.toFixed(2)}`).toBeLessThan(0.3);
-  });
+      const before = anatomyOfN(SANS);
+      const after = anatomyOfN(weightedStyle(SANS, 400, 700));
+      const ours = (after.counter - before.counter) / (after.stem - before.stem);
+      expect(
+        Math.abs(ours - middle),
+        `ours ${ours.toFixed(2)}, theirs ${middle.toFixed(2)}`,
+      ).toBeLessThan(0.3);
+    });
 
-  it("widens the letter at the rate they do", async () => {
-    const rates: number[] = [];
-    for (const [, regular, bold] of present) {
-      const light = await anatomyOfFile(regular);
-      const heavy = await anatomyOfFile(bold);
-      rates.push((heavy.ink - light.ink) / (heavy.stem - light.stem));
-    }
-    const middle = rates.sort((one, other) => one - other)[Math.floor(rates.length / 2)];
-    const before = anatomyOfN(SANS);
-    const after = anatomyOfN(weightedStyle(SANS, 400, 700));
-    const ours = (after.ink - before.ink) / (after.stem - before.stem);
-    expect(Math.abs(ours - middle), `ours ${ours.toFixed(2)}, theirs ${middle.toFixed(2)}`).toBeLessThan(0.35);
-  });
+    it("widens the letter at the rate they do", async () => {
+      const rates: number[] = [];
+      for (const [, regular, bold] of present) {
+        const light = await anatomyOfFile(regular);
+        const heavy = await anatomyOfFile(bold);
+        rates.push((heavy.ink - light.ink) / (heavy.stem - light.stem));
+      }
+      const middle = rates.sort((one, other) => one - other)[Math.floor(rates.length / 2)];
+      const before = anatomyOfN(SANS);
+      const after = anatomyOfN(weightedStyle(SANS, 400, 700));
+      const ours = (after.ink - before.ink) / (after.stem - before.stem);
+      expect(
+        Math.abs(ours - middle),
+        `ours ${ours.toFixed(2)}, theirs ${middle.toFixed(2)}`,
+      ).toBeLessThan(0.35);
+    });
 
-  /*
-   * And the scale itself: their Bold is about seven hundred over four hundred
-   * of their Regular, which is the whole of what the numbers mean and the
-   * reason the stem here is simply proportional to them.
-   */
-  it("puts a bold where the number says", async () => {
-    for (const [name, regular, bold] of present) {
-      const light = await anatomyOfFile(regular);
-      const heavy = await anatomyOfFile(bold);
-      const ratio = heavy.stem / light.stem;
-      expect(ratio, `${name} is ${ratio.toFixed(2)} rather than about 1.75`).toBeGreaterThan(1.4);
-      expect(ratio, `${name} is ${ratio.toFixed(2)} rather than about 1.75`).toBeLessThan(2.1);
-    }
-  });
-});
+    /*
+     * And the scale itself: their Bold is about seven hundred over four hundred
+     * of their Regular, which is the whole of what the numbers mean and the
+     * reason the stem here is simply proportional to them.
+     */
+    it("puts a bold where the number says", async () => {
+      for (const [name, regular, bold] of present) {
+        const light = await anatomyOfFile(regular);
+        const heavy = await anatomyOfFile(bold);
+        const ratio = heavy.stem / light.stem;
+        expect(ratio, `${name} is ${ratio.toFixed(2)} rather than about 1.75`).toBeGreaterThan(1.4);
+        expect(ratio, `${name} is ${ratio.toFixed(2)} rather than about 1.75`).toBeLessThan(2.1);
+      }
+    });
+  },
+);

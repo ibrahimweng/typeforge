@@ -14,13 +14,7 @@ export type FontPickerLetterSpacingPreset =
   | "wider"
   | "widest";
 
-export type FontPickerLineHeightPreset =
-  | "loose"
-  | "none"
-  | "normal"
-  | "relaxed"
-  | "snug"
-  | "tight";
+export type FontPickerLineHeightPreset = "loose" | "none" | "normal" | "relaxed" | "snug" | "tight";
 
 export type FontPickerTextCasePreset =
   | "capitalize"
@@ -84,9 +78,7 @@ export const textCaseOptions: Array<{
   { label: "Title Case", value: "titleCase" },
 ];
 
-export function isFontPickerTextCase(
-  value: unknown,
-): value is FontPickerTextCasePreset {
+export function isFontPickerTextCase(value: unknown): value is FontPickerTextCasePreset {
   return textCaseOptions.some((option) => option.value === value);
 }
 
@@ -117,12 +109,8 @@ export function getStepIndexByValue<Value extends string>(
   return fallbackIndex >= 0 ? fallbackIndex : 0;
 }
 
-export function normalizeFontPickerValue(
-  value: FontPickerInputValue,
-): FontPickerValue {
-  const fontId = resolveFontPickerFontId(
-    typeof value === "string" ? value : value?.fontId,
-  );
+export function normalizeFontPickerValue(value: FontPickerInputValue): FontPickerValue {
+  const fontId = resolveFontPickerFontId(typeof value === "string" ? value : value?.fontId);
   const font = getFontPickerFontById(fontId);
 
   if (typeof value === "string") {
@@ -151,23 +139,18 @@ export function normalizeFontPickerValue(
 }
 
 export function normalizeFontPickerColor(value: unknown): string {
-  return typeof value === "string" && value.trim()
-    ? value
-    : defaultFontPickerColor;
+  return typeof value === "string" && value.trim() ? value : defaultFontPickerColor;
 }
 
 export function normalizeFontPickerOpacity(value: unknown): number {
-  const nextOpacity =
-    typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
+  const nextOpacity = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
 
   return Number.isFinite(nextOpacity)
     ? Math.min(100, Math.max(0, Math.round(nextOpacity)))
     : defaultFontPickerOpacity;
 }
 
-export function getFontPickerWeightOptions(
-  font: FontPickerFontCatalogEntry | null,
-): string[] {
+export function getFontPickerWeightOptions(font: FontPickerFontCatalogEntry | null): string[] {
   const weights = font?.weights.length ? font.weights : ["400"];
 
   return Array.from(new Set(weights.map((weight) => String(weight)))).sort(

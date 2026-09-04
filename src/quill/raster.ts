@@ -316,8 +316,7 @@ function tidy(cells: Uint8Array, width: number, height: number): Uint8Array {
         if (mine.length < 2) continue;
         for (const covering of mine) {
           const covers = mine.every(
-            (one) =>
-              (one[0] === covering[0] && one[1] === covering[1]) || touching(one, covering),
+            (one) => (one[0] === covering[0] && one[1] === covering[1]) || touching(one, covering),
           );
           if (covers) {
             cells[y * width + x] = 0;

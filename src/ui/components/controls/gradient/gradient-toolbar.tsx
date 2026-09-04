@@ -17,10 +17,7 @@ import { useRef, useState } from "react";
 
 import type { GradientType } from "../control-types";
 import { ControlFieldLabel } from "../../control-layout";
-import {
-  gradientTypeOptions,
-  normalizeGradientAngle,
-} from "./gradient-control-utils";
+import { gradientTypeOptions, normalizeGradientAngle } from "./gradient-control-utils";
 
 function GradientTypeSelect({
   onTypeChange,
@@ -30,8 +27,7 @@ function GradientTypeSelect({
   type: GradientType;
 }): React.JSX.Element {
   const selectedOption =
-    gradientTypeOptions.find((option) => option.value === type) ??
-    gradientTypeOptions[0];
+    gradientTypeOptions.find((option) => option.value === type) ?? gradientTypeOptions[0];
 
   return (
     <Select

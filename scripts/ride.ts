@@ -76,22 +76,27 @@ for (const style of BASES.filter((one) => one.parts.script?.on)) {
 const span = (all: number[]) => Math.max(...all) - Math.min(...all);
 
 console.log(`tops and bottoms of \`${LETTERS.join("")}\`, in x-heights\n`);
-console.log(`  ${"".padEnd(17)}${"top low..high".padStart(18)}${"spread".padStart(9)}` +
-  `${"bottom low..high".padStart(20)}${"spread".padStart(9)}`);
+console.log(
+  `  ${"".padEnd(17)}${"top low..high".padStart(18)}${"spread".padStart(9)}` +
+    `${"bottom low..high".padStart(20)}${"spread".padStart(9)}`,
+);
 for (const row of rows) {
   console.log(
     `  ${row.name.padEnd(17)}` +
-    `${`${Math.min(...row.tops).toFixed(3)}..${Math.max(...row.tops).toFixed(3)}`.padStart(18)}` +
-    `${span(row.tops).toFixed(3).padStart(9)}` +
-    `${`${Math.min(...row.bottoms).toFixed(3)}..${Math.max(...row.bottoms).toFixed(3)}`.padStart(20)}` +
-    `${span(row.bottoms).toFixed(3).padStart(9)}`,
+      `${`${Math.min(...row.tops).toFixed(3)}..${Math.max(...row.tops).toFixed(3)}`.padStart(18)}` +
+      `${span(row.tops).toFixed(3).padStart(9)}` +
+      `${`${Math.min(...row.bottoms).toFixed(3)}..${Math.max(...row.bottoms).toFixed(3)}`.padStart(20)}` +
+      `${span(row.bottoms).toFixed(3).padStart(9)}`,
   );
 }
 
 console.log(`\nletter by letter -- top / bottom\n`);
 console.log(`  ${"".padEnd(4)}${rows.map((one) => one.name.slice(0, 9).padStart(15)).join("")}`);
 LETTERS.forEach((letter, i) => {
-  console.log(`  ${letter.padEnd(4)}` + rows
-    .map((one) => `${one.tops[i]?.toFixed(2)}/${one.bottoms[i]?.toFixed(2)}`.padStart(15))
-    .join(""));
+  console.log(
+    `  ${letter.padEnd(4)}` +
+      rows
+        .map((one) => `${one.tops[i]?.toFixed(2)}/${one.bottoms[i]?.toFixed(2)}`.padStart(15))
+        .join(""),
+  );
 });

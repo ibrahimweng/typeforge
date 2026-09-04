@@ -145,11 +145,7 @@ export function blankGlyph(name: string, unicodes: number[] = []): Glyph {
  * the name is taken -- a font cannot hold two letters of the same name, since
  * the name is how everything else refers to them.
  */
-export function addGlyph(
-  typeface: Typeface,
-  name: string,
-  unicodes: number[] = [],
-): Glyph | null {
+export function addGlyph(typeface: Typeface, name: string, unicodes: number[] = []): Glyph | null {
   if (!nameIsFree(typeface, name)) return null;
   const glyph = blankGlyph(name, unicodes);
   typeface.glyphs = [...typeface.glyphs, glyph];
@@ -184,9 +180,7 @@ export function removeGlyph(typeface: Typeface, name: string): boolean {
         : glyph,
     );
 
-  typeface.kerning = typeface.kerning.filter(
-    (pair) => pair.left !== name && pair.right !== name,
-  );
+  typeface.kerning = typeface.kerning.filter((pair) => pair.left !== name && pair.right !== name);
   typeface.kernClasses = typeface.kernClasses.map((kernClass) => ({
     ...kernClass,
     left: kernClass.left.filter((one) => one !== name),

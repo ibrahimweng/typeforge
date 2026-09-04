@@ -67,7 +67,6 @@ export {
   type MotifShape,
 };
 
-
 /**
  * Whether any of the cuts that are on can do anything to this ink.
  *
@@ -264,11 +263,7 @@ function slotTool(bounds: Bounds, slot: Cuts["slot"], stem: number, scale: CutSc
   for (let index = 0; index < count; index++) {
     const at = from + (room * (index + 0.5)) / count;
     bands.push(
-      turned(
-        rect(centre.x - reach, at - thickness / 2, reach * 2, thickness),
-        centre,
-        turn,
-      ),
+      turned(rect(centre.x - reach, at - thickness / 2, reach * 2, thickness), centre, turn),
     );
   }
   return bands;
@@ -303,7 +298,14 @@ function toothTool(bounds: Bounds, tooth: Cuts["tooth"], stem: number, scale: Cu
     const teeth = Math.max(1, Math.round(run / pitch));
     const step = run / teeth;
 
-    const edge = side === "left" ? bounds.xMin : side === "right" ? bounds.xMax : side === "bottom" ? bounds.yMin : bounds.yMax;
+    const edge =
+      side === "left"
+        ? bounds.xMin
+        : side === "right"
+          ? bounds.xMax
+          : side === "bottom"
+            ? bounds.yMin
+            : bounds.yMax;
     const inward = side === "left" || side === "bottom" ? 1 : -1;
     const outside = edge - inward * depth;
     const apex = edge + inward * depth;
@@ -469,7 +471,9 @@ function splitTool(strokes: Stroke[], split: Cuts["split"], stem: number): Conto
   // leave a sliver of stroke between them.
   const kept: typeof found = [];
   for (const one of found) {
-    if (kept.some((other) => other.stroke === one.stroke && Math.abs(other.at - one.at) < gap * 0.9)) {
+    if (
+      kept.some((other) => other.stroke === one.stroke && Math.abs(other.at - one.at) < gap * 0.9)
+    ) {
       continue;
     }
     kept.push(one);
@@ -637,10 +641,7 @@ function chamferTool(shape: Contour[], chamfer: Cuts["chamfer"], stem: number): 
 
       // Never more than a share of the shorter of the two edges, or the cut
       // reaches past the corner and takes the next one with it.
-      const room = Math.min(
-        distance(here.point, previous.point),
-        distance(here.point, next.point),
-      );
+      const room = Math.min(distance(here.point, previous.point), distance(here.point, next.point));
       const reach = Math.min(size, room * 0.45);
       if (reach <= 0) continue;
 
@@ -794,7 +795,10 @@ function motifShape(shape: MotifShape, box: Bounds, size: number): Contour[] {
       // A diamond with a diamond in it: the counter becomes two outlines, one
       // inside the other, which is the commonest way a geometric face gets a
       // counter that is neither open nor closed.
-      return [rhombus(middle, wide, tall), reverseContour(rhombus(middle, wide * 0.42, tall * 0.42))];
+      return [
+        rhombus(middle, wide, tall),
+        reverseContour(rhombus(middle, wide * 0.42, tall * 0.42)),
+      ];
     case "hourglass":
       // Two triangles meeting at their points. Two shapes rather than one,
       // because drawn as a single outline it would cross itself in the middle
@@ -880,7 +884,14 @@ const KAPPA = 0.5522847498;
 function disc(middle: Vec2, wide: number, tall: number): Contour {
   const across = wide * KAPPA;
   const up = tall * KAPPA;
-  const at = (x: number, y: number, inX: number, inY: number, outX: number, outY: number): GlyphNode => ({
+  const at = (
+    x: number,
+    y: number,
+    inX: number,
+    inY: number,
+    outX: number,
+    outY: number,
+  ): GlyphNode => ({
     point: { x, y },
     handleIn: { x: x + inX, y: y + inY },
     handleOut: { x: x + outX, y: y + outY },
@@ -990,9 +1001,17 @@ function lengthened(spine: Spine, by: number): Spine {
   return {
     closed: false,
     segments: [
-      { kind: "line", from: { x: head.at.x - head.away.x * by, y: head.at.y - head.away.y * by }, to: head.at },
+      {
+        kind: "line",
+        from: { x: head.at.x - head.away.x * by, y: head.at.y - head.away.y * by },
+        to: head.at,
+      },
       ...spine.segments,
-      { kind: "line", from: tail.at, to: { x: tail.at.x + tail.away.x * by, y: tail.at.y + tail.away.y * by } },
+      {
+        kind: "line",
+        from: tail.at,
+        to: { x: tail.at.x + tail.away.x * by, y: tail.at.y + tail.away.y * by },
+      },
     ],
   };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "../../../lib/utils";
 import type {
@@ -22,14 +22,10 @@ import type {
 
 export const singleImagePreviewMaxHeight = 196;
 
-export function isDragLeavingCurrentTarget(
-  event: React.DragEvent<HTMLElement>,
-): boolean {
+export function isDragLeavingCurrentTarget(event: React.DragEvent<HTMLElement>): boolean {
   const nextTarget = event.relatedTarget;
 
-  return !(
-    nextTarget instanceof Node && event.currentTarget.contains(nextTarget)
-  );
+  return !(nextTarget instanceof Node && event.currentTarget.contains(nextTarget));
 }
 
 export function createFileDropTargetHandlers({
@@ -98,15 +94,10 @@ export function getFileInputAccept(accept: string): string {
     .join(",");
 }
 
-export function normalizeImageRotation(
-  rotationDeg: number | undefined,
-): 0 | 90 | 180 | 270 {
-  const normalized =
-    (((Math.round((rotationDeg ?? 0) / 90) * 90) % 360) + 360) % 360;
+export function normalizeImageRotation(rotationDeg: number | undefined): 0 | 90 | 180 | 270 {
+  const normalized = (((Math.round((rotationDeg ?? 0) / 90) * 90) % 360) + 360) % 360;
 
-  return normalized === 90 || normalized === 180 || normalized === 270
-    ? normalized
-    : 0;
+  return normalized === 90 || normalized === 180 || normalized === 270 ? normalized : 0;
 }
 
 export function getImageTransformStyle(
@@ -139,9 +130,7 @@ export function getImageTransformStyle(
   };
 }
 
-export function getPreviewFrameStyle(
-  size: FileDropImageSize | undefined,
-): React.CSSProperties {
+export function getPreviewFrameStyle(size: FileDropImageSize | undefined): React.CSSProperties {
   if (!size || size.height <= 0 || size.width <= 0) {
     return { width: "100%" };
   }
@@ -153,9 +142,7 @@ export function getPreviewFrameStyle(
   };
 }
 
-export function isPreviewQuarterTurn(
-  transform?: FileDropImageTransform,
-): boolean {
+export function isPreviewQuarterTurn(transform?: FileDropImageTransform): boolean {
   const rotationDeg = normalizeImageRotation(transform?.rotationDeg);
 
   return rotationDeg === 90 || rotationDeg === 270;
@@ -182,10 +169,7 @@ export function getPreviewKey(item: FileDropPreview, index: number): string {
   return item.id ?? `${item.src}:${index}`;
 }
 
-export function getPresentationItemKey(
-  item: FileDropPresentationItem,
-  _index: number,
-): string {
+export function getPresentationItemKey(item: FileDropPresentationItem, _index: number): string {
   return item.id;
 }
 
@@ -199,8 +183,8 @@ export function createFileDropItemView(
   itemKeys: string[];
   items: readonly FileDropPresentationItem[];
 }> {
-  const entries: readonly FileDropPresentationEntry[] =
-    presentation.items.flatMap((item, sourceIndex) =>
+  const entries: readonly FileDropPresentationEntry[] = presentation.items.flatMap(
+    (item, sourceIndex) =>
       requiresPreviewSource && !item.previewSrc
         ? []
         : [
@@ -210,14 +194,13 @@ export function createFileDropItemView(
               sourceIndex,
             },
           ],
-    );
+  );
 
   return {
     entries,
     hasContent: entries.length > 0,
     isListPresenter:
-      presentation.presenter === "file-list" ||
-      presentation.presenter === "model-item",
+      presentation.presenter === "file-list" || presentation.presenter === "model-item",
     itemKeys: entries.map((entry) => entry.key),
     items: entries.map((entry) => entry.item),
   };
@@ -232,18 +215,15 @@ export function createFileDropActionModel(
 }> {
   return {
     options: actions.map(({ state: _state, ...action }) => action),
-    states: actions.reduce<Record<string, ActionsControlItemState>>(
-      (states, action) => {
-        if (!enabled) {
-          states[action.value] = { ...action.state, disabled: true };
-        } else if (action.state) {
-          states[action.value] = action.state;
-        }
+    states: actions.reduce<Record<string, ActionsControlItemState>>((states, action) => {
+      if (!enabled) {
+        states[action.value] = { ...action.state, disabled: true };
+      } else if (action.state) {
+        states[action.value] = action.state;
+      }
 
-        return states;
-      },
-      {},
-    ),
+      return states;
+    }, {}),
   };
 }
 
@@ -253,9 +233,7 @@ export function reorderFileDropPresentationItems<AssetKind extends string>(
   activeKey: string,
   overKey: string,
 ): FileDropPresentationItem<AssetKind>[] | null {
-  const activeIndex = visibleEntries.findIndex(
-    (entry) => entry.key === activeKey,
-  );
+  const activeIndex = visibleEntries.findIndex((entry) => entry.key === activeKey);
   const overIndex = visibleEntries.findIndex((entry) => entry.key === overKey);
 
   if (activeIndex < 0 || overIndex < 0 || activeIndex === overIndex) {
@@ -313,9 +291,7 @@ export function createLegacyFileDropPresentation({
       alt: item.alt,
       assetKind: item.assetKind ?? assetKind,
       fileName:
-        item.fileName ??
-        item.alt ??
-        (assetKind === "file" ? "Untitled file" : "Untitled image"),
+        item.fileName ?? item.alt ?? (assetKind === "file" ? "Untitled file" : "Untitled image"),
       id: getPreviewKey(item, index),
       previewSrc: item.src,
       size: item.size,
@@ -329,10 +305,7 @@ export function createLegacyFileDropPresentation({
       : multiple && items.length > 1
         ? "image-grid"
         : "single-image";
-  const emptyTitle =
-    assetKind === "file"
-      ? "Click to upload a file"
-      : "Click to upload an image";
+  const emptyTitle = assetKind === "file" ? "Click to upload a file" : "Click to upload an image";
   const dropTargetLabel = hasContent
     ? multiple
       ? assetKind === "file"
@@ -365,11 +338,7 @@ export function createLegacyFileDropPresentation({
   };
 }
 
-export function FileDropPlusGlyph({
-  className,
-}: {
-  className?: string;
-}): React.JSX.Element {
+export function FileDropPlusGlyph({ className }: { className?: string }): React.JSX.Element {
   return (
     <svg
       aria-hidden="true"
@@ -378,18 +347,8 @@ export function FileDropPlusGlyph({
       viewBox="0 0 14 14"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <path
-        d="M7 2.5V11.5"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="1"
-      />
-      <path
-        d="M2.5 7H11.5"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="1"
-      />
+      <path d="M7 2.5V11.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1" />
+      <path d="M2.5 7H11.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1" />
     </svg>
   );
 }

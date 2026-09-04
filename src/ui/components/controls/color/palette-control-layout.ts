@@ -6,9 +6,7 @@ export const PALETTE_GAP = 12;
 export const SHADE_RAIL_WIDTH = 20;
 
 export function getPaletteBlockHeight() {
-  const paletteRows = Math.ceil(
-    STYLE_GUIDE_PRIMARY_FAMILY_OPTIONS.length / PALETTE_COLUMNS,
-  );
+  const paletteRows = Math.ceil(STYLE_GUIDE_PRIMARY_FAMILY_OPTIONS.length / PALETTE_COLUMNS);
 
   return paletteRows * PALETTE_CELL_SIZE + Math.max(0, paletteRows - 1) * PALETTE_GAP;
 }

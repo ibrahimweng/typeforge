@@ -172,7 +172,9 @@ function contourOf(node: XmlNode): Contour | null {
     if (point.type === "qcurve") {
       const made = quadraticSegments(from, controls, to, point.smooth);
       // No controls at all is a straight line however it was labelled.
-      segments.push(...(made.length > 0 ? made : [{ out: null, in: null, to, smooth: point.smooth }]));
+      segments.push(
+        ...(made.length > 0 ? made : [{ out: null, in: null, to, smooth: point.smooth }]),
+      );
     } else {
       // `curve` takes the two controls before it; `line` takes none. A curve
       // written with one control, which the format permits, keeps the one it
@@ -247,7 +249,7 @@ function componentOf(node: XmlNode): Component | null {
 /** What a `.glif` file says, as a glyph. Null if it is not one. */
 export function readGlif(source: string): Glyph | null {
   const root = parseXml(source);
-  if (!root || root.name !== "glyph") return null;
+  if (root?.name !== "glyph") return null;
   const name = root.attributes.name;
   if (!name) return null;
 
@@ -342,7 +344,7 @@ function contourTag(contour: Contour): string {
     const leaving = nodes[index - 1].handleOut;
     if (leaving) lines.push(pointTag(leaving, null, false));
     if (node.handleIn) lines.push(pointTag(node.handleIn, null, false));
-    lines.push(pointTag(node.point, leaving ?? node.handleIn ? "curve" : "line", smoothOf(node)));
+    lines.push(pointTag(node.point, (leaving ?? node.handleIn) ? "curve" : "line", smoothOf(node)));
   }
 
   if (closed && nodes.length > 1) {

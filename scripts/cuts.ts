@@ -33,18 +33,78 @@ const with_ = (patch: (cuts: Cuts) => void): Cuts => {
 
 const rows: Array<{ label: string; cuts: Cuts | undefined }> = [
   { label: "uncut", cuts: undefined },
-  { label: "slot · 2 bands", cuts: with_((c) => { c.slot.on = true; }) },
-  { label: "slot · 5 bands at 20°", cuts: with_((c) => { c.slot = { on: true, count: 5, width: 0.28, angle: 20, inset: 0.08 }; }) },
-  { label: "tooth · left edge", cuts: with_((c) => { c.tooth.on = true; }) },
-  { label: "tooth · both edges, deep", cuts: with_((c) => { c.tooth = { on: true, pitch: 0.07, depth: 0.55, edge: "both" }; }) },
-  { label: "inline", cuts: with_((c) => { c.inline.on = true; }) },
-  { label: "inline · breaking out", cuts: with_((c) => { c.inline = { on: true, width: 0.34, inset: 0 }; }) },
-  { label: "motif · diamond", cuts: with_((c) => { c.motif.on = true; }) },
-  { label: "motif · triangle, large", cuts: with_((c) => { c.motif = { on: true, shape: "triangle", size: 1.3 }; }) },
-  { label: "split · joins", cuts: with_((c) => { c.split.on = true; }) },
-  { label: "split · wide", cuts: with_((c) => { c.split = { on: true, size: 0.9 }; }) },
-  { label: "chamfer", cuts: with_((c) => { c.chamfer.on = true; }) },
-  { label: "chamfer · heavy", cuts: with_((c) => { c.chamfer = { on: true, size: 1.1 }; }) },
+  {
+    label: "slot · 2 bands",
+    cuts: with_((c) => {
+      c.slot.on = true;
+    }),
+  },
+  {
+    label: "slot · 5 bands at 20°",
+    cuts: with_((c) => {
+      c.slot = { on: true, count: 5, width: 0.28, angle: 20, inset: 0.08 };
+    }),
+  },
+  {
+    label: "tooth · left edge",
+    cuts: with_((c) => {
+      c.tooth.on = true;
+    }),
+  },
+  {
+    label: "tooth · both edges, deep",
+    cuts: with_((c) => {
+      c.tooth = { on: true, pitch: 0.07, depth: 0.55, edge: "both" };
+    }),
+  },
+  {
+    label: "inline",
+    cuts: with_((c) => {
+      c.inline.on = true;
+    }),
+  },
+  {
+    label: "inline · breaking out",
+    cuts: with_((c) => {
+      c.inline = { on: true, width: 0.34, inset: 0 };
+    }),
+  },
+  {
+    label: "motif · diamond",
+    cuts: with_((c) => {
+      c.motif.on = true;
+    }),
+  },
+  {
+    label: "motif · triangle, large",
+    cuts: with_((c) => {
+      c.motif = { on: true, shape: "triangle", size: 1.3 };
+    }),
+  },
+  {
+    label: "split · joins",
+    cuts: with_((c) => {
+      c.split.on = true;
+    }),
+  },
+  {
+    label: "split · wide",
+    cuts: with_((c) => {
+      c.split = { on: true, size: 0.9 };
+    }),
+  },
+  {
+    label: "chamfer",
+    cuts: with_((c) => {
+      c.chamfer.on = true;
+    }),
+  },
+  {
+    label: "chamfer · heavy",
+    cuts: with_((c) => {
+      c.chamfer = { on: true, size: 1.1 };
+    }),
+  },
   {
     label: "slot + chamfer + diamond",
     cuts: with_((c) => {
@@ -100,4 +160,6 @@ writeFileSync(
    figcaption { font-size: 8px; color: #c60; line-height: 1 }
   </style>${sections.join("")}`,
 );
-console.log(`wrote ${out} — ${rows.length} rows x ${letters.length} letters x ${bases.length} bases`);
+console.log(
+  `wrote ${out} — ${rows.length} rows x ${letters.length} letters x ${bases.length} bases`,
+);

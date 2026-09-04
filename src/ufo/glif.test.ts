@@ -242,8 +242,18 @@ describe("a glyph written out and read back", () => {
       {
         closed: true,
         nodes: [
-          { point: { x: 0, y: 0 }, handleIn: { x: 50, y: 50 }, handleOut: { x: 10, y: 10 }, type: "corner" },
-          { point: { x: 30, y: 30 }, handleIn: { x: 20, y: 20 }, handleOut: { x: 40, y: 40 }, type: "smooth" },
+          {
+            point: { x: 0, y: 0 },
+            handleIn: { x: 50, y: 50 },
+            handleOut: { x: 10, y: 10 },
+            type: "corner",
+          },
+          {
+            point: { x: 30, y: 30 },
+            handleIn: { x: 20, y: 20 },
+            handleOut: { x: 40, y: 40 },
+            type: "smooth",
+          },
         ],
       },
     ]);

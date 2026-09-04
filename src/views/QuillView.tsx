@@ -108,7 +108,11 @@ function Large({ traced }: { traced: Traced }): React.JSX.Element {
           strokeWidth={em / 400}
         />
         {state.showSource && (
-          <path d={contoursToSvgPath(traced.source)} fill="var(--muted-foreground)" opacity={0.22} />
+          <path
+            d={contoursToSvgPath(traced.source)}
+            fill="var(--muted-foreground)"
+            opacity={0.22}
+          />
         )}
         <path d={contoursToSvgPath(drawn.contours)} fill="currentColor" fillRule="nonzero" />
         {spines}

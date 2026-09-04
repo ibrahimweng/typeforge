@@ -4,7 +4,7 @@ import * as React from "react";
 
 import { ControlFieldLabel } from "../../control-layout";
 import { Field, Input } from "../../primitives";
-import { type ControlValueChangeHandler } from "../control-types";
+import type { ControlValueChangeHandler } from "../control-types";
 import { cn } from "../../../lib/utils";
 
 export type RangeInputControlProps = {
@@ -52,19 +52,12 @@ function RangeInputs({
   }
 
   return (
-    <div
-      className={cn(
-        "grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-1.5",
-        className,
-      )}
-    >
+    <div className={cn("grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-1.5", className)}>
       <Input
         aria-label={`${name} start`}
         className="font-mono"
         onBlur={onCommit}
-        onChange={(event) =>
-          onDraftChange({ end, start: event.target.value })
-        }
+        onChange={(event) => onDraftChange({ end, start: event.target.value })}
         onKeyDown={handleKeyDown}
         size="default"
         value={start}
@@ -73,9 +66,7 @@ function RangeInputs({
         aria-label={`${name} end`}
         className="font-mono"
         onBlur={onCommit}
-        onChange={(event) =>
-          onDraftChange({ end: event.target.value, start })
-        }
+        onChange={(event) => onDraftChange({ end: event.target.value, start })}
         onKeyDown={handleKeyDown}
         size="default"
         value={end}
@@ -111,14 +102,8 @@ export function RangeInputControl({
 
   function getCommittedValue(): { start: string; end: string } {
     const nextValue = {
-      end:
-        currentValue.end.trim() === ""
-          ? defaultValueRef.current.end
-          : currentValue.end,
-      start:
-        currentValue.start.trim() === ""
-          ? defaultValueRef.current.start
-          : currentValue.start,
+      end: currentValue.end.trim() === "" ? defaultValueRef.current.end : currentValue.end,
+      start: currentValue.start.trim() === "" ? defaultValueRef.current.start : currentValue.start,
     };
 
     return nextValue;
@@ -160,10 +145,7 @@ export function RangeInputControl({
 
   return (
     <Field
-      className={cn(
-        "h-fit min-w-0",
-        showLabel ? "items-center justify-between gap-3" : undefined,
-      )}
+      className={cn("h-fit min-w-0", showLabel ? "items-center justify-between gap-3" : undefined)}
       orientation={showLabel ? "horizontal" : "vertical"}
     >
       {showLabel ? <ControlFieldLabel>{name}</ControlFieldLabel> : null}

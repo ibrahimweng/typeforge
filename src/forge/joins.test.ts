@@ -130,7 +130,9 @@ describe("the two sides of a join that is not there", () => {
     // Nothing in either rule redraws the glyph that provided the context, and
     // now it could not: the swaps can only reach the input, and the space is
     // not in it.
-    expect(begins.swaps.flatMap((one) => one.swap).some((one) => one.plain === "space")).toBe(false);
+    expect(begins.swaps.flatMap((one) => one.swap).some((one) => one.plain === "space")).toBe(
+      false,
+    );
     expect(ends.swaps.flatMap((one) => one.swap).some((one) => one.plain === "space")).toBe(false);
   });
 
@@ -153,7 +155,11 @@ describe("the two sides of a join that is not there", () => {
     }
     // A lowercase letter joins on both sides, so it is in neither class.
     for (const letter of ["a", "n", "e", "h"]) {
-      expect([letter, noExit.includes(letter), noEntry.includes(letter)]).toEqual([letter, false, false]);
+      expect([letter, noExit.includes(letter), noEntry.includes(letter)]).toEqual([
+        letter,
+        false,
+        false,
+      ]);
     }
     // And a capital that hands on is not something a lead-out has to give up for.
     expect(noExit.includes("A")).toBe(false);
@@ -259,8 +265,10 @@ describe("the two sides of a join that is not there", () => {
   it("keeps the lead-out off the letters it would turn into another letter", () => {
     const reach = (letter: string) => {
       const joined = drawLetter(letter, HAND, HAND.forms?.[letter])!;
-      const shut = joiningWithout({ exit: false }, () =>
-        drawLetter(letter, HAND, HAND.forms?.[letter])!);
+      const shut = joiningWithout(
+        { exit: false },
+        () => drawLetter(letter, HAND, HAND.forms?.[letter])!,
+      );
       return contoursBounds(joined.contours).xMax - contoursBounds(shut.contours).xMax;
     };
     for (const letter of ["F", "I", "B", "D", "O", "P"]) {

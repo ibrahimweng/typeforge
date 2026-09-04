@@ -14,14 +14,13 @@
  * whichever one was last open.
  */
 
-import * as React from "react";
+import type * as React from "react";
 
 import { freeNameNear } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";
 
 export function NothingDrawnYet({ what }: { what: string }): React.JSX.Element {
-  const state = useAppState();
-  const typeface = state.typeface;
+  const typeface = useAppState((state) => state.typeface);
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">

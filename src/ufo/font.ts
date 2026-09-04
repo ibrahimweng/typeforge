@@ -27,7 +27,13 @@
  * to throw away somebody's sketches without saying so.
  */
 
-import { emptyTypeface, type Glyph, type KernClass, type KernPair, type Typeface } from "@/font/types";
+import {
+  emptyTypeface,
+  type Glyph,
+  type KernClass,
+  type KernPair,
+  type Typeface,
+} from "@/font/types";
 import { fileNameFor, readGlif, writeGlif } from "./glif";
 import {
   numberAt,
@@ -126,7 +132,7 @@ function glyphsDirectoryOf(files: UfoFiles): string {
  */
 function layerPairs(source: string): Array<[string, string]> {
   const root = parseXml(source);
-  if (!root || root.name !== "plist") return [];
+  if (root?.name !== "plist") return [];
   const outer = root.children.find((one) => one.name === "array");
   if (!outer) return [];
   const pairs: Array<[string, string]> = [];
@@ -195,9 +201,7 @@ function readFontInfo(typeface: Typeface, info: PlistDict): void {
  * class here, with the single glyph standing as a class of one, because that is
  * what this model has to say it with and because it is what the pair means.
  */
-function readKerning(
-  files: UfoFiles,
-): { kerning: KernPair[]; kernClasses: KernClass[] } {
+function readKerning(files: UfoFiles): { kerning: KernPair[]; kernClasses: KernClass[] } {
   const groups = readPlist(textOf(files.get("groups.plist"))) ?? {};
   const kerning = readPlist(textOf(files.get("kerning.plist"))) ?? {};
 
@@ -319,10 +323,7 @@ export function writeUfo(typeface: Typeface, carried?: UfoCarried): UfoFiles {
   const files: UfoFiles = new Map(carried?.untouched);
   const glyphsDirectory = carried?.glyphsDirectory ?? "glyphs";
 
-  files.set(
-    "metainfo.plist",
-    writePlist({ creator: "com.typeforge", formatVersion: 3 }),
-  );
+  files.set("metainfo.plist", writePlist({ creator: "com.typeforge", formatVersion: 3 }));
 
   const info: PlistDict = {};
   put(info, "familyName", typeface.meta.familyName);

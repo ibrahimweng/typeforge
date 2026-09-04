@@ -215,9 +215,9 @@ describe("renaming a letter", () => {
       "v/acute",
     ]);
     expect(typeface.kernClasses[0].left).toEqual(["alpha", "acute"]);
-    expect(
-      typeface.glyphs.find((one) => one.name === "aacute")!.components[0].glyphName,
-    ).toBe("alpha");
+    expect(typeface.glyphs.find((one) => one.name === "aacute")!.components[0].glyphName).toBe(
+      "alpha",
+    );
     expect(typeface.alternates[0].input[0]).toEqual(["alpha"]);
     expect(typeface.alternates[0].swaps[0].swap[0].plain).toBe("alpha");
   });

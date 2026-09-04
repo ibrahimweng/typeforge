@@ -35,7 +35,9 @@ const CASES = [
 ];
 const STEPS = 10;
 
-const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });
+const browser = await chromium.launch({
+  executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+});
 
 for (const [kind, what, label] of CASES) {
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
@@ -44,7 +46,10 @@ for (const [kind, what, label] of CASES) {
   await page.getByRole("button", { name: "Draw", exact: true }).click();
   await page.waitForTimeout(2500);
   const gotIt = page.getByRole("button", { name: "Got it" });
-  if (await gotIt.count()) { await gotIt.first().click(); await page.waitForTimeout(300); }
+  if (await gotIt.count()) {
+    await gotIt.first().click();
+    await page.waitForTimeout(300);
+  }
 
   let slider;
   if (kind === "part") {
@@ -65,7 +70,8 @@ for (const [kind, what, label] of CASES) {
     globalThis.__long = [];
     globalThis.__t0 = performance.now();
     new PerformanceObserver((l) => {
-      for (const e of l.getEntries()) globalThis.__long.push([Math.round(e.startTime - globalThis.__t0), Math.round(e.duration)]);
+      for (const e of l.getEntries())
+        globalThis.__long.push([Math.round(e.startTime - globalThis.__t0), Math.round(e.duration)]);
     }).observe({ entryTypes: ["longtask"] });
   });
 
@@ -83,7 +89,9 @@ for (const [kind, what, label] of CASES) {
   const long = await page.evaluate(() => globalThis.__long);
   const blocked = long.reduce((sum, [, ms]) => sum + Math.max(0, ms - 50), 0);
   const worst = Math.max(0, ...long.map(([, ms]) => ms));
-  console.log(`${label.padEnd(22)} drag ${String(drag).padStart(6)} ms   blocked ${String(blocked).padStart(6)} ms   worst task ${String(worst).padStart(6)} ms`);
+  console.log(
+    `${label.padEnd(22)} drag ${String(drag).padStart(6)} ms   blocked ${String(blocked).padStart(6)} ms   worst task ${String(worst).padStart(6)} ms`,
+  );
   await page.close();
 }
 await browser.close();

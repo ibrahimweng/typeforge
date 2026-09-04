@@ -63,14 +63,24 @@ describe("the pen", () => {
     // what left a dozen half-drawn stubs in a letter.
     expect(open.says).toContain("Escape");
 
-    const closing = toolStateFor("pen", { ...NOTHING, closingPoint: true, pathOpen: true, openPoints: 3 }, null, NONE);
+    const closing = toolStateFor(
+      "pen",
+      { ...NOTHING, closingPoint: true, pathOpen: true, openPoints: 3 },
+      null,
+      NONE,
+    );
     expect(closing.phase).toBe("willDo");
     expect(closing.says).toBe("Click to close the outline.");
   });
 
   it("points differently when the click would close rather than add", () => {
     const adding = toolStateFor("pen", { ...NOTHING, pathOpen: true, openPoints: 3 }, null, NONE);
-    const closing = toolStateFor("pen", { ...NOTHING, closingPoint: true, pathOpen: true, openPoints: 3 }, null, NONE);
+    const closing = toolStateFor(
+      "pen",
+      { ...NOTHING, closingPoint: true, pathOpen: true, openPoints: 3 },
+      null,
+      NONE,
+    );
     expect(cursorFor("pen", adding, false)).not.toBe(cursorFor("pen", closing, false));
   });
 });
@@ -104,7 +114,9 @@ describe("the shape tools", () => {
   const dragging: Doing = { kind: "shape" };
 
   it("names the modifier that is actually held", () => {
-    expect(toolStateFor("rectangle", NOTHING, dragging, NONE).says).toContain("Shift holds it square");
+    expect(toolStateFor("rectangle", NOTHING, dragging, NONE).says).toContain(
+      "Shift holds it square",
+    );
     expect(toolStateFor("rectangle", NOTHING, dragging, { shift: true, alt: false }).says).toBe(
       "Held to a square. Let go to keep it.",
     );
@@ -121,13 +133,20 @@ describe("the shape tools", () => {
 
   it("counts a held modifier as doing its particular thing", () => {
     expect(toolStateFor("rectangle", NOTHING, dragging, NONE).phase).toBe("active");
-    expect(toolStateFor("rectangle", NOTHING, dragging, { shift: true, alt: false }).phase).toBe("willDo");
+    expect(toolStateFor("rectangle", NOTHING, dragging, { shift: true, alt: false }).phase).toBe(
+      "willDo",
+    );
   });
 });
 
 describe("freehand", () => {
   it("says when letting go would close the loop", () => {
-    const drawing = toolStateFor("freehand", NOTHING, { kind: "freehand", wouldClose: false }, NONE);
+    const drawing = toolStateFor(
+      "freehand",
+      NOTHING,
+      { kind: "freehand", wouldClose: false },
+      NONE,
+    );
     expect(drawing.phase).toBe("active");
     expect(drawing.says).toContain("Come back to where you began");
 
@@ -193,8 +212,12 @@ describe("the tools that need something under them", () => {
 
   it("arms over the thing each one works on", () => {
     expect(toolStateFor("addPoint", { ...NOTHING, edge: true }, null, NONE).phase).toBe("willDo");
-    expect(toolStateFor("deletePoint", { ...NOTHING, node: true }, null, NONE).phase).toBe("willDo");
-    expect(toolStateFor("convertPoint", { ...NOTHING, node: true }, null, NONE).phase).toBe("willDo");
+    expect(toolStateFor("deletePoint", { ...NOTHING, node: true }, null, NONE).phase).toBe(
+      "willDo",
+    );
+    expect(toolStateFor("convertPoint", { ...NOTHING, node: true }, null, NONE).phase).toBe(
+      "willDo",
+    );
     expect(toolStateFor("scissors", { ...NOTHING, node: true }, null, NONE).phase).toBe("willDo");
   });
 

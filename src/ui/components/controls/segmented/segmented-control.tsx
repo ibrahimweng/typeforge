@@ -29,9 +29,7 @@ export function SegmentedControl({
   value,
   variant = "default",
 }: SegmentedControlProps): React.JSX.Element {
-  const [currentValue, setCurrentValue] = React.useState(
-    () => value ?? options[0]?.value ?? "",
-  );
+  const [currentValue, setCurrentValue] = React.useState(() => value ?? options[0]?.value ?? "");
   const selectedValue = value ?? currentValue;
 
   React.useEffect(() => {
@@ -70,9 +68,7 @@ export function SegmentedControl({
         {options.map((option) => (
           <ToggleGroupItem
             aria-label={option.label}
-            className={
-              variant === "dots" ? "min-w-0 flex-1 gap-[7px]" : "min-w-0 flex-1"
-            }
+            className={variant === "dots" ? "min-w-0 flex-1 gap-[7px]" : "min-w-0 flex-1"}
             key={option.value}
             value={option.value}
           >

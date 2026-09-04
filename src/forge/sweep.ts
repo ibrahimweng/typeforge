@@ -324,13 +324,9 @@ function ellipseNodes(arc: OffsetEllipse): GlyphNode[] {
     nodes.push({
       point,
       handleIn:
-        piece === 0
-          ? null
-          : { x: point.x - slope.x * factor, y: point.y - slope.y * factor },
+        piece === 0 ? null : { x: point.x - slope.x * factor, y: point.y - slope.y * factor },
       handleOut:
-        piece === pieces
-          ? null
-          : { x: point.x + slope.x * factor, y: point.y + slope.y * factor },
+        piece === pieces ? null : { x: point.x + slope.x * factor, y: point.y + slope.y * factor },
       type: "smooth",
     });
   }
@@ -367,7 +363,10 @@ function stitch(segments: OffsetSegment[]): GlyphNode[] {
       const joining = piece[0];
       // Same point from both sides of a join: keep one node carrying both
       // handles, so a smooth join stays smooth.
-      const together = Math.hypot(previous.point.x - joining.point.x, previous.point.y - joining.point.y);
+      const together = Math.hypot(
+        previous.point.x - joining.point.x,
+        previous.point.y - joining.point.y,
+      );
       if (together < 1e-6) {
         previous.handleOut = joining.handleOut;
         previous.type = previous.handleIn && joining.handleOut ? "smooth" : previous.type;
@@ -581,7 +580,16 @@ function outerJoin(
    * count at every weight alike.
    */
   const empty = (at: Vec2): OffsetSegment[] => [
-    { kind: "ellipse", centre: at, rx: 0, ry: 0, rotation: 0, from: 0, to: 0, pieces: WEDGE_PIECES },
+    {
+      kind: "ellipse",
+      centre: at,
+      rx: 0,
+      ry: 0,
+      rotation: 0,
+      from: 0,
+      to: 0,
+      pieces: WEDGE_PIECES,
+    },
   ];
   if (Math.hypot(from.x - to.x, from.y - to.y) < 1e-9) return empty(from);
   if (join === "bevel") return empty(from);
@@ -598,7 +606,7 @@ function outerJoin(
     const local = rotate({ x: point.x - at.x, y: point.y - at.y }, -reach.angle);
     return Math.atan2(local.y / (reach.along || 1e-9), local.x / (reach.across || 1e-9));
   };
-  let start = angleOf(from);
+  const start = angleOf(from);
   let finish = angleOf(to);
   // The short way round. The long way would sweep the pen back through the
   // stroke it just came out of.
@@ -1057,7 +1065,12 @@ export function sweep(stroke: Stroke): Contour[] {
     }
   }
 
-  return [facing({ nodes: joinedAtSeams([leftNodes, endNodes, rightNodes, startNodes]), closed: true }, 1)];
+  return [
+    facing(
+      { nodes: joinedAtSeams([leftNodes, endNodes, rightNodes, startNodes]), closed: true },
+      1,
+    ),
+  ];
 }
 
 /**

@@ -34,7 +34,7 @@ export function fitEmSquare(
   const usable = Math.min(width, height) * (1 - padding * 2);
   const scale = usable / em;
   // Sit the baseline where the descender still fits inside the box.
-  const originY = height / 2 + (em * 0.35) * scale;
+  const originY = height / 2 + em * 0.35 * scale;
   return { scale, originX: width / 2, originY };
 }
 

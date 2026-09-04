@@ -366,29 +366,17 @@ export function GradientStopsList({
   const canRemove = stops.length > minGradientStops;
 
   return (
-    <div
-      className="flex min-w-0 flex-col gap-1"
-      data-slot="gradient-stops-list"
-    >
+    <div className="flex min-w-0 flex-col gap-1" data-slot="gradient-stops-list">
       <GradientStopsHeader canAdd={canAdd} onAdd={onAdd} />
-      <div
-        className="flex min-w-0 flex-col gap-[2px]"
-        data-slot="gradient-stops-list-rows"
-      >
+      <div className="flex min-w-0 flex-col gap-[2px]" data-slot="gradient-stops-list-rows">
         {stops.map((stop) => (
           <GradientStopRow
             canRemove={canRemove}
             isSelected={selectedIndex === stop.originalIndex}
             key={stop.originalIndex}
-            onColorChange={(nextColor) =>
-              onColorChange(stop.originalIndex, nextColor)
-            }
-            onOpacityChange={(nextOpacity) =>
-              onOpacityChange(stop.originalIndex, nextOpacity)
-            }
-            onPositionChange={(nextPosition) =>
-              onPositionChange(stop.originalIndex, nextPosition)
-            }
+            onColorChange={(nextColor) => onColorChange(stop.originalIndex, nextColor)}
+            onOpacityChange={(nextOpacity) => onOpacityChange(stop.originalIndex, nextOpacity)}
+            onPositionChange={(nextPosition) => onPositionChange(stop.originalIndex, nextPosition)}
             onRemove={() => onRemove(stop.originalIndex)}
             onSelect={() => onSelect(stop.originalIndex)}
             stop={stop}

@@ -41,6 +41,10 @@ jobs:
       - name: Install a test font
         run: sudo apt-get install -y --no-install-recommends fonts-dejavu-core
 
+      # Before the type check, because a lint failure is the cheapest one to
+      # read and there is no sense making somebody wait for tsc to hear it.
+      - run: npm run lint
+
       - run: npm run typecheck
 
       - run: npm test

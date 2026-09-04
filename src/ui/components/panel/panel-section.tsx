@@ -11,10 +11,7 @@ import {
   PanelTitle,
 } from "../control-layout";
 
-export type PanelSectionProps = Omit<
-  React.HTMLAttributes<HTMLElement>,
-  "children" | "title"
-> & {
+export type PanelSectionProps = Omit<React.HTMLAttributes<HTMLElement>, "children" | "title"> & {
   action?: React.ReactNode;
   actionGroup?: "primary" | "secondary";
   allowCompoundDividers?: boolean;
@@ -49,10 +46,7 @@ export function PanelSection({
   const shouldRenderInnerDividers = allowCompoundDividers ?? childArray.length > 1;
   const body = (
     <ControlList
-      className={cn(
-        !isActionSection &&
-          (spacing === "technical" ? "py-3" : "pt-2 pb-6"),
-      )}
+      className={cn(!isActionSection && (spacing === "technical" ? "py-3" : "pt-2 pb-6"))}
     >
       {childArray.map((child, index) => (
         <ControlItem
@@ -138,10 +132,9 @@ function PanelSectionCollapsibleBody({
 }): React.JSX.Element | null {
   const [shouldRender, setShouldRender] = React.useState(!collapsed);
   const [isVisuallyCollapsed, setIsVisuallyCollapsed] = React.useState(collapsed);
-  const suppressControlTransitions =
-    useInitialPanelSectionControlTransitionSuppression(
-      `${collapsed ? "collapsed" : "expanded"}:${shouldRender ? "mounted" : "unmounted"}`,
-    );
+  const suppressControlTransitions = useInitialPanelSectionControlTransitionSuppression(
+    `${collapsed ? "collapsed" : "expanded"}:${shouldRender ? "mounted" : "unmounted"}`,
+  );
 
   React.useEffect(() => {
     if (collapsed) {
@@ -190,9 +183,7 @@ function PanelSectionCollapsibleBody({
     >
       <div
         className="min-h-0 overflow-hidden"
-        data-toolcraft-controls-mounting={
-          suppressControlTransitions ? "true" : undefined
-        }
+        data-toolcraft-controls-mounting={suppressControlTransitions ? "true" : undefined}
       >
         {children}
       </div>
@@ -200,9 +191,7 @@ function PanelSectionCollapsibleBody({
   );
 }
 
-function useInitialPanelSectionControlTransitionSuppression(
-  dependency: unknown,
-): boolean {
+function useInitialPanelSectionControlTransitionSuppression(dependency: unknown): boolean {
   const [suppressionState, setSuppressionState] = React.useState(() => ({
     dependency,
     isSuppressing: true,
@@ -236,14 +225,9 @@ function useInitialPanelSectionControlTransitionSuppression(
     };
   }, [dependency]);
 
-  return (
-    suppressionState.dependency !== dependency || suppressionState.isSuppressing
-  );
+  return suppressionState.dependency !== dependency || suppressionState.isSuppressing;
 }
 
-function getPanelSectionChildKey(
-  child: React.ReactNode,
-  index: number,
-): React.Key {
+function getPanelSectionChildKey(child: React.ReactNode, index: number): React.Key {
   return React.isValidElement(child) && child.key !== null ? child.key : index;
 }

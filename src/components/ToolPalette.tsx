@@ -73,7 +73,16 @@ const MARKS: Record<ToolId, Icon> = {
 const BY_KEY = new Map(GROUPS.map((group) => [group.key.toLowerCase(), group.id]));
 
 export function ToolPalette(): React.JSX.Element {
-  const state = useAppState();
+  /*
+   * Three pieces of tool state, rather than the whole document.
+   *
+   * Nothing drawn here comes from the font, and the palette is on screen for
+   * every drag: following the whole state re-rendered all of it on each frame
+   * of pulling a point about, to draw the same fourteen buttons again.
+   */
+  const lastInGroup = useAppState((state) => state.lastInGroup);
+  const tool = useAppState((state) => state.tool);
+  const toolState = useAppState((state) => state.toolState);
   const [open, setOpen] = React.useState<GroupId | null>(null);
 
   /*
@@ -136,8 +145,8 @@ export function ToolPalette(): React.JSX.Element {
       className="relative flex shrink-0 flex-col gap-0.5 border-r border-border bg-background p-1"
     >
       {GROUPS.map((group) => {
-        const showing = state.lastInGroup[group.id];
-        const here = groupOf(state.tool) === group.id;
+        const showing = lastInGroup[group.id];
+        const here = groupOf(tool) === group.id;
         const Mark = MARKS[showing];
         const many = toolsIn(group.id).length > 1;
 
@@ -152,7 +161,7 @@ export function ToolPalette(): React.JSX.Element {
               title={`${group.name} (${group.key})${many ? " — click and hold, or press again, for the rest" : ""}`}
               data-tool={showing}
               data-tool-group={group.id}
-              data-phase={here ? state.toolState.phase : "off"}
+              data-phase={here ? toolState.phase : "off"}
               onClick={() => {
                 /*
                  * A click takes the tool up; a click on the group you are
@@ -184,10 +193,8 @@ export function ToolPalette(): React.JSX.Element {
                 */
                 !here && "text-muted-foreground hover:bg-card hover:text-foreground",
                 here && "bg-accent text-accent-foreground",
-                here && state.toolState.phase === "active" && "ring-1 ring-accent/60",
-                here &&
-                  state.toolState.phase === "willDo" &&
-                  "ring-1 ring-[color:var(--attention)]",
+                here && toolState.phase === "active" && "ring-1 ring-accent/60",
+                here && toolState.phase === "willDo" && "ring-1 ring-[color:var(--attention)]",
               )}
             >
               <Mark size={15} weight={here ? "fill" : "regular"} />
@@ -220,12 +227,12 @@ export function ToolPalette(): React.JSX.Element {
                 state a tool used to have no way of showing at all. Top left, out
                 of the corner the flyout tick uses.
               */}
-              {here && state.toolState.phase !== "idle" && (
+              {here && toolState.phase !== "idle" && (
                 <span
                   aria-hidden
                   className={cn(
                     "pointer-events-none absolute top-0.5 left-0.5 h-1 w-1 rounded-full",
-                    state.toolState.phase === "willDo"
+                    toolState.phase === "willDo"
                       ? "bg-[color:var(--attention)]"
                       : "bg-accent-foreground/70",
                   )}
@@ -251,7 +258,7 @@ export function ToolPalette(): React.JSX.Element {
  * it.
  */
 function Flyout({ group, onPick }: { group: GroupId; onPick: () => void }): React.JSX.Element {
-  const state = useAppState();
+  const current = useAppState((state) => state.tool);
   const named = GROUPS.find((one) => one.id === group)!;
   const first = React.useRef<HTMLButtonElement>(null);
 
@@ -289,7 +296,7 @@ function Flyout({ group, onPick }: { group: GroupId; onPick: () => void }): Reac
         <FlyoutRow
           key={tool.id}
           tool={tool}
-          picked={state.tool === tool.id}
+          picked={current === tool.id}
           ref={at === 0 ? first : undefined}
           onPick={() => {
             store.setTool(tool.id);
@@ -316,7 +323,9 @@ const FlyoutRow = React.forwardRef<
       onClick={onPick}
       className={cn(
         "flex w-full items-start gap-2 rounded px-2 py-1.5 text-left transition-colors",
-        picked ? "bg-accent/15 text-foreground" : "text-muted-foreground hover:bg-card hover:text-foreground",
+        picked
+          ? "bg-accent/15 text-foreground"
+          : "text-muted-foreground hover:bg-card hover:text-foreground",
       )}
     >
       <Mark size={15} weight={picked ? "fill" : "regular"} className="mt-[1px] shrink-0" />

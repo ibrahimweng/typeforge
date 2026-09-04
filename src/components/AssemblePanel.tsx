@@ -34,7 +34,13 @@ import { SliderControl as Slider } from "@/ui/components/controls/slider";
 import { cn } from "@/ui/lib/utils";
 
 /** A line of the font, as a control. */
-const METRIC_CONTROLS: Array<{ key: string; label: string; hint: string; min: number; max: number }> = [
+const METRIC_CONTROLS: Array<{
+  key: string;
+  label: string;
+  hint: string;
+  min: number;
+  max: number;
+}> = [
   {
     key: "capHeight",
     label: "Cap height",
@@ -77,7 +83,10 @@ export function AssemblePanel({ onEdit }: { onEdit: () => Promise<void> }): Reac
   return (
     <aside
       aria-label="Assemble"
-      className={cn(WIDE_PANEL, "toolcraft-panel-surface flex shrink-0 flex-col border-l border-border")}
+      className={cn(
+        WIDE_PANEL,
+        "toolcraft-panel-surface flex shrink-0 flex-col border-l border-border",
+      )}
     >
       <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
         <Files />
@@ -137,12 +146,16 @@ function Cutting(): React.JSX.Element {
   const [scope, setScope] = React.useState<"pile" | "one">("pile");
   const has = assembly.pieces.some((piece) => piece.character === selected);
   const one = scope === "one" && selected !== "" && has;
-  const cuts = one ? cutsFor(selected, assembly) ?? cutsOrNone(assembly) : cutsOrNone(assembly);
+  const cuts = one ? (cutsFor(selected, assembly) ?? cutsOrNone(assembly)) : cutsOrNone(assembly);
 
   return (
     <>
       <div className="border-b border-border px-3 pt-3">
-        <div className="flex gap-0.5 rounded-md bg-card/60 p-0.5" role="group" aria-label="Cut scope">
+        <div
+          className="flex gap-0.5 rounded-md bg-card/60 p-0.5"
+          role="group"
+          aria-label="Cut scope"
+        >
           <button
             type="button"
             aria-pressed={scope === "pile"}
@@ -187,7 +200,7 @@ function Cutting(): React.JSX.Element {
       <CutPanel
         layer="cast"
         tag="assemble-cast"
-        cuts={one ? castFor(selected, assembly) ?? castOrNone(assembly) : castOrNone(assembly)}
+        cuts={one ? (castFor(selected, assembly) ?? castOrNone(assembly)) : castOrNone(assembly)}
         onChange={(name, patch, phase) => {
           if (one) assembleStore.changeOneCast(selected, name, patch as never, phase);
           else assembleStore.changeCast(name, patch as never, phase);
@@ -282,12 +295,10 @@ function Files(): React.JSX.Element {
 
       {state.assembly.pieces.length === 0 ? (
         <p className="pt-2 text-2xs leading-snug text-muted-foreground">
-          The ordinary way in is to double-click a box and choose its drawing.
-          This is the shortcut for a folder you have already exported: names it
-          recognises — <code>a.svg</code>, <code>A_.svg</code>,{" "}
-          <code>period.svg</code>, <code>uni0041.svg</code> — go straight into
-          their boxes, and anything it cannot name is listed here to place by
-          hand.
+          The ordinary way in is to double-click a box and choose its drawing. This is the shortcut
+          for a folder you have already exported: names it recognises — <code>a.svg</code>,{" "}
+          <code>A_.svg</code>, <code>period.svg</code>, <code>uni0041.svg</code> — go straight into
+          their boxes, and anything it cannot name is listed here to place by hand.
         </p>
       ) : (
         <ul className="max-h-56 space-y-1 overflow-y-auto pt-2" data-assemble-list>
@@ -295,9 +306,7 @@ function Files(): React.JSX.Element {
             <li key={piece.id} className="flex items-center gap-1.5">
               <input
                 value={piece.character}
-                onChange={(event) =>
-                  assembleStore.map(piece.id, [...event.target.value][0] ?? "")
-                }
+                onChange={(event) => assembleStore.map(piece.id, [...event.target.value][0] ?? "")}
                 aria-label={`Character for ${piece.file}`}
                 data-assemble-map={piece.id}
                 placeholder="?"
@@ -468,10 +477,7 @@ function Spacing(): React.JSX.Element {
 /** The one letter being looked at, and its own white. */
 function Letter(): React.JSX.Element | null {
   const state = useAssemble();
-  const assembled = React.useMemo(
-    () => build(state.assembly),
-    [state.assembly, state.revision],
-  );
+  const assembled = React.useMemo(() => build(state.assembly), [state.assembly, state.revision]);
   const letter = assembled.letters.find((candidate) => candidate.character === state.selected);
   if (!letter) return null;
 
@@ -501,9 +507,9 @@ function Letter(): React.JSX.Element | null {
       ))}
       <p className="pt-1 text-2xs leading-snug text-muted-foreground">
         Measured at {Math.round(letter.bearings.left - nudge.left)} and{" "}
-        {Math.round(letter.bearings.right - nudge.right)}; now{" "}
-        {Math.round(letter.bearings.left)} and {Math.round(letter.bearings.right)}. These sliders
-        move this letter alone, on top of what was measured.
+        {Math.round(letter.bearings.right - nudge.right)}; now {Math.round(letter.bearings.left)}{" "}
+        and {Math.round(letter.bearings.right)}. These sliders move this letter alone, on top of
+        what was measured.
       </p>
     </Section>
   );
@@ -519,10 +525,7 @@ function Letter(): React.JSX.Element | null {
  */
 function Pair(): React.JSX.Element | null {
   const state = useAssemble();
-  const assembled = React.useMemo(
-    () => build(state.assembly),
-    [state.assembly, state.revision],
-  );
+  const assembled = React.useMemo(() => build(state.assembly), [state.assembly, state.revision]);
   const [text, setText] = React.useState("To");
 
   const characters = [...text].slice(0, 2);
@@ -565,7 +568,11 @@ function Pair(): React.JSX.Element | null {
             data-assemble-pair={`${left.character}${right.character}`}
           >
             <g transform="scale(1,-1)">
-              <path d={contoursToSvgPath(left.contours)} fill="var(--foreground)" fillRule="nonzero" />
+              <path
+                d={contoursToSvgPath(left.contours)}
+                fill="var(--foreground)"
+                fillRule="nonzero"
+              />
               <g transform={`translate(${left.advanceWidth + value} 0)`}>
                 <path
                   d={contoursToSvgPath(right.contours)}
@@ -613,8 +620,8 @@ function Pair(): React.JSX.Element | null {
         </>
       ) : (
         <p className="pt-2 text-2xs leading-snug text-muted-foreground">
-          Type two characters the font has, and this shows them together with the
-          kerning that was worked out for them.
+          Type two characters the font has, and this shows them together with the kerning that was
+          worked out for them.
         </p>
       )}
     </Section>

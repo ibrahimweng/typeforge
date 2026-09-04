@@ -159,9 +159,7 @@ export function drawLetter(
   effects?: Effects,
 ): Drawn | null {
   const made = makeLetter(name, style, form, cuts, kit, cast, effects);
-  return made
-    ? { contours: made.contours, advanceWidth: made.advanceWidth, cut: made.cut }
-    : null;
+  return made ? { contours: made.contours, advanceWidth: made.advanceWidth, cut: made.cut } : null;
 }
 
 /** One run of a letter: its ink, and the named decisions it was built from. */
@@ -282,9 +280,10 @@ export function makeLetter(
   // Asked of this letter's own strokes rather than of the settings, so a
   // letter nothing can reach -- a space, which has no ink -- is not put through
   // the machinery to come back as what it already was.
-  const cutting = reaches(cuts, strokes) || reachesCast(cast, strokes)
-    ? shapedInk(inked.flat(), strokes, scaleOf(style), cuts, cast)
-    : null;
+  const cutting =
+    reaches(cuts, strokes) || reachesCast(cast, strokes)
+      ? shapedInk(inked.flat(), strokes, scaleOf(style), cuts, cast)
+      : null;
   /*
    * What the tool left, on the letter as the cut and the cast have made it and
    * before the lean is taken.
@@ -293,9 +292,10 @@ export function makeLetter(
    * skeleton and the skeleton has not been leaned either -- roughen after the
    * shear and every pool would sit off its own join by the width of the lean.
    */
-  const marks = effects && reachesEffects(effects, strokes)
-    ? effectInk(cutting ? cutting.contours : inked.flat(), strokes, scaleOf(style), effects)
-    : null;
+  const marks =
+    effects && reachesEffects(effects, strokes)
+      ? effectInk(cutting ? cutting.contours : inked.flat(), strokes, scaleOf(style), effects)
+      : null;
   const cut = marks
     ? wobbled(sheared(marks, lean, pivot))
     : cutting
@@ -313,9 +313,10 @@ export function makeLetter(
    * font would open by them.
    */
   const joinsUp = style.parts.script.on && built?.width !== undefined;
-  const shortfall = solid.length > 0 && !joinsUp
-    ? Math.max(0, style.metrics.sidebearing - contoursBounds(solid).xMin)
-    : 0;
+  const shortfall =
+    solid.length > 0 && !joinsUp
+      ? Math.max(0, style.metrics.sidebearing - contoursBounds(solid).xMin)
+      : 0;
   const placed = slid(cut, shortfall);
   const placedSolid = solid === cut ? placed : slid(solid, shortfall);
 
@@ -443,7 +444,10 @@ function marked(
   const placed = shortfall > 0 ? shoved(contours, { x: shortfall, y: 0 }) : contours;
   const spaced =
     shortfall > 0
-      ? runs.map((run) => ({ parts: run.parts, contours: shoved(run.contours, { x: shortfall, y: 0 }) }))
+      ? runs.map((run) => ({
+          parts: run.parts,
+          contours: shoved(run.contours, { x: shortfall, y: 0 }),
+        }))
       : runs;
 
   /*
@@ -862,9 +866,7 @@ function onALine(stroke: Stroke, at: Vec2, outward: Vec2, style: Style): boolean
    * against 72 at the Black. The Psychedelic went from 15 letters standing to
    * 29. Under-counting is the cheaper of the two mistakes here.
    */
-  const reaches = Math.abs(
-    reachAlong({ x: -outward.y, y: outward.x }, penReach(stroke.pen)).y,
-  );
+  const reaches = Math.abs(reachAlong({ x: -outward.y, y: outward.x }, penReach(stroke.pen)).y);
   return [0, metrics.xHeight, metrics.capHeight, metrics.ascender, metrics.descender].some(
     (line) => Math.abs(at.y - line) <= reaches + 1,
   );
@@ -935,8 +937,7 @@ function flaresFor(stroke: Stroke, style: Style): Contour[] {
        * it is the same shape the Psychedelic's ball takes when the room for it
        * runs out, and for the same reason.
        */
-      const refused =
-        !swelling || crossesALine(at, facing, side, inner + reach, inner, style);
+      const refused = !swelling || crossesALine(at, facing, side, inner + reach, inner, style);
       /*
        * Refused, the swelling reaches nowhere and is a unit deep, which puts
        * all four of its nodes on the stroke's own end inside ink that is
@@ -1090,9 +1091,7 @@ function serifsFor(stroke: Stroke, style: Style): Contour[] {
      */
     const level = terminal.level === true && Math.abs(outward.y) > 1e-3;
     const facing = level ? { x: 0, y: Math.sign(outward.y) } : outward;
-    const inner = level
-      ? levelHalfWidth(stroke, outward)
-      : halfWidthAcross(stroke, outward);
+    const inner = level ? levelHalfWidth(stroke, outward) : halfWidthAcross(stroke, outward);
     // The font's own stem, or this stroke's edge if that is further out, and
     // the projection beyond it. Measured from the stem so that every serif in
     // the face is the same size, and from the stroke where the stroke is the
@@ -1213,9 +1212,7 @@ function crossesALine(
    */
   return lines.some(
     ([line, inward]) =>
-      standingOn(at.y, line, inner) &&
-      Math.abs(across.y) > 0.8 &&
-      (far - line) * inward < 0,
+      standingOn(at.y, line, inner) && Math.abs(across.y) > 0.8 && (far - line) * inward < 0,
   );
 }
 
@@ -1340,15 +1337,18 @@ function endsOf(stroke: Stroke): Array<[Terminal, Vec2, Vec2, boolean]> {
   // first and last: see `endPieces`.
   const { first, last } = endPieces(stroke.spine)!;
 
-  const startPoint = first.kind === "line" ? first.from : onArc(first.centre, first.radius, first.startAngle);
+  const startPoint =
+    first.kind === "line" ? first.from : onArc(first.centre, first.radius, first.startAngle);
   const endPoint = last.kind === "line" ? last.to : onArc(last.centre, last.radius, last.endAngle);
 
-  const startOut = first.kind === "line"
-    ? unit(startPoint, first.to, -1)
-    : tangentOnArc(first.startAngle, first.sweepPositive, -1);
-  const endOut = last.kind === "line"
-    ? unit(last.from, endPoint, 1)
-    : tangentOnArc(last.endAngle, last.sweepPositive, 1);
+  const startOut =
+    first.kind === "line"
+      ? unit(startPoint, first.to, -1)
+      : tangentOnArc(first.startAngle, first.sweepPositive, -1);
+  const endOut =
+    last.kind === "line"
+      ? unit(last.from, endPoint, 1)
+      : tangentOnArc(last.endAngle, last.sweepPositive, 1);
 
   // Which piece a run ends on and whether it ends straight are two questions:
   // see `endsStraight`. The first is asked of a piece that goes somewhere, the
@@ -1377,7 +1377,12 @@ function tangentOnArc(angle: number, sweepPositive: boolean, way: number): Vec2 
   return { x: -Math.sin(angle) * sign, y: Math.cos(angle) * sign };
 }
 
-const node = (point: Vec2): GlyphNode => ({ point, handleIn: null, handleOut: null, type: "corner" });
+const node = (point: Vec2): GlyphNode => ({
+  point,
+  handleIn: null,
+  handleOut: null,
+  type: "corner",
+});
 
 /**
  * How far a serif reaches back into the stroke it is laid on.

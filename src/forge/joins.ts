@@ -173,10 +173,7 @@ export function joinSides(names: string[]): { noExit: string[]; noEntry: string[
  * worth having anyway: it says what they mean, instead of leaning on a subtle
  * property of how lookups are applied.
  */
-export function boundaryRules(
-  wanted: Array<[string, Without]>,
-  names: string[],
-): NamedRule[] {
+export function boundaryRules(wanted: Array<[string, Without]>, names: string[]): NamedRule[] {
   const { noExit, noEntry } = joinSides(names);
   const named = (which: Without) =>
     wanted.filter(([, one]) => one === which).map(([letter]) => letter);
@@ -211,10 +208,15 @@ export function boundaryRules(
       before: [noExit],
       input: [alone],
       after: [noEntry],
-      swaps: [{
-        at: 0,
-        swap: alone.map((letter) => ({ plain: letter, alternate: boundaryName(letter, "alone") })),
-      }],
+      swaps: [
+        {
+          at: 0,
+          swap: alone.map((letter) => ({
+            plain: letter,
+            alternate: boundaryName(letter, "alone"),
+          })),
+        },
+      ],
     });
   }
 
@@ -226,20 +228,27 @@ export function boundaryRules(
     rules.push({
       before: [noExit],
       input: [beginning],
-      swaps: [{
-        at: 0,
-        swap: beginning.map((letter) => ({ plain: letter, alternate: boundaryName(letter, "begin") })),
-      }],
+      swaps: [
+        {
+          at: 0,
+          swap: beginning.map((letter) => ({
+            plain: letter,
+            alternate: boundaryName(letter, "begin"),
+          })),
+        },
+      ],
     });
   }
   if (ending.length > 0 && noEntry.length > 0) {
     rules.push({
       input: [ending],
       after: [noEntry],
-      swaps: [{
-        at: 0,
-        swap: ending.map((letter) => ({ plain: letter, alternate: boundaryName(letter, "end") })),
-      }],
+      swaps: [
+        {
+          at: 0,
+          swap: ending.map((letter) => ({ plain: letter, alternate: boundaryName(letter, "end") })),
+        },
+      ],
     });
   }
   return rules;

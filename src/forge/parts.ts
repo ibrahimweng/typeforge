@@ -181,7 +181,15 @@ export const PART_SPECS: PartSpec[] = [
     label: "Serif",
     hint: "The bar laid across the end of a straight stroke. Turning it on is most of what separates a serif face from a sans; a curved terminal never takes one.",
     controls: [
-      { key: "on", label: "Serifs", hint: "Off for a sans.", min: 0, max: 1, step: 1, toggle: true },
+      {
+        key: "on",
+        label: "Serifs",
+        hint: "Off for a sans.",
+        min: 0,
+        max: 1,
+        step: 1,
+        toggle: true,
+      },
       {
         key: "projection",
         label: "Reach",
@@ -799,7 +807,11 @@ export const CUT_SPECS: CutSpec[] = [
         options: [
           { value: "left", label: "Left", hint: "Down the left flank of every letter." },
           { value: "right", label: "Right", hint: "Down the right flank." },
-          { value: "both", label: "Both", hint: "Down both, which reads as a letter torn rather than cut." },
+          {
+            value: "both",
+            label: "Both",
+            hint: "Down both, which reads as a letter torn rather than cut.",
+          },
           { value: "top", label: "Top", hint: "Across the top." },
           { value: "bottom", label: "Foot", hint: "Across the foot." },
         ],
@@ -842,17 +854,57 @@ export const CUT_SPECS: CutSpec[] = [
         max: 0,
         step: 0,
         options: [
-          { value: "diamond", label: "Diamond", hint: "Points at the top, bottom and sides of the counter." },
-          { value: "lozenge", label: "Lozenge", hint: "The same figure drawn tall and narrow, which is what most woven and painted geometry uses where a square diamond would read as a hole." },
-          { value: "nested", label: "Nested", hint: "A diamond with a diamond in it: a counter that is neither open nor closed." },
+          {
+            value: "diamond",
+            label: "Diamond",
+            hint: "Points at the top, bottom and sides of the counter.",
+          },
+          {
+            value: "lozenge",
+            label: "Lozenge",
+            hint: "The same figure drawn tall and narrow, which is what most woven and painted geometry uses where a square diamond would read as a hole.",
+          },
+          {
+            value: "nested",
+            label: "Nested",
+            hint: "A diamond with a diamond in it: a counter that is neither open nor closed.",
+          },
           { value: "triangle", label: "Triangle", hint: "Flat foot, point at the top." },
-          { value: "hourglass", label: "Hourglass", hint: "Two triangles meeting at their points." },
-          { value: "chevron", label: "Chevron", hint: "A band bent to a point, which gives a counter a direction the letter did not have." },
-          { value: "bars", label: "Comb", hint: "Three bars: a counter cut into stripes rather than replaced by a figure." },
-          { value: "square", label: "Square", hint: "The counter's own box, which reads as a technical face." },
-          { value: "slot", label: "Bar", hint: "A wide, shallow slot: nearly a closed letter with a nick in it." },
-          { value: "dot", label: "Dot", hint: "A small disc in the middle, so the letter closes to a ring with a point in it." },
-          { value: "ring", label: "Ring", hint: "A ring inside the counter, so the letter reads as one circle inside another." },
+          {
+            value: "hourglass",
+            label: "Hourglass",
+            hint: "Two triangles meeting at their points.",
+          },
+          {
+            value: "chevron",
+            label: "Chevron",
+            hint: "A band bent to a point, which gives a counter a direction the letter did not have.",
+          },
+          {
+            value: "bars",
+            label: "Comb",
+            hint: "Three bars: a counter cut into stripes rather than replaced by a figure.",
+          },
+          {
+            value: "square",
+            label: "Square",
+            hint: "The counter's own box, which reads as a technical face.",
+          },
+          {
+            value: "slot",
+            label: "Bar",
+            hint: "A wide, shallow slot: nearly a closed letter with a nick in it.",
+          },
+          {
+            value: "dot",
+            label: "Dot",
+            hint: "A small disc in the middle, so the letter closes to a ring with a point in it.",
+          },
+          {
+            value: "ring",
+            label: "Ring",
+            hint: "A ring inside the counter, so the letter reads as one circle inside another.",
+          },
         ],
       },
       {
@@ -997,7 +1049,10 @@ export function castSpecFor(name: CastName): CastSpec | undefined {
 }
 
 /** One operation's current values as a plain record, for reading a control out. */
-export function castValuesOf(name: CastName, cast: Cast): Record<string, number | boolean | string> {
+export function castValuesOf(
+  name: CastName,
+  cast: Cast,
+): Record<string, number | boolean | string> {
   return cast[name] as unknown as Record<string, number | boolean | string>;
 }
 
@@ -1029,9 +1084,21 @@ export const EFFECT_SPECS: EffectSpec[] = [
         max: 0,
         step: 1,
         options: [
-          { value: "start", label: "Start", hint: "Heavy where the stroke begins, lifting as it goes." },
-          { value: "middle", label: "Middle", hint: "Light at both ends and full in the middle, which is a brush stroke." },
-          { value: "end", label: "End", hint: "Growing heavier as the stroke runs, which is a hand pressing in." },
+          {
+            value: "start",
+            label: "Start",
+            hint: "Heavy where the stroke begins, lifting as it goes.",
+          },
+          {
+            value: "middle",
+            label: "Middle",
+            hint: "Light at both ends and full in the middle, which is a brush stroke.",
+          },
+          {
+            value: "end",
+            label: "End",
+            hint: "Growing heavier as the stroke runs, which is a hand pressing in.",
+          },
         ],
       },
       {
@@ -1140,8 +1207,16 @@ export const EFFECT_SPECS: EffectSpec[] = [
         max: 0,
         step: 1,
         options: [
-          { value: "all", label: "Everywhere", hint: "Inside and out, which is what a tool on paper does." },
-          { value: "outside", label: "Outside only", hint: "The silhouette wanders and the counters stay true, which reads as a rough tool used on a clean stencil." },
+          {
+            value: "all",
+            label: "Everywhere",
+            hint: "Inside and out, which is what a tool on paper does.",
+          },
+          {
+            value: "outside",
+            label: "Outside only",
+            hint: "The silhouette wanders and the counters stay true, which reads as a rough tool used on a clean stencil.",
+          },
         ],
       },
       {

@@ -3,7 +3,7 @@
  * apply everywhere.
  */
 
-import * as React from "react";
+import type * as React from "react";
 
 import type { Mode } from "@/App";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
@@ -39,12 +39,7 @@ function errorsIn(checks: AppState["checks"]): number {
  * What a view tab says when you rest on it: the key it answers to, and for
  * Checks what it last found and whether that is still true.
  */
-function tabTitle(
-  id: ViewId,
-  label: string,
-  checks: AppState["checks"],
-  revision: number,
-): string {
+function tabTitle(id: ViewId, label: string, checks: AppState["checks"], revision: number): string {
   const key = viewKey(id);
   const named = key ? `${label} (${key})` : label;
   if (id !== "report") return named;
@@ -136,27 +131,27 @@ export function TopBar({
             canRedo: assemble.canRedo,
           }
         : mode === "quill"
-        ? {
-            undo: () => quillStore.undo(),
-            redo: () => quillStore.redo(),
-            canUndo: quill.canUndo,
-            canRedo: quill.canRedo,
-          }
-        : {
-            undo: () => store.undo(),
-            redo: () => store.redo(),
-            canUndo: state.canUndo,
-            canRedo: state.canRedo,
-            /*
-             * Named, in the editor only, because only the editor's stack has
-             * names on it. The three generators undo a whole set of parameters
-             * at once and the alphabet redraws in front of you; in here the
-             * step taken back can be a point in a letter you are no longer
-             * looking at, and "Undo" alone does not say which.
-             */
-            undoLabel: state.undoLabel,
-            redoLabel: state.redoLabel,
-          };
+          ? {
+              undo: () => quillStore.undo(),
+              redo: () => quillStore.redo(),
+              canUndo: quill.canUndo,
+              canRedo: quill.canRedo,
+            }
+          : {
+              undo: () => store.undo(),
+              redo: () => store.redo(),
+              canUndo: state.canUndo,
+              canRedo: state.canRedo,
+              /*
+               * Named, in the editor only, because only the editor's stack has
+               * names on it. The three generators undo a whole set of parameters
+               * at once and the alphabet redraws in front of you; in here the
+               * step taken back can be a point in a letter you are no longer
+               * looking at, and "Undo" alone does not say which.
+               */
+              undoLabel: state.undoLabel,
+              redoLabel: state.redoLabel,
+            };
 
   return (
     /*
@@ -182,9 +177,9 @@ export function TopBar({
     */
     <header className="flex min-h-11 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border px-3 py-1">
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-      <span className="text-xs-plus font-medium tracking-tight">Typeforge</span>
+        <span className="text-xs-plus font-medium tracking-tight">Typeforge</span>
 
-      {/*
+        {/*
         Four documents, in the order somebody works in them.
 
         One word each rather than three. They were "Edit a font", "Draw a font"
@@ -201,65 +196,65 @@ export function TopBar({
         four separate documents rather than four views of one, which is the
         thing a beginner gets wrong, so the hovers say that too.
       */}
-      <div className={SEGMENT_TRACK} role="group" aria-label="Mode">
-        {(
-          [
-            ["forge", "Draw", "Start a new font from one of twenty styles"],
-            ["quill", "Trace", "Start a new font by reading an existing one back into strokes"],
-            ["assemble", "Assemble", "Start a new font from drawings you made elsewhere"],
-            ["edit", "Edit", "Work on the font that is open: letters, spacing, kerning, checks"],
-          ] as Array<[Mode, string, string]>
-        ).map(([id, label, hint]) => (
-          <button
-            key={id}
-            type="button"
-            aria-pressed={mode === id}
-            onClick={() => onMode(id)}
-            /*
-             * Held shut over a borrowed letter.
-             *
-             * A letter lent to the tools from Draw has the document that was
-             * open put aside behind it. Walking to another tab would leave the
-             * loan on the desk and the real font in a drawer, with nothing on
-             * screen to say why -- and the strip above the canvas says the only
-             * ways out are keeping the drawing and throwing it away, which had
-             * better be true.
-             */
-            disabled={state.loan !== null && id !== mode}
-            title={
-              state.loan === null
-                ? hint
-                : `Finish with ${state.loan.letter} first — keep the drawing or throw it away.`
-            }
-            className={cn(segment(mode === id), "disabled:opacity-40")}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+        <div className={SEGMENT_TRACK} role="group" aria-label="Mode">
+          {(
+            [
+              ["forge", "Draw", "Start a new font from one of twenty styles"],
+              ["quill", "Trace", "Start a new font by reading an existing one back into strokes"],
+              ["assemble", "Assemble", "Start a new font from drawings you made elsewhere"],
+              ["edit", "Edit", "Work on the font that is open: letters, spacing, kerning, checks"],
+            ] as Array<[Mode, string, string]>
+          ).map(([id, label, hint]) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={mode === id}
+              onClick={() => onMode(id)}
+              /*
+               * Held shut over a borrowed letter.
+               *
+               * A letter lent to the tools from Draw has the document that was
+               * open put aside behind it. Walking to another tab would leave the
+               * loan on the desk and the real font in a drawer, with nothing on
+               * screen to say why -- and the strip above the canvas says the only
+               * ways out are keeping the drawing and throwing it away, which had
+               * better be true.
+               */
+              disabled={state.loan !== null && id !== mode}
+              title={
+                state.loan === null
+                  ? hint
+                  : `Finish with ${state.loan.letter} first — keep the drawing or throw it away.`
+              }
+              className={cn(segment(mode === id), "disabled:opacity-40")}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
-      {/*
+        {/*
         And the six views of the open font, which are nothing to look at
         without one. Six dead tabs were the second thing on the first screen
         somebody ever sees, above an empty stage, and none of the six could be
         pressed to any effect.
       */}
-      <div
-        className={cn(SEGMENT_TRACK, (mode !== "edit" || !state.typeface) && "hidden")}
-        role="group"
-        aria-label="View"
-      >
-        {VIEWS.map((view) => (
-          <button
-            key={view.id}
-            type="button"
-            aria-pressed={state.view === view.id}
-            onClick={() => store.setView(view.id)}
-            title={tabTitle(view.id, view.label, state.checks, state.revision)}
-            className={segment(state.view === view.id)}
-          >
-            {view.label}
-            {/*
+        <div
+          className={cn(SEGMENT_TRACK, (mode !== "edit" || !state.typeface) && "hidden")}
+          role="group"
+          aria-label="View"
+        >
+          {VIEWS.map((view) => (
+            <button
+              key={view.id}
+              type="button"
+              aria-pressed={state.view === view.id}
+              onClick={() => store.setView(view.id)}
+              title={tabTitle(view.id, view.label, state.checks, state.revision)}
+              className={segment(state.view === view.id)}
+            >
+              {view.label}
+              {/*
               How many things are wrong, on the tab, so nobody has to go and
               look to find out that there is something to find.
 
@@ -270,62 +265,69 @@ export function TopBar({
               description instead, through the title above -- which is also
               where a count that has gone out of date says so.
             */}
-            {view.id === "report" && errorsIn(state.checks) > 0 && (
-              <span
-                aria-hidden="true"
-                data-check-count={errorsIn(state.checks)}
-                className="ml-1.5 rounded-full bg-destructive/15 px-1.5 py-px text-2xs font-medium tabular-nums text-destructive"
-              >
-                {errorsIn(state.checks)}
-              </span>
+              {view.id === "report" && errorsIn(state.checks) > 0 && (
+                <span
+                  aria-hidden="true"
+                  data-check-count={errorsIn(state.checks)}
+                  className="ml-1.5 rounded-full bg-destructive/15 px-1.5 py-px text-2xs font-medium tabular-nums text-destructive"
+                >
+                  {errorsIn(state.checks)}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Nothing to take back before there is anything to have done. */}
+        <div
+          className={cn(
+            "flex items-center gap-0.5",
+            mode === "edit" && !state.typeface && "hidden",
+          )}
+        >
+          <button
+            type="button"
+            onClick={history.undo}
+            disabled={!history.canUndo}
+            title={undoing(
+              "Undo",
+              "undoLabel" in history ? (history.undoLabel ?? null) : null,
+              "⌘Z",
             )}
+            className={TOOLBAR_ACTION}
+          >
+            Undo
           </button>
-        ))}
-      </div>
+          <button
+            type="button"
+            onClick={history.redo}
+            disabled={!history.canRedo}
+            title={undoing(
+              "Redo",
+              "redoLabel" in history ? (history.redoLabel ?? null) : null,
+              "⇧⌘Z",
+            )}
+            className={TOOLBAR_ACTION}
+          >
+            Redo
+          </button>
+        </div>
 
-      {/* Nothing to take back before there is anything to have done. */}
-      <div
-        className={cn(
-          "flex items-center gap-0.5",
-          mode === "edit" && !state.typeface && "hidden",
-        )}
-      >
-        <button
-          type="button"
-          onClick={history.undo}
-          disabled={!history.canUndo}
-          title={undoing("Undo", "undoLabel" in history ? (history.undoLabel ?? null) : null, "⌘Z")}
-          className={TOOLBAR_ACTION}
-        >
-          Undo
-        </button>
-        <button
-          type="button"
-          onClick={history.redo}
-          disabled={!history.canRedo}
-          title={undoing("Redo", "redoLabel" in history ? (history.redoLabel ?? null) : null, "⇧⌘Z")}
-          className={TOOLBAR_ACTION}
-        >
-          Redo
-        </button>
-      </div>
-
-      {mode === "forge" && (
-        <span className="min-w-16 shrink truncate text-2xs text-muted-foreground">
-          {forge.familyName}{" "}
-          <span className="opacity-60">{forge.forge.base}</span>
-        </span>
-      )}
-      {mode === "assemble" && (
-        <span className="min-w-16 shrink truncate text-2xs text-muted-foreground">
-          {assemble.familyName}{" "}
-          <span className="opacity-60">
-            {assemble.assembly.pieces.length} drawing
-            {assemble.assembly.pieces.length === 1 ? "" : "s"}
+        {mode === "forge" && (
+          <span className="min-w-16 shrink truncate text-2xs text-muted-foreground">
+            {forge.familyName} <span className="opacity-60">{forge.forge.base}</span>
           </span>
-        </span>
-      )}
-      {/*
+        )}
+        {mode === "assemble" && (
+          <span className="min-w-16 shrink truncate text-2xs text-muted-foreground">
+            {assemble.familyName}{" "}
+            <span className="opacity-60">
+              {assemble.assembly.pieces.length} drawing
+              {assemble.assembly.pieces.length === 1 ? "" : "s"}
+            </span>
+          </span>
+        )}
+        {/*
         And Trace, which was the one mode that named nothing.
 
         Three of the four said what was open -- `Untitled Regular`, `Untitled
@@ -334,17 +336,17 @@ export function TopBar({
         the one that never said which font. It says what it was traced from,
         because that is the thing a person needs to be sure of here.
       */}
-      {mode === "quill" && (
-        <span className="min-w-16 shrink truncate text-2xs text-muted-foreground">
-          {quill.document.name || "Untitled"}{" "}
-          <span className="opacity-60">
-            {quill.document.letters.length === 0
-              ? "nothing traced"
-              : `${quill.document.letters.length} letters from ${quill.document.from}`}
+        {mode === "quill" && (
+          <span className="min-w-16 shrink truncate text-2xs text-muted-foreground">
+            {quill.document.name || "Untitled"}{" "}
+            <span className="opacity-60">
+              {quill.document.letters.length === 0
+                ? "nothing traced"
+                : `${quill.document.letters.length} letters from ${quill.document.from}`}
+            </span>
           </span>
-        </span>
-      )}
-      {/*
+        )}
+        {/*
         The font's name, which is now the way to change it.
 
         It has always been shown here and done nothing. A thing you can read is
@@ -352,19 +354,18 @@ export function TopBar({
         nothing -- which matters, because there is no room on it for a button
         that would say the same.
       */}
-      {mode === "edit" && state.typeface && (
-        <button
-          type="button"
-          onClick={onFontInfo}
-          data-font-name
-          title="The font's name, designer, licence and lines"
-          className="min-w-16 shrink truncate rounded px-1 text-left text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
-        >
-          {state.typeface.meta.familyName}{" "}
-          <span className="opacity-60">{state.typeface.meta.styleName}</span>
-        </button>
-      )}
-
+        {mode === "edit" && state.typeface && (
+          <button
+            type="button"
+            onClick={onFontInfo}
+            data-font-name
+            title="The font's name, designer, licence and lines"
+            className="min-w-16 shrink truncate rounded px-1 text-left text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+          >
+            {state.typeface.meta.familyName}{" "}
+            <span className="opacity-60">{state.typeface.meta.styleName}</span>
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-2">

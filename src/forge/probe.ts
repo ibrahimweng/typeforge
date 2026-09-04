@@ -139,7 +139,11 @@ function candidatesFor(run: Run, style: Style): Candidate[] {
 
   const weight = PEN_CONTROLS.find((control) => control.key === "weight");
   if (weight) {
-    add({ on: "pen", key: "weight" }, weight as PartControl, style.pen as unknown as Record<string, unknown>);
+    add(
+      { on: "pen", key: "weight" },
+      weight as PartControl,
+      style.pen as unknown as Record<string, unknown>,
+    );
   }
 
   const wanted: PartName[] = [...run.parts];
@@ -150,7 +154,8 @@ function candidatesFor(run: Run, style: Style): Candidate[] {
     if (!spec) continue;
     const values = (style.parts as unknown as Record<string, Record<string, unknown>>)[part];
     if (!values) continue;
-    for (const control of spec.controls) add({ on: "part", part, key: control.key }, control, values);
+    for (const control of spec.controls)
+      add({ on: "part", part, key: control.key }, control, values);
   }
 
   return found;
@@ -265,9 +270,7 @@ function around(before: Vec2[], after: Vec2[], at: Vec2, here: number): Reading 
    * handle a third short is a handle that overshoots the pointer by a third.
    */
   const lead = fast.reduce((best, one) => (one.moved > best.moved ? one : best), fast[0]);
-  const moving = fast.filter(
-    (one) => one.shift.x * lead.shift.x + one.shift.y * lead.shift.y > 0,
-  );
+  const moving = fast.filter((one) => one.shift.x * lead.shift.x + one.shift.y * lead.shift.y > 0);
   let shiftX = 0;
   let shiftY = 0;
   let total = 0;
@@ -374,7 +377,13 @@ export function whatGoverns(
    * edge that was pressed, and taking it here costs one pass over a run that
    * has already been drawn rather than a second round of drawing.
    */
-  const measured: Array<{ candidate: Candidate; nudge: number; span: number; near: Reading | null; wide: Reading | null }> = [];
+  const measured: Array<{
+    candidate: Candidate;
+    nudge: number;
+    span: number;
+    near: Reading | null;
+    wide: Reading | null;
+  }> = [];
 
   for (const candidate of candidatesFor(hit.run, style)) {
     const span = candidate.max - candidate.min;
@@ -413,8 +422,11 @@ export function whatGoverns(
    * rather than allowed to win with a drag speed made of rounding, so a reading
    * that would be thrown away later cannot crowd out a usable one here.
    */
-  const pick = (which: "near" | "wide"): { candidate: Candidate; reading: Reading; nudge: number } | null => {
-    let best: { candidate: Candidate; reading: Reading; nudge: number; score: number } | null = null;
+  const pick = (
+    which: "near" | "wide",
+  ): { candidate: Candidate; reading: Reading; nudge: number } | null => {
+    let best: { candidate: Candidate; reading: Reading; nudge: number; score: number } | null =
+      null;
     for (const entry of measured) {
       const reading = entry[which];
       if (!reading) continue;
@@ -456,7 +468,7 @@ export function whatGoverns(
 }
 
 /** What a control is set to now, whichever half of the style it lives in. */
-export function valueOf(style: Style, drive: AnyDrive): number {
+export function settingOf(style: Style, drive: AnyDrive): number {
   const from =
     drive.on === "pen"
       ? (style.pen as unknown as Record<string, unknown>)

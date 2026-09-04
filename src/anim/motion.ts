@@ -32,8 +32,7 @@ export const EASE = {
 
 export function prefersReducedMotion(): boolean {
   return (
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
   );
 }
 
@@ -66,7 +65,10 @@ export function enter(target: Target, options: { delay?: number; distance?: numb
  * The stagger is deliberately tight and capped: a long cascade looks decorative
  * and delays the last item past the point of being useful.
  */
-export function enterStaggered(target: Target, options: { step?: number; max?: number } = {}): void {
+export function enterStaggered(
+  target: Target,
+  options: { step?: number; max?: number } = {},
+): void {
   if (!usable(target) || prefersReducedMotion()) return;
   const step = options.step ?? 14;
   animate(target as never, {
@@ -102,7 +104,10 @@ export function switchView(outgoing: Target, incoming: Target): void {
 export function pulse(target: Target): void {
   if (!usable(target) || prefersReducedMotion()) return;
   animate(target as never, {
-    opacity: [{ to: 0.45, duration: DURATION.instant }, { to: 1, duration: DURATION.quick }],
+    opacity: [
+      { to: 0.45, duration: DURATION.instant },
+      { to: 1, duration: DURATION.quick },
+    ],
     ease: EASE.snap,
   });
 }
@@ -156,7 +161,10 @@ export function refuse(target: Target): void {
 export function press(target: Target): void {
   if (!usable(target) || prefersReducedMotion()) return;
   const animation = animate(target as never, {
-    scale: [{ to: 0.965, duration: DURATION.instant }, { to: 1, duration: DURATION.quick }],
+    scale: [
+      { to: 0.965, duration: DURATION.instant },
+      { to: 1, duration: DURATION.quick },
+    ],
     ease: EASE.out,
   });
   // Dropped after the animation settles rather than from inside onComplete:
@@ -183,7 +191,8 @@ export function attachPressFeedback(root: HTMLElement): () => void {
     const target = event.target as HTMLElement | null;
     const control = target?.closest<HTMLElement>("button, [role='button']");
     if (!control || control.hasAttribute("data-no-press")) return;
-    if (control.hasAttribute("disabled") || control.getAttribute("aria-disabled") === "true") return;
+    if (control.hasAttribute("disabled") || control.getAttribute("aria-disabled") === "true")
+      return;
     press(control);
   };
   root.addEventListener("pointerdown", onPointerDown);

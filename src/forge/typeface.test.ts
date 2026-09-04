@@ -363,9 +363,10 @@ describe("the weight axis, and the letters that cannot follow it", () => {
       const base = BASES.find((one) => one.name === name)!;
       const forge = { ...startFrom(base), family: { drawn: 400, also: [100, 700, 900] } };
       const delivered = await deliver(forge, { familyName: name, format: "ttf", variable: true });
-      expect(delivered.held.length, `${name} leaves ${delivered.held.length} standing`).toBeLessThan(
-        most,
-      );
+      expect(
+        delivered.held.length,
+        `${name} leaves ${delivered.held.length} standing`,
+      ).toBeLessThan(most);
 
       /*
        * And for the Wavy, the letters the wave book bought, named rather than
@@ -384,19 +385,41 @@ describe("the weight axis, and the letters that cannot follow it", () => {
       if (name === "Wavy") {
         const standing = new Set(delivered.held);
         for (const letter of [
-          "T", "Tbar", "Tcaron", "z", "zcaron", "four",
-          "seven", "numbersign", "yen", "AE", "Hbar", "onequarter",
+          "T",
+          "Tbar",
+          "Tcaron",
+          "z",
+          "zcaron",
+          "four",
+          "seven",
+          "numbersign",
+          "yen",
+          "AE",
+          "Hbar",
+          "onequarter",
           // And the ones the flat wave bought, which is the whole `e` family.
-          "e", "eacute", "egrave", "ecircumflex", "edieresis", "emacron",
-          "ebreve", "edotaccent", "eogonek", "ecaron", "ae", "oe", "five",
-          "longs", "b", "ъ",
+          "e",
+          "eacute",
+          "egrave",
+          "ecircumflex",
+          "edieresis",
+          "emacron",
+          "ebreve",
+          "edotaccent",
+          "eogonek",
+          "ecaron",
+          "ae",
+          "oe",
+          "five",
+          "longs",
+          "b",
+          "ъ",
         ]) {
           expect(standing.has(letter), `${letter} is left standing`).toBe(false);
         }
       }
     }
   }, 900_000);
-
 });
 
 /**

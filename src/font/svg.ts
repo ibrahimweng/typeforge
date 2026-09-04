@@ -103,7 +103,9 @@ export function glyphSvg(options: GlyphSvgOptions): string {
   const { name, contours, advanceWidth, unitsPerEm, top, bottom } = options;
   const height = top - bottom;
   const width = Math.max(advanceWidth, 1);
-  const flipped = contours.map((contour) => mapContour(contour, (point) => ({ x: point.x, y: top - point.y })));
+  const flipped = contours.map((contour) =>
+    mapContour(contour, (point) => ({ x: point.x, y: top - point.y })),
+  );
 
   // Thin enough to sit under the outline rather than in front of it, and set
   // as a fraction of the em so it looks the same whatever the units are.
@@ -113,7 +115,7 @@ export function glyphSvg(options: GlyphSvgOptions): string {
   lines.push('<?xml version="1.0" encoding="UTF-8"?>');
   lines.push(
     `<svg xmlns="http://www.w3.org/2000/svg" version="1.1"` +
-      ` width="${round(width / unitsPerEm * 512)}" height="${round(height / unitsPerEm * 512)}"` +
+      ` width="${round((width / unitsPerEm) * 512)}" height="${round((height / unitsPerEm) * 512)}"` +
       ` viewBox="0 0 ${round(width)} ${round(height)}"` +
       ` data-typeforge="glyph" data-typeforge-version="1"` +
       ` data-typeforge-name="${escapeAttribute(name)}"` +
@@ -126,7 +128,9 @@ export function glyphSvg(options: GlyphSvgOptions): string {
     `  <desc>Drawn by Typeforge. Edit the black outline; the grey guides are ignored when this comes back.</desc>`,
   );
 
-  lines.push(`  <g id="typeforge-guides" data-typeforge="guides" fill="none" stroke="#c8c8c8" stroke-width="${round(hair)}">`);
+  lines.push(
+    `  <g id="typeforge-guides" data-typeforge="guides" fill="none" stroke="#c8c8c8" stroke-width="${round(hair)}">`,
+  );
   for (const guide of options.guides) {
     const y = round(top - guide.height);
     lines.push(
@@ -135,7 +139,10 @@ export function glyphSvg(options: GlyphSvgOptions): string {
   }
   if (options.sidebearings) {
     const { left, right } = options.sidebearings;
-    for (const [label, x] of [["left sidebearing", left], ["right sidebearing", advanceWidth - right]] as const) {
+    for (const [label, x] of [
+      ["left sidebearing", left],
+      ["right sidebearing", advanceWidth - right],
+    ] as const) {
       lines.push(
         `    <line data-typeforge="guide" x1="${round(x)}" y1="0" x2="${round(x)}" y2="${round(height)}"><title>${escapeText(label)}</title></line>`,
       );
@@ -148,7 +155,7 @@ export function glyphSvg(options: GlyphSvgOptions): string {
     `  <path id="typeforge-ink" data-typeforge="ink" fill="#000000" fill-rule="nonzero" d="${d}"/>`,
   );
   lines.push(`</svg>`);
-  return lines.join("\n") + "\n";
+  return `${lines.join("\n")}\n`;
 }
 
 /**
@@ -240,7 +247,9 @@ export function svgToFontUnits(
   if (drawing.note) {
     const { top } = drawing.note;
     return {
-      contours: drawing.contours.map((contour) => mapContour(contour, (p) => ({ x: p.x, y: top - p.y }))),
+      contours: drawing.contours.map((contour) =>
+        mapContour(contour, (p) => ({ x: p.x, y: top - p.y })),
+      ),
       advanceWidth: drawing.note.advanceWidth,
     };
   }
@@ -250,7 +259,10 @@ export function svgToFontUnits(
   const scale = (fallback.top - fallback.bottom) / height;
   const top = fallback.top;
   const scaled = drawing.contours.map((contour) =>
-    mapContour(contour, (p) => ({ x: (p.x - viewBox.x) * scale, y: top - (p.y - viewBox.y) * scale })),
+    mapContour(contour, (p) => ({
+      x: (p.x - viewBox.x) * scale,
+      y: top - (p.y - viewBox.y) * scale,
+    })),
   );
   return { contours: scaled, advanceWidth: fallback.advanceWidth };
 }
@@ -268,15 +280,18 @@ function mapContour(contour: Contour, move: (point: Vec2) => Vec2): Contour {
 }
 
 function readViewBox(attributes: Record<string, string>): SvgBox {
-  const raw = attributes["viewbox"];
+  const raw = attributes.viewbox;
   if (raw) {
-    const numbers = raw.trim().split(/[\s,]+/).map(Number);
+    const numbers = raw
+      .trim()
+      .split(/[\s,]+/)
+      .map(Number);
     if (numbers.length === 4 && numbers.every((value) => Number.isFinite(value))) {
       return { x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3] };
     }
   }
-  const width = Number(attributes["width"]?.replace(/[a-z%]+$/i, ""));
-  const height = Number(attributes["height"]?.replace(/[a-z%]+$/i, ""));
+  const width = Number(attributes.width?.replace(/[a-z%]+$/i, ""));
+  const height = Number(attributes.height?.replace(/[a-z%]+$/i, ""));
   if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
     return { x: 0, y: 0, width, height };
   }
@@ -311,7 +326,18 @@ interface Shape {
 }
 
 /** Elements whose contents describe something rather than draw it. */
-const UNDRAWN = new Set(["defs", "clippath", "mask", "symbol", "marker", "pattern", "style", "metadata", "title", "desc"]);
+const UNDRAWN = new Set([
+  "defs",
+  "clippath",
+  "mask",
+  "symbol",
+  "marker",
+  "pattern",
+  "style",
+  "metadata",
+  "title",
+  "desc",
+]);
 
 function findRoot(text: string): Tag | null {
   for (const tag of tags(text)) {
@@ -347,8 +373,8 @@ function collectShapes(text: string): Shape[] {
 
     const isUndrawn = UNDRAWN.has(tag.name);
     const marksGuide = isGuide(tag.attributes);
-    const own = tag.attributes["transform"]
-      ? multiply(matrix, parseTransform(tag.attributes["transform"]))
+    const own = tag.attributes.transform
+      ? multiply(matrix, parseTransform(tag.attributes.transform))
       : matrix;
 
     if (!tag.selfClosing) {
@@ -373,7 +399,7 @@ function collectShapes(text: string): Shape[] {
 function isGuide(attributes: Record<string, string>): boolean {
   const marked = attributes["data-typeforge"];
   if (marked === "guides" || marked === "guide") return true;
-  const id = attributes["id"];
+  const id = attributes.id;
   return typeof id === "string" && id.startsWith("typeforge-guide");
 }
 
@@ -458,8 +484,7 @@ function localName(raw: string): string {
 function parseAttributes(text: string): Record<string, string> {
   const attributes: Record<string, string> = {};
   const pattern = /([^\s=/]+)\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+))/g;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(text)) !== null) {
+  for (const match of text.matchAll(pattern)) {
     const value = match[3] ?? match[4] ?? match[5] ?? "";
     attributes[localName(match[1])] = unescapeText(value);
   }
@@ -486,27 +511,30 @@ function shapeContours(tag: Tag): Contour[] {
   const a = tag.attributes;
   switch (tag.name) {
     case "path":
-      return a["d"] ? parsePath(a["d"]) : [];
+      return a.d ? parsePath(a.d) : [];
     case "rect":
-      return rectContours(number(a["x"]), number(a["y"]), number(a["width"]), number(a["height"]), a["rx"], a["ry"]);
+      return rectContours(number(a.x), number(a.y), number(a.width), number(a.height), a.rx, a.ry);
     case "circle": {
-      const r = number(a["r"]);
-      return r > 0 ? [ellipseContour(number(a["cx"]), number(a["cy"]), r, r)] : [];
+      const r = number(a.r);
+      return r > 0 ? [ellipseContour(number(a.cx), number(a.cy), r, r)] : [];
     }
     case "ellipse": {
-      const rx = number(a["rx"]);
-      const ry = number(a["ry"]);
-      return rx > 0 && ry > 0 ? [ellipseContour(number(a["cx"]), number(a["cy"]), rx, ry)] : [];
+      const rx = number(a.rx);
+      const ry = number(a.ry);
+      return rx > 0 && ry > 0 ? [ellipseContour(number(a.cx), number(a.cy), rx, ry)] : [];
     }
     case "polygon":
-      return pointsContour(a["points"], true);
+      return pointsContour(a.points, true);
     case "polyline":
-      return pointsContour(a["points"], false);
+      return pointsContour(a.points, false);
     case "line":
       return [
         {
           closed: false,
-          nodes: [corner({ x: number(a["x1"]), y: number(a["y1"]) }), corner({ x: number(a["x2"]), y: number(a["y2"]) })],
+          nodes: [
+            corner({ x: number(a.x1), y: number(a.y1) }),
+            corner({ x: number(a.x2), y: number(a.y2) }),
+          ],
         },
       ];
     default:
@@ -526,7 +554,11 @@ function corner(point: Vec2): GlyphNode {
 
 function pointsContour(raw: string | undefined, closed: boolean): Contour[] {
   if (!raw) return [];
-  const numbers = raw.trim().split(/[\s,]+/).map(Number).filter((value) => Number.isFinite(value));
+  const numbers = raw
+    .trim()
+    .split(/[\s,]+/)
+    .map(Number)
+    .filter((value) => Number.isFinite(value));
   const nodes: GlyphNode[] = [];
   for (let index = 0; index + 1 < numbers.length; index += 2) {
     nodes.push(corner({ x: numbers[index], y: numbers[index + 1] }));
@@ -568,17 +600,42 @@ function rectContours(
   const ky = ry * KAPPA;
   const nodes: GlyphNode[] = [
     { point: { x: x + rx, y }, handleIn: { x: x + rx - kx, y }, handleOut: null, type: "corner" },
-    { point: { x: x + width - rx, y }, handleIn: null, handleOut: { x: x + width - rx + kx, y }, type: "corner" },
-    { point: { x: x + width, y: y + ry }, handleIn: { x: x + width, y: y + ry - ky }, handleOut: null, type: "corner" },
+    {
+      point: { x: x + width - rx, y },
+      handleIn: null,
+      handleOut: { x: x + width - rx + kx, y },
+      type: "corner",
+    },
+    {
+      point: { x: x + width, y: y + ry },
+      handleIn: { x: x + width, y: y + ry - ky },
+      handleOut: null,
+      type: "corner",
+    },
     {
       point: { x: x + width, y: y + height - ry },
       handleIn: null,
       handleOut: { x: x + width, y: y + height - ry + ky },
       type: "corner",
     },
-    { point: { x: x + width - rx, y: y + height }, handleIn: { x: x + width - rx + kx, y: y + height }, handleOut: null, type: "corner" },
-    { point: { x: x + rx, y: y + height }, handleIn: null, handleOut: { x: x + rx - kx, y: y + height }, type: "corner" },
-    { point: { x, y: y + height - ry }, handleIn: { x, y: y + height - ry + ky }, handleOut: null, type: "corner" },
+    {
+      point: { x: x + width - rx, y: y + height },
+      handleIn: { x: x + width - rx + kx, y: y + height },
+      handleOut: null,
+      type: "corner",
+    },
+    {
+      point: { x: x + rx, y: y + height },
+      handleIn: null,
+      handleOut: { x: x + rx - kx, y: y + height },
+      type: "corner",
+    },
+    {
+      point: { x, y: y + height - ry },
+      handleIn: { x, y: y + height - ry + ky },
+      handleOut: null,
+      type: "corner",
+    },
     { point: { x, y: y + ry }, handleIn: null, handleOut: { x, y: y + ry - ky }, type: "corner" },
   ];
   return [{ closed: true, nodes }];
@@ -592,10 +649,30 @@ function ellipseContour(cx: number, cy: number, rx: number, ry: number): Contour
   return {
     closed: true,
     nodes: [
-      { point: { x: cx + rx, y: cy }, handleIn: { x: cx + rx, y: cy - ky }, handleOut: { x: cx + rx, y: cy + ky }, type: "smooth" },
-      { point: { x: cx, y: cy + ry }, handleIn: { x: cx + kx, y: cy + ry }, handleOut: { x: cx - kx, y: cy + ry }, type: "smooth" },
-      { point: { x: cx - rx, y: cy }, handleIn: { x: cx - rx, y: cy + ky }, handleOut: { x: cx - rx, y: cy - ky }, type: "smooth" },
-      { point: { x: cx, y: cy - ry }, handleIn: { x: cx - kx, y: cy - ry }, handleOut: { x: cx + kx, y: cy - ry }, type: "smooth" },
+      {
+        point: { x: cx + rx, y: cy },
+        handleIn: { x: cx + rx, y: cy - ky },
+        handleOut: { x: cx + rx, y: cy + ky },
+        type: "smooth",
+      },
+      {
+        point: { x: cx, y: cy + ry },
+        handleIn: { x: cx + kx, y: cy + ry },
+        handleOut: { x: cx - kx, y: cy + ry },
+        type: "smooth",
+      },
+      {
+        point: { x: cx - rx, y: cy },
+        handleIn: { x: cx - rx, y: cy + ky },
+        handleOut: { x: cx - rx, y: cy - ky },
+        type: "smooth",
+      },
+      {
+        point: { x: cx, y: cy - ry },
+        handleIn: { x: cx - kx, y: cy - ry },
+        handleOut: { x: cx + kx, y: cy - ry },
+        type: "smooth",
+      },
     ],
   };
 }
@@ -682,15 +759,18 @@ export function parsePath(d: string): Contour[] {
         break;
       }
       case "L": {
-        for (let index = 0; index + 1 < args.length; index += 2) lineTo(at(args[index], args[index + 1]));
+        for (let index = 0; index + 1 < args.length; index += 2)
+          lineTo(at(args[index], args[index + 1]));
         break;
       }
       case "H": {
-        for (const x of args) lineTo(relative ? { x: current.x + x, y: current.y } : { x, y: current.y });
+        for (const x of args)
+          lineTo(relative ? { x: current.x + x, y: current.y } : { x, y: current.y });
         break;
       }
       case "V": {
-        for (const y of args) lineTo(relative ? { x: current.x, y: current.y + y } : { x: current.x, y });
+        for (const y of args)
+          lineTo(relative ? { x: current.x, y: current.y + y } : { x: current.x, y });
         break;
       }
       case "C": {
@@ -735,7 +815,15 @@ export function parsePath(d: string): Contour[] {
           const to = relative
             ? { x: current.x + args[index + 5], y: current.y + args[index + 6] }
             : { x: args[index + 5], y: args[index + 6] };
-          for (const piece of arcToCubics(current, args[index], args[index + 1], args[index + 2], args[index + 3] !== 0, args[index + 4] !== 0, to)) {
+          for (const piece of arcToCubics(
+            current,
+            args[index],
+            args[index + 1],
+            args[index + 2],
+            args[index + 3] !== 0,
+            args[index + 4] !== 0,
+            to,
+          )) {
             curveTo(piece.c1, piece.c2, piece.to);
           }
           current = to;
@@ -775,7 +863,10 @@ function finish(nodes: GlyphNode[], closed: boolean): Contour {
   if (!closed || nodes.length < 3) return { nodes, closed };
   const first = nodes[0];
   const last = nodes[nodes.length - 1];
-  if (Math.abs(first.point.x - last.point.x) < 1e-6 && Math.abs(first.point.y - last.point.y) < 1e-6) {
+  if (
+    Math.abs(first.point.x - last.point.x) < 1e-6 &&
+    Math.abs(first.point.y - last.point.y) < 1e-6
+  ) {
     first.handleIn = last.handleIn;
     return { nodes: nodes.slice(0, -1), closed: true };
   }
@@ -786,7 +877,14 @@ function finish(nodes: GlyphNode[], closed: boolean): Contour {
 function* pathCommands(d: string): Generator<{ code: string; args: number[] }> {
   let index = 0;
   const skip = () => {
-    while (index < d.length && (d[index] === " " || d[index] === "," || d[index] === "\n" || d[index] === "\r" || d[index] === "\t")) {
+    while (
+      index < d.length &&
+      (d[index] === " " ||
+        d[index] === "," ||
+        d[index] === "\n" ||
+        d[index] === "\r" ||
+        d[index] === "\t")
+    ) {
       index++;
     }
   };
@@ -992,9 +1090,12 @@ function apply(matrix: Matrix, point: Vec2): Vec2 {
 export function parseTransform(text: string): Matrix {
   let matrix = IDENTITY;
   const pattern = /([a-zA-Z]+)\s*\(([^)]*)\)/g;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(text)) !== null) {
-    const values = match[2].trim().split(/[\s,]+/).map(Number).filter((value) => Number.isFinite(value));
+  for (const match of text.matchAll(pattern)) {
+    const values = match[2]
+      .trim()
+      .split(/[\s,]+/)
+      .map(Number)
+      .filter((value) => Number.isFinite(value));
     matrix = multiply(matrix, single(match[1].toLowerCase(), values));
   }
   return matrix;
@@ -1013,7 +1114,14 @@ function single(name: string, v: number[]): Matrix {
     }
     case "rotate": {
       const angle = radians(v[0] ?? 0);
-      const spin: Matrix = [Math.cos(angle), Math.sin(angle), -Math.sin(angle), Math.cos(angle), 0, 0];
+      const spin: Matrix = [
+        Math.cos(angle),
+        Math.sin(angle),
+        -Math.sin(angle),
+        Math.cos(angle),
+        0,
+        0,
+      ];
       if (v.length < 3) return spin;
       // Rotation about a point, which is a translate either side of the spin.
       return multiply(multiply([1, 0, 0, 1, v[1], v[2]], spin), [1, 0, 0, 1, -v[1], -v[2]]);
