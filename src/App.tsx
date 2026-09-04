@@ -8,16 +8,11 @@
 import * as React from "react";
 
 import { attachPressFeedback, switchView } from "@/anim/motion";
-import { AssembleExportDialog } from "@/components/AssembleExportDialog";
+import { GlyphEditorView } from "@/views/GlyphEditorView";
+import { KerningView } from "@/views/KerningView";
 import { AssemblePanel } from "@/components/AssemblePanel";
-import { ExportDialog } from "@/components/ExportDialog";
-import { ForgeExportDialog } from "@/components/ForgeExportDialog";
-import { FontInfoDialog } from "@/components/FontInfoDialog";
 import { ForgePanel } from "@/components/ForgePanel";
-import { QuillExportDialog } from "@/components/QuillExportDialog";
 import { QuillPanel } from "@/components/QuillPanel";
-import { AcademyDrawer } from "@/components/AcademyDrawer";
-import { HelpDrawer } from "@/components/HelpDrawer";
 import { LibraryDialog } from "@/components/LibraryDialog";
 import { QuickActions, useQuickActionShortcut, type Shell } from "@/palette";
 import { useAppKeys } from "@/keys/useAppKeys";
@@ -44,15 +39,117 @@ import { libraryStore } from "@/state/useLibrary";
 import { store, useAppState, type ViewId } from "@/state/useStore";
 import type { UfoFiles } from "@/ufo/font";
 import { filesFromDrop, filesFromPicker, filesFromZip, looksZipped } from "@/ufo/intake";
-import { FontGridView } from "@/views/FontGridView";
-import { GlyphEditorView } from "@/views/GlyphEditorView";
-import { KerningView } from "@/views/KerningView";
-import { MetricsView } from "@/views/MetricsView";
-import { ProofView } from "@/views/ProofView";
-import { AssembleView } from "@/views/AssembleView";
-import { ForgeView } from "@/views/ForgeView";
-import { QuillView } from "@/views/QuillView";
-import { ReportView } from "@/views/ReportView";
+
+/*
+ * Seven of the views and all seven overlays are fetched when they are first
+ * shown, rather than with the first screen.
+ *
+ * None of them is on screen when the application opens. It opens on a chooser
+ * offering three ways to start, and every one of them sits behind a mode, a
+ * view or a button. Fetching all fourteen to draw that chooser is work done for
+ * a screen none of them appear on. It takes the first chunk from 1,384 kB to
+ * 964 kB, and the part of it that travels compressed from 436 kB to 303 kB.
+ *
+ * The overlays are warmed a moment after the first screen is up, in
+ * `warmDeferred` below, because each of them opens from a button and a button
+ * that shows nothing until a chunk arrives reads as dead. Deferring them keeps
+ * the weight off the first load. Warming them means nobody waits for one.
+ *
+ * Two views are left out of it. GlyphEditorView and KerningView each put a
+ * keydown listener on the window, so the tools and the nudges are theirs to
+ * answer. Fetched on demand they answer nothing until the chunk lands, and a
+ * key pressed in that gap is not late, it is gone: pressing `k` for the knife
+ * straight after opening the glyph view did nothing at all. Warming the chunk
+ * shortens the gap without closing it, and a dropped keystroke is not a thing
+ * to fix by being quick. They load with the shell that owns the keyboard.
+ *
+ * What this does not move is the drawing engine. `src/forge/` is 287 kB of the
+ * graph and it is reached from `font/transform.ts`, `project/format.ts` and
+ * `state/forge-store.ts`, all of which the first screen needs, so it stays in
+ * the first chunk however the views are loaded. Moving it means making
+ * `shapedInk` async, and that is in the path outlines are resolved on, so it
+ * would reach every drawing in the application. That is a larger job than this
+ * one and it is not started here.
+ */
+
+/**
+ * One boundary per view, wrapped where the view is shown.
+ *
+ * React holds on to a suspended boundary's previous children instead of
+ * dropping them, so a single boundary around the whole stage would keep the
+ * view being left in the document until the arriving view had loaded. For that
+ * moment the page would hold both, and a search for a word the two screens
+ * share would find it twice. A boundary that mounts with the view inside it
+ * has no previous children to hold.
+ */
+const Wait = ({ children }: { children: React.ReactNode }) => (
+  <React.Suspense fallback={null}>{children}</React.Suspense>
+);
+
+const FontGridView = React.lazy(() =>
+  import("@/views/FontGridView").then((m) => ({ default: m.FontGridView })),
+);
+const MetricsView = React.lazy(() =>
+  import("@/views/MetricsView").then((m) => ({ default: m.MetricsView })),
+);
+const ProofView = React.lazy(() => import("@/views/ProofView").then((m) => ({ default: m.ProofView })));
+const ReportView = React.lazy(() =>
+  import("@/views/ReportView").then((m) => ({ default: m.ReportView })),
+);
+const AssembleView = React.lazy(() =>
+  import("@/views/AssembleView").then((m) => ({ default: m.AssembleView })),
+);
+const ForgeView = React.lazy(() => import("@/views/ForgeView").then((m) => ({ default: m.ForgeView })));
+const QuillView = React.lazy(() => import("@/views/QuillView").then((m) => ({ default: m.QuillView })));
+
+const AssembleExportDialog = React.lazy(() =>
+  import("@/components/AssembleExportDialog").then((m) => ({ default: m.AssembleExportDialog })),
+);
+const ExportDialog = React.lazy(() =>
+  import("@/components/ExportDialog").then((m) => ({ default: m.ExportDialog })),
+);
+const ForgeExportDialog = React.lazy(() =>
+  import("@/components/ForgeExportDialog").then((m) => ({ default: m.ForgeExportDialog })),
+);
+const FontInfoDialog = React.lazy(() =>
+  import("@/components/FontInfoDialog").then((m) => ({ default: m.FontInfoDialog })),
+);
+const QuillExportDialog = React.lazy(() =>
+  import("@/components/QuillExportDialog").then((m) => ({ default: m.QuillExportDialog })),
+);
+const AcademyDrawer = React.lazy(() =>
+  import("@/components/AcademyDrawer").then((m) => ({ default: m.AcademyDrawer })),
+);
+const HelpDrawer = React.lazy(() =>
+  import("@/components/HelpDrawer").then((m) => ({ default: m.HelpDrawer })),
+);
+
+/**
+ * Fetch the deferred chunks once the first screen is up and the browser is idle.
+ *
+ * The overlays are the ones worth having in hand, because each opens from a
+ * button and a button that shows nothing while a chunk arrives reads as dead.
+ * The views are warmed for the same reason, a beat less urgently. A failure
+ * here is ignored on purpose: nothing is waiting on it, and opening the thing
+ * for real imports it again and reports the failure then.
+ */
+function warmDeferred(): void {
+  const nothing = () => {};
+  void import("@/components/HelpDrawer").catch(nothing);
+  void import("@/components/AcademyDrawer").catch(nothing);
+  void import("@/components/FontInfoDialog").catch(nothing);
+  void import("@/components/ExportDialog").catch(nothing);
+  void import("@/components/ForgeExportDialog").catch(nothing);
+  void import("@/components/AssembleExportDialog").catch(nothing);
+  void import("@/components/QuillExportDialog").catch(nothing);
+  void import("@/views/FontGridView").catch(nothing);
+  void import("@/views/ForgeView").catch(nothing);
+  void import("@/views/QuillView").catch(nothing);
+  void import("@/views/AssembleView").catch(nothing);
+  void import("@/views/MetricsView").catch(nothing);
+  void import("@/views/ProofView").catch(nothing);
+  void import("@/views/ReportView").catch(nothing);
+}
 
 /** Which of the three jobs is in front. */
 export type Mode = "edit" | "forge" | "assemble" | "quill";
@@ -151,6 +248,22 @@ export function App(): React.JSX.Element {
     setMode(state.wantsMode as Mode);
     store.modeAsked();
   }, [state.wantsMode]);
+
+  /*
+   * Warm the deferred chunks once, after the first screen has had the browser to
+   * itself. `requestIdleCallback` is the right moment for it and Safari only
+   * shipped it in 18.4, so where it is missing a timeout stands in. Two
+   * seconds is long after the first screen is up and long before anybody has
+   * found the Help button.
+   */
+  React.useEffect(() => {
+    if (typeof window.requestIdleCallback !== "function") {
+      const timer = window.setTimeout(warmDeferred, 2_000);
+      return () => window.clearTimeout(timer);
+    }
+    const handle = window.requestIdleCallback(warmDeferred, { timeout: 5_000 });
+    return () => window.cancelIdleCallback(handle);
+  }, []);
   const [dragging, setDragging] = React.useState(false);
   const [keeping, setKeeping] = React.useState<Keeping>("unknown");
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -772,18 +885,18 @@ export function App(): React.JSX.Element {
 
       <div className="flex min-h-0 flex-1">
         <div ref={stageRef} className="flex min-w-0 flex-1 flex-col">
-          {mode === "forge" && <ForgeView />}
-          {mode === "quill" && <QuillView />}
-          {mode === "assemble" && <AssembleView />}
+          {mode === "forge" && <Wait><ForgeView /></Wait>}
+          {mode === "quill" && <Wait><QuillView /></Wait>}
+          {mode === "assemble" && <Wait><AssembleView /></Wait>}
           {mode === "edit" && (
             <>
               <OnLoan />
-              {state.view === "grid" && <FontGridView />}
+              {state.view === "grid" && <Wait><FontGridView /></Wait>}
               {state.view === "glyph" && <GlyphEditorView />}
               {state.view === "kerning" && <KerningView />}
-              {state.view === "metrics" && <MetricsView />}
-              {state.view === "proof" && <ProofView />}
-              {state.view === "report" && <ReportView />}
+              {state.view === "metrics" && <Wait><MetricsView /></Wait>}
+              {state.view === "proof" && <Wait><ProofView /></Wait>}
+              {state.view === "report" && <Wait><ReportView /></Wait>}
             </>
           )}
         </div>
@@ -798,21 +911,27 @@ export function App(): React.JSX.Element {
           to explaining its own emptiness.
         */}
         {mode === "edit" && state.typeface && SHOWS_INSPECTOR.has(state.view) && <Inspector />}
-        {helping && <HelpDrawer onClose={() => setHelping(false)} />}
+        {helping && (
+          <Wait>
+            <HelpDrawer onClose={() => setHelping(false)} />
+          </Wait>
+        )}
         {/*
           One drawer at a time, and the courses win where both are asked for.
           Two four-hundred-pixel panels beside the work leaves the work with
           nothing, and of the two the course is the one being followed.
         */}
         {learning && !helping && (
-          <AcademyDrawer
-            mode={mode}
-            onClose={() => setLearning(false)}
-            onGo={(where) => {
-              if (where.mode) goToMode(where.mode as Mode);
-              if (where.view) store.setView(where.view as ViewId);
-            }}
-          />
+          <Wait>
+            <AcademyDrawer
+              mode={mode}
+              onClose={() => setLearning(false)}
+              onGo={(where) => {
+                if (where.mode) goToMode(where.mode as Mode);
+                if (where.view) store.setView(where.view as ViewId);
+              }}
+            />
+          </Wait>
         )}
       </div>
 
@@ -866,13 +985,31 @@ export function App(): React.JSX.Element {
 
       <LibraryDialog mode={libraryMode(mode)} onMode={setMode} />
 
-      {naming && <FontInfoDialog onClose={() => setNaming(false)} />}
-      {exporting && mode === "forge" && <ForgeExportDialog onClose={() => setExporting(false)} />}
-      {exporting && mode === "assemble" && (
-        <AssembleExportDialog onClose={() => setExporting(false)} />
+      {naming && (
+        <Wait>
+          <FontInfoDialog onClose={() => setNaming(false)} />
+        </Wait>
       )}
-      {exporting && mode === "edit" && <ExportDialog onClose={() => setExporting(false)} />}
-      {exporting && mode === "quill" && <QuillExportDialog onClose={() => setExporting(false)} />}
+      {exporting && mode === "forge" && (
+        <Wait>
+          <ForgeExportDialog onClose={() => setExporting(false)} />
+        </Wait>
+      )}
+      {exporting && mode === "assemble" && (
+        <Wait>
+          <AssembleExportDialog onClose={() => setExporting(false)} />
+        </Wait>
+      )}
+      {exporting && mode === "edit" && (
+        <Wait>
+          <ExportDialog onClose={() => setExporting(false)} />
+        </Wait>
+      )}
+      {exporting && mode === "quill" && (
+        <Wait>
+          <QuillExportDialog onClose={() => setExporting(false)} />
+        </Wait>
+      )}
     </div>
   );
 }

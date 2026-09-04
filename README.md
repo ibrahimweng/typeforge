@@ -442,6 +442,9 @@ src/ui/       the Toolcraft component kit, see NOTICE.md
 
 ## Licensing
 
+Typeforge is MIT licensed, apart from two parts that are not ours to license.
+`LICENSE` has the full text and names both exceptions.
+
 The interface components in `src/ui/` come from Toolcraft and carry the
 Toolcraft Designer License, which does not permit selling this application as a
 product. Everything in `src/font/` is original work. See `NOTICE.md`.

@@ -22,6 +22,17 @@ const lesson = (page: Page, id: string) => page.locator(`[data-lesson='${id}']`)
  */
 const openLesson = async (page: Page, id: string) => {
   const course = page.locator(`[data-course='${id.split(".")[0]}']`);
+  /*
+   * Wait for the course before counting what is inside it.
+   *
+   * `count()` is a reading rather than a wait, so taken before the drawer is
+   * there it returns zero however long the drawer takes. The line below then
+   * reads that zero as "the course is shut", clicks it, and shuts the course
+   * that was already open -- after which the lesson never appears and the
+   * test waits ninety seconds for it. The drawer is fetched when it is first
+   * opened, so there is now a moment where that is exactly what happens.
+   */
+  await course.waitFor();
   if ((await lesson(page, id).count()) === 0) await course.locator("button").first().click();
   await lesson(page, id).locator("button").first().click();
 };
