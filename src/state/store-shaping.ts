@@ -34,9 +34,9 @@ import { alignMasters } from "@/font/master";
 import type { Anchor, Contour, KernClass, KernPair, Typeface } from "@/font/types";
 import { nodeKey } from "./model";
 import { firstLetterName } from "./store-core";
-import { EditingStore } from "./store-editing";
+import { ParameterStore } from "./store-parameters";
 
-export abstract class ShapingStore extends EditingStore {
+export abstract class ShapingStore extends ParameterStore {
   /** Move an anchor, or add it if the glyph does not carry one by that name. */
   setAnchor(glyphName: string, name: string, x: number, y: number): void {
     const typeface = this.state.typeface;
