@@ -11,17 +11,26 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * The extra weights in the session that has been written down.
+ * What the written-down session holds for one letter in one weight.
  *
  * Read out of IndexedDB rather than waited for by sleeping, so the test moves
  * on the moment the document is on disk and says what is in it if it is not.
+ *
+ * This reported the weights' names until it was found to be reporting the
+ * wrong thing. A weight is named before the letter in it is edited, so the
+ * first write to disk carries "Black" and the letter's original width: the
+ * poll passed on that write, the reload restored it, and the letter came back
+ * the width it started at. Run one test at a time the save timer usually
+ * caught both changes in a single write and it passed anyway; run beside
+ * anything else it did not. Waiting for the edit waits for what the reload
+ * below actually needs.
  */
-function keptVersions(page: Page): Promise<string[]> {
+function keptWidth(page: Page, weight: string, letter: string): Promise<number | null> {
   return page.evaluate(
-    () =>
-      new Promise<string[]>((resolve) => {
+    ([wanted, named]) =>
+      new Promise<number | null>((resolve) => {
         const request = indexedDB.open("typeforge", 1);
-        request.onerror = () => resolve([]);
+        request.onerror = () => resolve(null);
         request.onsuccess = () => {
           const database = request.result;
           const get = database
@@ -30,17 +39,27 @@ function keptVersions(page: Page): Promise<string[]> {
             .get("current");
           get.onerror = () => {
             database.close();
-            resolve([]);
+            resolve(null);
           };
           get.onsuccess = () => {
             database.close();
             const project = get.result as
-              | { edit?: { masters?: Array<{ name: string }> } }
+              | {
+                  edit?: {
+                    masters?: Array<{
+                      name: string;
+                      glyphs?: Array<{ name: string; advanceWidth: number }>;
+                    }>;
+                  };
+                }
               | undefined;
-            resolve((project?.edit?.masters ?? []).map((one) => one.name));
+            const master = (project?.edit?.masters ?? []).find((one) => one.name === wanted);
+            const glyph = (master?.glyphs ?? []).find((one) => one.name === named);
+            resolve(glyph?.advanceWidth ?? null);
           };
         };
       }),
+    [weight, letter] as const,
   );
 }
 
@@ -158,7 +177,7 @@ test("both weights are still there after coming back", async ({ page }) => {
    * over a copy of the first weight, which is what this polls for before
    * reloading rather than guessing at the timer.
    */
-  await expect.poll(() => keptVersions(page), { timeout: 30_000 }).toEqual(["Black"]);
+  await expect.poll(() => keptWidth(page, "Black", "o"), { timeout: 30_000 }).toBe(880);
 
   await page.reload();
   await expect(page.getByText("Picked up where you left off")).toBeVisible({ timeout: 45_000 });
