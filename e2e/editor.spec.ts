@@ -2446,7 +2446,20 @@ test("saves the work to a file, and opens it in a browser that has never seen it
   browser,
 }) => {
   await openForge(page);
+  /*
+   * Wait for the serifs to be drawn before reading the letter.
+   *
+   * The switch returns before the alphabet is redrawn, so reading the `n`
+   * straight after the click can return the letter as it was. Nothing later
+   * catches that: the file then holds a plain `n`, the fresh browser draws a
+   * plain `n` of its own, the two agree, and the test fails on the line that
+   * says the fresh browser should not already have the work -- pointing at the
+   * browser rather than at the read. Wait for the redraw, as the test above
+   * does.
+   */
+  const plain = await drawnN(page);
   await page.locator('[data-forge-part="slab"]').getByRole("switch", { name: "Serifs" }).click();
+  await expect.poll(() => drawnN(page)).not.toBe(plain);
   const serifed = await drawnN(page);
 
   const [download] = await Promise.all([
