@@ -949,7 +949,7 @@ test("draws a family and downloads every weight of it", async ({ page }) => {
     dialog.locator("[data-download-family]").click(),
   ]);
   expect(download.suggestedFilename()).toBe("Untitled.zip");
-  const saved = join(tmpdir(), "family.zip");
+  const saved = test.info().outputPath("family.zip");
   await download.saveAs(saved);
 
   /*
@@ -1206,7 +1206,24 @@ async function openForge(page: Page): Promise<void> {
  */
 async function settle(page: Page): Promise<void> {
   const mark = page.locator("[data-coach-mark]");
-  if ((await mark.count()) === 0) return;
+  /*
+   * A bounded wait rather than a bare count.
+   *
+   * A mark puts itself in the running from an effect, and React runs effects
+   * after the paint -- so the count taken the moment the stage turns visible
+   * can read nought for a mark that is one commit away from showing. It then
+   * arrives in the middle of the drag that follows, which is the exact thing
+   * this function is here to prevent.
+   *
+   * Not every caller has a mark to dismiss, so nothing appearing is still a
+   * real answer; it is just one worth waiting a moment for rather than reading
+   * off the first frame.
+   */
+  try {
+    await mark.waitFor({ state: "visible", timeout: 2_000 });
+  } catch {
+    return;
+  }
   await mark.getByRole("button", { name: "Got it" }).click();
   await expect(mark).toHaveCount(0);
 }
@@ -2544,7 +2561,7 @@ test("saves the work to a file, and opens it in a browser that has never seen it
    * is the one saved here: a project wearing a font's extension, which a check
    * on the name would open as a font and fail on.
    */
-  const saved = join(tmpdir(), "not-really-a.ttf");
+  const saved = test.info().outputPath("not-really-a.ttf");
   await download.saveAs(saved);
 
   /*
@@ -2579,7 +2596,7 @@ test("carries the assembled drawings into the file too", async ({ page, browser 
     page.waitForEvent("download"),
     page.locator("[data-save-project]").click(),
   ]);
-  const saved = join(tmpdir(), download.suggestedFilename());
+  const saved = test.info().outputPath(download.suggestedFilename());
   await download.saveAs(saved);
 
   const elsewhere = await browser.newContext();

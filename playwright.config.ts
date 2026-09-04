@@ -17,8 +17,22 @@ export default defineConfig({
   testDir: "./e2e",
   timeout: 90_000,
   expect: { timeout: 20_000 },
-  fullyParallel: false,
-  workers: 1,
+  /*
+   * Tests share nothing: every one gets its own browser context, so its own
+   * storage, and the three that save a download write into their own output
+   * directory. Running them one at a time was costing thirty-four minutes,
+   * seventeen of which was editor.spec.ts alone waiting on itself.
+   *
+   * fullyParallel matters more than the worker count here. Without it a file
+   * is the unit of work, and a file of a hundred and forty-one tests pins one
+   * worker for as long as it takes however many are idle beside it.
+   *
+   * Half the cores rather than all of them: the application draws outlines on
+   * a canvas, so a worker is busy rather than waiting, and oversubscribing the
+   * box turns a slow test into a failed one.
+   */
+  fullyParallel: true,
+  workers: "50%",
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],
