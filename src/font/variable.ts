@@ -146,7 +146,7 @@ export function buildFvar(
 }
 
 function tag(text: string): number {
-  const four = (text + "    ").slice(0, 4);
+  const four = `${text}    `.slice(0, 4);
   return (
     ((four.charCodeAt(0) << 24) |
       (four.charCodeAt(1) << 16) |

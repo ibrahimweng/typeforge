@@ -862,7 +862,7 @@ export function App(): React.JSX.Element {
     }),
     // Only what changes the shape of the catalogue: which job is in front and
     // which view it is showing. The values themselves are read live, above.
-    [mode, state.view, state.typeface, saveProject],
+    [mode, goToMode, state.view, state.typeface, saveProject],
   );
 
   useQuickActionShortcut(React.useCallback(() => setQuick(true), []));
@@ -879,6 +879,7 @@ export function App(): React.JSX.Element {
   });
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: the page is a drop target for a font file; the Open button is the keyboard path.
     <div
       className="flex h-full flex-col"
       onDragOver={(event) => {

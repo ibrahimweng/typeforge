@@ -112,6 +112,11 @@ export function GlyphFaults({
   return (
     <div
       data-glyph-faults={all.length}
+      /*
+        role, because aria-label on a plain div is discarded: the name was
+        being written and then thrown away by every screen reader reading it.
+      */
+      role="group"
       aria-label={`What is wrong with ${glyph.name}`}
       className={cn(
         "pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col gap-1 border-b bg-background/85 px-4 py-1.5 backdrop-blur-sm",

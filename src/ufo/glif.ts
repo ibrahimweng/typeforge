@@ -249,7 +249,7 @@ function componentOf(node: XmlNode): Component | null {
 /** What a `.glif` file says, as a glyph. Null if it is not one. */
 export function readGlif(source: string): Glyph | null {
   const root = parseXml(source);
-  if (!root || root.name !== "glyph") return null;
+  if (root?.name !== "glyph") return null;
   const name = root.attributes.name;
   if (!name) return null;
 

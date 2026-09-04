@@ -132,7 +132,7 @@ function glyphsDirectoryOf(files: UfoFiles): string {
  */
 function layerPairs(source: string): Array<[string, string]> {
   const root = parseXml(source);
-  if (!root || root.name !== "plist") return [];
+  if (root?.name !== "plist") return [];
   const outer = root.children.find((one) => one.name === "array");
   if (!outer) return [];
   const pairs: Array<[string, string]> = [];

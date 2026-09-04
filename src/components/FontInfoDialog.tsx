@@ -60,6 +60,7 @@ function Text({
   React.useEffect(() => setDraft(value), [value]);
 
   return (
+    // biome-ignore lint/a11y/noLabelWithoutControl: wraps its input or textarea, chosen by the ternary below.
     <label className="flex flex-col gap-1 pb-3">
       <span className="text-2xs text-muted-foreground">{label}</span>
       {lines ? (
@@ -157,13 +158,24 @@ export function FontInfoDialog({ onClose }: { onClose: () => void }): React.JSX.
   const edited = typeface.glyphs.some((glyph) => glyph.dirty);
 
   return (
+    /*
+      Clicking the dark behind the panel closes it, and that is all the dark
+      does: it is not a control, there is nothing on it to announce or tab to,
+      and Escape closes from the keyboard. Marked as presentation to say so.
+      The close fires only for a click that landed on the backdrop itself,
+      which is the job the panel below used to do with a stopPropagation --
+      the panel reads better not handling clicks it has no interest in.
+    */
+    // biome-ignore lint/a11y/noStaticElementInteractions: the backdrop is presentation; Escape is the keyboard path.
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
-      onClick={onClose}
+      role="presentation"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
     >
       <div
         ref={panelRef}
-        onClick={(event) => event.stopPropagation()}
         /*
           A fixed head and foot with the middle scrolling, rather than one long
           panel that scrolls entire.

@@ -21,6 +21,7 @@ function Spinner({
   ...props
 }: SpinnerProps) {
   return (
+    // biome-ignore lint/a11y/useAriaPropsSupportedByRole: role="status" and aria-label are set together, both off ariaHidden.
     <span
       aria-hidden={ariaHidden}
       aria-label={ariaHidden ? undefined : "Loading"}

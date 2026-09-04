@@ -1524,7 +1524,9 @@ class Store {
     const keys: string[] = [];
     glyph.contours.forEach((one, at) => {
       if (contour !== undefined && at !== contour) return;
-      one.nodes.forEach((_, node) => keys.push(nodeKey({ contour: at, node })));
+      one.nodes.forEach((_, node) => {
+        keys.push(nodeKey({ contour: at, node }));
+      });
     });
     this.setSelectedNodes(keys);
     this.say(
@@ -2701,7 +2703,7 @@ class Store {
       const segments = one?.spine.segments;
       if (!one || !segments) return;
       const arrived = segments[node - 1];
-      if (!arrived || arrived.kind !== "cubic") return;
+      if (arrived?.kind !== "cubic") return;
       const point = arrived.to;
       arrived.c2 = { x: point.x - (to.x - point.x), y: point.y - (to.y - point.y) };
       const leaving = segments[node];
@@ -2879,7 +2881,7 @@ class Store {
   openContourAt(glyphName: string, contour: number, node: number): boolean {
     const glyph = this.glyph(glyphName);
     const one = glyph?.contours[contour];
-    if (!glyph || !one || !one.closed || one.nodes.length < 3) return false;
+    if (!glyph || !one?.closed || one.nodes.length < 3) return false;
 
     this.editGlyph(glyphName, "Open the shape", (editing) => {
       const it = editing.contours[contour];
@@ -3600,10 +3602,14 @@ class Store {
     this.push({
       label: "Read anchors from the font",
       undo: () => {
-        typeface.glyphs.forEach((g, i) => (g.anchors = before[i].map((a) => ({ ...a }))));
+        typeface.glyphs.forEach((g, i) => {
+          g.anchors = before[i].map((a) => ({ ...a }));
+        });
       },
       redo: () => {
-        typeface.glyphs.forEach((g, i) => (g.anchors = after[i].map((a) => ({ ...a }))));
+        typeface.glyphs.forEach((g, i) => {
+          g.anchors = after[i].map((a) => ({ ...a }));
+        });
       },
     });
     this.touch();
@@ -4166,9 +4172,11 @@ class Store {
     // Left picked, because what arrives is almost always in the wrong place
     // and moving it is the next thing that happens.
     const keys: string[] = [];
-    arriving.forEach((contour, index) =>
-      contour.nodes.forEach((_, node) => keys.push(nodeKey({ contour: from + index, node }))),
-    );
+    arriving.forEach((contour, index) => {
+      contour.nodes.forEach((_, node) => {
+        keys.push(nodeKey({ contour: from + index, node }));
+      });
+    });
     this.set({ selectedNodes: new Set(keys) });
     this.say(`Pasted ${arriving.length} path${arriving.length === 1 ? "" : "s"}.`, "success");
     return true;

@@ -59,7 +59,7 @@ export function ChannelMixerControl({
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-3" aria-label={name}>
+    <div className="flex min-w-0 flex-col gap-3" role="group" aria-label={name}>
       <div className="flex min-w-0 flex-col gap-2">
         <ChannelTabs
           ariaLabel={name}

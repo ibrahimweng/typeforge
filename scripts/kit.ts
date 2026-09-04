@@ -20,7 +20,7 @@ import { writeFileSync } from "node:fs";
 import { ready } from "@/font/boolean";
 import { contoursToSvgPath } from "@/font/geometry";
 import { drawLetter } from "@/forge/build";
-import { GRID, assemble, seedTiles, unitOf, cellBox, type Kit } from "@/forge/kit";
+import { GRID, assemble, seedTiles, unitOf, type Kit } from "@/forge/kit";
 import { recipeOf } from "@/forge/letters";
 import { BASES } from "@/forge/style";
 

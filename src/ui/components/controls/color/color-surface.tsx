@@ -139,6 +139,7 @@ export function ColorSurface({
       ref={surfaceRef}
       data-slot="style-guide-color-surface"
       data-color-model={colorModel}
+      role="group"
       aria-label={surfaceLabel}
       className={cn(
         "group/surface relative aspect-square w-full shrink-0 touch-none rounded-t-[8px]",

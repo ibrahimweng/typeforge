@@ -41,12 +41,12 @@ const SMALL = cn(
   "transition-colors hover:border-accent hover:text-foreground",
 );
 
-export function FeaturesPanel(): React.JSX.Element {
+export function FeaturesPanel(): React.JSX.Element | null {
   const state = useAppState();
   const typeface = state.typeface;
   const [joining, setJoining] = React.useState("");
 
-  if (!typeface) return <></>;
+  if (!typeface) return null;
 
   const ligatures = typeface.ligatures ?? [];
   const sets = typeface.sets ?? [];

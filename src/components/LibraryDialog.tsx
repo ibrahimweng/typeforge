@@ -69,13 +69,24 @@ export function LibraryDialog({
   const fonts = libraryStore.visible();
 
   return (
+    /*
+      Clicking the dark behind the panel closes it, and that is all the dark
+      does: it is not a control, there is nothing on it to announce or tab to,
+      and Escape closes from the keyboard. Marked as presentation to say so.
+      The close fires only for a click that landed on the backdrop itself,
+      which is the job the panel below used to do with a stopPropagation --
+      the panel reads better not handling clicks it has no interest in.
+    */
+    // biome-ignore lint/a11y/noStaticElementInteractions: the backdrop is presentation; Escape is the keyboard path.
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6"
-      onClick={() => libraryStore.hide()}
+      role="presentation"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) libraryStore.hide();
+      }}
     >
       <div
         ref={panelRef}
-        onClick={(event) => event.stopPropagation()}
         className="floating-popup-surface flex h-[34rem] w-[48rem] flex-col rounded-xl border border-border bg-popover shadow-2xl"
         role="dialog"
         aria-modal="true"

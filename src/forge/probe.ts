@@ -468,7 +468,7 @@ export function whatGoverns(
 }
 
 /** What a control is set to now, whichever half of the style it lives in. */
-export function valueOf(style: Style, drive: AnyDrive): number {
+export function settingOf(style: Style, drive: AnyDrive): number {
   const from =
     drive.on === "pen"
       ? (style.pen as unknown as Record<string, unknown>)

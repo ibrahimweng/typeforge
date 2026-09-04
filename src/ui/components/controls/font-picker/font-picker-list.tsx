@@ -65,6 +65,7 @@ export function FontPickerList({
   visibleFonts,
 }: FontPickerListProps): React.JSX.Element {
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: onMouseLeave only clears a hover preview, which has no keyboard equivalent to clear.
     <div className="relative isolate pb-1" onMouseLeave={clearHoverPreview}>
       <div className="px-1 pt-1">
         <div className="relative h-60">

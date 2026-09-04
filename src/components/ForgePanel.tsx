@@ -288,6 +288,7 @@ function KitPanel(): React.JSX.Element {
           aria-checked={kit.on}
           aria-label="Build on a grid"
           data-forge-kit-switch
+          // biome-ignore lint/correctness/useHookAtTopLevel: forgeStore.useKit is a method on the forge store, not a React hook.
           onClick={() => forgeStore.useKit(!kit.on)}
           className={cn(
             "h-4 w-7 shrink-0 rounded-full transition-colors",

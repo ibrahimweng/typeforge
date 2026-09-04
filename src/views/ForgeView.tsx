@@ -39,7 +39,7 @@ import {
 } from "@/forge/document";
 import { handlesFor, valueAfter, type Handle } from "@/forge/handles";
 import { familyWalk, type Trouble } from "@/forge/health";
-import { driveId, valueOf, whatGoverns, type Governing } from "@/forge/probe";
+import { driveId, settingOf, whatGoverns, type Governing } from "@/forge/probe";
 import { segment, tile } from "@/components/controls";
 import { forgeStore, useForge, type Phase } from "@/state/useForge";
 import { useLibrary } from "@/state/useLibrary";
@@ -180,7 +180,7 @@ function Stage({
   const probed = React.useMemo<Handle | null>(() => {
     if (!found) return null;
     const style = styleFor(letter, state.forge);
-    return { ...found.handle, value: valueOf(style, found.handle.drive) };
+    return { ...found.handle, value: settingOf(style, found.handle.drive) };
   }, [found, letter, state.forge, revision]);
 
   /*
@@ -434,6 +434,7 @@ function Stage({
                   opacity={held === handle.id ? 0.9 : 0.45}
                 />
               )}
+              {/* biome-ignore lint/a11y/noStaticElementInteractions: an SVG handle dragged directly; the sliders beside the canvas are the keyboard path. */}
               <circle
                 cx={handle.at.x}
                 cy={handle.at.y}
@@ -478,6 +479,7 @@ function Stage({
                 strokeLinecap="round"
                 opacity={0.75}
               />
+              {/* biome-ignore lint/a11y/noStaticElementInteractions: an SVG handle dragged directly; the sliders beside the canvas are the keyboard path. */}
               <circle
                 cx={probed.at.x}
                 cy={probed.at.y}
@@ -624,6 +626,7 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
    * family has, so a line of twenty characters is eighty letters a frame.
    */
   const shown = state.resting ? state.forge : unshaped(state.forge);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: weights.join() compares the weights by content; the array itself is new every render.
   const lines = React.useMemo(
     () =>
       weights.map((weight) => ({
@@ -1165,7 +1168,7 @@ function Warnings({ revision }: { revision: number }): React.JSX.Element | null 
  */
 const FIRST_SCREEN = 128;
 
-function whatIsNear(names: string[]): {
+function useWhatIsNear(names: string[]): {
   near: ReadonlySet<string>;
   watch: (node: HTMLElement | null) => void;
 } {
@@ -1275,7 +1278,7 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
   const held = React.useRef(state.settled);
   if (state.resting) held.current = state.settled;
   const settled = held.current;
-  const { near, watch } = whatIsNear(names);
+  const { near, watch } = useWhatIsNear(names);
 
   // Without the layers, which is what the strip shows the instant a change
   // lands. Cheap enough to work out in a render: a letter with nothing cast on
@@ -1349,7 +1352,7 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
     const before = new Map(ripe.cells.map((cell) => [cell.name, cell]));
     return plain.map((cell) => {
       const was = before.get(cell.name);
-      return was && was.d ? was : cell;
+      return was?.d ? was : cell;
     });
   }, [ripe, settled, plain]);
 

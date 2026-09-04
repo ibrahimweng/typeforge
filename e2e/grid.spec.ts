@@ -19,8 +19,6 @@
 
 import { expect, test } from "@playwright/test";
 
-const PORTS_ON = "[data-forge-port]";
-
 /** Which ports are lit, with the pointer parked off the grid. */
 async function lit(page: import("@playwright/test").Page): Promise<string[]> {
   await page.mouse.move(700, 100);

@@ -53,7 +53,7 @@ let worst = 0,
   nodes = 0;
 for (const ch of letters) {
   const g = byChar.get(ch);
-  if (!g || !g.contours?.length) {
+  if (!g?.contours?.length) {
     console.log(`  ${ch}     -- missing`);
     continue;
   }

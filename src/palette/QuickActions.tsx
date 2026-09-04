@@ -154,8 +154,10 @@ export function QuickActions({
   const confirm = confirming;
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: the backdrop is presentation; Escape is the keyboard path.
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-6 pt-[12vh]"
+      role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -297,6 +299,7 @@ function Row({ item, at, chosen, adjusting, first, onHover, onPick }: RowProps):
           {item.group}
         </p>
       )}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: an option is driven from the listbox above it, by arrow keys and Enter. */}
       <div
         data-at={at}
         role="option"
@@ -366,6 +369,8 @@ function Adjuster({ item }: { item: Item }): React.JSX.Element | null {
 
   if (item.adjust) {
     return (
+      // biome-ignore lint/a11y/useKeyWithClickEvents: not a control: it stops a click on the slider or buttons inside from picking the row.
+      // biome-ignore lint/a11y/noStaticElementInteractions: not a control: it stops a click on the slider or buttons inside from picking the row.
       <div className="mt-2" onClick={(event) => event.stopPropagation()}>
         <SliderControl
           name={item.short ?? item.label}
@@ -402,6 +407,8 @@ function Adjuster({ item }: { item: Item }): React.JSX.Element | null {
   if (item.choose) {
     const now = item.choose.read();
     return (
+      // biome-ignore lint/a11y/useKeyWithClickEvents: not a control: it stops a click on the slider or buttons inside from picking the row.
+      // biome-ignore lint/a11y/noStaticElementInteractions: not a control: it stops a click on the slider or buttons inside from picking the row.
       <div className="mt-2 flex flex-wrap gap-1" onClick={(event) => event.stopPropagation()}>
         {item.choose.options.map((option) => (
           <button
@@ -439,8 +446,10 @@ function Confirm({
   const goOn = React.useRef<HTMLButtonElement>(null);
   React.useEffect(() => goOn.current?.focus(), []);
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: the backdrop is presentation; Escape is the keyboard path.
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-6"
+      role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}

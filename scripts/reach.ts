@@ -23,7 +23,7 @@
 
 import { catalogue, type Item, type Shell } from "@/palette/catalogue";
 import { buildIndex, search } from "@/palette/search";
-import { uniqueWords, wordsOf } from "@/palette/words";
+import { uniqueWords } from "@/palette/words";
 
 const SEEN = 8;
 

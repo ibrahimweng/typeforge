@@ -19,7 +19,6 @@ import { writeFileSync } from "node:fs";
 import { ready, unite } from "@/font/boolean";
 import { contourSegments } from "@/font/geometry";
 import { sweepAll, toleranceFor } from "@/quill/sweep";
-import { ROUND_NIB } from "@/quill/types";
 import type { Contour } from "@/font/types";
 import type { NibProfile, QuillStroke, WidthProfile } from "@/quill/types";
 
@@ -97,7 +96,7 @@ const d = (contours: Contour[]) =>
           segment.kind === "line"
             ? ` L ${segment.to.x} ${segment.to.y}`
             : ` C ${segment.c1.x} ${segment.c1.y} ${segment.c2.x} ${segment.c2.y} ${segment.to.x} ${segment.to.y}`;
-      return out + " Z";
+      return `${out} Z`;
     })
     .join(" ");
 

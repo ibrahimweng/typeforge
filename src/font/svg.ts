@@ -155,7 +155,7 @@ export function glyphSvg(options: GlyphSvgOptions): string {
     `  <path id="typeforge-ink" data-typeforge="ink" fill="#000000" fill-rule="nonzero" d="${d}"/>`,
   );
   lines.push(`</svg>`);
-  return lines.join("\n") + "\n";
+  return `${lines.join("\n")}\n`;
 }
 
 /**
@@ -280,7 +280,7 @@ function mapContour(contour: Contour, move: (point: Vec2) => Vec2): Contour {
 }
 
 function readViewBox(attributes: Record<string, string>): SvgBox {
-  const raw = attributes["viewbox"];
+  const raw = attributes.viewbox;
   if (raw) {
     const numbers = raw
       .trim()
@@ -290,8 +290,8 @@ function readViewBox(attributes: Record<string, string>): SvgBox {
       return { x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3] };
     }
   }
-  const width = Number(attributes["width"]?.replace(/[a-z%]+$/i, ""));
-  const height = Number(attributes["height"]?.replace(/[a-z%]+$/i, ""));
+  const width = Number(attributes.width?.replace(/[a-z%]+$/i, ""));
+  const height = Number(attributes.height?.replace(/[a-z%]+$/i, ""));
   if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
     return { x: 0, y: 0, width, height };
   }
@@ -373,8 +373,8 @@ function collectShapes(text: string): Shape[] {
 
     const isUndrawn = UNDRAWN.has(tag.name);
     const marksGuide = isGuide(tag.attributes);
-    const own = tag.attributes["transform"]
-      ? multiply(matrix, parseTransform(tag.attributes["transform"]))
+    const own = tag.attributes.transform
+      ? multiply(matrix, parseTransform(tag.attributes.transform))
       : matrix;
 
     if (!tag.selfClosing) {
@@ -399,7 +399,7 @@ function collectShapes(text: string): Shape[] {
 function isGuide(attributes: Record<string, string>): boolean {
   const marked = attributes["data-typeforge"];
   if (marked === "guides" || marked === "guide") return true;
-  const id = attributes["id"];
+  const id = attributes.id;
   return typeof id === "string" && id.startsWith("typeforge-guide");
 }
 
@@ -484,8 +484,7 @@ function localName(raw: string): string {
 function parseAttributes(text: string): Record<string, string> {
   const attributes: Record<string, string> = {};
   const pattern = /([^\s=/]+)\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+))/g;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(text)) !== null) {
+  for (const match of text.matchAll(pattern)) {
     const value = match[3] ?? match[4] ?? match[5] ?? "";
     attributes[localName(match[1])] = unescapeText(value);
   }
@@ -512,36 +511,29 @@ function shapeContours(tag: Tag): Contour[] {
   const a = tag.attributes;
   switch (tag.name) {
     case "path":
-      return a["d"] ? parsePath(a["d"]) : [];
+      return a.d ? parsePath(a.d) : [];
     case "rect":
-      return rectContours(
-        number(a["x"]),
-        number(a["y"]),
-        number(a["width"]),
-        number(a["height"]),
-        a["rx"],
-        a["ry"],
-      );
+      return rectContours(number(a.x), number(a.y), number(a.width), number(a.height), a.rx, a.ry);
     case "circle": {
-      const r = number(a["r"]);
-      return r > 0 ? [ellipseContour(number(a["cx"]), number(a["cy"]), r, r)] : [];
+      const r = number(a.r);
+      return r > 0 ? [ellipseContour(number(a.cx), number(a.cy), r, r)] : [];
     }
     case "ellipse": {
-      const rx = number(a["rx"]);
-      const ry = number(a["ry"]);
-      return rx > 0 && ry > 0 ? [ellipseContour(number(a["cx"]), number(a["cy"]), rx, ry)] : [];
+      const rx = number(a.rx);
+      const ry = number(a.ry);
+      return rx > 0 && ry > 0 ? [ellipseContour(number(a.cx), number(a.cy), rx, ry)] : [];
     }
     case "polygon":
-      return pointsContour(a["points"], true);
+      return pointsContour(a.points, true);
     case "polyline":
-      return pointsContour(a["points"], false);
+      return pointsContour(a.points, false);
     case "line":
       return [
         {
           closed: false,
           nodes: [
-            corner({ x: number(a["x1"]), y: number(a["y1"]) }),
-            corner({ x: number(a["x2"]), y: number(a["y2"]) }),
+            corner({ x: number(a.x1), y: number(a.y1) }),
+            corner({ x: number(a.x2), y: number(a.y2) }),
           ],
         },
       ];
@@ -1098,8 +1090,7 @@ function apply(matrix: Matrix, point: Vec2): Vec2 {
 export function parseTransform(text: string): Matrix {
   let matrix = IDENTITY;
   const pattern = /([a-zA-Z]+)\s*\(([^)]*)\)/g;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(text)) !== null) {
+  for (const match of text.matchAll(pattern)) {
     const values = match[2]
       .trim()
       .split(/[\s,]+/)

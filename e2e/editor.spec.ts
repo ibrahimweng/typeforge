@@ -3666,7 +3666,6 @@ test("dragging a shape into a letter, and cutting it back out", async ({ page })
   await openFont(page);
   await page.getByRole("button", { name: "Glyph", exact: true }).click();
 
-  const tools = page.getByRole("group", { name: "Tool" });
   const canvas = page.locator("canvas").first();
   const area = (await canvas.boundingBox())!;
   const paths = page.locator("[data-paths-panel]");

@@ -31,10 +31,11 @@ import { validateTypeface } from "./validate";
 let nextWidth = 400;
 
 function glyph(name: string, contours: Contour[]): Glyph {
+  nextWidth += 7;
   return {
     name,
     unicodes: [],
-    advanceWidth: (nextWidth += 7),
+    advanceWidth: nextWidth,
     contours,
     components: [],
     anchors: [],

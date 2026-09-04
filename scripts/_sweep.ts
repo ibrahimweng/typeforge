@@ -12,7 +12,7 @@ function look(s: any) {
     em = s.metrics.unitsPerEm;
   const bx = (n: string) => {
     const d = draw(n, forge);
-    return d && d.contours.length ? contoursBounds(d.contours) : null;
+    return d?.contours.length ? contoursBounds(d.contours) : null;
   };
   const flat = FLAT.map(bx).filter(Boolean) as any[];
   const xh = med(flat.map((b) => b.yMax));

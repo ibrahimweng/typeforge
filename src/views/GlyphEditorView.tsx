@@ -435,6 +435,14 @@ export function GlyphEditorView(): React.JSX.Element {
     state.tool,
     at,
     state.highlightPath,
+    /*
+     * The lit stop, which picking one does not otherwise announce: pickStop
+     * only sets it, and setting is not a document change, so the revision
+     * below does not move. Grab a handle and drag and the edit redraws the
+     * canvas anyway; click one and let go, and without this the ellipse never
+     * lights.
+     */
+    state.stop,
   ]);
 
   // --- interaction ------------------------------------------------------
@@ -971,6 +979,7 @@ export function GlyphEditorView(): React.JSX.Element {
     wasTool.current = state.tool;
   }, [state.tool, glyph]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: narrowed to the letter's name on purpose -- see the note above the closing brace.
   React.useEffect(() => {
     store.setToolState(
       toolStateFor(
@@ -1841,22 +1850,22 @@ function Numbers({
 
       {node ? (
         <>
-          <label className="flex items-center gap-1">
+          <span className="flex items-center gap-1">
             X
             <NumberField
               label="Point x"
               value={Math.round(node.point.x)}
               onCommit={(next) => move("x", next)}
             />
-          </label>
-          <label className="flex items-center gap-1">
+          </span>
+          <span className="flex items-center gap-1">
             Y
             <NumberField
               label="Point y"
               value={Math.round(node.point.y)}
               onCommit={(next) => move("y", next)}
             />
-          </label>
+          </span>
         </>
       ) : (
         /*
@@ -1882,7 +1891,7 @@ function Numbers({
       )}
 
       <span className="ml-auto flex items-center gap-x-5">
-        <label className="flex items-center gap-1">
+        <span className="flex items-center gap-1">
           Left
           <NumberField
             label="Left sidebearing"
@@ -1890,8 +1899,8 @@ function Numbers({
             disabled={!box}
             onCommit={(next) => store.shiftSidebearing(glyph.name, next - left, "left")}
           />
-        </label>
-        <label className="flex items-center gap-1">
+        </span>
+        <span className="flex items-center gap-1">
           Width
           <NumberField
             label="Advance width"
@@ -1902,8 +1911,8 @@ function Numbers({
               })
             }
           />
-        </label>
-        <label className="flex items-center gap-1">
+        </span>
+        <span className="flex items-center gap-1">
           Right
           <NumberField
             label="Right sidebearing"
@@ -1911,7 +1920,7 @@ function Numbers({
             disabled={!box}
             onCommit={(next) => store.shiftSidebearing(glyph.name, next - right, "right")}
           />
-        </label>
+        </span>
       </span>
     </div>
   );

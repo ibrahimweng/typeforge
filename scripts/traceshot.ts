@@ -42,7 +42,7 @@ const d = (cs: Contour[]) =>
           s.kind === "line"
             ? ` L ${s.to.x} ${s.to.y}`
             : ` C ${s.c1.x} ${s.c1.y} ${s.c2.x} ${s.c2.y} ${s.to.x} ${s.to.y}`;
-      return out + " Z";
+      return `${out} Z`;
     })
     .join(" ");
 

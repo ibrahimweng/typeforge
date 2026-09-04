@@ -28,7 +28,7 @@ export type PlistValue = string | number | boolean | PlistValue[] | { [key: stri
 /** A plist whose root is a dictionary, which every plist in a UFO has. */
 export type PlistDict = Record<string, PlistValue>;
 
-function valueOf(node: XmlNode): PlistValue | undefined {
+function readValue(node: XmlNode): PlistValue | undefined {
   switch (node.name) {
     case "string":
       return node.text;
@@ -46,7 +46,7 @@ function valueOf(node: XmlNode): PlistValue | undefined {
       return false;
     case "array":
       return node.children
-        .map((one) => valueOf(one))
+        .map((one) => readValue(one))
         .filter((one): one is PlistValue => one !== undefined);
     case "dict":
       return dictOf(node);
@@ -76,7 +76,7 @@ function dictOf(node: XmlNode): PlistDict {
     if (key.name !== "key") continue;
     const next = node.children[at + 1];
     if (!next || next.name === "key") continue;
-    const value = valueOf(next);
+    const value = readValue(next);
     if (value !== undefined) out[key.text] = value;
     at += 1;
   }
@@ -91,7 +91,7 @@ function dictOf(node: XmlNode): PlistDict {
  */
 export function readPlist(source: string): PlistDict | null {
   const root = parseXml(source);
-  if (!root || root.name !== "plist") return null;
+  if (root?.name !== "plist") return null;
   const dict = root.children.find((one) => one.name === "dict");
   return dict ? dictOf(dict) : null;
 }

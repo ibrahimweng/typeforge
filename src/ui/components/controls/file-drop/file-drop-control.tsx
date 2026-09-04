@@ -182,7 +182,9 @@ function FileDropControlBase<
         return;
       }
 
-      files.forEach((file) => onFileSelect?.(file));
+      files.forEach((file) => {
+        onFileSelect?.(file);
+      });
       return;
     }
 

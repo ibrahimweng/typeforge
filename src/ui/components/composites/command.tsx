@@ -79,6 +79,7 @@ const CommandInput = React.forwardRef<
   }
 >(({ className, leadingVisual, ...props }, ref) => {
   return (
+    // biome-ignore lint/a11y/noLabelWithoutControl: it wraps the command input, which the rule cannot see through the component.
     <label
       data-slot="command-input-wrapper"
       className="flex w-full items-center gap-3 px-4 py-3 text-[color:var(--foreground)]"

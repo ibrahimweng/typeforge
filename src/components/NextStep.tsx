@@ -260,6 +260,7 @@ export function NextStep({
             "Open kerning" to both of them. The key reaches a screen reader
             through the title instead.
           */}
+          {/* biome-ignore lint/a11y/noAriaHiddenOnFocusable: kbd takes no focus; the button's own name carries the shortcut. */}
           <kbd aria-hidden="true" className="font-sans text-[10px] opacity-70">
             ⌘⏎
           </kbd>

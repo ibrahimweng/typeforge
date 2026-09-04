@@ -116,6 +116,7 @@ export function GradientStopsTrack({
 }): React.JSX.Element {
   return (
     <div
+      role="group"
       aria-label="Gradient stops track"
       className="app-no-drag relative mt-1 h-12 w-full touch-none cursor-crosshair"
       onPointerCancel={onDragEnd}

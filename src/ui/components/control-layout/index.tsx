@@ -136,6 +136,8 @@ export function ControlSectionHeader({
   }
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: role="button", aria-expanded and aria-label are all set off collapsible, together.
+    // biome-ignore lint/a11y/useAriaPropsSupportedByRole: role="button", aria-expanded and aria-label are all set off collapsible, together.
     <div
       aria-expanded={collapsible ? !collapsed : undefined}
       aria-label={collapsible ? collapseLabel : undefined}
@@ -155,6 +157,7 @@ export function ControlSectionHeader({
         {children}
       </div>
       {action || collapsible ? (
+        // biome-ignore lint/a11y/noStaticElementInteractions: plumbing: it keeps a click on the actions from collapsing the section.
         <div
           className="inline-flex shrink-0 items-center gap-1"
           onClick={stopHeaderToggle}

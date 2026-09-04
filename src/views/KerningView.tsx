@@ -38,7 +38,7 @@ interface PlacedGlyph {
   kern: number;
 }
 
-export function KerningView(): React.JSX.Element {
+export function KerningView(): React.JSX.Element | null {
   const state = useAppState();
   const typeface = state.typeface;
 
@@ -415,7 +415,7 @@ function ClassList({
   selected,
 }: {
   selected: { left: string; right: string } | null;
-}): React.JSX.Element {
+}): React.JSX.Element | null {
   const state = useAppState();
   const typeface = state.typeface;
 
@@ -436,7 +436,7 @@ function ClassList({
       .slice(0, MOST_ROWS);
   }, [typeface, state.revision]);
 
-  if (!typeface) return <></>;
+  if (!typeface) return null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

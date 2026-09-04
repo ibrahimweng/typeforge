@@ -17,7 +17,7 @@ import { store, useAppState } from "@/state/useStore";
 import { ufoNameFor, zipUfo } from "@/ufo/intake";
 import { cn } from "@/ui/lib/utils";
 
-export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.Element {
+export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.Element | null {
   const state = useAppState();
   const typeface = state.typeface;
 
@@ -49,7 +49,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  if (!typeface) return <></>;
+  if (!typeface) return null;
 
   // OpenType is always a rebuild, because the curves have to be re-encoded as
   // PostScript. Say so rather than letting the choice look available.
@@ -144,13 +144,24 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
   };
 
   return (
+    /*
+      Clicking the dark behind the panel closes it, and that is all the dark
+      does: it is not a control, there is nothing on it to announce or tab to,
+      and Escape closes from the keyboard. Marked as presentation to say so.
+      The close fires only for a click that landed on the backdrop itself,
+      which is the job the panel below used to do with a stopPropagation --
+      the panel reads better not handling clicks it has no interest in.
+    */
+    // biome-ignore lint/a11y/noStaticElementInteractions: the backdrop is presentation; Escape is the keyboard path.
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
-      onClick={onClose}
+      role="presentation"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
     >
       <div
         ref={panelRef}
-        onClick={(event) => event.stopPropagation()}
         /*
           Bounded, and scrolling inside itself.
 

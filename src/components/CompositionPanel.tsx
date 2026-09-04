@@ -13,7 +13,7 @@ import { pulse } from "@/anim/motion";
 import { store, useAppState } from "@/state/useStore";
 import { cn } from "@/ui/lib/utils";
 
-export function CompositionPanel(): React.JSX.Element {
+export function CompositionPanel(): React.JSX.Element | null {
   const state = useAppState();
   const typeface = state.typeface;
   const glyph = store.glyph(state.selectedGlyph);
@@ -25,7 +25,7 @@ export function CompositionPanel(): React.JSX.Element {
     if (note && noteRef.current) pulse(noteRef.current);
   }, [note]);
 
-  if (!typeface) return <></>;
+  if (!typeface) return null;
 
   const dependents = glyph ? store.dependents(glyph.name) : [];
   const buildable = typeface.glyphs.filter((g) => g.components.length > 0).length;
