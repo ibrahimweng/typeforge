@@ -23,7 +23,7 @@ import { quillStore } from "@/state/useQuill";
 import { store, useAppState } from "@/state/useStore";
 
 export function OnLoan(): React.JSX.Element | null {
-  const { loan } = useAppState();
+  const loan = useAppState((state) => state.loan);
   if (!loan) return null;
 
   const keep = (): void => {
