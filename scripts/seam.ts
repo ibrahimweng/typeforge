@@ -42,7 +42,9 @@ const slice = (from: number, to: number): Contour => ({
     [from, 4000],
   ].map(([x, y]) => ({
     point: { x, y },
-    type: "line" as const,
+    handleIn: null,
+    handleOut: null,
+    type: "corner" as const,
   })),
 });
 

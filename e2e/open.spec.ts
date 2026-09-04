@@ -57,7 +57,10 @@ test("opens a WOFF2, which is what the web serves", async ({ page }) => {
       ttf.buffer.slice(ttf.byteOffset, ttf.byteOffset + ttf.byteLength) as ArrayBuffer,
       { type: "ttf", hinting: true },
     );
-    writeFileSync(woff2Path, new Uint8Array(font.write({ type: "woff2", hinting: true })));
+    const written = font.write({ type: "woff2", hinting: true });
+    // write() is typed as possibly returning text; for woff2 it does not.
+    if (typeof written === "string") throw new Error("woff2 came back as text");
+    writeFileSync(woff2Path, new Uint8Array(written));
   }
   // The magic every WOFF2 starts with, so a broken fixture fails here and not
   // as a mystery in the application.

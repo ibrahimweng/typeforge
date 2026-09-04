@@ -42,8 +42,9 @@ async function pointsAt(weight: number) {
   });
   const built = buildGlyfTables(
     typeface.glyphs.map((glyph) => ({
-      contours: correctDirection(glyph.contours, "winding"),
+      contours: correctDirection(glyph.contours, "truetype", "winding"),
       advanceWidth: glyph.advanceWidth,
+      rebuild: true,
     })),
     0.5,
     // What the varying path asks for, taken from the varying path rather than

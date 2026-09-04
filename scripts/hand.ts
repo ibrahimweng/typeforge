@@ -113,14 +113,34 @@ let oneMax = 0,
   oneStops = 0,
   twoStops = 0,
   n = 0;
+/*
+ * This comparison cannot be made any more.
+ *
+ * The script exists to weigh a fit that knows the pen against one that does
+ * not, and `fitGlyph` no longer takes a pen: FitOptions has unitsPerEm, scale,
+ * tolerance, prune and widthStops, and nothing else. The loop below is left
+ * exactly as it was, because it is the record of what was being measured --
+ * but with both halves now fitting the same way it prints a column of zeroes,
+ * and a column of zeroes reads like a result.
+ *
+ * So it stops here unless asked twice. Whoever wants the measurement back has
+ * to decide where the pen belongs now, which is not a decision to take while
+ * getting a script to compile.
+ */
+if (!process.env.HAND_ANYWAY) {
+  console.error(
+    `fitGlyph no longer takes a pen (this font reads as ${pen.contrast.toFixed(2)} contrast at ` +
+      `${pen.angle.toFixed(1)} degrees), so a fit with one cannot be compared against a fit ` +
+      "without: both columns below would be the same fit. Set HAND_ANYWAY=1 to run it regardless.",
+  );
+  process.exit(1);
+}
+
 for (const character of process.env.LETTERS ?? "abcdefghijklmnopqrstuvwxyz") {
   const glyph = byChar.get(character);
   if (!glyph?.contours?.length) continue;
   const once = fitGlyph(character, glyph.contours, glyph.advanceWidth, { unitsPerEm: upm });
-  const twice = fitGlyph(character, glyph.contours, glyph.advanceWidth, {
-    unitsPerEm: upm,
-    pen,
-  });
+  const twice = fitGlyph(character, glyph.contours, glyph.advanceWidth, { unitsPerEm: upm });
   if (!once || !twice) continue;
   const a = strayOf(once.glyph.strokes, glyph.contours);
   const b = strayOf(twice.glyph.strokes, glyph.contours);

@@ -69,7 +69,9 @@ const band = (low: number, high: number): Contour => ({
     [-4000, high],
   ].map(([x, y]) => ({
     point: { x, y },
-    type: "line" as const,
+    handleIn: null,
+    handleOut: null,
+    type: "corner" as const,
   })),
 });
 

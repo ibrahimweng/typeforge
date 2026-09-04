@@ -10,6 +10,7 @@ import { expect, test } from "@playwright/test";
 import {
   CATALOGUE,
   FONT_PATH,
+  PILE,
   dropFolder,
   openAssemble,
   openForge,

@@ -11,6 +11,7 @@ import { expect, test } from "@playwright/test";
 
 import {
   FONT_PATH,
+  PILE,
   bar,
   dragOnto,
   dropFolder,

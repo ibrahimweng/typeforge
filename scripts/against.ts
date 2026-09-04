@@ -73,6 +73,7 @@
  */
 import { ready, unite } from "@/font/boolean";
 import { contourArea, contoursBounds } from "@/font/geometry";
+import type { Contour } from "@/font/types";
 import { drawLetter } from "@/forge/build";
 import { BASES } from "@/forge/style";
 
