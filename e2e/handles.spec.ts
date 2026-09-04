@@ -517,10 +517,23 @@ test("builds the alphabet on a grid, and edits it a cell at a time", async ({ pa
 test("puts a letter back on the grid, and empties it", async ({ page }) => {
   await openForge(page);
   const panel = page.getByRole("complementary", { name: "Forge" });
-  await panel.getByRole("switch", { name: "Build on a grid" }).click();
-
   const outline = () => page.locator('[data-forge-cell="n"] path').getAttribute("d");
+  /*
+   * The letter as it is drawn without the grid, read before the switch is
+   * thrown.
+   *
+   * Waiting on [data-forge-cells] waits for the grid's editor to appear, and
+   * that happens before the alphabet has been redrawn out of cells. Read at
+   * that moment, `laid` was sometimes still the skeleton -- and clearing the
+   * grid puts the letter back to its skeleton, so the poll below was waiting
+   * for a change that had already been and gone. Waiting for the outline to
+   * stop being the skeleton is waiting for the thing the name `laid` claims.
+   */
+  await expect(page.locator('[data-forge-cell="n"] path')).toBeVisible();
+  const skeleton = await outline();
+  await panel.getByRole("switch", { name: "Build on a grid" }).click();
   await expect(page.locator("[data-forge-cells]")).toBeVisible();
+  await expect.poll(outline).not.toBe(skeleton);
   const laid = await outline();
 
   await panel.locator("[data-forge-kit-clear]").click();
@@ -535,11 +548,24 @@ test("puts a letter back on the grid, and empties it", async ({ page }) => {
 test("stamps filled shapes into cells, and takes them out again", async ({ page }) => {
   await openForge(page);
   const panel = page.getByRole("complementary", { name: "Forge" });
-  await panel.getByRole("switch", { name: "Build on a grid" }).click();
-  await expect(page.locator("[data-forge-cells]")).toBeVisible();
-
   // Start from an empty letter, so what appears can only be what was stamped.
   const outline = () => page.locator('[data-forge-cell="n"] path').getAttribute("d");
+  /*
+   * The letter as it is drawn without the grid, read before the switch is
+   * thrown.
+   *
+   * Waiting on [data-forge-cells] waits for the grid's editor to appear, and
+   * that happens before the alphabet has been redrawn out of cells. Read at
+   * that moment, `laid` was sometimes still the skeleton -- and clearing the
+   * grid puts the letter back to its skeleton, so the poll below was waiting
+   * for a change that had already been and gone. Waiting for the outline to
+   * stop being the skeleton is waiting for the thing the name `laid` claims.
+   */
+  await expect(page.locator('[data-forge-cell="n"] path')).toBeVisible();
+  const skeleton = await outline();
+  await panel.getByRole("switch", { name: "Build on a grid" }).click();
+  await expect(page.locator("[data-forge-cells]")).toBeVisible();
+  await expect.poll(outline).not.toBe(skeleton);
   const laid = await outline();
   await panel.locator("[data-forge-kit-clear]").click();
   /*

@@ -364,46 +364,8 @@ export function baseNamed(name: string): Style | undefined {
   return BASES.find((style) => style.name === name);
 }
 
-/** What is taken out of every letter, unless a letter says otherwise. */
-export function cutsOf(forge: Forge): Cuts {
-  return forge.cuts ?? noCuts();
-}
-
-/**
- * What is taken out of one letter.
- *
- * The font's, unless this letter is an exception, in which case the font's
- * with that letter's differences laid over it. The same shape `styleFor` has,
- * and for the same reason: a letter says how it differs, not what it is.
- */
-export function cutsFor(letter: string, forge: Forge): Cuts {
-  const exception = forge.cutExceptions?.[letter];
-  const cuts = cutsOf(forge);
-  if (!exception) return cuts;
-
-  const merged: Record<string, unknown> = { ...cuts };
-  for (const [name, patch] of Object.entries(exception)) {
-    merged[name] = { ...(merged[name] as object), ...patch };
-  }
-  return merged as unknown as Cuts;
-}
-
-export function castOf(forge: Forge): Cast {
-  return forge.cast ?? noCast();
-}
-
-/** What is put on one letter: the font's, with that letter's differences over it. */
-export function castFor(letter: string, forge: Forge): Cast {
-  const exception = forge.castExceptions?.[letter];
-  const cast = castOf(forge);
-  if (!exception) return cast;
-
-  const merged: Record<string, unknown> = { ...cast };
-  for (const [name, patch] of Object.entries(exception)) {
-    merged[name] = typeof patch === "object" ? { ...(merged[name] as object), ...patch } : patch;
-  }
-  return merged as unknown as Cast;
-}
+export { cutsOf, cutsFor, castOf, castFor } from "./read";
+import { cutsOf, cutsFor, castOf, castFor } from "./read";
 
 /** Change something in the cast, for the font or for one letter. */
 export function editCast(

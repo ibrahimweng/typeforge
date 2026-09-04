@@ -15,7 +15,8 @@ import { AssemblePanel } from "@/components/AssemblePanel";
 import { ForgePanel } from "@/components/ForgePanel";
 import { QuillPanel } from "@/components/QuillPanel";
 import { LibraryDialog } from "@/components/LibraryDialog";
-import { QuickActions, useQuickActionShortcut, type Shell } from "@/palette";
+import { useQuickActionShortcut } from "@/palette/useShortcut";
+import type { Shell } from "@/palette/catalogue";
 import { useAppKeys } from "@/keys/useAppKeys";
 import { Inspector } from "@/components/Inspector";
 import { NextStep } from "@/components/NextStep";
@@ -24,11 +25,10 @@ import { TopBar } from "@/components/TopBar";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
 import type { Typeface } from "@/font/types";
 import { toTypeface as assembleToTypeface } from "@/assemble/typeface";
-import { toTypeface as forgeToTypeface } from "@/forge/typeface";
 import { toTypeface as quillToTypeface } from "@/quill/typeface";
 import { forgeStore, useForge } from "@/state/useForge";
 import { quillStore, useQuill } from "@/state/useQuill";
-import { castFor, castOf, cutsFor, cutsOf } from "@/forge/document";
+import { castFor, castOf, cutsFor, cutsOf } from "@/forge/read";
 import { ready as readyToCut } from "@/font/boolean";
 import { detectFormat } from "@/font/parse";
 import { looksJoined } from "@/quill/joined";
@@ -91,6 +91,22 @@ import { filesFromDrop, filesFromPicker, filesFromZip, looksZipped } from "@/ufo
  */
 const Wait = ({ children }: { children: React.ReactNode }) => (
   <React.Suspense fallback={null}>{children}</React.Suspense>
+);
+
+/*
+ * The command palette, which was the last overlay still arriving with the
+ * first screen.
+ *
+ * Its catalogue enumerates every control the forge has, so importing it
+ * imported the drawing engine, the letter recipes and the part specifications
+ * -- eighty-six kilobytes gzipped, on a screen that has no palette open. The
+ * shortcut that opens it is a hook and stays above; only the panel waits.
+ */
+const QuickActions = React.lazy(() =>
+  loadingTwice(
+    () => import("@/palette/QuickActions"),
+    (m) => m.QuickActions,
+  ),
 );
 
 const FontGridView = React.lazy(() =>
@@ -190,6 +206,7 @@ const HelpDrawer = React.lazy(() =>
  */
 function warmDeferred(): void {
   const nothing = () => {};
+  void import("@/palette/QuickActions").catch(nothing);
   void import("@/components/HelpDrawer").catch(nothing);
   void import("@/components/AcademyDrawer").catch(nothing);
   void import("@/components/FontInfoDialog").catch(nothing);
@@ -621,6 +638,12 @@ export function App(): React.JSX.Element {
 
   const editForged = React.useCallback(async () => {
     const { forge, familyName } = forgeStore.snapshot();
+    /*
+     * Fetched here rather than imported above, because turning a drawing into
+     * a typeface is what happens when somebody presses a button, and pulling
+     * it in at the top pulls the engine onto the first screen with it.
+     */
+    const { toTypeface: forgeToTypeface } = await import("@/forge/typeface");
     const typeface = await forgeToTypeface(forge, {
       familyName: familyName || "Untitled",
       styleName: "Regular",
@@ -1062,7 +1085,11 @@ export function App(): React.JSX.Element {
         </div>
       )}
 
-      <QuickActions open={quick} onClose={() => setQuick(false)} shell={shell} />
+      {quick && (
+        <Wait>
+          <QuickActions open={quick} onClose={() => setQuick(false)} shell={shell} />
+        </Wait>
+      )}
 
       <LibraryDialog mode={libraryMode(mode)} onMode={setMode} />
 
