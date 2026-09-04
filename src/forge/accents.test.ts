@@ -19,7 +19,7 @@
 import { describe, expect, it } from "vitest";
 
 import { contoursBounds } from "@/font/geometry";
-import { builtFrom, canDraw, drawLetter, letterNames, makeLetter , reachesOut } from "./build";
+import { builtFrom, canDraw, drawLetter, letterNames, makeLetter, reachesOut } from "./build";
 import { accentedNameFor, drawnAs, codepointOfAccented } from "./accents";
 import { editPart, editPen, startFrom, draw } from "./document";
 import { codepointFor } from "./typeface";
@@ -60,8 +60,10 @@ describe("the set is complete", () => {
     for (const name of letterNames()) {
       const code = codepointFor(name);
       expect(code, `${name} has no codepoint`).not.toBeNull();
-      expect(seen.has(code!), `${name} and ${seen.get(code!)} both claim U+${code!.toString(16)}`)
-        .toBe(false);
+      expect(
+        seen.has(code!),
+        `${name} and ${seen.get(code!)} both claim U+${code!.toString(16)}`,
+      ).toBe(false);
       seen.set(code!, name);
     }
   });
@@ -75,7 +77,17 @@ describe("the set is complete", () => {
    * languages that quietly did not work.
    */
   it("draws the ones that are not a letter with a mark on it", () => {
-    for (const name of ["AE", "ae", "Oslash", "oslash", "Eth", "eth", "Thorn", "thorn", "germandbls"]) {
+    for (const name of [
+      "AE",
+      "ae",
+      "Oslash",
+      "oslash",
+      "Eth",
+      "eth",
+      "Thorn",
+      "thorn",
+      "germandbls",
+    ]) {
       expect(canDraw(name), `${name}`).toBe(true);
       expect(builtFrom(name), `${name} should be drawn, not built`).toBeNull();
       expect(drawLetter(name, SANS)!.contours.length).toBeGreaterThan(0);
@@ -187,10 +199,9 @@ describe("what an accented letter is allowed", () => {
         const drawn = drawLetter(name, base);
         if (!drawn) continue;
         const { yMax } = contoursBounds(drawn.contours);
-        expect(
-          yMax,
-          `${name} on ${base.name} reaches ${yMax.toFixed(0)}`,
-        ).toBeLessThanOrEqual(base.metrics.capHeight * 1.4 + base.pen.weight);
+        expect(yMax, `${name} on ${base.name} reaches ${yMax.toFixed(0)}`).toBeLessThanOrEqual(
+          base.metrics.capHeight * 1.4 + base.pen.weight,
+        );
       }
     }
   });
@@ -226,7 +237,12 @@ describe("what an accented letter is allowed", () => {
    */
   it("gives an accented letter of a joined face the advance of its own base", () => {
     for (const base of BASES.filter((one) => one.parts.script.on)) {
-      for (const [name, under] of [["agrave", "a"], ["eacute", "e"], ["ntilde", "n"], ["ocircumflex", "o"]]) {
+      for (const [name, under] of [
+        ["agrave", "a"],
+        ["eacute", "e"],
+        ["ntilde", "n"],
+        ["ocircumflex", "o"],
+      ]) {
         const drawn = drawLetter(name, base);
         if (!drawn) continue;
         expect([base.name, name, drawn.advanceWidth]).toEqual([
@@ -279,9 +295,7 @@ describe("a slanted face", () => {
     const markAndFoot = (style: Style, name: string) => {
       const base = makeLetter(builtFrom(name)!.base, style)!;
       const both = makeLetter(name, style)!;
-      const mark = contoursBounds(
-        both.runs.slice(base.runs.length).flatMap((run) => run.contours),
-      );
+      const mark = contoursBounds(both.runs.slice(base.runs.length).flatMap((run) => run.contours));
       const letter = contoursBounds(both.contours);
       return { mark: (mark.xMin + mark.xMax) / 2, foot: letter.xMin };
     };
@@ -398,7 +412,9 @@ describe("the languages it sets", () => {
       const name = accentedNameFor(code);
       const drawn = name ? drawLetter(name, SANS) : null;
       if (!name || !canDraw(name) || !drawn || drawn.contours.length === 0) {
-        missing.push(`U+${code.toString(16).toUpperCase().padStart(4, "0")} ${String.fromCodePoint(code)}`);
+        missing.push(
+          `U+${code.toString(16).toUpperCase().padStart(4, "0")} ${String.fromCodePoint(code)}`,
+        );
       }
     }
     expect(missing).toEqual([]);

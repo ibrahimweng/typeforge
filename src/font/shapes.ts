@@ -127,30 +127,10 @@ export function ellipse(box: Box, clockwise: boolean): Contour {
   });
 
   const nodes = [
-    at(
-      box.xMax,
-      midY,
-      { x: box.xMax, y: midY - reachY },
-      { x: box.xMax, y: midY + reachY },
-    ),
-    at(
-      midX,
-      box.yMax,
-      { x: midX + reachX, y: box.yMax },
-      { x: midX - reachX, y: box.yMax },
-    ),
-    at(
-      box.xMin,
-      midY,
-      { x: box.xMin, y: midY + reachY },
-      { x: box.xMin, y: midY - reachY },
-    ),
-    at(
-      midX,
-      box.yMin,
-      { x: midX - reachX, y: box.yMin },
-      { x: midX + reachX, y: box.yMin },
-    ),
+    at(box.xMax, midY, { x: box.xMax, y: midY - reachY }, { x: box.xMax, y: midY + reachY }),
+    at(midX, box.yMax, { x: midX + reachX, y: box.yMax }, { x: midX - reachX, y: box.yMax }),
+    at(box.xMin, midY, { x: box.xMin, y: midY + reachY }, { x: box.xMin, y: midY - reachY }),
+    at(midX, box.yMin, { x: midX - reachX, y: box.yMin }, { x: midX + reachX, y: box.yMin }),
   ];
 
   /*

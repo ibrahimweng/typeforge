@@ -87,7 +87,10 @@ export function ForgePanel({ onEdit }: { onEdit: () => Promise<void> }): React.J
   return (
     <aside
       aria-label="Forge"
-      className={cn(WIDE_PANEL, "toolcraft-panel-surface flex shrink-0 flex-col border-l border-border")}
+      className={cn(
+        WIDE_PANEL,
+        "toolcraft-panel-surface flex shrink-0 flex-col border-l border-border",
+      )}
     >
       <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
         <Section title="Start from" mark="start">
@@ -137,8 +140,8 @@ export function ForgePanel({ onEdit }: { onEdit: () => Promise<void> }): React.J
             {BASES.find((base) => base.name === forge.base)?.blurb}
           </p>
           <p className="pt-1.5 text-2xs leading-snug text-muted-foreground">
-            One set of skeletons under all of them, so every control below stays
-            live whichever you pick. Choosing one starts again from it.
+            One set of skeletons under all of them, so every control below stays live whichever you
+            pick. Choosing one starts again from it.
           </p>
         </Section>
 
@@ -149,7 +152,9 @@ export function ForgePanel({ onEdit }: { onEdit: () => Promise<void> }): React.J
               on="pen"
               control={control}
               value={(forge.style.pen as unknown as Record<string, number>)[control.key]}
-              onChange={(next, phase) => forgeStore.changePen({ [control.key]: next } as never, phase)}
+              onChange={(next, phase) =>
+                forgeStore.changePen({ [control.key]: next } as never, phase)
+              }
             />
           ))}
         </Section>
@@ -160,12 +165,15 @@ export function ForgePanel({ onEdit }: { onEdit: () => Promise<void> }): React.J
               key={control.key}
               on="metrics"
               control={control}
-              value={(forge.style.metrics as unknown as Record<string, number | boolean>)[control.key]}
-              onChange={(next, phase) => forgeStore.changeMetrics({ [control.key]: next } as never, phase)}
+              value={
+                (forge.style.metrics as unknown as Record<string, number | boolean>)[control.key]
+              }
+              onChange={(next, phase) =>
+                forgeStore.changeMetrics({ [control.key]: next } as never, phase)
+              }
             />
           ))}
         </Section>
-
 
         <Group
           title="Shape the parts"
@@ -222,7 +230,6 @@ export function ForgePanel({ onEdit }: { onEdit: () => Promise<void> }): React.J
 
         <KitPanel />
 
-
         <Group
           title="Finishing"
           mark="finishing"
@@ -235,7 +242,6 @@ export function ForgePanel({ onEdit }: { onEdit: () => Promise<void> }): React.J
 
         <Tool />
 
-
         <Group
           title={`${letter} alone`}
           mark="letter"
@@ -245,7 +251,6 @@ export function ForgePanel({ onEdit }: { onEdit: () => Promise<void> }): React.J
         <Forms letter={letter} />
 
         <Trip key={letter} letter={letter} />
-
       </div>
       {/*
         Outside the scrolling column, at the foot, because it is the one thing
@@ -298,17 +303,15 @@ function KitPanel(): React.JSX.Element {
         </button>
       </label>
       <p className="pt-1 text-2xs leading-snug text-muted-foreground">
-        Every letter assembled from the same few parts on the same grid. The pen
-        still draws them, so weight, contrast and terminals all still reach
-        them, and the cuts still cut them.
+        Every letter assembled from the same few parts on the same grid. The pen still draws them,
+        so weight, contrast and terminals all still reach them, and the cuts still cut them.
       </p>
 
       {kit.on && (
         <>
           <p className="pt-2 text-2xs leading-snug text-muted-foreground">
-            Press a spot on a cell's edge to send a stroke out through it.
-            Double-click the middle of a cell to fill it in. {laid}{" "}
-            {laid === 1 ? "letter is" : "letters are"} laid out.
+            Press a spot on a cell's edge to send a stroke out through it. Double-click the middle
+            of a cell to fill it in. {laid} {laid === 1 ? "letter is" : "letters are"} laid out.
           </p>
 
           {GRID_CONTROLS.map((control) => (
@@ -344,10 +347,9 @@ function KitPanel(): React.JSX.Element {
               }
             />
             <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">
-              How a turn inside a cell is taken: nothing is a square corner, one
-              is a quarter of a circle touching both edges. Held above what the
-              pen can bend through, so asking for rounder than it can go leaves
-              the corner square rather than folding it.
+              How a turn inside a cell is taken: nothing is a square corner, one is a quarter of a
+              circle touching both edges. Held above what the pen can bend through, so asking for
+              rounder than it can go leaves the corner square rather than folding it.
             </p>
           </div>
 
@@ -367,8 +369,8 @@ function KitPanel(): React.JSX.Element {
                 }
               />
               <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">
-                What this letter is spaced by. Cells are square, so this is its
-                width and its rhythm at once.
+                What this letter is spaced by. Cells are square, so this is its width and its rhythm
+                at once.
               </p>
             </div>
           )}
@@ -400,10 +402,9 @@ function KitPanel(): React.JSX.Element {
             </button>
           </div>
           <p className="pt-2 text-2xs leading-snug text-muted-foreground">
-            Laying out reads the skeletons this font already has and puts them
-            on the grid. It is an approximation and is meant to be: a stem lands
-            exactly, a shoulder lands on the nearest eight places a stroke can
-            leave a square. Every cell of it is one press to change.
+            Laying out reads the skeletons this font already has and puts them on the grid. It is an
+            approximation and is meant to be: a stem lands exactly, a shoulder lands on the nearest
+            eight places a stroke can leave a square. Every cell of it is one press to change.
           </p>
         </>
       )}
@@ -583,7 +584,11 @@ function Cast(): React.JSX.Element {
       footer={
         <div className="border-t border-border pt-2" data-forge-cast-order>
           <div className="pb-1 text-2xs font-medium text-foreground">Which goes first</div>
-          <div className="flex gap-0.5 rounded-md bg-card/60 p-0.5" role="group" aria-label="Which goes first">
+          <div
+            className="flex gap-0.5 rounded-md bg-card/60 p-0.5"
+            role="group"
+            aria-label="Which goes first"
+          >
             <button
               type="button"
               aria-pressed={order === "after"}
@@ -604,10 +609,9 @@ function Cast(): React.JSX.Element {
             </button>
           </div>
           <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">
-            Cut first and the shadow is thrown by the letter as it now is, so a
-            slot through the face shows as a slot through the shadow. Cast first
-            and the two are one block for the cut to slice, which can put a band
-            across the shadow where the face has none.
+            Cut first and the shadow is thrown by the letter as it now is, so a slot through the
+            face shows as a slot through the shadow. Cast first and the two are one block for the
+            cut to slice, which can put a band across the shadow where the face has none.
           </p>
         </div>
       }
@@ -715,7 +719,11 @@ function Forms({ letter }: { letter: string }): React.JSX.Element | null {
           form.id,
           cutsFor(letter, state.forge),
         );
-        return { ...form, d: drawn ? contoursToSvgPath(drawn.contours) : "", width: drawn?.advanceWidth ?? 1 };
+        return {
+          ...form,
+          d: drawn ? contoursToSvgPath(drawn.contours) : "",
+          width: drawn?.advanceWidth ?? 1,
+        };
       }),
     [forms, letter, state.forge, state.revision],
   );
@@ -756,8 +764,8 @@ function Forms({ letter }: { letter: string }): React.JSX.Element | null {
         ))}
       </div>
       <p className="pt-2 text-2xs leading-snug text-muted-foreground">
-        A different skeleton for this letter alone. The pen, the proportions and
-        every part still reach it.
+        A different skeleton for this letter alone. The pen, the proportions and every part still
+        reach it.
       </p>
     </section>
   );
@@ -891,12 +899,11 @@ function Trip({ letter }: { letter: string }): React.JSX.Element {
       {outside ? (
         <div className="pt-2" data-forge-imported={letter}>
           <p className="text-2xs leading-snug text-muted-foreground">
-            {letter} is your drawing, from {outside.from}. It keeps its advance,
-            and nothing above reaches it any more — there is no pen behind it
-            to change. The cuts still do: a slot or a saw is taken out of
-            whatever the letter is, so your drawing is cut with the rest of the
-            font. The two made out of the skeleton — the inline and the breaks
-            — are the exception, because your drawing has no skeleton.
+            {letter} is your drawing, from {outside.from}. It keeps its advance, and nothing above
+            reaches it any more — there is no pen behind it to change. The cuts still do: a slot or
+            a saw is taken out of whatever the letter is, so your drawing is cut with the rest of
+            the font. The two made out of the skeleton — the inline and the breaks — are the
+            exception, because your drawing has no skeleton.
           </p>
           <button
             type="button"
@@ -909,11 +916,10 @@ function Trip({ letter }: { letter: string }): React.JSX.Element {
         </div>
       ) : (
         <p className="pt-2 text-2xs leading-snug text-muted-foreground">
-          Either way {letter} leaves the sliders and comes back into its own
-          space at the width it left with. The tools here put it on the canvas
-          with the pen, the knife and the shapes on it; the sheet carries the
-          baseline, the x-height and the sidebearings as guides for whatever you
-          draw in elsewhere.
+          Either way {letter} leaves the sliders and comes back into its own space at the width it
+          left with. The tools here put it on the canvas with the pen, the knife and the shapes on
+          it; the sheet carries the baseline, the x-height and the sidebearings as guides for
+          whatever you draw in elsewhere.
         </p>
       )}
     </section>
@@ -1030,7 +1036,11 @@ function Control({
     return (
       <div className="py-1">
         <div className="pb-1 text-2xs text-foreground">{control.label}</div>
-        <div className="flex gap-0.5 rounded-md bg-card/60 p-0.5" role="group" aria-label={control.label}>
+        <div
+          className="flex gap-0.5 rounded-md bg-card/60 p-0.5"
+          role="group"
+          aria-label={control.label}
+        >
           {control.options.map((option) => (
             <button
               key={option.value}
@@ -1089,10 +1099,7 @@ function Control({
         step={control.step}
         showFill
         onValueChange={(next: number, meta?: { history?: string }) =>
-          onChange(
-            { [control.key]: next * scale },
-            meta?.history === "merge" ? "during" : "end",
-          )
+          onChange({ [control.key]: next * scale }, meta?.history === "merge" ? "during" : "end")
         }
       />
       <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">{control.hint}</p>
@@ -1162,12 +1169,18 @@ function Joining(): React.JSX.Element {
         // turning the switch on would give access to.
         const idle = !joined && control.key !== "on";
         return (
-          <div key={control.key} className={cn(idle && "pointer-events-none opacity-40")} aria-hidden={idle}>
+          <div
+            key={control.key}
+            className={cn(idle && "pointer-events-none opacity-40")}
+            aria-hidden={idle}
+          >
             <Field
               on="script"
               control={control}
               value={(script as unknown as Record<string, number | boolean>)[control.key]}
-              onChange={(next, phase) => forgeStore.changeScript({ [control.key]: next } as never, phase)}
+              onChange={(next, phase) =>
+                forgeStore.changeScript({ [control.key]: next } as never, phase)
+              }
             />
           </div>
         );

@@ -371,7 +371,7 @@ function evenly(points: Vec2[], spacing: number): Vec2[] {
       at++;
       continue;
     }
-    let want = (out.length * step) - walked;
+    let want = out.length * step - walked;
     if (want > run) {
       walked += run;
       at++;
@@ -380,7 +380,7 @@ function evenly(points: Vec2[], spacing: number): Vec2[] {
     while (want <= run && out.length < count) {
       const share = want / run;
       out.push({ x: from.x + (to.x - from.x) * share, y: from.y + (to.y - from.y) * share });
-      want = (out.length * step) - walked;
+      want = out.length * step - walked;
     }
     walked += run;
     at++;
@@ -498,10 +498,22 @@ function skipTool(strokes: Stroke[], skip: Effects["skip"], stem: number): Conto
       const half = wide * 0.5;
       gaps.push(
         poly([
-          { x: middle.x - tangent.x * reach - normal.x * half, y: middle.y - tangent.y * reach - normal.y * half },
-          { x: middle.x + tangent.x * reach - normal.x * half, y: middle.y + tangent.y * reach - normal.y * half },
-          { x: middle.x + tangent.x * reach + normal.x * half, y: middle.y + tangent.y * reach + normal.y * half },
-          { x: middle.x - tangent.x * reach + normal.x * half, y: middle.y - tangent.y * reach + normal.y * half },
+          {
+            x: middle.x - tangent.x * reach - normal.x * half,
+            y: middle.y - tangent.y * reach - normal.y * half,
+          },
+          {
+            x: middle.x + tangent.x * reach - normal.x * half,
+            y: middle.y + tangent.y * reach - normal.y * half,
+          },
+          {
+            x: middle.x + tangent.x * reach + normal.x * half,
+            y: middle.y + tangent.y * reach + normal.y * half,
+          },
+          {
+            x: middle.x - tangent.x * reach + normal.x * half,
+            y: middle.y - tangent.y * reach + normal.y * half,
+          },
         ]),
       );
     }
@@ -645,7 +657,11 @@ function pressWedges(
       let run: Array<{ inner: Vec2; outer: Vec2 }> = [];
       const close = () => {
         if (run.length >= 2) {
-          strip.push(oneWay(poly([...run.map((one) => one.inner), ...run.map((one) => one.outer).reverse()])));
+          strip.push(
+            oneWay(
+              poly([...run.map((one) => one.inner), ...run.map((one) => one.outer).reverse()]),
+            ),
+          );
         }
         run = [];
       };
@@ -742,8 +758,7 @@ function flankAt(
    * fraction of itself wherever it is thin, and the two flanks together can
    * never take more of it than there is.
    */
-  const thin =
-    Math.min(hit, pen) * Math.min(press * lightness(when, u, opens), MOST_OF_A_STROKE);
+  const thin = Math.min(hit, pen) * Math.min(press * lightness(when, u, opens), MOST_OF_A_STROKE);
   return {
     inner: { x: here.x + normal.x * (hit - thin), y: here.y + normal.y * (hit - thin) },
     // Just past the edge that was measured, so the cut always starts in air.
@@ -759,7 +774,7 @@ function flankAt(
  */
 function lightness(at: HeaviestAt, u: number, opens: { start: boolean; end: boolean }): number {
   if (at === "middle") {
-    return u < 0.5 ? (opens.start ? 1 - u * 2 : 0) : (opens.end ? u * 2 - 1 : 0);
+    return u < 0.5 ? (opens.start ? 1 - u * 2 : 0) : opens.end ? u * 2 - 1 : 0;
   }
   if (at === "start") return opens.end ? u : 0;
   return opens.start ? 1 - u : 0;
@@ -794,10 +809,26 @@ function poly(points: Vec2[]): Contour {
 function disc(centre: Vec2, radius: number): Contour {
   const pull = radius * 0.5522847498;
   const around: Array<[Vec2, Vec2, Vec2]> = [
-    [{ x: centre.x + radius, y: centre.y }, { x: 0, y: -pull }, { x: 0, y: pull }],
-    [{ x: centre.x, y: centre.y + radius }, { x: pull, y: 0 }, { x: -pull, y: 0 }],
-    [{ x: centre.x - radius, y: centre.y }, { x: 0, y: pull }, { x: 0, y: -pull }],
-    [{ x: centre.x, y: centre.y - radius }, { x: -pull, y: 0 }, { x: pull, y: 0 }],
+    [
+      { x: centre.x + radius, y: centre.y },
+      { x: 0, y: -pull },
+      { x: 0, y: pull },
+    ],
+    [
+      { x: centre.x, y: centre.y + radius },
+      { x: pull, y: 0 },
+      { x: -pull, y: 0 },
+    ],
+    [
+      { x: centre.x - radius, y: centre.y },
+      { x: 0, y: pull },
+      { x: 0, y: -pull },
+    ],
+    [
+      { x: centre.x, y: centre.y - radius },
+      { x: -pull, y: 0 },
+      { x: pull, y: 0 },
+    ],
   ];
   return {
     closed: true,

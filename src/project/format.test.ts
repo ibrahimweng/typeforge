@@ -91,11 +91,15 @@ describe("what gets written down", () => {
 
     const assembly = emptyAssembly();
     assembly.pieces = [
-      { id: "slot:A", file: "a.svg", character: "A", contours: [], viewBox: { x: 0, y: 0, width: 1, height: 1 } },
+      {
+        id: "slot:A",
+        file: "a.svg",
+        character: "A",
+        contours: [],
+        viewBox: { x: 0, y: 0, width: 1, height: 1 },
+      },
     ];
-    expect(
-      toProject(snapshot({ assemble: { ...empty, assembly } }), WHEN).assemble,
-    ).toBeDefined();
+    expect(toProject(snapshot({ assemble: { ...empty, assembly } }), WHEN).assemble).toBeDefined();
   });
 });
 
@@ -249,7 +253,8 @@ describe("bytes through text and back", () => {
 });
 
 describe("what gets turned away", () => {
-  const good = () => JSON.parse(JSON.stringify(toProject(snapshot({ draw: drawn({ familyName: "Kept" }) }), WHEN)));
+  const good = () =>
+    JSON.parse(JSON.stringify(toProject(snapshot({ draw: drawn({ familyName: "Kept" }) }), WHEN)));
 
   it("takes one of its own back", () => {
     const read = readProject(good());

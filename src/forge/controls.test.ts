@@ -28,7 +28,13 @@ import { builtFrom, drawLetter, letterNames } from "./build";
 import { drawnHigh, startFrom } from "./document";
 import { HANDS_OVER_HIGH } from "./script";
 import { LETTERS, everyFormOf, formsOf } from "./letters";
-import { METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS, SCRIPT_CONTROLS, type FieldControl } from "./parts";
+import {
+  METRIC_CONTROLS,
+  PART_SPECS,
+  PEN_CONTROLS,
+  SCRIPT_CONTROLS,
+  type FieldControl,
+} from "./parts";
 import { BASES, ROUNDHAND, SANS, type Metrics, type Parts, type Style } from "./style";
 
 /*
@@ -51,13 +57,26 @@ describe("the bases sit inside their own controls", () => {
           outside.push(`${base.name} ${where}.${control.key} = ${value}`);
         }
       };
-      for (const control of PEN_CONTROLS) check("pen", control, (base.pen as unknown as Record<string, unknown>)[control.key]);
-      for (const control of METRIC_CONTROLS) check("metrics", control, (base.metrics as unknown as Record<string, unknown>)[control.key]);
+      for (const control of PEN_CONTROLS)
+        check("pen", control, (base.pen as unknown as Record<string, unknown>)[control.key]);
+      for (const control of METRIC_CONTROLS)
+        check(
+          "metrics",
+          control,
+          (base.metrics as unknown as Record<string, unknown>)[control.key],
+        );
       for (const control of SCRIPT_CONTROLS)
-        check("script", control, (base.parts.script as unknown as Record<string, unknown>)[control.key]);
+        check(
+          "script",
+          control,
+          (base.parts.script as unknown as Record<string, unknown>)[control.key],
+        );
       for (const spec of PART_SPECS) {
-        const values = (base.parts as unknown as Record<string, Record<string, unknown>>)[spec.name];
-        for (const control of spec.controls) check(spec.name, control as FieldControl, values?.[control.key]);
+        const values = (base.parts as unknown as Record<string, Record<string, unknown>>)[
+          spec.name
+        ];
+        for (const control of spec.controls)
+          check(spec.name, control as FieldControl, values?.[control.key]);
       }
     }
     expect(outside).toEqual([]);
@@ -78,7 +97,12 @@ const NAMES = letterNames();
 const DRAWN_NAMES = NAMES.filter((name) => !builtFrom(name));
 
 /** The style with one part's field set to a value. */
-function withPart(style: Style, part: string, key: string, value: number | boolean | string): Style {
+function withPart(
+  style: Style,
+  part: string,
+  key: string,
+  value: number | boolean | string,
+): Style {
   const parts = { ...style.parts } as unknown as Record<string, Record<string, unknown>>;
   parts[part] = { ...parts[part], [key]: value };
   return { ...style, parts: parts as unknown as Parts };
@@ -208,12 +232,7 @@ describe("no control can spoil a letter", { timeout: 60_000 }, () => {
           for (const weight of weights) {
             // Serifs on throughout, so the bar and its bracket are actually
             // being drawn while everything else is being driven about.
-            const base = withPart(
-              { ...SANS, pen: { ...SANS.pen, weight } },
-              "slab",
-              "on",
-              true,
-            );
+            const base = withPart({ ...SANS, pen: { ...SANS.pen, weight } }, "slab", "on", true);
             const style = withPart(base, spec.name, control.key, value);
             for (const name of DRAWN_NAMES) {
               const drawn = drawLetter(name, style);
@@ -350,7 +369,9 @@ describe("alternates", () => {
     const same: string[] = [];
     for (const name of NAMES) {
       const forms = formsOf(name);
-      const drawings = forms.map((form) => contoursToSvgPath(drawLetter(name, SANS, form.id)!.contours));
+      const drawings = forms.map((form) =>
+        contoursToSvgPath(drawLetter(name, SANS, form.id)!.contours),
+      );
       for (let index = 1; index < forms.length; index++) {
         for (let earlier = 0; earlier < index; earlier++) {
           if (drawings[index] === drawings[earlier]) {
@@ -370,10 +391,13 @@ describe("alternates", () => {
         expect(bounds.yMax, `${name} / ${form.label} rises above the ascender`).toBeLessThanOrEqual(
           SANS.metrics.ascender + SANS.metrics.overshoot + SANS.pen.weight,
         );
-        expect(bounds.yMin, `${name} / ${form.label} sinks below the descender`).toBeGreaterThanOrEqual(
-          SANS.metrics.descender - SANS.metrics.overshoot - SANS.pen.weight,
+        expect(
+          bounds.yMin,
+          `${name} / ${form.label} sinks below the descender`,
+        ).toBeGreaterThanOrEqual(SANS.metrics.descender - SANS.metrics.overshoot - SANS.pen.weight);
+        expect(bounds.xMin, `${name} / ${form.label} starts left of the origin`).toBeGreaterThan(
+          -1,
         );
-        expect(bounds.xMin, `${name} / ${form.label} starts left of the origin`).toBeGreaterThan(-1);
         expect(
           drawn.advanceWidth,
           `${name} / ${form.label} is wider than its own advance`,
@@ -608,7 +632,11 @@ describe("every control has a value to show", () => {
   const controls: Array<[string, FieldControl[], (style: Style) => Record<string, unknown>]> = [
     ["pen", PEN_CONTROLS, (style) => style.pen as unknown as Record<string, unknown>],
     ["metrics", METRIC_CONTROLS, (style) => style.metrics as unknown as Record<string, unknown>],
-    ["script", SCRIPT_CONTROLS, (style) => style.parts.script as unknown as Record<string, unknown>],
+    [
+      "script",
+      SCRIPT_CONTROLS,
+      (style) => style.parts.script as unknown as Record<string, unknown>,
+    ],
   ];
 
   for (const [where, list, read] of controls) {
@@ -628,7 +656,6 @@ describe("every control has a value to show", () => {
       });
     }
   }
-
 });
 
 describe("no control is decoration", () => {
@@ -653,12 +680,7 @@ describe("no control is decoration", () => {
          * bar is swept along a spine rather than drawn as a shape with a
          * fillet in it.
          */
-        const plain = withPart(
-          withPart(SANS, "slab", "on", true),
-          "terminal",
-          "kind",
-          "angled",
-        );
+        const plain = withPart(withPart(SANS, "slab", "on", true), "terminal", "kind", "angled");
         const waving = withPart(withPart(plain, "wave", "depth", 26), "wave", "along", "both");
         const flaring = withPart(plain, "flare", "spread", 0.4);
         const balled = withPart(plain, "ball", "size", 1.2);

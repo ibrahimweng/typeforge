@@ -2,10 +2,7 @@
 
 import * as React from "react";
 
-import {
-  ButtonGroup,
-  Input,
-} from "../../primitives";
+import { ButtonGroup, Input } from "../../primitives";
 import { cn } from "../../../lib/utils";
 import { ColorPickerPopover } from "./color-picker-popover";
 import {
@@ -47,9 +44,7 @@ export function ColorValueControl({
   showHash = true,
   size = "default",
 }: ColorValueControlProps): React.JSX.Element {
-  const [draftColor, setDraftColor] = React.useState(() =>
-    getHexDraftValue(color, showHash),
-  );
+  const [draftColor, setDraftColor] = React.useState(() => getHexDraftValue(color, showHash));
   const [previewColor, setPreviewColor] = React.useState(color);
   const liveHistoryGroupRef = React.useRef<string | null>(null);
 
@@ -93,10 +88,7 @@ export function ColorValueControl({
     const committedColor = getCommittedHexColor(draftColor);
 
     if (committedColor) {
-      commitColor(
-        committedColor,
-        liveHistoryGroupRef.current ? getLiveHistoryMeta() : undefined,
-      );
+      commitColor(committedColor, liveHistoryGroupRef.current ? getLiveHistoryMeta() : undefined);
       finishLiveHistoryGroup();
       return;
     }
@@ -151,9 +143,7 @@ export function ColorValueControl({
         />
         {children}
       </ButtonGroup>
-      {nativeInputName ? (
-        <input name={nativeInputName} type="hidden" value={previewColor} />
-      ) : null}
+      {nativeInputName ? <input name={nativeInputName} type="hidden" value={previewColor} /> : null}
     </>
   );
 }

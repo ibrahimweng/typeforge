@@ -6,10 +6,7 @@ import type { MixerChannel } from "../control-types";
 import { ChannelTabs } from "../channel-tabs";
 import { SliderControl } from "../slider";
 
-export type ChannelMixerValues = Record<
-  MixerChannel,
-  Record<MixerChannel, number>
->;
+export type ChannelMixerValues = Record<MixerChannel, Record<MixerChannel, number>>;
 
 export type ChannelMixerControlProps = {
   baseValues?: ChannelMixerValues;
@@ -22,11 +19,7 @@ export type ChannelMixerControlProps = {
   values: ChannelMixerValues;
 };
 
-const anchorChannels = [
-  "R",
-  "G",
-  "B",
-] as const satisfies readonly MixerChannel[];
+const anchorChannels = ["R", "G", "B"] as const satisfies readonly MixerChannel[];
 const channelMixerSliderMax = 200;
 const channelMixerSliderMin = -200;
 const defaultActiveChannel = anchorChannels[0];
@@ -42,8 +35,7 @@ export function ChannelMixerControl({
   onValueChange,
   values,
 }: ChannelMixerControlProps): React.JSX.Element {
-  const [activeChannel, setActiveChannel] =
-    React.useState<MixerChannel>(defaultActiveChannel);
+  const [activeChannel, setActiveChannel] = React.useState<MixerChannel>(defaultActiveChannel);
   const activeValues = values[activeChannel];
 
   function updateValue(channel: MixerChannel, nextValue: number): void {

@@ -44,11 +44,7 @@ export function getSurfaceHexColor({
   if (surfaceModel === "rgb") {
     const [, , blue] = getColorChannels(hsvToHex(currentColor)).rgb;
 
-    return rgbChannelsToHex([
-      Math.round(x * 255),
-      Math.round((1 - y) * 255),
-      blue,
-    ]);
+    return rgbChannelsToHex([Math.round(x * 255), Math.round((1 - y) * 255), blue]);
   }
 
   if (surfaceModel === "hsl") {

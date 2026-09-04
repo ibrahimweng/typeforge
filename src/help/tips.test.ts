@@ -18,8 +18,19 @@ import { TIPS } from "./tips";
 
 /** The small numbers, as prose writes them. */
 const WORDS = [
-  "zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
-  "nine", "ten", "eleven", "twelve",
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+  "eleven",
+  "twelve",
 ];
 
 describe("the coaching", () => {

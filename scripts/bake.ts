@@ -14,18 +14,34 @@ const base = BASES.find((one) => one.name === "Sans")!;
 
 for (const [label, effects] of [
   ["plain", undefined],
-  ["rough", (() => { const e = noEffects(); e.rough.on = true; return e; })()],
-  ["marker", (() => {
-    const e = noEffects();
-    e.rough.on = true;
-    e.pool.on = true;
-    return e;
-  })()],
-  ["all four", (() => {
-    const e = noEffects();
-    e.rough.on = true; e.pool.on = true; e.skip.on = true; e.press.on = true;
-    return e;
-  })()],
+  [
+    "rough",
+    (() => {
+      const e = noEffects();
+      e.rough.on = true;
+      return e;
+    })(),
+  ],
+  [
+    "marker",
+    (() => {
+      const e = noEffects();
+      e.rough.on = true;
+      e.pool.on = true;
+      return e;
+    })(),
+  ],
+  [
+    "all four",
+    (() => {
+      const e = noEffects();
+      e.rough.on = true;
+      e.pool.on = true;
+      e.skip.on = true;
+      e.press.on = true;
+      return e;
+    })(),
+  ],
 ] as const) {
   const forge = { ...startFrom(base), effects: effects ?? undefined };
   const at = performance.now();

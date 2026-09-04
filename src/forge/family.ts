@@ -192,7 +192,6 @@ export function isFamily(family: Family): boolean {
   return weightsOf(family).length > 1;
 }
 
-
 /**
  * What one member of the family is called, and what file it goes in.
  *

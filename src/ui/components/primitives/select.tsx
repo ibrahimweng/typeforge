@@ -6,10 +6,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { outlineControlSurfaceClassName } from "../../lib/control-outline";
 import { cn } from "../../lib/utils";
-import {
-  PortalLayerContainerProvider,
-  usePortalLayerContainer,
-} from "./portal-layer-context";
+import { PortalLayerContainerProvider, usePortalLayerContainer } from "./portal-layer-context";
 import { PrimitiveArrowIcon } from "./primitive-arrow-icon";
 import { ScrollFade } from "./scroll-fade";
 import { pressedSelectedItemClassName } from "./selection-state";
@@ -38,8 +35,7 @@ const selectTriggerVariants = cva(
       },
       size: {
         sm: "h-6 gap-1 px-1.5 pr-1 py-0 text-xs/relaxed *:data-[slot=select-value]:gap-1 [&_svg:not([class*='size-'])]:size-3",
-        default:
-          "h-7 px-2 py-0.5 text-xs/relaxed [&_svg:not([class*='size-'])]:size-3.5",
+        default: "h-7 px-2 py-0.5 text-xs/relaxed [&_svg:not([class*='size-'])]:size-3.5",
         lg: "h-8 px-2.5 py-1 text-sm/relaxed [&_svg:not([class*='size-'])]:size-4",
         xl: "h-10 px-3 py-1.5 text-base/relaxed [&_svg:not([class*='size-'])]:size-4",
       },
@@ -198,10 +194,7 @@ function SelectContent({
   );
 }
 
-function SelectLabel({
-  className,
-  ...props
-}: SelectPrimitive.GroupLabel.Props) {
+function SelectLabel({ className, ...props }: SelectPrimitive.GroupLabel.Props) {
   return (
     <SelectPrimitive.GroupLabel
       data-slot="select-label"
@@ -214,10 +207,7 @@ function SelectLabel({
   );
 }
 
-function getTextTitle(
-  title: unknown,
-  children: React.ReactNode,
-): string | undefined {
+function getTextTitle(title: unknown, children: React.ReactNode): string | undefined {
   if (typeof title === "string" && title.length > 0) {
     return title;
   }
@@ -280,9 +270,7 @@ function SelectItemTextContent({
 
   if (!title) {
     return (
-      <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
-        {children}
-      </span>
+      <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{children}</span>
     );
   }
 
@@ -295,22 +283,14 @@ function SelectItemTextContent({
       viewportRef={viewportRef}
       watch={[title]}
     >
-      <span
-        className="block min-w-max whitespace-nowrap pr-2"
-        title={resolvedTitle}
-      >
+      <span className="block min-w-max whitespace-nowrap pr-2" title={resolvedTitle}>
         {children}
       </span>
     </ScrollFade>
   );
 }
 
-function SelectItem({
-  className,
-  children,
-  title,
-  ...props
-}: SelectPrimitive.Item.Props) {
+function SelectItem({ className, children, title, ...props }: SelectPrimitive.Item.Props) {
   const textTitle = getTextTitle(title, children);
 
   return (
@@ -326,9 +306,7 @@ function SelectItem({
         className="flex min-w-0 flex-1 gap-2 overflow-hidden whitespace-nowrap"
         data-slot="select-item-text"
       >
-        <SelectItemTextContent title={textTitle}>
-          {children}
-        </SelectItemTextContent>
+        <SelectItemTextContent title={textTitle}>{children}</SelectItemTextContent>
       </SelectPrimitive.ItemText>
       <SelectPrimitive.ItemIndicator
         render={
@@ -341,17 +319,11 @@ function SelectItem({
   );
 }
 
-function SelectSeparator({
-  className,
-  ...props
-}: SelectPrimitive.Separator.Props) {
+function SelectSeparator({ className, ...props }: SelectPrimitive.Separator.Props) {
   return (
     <SelectPrimitive.Separator
       data-slot="select-separator"
-      className={cn(
-        "floating-popup-separator pointer-events-none -mx-1 my-1 h-px",
-        className,
-      )}
+      className={cn("floating-popup-separator pointer-events-none -mx-1 my-1 h-px", className)}
       {...props}
     />
   );

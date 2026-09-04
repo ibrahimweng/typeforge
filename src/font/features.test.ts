@@ -272,8 +272,7 @@ describe("the letters nothing can reach", () => {
 });
 
 describe("laying out a run the way a reader will see it", () => {
-  const run = (typeface: Typeface, word: string) =>
-    applyLigatures(typeface, [...word]).join(" ");
+  const run = (typeface: Typeface, word: string) => applyLigatures(typeface, [...word]).join(" ");
 
   it("leaves a font with no ligatures exactly as it was", () => {
     const typeface = lettered();

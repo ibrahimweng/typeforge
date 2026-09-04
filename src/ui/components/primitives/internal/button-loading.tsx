@@ -1,5 +1,5 @@
 import * as React from "react";
-import { type Button as BaseButtonPrimitive } from "@base-ui/react/button";
+import type { Button as BaseButtonPrimitive } from "@base-ui/react/button";
 
 import {
   AnimatedLoader,

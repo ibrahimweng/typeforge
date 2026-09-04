@@ -48,8 +48,12 @@ describe("what an effect reaches", () => {
    * what it was given.
    */
   it("knows that three of the four need a skeleton", () => {
-    const rough = withOnly((e) => { e.rough.on = true; });
-    const press = withOnly((e) => { e.press.on = true; });
+    const rough = withOnly((e) => {
+      e.rough.on = true;
+    });
+    const press = withOnly((e) => {
+      e.press.on = true;
+    });
     expect(reachesEffects(rough, [])).toBe(true);
     expect(reachesEffects(press, [])).toBe(false);
     expect(reachesEffects(noEffects(), recipeOf("n")!(SANS).strokes)).toBe(false);
@@ -62,22 +66,34 @@ describe("the same settings give the same letter", () => {
    * cached, could not be compared with itself, and would crawl under the hand.
    */
   it("draws the same outline twice", () => {
-    const effects = withOnly((e) => { e.rough.on = true; e.skip.on = true; });
+    const effects = withOnly((e) => {
+      e.rough.on = true;
+      e.skip.on = true;
+    });
     const once = bothWays("a", effects).marked;
     const twice = bothWays("a", effects).marked;
     expect(twice.contours).toEqual(once.contours);
   });
 
   it("draws a different one from a different seed", () => {
-    const one = withOnly((e) => { e.rough = { ...e.rough, on: true, seed: 1 }; });
-    const other = withOnly((e) => { e.rough = { ...e.rough, on: true, seed: 2 }; });
+    const one = withOnly((e) => {
+      e.rough = { ...e.rough, on: true, seed: 1 };
+    });
+    const other = withOnly((e) => {
+      e.rough = { ...e.rough, on: true, seed: 2 };
+    });
     expect(bothWays("a", other).marked.contours).not.toEqual(bothWays("a", one).marked.contours);
   });
 });
 
 describe("the rough edge", () => {
   it("moves the edge without moving the letter", () => {
-    const { plain, marked } = bothWays("n", withOnly((e) => { e.rough.on = true; }));
+    const { plain, marked } = bothWays(
+      "n",
+      withOnly((e) => {
+        e.rough.on = true;
+      }),
+    );
     expect(marked.contours).not.toEqual(plain.contours);
 
     // Still an n, standing where an n stands. The wander is a fraction of a
@@ -97,9 +113,12 @@ describe("the rough edge", () => {
    * because a step of a few units is invisible on a page and glaring in a font.
    */
   it("closes the wander on itself, with no step where the outline began", () => {
-    const { marked } = bothWays("o", withOnly((e) => {
-      e.rough = { ...e.rough, on: true, amplitude: 0.12, wavelength: 0.7 };
-    }));
+    const { marked } = bothWays(
+      "o",
+      withOnly((e) => {
+        e.rough = { ...e.rough, on: true, amplitude: 0.12, wavelength: 0.7 };
+      }),
+    );
     for (const contour of marked.contours) {
       const nodes = contour.nodes;
       if (nodes.length < 8) continue;
@@ -117,10 +136,18 @@ describe("the rough edge", () => {
   });
 
   it("can be kept off the counters", () => {
-    const inside = bothWays("o", withOnly((e) => { e.rough.on = true; })).marked;
-    const outside = bothWays("o", withOnly((e) => {
-      e.rough = { ...e.rough, on: true, reach: "outside" };
-    })).marked;
+    const inside = bothWays(
+      "o",
+      withOnly((e) => {
+        e.rough.on = true;
+      }),
+    ).marked;
+    const outside = bothWays(
+      "o",
+      withOnly((e) => {
+        e.rough = { ...e.rough, on: true, reach: "outside" };
+      }),
+    ).marked;
     expect(outside.contours).not.toEqual(inside.contours);
   });
 });
@@ -135,7 +162,12 @@ describe("pressure", () => {
    * to still be the letter.
    */
   it("thins the a without taking its bowl off", () => {
-    const { plain, marked } = bothWays("a", withOnly((e) => { e.press.on = true; }));
+    const { plain, marked } = bothWays(
+      "a",
+      withOnly((e) => {
+        e.press.on = true;
+      }),
+    );
     expect(marked.contours.length).toBeGreaterThan(0);
 
     // An a that has lost its bowl is an a that has lost most of its ink and
@@ -159,9 +191,12 @@ describe("pressure", () => {
     const buried = strokes.filter((one) => one.start.open !== true || one.end.open !== true);
     expect(buried.length).toBeGreaterThan(0);
 
-    const { marked } = bothWays("a", withOnly((e) => {
-      e.press = { on: true, at: "middle", amount: 0.8 };
-    }));
+    const { marked } = bothWays(
+      "a",
+      withOnly((e) => {
+        e.press = { on: true, at: "middle", amount: 0.8 };
+      }),
+    );
     // Even at eight tenths, which is far past anything anybody would set, the
     // letter stays in one piece.
     expect(marked.contours.length).toBeLessThan(6);
@@ -175,7 +210,9 @@ describe("pressure", () => {
       plain.contours,
       strokes,
       scaleOf(SANS),
-      withOnly((e) => { e.press.on = true; }),
+      withOnly((e) => {
+        e.press.on = true;
+      }),
     );
     /*
      * Measured rather than compared point for point. Fusing the strokes is the
@@ -202,14 +239,26 @@ describe("the points budget", () => {
    * letter had the least room for fine grain to show in anyway.
    */
   it("leaves a letter that fits inside it exactly as asked", () => {
-    const generous = withOnly((e) => { e.rough.on = true; e.budget = 5000; });
-    const ordinary = withOnly((e) => { e.rough.on = true; });
-    expect(bothWays("n", generous).marked.contours).toEqual(bothWays("n", ordinary).marked.contours);
+    const generous = withOnly((e) => {
+      e.rough.on = true;
+      e.budget = 5000;
+    });
+    const ordinary = withOnly((e) => {
+      e.rough.on = true;
+    });
+    expect(bothWays("n", generous).marked.contours).toEqual(
+      bothWays("n", ordinary).marked.contours,
+    );
   });
 
   it("coarsens a letter that does not", () => {
-    const tight = withOnly((e) => { e.rough.on = true; e.budget = 40; });
-    const ordinary = withOnly((e) => { e.rough.on = true; });
+    const tight = withOnly((e) => {
+      e.rough.on = true;
+      e.budget = 40;
+    });
+    const ordinary = withOnly((e) => {
+      e.rough.on = true;
+    });
     const spent = pointsIn(bothWays("n", tight).marked.contours);
     expect(spent).toBeLessThan(pointsIn(bothWays("n", ordinary).marked.contours));
     // Held to roughly what was asked for rather than exactly: the wander is
@@ -226,7 +275,12 @@ describe("what it costs", () => {
    * either has to be a decision.
    */
   it("keeps a roughened letter under a few hundred points", () => {
-    const { plain, marked } = bothWays("n", withOnly((e) => { e.rough.on = true; }));
+    const { plain, marked } = bothWays(
+      "n",
+      withOnly((e) => {
+        e.rough.on = true;
+      }),
+    );
     expect(pointsIn(plain.contours)).toBeLessThan(30);
     expect(pointsIn(marked.contours)).toBeGreaterThan(pointsIn(plain.contours));
     expect(pointsIn(marked.contours)).toBeLessThan(320);

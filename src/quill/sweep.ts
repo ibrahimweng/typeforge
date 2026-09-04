@@ -26,15 +26,7 @@
 import { ROUND_NIB } from "./types";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { contourArea } from "@/font/geometry";
-import {
-  alongSpine,
-  fitCubics,
-  headingOn,
-  leftOf,
-  pointOn,
-  walkOf,
-  type SpineWalk,
-} from "./curve";
+import { alongSpine, fitCubics, headingOn, leftOf, pointOn, walkOf, type SpineWalk } from "./curve";
 import type {
   DrawnStroke,
   Exactness,
@@ -173,8 +165,7 @@ export function isOnePen(profile: NibProfile): boolean {
   const first = profile[0];
   return profile.every(
     (stop) =>
-      Math.abs(stop.contrast - first.contrast) < 1e-9 &&
-      Math.abs(stop.angle - first.angle) < 1e-9,
+      Math.abs(stop.contrast - first.contrast) < 1e-9 && Math.abs(stop.angle - first.angle) < 1e-9,
   );
 }
 
@@ -428,9 +419,7 @@ function sideOf(
     const half = widthAt(profile, fraction) / 2;
     const reach = reachAcross(heading, half, nibAt(pen, fraction));
     const normal = leftOf(heading);
-    points.push(
-      at(point.x + normal.x * reach * side, point.y + normal.y * reach * side),
-    );
+    points.push(at(point.x + normal.x * reach * side, point.y + normal.y * reach * side));
   }
   joinsUpTo(Infinity);
   return points;
@@ -469,8 +458,14 @@ function capPoints(
     const lead = cap.lead ?? 0;
     if (Math.abs(lead) < 1e-6) return [];
     return [
-      at(end.x + normal.x * reach + way.x * (lead / 2), end.y + normal.y * reach + way.y * (lead / 2)),
-      at(end.x - normal.x * reach - way.x * (lead / 2), end.y - normal.y * reach - way.y * (lead / 2)),
+      at(
+        end.x + normal.x * reach + way.x * (lead / 2),
+        end.y + normal.y * reach + way.y * (lead / 2),
+      ),
+      at(
+        end.x - normal.x * reach - way.x * (lead / 2),
+        end.y - normal.y * reach - way.y * (lead / 2),
+      ),
     ];
   }
   if (cap.kind === "pointed") {
@@ -542,8 +537,7 @@ export function widthLimit(spine: QuillSpine): number {
           6 * t * (segment.to.y - 2 * segment.c2.y + segment.c1.y);
         const speed = Math.hypot(dx, dy);
         if (speed < 1e-9) continue;
-        const curvature =
-          Math.abs(dx * ddy - dy * ddx) / (speed * speed * speed);
+        const curvature = Math.abs(dx * ddy - dy * ddx) / (speed * speed * speed);
         if (curvature > 1e-9) tightest = Math.min(tightest, 1 / curvature);
       }
     }
@@ -555,11 +549,7 @@ export function widthLimit(spine: QuillSpine): number {
 // The sweep
 // ---------------------------------------------------------------------------
 
-function nodeAt(
-  point: Vec2,
-  handleIn: Vec2 | null,
-  handleOut: Vec2 | null,
-): GlyphNode {
+function nodeAt(point: Vec2, handleIn: Vec2 | null, handleOut: Vec2 | null): GlyphNode {
   return {
     point,
     handleIn,
@@ -569,9 +559,7 @@ function nodeAt(
 }
 
 /** A run of fitted cubics as outline nodes, ending where it began. */
-function nodesFrom(
-  curves: ReturnType<typeof fitCubics>["curves"],
-): GlyphNode[] {
+function nodesFrom(curves: ReturnType<typeof fitCubics>["curves"]): GlyphNode[] {
   const nodes: GlyphNode[] = [];
   for (let index = 0; index < curves.length; index++) {
     const curve = curves[index];
@@ -605,13 +593,11 @@ function ringFrom(curves: ReturnType<typeof fitCubics>["curves"]): GlyphNode[] {
 
 /** The same loop the other way round, handles swapped with it. */
 function reversed(nodes: GlyphNode[]): GlyphNode[] {
-  return [...nodes]
-    .reverse()
-    .map((node) => ({
-      ...node,
-      handleIn: node.handleOut,
-      handleOut: node.handleIn,
-    }));
+  return [...nodes].reverse().map((node) => ({
+    ...node,
+    handleIn: node.handleOut,
+    handleOut: node.handleIn,
+  }));
 }
 
 /**
@@ -631,11 +617,7 @@ function reversed(nodes: GlyphNode[]): GlyphNode[] {
  * clockwise, which is the direction TrueType wants and what the paths list
  * reports.
  */
-function sweepRing(
-  stroke: QuillStroke,
-  walk: SpineWalk,
-  tolerance: number,
-): DrawnStroke {
+function sweepRing(stroke: QuillStroke, walk: SpineWalk, tolerance: number): DrawnStroke {
   const steps = stepsFor(walk.total);
   const exact = isExact(stroke);
 
@@ -643,16 +625,7 @@ function sweepRing(
   const join = stroke.join ?? "miter";
 
   const loopOf = (side: 1 | -1) => {
-    const points = sideOf(
-      stroke.spine,
-      walk,
-      stroke.width,
-      stroke.nib,
-      side,
-      steps,
-      corners,
-      join,
-    );
+    const points = sideOf(stroke.spine, walk, stroke.width, stroke.nib, side, steps, corners, join);
     // The sample at one is the sample at nought; fitting the run with the first
     // point repeated is what carries the tangent across the seam.
     points.pop();
@@ -670,8 +643,7 @@ function sweepRing(
   if (usable.length === 2) {
     const areas = usable.map(contourArea);
     const outer = Math.abs(areas[0]) >= Math.abs(areas[1]) ? 0 : 1;
-    if (areas[outer] > 0)
-      for (const one of usable) one.nodes = reversed(one.nodes);
+    if (areas[outer] > 0) for (const one of usable) one.nodes = reversed(one.nodes);
   }
 
   return {
@@ -693,8 +665,7 @@ function sweepRing(
  */
 export function sweep(stroke: QuillStroke, tolerance = TOLERANCE): DrawnStroke {
   const walk = walkOf(stroke.spine);
-  if (walk.total <= 1e-9)
-    return { contours: [], exactness: { exact: true, deviation: 0 } };
+  if (walk.total <= 1e-9) return { contours: [], exactness: { exact: true, deviation: 0 } };
   if (stroke.spine.closed) return sweepRing(stroke, walk, tolerance);
 
   const steps = stepsFor(walk.total);
@@ -725,9 +696,7 @@ export function sweep(stroke: QuillStroke, tolerance = TOLERANCE): DrawnStroke {
    */
   const exactness: Exactness = {
     exact,
-    deviation: exact
-      ? 0
-      : Math.max(fittedLeft.deviation, fittedRight.deviation),
+    deviation: exact ? 0 : Math.max(fittedLeft.deviation, fittedRight.deviation),
   };
 
   const startEnd = alongSpine(stroke.spine, walk, 0);
@@ -745,23 +714,11 @@ export function sweep(stroke: QuillStroke, tolerance = TOLERANCE): DrawnStroke {
 
   const nodes: GlyphNode[] = [];
   nodes.push(...nodesFrom(fittedLeft.curves));
-  for (const point of capPoints(
-    finishEnd.point,
-    finishEnd.heading,
-    finishReach,
-    stroke.end,
-    1,
-  )) {
+  for (const point of capPoints(finishEnd.point, finishEnd.heading, finishReach, stroke.end, 1)) {
     nodes.push(nodeAt(point, null, null));
   }
   nodes.push(...nodesFrom(fittedRight.curves));
-  for (const point of capPoints(
-    startEnd.point,
-    startEnd.heading,
-    startReach,
-    stroke.start,
-    -1,
-  )) {
+  for (const point of capPoints(startEnd.point, startEnd.heading, startReach, stroke.start, -1)) {
     nodes.push(nodeAt(point, null, null));
   }
 
@@ -769,10 +726,7 @@ export function sweep(stroke: QuillStroke, tolerance = TOLERANCE): DrawnStroke {
 }
 
 /** Every stroke of a glyph, drawn, with the weakest promise among them. */
-export function sweepAll(
-  strokes: QuillStroke[],
-  tolerance = TOLERANCE,
-): DrawnStroke {
+export function sweepAll(strokes: QuillStroke[], tolerance = TOLERANCE): DrawnStroke {
   const contours: Contour[] = [];
   let exact = true;
   let deviation = 0;

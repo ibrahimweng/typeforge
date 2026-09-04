@@ -31,8 +31,7 @@ import {
 
 const playControlDragEndSound = () => undefined;
 const playControlDragStartSound = () => undefined;
-const playGradientAngleSound = (_previousAngle: number, _nextAngle: number) =>
-  undefined;
+const playGradientAngleSound = (_previousAngle: number, _nextAngle: number) => undefined;
 const playGradientStopUpdateSound = (
   _previousStop: GradientStop | undefined,
   _nextStop: Partial<GradientStop>,
@@ -107,11 +106,7 @@ function useGradientStopActions({
       return;
     }
 
-    const { nextStop, nextStops } = addGradientStop(
-      stops,
-      activeStop,
-      position,
-    );
+    const { nextStop, nextStops } = addGradientStop(stops, activeStop, position);
 
     updateGradient({ stops: nextStops });
     setSelectedIndex(nextStops.indexOf(nextStop));
@@ -125,9 +120,7 @@ function useGradientStopActions({
     const nextStops = removeGradientStop(stops, index);
 
     updateGradient({ stops: nextStops });
-    setSelectedIndex(
-      nextStops.length > 0 ? Math.min(index, nextStops.length - 1) : null,
-    );
+    setSelectedIndex(nextStops.length > 0 ? Math.min(index, nextStops.length - 1) : null);
   }
 
   return {
@@ -137,8 +130,7 @@ function useGradientStopActions({
       playGradientAngleSound(angle, nextAngle);
       updateGradient({ angle: nextAngle }, meta);
     },
-    updateGradientType: (nextType: GradientType) =>
-      updateGradient({ gradientType: nextType }),
+    updateGradientType: (nextType: GradientType) => updateGradient({ gradientType: nextType }),
     updateStop,
   };
 }
@@ -149,9 +141,7 @@ function getGradientDragHistoryMeta(
   name: string,
   dragHistoryGroupRef: MutableRefObject<string | null>,
 ): ControlChangeMeta {
-  dragHistoryGroupRef.current ??= createControlHistoryGroupId(
-    `gradient:${name}`,
-  );
+  dragHistoryGroupRef.current ??= createControlHistoryGroupId(`gradient:${name}`);
 
   return {
     history: "merge",
@@ -211,24 +201,18 @@ function useGradientStopDragWindowEvents({
   });
 }
 
-export function useGradientStopsController(
-  options: GradientStopsControllerOptions,
-) {
+export function useGradientStopsController(options: GradientStopsControllerOptions) {
   const { stops, trackRef } = options;
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const dragHistoryGroupRef = useRef<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(0);
-  const activeStop =
-    selectedIndex === null ? null : (stops[selectedIndex] ?? null);
+  const activeStop = selectedIndex === null ? null : (stops[selectedIndex] ?? null);
   const actions = useGradientStopActions({
     ...options,
     activeStop,
     setSelectedIndex,
   });
-  const selectStop = useGradientStopSelectionSound(
-    selectedIndex,
-    setSelectedIndex,
-  );
+  const selectStop = useGradientStopSelectionSound(selectedIndex, setSelectedIndex);
 
   useGradientStopDragWindowEvents({
     actions,
@@ -239,9 +223,7 @@ export function useGradientStopsController(
     trackRef,
   });
 
-  function handleTrackPointerDown(
-    event: React.PointerEvent<HTMLDivElement>,
-  ): void {
+  function handleTrackPointerDown(event: React.PointerEvent<HTMLDivElement>): void {
     if (
       draggingIndex !== null ||
       stops.length >= maxGradientStops ||
@@ -253,9 +235,7 @@ export function useGradientStopsController(
     actions.addStop(getPositionFromTrack(trackRef.current, event.clientX));
   }
 
-  function handleTrackPointerMove(
-    event: React.PointerEvent<HTMLDivElement>,
-  ): void {
+  function handleTrackPointerMove(event: React.PointerEvent<HTMLDivElement>): void {
     if (draggingIndex === null) {
       return;
     }
@@ -269,34 +249,23 @@ export function useGradientStopsController(
     );
   }
 
-  function handleStartDrag(
-    index: number,
-    event: React.PointerEvent<HTMLButtonElement>,
-  ): void {
+  function handleStartDrag(index: number, event: React.PointerEvent<HTMLButtonElement>): void {
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.focus();
     event.currentTarget.setPointerCapture(event.pointerId);
     playControlDragStartSound();
-    dragHistoryGroupRef.current = createControlHistoryGroupId(
-      `gradient:${options.name}`,
-    );
+    dragHistoryGroupRef.current = createControlHistoryGroupId(`gradient:${options.name}`);
     setDraggingIndex(index);
     selectStop(index);
   }
 
-  function handleStopDoubleClick(
-    index: number,
-    event: React.MouseEvent<HTMLButtonElement>,
-  ): void {
+  function handleStopDoubleClick(index: number, event: React.MouseEvent<HTMLButtonElement>): void {
     event.stopPropagation();
     actions.removeStop(index);
   }
 
-  function handleStopKeyDown(
-    index: number,
-    event: React.KeyboardEvent<HTMLButtonElement>,
-  ): void {
+  function handleStopKeyDown(index: number, event: React.KeyboardEvent<HTMLButtonElement>): void {
     if (event.key !== "Delete" && event.key !== "Backspace") {
       return;
     }

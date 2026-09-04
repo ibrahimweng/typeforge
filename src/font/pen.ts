@@ -304,7 +304,12 @@ export function simplified(contour: Contour, tolerance = KEEPS_THE_SHAPE): Conto
     made[0].handleIn = arriving;
   } else {
     const last = nodes[nodes.length - 1];
-    made.push({ point: last.point, handleIn: arriving, handleOut: last.handleOut, type: last.type });
+    made.push({
+      point: last.point,
+      handleIn: arriving,
+      handleOut: last.handleOut,
+      type: last.type,
+    });
   }
 
   /*

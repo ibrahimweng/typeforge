@@ -68,7 +68,9 @@ const CAPITALS = ["H", "E", "I", "T"];
 function drawnAlphabet(style: Style): Map<string, Drawn> {
   const forge = startFrom(style);
   const out = new Map<string, Drawn>();
-  for (const name of [...new Set([...FLAT, ...LINE, ...ASCENDING, ...DESCENDING, ...CAPITALS, "l"])]) {
+  for (const name of [
+    ...new Set([...FLAT, ...LINE, ...ASCENDING, ...DESCENDING, ...CAPITALS, "l"]),
+  ]) {
     const drawn = draw(name, forge);
     if (drawn) out.set(name, drawn);
   }
@@ -264,7 +266,9 @@ const STRUCTURAL = new Set<keyof Measurements>();
 
 function report(label: string, drawn: Measurements, target: Measurements): number {
   console.log(`\n  ${label}`);
-  console.log(`  ${"".padEnd(21)}${"drawn".padStart(9)}${"target".padStart(9)}${"off by".padStart(9)}`);
+  console.log(
+    `  ${"".padEnd(21)}${"drawn".padStart(9)}${"target".padStart(9)}${"off by".padStart(9)}`,
+  );
   let missed = 0;
   for (const [key, name, places] of ROWS) {
     const got = drawn[key];
@@ -284,7 +288,9 @@ function report(label: string, drawn: Measurements, target: Measurements): numbe
 const only = (process.env.LIKENESS ?? "all").trim();
 const wanted = only === "all" ? LIKENESSES : LIKENESSES.filter((one) => one.id === only);
 if (wanted.length === 0) {
-  console.log(`no likeness called ${only}; there is ${LIKENESSES.map((one) => one.id).join(", ")}, or all`);
+  console.log(
+    `no likeness called ${only}; there is ${LIKENESSES.map((one) => one.id).join(", ")}, or all`,
+  );
   process.exit(1);
 }
 

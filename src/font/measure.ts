@@ -14,12 +14,7 @@
  * something drawn here.
  */
 
-import {
-  contourSegments,
-  contoursBounds,
-  cubicParametersAtY,
-  type Segment,
-} from "./geometry";
+import { contourSegments, contoursBounds, cubicParametersAtY, type Segment } from "./geometry";
 import { classifyContours } from "./outline";
 import type { Contour } from "./types";
 
@@ -61,9 +56,7 @@ function collectCrossings(segment: Segment, y: number, out: number[]): void {
   const { from, c1, c2, to } = segment;
   for (const t of cubicParametersAtY(from, c1, c2, to, y)) {
     const u = 1 - t;
-    out.push(
-      u * u * u * from.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * to.x,
-    );
+    out.push(u * u * u * from.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * to.x);
   }
 }
 
@@ -146,9 +139,7 @@ function median(values: number[]): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1
-    ? sorted[middle]
-    : (sorted[middle - 1] + sorted[middle]) / 2;
+  return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
 /** How many rays to cast, and how far from the ink edges to stay. */

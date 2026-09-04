@@ -35,7 +35,7 @@ for (const style of BASES.filter((one) => one.parts.script?.on)) {
   const { unitsPerEm } = style.metrics;
   rows.push(
     `<text x="${EDGE}" y="${down - 14}" font-family="ui-sans-serif,system-ui" font-size="13"` +
-    ` fill="#8a8578">${style.name}</text>`,
+      ` fill="#8a8578">${style.name}</text>`,
   );
   for (const word of WORDS) {
     let along = 0;
@@ -43,7 +43,9 @@ for (const style of BASES.filter((one) => one.parts.script?.on)) {
     for (const letter of word) {
       const drawn = drawLetter(letter, style, style.forms?.[letter]);
       if (!drawn) continue;
-      glyphs.push(`<path d="${contoursToSvgPath(drawn.contours)}" transform="translate(${along} 0)"/>`);
+      glyphs.push(
+        `<path d="${contoursToSvgPath(drawn.contours)}" transform="translate(${along} 0)"/>`,
+      );
       along += drawn.advanceWidth;
     }
     // The baseline the letters stand on, drawn, because a script that wanders
@@ -51,7 +53,7 @@ for (const style of BASES.filter((one) => one.parts.script?.on)) {
     const line = down + unitsPerEm * SCALE * 0.78;
     rows.push(
       `<g transform="translate(${EDGE} ${line}) scale(${SCALE} ${-SCALE})" fill="#1b1917">` +
-      `${glyphs.join("")}</g>`,
+        `${glyphs.join("")}</g>`,
       `<line x1="${EDGE}" y1="${line}" x2="${WIDE - EDGE}" y2="${line}" stroke="#d9d2c4" stroke-width="1"/>`,
     );
     down += LINE;
@@ -62,7 +64,7 @@ for (const style of BASES.filter((one) => one.parts.script?.on)) {
 writeFileSync(
   OUT,
   `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDE}" height="${down + EDGE}"` +
-  ` viewBox="0 0 ${WIDE} ${down + EDGE}"><rect width="100%" height="100%" fill="#faf8f3"/>` +
-  `${rows.join("\n")}</svg>`,
+    ` viewBox="0 0 ${WIDE} ${down + EDGE}"><rect width="100%" height="100%" fill="#faf8f3"/>` +
+    `${rows.join("\n")}</svg>`,
 );
 console.log(`${OUT} written`);

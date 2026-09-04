@@ -2,10 +2,7 @@
 
 import * as React from "react";
 
-import {
-  createControlHistoryGroupId,
-  type ControlChangeMeta,
-} from "../control-types";
+import { createControlHistoryGroupId, type ControlChangeMeta } from "../control-types";
 import {
   PALETTE_SHADE_STEPS,
   TAILWIND_COLOR_PALETTE,
@@ -55,8 +52,7 @@ export function usePaletteControlController({
   onInteractionStateChange,
 }: PaletteControlProps): PaletteControlViewProps {
   const initialValue = value ?? defaultValue;
-  const [optimisticValue, setOptimisticValue] =
-    React.useState<PaletteControlValue>(initialValue);
+  const [optimisticValue, setOptimisticValue] = React.useState<PaletteControlValue>(initialValue);
   const [isShadeDragging, setIsShadeDragging] = React.useState(false);
   const [indicatorTopPercent, setIndicatorTopPercent] = React.useState(() =>
     getShadeIndicatorTopPercent(initialValue.shade),
@@ -74,9 +70,8 @@ export function usePaletteControlController({
   const onInteractionStateChangeRef = React.useRef(onInteractionStateChange);
 
   const activePalette =
-    TAILWIND_COLOR_PALETTE.find(
-      (palette) => palette.name === optimisticValue.family,
-    ) ?? TAILWIND_COLOR_PALETTE[0];
+    TAILWIND_COLOR_PALETTE.find((palette) => palette.name === optimisticValue.family) ??
+    TAILWIND_COLOR_PALETTE[0];
   const shadeSegmentPercent = 100 / PALETTE_SHADE_STEPS.length;
 
   React.useEffect(() => {
@@ -135,9 +130,7 @@ export function usePaletteControlController({
     (nextValue: PaletteControlValue, stage: PaletteControlChangeMeta["stage"]) => {
       const hex = getPaletteHex(nextValue);
       const historyMeta =
-        stage === "live" || liveHistoryGroupRef.current
-          ? getLiveHistoryMeta()
-          : undefined;
+        stage === "live" || liveHistoryGroupRef.current ? getLiveHistoryMeta() : undefined;
 
       onValueChangeRef.current?.(nextValue, {
         ...historyMeta,
@@ -192,24 +185,27 @@ export function usePaletteControlController({
     [clearPersistTimeout, finishLiveHistoryGroup, setInteractionState],
   );
 
-  const flushPendingCommit = React.useCallback((options?: { persistImmediately?: boolean }) => {
-    const pendingCommit = pendingCommitRef.current;
-    clearClickCommitTimeout();
+  const flushPendingCommit = React.useCallback(
+    (options?: { persistImmediately?: boolean }) => {
+      const pendingCommit = pendingCommitRef.current;
+      clearClickCommitTimeout();
 
-    if (!pendingCommit) {
-      if (!pendingPersistRef.current) {
-        setInteractionState(false);
+      if (!pendingCommit) {
+        if (!pendingPersistRef.current) {
+          setInteractionState(false);
+        }
+        return false;
       }
-      return false;
-    }
 
-    pendingCommitRef.current = null;
-    emitChange(pendingCommit, "commit");
-    pendingPersistRef.current = pendingCommit;
-    flushPendingPersist({ immediate: options?.persistImmediately });
+      pendingCommitRef.current = null;
+      emitChange(pendingCommit, "commit");
+      pendingPersistRef.current = pendingCommit;
+      flushPendingPersist({ immediate: options?.persistImmediately });
 
-    return true;
-  }, [clearClickCommitTimeout, emitChange, flushPendingPersist, setInteractionState]);
+      return true;
+    },
+    [clearClickCommitTimeout, emitChange, flushPendingPersist, setInteractionState],
+  );
 
   const scheduleClickCommit = React.useCallback(
     (nextValue: PaletteControlValue) => {
@@ -267,11 +263,7 @@ export function usePaletteControlController({
 
       const segmentHeight = trackBounds.height / PALETTE_SHADE_STEPS.length;
       const maxTop = trackBounds.height - segmentHeight;
-      const nextTop = clamp(
-        clientY - trackBounds.top - segmentHeight / 2,
-        0,
-        maxTop,
-      );
+      const nextTop = clamp(clientY - trackBounds.top - segmentHeight / 2, 0, maxTop);
       const nextIndex = clamp(
         Math.round(nextTop / segmentHeight),
         0,

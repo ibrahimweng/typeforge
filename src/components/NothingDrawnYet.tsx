@@ -14,7 +14,7 @@
  * whichever one was last open.
  */
 
-import * as React from "react";
+import type * as React from "react";
 
 import { freeNameNear } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";

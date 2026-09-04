@@ -327,10 +327,10 @@ Zacute zacute Zdotaccent zdotaccent Zcaron zcaron longs`
  * glyph. The S is not: the cedilla one is Turkish and stays as it is.
  */
 const EXTENDED_B_NAMES: Record<number, string> = {
-  0x0218: "Scommaaccent",
-  0x0219: "scommaaccent",
-  0x021a: "Tcommaaccent",
-  0x021b: "tcommaaccent",
+  536: "Scommaaccent",
+  537: "scommaaccent",
+  538: "Tcommaaccent",
+  539: "tcommaaccent",
 };
 
 export function accentedNameFor(codepoint: number): string | null {

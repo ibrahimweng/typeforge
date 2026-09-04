@@ -133,7 +133,9 @@ export function MetricsView(): React.JSX.Element {
                     label={`${row.glyph.name} left sidebearing`}
                     className="w-20"
                     value={row.left}
-                    onCommit={(next) => store.shiftSidebearing(row.glyph.name, next - row.left, "left")}
+                    onCommit={(next) =>
+                      store.shiftSidebearing(row.glyph.name, next - row.left, "left")
+                    }
                   />
                 </td>
                 <td className="px-4 py-1.5 text-right tabular-nums">
@@ -141,7 +143,9 @@ export function MetricsView(): React.JSX.Element {
                     label={`${row.glyph.name} right sidebearing`}
                     className="w-20"
                     value={row.right}
-                    onCommit={(next) => store.shiftSidebearing(row.glyph.name, next - row.right, "right")}
+                    onCommit={(next) =>
+                      store.shiftSidebearing(row.glyph.name, next - row.right, "right")
+                    }
                   />
                 </td>
                 <td className="px-4 py-1.5 text-right tabular-nums">

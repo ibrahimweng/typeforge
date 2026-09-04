@@ -264,7 +264,14 @@ function chainContext(
   // backtrackCount and one offset each, inputCount and one offset each,
   // lookaheadCount and one offset each, recordCount, two shorts per record.
   const header =
-    2 + 2 + backtrack.length * 2 + 2 + input.length * 2 + 2 + after.length * 2 + 2 +
+    2 +
+    2 +
+    backtrack.length * 2 +
+    2 +
+    input.length * 2 +
+    2 +
+    after.length * 2 +
+    2 +
     records.length * 4;
 
   const out = new ByteWriter();

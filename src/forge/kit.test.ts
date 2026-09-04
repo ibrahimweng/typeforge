@@ -188,7 +188,8 @@ describe("filling a cell", () => {
   it("turns a shape without changing how much of it there is", () => {
     for (const kind of FILL_KINDS) {
       const upright = filled({ kind, turn: 0 }, box);
-      for (const turn of [1, 2, 3]) near(area(filled({ kind, turn }, box)), area(upright), `${kind} ${turn}`);
+      for (const turn of [1, 2, 3])
+        near(area(filled({ kind, turn }, box)), area(upright), `${kind} ${turn}`);
     }
   });
 
@@ -256,13 +257,17 @@ describe("laying an alphabet on the grid", () => {
     const tiles = seed("H");
     const cells = Object.entries(tiles.cells);
     // Two columns of cells that run straight up, and one row joining them.
-    const upright = cells.filter(([, cell]) => cell.ports.includes("n") && cell.ports.includes("s"));
+    const upright = cells.filter(
+      ([, cell]) => cell.ports.includes("n") && cell.ports.includes("s"),
+    );
     expect(upright.length).toBeGreaterThanOrEqual(8);
     const columns = new Set(upright.map(([key]) => key.split(",")[0]));
     expect(columns.size).toBe(2);
 
     // And a row that crosses between them, in cells that have no upright at all.
-    const across = cells.filter(([, cell]) => !cell.ports.includes("n") && !cell.ports.includes("s"));
+    const across = cells.filter(
+      ([, cell]) => !cell.ports.includes("n") && !cell.ports.includes("s"),
+    );
     expect(across.length).toBeGreaterThan(0);
     for (const [, cell] of across) {
       expect(cell.ports.some((port) => port.includes("e") || port.includes("w"))).toBe(true);
@@ -314,16 +319,13 @@ describe("laying an alphabet on the grid", () => {
      * staircase of elbows, which is what took the crossing out of an X.
      */
     const tiles = seed("X");
-    const corners = cellsOf(tiles).filter((cell) =>
-      cell.ports.some((port) => port.length === 2),
-    );
+    const corners = cellsOf(tiles).filter((cell) => cell.ports.some((port) => port.length === 2));
     expect(corners.length).toBeGreaterThan(4);
 
     // The crossing itself: one cell that both strokes pass through, so it has
     // ports on more than one pair of opposite corners.
     const crossing = cellsOf(tiles).filter(
-      (cell) =>
-        cell.ports.filter((port) => port.length === 2).length >= 4,
+      (cell) => cell.ports.filter((port) => port.length === 2).length >= 4,
     );
     expect(crossing.length, "the X has to cross somewhere").toBeGreaterThan(0);
   });
@@ -373,9 +375,7 @@ describe("laying an alphabet on the grid", () => {
      */
     for (const letter of ["O", "G", "o", "g"]) {
       const tiles = seed(letter);
-      const corners = cellsOf(tiles).filter((cell) =>
-        cell.ports.some((port) => port.length === 2),
-      );
+      const corners = cellsOf(tiles).filter((cell) => cell.ports.some((port) => port.length === 2));
       expect(corners.length, `${letter} has to turn somewhere`).toBeGreaterThan(2);
     }
   });

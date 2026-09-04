@@ -47,18 +47,14 @@ describe("reading a property list", () => {
      * emits. A reader that handles one and not the other corrupts a designer's
      * name and nothing else, which is the kind of fault that ships.
      */
-    const plist = readPlist(
-      wrap(`<key>designer</key><string>caf&#233; &amp; co &#x41;</string>`),
-    );
+    const plist = readPlist(wrap(`<key>designer</key><string>caf&#233; &amp; co &#x41;</string>`));
     expect(plist?.designer).toBe("café & co A");
   });
 
   it("skips a key with nothing after it rather than pairing it with the next one", () => {
     // Two keys in a row is what a half-written file looks like. Reading it as
     // `{ orphan: "value" }` would be inventing a fact about the font.
-    const plist = readPlist(
-      wrap(`<key>orphan</key>\n<key>real</key><string>value</string>`),
-    );
+    const plist = readPlist(wrap(`<key>orphan</key>\n<key>real</key><string>value</string>`));
     expect(plist).toEqual({ real: "value" });
   });
 
@@ -126,14 +122,18 @@ describe("writing a property list", () => {
 
   it("opens with the declaration and the doctype every other tool writes", () => {
     const written = writePlist({ a: 1 });
-    expect(written.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist')).toBe(true);
+    expect(written.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist')).toBe(
+      true,
+    );
     expect(written.endsWith("</plist>\n")).toBe(true);
   });
 });
 
 describe("the XML underneath", () => {
   it("skips the declaration and finds the root", () => {
-    const root = parseXml(`<?xml version="1.0"?>\n<!-- a note -->\n<glyph name="a"><advance width="5"/></glyph>`);
+    const root = parseXml(
+      `<?xml version="1.0"?>\n<!-- a note -->\n<glyph name="a"><advance width="5"/></glyph>`,
+    );
     expect(root?.name).toBe("glyph");
     expect(root?.attributes.name).toBe("a");
     expect(root?.children[0].attributes.width).toBe("5");

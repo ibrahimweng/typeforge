@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { buildAccents, decomposeCodepoint, deriveAnchors, findRecipes, looksLikeMark } from "./accents";
+import {
+  buildAccents,
+  decomposeCodepoint,
+  deriveAnchors,
+  findRecipes,
+  looksLikeMark,
+} from "./accents";
 import { dependentsOf, resolveComponents } from "./composite";
 import { contoursBounds } from "./geometry";
 import { emptyTypeface, type Contour, type Glyph, type Typeface } from "./types";

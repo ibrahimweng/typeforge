@@ -28,10 +28,7 @@ export function ColorPickerView(props: ColorPickerViewProps) {
           props.onSurfacePointerDown(event);
         }}
       />
-      <div
-        data-slot="style-guide-color-controls"
-        className="flex w-full shrink-0 flex-col"
-      >
+      <div data-slot="style-guide-color-controls" className="flex w-full shrink-0 flex-col">
         <div
           data-slot="style-guide-color-slider-wrap"
           className="flex h-9 w-full shrink-0 items-center px-3"

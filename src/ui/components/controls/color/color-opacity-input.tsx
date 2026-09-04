@@ -2,12 +2,7 @@
 
 import * as React from "react";
 
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-  InputGroupText,
-} from "../../primitives";
+import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "../../primitives";
 import type { ControlChangeMeta } from "../control-types";
 
 export function parseOpacityValue(opacity: number | undefined): number {
@@ -17,9 +12,7 @@ export function parseOpacityValue(opacity: number | undefined): number {
 function normalizeOpacityInput(value: string): number {
   const parsedValue = Number.parseFloat(value);
 
-  return Number.isFinite(parsedValue)
-    ? Math.min(100, Math.max(0, Math.round(parsedValue)))
-    : 100;
+  return Number.isFinite(parsedValue) ? Math.min(100, Math.max(0, Math.round(parsedValue))) : 100;
 }
 
 export function ColorOpacityInput({

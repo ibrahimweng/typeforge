@@ -46,7 +46,13 @@ function shapeOf(name: string, style: ReturnType<typeof weighted>["style"]): str
     .join(" ");
 }
 
-const book: WaveBook = { lengths: new Map(), bowls: new Map(), balls: new Map(), corners: new Map(), recording: true };
+const book: WaveBook = {
+  lengths: new Map(),
+  bowls: new Map(),
+  balls: new Map(),
+  corners: new Map(),
+  recording: true,
+};
 const was = openWaveBook(book);
 
 // The drawn weight first, recording, as `deliver` does it. Every letter, not
@@ -76,7 +82,9 @@ for (const name of held) {
   const mine = WEIGHTS.map((weight) => shapes.get(weight)!.get(name) ?? "");
   const same = mine.every((one) => one === mine[0]);
   if (!same) moving += 1;
-  console.log(`${same ? "  steady " : "  MOVES  "} ${name.padEnd(15)} ${same ? mine[0] : mine.join("   |   ")}`);
+  console.log(
+    `${same ? "  steady " : "  MOVES  "} ${name.padEnd(15)} ${same ? mine[0] : mine.join("   |   ")}`,
+  );
 }
 console.log(
   `\n${face.name}: ${held.length} left standing, ${moving} with a spine that changes shape with the pen`,

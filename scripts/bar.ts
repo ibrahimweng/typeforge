@@ -46,8 +46,14 @@ if (!REF) throw new Error("Set REF to the reference font file. See the note at t
 
 const band = (low: number, high: number): Contour => ({
   closed: true,
-  nodes: [[-9000, low], [9000, low], [9000, high], [-9000, high]].map(([x, y]) => ({
-    point: { x, y }, type: "line" as const,
+  nodes: [
+    [-9000, low],
+    [9000, low],
+    [9000, high],
+    [-9000, high],
+  ].map(([x, y]) => ({
+    point: { x, y },
+    type: "line" as const,
   })),
 });
 
@@ -131,12 +137,14 @@ async function report(name: string, word: Contour[], x: number) {
     const most = touching.reduce((top, [from, to]) => Math.max(top, to - from), 0) / across;
     if (most > longest.run) longest = { at, run: most };
     share = Math.max(share, touching.reduce((sum, [from, to]) => sum + (to - from), 0) / across);
-    bridged = Math.max(bridged, merged(runs, x * 0.1)
-      .reduce((top, [from, to]) => Math.max(top, to - from), 0) / across);
+    bridged = Math.max(
+      bridged,
+      merged(runs, x * 0.1).reduce((top, [from, to]) => Math.max(top, to - from), 0) / across,
+    );
   }
   console.log(
     `  ${name.padEnd(17)} longest ${longest.run.toFixed(2)} at ${longest.at.toFixed(2)}` +
-    `   bridging tenth-gaps ${bridged.toFixed(2)}   most ink at one height ${share.toFixed(2)}`,
+      `   bridging tenth-gaps ${bridged.toFixed(2)}   most ink at one height ${share.toFixed(2)}`,
   );
 }
 
@@ -146,7 +154,11 @@ const refGlyph = (letter: string): Glyph | undefined =>
 const refX = contoursBounds(refGlyph("x")!.contours).yMax;
 
 console.log(`\`${WORD}\`, every figure a share of the word's length\n`);
-await report("reference", await setWord([...WORD].map(refGlyph).filter((one): one is Glyph => !!one)), refX);
+await report(
+  "reference",
+  await setWord([...WORD].map(refGlyph).filter((one): one is Glyph => !!one)),
+  refX,
+);
 for (const style of BASES.filter((one) => one.parts.script?.on)) {
   const glyphs = [...WORD]
     .map((letter) => drawLetter(letter, style, style.forms?.[letter]))

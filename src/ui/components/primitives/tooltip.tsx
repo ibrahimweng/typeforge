@@ -10,23 +10,11 @@ import {
   usePortalLayerContainer,
 } from "./portal-layer-context";
 
-function TooltipProvider({
-  delay = 0,
-  ...props
-}: TooltipPrimitive.Provider.Props) {
-  return (
-    <TooltipPrimitive.Provider
-      data-slot="tooltip-provider"
-      delay={delay}
-      {...props}
-    />
-  );
+function TooltipProvider({ delay = 0, ...props }: TooltipPrimitive.Provider.Props) {
+  return <TooltipPrimitive.Provider data-slot="tooltip-provider" delay={delay} {...props} />;
 }
 
-function Tooltip({
-  disableHoverablePopup = true,
-  ...props
-}: TooltipPrimitive.Root.Props) {
+function Tooltip({ disableHoverablePopup = true, ...props }: TooltipPrimitive.Root.Props) {
   return (
     <TooltipPrimitive.Root
       data-slot="tooltip"
@@ -36,17 +24,8 @@ function Tooltip({
   );
 }
 
-function TooltipTrigger({
-  className,
-  ...props
-}: TooltipPrimitive.Trigger.Props) {
-  return (
-    <TooltipPrimitive.Trigger
-      className={className}
-      data-slot="tooltip-trigger"
-      {...props}
-    />
-  );
+function TooltipTrigger({ className, ...props }: TooltipPrimitive.Trigger.Props) {
+  return <TooltipPrimitive.Trigger className={className} data-slot="tooltip-trigger" {...props} />;
 }
 
 function TooltipContent({
@@ -60,10 +39,7 @@ function TooltipContent({
   portalContainer,
   ...props
 }: TooltipPrimitive.Popup.Props &
-  Pick<
-    TooltipPrimitive.Positioner.Props,
-    "align" | "alignOffset" | "side" | "sideOffset"
-  > & {
+  Pick<TooltipPrimitive.Positioner.Props, "align" | "alignOffset" | "side" | "sideOffset"> & {
     interactive?: boolean;
     portalContainer?: PortalLayerContainer;
   }) {

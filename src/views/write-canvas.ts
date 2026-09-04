@@ -17,12 +17,7 @@
 import { nibAt, reachAcross, widthAt } from "@/quill/sweep";
 import { alongSpine, walkOf } from "@/quill/curve";
 import { nodeFractions } from "@/quill/written";
-import {
-  readToken,
-  toCanvasX,
-  toCanvasY,
-  type GlyphView,
-} from "@/components/glyph-render";
+import { readToken, toCanvasX, toCanvasY, type GlyphView } from "@/components/glyph-render";
 import type { Glyph, Vec2 } from "@/font/types";
 import type { QuillSpine, QuillStroke } from "@/quill/types";
 
@@ -120,11 +115,7 @@ export function penHandles(glyph: Glyph): PenHandle[] {
 }
 
 /** The pen handle under a canvas point, if there is one. */
-export function hitTestPen(
-  glyph: Glyph,
-  view: GlyphView,
-  canvasPoint: Vec2,
-): PenHandle | null {
+export function hitTestPen(glyph: Glyph, view: GlyphView, canvasPoint: Vec2): PenHandle | null {
   let best: PenHandle | null = null;
   let closest = GRAB;
   for (const handle of penHandles(glyph)) {
@@ -272,8 +263,7 @@ export function drawWritten(
     stroke.nib.forEach((stop, at) => {
       const frame = penFrameAt(stroke, stop.at);
       const centre = toScreen(view, frame.centre);
-      const chosen =
-        options.selected?.stroke === index && options.selected?.stop === at;
+      const chosen = options.selected?.stroke === index && options.selected?.stop === at;
       const radians = (nibAt(stroke.nib, stop.at).angle * Math.PI) / 180;
       const scale = Math.hypot(
         toScreen(view, { x: frame.centre.x + 1, y: frame.centre.y }).x - centre.x,
@@ -308,11 +298,7 @@ export function drawWritten(
 }
 
 /** The spine as a canvas path, in screen coordinates. */
-function drawSpine(
-  context: CanvasRenderingContext2D,
-  spine: QuillSpine,
-  view: GlyphView,
-): void {
+function drawSpine(context: CanvasRenderingContext2D, spine: QuillSpine, view: GlyphView): void {
   spine.segments.forEach((segment, index) => {
     if (segment.kind === "arc") return;
     const from = toScreen(view, segment.from);

@@ -57,8 +57,12 @@ const refX = (() => {
 const X_ON_PAGE = 96;
 
 /** One row: a label, then the word, drawn at `scale` and standing on `line`. */
-const row = (label: string, glyphs: Array<{ contours: Contour[]; advanceWidth: number }>,
-             scale: number, top: number): { svg: string[]; height: number } => {
+const row = (
+  label: string,
+  glyphs: Array<{ contours: Contour[]; advanceWidth: number }>,
+  scale: number,
+  top: number,
+): { svg: string[]; height: number } => {
   // The reference stands 2.17 x-heights above its line and 0.84 below, so a row
   // is four of them and a little, or the ascenders land in the row above.
   const HEIGHT = X_ON_PAGE * 3.6;
@@ -66,16 +70,18 @@ const row = (label: string, glyphs: Array<{ contours: Contour[]; advanceWidth: n
   let along = 0;
   const drawn: string[] = [];
   for (const glyph of glyphs) {
-    drawn.push(`<path d="${contoursToSvgPath(glyph.contours)}" transform="translate(${along} 0)"/>`);
+    drawn.push(
+      `<path d="${contoursToSvgPath(glyph.contours)}" transform="translate(${along} 0)"/>`,
+    );
     along += glyph.advanceWidth;
   }
   return {
     svg: [
       `<text x="40" y="${top + 16}" font-family="ui-sans-serif,system-ui" font-size="13"` +
-      ` fill="#8a8578">${label}</text>`,
+        ` fill="#8a8578">${label}</text>`,
       `<line x1="40" y1="${line}" x2="2360" y2="${line}" stroke="#ded7c9" stroke-width="1"/>`,
       `<g transform="translate(60 ${line}) scale(${scale} ${-scale})" fill="#1b1917">` +
-      `${drawn.join("")}</g>`,
+        `${drawn.join("")}</g>`,
     ],
     height: HEIGHT,
   };
@@ -103,7 +109,7 @@ for (const style of BASES.filter((one) => one.parts.script?.on)) {
 writeFileSync(
   OUT,
   `<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="${down + 40}"` +
-  ` viewBox="0 0 2400 ${down + 40}"><rect width="100%" height="100%" fill="#faf8f3"/>` +
-  `${rows.join("\n")}</svg>`,
+    ` viewBox="0 0 2400 ${down + 40}"><rect width="100%" height="100%" fill="#faf8f3"/>` +
+    `${rows.join("\n")}</svg>`,
 );
 console.log(`${OUT} written`);

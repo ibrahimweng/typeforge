@@ -79,8 +79,16 @@ import { BASES } from "@/forge/style";
 await ready();
 
 /** Measured from the released Dancing Script's ink, at its default weight. */
-const REFERENCE = { name: "Dancing Script", xOverEm: 0.332, ascOverX: 2.17, descOverX: 0.84,
-  line: 44.7, wide: 0.126, left: 0.07, right: 0.09 };
+const REFERENCE = {
+  name: "Dancing Script",
+  xOverEm: 0.332,
+  ascOverX: 2.17,
+  descOverX: 0.84,
+  line: 44.7,
+  wide: 0.126,
+  left: 0.07,
+  right: 0.09,
+};
 
 /** The letters whose tops and tails set the extenders, on any face. */
 const RISERS = ["l", "b", "d", "h", "k"];
@@ -90,7 +98,16 @@ const SAMPLE = ["n", "o", "a", "e", "m"];
 
 /** The reference's advance over its x-height, letter by letter, from its ink. */
 const FIT: Record<string, number> = {
-  n: 1.40, m: 1.95, o: 1.10, e: 1.00, a: 1.31, c: 0.97, u: 1.32, r: 1.05, s: 1.04, t: 0.86,
+  n: 1.4,
+  m: 1.95,
+  o: 1.1,
+  e: 1.0,
+  a: 1.31,
+  c: 0.97,
+  u: 1.32,
+  r: 1.05,
+  s: 1.04,
+  t: 0.86,
 };
 const FIT_MEAN = Object.values(FIT).reduce((sum, one) => sum + one, 0) / Object.keys(FIT).length;
 
@@ -123,7 +140,10 @@ function halfway(contours: Contour[]): number {
       const to = nodes[(i + 1) % nodes.length].point;
       const out = nodes[i].handleOut;
       const back = nodes[(i + 1) % nodes.length].handleIn;
-      if (!out && !back) { sum += Math.hypot(to.x - from.x, to.y - from.y); continue; }
+      if (!out && !back) {
+        sum += Math.hypot(to.x - from.x, to.y - from.y);
+        continue;
+      }
       const one = out ?? from;
       const two = back ?? to;
       let last = from;
@@ -142,8 +162,18 @@ function halfway(contours: Contour[]): number {
   return sum / 2;
 }
 
-const row = (name: string, x: number, asc: number, desc: number, line: number, wide: number,
-  left: number, right: number, fit: number, colour: number) =>
+const row = (
+  name: string,
+  x: number,
+  asc: number,
+  desc: number,
+  line: number,
+  wide: number,
+  left: number,
+  right: number,
+  fit: number,
+  colour: number,
+) =>
   `${name.padEnd(16)} ${x.toFixed(3)}  ${asc.toFixed(2)}   ${desc.toFixed(2)}   ${line.toFixed(1).padStart(5)}  ${wide.toFixed(3)}` +
   `   ${left >= 0 ? " " : ""}${left.toFixed(2)} / ${right >= 0 ? " " : ""}${right.toFixed(2)}   ${(left + right).toFixed(2)}` +
   `      ${fit.toFixed(2)} (${(fit / FIT_MEAN).toFixed(2)}x)` +
@@ -183,11 +213,36 @@ for (const style of BASES.filter((one) => one.parts.script.on)) {
     const drawn = drawLetter(letter, style, style.forms?.[letter]);
     if (drawn) line += halfway(drawn.contours);
   }
-  const fit = Object.keys(FIT)
-    .map((one) => drawLetter(one, style, style.forms?.[one])!.advanceWidth / xHeight)
-    .reduce((sum, one) => sum + one, 0) / Object.keys(FIT).length;
-  console.log(row(style.name, xHeight / unitsPerEm, ascender / xHeight, Math.abs(descender) / xHeight,
-    line / xHeight, Math.abs(ink) / (line * xHeight), mean((one) => one.left), mean((one) => one.right), fit, colour));
+  const fit =
+    Object.keys(FIT)
+      .map((one) => drawLetter(one, style, style.forms?.[one])!.advanceWidth / xHeight)
+      .reduce((sum, one) => sum + one, 0) / Object.keys(FIT).length;
+  console.log(
+    row(
+      style.name,
+      xHeight / unitsPerEm,
+      ascender / xHeight,
+      Math.abs(descender) / xHeight,
+      line / xHeight,
+      Math.abs(ink) / (line * xHeight),
+      mean((one) => one.left),
+      mean((one) => one.right),
+      fit,
+      colour,
+    ),
+  );
 }
-console.log(row(REFERENCE.name, REFERENCE.xOverEm, REFERENCE.ascOverX, REFERENCE.descOverX,
-  REFERENCE.line, REFERENCE.wide, REFERENCE.left, REFERENCE.right, FIT_MEAN, COLOUR_REF));
+console.log(
+  row(
+    REFERENCE.name,
+    REFERENCE.xOverEm,
+    REFERENCE.ascOverX,
+    REFERENCE.descOverX,
+    REFERENCE.line,
+    REFERENCE.wide,
+    REFERENCE.left,
+    REFERENCE.right,
+    FIT_MEAN,
+    COLOUR_REF,
+  ),
+);

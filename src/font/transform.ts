@@ -35,7 +35,15 @@ import { anyCut, type Cuts } from "./cuts";
 import type { CutScale } from "@/forge/cut";
 import { shapedInk } from "@/forge/layers";
 import { measuredStem } from "./stem";
-import { DEFAULT_PARAMS, type Contour, type Glyph, type GlyphNode, type GlyphParams, type Typeface, type Vec2 } from "./types";
+import {
+  DEFAULT_PARAMS,
+  type Contour,
+  type Glyph,
+  type GlyphNode,
+  type GlyphParams,
+  type Typeface,
+  type Vec2,
+} from "./types";
 
 /** Merge family parameters with a glyph's overrides. */
 export function effectiveParams(glyph: Glyph, typeface: Typeface): GlyphParams {

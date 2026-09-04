@@ -44,10 +44,30 @@ describe("inkSpans", () => {
     const circle: Contour = {
       closed: true,
       nodes: [
-        { point: { x: 0, y: 500 }, handleIn: { x: 0, y: 500 - k }, handleOut: { x: 0, y: 500 + k }, type: "smooth" },
-        { point: { x: 500, y: 1000 }, handleIn: { x: 500 - k, y: 1000 }, handleOut: { x: 500 + k, y: 1000 }, type: "smooth" },
-        { point: { x: 1000, y: 500 }, handleIn: { x: 1000, y: 500 + k }, handleOut: { x: 1000, y: 500 - k }, type: "smooth" },
-        { point: { x: 500, y: 0 }, handleIn: { x: 500 + k, y: 0 }, handleOut: { x: 500 - k, y: 0 }, type: "smooth" },
+        {
+          point: { x: 0, y: 500 },
+          handleIn: { x: 0, y: 500 - k },
+          handleOut: { x: 0, y: 500 + k },
+          type: "smooth",
+        },
+        {
+          point: { x: 500, y: 1000 },
+          handleIn: { x: 500 - k, y: 1000 },
+          handleOut: { x: 500 + k, y: 1000 },
+          type: "smooth",
+        },
+        {
+          point: { x: 1000, y: 500 },
+          handleIn: { x: 1000, y: 500 + k },
+          handleOut: { x: 1000, y: 500 - k },
+          type: "smooth",
+        },
+        {
+          point: { x: 500, y: 0 },
+          handleIn: { x: 500 + k, y: 0 },
+          handleOut: { x: 500 - k, y: 0 },
+          type: "smooth",
+        },
       ],
     };
     // Across the middle the circle is its full diameter wide.

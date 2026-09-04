@@ -309,8 +309,25 @@ function stems(has: Lookup, monospaced: boolean): Finding[] {
    * taller than the stem, and `l` is an ascender. The letters left are the
    * ones whose whole height is the stem's height.
    */
-  measure([["n", 0.2, 0.7], ["m", 0.2, 0.7], ["u", 0.35, 0.8]], "lowercase", "lower");
-  measure([["H", 0.15, 0.85], ["I", 0.2, 0.8], ["E", 0.2, 0.8], ["L", 0.2, 0.8]], "capital", "upper");
+  measure(
+    [
+      ["n", 0.2, 0.7],
+      ["m", 0.2, 0.7],
+      ["u", 0.35, 0.8],
+    ],
+    "lowercase",
+    "lower",
+  );
+  measure(
+    [
+      ["H", 0.15, 0.85],
+      ["I", 0.2, 0.8],
+      ["E", 0.2, 0.8],
+      ["L", 0.2, 0.8],
+    ],
+    "capital",
+    "upper",
+  );
   return findings;
 }
 
@@ -412,7 +429,6 @@ function arms(has: Lookup): Finding[] {
         );
       }
     }
-
   }
   return findings;
 }

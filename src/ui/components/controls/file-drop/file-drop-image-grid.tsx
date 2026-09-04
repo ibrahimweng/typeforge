@@ -1,29 +1,15 @@
 "use client";
 
-import * as React from "react";
-import {
-  closestCenter,
-  DndContext,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  rectSortingStrategy,
-  SortableContext,
-  useSortable,
-} from "@dnd-kit/sortable";
+import type * as React from "react";
+import { closestCenter, DndContext, type DragEndEvent } from "@dnd-kit/core";
+import { rectSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { DotsSixVerticalIcon, XIcon } from "@phosphor-icons/react";
 
 import { cn } from "../../../lib/utils";
 import { Button } from "../../primitives";
-import {
-  FileDropPlusGlyph,
-  getImageTransformStyle,
-} from "./file-drop-presentation";
-import type {
-  FileDropPresentationEntry,
-  FileDropPresentationItem,
-} from "./file-drop-types";
+import { FileDropPlusGlyph, getImageTransformStyle } from "./file-drop-presentation";
+import type { FileDropPresentationEntry, FileDropPresentationItem } from "./file-drop-types";
 
 type SortablePreviewTileProps = {
   entry: FileDropPresentationEntry;
@@ -41,11 +27,10 @@ function SortablePreviewTile({
   selected = false,
 }: SortablePreviewTileProps): React.JSX.Element {
   const { item, key: itemKey, sourceIndex } = entry;
-  const { attributes, isDragging, listeners, setNodeRef, transform, transition } =
-    useSortable({
-      disabled: !isSortable,
-      id: itemKey,
-    });
+  const { attributes, isDragging, listeners, setNodeRef, transform, transition } = useSortable({
+    disabled: !isSortable,
+    id: itemKey,
+  });
   const sortableTransform = transform
     ? {
         ...transform,
@@ -100,9 +85,7 @@ function SortablePreviewTile({
           {image}
         </button>
       ) : (
-        <div className="absolute inset-0 size-full">
-          {image}
-        </div>
+        <div className="absolute inset-0 size-full">{image}</div>
       )}
       {isSortable ? (
         <button
@@ -161,11 +144,7 @@ export function FileDropImageGrid({
 }: FileDropImageGridProps): React.JSX.Element {
   return (
     <div className="grid w-full grid-cols-4 gap-2" data-slot="file-upload-preview-grid">
-      <DndContext
-        collisionDetection={closestCenter}
-        onDragEnd={onDragEnd}
-        sensors={sensors}
-      >
+      <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd} sensors={sensors}>
         <SortableContext items={previewKeys} strategy={rectSortingStrategy}>
           {previewEntries.map((entry) => (
             <SortablePreviewTile

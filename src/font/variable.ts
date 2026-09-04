@@ -345,7 +345,8 @@ export function regionOf(
     const nearer = alongside.filter((value) => Math.abs(value) < Math.abs(here));
     const further = alongside.filter((value) => Math.abs(value) > Math.abs(here));
     // The neighbour on the way back to the middle, and the one on the way out.
-    const inward = nearer.length > 0 ? nearer.reduce((a, b) => (Math.abs(a) > Math.abs(b) ? a : b)) : 0;
+    const inward =
+      nearer.length > 0 ? nearer.reduce((a, b) => (Math.abs(a) > Math.abs(b) ? a : b)) : 0;
     const outward =
       further.length > 0
         ? further.reduce((a, b) => (Math.abs(a) < Math.abs(b) ? a : b))

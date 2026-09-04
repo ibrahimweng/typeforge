@@ -18,7 +18,7 @@
  * a glyph's contours are not those things.
  */
 
-import * as React from "react";
+import type * as React from "react";
 
 import { contourArea, contoursBounds } from "@/font/geometry";
 import type { Contour } from "@/font/types";
@@ -170,7 +170,9 @@ export function PathsPanel(): React.JSX.Element | null {
                     compare two of these, and two words compare where two
                     glyphs do not.
                   */}
-                  <span className="shrink-0 opacity-70">{winding === "clockwise" ? "cw" : "ccw"}</span>
+                  <span className="shrink-0 opacity-70">
+                    {winding === "clockwise" ? "cw" : "ccw"}
+                  </span>
                   {Number.isFinite(box.xMin) && (
                     <span className="hidden min-w-0 truncate tabular-nums opacity-50 xl:inline">
                       {Math.round(box.xMax - box.xMin)}×{Math.round(box.yMax - box.yMin)}
@@ -288,7 +290,10 @@ export function PathsPanel(): React.JSX.Element | null {
               </Operation>
               <Operation
                 onClick={() => void store.combineContours(name, picked, "subtract")}
-                title={`Cut path ${picked.slice(1).map((one) => one + 1).join(" and ")} out of path ${picked[0] + 1}`}
+                title={`Cut path ${picked
+                  .slice(1)
+                  .map((one) => one + 1)
+                  .join(" and ")} out of path ${picked[0] + 1}`}
               >
                 Subtract
               </Operation>

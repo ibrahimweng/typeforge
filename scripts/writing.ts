@@ -35,7 +35,9 @@ const slid = (contours: Contour[], by: number): Contour[] =>
     })),
   }));
 
-const LINES = (process.env.LINES ?? "handwriting|minimum|the quick brown fox|abcdefghijklm|nopqrstuvwxyz").split("|");
+const LINES = (
+  process.env.LINES ?? "handwriting|minimum|the quick brown fox|abcdefghijklm|nopqrstuvwxyz"
+).split("|");
 
 /** One line set at its own advances, and how wide it came out. */
 function setLine(style: Style, line: string): { path: string; width: number } {
@@ -43,7 +45,10 @@ function setLine(style: Style, line: string): { path: string; width: number } {
   const parts: string[] = [];
   for (let at = 0; at < line.length; at++) {
     const letter = line[at];
-    if (letter === " ") { x += style.metrics.xHeight * 0.7; continue; }
+    if (letter === " ") {
+      x += style.metrics.xHeight * 0.7;
+      continue;
+    }
     // TEXTURE=on runs each letter through the tool layer, which is what an
     // export bakes in and what the proofing window shows one letter of.
     //
@@ -89,7 +94,8 @@ async function main() {
           ...one,
           name: `${one.name} — irregularity ${amount}`,
           parts: { ...one.parts, script: { ...one.parts.script, irregularity: amount } },
-        })))
+        })),
+      )
     : chosen;
   const faces = loops.length
     ? swept.flatMap((one) =>
@@ -97,7 +103,8 @@ async function main() {
           ...one,
           name: `${one.name} — loop ${amount}`,
           parts: { ...one.parts, script: { ...one.parts.script, loop: amount } },
-        })))
+        })),
+      )
     : swept;
   const blocks: string[] = [];
 
@@ -106,26 +113,33 @@ async function main() {
     const step = ascender - descender + 180;
     const set = LINES.map((line) => setLine(style, line));
     const widest = Math.max(...set.map((one) => one.width), 1);
-    const rows = set.map(({ path }, index) =>
-      `<g transform="translate(0 ${-index * step})">` +
-      `<line x1="0" y1="0" x2="${widest}" y2="0" stroke="#e88" stroke-width="3"/>` +
-      `<path d="${path}" fill="#111"/></g>`);
+    const rows = set.map(
+      ({ path }, index) =>
+        `<g transform="translate(0 ${-index * step})">` +
+        `<line x1="0" y1="0" x2="${widest}" y2="0" stroke="#e88" stroke-width="3"/>` +
+        `<path d="${path}" fill="#111"/></g>`,
+    );
 
     // The whole block, in font units, with the y axis the right way up.
     const top = ascender + 60;
     const bottom = -(set.length - 1) * step + descender - 60;
     blocks.push(
       `<section><h2>${style.name}</h2>` +
-      `<svg viewBox="-60 ${-top} ${widest + 160} ${top - bottom}" width="1160">` +
-      `<g transform="scale(1 -1)">${rows.join("")}</g></svg></section>`);
+        `<svg viewBox="-60 ${-top} ${widest + 160} ${top - bottom}" width="1160">` +
+        `<g transform="scale(1 -1)">${rows.join("")}</g></svg></section>`,
+    );
   }
 
   writeFileSync(
     process.env.OUT ?? "/tmp/writing.html",
     `<!doctype html><meta charset="utf-8"><style>body{background:#fff;font:14px system-ui;margin:20px}` +
-    `h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#777;margin:22px 0 4px}` +
-    `svg{display:block;max-width:100%}</style>${blocks.join("")}`);
+      `h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#777;margin:22px 0 4px}` +
+      `svg{display:block;max-width:100%}</style>${blocks.join("")}`,
+  );
   console.log(`${faces.length} face(s) written`);
 }
 
-main().catch((error) => { console.error(error); process.exit(1); });
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

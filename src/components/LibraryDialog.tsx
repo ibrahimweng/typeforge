@@ -305,7 +305,9 @@ function Actions({
       taken.letters === 0
         ? "None of your letters are in that font, so there was nothing to take."
         : `Took the spacing for ${taken.letters} letter${taken.letters === 1 ? "" : "s"}` +
-          (taken.pairs > 0 ? ` and ${taken.pairs} kerning pair${taken.pairs === 1 ? "" : "s"}.` : "."),
+            (taken.pairs > 0
+              ? ` and ${taken.pairs} kerning pair${taken.pairs === 1 ? "" : "s"}.`
+              : "."),
     );
   };
 

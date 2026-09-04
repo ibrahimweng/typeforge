@@ -53,22 +53,64 @@ describe("findSharedPoints", () => {
   });
 
   it("does not match a point that merely looks close", () => {
-    const a = glyph("a", [polygon([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }])]);
-    const b = glyph("b", [polygon([{ x: 40, y: 0 }, { x: 140, y: 0 }, { x: 140, y: 100 }])]);
+    const a = glyph("a", [
+      polygon([
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+      ]),
+    ]);
+    const b = glyph("b", [
+      polygon([
+        { x: 40, y: 0 },
+        { x: 140, y: 0 },
+        { x: 140, y: 100 },
+      ]),
+    ]);
     expect(findSharedPoints(a, b)).toHaveLength(0);
   });
 
   it("absorbs a unit of rounding but no more", () => {
-    const a = glyph("a", [polygon([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }])]);
-    const near = glyph("near", [polygon([{ x: 1, y: 0 }, { x: 100, y: 1 }, { x: 100, y: 100 }])]);
-    const far = glyph("far", [polygon([{ x: 3, y: 0 }, { x: 100, y: 3 }, { x: 100, y: 100 }])]);
+    const a = glyph("a", [
+      polygon([
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+      ]),
+    ]);
+    const near = glyph("near", [
+      polygon([
+        { x: 1, y: 0 },
+        { x: 100, y: 1 },
+        { x: 100, y: 100 },
+      ]),
+    ]);
+    const far = glyph("far", [
+      polygon([
+        { x: 3, y: 0 },
+        { x: 100, y: 3 },
+        { x: 100, y: 100 },
+      ]),
+    ]);
     expect(findSharedPoints(a, near)).toHaveLength(3);
     expect(findSharedPoints(a, far)).toHaveLength(1);
   });
 
   it("never claims one target point for two source points", () => {
-    const a = glyph("a", [polygon([{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 100, y: 100 }])]);
-    const b = glyph("b", [polygon([{ x: 0, y: 0 }, { x: 100, y: 100 }, { x: 50, y: 50 }])]);
+    const a = glyph("a", [
+      polygon([
+        { x: 0, y: 0 },
+        { x: 0, y: 0 },
+        { x: 100, y: 100 },
+      ]),
+    ]);
+    const b = glyph("b", [
+      polygon([
+        { x: 0, y: 0 },
+        { x: 100, y: 100 },
+        { x: 50, y: 50 },
+      ]),
+    ]);
     const shared = findSharedPoints(a, b);
     const targets = shared.map((match) => linkKey(match.contour, match.node));
     expect(new Set(targets).size).toBe(targets.length);
@@ -95,7 +137,13 @@ describe("buildLinks", () => {
   it("leaves alone a letter that shares only an incidental point", () => {
     const family = typeface([
       glyph("n", [polygon([...SHARED, { x: 0, y: 100 }, { x: 50, y: 200 }, { x: 20, y: 300 }])]),
-      glyph("b", [polygon([{ x: 0, y: 0 }, { x: 900, y: 0 }, { x: 900, y: 900 }])]),
+      glyph("b", [
+        polygon([
+          { x: 0, y: 0 },
+          { x: 900, y: 0 },
+          { x: 900, y: 900 },
+        ]),
+      ]),
     ]);
     expect(summariseLinks(buildLinks(family, "n")).glyphs).toEqual([]);
   });
@@ -161,6 +209,8 @@ describe("propagating an edit through the links", () => {
     const document = family();
     const links = buildLinks(document, "n");
     const before = structuredClone(document.glyphs[0]);
-    expect(propagateMoves(document, links, pointsThatMoved(before, document.glyphs[0]))).toEqual([]);
+    expect(propagateMoves(document, links, pointsThatMoved(before, document.glyphs[0]))).toEqual(
+      [],
+    );
   });
 });

@@ -95,8 +95,7 @@ function seamGap(style: Style, pair: string): number | null {
    * matters now that a join crosses climbing: a climbing stroke's ink at one
    * height is only about a pen and a half wide, and the shear is most of that.
    */
-  const lean = (seam - style.metrics.xHeight / 2)
-    * Math.tan((style.metrics.slant * Math.PI) / 180);
+  const lean = (seam - style.metrics.xHeight / 2) * Math.tan((style.metrics.slant * Math.PI) / 180);
   const edge = first.advanceWidth + lean;
   const before = runs.filter((run) => run[1] <= edge + 1e-6);
   const after = runs.filter((run) => run[0] >= edge - 1e-6);
@@ -114,7 +113,10 @@ async function main() {
   // The invariant has to hold at the far end of every control, not only at the
   // setting a face happens to ship with.
   const faces = BASES.filter((one) => one.parts.script.on).map((one) =>
-    extra ? { ...one, parts: { ...one.parts, script: { ...one.parts.script, irregularity: extra } } } : one);
+    extra
+      ? { ...one, parts: { ...one.parts, script: { ...one.parts.script, irregularity: extra } } }
+      : one,
+  );
   for (const style of faces) {
     const script = style.parts.script;
     const seam = seamsOf(script, style.metrics.xHeight, style.pen.weight / 2).low;
@@ -158,12 +160,14 @@ async function main() {
       else if (gap > 1) capsBroken.push(`${cap}n(${gap.toFixed(0)})`);
     }
     console.log(
-      `  capitals that do not hand on, of ${capsAsked}: ${capsBroken.length ? capsBroken.join(" ") : "none"}`);
+      `  capitals that do not hand on, of ${capsAsked}: ${capsBroken.length ? capsBroken.join(" ") : "none"}`,
+    );
 
     let worst = 0;
     for (const pair of PAIRS) {
       const gap = seamGap(style, pair);
-      const shown = gap === null ? "no ink one side" : gap === 0 ? "joined" : `${gap.toFixed(1)} apart`;
+      const shown =
+        gap === null ? "no ink one side" : gap === 0 ? "joined" : `${gap.toFixed(1)} apart`;
       if (gap !== null && gap > worst) worst = gap;
       console.log(`  ${pair}: ${shown}`);
     }
@@ -171,4 +175,7 @@ async function main() {
   }
 }
 
-main().catch((error) => { console.error(error); process.exit(1); });
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

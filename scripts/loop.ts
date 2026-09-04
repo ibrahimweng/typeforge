@@ -61,9 +61,20 @@ const bend = (
 const written: Record<string, QuillStroke[]> = {
   l: [stroke(line([160, 0], [160, 700]))],
   v: [stroke(line([120, 700], [320, 60])), stroke(line([320, 60], [520, 700]))],
-  n: [stroke(line([120, 0], [120, 640])), stroke(bend([120, 460], [220, 700], [460, 700], [540, 460])), stroke(line([540, 460], [540, 0]))],
-  o: [stroke(bend([320, 700], [120, 700], [80, 380], [320, 40])), stroke(bend([320, 40], [560, 380], [520, 700], [320, 700]))],
-  z: [stroke(line([120, 640], [520, 640])), stroke(line([520, 640], [120, 60])), stroke(line([120, 60], [520, 60]))],
+  n: [
+    stroke(line([120, 0], [120, 640])),
+    stroke(bend([120, 460], [220, 700], [460, 700], [540, 460])),
+    stroke(line([540, 460], [540, 0])),
+  ],
+  o: [
+    stroke(bend([320, 700], [120, 700], [80, 380], [320, 40])),
+    stroke(bend([320, 40], [560, 380], [520, 700], [320, 700])),
+  ],
+  z: [
+    stroke(line([120, 640], [520, 640])),
+    stroke(line([520, 640], [120, 60])),
+    stroke(line([120, 60], [520, 60])),
+  ],
   x: [stroke(line([120, 640], [520, 60])), stroke(line([120, 60], [520, 640]))],
 };
 
@@ -96,8 +107,16 @@ console.log(
  * from a dead idea.
  */
 import { wanderOf } from "@/quill/hand";
-const truth = wanderOf(traced.flatMap((one) => one.once), BLADE, ANGLE);
-const none = wanderOf(traced.flatMap((one) => one.once), 0, 0);
+const truth = wanderOf(
+  traced.flatMap((one) => one.once),
+  BLADE,
+  ANGLE,
+);
+const none = wanderOf(
+  traced.flatMap((one) => one.once),
+  0,
+  0,
+);
 console.log(
   `  under the TRUE pen: ${none.toFixed(3)} -> ${truth.toFixed(3)}` +
     `   ${((1 - truth / none) * 100).toFixed(0)}% flatter`,
@@ -112,4 +131,3 @@ console.log(
   `  the written strokes, whose profile is flat: ` +
     `${wanderOf(wroteFlat, 0, 0).toFixed(3)} -> ${wanderOf(wroteFlat, BLADE, ANGLE).toFixed(3)}`,
 );
-

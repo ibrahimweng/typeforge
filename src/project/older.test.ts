@@ -113,11 +113,13 @@ describe("the quieter ways a kept drawing can be out of date", () => {
    * either.
    */
   it("fills a field missing from inside a part, not just a whole part", () => {
-    const project = readProject(aged((forge) => {
-      delete (forge as any).draw;
-      delete (forge as any).style.parts.bowl.width;
-      delete (forge as any).style.parts.slab.bracket;
-    }));
+    const project = readProject(
+      aged((forge) => {
+        delete (forge as any).draw;
+        delete (forge as any).style.parts.bowl.width;
+        delete (forge as any).style.parts.slab.bracket;
+      }),
+    );
     const style = project!.draw!.forge.style;
     expect(style.parts.bowl.width).toBe(SANS.parts.bowl.width);
     expect(style.parts.slab.bracket).toBe(SANS.parts.slab.bracket);
@@ -130,10 +132,12 @@ describe("the quieter ways a kept drawing can be out of date", () => {
   });
 
   it("fills the metrics and the pen the same way", () => {
-    const project = readProject(aged((forge) => {
-      delete (forge as any).style.metrics.width;
-      delete (forge as any).style.pen.contrast;
-    }));
+    const project = readProject(
+      aged((forge) => {
+        delete (forge as any).style.metrics.width;
+        delete (forge as any).style.pen.contrast;
+      }),
+    );
     const style = project!.draw!.forge.style;
     expect(style.metrics.width).toBe(SANS.metrics.width);
     expect(style.pen.contrast).toBe(SANS.pen.contrast);
@@ -145,10 +149,12 @@ describe("the quieter ways a kept drawing can be out of date", () => {
    * the letter throws on `null.on` instead of on `undefined.on`.
    */
   it("treats a null as missing rather than as a setting", () => {
-    const project = readProject(aged((forge) => {
-      (forge as any).style.parts.script = null;
-      (forge as any).style.parts.ball = null;
-    }));
+    const project = readProject(
+      aged((forge) => {
+        (forge as any).style.parts.script = null;
+        (forge as any).style.parts.ball = null;
+      }),
+    );
     const style = project!.draw!.forge.style;
     expect(style.parts.script).toEqual(SANS.parts.script);
     expect(drawLetter("n", style)!.contours.length).toBeGreaterThan(0);
@@ -161,17 +167,21 @@ describe("the quieter ways a kept drawing can be out of date", () => {
    * be written over the top of itself on every edit.
    */
   it("gives the parts back in the order the plain face has them", () => {
-    const project = readProject(aged((forge) => {
-      // A group that is not the last one, which is the case that can shuffle.
-      delete (forge as any).style.parts.bowl;
-    }));
+    const project = readProject(
+      aged((forge) => {
+        // A group that is not the last one, which is the case that can shuffle.
+        delete (forge as any).style.parts.bowl;
+      }),
+    );
     expect(Object.keys(project!.draw!.forge.style.parts)).toEqual(Object.keys(SANS.parts));
   });
 
   it("keeps a setting this version no longer knows about", () => {
-    const project = readProject(aged((forge) => {
-      (forge as any).style.parts.gargoyle = { on: true };
-    }));
+    const project = readProject(
+      aged((forge) => {
+        (forge as any).style.parts.gargoyle = { on: true };
+      }),
+    );
     expect((project!.draw!.forge.style.parts as any).gargoyle).toEqual({ on: true });
   });
 
@@ -181,9 +191,13 @@ describe("the quieter ways a kept drawing can be out of date", () => {
    * budget is not an unlimited one, it is a cap that is quietly never applied.
    */
   it("fills a tool setting added after the tool was", () => {
-    const project = readProject(aged((forge) => {
-      (forge as any).effects = { rough: { on: true, amplitude: 0.05, wavelength: 0.9, reach: "all", seed: 1 } };
-    }));
+    const project = readProject(
+      aged((forge) => {
+        (forge as any).effects = {
+          rough: { on: true, amplitude: 0.05, wavelength: 0.9, reach: "all", seed: 1 },
+        };
+      }),
+    );
     const effects = project!.draw!.forge.effects!;
     expect(effects.budget).toBeGreaterThan(0);
     expect(effects.pool).toBeDefined();
@@ -191,7 +205,11 @@ describe("the quieter ways a kept drawing can be out of date", () => {
   });
 
   it("leaves a drawing with no tool settings without any", () => {
-    const project = readProject(aged((forge) => { delete (forge as any).effects; }));
+    const project = readProject(
+      aged((forge) => {
+        delete (forge as any).effects;
+      }),
+    );
     expect(project!.draw!.forge.effects).toBeUndefined();
   });
 
@@ -201,7 +219,9 @@ describe("the quieter ways a kept drawing can be out of date", () => {
    * handler where nothing was waiting to catch it.
    */
   it("turns away a document with no style rather than fabricating one", () => {
-    const bare = aged((forge) => { delete (forge as any).style; });
+    const bare = aged((forge) => {
+      delete (forge as any).style;
+    });
     expect(() => readProject(bare)).not.toThrow();
     expect(readProject(bare)?.draw).toBeUndefined();
   });

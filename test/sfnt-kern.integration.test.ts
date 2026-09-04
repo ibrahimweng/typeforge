@@ -54,10 +54,7 @@ suite("sfnt round trip with injected kerning", { timeout: FONT_SUITE_TIMEOUT }, 
   it("expresses class kerning as a GPOS format 2 subtable", () => {
     const font = readSfnt(source!);
     // Every glyph in the left class kerns against every glyph in the right one.
-    font.tables.set(
-      "GPOS",
-      buildGposTable([], [{ left: [55, 56], right: [82, 72], value: -75 }])!,
-    );
+    font.tables.set("GPOS", buildGposTable([], [{ left: [55, 56], right: [82, 72], value: -75 }])!);
 
     const report = inspectFont(writeSfnt(font));
     expect(report.error).toBeUndefined();

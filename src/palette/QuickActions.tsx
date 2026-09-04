@@ -42,7 +42,11 @@ export interface QuickActionsProps {
   shell: Shell;
 }
 
-export function QuickActions({ open, onClose, shell }: QuickActionsProps): React.JSX.Element | null {
+export function QuickActions({
+  open,
+  onClose,
+  shell,
+}: QuickActionsProps): React.JSX.Element | null {
   const [typed, setTyped] = React.useState("");
   const [at, setAt] = React.useState(0);
   /** The row whose slider is showing, if any. */
@@ -248,10 +252,7 @@ function SearchMark({ mark }: { mark: string | null }): React.JSX.Element {
   return (
     <span
       aria-hidden
-      className={cn(
-        "font-mono text-sm",
-        found ? "text-accent" : "text-muted-foreground",
-      )}
+      className={cn("font-mono text-sm", found ? "text-accent" : "text-muted-foreground")}
       title={found ? `Only ${found.label}` : undefined}
     >
       {mark ?? "⌘"}
@@ -264,11 +265,7 @@ function Footer({ mark, empty }: { mark: string | null; empty: boolean }): React
   return (
     <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-2 text-[11px] text-muted-foreground">
       <span>
-        {found
-          ? `Only ${found.label}`
-          : empty
-            ? "Recent, then somewhere to start"
-            : "Everything"}
+        {found ? `Only ${found.label}` : empty ? "Recent, then somewhere to start" : "Everything"}
       </span>
       <span className="flex items-center gap-3">
         {PREFIXES.map((one) => (
@@ -307,10 +304,7 @@ function Row({ item, at, chosen, adjusting, first, onHover, onPick }: RowProps):
         tabIndex={-1}
         onMouseMove={onHover}
         onClick={onPick}
-        className={cn(
-          "cursor-pointer px-4 py-2",
-          chosen ? "bg-accent/15" : "hover:bg-muted/40",
-        )}
+        className={cn("cursor-pointer px-4 py-2", chosen ? "bg-accent/15" : "hover:bg-muted/40")}
       >
         <div className="flex items-baseline gap-2">
           <span className="truncate text-xs-plus text-foreground">{item.label}</span>
@@ -339,10 +333,10 @@ function Row({ item, at, chosen, adjusting, first, onHover, onPick }: RowProps):
           )}
         </div>
         {/*
-          * The hint is the reason the result came back, so it is shown rather
-          * than hidden behind a hover: a search that answers a description has
-          * to say what it thinks you asked for.
-          */}
+         * The hint is the reason the result came back, so it is shown rather
+         * than hidden behind a hover: a search that answers a description has
+         * to say what it thinks you asked for.
+         */}
         <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
           {item.hint}
         </p>

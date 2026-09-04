@@ -56,7 +56,10 @@ describe("a bowl", () => {
     for (const segment of travelling) {
       if (segment.kind !== "arc") continue;
       expect(segment.radius).toBeCloseTo(200, 6);
-      expect(Math.hypot(segment.centre.x - centre.x, segment.centre.y - centre.y)).toBeCloseTo(0, 6);
+      expect(Math.hypot(segment.centre.x - centre.x, segment.centre.y - centre.y)).toBeCloseTo(
+        0,
+        6,
+      );
     }
   });
 
@@ -92,7 +95,9 @@ describe("a bowl", () => {
           ...drawn(bowl(centre, 200, 160, roundness, weight / 2)),
           pen: { ...MONOLINE, weight },
         });
-        expect(contoursIntersect(contours), `roundness ${roundness} at weight ${weight}`).toBe(false);
+        expect(contoursIntersect(contours), `roundness ${roundness} at weight ${weight}`).toBe(
+          false,
+        );
       }
     }
   });
@@ -122,14 +127,20 @@ describe("part of a bowl", () => {
       const run = bowlBetween(centre, 200, 200, roundness, 40, 55, 305);
       const first = run.segments[0];
       const last = run.segments[run.segments.length - 1];
-      const from = first.kind === "line" ? first.from : {
-        x: first.centre.x + first.radius * Math.cos(first.startAngle),
-        y: first.centre.y + first.radius * Math.sin(first.startAngle),
-      };
-      const to = last.kind === "line" ? last.to : {
-        x: last.centre.x + last.radius * Math.cos(last.endAngle),
-        y: last.centre.y + last.radius * Math.sin(last.endAngle),
-      };
+      const from =
+        first.kind === "line"
+          ? first.from
+          : {
+              x: first.centre.x + first.radius * Math.cos(first.startAngle),
+              y: first.centre.y + first.radius * Math.sin(first.startAngle),
+            };
+      const to =
+        last.kind === "line"
+          ? last.to
+          : {
+              x: last.centre.x + last.radius * Math.cos(last.endAngle),
+              y: last.centre.y + last.radius * Math.sin(last.endAngle),
+            };
       expect(degrees(from), `roundness ${roundness}`).toBeCloseTo(55, 4);
       expect(degrees(to), `roundness ${roundness}`).toBeCloseTo(305, 4);
     }
@@ -144,7 +155,9 @@ describe("part of a bowl", () => {
       spine.segments.reduce(
         (total, segment) =>
           total +
-          (segment.kind === "arc" ? segment.radius * Math.abs(segment.endAngle - segment.startAngle) : 0),
+          (segment.kind === "arc"
+            ? segment.radius * Math.abs(segment.endAngle - segment.startAngle)
+            : 0),
         0,
       );
     expect(span(long)).toBeGreaterThan(span(short));
@@ -277,12 +290,16 @@ describe("a wave", () => {
         const after = waved.segments[index];
         const [, leaves] = ends(before);
         const [arrives] = ends(after);
-        expect(Math.hypot(leaves.x - arrives.x, leaves.y - arrives.y), `gap at ${index}, depth ${depth}`)
-          .toBeLessThan(1e-6);
+        expect(
+          Math.hypot(leaves.x - arrives.x, leaves.y - arrives.y),
+          `gap at ${index}, depth ${depth}`,
+        ).toBeLessThan(1e-6);
         const [, going] = ways(before);
         const [coming] = ways(after);
-        expect(going.x * coming.x + going.y * coming.y, `kink at ${index}, depth ${depth}`)
-          .toBeCloseTo(1, 5);
+        expect(
+          going.x * coming.x + going.y * coming.y,
+          `kink at ${index}, depth ${depth}`,
+        ).toBeCloseTo(1, 5);
       }
     }
   });
@@ -292,7 +309,9 @@ describe("a wave", () => {
       for (const depth of [10, 60, 200]) {
         for (const segment of wavy(run, 160, depth, penHalf, "flat").segments) {
           if (segment.kind !== "arc") continue;
-          expect(segment.radius, `pen ${penHalf}, depth ${depth}`).toBeGreaterThanOrEqual(penHalf * 1.06 - 1e-6);
+          expect(segment.radius, `pen ${penHalf}, depth ${depth}`).toBeGreaterThanOrEqual(
+            penHalf * 1.06 - 1e-6,
+          );
         }
       }
     }

@@ -28,8 +28,16 @@ await ready();
 /** A rectangle to cut the ink with, since the boolean has no scanline of its own. */
 const band = (low: number, high: number): Contour => ({
   closed: true,
-  nodes: [[-4000, low], [5000, low], [5000, high], [-4000, high]].map(([x, y]) => ({
-    point: { x, y }, handleIn: null, handleOut: null, type: "corner" as const,
+  nodes: [
+    [-4000, low],
+    [5000, low],
+    [5000, high],
+    [-4000, high],
+  ].map(([x, y]) => ({
+    point: { x, y },
+    handleIn: null,
+    handleOut: null,
+    type: "corner" as const,
   })),
 });
 
@@ -46,16 +54,20 @@ for (const style of BASES.filter((one) => one.parts.script?.on)) {
     const whole = contoursBounds(ink);
     console.log(
       `  ${name} (${style.forms?.[name] ?? "default"})  adv ${(drawn.advanceWidth / x).toFixed(2)}` +
-      `  ink ${((whole.xMax - whole.xMin) / x).toFixed(2)}` +
-      `  over left ${(-whole.xMin / x).toFixed(2)} right ${((whole.xMax - drawn.advanceWidth) / x).toFixed(2)}`,
+        `  ink ${((whole.xMax - whole.xMin) / x).toFixed(2)}` +
+        `  over left ${(-whole.xMin / x).toFixed(2)} right ${((whole.xMax - drawn.advanceWidth) / x).toFixed(2)}`,
     );
     for (const height of heights) {
       const cut = intersect(ink, [band(x * height - 0.75, x * height + 0.75)]);
       if (cut.length === 0) continue;
       const runs = cut.map((one) => contoursBounds([one])).sort((a, b) => a.xMin - b.xMin);
-      const shown = runs.map((one) => `[${(one.xMin / x).toFixed(2)}..${(one.xMax / x).toFixed(2)}]`);
+      const shown = runs.map(
+        (one) => `[${(one.xMin / x).toFixed(2)}..${(one.xMax / x).toFixed(2)}]`,
+      );
       const span = (runs[runs.length - 1].xMax - runs[0].xMin) / x;
-      console.log(`        ${height >= 0 ? "+" : ""}${height.toFixed(1)}x ${shown.join(" ")}   span ${span.toFixed(2)}`);
+      console.log(
+        `        ${height >= 0 ? "+" : ""}${height.toFixed(1)}x ${shown.join(" ")}   span ${span.toFixed(2)}`,
+      );
     }
   }
 }

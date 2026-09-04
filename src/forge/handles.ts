@@ -68,7 +68,10 @@ function partRange(part: string, key: string, em: number): { min: number; max: n
  */
 export type Drive =
   | { on: "pen"; key: "weight" }
-  | { on: "metrics"; key: "xHeight" | "capHeight" | "counterWidth" | "sidebearing" | "width" | "slant" }
+  | {
+      on: "metrics";
+      key: "xHeight" | "capHeight" | "counterWidth" | "sidebearing" | "width" | "slant";
+    }
   | { on: "part"; part: "shoulder"; key: "spring" }
   | { on: "part"; part: "crossbar"; key: "height" }
   | { on: "part"; part: "slab"; key: "projection" | "thickness" }

@@ -54,8 +54,7 @@ export function NumberField({
       onClick={(event) => event.stopPropagation()}
       onBlur={() => {
         const parsed = Number(draft);
-        const settled =
-          decimals > 0 ? Number(parsed.toFixed(decimals)) : Math.round(parsed);
+        const settled = decimals > 0 ? Number(parsed.toFixed(decimals)) : Math.round(parsed);
         if (Number.isFinite(parsed) && settled !== value) onCommit(settled);
         else setDraft(String(value));
       }}

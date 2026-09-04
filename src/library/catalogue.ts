@@ -16,12 +16,7 @@
  */
 
 /** What the font world calls the kinds of face, which is not what this app does. */
-export type LibraryCategory =
-  | "sans-serif"
-  | "serif"
-  | "display"
-  | "handwriting"
-  | "monospace";
+export type LibraryCategory = "sans-serif" | "serif" | "display" | "handwriting" | "monospace";
 
 export interface LibraryFont {
   /** Lower-case hyphenated, as Fontsource names them: `playfair-display`. */
@@ -63,10 +58,9 @@ const CATEGORIES = new Set<LibraryCategory>([
  * picker that throws because a third-party service is down is worse than one
  * that offers thirty families and says so.
  */
-export async function fetchCatalogue(options: {
-  googleKey?: string;
-  signal?: AbortSignal;
-} = {}): Promise<Catalogue> {
+export async function fetchCatalogue(
+  options: { googleKey?: string; signal?: AbortSignal } = {},
+): Promise<Catalogue> {
   const problems: string[] = [];
 
   try {
@@ -135,7 +129,9 @@ function readFontsource(raw: unknown): LibraryFont | null {
   if (!id || !family) return null;
 
   const weights = Array.isArray(entry.weights)
-    ? entry.weights.filter((weight): weight is number => typeof weight === "number").sort((a, b) => a - b)
+    ? entry.weights
+        .filter((weight): weight is number => typeof weight === "number")
+        .sort((a, b) => a - b)
     : [];
   const styles = Array.isArray(entry.styles)
     ? entry.styles.filter((style): style is string => typeof style === "string")
@@ -225,9 +221,7 @@ export function search(
   category: LibraryCategory | "all" = "all",
 ): LibraryFont[] {
   const wanted = query.trim().toLowerCase();
-  const matching = fonts.filter(
-    (font) => category === "all" || font.category === category,
-  );
+  const matching = fonts.filter((font) => category === "all" || font.category === category);
   if (!wanted) return matching;
 
   const starts: LibraryFont[] = [];

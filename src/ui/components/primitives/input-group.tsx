@@ -89,10 +89,8 @@ const inputGroupAddonVariants = cva(
   {
     variants: {
       align: {
-        "inline-start":
-          "order-first pl-2 has-[>button]:pl-px has-[>kbd]:ml-[-0.275rem]",
-        "inline-end":
-          "order-last pr-1.5 has-[>button]:pr-0.5 has-[>kbd]:mr-[-0.275rem]",
+        "inline-start": "order-first pl-2 has-[>button]:pl-px has-[>kbd]:ml-[-0.275rem]",
+        "inline-end": "order-last pr-1.5 has-[>button]:pr-0.5 has-[>kbd]:mr-[-0.275rem]",
         "block-start":
           "order-first w-full justify-start px-2 pt-2 group-has-[>input]/input-group:pt-2 [.border-b]:pb-2",
         "block-end":
@@ -137,31 +135,28 @@ function InputGroupAddon({
   );
 }
 
-const inputGroupButtonVariants = cva(
-  "items-center justify-center shadow-none",
-  {
-    variants: {
-      groupSize: {
-        sm: "text-xs/relaxed",
-        default: "",
-        lg: "data-[size=xs]:h-6 data-[size=xs]:px-2 data-[size=xs]:text-sm/relaxed data-[size=xs]:[&>svg:not([class*='size-'])]:size-3.5 data-[size=sm]:h-7 data-[size=sm]:text-sm/relaxed data-[size=icon-xs]:size-7 data-[size=icon-xs]:[&>svg:not([class*='size-'])]:size-3.5 data-[size=icon-sm]:size-8 data-[size=icon-sm]:[&>svg:not([class*='size-'])]:size-3.5",
-        xl: "data-[size=xs]:h-8 data-[size=xs]:px-2.5 data-[size=xs]:text-base/relaxed data-[size=xs]:[&>svg:not([class*='size-'])]:size-4 data-[size=sm]:h-9 data-[size=sm]:px-3 data-[size=sm]:text-base/relaxed data-[size=sm]:[&>svg:not([class*='size-'])]:size-4 data-[size=icon-xs]:size-9 data-[size=icon-xs]:[&>svg:not([class*='size-'])]:size-4 data-[size=icon-sm]:size-10 data-[size=icon-sm]:[&>svg:not([class*='size-'])]:size-4",
-      },
-      size: {
-        xxs: "h-[18px] gap-1 px-1.5 text-[11px] [&>svg:not([class*='size-'])]:size-2.5",
-        xs: "h-5 gap-1 px-1.5 [&>svg:not([class*='size-'])]:size-3",
-        sm: "h-6 gap-1 px-2 [&>svg:not([class*='size-'])]:size-3",
-        "icon-xxs": "size-[18px] p-0 [&>svg:not([class*='size-'])]:size-2.5",
-        "icon-xs": "size-6 p-0 [&>svg:not([class*='size-'])]:size-3.5",
-        "icon-sm": "size-7 p-0 [&>svg:not([class*='size-'])]:size-3",
-      },
+const inputGroupButtonVariants = cva("items-center justify-center shadow-none", {
+  variants: {
+    groupSize: {
+      sm: "text-xs/relaxed",
+      default: "",
+      lg: "data-[size=xs]:h-6 data-[size=xs]:px-2 data-[size=xs]:text-sm/relaxed data-[size=xs]:[&>svg:not([class*='size-'])]:size-3.5 data-[size=sm]:h-7 data-[size=sm]:text-sm/relaxed data-[size=icon-xs]:size-7 data-[size=icon-xs]:[&>svg:not([class*='size-'])]:size-3.5 data-[size=icon-sm]:size-8 data-[size=icon-sm]:[&>svg:not([class*='size-'])]:size-3.5",
+      xl: "data-[size=xs]:h-8 data-[size=xs]:px-2.5 data-[size=xs]:text-base/relaxed data-[size=xs]:[&>svg:not([class*='size-'])]:size-4 data-[size=sm]:h-9 data-[size=sm]:px-3 data-[size=sm]:text-base/relaxed data-[size=sm]:[&>svg:not([class*='size-'])]:size-4 data-[size=icon-xs]:size-9 data-[size=icon-xs]:[&>svg:not([class*='size-'])]:size-4 data-[size=icon-sm]:size-10 data-[size=icon-sm]:[&>svg:not([class*='size-'])]:size-4",
     },
-    defaultVariants: {
-      groupSize: "default",
-      size: "xs",
+    size: {
+      xxs: "h-[18px] gap-1 px-1.5 text-[11px] [&>svg:not([class*='size-'])]:size-2.5",
+      xs: "h-5 gap-1 px-1.5 [&>svg:not([class*='size-'])]:size-3",
+      sm: "h-6 gap-1 px-2 [&>svg:not([class*='size-'])]:size-3",
+      "icon-xxs": "size-[18px] p-0 [&>svg:not([class*='size-'])]:size-2.5",
+      "icon-xs": "size-6 p-0 [&>svg:not([class*='size-'])]:size-3.5",
+      "icon-sm": "size-7 p-0 [&>svg:not([class*='size-'])]:size-3",
     },
   },
-);
+  defaultVariants: {
+    groupSize: "default",
+    size: "xs",
+  },
+});
 
 function InputGroupButton({
   className,
@@ -259,10 +254,7 @@ function InputGroupInput({
       data-surface-style={surfaceStyle ?? undefined}
       data-typography-style={typographyStyle ?? undefined}
       data-slot="input-group-control"
-      className={cn(
-        inputGroupInputVariants({ size, surfaceStyle, typographyStyle }),
-        className,
-      )}
+      className={cn(inputGroupInputVariants({ size, surfaceStyle, typographyStyle }), className)}
       {...props}
     />
   );

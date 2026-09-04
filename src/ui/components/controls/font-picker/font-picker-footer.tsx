@@ -1,6 +1,6 @@
 "use client";
 
-import * as React from "react";
+import type * as React from "react";
 
 import { Slider } from "../../primitives";
 
@@ -38,21 +38,8 @@ export function LineHeightIcon(): React.JSX.Element {
       width="16"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <rect
-        fill="#D9D9D9"
-        height="16"
-        transform="rotate(90 16 0)"
-        width="1"
-        x="16"
-      />
-      <rect
-        fill="#D9D9D9"
-        height="16"
-        transform="rotate(90 16 15)"
-        width="1"
-        x="16"
-        y="15"
-      />
+      <rect fill="#D9D9D9" height="16" transform="rotate(90 16 0)" width="1" x="16" />
+      <rect fill="#D9D9D9" height="16" transform="rotate(90 16 15)" width="1" x="16" y="15" />
       <path
         d="M5.18182 13H4L7.41818 3H8.58182L12 13H10.8182L8.03636 4.58203H7.96364L5.18182 13ZM5.61818 9.09375H10.3818V10.168H5.61818V9.09375Z"
         fill="white"
@@ -82,10 +69,7 @@ export function FontPickerFooterControl({
   const currentValue = Math.min(max, Math.max(min, Math.round(valueIndex)));
 
   return (
-    <div
-      className="flex min-w-0 flex-1 items-center gap-2"
-      data-slot="font-picker-footer-control"
-    >
+    <div className="flex min-w-0 flex-1 items-center gap-2" data-slot="font-picker-footer-control">
       {icon}
       <div className="min-w-0 flex-1" data-slot="font-picker-footer-slider">
         <Slider
@@ -96,9 +80,7 @@ export function FontPickerFooterControl({
           max={max}
           min={min}
           onValueChange={(nextValue) => {
-            const resolvedValue = Array.isArray(nextValue)
-              ? nextValue[0]
-              : nextValue;
+            const resolvedValue = Array.isArray(nextValue) ? nextValue[0] : nextValue;
 
             if (typeof resolvedValue === "number") {
               onValueChange(Math.min(max, Math.max(min, Math.round(resolvedValue))));

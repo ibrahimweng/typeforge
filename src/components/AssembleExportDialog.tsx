@@ -26,10 +26,7 @@ export function AssembleExportDialog({ onClose }: { onClose: () => void }): Reac
   const [problem, setProblem] = React.useState<string | null>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
 
-  const assembled = React.useMemo(
-    () => build(state.assembly),
-    [state.assembly, state.revision],
-  );
+  const assembled = React.useMemo(() => build(state.assembly), [state.assembly, state.revision]);
 
   React.useEffect(() => {
     if (panelRef.current) enter(panelRef.current, { distance: 10 });
@@ -147,9 +144,9 @@ export function AssembleExportDialog({ onClose }: { onClose: () => void }): Reac
         </p>
 
         <p className="pb-4 text-2xs leading-relaxed text-muted-foreground">
-          These outlines are the drawings you brought in. Typeforge has put them
-          on the same lines and worked out the spacing; it has not drawn
-          anything, so whatever the drawings were yours to do, the font is too.
+          These outlines are the drawings you brought in. Typeforge has put them on the same lines
+          and worked out the spacing; it has not drawn anything, so whatever the drawings were yours
+          to do, the font is too.
         </p>
 
         {problem && <p className="pb-3 text-2xs text-destructive">{problem}</p>}

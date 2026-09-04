@@ -163,7 +163,10 @@ describe("reading a UFO", () => {
 });
 
 describe("reading the kerning", () => {
-  const kerned = (groups: Record<string, string[]>, kerning: Record<string, Record<string, number>>) =>
+  const kerned = (
+    groups: Record<string, string[]>,
+    kerning: Record<string, Record<string, number>>,
+  ) =>
     readUfo(
       ufo({
         "groups.plist": writePlist(groups),
@@ -192,7 +195,10 @@ describe("reading the kerning", () => {
   it("takes a group against one glyph as a class of one on that side", () => {
     // All four combinations are legal and mean something. A glyph opposite a
     // group is a class whose other side has one member in it.
-    const typeface = kerned({ "public.kern1.A": ["A", "Aacute"] }, { "public.kern1.A": { V: -60 } });
+    const typeface = kerned(
+      { "public.kern1.A": ["A", "Aacute"] },
+      { "public.kern1.A": { V: -60 } },
+    );
     expect(typeface.kernClasses[0].left).toEqual(["A", "Aacute"]);
     expect(typeface.kernClasses[0].right).toEqual(["V"]);
   });
@@ -220,7 +226,9 @@ describe("a UFO read and written again", () => {
     const { typeface, carried } = readUfo(files)!;
     const out = writeUfo(typeface, carried);
 
-    expect(out.get("data/com.somebody.thing.plist")).toBe(files.get("data/com.somebody.thing.plist"));
+    expect(out.get("data/com.somebody.thing.plist")).toBe(
+      files.get("data/com.somebody.thing.plist"),
+    );
     expect(out.get("images/sketch.png")).toBe("not really a png");
     expect(out.get("glyphs.background/a.glif")).toBe(files.get("glyphs.background/a.glif"));
   });
@@ -236,7 +244,10 @@ describe("a UFO read and written again", () => {
 
   it("keeps the kerning, groups and all", () => {
     const files = ufo({
-      "groups.plist": writePlist({ "public.kern1.A": ["A", "Aacute"], "public.kern2.V": ["V", "W"] }),
+      "groups.plist": writePlist({
+        "public.kern1.A": ["A", "Aacute"],
+        "public.kern2.V": ["V", "W"],
+      }),
       "kerning.plist": writePlist({
         "public.kern1.A": { "public.kern2.V": -80 },
         T: { o: -40 },
@@ -260,10 +271,7 @@ describe("a UFO read and written again", () => {
     // The other direction: a font drawn here, or opened from a TTF, going out
     // as a UFO for the first time. There is nothing carried, and the folder
     // still has to be a UFO.
-    const typeface = typefaceWith([
-      glyph("A", { unicodes: [0x41] }),
-      glyph(".notdef"),
-    ]);
+    const typeface = typefaceWith([glyph("A", { unicodes: [0x41] }), glyph(".notdef")]);
     const out = writeUfo(typeface);
     expect(looksLikeUfo(out)).toBe(true);
     expect(out.has("glyphs/A_.glif")).toBe(true);

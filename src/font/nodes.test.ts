@@ -55,8 +55,7 @@ const nearPlaces = (contour: Contour, want: Array<[number, number]>) => {
   });
 };
 
-const close = (value: number, want: number, digits = 6) =>
-  expect(value).toBeCloseTo(want, digits);
+const close = (value: number, want: number, digits = 6) => expect(value).toBeCloseTo(want, digits);
 
 describe("putting a point on the grid", () => {
   it("rounds the handles as well as the point", () => {
@@ -107,7 +106,10 @@ describe("smoothing a point", () => {
 
   it("really is smooth afterwards, not merely labelled so", () => {
     const smooth = smoothed(node(30, 40, [10, 90], [33, 12]));
-    const inward = { x: smooth.point.x - smooth.handleIn!.x, y: smooth.point.y - smooth.handleIn!.y };
+    const inward = {
+      x: smooth.point.x - smooth.handleIn!.x,
+      y: smooth.point.y - smooth.handleIn!.y,
+    };
     const outward = {
       x: smooth.handleOut!.x - smooth.point.x,
       y: smooth.handleOut!.y - smooth.point.y,
@@ -334,13 +336,7 @@ describe("reconnecting an opened corner", () => {
      * corner can be the last and the first. The arithmetic is the same; the
      * splicing is not.
      */
-    const rolled = closed([
-      node(100, 20),
-      node(100, 100),
-      node(0, 100),
-      node(0, 0),
-      node(80, 0),
-    ]);
+    const rolled = closed([node(100, 20), node(100, 100), node(0, 100), node(0, 0), node(80, 0)]);
     const back = reconnect(rolled, 4);
     expect(back.nodes).toHaveLength(4);
     close(back.nodes[0].point.x, 100);

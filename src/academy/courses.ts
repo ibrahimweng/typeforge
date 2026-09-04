@@ -232,7 +232,8 @@ export const COURSES: Course[] = [
         teaches:
           "Spacing is the white each letter carries on its own two sides, and it applies to every pair that letter is ever in. Kerning is an adjustment to one particular pair. There are twenty-six letters and six hundred and seventy-six pairs, so spacing is the cheap fix and kerning is the expensive one.\n\nWhich is why the order is not negotiable: space first, kern last. Kerning applied to a badly spaced font is a list of exceptions to a rule that was wrong, and it grows until every pair is on it.",
         task: "Open Spacing and compare down a column — even spacing is what makes a line read evenly.",
-        learned: "You know which of the two jobs to do first, and why doing them the other way never ends.",
+        learned:
+          "You know which of the two jobs to do first, and why doing them the other way never ends.",
       },
       {
         id: "space.non",
@@ -241,7 +242,8 @@ export const COURSES: Course[] = [
         teaches:
           "A straight-sided letter and a round one need different amounts of white, because a round side already gives some away as it turns. So the standard test is `nn`, `oo`, `no` and `on`: get those four looking even and the rest of the lowercase follows, because almost every letter is a straight side, a round side, or one of each.\n\nThe editor stands your letter between two `n`s for the same reason. It is not decoration — it is the measurement.",
         task: "Set nnoonnoo in the specimen and even out the four gaps.",
-        learned: "You spaced by the method a type designer would use, rather than by nudging until it looked nice.",
+        learned:
+          "You spaced by the method a type designer would use, rather than by nudging until it looked nice.",
       },
       {
         id: "space.kern",
@@ -251,7 +253,8 @@ export const COURSES: Course[] = [
           "Kerning is a pair, so what you select is the gap. `AV` and `To` are the famous ones: two shapes whose white leans the same way, leaving a hole that the letters' own spacing cannot close, because closing it for every `A` would ruin `An`.\n\nThat is the whole test for whether something is kerning or spacing. If fixing it here would break the same letter somewhere else, it is a pair, and it belongs in kerning.",
         task: "Kern one pair that needs it.",
         done: (at) => (at.app.typeface?.kerning.length ?? 0) > 0,
-        learned: "You fixed a pair without moving a letter, which is the distinction the whole feature rests on.",
+        learned:
+          "You fixed a pair without moving a letter, which is the distinction the whole feature rests on.",
       },
     ],
   },
@@ -270,7 +273,8 @@ export const COURSES: Course[] = [
         teaches:
           "A font is a program, and it runs on rasterisers you have never seen. The faults that matter are the ones your own screen quietly forgives: a contour wound the wrong way that fills as a hole, an outline that overlaps itself, a curve with no point at its extreme.\n\nChecks finds them while the work is still open, and every one is clickable through to the glyph that caused it. Running this before you export is the difference between a font and a file.",
         task: "Open Checks and read what it says about your font.",
-        learned: "You looked for the faults that do not show up until somebody else opens the file.",
+        learned:
+          "You looked for the faults that do not show up until somebody else opens the file.",
       },
       {
         id: "real.direction",
@@ -279,7 +283,8 @@ export const COURSES: Course[] = [
         teaches:
           "An `o` is two contours: the outside and the counter. Whether the inner one cuts a hole or fills solid is decided by which way round it runs relative to the outer. Get it backwards and you have a black blob where the letter's eye should be — and it can look perfectly fine in one renderer and solid in another.\n\nCorrect direction sets them the way the format expects. It is one press and it is worth doing on anything you drew by hand.",
         task: "Press Correct direction on a letter you drew.",
-        learned: "Your letters fill the same way everywhere, rather than the way your own machine happens to guess.",
+        learned:
+          "Your letters fill the same way everywhere, rather than the way your own machine happens to guess.",
       },
       {
         id: "real.export",
@@ -293,7 +298,6 @@ export const COURSES: Course[] = [
   },
 ];
 
-export const courseById = (id: string): Course | undefined =>
-  COURSES.find((one) => one.id === id);
+export const courseById = (id: string): Course | undefined => COURSES.find((one) => one.id === id);
 
 export const ALL_LESSONS: Lesson[] = COURSES.flatMap((one) => one.lessons);

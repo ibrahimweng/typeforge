@@ -39,9 +39,18 @@ test("an unclosed outline is reported as it is drawn, and forgotten as it is clo
   // Three points placed with a pull, which is a curve rather than a polygon,
   // and left open.
   for (const [at, to] of [
-    [{ x: 950, y: 250 }, { x: 1000, y: 210 }],
-    [{ x: 1050, y: 350 }, { x: 1090, y: 400 }],
-    [{ x: 880, y: 380 }, { x: 850, y: 420 }],
+    [
+      { x: 950, y: 250 },
+      { x: 1000, y: 210 },
+    ],
+    [
+      { x: 1050, y: 350 },
+      { x: 1090, y: 400 },
+    ],
+    [
+      { x: 880, y: 380 },
+      { x: 850, y: 420 },
+    ],
   ] as const) {
     await page.mouse.move(at.x, at.y);
     await page.mouse.down();

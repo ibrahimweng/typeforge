@@ -35,8 +35,14 @@ if (!REF) throw new Error("Set REF to the reference font file. See the note at t
 
 const slice = (from: number, to: number): Contour => ({
   closed: true,
-  nodes: [[from, -4000], [to, -4000], [to, 4000], [from, 4000]].map(([x, y]) => ({
-    point: { x, y }, type: "line" as const,
+  nodes: [
+    [from, -4000],
+    [to, -4000],
+    [to, 4000],
+    [from, 4000],
+  ].map(([x, y]) => ({
+    point: { x, y },
+    type: "line" as const,
   })),
 });
 
@@ -76,7 +82,9 @@ async function report(
     if (exit.length > 0) highs.push((exit[0][0] + exit[0][1]) / 2);
   }
   const mid = (all: number[]) => all.reduce((sum, one) => sum + one, 0) / Math.max(1, all.length);
-  console.log(`    average  arrives at ${mid(lows).toFixed(2)}              leaves at ${mid(highs).toFixed(2)}`);
+  console.log(
+    `    average  arrives at ${mid(lows).toFixed(2)}              leaves at ${mid(highs).toFixed(2)}`,
+  );
 }
 
 const { typeface } = await importFont(readFileSync(REF));
@@ -97,8 +105,11 @@ for (const style of BASES.filter((one) => one.parts.script?.on)) {
    * outlines and its origin is where its designer put it.
    */
   const seam = seamsOf(style.parts.script, style.metrics.xHeight, style.pen.weight / 2).low;
-  const lean = (seam - style.metrics.xHeight / 2)
-    * Math.tan((style.metrics.slant * Math.PI) / 180);
-  await report(style.name, (letter) => drawLetter(letter, style, style.forms?.[letter]) ?? undefined,
-    style.metrics.xHeight, lean);
+  const lean = (seam - style.metrics.xHeight / 2) * Math.tan((style.metrics.slant * Math.PI) / 180);
+  await report(
+    style.name,
+    (letter) => drawLetter(letter, style, style.forms?.[letter]) ?? undefined,
+    style.metrics.xHeight,
+    lean,
+  );
 }

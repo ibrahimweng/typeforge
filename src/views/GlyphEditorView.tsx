@@ -271,7 +271,9 @@ export function GlyphEditorView(): React.JSX.Element {
       }
     }
     const found = (text: string): Glyph[] =>
-      [...text].map((character) => byCodepoint.get(character.codePointAt(0)!)).filter((one) => one !== undefined);
+      [...text]
+        .map((character) => byCodepoint.get(character.codePointAt(0)!))
+        .filter((one) => one !== undefined);
 
     /*
      * Walked outwards from the glyph in both directions, so the pen starts at
@@ -325,7 +327,9 @@ export function GlyphEditorView(): React.JSX.Element {
     const asideFill = withAlpha(readToken("--glyph-fill", "#eeeeee", canvas), 0.28);
     for (const one of [...neighbours.before, ...neighbours.after]) {
       const shifted: GlyphView = { ...view, originX: view.originX + one.x * view.scale };
-      drawContours(context, resolveGlyphContours(one.glyph, typeface), shifted, { fill: asideFill });
+      drawContours(context, resolveGlyphContours(one.glyph, typeface), shifted, {
+        fill: asideFill,
+      });
     }
 
     // Where parameters change the shape, show the result behind the outline
@@ -348,7 +352,10 @@ export function GlyphEditorView(): React.JSX.Element {
       });
     }
     drawContours(context, glyph.contours, view, {
-      fill: withAlpha(readToken("--glyph-fill", "#eeeeee", canvas), resolved !== composed ? 0.5 : 0.92),
+      fill: withAlpha(
+        readToken("--glyph-fill", "#eeeeee", canvas),
+        resolved !== composed ? 0.5 : 0.92,
+      ),
     });
     /*
      * The segment the pen would open, lit before the nodes are drawn.
@@ -413,8 +420,22 @@ export function GlyphEditorView(): React.JSX.Element {
      * property rather than taking a prop, so nothing else in this list changes
      * when the ground does and the canvas would keep its old colours.
      */
-  }, [typeface, glyph, view, size, state.selectedNodes, state.revision, hover, neighbours, state.guides, state.ground, state.marks, state.tool, at, state.highlightPath]);
-
+  }, [
+    typeface,
+    glyph,
+    view,
+    size,
+    state.selectedNodes,
+    state.revision,
+    hover,
+    neighbours,
+    state.guides,
+    state.ground,
+    state.marks,
+    state.tool,
+    at,
+    state.highlightPath,
+  ]);
 
   // --- interaction ------------------------------------------------------
 
@@ -665,7 +686,7 @@ export function GlyphEditorView(): React.JSX.Element {
         kind: "writePull",
         from: canvasPoint,
         stroke: which,
-        node: Math.max(0, (written[which]?.spine.segments.length ?? 0)),
+        node: Math.max(0, written[which]?.spine.segments.length ?? 0),
         before: store.snapshotGlyph(glyph.name) ?? glyph,
       };
       reportPhase(canvasPoint);
@@ -1128,13 +1149,7 @@ export function GlyphEditorView(): React.JSX.Element {
           angle: stop.angle,
         };
         const next = penDrag(drag.handle, to, held, { shift: event.shiftKey });
-        store.setStrokePen(
-          glyph.name,
-          drag.handle.stroke,
-          drag.handle.stop,
-          next,
-          true,
-        );
+        store.setStrokePen(glyph.name, drag.handle.stroke, drag.handle.stop, next, true);
         forceRender();
         break;
       }
@@ -1456,7 +1471,8 @@ export function GlyphEditorView(): React.JSX.Element {
           const dy = step.y * amount;
           node.point = { x: node.point.x + dx, y: node.point.y + dy };
           if (node.handleIn) node.handleIn = { x: node.handleIn.x + dx, y: node.handleIn.y + dy };
-          if (node.handleOut) node.handleOut = { x: node.handleOut.x + dx, y: node.handleOut.y + dy };
+          if (node.handleOut)
+            node.handleOut = { x: node.handleOut.x + dx, y: node.handleOut.y + dy };
         }
       });
     };
@@ -1685,45 +1701,45 @@ export function GlyphEditorView(): React.JSX.Element {
         this -- the surface a letter is judged on, not a theme.
       */}
       <div className="flex min-h-0 flex-1">
-      <ToolPalette />
-      <div
-        ref={measure}
-        data-ground={state.ground}
-        className="relative min-h-0 flex-1 overflow-hidden bg-[var(--canvas)]"
-      >
-        <canvas
-          ref={canvasRef}
-          style={{ width: size.width, height: size.height }}
-          className={cursorClass(state.tool, state.toolState, dragRef.current !== null)}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-          onDoubleClick={handleDoubleClick}
-          onPointerLeave={() => {
-            setHover(null);
-            noteAt(null);
-            /*
-             * The tool is still in hand, so it still has something to say.
-             *
-             * This blanked the sentence outright, which meant that reaching
-             * for a tool -- a move that necessarily leaves the canvas -- left
-             * the line empty, and it only came back when the pointer returned.
-             * The state to report is "this tool, with nothing under it", which
-             * is exactly what the tool would do the moment you came back.
-             */
-            reportPhase(null);
-          }}
-          onWheel={(event) => {
-            // Ctrl or command with the wheel zooms, matching every design tool.
-            if (event.ctrlKey || event.metaKey) {
-              setZoom((current) => clamp(current * (event.deltaY < 0 ? 1.1 : 0.9), 0.1, 24));
-            } else {
-              setPan((current) => ({ x: current.x - event.deltaX, y: current.y - event.deltaY }));
-            }
-          }}
-        />
-        {/*
+        <ToolPalette />
+        <div
+          ref={measure}
+          data-ground={state.ground}
+          className="relative min-h-0 flex-1 overflow-hidden bg-[var(--canvas)]"
+        >
+          <canvas
+            ref={canvasRef}
+            style={{ width: size.width, height: size.height }}
+            className={cursorClass(state.tool, state.toolState, dragRef.current !== null)}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            onDoubleClick={handleDoubleClick}
+            onPointerLeave={() => {
+              setHover(null);
+              noteAt(null);
+              /*
+               * The tool is still in hand, so it still has something to say.
+               *
+               * This blanked the sentence outright, which meant that reaching
+               * for a tool -- a move that necessarily leaves the canvas -- left
+               * the line empty, and it only came back when the pointer returned.
+               * The state to report is "this tool, with nothing under it", which
+               * is exactly what the tool would do the moment you came back.
+               */
+              reportPhase(null);
+            }}
+            onWheel={(event) => {
+              // Ctrl or command with the wheel zooms, matching every design tool.
+              if (event.ctrlKey || event.metaKey) {
+                setZoom((current) => clamp(current * (event.deltaY < 0 ? 1.1 : 0.9), 0.1, 24));
+              } else {
+                setPan((current) => ({ x: current.x - event.deltaX, y: current.y - event.deltaY }));
+              }
+            }}
+          />
+          {/*
           And what is wrong with this letter, over the letter.
 
           Every one of these faults was already found by the checker and only
@@ -1731,19 +1747,19 @@ export function GlyphEditorView(): React.JSX.Element {
           go and visit. An unclosed outline is a thing to fix while the pen is
           still in your hand. Nothing is drawn when there is nothing wrong.
         */}
-        {typeface && glyph && (
-          <GlyphFaults
-            typeface={typeface}
-            glyph={glyph}
-            revision={state.revision}
-            masters={state.masters}
-          />
-        )}
-        <div className="pointer-events-none absolute bottom-3 left-3 flex gap-3 text-2xs text-muted-foreground tabular-nums">
-          <span>{Math.round(zoom * 100)}%</span>
-          {state.selectedNodes.size > 1 && <span>{state.selectedNodes.size} points</span>}
+          {typeface && glyph && (
+            <GlyphFaults
+              typeface={typeface}
+              glyph={glyph}
+              revision={state.revision}
+              masters={state.masters}
+            />
+          )}
+          <div className="pointer-events-none absolute bottom-3 left-3 flex gap-3 text-2xs text-muted-foreground tabular-nums">
+            <span>{Math.round(zoom * 100)}%</span>
+            {state.selectedNodes.size > 1 && <span>{state.selectedNodes.size} points</span>}
+          </div>
         </div>
-      </div>
       </div>
       <Numbers
         glyph={glyph}
@@ -1926,7 +1942,6 @@ function guideAt(
   }
   return null;
 }
-
 
 // --- drawing ------------------------------------------------------------
 
@@ -2192,7 +2207,10 @@ function drawHoverRing(
   context.restore();
 }
 
-function drawMarquee(context: CanvasRenderingContext2D, drag: Extract<Drag, { kind: "marquee" }>): void {
+function drawMarquee(
+  context: CanvasRenderingContext2D,
+  drag: Extract<Drag, { kind: "marquee" }>,
+): void {
   const accent = readToken("--accent", "#0c8ce9", context.canvas);
   context.save();
   context.strokeStyle = accent;
@@ -2314,7 +2332,10 @@ function drawPathOutline(
   view: GlyphView,
 ): void {
   if (!contour || contour.nodes.length < 2) return;
-  const to = (v: Vec2) => ({ x: view.originX + v.x * view.scale, y: view.originY - v.y * view.scale });
+  const to = (v: Vec2) => ({
+    x: view.originX + v.x * view.scale,
+    y: view.originY - v.y * view.scale,
+  });
 
   context.save();
   context.beginPath();
@@ -2351,7 +2372,10 @@ function drawSegmentUnder(
   const b = contour?.nodes[(index + 1) % contour.nodes.length];
   if (!a || !b) return;
 
-  const to = (v: Vec2) => ({ x: view.originX + v.x * view.scale, y: view.originY - v.y * view.scale });
+  const to = (v: Vec2) => ({
+    x: view.originX + v.x * view.scale,
+    y: view.originY - v.y * view.scale,
+  });
   const from = to(a.point);
   const c1 = to(a.handleOut ?? a.point);
   const c2 = to(b.handleIn ?? b.point);
@@ -2402,13 +2426,12 @@ function drawSegmentUnder(
  * the same kind of thing -- advice, not selection -- and a person should be
  * able to tell at a glance that neither is something they drew.
  */
-function drawMarks(
-  context: CanvasRenderingContext2D,
-  contours: Contour[],
-  view: GlyphView,
-): void {
+function drawMarks(context: CanvasRenderingContext2D, contours: Contour[], view: GlyphView): void {
   const colour = readToken("--attention", "#ea733a", context.canvas);
-  const to = (v: Vec2) => ({ x: view.originX + v.x * view.scale, y: view.originY - v.y * view.scale });
+  const to = (v: Vec2) => ({
+    x: view.originX + v.x * view.scale,
+    y: view.originY - v.y * view.scale,
+  });
 
   context.save();
   context.strokeStyle = colour;

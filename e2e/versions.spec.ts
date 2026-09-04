@@ -190,7 +190,7 @@ test("a letter whose weights do not line up says so where it is drawn", async ({
   await page.locator("[data-glyph-cell='o']").dblclick();
   await expect(page.locator("[data-points-panel]")).toBeVisible();
   // Nothing to say yet: the Bold started as a copy, so it matches exactly.
-  await expect(page.locator('[data-glyph-fault]').filter({ hasText: "will not vary" })).toHaveCount(
+  await expect(page.locator("[data-glyph-fault]").filter({ hasText: "will not vary" })).toHaveCount(
     0,
   );
 
@@ -218,7 +218,10 @@ test("a letter whose weights do not line up says so where it is drawn", async ({
   await page.getByRole("button", { name: "Font", exact: true }).click();
   await expect(page.locator("[data-versions-stuck]")).toHaveText("1 letter will not vary");
   await expect(page.locator('[data-glyph-cell="o"]')).toHaveAttribute("data-glyph-varies", "no");
-  await expect(page.locator('[data-glyph-cell="e"]')).not.toHaveAttribute("data-glyph-varies", "no");
+  await expect(page.locator('[data-glyph-cell="e"]')).not.toHaveAttribute(
+    "data-glyph-varies",
+    "no",
+  );
 });
 
 test("and the checks say how much of the font will actually move", async ({ page }) => {

@@ -38,8 +38,8 @@ export function CompositionPanel(): React.JSX.Element {
             <Heading>Built from</Heading>
             {glyph.components.length === 0 ? (
               <p className="text-2xs leading-snug text-muted-foreground">
-                {glyph.name} is drawn directly. Accented letters are usually built from a letter
-                and a mark instead, so a correction to the letter reaches all of them.
+                {glyph.name} is drawn directly. Accented letters are usually built from a letter and
+                a mark instead, so a correction to the letter reaches all of them.
               </p>
             ) : (
               <ul className="flex flex-col gap-1">
@@ -195,8 +195,8 @@ export function CompositionPanel(): React.JSX.Element {
       <section className="border-t border-border pt-3">
         <Heading>Whole font</Heading>
         <p className="pb-2 text-2xs leading-snug text-muted-foreground">
-          {buildable.toLocaleString()} of {typeface.glyphs.length.toLocaleString()} glyphs are
-          built from parts.
+          {buildable.toLocaleString()} of {typeface.glyphs.length.toLocaleString()} glyphs are built
+          from parts.
         </p>
         <div className="flex flex-col gap-1.5">
           <Action

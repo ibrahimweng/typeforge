@@ -3,10 +3,7 @@
 import * as React from "react";
 
 import type { FontPickerFontCatalogEntry } from "./font-catalog";
-import {
-  queueFontPickerPreviewLoad,
-  queueFontPickerPreviewLoadBatch,
-} from "./font-preview-loader";
+import { queueFontPickerPreviewLoad, queueFontPickerPreviewLoadBatch } from "./font-preview-loader";
 import { useHoverIntent } from "./use-hover-intent";
 
 export function useFontPickerPreviewPipeline({
@@ -24,10 +21,7 @@ export function useFontPickerPreviewPipeline({
 }): {
   cancelHoverPreviewIntent: () => void;
   clearHoverPreview: () => void;
-  emitPreviewChange: (
-    nextFontId: string | null,
-    options?: { immediate?: boolean },
-  ) => void;
+  emitPreviewChange: (nextFontId: string | null, options?: { immediate?: boolean }) => void;
   handleHoverPreview: (font: FontPickerFontCatalogEntry) => void;
   scheduleHoverPreviewIntent: (font: FontPickerFontCatalogEntry) => void;
   warmFontPreview: (
@@ -116,10 +110,8 @@ export function useFontPickerPreviewPipeline({
     [emitPreviewChange, warmFontPreview],
   );
 
-  const {
-    cancelIntent: cancelHoverPreviewIntent,
-    scheduleIntent: scheduleHoverPreviewIntent,
-  } = useHoverIntent({ onIntent: handleHoverPreview });
+  const { cancelIntent: cancelHoverPreviewIntent, scheduleIntent: scheduleHoverPreviewIntent } =
+    useHoverIntent({ onIntent: handleHoverPreview });
 
   const clearHoverPreview = React.useCallback(() => {
     cancelHoverPreviewIntent();

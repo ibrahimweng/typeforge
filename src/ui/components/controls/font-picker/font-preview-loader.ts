@@ -43,27 +43,17 @@ function resolvePreviewWeights(entry: FontPickerFontCatalogEntry): string[] {
 
   const pickNearest = (target: number): number =>
     uniqueWeights.reduce((closest, candidate) =>
-      Math.abs(candidate - target) < Math.abs(closest - target)
-        ? candidate
-        : closest,
+      Math.abs(candidate - target) < Math.abs(closest - target) ? candidate : closest,
     );
 
-  return Array.from(new Set([pickNearest(400), pickNearest(600)])).map((value) =>
-    String(value),
-  );
+  return Array.from(new Set([pickNearest(400), pickNearest(600)])).map((value) => String(value));
 }
 
-function buildFontFaceDescriptor(
-  entry: FontPickerFontCatalogEntry,
-  weight: string,
-): string {
+function buildFontFaceDescriptor(entry: FontPickerFontCatalogEntry, weight: string): string {
   return `${weight} 16px "${entry.family.trim().replace(/"/g, '\\"')}"`;
 }
 
-function buildFontFaceKey(
-  entry: FontPickerFontCatalogEntry,
-  weight: string,
-): string {
+function buildFontFaceKey(entry: FontPickerFontCatalogEntry, weight: string): string {
   return `${entry.id}:${weight}`;
 }
 
@@ -161,14 +151,9 @@ function ensurePreviewFontFaces(entry: FontPickerFontCatalogEntry): Promise<void
   }
 
   const fontFaceSet = document.fonts;
-  const load =
-    typeof fontFaceSet.load === "function"
-      ? fontFaceSet.load.bind(fontFaceSet)
-      : null;
+  const load = typeof fontFaceSet.load === "function" ? fontFaceSet.load.bind(fontFaceSet) : null;
   const check =
-    typeof fontFaceSet.check === "function"
-      ? fontFaceSet.check.bind(fontFaceSet)
-      : null;
+    typeof fontFaceSet.check === "function" ? fontFaceSet.check.bind(fontFaceSet) : null;
 
   if (!load) {
     return Promise.resolve();
@@ -233,9 +218,7 @@ export function isFontPickerPreviewLoaded(
 
   const fontFaceSet = document.fonts;
   const check =
-    typeof fontFaceSet.check === "function"
-      ? fontFaceSet.check.bind(fontFaceSet)
-      : null;
+    typeof fontFaceSet.check === "function" ? fontFaceSet.check.bind(fontFaceSet) : null;
 
   return resolvePreviewWeights(fontEntry).every((weight) => {
     const key = buildFontFaceKey(fontEntry, weight);
@@ -297,9 +280,7 @@ export function queueFontPickerPreviewLoad(
   options: { priority?: FontPickerPreviewLoadPriority } = {},
 ): void {
   const fontEntry =
-    typeof fontEntryOrId === "string"
-      ? getFontPickerFontById(fontEntryOrId)
-      : fontEntryOrId;
+    typeof fontEntryOrId === "string" ? getFontPickerFontById(fontEntryOrId) : fontEntryOrId;
 
   if (
     !fontEntry ||

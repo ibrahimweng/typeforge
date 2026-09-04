@@ -19,15 +19,15 @@
 
 import { expect, test } from "@playwright/test";
 
-const PORTS_ON = '[data-forge-port]';
+const PORTS_ON = "[data-forge-port]";
 
 /** Which ports are lit, with the pointer parked off the grid. */
 async function lit(page: import("@playwright/test").Page): Promise<string[]> {
   await page.mouse.move(700, 100);
   await page.waitForTimeout(400);
   return page.evaluate(() =>
-    [...document.querySelectorAll("[data-forge-port]")].map((one) =>
-      (one as HTMLElement).dataset.forgePort as string,
+    [...document.querySelectorAll("[data-forge-port]")].map(
+      (one) => (one as HTMLElement).dataset.forgePort as string,
     ),
   );
 }

@@ -24,24 +24,24 @@ import type { Anchor, Component, Glyph, Typeface } from "./types";
  * are looked for, since real fonts are split between the two conventions.
  */
 export const MARK_NAMES: Record<number, string[]> = {
-  0x0300: ["gravecomb", "grave"],
-  0x0301: ["acutecomb", "acute"],
-  0x0302: ["circumflexcomb", "circumflex"],
-  0x0303: ["tildecomb", "tilde"],
-  0x0304: ["macroncomb", "macron"],
-  0x0306: ["brevecomb", "breve"],
-  0x0307: ["dotaccentcomb", "dotaccent"],
-  0x0308: ["dieresiscomb", "dieresis"],
-  0x030a: ["ringcomb", "ring"],
-  0x030b: ["hungarumlautcomb", "hungarumlaut"],
-  0x030c: ["caroncomb", "caron"],
-  0x0312: ["commaturnedabovecomb", "commaturnedabove"],
-  0x0326: ["commaaccentcomb", "commaaccent"],
-  0x0327: ["cedillacomb", "cedilla"],
-  0x0328: ["ogonekcomb", "ogonek"],
-  0x031b: ["horncomb", "horn"],
-  0x0323: ["dotbelowcomb", "dotbelow"],
-  0x0309: ["hookabovecomb", "hookabove"],
+  768: ["gravecomb", "grave"],
+  769: ["acutecomb", "acute"],
+  770: ["circumflexcomb", "circumflex"],
+  771: ["tildecomb", "tilde"],
+  772: ["macroncomb", "macron"],
+  774: ["brevecomb", "breve"],
+  775: ["dotaccentcomb", "dotaccent"],
+  776: ["dieresiscomb", "dieresis"],
+  778: ["ringcomb", "ring"],
+  779: ["hungarumlautcomb", "hungarumlaut"],
+  780: ["caroncomb", "caron"],
+  786: ["commaturnedabovecomb", "commaturnedabove"],
+  806: ["commaaccentcomb", "commaaccent"],
+  807: ["cedillacomb", "cedilla"],
+  808: ["ogonekcomb", "ogonek"],
+  795: ["horncomb", "horn"],
+  803: ["dotbelowcomb", "dotbelow"],
+  777: ["hookabovecomb", "hookabove"],
 };
 
 /** Marks that hang below the letter rather than sitting on top of it. */
@@ -293,7 +293,11 @@ export function deriveAnchors(typeface: Typeface): { bases: number; marks: numbe
     const glyph = typeface.glyphs[index];
     for (const [anchorName, observation] of entries) {
       if (glyph.anchors.some((a) => a.name === anchorName)) continue;
-      glyph.anchors.push({ name: anchorName, x: Math.round(observation.x), y: Math.round(observation.y) });
+      glyph.anchors.push({
+        name: anchorName,
+        x: Math.round(observation.x),
+        y: Math.round(observation.y),
+      });
     }
     marks++;
   }
@@ -396,7 +400,10 @@ export function buildAccents(
         break;
       }
       const mark = typeface.glyphs[markIndex];
-      components.push({ glyphName: markName, transform: placeMark(base, mark, typeface, attachesBelow(mark)) });
+      components.push({
+        glyphName: markName,
+        transform: placeMark(base, mark, typeface, attachesBelow(mark)),
+      });
     }
     if (!placed) {
       skipped.push({ target: recipe.target, reason: "a part is missing" });

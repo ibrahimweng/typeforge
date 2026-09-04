@@ -1,7 +1,5 @@
 function resolveCssVariableColor(color: string): string {
-  const variableMatch = /^var\(\s*(--[\w-]+)\s*(?:,\s*(.+))?\)$/i.exec(
-    color.trim(),
-  );
+  const variableMatch = /^var\(\s*(--[\w-]+)\s*(?:,\s*(.+))?\)$/i.exec(color.trim());
 
   if (!variableMatch?.[1] || typeof window === "undefined") {
     return color;
@@ -24,9 +22,7 @@ function formatHexChannel(value: number): string {
 }
 
 function linearSrgbToSrgb(value: number): number {
-  return value >= 0.0031308
-    ? 1.055 * value ** (1 / 2.4) - 0.055
-    : 12.92 * value;
+  return value >= 0.0031308 ? 1.055 * value ** (1 / 2.4) - 0.055 : 12.92 * value;
 }
 
 function oklchToHex(color: string): string | null {
@@ -46,11 +42,7 @@ function oklchToHex(color: string): string | null {
   const chroma = Number.parseFloat(match[2] ?? "");
   const hue = (Number.parseFloat(match[3] ?? "") * Math.PI) / 180;
 
-  if (
-    !Number.isFinite(lightness) ||
-    !Number.isFinite(chroma) ||
-    !Number.isFinite(hue)
-  ) {
+  if (!Number.isFinite(lightness) || !Number.isFinite(chroma) || !Number.isFinite(hue)) {
     return null;
   }
 
@@ -62,15 +54,9 @@ function oklchToHex(color: string): string | null {
   const l = lCone ** 3;
   const m = mCone ** 3;
   const s = sCone ** 3;
-  const red = linearSrgbToSrgb(
-    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
-  );
-  const green = linearSrgbToSrgb(
-    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
-  );
-  const blue = linearSrgbToSrgb(
-    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
-  );
+  const red = linearSrgbToSrgb(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s);
+  const green = linearSrgbToSrgb(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s);
+  const blue = linearSrgbToSrgb(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s);
 
   return `#${formatHexChannel(red)}${formatHexChannel(green)}${formatHexChannel(blue)}`;
 }
@@ -85,12 +71,10 @@ function rgbToHex(color: string): string | null {
     return null;
   }
 
-  const channels = [match[1] ?? "", match[2] ?? "", match[3] ?? ""].map(
-    (channel) => {
-      const parsed = Number.parseFloat(channel);
-      return channel.endsWith("%") ? parsed / 100 : parsed / 255;
-    },
-  );
+  const channels = [match[1] ?? "", match[2] ?? "", match[3] ?? ""].map((channel) => {
+    const parsed = Number.parseFloat(channel);
+    return channel.endsWith("%") ? parsed / 100 : parsed / 255;
+  });
 
   if (channels.some((channel) => !Number.isFinite(channel))) {
     return null;
@@ -122,8 +106,7 @@ export function getNativeColorPickerValue(color: string): string {
     return `#${red}${red}${green}${green}${blue}${blue}`.toUpperCase();
   }
 
-  const parsedFunctionalColor =
-    oklchToHex(trimmedColor) ?? rgbToHex(trimmedColor);
+  const parsedFunctionalColor = oklchToHex(trimmedColor) ?? rgbToHex(trimmedColor);
 
   if (parsedFunctionalColor) {
     return parsedFunctionalColor;
@@ -148,10 +131,7 @@ export function getHexDraftValue(color: string, showHash: boolean): string {
   return showHash ? hexColor : hexColor.slice(1);
 }
 
-export function getSanitizedHexDraft(
-  value: string,
-  showHash: boolean,
-): string {
+export function getSanitizedHexDraft(value: string, showHash: boolean): string {
   const hex = value
     .replace(/[^\da-f]/gi, "")
     .slice(0, 6)

@@ -12,10 +12,7 @@ import {
   SelectTriggerButton,
 } from "../../primitives";
 import type { ControlChangeMeta, ControlValueChangeHandler } from "../control-types";
-import {
-  getDefaultFontPickerFontId,
-  getFontPickerFontById,
-} from "./font-catalog";
+import { getDefaultFontPickerFontId, getFontPickerFontById } from "./font-catalog";
 import { ColorOpacityControl } from "../color";
 import { StaticSelect } from "../select";
 import { useMeasuredElementWidth } from "../use-measured-element-width";
@@ -64,9 +61,7 @@ export function FontPickerControl({
   const familyWeightRowWidth = useMeasuredElementWidth(familyWeightRowRef);
   const normalizedValue = normalizeFontPickerValue(value);
   const normalizedDefaultValue = normalizeFontPickerValue(defaultValue);
-  const [fontSizeDraft, setFontSizeDraft] = React.useState(
-    String(normalizedValue.fontSize),
-  );
+  const [fontSizeDraft, setFontSizeDraft] = React.useState(String(normalizedValue.fontSize));
   const selectedFont = getFontPickerFontById(normalizedValue.fontId);
   const {
     attachScrollViewport,
@@ -152,15 +147,11 @@ export function FontPickerControl({
         });
       }
     },
-    [
-      cancelOpenSelectedScroll,
-      clearHoverPreview,
-      prepareForOpen,
-      selectedFont?.category,
-    ],
+    [cancelOpenSelectedScroll, clearHoverPreview, prepareForOpen, selectedFont?.category],
   );
 
-  const selectedFamily = selectedFont?.family ?? getFontPickerFontById(getDefaultFontPickerFontId())?.family ?? "Inter";
+  const selectedFamily =
+    selectedFont?.family ?? getFontPickerFontById(getDefaultFontPickerFontId())?.family ?? "Inter";
   const fontWeightOptions = getFontPickerWeightOptions(selectedFont);
   const selectedFontPreviewStyle = selectedFont
     ? {
@@ -178,11 +169,7 @@ export function FontPickerControl({
     normalizedValue.letterSpacing,
     "normal",
   );
-  const lineHeightStep = getStepByValue(
-    lineHeightSteps,
-    normalizedValue.lineHeight,
-    "normal",
-  );
+  const lineHeightStep = getStepByValue(lineHeightSteps, normalizedValue.lineHeight, "normal");
   const lineHeightStepIndex = getStepIndexByValue(
     lineHeightSteps,
     normalizedValue.lineHeight,
@@ -196,10 +183,7 @@ export function FontPickerControl({
         data-slot="font-picker-family-weight-row"
         ref={familyWeightRowRef}
       >
-        <div
-          className="min-w-0 space-y-1.5"
-          data-slot="font-picker-family-field"
-        >
+        <div className="min-w-0 space-y-1.5" data-slot="font-picker-family-field">
           <ControlFieldLabel>{name}</ControlFieldLabel>
           <Popover onOpenChange={handleOpenChange} open={open}>
             <PopoverTrigger
@@ -220,10 +204,7 @@ export function FontPickerControl({
                 />
               }
             >
-              <span
-                className="flex min-w-0 flex-1 text-left"
-                data-slot="select-value"
-              >
+              <span className="flex min-w-0 flex-1 text-left" data-slot="select-value">
                 <ScrollFade
                   className="no-scrollbar min-w-0"
                   containerClassName="min-w-0 flex-1"
@@ -267,15 +248,11 @@ export function FontPickerControl({
                 emitChange({
                   ...normalizedValue,
                   fontId: font.id,
-                  fontWeight: resolveFontPickerFontWeight(
-                    font,
-                    normalizedValue.fontWeight,
-                  ),
+                  fontWeight: resolveFontPickerFontWeight(font, normalizedValue.fontWeight),
                 });
               }}
               onLetterSpacingValueChange={(nextIndex) => {
-                const nextStep =
-                  letterSpacingSteps[nextIndex] ?? letterSpacingStep;
+                const nextStep = letterSpacingSteps[nextIndex] ?? letterSpacingStep;
 
                 emitChange(
                   {
@@ -314,10 +291,7 @@ export function FontPickerControl({
             />
           </Popover>
         </div>
-        <div
-          className="min-w-0 space-y-1.5"
-          data-slot="font-picker-weight-field"
-        >
+        <div className="min-w-0 space-y-1.5" data-slot="font-picker-weight-field">
           <ControlFieldLabel>Weight</ControlFieldLabel>
           <StaticSelect
             ariaLabel="Font weight"
@@ -326,10 +300,7 @@ export function FontPickerControl({
               emitChange(
                 {
                   ...normalizedValue,
-                  fontWeight: resolveFontPickerFontWeight(
-                    selectedFont,
-                    nextWeight,
-                  ),
+                  fontWeight: resolveFontPickerFontWeight(selectedFont, nextWeight),
                 },
                 { history: "merge" },
               );
@@ -344,10 +315,7 @@ export function FontPickerControl({
           />
         </div>
       </div>
-      <div
-        className="grid min-w-0 grid-cols-2 gap-2"
-        data-slot="font-picker-typography-controls"
-      >
+      <div className="grid min-w-0 grid-cols-2 gap-2" data-slot="font-picker-typography-controls">
         <div className="min-w-0 space-y-1.5" data-slot="font-picker-size-field">
           <ControlFieldLabel>Size</ControlFieldLabel>
           <Input
@@ -376,10 +344,7 @@ export function FontPickerControl({
             value={fontSizeDraft}
           />
         </div>
-        <div
-          className="min-w-0 space-y-1.5"
-          data-slot="font-picker-text-case-field"
-        >
+        <div className="min-w-0 space-y-1.5" data-slot="font-picker-text-case-field">
           <ControlFieldLabel>Case</ControlFieldLabel>
           <StaticSelect
             ariaLabel="Text case"
@@ -388,9 +353,7 @@ export function FontPickerControl({
               emitChange(
                 {
                   ...normalizedValue,
-                  textCase: isFontPickerTextCase(nextTextCase)
-                    ? nextTextCase
-                    : "original",
+                  textCase: isFontPickerTextCase(nextTextCase) ? nextTextCase : "original",
                 },
                 { history: "merge" },
               );

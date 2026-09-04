@@ -58,26 +58,26 @@ LETTERS.forEach((letter, i) => {
 
   const parts = [
     `<line x1="${left}" y1="${line}" x2="${left + CELL_W - 20}" y2="${line}"` +
-    ` stroke="#ded7c9" stroke-width="1"/>`,
+      ` stroke="#ded7c9" stroke-width="1"/>`,
     // The waist, because half the faults are a curve turning at the wrong height.
     `<line x1="${left}" y1="${line - X_ON_PAGE}" x2="${left + CELL_W - 20}" y2="${line - X_ON_PAGE}"` +
-    ` stroke="#ece6d8" stroke-width="1"/>`,
+      ` stroke="#ece6d8" stroke-width="1"/>`,
     `<text x="${left}" y="${top + 14}" font-family="ui-sans-serif,system-ui" font-size="12"` +
-    ` fill="#a09a8c">${letter}</text>`,
+      ` fill="#a09a8c">${letter}</text>`,
   ];
 
   if (theirs) {
     parts.push(
       `<g transform="translate(${left + 20} ${line}) scale(${X_ON_PAGE / refX} ${-X_ON_PAGE / refX})"` +
-      ` fill="#cfc7b6"><path d="${contoursToSvgPath(theirs.contours)}"/></g>`,
+        ` fill="#cfc7b6"><path d="${contoursToSvgPath(theirs.contours)}"/></g>`,
     );
   }
   if (ours) {
     const scale = X_ON_PAGE / style.metrics.xHeight;
     parts.push(
       `<g transform="translate(${left + 20} ${line}) scale(${scale} ${-scale})"` +
-      ` fill="none" stroke="#1b1917" stroke-width="${6 / scale}">` +
-      `<path d="${contoursToSvgPath(ours.contours)}"/></g>`,
+        ` fill="none" stroke="#1b1917" stroke-width="${6 / scale}">` +
+        `<path d="${contoursToSvgPath(ours.contours)}"/></g>`,
     );
   }
   cells.push(parts.join(""));
@@ -89,9 +89,9 @@ const height = 100 + rows * CELL_H;
 writeFileSync(
   OUT,
   `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(width)}" height="${Math.round(height)}"` +
-  ` viewBox="0 0 ${Math.round(width)} ${Math.round(height)}">` +
-  `<rect width="100%" height="100%" fill="#faf8f3"/>` +
-  `<text x="40" y="34" font-family="ui-sans-serif,system-ui" font-size="14" fill="#8a8578">` +
-  `${style.name} (outline) over Dancing Script (solid)</text>${cells.join("\n")}</svg>`,
+    ` viewBox="0 0 ${Math.round(width)} ${Math.round(height)}">` +
+    `<rect width="100%" height="100%" fill="#faf8f3"/>` +
+    `<text x="40" y="34" font-family="ui-sans-serif,system-ui" font-size="14" fill="#8a8578">` +
+    `${style.name} (outline) over Dancing Script (solid)</text>${cells.join("\n")}</svg>`,
 );
 console.log(`${OUT} written`);

@@ -182,9 +182,7 @@ export function NextStep({
         },
       };
 
-    const errors = state.checks.findings.filter(
-      (finding) => finding.severity === "error",
-    ).length;
+    const errors = state.checks.findings.filter((finding) => finding.severity === "error").length;
     if (errors > 0)
       return {
         id: "edit-fix",

@@ -23,12 +23,7 @@
 import { attributes, escapeXml, parseXml, XML_DECLARATION, type XmlNode } from "./xml";
 
 /** Anything a plist can hold. */
-export type PlistValue =
-  | string
-  | number
-  | boolean
-  | PlistValue[]
-  | { [key: string]: PlistValue };
+export type PlistValue = string | number | boolean | PlistValue[] | { [key: string]: PlistValue };
 
 /** A plist whose root is a dictionary, which every plist in a UFO has. */
 export type PlistDict = Record<string, PlistValue>;
@@ -140,7 +135,10 @@ function writeValue(value: PlistValue, depth: number): string {
     const keys = Object.keys(value);
     if (keys.length === 0) return `${pad}<dict/>`;
     const inside = keys
-      .map((key) => `${STEP.repeat(depth + 1)}<key>${escapeXml(key)}</key>\n${writeValue(value[key], depth + 1)}`)
+      .map(
+        (key) =>
+          `${STEP.repeat(depth + 1)}<key>${escapeXml(key)}</key>\n${writeValue(value[key], depth + 1)}`,
+      )
       .join("\n");
     return `${pad}<dict>\n${inside}\n${pad}</dict>`;
   }

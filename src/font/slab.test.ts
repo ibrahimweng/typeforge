@@ -28,7 +28,9 @@ describe("findTerminals", () => {
   it("finds both ends of a stem", () => {
     const terminals = findTerminals([stem(100, 0, 200, 1000)], WIDE);
     expect(terminals).toHaveLength(2);
-    const heights = terminals.map((terminal) => Math.round(terminal.centre.y)).sort((a, b) => a - b);
+    const heights = terminals
+      .map((terminal) => Math.round(terminal.centre.y))
+      .sort((a, b) => a - b);
     expect(heights).toEqual([0, 1000]);
   });
 
@@ -78,10 +80,30 @@ describe("findTerminals", () => {
     const circle: Contour = {
       closed: true,
       nodes: [
-        { point: { x: 100, y: 500 }, handleIn: { x: 100, y: 500 - k }, handleOut: { x: 100, y: 500 + k }, type: "smooth" },
-        { point: { x: 500, y: 900 }, handleIn: { x: 500 - k, y: 900 }, handleOut: { x: 500 + k, y: 900 }, type: "smooth" },
-        { point: { x: 900, y: 500 }, handleIn: { x: 900, y: 500 + k }, handleOut: { x: 900, y: 500 - k }, type: "smooth" },
-        { point: { x: 500, y: 100 }, handleIn: { x: 500 + k, y: 100 }, handleOut: { x: 500 - k, y: 100 }, type: "smooth" },
+        {
+          point: { x: 100, y: 500 },
+          handleIn: { x: 100, y: 500 - k },
+          handleOut: { x: 100, y: 500 + k },
+          type: "smooth",
+        },
+        {
+          point: { x: 500, y: 900 },
+          handleIn: { x: 500 - k, y: 900 },
+          handleOut: { x: 500 + k, y: 900 },
+          type: "smooth",
+        },
+        {
+          point: { x: 900, y: 500 },
+          handleIn: { x: 900, y: 500 + k },
+          handleOut: { x: 900, y: 500 - k },
+          type: "smooth",
+        },
+        {
+          point: { x: 500, y: 100 },
+          handleIn: { x: 500 + k, y: 100 },
+          handleOut: { x: 500 - k, y: 100 },
+          type: "smooth",
+        },
       ],
     };
     expect(findTerminals([circle], WIDE)).toHaveLength(0);

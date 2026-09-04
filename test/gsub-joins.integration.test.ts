@@ -160,8 +160,10 @@ suite("a joined face carries its joins into the file", () => {
          * lead-out still stops on the advance to the unit, and the pairs still
          * join at nothing on all four faces.
          */
-        expect([name, Math.abs((widths[name] - right[name]) - (widths[letter] - right[letter])) <= 3])
-          .toEqual([name, true]);
+        expect([
+          name,
+          Math.abs(widths[name] - right[name] - (widths[letter] - right[letter])) <= 3,
+        ]).toEqual([name, true]);
       }
 
       const ended = Object.keys(widths).filter((n) => n.endsWith(".end"));

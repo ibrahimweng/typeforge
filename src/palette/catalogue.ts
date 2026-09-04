@@ -289,7 +289,17 @@ export function catalogue(shell: Shell): Item[] {
           ? "Export the drawn font"
           : "Export the font",
     hint: "Write a real font file out: OTF or TTF, a whole family, or one variable font with a weight axis. This is the thing you install.",
-    also: ["download", "otf", "ttf", "woff", "variable", "install", "produce", "generate", "output"],
+    also: [
+      "download",
+      "otf",
+      "ttf",
+      "woff",
+      "variable",
+      "install",
+      "produce",
+      "generate",
+      "output",
+    ],
     run: shell.export,
   });
   add({
@@ -571,14 +581,21 @@ export function catalogue(shell: Shell): Item[] {
             also: [...(base.also ?? []), ...optionWords(control.options)],
             choose: {
               options: control.options,
-              read: () => String(operation.read(spec.name, control.key) ?? control.options![0].value),
+              read: () =>
+                String(operation.read(spec.name, control.key) ?? control.options![0].value),
               write: (value) => wake(value, true),
             },
           });
           continue;
         }
         if (control.toggle) {
-          add({ ...base, toggle: { read: () => Boolean(operation.read(spec.name, control.key)), write: (on) => wake(on, true) } });
+          add({
+            ...base,
+            toggle: {
+              read: () => Boolean(operation.read(spec.name, control.key)),
+              write: (on) => wake(on, true),
+            },
+          });
           continue;
         }
         add({
@@ -679,15 +696,49 @@ function trim(value: number, step: number): string {
 function characterFor(name: string): string | null {
   if (name.length === 1) return name;
   const known: Record<string, string> = {
-    space: " ", exclam: "!", quotedbl: '"', numbersign: "#", dollar: "$",
-    percent: "%", ampersand: "&", quotesingle: "'", parenleft: "(",
-    parenright: ")", asterisk: "*", plus: "+", comma: ",", hyphen: "-",
-    period: ".", slash: "/", zero: "0", one: "1", two: "2", three: "3",
-    four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9",
-    colon: ":", semicolon: ";", less: "<", equal: "=", greater: ">",
-    question: "?", at: "@", bracketleft: "[", backslash: "\\",
-    bracketright: "]", asciicircum: "^", underscore: "_", grave: "`",
-    braceleft: "{", bar: "|", braceright: "}", asciitilde: "~",
+    space: " ",
+    exclam: "!",
+    quotedbl: '"',
+    numbersign: "#",
+    dollar: "$",
+    percent: "%",
+    ampersand: "&",
+    quotesingle: "'",
+    parenleft: "(",
+    parenright: ")",
+    asterisk: "*",
+    plus: "+",
+    comma: ",",
+    hyphen: "-",
+    period: ".",
+    slash: "/",
+    zero: "0",
+    one: "1",
+    two: "2",
+    three: "3",
+    four: "4",
+    five: "5",
+    six: "6",
+    seven: "7",
+    eight: "8",
+    nine: "9",
+    colon: ":",
+    semicolon: ";",
+    less: "<",
+    equal: "=",
+    greater: ">",
+    question: "?",
+    at: "@",
+    bracketleft: "[",
+    backslash: "\\",
+    bracketright: "]",
+    asciicircum: "^",
+    underscore: "_",
+    grave: "`",
+    braceleft: "{",
+    bar: "|",
+    braceright: "}",
+    asciitilde: "~",
   };
   return known[name] ?? null;
 }
@@ -701,17 +752,52 @@ function characterFor(name: string): string | null {
  * convention.
  */
 const PIECES = [
-  "acute", "grave", "circumflex", "tilde", "dieresis", "macron", "breve",
-  "dotaccent", "ring", "cedilla", "ogonek", "caron", "hungarumlaut",
-  "commaaccent", "slash", "stroke", "bar", "superior", "inferior", "small",
-  "left", "right", "single", "double", "quote", "guil", "half", "quarter",
-  "three", "one", "two", "dot", "less", "greater", "equal", "plus", "minus",
+  "acute",
+  "grave",
+  "circumflex",
+  "tilde",
+  "dieresis",
+  "macron",
+  "breve",
+  "dotaccent",
+  "ring",
+  "cedilla",
+  "ogonek",
+  "caron",
+  "hungarumlaut",
+  "commaaccent",
+  "slash",
+  "stroke",
+  "bar",
+  "superior",
+  "inferior",
+  "small",
+  "left",
+  "right",
+  "single",
+  "double",
+  "quote",
+  "guil",
+  "half",
+  "quarter",
+  "three",
+  "one",
+  "two",
+  "dot",
+  "less",
+  "greater",
+  "equal",
+  "plus",
+  "minus",
 ];
 
 function readable(name: string): string {
   let out = name;
   for (const piece of PIECES) out = out.split(piece).join(` ${piece} `);
-  return out.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\s+/g, " ").trim();
+  return out
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export type { EntryKind };

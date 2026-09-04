@@ -7,14 +7,8 @@ import type {
 } from "react";
 import type { getColorSurfaceSliderConfig } from "./color-model-slider";
 import type { HsvColor } from "../../../lib/style-guide-color-utils";
-import type {
-  ColorFormatMode,
-  ColorSurfaceModel,
-} from "./style-guide-color-picker-channel-utils";
-import type {
-  ColorSurfacePosition,
-  DragBounds,
-} from "./style-guide-color-picker-surface-geometry";
+import type { ColorFormatMode, ColorSurfaceModel } from "./style-guide-color-picker-channel-utils";
+import type { ColorSurfacePosition, DragBounds } from "./style-guide-color-picker-surface-geometry";
 
 export type StyleGuideColorPickerProps = {
   value: string;

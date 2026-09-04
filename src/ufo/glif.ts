@@ -172,7 +172,9 @@ function contourOf(node: XmlNode): Contour | null {
     if (point.type === "qcurve") {
       const made = quadraticSegments(from, controls, to, point.smooth);
       // No controls at all is a straight line however it was labelled.
-      segments.push(...(made.length > 0 ? made : [{ out: null, in: null, to, smooth: point.smooth }]));
+      segments.push(
+        ...(made.length > 0 ? made : [{ out: null, in: null, to, smooth: point.smooth }]),
+      );
     } else {
       // `curve` takes the two controls before it; `line` takes none. A curve
       // written with one control, which the format permits, keeps the one it
@@ -342,7 +344,7 @@ function contourTag(contour: Contour): string {
     const leaving = nodes[index - 1].handleOut;
     if (leaving) lines.push(pointTag(leaving, null, false));
     if (node.handleIn) lines.push(pointTag(node.handleIn, null, false));
-    lines.push(pointTag(node.point, leaving ?? node.handleIn ? "curve" : "line", smoothOf(node)));
+    lines.push(pointTag(node.point, (leaving ?? node.handleIn) ? "curve" : "line", smoothOf(node)));
   }
 
   if (closed && nodes.length > 1) {

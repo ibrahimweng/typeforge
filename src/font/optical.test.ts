@@ -70,13 +70,7 @@ const bar = (x: number, width: number, from: number, to: number): Contour =>
  * answers both exactly. A drawn `V` would answer them approximately and turn
  * every number below into a tolerance.
  */
-const leaning = (
-  bottom: number,
-  top: number,
-  width: number,
-  from: number,
-  to: number,
-): Contour =>
+const leaning = (bottom: number, top: number, width: number, from: number, to: number): Contour =>
   poly([
     [bottom, from],
     [bottom + width, from],
@@ -98,8 +92,7 @@ function font(glyphs: Glyph[]): Typeface {
   return typeface;
 }
 
-const advice = (typeface: Typeface): string[] =>
-  opticalAdvice(typeface).map((one) => one.check);
+const advice = (typeface: Typeface): string[] => opticalAdvice(typeface).map((one) => one.check);
 
 /*
  * A small alphabet drawn the way the tradition asks, on the default metrics:
@@ -213,11 +206,7 @@ describe("stems", () => {
      * other. A check that compared them would fire on almost every text face
      * ever drawn.
      */
-    const heavier = glyph("H", [
-      bar(40, 92, 0, 700),
-      bar(300, 92, 0, 700),
-      bar(40, 340, 310, 390),
-    ]);
+    const heavier = glyph("H", [bar(40, 92, 0, 700), bar(300, 92, 0, 700), bar(40, 340, 310, 390)]);
     const heavierE = glyph("E", [
       bar(40, 92, 0, 700),
       bar(40, 360, 0, 90),

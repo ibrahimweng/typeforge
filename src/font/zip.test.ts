@@ -22,7 +22,12 @@ function unzips(archive: Uint8Array): Record<string, Uint8Array> | null {
   mkdirSync(join(where, "out"), { recursive: true });
   writeFileSync(join(where, "family.zip"), archive);
   try {
-    execFileSync("python3", ["-c", `import zipfile,sys;zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])`, join(where, "family.zip"), join(where, "out")]);
+    execFileSync("python3", [
+      "-c",
+      `import zipfile,sys;zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])`,
+      join(where, "family.zip"),
+      join(where, "out"),
+    ]);
   } catch {
     return null;
   }

@@ -1012,12 +1012,7 @@ function crossesBoth(from: { i: number; j: number }, to: { i: number; j: number 
  * it that are not ports are the cell middles -- both coordinates odd -- which
  * is why one of them gives way when a point lands there.
  */
-function onLattice(
-  point: Vec2,
-  step: number,
-  left: number,
-  along: Vec2,
-): { i: number; j: number } {
+function onLattice(point: Vec2, step: number, left: number, along: Vec2): { i: number; j: number } {
   const overX = (point.x - left) / step;
   const overY = point.y / step;
   const i = Math.round(overX);
@@ -1036,9 +1031,7 @@ function onLattice(
    * off its own column is a letter falling apart for no visible reason.
    */
   const sideways = Math.abs(along.x) > Math.abs(along.y);
-  return sideways
-    ? { i: i + (overX >= i ? 1 : -1), j }
-    : { i, j: j + (overY >= j ? 1 : -1) };
+  return sideways ? { i: i + (overX >= i ? 1 : -1), j } : { i, j: j + (overY >= j ? 1 : -1) };
 }
 
 const pointOf = (lattice: { i: number; j: number }, step: number, left: number): Vec2 => ({

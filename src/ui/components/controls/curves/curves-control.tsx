@@ -1,6 +1,6 @@
 "use client";
 
-import * as React from "react";
+import type * as React from "react";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -72,9 +72,7 @@ function useCurveEditor({
 }: CurveEditorProps) {
   const graphRef = useRef<SVGSVGElement>(null);
   const dragHistoryGroupRef = useRef<string | null>(null);
-  const [draggingPoint, setDraggingPoint] = useState<DraggingPoint | null>(
-    null,
-  );
+  const [draggingPoint, setDraggingPoint] = useState<DraggingPoint | null>(null);
   const activePoints = normalizeCurvePoints(points[activeChannel]);
 
   function updateCurve(
@@ -92,23 +90,13 @@ function useCurveEditor({
     );
   }
 
-  function pointFromEvent(
-    event: Pick<PointerEvent, "clientX" | "clientY">,
-  ): CurvePoint {
+  function pointFromEvent(event: Pick<PointerEvent, "clientX" | "clientY">): CurvePoint {
     return pointFromSvgEvent(event, graphRef.current);
   }
 
-  function movePoint(
-    index: number,
-    point: CurvePoint,
-    meta?: ControlChangeMeta,
-  ): void {
+  function movePoint(index: number, point: CurvePoint, meta?: ControlChangeMeta): void {
     updateCurve(
-      replaceCurvePoint(
-        activePoints,
-        index,
-        constrainCurvePoint(activePoints, index, point),
-      ),
+      replaceCurvePoint(activePoints, index, constrainCurvePoint(activePoints, index, point)),
       null,
       meta,
     );
@@ -165,9 +153,7 @@ function useCurveEditor({
   });
 
   function startDraggingPoint(index: number): void {
-    dragHistoryGroupRef.current = createControlHistoryGroupId(
-      `curves:${activeChannel}`,
-    );
+    dragHistoryGroupRef.current = createControlHistoryGroupId(`curves:${activeChannel}`);
     setDraggingPoint({
       channel: activeChannel,
       hasMoved: false,
@@ -179,8 +165,7 @@ function useCurveEditor({
     activePoints,
     draggingPoint,
     addPoint,
-    draggingPointIndex:
-      draggingPoint?.channel === activeChannel ? draggingPoint.index : null,
+    draggingPointIndex: draggingPoint?.channel === activeChannel ? draggingPoint.index : null,
     graphRef,
     movePoint,
     removePoint,
@@ -233,10 +218,7 @@ function useClearCurveSelectionOnOutsidePointerDown({
   activePoints: readonly CurvePoint[];
   graphRef: React.RefObject<SVGSVGElement | null>;
   selectedPointIndex: number | null;
-  updateCurve: (
-    nextPoints: readonly CurvePoint[],
-    nextSelectedIndex: number | null,
-  ) => void;
+  updateCurve: (nextPoints: readonly CurvePoint[], nextSelectedIndex: number | null) => void;
 }): void {
   useEffect(() => {
     if (selectedPointIndex === null) {
@@ -269,14 +251,8 @@ function useCurveDragging({
   activeChannel: CurveChannel;
   dragHistoryGroupRef: React.MutableRefObject<string | null>;
   draggingPoint: DraggingPoint | null;
-  movePoint: (
-    index: number,
-    point: CurvePoint,
-    meta?: ControlChangeMeta,
-  ) => void;
-  pointFromEvent: (
-    event: Pick<PointerEvent, "clientX" | "clientY">,
-  ) => CurvePoint;
+  movePoint: (index: number, point: CurvePoint, meta?: ControlChangeMeta) => void;
+  pointFromEvent: (event: Pick<PointerEvent, "clientX" | "clientY">) => CurvePoint;
   setDraggingPoint: React.Dispatch<React.SetStateAction<DraggingPoint | null>>;
   stopDragging: () => void;
 }): void {
@@ -290,17 +266,13 @@ function useCurveDragging({
 
     function handlePointerMove(event: PointerEvent): void {
       if (activeDrag.channel === activeChannel) {
-        dragHistoryGroupRef.current ??= createControlHistoryGroupId(
-          `curves:${activeChannel}`,
-        );
+        dragHistoryGroupRef.current ??= createControlHistoryGroupId(`curves:${activeChannel}`);
         movePoint(activeDrag.index, pointFromEvent(event), {
           history: "merge",
           historyGroup: dragHistoryGroupRef.current,
         });
         setDraggingPoint((currentPoint) =>
-          currentPoint === activeDrag
-            ? { ...currentPoint, hasMoved: true }
-            : currentPoint,
+          currentPoint === activeDrag ? { ...currentPoint, hasMoved: true } : currentPoint,
         );
       }
     }
@@ -342,20 +314,18 @@ export function CurvesControl(props: CurvesControlProps): React.JSX.Element {
     useState<CurveChannel>(defaultActiveChannel);
   const [uncontrolledPoints, setUncontrolledPoints] =
     useState<Record<CurveChannel, readonly CurvePoint[]>>(defaultCurvePoints);
-  const [uncontrolledSelectedPointIndex, setUncontrolledSelectedPointIndex] =
-    useState<number | undefined>(defaultSelectedPointIndex);
+  const [uncontrolledSelectedPointIndex, setUncontrolledSelectedPointIndex] = useState<
+    number | undefined
+  >(defaultSelectedPointIndex);
   const activeChannel = singleCurve
     ? defaultActiveChannel
-    : controlledActiveChannel ?? uncontrolledActiveChannel;
+    : (controlledActiveChannel ?? uncontrolledActiveChannel);
   const points = withDefaultCurvePoints(controlledPoints ?? uncontrolledPoints);
   const selectedPointIndex = isSelectedPointIndexControlled
     ? controlledSelectedPointIndex
     : uncontrolledSelectedPointIndex;
 
-  function handleValueChange(
-    value: CurvesControlValue,
-    meta?: ControlChangeMeta,
-  ): void {
+  function handleValueChange(value: CurvesControlValue, meta?: ControlChangeMeta): void {
     if (!isActiveChannelControlled) {
       setUncontrolledActiveChannel(value.activeChannel);
     }
@@ -380,7 +350,9 @@ export function CurvesControl(props: CurvesControlProps): React.JSX.Element {
   return (
     <div className="flex min-w-0 flex-col gap-3" aria-label={accessibleName}>
       {singleCurve ? (
-        name ? <ControlFieldLabel>{name}</ControlFieldLabel> : null
+        name ? (
+          <ControlFieldLabel>{name}</ControlFieldLabel>
+        ) : null
       ) : (
         <div className="flex min-w-0 flex-col gap-2">
           <ChannelTabs

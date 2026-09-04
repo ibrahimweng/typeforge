@@ -20,10 +20,7 @@ export type PaletteControlProps = {
   title?: string;
   variant?: "popover" | "panel";
   className?: string;
-  onValueChange?: (
-    nextValue: PaletteControlValue,
-    meta: PaletteControlChangeMeta,
-  ) => void;
+  onValueChange?: (nextValue: PaletteControlValue, meta: PaletteControlChangeMeta) => void;
   onCommit?: (nextValue: PaletteControlValue, hex: string) => void;
   onInteractionStateChange?: (isInteracting: boolean) => void;
 };

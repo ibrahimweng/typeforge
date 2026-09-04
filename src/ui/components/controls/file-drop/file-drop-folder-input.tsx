@@ -13,13 +13,16 @@ export function FileDropFolderInput({
   inputRef,
   onFilesSelect,
 }: FileDropFolderInputProps): React.JSX.Element {
-  const registerInput = React.useCallback((input: HTMLInputElement | null) => {
-    inputRef.current = input;
-    if (input) {
-      input.setAttribute("webkitdirectory", "");
-      input.setAttribute("directory", "");
-    }
-  }, [inputRef]);
+  const registerInput = React.useCallback(
+    (input: HTMLInputElement | null) => {
+      inputRef.current = input;
+      if (input) {
+        input.setAttribute("webkitdirectory", "");
+        input.setAttribute("directory", "");
+      }
+    },
+    [inputRef],
+  );
 
   return (
     <input

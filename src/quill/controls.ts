@@ -593,7 +593,9 @@ export function restyle(glyph: QuillGlyph, style: QuillStyle): QuillGlyph {
   for (const stroke of glyph.strokes) {
     const reached = reachOut(stroke.spine, glyph.advanceWidth, extend, context.slack);
     grew = Math.max(grew, reached.grew);
-    strokes.push(restyleStroke({ ...stroke, spine: reached.spine }, style, { ...context, extend: 0 }));
+    strokes.push(
+      restyleStroke({ ...stroke, spine: reached.spine }, style, { ...context, extend: 0 }),
+    );
   }
 
   const width = style.width > 0 ? style.width : 1;

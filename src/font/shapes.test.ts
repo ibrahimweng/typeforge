@@ -14,8 +14,7 @@ import { describe, expect, it } from "vitest";
 import { boxOf, ellipse, rectangle, shapeFrom, worthDrawing } from "./shapes";
 import { contourArea, contoursBounds } from "./geometry";
 
-const close = (value: number, want: number, digits = 6) =>
-  expect(value).toBeCloseTo(want, digits);
+const close = (value: number, want: number, digits = 6) => expect(value).toBeCloseTo(want, digits);
 
 describe("the box a drag describes", () => {
   it("normalises a drag made in any direction", () => {

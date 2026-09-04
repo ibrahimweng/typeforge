@@ -49,7 +49,11 @@ describe("font structure", () => {
   });
 
   it("catches a codepoint claimed by two glyphs", () => {
-    const typeface = font([glyph(".notdef"), glyph("A", [square()], [65]), glyph("A.alt", [square()], [65])]);
+    const typeface = font([
+      glyph(".notdef"),
+      glyph("A", [square()], [65]),
+      glyph("A.alt", [square()], [65]),
+    ]);
     expect(has(typeface, "duplicate-codepoints")).toBe(true);
   });
 
@@ -95,8 +99,18 @@ describe("glyph outlines", () => {
     const ellipse: Contour = {
       closed: true,
       nodes: [
-        { point: { x: 0, y: 50 }, handleIn: { x: 0, y: 78 }, handleOut: { x: 0, y: 22 }, type: "smooth" },
-        { point: { x: 100, y: 50 }, handleIn: { x: 100, y: 22 }, handleOut: { x: 100, y: 78 }, type: "smooth" },
+        {
+          point: { x: 0, y: 50 },
+          handleIn: { x: 0, y: 78 },
+          handleOut: { x: 0, y: 22 },
+          type: "smooth",
+        },
+        {
+          point: { x: 100, y: 50 },
+          handleIn: { x: 100, y: 22 },
+          handleOut: { x: 100, y: 78 },
+          type: "smooth",
+        },
       ],
     };
     expect(has(font([glyph(".notdef"), glyph("o", [ellipse])]), "stray-points")).toBe(false);
@@ -231,8 +245,11 @@ describe("checking the whole font", () => {
    * beside it would be wrong every time.
    */
   it("rolls a fault up across batches, not within one", async () => {
-    const report = await validateWholeTypeface(manyBroken(600), { format: "truetype" }, undefined, () =>
-      Promise.resolve(),
+    const report = await validateWholeTypeface(
+      manyBroken(600),
+      { format: "truetype" },
+      undefined,
+      () => Promise.resolve(),
     );
     const open = report.findings.filter((one) => one.check === "open-contour");
     expect(open).toHaveLength(1);

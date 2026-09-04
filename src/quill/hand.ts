@@ -125,11 +125,7 @@ function strokeReadings(strokes: QuillStroke[], perStroke = 24): Reading[][] {
  * that goes up and down takes a stop for every turn. So the total swing is the
  * number that predicts how many numbers the description will cost.
  */
-function wanderUnder(
-  perStroke: Reading[][],
-  contrast: number,
-  angle: number,
-): number {
+function wanderUnder(perStroke: Reading[][], contrast: number, angle: number): number {
   let total = 0;
   let count = 0;
   for (const along of perStroke) {
@@ -155,11 +151,7 @@ function wanderUnder(
  * is what separates a bad fit from a dead idea: told the pen a letter was
  * actually written with, does dividing it out flatten the profile or not?
  */
-export function wanderOf(
-  strokes: QuillStroke[],
-  contrast: number,
-  angleDegrees: number,
-): number {
+export function wanderOf(strokes: QuillStroke[], contrast: number, angleDegrees: number): number {
   return wanderUnder(strokeReadings(strokes), contrast, (angleDegrees * Math.PI) / 180);
 }
 

@@ -136,8 +136,7 @@ export function linesOf(drawn: Map<string, { contours: Contour[] }>, em: number)
 
   const xHeight = flats.length > 0 ? median(flats) : Math.round(em * 0.5);
   const capHeight = caps.length > 0 ? median(caps) : Math.round(em * 0.7);
-  const ascender =
-    tops.length > 0 ? Math.max(...tops) : Math.max(capHeight, Math.round(em * 0.75));
+  const ascender = tops.length > 0 ? Math.max(...tops) : Math.max(capHeight, Math.round(em * 0.75));
   const descender = feet.length > 0 ? Math.min(...feet) : -Math.round(em * 0.2);
   return {
     xHeight: Math.round(xHeight),
@@ -243,10 +242,13 @@ export async function toTypeface(
   const stroke = Math.max(
     8,
     Math.round(
-      Math.min(...[...drawn.values()].map((one) => {
-        const box = contoursBounds(one.contours);
-        return Number.isFinite(box.xMax - box.xMin) ? (box.xMax - box.xMin) * 0.12 : em * 0.05;
-      }), em * 0.08),
+      Math.min(
+        ...[...drawn.values()].map((one) => {
+          const box = contoursBounds(one.contours);
+          return Number.isFinite(box.xMax - box.xMin) ? (box.xMax - box.xMin) * 0.12 : em * 0.05;
+        }),
+        em * 0.08,
+      ),
     ),
   );
 
@@ -273,7 +275,11 @@ export async function toTypeface(
      * stem. `classifyContours` now asks whether the whole contour is inside.
      */
     const merged = await removeOverlaps(ink.contours, "nesting");
-    const contours = correctDirection(merged.length > 0 ? merged : ink.contours, "truetype", "nesting");
+    const contours = correctDirection(
+      merged.length > 0 ? merged : ink.contours,
+      "truetype",
+      "nesting",
+    );
     if (contours.length === 0) continue;
     glyphs.push({
       name: nameOf(character),

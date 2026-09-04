@@ -70,7 +70,8 @@ export function isOnGrid(node: GlyphNode): boolean {
  */
 export function smoothed(node: GlyphNode): GlyphNode {
   const { handleIn, handleOut, point } = node;
-  if (!handleIn || !handleOut) return { ...node, type: handleIn || handleOut ? "tangent" : "corner" };
+  if (!handleIn || !handleOut)
+    return { ...node, type: handleIn || handleOut ? "tangent" : "corner" };
 
   const inLength = distance(point, handleIn);
   const outLength = distance(point, handleOut);
@@ -204,7 +205,12 @@ export function tidy(contour: Contour): Contour {
   const kept: GlyphNode[] = [];
   for (const node of nodes) {
     const previous = kept[kept.length - 1];
-    if (previous && samePlace(previous.point, node.point) && !previous.handleOut && !node.handleIn) {
+    if (
+      previous &&
+      samePlace(previous.point, node.point) &&
+      !previous.handleOut &&
+      !node.handleIn
+    ) {
       kept[kept.length - 1] = merge(previous, node);
       continue;
     }
@@ -325,7 +331,10 @@ function parameterAt(
 }
 
 /** The segment between two nodes as four points, and whether it was straight. */
-function segmentOf(from: GlyphNode, to: GlyphNode): {
+function segmentOf(
+  from: GlyphNode,
+  to: GlyphNode,
+): {
   curve: [Vec2, Vec2, Vec2, Vec2];
   straight: boolean;
 } {
@@ -410,17 +419,20 @@ function crossing(a: Vec2, alongA: Vec2, b: Vec2, alongB: Vec2): Vec2 | null {
  * approximation, and it is right where it matters here: the sides of a stem,
  * which are straight or very nearly.
  */
-function stretched(
-  curve: [Vec2, Vec2, Vec2, Vec2],
-  target: Vec2,
-): [Vec2, Vec2, Vec2, Vec2] {
+function stretched(curve: [Vec2, Vec2, Vec2, Vec2], target: Vec2): [Vec2, Vec2, Vec2, Vec2] {
   const was = distance(curve[0], curve[3]);
   const now = distance(curve[0], target);
   const factor = was < 1e-9 ? 1 : now / was;
   return [
     curve[0],
-    { x: curve[0].x + (curve[1].x - curve[0].x) * factor, y: curve[0].y + (curve[1].y - curve[0].y) * factor },
-    { x: target.x + (curve[2].x - curve[3].x) * factor, y: target.y + (curve[2].y - curve[3].y) * factor },
+    {
+      x: curve[0].x + (curve[1].x - curve[0].x) * factor,
+      y: curve[0].y + (curve[1].y - curve[0].y) * factor,
+    },
+    {
+      x: target.x + (curve[2].x - curve[3].x) * factor,
+      y: target.y + (curve[2].y - curve[3].y) * factor,
+    },
     target,
   ];
 }
@@ -460,12 +472,7 @@ export function reconnectionPoint(contour: Contour, index: number): Vec2 | null 
   const before = nodes[(index - 1 + nodes.length) % nodes.length];
   const after = nodes[(nextIndex + 1) % nodes.length];
 
-  return crossing(
-    first.point,
-    arrivalOf(first, before),
-    second.point,
-    departureOf(second, after),
-  );
+  return crossing(first.point, arrivalOf(first, before), second.point, departureOf(second, after));
 }
 
 /**

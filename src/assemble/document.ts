@@ -26,7 +26,14 @@ import { measuredStem } from "@/font/stem";
 import { shapedInk } from "@/forge/layers";
 import { readSvg, type SvgBox } from "@/font/svg";
 import type { Contour, KernPair } from "@/font/types";
-import { detectFit, fitted, placements, type FitMetrics, type FitMode, type Placement } from "./fit";
+import {
+  detectFit,
+  fitted,
+  placements,
+  type FitMetrics,
+  type FitMode,
+  type Placement,
+} from "./fit";
 import {
   DEFAULT_SPACING,
   kernPairs,
@@ -236,7 +243,10 @@ export function guessCharacter(file: string): string {
 
   // `glyph-a`, `letter_A_`, `07 - B`: take the last thing that looks like a
   // name, since the noise is nearly always a prefix.
-  const tail = stem.split(/[\s_\-.]+/).filter(Boolean).pop();
+  const tail = stem
+    .split(/[\s_\-.]+/)
+    .filter(Boolean)
+    .pop();
   if (tail && tail !== stem) return guessCharacter(tail);
 
   return "";

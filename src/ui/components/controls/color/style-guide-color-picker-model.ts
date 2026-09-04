@@ -7,10 +7,7 @@ import {
   normalizeHexColor,
   type HsvColor,
 } from "../../../lib/style-guide-color-utils";
-import {
-  calculateHexDistance,
-  resolveHsvFromHex,
-} from "./style-guide-color-picker-color-utils";
+import { calculateHexDistance, resolveHsvFromHex } from "./style-guide-color-picker-color-utils";
 
 const PENDING_SURFACE_ACK_RGB_DISTANCE_THRESHOLD = 8;
 

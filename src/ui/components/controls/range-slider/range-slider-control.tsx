@@ -2,16 +2,9 @@
 
 import * as React from "react";
 
-import {
-  EditableSliderValueLabel,
-  Field,
-  Slider,
-} from "../../primitives";
+import { EditableSliderValueLabel, Field, Slider } from "../../primitives";
 import { ControlFieldLabel } from "../../control-layout";
-import {
-  formatRangeSliderValue,
-  parseRangeSliderDraft,
-} from "./range-slider-value";
+import { formatRangeSliderValue, parseRangeSliderDraft } from "./range-slider-value";
 import { applySliderValueLabelUnit } from "../slider/slider-value";
 import {
   createControlHistoryGroupId,
@@ -71,12 +64,8 @@ export function RangeSliderControl({
     liveHistoryGroupRef.current = null;
   }
 
-  function updateValue(
-    nextValue: number | readonly number[],
-    meta?: ControlChangeMeta,
-  ): void {
-    const resolvedValue =
-      typeof nextValue === "number" ? [nextValue, nextValue] : [...nextValue];
+  function updateValue(nextValue: number | readonly number[], meta?: ControlChangeMeta): void {
+    const resolvedValue = typeof nextValue === "number" ? [nextValue, nextValue] : [...nextValue];
 
     setRangeValue(resolvedValue);
     onValueChange?.(resolvedValue, meta);

@@ -9,13 +9,7 @@ import { pressedSelectedItemClassName } from "./selection-state";
 import type { LoaderSize } from "./animated-loader";
 import { cn } from "../../lib/utils";
 
-type ButtonIconWeight =
-  | "thin"
-  | "light"
-  | "regular"
-  | "bold"
-  | "fill"
-  | "duotone";
+type ButtonIconWeight = "thin" | "light" | "regular" | "bold" | "fill" | "duotone";
 type ButtonSize = VariantProps<typeof buttonVariants>["size"];
 
 function interactiveStateClassName(params: {
@@ -63,10 +57,7 @@ function getReactElementTypeName(
       | ((...args: never[]) => unknown);
   };
 
-  if (
-    typeof componentType.displayName === "string" &&
-    componentType.displayName.length > 0
-  ) {
+  if (typeof componentType.displayName === "string" && componentType.displayName.length > 0) {
     return componentType.displayName;
   }
 
@@ -99,10 +90,7 @@ function shouldStepButtonIconWeight(_size: ButtonSize): boolean {
   return false;
 }
 
-function withSteppedButtonIconWeight(
-  children: React.ReactNode,
-  enabled: boolean,
-): React.ReactNode {
+function withSteppedButtonIconWeight(children: React.ReactNode, enabled: boolean): React.ReactNode {
   return React.Children.map(children, (child) => {
     if (
       !React.isValidElement<{
@@ -158,10 +146,8 @@ const buttonVariants = cva(
       variant: {
         default: `bg-[color:var(--primary)] text-[color:var(--primary-foreground)] ${interactiveStateClassName(
           {
-            active:
-              "active:bg-[color:color-mix(in_oklab,var(--primary)_82%,black)]",
-            hover:
-              "hover:bg-[color:color-mix(in_oklab,var(--primary)_88%,black)]",
+            active: "active:bg-[color:color-mix(in_oklab,var(--primary)_82%,black)]",
+            hover: "hover:bg-[color:color-mix(in_oklab,var(--primary)_88%,black)]",
             persistent:
               "aria-expanded:bg-[color:color-mix(in_oklab,var(--primary)_88%,black)] aria-pressed:bg-[color:color-mix(in_oklab,var(--primary)_82%,black)] data-open:bg-[color:color-mix(in_oklab,var(--primary)_88%,black)] data-popup-open:bg-[color:color-mix(in_oklab,var(--primary)_88%,black)] data-[state=open]:bg-[color:color-mix(in_oklab,var(--primary)_88%,black)] data-[pressed]:bg-[color:color-mix(in_oklab,var(--primary)_82%,black)]",
           },
@@ -187,8 +173,7 @@ const buttonVariants = cva(
         )}`,
         "destructive-outline": `border-[color:color-mix(in_oklab,var(--destructive)_80%,transparent)] bg-[color:color-mix(in_oklab,var(--destructive)_80%,transparent)] text-[color:var(--destructive-foreground)] ${interactiveStateClassName(
           {
-            active:
-              "active:bg-[color:color-mix(in_oklab,var(--destructive)_70%,transparent)]",
+            active: "active:bg-[color:color-mix(in_oklab,var(--destructive)_70%,transparent)]",
             hover:
               "hover:border-[color:color-mix(in_oklab,var(--destructive)_70%,transparent)] hover:bg-[color:color-mix(in_oklab,var(--destructive)_70%,transparent)]",
             persistent:
@@ -197,8 +182,7 @@ const buttonVariants = cva(
         )} focus-visible:border-[color:var(--destructive)] focus-visible:ring-[color:color-mix(in_oklab,var(--destructive)_20%,transparent)] dark:focus-visible:ring-[color:color-mix(in_oklab,var(--destructive)_40%,transparent)]`,
         "destructive-outline-inverted": `border-[color:color-mix(in_oklab,var(--destructive)_80%,transparent)] bg-[color:color-mix(in_oklab,var(--destructive)_80%,transparent)] text-[color:var(--destructive-foreground)] ${interactiveStateClassName(
           {
-            active:
-              "active:bg-[color:color-mix(in_oklab,var(--destructive)_70%,transparent)]",
+            active: "active:bg-[color:color-mix(in_oklab,var(--destructive)_70%,transparent)]",
             hover:
               "hover:border-[color:color-mix(in_oklab,var(--destructive)_70%,transparent)] hover:bg-[color:color-mix(in_oklab,var(--destructive)_70%,transparent)]",
             persistent:
@@ -207,29 +191,22 @@ const buttonVariants = cva(
         )} focus-visible:border-[color:var(--destructive)] focus-visible:ring-[color:color-mix(in_oklab,var(--destructive)_20%,transparent)]`,
         secondary: `bg-[color:color-mix(in_oklab,var(--secondary)_8%,transparent)] text-[color:var(--secondary-foreground)] ${interactiveStateClassName(
           {
-            active:
-              "active:bg-[color:color-mix(in_oklab,var(--secondary)_20%,transparent)]",
-            hover:
-              "hover:bg-[color:color-mix(in_oklab,var(--secondary)_20%,transparent)]",
+            active: "active:bg-[color:color-mix(in_oklab,var(--secondary)_20%,transparent)]",
+            hover: "hover:bg-[color:color-mix(in_oklab,var(--secondary)_20%,transparent)]",
             persistent:
               "aria-expanded:bg-[color:color-mix(in_oklab,var(--secondary)_20%,transparent)] aria-pressed:bg-[color:color-mix(in_oklab,var(--secondary)_20%,transparent)] data-open:bg-[color:color-mix(in_oklab,var(--secondary)_20%,transparent)] data-popup-open:bg-[color:color-mix(in_oklab,var(--secondary)_20%,transparent)] data-[state=open]:bg-[color:color-mix(in_oklab,var(--secondary)_20%,transparent)] data-[pressed]:bg-[color:color-mix(in_oklab,var(--secondary)_20%,transparent)]",
           },
         )}`,
-        "ghost-static": `bg-clip-border text-[color:var(--foreground)] ${interactiveStateClassName(
-          {
-            active:
-              "active:bg-transparent active:text-[color:var(--foreground)]",
-            hover: "hover:bg-transparent hover:text-[color:var(--foreground)]",
-            persistent:
-              "aria-expanded:bg-transparent aria-expanded:text-[color:var(--foreground)] aria-pressed:bg-transparent aria-pressed:text-[color:var(--foreground)] data-open:bg-transparent data-open:text-[color:var(--foreground)] data-popup-open:bg-transparent data-popup-open:text-[color:var(--foreground)] data-[state=open]:bg-transparent data-[state=open]:text-[color:var(--foreground)] data-[pressed]:bg-transparent data-[pressed]:text-[color:var(--foreground)]",
-          },
-        )}`,
+        "ghost-static": `bg-clip-border text-[color:var(--foreground)] ${interactiveStateClassName({
+          active: "active:bg-transparent active:text-[color:var(--foreground)]",
+          hover: "hover:bg-transparent hover:text-[color:var(--foreground)]",
+          persistent:
+            "aria-expanded:bg-transparent aria-expanded:text-[color:var(--foreground)] aria-pressed:bg-transparent aria-pressed:text-[color:var(--foreground)] data-open:bg-transparent data-open:text-[color:var(--foreground)] data-popup-open:bg-transparent data-popup-open:text-[color:var(--foreground)] data-[state=open]:bg-transparent data-[state=open]:text-[color:var(--foreground)] data-[pressed]:bg-transparent data-[pressed]:text-[color:var(--foreground)]",
+        })}`,
         send: `bg-[color:color-mix(in_oklab,var(--foreground)_80%,transparent)] !text-[color:color-mix(in_oklab,var(--background)_80%,transparent)] hover:!text-[color:color-mix(in_oklab,var(--background)_80%,transparent)] active:!text-[color:color-mix(in_oklab,var(--background)_80%,transparent)] [&_svg:not([data-slot='primitive-arrow-icon'])]:opacity-100 hover:[&_svg:not([data-slot='primitive-arrow-icon'])]:opacity-100 active:[&_svg:not([data-slot='primitive-arrow-icon'])]:opacity-100 data-[size=icon]:[&_svg:not([data-slot='primitive-arrow-icon'])]:!opacity-100 data-[size=icon]:hover:[&_svg:not([data-slot='primitive-arrow-icon'])]:!opacity-100 data-[size=icon]:active:[&_svg:not([data-slot='primitive-arrow-icon'])]:!opacity-100 ${interactiveStateClassName(
           {
-            active:
-              "active:bg-[color:color-mix(in_oklab,var(--foreground)_80%,transparent)]",
-            hover:
-              "hover:bg-[color:color-mix(in_oklab,var(--foreground)_80%,transparent)]",
+            active: "active:bg-[color:color-mix(in_oklab,var(--foreground)_80%,transparent)]",
+            hover: "hover:bg-[color:color-mix(in_oklab,var(--foreground)_80%,transparent)]",
             persistent:
               "aria-expanded:bg-[color:color-mix(in_oklab,var(--foreground)_80%,transparent)] aria-pressed:bg-[color:color-mix(in_oklab,var(--foreground)_80%,transparent)] data-open:bg-[color:color-mix(in_oklab,var(--foreground)_80%,transparent)] data-popup-open:bg-[color:color-mix(in_oklab,var(--foreground)_80%,transparent)] data-[state=open]:bg-[color:color-mix(in_oklab,var(--foreground)_80%,transparent)] data-[pressed]:bg-[color:color-mix(in_oklab,var(--foreground)_80%,transparent)]",
           },
@@ -242,15 +219,13 @@ const buttonVariants = cva(
               "aria-expanded:bg-[color:var(--foreground)] aria-pressed:bg-[color:var(--foreground)] data-open:bg-[color:var(--foreground)] data-popup-open:bg-[color:var(--foreground)] data-[state=open]:bg-[color:var(--foreground)] data-[pressed]:bg-[color:var(--foreground)]",
           },
         )}`,
-        ghost: `bg-clip-border text-[color:var(--foreground)] ${interactiveStateClassName(
-          {
-            active:
-              "active:bg-[color:color-mix(in_oklab,var(--input)_10%,transparent)] active:text-[color:var(--foreground)]",
-            hover:
-              "hover:bg-[color:color-mix(in_oklab,var(--input)_10%,transparent)] hover:text-[color:var(--foreground)]",
-            persistent: `aria-expanded:bg-[color:color-mix(in_oklab,var(--input)_10%,transparent)] aria-expanded:text-[color:var(--foreground)] data-open:bg-[color:color-mix(in_oklab,var(--input)_10%,transparent)] data-open:text-[color:var(--foreground)] data-popup-open:bg-[color:color-mix(in_oklab,var(--input)_10%,transparent)] data-popup-open:text-[color:var(--foreground)] data-[state=open]:bg-[color:color-mix(in_oklab,var(--input)_10%,transparent)] data-[state=open]:text-[color:var(--foreground)] ${pressedSelectedItemClassName}`,
-          },
-        )}`,
+        ghost: `bg-clip-border text-[color:var(--foreground)] ${interactiveStateClassName({
+          active:
+            "active:bg-[color:color-mix(in_oklab,var(--input)_10%,transparent)] active:text-[color:var(--foreground)]",
+          hover:
+            "hover:bg-[color:color-mix(in_oklab,var(--input)_10%,transparent)] hover:text-[color:var(--foreground)]",
+          persistent: `aria-expanded:bg-[color:color-mix(in_oklab,var(--input)_10%,transparent)] aria-expanded:text-[color:var(--foreground)] data-open:bg-[color:color-mix(in_oklab,var(--input)_10%,transparent)] data-open:text-[color:var(--foreground)] data-popup-open:bg-[color:color-mix(in_oklab,var(--input)_10%,transparent)] data-popup-open:text-[color:var(--foreground)] data-[state=open]:bg-[color:color-mix(in_oklab,var(--input)_10%,transparent)] data-[state=open]:text-[color:var(--foreground)] ${pressedSelectedItemClassName}`,
+        })}`,
         "ghost-muted": `bg-clip-border text-[color:color-mix(in_oklab,var(--foreground)_60%,transparent)] ${interactiveStateClassName(
           {
             active:
@@ -272,21 +247,18 @@ const buttonVariants = cva(
         )} focus-visible:border-[color:var(--destructive)] focus-visible:ring-[color:color-mix(in_oklab,var(--destructive)_20%,transparent)] dark:focus-visible:ring-[color:color-mix(in_oklab,var(--destructive)_40%,transparent)]`,
         "link-solid": `bg-[color:var(--link)] text-[color:var(--background)] ${interactiveStateClassName(
           {
-            active:
-              "active:bg-[color:color-mix(in_oklab,var(--link)_82%,black)]",
+            active: "active:bg-[color:color-mix(in_oklab,var(--link)_82%,black)]",
             hover: "hover:bg-[color:color-mix(in_oklab,var(--link)_88%,black)]",
             persistent:
               "aria-expanded:bg-[color:color-mix(in_oklab,var(--link)_88%,black)] aria-pressed:bg-[color:color-mix(in_oklab,var(--link)_82%,black)] data-open:bg-[color:color-mix(in_oklab,var(--link)_88%,black)] data-popup-open:bg-[color:color-mix(in_oklab,var(--link)_88%,black)] data-[state=open]:bg-[color:color-mix(in_oklab,var(--link)_88%,black)] data-[pressed]:bg-[color:color-mix(in_oklab,var(--link)_82%,black)]",
           },
         )}`,
-        link: `text-[color:var(--primary)] underline-offset-4 ${interactiveStateClassName(
-          {
-            active: "active:underline",
-            hover: "hover:underline",
-            persistent:
-              "aria-expanded:underline aria-pressed:underline data-open:underline data-popup-open:underline data-[state=open]:underline data-[pressed]:underline",
-          },
-        )}`,
+        link: `text-[color:var(--primary)] underline-offset-4 ${interactiveStateClassName({
+          active: "active:underline",
+          hover: "hover:underline",
+          persistent:
+            "aria-expanded:underline aria-pressed:underline data-open:underline data-popup-open:underline data-[state=open]:underline data-[pressed]:underline",
+        })}`,
         "toolbar-ghost": "",
         "toolbar-secondary": "",
       },
@@ -301,12 +273,9 @@ const buttonVariants = cva(
         icon: "size-7 text-[13px] leading-[1.125rem] [&_svg:not([class*='size-'])]:size-3.5",
         "icon-tight":
           "h-7 px-1.5 text-[13px] leading-[1.125rem] [&_svg:not([class*='size-'])]:size-3.5",
-        "icon-xxs":
-          "size-[18px] text-[11px] [&_svg:not([class*='size-'])]:size-2.5",
-        "icon-xs":
-          "size-[22px] text-[12px] [&_svg:not([class*='size-'])]:size-2.5",
-        "icon-sm":
-          "size-6 text-xs/relaxed [&_svg:not([class*='size-'])]:size-3",
+        "icon-xxs": "size-[18px] text-[11px] [&_svg:not([class*='size-'])]:size-2.5",
+        "icon-xs": "size-[22px] text-[12px] [&_svg:not([class*='size-'])]:size-2.5",
+        "icon-sm": "size-6 text-xs/relaxed [&_svg:not([class*='size-'])]:size-3",
         "icon-lg":
           "size-[34px] text-sm/relaxed tracking-tight [&_svg:not([class*='size-'])]:size-4",
         "icon-xl": "button-xl-icon-size size-10 text-sm/relaxed",
@@ -362,13 +331,8 @@ function Button({
   ...props
 }: ButtonProps) {
   const resolvedRadius =
-    radius === "default" && (size === "xxs" || size === "icon-xxs")
-      ? "sm"
-      : radius;
-  const buttonChildren = withSteppedButtonIconWeight(
-    children,
-    shouldStepButtonIconWeight(size),
-  );
+    radius === "default" && (size === "xxs" || size === "icon-xxs") ? "sm" : radius;
+  const buttonChildren = withSteppedButtonIconWeight(children, shouldStepButtonIconWeight(size));
   const {
     buttonAriaBusy,
     buttonAriaLabel,

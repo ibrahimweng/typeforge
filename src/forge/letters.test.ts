@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
 
 import { contourArea, contoursBounds, inkRunsAt } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
-import { builtFrom, drawLetter, letterNames , reachesOut } from "./build";
+import { builtFrom, drawLetter, letterNames, reachesOut } from "./build";
 import { startFrom, weighted } from "./document";
 import { openWaveBook, spineEnd, spineStart, waveBookAt, type WaveBook } from "./shapes";
 import { everyFormOf, recipeOf } from "./letters";
@@ -59,7 +59,8 @@ describe("the character set", () => {
           const drawn = drawLetter(name, style);
           expect(drawn, `${name} did not draw`).not.toBeNull();
           // A space has no ink, and is the only thing allowed not to.
-          if (name !== "space") expect(drawn!.contours.length, `${name} is empty`).toBeGreaterThan(0);
+          if (name !== "space")
+            expect(drawn!.contours.length, `${name} is empty`).toBeGreaterThan(0);
         }
       });
 
@@ -93,7 +94,9 @@ describe("the character set", () => {
       it("never draws a stroke with no area", () => {
         for (const name of letterNames()) {
           for (const contour of drawLetter(name, style)!.contours) {
-            expect(Math.abs(contourArea(contour)), `${name} has an empty stroke`).toBeGreaterThan(1);
+            expect(Math.abs(contourArea(contour)), `${name} has an empty stroke`).toBeGreaterThan(
+              1,
+            );
           }
         }
       });
@@ -120,9 +123,7 @@ describe("the character set", () => {
           const ceiling = builtFrom(name)
             ? capHeight * 1.4 + style.pen.weight
             : ascender + style.pen.weight;
-          expect(bounds.yMax, `${name} rises too far above the line`).toBeLessThanOrEqual(
-            ceiling,
-          );
+          expect(bounds.yMax, `${name} rises too far above the line`).toBeLessThanOrEqual(ceiling);
           expect(bounds.yMin, `${name} falls below the descender`).toBeGreaterThanOrEqual(
             descender - style.pen.weight,
           );
@@ -169,8 +170,9 @@ describe("the character set", () => {
             .flatMap((one) => one.nodes)
             .reduce((left, node) => (node.point.x < left.point.x ? node : left)).point;
           const seam = seamsOf(style.parts.script, style.metrics.xHeight, style.pen.weight / 2).low;
-          const leaned = (Math.min(seam, lowest.y) - style.metrics.xHeight / 2)
-            * Math.tan((style.metrics.slant * Math.PI) / 180);
+          const leaned =
+            (Math.min(seam, lowest.y) - style.metrics.xHeight / 2) *
+            Math.tan((style.metrics.slant * Math.PI) / 180);
           const knit = style.parts.script.on ? style.parts.script.knit * style.pen.weight : 0;
           /*
            * And a descender's loop swings sideways as well as leaning.
@@ -187,9 +189,10 @@ describe("the character set", () => {
            * figure picked to fit: it is struck no longer than the descender it
            * hangs from and bows `eye` of that.
            */
-          const swing = style.parts.script.on && bounds.yMin < 0
-            ? style.parts.script.eye * Math.abs(style.metrics.descender)
-            : 0;
+          const swing =
+            style.parts.script.on && bounds.yMin < 0
+              ? style.parts.script.eye * Math.abs(style.metrics.descender)
+              : 0;
           expect(bounds.xMin, `${name} starts left of the origin`).toBeGreaterThan(
             reaches ? Math.min(0, leaned) - style.pen.weight * 0.5 - knit - swing - 1 : -1,
           );
@@ -215,9 +218,10 @@ describe("the character set", () => {
           if (reachesOut(name, style)) continue;
           const bounds = contoursBounds(drawn.contours);
           expect(bounds.xMin, `${name} touches its left edge`).toBeGreaterThan(0);
-          expect(drawn.advanceWidth - bounds.xMax, `${name} touches its right edge`).toBeGreaterThan(
-            0,
-          );
+          expect(
+            drawn.advanceWidth - bounds.xMax,
+            `${name} touches its right edge`,
+          ).toBeGreaterThan(0);
         }
       });
 
@@ -231,11 +235,16 @@ describe("the character set", () => {
           // Measured against the lean, which moves the ink at the seam sideways
           // -- by seven or eight units at six degrees, on both letters of every
           // pair equally, so it opens nothing.
-          const shift = (seam - style.metrics.xHeight / 2) * Math.tan((style.metrics.slant * Math.PI) / 180);
-          expect(Math.min(...runs.map((run) => run[0])), `${name} does not reach its left edge`)
-            .toBeLessThan(shift + 1);
-          expect(Math.max(...runs.map((run) => run[1])), `${name} does not reach its right edge`)
-            .toBeGreaterThan(drawn.advanceWidth + shift - 1);
+          const shift =
+            (seam - style.metrics.xHeight / 2) * Math.tan((style.metrics.slant * Math.PI) / 180);
+          expect(
+            Math.min(...runs.map((run) => run[0])),
+            `${name} does not reach its left edge`,
+          ).toBeLessThan(shift + 1);
+          expect(
+            Math.max(...runs.map((run) => run[1])),
+            `${name} does not reach its right edge`,
+          ).toBeGreaterThan(drawn.advanceWidth + shift - 1);
         }
       });
 
@@ -274,7 +283,8 @@ describe("the character set", () => {
       });
 
       it("makes the capitals taller than the lowercase and shorter than the ascenders", () => {
-        const heightOf = (name: string): number => contoursBounds(drawLetter(name, style)!.contours).yMax;
+        const heightOf = (name: string): number =>
+          contoursBounds(drawLetter(name, style)!.contours).yMax;
         expect(heightOf("H")).toBeGreaterThan(heightOf("n"));
         expect(heightOf("l")).toBeGreaterThan(heightOf("H"));
         /*
@@ -342,7 +352,9 @@ describe("one skeleton, three faces", () => {
 describe("letters in one piece", () => {
   // i and j are two pieces because a dot is a piece, and so are the letters
   // that carry one. What is left is every letter that should be one solid.
-  const solid = letterNames().filter((name) => /^[A-Za-z]$/.test(name) && name !== "i" && name !== "j");
+  const solid = letterNames().filter(
+    (name) => /^[A-Za-z]$/.test(name) && name !== "i" && name !== "j",
+  );
 
   it("draws every letter of every face as one solid", async () => {
     const { ready } = await import("@/font/boolean");
@@ -407,7 +419,8 @@ describe("letters in one piece", () => {
     await ready();
 
     const marked = STARTING_POINTS.filter(
-      (one) => one.effects && anyEffect(one.effects) && !one.effects.skip.on);
+      (one) => one.effects && anyEffect(one.effects) && !one.effects.skip.on,
+    );
     expect(marked.length).toBeGreaterThan(0);
 
     const apart: string[] = [];
@@ -585,7 +598,13 @@ describe("an arc that goes nowhere still lands where its neighbours are", () => 
    */
   it("keeps the Psychedelic's balls on the axis", () => {
     const adrift: string[] = [];
-    const book: WaveBook = { lengths: new Map(), bowls: new Map(), balls: new Map(), corners: new Map(), recording: true };
+    const book: WaveBook = {
+      lengths: new Map(),
+      bowls: new Map(),
+      balls: new Map(),
+      corners: new Map(),
+      recording: true,
+    };
     const was = openWaveBook(book);
     const face = STARTING_POINTS.find((one) => one.name === "Psychedelic")!;
     try {
@@ -607,7 +626,10 @@ describe("an arc that goes nowhere still lands where its neighbours are", () => 
         book.balls.clear();
         // Every one of these is drawn on this face, so a zero is a name that
         // is not a name rather than a letter with nothing in it.
-        expect(counts.every((one) => one > 0), `${name} draws nothing`).toBe(true);
+        expect(
+          counts.every((one) => one > 0),
+          `${name} draws nothing`,
+        ).toBe(true);
         if (new Set(counts).size !== 1) adrift.push(`${name}: ${counts.join(", ")}`);
       }
     } finally {
@@ -627,7 +649,13 @@ describe("an arc that goes nowhere still lands where its neighbours are", () => 
    * passing if the bound were tightened again and something else gave way.
    */
   it("pins the Technical section rather than refusing it", () => {
-    const book: WaveBook = { lengths: new Map(), bowls: new Map(), balls: new Map(), corners: new Map(), recording: true };
+    const book: WaveBook = {
+      lengths: new Map(),
+      bowls: new Map(),
+      balls: new Map(),
+      corners: new Map(),
+      recording: true,
+    };
     const was = openWaveBook(book);
     const face = STARTING_POINTS.find((one) => one.name === "Technical")!;
     try {
@@ -641,7 +669,10 @@ describe("an arc that goes nowhere still lands where its neighbours are", () => 
           .map((one) => one.nodes.map((node) => (node.type === "smooth" ? "s" : "c")).join(""))
           .join("|");
       });
-      expect(flags.every((one) => one.length > 0), "section draws nothing").toBe(true);
+      expect(
+        flags.every((one) => one.length > 0),
+        "section draws nothing",
+      ).toBe(true);
       expect(new Set(flags).size, `section is drawn ${new Set(flags).size} different ways`).toBe(1);
     } finally {
       openWaveBook(was);
@@ -658,7 +689,11 @@ describe("an arc that goes nowhere still lands where its neighbours are", () => 
    */
   it("keeps the Marker braceright's corners in the same places at every weight", () => {
     const book: WaveBook = {
-      lengths: new Map(), bowls: new Map(), balls: new Map(), corners: new Map(), recording: true,
+      lengths: new Map(),
+      bowls: new Map(),
+      balls: new Map(),
+      corners: new Map(),
+      recording: true,
     };
     const was = openWaveBook(book);
     const face = STARTING_POINTS.find((one) => one.name === "Marker")!;
@@ -673,8 +708,13 @@ describe("an arc that goes nowhere still lands where its neighbours are", () => 
           .map((c) => c.nodes.map((n) => (n.type === "smooth" ? "s" : "c")).join(""))
           .join("|");
       });
-      expect(drawn.every((one) => one.length > 0), "braceright draws nothing").toBe(true);
-      expect(new Set(drawn).size, `braceright is drawn ${new Set(drawn).size} different ways`).toBe(1);
+      expect(
+        drawn.every((one) => one.length > 0),
+        "braceright draws nothing",
+      ).toBe(true);
+      expect(new Set(drawn).size, `braceright is drawn ${new Set(drawn).size} different ways`).toBe(
+        1,
+      );
     } finally {
       openWaveBook(was);
     }
@@ -688,7 +728,9 @@ describe("an arc that goes nowhere still lands where its neighbours are", () => 
         return drawn ? drawn.contours.reduce((sum, one) => sum + one.nodes.length, 0) : 0;
       });
       expect(counts.every((one) => one > 0)).toBe(true);
-      expect(new Set(counts).size, `${name} has ${counts.join(", ")} nodes across the axis`).toBe(1);
+      expect(new Set(counts).size, `${name} has ${counts.join(", ")} nodes across the axis`).toBe(
+        1,
+      );
     },
   );
 
@@ -709,7 +751,13 @@ describe("an arc that goes nowhere still lands where its neighbours are", () => 
    */
   it("keeps the figures on the axis on every face", () => {
     const adrift: string[] = [];
-    const book: WaveBook = { lengths: new Map(), bowls: new Map(), balls: new Map(), corners: new Map(), recording: true };
+    const book: WaveBook = {
+      lengths: new Map(),
+      bowls: new Map(),
+      balls: new Map(),
+      corners: new Map(),
+      recording: true,
+    };
     const was = openWaveBook(book);
     try {
       for (const base of STARTING_POINTS) {
@@ -757,7 +805,10 @@ describe("an f is not a t, and a k is not a fan", () => {
         // The run that reaches the ascender is the one with the hook on it.
         const hooked = runs.reduce((best, one) =>
           Math.max(spineStart(one.spine).y, spineEnd(one.spine).y) >
-          Math.max(spineStart(best.spine).y, spineEnd(best.spine).y) ? one : best);
+          Math.max(spineStart(best.spine).y, spineEnd(best.spine).y)
+            ? one
+            : best,
+        );
         const ends = [spineStart(hooked.spine), spineEnd(hooked.spine)];
         const [low, high] = ends[0].y < ends[1].y ? ends : [ends[1], ends[0]];
         if (high.x - low.x <= style.pen.weight / 2) {
@@ -778,8 +829,10 @@ describe("an f is not a t, and a k is not a fan", () => {
    * leaves an n's.
    */
   it("stands the joined k's leg up, so nothing reaches out past where the join leaves", () => {
-    const bare = (one: Style): Style =>
-      ({ ...one, parts: { ...one.parts, script: { ...one.parts.script, on: false } } });
+    const bare = (one: Style): Style => ({
+      ...one,
+      parts: { ...one.parts, script: { ...one.parts.script, on: false } },
+    });
     const rightAt = (drawn: NonNullable<ReturnType<typeof drawLetter>>, y: number) =>
       Math.max(...inkRunsAt(drawn.contours, y).map(([, to]) => to));
 
@@ -800,19 +853,26 @@ describe("an f is not a t, and a k is not a fan", () => {
       const seam = seamsOf(style.parts.script, style.metrics.xHeight, style.pen.weight / 2).low;
       // The band the lead-out searches, and the point in it that it leaves from.
       const bandMax = (drawn: NonNullable<ReturnType<typeof drawLetter>>) =>
-        Math.max(...Array.from({ length: 9 }, (_, step) =>
-          rightAt(drawn, half + ((seam - half) * step) / 8)));
+        Math.max(
+          ...Array.from({ length: 9 }, (_, step) =>
+            rightAt(drawn, half + ((seam - half) * step) / 8),
+          ),
+        );
       // Just off the baseline, which is under the band and is where a straight
       // leg is at its widest.
       const under = half * 0.2;
       const standing = drawLetter("k", bare(style), "standing")!;
       const splayed = drawLetter("k", bare(style))!;
-      expect([style.name, rightAt(standing, under) <= bandMax(standing) + half * 0.2])
-        .toEqual([style.name, true]);
+      expect([style.name, rightAt(standing, under) <= bandMax(standing) + half * 0.2]).toEqual([
+        style.name,
+        true,
+      ]);
       // And the straight leg does reach past it, which is why the alternate is
       // here at all: without this the test above would pass on any k.
-      expect([style.name, rightAt(splayed, under) > bandMax(splayed) + half * 0.2])
-        .toEqual([style.name, true]);
+      expect([style.name, rightAt(splayed, under) > bandMax(splayed) + half * 0.2]).toEqual([
+        style.name,
+        true,
+      ]);
     }
   });
 

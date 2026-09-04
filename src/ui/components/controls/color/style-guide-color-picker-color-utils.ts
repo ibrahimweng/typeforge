@@ -1,8 +1,4 @@
-import {
-  hexToHsv,
-  normalizeHexColor,
-  type HsvColor,
-} from "../../../lib/style-guide-color-utils";
+import { hexToHsv, normalizeHexColor, type HsvColor } from "../../../lib/style-guide-color-utils";
 
 export function calculateHexDistance(
   leftHex: string | null | undefined,

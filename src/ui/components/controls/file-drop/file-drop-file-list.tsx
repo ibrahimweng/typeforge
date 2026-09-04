@@ -1,26 +1,15 @@
 "use client";
 
 import * as React from "react";
-import {
-  closestCenter,
-  DndContext,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
+import { closestCenter, DndContext, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { PaperclipIcon, XIcon } from "@phosphor-icons/react";
 
 import { cn } from "../../../lib/utils";
 import { Button } from "../../primitives";
 import { FileDropPlusGlyph } from "./file-drop-presentation";
-import type {
-  FileDropPresentationEntry,
-  FileDropPresentationItem,
-} from "./file-drop-types";
+import type { FileDropPresentationEntry, FileDropPresentationItem } from "./file-drop-types";
 
 type SortableFileRowProps = {
   entry: FileDropPresentationEntry;
@@ -36,11 +25,10 @@ function SortableFileRow({
   onItemRemove,
 }: SortableFileRowProps): React.JSX.Element {
   const { item, key: itemKey, sourceIndex } = entry;
-  const { attributes, isDragging, listeners, setNodeRef, transform, transition } =
-    useSortable({
-      disabled: !isSortable,
-      id: itemKey,
-    });
+  const { attributes, isDragging, listeners, setNodeRef, transform, transition } = useSortable({
+    disabled: !isSortable,
+    id: itemKey,
+  });
   const style: React.CSSProperties = {
     transform: transform ? CSS.Transform.toString(transform) : undefined,
     transition,
@@ -91,9 +79,7 @@ function SortableFileRow({
           {content}
         </button>
       ) : (
-        <div className={contentClassName}>
-          {content}
-        </div>
+        <div className={contentClassName}>{content}</div>
       )}
       {onItemRemove ? (
         <Button
@@ -139,11 +125,7 @@ export function FileDropFileList({
 }: FileDropFileListProps): React.JSX.Element {
   return (
     <div className="w-full" data-slot="file-upload-file-list">
-      <DndContext
-        collisionDetection={closestCenter}
-        onDragEnd={onDragEnd}
-        sensors={sensors}
-      >
+      <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd} sensors={sensors}>
         <SortableContext items={previewKeys} strategy={verticalListSortingStrategy}>
           {previewEntries.map((entry, index) => (
             <React.Fragment key={entry.key}>

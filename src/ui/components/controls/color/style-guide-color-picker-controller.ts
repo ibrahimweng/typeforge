@@ -24,13 +24,8 @@ import {
 } from "./style-guide-color-picker-interactions";
 import { useHueHandlers } from "./style-guide-color-picker-hue-handlers";
 import { useInteractionState } from "./style-guide-color-picker-interaction-state";
-import {
-  useColorModel,
-} from "./style-guide-color-picker-model";
-import {
-  type ColorSurfacePosition,
-  type DragBounds,
-} from "./style-guide-color-picker-surface-geometry";
+import { useColorModel } from "./style-guide-color-picker-model";
+import type { ColorSurfacePosition, DragBounds } from "./style-guide-color-picker-surface-geometry";
 import { useSurfaceDrag } from "./style-guide-color-picker-surface-drag";
 import { useSurfacePreview } from "./style-guide-color-picker-surface-preview";
 import type {
@@ -231,9 +226,8 @@ export function useColorPickerController({
 }: StyleGuideColorPickerProps): ColorPickerViewProps {
   const generatedHexInputId = useId();
   const [isSurfaceDragging, setIsSurfaceDragging] = useState(false);
-  const [colorFormatMode, setColorFormatMode] = useState<ColorFormatMode>(
-    DEFAULT_COLOR_FORMAT_MODE,
-  );
+  const [colorFormatMode, setColorFormatMode] =
+    useState<ColorFormatMode>(DEFAULT_COLOR_FORMAT_MODE);
   const colorSurfaceModel = getColorSurfaceModel(colorFormatMode);
   const surfaceModelRef = useRef<ColorSurfaceModel>(colorSurfaceModel);
   const [surfacePositionOverride, setSurfacePositionOverrideState] =
@@ -298,12 +292,7 @@ export function useColorPickerController({
     setInteractionSourceState: interaction.setInteractionSourceState,
     onCommit,
   });
-  const colorValueHandlers = useColorValueHandlers(
-    refs,
-    model,
-    interaction,
-    onCommit,
-  );
+  const colorValueHandlers = useColorValueHandlers(refs, model, interaction, onCommit);
   const onSurfacePointerDown = useSurfacePointerDown({
     disabled,
     surfaceRef: refs.surfaceRef,

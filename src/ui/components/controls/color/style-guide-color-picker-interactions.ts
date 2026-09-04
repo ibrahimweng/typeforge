@@ -12,9 +12,9 @@ import {
   type DragBounds,
   type ColorSurfacePosition,
 } from "./style-guide-color-picker-surface-geometry";
-import { type InteractionSource } from "./style-guide-color-picker-interaction-state";
+import type { InteractionSource } from "./style-guide-color-picker-interaction-state";
 import { hsvToHex, normalizeHexColor, type HsvColor } from "../../../lib/style-guide-color-utils";
-import { type ColorSurfaceModel } from "./style-guide-color-picker-channel-utils";
+import type { ColorSurfaceModel } from "./style-guide-color-picker-channel-utils";
 
 type HexInputOptions = {
   isHexInputFocusedRef: MutableRefObject<boolean>;

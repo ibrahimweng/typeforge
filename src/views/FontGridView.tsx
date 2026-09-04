@@ -10,7 +10,14 @@
 import * as React from "react";
 
 import { StartScreen } from "@/components/StartScreen";
-import { drawGlyph, fitEmSquare, formatCodepoint, glyphLabel, prepareCanvas, readToken } from "@/components/glyph-render";
+import {
+  drawGlyph,
+  fitEmSquare,
+  formatCodepoint,
+  glyphLabel,
+  prepareCanvas,
+  readToken,
+} from "@/components/glyph-render";
 import { groupGlyphs } from "@/font/groups";
 import type { Glyph, Typeface } from "@/font/types";
 import { freeNameNear, hasLetters } from "@/font/library";
@@ -34,9 +41,7 @@ const HEADING_HEIGHT = 28;
  * them to be. Keeping them in one list is what lets a heading scroll with its
  * letters instead of floating over them.
  */
-type Row =
-  | { kind: "heading"; name: string; count: number }
-  | { kind: "cells"; glyphs: Glyph[] };
+type Row = { kind: "heading"; name: string; count: number } | { kind: "cells"; glyphs: Glyph[] };
 /** Extra rows kept mounted above and below, so scrolling does not flash. */
 const OVERSCAN_ROWS = 3;
 
@@ -84,7 +89,10 @@ export function FontGridView(): React.JSX.Element {
   const observerRef = React.useRef<ResizeObserver | null>(null);
   React.useEffect(() => () => observerRef.current?.disconnect(), []);
 
-  const glyphs = React.useMemo(() => filterGlyphs(typeface, state.search), [typeface, state.search, state.revision]);
+  const glyphs = React.useMemo(
+    () => filterGlyphs(typeface, state.search),
+    [typeface, state.search, state.revision],
+  );
   /*
    * Which letters will be left standing while the rest of the font moves.
    *
@@ -269,9 +277,9 @@ export function FontGridView(): React.JSX.Element {
         */}
         {glyphs.length > 0 && !hasLetters(typeface) && !state.search && (
           <p className="mx-auto max-w-prose py-10 text-center text-xs-plus text-muted-foreground">
-            No letters yet. <code className="font-mono">.notdef</code> is the box
-            a renderer draws for a character a font has not got, and every font
-            needs one. Press New letter to add your own.
+            No letters yet. <code className="font-mono">.notdef</code> is the box a renderer draws
+            for a character a font has not got, and every font needs one. Press New letter to add
+            your own.
           </p>
         )}
       </div>
@@ -347,8 +355,7 @@ const GlyphCell = React.memo(function GlyphCell({
    * blending a font nobody is looking at to answer a slider is the wrong
    * arithmetic by two orders of magnitude.
    */
-  const glyph =
-    preview === null ? drawn : (glyphAcross(name, state.masters, preview) ?? drawn);
+  const glyph = preview === null ? drawn : (glyphAcross(name, state.masters, preview) ?? drawn);
 
   React.useEffect(() => {
     const canvas = canvasRef.current;

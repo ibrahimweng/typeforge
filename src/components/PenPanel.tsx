@@ -14,7 +14,7 @@
  * pick.
  */
 
-import * as React from "react";
+import type * as React from "react";
 
 import { NumberField } from "./NumberField";
 import { store, useAppState } from "@/state/useStore";
@@ -154,8 +154,8 @@ export function PenPanel({ glyphName }: { glyphName: string }): React.JSX.Elemen
 
       {expanded ? (
         <p className="text-2xs text-muted-foreground" data-pen-expanded>
-          The ink is the letter now, so the pen no longer moves it. Go back to strokes to write
-          with it again.
+          The ink is the letter now, so the pen no longer moves it. Go back to strokes to write with
+          it again.
         </p>
       ) : null}
 

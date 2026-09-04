@@ -277,7 +277,10 @@ test("shows how a letter is built and can build the accented set", async ({ page
 
   // Open an accented letter and see what it is made from.
   await page.getByLabel("Search glyphs").fill("aacute");
-  await page.getByRole("button", { name: /^aacute|^á/ }).first().dblclick();
+  await page
+    .getByRole("button", { name: /^aacute|^á/ })
+    .first()
+    .dblclick();
   await page.getByRole("button", { name: "build", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "Built from" })).toBeVisible();
@@ -331,15 +334,18 @@ test("exports a TrueType file the browser can use as a font", async ({ page }) =
 
   // The strongest check available in a browser: ask it to actually parse the
   // bytes as a font. FontFace.load rejects anything malformed.
-  const loaded = await page.evaluate(async (data) => {
-    const face = new FontFace("TypeforgeExport", new Uint8Array(data).buffer);
-    try {
-      await face.load();
-      return true;
-    } catch {
-      return false;
-    }
-  }, [...bytes]);
+  const loaded = await page.evaluate(
+    async (data) => {
+      const face = new FontFace("TypeforgeExport", new Uint8Array(data).buffer);
+      try {
+        await face.load();
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [...bytes],
+  );
   expect(loaded).toBe(true);
 });
 
@@ -594,7 +600,8 @@ for (const width of [1440, 1280, 1152, 1024]) {
       for (const button of document.querySelectorAll("header button")) {
         const box = button.getBoundingClientRect();
         // Half a pixel of slack, for a sub-pixel layout that rounds outwards.
-        if (box.right > edge + 0.5 || box.left < -0.5) names.push(button.textContent?.trim() ?? "?");
+        if (box.right > edge + 0.5 || box.left < -0.5)
+          names.push(button.textContent?.trim() ?? "?");
       }
       return names;
     }, width);
@@ -607,8 +614,7 @@ test("hovering a toolbar button changes it before you press", async ({ page }) =
   await openFont(page);
 
   const spacing = page.getByRole("button", { name: "Spacing", exact: true });
-  const background = () =>
-    spacing.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const background = () => spacing.evaluate((element) => getComputedStyle(element).backgroundColor);
 
   // Park the pointer well away, then read the resting appearance.
   await page.mouse.move(5, 300);
@@ -805,19 +811,22 @@ test("draws the accented letters and writes them into the font", async ({ page }
   ]);
   const bytes = readFileSync((await download.path())!);
 
-  const measured = await page.evaluate(async (data) => {
-    const face = new FontFace("Accented", new Uint8Array(data).buffer as ArrayBuffer);
-    await face.load();
-    document.fonts.add(face);
-    const context = document.createElement("canvas").getContext("2d")!;
-    context.font = "100px Accented";
-    const width = (text: string) => context.measureText(text).width;
-    return {
-      // A character the font has no glyph for, to measure the others against.
-      blank: width("\uFFFF"),
-      accented: ["é", "ñ", "å", "ç", "ø", "ß", "æ", "þ", "í"].map(width),
-    };
-  }, [...bytes]);
+  const measured = await page.evaluate(
+    async (data) => {
+      const face = new FontFace("Accented", new Uint8Array(data).buffer as ArrayBuffer);
+      await face.load();
+      document.fonts.add(face);
+      const context = document.createElement("canvas").getContext("2d")!;
+      context.font = "100px Accented";
+      const width = (text: string) => context.measureText(text).width;
+      return {
+        // A character the font has no glyph for, to measure the others against.
+        blank: width("\uFFFF"),
+        accented: ["é", "ñ", "å", "ç", "ø", "ß", "æ", "þ", "í"].map(width),
+      };
+    },
+    [...bytes],
+  );
 
   for (const width of measured.accented) {
     expect(width).toBeGreaterThan(0);
@@ -842,7 +851,15 @@ test("draws the symbols and writes them into the font", async ({ page }) => {
 
   // Every character the other half offers a box for, which is the whole set.
   expect(await page.locator("[data-forge-cell]").count()).toBeGreaterThanOrEqual(189);
-  for (const name of ["ampersand", "at", "sterling", "braceleft", "onehalf", "questiondown", "mu"]) {
+  for (const name of [
+    "ampersand",
+    "at",
+    "sterling",
+    "braceleft",
+    "onehalf",
+    "questiondown",
+    "mu",
+  ]) {
     await expect(page.locator(`[data-forge-cell="${name}"]`)).toBeVisible();
   }
 
@@ -868,19 +885,24 @@ test("draws the symbols and writes them into the font", async ({ page }) => {
   ]);
   const bytes = readFileSync((await download.path())!);
 
-  const measured = await page.evaluate(async (data) => {
-    const face = new FontFace("Symbols", new Uint8Array(data).buffer as ArrayBuffer);
-    await face.load();
-    document.fonts.add(face);
-    const context = document.createElement("canvas").getContext("2d")!;
-    context.font = "100px Symbols";
-    const width = (text: string) => context.measureText(text).width;
-    return {
-      // A character the font has no glyph for, to measure the others against.
-      blank: width("\uFFFF"),
-      symbols: "&@£½¿~§¶#%*+<=>[]{}|©®°±²µ·»¼×÷".split("").map((one) => [one, width(one)] as const),
-    };
-  }, [...bytes]);
+  const measured = await page.evaluate(
+    async (data) => {
+      const face = new FontFace("Symbols", new Uint8Array(data).buffer as ArrayBuffer);
+      await face.load();
+      document.fonts.add(face);
+      const context = document.createElement("canvas").getContext("2d")!;
+      context.font = "100px Symbols";
+      const width = (text: string) => context.measureText(text).width;
+      return {
+        // A character the font has no glyph for, to measure the others against.
+        blank: width("\uFFFF"),
+        symbols: "&@£½¿~§¶#%*+<=>[]{}|©®°±²µ·»¼×÷"
+          .split("")
+          .map((one) => [one, width(one)] as const),
+      };
+    },
+    [...bytes],
+  );
 
   const missing = measured.symbols
     .filter(([, width]) => width === 0 || Math.abs(width - measured.blank) < 0.5)
@@ -943,11 +965,7 @@ test("draws a family and downloads every weight of it", async ({ page }) => {
     .toString()
     .trim()
     .split("\n");
-  expect(listed).toEqual([
-    "Untitled-Bold.ttf",
-    "Untitled-Light.ttf",
-    "Untitled-Regular.ttf",
-  ]);
+  expect(listed).toEqual(["Untitled-Bold.ttf", "Untitled-Light.ttf", "Untitled-Regular.ttf"]);
   expect(errors).toEqual([]);
 });
 
@@ -1044,7 +1062,16 @@ test("starts from any of the eight, and every one draws a different font", async
   await page.getByRole("button", { name: "Draw", exact: true }).click();
 
   const seen = new Set<string>();
-  for (const name of ["Sans", "Serif", "Display", "Geometric", "Ribbon", "Technical", "Fairground", "Marker"]) {
+  for (const name of [
+    "Sans",
+    "Serif",
+    "Display",
+    "Geometric",
+    "Ribbon",
+    "Technical",
+    "Fairground",
+    "Marker",
+  ]) {
     await page.locator(`[data-forge-base="${name}"]`).click();
     await expect
       .poll(async () => {
@@ -1140,14 +1167,17 @@ async function dragHandle(page: Page, id: string, dx: number, dy: number): Promi
  * second copy of that sum in the tests would be a second thing to keep right.
  */
 async function pressSpot(page: Page, x: number, y: number): Promise<void> {
-  const at = await page.evaluate(([fx, fy]) => {
-    const svg = document.querySelector("[data-forge-stage]") as SVGSVGElement | null;
-    const screen = svg?.getScreenCTM();
-    if (!svg || !screen) return null;
-    // The letter is drawn inside a flip, because font y runs up.
-    const spot = new DOMPoint(fx, -fy).matrixTransform(screen);
-    return { x: spot.x, y: spot.y };
-  }, [x, y]);
+  const at = await page.evaluate(
+    ([fx, fy]) => {
+      const svg = document.querySelector("[data-forge-stage]") as SVGSVGElement | null;
+      const screen = svg?.getScreenCTM();
+      if (!svg || !screen) return null;
+      // The letter is drawn inside a flip, because font y runs up.
+      const spot = new DOMPoint(fx, -fy).matrixTransform(screen);
+      return { x: spot.x, y: spot.y };
+    },
+    [x, y],
+  );
   if (!at) throw new Error("no stage to press");
   await page.mouse.dblclick(at.x, at.y);
 }
@@ -1193,9 +1223,13 @@ test("offers handles for the parts the letter has, and no others", async ({ page
   await openForge(page);
 
   const on = async (): Promise<string[]> =>
-    (await page.locator("[data-forge-handle]").evaluateAll((nodes) =>
-      nodes.map((node) => (node as HTMLElement).dataset.forgeHandle ?? ""),
-    )).sort();
+    (
+      await page
+        .locator("[data-forge-handle]")
+        .evaluateAll((nodes) =>
+          nodes.map((node) => (node as HTMLElement).dataset.forgeHandle ?? ""),
+        )
+    ).sort();
 
   // n has an arch, so it has a shoulder to pull and a rhythm to set.
   expect(await on()).toContain("shoulder");
@@ -1753,9 +1787,30 @@ test("stamps filled shapes into cells, and takes them out again", async ({ page 
  * leaves a usable picker rather than an empty one.
  */
 const CATALOGUE = [
-  { id: "inter", family: "Inter", category: "sans-serif", weights: [400, 700], styles: ["normal"], variable: true },
-  { id: "playfair-display", family: "Playfair Display", category: "serif", weights: [400], styles: ["normal"], variable: false },
-  { id: "roboto-mono", family: "Roboto Mono", category: "monospace", weights: [400], styles: ["normal"], variable: false },
+  {
+    id: "inter",
+    family: "Inter",
+    category: "sans-serif",
+    weights: [400, 700],
+    styles: ["normal"],
+    variable: true,
+  },
+  {
+    id: "playfair-display",
+    family: "Playfair Display",
+    category: "serif",
+    weights: [400],
+    styles: ["normal"],
+    variable: false,
+  },
+  {
+    id: "roboto-mono",
+    family: "Roboto Mono",
+    category: "monospace",
+    weights: [400],
+    styles: ["normal"],
+    variable: false,
+  },
 ];
 
 /** Answer the catalogue, and serve the sample font for any file asked for. */
@@ -1850,7 +1905,9 @@ test("starts a drawing from a font's proportions", async ({ page }) => {
   // from. The letters are drawn from a description, so they are not the
   // font's letters -- but they are its proportions.
   await expect(page.getByRole("dialog", { name: "Font library" })).toBeHidden();
-  await expect.poll(() => page.locator('[data-forge-cell="n"] path').getAttribute("d")).not.toBe(before);
+  await expect
+    .poll(() => page.locator('[data-forge-cell="n"] path').getAttribute("d"))
+    .not.toBe(before);
   await expect(page.locator("header").first()).toContainText("My ");
 });
 
@@ -1944,7 +2001,11 @@ async function openAssemble(page: Page): Promise<void> {
 }
 
 /** Put a drawing in a named box, as double-clicking it would. */
-async function fillBox(page: Page, character: string, file: { name: string; mimeType: string; buffer: Buffer }): Promise<void> {
+async function fillBox(
+  page: Page,
+  character: string,
+  file: { name: string; mimeType: string; buffer: Buffer },
+): Promise<void> {
   await page.setInputFiles(`[data-assemble-box-input="${character}"]`, file);
   await expect(page.locator(`[data-assemble-box="${character}"]`)).toHaveAttribute(
     "data-assemble-filled",
@@ -1953,7 +2014,10 @@ async function fillBox(page: Page, character: string, file: { name: string; mime
 }
 
 /** The bulk route, which still guesses characters from the file names. */
-async function dropFolder(page: Page, files: Array<{ name: string; mimeType: string; buffer: Buffer }>): Promise<void> {
+async function dropFolder(
+  page: Page,
+  files: Array<{ name: string; mimeType: string; buffer: Buffer }>,
+): Promise<void> {
   await page.setInputFiles("[data-assemble-panel-input]", files);
 }
 
@@ -2054,9 +2118,9 @@ test("replaces what is in a box without leaving the old drawing behind", async (
     name: "second.svg",
   });
 
-  await expect.poll(() => page.locator('[data-assemble-box="A"] path').getAttribute("d")).not.toBe(
-    first,
-  );
+  await expect
+    .poll(() => page.locator('[data-assemble-box="A"] path').getAttribute("d"))
+    .not.toBe(first);
   // One drawing in the slot, not two -- and nothing stranded in the list.
   await expect(page.locator('[data-assemble-filled="yes"]')).toHaveCount(1);
   await expect(page.locator("[data-assemble-list] li")).toHaveCount(1);
@@ -2073,7 +2137,10 @@ test("assembles a font from a pile of SVG drawings", async ({ page }) => {
   // Every file placed, from its name alone.
   await expect(page.locator('[data-assemble-filled="yes"]')).toHaveCount(5);
   for (const character of ["H", "I", "A", "V", "x"]) {
-    await expect(page.locator(`[data-assemble-box="${character}"]`)).toHaveAttribute("data-assemble-filled", "yes");
+    await expect(page.locator(`[data-assemble-box="${character}"]`)).toHaveAttribute(
+      "data-assemble-filled",
+      "yes",
+    );
   }
   // They share a canvas height, so they are fitted against each other.
   await expect(page.locator('[data-assemble-fit="together"]')).toHaveAttribute(
@@ -2082,7 +2149,6 @@ test("assembles a font from a pile of SVG drawings", async ({ page }) => {
   );
   expect(errors).toEqual([]);
 });
-
 
 test("cuts a font it did not draw, and lets one letter keep out of it", async ({ page }) => {
   const errors: string[] = [];
@@ -2182,10 +2248,7 @@ test("gives a drawing that leans away less white than one that does not", async 
 
 test("takes a drawing whose name says nothing, once told what it is", async ({ page }) => {
   await openAssemble(page);
-  await dropFolder(page, [
-    ...PILE,
-    { ...bar(400, 200), name: "logo-final-v3.svg" },
-  ]);
+  await dropFolder(page, [...PILE, { ...bar(400, 200), name: "logo-final-v3.svg" }]);
 
   // It came in, it is in the list, and it is not in the font.
   await expect(page.locator("[data-assemble-trouble]")).toContainText("not placed");
@@ -2245,11 +2308,14 @@ test("writes a real font out of the pile", async ({ page }) => {
   expect([...bytes.subarray(0, 4)]).toEqual([0, 1, 0, 0]);
 
   // The strongest check available in a browser: ask it to parse the file.
-  const parsed = await page.evaluate(async (data) => {
-    const face = new FontFace("Assembled", new Uint8Array(data).buffer as ArrayBuffer);
-    await face.load();
-    return face.status;
-  }, [...bytes]);
+  const parsed = await page.evaluate(
+    async (data) => {
+      const face = new FontFace("Assembled", new Uint8Array(data).buffer as ArrayBuffer);
+      await face.load();
+      return face.status;
+    },
+    [...bytes],
+  );
   expect(parsed).toBe("loaded");
 });
 
@@ -2364,7 +2430,10 @@ function keptHalves(page: Page): Promise<string[]> {
         request.onerror = () => resolve([]);
         request.onsuccess = () => {
           const database = request.result;
-          const get = database.transaction("session", "readonly").objectStore("session").get("current");
+          const get = database
+            .transaction("session", "readonly")
+            .objectStore("session")
+            .get("current");
           get.onerror = () => {
             database.close();
             resolve([]);
@@ -2548,7 +2617,11 @@ test("turns away a file that is neither a font nor a project", async ({ page }) 
   const before = await drawnN(page);
 
   for (const file of [
-    { name: "holiday.json", mimeType: "application/json", buffer: Buffer.from('{"hello":"world"}') },
+    {
+      name: "holiday.json",
+      mimeType: "application/json",
+      buffer: Buffer.from('{"hello":"world"}'),
+    },
     { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("not json at all") },
   ]) {
     const [chooser] = await Promise.all([
@@ -2807,14 +2880,22 @@ test("shows the letters either side, and lets the numbers be typed", async ({ pa
    * separately so an asymmetric pair can be checked.
    */
   const inkOf = async () =>
-    page.locator("canvas").first().evaluate((canvas) => {
-      const context = (canvas as HTMLCanvasElement).getContext("2d");
-      if (!context) return 0;
-      const { data } = context.getImageData(0, 0, (canvas as HTMLCanvasElement).width, (canvas as HTMLCanvasElement).height);
-      let lit = 0;
-      for (let index = 3; index < data.length; index += 4 * 16) if (data[index] > 8) lit++;
-      return lit;
-    });
+    page
+      .locator("canvas")
+      .first()
+      .evaluate((canvas) => {
+        const context = (canvas as HTMLCanvasElement).getContext("2d");
+        if (!context) return 0;
+        const { data } = context.getImageData(
+          0,
+          0,
+          (canvas as HTMLCanvasElement).width,
+          (canvas as HTMLCanvasElement).height,
+        );
+        let lit = 0;
+        for (let index = 3; index < data.length; index += 4 * 16) if (data[index] > 8) lit++;
+        return lit;
+      });
 
   await page.locator("[data-context-before]").fill("HO");
   await page.locator("[data-context-after]").fill("no");
@@ -3197,10 +3278,7 @@ test("the toolbar wraps into rows rather than into a gap", async ({ page }) => {
   const wordmark = page.getByText("Typeforge", { exact: true });
   const exportButton = page.getByRole("button", { name: "Export", exact: true });
 
-  const [first, last] = await Promise.all([
-    wordmark.boundingBox(),
-    exportButton.boundingBox(),
-  ]);
+  const [first, last] = await Promise.all([wordmark.boundingBox(), exportButton.boundingBox()]);
   // It has genuinely wrapped at this width, or this test is proving nothing.
   expect(last!.y).toBeGreaterThan(first!.y + 10);
 
@@ -3392,7 +3470,10 @@ test("correcting the direction is an edit, not a display change", async ({ page 
   await page.locator('[aria-label="Reverse path 1"]').click();
   const winding = await page.locator('[data-path-row="0"]').innerText();
 
-  await page.locator("[data-path-actions]").getByRole("button", { name: "Correct direction" }).click();
+  await page
+    .locator("[data-path-actions]")
+    .getByRole("button", { name: "Correct direction" })
+    .click();
   await expect.poll(() => page.locator('[data-path-row="0"]').innerText()).not.toBe(winding);
   await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
 });
@@ -3554,7 +3635,9 @@ test("the tidy button says what it would do before it does it", async ({ page })
   await openFont(page);
   await page.getByRole("button", { name: "Glyph", exact: true }).click();
 
-  const tidy = page.locator("[data-points-panel]").getByRole("button", { name: /Tidy up|Nothing to tidy/ });
+  const tidy = page
+    .locator("[data-points-panel]")
+    .getByRole("button", { name: /Tidy up|Nothing to tidy/ });
   const label = await tidy.innerText();
   // The label and the state agree: nothing to do means nothing to press.
   if (label.includes("Nothing to tidy")) {
@@ -3841,7 +3924,9 @@ test("a font can be given a name of its own, which it could not before", async (
   await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
 });
 
-test("the checks say when an edited font still wears the name it arrived with", async ({ page }) => {
+test("the checks say when an edited font still wears the name it arrived with", async ({
+  page,
+}) => {
   /*
    * A derivative work that does not say it is one, which is the first thing
    * every type licence asks of you. It fires only once a letter has actually
@@ -4448,15 +4533,18 @@ test("a font that was opened can be shipped as one file that varies", async ({ p
   expect(tags).toContain("STAT");
 
   // And a browser will take it, which nothing malformed gets past.
-  const loaded = await page.evaluate(async (data) => {
-    const face = new FontFace("TypeforgeVariable", new Uint8Array(data).buffer);
-    try {
-      await face.load();
-      return true;
-    } catch {
-      return false;
-    }
-  }, [...bytes]);
+  const loaded = await page.evaluate(
+    async (data) => {
+      const face = new FontFace("TypeforgeVariable", new Uint8Array(data).buffer);
+      try {
+        await face.load();
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [...bytes],
+  );
   expect(loaded).toBe(true);
 });
 

@@ -791,7 +791,8 @@ export function wavy(
     closed: spine.closed,
     segments: spine.segments.flatMap((segment, index) => {
       if (segment.kind !== "line") return [segment];
-      const before = index > 0 ? spine.segments[index - 1] : spine.closed ? spine.segments[count - 1] : null;
+      const before =
+        index > 0 ? spine.segments[index - 1] : spine.closed ? spine.segments[count - 1] : null;
       const after =
         index < count - 1 ? spine.segments[index + 1] : spine.closed ? spine.segments[0] : null;
       // Asked of every straight piece, riding or not, so the book and the letter
@@ -896,7 +897,8 @@ export function bowRuns(spine: Spine, bow: number, penHalf: number): Spine {
     // stopped bowing at the next and the figures held fifty nodes at two
     // weights and forty at the other two.
     if (whole === null) return [segment];
-    const before = index > 0 ? spine.segments[index - 1] : spine.closed ? spine.segments[count - 1] : null;
+    const before =
+      index > 0 ? spine.segments[index - 1] : spine.closed ? spine.segments[count - 1] : null;
     const after =
       index < count - 1 ? spine.segments[index + 1] : spine.closed ? spine.segments[0] : null;
     moved = true;
@@ -1359,10 +1361,7 @@ function ripple(
        */
       pieces: index === 0 || index === wholeArcs + 1 ? 1 : 2,
     });
-    where = at(
-      centre.x + radius * Math.cos(endAngle),
-      centre.y + radius * Math.sin(endAngle),
-    );
+    where = at(centre.x + radius * Math.cos(endAngle), centre.y + radius * Math.sin(endAngle));
     const turned = side * sweep;
     heading = at(
       heading.x * Math.cos(turned) - heading.y * Math.sin(turned),
@@ -1868,8 +1867,12 @@ export function spinePath(spine: Spine): string {
       // A full turn has nowhere to draw to, so it goes round in two halves.
       if (turned >= Math.PI * 2 - 1e-9) {
         const half = onArc(segment, segment.startAngle + Math.PI);
-        pieces.push(`A ${round(segment.radius)} ${round(segment.radius)} 0 0 ${way} ${round(half.x)} ${round(half.y)}`);
-        pieces.push(`A ${round(segment.radius)} ${round(segment.radius)} 0 0 ${way} ${round(to.x)} ${round(to.y)}`);
+        pieces.push(
+          `A ${round(segment.radius)} ${round(segment.radius)} 0 0 ${way} ${round(half.x)} ${round(half.y)}`,
+        );
+        pieces.push(
+          `A ${round(segment.radius)} ${round(segment.radius)} 0 0 ${way} ${round(to.x)} ${round(to.y)}`,
+        );
       } else {
         pieces.push(
           `A ${round(segment.radius)} ${round(segment.radius)} 0 ${long} ${way} ${round(to.x)} ${round(to.y)}`,

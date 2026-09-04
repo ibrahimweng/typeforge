@@ -62,9 +62,11 @@ export function Versions({ compact = false }: { compact?: boolean }): React.JSX.
           data-version={master.id}
           aria-pressed={master.id === state.master}
           onClick={() => store.goToMaster(master.id)}
-          title={`Draw the ${master.name} — ${axes
-            .map((axis) => `${axis.label.toLowerCase()} ${master.at[axis.tag] ?? axis.default}`)
-            .join(", ") || "the only version"}`}
+          title={`Draw the ${master.name} — ${
+            axes
+              .map((axis) => `${axis.label.toLowerCase()} ${master.at[axis.tag] ?? axis.default}`)
+              .join(", ") || "the only version"
+          }`}
           className={segment(master.id === state.master)}
         >
           {master.name}
@@ -212,8 +214,9 @@ export function Versions({ compact = false }: { compact?: boolean }): React.JSX.
           */}
           {(() => {
             const moved =
-              axes.find((axis) => (here.at[axis.tag] ?? axis.default) !== masters[0].at[axis.tag]) ??
-              axes[0];
+              axes.find(
+                (axis) => (here.at[axis.tag] ?? axis.default) !== masters[0].at[axis.tag],
+              ) ?? axes[0];
             if (!moved) return null;
             const spec = axisSpec(moved.tag);
             return (

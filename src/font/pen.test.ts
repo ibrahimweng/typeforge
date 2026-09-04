@@ -37,10 +37,30 @@ function circle(radius = 100): Contour {
   return {
     closed: true,
     nodes: [
-      { point: { x: 0, y: radius }, handleIn: { x: -k, y: radius }, handleOut: { x: k, y: radius }, type: "smooth" },
-      { point: { x: radius, y: 0 }, handleIn: { x: radius, y: k }, handleOut: { x: radius, y: -k }, type: "smooth" },
-      { point: { x: 0, y: -radius }, handleIn: { x: k, y: -radius }, handleOut: { x: -k, y: -radius }, type: "smooth" },
-      { point: { x: -radius, y: 0 }, handleIn: { x: -radius, y: -k }, handleOut: { x: -radius, y: k }, type: "smooth" },
+      {
+        point: { x: 0, y: radius },
+        handleIn: { x: -k, y: radius },
+        handleOut: { x: k, y: radius },
+        type: "smooth",
+      },
+      {
+        point: { x: radius, y: 0 },
+        handleIn: { x: radius, y: k },
+        handleOut: { x: radius, y: -k },
+        type: "smooth",
+      },
+      {
+        point: { x: 0, y: -radius },
+        handleIn: { x: k, y: -radius },
+        handleOut: { x: -k, y: -radius },
+        type: "smooth",
+      },
+      {
+        point: { x: -radius, y: 0 },
+        handleIn: { x: -radius, y: -k },
+        handleOut: { x: -radius, y: k },
+        type: "smooth",
+      },
     ],
   };
 }
@@ -54,7 +74,9 @@ function walk(contour: Contour, per = 24): Vec2[] {
     const a = nodes[index];
     const b = nodes[(index + 1) % nodes.length];
     for (let step = 0; step < per; step++) {
-      out.push(cubicAt(a.point, a.handleOut ?? a.point, b.handleIn ?? b.point, b.point, step / per));
+      out.push(
+        cubicAt(a.point, a.handleOut ?? a.point, b.handleIn ?? b.point, b.point, step / per),
+      );
     }
   }
   return out;
@@ -140,7 +162,11 @@ describe("pulling a handle out of the point being placed", () => {
 
 describe("ending a curve", () => {
   it("takes the outgoing handle off and leaves the arriving one", () => {
-    const curved = node(100, 100, { handleIn: { x: 40, y: 100 }, handleOut: { x: 160, y: 100 }, type: "smooth" });
+    const curved = node(100, 100, {
+      handleIn: { x: 40, y: 100 },
+      handleOut: { x: 160, y: 100 },
+      type: "smooth",
+    });
     const done = retracted(curved);
     expect(done.handleOut).toBeNull();
     expect(done.handleIn).toEqual({ x: 40, y: 100 });
@@ -280,7 +306,11 @@ describe("describing the same outline in fewer points", () => {
         node(r, 0, { handleIn: { x: r, y: k }, handleOut: { x: r, y: -k }, type: "smooth" }),
         node(0, -r, { handleIn: { x: k, y: -r }, type: "corner" }),
         node(-200, -r, { type: "corner" }),
-        node(-200 - r, 0, { handleIn: { x: -200 - r, y: -k }, handleOut: { x: -200 - r, y: k }, type: "smooth" }),
+        node(-200 - r, 0, {
+          handleIn: { x: -200 - r, y: -k },
+          handleOut: { x: -200 - r, y: k },
+          type: "smooth",
+        }),
         node(-200, r, { handleOut: { x: -200 + k, y: r }, type: "corner" }),
       ],
     };

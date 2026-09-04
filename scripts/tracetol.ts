@@ -24,10 +24,7 @@ import { sweepAll } from "@/quill/sweep";
 import { furthestFromPath, nearestOnPaths } from "@/quill/curve";
 
 await ready();
-const { typeface } = await importFont(
-  new Uint8Array(readFileSync(process.env.FONT!)),
-  "ref.ttf",
-);
+const { typeface } = await importFont(new Uint8Array(readFileSync(process.env.FONT!)), "ref.ttf");
 const upm = typeface.unitsPerEm ?? 1000;
 const byChar = new Map<string, (typeof typeface.glyphs)[number]>();
 for (const g of typeface.glyphs)
@@ -37,9 +34,7 @@ const letters = (process.env.LETTERS ?? "aeonvswhx").split("");
 const spines = (process.env.SPINE ?? "1.2,3,6,10").split(",").map(Number);
 const sweeps = (process.env.SWEEP ?? "0.4,2,5").split(",").map(Number);
 
-console.log(
-  `upm ${upm}, ${letters.length} letters   spine/sweep   nodes  segs  meanErr  maxErr`,
-);
+console.log(`upm ${upm}, ${letters.length} letters   spine/sweep   nodes  segs  meanErr  maxErr`);
 for (const spine of spines) {
   for (const swept of sweeps) {
     let nodes = 0,
@@ -62,20 +57,13 @@ for (const spine of spines) {
         out = paths(unite(drawn.contours));
       if (!out.some((o) => o.length)) continue;
       nodes += drawn.contours.reduce((s, c) => s + c.nodes.length, 0);
-      segs += fit.glyph.strokes.reduce(
-        (s, one) => s + one.spine.segments.length,
-        0,
-      );
+      segs += fit.glyph.strokes.reduce((s, one) => s + one.spine.segments.length, 0);
       const flat = src.flat();
       let acc = 0;
       for (const p of flat) acc += nearestOnPaths(p, out);
       sum += acc / flat.length;
       n++;
-      max = Math.max(
-        max,
-        furthestFromPath(src.flat(), out),
-        furthestFromPath(out.flat(), src),
-      );
+      max = Math.max(max, furthestFromPath(src.flat(), out), furthestFromPath(out.flat(), src));
     }
     console.log(
       `      ${String(spine).padStart(4)} / ${String(swept).padStart(3)}      ${String(nodes).padStart(5)} ${String(segs).padStart(5)}   ${(sum / n).toFixed(2).padStart(6)}  ${max.toFixed(1).padStart(6)}`,

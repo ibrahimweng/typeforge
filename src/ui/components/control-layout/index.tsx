@@ -24,8 +24,9 @@ type ControlFieldLabelHelpContextValue = {
 
 const ControlFieldLabelActionContext =
   React.createContext<ControlFieldLabelActionContextValue | null>(null);
-const ControlFieldLabelHelpContext =
-  React.createContext<ControlFieldLabelHelpContextValue | null>(null);
+const ControlFieldLabelHelpContext = React.createContext<ControlFieldLabelHelpContextValue | null>(
+  null,
+);
 
 export const panelSectionSurfaceClassName = [
   "flex flex-col pt-2 pb-6 first:border-t-0 data-[toolcraft-section-actions]:first:border-t",
@@ -41,11 +42,7 @@ export function ControlSection({
   return (
     <section
       {...props}
-      className={cn(
-        panelSectionSurfaceClassName,
-        "group/control-section gap-[14px]",
-        className,
-      )}
+      className={cn(panelSectionSurfaceClassName, "group/control-section gap-[14px]", className)}
     >
       {children}
     </section>
@@ -60,10 +57,7 @@ export function ControlList({
   className?: string;
 }): React.JSX.Element {
   return (
-    <div
-      className={cn("flex min-w-0 flex-col gap-[14px]", className)}
-      data-control-list=""
-    >
+    <div className={cn("flex min-w-0 flex-col gap-[14px]", className)} data-control-list="">
       {children}
     </div>
   );
@@ -80,10 +74,7 @@ export function ControlInlineGroup({
   columns?: number;
   kind?: "default" | "slider" | "toggleParameter";
 }): React.JSX.Element {
-  const gridTemplateColumns = `repeat(${Math.max(
-    1,
-    Math.floor(columns),
-  )}, minmax(0, 1fr))`;
+  const gridTemplateColumns = `repeat(${Math.max(1, Math.floor(columns))}, minmax(0, 1fr))`;
 
   return (
     <div
@@ -122,9 +113,7 @@ export function ControlSectionHeader({
   onCollapsedChange?: (collapsed: boolean) => void;
 }): React.JSX.Element {
   const titleText = getControlSectionHeaderText(children);
-  const collapseLabel = collapsed
-    ? `Expand ${titleText} section`
-    : `Collapse ${titleText} section`;
+  const collapseLabel = collapsed ? `Expand ${titleText} section` : `Collapse ${titleText} section`;
   const toggleCollapsed = React.useCallback(() => {
     if (!collapsible) {
       return;
@@ -269,11 +258,7 @@ export function ControlItem({
   );
 }
 
-export function PanelTitle({
-  children,
-}: {
-  children: React.ReactNode;
-}): React.JSX.Element {
+export function PanelTitle({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
     <p
       className="m-0 text-2xs leading-none font-semibold text-[color:color-mix(in_oklab,var(--foreground)_75%,transparent)] uppercase transition-colors duration-150 ease-out"
@@ -316,17 +301,13 @@ export function ControlFieldLabelHelpProvider({
   );
 }
 
-export function useControlFieldLabelAction(
-  label: string | undefined,
-): React.ReactNode {
+export function useControlFieldLabelAction(label: string | undefined): React.ReactNode {
   const context = React.useContext(ControlFieldLabelActionContext);
 
   return context && context.label === label ? context.action : null;
 }
 
-export function useControlFieldLabelHelp(
-  label: string | undefined,
-): string | null {
+export function useControlFieldLabelHelp(label: string | undefined): string | null {
   const context = React.useContext(ControlFieldLabelHelpContext);
 
   return context && context.label === label ? context.help : null;
@@ -353,11 +334,7 @@ export function ControlFieldLabel({
       data-control-field-label=""
       data-slot="field-label"
     >
-      <FieldLabel
-        className="min-w-0 max-w-full gap-0"
-        title={titleProp ?? title}
-        {...props}
-      >
+      <FieldLabel className="min-w-0 max-w-full gap-0" title={titleProp ?? title} {...props}>
         <ScrollFade
           className="no-scrollbar min-w-0 max-w-full"
           containerClassName="min-w-0 max-w-full"
@@ -366,11 +343,7 @@ export function ControlFieldLabel({
           watch={[title ?? ""]}
         >
           <span
-            className={cn(
-              "block whitespace-nowrap opacity-60",
-              textClassName,
-              "min-w-max",
-            )}
+            className={cn("block whitespace-nowrap opacity-60", textClassName, "min-w-max")}
             data-slot="template-field-label-text"
             title={title}
           >
@@ -402,9 +375,7 @@ export function ControlFieldLabel({
   );
 }
 
-function getControlFieldLabelTitle(
-  children: React.ReactNode,
-): string | undefined {
+function getControlFieldLabelTitle(children: React.ReactNode): string | undefined {
   const textParts = React.Children.toArray(children).map((child) => {
     if (typeof child === "string" || typeof child === "number") {
       return String(child);

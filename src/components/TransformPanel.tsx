@@ -76,12 +76,7 @@ export function TransformPanel(): React.JSX.Element | null {
 
       <div className="flex flex-wrap items-center gap-2 pb-2">
         <span className="w-14 shrink-0 text-2xs text-muted-foreground">Angle</span>
-        <NumberField
-          label="Rotation in degrees"
-          className="w-16"
-          value={turn}
-          onCommit={setTurn}
-        />
+        <NumberField label="Rotation in degrees" className="w-16" value={turn} onCommit={setTurn} />
         <span className="text-2xs text-muted-foreground">°</span>
       </div>
 
@@ -110,7 +105,9 @@ export function TransformPanel(): React.JSX.Element | null {
 
       <div className="flex flex-wrap gap-1 pb-2">
         <ToolButton
-          onClick={() => store.reshapeGlyph(name, "Scale up", (centre) => scaled(1.02, 1.02, centre))}
+          onClick={() =>
+            store.reshapeGlyph(name, "Scale up", (centre) => scaled(1.02, 1.02, centre))
+          }
           title="Two per cent larger, about the middle of what is selected"
         >
           Bigger
@@ -130,7 +127,9 @@ export function TransformPanel(): React.JSX.Element | null {
           Wider
         </ToolButton>
         <ToolButton
-          onClick={() => store.reshapeGlyph(name, "Narrow", (centre) => scaled(1 / 1.02, 1, centre))}
+          onClick={() =>
+            store.reshapeGlyph(name, "Narrow", (centre) => scaled(1 / 1.02, 1, centre))
+          }
           title="Two per cent narrower, and no shorter"
         >
           Narrower

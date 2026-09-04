@@ -252,7 +252,14 @@ describe("weight, from hairline to the limit", () => {
         "arch",
         {
           segments: [
-            { kind: "arc", centre: { x: 0, y: 0 }, radius: 200, startAngle: 0, endAngle: Math.PI, sweepPositive: true },
+            {
+              kind: "arc",
+              centre: { x: 0, y: 0 },
+              radius: 200,
+              startAngle: 0,
+              endAngle: Math.PI,
+              sweepPositive: true,
+            },
           ],
           closed: false,
         },
@@ -285,7 +292,9 @@ describe("weight, from hairline to the limit", () => {
     const spine = line({ x: 0, y: 0 }, { x: 0, y: 700 });
     let previous = 0;
     for (let weight = 10; weight <= 400; weight += 10) {
-      const area = Math.abs(contourArea(sweep(stroke(spine, { weight, contrast: 0, angle: 0 }))[0]));
+      const area = Math.abs(
+        contourArea(sweep(stroke(spine, { weight, contrast: 0, angle: 0 }))[0]),
+      );
       expect(area).toBeGreaterThan(previous);
       previous = area;
     }
@@ -384,7 +393,10 @@ describe("corners", () => {
     };
     const straightThrough: Stroke = {
       ...withNothing,
-      spine: { segments: [{ kind: "line", from: { x: 0, y: 0 }, to: { x: 400, y: 0 } }], closed: false },
+      spine: {
+        segments: [{ kind: "line", from: { x: 0, y: 0 }, to: { x: 400, y: 0 } }],
+        closed: false,
+      },
     };
     expect(Math.abs(contourArea(sweep(withNothing)[0]))).toBeCloseTo(
       Math.abs(contourArea(sweep(straightThrough)[0])),

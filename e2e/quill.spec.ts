@@ -49,22 +49,25 @@ test.describe.configure({ timeout: 240_000 });
  * have caused it to lie about instead.
  */
 async function trackOf(page: Page, key: string) {
-  const box = await page.locator(`[data-quill-control="${key}"]`).first().evaluate((el) => {
-    const found = [...el.querySelectorAll("*")].filter((node) => {
-      const rect = node.getBoundingClientRect();
-      const style = getComputedStyle(node);
-      return (
-        rect.width > 80 &&
-        rect.height > 6 &&
-        rect.height < 40 &&
-        style.pointerEvents !== "none" &&
-        (node.textContent ?? "").trim() === ""
-      );
+  const box = await page
+    .locator(`[data-quill-control="${key}"]`)
+    .first()
+    .evaluate((el) => {
+      const found = [...el.querySelectorAll("*")].filter((node) => {
+        const rect = node.getBoundingClientRect();
+        const style = getComputedStyle(node);
+        return (
+          rect.width > 80 &&
+          rect.height > 6 &&
+          rect.height < 40 &&
+          style.pointerEvents !== "none" &&
+          (node.textContent ?? "").trim() === ""
+        );
+      });
+      const track = found[found.length - 1] ?? el;
+      const rect = track.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
     });
-    const track = found[found.length - 1] ?? el;
-    const rect = track.getBoundingClientRect();
-    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-  });
   expect(box.width, `no track found for ${key}`).toBeGreaterThan(80);
   return box;
 }
@@ -74,7 +77,9 @@ async function dragTo(page: Page, key: string, fraction: number) {
   const track = await trackOf(page, key);
   await page.mouse.move(track.x + track.width * 0.5, track.y + track.height / 2);
   await page.mouse.down();
-  await page.mouse.move(track.x + track.width * fraction, track.y + track.height / 2, { steps: 12 });
+  await page.mouse.move(track.x + track.width * fraction, track.y + track.height / 2, {
+    steps: 12,
+  });
   await page.mouse.up();
 }
 
@@ -138,7 +143,10 @@ test("reads the font off the main thread, and says how far along it is", async (
     if (reply === "answered") answered++;
   }
 
-  expect(started.some((url) => url.includes("trace-worker")), "no tracing worker started").toBe(true);
+  expect(
+    started.some((url) => url.includes("trace-worker")),
+    "no tracing worker started",
+  ).toBe(true);
   expect(seen.size, "the bar never moved").toBeGreaterThan(2);
   expect(answered, `the page froze ${asked - answered} of ${asked} times`).toBe(asked);
 
@@ -232,10 +240,9 @@ test("the join reach finds the joins and leaves the rest alone", async ({ page }
 
   const untouched = await inkOf(page);
   await dragTo(page, "reach", 0.85);
-  expect(
-    await inkOf(page),
-    "a letter with no stroke at its own edge has no join to run on",
-  ).toBe(untouched);
+  expect(await inkOf(page), "a letter with no stroke at its own edge has no join to run on").toBe(
+    untouched,
+  );
 
   // `r` is one of the handful in a text face whose arm does reach the edge.
   await page.getByRole("button", { name: "r", exact: true }).click();

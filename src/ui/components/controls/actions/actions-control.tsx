@@ -72,9 +72,7 @@ function getActionValue(action: ActionControlOption): string {
 }
 
 function getActionLabel(action: ActionControlOption): string {
-  return typeof action === "string"
-    ? action
-    : (action.ariaLabel ?? action.label ?? action.value);
+  return typeof action === "string" ? action : (action.ariaLabel ?? action.label ?? action.value);
 }
 
 function getActionContent(action: ActionControlOption): ReactNode {
@@ -99,10 +97,7 @@ function getActionIcon(action: ActionControlOption): ReactNode {
   return <Icon data-icon="inline-start" />;
 }
 
-function getActionAriaLabel(
-  action: ActionControlOption,
-  content: ReactNode,
-): string | undefined {
+function getActionAriaLabel(action: ActionControlOption, content: ReactNode): string | undefined {
   if (typeof action !== "string" && action.ariaLabel) {
     return action.ariaLabel;
   }
@@ -139,13 +134,13 @@ export function ActionsControl({
       ? "w-full grid-cols-4"
       : buttonColumns === 3
         ? "w-full grid-cols-3"
-      : buttonColumns === 2
-        ? "w-full grid-cols-2"
-        : buttonColumns === 1
-          ? "w-full grid-cols-1"
-          : hasSingleAction
-            ? "w-1/2 grid-cols-1"
-            : "w-full grid-cols-2";
+        : buttonColumns === 2
+          ? "w-full grid-cols-2"
+          : buttonColumns === 1
+            ? "w-full grid-cols-1"
+            : hasSingleAction
+              ? "w-1/2 grid-cols-1"
+              : "w-full grid-cols-2";
 
   return (
     <Field
@@ -160,10 +155,7 @@ export function ActionsControl({
         </ControlFieldLabel>
       ) : null}
       <div
-        className={cn(
-          "grid max-w-full gap-1.5",
-          columnClass,
-        )}
+        className={cn("grid max-w-full gap-1.5", columnClass)}
         data-actions-count={actions.length}
         data-actions-columns={buttonColumns ?? (hasSingleAction ? 1 : 2)}
         data-slot="actions-control-buttons"

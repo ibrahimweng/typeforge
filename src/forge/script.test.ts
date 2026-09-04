@@ -63,8 +63,12 @@ function seamLap(style: Style, first: string, second: string): number | null {
     nodes: contour.nodes.map((node) => ({
       ...node,
       point: { x: node.point.x + one.advanceWidth, y: node.point.y },
-      handleIn: node.handleIn ? { x: node.handleIn.x + one.advanceWidth, y: node.handleIn.y } : null,
-      handleOut: node.handleOut ? { x: node.handleOut.x + one.advanceWidth, y: node.handleOut.y } : null,
+      handleIn: node.handleIn
+        ? { x: node.handleIn.x + one.advanceWidth, y: node.handleIn.y }
+        : null,
+      handleOut: node.handleOut
+        ? { x: node.handleOut.x + one.advanceWidth, y: node.handleOut.y }
+        : null,
     })),
   }));
   return contoursBounds(one.contours).xMax - contoursBounds(moved).xMin;
@@ -89,8 +93,7 @@ function seamGap(style: Style, first: string, second: string): number | null {
    * join that crosses climbing shows about a pen and a half of ink at any one
    * height, and the shear is most of that.
    */
-  const lean = (seam - style.metrics.xHeight / 2)
-    * Math.tan((style.metrics.slant * Math.PI) / 180);
+  const lean = (seam - style.metrics.xHeight / 2) * Math.tan((style.metrics.slant * Math.PI) / 180);
   const edge = left.advanceWidth + lean;
   if (runs.some((run) => run[0] < edge && run[1] > edge)) return 0;
   const before = runs.filter((run) => run[1] <= edge + 1e-6).map((run) => run[1]);
@@ -109,7 +112,6 @@ beforeAll(async () => {
 });
 
 describe("the letters reach each other", () => {
-
   /*
    * And lap over each other while they do it, rather than meeting at a point.
    *
@@ -132,7 +134,10 @@ describe("the letters reach each other", () => {
     (_name, style) => {
       const shy: string[] = [];
       for (const letter of LOWER) {
-        for (const [first, second] of [[letter, "n"], ["n", letter]] as const) {
+        for (const [first, second] of [
+          [letter, "n"],
+          ["n", letter],
+        ] as const) {
           const lap = seamLap(style, first, second);
           if (lap === null || lap < style.metrics.xHeight * 0.1) {
             shy.push(`${first}${second} ${lap === null ? "-" : lap.toFixed(0)}`);
@@ -148,16 +153,22 @@ describe("the letters reach each other", () => {
    * not the claim -- the three letters this got wrong the first time were g, j
    * and q, and every pair that did not involve one of those was joining.
    */
-  it.each(SCRIPTS.map((one) => [one.name, one] as const))("%s joins on both sides of every letter", (_name, style) => {
-    const broken: string[] = [];
-    for (const letter of LOWER) {
-      for (const [first, second] of [[letter, "n"], ["n", letter]] as const) {
-        const gap = seamGap(style, first, second);
-        if (gap === null || gap > 1) broken.push(`${first}${second}`);
+  it.each(SCRIPTS.map((one) => [one.name, one] as const))(
+    "%s joins on both sides of every letter",
+    (_name, style) => {
+      const broken: string[] = [];
+      for (const letter of LOWER) {
+        for (const [first, second] of [
+          [letter, "n"],
+          ["n", letter],
+        ] as const) {
+          const gap = seamGap(style, first, second);
+          if (gap === null || gap > 1) broken.push(`${first}${second}`);
+        }
       }
-    }
-    expect(broken).toEqual([]);
-  });
+      expect(broken).toEqual([]);
+    },
+  );
 
   /*
    * And at the far end of the control that most obviously threatens it. An
@@ -197,8 +208,7 @@ describe("the letters reach each other", () => {
   it("keeps the seam off the baseline when it is asked for under the pen", () => {
     const grazing = withScript(HAND, { height: 0.01 });
     const half = HAND.pen.weight / 2;
-    expect(seamsOf(grazing.parts.script, HAND.metrics.xHeight, half).low)
-      .toBeGreaterThan(half);
+    expect(seamsOf(grazing.parts.script, HAND.metrics.xHeight, half).low).toBeGreaterThan(half);
     for (const pair of ["nn", "on", "no", "an", "he"]) {
       expect([pair, seamGap(grazing, pair[0], pair[1])]).toEqual([pair, 0]);
     }
@@ -208,13 +218,14 @@ describe("the letters reach each other", () => {
     const drawn = drawLetter("n", grazing)!;
     const seam = seamsOf(grazing.parts.script, HAND.metrics.xHeight, half).low;
     const runs = inkRunsAt(drawn.contours, seam);
-    expect([runs.length > 0, runs[runs.length - 1][1] >= drawn.advanceWidth - half])
-      .toEqual([true, true]);
+    expect([runs.length > 0, runs[runs.length - 1][1] >= drawn.advanceWidth - half]).toEqual([
+      true,
+      true,
+    ]);
   });
 });
 
 describe("what the join does not touch", () => {
-
   /*
    * The lead-out leaves from low down, even where the letter has nothing in
    * the band it looks in.
@@ -279,8 +290,9 @@ describe("what the join does not touch", () => {
       const joined = recipeOf(name)!(HAND);
       expect([name, joined.width !== undefined]).toEqual([name, true]);
       // The lead-in is the stroke that would start at the origin. There is none.
-      const reaches = joined.strokes.some((stroke) =>
-        spineStart(stroke.spine).x < 1 && spineEnd(stroke.spine).x > 1);
+      const reaches = joined.strokes.some(
+        (stroke) => spineStart(stroke.spine).x < 1 && spineEnd(stroke.spine).x > 1,
+      );
       expect([name, reaches]).toEqual([name, false]);
     }
   });
@@ -371,7 +383,9 @@ describe("the loops", () => {
     const { letterNames } = await import("./build");
     const { everyFormOf } = await import("./letters");
     await loaded();
-    const solid = letterNames().filter((one) => /^[A-Za-z]$/.test(one) && one !== "i" && one !== "j");
+    const solid = letterNames().filter(
+      (one) => /^[A-Za-z]$/.test(one) && one !== "i" && one !== "j",
+    );
     const apart: string[] = [];
     for (const base of BASES.filter((one) => one.parts.script.on)) {
       for (const weight of [40, 60, 120, 210]) {
@@ -431,8 +445,9 @@ describe("the loops", () => {
 
   it("are off when the control is at nothing", () => {
     for (const name of ["l", "g"]) {
-      expect(recipeOf(name)!(withScript(HAND, { loop: 0 })).strokes.length)
-        .toBe(recipeOf(name)!(bare).strokes.length);
+      expect(recipeOf(name)!(withScript(HAND, { loop: 0 })).strokes.length).toBe(
+        recipeOf(name)!(bare).strokes.length,
+      );
     }
   });
 });

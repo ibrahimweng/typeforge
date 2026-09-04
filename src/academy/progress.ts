@@ -23,7 +23,9 @@ function load(): Set<string> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const list: unknown = raw ? JSON.parse(raw) : [];
-    return new Set(Array.isArray(list) ? list.filter((one): one is string => typeof one === "string") : []);
+    return new Set(
+      Array.isArray(list) ? list.filter((one): one is string => typeof one === "string") : [],
+    );
   } catch {
     // A browser with storage turned off is a browser that takes the course
     // again next time, which is a smaller loss than not running.

@@ -127,9 +127,7 @@ function groupFor(code: number): SlotGroup | null {
   if (code >= 0x30 && code <= 0x39) return "Figures";
   if (code >= 0x20 && code <= 0x7e) {
     // Everything else on a keyboard: the marks that punctuate, and the rest.
-    return ".,;:!?'\"()[]{}-/\\ ".includes(String.fromCodePoint(code))
-      ? "Punctuation"
-      : "Symbols";
+    return ".,;:!?'\"()[]{}-/\\ ".includes(String.fromCodePoint(code)) ? "Punctuation" : "Symbols";
   }
   if (code >= 0xa1 && code <= 0xbf) return "Symbols";
   if (code >= 0xc0 && code <= 0xff) {

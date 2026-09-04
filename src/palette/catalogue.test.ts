@@ -20,13 +20,7 @@
 import { describe, expect, it } from "vitest";
 
 import { PARAMS } from "@/components/param-specs";
-import {
-  CAST_SPECS,
-  CUT_SPECS,
-  METRIC_CONTROLS,
-  PART_SPECS,
-  PEN_CONTROLS,
-} from "@/forge/parts";
+import { CAST_SPECS, CUT_SPECS, METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS } from "@/forge/parts";
 
 import { catalogue, type Item, type Shell } from "./catalogue";
 import { buildIndex, search } from "./search";
@@ -89,8 +83,7 @@ describe("the palette reaches every control the product has", () => {
   it("carries every cut, its switch as well as its numbers", () => {
     for (const spec of CUT_SPECS) {
       expect(ids).toContain(`cut:${spec.name}:on`);
-      for (const control of spec.controls)
-        expect(ids).toContain(`cut:${spec.name}:${control.key}`);
+      for (const control of spec.controls) expect(ids).toContain(`cut:${spec.name}:${control.key}`);
     }
   });
 

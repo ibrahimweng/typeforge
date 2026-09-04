@@ -234,7 +234,12 @@ export function shiftCrossbar(contours: Contour[], shift: number): Contour[] {
       if (!startSlide || !endSlide) continue;
 
       merge(ci, startIndex, startSlide.here, contour.nodes[startIndex].point);
-      merge(ci, (startIndex - 1 + count) % count, startSlide.far, contour.nodes[(startIndex - 1 + count) % count].point);
+      merge(
+        ci,
+        (startIndex - 1 + count) % count,
+        startSlide.far,
+        contour.nodes[(startIndex - 1 + count) % count].point,
+      );
       merge(ci, endIndex, endSlide.here, contour.nodes[endIndex].point);
       merge(ci, (endIndex + 1) % count, endSlide.far, contour.nodes[(endIndex + 1) % count].point);
     }
@@ -347,7 +352,8 @@ export function shiftShoulders(contours: Contour[], shift: number): Contour[] {
   const near = (point: Vec2): boolean =>
     junctions.some(
       (junction) =>
-        Math.abs(junction.x - point.x) <= SAME_LEVEL && Math.abs(junction.y - point.y) <= SAME_LEVEL,
+        Math.abs(junction.x - point.x) <= SAME_LEVEL &&
+        Math.abs(junction.y - point.y) <= SAME_LEVEL,
     );
 
   return contours.map((contour) => ({

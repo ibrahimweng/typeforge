@@ -67,13 +67,13 @@ export class Boundary extends React.Component<Props, State> {
           </p>
           <pre className="max-h-40 overflow-auto rounded border border-border bg-muted/40 p-3 text-2xs leading-relaxed">
             {/*
-              * Whatever was thrown, not whatever an Error would have said.
-              *
-              * React hands this back exactly as it was thrown, and nothing
-              * obliges a library to throw an Error -- so reading `.message` off
-              * a thrown string leaves this box empty, which is the same
-              * silence the whole component exists to break.
-              */}
+             * Whatever was thrown, not whatever an Error would have said.
+             *
+             * React hands this back exactly as it was thrown, and nothing
+             * obliges a library to throw an Error -- so reading `.message` off
+             * a thrown string leaves this box empty, which is the same
+             * silence the whole component exists to break.
+             */}
             {error instanceof Error ? error.message : String(error)}
           </pre>
           <p className="text-sm text-muted-foreground">

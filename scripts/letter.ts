@@ -32,25 +32,29 @@ await ready();
 const REFERENCE: Record<string, { colour: number; fit: number }> = {
   h: { colour: 0.616, fit: 1.43 },
   a: { colour: 0.396, fit: 1.31 },
-  n: { colour: 0.348, fit: 1.40 },
-  d: { colour: 0.570, fit: 1.42 },
-  g: { colour: 0.590, fit: 1.17 },
+  n: { colour: 0.348, fit: 1.4 },
+  d: { colour: 0.57, fit: 1.42 },
+  g: { colour: 0.59, fit: 1.17 },
   l: { colour: 0.834, fit: 0.71 },
-  o: { colour: 0.391, fit: 1.10 },
+  o: { colour: 0.391, fit: 1.1 },
   v: { colour: 0.289, fit: 1.23 },
-  e: { colour: 0.430, fit: 1.00 },
-  s: { colour: 0.410, fit: 1.04 },
+  e: { colour: 0.43, fit: 1.0 },
+  s: { colour: 0.41, fit: 1.04 },
 };
 const WORD = "handgloves";
 
 const faces = BASES.filter((one) => one.parts.script?.on);
 const head = (what: string) =>
-  `${what.padEnd(8)}${"ref".padStart(6)}` + faces.map((one) => one.name.slice(0, 8).padStart(11)).join("");
+  `${what.padEnd(8)}${"ref".padStart(6)}` +
+  faces.map((one) => one.name.slice(0, 8).padStart(11)).join("");
 
 /** Off by more than this and the letter is named rather than merely listed. */
 const NOTICEABLE = 0.15;
 
-for (const [what, of] of [["colour", "colour"], ["adv/x", "fit"]] as const) {
+for (const [what, of] of [
+  ["colour", "colour"],
+  ["adv/x", "fit"],
+] as const) {
   console.log(`\n${head(what)}`);
   const ink = new Map<string, [number, number]>();
   for (const letter of WORD) {

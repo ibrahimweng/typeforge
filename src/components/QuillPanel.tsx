@@ -56,7 +56,10 @@ export function QuillPanel({ onEdit }: { onEdit: () => Promise<void> }): React.J
   return (
     <aside
       aria-label="Quill"
-      className={cn(WIDE_PANEL, "toolcraft-panel-surface flex shrink-0 flex-col border-l border-border")}
+      className={cn(
+        WIDE_PANEL,
+        "toolcraft-panel-surface flex shrink-0 flex-col border-l border-border",
+      )}
     >
       <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
         <section className="border-b border-border p-3">
@@ -104,8 +107,9 @@ export function QuillPanel({ onEdit }: { onEdit: () => Promise<void> }): React.J
                 />
               </label>
               <p className="pt-2 text-2xs leading-snug text-muted-foreground">
-                {doc.letters.length} letters from <span className="text-foreground">{doc.from}</span>,
-                read back as strokes. {traced ? `${traced.glyph.strokes.length} in this one.` : ""}
+                {doc.letters.length} letters from{" "}
+                <span className="text-foreground">{doc.from}</span>, read back as strokes.{" "}
+                {traced ? `${traced.glyph.strokes.length} in this one.` : ""}
               </p>
               {drawn && (
                 <p className="pt-1 text-2xs leading-snug text-muted-foreground">
@@ -132,10 +136,9 @@ export function QuillPanel({ onEdit }: { onEdit: () => Promise<void> }): React.J
                 <p className="pt-1 text-2xs leading-snug text-muted-foreground" data-quill-hand>
                   This face reads as a pen held at{" "}
                   <span className="text-foreground">{Math.round(doc.hand.angle)}°</span> with a
-                  blade of{" "}
-                  <span className="text-foreground">{doc.hand.contrast.toFixed(2)}</span>, which
-                  explains {Math.round(doc.hand.flatter * 100)} per cent of the width it varies by.
-                  The two nib controls below start there.
+                  blade of <span className="text-foreground">{doc.hand.contrast.toFixed(2)}</span>,
+                  which explains {Math.round(doc.hand.flatter * 100)} per cent of the width it
+                  varies by. The two nib controls below start there.
                 </p>
               )}
             </>
@@ -186,8 +189,15 @@ export function QuillPanel({ onEdit }: { onEdit: () => Promise<void> }): React.J
                   aria-pressed={state.showSource && hasSource}
                   disabled={!hasSource}
                   onClick={() => quillStore.setShowSource(!state.showSource)}
-                  className={cn(segment(state.showSource && hasSource, "flex-1"), !hasSource && "opacity-40")}
-                  title={hasSource ? undefined : "Nothing to compare against until the font is read again"}
+                  className={cn(
+                    segment(state.showSource && hasSource, "flex-1"),
+                    !hasSource && "opacity-40",
+                  )}
+                  title={
+                    hasSource
+                      ? undefined
+                      : "Nothing to compare against until the font is read again"
+                  }
                 >
                   Source under
                 </button>
@@ -293,7 +303,12 @@ function Reading(): React.JSX.Element {
         <span className="text-2xs text-muted-foreground">
           {known ? (
             <>
-              Reading {progress!.letter ? <span className="text-foreground">{progress!.letter}</span> : "the last of them"}
+              Reading{" "}
+              {progress!.letter ? (
+                <span className="text-foreground">{progress!.letter}</span>
+              ) : (
+                "the last of them"
+              )}
             </>
           ) : (
             "Counting the letters…"

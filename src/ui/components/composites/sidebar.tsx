@@ -4,13 +4,7 @@ import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { Button } from "../primitives";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "./sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives";
 import { useIsMobile } from "../../hooks/use-mobile";
 import { cn } from "../../lib/utils";

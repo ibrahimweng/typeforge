@@ -38,7 +38,11 @@ const X_ON_PAGE = 260;
 const rows: string[] = [];
 let top = 40;
 
-function row(name: string, glyphs: Array<{ contours: Contour[]; advanceWidth: number }>, x: number) {
+function row(
+  name: string,
+  glyphs: Array<{ contours: Contour[]; advanceWidth: number }>,
+  x: number,
+) {
   const scale = X_ON_PAGE / x;
   const line = top + X_ON_PAGE * 2.2;
   const parts = [
@@ -47,35 +51,45 @@ function row(name: string, glyphs: Array<{ contours: Contour[]; advanceWidth: nu
     `<line x1="30" y1="${line - X_ON_PAGE}" x2="4000" y2="${line - X_ON_PAGE}" stroke="#e8e2d2" stroke-width="1.5"/>`,
     // The height the hand is at when it crosses from one letter to the next.
     `<line x1="30" y1="${line - X_ON_PAGE * SEAM}" x2="4000" y2="${line - X_ON_PAGE * SEAM}"` +
-    ` stroke="#c9a227" stroke-width="1" stroke-dasharray="6 5"/>`,
+      ` stroke="#c9a227" stroke-width="1" stroke-dasharray="6 5"/>`,
   ];
   let pen = 60;
   for (const glyph of glyphs) {
     parts.push(
       `<line x1="${pen}" y1="${line - X_ON_PAGE * 1.5}" x2="${pen}" y2="${line + X_ON_PAGE * 0.7}"` +
-      ` stroke="#b9c7d8" stroke-width="1"/>`,
+        ` stroke="#b9c7d8" stroke-width="1"/>`,
       `<g transform="translate(${pen} ${line}) scale(${scale} ${-scale})" fill="#1b1917">` +
-      `<path d="${contoursToSvgPath(glyph.contours)}"/></g>`,
+        `<path d="${contoursToSvgPath(glyph.contours)}"/></g>`,
     );
     pen += glyph.advanceWidth * scale;
   }
-  parts.push(`<line x1="${pen}" y1="${line - X_ON_PAGE * 1.5}" x2="${pen}" y2="${line + X_ON_PAGE * 0.7}"` +
-    ` stroke="#b9c7d8" stroke-width="1"/>`);
+  parts.push(
+    `<line x1="${pen}" y1="${line - X_ON_PAGE * 1.5}" x2="${pen}" y2="${line + X_ON_PAGE * 0.7}"` +
+      ` stroke="#b9c7d8" stroke-width="1"/>`,
+  );
   rows.push(parts.join(""));
   top = line + X_ON_PAGE * 1.1;
   return pen;
 }
 
 let wide = 0;
-wide = Math.max(wide, row("Dancing Script -- the reference",
-  WORD.map((one) => refGlyph(one)!), refX));
+wide = Math.max(
+  wide,
+  row(
+    "Dancing Script -- the reference",
+    WORD.map((one) => refGlyph(one)!),
+    refX,
+  ),
+);
 for (const style of BASES.filter((one) => one.parts.script?.on)) {
   const drawn = WORD.map((one) => drawLetter(one, style, style.forms?.[one])!).filter(Boolean);
   wide = Math.max(wide, row(style.name, drawn, style.metrics.xHeight));
 }
 
-writeFileSync(OUT,
+writeFileSync(
+  OUT,
   `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(wide + 60)}" height="${Math.round(top)}"` +
-  ` viewBox="0 0 ${Math.round(wide + 60)} ${Math.round(top)}">` +
-  `<rect width="100%" height="100%" fill="#faf8f3"/>${rows.join("\n")}</svg>`);
+    ` viewBox="0 0 ${Math.round(wide + 60)} ${Math.round(top)}">` +
+    `<rect width="100%" height="100%" fill="#faf8f3"/>${rows.join("\n")}</svg>`,
+);
 console.log(`${OUT} written  ${Math.round(wide + 60)}x${Math.round(top)}`);

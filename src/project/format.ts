@@ -432,9 +432,10 @@ export function readProject(raw: unknown): Project | null {
     // half with no strokes in it restores an empty Trace view claiming to be
     // where somebody left off, which is the thing this used to do by leaving
     // the half out entirely.
-    traced: Array.isArray(project.traced?.letters) && project.traced.letters.length > 0
-      ? project.traced
-      : undefined,
+    traced:
+      Array.isArray(project.traced?.letters) && project.traced.letters.length > 0
+        ? project.traced
+        : undefined,
   };
 }
 

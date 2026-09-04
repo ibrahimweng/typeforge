@@ -231,7 +231,6 @@ function solveQuadratic(a: number, b: number, c: number): number[] {
   return [(-b + root) / (2 * a), (-b - root) / (2 * a)];
 }
 
-
 /** Parameter values where a cubic reaches a horizontal or vertical extreme. */
 export function cubicExtremeTs(from: Vec2, c1: Vec2, c2: Vec2, to: Vec2): number[] {
   const ts: number[] = [];
@@ -517,7 +516,15 @@ export function contoursToPath2D(contours: Contour[]): Path2D {
     path.moveTo(start.x, start.y);
     for (const segment of contourSegments(contour)) {
       if (segment.kind === "line") path.lineTo(segment.to.x, segment.to.y);
-      else path.bezierCurveTo(segment.c1.x, segment.c1.y, segment.c2.x, segment.c2.y, segment.to.x, segment.to.y);
+      else
+        path.bezierCurveTo(
+          segment.c1.x,
+          segment.c1.y,
+          segment.c2.x,
+          segment.c2.y,
+          segment.to.x,
+          segment.to.y,
+        );
     }
     if (contour.closed) path.closePath();
   }

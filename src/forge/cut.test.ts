@@ -81,21 +81,29 @@ describe("the cut layer", () => {
 
 describe("slot", () => {
   it("takes ink away and leaves the letter in pieces", () => {
-    const cuts = cutWith((one) => { one.slot.on = true; });
+    const cuts = cutWith((one) => {
+      one.slot.on = true;
+    });
     expect(removed("H", sans, cuts)).toBeGreaterThan(0.05);
     expect(piecesOf(drawn("H", sans, cuts).contours)).toBeGreaterThan(1);
   });
 
   it("cuts more bands when asked for more", () => {
-    const few = cutWith((one) => { one.slot = { on: true, count: 2, width: 0.3, angle: 0, inset: 0.1 }; });
-    const many = cutWith((one) => { one.slot = { on: true, count: 6, width: 0.3, angle: 0, inset: 0.1 }; });
+    const few = cutWith((one) => {
+      one.slot = { on: true, count: 2, width: 0.3, angle: 0, inset: 0.1 };
+    });
+    const many = cutWith((one) => {
+      one.slot = { on: true, count: 6, width: 0.3, angle: 0, inset: 0.1 };
+    });
     expect(piecesOf(drawn("H", sans, many).contours)).toBeGreaterThan(
       piecesOf(drawn("H", sans, few).contours),
     );
   });
 
   it("leaves the top and bottom of the letter alone when inset", () => {
-    const cuts = cutWith((one) => { one.slot = { on: true, count: 2, width: 0.3, angle: 0, inset: 0.3 }; });
+    const cuts = cutWith((one) => {
+      one.slot = { on: true, count: 2, width: 0.3, angle: 0, inset: 0.3 };
+    });
     const before = contoursBounds(drawn("H", sans).contours);
     const after = contoursBounds(drawn("H", sans, cuts).contours);
     expect(after.yMax).toBeCloseTo(before.yMax, 3);
@@ -105,8 +113,12 @@ describe("slot", () => {
 
 describe("tooth", () => {
   it("cuts one edge, or both, and leaves the letter the size it was", () => {
-    const left = cutWith((one) => { one.tooth = { on: true, pitch: 0.1, depth: 0.4, edge: "left" }; });
-    const both = cutWith((one) => { one.tooth = { on: true, pitch: 0.1, depth: 0.4, edge: "both" }; });
+    const left = cutWith((one) => {
+      one.tooth = { on: true, pitch: 0.1, depth: 0.4, edge: "left" };
+    });
+    const both = cutWith((one) => {
+      one.tooth = { on: true, pitch: 0.1, depth: 0.4, edge: "both" };
+    });
 
     // Both flanks of an H are the same, so sawing both takes about twice as
     // much as sawing one.
@@ -128,7 +140,9 @@ describe("tooth", () => {
   });
 
   it("keeps the letter whole", () => {
-    const cuts = cutWith((one) => { one.tooth.on = true; });
+    const cuts = cutWith((one) => {
+      one.tooth.on = true;
+    });
     for (const letter of "HOSaeno") {
       expect(piecesOf(drawn(letter, sans, cuts).contours)).toBe(
         piecesOf(drawn(letter, sans).contours),
@@ -139,7 +153,9 @@ describe("tooth", () => {
   it("runs the same number of teeth down a letter at any weight", () => {
     // Pitch is a share of the x-height rather than of the stem, so a Display
     // gets a saw and not three wedges.
-    const cuts = cutWith((one) => { one.tooth = { on: true, pitch: 0.1, depth: 0.3, edge: "left" }; });
+    const cuts = cutWith((one) => {
+      one.tooth = { on: true, pitch: 0.1, depth: 0.3, edge: "left" };
+    });
     const thin = removed("H", sans, cuts);
     const fat = removed("H", display, cuts);
     expect(Math.abs(thin - fat)).toBeLessThan(0.1);
@@ -148,14 +164,20 @@ describe("tooth", () => {
 
 describe("inline", () => {
   it("grooves the letter without breaking it", () => {
-    const cuts = cutWith((one) => { one.inline.on = true; });
+    const cuts = cutWith((one) => {
+      one.inline.on = true;
+    });
     expect(removed("H", sans, cuts)).toBeGreaterThan(0.15);
     expect(piecesOf(drawn("H", sans, cuts).contours)).toBe(1);
   });
 
   it("breaks out through the ends when the inset is taken off", () => {
-    const held = cutWith((one) => { one.inline = { on: true, width: 0.34, inset: 0.6 }; });
-    const loose = cutWith((one) => { one.inline = { on: true, width: 0.34, inset: 0 }; });
+    const held = cutWith((one) => {
+      one.inline = { on: true, width: 0.34, inset: 0.6 };
+    });
+    const loose = cutWith((one) => {
+      one.inline = { on: true, width: 0.34, inset: 0 };
+    });
     expect(piecesOf(drawn("H", sans, held).contours)).toBe(1);
     expect(piecesOf(drawn("H", sans, loose).contours)).toBeGreaterThan(1);
   });
@@ -163,7 +185,9 @@ describe("inline", () => {
 
 describe("split", () => {
   it("takes the arms off a letter that has them", () => {
-    const cuts = cutWith((one) => { one.split.on = true; });
+    const cuts = cutWith((one) => {
+      one.split.on = true;
+    });
     expect(piecesOf(drawn("E", sans, cuts).contours)).toBeGreaterThan(1);
     expect(piecesOf(drawn("H", sans, cuts).contours)).toBeGreaterThan(1);
   });
@@ -179,7 +203,9 @@ describe("split", () => {
      * The stem is what has to survive, so it is checked directly: ink all the
      * way up the left of the letter, at every height a stem should be at.
      */
-    const cuts = cutWith((one) => { one.split.on = true; });
+    const cuts = cutWith((one) => {
+      one.split.on = true;
+    });
     for (const letter of ["B", "P", "R"]) {
       const whole = drawn(letter, display).contours;
       const cut = drawn(letter, display, cuts).contours;
@@ -189,9 +215,7 @@ describe("split", () => {
       const stemAt = box.xMin + display.pen.weight * 0.5;
       for (const share of [0.15, 0.35, 0.5, 0.65, 0.85]) {
         const height = box.yMin + (box.yMax - box.yMin) * share;
-        const runs = inkRunsAt(cut, height).filter(
-          ([from, to]) => from <= stemAt && to >= stemAt,
-        );
+        const runs = inkRunsAt(cut, height).filter(([from, to]) => from <= stemAt && to >= stemAt);
         expect(runs.length, `${letter} has no stem at ${Math.round(share * 100)}%`).toBe(1);
       }
     }
@@ -199,7 +223,9 @@ describe("split", () => {
 
   it("leaves a letter drawn in one stroke alone", () => {
     // An o and an S have nothing to break: there is no second stroke to leave.
-    const cuts = cutWith((one) => { one.split.on = true; });
+    const cuts = cutWith((one) => {
+      one.split.on = true;
+    });
     for (const letter of "oS") {
       expect(removed(letter, sans, cuts)).toBeCloseTo(0, 6);
     }
@@ -208,21 +234,29 @@ describe("split", () => {
 
 describe("chamfer", () => {
   it("cuts the corners and leaves the round letters alone", () => {
-    const cuts = cutWith((one) => { one.chamfer.on = true; });
+    const cuts = cutWith((one) => {
+      one.chamfer.on = true;
+    });
     expect(removed("A", sans, cuts)).toBeGreaterThan(0.02);
     expect(removed("o", sans, cuts)).toBeCloseTo(0, 6);
   });
 
   it("cuts more when asked for more", () => {
-    const light = cutWith((one) => { one.chamfer = { on: true, size: 0.3 }; });
-    const heavy = cutWith((one) => { one.chamfer = { on: true, size: 1.2 }; });
+    const light = cutWith((one) => {
+      one.chamfer = { on: true, size: 0.3 };
+    });
+    const heavy = cutWith((one) => {
+      one.chamfer = { on: true, size: 1.2 };
+    });
     expect(removed("E", sans, heavy)).toBeGreaterThan(removed("E", sans, light));
   });
 });
 
 describe("motif", () => {
   it("replaces the hole rather than filling it in", () => {
-    const cuts = cutWith((one) => { one.motif.on = true; });
+    const cuts = cutWith((one) => {
+      one.motif.on = true;
+    });
     const before = drawn("o", sans).contours;
     const after = drawn("o", sans, cuts).contours;
     const hole = after.find((contour) => contourArea(contour) < 0);
@@ -256,10 +290,15 @@ describe("motif", () => {
     ];
     const round = drawn("o", sans).contours;
     for (const shape of shapes) {
-      const cuts = cutWith((one) => { one.motif = { on: true, shape, size: 1 }; });
+      const cuts = cutWith((one) => {
+        one.motif = { on: true, shape, size: 1 };
+      });
       const after = drawn("o", sans, cuts).contours;
       // The counter is still a hole, and it is a different hole.
-      expect(after.some((contour) => contourArea(contour) < 0), shape).toBe(true);
+      expect(
+        after.some((contour) => contourArea(contour) < 0),
+        shape,
+      ).toBe(true);
       expect(contoursToSvgPath(after), shape).not.toBe(contoursToSvgPath(round));
       // And nothing has burst out of the letter.
       const box = contoursBounds(after);
@@ -272,8 +311,13 @@ describe("motif", () => {
 
   it("cuts more than one hole where the shape is more than one piece", () => {
     const count = (shape: MotifShape): number =>
-      drawn("o", sans, cutWith((one) => { one.motif = { on: true, shape, size: 1 }; }))
-        .contours.filter((contour) => contourArea(contour) < 0).length;
+      drawn(
+        "o",
+        sans,
+        cutWith((one) => {
+          one.motif = { on: true, shape, size: 1 };
+        }),
+      ).contours.filter((contour) => contourArea(contour) < 0).length;
     // Two triangles meeting at their points, and three bars.
     expect(count("hourglass")).toBe(2);
     expect(count("bars")).toBe(3);
@@ -281,7 +325,17 @@ describe("motif", () => {
     // A diamond inside a diamond is one hole with an island of ink in it, so
     // the letter gains a piece rather than a second hole.
     expect(count("nested")).toBe(1);
-    expect(piecesOf(drawn("o", sans, cutWith((one) => { one.motif = { on: true, shape: "nested", size: 1 }; })).contours)).toBe(2);
+    expect(
+      piecesOf(
+        drawn(
+          "o",
+          sans,
+          cutWith((one) => {
+            one.motif = { on: true, shape: "nested", size: 1 };
+          }),
+        ).contours,
+      ),
+    ).toBe(2);
   });
 
   it("keeps every shape inside the counter, on the roundest and thinnest faces", () => {
@@ -298,8 +352,17 @@ describe("motif", () => {
      * on a page until the letters are set close and the pieces drift.
      */
     const shapes: MotifShape[] = [
-      "diamond", "lozenge", "nested", "triangle", "hourglass", "chevron",
-      "bars", "square", "slot", "dot", "ring",
+      "diamond",
+      "lozenge",
+      "nested",
+      "triangle",
+      "hourglass",
+      "chevron",
+      "bars",
+      "square",
+      "slot",
+      "dot",
+      "ring",
     ];
     const letters = ["O", "o", "Q", "D", "b", "d", "p", "q", "B", "e", "a", "g", "P", "R"];
     // The round one, the thin one, and the one whose strokes wobble.
@@ -314,8 +377,10 @@ describe("motif", () => {
       for (const letter of letters) {
         const whole = piecesOf(drawn(letter, face).contours);
         for (const shape of shapes) {
-          const islands = shape === "nested" || shape === "ring" ? counters[letter] ?? 1 : 0;
-          const cuts = cutWith((one) => { one.motif = { on: true, shape, size: 1 }; });
+          const islands = shape === "nested" || shape === "ring" ? (counters[letter] ?? 1) : 0;
+          const cuts = cutWith((one) => {
+            one.motif = { on: true, shape, size: 1 };
+          });
           const after = piecesOf(drawn(letter, face, cuts).contours);
           if (after > whole + islands) severed.push(`${face.name} ${letter} ${shape}`);
         }
@@ -331,12 +396,16 @@ describe("motif", () => {
   }, 30_000);
 
   it("leaves a letter with no counter alone", () => {
-    const cuts = cutWith((one) => { one.motif.on = true; });
+    const cuts = cutWith((one) => {
+      one.motif.on = true;
+    });
     expect(removed("H", sans, cuts)).toBeCloseTo(0, 6);
   });
 
   it("holds a large motif inside the letter", () => {
-    const cuts = cutWith((one) => { one.motif = { on: true, shape: "square", size: 1.25 }; });
+    const cuts = cutWith((one) => {
+      one.motif = { on: true, shape: "square", size: 1.25 };
+    });
     const before = contoursBounds(drawn("o", sans).contours);
     const after = contoursBounds(drawn("o", sans, cuts).contours);
     for (const edge of ["xMin", "xMax", "yMin", "yMax"] as const) {
@@ -398,7 +467,9 @@ describe("measured in stems", () => {
   });
 
   it("grooves the same share of a letter at any weight", () => {
-    const cuts = cutWith((one) => { one.inline = { on: true, width: 0.3, inset: 0.45 }; });
+    const cuts = cutWith((one) => {
+      one.inline = { on: true, width: 0.3, inset: 0.45 };
+    });
     const thin = removed("H", light, cuts);
     const heavy = removed("H", bold, cuts);
     expect(thin).toBeGreaterThan(0.15);

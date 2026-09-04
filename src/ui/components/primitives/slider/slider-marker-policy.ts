@@ -43,10 +43,8 @@ export function resolveSliderMarkerCount({
   variant: SliderVariant;
 }): number {
   return variant === "discrete"
-    ? (
-        markerCount ??
+    ? (markerCount ??
         getSliderStepMarkerCount({ max, min, step }) ??
-        Math.max(2, Math.round(max - min) + 1)
-      )
+        Math.max(2, Math.round(max - min) + 1))
     : (markerCount ?? Math.max(2, Math.round(max - min) + 1));
 }

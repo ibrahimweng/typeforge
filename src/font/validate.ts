@@ -363,7 +363,10 @@ function checkFontStructure(typeface: Typeface): Finding[] {
   for (const glyph of typeface.glyphs) {
     for (const codepoint of glyph.unicodes) {
       const owner = seen.get(codepoint);
-      if (owner) clashes.push(`U+${codepoint.toString(16).toUpperCase().padStart(4, "0")} (${owner} and ${glyph.name})`);
+      if (owner)
+        clashes.push(
+          `U+${codepoint.toString(16).toUpperCase().padStart(4, "0")} (${owner} and ${glyph.name})`,
+        );
       else seen.set(codepoint, glyph.name);
     }
   }
@@ -555,7 +558,9 @@ export function gatherGlyphFaults(
     }
     // Enclosing no area is the real test. A two-node contour with handles is
     // a perfectly good ellipse, so counting nodes would flag sound drawings.
-    if (contours.some((contour) => contour.nodes.length > 0 && Math.abs(contourArea(contour)) < 1)) {
+    if (
+      contours.some((contour) => contour.nodes.length > 0 && Math.abs(contourArea(contour)) < 1)
+    ) {
       strayPoints.push(glyph.name);
     }
     if (contours.some(hasDuplicatePoints)) duplicatePoints.push(glyph.name);
@@ -665,7 +670,6 @@ function hasDuplicatePoints(contour: Contour): boolean {
   }
   return false;
 }
-
 
 /**
  * What is wrong with one letter, said about the letter rather than the font.

@@ -55,8 +55,11 @@ for (const letter of letterNames()) {
 }
 timed.sort((one, other) => other.ms - one.ms);
 const total = timed.reduce((sum, one) => sum + one.ms, 0);
-console.log(`${which} ${amount} on ${base.name}: ${timed.length} letters, ${Math.round(total)}ms total, ${Math.round(total / timed.length)}ms each`);
-for (const one of timed.slice(0, 15)) console.log(`  ${one.letter.padEnd(14)} ${Math.round(one.ms)}ms`);
+console.log(
+  `${which} ${amount} on ${base.name}: ${timed.length} letters, ${Math.round(total)}ms total, ${Math.round(total / timed.length)}ms each`,
+);
+for (const one of timed.slice(0, 15))
+  console.log(`  ${one.letter.padEnd(14)} ${Math.round(one.ms)}ms`);
 
 /*
  * And what it costs to hand those letters to the browser.

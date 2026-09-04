@@ -84,9 +84,9 @@ describe("reading a font's winding convention off the font", () => {
     expect(dominantConvention([{ contours: [line] }])).toBe("truetype");
 
     // And a real counter-clockwise letter beside it still decides.
-    expect(
-      dominantConvention([{ contours: [line] }, { contours: [square(100, false)] }]),
-    ).toBe("cff");
+    expect(dominantConvention([{ contours: [line] }, { contours: [square(100, false)] }])).toBe(
+      "cff",
+    );
   });
 
   it("reads a counter inside a letter as the opposite of its outer", () => {

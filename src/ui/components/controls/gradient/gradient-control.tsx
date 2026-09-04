@@ -4,17 +4,13 @@ import type * as React from "react";
 import { useEffect, useRef, useState } from "react";
 
 import { Field } from "../../primitives";
-import {
-  type ControlChangeMeta,
-  type ControlValueChangeHandler,
-  type GradientStop,
-  type GradientType,
+import type {
+  ControlChangeMeta,
+  ControlValueChangeHandler,
+  GradientStop,
+  GradientType,
 } from "../control-types";
-import {
-  getGradientAngle,
-  getGradientBackground,
-  getGradientType,
-} from "./gradient-control-utils";
+import { getGradientAngle, getGradientBackground, getGradientType } from "./gradient-control-utils";
 import { GradientStopsList } from "./gradient-stop-list";
 import { useGradientStopsController } from "./gradient-stops-controller";
 import { GradientStopsTrack } from "./gradient-stops-track";
@@ -40,16 +36,11 @@ export function GradientControl({
   stops,
 }: GradientControlProps): React.JSX.Element {
   const trackRef = useRef<HTMLDivElement | null>(null);
-  const [uncontrolledAngle, setUncontrolledAngle] = useState(() =>
-    getGradientAngle(angleProp),
-  );
+  const [uncontrolledAngle, setUncontrolledAngle] = useState(() => getGradientAngle(angleProp));
   const [uncontrolledGradientType, setUncontrolledGradientType] = useState(() =>
     getGradientType(gradientTypeProp),
   );
-  const angle =
-    typeof angleProp === "undefined"
-      ? uncontrolledAngle
-      : getGradientAngle(angleProp);
+  const angle = typeof angleProp === "undefined" ? uncontrolledAngle : getGradientAngle(angleProp);
   const gradientType =
     typeof gradientTypeProp === "undefined"
       ? uncontrolledGradientType
@@ -102,10 +93,7 @@ export function GradientControl({
 
   return (
     <Field className="min-w-0 !gap-[3px]">
-      <div
-        className="flex min-w-0 flex-col gap-3"
-        data-slot="gradient-stops-control-main"
-      >
+      <div className="flex min-w-0 flex-col gap-3" data-slot="gradient-stops-control-main">
         <div className="flex h-fit min-w-0 items-center justify-start">
           <GradientToolbar
             angle={angle}
@@ -133,9 +121,7 @@ export function GradientControl({
       </div>
       <GradientStopsList
         onAdd={controller.addStop}
-        onColorChange={(index, nextColor) =>
-          controller.updateStop(index, { color: nextColor })
-        }
+        onColorChange={(index, nextColor) => controller.updateStop(index, { color: nextColor })}
         onOpacityChange={(index, nextOpacity) =>
           controller.updateStop(index, { opacity: nextOpacity })
         }

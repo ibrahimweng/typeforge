@@ -372,7 +372,6 @@ export function unite(
   return result.length > 0 ? result : contours;
 }
 
-
 /**
  * Take the second shape out of the first.
  *
@@ -811,32 +810,31 @@ const SPECK = 0.01;
 function contoursOf(item: paper.PathItem): Contour[] {
   const children = (item as paper.CompoundPath).children as paper.Path[] | undefined;
   const paths = children && children.length > 0 ? children : [item as paper.Path];
-  return paths
-    .filter((path) => path.segments && path.segments.length >= 2)
-    .map(fromPath)
-    /*
-     * Without the specks paper leaves behind.
-     *
-     * A boolean can answer with a contour of two nodes in the same place,
-     * enclosing exactly nothing -- the residue of an edge that used to lie
-     * along another edge. It draws nothing, so it never showed; but anything
-     * counting the pieces of a letter counts it, and a Flared p that fuses
-     * perfectly was reported broken in two on the strength of one such speck
-     * sitting at the bottom left corner of its stem.
-     *
-     * By area rather than by node count, because two nodes with handles on
-     * them can enclose a real lens and four nodes in a line enclose nothing.
-     */
-    .filter((contour) => Math.abs(contourArea(contour)) >= SPECK);
+  return (
+    paths
+      .filter((path) => path.segments && path.segments.length >= 2)
+      .map(fromPath)
+      /*
+       * Without the specks paper leaves behind.
+       *
+       * A boolean can answer with a contour of two nodes in the same place,
+       * enclosing exactly nothing -- the residue of an edge that used to lie
+       * along another edge. It draws nothing, so it never showed; but anything
+       * counting the pieces of a letter counts it, and a Flared p that fuses
+       * perfectly was reported broken in two on the strength of one such speck
+       * sitting at the bottom left corner of its stem.
+       *
+       * By area rather than by node count, because two nodes with handles on
+       * them can enclose a real lens and four nodes in a line enclose nothing.
+       */
+      .filter((contour) => Math.abs(contourArea(contour)) >= SPECK)
+  );
 }
 
 /** A node's handles are absolute here and relative to the point in paper. */
 function toSegment(paper: PaperScope, node: GlyphNode): paper.Segment {
   const relative = (handle: Vec2 | null): paper.Point =>
-    new paper.Point(
-      handle ? handle.x - node.point.x : 0,
-      handle ? handle.y - node.point.y : 0,
-    );
+    new paper.Point(handle ? handle.x - node.point.x : 0, handle ? handle.y - node.point.y : 0);
   return new paper.Segment(
     new paper.Point(node.point.x, node.point.y),
     relative(node.handleIn),
@@ -852,7 +850,9 @@ function fromPath(path: paper.Path): Contour {
     return {
       point,
       handleIn: hasIn ? { x: point.x + segment.handleIn.x, y: point.y + segment.handleIn.y } : null,
-      handleOut: hasOut ? { x: point.x + segment.handleOut.x, y: point.y + segment.handleOut.y } : null,
+      handleOut: hasOut
+        ? { x: point.x + segment.handleOut.x, y: point.y + segment.handleOut.y }
+        : null,
       type: "corner" as const,
     };
   });

@@ -41,10 +41,7 @@ const columnClassNames: Record<ImagePickerColumns, string> = {
   4: "grid-cols-4",
 };
 
-function getInitialValue(
-  items: readonly ImagePickerItem[],
-  value: string | undefined,
-): string {
+function getInitialValue(items: readonly ImagePickerItem[], value: string | undefined): string {
   return value ?? items[0]?.value ?? "";
 }
 
@@ -66,9 +63,7 @@ export function ImagePickerControl({
   value,
   onValueChange,
 }: ImagePickerControlProps): React.JSX.Element {
-  const [currentValue, setCurrentValue] = React.useState(() =>
-    getInitialValue(items, value),
-  );
+  const [currentValue, setCurrentValue] = React.useState(() => getInitialValue(items, value));
 
   React.useEffect(() => {
     if (value !== undefined) {
@@ -77,9 +72,7 @@ export function ImagePickerControl({
     }
 
     setCurrentValue((previousValue) =>
-      items.some((item) => item.value === previousValue)
-        ? previousValue
-        : (items[0]?.value ?? ""),
+      items.some((item) => item.value === previousValue) ? previousValue : (items[0]?.value ?? ""),
     );
   }, [items, value]);
 
@@ -93,12 +86,7 @@ export function ImagePickerControl({
   return (
     <Field className="min-w-0 !gap-[10px]">
       <ControlFieldLabel>{name}</ControlFieldLabel>
-      <div
-        className={cn(
-          "grid min-w-0 gap-[10px] overflow-visible",
-          columnClassNames[columns],
-        )}
-      >
+      <div className={cn("grid min-w-0 gap-[10px] overflow-visible", columnClassNames[columns])}>
         {items.map((item) => {
           const isSelected = item.value === currentValue;
 

@@ -38,7 +38,9 @@ test("shows somewhere to start before anything is typed", async ({ page }) => {
 
 test("finds a control from a description rather than its name", async ({ page }) => {
   await open(page);
-  await page.getByRole("textbox", { name: "Search everything" }).fill("the letters are too close together");
+  await page
+    .getByRole("textbox", { name: "Search everything" })
+    .fill("the letters are too close together");
   const dialog = page.getByRole("dialog", { name: "Quick actions" });
   // Whatever wins, it has to be about spacing rather than about a letter.
   await expect(dialog.getByRole("option").first()).toContainText(/spac|kern|sidebearing|aperture/i);
@@ -168,7 +170,6 @@ test("moves the pen itself, which lives nowhere near the family's numbers", asyn
   await expect.poll(() => outlineOf(page)).not.toBe(before);
 });
 
-
 /*
  * Space opens it too, and the whole difficulty of space is the places it must
  * not: it is a character in a text field and it is how a keyboard presses a
@@ -200,7 +201,9 @@ test("leaves the space bar alone while typing, and Cmd-K still works there", asy
  * people reach for anyway. Only the controls with nothing but a space -- a
  * checkbox, a radio, a switch -- keep it.
  */
-test("still opens with a button focused, which is where the pointer leaves it", async ({ page }) => {
+test("still opens with a button focused, which is where the pointer leaves it", async ({
+  page,
+}) => {
   const button = page.getByRole("button").first();
   await button.click();
   await expect(dialog(page)).toBeHidden();

@@ -670,21 +670,22 @@ function attach(
    * few units above or below. Where the band has anything at all this changes
    * nothing.
    */
-  const looking = inside.length > 0
-    ? inside
-    : near
-      ? nearest(points, near)
-      : points;
+  const looking = inside.length > 0 ? inside : near ? nearest(points, near) : points;
   let best = looking[0];
   for (const one of looking) {
     const point = one.point;
     if (side === "left") {
       // Leftmost, and of the leftmost the highest: a stem is one x all the way
       // up, and a hand arrives at the top of it rather than the middle.
-      if (point.x < best.point.x - 1e-9
-        || (Math.abs(point.x - best.point.x) <= 1e-9 && point.y > best.point.y)) best = one;
-    } else if (point.x > best.point.x + 1e-9
-      || (Math.abs(point.x - best.point.x) <= 1e-9 && point.y < best.point.y)) {
+      if (
+        point.x < best.point.x - 1e-9 ||
+        (Math.abs(point.x - best.point.x) <= 1e-9 && point.y > best.point.y)
+      )
+        best = one;
+    } else if (
+      point.x > best.point.x + 1e-9 ||
+      (Math.abs(point.x - best.point.x) <= 1e-9 && point.y < best.point.y)
+    ) {
       best = one;
     }
   }
@@ -783,12 +784,16 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
       // the baseline. A run that stays entirely one side of the line it would
       // have crossed is a mark rather than a stroke -- which is what keeps the
       // dot of an `i` from being treated as an ascender.
-      if (end.y > room.x && lowest < room.x && (!top || end.y > top.end.y)) top = { end, on: spine };
+      if (end.y > room.x && lowest < room.x && (!top || end.y > top.end.y))
+        top = { end, on: spine };
       if (end.y < 0 && highest > 0 && (!foot || end.y < foot.end.y)) foot = { end, on: spine };
     }
   }
 
-  for (const [found, rising] of [[top, true], [foot, false]] as const) {
+  for (const [found, rising] of [
+    [top, true],
+    [foot, false],
+  ] as const) {
     if (!found) continue;
     const { end, on: run } = found;
     /*
@@ -872,18 +877,18 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
      */
     const home = rising
       ? { much: deep, over: 0 }
-      /*
-       * Asked with the pen's narrow reach rather than its wide one.
-       *
-       * `standsOn` within half a pen is a fair test for a round pen and an
-       * optimistic one for a nib: a point half a pen from a spine has ink on it
-       * only in the direction the nib is widest. It passed anyway for as long as
-       * the eye was a semicircle, because a semicircle bulges sideways into the
-       * letter and the two met there rather than at the foot. Narrowed to the
-       * reference's shape the bulge is gone, the foot is all there is, and the
-       * Casual Script's descending `f` came apart at four weights.
-       */
-      : reaching(spines, end, deep, available, room.narrow, room.x);
+      : /*
+         * Asked with the pen's narrow reach rather than its wide one.
+         *
+         * `standsOn` within half a pen is a fair test for a round pen and an
+         * optimistic one for a nib: a point half a pen from a spine has ink on it
+         * only in the direction the nib is widest. It passed anyway for as long as
+         * the eye was a semicircle, because a semicircle bulges sideways into the
+         * letter and the two met there rather than at the foot. Narrowed to the
+         * reference's shape the bulge is gone, the foot is all there is, and the
+         * Casual Script's descending `f` came apart at four weights.
+         */
+        reaching(spines, end, deep, available, room.narrow, room.x);
     const start = at(end.x + home.over, rising ? tip.y - deep : tip.y + home.much);
     /*
      * An eye on an ascender stands on that ascender or it is not drawn.
@@ -976,7 +981,8 @@ function reaching(
 /** Whether this run passes under the point, for a loop to stand on it. */
 function standsOn(spine: Spine, point: Vec2, reach: number): boolean {
   return alongSpine(spine, SAMPLES).some(
-    (one) => Math.hypot(one.x - point.x, one.y - point.y) <= reach);
+    (one) => Math.hypot(one.x - point.x, one.y - point.y) <= reach,
+  );
 }
 
 /** An arc from one point to another, bowed out by a fraction of the chord. */
@@ -1014,12 +1020,7 @@ function bowed(from: Vec2, to: Vec2, amount: number): Spine {
  * descender to loop -- a question this cannot see from the spines, which is
  * exactly how every capital built on an upright came to have one.
  */
-export function planLoops(
-  spines: Spine[],
-  room: Room,
-  script: Script,
-  takes = true,
-): Spine[] {
+export function planLoops(spines: Spine[], room: Room, script: Script, takes = true): Spine[] {
   return script.on && takes ? loopsOn(spines, room, script) : [];
 }
 
@@ -1046,9 +1047,10 @@ function run(
   knit: number,
   end: "in" | "out",
 ): Spine {
-  const body = end === "in"
-    ? biarc(seam, along, hold, holding, room, "from")
-    : biarc(hold, holding, seam, along, room, "to");
+  const body =
+    end === "in"
+      ? biarc(seam, along, hold, holding, room, "from")
+      : biarc(hold, holding, seam, along, room, "to");
   /*
    * And out past the seam along the heading, so the straight run is a
    * continuation of the stroke rather than a shelf hung off it. This is the
@@ -1101,9 +1103,10 @@ function biarc(
    * corner, and a corner in a spine is a stroke that folds over itself when the
    * pen is swept along it.
    */
-  const one = () => keep === "from"
-    ? levelArc(from, to, room, unit(going))
-    : reversed(levelArc(to, from, room, at(-arriving.x, -arriving.y)));
+  const one = () =>
+    keep === "from"
+      ? levelArc(from, to, room, unit(going))
+      : reversed(levelArc(to, from, room, at(-arriving.x, -arriving.y)));
   const first = unit(going);
   const last = unit(arriving);
   const away = at(to.x - from.x, to.y - from.y);
@@ -1140,8 +1143,12 @@ function biarc(
    * letters share, and gives up the heading at the letter, which is the half
    * only this letter cares about.
    */
-  const turn = (spine: Spine) => spine.segments.reduce((most, part) => part.kind === "arc"
-    ? Math.max(most, Math.abs(part.endAngle - part.startAngle)) : most, 0);
+  const turn = (spine: Spine) =>
+    spine.segments.reduce(
+      (most, part) =>
+        part.kind === "arc" ? Math.max(most, Math.abs(part.endAngle - part.startAngle)) : most,
+      0,
+    );
   /*
    * A half that comes back straight is a half whose turn was tighter than the
    * pen -- `levelArc` gives a line rather than a knot -- and a line is not
@@ -1311,12 +1318,13 @@ export function planJoin(
    * thing to a band that does not exist, and the high drawing of an `o` came
    * out identical to the low one: a letter the feature swaps in for itself.
    */
-  const ceiling = Math.max(
-    round ? room.x * ROUND_ENTRY : room.x - room.half,
-    entryAt + room.half,
+  const ceiling = Math.max(round ? room.x * ROUND_ENTRY : room.x - room.half, entryAt + room.half);
+  const lands = attach(
+    points,
+    (point) => point.y >= entryAt && point.y <= ceiling,
+    "left",
+    offBand(entryAt, ceiling),
   );
-  const lands = attach(points, (point) => point.y >= entryAt && point.y <= ceiling,
-    "left", offBand(entryAt, ceiling));
   /*
    * The lead-out searches below its own crossing on an ordinary letter and
    * above it on one that hands over high -- which is the whole of the
@@ -1324,11 +1332,20 @@ export function planJoin(
    * and an `o` from the top of its bowl, and a band that looked in one
    * direction only would find the wrong end of one of them.
    */
-  const leaves = exitAt > seams.low
-    ? attach(points, (point) => point.y >= exitAt && point.y <= room.x - room.half,
-      "right", offBand(exitAt, room.x - room.half))
-    : attach(points, (point) => point.y >= room.half && point.y <= exitAt,
-      "right", offBand(room.half, exitAt));
+  const leaves =
+    exitAt > seams.low
+      ? attach(
+          points,
+          (point) => point.y >= exitAt && point.y <= room.x - room.half,
+          "right",
+          offBand(exitAt, room.x - room.half),
+        )
+      : attach(
+          points,
+          (point) => point.y >= room.half && point.y <= exitAt,
+          "right",
+          offBand(room.half, exitAt),
+        );
 
   /*
    * How much room the letter takes, which is not the same question as where the
@@ -1554,9 +1571,15 @@ export function planJoin(
    * So the room is asked of the letter's own low crossing and the placement of
    * the crossing this drawing actually uses.
    */
-  const settled = !entered || entryAt === seams.low ? lands
-    : attach(points, (point) => point.y >= seams.low && point.y <= ceiling,
-      "left", offBand(seams.low, ceiling));
+  const settled =
+    !entered || entryAt === seams.low
+      ? lands
+      : attach(
+          points,
+          (point) => point.y >= seams.low && point.y <= ceiling,
+          "left",
+          offBand(seams.low, ceiling),
+        );
   const edge = entered ? settled.point.x : leftmost;
   const spacing = (ends.entry ? reach : room.sidebearing) + spare - (edge - room.half);
   const inset = entered ? -lands.point.x : spacing;
@@ -1594,9 +1617,13 @@ export function planJoin(
    * what a loop is allowed to hang over, and a letter that would hang over more
    * is given the room instead.
    */
-  const hangs = spanning === points
-    ? 0
-    : Math.max(0, points.reduce((most, one) => Math.max(most, one.point.x), -Infinity) - rightmost);
+  const hangs =
+    spanning === points
+      ? 0
+      : Math.max(
+          0,
+          points.reduce((most, one) => Math.max(most, one.point.x), -Infinity) - rightmost,
+        );
   const width = asked + Math.max(0, hangs - room.x * HANGS_OVER);
 
   /*
@@ -1647,7 +1674,9 @@ export function planJoin(
    * the arc to make up the difference by steepening on its way up. At a tilt of
    * nought each half is straight and still joins; opened up, it dips.
    */
-  const climbing = unit(at(1, Math.tan((Math.max(-60, Math.min(70, script.tilt)) * Math.PI) / 180)));
+  const climbing = unit(
+    at(1, Math.tan((Math.max(-60, Math.min(70, script.tilt)) * Math.PI) / 180)),
+  );
   /*
    * The lead-in arrives along the letter's own stroke, pointing away from the
    * seam -- up the first stem of an `n`, so the two meet at the apex the way an
@@ -1660,15 +1689,19 @@ export function planJoin(
    * down through the line. A hand turns out of a down-stroke onto the line and
    * off the line into the next letter, and those are two different tangents.
    */
-  const holding = (lands.way.x * from.x + lands.way.y * (from.y - entryAt)) >= 0
-    ? lands.way
-    : at(-lands.way.x, -lands.way.y);
+  const holding =
+    lands.way.x * from.x + lands.way.y * (from.y - entryAt) >= 0
+      ? lands.way
+      : at(-lands.way.x, -lands.way.y);
   const chord = at(from.x, from.y - entryAt);
   const askew = Math.abs(between(holding, chord));
   const arriving = turned(holding, chord, Math.max(APEX, askew - MOST_LEAN));
-  const entry = !ends.entry || entered ? null
-    : run(at(0, entryAt), climbing, from, arriving, room, level, knit, "in");
-  const exit = !ends.exit ? null
+  const entry =
+    !ends.entry || entered
+      ? null
+      : run(at(0, entryAt), climbing, from, arriving, room, level, knit, "in");
+  const exit = !ends.exit
+    ? null
     : run(at(width, exitAt), climbing, to, at(1, 0), room, level, knit, "out");
 
   return { entry, exit, inset, width };
@@ -1780,7 +1813,11 @@ export function scatterOf(name: string): { first: number; second: number } {
   };
 }
 
-export function wobbleOf(name: string, script: Script, xHeight: number): { lift: number; lean: number } {
+export function wobbleOf(
+  name: string,
+  script: Script,
+  xHeight: number,
+): { lift: number; lean: number } {
   if (!script.on || script.irregularity <= 0) return { lift: 0, lean: 0 };
   /*
    * The two shares. Both default to one, at which this is arithmetically the

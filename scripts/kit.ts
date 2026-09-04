@@ -53,23 +53,30 @@ for (const name of [...text]) {
   const lines: string[] = [];
   for (let c = 0; c <= (tiles?.columns ?? 4); c++) {
     const x = left + c * unit;
-    lines.push(`<line x1="${x}" y1="${bottom}" x2="${x}" y2="${top}" stroke="#ddd" stroke-width="3"/>`);
+    lines.push(
+      `<line x1="${x}" y1="${bottom}" x2="${x}" y2="${top}" stroke="#ddd" stroke-width="3"/>`,
+    );
   }
   for (let r = -kit.grid.below; r <= kit.grid.rows + kit.grid.above; r++) {
     const y = r * unit;
     lines.push(`<line x1="0" y1="${y}" x2="${width}" y2="${y}" stroke="#ddd" stroke-width="3"/>`);
   }
-  const made = laid ? drawLetter(name, style, undefined, undefined, { ...kit, glyphs: { [name]: tiles! } }) : null;
+  const made = laid
+    ? drawLetter(name, style, undefined, undefined, { ...kit, glyphs: { [name]: tiles! } })
+    : null;
   cells.push(`<figure><svg viewBox="0 ${bottom} ${width} ${top - bottom}" width="${cell}" style="transform: scaleY(-1)">
     ${lines.join("")}
     <path d="${made ? contoursToSvgPath(made.contours) : ""}" fill="#111"/>
   </svg><figcaption>${name}${tiles ? ` · ${Object.keys(tiles.cells).length} cells` : " · none"}</figcaption></figure>`);
 }
 const out = process.env.SHEET_OUT ?? "/tmp/kit.html";
-writeFileSync(out, `<!doctype html><meta charset="utf-8"><style>
+writeFileSync(
+  out,
+  `<!doctype html><meta charset="utf-8"><style>
  body{font:12px system-ui;background:#fff;margin:12px;color:#111}
  .strip{display:flex;flex-wrap:wrap;gap:4px}
  figure{margin:0;text-align:center;border:1px solid #eee;padding:2px}
  figcaption{font-size:9px;color:#888}
-</style><div class="strip">${cells.join("")}</div>`);
+</style><div class="strip">${cells.join("")}</div>`,
+);
 console.log(`wrote ${out}`);

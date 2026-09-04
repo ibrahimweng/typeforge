@@ -33,8 +33,7 @@ export function Panel({
   stickyFooterProgress = null,
   title,
 }: PanelProps): React.JSX.Element {
-  const [internalCollapsed, setInternalCollapsed] =
-    React.useState(defaultCollapsed);
+  const [internalCollapsed, setInternalCollapsed] = React.useState(defaultCollapsed);
   const resolvedCollapsed = collapsed ?? internalCollapsed;
   const hasPanelContentSections = hasDirectPanelContentSections(children);
   const panelContent = hasPanelContentSections ? (
@@ -42,8 +41,7 @@ export function Panel({
   ) : (
     <ImplicitPanelSection>{children}</ImplicitPanelSection>
   );
-  const { bodyChildren, stickyFooterChildren } =
-    splitPanelContentStickyFooter(panelContent);
+  const { bodyChildren, stickyFooterChildren } = splitPanelContentStickyFooter(panelContent);
   const suppressContentTransitions = useInitialPanelContentTransitionSuppression(
     contentTransitionSuppressionKey === undefined
       ? resolvedCollapsed
@@ -72,13 +70,9 @@ export function Panel({
       />
       {resolvedCollapsed ? null : (
         <PanelContentSurface
-          data-toolcraft-controls-mounting={
-            suppressContentTransitions ? "true" : undefined
-          }
+          data-toolcraft-controls-mounting={suppressContentTransitions ? "true" : undefined}
           data-slot="toolcraft-panel-content"
-          stickyFooter={
-            stickyFooterChildren.length > 0 ? stickyFooterChildren : undefined
-          }
+          stickyFooter={stickyFooterChildren.length > 0 ? stickyFooterChildren : undefined}
           stickyFooterActive={stickyFooterActive}
           stickyFooterProgress={stickyFooterProgress}
         >
@@ -91,9 +85,7 @@ export function Panel({
 
 function noop(): void {}
 
-function useInitialPanelContentTransitionSuppression(
-  dependency: unknown,
-): boolean {
+function useInitialPanelContentTransitionSuppression(dependency: unknown): boolean {
   const [suppressionState, setSuppressionState] = React.useState(() => ({
     dependency,
     isSuppressing: true,
@@ -127,9 +119,7 @@ function useInitialPanelContentTransitionSuppression(
     };
   }, [dependency]);
 
-  return (
-    suppressionState.dependency !== dependency || suppressionState.isSuppressing
-  );
+  return suppressionState.dependency !== dependency || suppressionState.isSuppressing;
 }
 
 function hasDirectPanelContentSections(children: React.ReactNode): boolean {
@@ -185,11 +175,7 @@ function isPanelStickyFooterSection(child: React.ReactNode): boolean {
   );
 }
 
-function ImplicitPanelSection({
-  children,
-}: {
-  children: React.ReactNode;
-}): React.JSX.Element {
+function ImplicitPanelSection({ children }: { children: React.ReactNode }): React.JSX.Element {
   const childArray = React.Children.toArray(children);
   const shouldRenderInnerDividers = childArray.length > 1;
 

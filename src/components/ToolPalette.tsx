@@ -316,7 +316,9 @@ const FlyoutRow = React.forwardRef<
       onClick={onPick}
       className={cn(
         "flex w-full items-start gap-2 rounded px-2 py-1.5 text-left transition-colors",
-        picked ? "bg-accent/15 text-foreground" : "text-muted-foreground hover:bg-card hover:text-foreground",
+        picked
+          ? "bg-accent/15 text-foreground"
+          : "text-muted-foreground hover:bg-card hover:text-foreground",
       )}
     >
       <Mark size={15} weight={picked ? "fill" : "regular"} className="mt-[1px] shrink-0" />

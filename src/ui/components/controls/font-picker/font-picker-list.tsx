@@ -1,12 +1,9 @@
-import * as React from "react";
+import type * as React from "react";
 import { CheckIcon } from "@phosphor-icons/react";
 
 import { ScrollFade } from "../../primitives";
 import { cn } from "../../../lib/utils";
-import type {
-  FontPickerFontCatalogEntry,
-  FontPickerFontFilterValue,
-} from "./font-catalog";
+import type { FontPickerFontCatalogEntry, FontPickerFontFilterValue } from "./font-catalog";
 import { getFontFamilyStyle } from "./font-picker-value";
 
 export const fontItemHeightPx = 36;
@@ -68,10 +65,7 @@ export function FontPickerList({
   visibleFonts,
 }: FontPickerListProps): React.JSX.Element {
   return (
-    <div
-      className="relative isolate pb-1"
-      onMouseLeave={clearHoverPreview}
-    >
+    <div className="relative isolate pb-1" onMouseLeave={clearHoverPreview}>
       <div className="px-1 pt-1">
         <div className="relative h-60">
           <ScrollFade
@@ -83,24 +77,12 @@ export function FontPickerList({
             showOppositeSide
             side="bottom"
             viewportRef={attachScrollViewport}
-            watch={[
-              filteredFontCount,
-              query,
-              category,
-              virtualStartIndex,
-              virtualEndIndex,
-            ]}
+            watch={[filteredFontCount, query, category, virtualStartIndex, virtualEndIndex]}
           >
             {visibleFonts.length ? (
-              <div
-                className="flex flex-col gap-px"
-                data-slot="font-picker-list"
-              >
+              <div className="flex flex-col gap-px" data-slot="font-picker-list">
                 {topSpacerHeight > 0 ? (
-                  <div
-                    aria-hidden
-                    style={{ height: `${topSpacerHeight}px` }}
-                  />
+                  <div aria-hidden style={{ height: `${topSpacerHeight}px` }} />
                 ) : null}
                 {visibleFonts.map((font) => {
                   const selected = font.id === selectedFontId;
@@ -120,10 +102,7 @@ export function FontPickerList({
                       onMouseEnter={() => onFontMouseEnter(font)}
                       type="button"
                     >
-                      <span
-                        className="min-w-0 truncate text-sm"
-                        style={getFontFamilyStyle(font)}
-                      >
+                      <span className="min-w-0 truncate text-sm" style={getFontFamilyStyle(font)}>
                         {font.family}
                       </span>
                       {selected ? (
@@ -137,10 +116,7 @@ export function FontPickerList({
                   );
                 })}
                 {bottomSpacerHeight > 0 ? (
-                  <div
-                    aria-hidden
-                    style={{ height: `${bottomSpacerHeight}px` }}
-                  />
+                  <div aria-hidden style={{ height: `${bottomSpacerHeight}px` }} />
                 ) : null}
               </div>
             ) : null}
@@ -175,17 +151,10 @@ export function FontPickerList({
             onMouseDown={(event) => event.preventDefault()}
             type="button"
           >
-            <span
-              className="min-w-0 flex-1 truncate text-sm"
-              style={selectedFontPreviewStyle}
-            >
+            <span className="min-w-0 flex-1 truncate text-sm" style={selectedFontPreviewStyle}>
               {selectedFont?.family ?? ""}
             </span>
-            <CheckIcon
-              aria-hidden
-              className="size-3.5 shrink-0"
-              weight="bold"
-            />
+            <CheckIcon aria-hidden className="size-3.5 shrink-0" weight="bold" />
           </button>
         </div>
       ) : null}

@@ -397,7 +397,10 @@ export function cloneGlyph(glyph: Glyph): Glyph {
     cuts: glyph.cuts ? structuredClone(glyph.cuts) : undefined,
     cast: glyph.cast ? structuredClone(glyph.cast) : undefined,
     written: glyph.written ? structuredClone(glyph.written) : undefined,
-    components: glyph.components.map((component) => ({ ...component, transform: { ...component.transform } })),
+    components: glyph.components.map((component) => ({
+      ...component,
+      transform: { ...component.transform },
+    })),
     anchors: glyph.anchors.map((anchor) => ({ ...anchor })),
     params: { ...glyph.params },
     dirty: glyph.dirty,

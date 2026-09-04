@@ -96,7 +96,8 @@ for (const name of names) {
   for (let i = 0; i < WEIGHTS.length; i++) {
     if (kinds[i] === base) continue;
     let front = 0;
-    while (front < kinds[i].length && front < base.length && kinds[i][front] === base[front]) front++;
+    while (front < kinds[i].length && front < base.length && kinds[i][front] === base[front])
+      front++;
     let back = 0;
     while (
       back < kinds[i].length - front &&
@@ -114,4 +115,6 @@ for (const name of names) {
 
 const missed = [...held].filter((one) => !drifted.includes(one));
 console.log(`\n${face.name}: the file leaves ${held.size} standing: ${[...held].sort().join(" ")}`);
-console.log(`  the replica finds ${drifted.length}${missed.length ? `, and misses ${missed.join(" ")}` : ""}`);
+console.log(
+  `  the replica finds ${drifted.length}${missed.length ? `, and misses ${missed.join(" ")}` : ""}`,
+);

@@ -85,7 +85,11 @@ describe("a grid of classes", () => {
     const classes: Array<{ left: number[]; right: number[]; value: number }> = [];
     for (let first = 0; first < 12; first++) {
       for (let second = 0; second < 12; second++) {
-        classes.push({ left: [100 + first], right: [200 + second], value: -(first * 12 + second + 1) });
+        classes.push({
+          left: [100 + first],
+          right: [200 + second],
+          value: -(first * 12 + second + 1),
+        });
       }
     }
     const kerning = through([], classes);

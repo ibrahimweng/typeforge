@@ -87,7 +87,17 @@ describe("pulling a point", () => {
 });
 
 describe("what a letter offers to land on", () => {
-  const typeface = font([glyph("n", [[40, 0], [120, 0], [120, 500]], 600)]);
+  const typeface = font([
+    glyph(
+      "n",
+      [
+        [40, 0],
+        [120, 0],
+        [120, 500],
+      ],
+      600,
+    ),
+  ]);
 
   it("offers the lines the font is drawn between", () => {
     const lines = linesFor(typeface, typeface.glyphs[0], []);

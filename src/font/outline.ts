@@ -80,14 +80,15 @@ export function insertExtrema(contour: Contour): Contour {
     const b = nodes[(i + 1) % nodes.length];
 
     // Carry this node through, keeping the handle facing backwards.
-    const current: GlyphNode = out.length > 0 && i > 0
-      ? out[out.length - 1]
-      : {
-          point: { ...a.point },
-          handleIn: a.handleIn ? { ...a.handleIn } : null,
-          handleOut: null,
-          type: a.type,
-        };
+    const current: GlyphNode =
+      out.length > 0 && i > 0
+        ? out[out.length - 1]
+        : {
+            point: { ...a.point },
+            handleIn: a.handleIn ? { ...a.handleIn } : null,
+            handleOut: null,
+            type: a.type,
+          };
     if (out.length === 0) out.push(current);
 
     if (!a.handleOut && !b.handleIn) {
@@ -215,8 +216,7 @@ export function classifyContours(contours: Contour[]): boolean[] {
     for (let other = 0; other < contours.length; other++) {
       if (other === index) continue;
       if (!boxContains(boxes[other], boxes[index])) continue;
-      if (enclosedBy(polygons[other], polygons[index], insidePoints[index]))
-        enclosing++;
+      if (enclosedBy(polygons[other], polygons[index], insidePoints[index])) enclosing++;
     }
     return enclosing % 2 === 0; // even nesting depth means outer
   });
@@ -424,8 +424,16 @@ function contoursIntersect(contours: Contour[]): boolean {
           const t = i / steps;
           const u = 1 - t;
           const point = {
-            x: u * u * u * segment.from.x + 3 * u * u * t * segment.c1.x + 3 * u * t * t * segment.c2.x + t * t * t * segment.to.x,
-            y: u * u * u * segment.from.y + 3 * u * u * t * segment.c1.y + 3 * u * t * t * segment.c2.y + t * t * t * segment.to.y,
+            x:
+              u * u * u * segment.from.x +
+              3 * u * u * t * segment.c1.x +
+              3 * u * t * t * segment.c2.x +
+              t * t * t * segment.to.x,
+            y:
+              u * u * u * segment.from.y +
+              3 * u * u * t * segment.c1.y +
+              3 * u * t * t * segment.c2.y +
+              t * t * t * segment.to.y,
           };
           segments.push([previous, point]);
           previous = point;
@@ -445,9 +453,7 @@ function contoursIntersect(contours: Contour[]): boolean {
    * them, which is enough for a strict crossing test to say yes, and the c of
    * every face was reported folded on itself where its terminal is cut.
    */
-  const going = segments.filter(
-    ([from, to]) => Math.hypot(to.x - from.x, to.y - from.y) > 1e-9,
-  );
+  const going = segments.filter(([from, to]) => Math.hypot(to.x - from.x, to.y - from.y) > 1e-9);
   if (going.length > 600) return false; // too complex to be worth the sweep
 
   for (let i = 0; i < going.length; i++) {
@@ -471,4 +477,3 @@ function segmentsCross([a, b]: [Vec2, Vec2], [c, d]: [Vec2, Vec2]): boolean {
   // Strict crossing only: touching at a shared endpoint does not count.
   return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
 }
-

@@ -6,16 +6,13 @@ export type CollectionItemGroupsProps = {
   children: React.ReactNode;
 };
 
-export function CollectionItemGroups({
-  children,
-}: CollectionItemGroupsProps): React.JSX.Element {
+export function CollectionItemGroups({ children }: CollectionItemGroupsProps): React.JSX.Element {
   const groups = React.Children.toArray(children);
 
   return (
     <div className="min-w-0" data-slot="collection-item-groups">
       {groups.map((group, index) => {
-        const key =
-          React.isValidElement(group) && group.key !== null ? group.key : index;
+        const key = React.isValidElement(group) && group.key !== null ? group.key : index;
 
         return (
           <div

@@ -53,9 +53,7 @@ suite("a font with a weight slider", { timeout: FONT_SUITE_TIMEOUT * 6 }, () => 
     const read = inspectVariable(written.bytes, LETTERS, [{ wght: 400 }]);
     expect(read.error).toBeUndefined();
     expect(read.recompiles).toBe(true);
-    expect(read.axes).toEqual([
-      { tag: "wght", name: "Weight", min: 100, default: 400, max: 900 },
-    ]);
+    expect(read.axes).toEqual([{ tag: "wght", name: "Weight", min: 100, default: 400, max: 900 }]);
     // Named, because an axis and four instances with no names is a slider with
     // no label and a menu with four blanks in it, which is what it was.
     expect(read.instances.map((one) => one.name)).toEqual(["Thin", "Regular", "Bold", "Black"]);

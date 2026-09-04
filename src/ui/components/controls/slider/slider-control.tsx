@@ -90,8 +90,7 @@ export function SliderControl({
 
   function stepEditableValue(direction: -1 | 1, currentDraft: string): string | undefined {
     const parsedDraftValue = parseSliderValueLabel(currentDraft);
-    const baseValue =
-      typeof parsedDraftValue === "number" ? parsedDraftValue : currentValue;
+    const baseValue = typeof parsedDraftValue === "number" ? parsedDraftValue : currentValue;
     const nextValue = clampSliderValue(baseValue + direction * step, min, max);
 
     commitValue(nextValue, getLiveHistoryMeta());
@@ -107,10 +106,7 @@ export function SliderControl({
           <EditableSliderValueLabel
             ariaLabel={`${name} value`}
             disabled={disabled}
-            maxValueLabel={getNumericValueLabelWidthReference(
-              displayValueLabel,
-              { max, min },
-            )}
+            maxValueLabel={getNumericValueLabelWidthReference(displayValueLabel, { max, min })}
             onCommit={(nextValueLabel) => {
               const parsedValue = parseSliderValueLabel(nextValueLabel);
 

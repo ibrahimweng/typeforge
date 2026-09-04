@@ -62,8 +62,14 @@ if (!REF) throw new Error("Set REF to the reference font file. See the note at t
 
 const band = (low: number, high: number): Contour => ({
   closed: true,
-  nodes: [[-4000, low], [4000, low], [4000, high], [-4000, high]].map(([x, y]) => ({
-    point: { x, y }, type: "line" as const,
+  nodes: [
+    [-4000, low],
+    [4000, low],
+    [4000, high],
+    [-4000, high],
+  ].map(([x, y]) => ({
+    point: { x, y },
+    type: "line" as const,
   })),
 });
 
@@ -81,7 +87,12 @@ async function round(contours: Contour[], x: number): Promise<number | null> {
 }
 
 /** `low` and `high` are in x-heights above the baseline. */
-async function bow(contours: Contour[], x: number, low: number, high: number): Promise<number | null> {
+async function bow(
+  contours: Contour[],
+  x: number,
+  low: number,
+  high: number,
+): Promise<number | null> {
   const edges: Array<{ y: number; edge: number }> = [];
   const steps = 14;
   for (let i = 0; i <= steps; i++) {
@@ -108,13 +119,22 @@ async function bow(contours: Contour[], x: number, low: number, high: number): P
 
 /** Where to look on each letter, in x-heights above the baseline. */
 const STEMS: Record<string, [number, number]> = {
-  l: [0.3, 0.9], h: [0.3, 0.9], b: [0.3, 0.9], k: [0.3, 0.9], d: [0.3, 0.9],
-  n: [0.3, 0.9], m: [0.3, 0.9], i: [0.3, 0.9], u: [0.3, 0.9], r: [0.3, 0.9],
+  l: [0.3, 0.9],
+  h: [0.3, 0.9],
+  b: [0.3, 0.9],
+  k: [0.3, 0.9],
+  d: [0.3, 0.9],
+  n: [0.3, 0.9],
+  m: [0.3, 0.9],
+  i: [0.3, 0.9],
+  u: [0.3, 0.9],
+  r: [0.3, 0.9],
 };
 const BOWLS = ["o", "e", "c", "a", "g", "q", "p", "b", "d"];
 
 const faces = BASES.filter((one) => one.parts.script?.on);
-const head = `${"".padEnd(5)}${"reference".padStart(10)}` +
+const head =
+  `${"".padEnd(5)}${"reference".padStart(10)}` +
   faces.map((one) => one.name.slice(0, 9).padStart(10)).join("");
 
 const show = (n: number | null) => (n === null ? "     --   " : n.toFixed(3).padStart(10));

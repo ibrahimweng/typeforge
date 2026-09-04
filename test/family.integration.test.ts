@@ -126,7 +126,17 @@ suite("a family of files", { timeout: FONT_SUITE_TIMEOUT }, () => {
     const written = await deliver(forge, { familyName: "Grouped", format: "ttf" });
     const files = unpack(written.bytes);
 
-    const seen: Record<string, { one: string; two: string; sixteen?: string; seventeen?: string; weight: number; bold: boolean }> = {};
+    const seen: Record<
+      string,
+      {
+        one: string;
+        two: string;
+        sixteen?: string;
+        seventeen?: string;
+        weight: number;
+        bold: boolean;
+      }
+    > = {};
     for (const [name, bytes] of Object.entries(files)) {
       const report = inspectFont(bytes);
       seen[name] = {

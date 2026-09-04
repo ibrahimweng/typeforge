@@ -11,8 +11,7 @@ export function formatRangeSliderValue(
   step: number,
   unit?: string,
 ): string {
-  const formatValue = (item: number): string =>
-    formatSliderValueWithUnit(item, step, unit);
+  const formatValue = (item: number): string => formatSliderValueWithUnit(item, step, unit);
 
   if (value.length >= 2 && value[0] === value[1]) {
     return formatValue(value[0] ?? 0);
@@ -56,9 +55,8 @@ export function parseRangeSliderDraft(
     ? [pairMatch[1], pairMatch[2]]
         .map((match) => parseRangeSliderDraftNumber(match))
         .filter(Number.isFinite)
-    : Array.from(
-        draftValue.matchAll(/[-−]?\d+(?:[.,]\d+)?/g),
-        ([match]) => parseRangeSliderDraftNumber(match),
+    : Array.from(draftValue.matchAll(/[-−]?\d+(?:[.,]\d+)?/g), ([match]) =>
+        parseRangeSliderDraftNumber(match),
       ).filter(Number.isFinite);
 
   if (values.length === 0) {

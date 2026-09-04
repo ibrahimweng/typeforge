@@ -360,7 +360,10 @@ export function glyfPointsToContour(points: GlyfPoint[]): Contour {
   if (nodes.length > 1) {
     const first = nodes[0];
     const last = nodes[nodes.length - 1];
-    if (Math.abs(first.point.x - last.point.x) < 1e-6 && Math.abs(first.point.y - last.point.y) < 1e-6) {
+    if (
+      Math.abs(first.point.x - last.point.x) < 1e-6 &&
+      Math.abs(first.point.y - last.point.y) < 1e-6
+    ) {
       first.handleIn = last.handleIn;
       nodes.pop();
     }

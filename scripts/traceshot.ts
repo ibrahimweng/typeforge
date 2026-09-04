@@ -26,10 +26,7 @@ import { sweepAll, toleranceFor } from "@/quill/sweep";
 import type { Contour } from "@/font/types";
 
 await ready();
-const { typeface } = await importFont(
-  new Uint8Array(readFileSync(process.env.FONT!)),
-  "ref.ttf",
-);
+const { typeface } = await importFont(new Uint8Array(readFileSync(process.env.FONT!)), "ref.ttf");
 const byChar = new Map<string, (typeof typeface.glyphs)[number]>();
 for (const g of typeface.glyphs)
   for (const u of g.unicodes ?? []) byChar.set(String.fromCodePoint(u), g);
@@ -65,9 +62,7 @@ letters.forEach((ch, i) => {
     <path d="${d(unite(out.contours))}" fill="none" stroke="#d0021b" stroke-width="${upm / 220}"/>
     <g fill="#0b62d6">${out.contours
       .flatMap((c) => c.nodes)
-      .map(
-        (n) => `<circle cx="${n.point.x}" cy="${n.point.y}" r="${upm / 130}"/>`,
-      )
+      .map((n) => `<circle cx="${n.point.x}" cy="${n.point.y}" r="${upm / 130}"/>`)
       .join("")}</g>
   </g>`;
 });

@@ -351,8 +351,7 @@ export function measure(typeface: Typeface): Measured {
   const sidebearing = measureSidebearing(typeface);
   const stem = measureStem(typeface, xHeight, capHeight);
   const crossbar = measureCrossbar(typeface, capHeight);
-  const contrast =
-    stem && crossbar ? Math.max(0, Math.min(0.95, 1 - crossbar / stem)) : null;
+  const contrast = stem && crossbar ? Math.max(0, Math.min(0.95, 1 - crossbar / stem)) : null;
 
   return {
     familyName: typeface.meta.familyName,

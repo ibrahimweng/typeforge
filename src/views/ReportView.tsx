@@ -140,10 +140,20 @@ export function ReportView(): React.JSX.Element {
               filter, so it stays a plain number rather than becoming a button
               that changes nothing when pressed.
             */}
-            <Count value={counts.error} label="error" tone="error" on={shown.error}
-              onToggle={() => toggle("error")} />
-            <Count value={counts.warning} label="warning" tone="warning" on={shown.warning}
-              onToggle={() => toggle("warning")} />
+            <Count
+              value={counts.error}
+              label="error"
+              tone="error"
+              on={shown.error}
+              onToggle={() => toggle("error")}
+            />
+            <Count
+              value={counts.warning}
+              label="warning"
+              tone="warning"
+              on={shown.warning}
+              onToggle={() => toggle("warning")}
+            />
             {/*
               Advice is not a fault and is coloured as one it is not. It is a
               second opinion on the drawing -- every optical rule can be
@@ -151,10 +161,20 @@ export function ReportView(): React.JSX.Element {
               uses for things worth looking at rather than the red and amber it
               uses for things that are wrong.
             */}
-            <Count value={counts.advice} label="piece of advice" tone="advice" on={shown.advice}
-              onToggle={() => toggle("advice")} />
-            <Count value={counts.info} label="note" tone="info" on={shown.info}
-              onToggle={() => toggle("info")} />
+            <Count
+              value={counts.advice}
+              label="piece of advice"
+              tone="advice"
+              on={shown.advice}
+              onToggle={() => toggle("advice")}
+            />
+            <Count
+              value={counts.info}
+              label="note"
+              tone="info"
+              on={shown.info}
+              onToggle={() => toggle("info")}
+            />
             <span className="text-2xs text-muted-foreground tabular-nums">
               {report.examined.toLocaleString()} {report.examined === 1 ? "glyph" : "glyphs"}{" "}
               checked
@@ -251,8 +271,7 @@ export function ReportView(): React.JSX.Element {
         */}
         {report && report.findings.length > 0 && visible.length === 0 && (
           <p className="py-16 text-center text-xs-plus text-muted-foreground">
-            {report.findings.length} findings, all of them put away. Turn a severity back on
-            above.
+            {report.findings.length} findings, all of them put away. Turn a severity back on above.
           </p>
         )}
         <div ref={listRef} className="mx-auto flex max-w-3xl flex-col gap-2">
@@ -280,7 +299,10 @@ function Count({
 }): React.JSX.Element {
   const colour = SEVERITY_TEXT[tone];
   // "1 piece of advice" and "4 pieces of advice": the plural is not on the end.
-  const words = value === 1 ? `${value} ${label}` : `${value} ${label.replace("piece of", "pieces of")}${label.startsWith("piece") ? "" : "s"}`;
+  const words =
+    value === 1
+      ? `${value} ${label}`
+      : `${value} ${label.replace("piece of", "pieces of")}${label.startsWith("piece") ? "" : "s"}`;
 
   if (value === 0) {
     return <span className="text-2xs tabular-nums text-muted-foreground">{words}</span>;
@@ -295,7 +317,9 @@ function Count({
       title={on ? `Put the ${label}s away` : `Show the ${label}s again`}
       className={cn(
         "rounded border px-1.5 py-0.5 text-2xs tabular-nums transition-colors",
-        on ? cn("border-border bg-card", colour) : "border-transparent text-muted-foreground line-through",
+        on
+          ? cn("border-border bg-card", colour)
+          : "border-transparent text-muted-foreground line-through",
       )}
     >
       {words}
@@ -307,10 +331,7 @@ function FindingRow({ finding }: { finding: Finding }): React.JSX.Element {
   return (
     <div
       data-finding={finding.severity}
-      className={cn(
-        "rounded-md border bg-card/40 p-3",
-        SEVERITY_EDGE[finding.severity],
-      )}
+      className={cn("rounded-md border bg-card/40 p-3", SEVERITY_EDGE[finding.severity])}
     >
       <div className="flex items-baseline gap-2.5">
         <span

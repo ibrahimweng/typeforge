@@ -70,8 +70,7 @@ function font(): Typeface {
   return face;
 }
 
-const named = (face: Typeface, name: string): Glyph =>
-  face.glyphs[face.glyphIndex.get(name)!];
+const named = (face: Typeface, name: string): Glyph => face.glyphs[face.glyphIndex.get(name)!];
 
 const ink = (contours: Contour[]): number =>
   Math.abs(contours.reduce((total, one) => total + contourArea(one), 0));
@@ -122,7 +121,9 @@ describe("cuts in the parameter stack", () => {
   it("takes ink out of a letter and leaves its advance alone", () => {
     const face = font();
     const before = resolveGlyphContours(named(face, "H"), face);
-    face.cuts = cutWith((one) => { one.slot.on = true; });
+    face.cuts = cutWith((one) => {
+      one.slot.on = true;
+    });
     const after = resolveGlyphContours(named(face, "H"), face);
 
     expect(ink(after)).toBeLessThan(ink(before));
@@ -140,14 +141,18 @@ describe("cuts in the parameter stack", () => {
      */
     const face = font();
     face.glyphs[face.glyphIndex.get("I")!] = glyph("I", [rect(100, 0, 90, 700, true)]);
-    face.cuts = cutWith((one) => { one.motif.on = true; });
+    face.cuts = cutWith((one) => {
+      one.motif.on = true;
+    });
     const after = resolveGlyphContours(named(face, "I"), face);
     expect(ink(after)).toBeGreaterThan(0);
   });
 
   it("replaces a counter, and leaves a letter that has none alone", () => {
     const face = font();
-    face.cuts = cutWith((one) => { one.motif.on = true; });
+    face.cuts = cutWith((one) => {
+      one.motif.on = true;
+    });
     // The O's counter becomes a diamond, which is smaller than the square hole
     // it stands in, so the letter gains ink.
     const ring = resolveGlyphContours(named(face, "O"), face);
@@ -181,7 +186,9 @@ describe("cuts in the parameter stack", () => {
      * is measured here is that the two orders disagree at all.
      */
     const upright = font();
-    upright.cuts = cutWith((one) => { one.slot = { on: true, count: 2, width: 0.34, angle: 30, inset: 0.14 }; });
+    upright.cuts = cutWith((one) => {
+      one.slot = { on: true, count: 2, width: 0.34, angle: 30, inset: 0.14 };
+    });
     const straight = resolveGlyphContours(named(upright, "H"), upright);
 
     const leaning = font();
@@ -198,7 +205,9 @@ describe("cuts in the parameter stack", () => {
 
   it("lets a letter be cut its own way instead of the font's", () => {
     const face = font();
-    face.cuts = cutWith((one) => { one.slot.on = true; });
+    face.cuts = cutWith((one) => {
+      one.slot.on = true;
+    });
     named(face, "H").cuts = noCuts();
 
     expect(effectiveCuts(named(face, "H"), face)).toEqual(noCuts());

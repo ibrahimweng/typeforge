@@ -16,7 +16,7 @@
  * away.
  */
 
-import * as React from "react";
+import type * as React from "react";
 
 import { forgeStore } from "@/state/useForge";
 import { quillStore } from "@/state/useQuill";
@@ -69,9 +69,9 @@ export function OnLoan(): React.JSX.Element | null {
     >
       <p className="min-w-0 flex-1 truncate text-2xs text-muted-foreground">
         <span className="font-medium text-foreground">{loan.letter}</span> of{" "}
-        {loan.family || "Untitled"}, on loan from{" "}
-        {loan.from === "forge" ? "Draw" : "Trace"}. Keeping it makes this letter your drawing: it
-        holds its advance and stops answering the controls that drew it.
+        {loan.family || "Untitled"}, on loan from {loan.from === "forge" ? "Draw" : "Trace"}.
+        Keeping it makes this letter your drawing: it holds its advance and stops answering the
+        controls that drew it.
       </p>
       <button
         type="button"

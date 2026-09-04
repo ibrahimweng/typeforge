@@ -160,10 +160,10 @@ export function QuillExportDialog({ onClose }: { onClose: () => void }): React.J
 
         <p className="pb-2 text-2xs leading-relaxed text-muted-foreground">
           {doc.letters.length} letters, redrawn from the strokes recovered from{" "}
-          <span className="text-foreground">{doc.from || "an unnamed font"}</span> with the hand
-          you have set. The lines of the font — x-height, cap height, ascender, descender — are
-          measured off these letters rather than carried over, so they describe what is actually
-          being written.
+          <span className="text-foreground">{doc.from || "an unnamed font"}</span> with the hand you
+          have set. The lines of the font — x-height, cap height, ascender, descender — are measured
+          off these letters rather than carried over, so they describe what is actually being
+          written.
         </p>
 
         {/*
@@ -180,9 +180,9 @@ export function QuillExportDialog({ onClose }: { onClose: () => void }): React.J
           data-quill-derivative
         >
           This file is a derivative work of{" "}
-          <span className="text-foreground">{doc.from || "the font you read in"}</span>. Its
-          licence governs what you may do with what comes out, and the copyright field in the
-          file says so. Point this only at a font you have the right to derive from.
+          <span className="text-foreground">{doc.from || "the font you read in"}</span>. Its licence
+          governs what you may do with what comes out, and the copyright field in the file says so.
+          Point this only at a font you have the right to derive from.
         </p>
 
         {problem && (

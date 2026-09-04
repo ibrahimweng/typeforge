@@ -17,12 +17,7 @@ import {
   normalizeCurvePoints,
 } from "./curve-geometry";
 
-export const curveChannels = [
-  "RGB",
-  "R",
-  "G",
-  "B",
-] as const satisfies readonly CurveChannel[];
+export const curveChannels = ["RGB", "R", "G", "B"] as const satisfies readonly CurveChannel[];
 export const singleCurveChannels = ["RGB"] as const satisfies readonly CurveChannel[];
 export const channelMeta = sharedChannelMeta;
 const curveGraphRadius = 6;
@@ -96,10 +91,7 @@ export function CurveGraph({
         x={curveInset}
         y={curveInset}
       />
-      <CurveGrid
-        clipPathId={clipPathId}
-        showReferenceLine={showReferenceLine}
-      />
+      <CurveGrid clipPathId={clipPathId} showReferenceLine={showReferenceLine} />
       <CurvePaths
         activeChannel={activeChannel}
         channels={channels}
@@ -130,22 +122,10 @@ type CurveGraphProps = {
   graphRef: React.RefObject<SVGSVGElement | null>;
   interpolation?: CurveInterpolation;
   onBackgroundPointerDown: React.PointerEventHandler<SVGRectElement>;
-  onPointDoubleClick: (
-    index: number,
-    event: React.MouseEvent<HTMLButtonElement>,
-  ) => void;
-  onPointKeyDown: (
-    index: number,
-    event: React.KeyboardEvent<HTMLButtonElement>,
-  ) => void;
-  onPointPointerDown: (
-    index: number,
-    event: React.PointerEvent<HTMLButtonElement>,
-  ) => void;
-  onPointPointerUp: (
-    index: number,
-    event: React.PointerEvent<HTMLButtonElement>,
-  ) => void;
+  onPointDoubleClick: (index: number, event: React.MouseEvent<HTMLButtonElement>) => void;
+  onPointKeyDown: (index: number, event: React.KeyboardEvent<HTMLButtonElement>) => void;
+  onPointPointerDown: (index: number, event: React.PointerEvent<HTMLButtonElement>) => void;
+  onPointPointerUp: (index: number, event: React.PointerEvent<HTMLButtonElement>) => void;
   points: Record<CurveChannel, readonly CurvePoint[]>;
   selectedPointIndex: number | null;
 };
@@ -278,26 +258,13 @@ function CurvePointHandles({
   activeChannel: CurveChannel;
   activePoints: readonly CurvePoint[];
   draggingPointIndex: number | null;
-  onPointDoubleClick: (
-    index: number,
-    event: React.MouseEvent<HTMLButtonElement>,
-  ) => void;
-  onPointKeyDown: (
-    index: number,
-    event: React.KeyboardEvent<HTMLButtonElement>,
-  ) => void;
-  onPointPointerDown: (
-    index: number,
-    event: React.PointerEvent<HTMLButtonElement>,
-  ) => void;
-  onPointPointerUp: (
-    index: number,
-    event: React.PointerEvent<HTMLButtonElement>,
-  ) => void;
+  onPointDoubleClick: (index: number, event: React.MouseEvent<HTMLButtonElement>) => void;
+  onPointKeyDown: (index: number, event: React.KeyboardEvent<HTMLButtonElement>) => void;
+  onPointPointerDown: (index: number, event: React.PointerEvent<HTMLButtonElement>) => void;
+  onPointPointerUp: (index: number, event: React.PointerEvent<HTMLButtonElement>) => void;
   selectedPointIndex: number | null;
 }): React.JSX.Element {
-  const handlesVisible =
-    selectedPointIndex !== null || draggingPointIndex !== null;
+  const handlesVisible = selectedPointIndex !== null || draggingPointIndex !== null;
 
   return (
     <g
@@ -340,22 +307,10 @@ function CurvePointHandle({
   activeChannel: CurveChannel;
   dragging: boolean;
   index: number;
-  onPointDoubleClick: (
-    index: number,
-    event: React.MouseEvent<HTMLButtonElement>,
-  ) => void;
-  onPointKeyDown: (
-    index: number,
-    event: React.KeyboardEvent<HTMLButtonElement>,
-  ) => void;
-  onPointPointerDown: (
-    index: number,
-    event: React.PointerEvent<HTMLButtonElement>,
-  ) => void;
-  onPointPointerUp: (
-    index: number,
-    event: React.PointerEvent<HTMLButtonElement>,
-  ) => void;
+  onPointDoubleClick: (index: number, event: React.MouseEvent<HTMLButtonElement>) => void;
+  onPointKeyDown: (index: number, event: React.KeyboardEvent<HTMLButtonElement>) => void;
+  onPointPointerDown: (index: number, event: React.PointerEvent<HTMLButtonElement>) => void;
+  onPointPointerUp: (index: number, event: React.PointerEvent<HTMLButtonElement>) => void;
   point: CurvePoint;
   selected: boolean;
 }): React.JSX.Element {

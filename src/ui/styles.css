@@ -3,61 +3,61 @@
 }
 
 @custom-variant data-open {
-  &:where([data-state='open']),
-  &:where([data-open]:not([data-open='false'])) {
+  &:where([data-state="open"]),
+  &:where([data-open]:not([data-open="false"])) {
     @slot;
   }
 }
 
 @custom-variant data-closed {
-  &:where([data-state='closed']),
-  &:where([data-closed]:not([data-closed='false'])) {
+  &:where([data-state="closed"]),
+  &:where([data-closed]:not([data-closed="false"])) {
     @slot;
   }
 }
 
 @custom-variant data-checked {
-  &[data-state='checked'],
-  &[data-checked]:not([data-checked='false']) {
+  &[data-state="checked"],
+  &[data-checked]:not([data-checked="false"]) {
     @slot;
   }
 }
 
 @custom-variant data-unchecked {
-  &[data-state='unchecked'],
-  &[data-unchecked]:not([data-unchecked='false']) {
+  &[data-state="unchecked"],
+  &[data-unchecked]:not([data-unchecked="false"]) {
     @slot;
   }
 }
 
 @custom-variant data-selected {
-  &:where([data-selected='true']) {
+  &:where([data-selected="true"]) {
     @slot;
   }
 }
 
 @custom-variant data-disabled {
-  &:where([data-disabled='true']),
-  &:where([data-disabled]:not([data-disabled='false'])) {
+  &:where([data-disabled="true"]),
+  &:where([data-disabled]:not([data-disabled="false"])) {
     @slot;
   }
 }
 
 @custom-variant data-active {
-  &:where([data-state='active']),
-  &:where([data-active]:not([data-active='false'])) {
+  &:where([data-state="active"]),
+  &:where([data-active]:not([data-active="false"])) {
     @slot;
   }
 }
 
 @custom-variant data-horizontal {
-  &:where([data-orientation='horizontal']) {
+  &:where([data-orientation="horizontal"]) {
     @slot;
   }
 }
 
 @custom-variant data-vertical {
-  &:where([data-orientation='vertical']) {
+  &:where([data-orientation="vertical"]) {
     @slot;
   }
 }
@@ -96,8 +96,7 @@
 .toolcraft-panel-surface,
 .toolcraft-panel-surface * {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklab, var(--foreground) 10%, transparent)
-    transparent;
+  scrollbar-color: color-mix(in oklab, var(--foreground) 10%, transparent) transparent;
 }
 
 [data-toolcraft-controls-mounting="true"],

@@ -13,7 +13,10 @@ const square = (x: number, y: number, size: number): Vec2[] => [
 
 describe("rayHitDistance", () => {
   it("measures the distance to the first edge in the way", () => {
-    expect(rayHitDistance([square(0, 0, 100)], { x: 50, y: 50 }, { x: 1, y: 0 })).toBeCloseTo(50, 6);
+    expect(rayHitDistance([square(0, 0, 100)], { x: 50, y: 50 }, { x: 1, y: 0 })).toBeCloseTo(
+      50,
+      6,
+    );
   });
 
   it("says nothing is in the way when nothing is", () => {

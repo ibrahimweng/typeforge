@@ -7,7 +7,7 @@
  * in the places where a letter is being judged rather than operated.
  */
 
-import * as React from "react";
+import type * as React from "react";
 
 import { store, useAppState } from "@/state/useStore";
 import { segment, SEGMENT_TRACK } from "@/components/controls";

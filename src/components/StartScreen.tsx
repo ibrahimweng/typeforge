@@ -124,7 +124,11 @@ export function StartScreen(): React.JSX.Element {
         <div className="mt-6 border-t border-border pt-5">
           <p className="text-2xs font-medium text-foreground">Or start from a font</p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => press("[data-open-input]")} className={PRIMARY_ACTION}>
+            <button
+              type="button"
+              onClick={() => press("[data-open-input]")}
+              className={PRIMARY_ACTION}
+            >
               Open a font
             </button>
             <button

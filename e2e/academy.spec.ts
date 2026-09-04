@@ -66,16 +66,21 @@ test("a lesson ticks itself when the font says so, not when you say so", async (
   await expect(lesson(page, "first.weight")).toContainText("ticks itself");
 
   // Move the real control, and it notices.
-  await page.locator("input[type=range]").first().evaluate((el: HTMLInputElement) => {
-    const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
-    set.call(el, String(Number(el.value) + 25));
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-    el.dispatchEvent(new Event("change", { bubbles: true }));
-  });
+  await page
+    .locator("input[type=range]")
+    .first()
+    .evaluate((el: HTMLInputElement) => {
+      const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+      set.call(el, String(Number(el.value) + 25));
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    });
   await expect(lesson(page, "first.weight")).toHaveAttribute("data-done", "yes");
 });
 
-test("a lesson with nothing checkable is marked by hand, and says which it is", async ({ page }) => {
+test("a lesson with nothing checkable is marked by hand, and says which it is", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await page.goto("/");
   await page.locator("[data-open-academy]").click();

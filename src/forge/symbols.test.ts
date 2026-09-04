@@ -57,7 +57,8 @@ describe("the character set is complete", () => {
     const wrong: string[] = [];
     for (const slot of SLOTS) {
       const drawn = BY_CHARACTER.get(slot.character);
-      if (drawn && drawn !== slot.name) wrong.push(`${slot.character}: draw ${drawn}, assemble ${slot.name}`);
+      if (drawn && drawn !== slot.name)
+        wrong.push(`${slot.character}: draw ${drawn}, assemble ${slot.name}`);
     }
     expect(wrong.join("; ")).toBe("");
   });
@@ -69,7 +70,10 @@ describe("the character set is complete", () => {
       for (const slot of symbols) {
         const drawn = drawLetter(BY_CHARACTER.get(slot.character)!, style);
         expect(drawn, `${slot.character} did not draw on ${style.name}`).not.toBeNull();
-        expect(drawn!.contours.length, `${slot.character} is empty on ${style.name}`).toBeGreaterThan(0);
+        expect(
+          drawn!.contours.length,
+          `${slot.character} is empty on ${style.name}`,
+        ).toBeGreaterThan(0);
       }
     }
   });
@@ -138,8 +142,7 @@ describe("the symbols drawn out of a letter", () => {
 });
 
 describe("where the symbols sit", () => {
-  const bounds = (name: string, style = SANS) =>
-    contoursBounds(drawLetter(name, style)!.contours);
+  const bounds = (name: string, style = SANS) => contoursBounds(drawLetter(name, style)!.contours);
 
   /*
    * A plus, an equals, a multiply and a division sign that do not share a line
@@ -161,7 +164,9 @@ describe("where the symbols sit", () => {
     const uprights = ["bar", "brokenbar", "bracketleft", "bracketright", "braceleft", "braceright"];
     for (const name of uprights) {
       const box = bounds(name);
-      expect(Math.abs(box.yMax - bounds("bar").yMax), `${name} is a different height`).toBeLessThan(2);
+      expect(Math.abs(box.yMax - bounds("bar").yMax), `${name} is a different height`).toBeLessThan(
+        2,
+      );
       expect(Math.abs(box.yMin - bounds("bar").yMin), `${name} sits differently`).toBeLessThan(2);
     }
   });
@@ -187,9 +192,17 @@ describe("where the symbols sit", () => {
 
   /** A superior figure hangs from the cap line, well clear of the x-height. */
   it("hangs the superior figures and the ordinals from the cap line", () => {
-    for (const name of ["onesuperior", "twosuperior", "threesuperior", "ordfeminine", "ordmasculine"]) {
+    for (const name of [
+      "onesuperior",
+      "twosuperior",
+      "threesuperior",
+      "ordfeminine",
+      "ordmasculine",
+    ]) {
       const box = bounds(name);
-      expect(box.yMax, `${name} is not at the cap line`).toBeGreaterThan(SANS.metrics.capHeight * 0.9);
+      expect(box.yMax, `${name} is not at the cap line`).toBeGreaterThan(
+        SANS.metrics.capHeight * 0.9,
+      );
       expect(box.yMin, `${name} hangs too low`).toBeGreaterThan(SANS.metrics.xHeight * 0.4);
     }
   });

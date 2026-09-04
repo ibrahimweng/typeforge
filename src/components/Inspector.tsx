@@ -90,10 +90,11 @@ export function Inspector(): React.JSX.Element {
 
   if (!typeface) {
     return (
-      <aside aria-label="Parameters" className={cn(SIDE_PANEL, "shrink-0 border-l border-border p-4")}>
-        <p className="text-2xs text-muted-foreground">
-          Parameters appear once a font is open.
-        </p>
+      <aside
+        aria-label="Parameters"
+        className={cn(SIDE_PANEL, "shrink-0 border-l border-border p-4")}
+      >
+        <p className="text-2xs text-muted-foreground">Parameters appear once a font is open.</p>
       </aside>
     );
   }
@@ -122,9 +123,8 @@ export function Inspector(): React.JSX.Element {
         data-no-letters
       >
         <p className="text-2xs leading-relaxed text-muted-foreground">
-          Parameters reshape letters — their weight, their width, the space
-          inside them. This font has none yet, so there is nothing for them to
-          take hold of. Draw a letter and they appear.
+          Parameters reshape letters — their weight, their width, the space inside them. This font
+          has none yet, so there is nothing for them to take hold of. Draw a letter and they appear.
         </p>
       </aside>
     );
@@ -136,7 +136,10 @@ export function Inspector(): React.JSX.Element {
   return (
     <aside
       aria-label="Parameters"
-      className={cn(SIDE_PANEL, "toolcraft-panel-surface flex shrink-0 flex-col border-l border-border")}
+      className={cn(
+        SIDE_PANEL,
+        "toolcraft-panel-surface flex shrink-0 flex-col border-l border-border",
+      )}
     >
       <div
         className="flex gap-0.5 border-b border-border bg-card/60 p-1"
@@ -191,8 +194,7 @@ export function Inspector(): React.JSX.Element {
                   accessible name by joining the text nodes -- a screen reader,
                   and the test below that caught it.
                 */}
-                Letter{" "}
-                {glyph && <span className="opacity-60">{glyph.name}</span>}
+                Letter {glyph && <span className="opacity-60">{glyph.name}</span>}
               </>
             ) : (
               <span className="capitalize">{option}</span>
@@ -245,8 +247,8 @@ export function Inspector(): React.JSX.Element {
           </div>
         </div>
       ) : (
-      <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
-      {/*
+        <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
+          {/*
         Under the letter's own scope, because that is what it is about, and in
         the view where a path is what you are handling.
 
@@ -257,13 +259,13 @@ export function Inspector(): React.JSX.Element {
         is a fact about the drawing, and a column of sidebearings is not the
         place to be told it.
       */}
-      {/*
+          {/*
         What the letter *is*, above the three panels that change how it looks.
         A level up from them: those redraw it, this decides whether it is there
         and what it is called.
       */}
-      {editingGlyph && <LetterPanel />}
-      {/*
+          {editingGlyph && <LetterPanel />}
+          {/*
         The pen, above the paths, and only while a write tool is in hand.
 
         Above them because a written letter's paths are the sweep's rather than
@@ -272,95 +274,95 @@ export function Inspector(): React.JSX.Element {
         writing because three numbers about a pen mean nothing on a letter that
         was not written with one, and this rail is already full.
       */}
-      {editingGlyph && state.view === "glyph" && writesStrokes(state.tool) && (
-        <div className="border-b border-border p-3">
-          <PenPanel glyphName={glyphName!} />
-        </div>
-      )}
-      {editingGlyph && state.view === "glyph" && <PathsPanel />}
-      {/*
+          {editingGlyph && state.view === "glyph" && writesStrokes(state.tool) && (
+            <div className="border-b border-border p-3">
+              <PenPanel glyphName={glyphName!} />
+            </div>
+          )}
+          {editingGlyph && state.view === "glyph" && <PathsPanel />}
+          {/*
         Under the same scope and the same view as the paths, and for the same
         reason: a transform acts on one letter's outlines, and the glyph view
         is where a letter's outlines are in hand.
       */}
-      {editingGlyph && state.view === "glyph" && <TransformPanel />}
-      {/*
+          {editingGlyph && state.view === "glyph" && <TransformPanel />}
+          {/*
         And below the transforms, because the order is the order of scope: a
         path, then the whole drawing, then a point in it. Somebody working
         their way down the panel goes from the largest thing they can act on
         to the smallest.
       */}
-      {editingGlyph && state.view === "glyph" && <PointsPanel />}
-      <div ref={listRef} className="p-3" data-panel-section="params">
-        {PARAMS.map((spec) => {
-          const scaleFactor = spec.emRelative ? typeface.unitsPerEm : 1;
-          const value = resolved[spec.key];
-          const overridden = editingGlyph && glyph!.params[spec.key] !== undefined;
+          {editingGlyph && state.view === "glyph" && <PointsPanel />}
+          <div ref={listRef} className="p-3" data-panel-section="params">
+            {PARAMS.map((spec) => {
+              const scaleFactor = spec.emRelative ? typeface.unitsPerEm : 1;
+              const value = resolved[spec.key];
+              const overridden = editingGlyph && glyph!.params[spec.key] !== undefined;
 
-          return (
-            <div key={spec.key} className="pb-3.5">
-              {/* The label lives on the slider itself. This row is only here
+              return (
+                <div key={spec.key} className="pb-3.5">
+                  {/* The label lives on the slider itself. This row is only here
                   when there is something to say beside it. */}
-              {overridden && (
-                <div className="flex items-baseline justify-end pb-1">
-                  <button
-                    type="button"
-                    onClick={() => glyphName && store.clearGlyphParam(glyphName, spec.key)}
-                    className="text-2xs text-accent hover:underline"
-                    title="Follow the family value again"
-                  >
-                    reset
-                  </button>
+                  {overridden && (
+                    <div className="flex items-baseline justify-end pb-1">
+                      <button
+                        type="button"
+                        onClick={() => glyphName && store.clearGlyphParam(glyphName, spec.key)}
+                        className="text-2xs text-accent hover:underline"
+                        title="Follow the family value again"
+                      >
+                        reset
+                      </button>
+                    </div>
+                  )}
+                  <Slider
+                    /*
+                     * The slider prints this as its own label, so it has to be the
+                     * name of the control rather than an identifier. It had been
+                     * `family-cornerRadius`, which appeared under every heading in
+                     * the panel as though it meant something.
+                     */
+                    name={spec.label}
+                    value={value / scaleFactor}
+                    min={spec.min}
+                    max={spec.max}
+                    step={spec.step}
+                    unit={spec.unit}
+                    baseValue={DEFAULT_PARAMS[spec.key]}
+                    showFill
+                    onValueChange={(next, meta) => {
+                      const scaled = next * scaleFactor;
+                      // A drag arrives as a run of "merge" updates followed by a
+                      // final one. Snapshot at the start and record at the end, so
+                      // the whole gesture is a single undo step.
+                      if (meta?.history === "merge") {
+                        gestureRef.current ??= { ...typeface.params };
+                        if (editingGlyph && glyphName) {
+                          store.setGlyphParam(glyphName, spec.key, scaled);
+                        } else {
+                          store.setFamilyParam(spec.key, scaled);
+                        }
+                        return;
+                      }
+                      if (editingGlyph && glyphName) {
+                        store.setGlyphParam(glyphName, spec.key, scaled);
+                      } else {
+                        const before = gestureRef.current ?? { ...typeface.params };
+                        store.setFamilyParam(spec.key, scaled);
+                        store.commitFamilyParams(`Set ${spec.label.toLowerCase()}`, before);
+                      }
+                      gestureRef.current = null;
+                    }}
+                  />
+                  <p className="pt-1 text-2xs leading-snug text-muted-foreground">{spec.hint}</p>
                 </div>
-              )}
-              <Slider
-                /*
-                 * The slider prints this as its own label, so it has to be the
-                 * name of the control rather than an identifier. It had been
-                 * `family-cornerRadius`, which appeared under every heading in
-                 * the panel as though it meant something.
-                 */
-                name={spec.label}
-                value={value / scaleFactor}
-                min={spec.min}
-                max={spec.max}
-                step={spec.step}
-                unit={spec.unit}
-                baseValue={DEFAULT_PARAMS[spec.key]}
-                showFill
-                onValueChange={(next, meta) => {
-                  const scaled = next * scaleFactor;
-                  // A drag arrives as a run of "merge" updates followed by a
-                  // final one. Snapshot at the start and record at the end, so
-                  // the whole gesture is a single undo step.
-                  if (meta?.history === "merge") {
-                    gestureRef.current ??= { ...typeface.params };
-                    if (editingGlyph && glyphName) {
-                      store.setGlyphParam(glyphName, spec.key, scaled);
-                    } else {
-                      store.setFamilyParam(spec.key, scaled);
-                    }
-                    return;
-                  }
-                  if (editingGlyph && glyphName) {
-                    store.setGlyphParam(glyphName, spec.key, scaled);
-                  } else {
-                    const before = gestureRef.current ?? { ...typeface.params };
-                    store.setFamilyParam(spec.key, scaled);
-                    store.commitFamilyParams(`Set ${spec.label.toLowerCase()}`, before);
-                  }
-                  gestureRef.current = null;
-                }}
-              />
-              <p className="pt-1 text-2xs leading-snug text-muted-foreground">{spec.hint}</p>
-            </div>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
 
-      <Cutting scope={scope} glyphName={glyphName} />
+          <Cutting scope={scope} glyphName={glyphName} />
 
-      {/*
+          {/*
         Where to start, below what the panel is for rather than above it.
         
         This block is seven hundred and forty pixels of guidance about which
@@ -370,39 +372,43 @@ export function Inspector(): React.JSX.Element {
         every time. It is one scroll down now, under a rule that says what it
         is, so a beginner can still find it by reading rather than by knowing.
       */}
-      {scope === "family" && (
-        <>
-          <div className="border-y border-border bg-card/40 px-3 py-2" data-panel-section="where-to-start">
-            <h3 className="text-2xs font-medium uppercase tracking-wide text-foreground">
-              Where to start
-            </h3>
-            <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">
-              The handful of letters that set the shape of all the rest.
-            </p>
-          </div>
-          <ControlLetters />
-          <CoachMark id="family" />
-        </>
-      )}
+          {scope === "family" && (
+            <>
+              <div
+                className="border-y border-border bg-card/40 px-3 py-2"
+                data-panel-section="where-to-start"
+              >
+                <h3 className="text-2xs font-medium uppercase tracking-wide text-foreground">
+                  Where to start
+                </h3>
+                <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">
+                  The handful of letters that set the shape of all the rest.
+                </p>
+              </div>
+              <ControlLetters />
+              <CoachMark id="family" />
+            </>
+          )}
 
-      <div className="p-3">
-        <button
-          type="button"
-          onClick={() => {
-            if (editingGlyph && glyphName) {
-              for (const spec of PARAMS) store.clearGlyphParam(glyphName, spec.key);
-            } else {
-              const before = { ...typeface.params };
-              for (const spec of PARAMS) store.setFamilyParam(spec.key, DEFAULT_PARAMS[spec.key]);
-              store.commitFamilyParams("Reset parameters", before);
-            }
-          }}
-          className="w-full rounded-md border border-border px-2 py-1.5 text-2xs text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
-        >
-          Reset {scope === "glyph" ? "this glyph" : "all parameters"}
-        </button>
-      </div>
-      </div>
+          <div className="p-3">
+            <button
+              type="button"
+              onClick={() => {
+                if (editingGlyph && glyphName) {
+                  for (const spec of PARAMS) store.clearGlyphParam(glyphName, spec.key);
+                } else {
+                  const before = { ...typeface.params };
+                  for (const spec of PARAMS)
+                    store.setFamilyParam(spec.key, DEFAULT_PARAMS[spec.key]);
+                  store.commitFamilyParams("Reset parameters", before);
+                }
+              }}
+              className="w-full rounded-md border border-border px-2 py-1.5 text-2xs text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
+            >
+              Reset {scope === "glyph" ? "this glyph" : "all parameters"}
+            </button>
+          </div>
+        </div>
       )}
     </aside>
   );
@@ -438,7 +444,7 @@ function Cutting({
    * put the third slot, and showing the font's value there would be showing a
    * number this letter is not cut by.
    */
-  const cuts: Cuts = one ? store.cutsFor(glyphName) : typeface.cuts ?? noCuts();
+  const cuts: Cuts = one ? store.cutsFor(glyphName) : (typeface.cuts ?? noCuts());
   const held = one ? (name: CutName) => store.cutHeldBy(glyphName, name) : null;
 
   const change = (name: CutName, patch: Record<string, unknown>): void => {
@@ -450,7 +456,7 @@ function Cutting({
     }
   };
 
-  const cast: Cast = one ? store.castFor(glyphName) : typeface.cast ?? noCast();
+  const cast: Cast = one ? store.castFor(glyphName) : (typeface.cast ?? noCast());
   const castHeld = one ? (name: CastName) => store.castHeldBy(glyphName, name) : null;
   const changeCast = (name: CastName, patch: Record<string, unknown>): void => {
     if (one) store.changeGlyphCast(glyphName, name, patch as never);
@@ -519,7 +525,11 @@ export function CastOrder({
   return (
     <div className="border-t border-border pt-2" data-cast-order-picker>
       <div className="pb-1 text-2xs font-medium text-foreground">Which goes first</div>
-      <div className="flex gap-0.5 rounded-md bg-card/60 p-0.5" role="group" aria-label="Which goes first">
+      <div
+        className="flex gap-0.5 rounded-md bg-card/60 p-0.5"
+        role="group"
+        aria-label="Which goes first"
+      >
         <button
           type="button"
           aria-pressed={order === "after"}
@@ -540,10 +550,9 @@ export function CastOrder({
         </button>
       </div>
       <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">
-        Cut first and the shadow is thrown by the letter as it now is, so a slot
-        through the face shows as a slot through the shadow. Cast first and the
-        two are one block for the cut to slice, which can put a band across the
-        shadow where the face has none.
+        Cut first and the shadow is thrown by the letter as it now is, so a slot through the face
+        shows as a slot through the shadow. Cast first and the two are one block for the cut to
+        slice, which can put a band across the shadow where the face has none.
       </p>
     </div>
   );

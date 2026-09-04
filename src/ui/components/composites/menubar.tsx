@@ -1,6 +1,6 @@
 "use client";
 
-import * as React from "react";
+import type * as React from "react";
 import { Menubar as MenubarPrimitive } from "@base-ui/react/menubar";
 
 import { PrimitiveArrowIcon } from "../primitives";

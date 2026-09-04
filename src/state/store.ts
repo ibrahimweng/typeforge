@@ -11,12 +11,7 @@
  * take on every drag.
  */
 
-import {
-  applyEdits,
-  fromBase64,
-  type EditedProject,
-  type SavedMaster,
-} from "@/project/format";
+import { applyEdits, fromBase64, type EditedProject, type SavedMaster } from "@/project/format";
 import { buildAccents, deriveAnchors, suggestAnchors, looksLikeMark } from "@/font/accents";
 import { buildsOn, dependentsOf } from "@/font/composite";
 /*
@@ -43,7 +38,13 @@ import {
 } from "@/font/features";
 import { reverse as reverseContour } from "@/font/outline";
 import { NEARLY_STRAIGHT, offSmooth } from "@/font/marks";
-import { groupOf, nextIn, toolsIn, type GroupId as Group, type ToolId as Tool } from "@/font/toolset";
+import {
+  groupOf,
+  nextIn,
+  toolsIn,
+  type GroupId as Group,
+  type ToolId as Tool,
+} from "@/font/toolset";
 import { retracted, simplified, withPointOn, withoutPoint } from "@/font/pen";
 import {
   deriveParams,
@@ -71,13 +72,7 @@ import {
 } from "@/font/master";
 import type { Finding } from "@/font/validate";
 import { effectiveParams } from "@/font/transform";
-import {
-  noCuts,
-  NO_CUTS,
-  sameCut,
-  type CutName,
-  type Cuts,
-} from "@/font/cuts";
+import { noCuts, NO_CUTS, sameCut, type CutName, type Cuts } from "@/font/cuts";
 import { noCast, NO_CAST, sameCast, type Cast, type CastName } from "@/font/cast";
 import {
   DEFAULT_PARAMS,
@@ -793,7 +788,10 @@ class Store {
      * after it. Written down rather than left missing, so a document says where
      * its Regular sits on the width axis instead of implying it.
      */
-    const at_ = { ...Object.fromEntries(Object.keys(masters[0].at).map((one) => [one, masters[0].at[one]])), [tag]: at };
+    const at_ = {
+      ...Object.fromEntries(Object.keys(masters[0].at).map((one) => [one, masters[0].at[one]])),
+      [tag]: at,
+    };
     const made = masterFrom(typeface, freeMasterName(masters, wanted), at_, freeMasterId(masters));
     const filled = masters.map((one) =>
       one.at[tag] === undefined ? { ...one, at: { ...one.at, [tag]: middle } } : one,
@@ -1048,7 +1046,9 @@ class Store {
            * the open document is the label's job, and it already does it.
            */
           message: `Opened — ${typeface.glyphs.length.toLocaleString()} glyphs${
-            warnings.length ? `, with ${warnings.length === 1 ? "a note" : `${warnings.length} notes`} in Checks` : ""
+            warnings.length
+              ? `, with ${warnings.length === 1 ? "a note" : `${warnings.length} notes`} in Checks`
+              : ""
           }`,
           tone: "success",
           about: "edit",
@@ -1597,7 +1597,7 @@ class Store {
     const contour = glyph.contours[from.contour];
     if (!contour || contour.nodes.length === 0) return;
     const count = contour.nodes.length;
-    const next = ((from.node + by) % count + count) % count;
+    const next = (((from.node + by) % count) + count) % count;
     this.setSelectedNodes([nodeKey({ contour: from.contour, node: next })]);
   }
 
@@ -1660,9 +1660,7 @@ class Store {
       ? glyph.contours
       : glyph.contours.map((contour, index) => ({
           ...contour,
-          nodes: contour.nodes.filter((_, node) =>
-            picked.has(nodeKey({ contour: index, node })),
-          ),
+          nodes: contour.nodes.filter((_, node) => picked.has(nodeKey({ contour: index, node }))),
         }));
     const bounds = boundsOfPoints(inHand);
     const centre = { x: (bounds.xMin + bounds.xMax) / 2, y: (bounds.yMin + bounds.yMax) / 2 };
@@ -1688,9 +1686,7 @@ class Store {
       one.contours = one.contours.map((contour, index) => ({
         ...contour,
         nodes: contour.nodes.map((node, at) =>
-          picked.has(nodeKey({ contour: index, node: at }))
-            ? transformNode(node, transform)
-            : node,
+          picked.has(nodeKey({ contour: index, node: at })) ? transformNode(node, transform) : node,
         ),
       }));
     });
@@ -1779,8 +1775,7 @@ class Store {
     if (!drawn) return false;
 
     const clockwise = dominantConvention(typeface.glyphs) === "truetype";
-    const contour =
-      drawn.closed && isClockwise(drawn) !== clockwise ? flipContour(drawn) : drawn;
+    const contour = drawn.closed && isClockwise(drawn) !== clockwise ? flipContour(drawn) : drawn;
 
     this.editGlyph(glyphName, "Draw freehand", (one) => {
       one.contours = [...one.contours, contour];
@@ -2024,7 +2019,9 @@ class Store {
     this.editGlyph(glyphName, "Reconnect nodes", (one) => {
       one.contours = one.contours.map((each, index) => (index === contourIndex ? joined : each));
     });
-    this.set({ selectedNodes: new Set([nodeKey({ contour: contourIndex, node: wraps ? 0 : at })]) });
+    this.set({
+      selectedNodes: new Set([nodeKey({ contour: contourIndex, node: wraps ? 0 : at })]),
+    });
   }
 
   /**
@@ -2649,13 +2646,7 @@ class Store {
   }
 
   /** Move one point of a written stroke's spine. */
-  moveStrokePoint(
-    name: string,
-    stroke: number,
-    node: number,
-    to: Vec2,
-    live = false,
-  ): void {
+  moveStrokePoint(name: string, stroke: number, node: number, to: Vec2, live = false): void {
     const change = (editing: Glyph): void => {
       const one = editing.written?.strokes[stroke];
       if (!one) return;
@@ -2765,9 +2756,7 @@ class Store {
       written.strokes.push({
         spine,
         width: [{ at: 0, width }],
-        nib: penAtNodes(spine, [
-          { at: 0, contrast, angle, ...(using ? { pen: using } : {}) },
-        ]),
+        nib: penAtNodes(spine, [{ at: 0, contrast, angle, ...(using ? { pen: using } : {}) }]),
         start: { kind: "butt" },
         end: { kind: "butt" },
         join: "round",
@@ -2993,7 +2982,10 @@ class Store {
     this.editGlyph(glyphName, "Simplify", (one) => {
       one.contours = one.contours.map((contour) => simplified(contour, tolerance));
     });
-    const after = this.glyph(glyphName)!.contours.reduce((total, one) => total + one.nodes.length, 0);
+    const after = this.glyph(glyphName)!.contours.reduce(
+      (total, one) => total + one.nodes.length,
+      0,
+    );
     this.setSelectedNodes([]);
     this.say(
       before === after
@@ -3668,7 +3660,10 @@ class Store {
     if (!typeface || !glyph || !typeface.glyphIndex.has(part)) return false;
 
     if (part === glyphName || buildsOn(typeface, part, glyphName)) {
-      this.say(`${part} is already built from ${glyphName}, so this would have no bottom to it.`, "error");
+      this.say(
+        `${part} is already built from ${glyphName}, so this would have no bottom to it.`,
+        "error",
+      );
       return false;
     }
 
@@ -3678,7 +3673,10 @@ class Store {
         { glyphName: part, transform: { a: 1, b: 0, c: 0, d: 1, dx: 0, dy: 0 } },
       ];
     });
-    this.say(`${glyphName} is now built from ${part}. Drag it into place on the canvas.`, "success");
+    this.say(
+      `${glyphName} is now built from ${part}. Drag it into place on the canvas.`,
+      "success",
+    );
     return true;
   }
 
@@ -3816,7 +3814,10 @@ class Store {
    * listed before the class subtable in GPOS, so a specific value overrides the
    * class the pair belongs to.
    */
-  resolvedKerning(left: string, right: string): { value: number; source: "pair" | "class" | "none" } {
+  resolvedKerning(
+    left: string,
+    right: string,
+  ): { value: number; source: "pair" | "class" | "none" } {
     const typeface = this.state.typeface;
     if (!typeface) return { value: 0, source: "none" };
     const pair = typeface.kerning.find((entry) => entry.left === left && entry.right === right);
@@ -3994,10 +3995,16 @@ class Store {
     const typeface = this.state.typeface;
     if (!typeface) return null;
     const into = freeNameNear(typeface, name);
-    const made = this.editFont("Duplicate a letter", (one) => copyGlyphTo(one, name, into) !== null);
+    const made = this.editFont(
+      "Duplicate a letter",
+      (one) => copyGlyphTo(one, name, into) !== null,
+    );
     if (!made) return null;
     this.set({ selectedGlyph: into, selectedNodes: new Set() });
-    this.say(`Copied ${name} to ${into}. It answers to no character until you give it one.`, "success");
+    this.say(
+      `Copied ${name} to ${into}. It answers to no character until you give it one.`,
+      "success",
+    );
     return into;
   }
 
@@ -4011,9 +4018,7 @@ class Store {
 
   /** Join a run of letters into one drawing of them together. */
   addLigature(components: string[], ligature: string): boolean {
-    const made = this.editFont("Add a ligature", (one) =>
-      putLigatureIn(one, components, ligature),
-    );
+    const made = this.editFont("Add a ligature", (one) => putLigatureIn(one, components, ligature));
     if (made) this.say(`${components.join(" ")} now draws as ${ligature}.`, "success");
     else this.say(`Could not make a ligature of ${components.join(" ")}.`, "error");
     return made;
@@ -4066,7 +4071,8 @@ class Store {
       }
     }
     const wanted = [...new Set(unicodes)].sort((one, other) => one - other);
-    if (wanted.join() === [...glyph.unicodes].sort((one, other) => one - other).join()) return false;
+    if (wanted.join() === [...glyph.unicodes].sort((one, other) => one - other).join())
+      return false;
 
     this.editGlyph(name, "Set the character", (one) => {
       one.unicodes = wanted;
@@ -4188,7 +4194,11 @@ class Store {
     if (!typeface) return;
     const before = { ...typeface.meta };
     const after = { ...typeface.meta, ...partial };
-    if (Object.keys(partial).every((key) => before[key as keyof typeof before] === after[key as keyof typeof after])) {
+    if (
+      Object.keys(partial).every(
+        (key) => before[key as keyof typeof before] === after[key as keyof typeof after],
+      )
+    ) {
       return;
     }
     typeface.meta = after;
@@ -4209,7 +4219,11 @@ class Store {
     if (!typeface) return;
     const before = { ...typeface.metrics };
     const after = { ...typeface.metrics, ...partial };
-    if (Object.keys(partial).every((key) => before[key as keyof typeof before] === after[key as keyof typeof after])) {
+    if (
+      Object.keys(partial).every(
+        (key) => before[key as keyof typeof before] === after[key as keyof typeof after],
+      )
+    ) {
       return;
     }
     typeface.metrics = after;
@@ -4280,7 +4294,6 @@ class Store {
     return index === undefined ? null : typeface.glyphs[index];
   }
 }
-
 
 /** Open on a recognisable letter rather than `.notdef` when a font loads. */
 function firstLetterName(typeface: Typeface): string | null {

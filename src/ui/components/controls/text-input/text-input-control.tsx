@@ -29,9 +29,7 @@ type TextInputControlGroupProps = {
   inputsPerRow?: number;
 };
 
-export type TextInputControlProps =
-  | TextInputControlSingleProps
-  | TextInputControlGroupProps;
+export type TextInputControlProps = TextInputControlSingleProps | TextInputControlGroupProps;
 
 function isTextInputControlGroupProps(
   props: TextInputControlProps,
@@ -91,8 +89,7 @@ function TextInputControlField({
   }
 
   function commitValue(nextValue = currentValue): void {
-    const committedValue =
-      nextValue.trim() === "" ? defaultValueRef.current : nextValue;
+    const committedValue = nextValue.trim() === "" ? defaultValueRef.current : nextValue;
 
     setCurrentValue(committedValue);
 
@@ -133,9 +130,7 @@ function TextInputControlField({
   );
 }
 
-export function TextInputControl(
-  props: TextInputControlProps,
-): React.JSX.Element {
+export function TextInputControl(props: TextInputControlProps): React.JSX.Element {
   if (isTextInputControlGroupProps(props)) {
     const inputsPerRow = getInputsPerRow(props.inputsPerRow);
 
@@ -148,10 +143,7 @@ export function TextInputControl(
         }}
       >
         {props.inputs.map((input, index) => (
-          <TextInputControlField
-            key={`${input.name}-${index}`}
-            {...input}
-          />
+          <TextInputControlField key={`${input.name}-${index}`} {...input} />
         ))}
       </div>
     );

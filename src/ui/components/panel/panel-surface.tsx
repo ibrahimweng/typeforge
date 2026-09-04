@@ -11,23 +11,22 @@ const panelContentScrollFadeHeight = 44;
 const panelContentViewportClassName =
   "flex min-h-0 flex-col overflow-x-hidden overflow-y-auto overscroll-contain";
 
-export const PanelSurface = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(function PanelSurface({ children, className, ...props }, ref) {
-  return (
-    <div
-      {...props}
-      ref={ref}
-      className={cn(
-        "floating-popup-surface toolcraft-panel-surface isolate border text-[color:var(--popover-foreground)] supports-backdrop-filter:backdrop-blur-2xl supports-backdrop-filter:backdrop-saturate-150",
-        className,
-      )}
-    >
-      {children}
-    </div>
-  );
-});
+export const PanelSurface = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  function PanelSurface({ children, className, ...props }, ref) {
+    return (
+      <div
+        {...props}
+        ref={ref}
+        className={cn(
+          "floating-popup-surface toolcraft-panel-surface isolate border text-[color:var(--popover-foreground)] supports-backdrop-filter:backdrop-blur-2xl supports-backdrop-filter:backdrop-saturate-150",
+          className,
+        )}
+      >
+        {children}
+      </div>
+    );
+  },
+);
 
 export const PanelContentSurface = React.forwardRef<
   HTMLDivElement,
@@ -49,11 +48,8 @@ export const PanelContentSurface = React.forwardRef<
   },
   ref,
 ) {
-  const [viewportElement, setViewportElement] =
-    React.useState<HTMLDivElement | null>(null);
-  const [hasOverflow, setHasOverflow] = React.useState(
-    scrollFadeMode === "always",
-  );
+  const [viewportElement, setViewportElement] = React.useState<HTMLDivElement | null>(null);
+  const [hasOverflow, setHasOverflow] = React.useState(scrollFadeMode === "always");
   const attachViewport = React.useCallback(
     (node: HTMLDivElement | null) => {
       setViewportElement(node);
@@ -83,18 +79,14 @@ export const PanelContentSurface = React.forwardRef<
     }
 
     const updateOverflow = () => {
-      setHasOverflow(
-        viewportElement.scrollHeight > viewportElement.clientHeight + 1,
-      );
+      setHasOverflow(viewportElement.scrollHeight > viewportElement.clientHeight + 1);
     };
 
     updateOverflow();
     window.addEventListener("resize", updateOverflow);
 
     const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(updateOverflow);
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updateOverflow);
 
     resizeObserver?.observe(viewportElement);
 
