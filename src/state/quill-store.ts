@@ -150,6 +150,9 @@ const EMPTY: QuillDocument = {
   unitsPerEm: 1000,
 };
 
+/** How many steps back the traced half keeps, as the other two halves do. */
+const HISTORY = 50;
+
 class QuillStore {
   private state: QuillState = {
     document: EMPTY,
@@ -191,7 +194,7 @@ class QuillStore {
   private commit(next: QuillDocument, phase: Phase): void {
     if (phase === "single" || !this.gestureOpen) {
       this.past.push(this.state.document);
-      if (this.past.length > 50) this.past.shift();
+      if (this.past.length > HISTORY) this.past.shift();
       this.future = [];
     }
     this.gestureOpen = phase === "during";
