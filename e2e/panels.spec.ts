@@ -19,11 +19,18 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 
-/** The panel's stretches, in the order they are laid out. */
+/**
+ * The panel's stretches, in the order they are laid out.
+ *
+ * Waited for before it is read. These panels are fetched when their mode is
+ * first shown, so for a moment after the click the column is there and empty,
+ * and `evaluateAll` does not wait -- it read that moment as a panel with no
+ * sections in it and failed on an order that was about to be right.
+ */
 async function sections(page: Page, panel: string): Promise<string[]> {
-  return page
-    .locator(`${panel} [data-panel-section]`)
-    .evaluateAll((els) => els.map((el) => el.getAttribute("data-panel-section") ?? ""));
+  const marks = page.locator(`${panel} [data-panel-section]`);
+  await marks.first().waitFor();
+  return marks.evaluateAll((els) => els.map((el) => el.getAttribute("data-panel-section") ?? ""));
 }
 
 test("Draw puts the three that decide the font first", async ({ page }) => {
