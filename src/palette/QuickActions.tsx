@@ -22,7 +22,8 @@ import * as React from "react";
 import { enter } from "@/anim/motion";
 import { SliderControl } from "@/ui/components/controls/slider";
 import { cn } from "@/ui/lib/utils";
-import { catalogue, type Item, type Shell } from "./catalogue";
+import { catalogue, type AppShell, type Item } from "./catalogue";
+import { forgeControls } from "./forge-controls";
 import { recentIds, remember } from "./recent";
 import { buildIndex, PREFIXES, readQuery, search, type Hit } from "./search";
 
@@ -39,7 +40,7 @@ const STARTING_POINTS = [
 export interface QuickActionsProps {
   open: boolean;
   onClose: () => void;
-  shell: Shell;
+  shell: AppShell;
 }
 
 export function QuickActions({
@@ -62,7 +63,12 @@ export function QuickActions({
    * offers depends on where you are: the export action is named for the job in
    * front, and the modes list leaves out the one you are already in.
    */
-  const items = React.useMemo(() => catalogue(shell), [shell]);
+  /*
+   * The forge half is built here rather than passed in, because it reaches
+   * the drawing engine and this component is only fetched once somebody
+   * opens the palette. See forge-controls.ts.
+   */
+  const items = React.useMemo(() => catalogue({ ...shell, ...forgeControls() }), [shell]);
   const byId = React.useMemo(() => new Map(items.map((one) => [one.id, one])), [items]);
   const index = React.useMemo(() => buildIndex(items), [items]);
 

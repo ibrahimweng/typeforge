@@ -1102,3 +1102,44 @@ export function partsOf(letter: string, forge: Forge): PartName[] {
 function clone(style: Style): Style {
   return structuredClone(style);
 }
+
+/**
+ * Whether a drawing holds anything worth keeping.
+ *
+ * A base on its own is not work: the application opens on one, so saving that
+ * would restore somebody into a font they never made and would overwrite the
+ * one they did. Anything told to differ from the base is.
+ */
+export function worthKeeping(forge: Forge, familyName: string): boolean {
+  const started = baseNamed(forge.base);
+  return (
+    Object.keys(forge.exceptions).length > 0 ||
+    Object.keys(forge.imported).length > 0 ||
+    familyName !== "Untitled" ||
+    // Asking for a second weight, or saying that what is drawn is the Black
+    // rather than the Regular, is a decision about the typeface and one nobody
+    // would want to make twice. Compared against what starting from this base
+    // would have given, because half the bases are not a Regular and arriving
+    // at one is not an edit.
+    (started !== undefined &&
+      JSON.stringify(familyOf(forge)) !== JSON.stringify(familyOf(startFrom(started)))) ||
+    // A base comes with its own choice of letterforms, so an alternate only
+    // counts as work when it differs from the one the base asked for.
+    JSON.stringify(forge.alternates) !== JSON.stringify(started?.forms ?? {}) ||
+    // Compared against the base as it ships rather than against a copy taken at
+    // the start, so a session that changed one slider and put it back reads as
+    // untouched -- which it is.
+    (started !== undefined && JSON.stringify(forge.style) !== JSON.stringify(started)) ||
+    // A cut is work of exactly the same kind, and the kind most easily lost:
+    // a face with slots through it is nothing but its cuts, and a base with
+    // nothing else touched would have been thrown away as an empty document.
+    anyCut(cutsOf(forge)) ||
+    Object.keys(forge.cutExceptions ?? {}).length > 0 ||
+    // And a cast, for the same reason: a face is often nothing but its shadow.
+    anyCast(castOf(forge)) ||
+    Object.keys(forge.castExceptions ?? {}).length > 0 ||
+    // A font laid out on a grid is nothing but its cells, and a document with
+    // an afternoon of them in it would have been thrown away as empty.
+    Object.keys(forge.kit?.glyphs ?? {}).length > 0
+  );
+}

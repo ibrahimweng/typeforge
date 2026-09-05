@@ -49,7 +49,7 @@
 
 import type { Vec2 } from "@/font/types";
 import type { FieldControl } from "@/forge/parts";
-import { scatterOf } from "@/forge/script";
+import { scatterOf } from "@/font/scatter";
 import { alongSpine, walkOf } from "./curve";
 import type { QuillGlyph, QuillSegment, QuillSpine, QuillStroke, WidthProfile } from "./types";
 
@@ -343,13 +343,13 @@ function handMap(style: QuillStyle, lift: number): Affine {
 /**
  * How far this letter sits off the common line.
  *
- * Worked out from the letter's own name through the forge's scatter, which is
+ * Worked out from the letter's own name through `font/scatter.ts`, which is
  * imported rather than copied. The two engines are deliberately separate and
  * this is the one thing they should not disagree about: an `e` that bounced one
  * way in a drawn face and the other way in a traced one would look like a bug
- * in whichever the reader saw second. It is a hash function rather than a piece
- * of the forge, and the arguments for its exact shape -- why a single round of
- * FNV-1a will not do on a one-character key -- are written where it lives.
+ * in whichever the reader saw second. The arguments for the hash's exact shape
+ * -- why a single round of FNV-1a will not do on a one-character key -- are
+ * written where it lives.
  */
 function liftOf(glyph: QuillGlyph, style: QuillStyle): number {
   if (style.bounce <= 0) return 0;

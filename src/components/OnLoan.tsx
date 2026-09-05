@@ -18,7 +18,7 @@
 
 import type * as React from "react";
 
-import { forgeStore } from "@/state/useForge";
+import { lendToDrawing } from "@/state/drawn";
 import { quillStore } from "@/state/useQuill";
 import { store, useAppState } from "@/state/useStore";
 
@@ -26,7 +26,7 @@ export function OnLoan(): React.JSX.Element | null {
   const loan = useAppState((state) => state.loan);
   if (!loan) return null;
 
-  const keep = (): void => {
+  const keep = async (): Promise<void> => {
     const from = loan.from;
     const kept = store.keepLoan();
     if (kept && from === "forge") {
@@ -39,7 +39,7 @@ export function OnLoan(): React.JSX.Element | null {
        * is one keystroke from being undone -- so it had better be the same
        * call, or the two ways in would come to disagree about what they mean.
        */
-      forgeStore.takeLetter(
+      await lendToDrawing(
         {
           note: null,
           letter: kept.letter,
@@ -75,7 +75,7 @@ export function OnLoan(): React.JSX.Element | null {
       </p>
       <button
         type="button"
-        onClick={keep}
+        onClick={() => void keep()}
         data-loan-keep
         className="shrink-0 rounded-md border border-accent px-2 py-1 text-2xs text-foreground transition-colors hover:bg-accent/10"
       >

@@ -7,7 +7,7 @@ import type * as React from "react";
 
 import type { Mode } from "@/App";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
-import { forgeStore, useForge } from "@/state/useForge";
+import { redoDrawing, undoDrawing, useDrawing } from "@/state/drawn";
 import { quillStore, useQuill } from "@/state/useQuill";
 import { store, useAppState, type AppState, type ViewId } from "@/state/useStore";
 import {
@@ -103,7 +103,7 @@ export function TopBar({
   keeping: Keeping;
 }): React.JSX.Element {
   const state = useAppState();
-  const forge = useForge();
+  const drawn = useDrawing();
   const assemble = useAssemble();
   const quill = useQuill();
 
@@ -118,10 +118,10 @@ export function TopBar({
   const history =
     mode === "forge"
       ? {
-          undo: () => forgeStore.undo(),
-          redo: () => forgeStore.redo(),
-          canUndo: forge.canUndo,
-          canRedo: forge.canRedo,
+          undo: () => void undoDrawing(),
+          redo: () => void redoDrawing(),
+          canUndo: drawn.canUndo,
+          canRedo: drawn.canRedo,
         }
       : mode === "assemble"
         ? {
@@ -315,7 +315,7 @@ export function TopBar({
 
         {mode === "forge" && (
           <span className="min-w-16 shrink truncate text-2xs text-muted-foreground">
-            {forge.familyName} <span className="opacity-60">{forge.forge.base}</span>
+            {drawn.familyName} <span className="opacity-60">{drawn.base}</span>
           </span>
         )}
         {mode === "assemble" && (

@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 
 import { emptyAssembly } from "@/assemble/document";
 import { startFrom } from "@/forge/document";
-import { BASES, SANS } from "@/forge/style";
+import { SANS } from "@/forge/style";
 import { emptyTypeface, type Glyph, type Typeface } from "@/font/types";
 import {
   FORMAT,
@@ -49,40 +49,21 @@ describe("what gets written down", () => {
   });
 
   /*
-   * A base on its own is not work.
+   * Whether a drawing is work at all is decided before this file sees it.
    *
-   * The application opens on one, so writing that down would restore somebody
-   * into a font they never made -- and worse, would do it over the top of the
-   * one they did, since arriving is what triggers the restore.
+   * It has to be: the answer is a comparison against the base it started from,
+   * which means the styles and the parts -- the drawing engine, on the first
+   * screen, to write a file. `worthKeeping` in `forge/document.ts` makes the
+   * call and `forge/keeping.test.ts` is where it is checked. What this one has
+   * to hold is that whatever arrives here is written down as it arrived.
    */
-  it("leaves out a drawing nobody has touched", () => {
-    expect(toProject(snapshot(), WHEN).draw).toBeUndefined();
-  });
-
-  it("keeps one the moment it differs from its base", () => {
-    const forge = startFrom(SANS);
-    forge.style.pen.weight = SANS.pen.weight + 30;
-    expect(toProject(snapshot({ draw: drawn({ forge }) }), WHEN).draw).toBeDefined();
-  });
-
-  it("keeps one that has been named, even if nothing else changed", () => {
+  it("writes down the drawing it is handed", () => {
     const project = toProject(snapshot({ draw: drawn({ familyName: "Bakerloo" }) }), WHEN);
     expect(project.draw?.familyName).toBe("Bakerloo");
   });
 
-  it("keeps a drawing whose letters were told to differ", () => {
-    const forge = startFrom(SANS);
-    forge.exceptions = { n: { shoulder: { spring: 0.9 } } };
-    expect(toProject(snapshot({ draw: drawn({ forge }) }), WHEN).draw).toBeDefined();
-  });
-
-  it("holds every base it can be started from", () => {
-    // A base whose own style did not survive the comparison would read as
-    // touched the moment it was opened, and every session would save one.
-    for (const base of BASES) {
-      const project = toProject(snapshot({ draw: drawn({ forge: startFrom(base) }) }), WHEN);
-      expect(project.draw, `${base.name} reads as edited when it is not`).toBeUndefined();
-    }
+  it("leaves out a half it was handed nothing for", () => {
+    expect(toProject({ mode: "forge" }, WHEN).draw).toBeUndefined();
   });
 
   it("leaves out an empty pile of drawings and keeps one with anything in it", () => {
@@ -297,6 +278,8 @@ describe("saying what is in it", () => {
   });
 
   it("says so when there is nothing in it", () => {
-    expect(describeProject(toProject(snapshot(), WHEN))).toBe("nothing");
+    // Handed no halves at all, which is what a session with nothing in it
+    // gathers: each store is asked for what it holds and holds nothing.
+    expect(describeProject(toProject({ mode: "forge" }, WHEN))).toBe("nothing");
   });
 });

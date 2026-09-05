@@ -11,27 +11,21 @@ import { attachPressFeedback, switchView } from "@/anim/motion";
 import { loadingTwice } from "@/deferred";
 import { GlyphEditorView } from "@/views/GlyphEditorView";
 import { KerningView } from "@/views/KerningView";
-import { AssemblePanel } from "@/components/AssemblePanel";
-import { ForgePanel } from "@/components/ForgePanel";
-import { QuillPanel } from "@/components/QuillPanel";
 import { LibraryDialog } from "@/components/LibraryDialog";
 import { useQuickActionShortcut } from "@/palette/useShortcut";
-import type { Shell } from "@/palette/catalogue";
+import type { AppShell } from "@/palette/catalogue";
 import { useAppKeys } from "@/keys/useAppKeys";
-import { Inspector } from "@/components/Inspector";
 import { NextStep } from "@/components/NextStep";
 import { OnLoan } from "@/components/OnLoan";
 import { TopBar } from "@/components/TopBar";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
 import type { Typeface } from "@/font/types";
-import { toTypeface as assembleToTypeface } from "@/assemble/typeface";
-import { toTypeface as quillToTypeface } from "@/quill/typeface";
-import { forgeStore, useForge } from "@/state/useForge";
+import { useDrawing } from "@/state/drawn";
 import { quillStore, useQuill } from "@/state/useQuill";
-import { castFor, castOf, cutsFor, cutsOf } from "@/forge/read";
 import { ready as readyToCut } from "@/font/boolean";
 import { detectFormat } from "@/font/parse";
 import { looksJoined } from "@/quill/joined";
+import { toTypeface as quillToTypeface } from "@/quill/typeface";
 import { describe, readProject, type Mode as SavedMode } from "@/project/format";
 import { keeper as makeKeeper, kept } from "@/project/keep";
 import { fileNameFor, restore, session } from "@/project/session";
@@ -70,13 +64,23 @@ import { filesFromDrop, filesFromPicker, filesFromZip, looksZipped } from "@/ufo
  * shortens the gap without closing it, and a dropped keystroke is not a thing
  * to fix by being quick. They load with the shell that owns the keyboard.
  *
- * What this does not move is the drawing engine. `src/forge/` is 287 kB of the
- * graph and it is reached from `font/transform.ts`, `project/format.ts` and
- * `state/forge-store.ts`, all of which the first screen needs, so it stays in
- * the first chunk however the views are loaded. Moving it means making
- * `shapedInk` async, and that is in the path outlines are resolved on, so it
- * would reach every drawing in the application. That is a larger job than this
- * one and it is not started here.
+ * The drawing engine is off the first screen too, and getting it off was not a
+ * matter of deferring a view. `src/forge/` is 287 kB of the graph, and what
+ * held it here was a dozen small things: the palette's catalogue of every forge
+ * control, the project format asking whether a drawing was worth saving, the
+ * mode panels naming every part and every base, and three components that
+ * wanted nothing but a family name and whether undo was available.
+ *
+ * `state/drawn.ts` is what those last ones ask now -- it is the drawing seen
+ * from outside the thing that draws, and it has the argument for why. The rest
+ * became `React.lazy` or an `import()` inside the handler that needs them.
+ *
+ * One edge is left and is meant to be: `font/transform.ts` takes `shapedInk`,
+ * which is on the synchronous path outlines are resolved on and reaches every
+ * drawing in the application. Moving that one means making the outline path
+ * async; it is a larger job than this and it is not started here. If you are
+ * adding an import to something on this screen, check what it reaches --
+ * `vite.config.ts` has the measurements.
  */
 
 /**
@@ -106,6 +110,48 @@ const QuickActions = React.lazy(() =>
   loadingTwice(
     () => import("@/palette/QuickActions"),
     (m) => m.QuickActions,
+  ),
+);
+
+/*
+ * The four side panels, each of which is the panel for one mode out of four.
+ *
+ * `ForgePanel` names every part, every base and every effect the drawing
+ * engine has. `AssemblePanel` and `Inspector` share the cut and cast controls
+ * with it, which reach `forge/parts.ts` -- ninety kilobytes of part
+ * specifications on their own. So three of the four are deferred for what they
+ * drag behind them rather than for their own size, and `Inspector` for one
+ * more reason besides: it shows nothing at all until a font is open, which on
+ * the screen the application actually opens on is never.
+ *
+ * `QuillPanel` carries none of that and is deferred for the plain reason: it
+ * is the panel for a mode, and three modes out of four are not it.
+ */
+const ForgePanel = React.lazy(() =>
+  loadingTwice(
+    () => import("@/components/ForgePanel"),
+    (m) => m.ForgePanel,
+  ),
+);
+
+const AssemblePanel = React.lazy(() =>
+  loadingTwice(
+    () => import("@/components/AssemblePanel"),
+    (m) => m.AssemblePanel,
+  ),
+);
+
+const QuillPanel = React.lazy(() =>
+  loadingTwice(
+    () => import("@/components/QuillPanel"),
+    (m) => m.QuillPanel,
+  ),
+);
+
+const Inspector = React.lazy(() =>
+  loadingTwice(
+    () => import("@/components/Inspector"),
+    (m) => m.Inspector,
   ),
 );
 
@@ -203,10 +249,20 @@ const HelpDrawer = React.lazy(() =>
  * The views are warmed for the same reason, a beat less urgently. A failure
  * here is ignored on purpose: nothing is waiting on it, and opening the thing
  * for real imports it again and reports the failure then.
+ *
+ * The side panels are warmed with the views they stand beside, and have to be:
+ * a mode arriving as a stage with an empty column next to it is worse than
+ * either half arriving late on its own. That the drawing engine comes down with
+ * them is the point rather than a cost -- what deferring them bought is that it
+ * is not in the first download, not that it is never fetched.
  */
 function warmDeferred(): void {
   const nothing = () => {};
   void import("@/palette/QuickActions").catch(nothing);
+  void import("@/components/ForgePanel").catch(nothing);
+  void import("@/components/AssemblePanel").catch(nothing);
+  void import("@/components/QuillPanel").catch(nothing);
+  void import("@/components/Inspector").catch(nothing);
   void import("@/components/HelpDrawer").catch(nothing);
   void import("@/components/AcademyDrawer").catch(nothing);
   void import("@/components/FontInfoDialog").catch(nothing);
@@ -282,7 +338,7 @@ function folderNameOf(files: FileList): string | null {
 
 export function App(): React.JSX.Element {
   const state = useAppState();
-  const forge = useForge();
+  const drawn = useDrawing();
   const assemble = useAssemble();
   const traced = useQuill();
   const [exporting, setExporting] = React.useState(false);
@@ -370,15 +426,20 @@ export function App(): React.JSX.Element {
    * So it is fetched once, in the background, and until it lands a letter with
    * slots through it is drawn without them -- which is an honest answer for a
    * moment rather than a wrong one for ever. When it arrives the drawing is
-   * asked to happen again -- in all three halves of the application, because
-   * a font somebody opened and a pile of drawings somebody dropped are cut by
-   * the same library and were drawn without it for the same moment.
+   * asked to happen again, because a font somebody opened and a pile of
+   * drawings somebody dropped are cut by the same library and were drawn
+   * without it for the same moment.
+   *
+   * Two stores are asked here and the third asks itself. `forge-store.ts`
+   * carries the drawing engine, so naming it here would put the engine on the
+   * first screen to ask it a question -- and a store nobody has imported has
+   * drawn nothing to draw again. It waits on the same promise from its own
+   * module instead.
    */
   React.useEffect(() => {
     let live = true;
     void readyToCut().then(() => {
       if (!live) return;
-      forgeStore.refresh();
       store.refresh();
       assembleStore.refresh();
     });
@@ -461,7 +522,7 @@ export function App(): React.JSX.Element {
    * are cheap and the omission is silent, which is the argument for listing all
    * of them here rather than the ones that seemed to matter.
    */
-  const revisions = `${state.revision}:${forge.revision}:${assemble.revision}:${traced.revision}:${mode}`;
+  const revisions = `${state.revision}:${drawn.count}:${assemble.revision}:${traced.revision}:${mode}`;
   React.useEffect(() => {
     if (restoring.current) return;
     keeper.soon(() => session(mode));
@@ -637,13 +698,24 @@ export function App(): React.JSX.Element {
   }, []);
 
   const editForged = React.useCallback(async () => {
-    const { forge, familyName } = forgeStore.snapshot();
     /*
-     * Fetched here rather than imported above, because turning a drawing into
-     * a typeface is what happens when somebody presses a button, and pulling
-     * it in at the top pulls the engine onto the first screen with it.
+     * Fetched here rather than imported above, as in `editAssembled`.
+     *
+     * Turning a document into a typeface is what happens when somebody presses
+     * a button, and for two of the three it is done by way of something no
+     * other mode needs -- the fusing of a pile of drawings, and here the
+     * drawing engine itself. The store is fetched for the same reason: it
+     * holds the drawing, so it holds the engine that made it.
+     *
+     * The traced half is the exception and is imported above. Its converter is
+     * already on the first screen -- the Trace store takes `linesOf` from it --
+     * so fetching it here would move nothing and rolldown says so.
      */
-    const { toTypeface: forgeToTypeface } = await import("@/forge/typeface");
+    const [{ forgeStore }, { toTypeface: forgeToTypeface }] = await Promise.all([
+      import("@/state/useForge"),
+      import("@/forge/typeface"),
+    ]);
+    const { forge, familyName } = forgeStore.snapshot();
     const typeface = await forgeToTypeface(forge, {
       familyName: familyName || "Untitled",
       styleName: "Regular",
@@ -667,6 +739,7 @@ export function App(): React.JSX.Element {
   const editAssembled = React.useCallback(async () => {
     const { assembly, familyName } = assembleStore.snapshot();
     const name = familyName || assembly.name || "Untitled";
+    const { toTypeface: assembleToTypeface } = await import("@/assemble/typeface");
     const typeface = await assembleToTypeface(assembly, {
       familyName: name,
       styleName: "Regular",
@@ -801,7 +874,7 @@ export function App(): React.JSX.Element {
     setMode(next);
   }, []);
 
-  const shell: Shell = React.useMemo(
+  const shell: AppShell = React.useMemo(
     () => ({
       mode,
       setMode: goToMode,
@@ -836,51 +909,6 @@ export function App(): React.JSX.Element {
        */
       paramOf: (key) => store.getSnapshot().typeface?.params[key] ?? 0,
       setParam: (key, value) => store.setFamilyParam(key, value),
-      partOf: (part, key) =>
-        (
-          forgeStore.getSnapshot().forge.style.parts[part] as Record<
-            string,
-            number | string | boolean
-          >
-        )[key],
-      setPart: (part, key, value, done) =>
-        forgeStore.changePart(part, { [key]: value }, done ? "end" : "during"),
-      penOf: (key) =>
-        (forgeStore.getSnapshot().forge.style.pen as unknown as Record<string, number>)[key],
-      setPen: (key, value, done) =>
-        forgeStore.changePen({ [key]: value } as never, done ? "end" : "during"),
-      metricOf: (key) =>
-        (forgeStore.getSnapshot().forge.style.metrics as unknown as Record<string, number>)[key],
-      setMetric: (key, value, done) =>
-        forgeStore.changeMetrics({ [key]: value } as never, done ? "end" : "during"),
-      /*
-       * Read through the same scope the cut panel reads through.
-       *
-       * A cut is not kept on the style beside the pen -- it belongs to the
-       * document, and in letter scope a letter can be cut differently from the
-       * font around it. Reading the family's value while the panel shows the
-       * letter's would put a number in the palette that nothing on the canvas
-       * is cut by, so the palette asks the question the panel asks.
-       */
-      cutOf: (cut, key) => {
-        const { forge, scope, letter } = forgeStore.getSnapshot();
-        const cuts = scope === "letter" ? cutsFor(letter, forge) : cutsOf(forge);
-        return (cuts[cut] as unknown as Record<string, number | string | boolean>)[key];
-      },
-      setCut: (cut, key, value, done) =>
-        forgeStore.changeCut(cut, { [key]: value } as never, done ? "end" : "during"),
-      castOf: (cast, key) => {
-        const { forge, scope, letter } = forgeStore.getSnapshot();
-        const worn = scope === "letter" ? castFor(letter, forge) : castOf(forge);
-        return (worn[cast] as unknown as Record<string, number | string | boolean>)[key];
-      },
-      setCast: (cast, key, value, done) =>
-        forgeStore.changeCast(cast, { [key]: value } as never, done ? "end" : "during"),
-      startFromBase: (name) => forgeStore.startFromBase(name),
-      chooseAlternate: (letter, form) => {
-        forgeStore.select(letter);
-        forgeStore.chooseAlternate(form);
-      },
       hasFont: Boolean(state.typeface),
     }),
     // Only what changes the shape of the catalogue: which job is in front and
@@ -1004,9 +1032,21 @@ export function App(): React.JSX.Element {
             </>
           )}
         </div>
-        {mode === "forge" && <ForgePanel onEdit={editForged} />}
-        {mode === "quill" && <QuillPanel onEdit={editTraced} />}
-        {mode === "assemble" && <AssemblePanel onEdit={editAssembled} />}
+        {mode === "forge" && (
+          <Wait>
+            <ForgePanel onEdit={editForged} />
+          </Wait>
+        )}
+        {mode === "quill" && (
+          <Wait>
+            <QuillPanel onEdit={editTraced} />
+          </Wait>
+        )}
+        {mode === "assemble" && (
+          <Wait>
+            <AssemblePanel onEdit={editAssembled} />
+          </Wait>
+        )}
         {/*
           And no panel of parameters before there is anything to have them.
 
@@ -1014,7 +1054,11 @@ export function App(): React.JSX.Element {
           hundred pixels wide, which is a fifth of the first screen given over
           to explaining its own emptiness.
         */}
-        {mode === "edit" && state.typeface && SHOWS_INSPECTOR.has(state.view) && <Inspector />}
+        {mode === "edit" && state.typeface && SHOWS_INSPECTOR.has(state.view) && (
+          <Wait>
+            <Inspector />
+          </Wait>
+        )}
         {helping && (
           <Wait>
             <HelpDrawer onClose={() => setHelping(false)} />

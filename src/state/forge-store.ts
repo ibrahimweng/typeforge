@@ -34,6 +34,8 @@ import {
   setFamily,
   solid,
   startFrom,
+  whole,
+  worthKeeping,
   type Forge,
 } from "@/forge/document";
 import type { CutName, Cuts } from "@/forge/cut";
@@ -55,6 +57,8 @@ import type { Contour, Glyph, GlyphNode, VerticalMetrics } from "@/font/types";
 import type { PartName } from "@/forge/parts";
 import { baseNamed } from "@/forge/document";
 import { SANS, type Metrics, type Parts, type Style } from "@/forge/style";
+import { ready as readyToCut } from "@/font/boolean";
+import { drawingChanged, drawingIs, drawingReadableBy } from "./drawn";
 import type { Pen } from "@/forge/types";
 
 /** Which letter's controls are being shown, and whether they apply to it alone. */
@@ -178,6 +182,14 @@ class ForgeStore {
 
   private set(patch: Partial<ForgeState>): void {
     this.state = { ...this.state, ...patch };
+    // Said out loud, so a toolbar can name the font and grey out undo without
+    // importing any of this. `drawn.ts` has why.
+    drawingIs({
+      canUndo: this.state.canUndo,
+      canRedo: this.state.canRedo,
+      familyName: this.state.familyName,
+      base: this.state.forge.base,
+    });
     for (const listener of this.listeners) listener();
   }
 
@@ -259,7 +271,7 @@ class ForgeStore {
       resting,
       canUndo: true,
       canRedo: false,
-      revision: this.state.revision + 1,
+      revision: drawingChanged(),
     });
   }
 
@@ -345,7 +357,16 @@ class ForgeStore {
   }
 
   restore(saved: { forge: Forge; familyName: string; specimen: string }): void {
-    this.commit(saved.forge, "single");
+    /*
+     * Filled in on the way in, rather than on the way out of `readProject`.
+     *
+     * A document written before a field existed is missing it, and a missing
+     * field is not a document that reads a little oddly -- it is `undefined.on`
+     * thrown on the first letter drawn. `whole` knows every field a style can
+     * have, which is to say it knows the drawing engine, so asking it here
+     * keeps that off the screen of everybody who never opens a saved drawing.
+     */
+    this.commit(whole(saved.forge), "single");
     this.set({ familyName: saved.familyName, specimen: saved.specimen, focus: null });
   }
 
@@ -618,7 +639,7 @@ class ForgeStore {
     this.set({
       forge: again,
       settled: this.state.settled === this.state.forge ? again : { ...this.state.settled },
-      revision: this.state.revision + 1,
+      revision: drawingChanged(),
       settledRevision: this.state.settledRevision + 1,
     });
   }
@@ -750,7 +771,7 @@ class ForgeStore {
       resting: true,
       canUndo: this.past.length > 0,
       canRedo: true,
-      revision: this.state.revision + 1,
+      revision: drawingChanged(),
     });
   }
 
@@ -766,7 +787,7 @@ class ForgeStore {
       resting: true,
       canUndo: true,
       canRedo: this.future.length > 0,
-      revision: this.state.revision + 1,
+      revision: drawingChanged(),
     });
   }
 
@@ -793,3 +814,35 @@ class ForgeStore {
 }
 
 export const forgeStore = new ForgeStore();
+
+/*
+ * Drawn again once the library that cuts shapes has arrived.
+ *
+ * A letter with slots through it is drawn without them until then, because
+ * the cutting is a few hundred kilobytes and a letter is drawn during a
+ * render. This is the moment that stops being the honest answer.
+ *
+ * It is arranged here rather than in App, which arranges the same thing for
+ * the two stores it holds. App cannot name this one without importing it, and
+ * importing it means the drawing engine on the first screen -- which is the
+ * whole of what keeping it out of App bought. Waiting on the promise from
+ * here costs nothing extra: a store nobody has imported has drawn nothing to
+ * draw again, and one somebody has imported after the library landed gets a
+ * promise that has already settled.
+ */
+void readyToCut().then(() => {
+  forgeStore.refresh();
+});
+
+/*
+ * And readable, so writing down a session does not have to fetch this file.
+ *
+ * Filtered here too. Whether a drawing is work or is merely the style the
+ * application opens on is a question about the drawing, answerable only by
+ * something that knows what the bases are -- and the saver, which runs on the
+ * first screen and on the way out of the page, knows nothing about them.
+ */
+drawingReadableBy(() => {
+  const kept = forgeStore.snapshot();
+  return worthKeeping(kept.forge, kept.familyName) ? kept : undefined;
+});

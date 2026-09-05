@@ -97,7 +97,13 @@ export interface Item extends Entry {
  * Every one of these already exists as a button somewhere; the palette is a
  * second door to the same room, not a second implementation of it.
  */
-export interface Shell {
+/**
+ * What the application around the palette provides.
+ *
+ * Split from the forge half below because App builds this one, and App is on
+ * the first screen. Anything it has to hand the palette, it has to import.
+ */
+export interface AppShell {
   mode: Mode;
   setMode: (mode: Mode) => void;
   view: ViewId;
@@ -128,6 +134,21 @@ export interface Shell {
   /** Family parameters, for the five views that share a loaded font. */
   paramOf: (key: keyof GlyphParams) => number;
   setParam: (key: keyof GlyphParams, value: number, done: boolean) => void;
+  hasFont: boolean;
+}
+
+/**
+ * The half of the palette that reads and writes a drawing.
+ *
+ * Its own interface, and supplied by the palette rather than by App, because
+ * every one of these reaches the forge store and the forge store imports the
+ * drawing engine. App is on the first screen and the palette is not, so this
+ * is where that dependency belongs.
+ *
+ * Still injected rather than reached for, so `catalogue` stays a function of
+ * its argument and its tests can hand it whatever they like.
+ */
+export interface ForgeShell {
   /** Forge parts. */
   partOf: (part: PartName, key: string) => number | string | boolean;
   setPart: (part: PartName, key: string, value: number | string | boolean, done: boolean) => void;
@@ -148,8 +169,10 @@ export interface Shell {
   setCast: (cast: CastName, key: string, value: number | string | boolean, done: boolean) => void;
   startFromBase: (name: string) => void;
   chooseAlternate: (letter: string, form: string) => void;
-  hasFont: boolean;
 }
+
+/** Both halves, which is what the catalogue is built from. */
+export type Shell = AppShell & ForgeShell;
 
 const VIEWS: Array<{ id: ViewId; label: string; hint: string }> = [
   {
