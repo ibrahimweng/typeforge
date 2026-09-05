@@ -163,9 +163,11 @@ const ALONE: Family = { drawn: 400, also: [] };
  * use.
  */
 export function whole(forge: Forge): Forge {
+  const plain = baseNamed(forge.base) ?? SANS;
   return {
     ...forge,
-    family: forge.family ?? { ...ALONE },
+    alternates: forge.alternates ?? { ...(plain.forms ?? {}) },
+    family: forge.family ?? { drawn: weightClassOf(plain), also: [] },
     cuts: forge.cuts ?? noCuts(),
     cast: forge.cast ?? noCast(),
     cutExceptions: forge.cutExceptions ?? {},
@@ -180,7 +182,7 @@ export function whole(forge: Forge): Forge {
      * come to is quietly not applied at all.
      */
     effects: forge.effects ? filled(forge.effects, noEffects(), true) : undefined,
-    style: settled(forge.style),
+    style: settled(forge.style, plain),
   };
 }
 
@@ -224,13 +226,13 @@ export function whole(forge: Forge): Forge {
  * did not exist was a setting nobody had set, and the neutral value is what the
  * drawing was actually made with.
  */
-function settled(style: Style): Style {
+function settled(style: Style, plain: Style = SANS): Style {
   if (!style || typeof style !== "object") return style;
   return {
     ...style,
-    metrics: filled(style.metrics, SANS.metrics),
-    pen: filled(style.pen, SANS.pen),
-    parts: filled(style.parts, SANS.parts, true),
+    metrics: filled(style.metrics, plain.metrics),
+    pen: filled(style.pen, plain.pen),
+    parts: filled(style.parts, plain.parts, true),
   };
 }
 
