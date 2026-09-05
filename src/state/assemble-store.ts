@@ -95,7 +95,18 @@ class AssembleStore {
   private gestureOpen = false;
 
   private commit(next: Assembly, phase: Phase = "single"): void {
-    if (!this.gestureOpen) {
+    /*
+     * A finished edit gets its own entry even when a drag is open.
+     *
+     * `during` says a gesture is in flight and the next commit folds into it,
+     * which is what keeps one pull of a slider to one entry. `single` says the
+     * opposite -- this is a whole edit by itself -- and it was folding in
+     * anyway, so a click that landed while a drag was open could not be undone
+     * on its own. Both went back in one step.
+     *
+     * The quill store asks it this way round already.
+     */
+    if (phase === "single" || !this.gestureOpen) {
       this.past.push(this.state.assembly);
       if (this.past.length > HISTORY) this.past.shift();
       this.future = [];
@@ -378,6 +389,15 @@ class AssembleStore {
     const previous = this.past.pop();
     if (!previous) return;
     this.future.push(this.state.assembly);
+    /*
+     * Whatever was being dragged is not being dragged any more.
+     *
+     * Undo is somebody stepping outside a gesture, and the step they took back
+     * may well be the gesture itself. Left open, the next edit folded into an
+     * entry that had already been undone -- so one undo went back two steps and
+     * the state in between could not be reached at all.
+     */
+    this.gestureOpen = false;
     this.set({
       assembly: previous,
       canUndo: this.past.length > 0,
@@ -390,6 +410,13 @@ class AssembleStore {
     const next = this.future.pop();
     if (!next) return;
     this.past.push(this.state.assembly);
+    /*
+     * The same, though not for a reason anything can reach today: opening a
+     * gesture clears the redo stack on its first commit, so there is never
+     * anything to redo while one is open. Kept for the symmetry, and because
+     * the day that changes this is not where anybody would think to look.
+     */
+    this.gestureOpen = false;
     this.set({
       assembly: next,
       canUndo: true,
