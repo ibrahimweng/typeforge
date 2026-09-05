@@ -9,6 +9,8 @@
  */
 
 /** `\0\1\0\0` — TrueType outlines in a `glyf` table. */
+import { FontFileError } from "./damaged";
+
 export const SFNT_TRUETYPE = 0x00010000;
 /** `OTTO` — PostScript outlines in a `CFF ` table. */
 export const SFNT_CFF = 0x4f54544f;
@@ -44,19 +46,46 @@ export function checksum(bytes: Uint8Array): number {
 }
 
 export function readSfnt(bytes: Uint8Array): SfntFont {
+  /*
+   * The header, before anything reads through it.
+   *
+   * Twelve bytes of offset table, then sixteen for every entry in the
+   * directory. Without this the first `getUint32` on a file of three bytes
+   * throws "Offset is outside the bounds of the DataView", which is what a
+   * truncated download used to put in front of somebody.
+   */
+  if (bytes.length < 12) {
+    throw new FontFileError(
+      "This file is too short to be a font: it stops before the end of the header.",
+    );
+  }
+
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const sfntVersion = view.getUint32(0);
 
   if (sfntVersion === 0x74746366) {
-    throw new Error(
+    throw new FontFileError(
       "This is a TrueType Collection (.ttc) holding several fonts. Extract a single font first.",
     );
   }
   if (sfntVersion !== SFNT_TRUETYPE && sfntVersion !== SFNT_CFF && sfntVersion !== 0x74727565) {
-    throw new Error("Not an sfnt font file: unrecognised version tag.");
+    throw new FontFileError("Not an sfnt font file: unrecognised version tag.");
   }
 
   const numTables = view.getUint16(4);
+  /*
+   * And the directory the count claims, which is read straight out of the file
+   * and can say sixty-five thousand tables in a file of two hundred bytes.
+   *
+   * Checked as a whole rather than per entry, so the answer is one sentence
+   * about the file rather than a reader stopping halfway with half a font.
+   */
+  if (12 + numTables * 16 > bytes.length) {
+    throw new FontFileError(
+      `This font's table directory runs past the end of the file: it lists ${numTables}` +
+        ` ${numTables === 1 ? "table" : "tables"} but the file is only ${bytes.length} bytes.`,
+    );
+  }
   const tables = new Map<string, Uint8Array>();
   for (let i = 0; i < numTables; i++) {
     const record = 12 + i * 16;

@@ -18,6 +18,22 @@ The realistic damage is to the person who opened the file — a hung tab, a
 crash, or a font written back out with something in it that was not in the
 original. Take those seriously.
 
+`src/font/damaged.test.ts` is what holds that to account. It cuts the bundled
+sample short at a dozen lengths, lies to the header about how many tables the
+file has, and imports four hundred seeded mutations of it, checking four things
+each time: that the reader settles rather than hanging, that a small file
+cannot become a huge document, that no coordinate arrives as `NaN`, and that
+whatever is refused is refused in a sentence written for the person reading it.
+
+That last one is there because it was the one that failed. Of the first four
+hundred mutations, a hundred and fifty-two would not import and a hundred and
+twelve of those said only "Offset is outside the bounds of the DataView" or
+"Cannot read properties of undefined". The status line shows `error.message`
+and nothing else, so a download that stopped early read as the application
+breaking. `src/font/damaged.ts` has the whole of it.
+
+If you change anything in `src/font/` that reads bytes, run that file.
+
 It also fetches from `api.fontsource.org`, `www.googleapis.com`,
 `fonts.googleapis.com` and `cdn.jsdelivr.net` for the font library, so a
 response from those is untrusted input as well.
