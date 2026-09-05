@@ -31,18 +31,31 @@ export default defineConfig({
    * name or a greyed-out undo button. `state/drawn.ts` is what most of them ask
    * instead.
    *
-   * One edge is left and is meant to be: font/transform.ts takes `shapedInk`
-   * from forge/layers, on the synchronous path that resolves an outline, which
-   * every view and the store call. It brings forge/cut, forge/cast, forge/sweep
-   * and forge/shapes with it -- 69 kB, 23 kB gzipped. Moving that one means
-   * making the outline path async, which reaches every drawing in the
-   * application; it is a different job from this one and a much larger one.
+   * The last edge was font/transform.ts taking `shapedInk` from forge/layers,
+   * on the synchronous path that resolves an outline -- which every view and
+   * the store call, and which has nowhere in it to await a download. This note
+   * used to say that moving it meant making that path async, and that this
+   * reached every drawing in the application.
    *
-   * Measured with the script in the pull request that did it: the first load
+   * It did not. The shaping already answered "not yet" for a living: both
+   * layers are boolean geometry, boolean geometry is `paper`, and `paper` is
+   * fetched in the background -- so a cut letter has always been drawn plain
+   * until the library lands and drawn again when it does. `forge/layers.ts` is
+   * now a synchronous gate that asks the same question about one more module,
+   * and the redraw that was already waiting for one waits for both. That file
+   * has the argument.
+   *
+   * What is left in the first load of `src/forge` is that gate, at 0.8 kB.
+   *
+   * Measured with the script in the pull requests that did it: the first load
    * -- the entry chunk plus everything it statically imports -- went from
-   * 1195 kB (379 kB gzipped) to 781 kB (257 kB gzipped). If you are about to
-   * add an import to a component that renders on the first screen, check what
-   * it reaches before you do.
+   * 1195 kB (379 kB gzipped) to 781 kB (257 kB) by removing the imports, and
+   * to 751 kB (246 kB) by gating the shaping. That last step is worth eleven
+   * kilobytes gzipped rather than the twenty-three this note used to claim:
+   * the old figure was the raw size of the modules, and most of what they
+   * reach is shared with chunks that were staying anyway. If you are about to
+   * add an import to something that renders on the first screen, check what it
+   * reaches before you do.
    */
   build: { target: "es2022", sourcemap: process.env.MAPS === "1" },
 });

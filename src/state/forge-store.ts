@@ -57,7 +57,7 @@ import type { Contour, Glyph, GlyphNode, VerticalMetrics } from "@/font/types";
 import type { PartName } from "@/forge/parts";
 import { baseNamed } from "@/forge/document";
 import { SANS, type Metrics, type Parts, type Style } from "@/forge/style";
-import { ready as readyToCut } from "@/font/boolean";
+import { readyToShape } from "@/forge/layers";
 import { drawingChanged, drawingIs, drawingReadableBy } from "./drawn";
 import type { Pen } from "@/forge/types";
 
@@ -816,7 +816,7 @@ class ForgeStore {
 export const forgeStore = new ForgeStore();
 
 /*
- * Drawn again once the library that cuts shapes has arrived.
+ * Drawn again once the shaping has arrived.
  *
  * A letter with slots through it is drawn without them until then, because
  * the cutting is a few hundred kilobytes and a letter is drawn during a
@@ -830,7 +830,7 @@ export const forgeStore = new ForgeStore();
  * draw again, and one somebody has imported after the library landed gets a
  * promise that has already settled.
  */
-void readyToCut().then(() => {
+void readyToShape().then(() => {
   forgeStore.refresh();
 });
 

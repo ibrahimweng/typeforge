@@ -18,7 +18,7 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { ready } from "@/font/boolean";
+import { readyToShape } from "./layers";
 import { contourArea, contoursBounds } from "@/font/geometry";
 import type { Contour } from "@/font/types";
 import { drawLetter, letterNames } from "./build";
@@ -30,7 +30,7 @@ import { noCuts, type Cuts } from "@/font/cuts";
 import { BASES, SANS } from "./style";
 
 beforeAll(async () => {
-  await ready();
+  await readyToShape();
 });
 
 const ink = (contours: Contour[]): number =>

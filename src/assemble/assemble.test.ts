@@ -16,7 +16,7 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { ready } from "@/font/boolean";
+import { readyToShape } from "@/forge/layers";
 import { noCuts, type CutName, type Cuts } from "@/font/cuts";
 import { contourArea, contoursBounds } from "@/font/geometry";
 import type { Contour } from "@/font/types";
@@ -126,7 +126,7 @@ function from(pieces: Piece[], patch: Partial<Assembly> = {}): Assembly {
 
 describe("cutting a pile of drawings", () => {
   beforeAll(async () => {
-    await ready();
+    await readyToShape();
   });
 
   /*
