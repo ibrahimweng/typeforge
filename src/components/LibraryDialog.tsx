@@ -25,11 +25,10 @@ import * as React from "react";
 import { enter } from "@/anim/motion";
 import { contoursToSvgPath } from "@/font/geometry";
 import { OUTLINE_ACTION, segment } from "@/components/controls";
-import { glyphFor } from "@/library/measure";
-import { seedFrom } from "@/library/seed";
+import { baseFor, glyphFor } from "@/library/measure";
 import type { LibraryCategory, LibraryFont } from "@/library/catalogue";
 import { libraryStore, useLibrary, type LoadedFont } from "@/state/useLibrary";
-import { forgeStore } from "@/state/useForge";
+import { startDrawingFrom } from "@/state/drawn";
 import { assembleStore } from "@/state/useAssemble";
 import { store } from "@/state/useStore";
 import { cn } from "@/ui/lib/utils";
@@ -303,9 +302,18 @@ function Actions({
     libraryStore.hide();
   };
 
-  const seedIt = (): void => {
-    const seeded = seedFrom(loaded.measured, `My ${loaded.font.family}`);
-    forgeStore.startFromStyle(seeded.style, seeded.base);
+  const seedIt = async (): Promise<void> => {
+    /*
+     * The one place the wait is real.
+     *
+     * Turning a measurement into a style means the twenty bases, and drawing
+     * from it means the engine -- so both are fetched here, when somebody
+     * presses the button, rather than on the first screen of everybody who
+     * never does. Which base it lands on is decided by `baseFor`, which is a
+     * reading of the measurement and carries none of that; the note above the
+     * button says so before any of this is loaded.
+     */
+    await startDrawingFrom(loaded.measured, `My ${loaded.font.family}`);
     onMode("forge");
     libraryStore.hide();
   };
@@ -332,10 +340,10 @@ function Actions({
       />
       <Action
         label="Start a drawing from it"
-        note={`Its proportions, drawn again from nothing: ${
-          seedFrom(loaded.measured).base
-        } as the starting point. Not one of its curves comes across.`}
-        onClick={seedIt}
+        note={`Its proportions, drawn again from nothing: ${baseFor(
+          loaded.measured,
+        )} as the starting point. Not one of its curves comes across.`}
+        onClick={() => void seedIt()}
         mark="seed"
       />
       <Action

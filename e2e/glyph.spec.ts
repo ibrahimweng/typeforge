@@ -11,6 +11,7 @@ import {
   FONT_PATH,
   drawnN,
   fillBox,
+  keptGlyphs,
   keptHalves,
   openAssemble,
   openFont,
@@ -67,7 +68,16 @@ test("keeps an opened font and the letters changed in it", async ({ page }) => {
   await weight.focus();
   for (let press = 0; press < 10; press++) await page.keyboard.press("ArrowRight");
   await expect(page.locator('[data-glyph-cell="A"]')).toHaveAttribute("data-glyph-changed", "yes");
-  await expect.poll(() => keptHalves(page), { timeout: 30_000 }).toContain("edit");
+  /*
+   * Waited for by name rather than by half.
+   *
+   * The edited half is written down from the moment a font is open, so waiting
+   * for it to exist is waiting for something that happened before the edit --
+   * and the reload then races the save that carries the override. Under load
+   * the reload won, and the letter came back untouched with nothing to say
+   * why. Asking which letters are written down asks the actual question.
+   */
+  await expect.poll(() => keptGlyphs(page), { timeout: 30_000 }).toContain("A");
 
   await page.reload();
 

@@ -19,9 +19,23 @@
 import { describe, expect, it } from "vitest";
 
 import { drawLetter } from "@/forge/build";
-import { startFrom, whole } from "@/forge/document";
+import { startFrom, whole, type Forge } from "@/forge/document";
 import { BASES, SANS, type Parts } from "@/forge/style";
 import { readProject } from "./format";
+
+/*
+ * A document as the application gets it: read from the file, then filled in.
+ *
+ * Those are two steps rather than one. `readProject` hands back the drawing as
+ * it was written, and `whole` makes it a current one -- and `whole` has to know
+ * every field a style can have, which is the drawing engine. Reading happens on
+ * the first screen, to say what is in the browser; filling in waits until
+ * somebody actually opens a drawing. `forgeStore.restore` is where they meet.
+ */
+function opened(raw: unknown): Forge | undefined {
+  const project = readProject(raw);
+  return project?.draw ? whole(project.draw.forge) : undefined;
+}
 
 /** A document as it would have been written before `part` existed. */
 function savedWithout(part: string): unknown {
@@ -43,9 +57,9 @@ describe("a drawing kept before a part existed", () => {
   });
 
   it.each(PARTS)("still opens when %s is missing, and still draws", (part) => {
-    const project = readProject(savedWithout(part));
-    expect(project?.draw).toBeTruthy();
-    const style = project!.draw!.forge.style;
+    const forge = opened(savedWithout(part));
+    expect(forge).toBeTruthy();
+    const style = forge!.style;
     expect(style.parts[part]).toBeDefined();
     // The letter is the real check: a filled-in part that is filled in wrongly
     // throws here rather than in front of somebody.
@@ -58,9 +72,9 @@ describe("a drawing kept before a part existed", () => {
    * whatever that part does when it is doing nothing.
    */
   it("fills a missing part with the setting that changes nothing", () => {
-    const project = readProject(savedWithout("script"));
-    expect(project!.draw!.forge.style.parts.script).toEqual(SANS.parts.script);
-    expect(project!.draw!.forge.style.parts.script.on).toBe(false);
+    const style = opened(savedWithout("script"))!.style;
+    expect(style.parts.script).toEqual(SANS.parts.script);
+    expect(style.parts.script.on).toBe(false);
   });
 
   it("leaves a document that has everything exactly as it was", () => {
@@ -113,14 +127,13 @@ describe("the quieter ways a kept drawing can be out of date", () => {
    * either.
    */
   it("fills a field missing from inside a part, not just a whole part", () => {
-    const project = readProject(
+    const style = opened(
       aged((forge) => {
         delete (forge as any).draw;
         delete (forge as any).style.parts.bowl.width;
         delete (forge as any).style.parts.slab.bracket;
       }),
-    );
-    const style = project!.draw!.forge.style;
+    )!.style;
     expect(style.parts.bowl.width).toBe(SANS.parts.bowl.width);
     expect(style.parts.slab.bracket).toBe(SANS.parts.slab.bracket);
     const drawn = drawLetter("o", style)!;
@@ -132,13 +145,12 @@ describe("the quieter ways a kept drawing can be out of date", () => {
   });
 
   it("fills the metrics and the pen the same way", () => {
-    const project = readProject(
+    const style = opened(
       aged((forge) => {
         delete (forge as any).style.metrics.width;
         delete (forge as any).style.pen.contrast;
       }),
-    );
-    const style = project!.draw!.forge.style;
+    )!.style;
     expect(style.metrics.width).toBe(SANS.metrics.width);
     expect(style.pen.contrast).toBe(SANS.pen.contrast);
   });
@@ -149,13 +161,12 @@ describe("the quieter ways a kept drawing can be out of date", () => {
    * the letter throws on `null.on` instead of on `undefined.on`.
    */
   it("treats a null as missing rather than as a setting", () => {
-    const project = readProject(
+    const style = opened(
       aged((forge) => {
         (forge as any).style.parts.script = null;
         (forge as any).style.parts.ball = null;
       }),
-    );
-    const style = project!.draw!.forge.style;
+    )!.style;
     expect(style.parts.script).toEqual(SANS.parts.script);
     expect(drawLetter("n", style)!.contours.length).toBeGreaterThan(0);
   });
@@ -167,22 +178,22 @@ describe("the quieter ways a kept drawing can be out of date", () => {
    * be written over the top of itself on every edit.
    */
   it("gives the parts back in the order the plain face has them", () => {
-    const project = readProject(
+    const style = opened(
       aged((forge) => {
         // A group that is not the last one, which is the case that can shuffle.
         delete (forge as any).style.parts.bowl;
       }),
-    );
-    expect(Object.keys(project!.draw!.forge.style.parts)).toEqual(Object.keys(SANS.parts));
+    )!.style;
+    expect(Object.keys(style.parts)).toEqual(Object.keys(SANS.parts));
   });
 
   it("keeps a setting this version no longer knows about", () => {
-    const project = readProject(
+    const style = opened(
       aged((forge) => {
         (forge as any).style.parts.gargoyle = { on: true };
       }),
-    );
-    expect((project!.draw!.forge.style.parts as any).gargoyle).toEqual({ on: true });
+    )!.style;
+    expect((style.parts as any).gargoyle).toEqual({ on: true });
   });
 
   /*
@@ -191,26 +202,25 @@ describe("the quieter ways a kept drawing can be out of date", () => {
    * budget is not an unlimited one, it is a cap that is quietly never applied.
    */
   it("fills a tool setting added after the tool was", () => {
-    const project = readProject(
+    const effects = opened(
       aged((forge) => {
         (forge as any).effects = {
           rough: { on: true, amplitude: 0.05, wavelength: 0.9, reach: "all", seed: 1 },
         };
       }),
-    );
-    const effects = project!.draw!.forge.effects!;
+    )!.effects!;
     expect(effects.budget).toBeGreaterThan(0);
     expect(effects.pool).toBeDefined();
     expect(effects.rough.on).toBe(true);
   });
 
   it("leaves a drawing with no tool settings without any", () => {
-    const project = readProject(
+    const forge = opened(
       aged((forge) => {
         delete (forge as any).effects;
       }),
     );
-    expect(project!.draw!.forge.effects).toBeUndefined();
+    expect(forge!.effects).toBeUndefined();
   });
 
   /*

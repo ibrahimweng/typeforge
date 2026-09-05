@@ -24,7 +24,7 @@ import { OUTLINE_ACTION, PRIMARY_ACTION } from "@/components/controls";
 import type { Mode } from "@/App";
 import { hasLetters } from "@/font/library";
 import { useAssemble } from "@/state/useAssemble";
-import { useForge } from "@/state/useForge";
+import { useDrawing } from "@/state/drawn";
 import { useQuill } from "@/state/useQuill";
 import { store, useAppState } from "@/state/useStore";
 import { cn } from "@/ui/lib/utils";
@@ -72,7 +72,7 @@ export function NextStep({
   onEditAssembled: () => void;
 }): React.JSX.Element | null {
   const state = useAppState();
-  const forge = useForge();
+  const drawn = useDrawing();
   const quill = useQuill();
   const assemble = useAssemble();
   const [off, setOff] = React.useState(silenced);
@@ -84,7 +84,7 @@ export function NextStep({
        * forge draws a whole alphabet before you arrive, so a letter on screen
        * says nothing; a thing on the undo stack says you did it.
        */
-      if (!forge.canUndo)
+      if (!drawn.canUndo)
         return {
           id: "forge-touch",
           said: "Pick a style on the right, then drag Weight to make it yours.",
@@ -202,7 +202,7 @@ export function NextStep({
     };
   }, [
     mode,
-    forge.canUndo,
+    drawn.canUndo,
     quill.document.letters.length,
     assemble.assembly.pieces.length,
     state.typeface,

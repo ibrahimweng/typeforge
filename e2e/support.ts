@@ -388,6 +388,41 @@ export function keptHalves(page: Page): Promise<string[]> {
 }
 
 /**
+ * Which letters the kept session says were touched.
+ *
+ * `keptHalves` answers whether a half is written down at all, which for the
+ * edited half is true from the moment a font is open -- so a test that changes
+ * a letter and waits on that is waiting for something that has already
+ * happened, and reloads into a race with the save it actually wanted. This
+ * asks the narrower question: is *this edit* written down yet.
+ */
+export function keptGlyphs(page: Page): Promise<string[]> {
+  return page.evaluate(
+    () =>
+      new Promise<string[]>((resolve) => {
+        const request = indexedDB.open("typeforge", 1);
+        request.onerror = () => resolve([]);
+        request.onsuccess = () => {
+          const database = request.result;
+          const get = database
+            .transaction("session", "readonly")
+            .objectStore("session")
+            .get("current");
+          get.onerror = () => {
+            database.close();
+            resolve([]);
+          };
+          get.onsuccess = () => {
+            database.close();
+            const project = get.result as { edit?: { glyphs?: Array<{ name?: string }> } };
+            resolve((project?.edit?.glyphs ?? []).map((glyph) => glyph.name ?? ""));
+          };
+        };
+      }),
+  );
+}
+
+/**
  * The colour actually on the canvas, averaged over the pixels that were
  * painted.
  *

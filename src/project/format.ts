@@ -20,17 +20,8 @@
  */
 
 import type { Assembly } from "@/assemble/document";
-import { anyCut } from "@/forge/cut";
-import { anyCast, type Cast } from "@/font/cast";
-import {
-  baseNamed,
-  castOf,
-  cutsOf,
-  familyOf,
-  startFrom,
-  whole,
-  type Forge,
-} from "@/forge/document";
+import type { Cast } from "@/font/cast";
+import type { Forge } from "@/forge/document";
 import type { Cuts } from "@/font/cuts";
 import type {
   Glyph,
@@ -298,7 +289,17 @@ export function toProject(snapshot: Snapshot, at: Date): Project {
     mode: snapshot.mode,
   };
 
-  if (snapshot.draw && hasDrawing(snapshot.draw)) project.draw = snapshot.draw;
+  /*
+   * The drawn half arrives already filtered.
+   *
+   * Deciding whether a drawing is worth keeping means comparing it against the
+   * base it started from, which means the styles, the parts and the letter
+   * recipes -- the whole drawing engine, on the first screen, to write a file
+   * nobody has asked for yet. `worthKeeping` in `forge/document.ts` makes the
+   * decision where those already live, and `drawingToKeep` in `state/drawn.ts`
+   * is what asks it.
+   */
+  if (snapshot.draw) project.draw = snapshot.draw;
   if (snapshot.assemble && snapshot.assemble.assembly.pieces.length > 0) {
     project.assemble = snapshot.assemble;
   }
@@ -312,48 +313,6 @@ export function toProject(snapshot: Snapshot, at: Date): Project {
   }
   if (snapshot.traced && snapshot.traced.letters.length > 0) project.traced = snapshot.traced;
   return project;
-}
-
-/**
- * Whether the drawn half holds anything worth keeping.
- *
- * A base on its own is not work: the application opens on one, so saving that
- * would restore somebody into a font they never made and would overwrite the
- * one they did. Anything told to differ from the base is.
- */
-function hasDrawing(drawn: DrawnProject): boolean {
-  const { forge } = drawn;
-  const started = baseNamed(forge.base);
-  return (
-    Object.keys(forge.exceptions).length > 0 ||
-    Object.keys(forge.imported).length > 0 ||
-    drawn.familyName !== "Untitled" ||
-    // Asking for a second weight, or saying that what is drawn is the Black
-    // rather than the Regular, is a decision about the typeface and one nobody
-    // would want to make twice. Compared against what starting from this base
-    // would have given, because half the bases are not a Regular and arriving
-    // at one is not an edit.
-    (started !== undefined &&
-      JSON.stringify(familyOf(forge)) !== JSON.stringify(familyOf(startFrom(started)))) ||
-    // A base comes with its own choice of letterforms, so an alternate only
-    // counts as work when it differs from the one the base asked for.
-    JSON.stringify(forge.alternates) !== JSON.stringify(started?.forms ?? {}) ||
-    // Compared against the base as it ships rather than against a copy taken at
-    // the start, so a session that changed one slider and put it back reads as
-    // untouched -- which it is.
-    (started !== undefined && JSON.stringify(forge.style) !== JSON.stringify(started)) ||
-    // A cut is work of exactly the same kind, and the kind most easily lost:
-    // a face with slots through it is nothing but its cuts, and a base with
-    // nothing else touched would have been thrown away as an empty document.
-    anyCut(cutsOf(forge)) ||
-    Object.keys(forge.cutExceptions ?? {}).length > 0 ||
-    // And a cast, for the same reason: a face is often nothing but its shadow.
-    anyCast(castOf(forge)) ||
-    Object.keys(forge.castExceptions ?? {}).length > 0 ||
-    // A font laid out on a grid is nothing but its cells, and a document with
-    // an afternoon of them in it would have been thrown away as empty.
-    Object.keys(forge.kit?.glyphs ?? {}).length > 0
-  );
 }
 
 function toEdited(
@@ -418,14 +377,19 @@ export function readProject(raw: unknown): Project | null {
     /*
      * A drawing needs a style; a half without one is turned away rather than
      * filled in. There is a difference between a document written before a
-     * field existed -- which is most of them, and is what `whole` is for -- and
-     * one with nothing in it to fill, which is a truncated file or a record
-     * from something that was never this application. Fabricating a face for
-     * the second kind would restore somebody into a drawing they never made.
+     * field existed -- which is most of them -- and one with nothing in it to
+     * fill, which is a truncated file or a record from something that was
+     * never this application. Fabricating a face for the second kind would
+     * restore somebody into a drawing they never made.
+     *
+     * Filling in the first kind is `whole` in `forge/document.ts`, and it is
+     * applied where the drawing is put back rather than here. It has to know
+     * every field a style can have, which is the drawing engine -- and this
+     * file is read on the first screen to say what is in the browser, for a
+     * drawn half that most sessions do not have. What comes out of here is a
+     * document as it was written; `restoreDrawing` makes it a current one.
      */
-    draw: project.draw?.forge?.style
-      ? { ...project.draw, forge: whole(project.draw.forge) }
-      : undefined,
+    draw: project.draw?.forge?.style ? (project.draw as DrawnProject) : undefined,
     assemble: project.assemble?.assembly ? project.assemble : undefined,
     edit: project.edit?.font ? project.edit : undefined,
     // Checked for its letters rather than merely for being an object: a traced

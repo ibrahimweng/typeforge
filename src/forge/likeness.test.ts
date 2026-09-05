@@ -22,7 +22,8 @@ import { describe, expect, it } from "vitest";
 import { contoursBounds, inkRunsAt } from "@/font/geometry";
 import { draw, startFrom } from "./document";
 import { dialledTo, dialWidth, LIKENESSES, likenessBy, type Measurements } from "./likeness";
-import { NO_SCRIPT, scatterOf } from "./script";
+import { scatterOf } from "@/font/scatter";
+import { NO_SCRIPT } from "./script";
 import { BASES, ROUNDHAND, type Style } from "./style";
 
 /*

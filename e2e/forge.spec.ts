@@ -362,6 +362,11 @@ test("explains every parameter the inspector actually offers", async ({ page }) 
 
   const panel = page.getByRole("complementary", { name: "Parameters" });
   const sliders = panel.getByRole("slider");
+  // The inspector is fetched when a font is first opened, so it is not on the
+  // page the instant the font is. `count()` does not wait; the first slider
+  // does, and counting nothing would read as a help drawer that explains
+  // everything.
+  await sliders.first().waitFor();
   const parameters: string[] = [];
   for (let index = 0; index < (await sliders.count()); index++) {
     const name = await sliders.nth(index).getAttribute("aria-label");

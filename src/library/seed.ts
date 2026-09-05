@@ -18,7 +18,7 @@
  */
 
 import { BASES, type Family, type Style } from "@/forge/style";
-import type { Measured } from "./measure";
+import { baseFor, type Measured } from "./measure";
 
 export interface Seeded {
   style: Style;
@@ -26,34 +26,6 @@ export interface Seeded {
   base: string;
   /** What was taken and what had to be guessed, in plain words. */
   notes: string[];
-}
-
-/**
- * Which base to start from.
- *
- * The measured shape decides, in the order the readings can be trusted. A
- * joining face is a script whatever else it measures, because its entry and
- * exit strokes read as serifs and are not; then a monospaced face, which is a
- * decision about space rather than shape; then the presence of serifs, and
- * within the serifs the contrast, which is most of what separates a slab from
- * a didone.
- */
-function baseFor(measured: Measured): string {
-  if (measured.joining) return "Brush";
-  if (measured.monospaced) return "Typewriter";
-
-  if (measured.serif) {
-    const contrast = measured.contrast ?? 0.3;
-    if (contrast >= 0.65) return "Didone";
-    if (contrast <= 0.25) return "Slab";
-    return "Serif";
-  }
-
-  const contrast = measured.contrast ?? 0;
-  // A sans drawn with almost no modulation at all, and a wide round bowl, is a
-  // geometric rather than a grotesque.
-  if (contrast <= 0.06) return "Geometric";
-  return "Grotesque";
 }
 
 /** The family a measured face belongs to, for saying where it landed. */

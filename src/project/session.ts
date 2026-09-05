@@ -13,17 +13,25 @@
  */
 
 import { assembleStore } from "@/state/useAssemble";
-import { forgeStore } from "@/state/useForge";
+import { drawingToKeep, restoreDrawing } from "@/state/drawn";
 import { quillStore } from "@/state/useQuill";
 import { store } from "@/state/useStore";
 import { toProject, type Mode, type Project } from "./format";
 
-/** Everything worth keeping, as it stands. */
+/**
+ * Everything worth keeping, as it stands.
+ *
+ * Three of the four halves are asked directly and the drawn one is not, because
+ * the store that holds it carries the drawing engine and is not loaded until
+ * somebody opens that half. `drawingToKeep` answers for it: nothing at all
+ * until the store exists, and nothing after that either unless what is in it is
+ * work rather than the style the application opens on.
+ */
 export function session(mode: Mode, at = new Date()): Project {
   return toProject(
     {
       mode,
-      draw: forgeStore.snapshot(),
+      draw: drawingToKeep(),
       assemble: assembleStore.snapshot(),
       edit: store.snapshot(),
       traced: quillStore.snapshot(),
@@ -42,15 +50,16 @@ export interface Restored {
 /**
  * Put a document back.
  *
- * The edited half is last and is awaited, because it is the only one that has
- * to read a font file to do its work -- the other two are objects and land
- * immediately.
+ * The edited half is late and is awaited, because it has to read a font file to
+ * do its work. The drawn half is awaited for a different reason: putting it
+ * back means fetching the engine that draws it, and the mode this returns is
+ * acted on the moment it lands.
  */
 export async function restore(project: Project): Promise<Restored> {
   const halves: string[] = [];
 
   if (project.draw) {
-    forgeStore.restore(project.draw);
+    await restoreDrawing(project.draw);
     halves.push("the drawing");
   }
   if (project.assemble) {
