@@ -357,7 +357,22 @@ export function drawPenReach(
   const from = { x: view.originX + last.x * view.scale, y: view.originY - last.y * view.scale };
 
   context.save();
-  context.strokeStyle = readToken("--inspect", "#7aa2f7");
+  /*
+   * Off the canvas, like every other colour here, and it was not.
+   *
+   * `readToken` reads a custom property off whatever element it is handed, and
+   * the ground is set on an ancestor of the canvas rather than on the document.
+   * This one call was handed nothing, so it read the root's value while the two
+   * marks drawn beside it -- the closing ring below, and the segment highlight
+   * in `drawSegmentUnder` -- read the canvas's. On the light ground that is the
+   * chrome purple over a near-white canvas, which is the pale wash `styles.css`
+   * darkens `--inspect` to avoid: a mark you have to hunt for, and the only one
+   * of the pen's three you had to.
+   *
+   * Its fallback disagreed too -- a blue where the other two are purple -- so
+   * with the property missing the three would have been two colours as well.
+   */
+  context.strokeStyle = readToken("--inspect", "#9149f5", context.canvas);
   context.lineWidth = 1;
   context.setLineDash([4, 3]);
   context.beginPath();
