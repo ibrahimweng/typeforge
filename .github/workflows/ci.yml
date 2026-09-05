@@ -8,6 +8,16 @@ on:
 permissions:
   contents: read
 
+# The actions below are all v5, which is the first version of each that runs on
+# Node 24. v4 runs on Node 20, and GitHub has required Node 24 of an action
+# since 2 June 2026 -- so v4 was already being forced onto Node 24 by the
+# runner, which said so in every log: "Node.js 20 is deprecated. The following
+# actions target Node.js 20 but are being forced to run on Node.js 24". Being
+# carried by a compatibility shim is not the same as being supported, and the
+# shim is the part that goes away.
+#
+# v5 needs runner v2.327.1 or newer, which the hosted runners are well past.
+
 jobs:
   # Neither of these depends on the Node that runs it. Biome is its own binary,
   # and tsc's diagnostics come from the TypeScript version in package.json
@@ -26,13 +36,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           # The current one. Which it is does not matter here, and that is the
           # point of the job.
-          node-version: '22'
+          node-version: '24'
           cache: npm
 
       - run: npm ci
@@ -48,13 +58,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 20 is the lowest version the project supports, 22 is current.
-        node: ['20', '22']
+        # 22 is the lowest version the project supports, 24 is the current
+        # long-term release. Both are what `engines` in package.json claims.
+        #
+        # It was 20 and 22, and 20 went out of support on 30 April 2026. A
+        # matrix leg on a version nobody gets security fixes for is worse than
+        # no leg at all: it is a green tick saying the project works somewhere
+        # nobody should be running it, and it holds the whole project down to
+        # what that version could do.
+        #
+        # Node 26 becomes the long-term release on 28 October 2026. When it
+        # does, this becomes 22 and 26, and then 24 and 26 once 22 goes out of
+        # support on 30 April 2027.
+        node: ['22', '24']
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -98,11 +119,11 @@ jobs:
         engine: [chromium, webkit]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: '22'
+          node-version: '24'
           cache: npm
 
       - run: npm ci
