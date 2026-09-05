@@ -52,6 +52,7 @@ function seed(names: string[]): void {
  */
 function freshHand(): void {
   store.finishStroke();
+  // biome-ignore lint/correctness/useHookAtTopLevel: store.usePen is a method on the document store, not a React hook.
   store.usePen(null);
   for (const one of store.pens.filter((p) => !STARTING_PENS.some((s) => s.id === p.id))) {
     store.deletePen(one.id);
