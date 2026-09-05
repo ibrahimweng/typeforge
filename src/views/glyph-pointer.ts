@@ -101,7 +101,12 @@ export type Drag =
    * its axis ends, and pulling one out widens the pen while pulling it
    * sideways turns it.
    */
-  | { kind: "writePull"; from: Vec2; stroke: number; node: number; before: Glyph }
+  /*
+   * `pulled` for the same reason the pen's drag carries one: a click and a pull
+   * are the same press until the pointer either moves or does not, and only one
+   * of them has anything to record on release.
+   */
+  | { kind: "writePull"; from: Vec2; stroke: number; node: number; pulled: boolean; before: Glyph }
   | { kind: "penHandle"; handle: PenHandle; before: Glyph }
   | { kind: "strokePoint"; stroke: number; node: number; before: Glyph }
   | { kind: "writeTrail"; trail: Vec2[] }

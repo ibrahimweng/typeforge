@@ -61,6 +61,41 @@ import {
  */
 const SNAP_REACH = 6;
 
+/**
+ * What is true of the letter itself, whatever the pointer is doing.
+ *
+ * Gathered in one place because it was gathered in three, and they disagreed.
+ * Two of them -- picking up a tool, and the pointer leaving the canvas -- have
+ * no pointer position to speak of, and the question of what belongs in them is
+ * the same question: whether the fact is about the letter or about the place.
+ * `written` and `strokeOpen` were added to both when the pen tool was found
+ * calling a letter with two strokes in it empty. The other three were not, and
+ * so went on being lost.
+ *
+ * Which is a sentence that flatly contradicts the letter on screen. Leave the
+ * canvas mid-outline and the pen stopped saying "click to add a point" and went
+ * back to "click for a corner", over an outline it was in the middle of; leave
+ * it with the knife and the knife said "nothing to cut here" over a letter full
+ * of shapes -- the one warning it exists to give, given exactly where it is
+ * wrong. And reaching for another tool is a move that necessarily leaves the
+ * canvas, so this was the ordinary way to see it.
+ *
+ * One list, so the next fact added to it is added everywhere.
+ */
+function aboutTheLetter(
+  glyph: Glyph | null,
+  writing: { name: string } | null,
+): Pick<Under, "pathOpen" | "openPoints" | "shape" | "written" | "strokeOpen"> {
+  const open = glyph ? openOutline(glyph) : null;
+  return {
+    pathOpen: Boolean(open),
+    openPoints: open?.nodes.length ?? 0,
+    shape: Boolean(glyph?.contours.some((one) => one.closed && one.nodes.length >= 3)),
+    written: (glyph?.written?.strokes.length ?? 0) > 0,
+    strokeOpen: writing !== null && writing.name === glyph?.name,
+  };
+}
+
 /** Everything the gesture hands back, and nothing it keeps to itself. */
 export interface Gestures {
   /** What is under the pointer, for the painter to light up. */
@@ -375,6 +410,7 @@ export function useGlyphGestures(within: {
         from: canvasPoint,
         stroke: which,
         node: Math.max(0, written[which]?.spine.segments.length ?? 0),
+        pulled: false,
         before: store.snapshotGlyph(glyph.name) ?? glyph,
       };
       reportPhase(canvasPoint);
@@ -540,41 +576,33 @@ export function useGlyphGestures(within: {
    */
   const whatIsUnder = (canvasPoint: Vec2 | null, found: Hover = hover): Under => {
     /*
-     * With no pointer on the canvas there is nothing under it -- except the two
-     * facts that are about the letter rather than about the place. Whether this
-     * letter was written at all is one of them, and leaving it out of this case
-     * made the pen tool say "nothing written here yet" about a letter with two
-     * strokes in it, for as long as the pointer was off the canvas.
+     * With no pointer on the canvas there is nothing under it -- except what is
+     * true of the letter rather than of the place, which `aboutTheLetter`
+     * answers for and which is exactly as true with the pointer elsewhere.
      */
     if (!glyph || !canvasPoint)
       return {
         ...NOTHING_UNDER,
+        ...aboutTheLetter(glyph, store.writing),
         grabbable: found !== null,
-        written: (glyph?.written?.strokes.length ?? 0) > 0,
-        strokeOpen: store.writing !== null && store.writing.name === glyph?.name,
       };
-    const open = openOutline(glyph);
     /*
      * The node and edge tests run for every tool rather than only the select
      * tool's hover, because five of the thirteen work on a point or an edge and
      * each has to know whether there is one before the click, not after.
      */
     const node = hitTestNode(glyph, view, canvasPoint);
-    const writing = store.writing;
     return {
+      ...aboutTheLetter(glyph, store.writing),
       grabbable: found !== null,
       closingPoint: onClosingPoint(glyph, view, canvasPoint),
-      pathOpen: Boolean(open),
-      openPoints: open?.nodes.length ?? 0,
       node: node !== null,
       /*
-       * The three the write tools ask about. Asked here with everything else
-       * rather than in the tools, so the sentence, the cursor and the handles
-       * cannot disagree about whether there is a pen to take hold of.
+       * Asked here with everything else rather than in the tools, so the
+       * sentence, the cursor and the handles cannot disagree about whether
+       * there is a pen to take hold of.
        */
       penHandle: hitTestPen(glyph, view, canvasPoint) !== null,
-      written: (glyph.written?.strokes.length ?? 0) > 0,
-      strokeOpen: writing !== null && writing.name === glyph.name,
       /*
        * Asked without regard to whether a point is here too.
        *
@@ -586,7 +614,6 @@ export function useGlyphGestures(within: {
        * each tool's business, and each one says so.
        */
       edge: segmentUnder(glyph, view, canvasPoint) !== null,
-      shape: glyph.contours.some((one) => one.closed && one.nodes.length >= 3),
       lastPoint: onLastPoint(glyph, view, canvasPoint),
     };
   };
@@ -664,24 +691,12 @@ export function useGlyphGestures(within: {
     store.setToolState(
       toolStateFor(
         state.tool,
-        {
-          ...NOTHING_UNDER,
-          pathOpen: Boolean(glyph && openOutline(glyph)),
-          openPoints: glyph ? (openOutline(glyph)?.nodes.length ?? 0) : 0,
-          shape: Boolean(glyph?.contours.some((one) => one.closed && one.nodes.length >= 3)),
-          /*
-           * The two that are about the letter rather than about the pointer,
-           * which is the whole rule for what belongs in this list.
-           *
-           * Left out, picking up the pen tool on a letter with two strokes in
-           * it said "nothing written here yet, write a stroke first" -- which
-           * is the sentence for an empty letter, over a letter that is not.
-           * `penHandle` is a pointer fact and stays false: nothing is under a
-           * pointer that has not moved yet.
-           */
-          written: (glyph?.written?.strokes.length ?? 0) > 0,
-          strokeOpen: store.writing !== null && store.writing.name === glyph?.name,
-        },
+        /*
+         * What is true of the letter, and nothing about the pointer: nothing is
+         * under one that has not moved yet, so `grabbable`, `node`, `edge`,
+         * `penHandle`, `closingPoint` and `lastPoint` all stay false.
+         */
+        { ...NOTHING_UNDER, ...aboutTheLetter(glyph, store.writing) },
         null,
         { shift: false, alt: false },
       ),
@@ -860,6 +875,15 @@ export function useGlyphGestures(within: {
       case "writePull": {
         const moved = Math.hypot(canvasPoint.x - drag.from.x, canvasPoint.y - drag.from.y);
         if (moved < A_DRAG) break;
+        /*
+         * Nothing to pull out of the first point of a stroke. `pullStroke`
+         * shapes the segment *arriving* at this point, and on the first there
+         * is none -- it returns having done nothing. Said here rather than left
+         * to be discovered there, because the release below has to know whether
+         * anything happened.
+         */
+        if (drag.node === 0) break;
+        drag.pulled = true;
         const to = { x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) };
         store.pullStroke(glyph.name, drag.stroke, drag.node, to);
         forceRender();
@@ -980,10 +1004,19 @@ export function useGlyphGestures(within: {
         break;
       }
       case "writePull": {
-        // Only if it was a pull. A plain click already recorded its own point,
-        // and a second entry for a gesture that added nothing is an undo press
-        // that appears to do nothing.
-        if (drag.node > 0) store.commitGlyphEdit(glyph.name, "Write a curve", drag.before);
+        /*
+         * Only if it was a pull. A plain click already recorded its own point
+         * through `writePoint`, and a second entry for a gesture that added
+         * nothing is an undo press that appears to do nothing.
+         *
+         * Which is what this did. It asked `drag.node > 0` -- the index of the
+         * point just placed, not whether the pointer ever moved -- so every
+         * plain click from the second point of a stroke onwards committed an
+         * empty edit on top of its own. Three clicks left five things to undo,
+         * two of which changed nothing on screen. `pulled` is the question that
+         * was meant, and it is the one the pen's drag beside this already asks.
+         */
+        if (drag.pulled) store.commitGlyphEdit(glyph.name, "Write a curve", drag.before);
         break;
       }
       case "penHandle": {
