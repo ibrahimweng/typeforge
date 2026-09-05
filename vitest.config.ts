@@ -45,10 +45,11 @@ export default defineConfig({
     /*
      * Coverage, off unless it is asked for.
      *
-     * `npm run coverage`. Instrumenting every file costs about a fifth of the
-     * run and reports nothing the ordinary run needs, so it is not on by
-     * default -- what it is for is a question about the suite rather than about
-     * a change, and it is asked deliberately.
+     * `npm run coverage`. Instrumenting every file costs six times the run --
+     * four minutes measured here becomes twenty-six -- and reports nothing the
+     * ordinary run needs, so it is not on by default. What it is for is a
+     * question about the suite rather than about a change, and it is asked
+     * deliberately.
      */
     coverage: {
       provider: "v8",

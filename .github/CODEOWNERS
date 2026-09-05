@@ -1,0 +1,24 @@
+# Who gets asked to review what.
+#
+# GitHub reads the last matching line, so the specific paths below override the
+# catch-all above them.
+
+*                       @ibrahimweng
+
+# The parts where a change has consequences outside the code.
+#
+# `src/ui/` is Toolcraft's, under a licence that does not permit selling this
+# application as a product, and the licence files say which parts of the
+# repository are ours to license and which are not. An edit here can change what
+# the project is allowed to be, which is not a thing to notice after merging.
+/src/ui/                @ibrahimweng
+/LICENSE                @ibrahimweng
+/LICENSE-sample-font.txt @ibrahimweng
+/NOTICE.md              @ibrahimweng
+
+# The sample font is a renamed subset of DejaVu, and the script is what makes
+# that derivation reproducible rather than a binary of unclear origin.
+/scripts/build-sample-font.py @ibrahimweng
+
+# What runs on every push, and what it is allowed to reach.
+/.github/               @ibrahimweng
