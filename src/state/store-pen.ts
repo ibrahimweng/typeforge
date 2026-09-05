@@ -128,6 +128,29 @@ export abstract class PenStore extends OutlineStore {
       return;
     }
 
+    /*
+     * And a flag that says a stroke is being written, on a letter with no
+     * stroke to extend, is a flag left over from a document that is gone.
+     *
+     * `writing` is a fact about the session rather than about the shape, so
+     * nothing about replacing the document clears it. Start a new letter mid
+     * stroke and the name can match -- there is an `a` in both -- and every
+     * click after that went into the branch below, found nothing open, and
+     * returned: the first two clicks on the new document drew nothing at all
+     * and said nothing about why.
+     *
+     * Treated as stale rather than guarded against, because the alternative is
+     * every place that swaps the document remembering to put the pen down, and
+     * there are six of them.
+     */
+    const written = this.glyph(name)?.written;
+    const last = written?.strokes[written.strokes.length - 1];
+    if (!last || last.spine.closed) {
+      this.set({ writing: null });
+      this.writePoint(name, at);
+      return;
+    }
+
     this.editGlyph(name, "Write", (editing) => {
       const strokes = editing.written?.strokes ?? [];
       const open = strokes[strokes.length - 1];
