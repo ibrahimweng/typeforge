@@ -118,6 +118,24 @@ export function paramsAreDefault(params: GlyphParams): boolean {
 }
 
 /**
+ * Whether anything in the stack would change this letter from how it was drawn.
+ *
+ * Asked as a question, because the answer used to be inferred from whether
+ * `resolveGlyphContours` handed back the same array it was given -- which is
+ * true of a letter drawn from its own outlines and never true of one built from
+ * parts, since composing them makes a new array every time. So every composite
+ * looked reshaped whether or not a single parameter had moved. Anywhere that
+ * wants to know should ask here rather than compare.
+ */
+export function isReshaped(glyph: Glyph, typeface: Typeface): boolean {
+  return (
+    !paramsAreDefault(effectiveParams(glyph, typeface)) ||
+    anyCut(effectiveCuts(glyph, typeface)) ||
+    anyCast(effectiveCast(glyph, typeface))
+  );
+}
+
+/**
  * Apply the parameter stack to a glyph's outlines.
  *
  * Order matters. Shape-level changes come first, while the outline still means
@@ -129,11 +147,11 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
   // whatever its parts contribute. Parameters then apply to the finished shape,
   // which keeps a family-wide change from being applied twice to a component.
   const composed = resolveComponents(glyph, typeface);
+  if (!isReshaped(glyph, typeface)) return composed;
 
   const params = effectiveParams(glyph, typeface);
   const cuts = effectiveCuts(glyph, typeface);
   const cast = effectiveCast(glyph, typeface);
-  if (paramsAreDefault(params) && !anyCut(cuts) && !anyCast(cast)) return composed;
 
   let contours = composed.map(cloneContour);
   // The named parts move first, while the letter is still as it was drawn.
