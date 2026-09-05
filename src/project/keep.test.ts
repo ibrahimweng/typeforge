@@ -28,7 +28,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FORMAT, type Project } from "./format";
-import { SETTLE, forget, keep, keeper, kept } from "./keep";
+import { SETTLE, askToPersist, forget, keep, keeper, kept } from "./keep";
 
 type Handler = (() => void) | null;
 
@@ -562,5 +562,104 @@ describe("waiting for the drawing to stop changing", () => {
     running({ writing: "error" });
     const write = keeper(100);
     expect(await write.now(() => session())).toBe(false);
+  });
+});
+
+/**
+ * Saying whether the work is being kept, every time rather than once.
+ *
+ * The interface asked this question at startup and never again. `soon` is the
+ * path that runs during ordinary work, it threw its answer away, and storage
+ * that filled up an hour in went on failing while the toolbar said the work was
+ * kept. That is the one failure this whole file exists to prevent, arriving
+ * through the file itself.
+ */
+describe("telling the caller whether the write went", () => {
+  it("reports a write that went, and one that did not", async () => {
+    vi.useFakeTimers();
+    const told: boolean[] = [];
+    running();
+    const write = keeper(100, (kept) => told.push(kept));
+
+    await write.now(() => session());
+    expect(told).toEqual([true]);
+
+    // The same keeper against storage that has stopped accepting writes, which
+    // is what a full disk looks like from here.
+    vi.unstubAllGlobals();
+    running({ writing: "abort" });
+    await write.now(() => session());
+    expect(told).toEqual([true, false]);
+  });
+
+  it("reports the writes that happen on their own, which was the whole gap", async () => {
+    vi.useFakeTimers();
+    const told: boolean[] = [];
+    running({ writing: "abort" });
+    const write = keeper(100, (kept) => told.push(kept));
+
+    // Through `soon`, the path a drag takes. Nobody awaits this one, and before
+    // there was a callback nobody heard about it either.
+    write.soon(() => session());
+    expect(told).toEqual([]);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(told).toEqual([false]);
+  });
+
+  it("works without being told anything, because the callback is optional", async () => {
+    vi.useFakeTimers();
+    running();
+    const write = keeper(100);
+    await expect(write.now(() => session())).resolves.toBe(true);
+  });
+});
+
+/**
+ * Asking the browser to hold on to the storage.
+ *
+ * Written is not kept. Storage an origin has not asked to persist is evictable:
+ * cleared under disk pressure, and cleared by WebKit after seven days without a
+ * visit. So the session survives the tab closing, which is what it was built
+ * for, and then does not survive a fortnight away, which is the case somebody
+ * is most likely to be leaning on.
+ */
+describe("asking to keep the storage", () => {
+  it("says nothing rather than throwing where the browser has no such thing", async () => {
+    vi.stubGlobal("navigator", {});
+    await expect(askToPersist()).resolves.toBeNull();
+  });
+
+  it("does not ask again once the browser has already agreed", async () => {
+    let asked = 0;
+    vi.stubGlobal("navigator", {
+      storage: {
+        persisted: () => Promise.resolve(true),
+        persist: () => {
+          asked += 1;
+          return Promise.resolve(true);
+        },
+      },
+    });
+    await expect(askToPersist()).resolves.toBe(true);
+    // Asking again costs a permission prompt in the browsers that show one.
+    expect(asked).toBe(0);
+  });
+
+  it("asks when the browser has not been asked, and passes on a refusal", async () => {
+    vi.stubGlobal("navigator", {
+      storage: { persisted: () => Promise.resolve(false), persist: () => Promise.resolve(false) },
+    });
+    await expect(askToPersist()).resolves.toBe(false);
+  });
+
+  it("treats a browser that throws as one with no opinion", async () => {
+    vi.stubGlobal("navigator", {
+      storage: {
+        persisted: () => {
+          throw new Error("no");
+        },
+      },
+    });
+    await expect(askToPersist()).resolves.toBeNull();
   });
 });

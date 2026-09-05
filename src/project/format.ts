@@ -41,10 +41,83 @@ export type Mode = "edit" | "forge" | "assemble" | "quill";
  * The version of this format.
  *
  * Written into every file so that a document from an older Typeforge can be
- * recognised rather than half-read. There is one version so far and this is it;
- * what matters is that the field is there before there are two.
+ * recognised rather than half-read. There is one version so far and this is it.
+ *
+ * Read `MIGRATIONS` below before changing this. Bumping the number without
+ * writing the step that goes with it is what turns every document anybody has
+ * saved into a file this application refuses to open.
  */
 export const FORMAT = 1;
+
+/**
+ * The oldest version there is a path forward from.
+ *
+ * Every version from this one up to `FORMAT` can be read, because there is a
+ * migration for each step between them. Anything older is a document from
+ * before the chain was kept and there is nothing to do with it.
+ */
+export const OLDEST = 1;
+
+/** A document as it sits in the file, before it is known to be one of ours. */
+type Raw = Record<string, unknown>;
+
+/**
+ * What turns a document of one version into one of the next.
+ *
+ * `MIGRATIONS[n]` takes a document written by version `n` and gives back the
+ * same document as version `n + 1` would have written it. They run in order, so
+ * a version 1 document opened by version 4 goes through three of them and no
+ * step has to know about any version but its own.
+ *
+ * Empty because there has only ever been one version. What goes here is the
+ * step for a change that is not additive. A field that is merely new does not
+ * need one: `readProject` fills a missing field in, so a document written
+ * before it existed already reads as though it always had one, and that is how
+ * every change to this format has been made so far.
+ *
+ * When you do bump `FORMAT`:
+ *
+ *   1. Add the step here under the version being left behind, so bumping
+ *      `FORMAT` to 2 adds `MIGRATIONS[1]`.
+ *   2. Change only what the new version changed. A step is not a validator, and
+ *      what it hands on is checked by `readProject` afterwards like anything
+ *      else.
+ *   3. Leave `OLDEST` alone unless you are deliberately dropping support for
+ *      documents that old, which costs somebody their work.
+ */
+const MIGRATIONS: Record<number, (document: Raw) => Raw> = {};
+
+/**
+ * Bring a document up to the current version, as far as it will come.
+ *
+ * Both the table of steps and the version being aimed at can be given rather
+ * than reached for, and that is the whole reason this is testable. There is
+ * one version of this format, so with the real table and the real `FORMAT`
+ * there is nothing for the loop below to do and no test can watch it work. A
+ * mechanism whose first run is the day somebody bumps `FORMAT` is one nobody
+ * has ever seen work, on the day every saved document depends on it.
+ *
+ * So a test hands this two steps and a target of 3, and checks they ran in
+ * order. Nothing else passes either argument.
+ */
+export function migrate(
+  raw: Raw,
+  from: number,
+  through: { steps?: Record<number, (document: Raw) => Raw>; upTo?: number } = {},
+): Raw | null {
+  const steps = through.steps ?? MIGRATIONS;
+  const upTo = through.upTo ?? FORMAT;
+  if (from < OLDEST) return null;
+  let document = raw;
+  for (let version = from; version < upTo; version++) {
+    const step = steps[version];
+    // A gap in the chain is a mistake in this file rather than in the document,
+    // and carrying on past it would hand the reader a shape it does not know.
+    if (!step) return null;
+    document = step(document);
+  }
+  return document;
+}
 
 export interface Project {
   /** Names the format, so a file that is not one of ours says so immediately. */
@@ -349,17 +422,96 @@ function toEdited(
 // Reading
 // ---------------------------------------------------------------------------
 
+/** What came of trying to read a document. */
+export interface Reading {
+  /** The document, brought up to date, or null when it is not one of ours. */
+  project: Project | null;
+  /** The version that wrote it, when it said which. */
+  from: number | null;
+  /** What to tell somebody, when there is something worth telling them. */
+  note: string | null;
+}
+
 /**
- * Read a document, refusing anything that is not one.
+ * Read a document, refusing only what is not one.
  *
  * Everything is checked rather than trusted. A file picker takes whatever is
  * pointed at it, and a half-read document that throws three screens later is
  * worse than one that is turned away at the door.
+ *
+ * What is not a reason to turn one away is its version. A document older than
+ * this one is brought forward through `migrate` and read normally. A document
+ * newer than this one is read anyway, and this is the part worth arguing for:
+ * every half below is checked on its own and dropped when it is not the shape
+ * this version knows, so a document from a later Typeforge loses the halves
+ * that changed and keeps the ones that did not. Refusing the file outright
+ * loses those as well, and it loses them from the session too, because the
+ * session is read through this same door. Somebody who opens today's work in
+ * yesterday's tab should get back what yesterday can draw, not an empty
+ * screen.
+ */
+export function readDocument(raw: unknown): Reading {
+  /*
+   * Nothing, and nothing to say about it either.
+   *
+   * The note is for what the caller could not have worked out on its own. That
+   * a file is not a document is something it already knows by the time it has
+   * a null, and it can say so better than this can: it has the file's name,
+   * and it knows the button takes fonts as well, so what it says names both
+   * things somebody might have meant. A note here would replace that sentence
+   * with a worse one.
+   */
+  const nothing: Reading = { project: null, from: null, note: null };
+
+  if (typeof raw !== "object" || raw === null) return nothing;
+  const document = raw as Raw;
+
+  // The field that says the file is ours at all. Anything without it is some
+  // other JSON, and there is nothing here to read out of it.
+  const from = document.typeforge;
+  if (typeof from !== "number" || !Number.isInteger(from) || from < 1) return nothing;
+
+  let carried: Raw = document;
+  let note: string | null = null;
+
+  if (from < FORMAT) {
+    const brought = migrate(document, from);
+    if (!brought) {
+      return {
+        project: null,
+        from,
+        note: `It was written by a version of Typeforge too old to read (format ${from}).`,
+      };
+    }
+    carried = brought;
+  } else if (from > FORMAT) {
+    // Read anyway. What survives is whatever the halves below recognise.
+    note = "It was written by a newer Typeforge. Some of it may be missing.";
+  }
+
+  // Says which version it was even when it could not be read, since by here the
+  // file is one of ours and that is worth knowing.
+  const project = readHalves(carried);
+  if (!project) return { project: null, from, note: null };
+
+  // Said only once there is a document to say it about, so a file that failed
+  // for some other reason does not also get blamed on its version.
+  return { project, from, note };
+}
+
+/**
+ * The same thing for callers that only want the document.
+ *
+ * Kept because most of them do, and because a call that reads as a question
+ * about a file should not have to unpack an answer about versions.
  */
 export function readProject(raw: unknown): Project | null {
-  if (typeof raw !== "object" || raw === null) return null;
+  return readDocument(raw).project;
+}
+
+/** The halves of a document, each checked on its own. */
+function readHalves(raw: Raw): Project | null {
   const project = raw as Partial<Project>;
-  if (project.typeforge !== FORMAT) return null;
   if (
     project.mode !== "edit" &&
     project.mode !== "forge" &&

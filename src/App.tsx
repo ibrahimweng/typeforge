@@ -28,7 +28,7 @@ import { readyToShape } from "@/forge/layers";
 import { detectFormat } from "@/font/parse";
 import { looksJoined } from "@/quill/joined";
 import { toTypeface as quillToTypeface } from "@/quill/typeface";
-import { describe, readProject, type Mode as SavedMode } from "@/project/format";
+import { describe, readDocument, type Mode as SavedMode, type Reading } from "@/project/format";
 import { keeper as makeKeeper, kept } from "@/project/keep";
 import { fileNameFor, restore, session } from "@/project/session";
 import type { Keeping } from "@/components/TopBar";
@@ -425,7 +425,6 @@ export function App(): React.JSX.Element {
     return () => window.cancelIdleCallback(handle);
   }, []);
   const [dragging, setDragging] = React.useState(false);
-  const [keeping, setKeeping] = React.useState<Keeping>("unknown");
   const inputRef = React.useRef<HTMLInputElement>(null);
   const folderRef = React.useRef<HTMLInputElement>(null);
   /*
@@ -495,7 +494,25 @@ export function App(): React.JSX.Element {
    * What comes back is put back before anything is drawn, so arriving looks
    * like never having left rather than like a font appearing a moment later.
    */
-  const keeper = React.useRef(makeKeeper()).current;
+  const [keeping, setKeeping] = React.useState<Keeping>("unknown");
+  /*
+   * The keeper tells this, and it tells the toolbar.
+   *
+   * Held in a ref so the keeper itself is made once. A keeper rebuilt on a
+   * state change loses its pending timer, which is the last few seconds of
+   * somebody's work.
+   */
+  const keptSoFar = React.useRef<Keeping>("unknown");
+  const keeper = React.useRef(
+    makeKeeper(undefined, (went) => {
+      const now: Keeping = went ? "kept" : "off";
+      // Set only on a change, so a write every second does not re-render the
+      // whole toolbar every second.
+      if (keptSoFar.current === now) return;
+      keptSoFar.current = now;
+      setKeeping(now);
+    }),
+  ).current;
   const restoring = React.useRef(true);
 
   React.useEffect(() => {
@@ -529,7 +546,9 @@ export function App(): React.JSX.Element {
         if (live) {
           // Whether this browser will keep anything is not a question with an
           // answer until something has been written, so it is asked by writing.
-          setKeeping((await keeper.now(() => session(was))) ? "kept" : "off");
+          // What comes back of that goes to the toolbar through the keeper's
+          // own report, along with every write after it.
+          await keeper.now(() => session(was));
         }
         restoring.current = false;
       }
@@ -604,21 +623,43 @@ export function App(): React.JSX.Element {
   }, [mode]);
 
   const openProject = React.useCallback(async (file: File, bytes: Uint8Array) => {
-    let project = null;
+    let reading: Reading = { project: null, from: null, note: null };
     try {
-      project = readProject(JSON.parse(new TextDecoder().decode(bytes)));
+      reading = readDocument(JSON.parse(new TextDecoder().decode(bytes)));
     } catch {
-      project = null;
+      reading = { project: null, from: null, note: null };
     }
-    if (!project) {
-      // Said as the two things it could have been, since by here it is neither
-      // and "could not be read" leaves somebody guessing which one they missed.
-      store.say(`${file.name} is not a font or a Typeforge project.`, "error");
+    if (!reading.project) {
+      /*
+       * The reader's own reason where it has one, because it knows things this
+       * does not. A document from a Typeforge too old to read is a different
+       * problem from a file that was never one, and telling somebody their
+       * project "is not a font" when it plainly is sends them looking for a
+       * corrupt file that is not corrupt.
+       *
+       * The fallback is still said as the two things it could have been, since
+       * by then it is neither and "could not be read" leaves somebody guessing
+       * which one they missed.
+       */
+      store.say(reading.note ?? `${file.name} is not a font or a Typeforge project.`, "error");
       return;
     }
-    const back = await restore(project);
+    const back = await restore(reading.project);
     setMode(back.mode);
-    store.say(`Opened ${file.name} — ${back.halves.join(", ") || "nothing in it"}.`);
+    /*
+     * What came back, and what may not have, as one sentence.
+     *
+     * A document from a newer Typeforge comes back with the halves this
+     * version understands and without the ones it does not, and somebody has
+     * to be told that before they carry on working in it. Said as a second
+     * `say` it would not be told at all: the status line holds one message, so
+     * the second replaces the first the moment it arrives.
+     */
+    const opened = `Opened ${file.name} — ${back.halves.join(", ") || "nothing in it"}.`;
+    store.say(
+      reading.note ? `${opened} ${reading.note}` : opened,
+      reading.note ? "info" : "success",
+    );
   }, []);
 
   React.useEffect(() => {
