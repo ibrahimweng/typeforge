@@ -25,7 +25,7 @@ import { toTypeface } from "@/quill/typeface";
 import { drawTraced, quillStore } from "@/state/useQuill";
 import { looksJoined } from "@/quill/joined";
 import { traceFont, WANTED, type TraceProgress } from "@/quill/tracing";
-import { findTestFont, loadTestFont } from "./fixtures";
+import { findTestFont, loadTestFont, longEnoughFor } from "./fixtures";
 
 const FONT = findTestFont();
 const describeWithFont = FONT ? describe : describe.skip;
@@ -37,7 +37,7 @@ const describeWithFont = FONT ? describe : describe.skip;
  * reason the panel runs this in a worker, and the reason it is an integration
  * test rather than something in the fast suite.
  */
-describeWithFont("tracing a whole font", { timeout: 180_000 }, () => {
+describeWithFont("tracing a whole font", { timeout: longEnoughFor(180_000) }, () => {
   it("comes back with letters, and says truthfully how it got there", async () => {
     const bytes = loadTestFont()!;
     const seen: TraceProgress[] = [];
@@ -143,134 +143,138 @@ describeWithFont("what a real text face reads as", () => {
  * fuse, write -- and, separately, that the strokes survive a trip through JSON
  * and redraw the same ink on the way back.
  */
-describeWithFont("what a traced font can be turned into", { timeout: 180_000 }, () => {
-  it("writes a font file, with metrics measured off its own letters", async () => {
-    const { letters, unitsPerEm } = await traceFont(loadTestFont()!, "test.ttf");
-    const typeface = await toTypeface(letters, PLAIN_HAND, unitsPerEm, {
-      familyName: "Test Traced",
-      styleName: "Regular",
-      from: "test.ttf",
+describeWithFont(
+  "what a traced font can be turned into",
+  { timeout: longEnoughFor(180_000) },
+  () => {
+    it("writes a font file, with metrics measured off its own letters", async () => {
+      const { letters, unitsPerEm } = await traceFont(loadTestFont()!, "test.ttf");
+      const typeface = await toTypeface(letters, PLAIN_HAND, unitsPerEm, {
+        familyName: "Test Traced",
+        styleName: "Regular",
+        from: "test.ttf",
+      });
+
+      expect(typeface.glyphs.length).toBeGreaterThan(20);
+      // Every font must open with the box a renderer shows when it has nothing
+      // else to show, and it must be first.
+      expect(typeface.glyphs[0].name).toBe(".notdef");
+      expect(typeface.unitsPerEm).toBe(unitsPerEm);
+
+      /*
+       * The lines, read off the ink rather than carried over.
+       *
+       * Checked as an ordering rather than against numbers, because the numbers
+       * belong to whichever font the machine had: what has to hold on any of them
+       * is that the lowercase sits under the capitals, the capitals under the
+       * ascenders, and the descenders below the baseline.
+       */
+      const { xHeight, capHeight, ascender, descender } = typeface.metrics;
+      expect(xHeight).toBeGreaterThan(0);
+      expect(capHeight).toBeGreaterThan(xHeight);
+      expect(ascender).toBeGreaterThanOrEqual(capHeight);
+      expect(descender).toBeLessThan(0);
+
+      // Punctuation takes the name the rest of the world uses, so a file written
+      // here has a `period` where every other font has one.
+      const names = new Set(typeface.glyphs.map((one) => one.name));
+      if (letters.some((one) => one.glyph.name === ".")) expect(names.has("period")).toBe(true);
+      expect(names.has(".")).toBe(false);
+
+      // And it says what it is. A derivative work that has lost track of what it
+      // derives from is the one thing worse than a derivative work.
+      expect(typeface.meta.copyright).toContain("test.ttf");
+      expect(typeface.meta.copyright).toContain("derivative");
+
+      const written = await exportFont(typeface, {
+        format: "ttf",
+        fidelity: "rebuild",
+        includeKerning: false,
+        mergeOverlaps: false,
+      });
+      // A real file rather than a plausible object: the sfnt magic, and a size
+      // that could not be an empty shell.
+      expect(written.bytes.length).toBeGreaterThan(2000);
+      expect([...written.bytes.slice(0, 4)]).toEqual([0x00, 0x01, 0x00, 0x00]);
     });
 
-    expect(typeface.glyphs.length).toBeGreaterThan(20);
-    // Every font must open with the box a renderer shows when it has nothing
-    // else to show, and it must be first.
-    expect(typeface.glyphs[0].name).toBe(".notdef");
-    expect(typeface.unitsPerEm).toBe(unitsPerEm);
+    it("survives being saved and reopened, drawing the same ink", async () => {
+      const { letters, unitsPerEm } = await traceFont(loadTestFont()!, "test.ttf");
+      quillStore.restore({
+        letters,
+        style: { ...PLAIN_HAND, weight: 1.2, slant: 8, bounce: 0.4 },
+        from: "test.ttf",
+        hand: null,
+        name: "Test Traced",
+        unitsPerEm,
+      });
 
-    /*
-     * The lines, read off the ink rather than carried over.
-     *
-     * Checked as an ordering rather than against numbers, because the numbers
-     * belong to whichever font the machine had: what has to hold on any of them
-     * is that the lowercase sits under the capitals, the capitals under the
-     * ascenders, and the descenders below the baseline.
-     */
-    const { xHeight, capHeight, ascender, descender } = typeface.metrics;
-    expect(xHeight).toBeGreaterThan(0);
-    expect(capHeight).toBeGreaterThan(xHeight);
-    expect(ascender).toBeGreaterThanOrEqual(capHeight);
-    expect(descender).toBeLessThan(0);
+      const saved = quillStore.snapshot();
+      expect(saved, "a traced document saved as nothing").toBeDefined();
+      // Through JSON rather than by reference, which is the trip a file actually
+      // takes and the one that loses anything not plain data.
+      const reopened = JSON.parse(JSON.stringify(saved!)) as typeof saved;
 
-    // Punctuation takes the name the rest of the world uses, so a file written
-    // here has a `period` where every other font has one.
-    const names = new Set(typeface.glyphs.map((one) => one.name));
-    if (letters.some((one) => one.glyph.name === ".")) expect(names.has("period")).toBe(true);
-    expect(names.has(".")).toBe(false);
+      /*
+       * The same ink exactly, not merely nearly.
+       *
+       * Written at full precision on purpose -- see `quill-store.ts`, where the
+       * measurement is recorded -- so this can assert the strings match rather
+       * than that they are close. It is the stronger claim and it is available,
+       * and a tolerance here would have quietly absorbed the bug that rounding
+       * introduced: two decimal places on the spine moved a letter's edge by five
+       * and a half units, and every tolerance loose enough to pass that is loose
+       * enough to miss a real fault.
+       */
+      const pathsOf = (source: typeof letters, style: typeof PLAIN_HAND) =>
+        source.slice(0, 8).map((one) => contoursToSvgPath(drawTraced(one, style).contours));
+      const before = pathsOf(letters, quillStore.getSnapshot().document.style);
 
-    // And it says what it is. A derivative work that has lost track of what it
-    // derives from is the one thing worse than a derivative work.
-    expect(typeface.meta.copyright).toContain("test.ttf");
-    expect(typeface.meta.copyright).toContain("derivative");
+      quillStore.restore({
+        letters: [],
+        style: { ...PLAIN_HAND },
+        from: "",
+        hand: null,
+        name: "",
+        unitsPerEm: 1000,
+      });
+      quillStore.restoreSaved(reopened!);
 
-    const written = await exportFont(typeface, {
-      format: "ttf",
-      fidelity: "rebuild",
-      includeKerning: false,
-      mergeOverlaps: false,
+      const back = quillStore.getSnapshot().document;
+      expect(back.letters.length).toBe(letters.length);
+      expect(back.name).toBe("Test Traced");
+      expect(back.from).toBe("test.ttf");
+      // The hand came back too, or the sliders would silently reset every time a
+      // project was opened.
+      expect(back.style.weight).toBeCloseTo(1.2, 4);
+      expect(back.style.slant).toBeCloseTo(8, 4);
+      expect(back.style.bounce).toBeCloseTo(0.4, 4);
+
+      /*
+       * The same ink, not merely the same count.
+       *
+       * Rounded to a hundredth of a unit on the way into the file, so the paths
+       * are compared at the precision the file actually carries rather than at
+       * the precision the tracer produced.
+       */
+      const after = pathsOf(back.letters, back.style);
+      for (const [index, path] of after.entries()) {
+        expect(
+          path.length,
+          `letter ${back.letters[index].glyph.name} came back empty`,
+        ).toBeGreaterThan(0);
+      }
+      expect(after).toEqual(before);
+
+      /*
+       * And the outlines it was read from are *not* in the file.
+       *
+       * The strokes are the work and they are kept; the source outlines are the
+       * other font, and a project somebody saves and sends on has no business
+       * carrying a copy of it.
+       */
+      expect(back.letters.every((one) => one.source.length === 0)).toBe(true);
+      expect(JSON.stringify(saved)).not.toContain("nodes");
     });
-    // A real file rather than a plausible object: the sfnt magic, and a size
-    // that could not be an empty shell.
-    expect(written.bytes.length).toBeGreaterThan(2000);
-    expect([...written.bytes.slice(0, 4)]).toEqual([0x00, 0x01, 0x00, 0x00]);
-  });
-
-  it("survives being saved and reopened, drawing the same ink", async () => {
-    const { letters, unitsPerEm } = await traceFont(loadTestFont()!, "test.ttf");
-    quillStore.restore({
-      letters,
-      style: { ...PLAIN_HAND, weight: 1.2, slant: 8, bounce: 0.4 },
-      from: "test.ttf",
-      hand: null,
-      name: "Test Traced",
-      unitsPerEm,
-    });
-
-    const saved = quillStore.snapshot();
-    expect(saved, "a traced document saved as nothing").toBeDefined();
-    // Through JSON rather than by reference, which is the trip a file actually
-    // takes and the one that loses anything not plain data.
-    const reopened = JSON.parse(JSON.stringify(saved!)) as typeof saved;
-
-    /*
-     * The same ink exactly, not merely nearly.
-     *
-     * Written at full precision on purpose -- see `quill-store.ts`, where the
-     * measurement is recorded -- so this can assert the strings match rather
-     * than that they are close. It is the stronger claim and it is available,
-     * and a tolerance here would have quietly absorbed the bug that rounding
-     * introduced: two decimal places on the spine moved a letter's edge by five
-     * and a half units, and every tolerance loose enough to pass that is loose
-     * enough to miss a real fault.
-     */
-    const pathsOf = (source: typeof letters, style: typeof PLAIN_HAND) =>
-      source.slice(0, 8).map((one) => contoursToSvgPath(drawTraced(one, style).contours));
-    const before = pathsOf(letters, quillStore.getSnapshot().document.style);
-
-    quillStore.restore({
-      letters: [],
-      style: { ...PLAIN_HAND },
-      from: "",
-      hand: null,
-      name: "",
-      unitsPerEm: 1000,
-    });
-    quillStore.restoreSaved(reopened!);
-
-    const back = quillStore.getSnapshot().document;
-    expect(back.letters.length).toBe(letters.length);
-    expect(back.name).toBe("Test Traced");
-    expect(back.from).toBe("test.ttf");
-    // The hand came back too, or the sliders would silently reset every time a
-    // project was opened.
-    expect(back.style.weight).toBeCloseTo(1.2, 4);
-    expect(back.style.slant).toBeCloseTo(8, 4);
-    expect(back.style.bounce).toBeCloseTo(0.4, 4);
-
-    /*
-     * The same ink, not merely the same count.
-     *
-     * Rounded to a hundredth of a unit on the way into the file, so the paths
-     * are compared at the precision the file actually carries rather than at
-     * the precision the tracer produced.
-     */
-    const after = pathsOf(back.letters, back.style);
-    for (const [index, path] of after.entries()) {
-      expect(
-        path.length,
-        `letter ${back.letters[index].glyph.name} came back empty`,
-      ).toBeGreaterThan(0);
-    }
-    expect(after).toEqual(before);
-
-    /*
-     * And the outlines it was read from are *not* in the file.
-     *
-     * The strokes are the work and they are kept; the source outlines are the
-     * other font, and a project somebody saves and sends on has no business
-     * carrying a copy of it.
-     */
-    expect(back.letters.every((one) => one.source.length === 0)).toBe(true);
-    expect(JSON.stringify(saved)).not.toContain("nodes");
-  });
-});
+  },
+);

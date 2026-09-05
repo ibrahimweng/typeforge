@@ -51,7 +51,28 @@ export function loadTestFont(): Uint8Array | null {
  * minutes leaves the margin the work actually needs and still tells a hang
  * apart from a long job, because a hang does not finish at all.
  */
-export const FONT_SUITE_TIMEOUT = 120_000;
+/*
+ * And multiplied again when the run is measuring itself.
+ *
+ * Instrumenting every line costs time on top of whatever a test already
+ * spends, and it costs most on the tests that spend the most. The first
+ * coverage run turned three tracing tests -- which ask for three minutes and
+ * take rather less -- into three timeouts at three minutes. Nothing about them
+ * had got slower; the measuring had been added to them.
+ *
+ * A budget that does not know which kind of run it is in is a budget that is
+ * either too small for the instrumented one or too generous for the ordinary
+ * one, and too generous is how a hang stops looking like a hang. So it is
+ * asked. `vitest.config.ts` sets the flag from the command it was given.
+ */
+const MEASURING = process.env.MEASURING === "1";
+
+/** A budget for a test that does real work, in the run it is actually in. */
+export function longEnoughFor(ms: number): number {
+  return MEASURING ? ms * 4 : ms;
+}
+
+export const FONT_SUITE_TIMEOUT = longEnoughFor(120_000);
 
 /** WOFF and WOFF2 built from the system font, or null when they cannot be. */
 export interface WebFontFixtures {

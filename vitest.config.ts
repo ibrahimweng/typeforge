@@ -1,4 +1,11 @@
 import { defineConfig } from "vitest/config";
+
+/*
+ * Whether this run is measuring itself, told to the tests rather than guessed
+ * at by them. A worker does not reliably see the flags the run was started
+ * with, and `test.env` reaches every one of them.
+ */
+const measuring = process.argv.includes("--coverage");
 import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
@@ -33,6 +40,7 @@ export default defineConfig({
      * thirty seconds in the ordinary case: a passing test costs what it costs,
      * and this only changes what happens to one that has genuinely hung.
      */
+    env: { MEASURING: measuring ? "1" : "" },
     testTimeout: 30_000,
     /*
      * Coverage, off unless it is asked for.
