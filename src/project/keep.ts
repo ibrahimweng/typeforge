@@ -132,6 +132,28 @@ export async function forget(): Promise<void> {
         database.close();
         resolve();
       };
+      /*
+       * And when the browser takes the transaction away, which is not an error.
+       *
+       * A transaction that fails fires `error` at the request and then `abort`
+       * at the transaction, so the handler above catches that kind. The other
+       * kind has no error in it: the work was done and the commit never
+       * happened, because the tab was going away or the storage was reclaimed.
+       * Only `abort` fires for those, and without this the promise never
+       * settles at all.
+       *
+       * Which matters here more than it looks, because of who waits on it. The
+       * one caller is the "clear the kept work and reload" button in
+       * `Boundary`, on the screen somebody reaches when the application has
+       * already broken once -- and it waits for this before reloading, on
+       * purpose, so the reload does not cancel the write. A promise that never
+       * resolves makes that button do nothing at all, silently, which is the
+       * exact fault the waiting was added to fix.
+       */
+      transaction.onabort = () => {
+        database.close();
+        resolve();
+      };
     } catch {
       database.close();
       resolve();
