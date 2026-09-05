@@ -82,13 +82,18 @@ export function retracted(node: GlyphNode): GlyphNode {
  * Walks the flattened curve rather than solving it: a cubic's nearest point to
  * an arbitrary position is a fifth-degree root-find, and a hundred samples of a
  * segment answers the same question to well inside the reach a pointer has.
+ *
+ * How near it came is handed back with it, because a letter is several contours
+ * and this answers for one. Without it a caller asking each in turn has no way
+ * to tell which answer is the nearest, and can only take the first -- which is
+ * whichever contour happens to be earliest in the list. See `segmentUnder`.
  */
 export function segmentAt(
   contour: Contour,
   at: Vec2,
   within: number,
   samples = 60,
-): { index: number; t: number } | null {
+): { index: number; t: number; distance: number } | null {
   const { nodes, closed } = contour;
   const last = closed ? nodes.length : nodes.length - 1;
   let best: { index: number; t: number; distance: number } | null = null;
@@ -105,7 +110,9 @@ export function segmentAt(
       if (!best || distance < best.distance) best = { index, t, distance };
     }
   }
-  return best && best.distance <= within ? { index: best.index, t: best.t } : null;
+  return best && best.distance <= within
+    ? { index: best.index, t: best.t, distance: best.distance }
+    : null;
 }
 
 /**
