@@ -56,10 +56,24 @@ export abstract class EditingStore extends NavigationStore {
      */
     const edited = typeface.glyphs[index];
     if (edited.written?.expanded && !KEEPS_STROKES.has(label)) {
-      const changed =
-        edited.contours.length !== before.contours.length ||
-        JSON.stringify(edited.contours) !== JSON.stringify(before.contours);
-      if (changed) edited.written = undefined;
+      /*
+       * Both sides cloned before they are compared, and that is the whole of
+       * this line's history.
+       *
+       * `cloneGlyph` rebuilds a contour with its own order of keys -- `closed`
+       * before `nodes`, where the sweep writes `nodes` first -- and
+       * `JSON.stringify` is order-sensitive. Compared straight against the
+       * live glyph the two strings never matched, so this read as changed
+       * every single time: turning a pen, moving a stroke point, an edit that
+       * touched no outline at all, each one threw away an expanded letter's
+       * strokes. The button still offered to put them back.
+       *
+       * The same trap is written up over `whole` in `forge/document.ts`, where
+       * it decides whether a drawing is worth keeping. Two `JSON.stringify`
+       * results are only comparable when both sides were built the same way.
+       */
+      const outlines = (one: Glyph): string => JSON.stringify(cloneGlyph(one).contours);
+      if (outlines(edited) !== JSON.stringify(before.contours)) edited.written = undefined;
     }
     typeface.glyphs[index].dirty = true;
     const after = cloneGlyph(typeface.glyphs[index]);
