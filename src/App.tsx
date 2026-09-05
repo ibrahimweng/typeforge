@@ -24,7 +24,7 @@ import { assembleStore, useAssemble } from "@/state/useAssemble";
 import type { Typeface } from "@/font/types";
 import { useDrawing } from "@/state/drawn";
 import { quillStore, useQuill } from "@/state/useQuill";
-import { ready as readyToCut } from "@/font/boolean";
+import { readyToShape } from "@/forge/layers";
 import { detectFormat } from "@/font/parse";
 import { looksJoined } from "@/quill/joined";
 import { toTypeface as quillToTypeface } from "@/quill/typeface";
@@ -77,12 +77,16 @@ import { filesFromDrop, filesFromPicker, filesFromZip, looksZipped } from "@/ufo
  * from outside the thing that draws, and it has the argument for why. The rest
  * became `React.lazy` or an `import()` inside the handler that needs them.
  *
- * One edge is left and is meant to be: `font/transform.ts` takes `shapedInk`,
- * which is on the synchronous path outlines are resolved on and reaches every
- * drawing in the application. Moving that one means making the outline path
- * async; it is a larger job than this and it is not started here. If you are
- * adding an import to something on this screen, check what it reaches --
- * `vite.config.ts` has the measurements.
+ * The last of it was `font/transform.ts` taking `shapedInk`, on the
+ * synchronous path outlines are resolved on. That did not need the path to
+ * become async, because the shaping had always been allowed to say "not yet"
+ * -- it is boolean geometry and the boolean library is fetched in the
+ * background. `forge/layers.ts` is a gate that asks the same question about
+ * one more module, and it is the only piece of `src/forge` that arrives here
+ * now, at 0.8 kB.
+ *
+ * If you are adding an import to something on this screen, check what it
+ * reaches -- `vite.config.ts` has the measurements.
  */
 
 /**
@@ -443,7 +447,7 @@ export function App(): React.JSX.Element {
   React.useEffect(() => attachPressFeedback(document.body), []);
 
   /*
-   * The boolean library, fetched before anything needs it.
+   * The shaping, fetched before anything needs it.
    *
    * Cutting a letter is boolean geometry and boolean geometry is a few hundred
    * kilobytes, which is not something to load before the application has
@@ -458,6 +462,11 @@ export function App(): React.JSX.Element {
    * drawings somebody dropped are cut by the same library and were drawn
    * without it for the same moment.
    *
+   * Two things are waited for and not one. The library does the geometry and
+   * `forge/layers.ts` decides what geometry to do, and that is fetched on the
+   * same schedule for the same reason -- so this waits for both, because
+   * either arriving alone still draws the letter plain.
+   *
    * Two stores are asked here and the third asks itself. `forge-store.ts`
    * carries the drawing engine, so naming it here would put the engine on the
    * first screen to ask it a question -- and a store nobody has imported has
@@ -466,7 +475,7 @@ export function App(): React.JSX.Element {
    */
   React.useEffect(() => {
     let live = true;
-    void readyToCut().then(() => {
+    void readyToShape().then(() => {
       if (!live) return;
       store.refresh();
       assembleStore.refresh();

@@ -37,7 +37,7 @@ import { buildGposTable, type ResolvedClassKern, type ResolvedPair } from "./ker
 import { featuresMatchSource } from "./features";
 import { buildGsubTable, type ChainRule, type GlyphSet, type Ligature } from "./gsub";
 import { anythingCut, effectiveParams, paramsAreDefault, resolveGlyphContours } from "./transform";
-import { ready as readyToCut } from "./boolean";
+import { readyToShape } from "@/forge/layers";
 import { readSfnt, writeSfnt, SFNT_TRUETYPE, type SfntFont } from "./sfnt";
 import {
   buildCmap,
@@ -139,14 +139,19 @@ export async function exportFont(
   options: ExportOptions,
 ): Promise<ExportResult> {
   /*
-   * The boolean library, before a single outline is resolved.
+   * The shaping and the library it cuts with, before a single outline is
+   * resolved.
    *
    * A cut that is not ready is skipped rather than waited for, which is the
    * right answer for a screen -- an uncut letter for a moment is a letter --
    * and exactly the wrong one for a file, which is written once and kept. So
    * the wait happens here, where there is somewhere to wait.
+   *
+   * Both, and not just the library. The cutting is fetched on demand as well
+   * now, and a file written while it was still coming would have the cuts
+   * missing from it in exactly the way this paragraph exists to prevent.
    */
-  if (anythingCut(typeface)) await readyToCut();
+  if (anythingCut(typeface)) await readyToShape();
 
   const notes: string[] = [];
   const held: string[] = [];

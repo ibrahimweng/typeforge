@@ -9,7 +9,7 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { ready } from "@/font/boolean";
+import { readyToShape } from "./layers";
 import { noCuts, type Cuts } from "./cut";
 import { startFrom, type Forge } from "./document";
 import { troubles } from "./health";
@@ -105,7 +105,7 @@ describe("what a cut did", () => {
   };
 
   beforeAll(async () => {
-    await ready();
+    await readyToShape();
   });
 
   it("says nothing when nothing has been cut", () => {

@@ -16,7 +16,7 @@
  */
 
 import { ALSO_DRAWS, codepointOfAccented } from "./accents";
-import { ready as readyToCut } from "@/font/boolean";
+import { readyToShape } from "./layers";
 import { correctDirection } from "@/font/outline";
 import { removeOverlaps } from "@/font/overlap";
 import { DEFAULT_PARAMS, emptyTypeface, type Glyph, type Typeface } from "@/font/types";
@@ -267,7 +267,7 @@ export async function toTypeface(forge: Forge, options: ForgeExportOptions): Pro
    * The letters that hold their own cutting count, which is why the question
    * is asked of the document rather than of its settings.
    */
-  if (anythingCut(forge)) await readyToCut();
+  if (anythingCut(forge)) await readyToShape();
 
   const { metrics } = forge.style;
   const typeface = emptyTypeface();

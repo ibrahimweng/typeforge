@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { ready, unite } from "@/font/boolean";
+import { unite } from "@/font/boolean";
+import { readyToShape } from "./layers";
 import { contourArea, contoursBounds, contoursToSvgPath, inkRunsAt } from "@/font/geometry";
 import type { Contour } from "@/font/types";
 import { drawLetter } from "./build";
@@ -42,7 +43,7 @@ function removed(letter: string, style: Style, cuts: Cuts): number {
 }
 
 beforeAll(async () => {
-  await ready();
+  await readyToShape();
 });
 
 describe("the cut layer", () => {

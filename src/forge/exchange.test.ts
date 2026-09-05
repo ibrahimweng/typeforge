@@ -9,7 +9,7 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { ready } from "@/font/boolean";
+import { readyToShape } from "./layers";
 
 import { contoursBounds, contoursToSvgPath } from "@/font/geometry";
 import { readSvg } from "@/font/svg";
@@ -254,7 +254,7 @@ describe("a letter that is no longer drawn", () => {
  */
 describe("cutting a letter that came in from outside", () => {
   beforeAll(async () => {
-    await ready();
+    await readyToShape();
   });
 
   const taken = (letter = "a", forge = startFrom(SANS)) => {

@@ -10,7 +10,7 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { ready } from "./boolean";
+import { readyToShape } from "@/forge/layers";
 import { noCuts, type Cuts } from "./cuts";
 import { contourArea, contoursBounds } from "./geometry";
 import { measuredStem, stemFrom } from "./stem";
@@ -18,7 +18,7 @@ import { cutScaleOf, effectiveCuts, resolveGlyphContours } from "./transform";
 import { DEFAULT_PARAMS, emptyTypeface, type Contour, type Glyph, type Typeface } from "./types";
 
 beforeAll(async () => {
-  await ready();
+  await readyToShape();
 });
 
 /** A rectangle, as a closed contour wound whichever way is asked for. */

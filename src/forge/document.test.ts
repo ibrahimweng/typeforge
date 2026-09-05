@@ -14,7 +14,7 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { ready } from "@/font/boolean";
+import { readyToShape } from "./layers";
 
 import { contoursToSvgPath } from "@/font/geometry";
 import { decidedBy, letterNames } from "./build";
@@ -323,7 +323,7 @@ describe("starting a document", () => {
  */
 describe("cutting", () => {
   beforeAll(async () => {
-    await ready();
+    await readyToShape();
   });
 
   const shapeOf = (letter: string, forge: Forge): string =>
