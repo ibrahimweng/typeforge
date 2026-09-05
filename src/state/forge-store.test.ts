@@ -93,3 +93,65 @@ describe("asking for the drawing to happen again", () => {
     expect(forgeStore.getSnapshot().settled).toBe(after);
   });
 });
+
+/*
+ * What one thing to undo means, which is the same question the other two
+ * document stores answer and answered differently.
+ *
+ * A drag is a run of edits and one gesture, so the run folds into one entry --
+ * fifty of them for one pull of a slider is not a history anybody wants. The
+ * awkward case is what happens to an edit that is *not* part of the drag while
+ * one is open, and this store used to fold that in too.
+ */
+describe("what counts as one thing to undo", () => {
+  it("folds a drag into a single entry", () => {
+    const before = forgeStore.getSnapshot().forge;
+    const weight = before.style.pen.weight;
+    forgeStore.changePen({ weight: weight + 10 }, "during");
+    forgeStore.changePen({ weight: weight + 20 }, "during");
+    forgeStore.changePen({ weight: weight + 30 }, "end");
+
+    forgeStore.undo();
+    expect(forgeStore.getSnapshot().forge).toBe(before);
+  });
+
+  /*
+   * A click on one control while another is still being dragged. Folded in, it
+   * could not be taken back on its own: one undo took the click and the drag
+   * together, and the letter jumped further than the person had asked for.
+   */
+  it("gives a finished edit its own entry even mid-drag", () => {
+    const weight = forgeStore.getSnapshot().forge.style.pen.weight;
+    const xHeight = forgeStore.getSnapshot().forge.style.metrics.xHeight;
+
+    forgeStore.changePen({ weight: weight + 40 }, "during");
+    forgeStore.changeMetrics({ xHeight: xHeight - 40 }, "single");
+
+    forgeStore.undo();
+    expect(forgeStore.getSnapshot().forge.style.metrics.xHeight, "the click goes back").toBe(
+      xHeight,
+    );
+    expect(
+      forgeStore.getSnapshot().forge.style.pen.weight,
+      "and the drag is left where it was",
+    ).toBe(weight + 40);
+  });
+
+  /*
+   * Undo is somebody stepping outside a gesture, and the step they took back
+   * may well be the gesture itself, so `stopMoving` closes it. Left open, the
+   * next edit would fold into an entry that had already been undone.
+   */
+  it("closes a drag that was undone in the middle of it", () => {
+    const weight = forgeStore.getSnapshot().forge.style.pen.weight;
+    forgeStore.changePen({ weight: weight + 10 }, "single");
+    const after = forgeStore.getSnapshot().forge.style.pen.weight;
+
+    forgeStore.changeMetrics({ xHeight: 480 }, "during");
+    forgeStore.undo();
+
+    forgeStore.changePen({ weight: 200 }, "single");
+    forgeStore.undo();
+    expect(forgeStore.getSnapshot().forge.style.pen.weight, "one step back, not two").toBe(after);
+  });
+});

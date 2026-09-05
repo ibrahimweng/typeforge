@@ -255,7 +255,19 @@ class ForgeStore {
    * stopped.
    */
   private commit(next: Forge, phase: Phase = "single"): void {
-    if (!this.gestureOpen) {
+    /*
+     * A finished edit gets its own entry even when a drag is open.
+     *
+     * `during` says a gesture is in flight and the next commit folds into it,
+     * which is what keeps one pull of a slider to one entry. `single` says the
+     * opposite -- this is a whole edit by itself -- and it folded in anyway, so
+     * a click on one control while another was still being dragged could not be
+     * taken back on its own: one undo took the click and the drag together.
+     *
+     * The quill and assemble stores ask it this way round. This was the last of
+     * the three that did not.
+     */
+    if (phase === "single" || !this.gestureOpen) {
       this.past.push(this.state.forge);
       if (this.past.length > HISTORY) this.past.shift();
       this.future = [];
