@@ -9,6 +9,8 @@ import * as React from "react";
 
 import { attachPressFeedback, switchView } from "@/anim/motion";
 import { loadingTwice } from "@/deferred";
+import { SIDE_PANEL, WIDE_PANEL } from "@/components/controls";
+import { cn } from "@/ui/lib/utils";
 import { GlyphEditorView } from "@/views/GlyphEditorView";
 import { KerningView } from "@/views/KerningView";
 import { LibraryDialog } from "@/components/LibraryDialog";
@@ -95,6 +97,32 @@ import { filesFromDrop, filesFromPicker, filesFromZip, looksZipped } from "@/ufo
  */
 const Wait = ({ children }: { children: React.ReactNode }) => (
   <React.Suspense fallback={null}>{children}</React.Suspense>
+);
+
+/*
+ * The same, for a panel, holding its column open while it arrives.
+ *
+ * Falling back to nothing is right for a view: the stage is blank for that
+ * moment either way. It is wrong for a side panel, because the stage is laid
+ * out beside one -- so an absent column is a full-width stage that narrows
+ * when the chunk lands, and what moves is the drawing, under whatever the hand
+ * was about to do to it. A wheel aimed at a letter and a drag begun on a
+ * handle both landed somewhere else, which is how this was found.
+ *
+ * It is also the wrong shape of empty. A screen briefly missing a third of
+ * itself reads as broken; an empty column reads as one thing still coming.
+ */
+const WaitBeside = ({ width, children }: { width: string; children: React.ReactNode }) => (
+  <React.Suspense
+    fallback={
+      <div
+        aria-hidden
+        className={cn(width, "toolcraft-panel-surface shrink-0 border-l border-border")}
+      />
+    }
+  >
+    {children}
+  </React.Suspense>
 );
 
 /*
@@ -1033,19 +1061,19 @@ export function App(): React.JSX.Element {
           )}
         </div>
         {mode === "forge" && (
-          <Wait>
+          <WaitBeside width={WIDE_PANEL}>
             <ForgePanel onEdit={editForged} />
-          </Wait>
+          </WaitBeside>
         )}
         {mode === "quill" && (
-          <Wait>
+          <WaitBeside width={WIDE_PANEL}>
             <QuillPanel onEdit={editTraced} />
-          </Wait>
+          </WaitBeside>
         )}
         {mode === "assemble" && (
-          <Wait>
+          <WaitBeside width={WIDE_PANEL}>
             <AssemblePanel onEdit={editAssembled} />
-          </Wait>
+          </WaitBeside>
         )}
         {/*
           And no panel of parameters before there is anything to have them.
@@ -1055,9 +1083,9 @@ export function App(): React.JSX.Element {
           to explaining its own emptiness.
         */}
         {mode === "edit" && state.typeface && SHOWS_INSPECTOR.has(state.view) && (
-          <Wait>
+          <WaitBeside width={SIDE_PANEL}>
             <Inspector />
-          </Wait>
+          </WaitBeside>
         )}
         {helping && (
           <Wait>
