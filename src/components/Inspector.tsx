@@ -45,7 +45,19 @@ export function Inspector(): React.JSX.Element {
   const state = useAppState();
   const [scope, setScope] = React.useState<Scope>("family");
   const listRef = React.useRef<HTMLDivElement>(null);
-  const gestureRef = React.useRef<GlyphParams | null>(null);
+  /*
+   * The values a gesture started from, and which set they belong to.
+   *
+   * Not one shape: the family's are a complete set of numbers and a letter's
+   * are only the keys somebody overrode, so which of the two this is decides
+   * what can be done with it. Saying so here means the end of the gesture
+   * cannot commit a letter's values to the family or the other way round.
+   */
+  const gestureRef = React.useRef<
+    | { on: "family"; params: GlyphParams }
+    | { on: "glyph"; name: string; params: Partial<GlyphParams> }
+    | null
+  >(null);
 
   React.useEffect(() => {
     if (listRef.current) {
@@ -332,24 +344,43 @@ export function Inspector(): React.JSX.Element {
                     showFill
                     onValueChange={(next, meta) => {
                       const scaled = next * scaleFactor;
-                      // A drag arrives as a run of "merge" updates followed by a
-                      // final one. Snapshot at the start and record at the end, so
-                      // the whole gesture is a single undo step.
+                      const onGlyph = editingGlyph && glyphName !== null;
+                      /*
+                       * A drag arrives as a run of "merge" updates followed by a
+                       * final one. Snapshot at the start and record at the end, so
+                       * the whole gesture is a single undo step.
+                       *
+                       * Whichever set is being edited, which it did not used to
+                       * be: the snapshot was always the family's, and the glyph
+                       * branch never recorded anything at all. Undo then took
+                       * back whatever came before and left the override in
+                       * place -- worse than not undoing, because it undid
+                       * something nobody had asked about.
+                       */
+                      gestureRef.current ??=
+                        onGlyph && glyphName
+                          ? {
+                              on: "glyph",
+                              name: glyphName,
+                              params: { ...(store.glyph(glyphName)?.params ?? {}) },
+                            }
+                          : { on: "family", params: { ...typeface.params } };
+                      const started = gestureRef.current;
                       if (meta?.history === "merge") {
-                        gestureRef.current ??= { ...typeface.params };
-                        if (editingGlyph && glyphName) {
-                          store.setGlyphParam(glyphName, spec.key, scaled);
+                        if (started.on === "glyph") {
+                          store.setGlyphParam(started.name, spec.key, scaled);
                         } else {
                           store.setFamilyParam(spec.key, scaled);
                         }
                         return;
                       }
-                      if (editingGlyph && glyphName) {
-                        store.setGlyphParam(glyphName, spec.key, scaled);
+                      const label = `Set ${spec.label.toLowerCase()}`;
+                      if (started.on === "glyph") {
+                        store.setGlyphParam(started.name, spec.key, scaled);
+                        store.commitGlyphParams(started.name, label, started.params);
                       } else {
-                        const before = gestureRef.current ?? { ...typeface.params };
                         store.setFamilyParam(spec.key, scaled);
-                        store.commitFamilyParams(`Set ${spec.label.toLowerCase()}`, before);
+                        store.commitFamilyParams(label, started.params);
                       }
                       gestureRef.current = null;
                     }}
