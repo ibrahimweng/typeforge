@@ -178,20 +178,13 @@ export function openOutline(glyph: Glyph): Contour | null {
 }
 
 /**
- * Whether the pointer is on the point that would close the open outline.
+ * The point under the pointer, if a point is.
  *
- * The same reach a node answers to, so the point that looks catchable is the
- * one that is. Under three points there is nothing to close: two points closed
- * is a line drawn twice, with no area to fill.
+ * First rather than nearest, and unlike `segmentUnder` that is the right
+ * answer: two nodes within seven pixels of each other are two nodes drawn on
+ * top of one another, and picking between them by a distance nobody can see
+ * would make which one you got depend on the last decimal place.
  */
-/**
- * Whether the pointer is on the point the pen has just placed.
- *
- * Clicking it is how every editor says "the curve ends here": the handle you
- * pulled stays on the segment arriving and the one leaving goes, so the next
- * click draws a straight line out of a curve.
- */
-
 export function hitTestNode(glyph: Glyph, view: GlyphView, canvasPoint: Vec2): NodeRef | null {
   for (let contourIndex = 0; contourIndex < glyph.contours.length; contourIndex++) {
     const contour = glyph.contours[contourIndex];
@@ -237,6 +230,12 @@ export function hitTestAnchor(glyph: Glyph, view: GlyphView, canvasPoint: Vec2):
   return null;
 }
 
+/**
+ * Whether the pointer is on the point that would close the open outline.
+ *
+ * Under three points there is nothing to close: two points closed is a line
+ * drawn twice, with no area to fill.
+ */
 export function onClosingPoint(glyph: Glyph, view: GlyphView, canvasPoint: Vec2): boolean {
   const open = openOutline(glyph);
   if (!open || open.nodes.length < 3) return false;
@@ -249,6 +248,10 @@ export function onClosingPoint(glyph: Glyph, view: GlyphView, canvasPoint: Vec2)
 /**
  * Whether the pointer is on the point the pen last placed, and that point has
  * a handle to take off.
+ *
+ * Clicking it is how every editor says "the curve ends here": the handle that
+ * was pulled stays on the segment arriving and the one leaving goes, so the
+ * next click draws a straight line out of a curve.
  *
  * The handle check is the whole of the difference from a plain node hit. A
  * click here retracts the outgoing handle so the next segment leaves straight;
@@ -270,6 +273,16 @@ export function onLastPoint(glyph: Glyph, view: GlyphView, canvasPoint: Vec2): b
  *
  * `segmentAt` answers for one contour; a letter is several, so this asks each
  * and keeps the nearest.
+ *
+ * The nearest, and it used to be the first. `segmentAt` is careful within a
+ * contour -- sixty samples a segment, keeping the closest -- and that care was
+ * thrown away at the door: the first contour with anything at all in reach
+ * answered, and every contour after it went unasked. Contours overlap all the
+ * time while a letter is being built, an oval laid over a stem before they are
+ * merged being the ordinary case, and the reach is `HIT_RADIUS` divided by the
+ * scale, so the further out the view is zoomed the more of the letter is inside
+ * it. Pointing at the nearer of two edges and having the other one answer put
+ * the point on the wrong contour, and the scissors through it.
  */
 export function segmentUnder(
   glyph: Glyph,
@@ -278,11 +291,14 @@ export function segmentUnder(
 ): { contour: number; index: number; t: number } | null {
   const at = { x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) };
   const within = HIT_RADIUS / view.scale;
+  let best: { contour: number; index: number; t: number; distance: number } | null = null;
   for (const [contour, one] of glyph.contours.entries()) {
     const found = segmentAt(one, at, within);
-    if (found) return { contour, index: found.index, t: found.t };
+    // Strictly nearer, so a tie goes to the contour drawn first -- which is the
+    // one underneath, and the one the old answer would have given.
+    if (found && (!best || found.distance < best.distance)) best = { contour, ...found };
   }
-  return null;
+  return best && { contour: best.contour, index: best.index, t: best.t };
 }
 
 /**
