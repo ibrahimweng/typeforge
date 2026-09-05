@@ -88,6 +88,21 @@ const inkOf = (page: Page) =>
   page.locator('svg[aria-label^="The letter"] path').last().getAttribute("d");
 
 async function traceAFont(page: Page) {
+  /*
+   * The same budget the traced test in `loan.spec.ts` argues for, and for the
+   * same reason: the wait at the end of this allows the trace a hundred and
+   * eighty seconds, a test gets ninety, and a wait inside a test cannot
+   * outlast the test. Every test that traces a font has been running against
+   * the ninety rather than the hundred and eighty it asks for.
+   *
+   * These did not fail on WebKit, but they came close -- the slowest of them
+   * took sixty-six seconds of the ninety. They are the same fault as the one
+   * that did fail, in the same shape, and fixing only the test that happened
+   * to go first would leave the rest to go later.
+   *
+   * Set here rather than in each test because this is where the wait is.
+   */
+  test.setTimeout(240_000);
   await page.goto("/");
   await page.getByRole("button", { name: "Trace", exact: true }).click();
   await expect(page.getByText("Nothing traced yet")).toBeVisible();

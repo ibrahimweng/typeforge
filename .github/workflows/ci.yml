@@ -82,8 +82,21 @@ jobs:
       # project supports. What `check` above adds is hearing about it sooner.
       - run: npm run build
 
+  # Both engines, as two legs of one matrix rather than two jobs one after the
+  # other: they run at the same time, so hearing about WebKit costs no more
+  # wall-clock than not hearing about it did.
+  #
+  # WebKit is here because this application is a canvas, an IndexedDB and a
+  # pile of font loading, and those three are where WebKit differs from
+  # Chromium rather than where it agrees. Testing Chromium alone was testing
+  # the half that was never going to be the problem.
   browser:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, webkit]
+
     steps:
       - uses: actions/checkout@v4
 
@@ -97,6 +110,6 @@ jobs:
       - name: Install a test font
         run: sudo apt-get install -y --no-install-recommends fonts-dejavu-core
 
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps ${{ matrix.engine }}
 
-      - run: npm run test:browser
+      - run: npm run test:browser -- --project=${{ matrix.engine }}

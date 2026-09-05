@@ -38,7 +38,7 @@ npm run lint         # Biome, formatting and lint together
 npm run typecheck    # tsc -b --noEmit
 npm test             # vitest, about four minutes
 npm run build        # type checks again, then builds
-npm run test:browser # Playwright, 243 tests, about twenty minutes
+npm run test:browser # Playwright, both engines, about twenty minutes each
 ```
 
 The browser suite is the slow one and it is worth running before a change to
@@ -47,6 +47,18 @@ anything a pointer touches. One file at a time is usually enough while you work:
 ```bash
 npx playwright test e2e/writing.spec.ts
 ```
+
+It runs against Chromium and WebKit. CI runs both as one matrix, so they finish
+together, but locally they are one after the other and that is forty minutes.
+Pick one while you work:
+
+```bash
+npx playwright test --project=chromium
+npx playwright test --project=webkit    # needs `npx playwright install webkit`
+```
+
+WebKit is the one worth running before anything that touches the canvas, the
+kept session or font loading. Those are where it differs from Chromium.
 
 `npm run coverage` measures the unit suite. It is off by default because
 instrumenting every file costs six times the run — four minutes becomes

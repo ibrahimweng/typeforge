@@ -1508,3 +1508,86 @@ describe("more than one weight in a document", () => {
     expect(store.getSnapshot().typeface).toBe(regular.typeface);
   });
 });
+
+/**
+ * Undo across a change to the glyph list.
+ *
+ * A history entry for a letter's own parameters closes over the letter's
+ * *index*, taken when the entry was pushed. That is only ever correct because
+ * of two things that are true elsewhere in the store and are written down
+ * nowhere: undo runs last in first out, and every structural change replaces
+ * `typeface.glyphs` with a new array rather than reaching into the old one. So
+ * by the time an old entry runs, whatever moved the indexes has already been
+ * undone and put the original array back.
+ *
+ * Both halves of that are load-bearing and neither is obvious. Somebody adding
+ * a reorder, a sort, or a `glyphs.push` gets an undo that writes one letter's
+ * parameters onto another, silently, with the wrong letter looking correct on
+ * screen until it is exported. These are the tests that fail instead.
+ */
+describe("undo across a change to the glyph list", () => {
+  beforeEach(() => seed(["a", "b", "c", "d"]));
+
+  it("takes back a parameter change on the letter it was made on", () => {
+    // On the last letter, so every index in front of it is one a removal moves.
+    store.setGlyphParam("d", "weight", 40);
+    store.commitGlyphParams("d", "Set the weight", {});
+    // And then take a letter out from in front of it, which is what shifts the
+    // index the entry above is holding.
+    expect(store.removeGlyph("b")).toBe(true);
+    expect(store.getSnapshot().typeface!.glyphs.map((one) => one.name)).toEqual(["a", "c", "d"]);
+
+    store.undo(); // the removal
+    store.undo(); // the weight
+
+    const typeface = store.getSnapshot().typeface!;
+    expect(typeface.glyphs.map((one) => one.name)).toEqual(["a", "b", "c", "d"]);
+    // The letter it was set on has lost it.
+    expect(store.glyph("d")!.params.weight).toBeUndefined();
+    // And nobody else has gained it, which is what an index off by one looks
+    // like: `c` sits where `d` was once `b` is gone.
+    for (const name of ["a", "b", "c"]) {
+      expect(store.glyph(name)!.params.weight).toBeUndefined();
+    }
+  });
+
+  it("puts the change back on the same letter when it is redone", () => {
+    store.setGlyphParam("d", "weight", 40);
+    store.commitGlyphParams("d", "Set the weight", {});
+    store.removeGlyph("b");
+    store.undo();
+    store.undo();
+
+    store.redo(); // the weight
+    store.redo(); // the removal
+
+    expect(store.getSnapshot().typeface!.glyphs.map((one) => one.name)).toEqual(["a", "c", "d"]);
+    expect(store.glyph("d")!.params.weight).toBe(40);
+    for (const name of ["a", "c"]) {
+      expect(store.glyph(name)!.params.weight).toBeUndefined();
+    }
+  });
+
+  it("replaces the glyph array rather than reaching into it", () => {
+    /*
+     * The invariant itself, stated once against every structural operation
+     * there is. An operation that mutated the array in place would leave the
+     * two tests above passing on the day it was written -- they only exercise
+     * removal -- and break them later, from a different file. This one fails
+     * in the same commit.
+     */
+    const operations: [string, () => void][] = [
+      ["add", () => store.addGlyph("z")],
+      ["remove", () => store.removeGlyph("b")],
+      ["rename", () => store.renameGlyph("c", "gamma")],
+      ["duplicate", () => store.duplicateGlyph("a")],
+    ];
+    for (const [what, run] of operations) {
+      seed(["a", "b", "c", "d"]);
+      const before = store.getSnapshot().typeface!.glyphs;
+      run();
+      const after = store.getSnapshot().typeface!.glyphs;
+      expect(after, `${what} must not edit the glyph array in place`).not.toBe(before);
+    }
+  });
+});

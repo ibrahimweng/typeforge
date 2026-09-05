@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 
-import { defineConfig } from "@playwright/test";
+import { defineConfig, devices } from "@playwright/test";
 
 /**
  * Some sandboxes ship a Chromium build that does not match the one this
@@ -40,8 +40,36 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:5183",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
-    ...(executablePath ? { launchOptions: { executablePath } } : {}),
   },
+  /*
+   * Two engines, because one of them is the one this application is most
+   * likely to be wrong in.
+   *
+   * Everything here runs on a canvas, in IndexedDB and against fonts the
+   * browser has to load, and those three are where WebKit differs from
+   * Chromium rather than where it agrees. Testing Chromium alone was testing
+   * the half that was never going to be the problem: a Safari user would have
+   * found the fault first, on their own work, with no test able to reproduce
+   * what they saw.
+   *
+   * Chromium first so the ordinary run is unchanged, and `--project` picks one
+   * when only one is wanted:
+   *
+   *     npx playwright test --project=webkit
+   */
+  projects: [
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(executablePath ? { launchOptions: { executablePath } } : {}),
+      },
+    },
+    {
+      name: "webkit",
+      use: { ...devices["Desktop Safari"] },
+    },
+  ],
   webServer: {
     // Bind the address Playwright polls, rather than "localhost". Vite resolves
     // "localhost" itself, and on a runner with IPv6 that can land on ::1 while

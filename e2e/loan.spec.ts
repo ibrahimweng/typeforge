@@ -20,12 +20,32 @@ const FONT_PATH = FONT_CANDIDATES.find((path) => existsSync(path));
  * slot it left at the width it left with.
  */
 
+/**
+ * How far apart the search below puts its probes, in screen pixels.
+ *
+ * A node answers to a pointer within `HIT_RADIUS`, which is seven screen
+ * pixels -- `src/views/glyph-pointer.ts` has it. On a square grid of step `s`
+ * the furthest anything can be from the nearest probe is `s / sqrt(2)`, so a
+ * step of eight puts every point in the scanned area within 5.7 pixels of a
+ * probe and none can be missed.
+ *
+ * It was six, which is also safe and costs twice as much: the search is two
+ * dimensional, so the step going up by a third takes the probes down by
+ * nearly half. That is worth having because each probe is expensive for a
+ * reason that is not going away -- a pointer move makes the application redraw
+ * the canvas, measured at 34ms a probe -- and this search is most of what the
+ * traced test below spends its time on.
+ *
+ * Do not raise it past nine without raising `HIT_RADIUS` with it.
+ */
+const PROBE_STEP = 8;
+
 /** Grab whatever point the pointer finds and pull it, reporting whether it did. */
 async function dragAPoint(page: Page, by: number): Promise<boolean> {
   const canvas = page.locator("canvas").first();
   const box = (await canvas.boundingBox())!;
-  for (let y = box.height * 0.15; y < box.height * 0.75; y += 6) {
-    for (let x = box.width * 0.3; x < box.width * 0.7; x += 6) {
+  for (let y = box.height * 0.15; y < box.height * 0.75; y += PROBE_STEP) {
+    for (let x = box.width * 0.3; x < box.width * 0.7; x += PROBE_STEP) {
       await page.mouse.move(box.x + x, box.y + y);
       if (((await canvas.getAttribute("class")) ?? "").includes("cursor-grab")) {
         await page.mouse.down();
@@ -171,6 +191,22 @@ test("a traced letter can be worked on with the tools too", async ({ page }) => 
    * of the engine that drew them.
    */
   test.skip(!FONT_PATH, "needs a system font to read");
+  /*
+   * Longer than the ninety seconds a test gets, because this one cannot be
+   * done in ninety seconds and said so already.
+   *
+   * The wait below allows the trace a hundred and eighty, and a wait inside a
+   * test cannot outlast the test: the budget ran out first and the trace was
+   * never allowed the time it was written to have. On Chromium that never
+   * showed, because the trace takes about forty seconds there and the search
+   * for a point about twenty, which fits. On WebKit both are slower and the
+   * test timed out -- the first thing the second engine found.
+   *
+   * Two hundred and forty is the hundred and eighty the trace is allowed plus
+   * a minute for the rest, rather than a number picked to be safe: a test that
+   * has genuinely hung should still say so rather than sit there.
+   */
+  test.setTimeout(240_000);
   await page.goto("/");
   await page.getByRole("button", { name: "Trace", exact: true }).click();
   await page
