@@ -950,90 +950,144 @@ export function useGlyphGestures(within: {
     dragRef.current = null;
     if (!drag || !glyph) return;
 
-    if (drag.kind === "anchor") {
-      const moved = glyph.anchors.find((anchor) => anchor.name === drag.name);
-      if (moved) {
-        const settled = { ...moved };
-        glyph.anchors = drag.before.map((anchor) => ({ ...anchor }));
-        store.setAnchor(glyph.name, drag.name, settled.x, settled.y);
+    /*
+     * A switch rather than a chain of `else if`, so a sixteenth kind of drag is
+     * a compile error here rather than a gesture that quietly never commits.
+     */
+    switch (drag.kind) {
+      case "anchor": {
+        const moved = glyph.anchors.find((anchor) => anchor.name === drag.name);
+        if (moved) {
+          const settled = { ...moved };
+          glyph.anchors = drag.before.map((anchor) => ({ ...anchor }));
+          store.setAnchor(glyph.name, drag.name, settled.x, settled.y);
+        }
+        break;
       }
-    } else if (drag.kind === "node") {
-      store.commitGlyphEdit(glyph.name, "Move points", drag.before);
-    } else if (drag.kind === "handle") {
-      store.commitGlyphEdit(glyph.name, "Shape curve", drag.before);
-    } else if (drag.kind === "pen") {
-      // Only if it was actually a pull: a plain click placed its point through
-      // `addPoint`, which recorded itself, and a second entry for a gesture
-      // that changed nothing more is an undo press that appears to do nothing.
-      if (drag.pulled) store.commitGlyphEdit(glyph.name, "Draw a curve", drag.before);
-    } else if (drag.kind === "writePull") {
-      // Only if it was a pull. A plain click already recorded its own point,
-      // and a second entry for a gesture that added nothing is an undo press
-      // that appears to do nothing.
-      if (drag.node > 0) store.commitGlyphEdit(glyph.name, "Write a curve", drag.before);
-    } else if (drag.kind === "penHandle") {
-      store.commitGlyphEdit(glyph.name, "Change the pen", drag.before);
-    } else if (drag.kind === "strokePoint") {
-      store.commitGlyphEdit(glyph.name, "Move the stroke", drag.before);
-    } else if (drag.kind === "writeTrail") {
-      store.writeTrail(glyph.name, drag.trail);
-    } else if (drag.kind === "marquee") {
-      const selection = new Set(drag.additive ? state.selectedNodes : []);
-      const left = Math.min(drag.from.x, drag.to.x);
-      const right = Math.max(drag.from.x, drag.to.x);
-      const top = Math.min(drag.from.y, drag.to.y);
-      const bottom = Math.max(drag.from.y, drag.to.y);
-      glyph.contours.forEach((contour, contourIndex) => {
-        contour.nodes.forEach((node, nodeIndex) => {
-          const x = view.originX + node.point.x * view.scale;
-          const y = view.originY - node.point.y * view.scale;
-          if (x >= left && x <= right && y >= top && y <= bottom) {
-            selection.add(nodeKey({ contour: contourIndex, node: nodeIndex }));
-          }
+      case "node": {
+        store.commitGlyphEdit(glyph.name, "Move points", drag.before);
+        break;
+      }
+      case "handle": {
+        store.commitGlyphEdit(glyph.name, "Shape curve", drag.before);
+        break;
+      }
+      case "pen": {
+        // Only if it was actually a pull: a plain click placed its point through
+        // `addPoint`, which recorded itself, and a second entry for a gesture
+        // that changed nothing more is an undo press that appears to do nothing.
+        if (drag.pulled) store.commitGlyphEdit(glyph.name, "Draw a curve", drag.before);
+        break;
+      }
+      case "writePull": {
+        // Only if it was a pull. A plain click already recorded its own point,
+        // and a second entry for a gesture that added nothing is an undo press
+        // that appears to do nothing.
+        if (drag.node > 0) store.commitGlyphEdit(glyph.name, "Write a curve", drag.before);
+        break;
+      }
+      case "penHandle": {
+        store.commitGlyphEdit(glyph.name, "Change the pen", drag.before);
+        break;
+      }
+      case "strokePoint": {
+        store.commitGlyphEdit(glyph.name, "Move the stroke", drag.before);
+        break;
+      }
+      case "writeTrail": {
+        store.writeTrail(glyph.name, drag.trail);
+        break;
+      }
+      case "marquee": {
+        const selection = new Set(drag.additive ? state.selectedNodes : []);
+        const left = Math.min(drag.from.x, drag.to.x);
+        const right = Math.max(drag.from.x, drag.to.x);
+        const top = Math.min(drag.from.y, drag.to.y);
+        const bottom = Math.max(drag.from.y, drag.to.y);
+        glyph.contours.forEach((contour, contourIndex) => {
+          contour.nodes.forEach((node, nodeIndex) => {
+            const x = view.originX + node.point.x * view.scale;
+            const y = view.originY - node.point.y * view.scale;
+            if (x >= left && x <= right && y >= top && y <= bottom) {
+              selection.add(nodeKey({ contour: contourIndex, node: nodeIndex }));
+            }
+          });
         });
-      });
-      store.setSelectedNodes(selection);
-      forceRender();
-    } else if (drag.kind === "shape") {
-      /*
-       * Shift squares it off and alt draws from the middle, as in every
-       * drawing tool. Read off the last move rather than off the pointer-up,
-       * because letting go of the modifier a moment before the button is a
-       * thing hands do and is not a change of mind.
-       */
-      store.addShape(
-        glyph.name,
-        drag.kind2,
-        boxOf(
+        store.setSelectedNodes(selection);
+        forceRender();
+        break;
+      }
+      case "shape": {
+        /*
+         * Shift squares it off and alt draws from the middle, as in every
+         * drawing tool. Read off the last move rather than off the pointer-up,
+         * because letting go of the modifier a moment before the button is a
+         * thing hands do and is not a change of mind.
+         */
+        store.addShape(
+          glyph.name,
+          drag.kind2,
+          boxOf(
+            { x: toFontX(view, drag.from.x), y: toFontY(view, drag.from.y) },
+            { x: toFontX(view, drag.to.x), y: toFontY(view, drag.to.y) },
+            modifiersRef.current,
+          ),
+        );
+        forceRender();
+        break;
+      }
+      case "freehand": {
+        if (!store.addStroke(glyph.name, drag.trail)) {
+          store.say("That was a click rather than a stroke. Drag to draw.", "error");
+        }
+        forceRender();
+        break;
+      }
+      case "knife": {
+        store.cutGlyph(
+          glyph.name,
           { x: toFontX(view, drag.from.x), y: toFontY(view, drag.from.y) },
           { x: toFontX(view, drag.to.x), y: toFontY(view, drag.to.y) },
-          modifiersRef.current,
-        ),
-      );
-      forceRender();
-    } else if (drag.kind === "freehand") {
-      if (!store.addStroke(glyph.name, drag.trail)) {
-        store.say("That was a click rather than a stroke. Drag to draw.", "error");
+        );
+        forceRender();
+        break;
       }
-      forceRender();
-    } else if (drag.kind === "knife") {
-      store.cutGlyph(
-        glyph.name,
-        { x: toFontX(view, drag.from.x), y: toFontY(view, drag.from.y) },
-        { x: toFontX(view, drag.to.x), y: toFontY(view, drag.to.y) },
-      );
-      forceRender();
-    } else if (drag.kind === "lasso") {
-      const picked = new Set(drag.additive ? state.selectedNodes : []);
-      glyph.contours.forEach((contour, contourIndex) => {
-        contour.nodes.forEach((node, nodeIndex) => {
-          if (inside(drag.trail, toScreen(view, node.point))) {
-            picked.add(nodeKey({ contour: contourIndex, node: nodeIndex }));
-          }
+      case "lasso": {
+        const picked = new Set(drag.additive ? state.selectedNodes : []);
+        glyph.contours.forEach((contour, contourIndex) => {
+          contour.nodes.forEach((node, nodeIndex) => {
+            if (inside(drag.trail, toScreen(view, node.point))) {
+              picked.add(nodeKey({ contour: contourIndex, node: nodeIndex }));
+            }
+          });
         });
-      });
-      store.setSelectedNodes(picked);
-      forceRender();
+        store.setSelectedNodes(picked);
+        forceRender();
+        break;
+      }
+      /*
+       * The two that change nothing about the letter, and so have nothing to
+       * put in the history. Said rather than left out: an absence here reads
+       * the same whether it is a decision or an oversight, and an oversight is
+       * an edit that is silently never committed.
+       */
+      case "pan":
+      case "guide":
+        break;
+      /*
+       * And the guard that makes the switch worth having.
+       *
+       * With every kind named above, `drag` is `never` here. Add a sixteenth
+       * and this stops compiling, which is the whole point: the failure it
+       * replaces is a drag that runs, changes the letter, and is never written
+       * to the history -- so the edit is on screen, undo does not know about
+       * it, and the next save writes it down as though it had always been
+       * there.
+       */
+      default: {
+        const unhandled: never = drag;
+        throw new Error(`a drag nobody releases: ${JSON.stringify(unhandled)}`);
+      }
     }
 
     /*
