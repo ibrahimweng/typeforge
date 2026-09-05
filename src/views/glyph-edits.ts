@@ -14,7 +14,6 @@ import type { Glyph, GlyphNode, Vec2 } from "@/font/types";
 import { toFontX, toFontY, type GlyphView } from "@/components/glyph-render";
 import { store } from "@/state/useStore";
 
-/** How close a click has to land, in screen pixels, to grab a node. */
 import { openOutline, parseNodeKey } from "./glyph-pointer";
 
 /** Swing the opposite handle so a smooth node stays smooth. */

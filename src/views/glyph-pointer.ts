@@ -20,8 +20,6 @@ import { nodeKey, store, type NodeRef } from "@/state/useStore";
 import type { PenHandle } from "./write-canvas";
 
 /** How close a click has to land, in screen pixels, to grab a node. */
-
-/** How close a click has to land, in screen pixels, to grab a node. */
 export const HIT_RADIUS = 7;
 
 /**

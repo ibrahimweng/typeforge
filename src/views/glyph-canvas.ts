@@ -5,7 +5,6 @@ import { extremesMissing, nearlySmooth } from "@/font/marks";
 import { applyView, readToken, toFontX, toFontY, type GlyphView } from "@/components/glyph-render";
 import { nodeKey } from "@/state/useStore";
 
-/** How close a click has to land, in screen pixels, to grab a node. */
 import {
   CLOSING_RADIUS,
   HIT_RADIUS,
