@@ -28,6 +28,44 @@ export abstract class ParameterStore extends PenStore {
     this.touch();
   }
 
+  /**
+   * Record one history entry for a finished glyph-parameter gesture.
+   *
+   * The twin of `commitFamilyParams`, and it was missing. `setGlyphParam` puts
+   * nothing on the history by itself, because a drag is a run of them and
+   * fifty entries for one pull of a slider is not a history anybody wants --
+   * so the gesture has to say when it is over, and for a letter's own values
+   * nothing ever did.
+   *
+   * What that cost was not merely an override that could not be taken back. It
+   * was an undo that did the wrong thing: the next entry down the stack
+   * belonged to whatever came before, so pressing undo took back a change to
+   * the whole family and left the override sitting there. `clearGlyphParam`
+   * pushed all along, so the reset was undoable and the setting was not.
+   */
+  commitGlyphParams(name: string, label: string, before: Partial<GlyphParams>): void {
+    const typeface = this.state.typeface;
+    if (!typeface) return;
+    const index = typeface.glyphIndex.get(name);
+    if (index === undefined) return;
+    const after = { ...typeface.glyphs[index].params };
+    // Nothing to record when the gesture put the value back where it started,
+    // which is what a drag out and back again is.
+    if (JSON.stringify(after) === JSON.stringify(before)) return;
+    this.push({
+      label,
+      undo: () => {
+        typeface.glyphs[index].params = { ...before };
+        typeface.glyphs[index].dirty = true;
+      },
+      redo: () => {
+        typeface.glyphs[index].params = { ...after };
+        typeface.glyphs[index].dirty = true;
+      },
+    });
+    this.touch();
+  }
+
   setGlyphParam<K extends keyof GlyphParams>(name: string, key: K, value: GlyphParams[K]): void {
     const typeface = this.state.typeface;
     if (!typeface) return;
