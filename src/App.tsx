@@ -18,6 +18,9 @@ import { useQuickActionShortcut } from "@/palette/useShortcut";
 import type { AppShell } from "@/palette/catalogue";
 import { useAppKeys } from "@/keys/useAppKeys";
 import { NextStep } from "@/components/NextStep";
+import { OptionsBar } from "@/components/OptionsBar";
+import { StatusBar } from "@/components/StatusBar";
+import { ToolPalette } from "@/components/ToolPalette";
 import { OnLoan } from "@/components/OnLoan";
 import { TopBar } from "@/components/TopBar";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
@@ -994,7 +997,31 @@ export function App(): React.JSX.Element {
     [mode, goToMode, state.view, state.typeface, saveProject],
   );
 
-  useQuickActionShortcut(React.useCallback(() => setQuick(true), []));
+  /*
+   * Whether there is a letter on a canvas to point a tool at.
+   *
+   * The rail is drawn on every screen now, and the answer to "is this a screen
+   * you can draw on" has to be given rather than implied by which component
+   * happened to mount it. Three things have to be true: the font being edited
+   * rather than one of the three ways of starting one, the glyph view rather
+   * than the spacing table, and a letter actually open in it. The third is the
+   * one that is easy to forget -- the glyph view with nothing chosen shows a
+   * line telling you to go and choose one, and a live pen over that is a pen
+   * with nothing under it.
+   */
+  const drawingOn =
+    mode === "edit" &&
+    state.typeface !== null &&
+    state.view === "glyph" &&
+    state.selectedGlyph !== null &&
+    store.glyph(state.selectedGlyph) !== undefined
+      ? state.selectedGlyph
+      : null;
+
+  useQuickActionShortcut(
+    React.useCallback(() => setQuick(true), []),
+    drawingOn !== null,
+  );
   /*
    * And the handful that are done constantly, by the names every other
    * application has already taught: Cmd-S, Cmd-E, Cmd-O, and the six views by
@@ -1065,7 +1092,35 @@ export function App(): React.JSX.Element {
         onEditAssembled={() => void editAssembled()}
       />
 
+      {/*
+        The tool's own strip, under the toolbar, holding whatever belongs to
+        the tool in hand. Only where there is a letter to use it on: an options
+        bar for no tool is an empty strip, and the honest answer to "what is
+        the pen set to" when nobody is holding one is to say nothing.
+      */}
+      {drawingOn !== null && <OptionsBar glyphName={drawingOn} />}
+
       <div className="flex min-h-0 flex-1">
+        {/*
+          The tools, down the left of the whole window rather than beside the
+          canvas.
+
+          They were mounted by the view that draws, so they arrived when you
+          opened a letter and vanished the moment you looked at the spacing
+          table. Every drawing program of the last thirty years keeps the rail
+          in one place whatever is on screen, because the point of it is that
+          your hand learns where a tool is, and a rail that moves is one nobody
+          learns. Dimmed rather than gone on the views that cannot draw, which
+          says "not this screen" instead of teaching that the rail comes and
+          goes.
+
+          Across the six views of the open font, and not further. Draw, Trace
+          and Assemble are separate documents rather than views of this one --
+          there are no outlines in any of them for a pen to reach, so a greyed
+          rail there would be offering something that is not merely unavailable
+          but absent.
+        */}
+        {mode === "edit" && <ToolPalette drawing={drawingOn !== null} />}
         <div ref={stageRef} className="flex min-w-0 flex-1 flex-col">
           {mode === "forge" && (
             <Wait>
@@ -1160,6 +1215,12 @@ export function App(): React.JSX.Element {
           </Wait>
         )}
       </div>
+
+      {/*
+        The strip along the bottom: the zoom, what is open, and what is in
+        hand. In the shell rather than in a view, so it does not come and go.
+      */}
+      <StatusBar />
 
       {/*
         A second input, and it has to be a second one.

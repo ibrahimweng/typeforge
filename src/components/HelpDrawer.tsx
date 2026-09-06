@@ -51,8 +51,8 @@ const FAMILY_CONTROLS: Record<Family, string> = {
 };
 
 const SHORTCUTS: Array<[string, string]> = [
-  ["Space", "Quick actions"],
-  ["⌘K", "Quick actions, even while typing"],
+  ["Space", "Quick actions — or the hand, over a letter on the canvas"],
+  ["⌘K", "Quick actions, even while typing or drawing"],
   /*
    * The four that are done constantly, under the names every other application
    * has already taught. Everything else is reached through the palette, which

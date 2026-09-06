@@ -39,6 +39,7 @@ import {
 
 import { GROUPS, TOOLS, groupOf, toolsIn, type GroupId, type ToolInfo } from "@/font/toolset";
 import { store, useAppState, type ToolId } from "@/state/useStore";
+import { busy } from "@/keys/typing";
 import { cn } from "@/cn";
 
 /*
@@ -72,7 +73,7 @@ const MARKS: Record<ToolId, Icon> = {
 
 const BY_KEY = new Map(GROUPS.map((group) => [group.key.toLowerCase(), group.id]));
 
-export function ToolPalette(): React.JSX.Element {
+export function ToolPalette({ drawing }: { drawing: boolean }): React.JSX.Element {
   /*
    * Three pieces of tool state, rather than the whole document.
    *
@@ -86,11 +87,27 @@ export function ToolPalette(): React.JSX.Element {
   const [open, setOpen] = React.useState<GroupId | null>(null);
 
   /*
-   * The single-key shortcuts, here rather than in the toolbar.
+   * The single-key shortcuts, bound only while there is a letter to draw on.
    *
-   * They belong with the thing they switch, and here they are bound only while
-   * something is drawing a letter -- so pressing `k` in the kerning table
-   * types a `k` into the preview instead of arming a knife nobody can see.
+   * The rail is in the shell now, so it is mounted on every screen and these
+   * would be too. `drawing` is the guard that used to be free: the palette was
+   * mounted by the view that draws, so pressing `k` in the kerning table typed
+   * a `k` into the preview rather than arming a knife nobody could see. That
+   * has to be said out loud now rather than being a consequence of where the
+   * component happened to live.
+   *
+   * And whether the key belongs to whatever has the focus, which is the other
+   * half. That was a check for an `input` or a `textarea` by tag name, and it
+   * is now `busy`, which the palette's own space bar worked out and which is
+   * right about the two cases a tag name misses: a `contenteditable`, and
+   * anything carrying `role="textbox"`.
+   *
+   * What it deliberately is not is the rule the editing keys use. Those ask
+   * whether the canvas has the focus, because they act on the drawing. A tool
+   * shortcut does not: pressing `k` after clicking the Glyph tab has to arm
+   * the knife, and the focus is on that tab. Asking where the focus is there
+   * would mean a tool key that works only if you have not touched anything,
+   * which is not a rule anybody could learn.
    *
    * One key per group, and pressing it again walks the group. Thirteen tools
    * cannot have thirteen single keys without colliding with everything else
@@ -98,14 +115,14 @@ export function ToolPalette(): React.JSX.Element {
    * "the pen, whichever of them I had".
    */
   React.useEffect(() => {
+    if (!drawing) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
       if (event.key === "Escape") {
         setOpen(null);
         return;
       }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (busy(event.target)) return;
       const group = BY_KEY.get(event.key.toLowerCase());
       if (group) {
         store.takeUpGroup(group);
@@ -114,7 +131,13 @@ export function ToolPalette(): React.JSX.Element {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [drawing]);
+
+  // Nor left standing open behind a change of screen, which would put a menu
+  // of tools over a table nobody can use them on.
+  React.useEffect(() => {
+    if (!drawing) setOpen(null);
+  }, [drawing]);
 
   // A click anywhere else puts the flyout away, which is what a person expects
   // of a menu and is the only way out that needs no instructions.
@@ -137,12 +160,29 @@ export function ToolPalette(): React.JSX.Element {
       drawn at the left edge of the canvas along with the other four metric
       names. Thirty-six pixels of a canvas eleven hundred wide is a cheaper
       thing to give up than a label somebody is reading the letter against.
+
+      Down the left of the window rather than beside the canvas, and there on
+      every screen. It used to be mounted by whatever drew a letter, so it
+      arrived when you opened one and vanished when you looked at the spacing
+      table -- and a rail that moves is a rail nobody builds a habit around.
+      Every drawing program of the last thirty years keeps it in the same place
+      whatever is on screen, and that is the whole of the reason: your hand
+      knows where the pen is before your eye does.
+
+      Dimmed rather than gone where there is nothing to draw on. A tool that
+      disappears teaches that the application has modes; a tool that is greyed
+      teaches that this screen is not for drawing, which is the true thing and
+      is one Tab press from the screen that is.
     */
     <div
       role="group"
       aria-label="Tool"
       data-tool-palette
-      className="relative flex shrink-0 flex-col gap-0.5 border-r border-border bg-background p-1"
+      data-tool-rail-drawing={drawing ? "true" : "false"}
+      className={cn(
+        "relative flex shrink-0 flex-col gap-0.5 border-r border-border bg-background p-1",
+        !drawing && "opacity-40",
+      )}
     >
       {GROUPS.map((group) => {
         const showing = lastInGroup[group.id];
@@ -158,7 +198,12 @@ export function ToolPalette(): React.JSX.Element {
               aria-pressed={here}
               aria-haspopup={many || undefined}
               aria-expanded={many ? open === group.id : undefined}
-              title={`${group.name} (${group.key})${many ? " — click and hold, or press again, for the rest" : ""}`}
+              disabled={!drawing}
+              title={
+                drawing
+                  ? `${group.name} (${group.key})${many ? " — click and hold, or press again, for the rest" : ""}`
+                  : `${group.name} — open a letter in the Glyph view to draw with it`
+              }
               data-tool={showing}
               data-tool-group={group.id}
               data-phase={here ? toolState.phase : "off"}
@@ -183,7 +228,7 @@ export function ToolPalette(): React.JSX.Element {
               }}
               className={cn(
                 "relative flex h-7 w-7 items-center justify-center rounded text-xs-plus leading-none",
-                "transition-colors",
+                "transition-colors disabled:cursor-default",
                 /*
                   Hover did nothing at all. The class was `hover:bg-background` and
                   the rail it sits in *is* `bg-background`, so pointing at a tool

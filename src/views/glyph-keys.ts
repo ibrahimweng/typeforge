@@ -50,6 +50,7 @@ import * as React from "react";
 import type { Glyph, Vec2 } from "@/font/types";
 import { store, type AppState } from "@/state/useStore";
 
+import { meantForTheCanvas } from "./canvas-focus";
 import { deleteSelectedNodes } from "./glyph-edits";
 import { parseNodeKey } from "./glyph-pointer";
 import type { Gestures } from "./glyph-gestures";
@@ -76,20 +77,6 @@ export function describeSelection(glyph: Glyph | null, selected: ReadonlySet<str
     `${kind} point ${ref.node + 1} of ${of}, path ${ref.contour + 1}` +
     `, at ${Math.round(node.point.x)}, ${Math.round(node.point.y)}.`
   );
-}
-
-/**
- * Whether a key pressed now was meant for the letter.
- *
- * True at the canvas itself, and true when the focus is nowhere in
- * particular -- `document.body`, which is where it sits until something is
- * clicked. False at every button, slider, link and field, which are all
- * things with their own idea of what an arrow or a Tab does.
- */
-function meantForTheCanvas(canvas: HTMLCanvasElement | null): boolean {
-  const focused = document.activeElement;
-  if (focused === null || focused === document.body) return true;
-  return focused === canvas;
 }
 
 export function useGlyphKeys(within: {

@@ -14,6 +14,8 @@
 
 import { expect, test } from "@playwright/test";
 
+import { pointOnAnEdge } from "./support";
+
 type Page = import("@playwright/test").Page;
 
 const GROUP: Record<string, string> = {
@@ -167,14 +169,16 @@ test("add and delete a point on an edge", async ({ page }) => {
   const points = async () => (await page.locator("text=/^\\d+ points$/").allInnerTexts()).join("/");
   const before = await points();
 
-  await pick(page, "addPoint");
-  await page.mouse.move(503, 553);
+  // Found rather than assumed: the flank of the `o` is wherever the canvas
+  // currently puts it, and this used to be a pair of pixel coordinates that
+  // stopped landing on it the moment the chrome around the canvas changed.
+  const edge = await pointOnAnEdge(page);
   await expect(says(page)).toContainText("Click to put a point here");
-  await page.mouse.click(503, 553);
+  await page.mouse.click(edge.x, edge.y);
   await expect(async () => expect(await points()).not.toBe(before)).toPass();
 
   await pick(page, "deletePoint");
-  await page.mouse.click(503, 553);
+  await page.mouse.click(edge.x, edge.y);
   await expect(async () => expect(await points()).toBe(before)).toPass();
 });
 
@@ -214,10 +218,11 @@ test("the polygon draws the number of sides it is set to", async ({ page }) => {
 test("scissors open a shape rather than cutting it in two", async ({ page }) => {
   await sample(page, "o");
   const before = await pathCount(page);
+  const edge = await pointOnAnEdge(page);
   await pick(page, "scissors");
-  await page.mouse.move(503, 553);
+  await page.mouse.move(edge.x, edge.y);
   await expect(says(page)).toContainText("open the shape");
-  await page.mouse.click(503, 553);
+  await page.mouse.click(edge.x, edge.y);
   await expect(page.getByText("Opened.", { exact: false })).toBeVisible();
   // Opened, not cut: the same number of paths, one of them no longer closed.
   expect(await pathCount(page)).toBe(before);

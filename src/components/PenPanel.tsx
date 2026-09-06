@@ -1,5 +1,5 @@
 /**
- * The pen, as three numbers beside the letter being written.
+ * The pen, in two halves, because they are read at two different times.
  *
  * The canvas is where the pen is actually set -- take hold of the ellipse and
  * turn it -- and this is the other half of that, for the two things dragging is
@@ -12,6 +12,17 @@
  * chosen it is the hand's own pen, the one the next stroke will be written
  * with -- and that is the one somebody sets first, before there is anything to
  * pick.
+ *
+ * The split is between what you change mid-stroke and what you set up once.
+ * `PenNumbers` is the first: three numbers, in the options bar, a hand's width
+ * from the stroke they widen. `WritingPanel` is the second: the saved pens, the
+ * grid an alphabet is built on, and taking the ink. Those are decisions about
+ * the hand you are writing in rather than about the stroke in front of you, and
+ * they are the shape of a panel rather than of a strip.
+ *
+ * Both read the same state through `usePenState`, so the two cannot come to
+ * disagree about which pen is being shown. That was the reason to split by
+ * layout rather than by copying the numbers into a second place.
  */
 
 import type * as React from "react";
@@ -54,13 +65,13 @@ function Field({
 }): React.JSX.Element {
   return (
     <span className="flex items-center gap-1.5" title={hint}>
-      <span className="w-16 shrink-0 text-2xs text-muted-foreground">{label}</span>
+      <span className="shrink-0 text-2xs text-muted-foreground">{label}</span>
       <NumberField
         value={value}
         label={label}
         decimals={decimals}
         disabled={held}
-        className="w-16"
+        className="w-14"
         onCommit={(next) => onChange(Math.min(most, Math.max(least, next)))}
       />
       {suffix ? <span className="text-2xs text-muted-foreground">{suffix}</span> : null}
@@ -68,7 +79,16 @@ function Field({
   );
 }
 
-export function PenPanel({ glyphName }: { glyphName: string }): React.JSX.Element {
+/**
+ * Which pen is being shown, and what changing it would reach.
+ *
+ * Read once and handed to both halves. Two components each working this out
+ * for themselves is two chances to disagree about whether the numbers on
+ * screen belong to a stop, to the hand, or to a saved pen -- and the whole
+ * difficulty of this panel is that those three look identical and behave
+ * differently.
+ */
+function usePenState(glyphName: string) {
   const state = useAppState();
   const strokes = store.strokesOf(glyphName);
   const chosen = state.stop;
@@ -141,24 +161,38 @@ export function PenPanel({ glyphName }: { glyphName: string }): React.JSX.Elemen
    */
   const turning = stroke ? !isOnePen(stroke.nib) : false;
 
+  return {
+    state,
+    strokes,
+    chosen,
+    stroke,
+    showing,
+    following,
+    followed,
+    expanded,
+    change,
+    turning,
+  };
+}
+
+/**
+ * The three numbers, in the strip under the toolbar.
+ *
+ * Here rather than in the Inspector because they are changed in the middle of
+ * writing a stroke, looking at the stroke. Four hundred pixels away on the far
+ * right of the window is the distance at which somebody stops adjusting the
+ * pen and starts putting up with it.
+ */
+export function PenNumbers({ glyphName }: { glyphName: string }): React.JSX.Element {
+  const { chosen, stroke, showing, expanded, change } = usePenState(glyphName);
+
   return (
-    <div className="flex flex-col gap-2" data-pen-panel>
-      <div className="flex items-baseline justify-between">
-        <h3 className="text-xs font-medium text-foreground">Pen</h3>
-        <span className="text-2xs text-muted-foreground" data-pen-scope>
-          {chosen && stroke
-            ? `stroke ${chosen.stroke + 1}, point ${chosen.stop + 1}`
-            : "for the next stroke"}
-        </span>
-      </div>
-
-      {expanded ? (
-        <p className="text-2xs text-muted-foreground" data-pen-expanded>
-          The ink is the letter now, so the pen no longer moves it. Go back to strokes to write with
-          it again.
-        </p>
-      ) : null}
-
+    <span className="flex items-center gap-3" data-pen-panel>
+      <span className="text-2xs text-muted-foreground" data-pen-scope>
+        {chosen && stroke
+          ? `stroke ${chosen.stroke + 1}, point ${chosen.stop + 1}`
+          : "for the next stroke"}
+      </span>
       <Field
         label="Width"
         hint="How wide the pen is across the edge it is held on. The whole stroke's width, because a pen does not change size between one point and the next without being told to."
@@ -188,19 +222,60 @@ export function PenPanel({ glyphName }: { glyphName: string }): React.JSX.Elemen
         held={expanded}
         onChange={(angle) => change({ angle })}
       />
+      {/*
+        Why the three fields are dead, said beside them rather than in the
+        panel they used to share. A greyed control with its explanation on
+        another screen is a control that reads as broken.
+      */}
+      {expanded ? (
+        /*
+          Truncated rather than wrapped, because this arrives in the middle of
+          a session: the strip it sits in is a fixed height so that the canvas
+          below never re-fits the letter, and a sentence that wrapped would
+          either be cut off or push the controls beside it off the end.
+        */
+        <span
+          className="max-w-64 shrink truncate text-2xs text-muted-foreground"
+          data-pen-expanded
+          title="The ink is the letter now, so the pen no longer moves it. Go back to strokes to write with it again."
+        >
+          The ink is the letter now, so the pen no longer moves it. Go back to strokes to write with
+          it again.
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * The hand being written in: the saved pens, the grid, and the ink.
+ *
+ * What is left in the Inspector once the three numbers have gone to the strip
+ * above the canvas. All of it is set up rather than adjusted: which pen an
+ * alphabet is written with, what proportion it is built on, and whether this
+ * letter has stopped being strokes. None of those is changed in the middle of
+ * a stroke, and all of them want more room than a strip has.
+ */
+export function WritingPanel({ glyphName }: { glyphName: string }): React.JSX.Element {
+  const { state, strokes, chosen, stroke, following, followed, expanded, turning } =
+    usePenState(glyphName);
+
+  return (
+    <div className="flex flex-col gap-2" data-writing-panel>
+      <h3 className="text-xs font-medium text-foreground">Writing</h3>
 
       {/*
-        What typing in those three fields will actually reach, said under them.
+        What typing in the three fields above will actually reach.
 
         The one thing about a saved pen somebody cannot guess: the same three
         numbers change one stop when nothing is being followed and change every
         letter in the font when something is. The product this idea comes from
         puts that behind a mode switch and has to shout a NOTICE about which way
-        it is set. This says it instead, where the typing happens.
+        it is set. This says it instead.
       */}
       {following ? (
         <p className="text-2xs text-muted-foreground" data-pen-follows>
-          Following <span className="text-foreground">{followed?.name}</span>. Changing these
+          Following <span className="text-foreground">{followed?.name}</span>. Changing those
           numbers changes the pen, so every stroke written with it follows.
         </p>
       ) : null}
