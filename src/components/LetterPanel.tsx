@@ -107,9 +107,7 @@ export function LetterPanel(): React.JSX.Element | null {
   };
 
   return (
-    <section className="border-b border-border p-3" data-letter-panel>
-      <h3 className="pb-2 text-2xs font-medium">This letter</h3>
-
+    <div>
       <label className="flex flex-col gap-1 pb-2">
         <span className="text-2xs text-muted-foreground">Name</span>
         <input
@@ -175,6 +173,6 @@ export function LetterPanel(): React.JSX.Element | null {
           Delete
         </button>
       </div>
-    </section>
+    </div>
   );
 }

@@ -35,18 +35,11 @@ export function TransformPanel(): React.JSX.Element | null {
   const name = glyph.name;
 
   const picked = state.selectedNodes.size;
-  const scope = picked === 0 ? "the whole letter" : `${picked} point${picked === 1 ? "" : "s"}`;
+  // What it would act on is said in the panel's header, which the dock draws.
   const canAlign = picked > 1;
 
   return (
-    <section className="border-b border-border p-3" data-transform-panel>
-      <div className="flex items-baseline justify-between pb-2">
-        <h3 className="text-2xs font-medium">Transform</h3>
-        <span className="text-2xs text-muted-foreground" data-transform-scope>
-          {scope}
-        </span>
-      </div>
-
+    <div>
       <div className="flex flex-wrap gap-1 pb-2">
         <ToolButton
           onClick={() =>
@@ -167,6 +160,6 @@ export function TransformPanel(): React.JSX.Element | null {
           </ToolButton>
         ))}
       </div>
-    </section>
+    </div>
   );
 }

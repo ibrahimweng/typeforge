@@ -97,14 +97,7 @@ export function PathsPanel(): React.JSX.Element | null {
   };
 
   return (
-    <section className="border-b border-border p-3" data-paths-panel>
-      <div className="flex items-baseline justify-between pb-2">
-        <h3 className="text-2xs font-medium">Paths</h3>
-        <span className="text-2xs tabular-nums text-muted-foreground">
-          {contours.length} {contours.length === 1 ? "path" : "paths"}
-        </span>
-      </div>
-
+    <div>
       {contours.length === 0 ? (
         <p className="text-2xs leading-snug text-muted-foreground">
           This letter has no outlines of its own. It may be built from components, which the Build
@@ -316,6 +309,6 @@ export function PathsPanel(): React.JSX.Element | null {
           )}
         </p>
       )}
-    </section>
+    </div>
   );
 }

@@ -32,14 +32,7 @@ export function PointsPanel(): React.JSX.Element | null {
   const spare = tidyWouldRemove(glyph.contours);
 
   return (
-    <section className="border-b border-border p-3" data-points-panel>
-      <div className="flex items-baseline justify-between pb-2">
-        <h3 className="text-2xs font-medium">Points</h3>
-        <span className="text-2xs text-muted-foreground" data-points-scope>
-          {picked === 0 ? "none picked" : `${picked} point${picked === 1 ? "" : "s"}`}
-        </span>
-      </div>
-
+    <div>
       {/*
         Picking, above the operations that need something picked.
 
@@ -179,7 +172,7 @@ export function PointsPanel(): React.JSX.Element | null {
           Reconnect
         </ToolButton>
       </div>
-    </section>
+    </div>
   );
 }
 
