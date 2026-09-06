@@ -110,8 +110,7 @@ class Store extends ShapingStore {
    */
   adopt(typeface: Typeface, fileName: string): void {
     this.forgetLoan();
-    this.undoStack = [];
-    this.redoStack = [];
+    this.clearHistory();
     this.controlBaseline = readControls(typeface);
     // Whatever the last UFO carried belongs to the last UFO. Left in place, a
     // font opened afterwards would go out with somebody else's background
@@ -452,8 +451,7 @@ class Store extends ShapingStore {
     // And back into the weight that was in hand, not the first one.
     const drawing = masters.find((one) => one.id === saved.drawing) ?? masters[0];
     this.set({ masters, master: drawing.id, typeface: drawing.typeface });
-    this.undoStack = [];
-    this.redoStack = [];
+    this.clearHistory();
     this.set({
       status: {
         message: `Reopened — ${saved.glyphs.length.toLocaleString()} ${
@@ -470,8 +468,7 @@ class Store extends ShapingStore {
     this.set({ busy: true, status: { message: `Reading ${fileName}…`, tone: "info" } });
     try {
       const { typeface, warnings } = await importFont(bytes, fileName);
-      this.undoStack = [];
-      this.redoStack = [];
+      this.clearHistory();
       // A compiled font has no UFO behind it, and the one that was open
       // before is not this font's to carry.
       this.ufo = null;
@@ -547,8 +544,7 @@ class Store extends ShapingStore {
       if (typeface.glyphs.length === 0) {
         throw new Error("That UFO has no glyphs in it.");
       }
-      this.undoStack = [];
-      this.redoStack = [];
+      this.clearHistory();
       this.controlBaseline = readControls(typeface);
       this.ufo = carried;
       this.set({
@@ -622,8 +618,7 @@ class Store extends ShapingStore {
 
   startBlank(): void {
     this.forgetLoan();
-    this.undoStack = [];
-    this.redoStack = [];
+    this.clearHistory();
     /*
      * With a `.notdef` already in it.
      *
@@ -687,8 +682,7 @@ class Store extends ShapingStore {
       ufo: this.ufo,
       controlBaseline: this.controlBaseline,
     };
-    this.undoStack = [];
-    this.redoStack = [];
+    this.clearHistory();
     this.ufo = null;
     this.controlBaseline = null;
 

@@ -8,6 +8,20 @@
  *
  * Abstract because there is no such thing as half a store. `store.ts` puts the
  * chain together and exports the one instance.
+ *
+ * The chain has one rule, and it is worth stating as a rule rather than as a
+ * habit: a layer may use what is below it and must never reach up. Eight
+ * classes inheriting from one another is a shape that usually earns its bad
+ * name, and what keeps this one readable is that the arrows all point the same
+ * way. It was true when it was measured and nothing was checking it, which
+ * meant the first call up the chain would have gone in unremarked and turned
+ * an order into a knot.
+ *
+ * `layering.test.ts` checks it now, along with what actually crosses a
+ * boundary: ten methods and seven fields, all but four of them from this file.
+ * Read that file before adding a layer or widening the kernel. Its numbers are
+ * the honest description of how tangled this is, and they are meant to go down
+ * rather than up.
  */
 
 import type { ControlReadings } from "@/font/control";
@@ -165,6 +179,26 @@ export abstract class StoreCore {
   /** Say something in the toolbar, for anything that has no view of its own. */
   say(message: string, tone: "info" | "error" | "success" = "success"): void {
     this.set({ status: { message, tone } });
+  }
+
+  /**
+   * Forget every step, because what is open is a different document.
+   *
+   * The two lines this replaces sat together in six places in `store.ts` --
+   * adopting a font, reopening a project, opening a file, opening a UFO,
+   * starting blank, and lending a letter out. They always went together,
+   * because half-cleared history is an undo that reaches into a document that
+   * is no longer there.
+   *
+   * Named here rather than repeated there for the reason the pair existed at
+   * all: the stacks are the kernel's, and a layer above reaching in to empty
+   * them is the kernel's encapsulation leaking. `dropLoan` still assigns them
+   * directly, and that one is not this: it is putting a kept history back,
+   * which is the opposite operation and has no business borrowing this name.
+   */
+  protected clearHistory(): void {
+    this.undoStack = [];
+    this.redoStack = [];
   }
 
   protected push(entry: HistoryEntry): void {
