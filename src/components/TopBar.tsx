@@ -86,6 +86,7 @@ export function TopBar({
   academyOpen,
   mode,
   onMode,
+  opened,
   onSave,
   keeping,
 }: {
@@ -99,6 +100,8 @@ export function TopBar({
   academyOpen: boolean;
   mode: Mode;
   onMode: (mode: Mode) => void;
+  /** Which generators have been opened, so the New menu can offer the way back. */
+  opened: ReadonlySet<Mode>;
   onSave: () => void;
   /** Whether the work is being kept between visits, for saying so. */
   keeping: Keeping;
@@ -414,7 +417,7 @@ export function TopBar({
           split was not about anything: every one of these answers "I want to
           begin".
         */}
-        <NewMenu mode={mode} onMode={onMode} />
+        <NewMenu mode={mode} opened={opened} onMode={onMode} />
         <button type="button" onClick={onLibrary} data-open-library className={OUTLINE_ACTION}>
           Library
         </button>

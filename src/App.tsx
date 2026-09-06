@@ -396,6 +396,28 @@ export function App(): React.JSX.Element {
    * outlines that none of them reach.
    */
   const [mode, setMode] = React.useState<Mode>("edit");
+  /*
+   * Which of the three generators has actually been opened.
+   *
+   * The New menu offers to go back to a half that holds something, rather than
+   * offering to start it again over the top of what is there, so it has to
+   * know which ones do. The first answer was to ask the drawing what style it
+   * started from -- and that is set when the module loads rather than when a
+   * person opens Draw, so the menu offered to take you back to a drawing
+   * nobody had made about two seconds after the first screen appeared, once
+   * the deferred chunks had warmed.
+   *
+   * Being opened is the honest test, and it is the one that matches what the
+   * entry promises. Draw puts a whole alphabet on screen the moment you arrive,
+   * so having arrived is exactly when there is something to go back to. A
+   * restored project seeds this from the halves it carried, because those were
+   * opened in the session that wrote it.
+   */
+  const [opened, setOpened] = React.useState<ReadonlySet<Mode>>(() => new Set());
+  const enterMode = React.useCallback((next: Mode) => {
+    setMode(next);
+    if (next !== "edit") setOpened((was) => (was.has(next) ? was : new Set([...was, next])));
+  }, []);
   const [learning, setLearning] = React.useState(false);
 
   /*
@@ -408,9 +430,9 @@ export function App(): React.JSX.Element {
    */
   React.useEffect(() => {
     if (!state.wantsMode) return;
-    setMode(state.wantsMode as Mode);
+    enterMode(state.wantsMode as Mode);
     store.modeAsked();
-  }, [state.wantsMode]);
+  }, [state.wantsMode, enterMode]);
 
   /*
    * Warm the deferred chunks once, after the first screen has had the browser to
@@ -533,6 +555,16 @@ export function App(): React.JSX.Element {
           const back = await restore(saved);
           if (!live) return;
           setMode(back.mode);
+          // The halves the file carried were opened in the session that wrote
+          // it, so the menu offers the way back to them rather than offering
+          // to start over the top of work somebody has just reopened.
+          setOpened(
+            new Set<Mode>([
+              ...(saved.draw ? (["forge"] as const) : []),
+              ...(saved.traced ? (["quill"] as const) : []),
+              ...(saved.assemble ? (["assemble"] as const) : []),
+            ]),
+          );
           if (back.halves.length > 0) {
             store.say(`Picked up where you left off — ${back.halves.join(", ")}.`);
           }
@@ -946,14 +978,17 @@ export function App(): React.JSX.Element {
    * lets go of the loan first, because choosing to open something else is a
    * decision about the same work.
    */
-  const goToMode = React.useCallback((next: Mode) => {
-    const { loan } = store.getSnapshot();
-    if (loan) {
-      store.say(`Finish with ${loan.letter} first — keep the drawing or throw it away.`, "info");
-      return;
-    }
-    setMode(next);
-  }, []);
+  const goToMode = React.useCallback(
+    (next: Mode) => {
+      const { loan } = store.getSnapshot();
+      if (loan) {
+        store.say(`Finish with ${loan.letter} first — keep the drawing or throw it away.`, "info");
+        return;
+      }
+      enterMode(next);
+    },
+    [enterMode],
+  );
 
   const shell: AppShell = React.useMemo(
     () => ({
@@ -1081,6 +1116,7 @@ export function App(): React.JSX.Element {
         onToggleAcademy={() => setLearning((open) => !open)}
         academyOpen={learning}
         mode={mode}
+        opened={opened}
         onMode={goToMode}
         onSave={saveProject}
         keeping={keeping}

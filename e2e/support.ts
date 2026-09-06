@@ -516,14 +516,22 @@ export async function goToMode(
   page: Page,
   which: "Draw" | "Trace" | "Assemble" | "Edit",
 ): Promise<void> {
-  const entry = which === "Edit" ? "[data-back-to-font]" : `[data-start='${MODE_OF[which]}']`;
+  /*
+   * Already there is not an error, and it is asked first.
+   *
+   * The two ways of being there look different in the menu: the entry for a
+   * generator you are standing in is held shut, and the way back to the font
+   * is not drawn at all when the font is where you already are. Asking the
+   * shell which document is in front covers both, and it keeps a test that
+   * walks Edit, Draw, Edit readable.
+   */
+  if ((await page.locator("[data-mode]").getAttribute("data-mode")) === MODE_OF[which]) return;
+
   await page.locator("[data-new-menu]").click();
-  const line = page.locator(entry);
+  const line = page.locator(
+    which === "Edit" ? "[data-back-to-font]" : `[data-start='${MODE_OF[which]}']`,
+  );
   await line.first().waitFor();
-  if (await line.first().isDisabled()) {
-    await page.keyboard.press("Escape");
-    return;
-  }
   await line.first().click();
   await expect(page.locator("[data-new-list]")).toHaveCount(0);
 }
@@ -532,4 +540,5 @@ const MODE_OF: Record<string, string> = {
   Draw: "forge",
   Trace: "quill",
   Assemble: "assemble",
+  Edit: "edit",
 };

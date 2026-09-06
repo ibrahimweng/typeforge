@@ -367,8 +367,8 @@ test("one word for writing a font out, in every mode", async ({ page }) => {
   await page.goto("/");
   await openFont(page);
 
-  for (const mode of ["Edit", "Draw", "Assemble", "Trace"]) {
-    await page.getByRole("button", { name: mode, exact: true }).click();
+  for (const mode of ["Edit", "Draw", "Assemble", "Trace"] as const) {
+    await goToMode(page, mode);
     await expect(
       page.getByRole("button", { name: "Export", exact: true }),
       `the ${mode} mode calls it something else`,

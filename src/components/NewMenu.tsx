@@ -33,7 +33,6 @@ import type { Mode } from "@/App";
 import { useMenuBehaviour } from "@/components/menu-keys";
 import { OUTLINE_ACTION } from "@/components/controls";
 import { useAssemble } from "@/state/useAssemble";
-import { useDrawing } from "@/state/drawn";
 import { useQuill } from "@/state/useQuill";
 import { useAppState } from "@/state/useStore";
 import { cn } from "@/cn";
@@ -52,16 +51,18 @@ interface Route {
 
 export function NewMenu({
   mode,
+  opened,
   onMode,
 }: {
   mode: Mode;
+  /** The generators that have actually been opened. See `App.tsx` for why. */
+  opened: ReadonlySet<Mode>;
   onMode: (mode: Mode) => void;
 }): React.JSX.Element {
   const [open, setOpen] = React.useState(false);
   const menu = React.useRef<HTMLDivElement>(null);
   const button = React.useRef<HTMLButtonElement>(null);
 
-  const drawn = useDrawing();
   const quill = useQuill();
   const assemble = useAssemble();
   const loan = useAppState((state) => state.loan);
@@ -80,27 +81,32 @@ export function NewMenu({
       start: "Draw one from a style",
       back: "Back to your drawing",
       /*
-       * A drawing exists the moment Draw has been opened, because it draws a
-       * whole alphabet from a style straight away. `base` is empty until then
-       * and is the style it started from afterwards, so it is the honest test
-       * for "there is something to go back to" -- where asking whether it can
-       * be undone would say no to an alphabet nobody had touched yet.
+       * Having opened Draw is the test, rather than anything the drawing says
+       * about itself.
+       *
+       * It draws a whole alphabet from a style the moment you arrive, so
+       * arriving is exactly when there is something to go back to. The first
+       * version asked which style the drawing had started from, which is set
+       * when the module loads rather than when a person opens Draw -- so about
+       * two seconds after the first screen appeared, once the deferred chunks
+       * had warmed, this offered to take somebody back to a drawing nobody had
+       * made.
        */
-      holds: drawn.base !== "",
+      holds: opened.has("forge"),
       said: "Pick one of twenty families and a whole alphabet is drawn for you",
     },
     {
       mode: "quill",
       start: "Trace a font you have",
       back: "Back to what you traced",
-      holds: quill.document.letters.length > 0,
+      holds: opened.has("quill") || quill.document.letters.length > 0,
       said: "Read an existing font back into strokes you can reshape",
     },
     {
       mode: "assemble",
       start: "Assemble letters you drew",
       back: "Back to your drawings",
-      holds: assemble.assembly.pieces.length > 0,
+      holds: opened.has("assemble") || assemble.assembly.pieces.length > 0,
       said: "Bring in drawings you made somewhere else and turn them into a font",
     },
   ];
