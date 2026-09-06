@@ -33,7 +33,8 @@ export function session(mode: Mode, at = new Date()): Project {
       mode,
       draw: drawingToKeep(),
       assemble: assembleStore.snapshot(),
-      edit: store.snapshot(),
+      edits: store.snapshots(),
+      editAt: store.getSnapshot().openAt,
       traced: quillStore.snapshot(),
     },
     at,
@@ -66,9 +67,9 @@ export async function restore(project: Project): Promise<Restored> {
     assembleStore.restore(project.assemble);
     halves.push("the assembled set");
   }
-  if (project.edit) {
-    await store.restore(project.edit);
-    halves.push(project.edit.fileName);
+  if (project.edits?.length) {
+    await store.restoreAll(project.edits, project.editAt ?? 0);
+    for (const one of project.edits) halves.push(one.fileName);
   }
   if (project.traced) {
     quillStore.restoreSaved(project.traced);
@@ -83,7 +84,7 @@ export function fileNameFor(project: Project): string {
   const named =
     project.draw?.familyName ??
     project.assemble?.familyName ??
-    project.edit?.meta.familyName ??
+    project.edits?.[project.editAt ?? 0]?.meta.familyName ??
     project.traced?.name ??
     "Untitled";
   const tidy = named.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "") || "Untitled";

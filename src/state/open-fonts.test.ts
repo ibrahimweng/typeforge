@@ -331,6 +331,34 @@ describe("the doors a font comes in by", () => {
     expect(tabs()).toEqual(["Bakerloo", "Untitled"]);
   });
 
+  it("writes every open font down and gives them all back", async () => {
+    /*
+     * The round trip, through the real store rather than through a snapshot
+     * somebody wrote by hand. Without this the session keeps only the font in
+     * front, and opening a second one then reloading loses the first -- work
+     * that was on screen a second earlier, gone with nothing said.
+     */
+    await store.loadFont(SAMPLE, "one.ttf");
+    await store.loadFont(SAMPLE, "two.ttf");
+    store.goToDocument(0);
+    const kept = toProject(
+      { mode: "edit", edits: store.snapshots(), editAt: inFront() },
+      new Date(),
+    );
+    expect(kept.edits).toHaveLength(2);
+
+    // A different desk entirely, so what comes back has to have come from the
+    // document rather than from what happened to still be lying about.
+    store.adopt(fontCalled("Bakerloo"), "bakerloo.ttf");
+    store.adopt(fontCalled("Metro"), "metro.ttf");
+
+    await store.restoreAll(kept.edits!, kept.editAt ?? 0);
+    expect(tabs()).toHaveLength(2);
+    expect(store.getSnapshot().fileName, "and standing where it was left").toBe("one.ttf");
+    store.goToDocument(1);
+    expect(store.getSnapshot().fileName).toBe("two.ttf");
+  });
+
   it("puts a saved project back over the desk rather than beside it", async () => {
     /*
      * The one door that replaces. A project is the whole session coming back --
@@ -338,14 +366,17 @@ describe("the doors a font comes in by", () => {
      * your work would restore half a session next to the other half.
      */
     await store.loadFont(SAMPLE, "sample.ttf");
-    const kept = toProject({ mode: "edit", edit: store.snapshot() }, new Date());
-    expect(kept.edit, "the sample should be saveable at all").toBeDefined();
+    const kept = toProject(
+      { mode: "edit", edits: store.snapshots(), editAt: inFront() },
+      new Date(),
+    );
+    expect(kept.edits, "the sample should be saveable at all").toHaveLength(1);
 
     store.adopt(fontCalled("Bakerloo"), "bakerloo.ttf");
     expect(tabs()).toHaveLength(2);
 
-    await store.restore(kept.edit!);
-    expect(tabs()).toHaveLength(2);
+    await store.restoreAll(kept.edits!, kept.editAt ?? 0);
+    expect(tabs()).toHaveLength(1);
     expect(store.getSnapshot().fileName).toBe("sample.ttf");
   });
 });

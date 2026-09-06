@@ -22,12 +22,29 @@ function glyph(name: string): Glyph {
   };
 }
 
-/** Put a small typeface into the store without going through file parsing. */
+/**
+ * Put a small typeface into the store without going through file parsing.
+ *
+ * Back to one document first, and a fresh one. A new font opens in a tab
+ * beside whatever is open rather than over it, so a `startBlank` per test
+ * would leave this file running with a hundred fonts on the desk -- harmless
+ * to every assertion here and untrue to what any of them is about. Closing
+ * works from the right, so the indices below the one being closed do not move
+ * under the loop.
+ */
 function seed(names: string[]): void {
   const typeface = emptyTypeface();
   typeface.glyphs = names.map(glyph);
   typeface.glyphIndex = new Map(typeface.glyphs.map((g, index) => [g.name, index]));
+  for (let at = store.getSnapshot().open.length - 1; at > 0; at--) store.closeDocument(at);
+  /*
+   * And then the blank one takes the last one's place. `startBlank` opens
+   * beside rather than over, so it is closed from underneath afterwards --
+   * which is the only way to get a document with an empty history when the
+   * last tab is one that never closes.
+   */
   store.startBlank();
+  store.closeDocument(0);
   Object.assign(store.getSnapshot().typeface!, typeface);
 }
 
@@ -1366,10 +1383,13 @@ describe("a letter on loan", () => {
    * that was open with a font containing an `n`.
    */
   it("is not what gets written down", () => {
-    const held = store.snapshot();
-    expect(held?.typeface.glyphs.map((one) => one.name)).toEqual(["A", "B", "C"]);
+    const letters = () => store.snapshots().map((one) => one.typeface.glyphs.map((g) => g.name));
+    expect(letters()).toEqual([["A", "B", "C"]]);
     lend();
-    expect(store.snapshot()?.typeface.glyphs.map((one) => one.name)).toEqual(["A", "B", "C"]);
+    // Still one document, and still the font rather than the desk the borrowed
+    // letter is sitting on. A loan does not open a tab -- it puts the whole
+    // desk away and hands back one letter, which is a different thing.
+    expect(letters()).toEqual([["A", "B", "C"]]);
   });
 
   it("gives back the letter and the width it left with", () => {

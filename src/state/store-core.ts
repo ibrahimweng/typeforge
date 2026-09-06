@@ -32,7 +32,14 @@ import type { Glyph, Contour, Typeface } from "@/font/types";
 import type { UfoCarried } from "@/ufo/font";
 import { STARTING_PENS, STARTING_WIDTH } from "@/quill/written";
 import { POLYGON_SIDES } from "@/font/shapes";
-import { blankDocument, documentPart, nameOf, newId, type Aside } from "./documents";
+import {
+  blankDocument,
+  documentPart,
+  nameOf,
+  newId,
+  type Aside,
+  type PerDocument,
+} from "./documents";
 
 import type { AppState, HistoryEntry } from "./model";
 
@@ -318,6 +325,40 @@ export abstract class StoreCore {
      * nothing would have said so.
      */
     this.set(blankDocument());
+  }
+
+  /**
+   * Every open font's own fields, in the order their tabs sit in.
+   *
+   * For writing the session down, which is the one thing that wants all of
+   * them at once. The live state is the one in front and is not in `aside`, so
+   * it is put back where it belongs on the way out -- and during a loan the
+   * document of record is the desk that was put away, for the reason
+   * `snapshots` gives where it uses this.
+   */
+  protected everyDocument(): Array<Pick<AppState, PerDocument>> {
+    const parts = this.aside.map((one) => one.state);
+    parts.splice(this.at, 0, documentPart(this.held ? this.held.state : this.state));
+    return parts;
+  }
+
+  /**
+   * Back to one empty document, with every font closed and its history gone.
+   *
+   * What `closeDocument` refuses to do one tab at a time, because an
+   * application with no document is a screen with nothing on it. This is the
+   * exception and it is not reachable from the interface: a saved session is
+   * about to be put back, and it brings its own documents.
+   */
+  protected closeEveryDocument(): void {
+    this.aside = [];
+    this.stacks.clear();
+    this.at = 0;
+    this.mine = newId();
+    this.undoStack = [];
+    this.redoStack = [];
+    this.set(blankDocument());
+    this.tellTabs();
   }
 
   /**
