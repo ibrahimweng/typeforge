@@ -38,7 +38,7 @@ import { cursorFor as cursorClass } from "@/font/tools";
 import type { GlyphView } from "@/components/glyph-render";
 import { store, useAppState, type ToolState } from "@/state/useStore";
 import { useGlyphGestures } from "./glyph-gestures";
-import { useGlyphKeys } from "./glyph-keys";
+import { describeSelection, useGlyphKeys } from "./glyph-keys";
 import { useGlyphPainting } from "./glyph-painting";
 import { CoachMark } from "@/components/CoachMark";
 import { GlyphFaults } from "@/components/GlyphFaults";
@@ -176,7 +176,25 @@ export function GlyphEditorView(): React.JSX.Element {
   const gesture = useGlyphGestures({ typeface, glyph, state, view, pan, setPan });
 
   useGlyphPainting({ canvas: canvasRef, typeface, glyph, state, view, size, neighbours, gesture });
-  useGlyphKeys({ glyph, state, gesture });
+  useGlyphKeys({ glyph, state, gesture, canvas: canvasRef });
+
+  /*
+   * Two things a screen reader needs and a canvas cannot give it.
+   *
+   * The keys, said once when the canvas takes focus, because `role`
+   * "application" hands every keystroke to this view and somebody who cannot
+   * see the letter has no other way to learn what Tab now does.
+   *
+   * And what is picked, said again whenever it changes. Walking an outline
+   * with Tab moves a highlight around a drawing, which is the whole of the
+   * feedback and is no feedback at all if the drawing cannot be seen. The
+   * region below turns each step into a sentence.
+   */
+  const canvasKeysId = React.useId();
+  const picked = React.useMemo(
+    () => describeSelection(glyph, state.selectedNodes),
+    [glyph, state.selectedNodes],
+  );
 
   // --- interaction ------------------------------------------------------
 
@@ -407,11 +425,54 @@ export function GlyphEditorView(): React.JSX.Element {
           data-ground={state.ground}
           className="relative min-h-0 flex-1 overflow-hidden bg-[var(--canvas)]"
         >
+          {/*
+            The drawing surface, which until now no keyboard could reach and no
+            screen reader could name.
+
+            `tabIndex` puts it in the tab order, so the editing this view has
+            always answered from the keyboard -- Tab to walk the points, arrows
+            to nudge, Enter to close an outline -- can be got at without a
+            pointer at all. It could not be, before: nothing here took focus, so
+            the keys were answered from wherever the focus happened to be, which
+            is the fault `glyph-keys.ts` describes.
+
+            `role="application"` because that is what this is. The role tells a
+            screen reader to stop interpreting keys itself and hand them
+            straight through, which is right for a surface where Tab means the
+            next point rather than the next control -- and it is only honest
+            when the keys are then described, which is what `canvasKeysId` is
+            for. `aria-label` names the letter, because "canvas" says nothing
+            about which of six thousand is on screen.
+          */}
+          {/** biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: it is interactive. */}
           <canvas
             ref={canvasRef}
+            tabIndex={0}
+            role="application"
+            aria-label={glyph ? `Outline editor, editing ${glyph.name}` : "Outline editor"}
+            aria-describedby={canvasKeysId}
+            data-glyph-canvas
             style={{ width: size.width, height: size.height }}
-            className={cursorClass(state.tool, state.toolState, gesture.drag.current !== null)}
-            onPointerDown={gesture.on.pointerDown}
+            className={cn(
+              cursorClass(state.tool, state.toolState, gesture.drag.current !== null),
+              // Focus has to be visible, or being in the tab order is a place
+              // somebody arrives at without being told they have.
+              "outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--inspect)] focus-visible:ring-inset",
+            )}
+            onPointerDown={(event) => {
+              /*
+               * Focused when it is pointed at, which is what lets the keys
+               * belong to the canvas without taking anything away.
+               *
+               * Clicking a point and then pressing an arrow is the sequence
+               * the old window-wide binding existed for. It still works,
+               * because the click is now also what puts the focus here.
+               * Chromium focuses a `tabIndex` element on mousedown by itself
+               * and WebKit does not, so it is asked for rather than assumed.
+               */
+              event.currentTarget.focus();
+              gesture.on.pointerDown(event);
+            }}
             onPointerMove={gesture.on.pointerMove}
             onPointerUp={gesture.on.pointerUp}
             onPointerCancel={gesture.on.pointerUp}
@@ -426,6 +487,26 @@ export function GlyphEditorView(): React.JSX.Element {
               }
             }}
           />
+          {/*
+            The keys, for a screen reader, and what is picked, as it changes.
+
+            Both are visually hidden rather than absent: they are the same
+            facts the drawing already shows, said for somebody who cannot see
+            it. `sr-only` keeps them out of the layout without keeping them out
+            of the accessibility tree, which `display: none` would.
+
+            The live region is polite because walking an outline is a run of
+            small steps and an assertive one would interrupt itself on every
+            press.
+          */}
+          <span id={canvasKeysId} className="sr-only">
+            Tab and Shift Tab walk the points of a path. Arrow keys nudge what is picked, and hold
+            Shift to nudge ten units at a time. Control or Command with A picks every point.
+            Backspace deletes them. Enter closes an outline and Escape leaves it open.
+          </span>
+          <span aria-live="polite" aria-atomic="true" className="sr-only" data-glyph-picked>
+            {picked}
+          </span>
           {/*
           And what is wrong with this letter, over the letter.
 

@@ -2,11 +2,41 @@
  * The keys this view answers, which are the ones about a letter.
  *
  * Nudging a selection, deleting points, closing an outline, copying a drawing
- * from one letter into another, and undo. Bound to the window rather than to
- * the canvas, because a person who has just clicked a point and then pressed
- * an arrow has not necessarily left focus where the canvas can see it -- and
- * because the fields that should swallow a keystroke are checked for by name
- * at the top instead.
+ * from one letter into another, and undo.
+ *
+ * Listened for on the window, and answered only when the canvas has the focus
+ * or nothing does. The listener is on the window because a key pressed at a
+ * canvas has to reach a handler that also knows about the store, and moving it
+ * onto the element would not change which keys are answered. What changed is
+ * the answering.
+ *
+ * It used to answer wherever the focus was, and the cost of that was not a
+ * detail. `Tab` is bound here to walk the points of an outline, it called
+ * `preventDefault`, and the only focus it checked for was an `input` or a
+ * `textarea` -- so with a letter open, a person on a keyboard who had focused
+ * the Open button and pressed Tab did not move to the next control. They did
+ * not move at all. Tab is the one key a keyboard user cannot do without, and
+ * every control on the page was behind it. That is a keyboard trap, in the
+ * sense the accessibility guidelines use the phrase, and it applied to the
+ * whole application whenever this view was on screen.
+ *
+ * Tab was the whole of it, and that is worth writing down because the guard
+ * looks far leakier than it was. A slider is a `div` with a role, so it reads
+ * as something the old check would miss -- and it was not missed, because what
+ * actually takes the focus is the hidden `input type=range` inside it. Arrows
+ * pressed at a focused button did not move a picked point either, when that
+ * was measured. Every other key here was already going where it should.
+ *
+ * So this is one fix rather than a sweep. The rule is now that these keys
+ * belong to the canvas, which fixes Tab and states the rest in terms of focus
+ * rather than of tag names -- and that is what makes it hold for the next
+ * control somebody adds rather than for the two that were listed.
+ *
+ * `document.body` counts as the canvas here, because that is where the focus
+ * sits before anything has been clicked and a fresh page should still answer a
+ * key. And the canvas takes focus when it is pointed at, so clicking a point
+ * and then pressing an arrow -- which is the reason this was ever bound to the
+ * window -- works as it did.
  *
  * Two things are handed in rather than done here. Redrawing, because these
  * edits mutate the letter where React cannot see them; and saying what the
@@ -24,12 +54,52 @@ import { deleteSelectedNodes } from "./glyph-edits";
 import { parseNodeKey } from "./glyph-pointer";
 import type { Gestures } from "./glyph-gestures";
 
+/**
+ * What is picked, as a sentence rather than as a highlight on a drawing.
+ *
+ * A point is announced by where it is, because that is what identifies it: a
+ * letter has no names for its points and "point 4 of 16" tells somebody
+ * walking an outline nothing about the shape they are walking. Coordinates
+ * do, and they are the same numbers the panel shows.
+ */
+export function describeSelection(glyph: Glyph | null, selected: ReadonlySet<string>): string {
+  if (!glyph || selected.size === 0) return "No points picked.";
+  if (selected.size > 1) return `${selected.size} points picked.`;
+  const [key] = selected;
+  const ref = parseNodeKey(key);
+  const node = glyph.contours[ref.contour]?.nodes[ref.node];
+  if (!node) return "1 point picked.";
+  // The node's own word for what it is: corner, smooth or tangent.
+  const kind = node.type.charAt(0).toUpperCase() + node.type.slice(1);
+  const of = glyph.contours[ref.contour].nodes.length;
+  return (
+    `${kind} point ${ref.node + 1} of ${of}, path ${ref.contour + 1}` +
+    `, at ${Math.round(node.point.x)}, ${Math.round(node.point.y)}.`
+  );
+}
+
+/**
+ * Whether a key pressed now was meant for the letter.
+ *
+ * True at the canvas itself, and true when the focus is nowhere in
+ * particular -- `document.body`, which is where it sits until something is
+ * clicked. False at every button, slider, link and field, which are all
+ * things with their own idea of what an arrow or a Tab does.
+ */
+function meantForTheCanvas(canvas: HTMLCanvasElement | null): boolean {
+  const focused = document.activeElement;
+  if (focused === null || focused === document.body) return true;
+  return focused === canvas;
+}
+
 export function useGlyphKeys(within: {
   glyph: Glyph | null;
   state: AppState;
   gesture: Gestures;
+  /** The drawing surface, so a key can ask whether it was meant for it. */
+  canvas: React.RefObject<HTMLCanvasElement | null>;
 }): void {
-  const { glyph, state, gesture } = within;
+  const { glyph, state, gesture, canvas } = within;
   /*
    * Pulled out by name so the effect can list them.
    *
@@ -44,8 +114,7 @@ export function useGlyphKeys(within: {
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!glyph) return;
-      const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      if (!meantForTheCanvas(canvas.current)) return;
 
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
@@ -159,5 +228,5 @@ export function useGlyphKeys(within: {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [glyph, state.selectedNodes, redraw, refreshPhase]);
+  }, [glyph, state.selectedNodes, redraw, refreshPhase, canvas]);
 }
