@@ -11,6 +11,8 @@
 
 import { expect, test } from "@playwright/test";
 
+import { goToMode } from "./support";
+
 const open = async (page: import("@playwright/test").Page) => {
   await page.keyboard.press("ControlOrMeta+k");
   await expect(page.getByRole("dialog", { name: "Quick actions" })).toBeVisible();
@@ -21,7 +23,7 @@ const dialog = (page: import("@playwright/test").Page) =>
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
 });
 
 test("opens on the shortcut and closes on escape", async ({ page }) => {
@@ -204,8 +206,21 @@ test("leaves the space bar alone while typing, and Cmd-K still works there", asy
 test("still opens with a button focused, which is where the pointer leaves it", async ({
   page,
 }) => {
-  const button = page.getByRole("button").first();
+  /*
+   * A named button rather than whichever one happens to be first.
+   *
+   * This took the first button on the page, which was the Draw tab while the
+   * modes were a strip in the toolbar. The strip has gone and the first button
+   * is now Undo, which is disabled on a page where nothing has been done -- so
+   * the test sat waiting to click something that could never be clicked. What
+   * it is about is a button keeping the focus after a click, and any button
+   * that can be pressed harmlessly says that.
+   */
+  const button = page.locator("[data-open-library]");
   await button.click();
+  // The library opens over the page; putting it away leaves the focus where a
+  // click leaves it, which is what this test is about.
+  await page.keyboard.press("Escape");
   await expect(dialog(page)).toBeHidden();
   await page.keyboard.press("Space");
   await expect(dialog(page)).toBeVisible();

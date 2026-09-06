@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { expect, test } from "@playwright/test";
 
-import { FONT_PATH, measureInk, openFont, startBlank, takeUpTool } from "./support";
+import { FONT_PATH, goToMode, measureInk, openFont, startBlank, takeUpTool } from "./support";
 
 test.skip(!FONT_PATH, "needs a system font to open");
 
@@ -96,18 +96,19 @@ test("a font opened from another mode takes you to where it opened", async ({ pa
    * perfectly fine and one mode away.
    */
   await page.goto("/");
-  for (const mode of ["Trace", "Draw", "Assemble"]) {
-    await page.getByRole("button", { name: mode, exact: true }).click();
-    await expect(page.getByRole("button", { name: mode, exact: true })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+  for (const [mode, where] of [
+    ["Trace", "quill"],
+    ["Draw", "forge"],
+    ["Assemble", "assemble"],
+  ] as const) {
+    await goToMode(page, mode);
+    await expect(page.locator("[data-mode]")).toHaveAttribute("data-mode", where);
 
     await openFont(page);
     await expect(
-      page.getByRole("button", { name: "Edit", exact: true }),
+      page.locator("[data-mode]"),
       `opening a font from ${mode} left the person in ${mode}`,
-    ).toHaveAttribute("aria-pressed", "true");
+    ).toHaveAttribute("data-mode", "edit");
     // And the font really is there, rather than the mode having switched to an
     // empty editor.
     await expect(page.locator("[data-font-name]")).toContainText("DejaVu Sans");
@@ -122,7 +123,7 @@ test("Trace says what it is holding, as the other three modes do", async ({ page
    * was the one that never said which font.
    */
   await page.goto("/");
-  await page.getByRole("button", { name: "Trace", exact: true }).click();
+  await goToMode(page, "Trace");
   // Scoped to the toolbar: the canvas beside it also says "Nothing traced yet",
   // which is the empty state and a different sentence doing a different job.
   const toolbar = page.getByRole("banner");
@@ -132,8 +133,8 @@ test("Trace says what it is holding, as the other three modes do", async ({ page
   for (const [mode, says] of [
     ["Draw", "Sans"],
     ["Assemble", "drawings"],
-  ]) {
-    await page.getByRole("button", { name: mode, exact: true }).click();
+  ] as const) {
+    await goToMode(page, mode);
     await expect(toolbar.getByText(says, { exact: false }).first()).toBeVisible();
   }
 });

@@ -10,6 +10,8 @@
 
 import { expect, test } from "@playwright/test";
 
+import { goToMode } from "./support";
+
 type Page = import("@playwright/test").Page;
 
 const lesson = (page: Page, id: string) => page.locator(`[data-lesson='${id}']`);
@@ -52,7 +54,7 @@ test("the front door offers to draw one from nothing", async ({ page }) => {
 test("a lesson ticks itself when the font says so, not when you say so", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
   await page.locator("[data-open-academy]").click();
   await expect(page.locator("[data-academy]")).toBeVisible();
 
@@ -114,7 +116,7 @@ test("Take me there puts you where the lesson happens", async ({ page }) => {
 test("what you marked by hand is forgotten; what the font answers is not", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 950 });
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
   await page.locator("[data-open-academy]").click();
 
   await openLesson(page, "first.word");

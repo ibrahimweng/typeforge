@@ -26,6 +26,7 @@
 import * as React from "react";
 
 import { nodeKey, store, type NodeRef } from "@/state/useStore";
+import { useMenuBehaviour, type Dismissal } from "@/components/menu-keys";
 import { parseNodeKey } from "@/views/glyph-pointer";
 import { cn } from "@/cn";
 
@@ -136,15 +137,6 @@ function itemsFor(target: MenuTarget, glyphName: string, selected: ReadonlySet<s
 }
 
 /**
- * The lines that can be chosen, in the order they are drawn.
- *
- * Outside the component and taking the element it should look in, so that the
- * effect below can call it and still depend on nothing. Written inside, it
- * would be a new function on every render and the effect would have to list it
- * -- which means taking the focus back on every render, which is a menu whose
- * arrows do not work.
- */
-/**
  * Put the focus back on the letter, having taken it to open the menu.
  *
  * Both ways out of the menu that are a decision rather than a change of
@@ -158,12 +150,6 @@ function itemsFor(target: MenuTarget, glyphName: string, selected: ReadonlySet<s
  */
 function backToTheDrawing(): void {
   document.querySelector<HTMLCanvasElement>("[data-glyph-canvas]")?.focus();
-}
-
-function linesIn(within: HTMLElement | null): HTMLButtonElement[] {
-  return [...(within?.querySelectorAll<HTMLButtonElement>("[data-canvas-menu-item]") ?? [])].filter(
-    (line) => !line.disabled,
-  );
 }
 
 export function CanvasMenu({
@@ -184,63 +170,30 @@ export function CanvasMenu({
   const ref = React.useRef<HTMLDivElement>(null);
 
   /*
-   * The keys a menu is expected to answer, because saying `role="menu"` is a
-   * promise to a screen reader that it does.
+   * The keys and the ways out, shared with the menu that starts a font.
    *
-   * A right-click menu is opened with a pointer nearly every time, so it would
-   * be easy to leave this out and never notice. But the role tells a screen
-   * reader to announce a menu and to expect the arrows to walk it, and a menu
-   * that then does nothing is worse than a list of buttons would have been --
-   * and the context-menu key on a keyboard opens this with no pointer
-   * involved at all.
+   * Both say `role="menu"`, which is a promise to a screen reader that the
+   * arrows walk them. Two copies of that promise is how one of them comes to
+   * be broken quietly, so it is kept in one place.
    *
-   * The first line takes the focus as the menu opens, which is where the
-   * arrows start from and is what tells a screen reader that the menu is now
-   * the subject.
+   * This one takes the focus as it opens: a right click puts a menu where the
+   * pointer is and nothing else is holding the focus, so the first line should
+   * have it. Escape puts it back on the drawing rather than on a button that
+   * is about to be removed -- a focus that lands nowhere goes to the body, and
+   * from there the next Tab starts at the top of the page rather than where
+   * the person was standing. A click elsewhere does not, because that is a
+   * change of subject: somebody who clicked a panel wants to be in the panel.
    */
-  React.useEffect(() => {
-    linesIn(ref.current)[0]?.focus();
-  }, []);
-
-  const onKeyDown = (event: React.KeyboardEvent): void => {
-    const all = linesIn(ref.current);
-    if (all.length === 0) return;
-    const at = all.indexOf(document.activeElement as HTMLButtonElement);
-    const step = (to: number): void => {
-      event.preventDefault();
-      all[(to + all.length) % all.length].focus();
-    };
-    if (event.key === "ArrowDown") step(at + 1);
-    else if (event.key === "ArrowUp") step(at - 1);
-    else if (event.key === "Home") step(0);
-    else if (event.key === "End") step(all.length - 1);
-  };
-
-  /*
-   * Put away by anything that is not choosing from it.
-   *
-   * A click elsewhere, Escape, and the window being scrolled or resized. All
-   * three are what a person does when they have decided against it, and a menu
-   * that survives any of them is one that has to be dismissed on purpose.
-   */
-  React.useEffect(() => {
-    const away = (event: MouseEvent): void => {
-      if (!ref.current?.contains(event.target as Node)) onClose();
-    };
-    const key = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape") return;
-      backToTheDrawing();
-      onClose();
-    };
-    window.addEventListener("pointerdown", away);
-    window.addEventListener("keydown", key);
-    window.addEventListener("resize", onClose);
-    return () => {
-      window.removeEventListener("pointerdown", away);
-      window.removeEventListener("keydown", key);
-      window.removeEventListener("resize", onClose);
-    };
-  }, [onClose]);
+  const { onKeyDown } = useMenuBehaviour({
+    menu: ref,
+    onClose: React.useCallback(
+      (why: Dismissal) => {
+        if (why === "escape") backToTheDrawing();
+        onClose();
+      },
+      [onClose],
+    ),
+  });
 
   /*
    * Kept on screen, measured after it is drawn.
@@ -278,6 +231,7 @@ export function CanvasMenu({
             type="button"
             role="menuitem"
             data-canvas-menu-item
+            data-menu-item
             disabled={!item.run}
             onClick={() => {
               item.run?.();

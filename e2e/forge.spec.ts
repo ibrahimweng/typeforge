@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 
 import { expect, test } from "@playwright/test";
 
-import { FONT_PATH, measureInk, openFont, openForge, paramSlider } from "./support";
+import { FONT_PATH, goToMode, measureInk, openFont, openForge, paramSlider } from "./support";
 
 test.skip(!FONT_PATH, "needs a system font to open");
 
@@ -415,7 +415,7 @@ test("draws a font with no font open", async ({ page }) => {
   page.on("pageerror", (error) => errors.push(error.message));
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
 
   // A letter on the stage, a specimen line, and the whole alphabet under it.
   await expect(page.locator("[data-forge-stage]")).toBeVisible();
@@ -647,7 +647,7 @@ test("knows the display face is already a heavy", async ({ page }) => {
 
 test("spreads one edit across the whole alphabet", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
 
   const before = await page.locator('[data-forge-cell="b"] path').getAttribute("d");
   const alsoBefore = await page.locator('[data-forge-cell="H"] path').getAttribute("d");
@@ -663,7 +663,7 @@ test("spreads one edit across the whole alphabet", async ({ page }) => {
 
 test("says how many letters an edit will reach", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
   const shoulder = page.locator('[data-forge-part="shoulder"]');
   await expect(shoulder).toBeVisible();
   await expect(shoulder.getByText(/\d+ letters/)).toBeVisible();
@@ -671,7 +671,7 @@ test("says how many letters an edit will reach", async ({ page }) => {
 
 test("offers every control whichever letter is open, and says which are here", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
 
   /*
    * The panel used to show only the parts the open letter had, which read well
@@ -715,7 +715,7 @@ test("offers every control whichever letter is open, and says which are here", a
  */
 test("starts from any of the eight, and every one draws a different font", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
 
   const seen = new Set<string>();
   for (const name of [
@@ -747,7 +747,7 @@ test("starts from any of the eight, and every one draws a different font", async
  */
 test("lets one letter hold its own version of a part", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
   await page.locator('[data-forge-part="slab"]').getByRole("switch", { name: "Serifs" }).click();
 
   await page.locator('[data-forge-cell="p"]').click();
@@ -767,7 +767,7 @@ test("lets one letter hold its own version of a part", async ({ page }) => {
  */
 test("writes a font file the browser can use", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
   await page.getByRole("button", { name: "Export", exact: true }).click();
 
   const dialog = page.getByRole("dialog", { name: "Download font" });

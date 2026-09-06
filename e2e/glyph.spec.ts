@@ -11,6 +11,7 @@ import {
   FONT_PATH,
   drawnN,
   fillBox,
+  goToMode,
   keptGlyphs,
   keptHalves,
   openAssemble,
@@ -136,7 +137,7 @@ test("saves the work to a file, and opens it in a browser that has never seen it
   const elsewhere = await browser.newContext();
   const other = await elsewhere.newPage();
   await other.goto("/");
-  await other.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(other, "Draw");
   await settle(other);
   expect(await drawnN(other), "the fresh browser already had the work").not.toBe(serifed);
 
@@ -267,7 +268,7 @@ test("comes up anyway when what was kept will not come back", async ({ page }) =
   await expect(page.getByText("Could not pick up where you left off.")).toBeVisible();
 
   // Working, and writing again, so the next thing done is not lost as well.
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
   await settle(page);
   await page.locator('[data-forge-part="slab"]').getByRole("switch", { name: "Serifs" }).click();
   await expect.poll(() => keptHalves(page)).toContain("draw");

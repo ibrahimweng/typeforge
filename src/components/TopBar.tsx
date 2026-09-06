@@ -17,6 +17,7 @@ import {
   TOOLBAR_ACTION,
   segment,
 } from "@/components/controls";
+import { NewMenu } from "@/components/NewMenu";
 import { viewKey } from "@/keys/useAppKeys";
 import { cn } from "@/cn";
 
@@ -85,6 +86,7 @@ export function TopBar({
   academyOpen,
   mode,
   onMode,
+  opened,
   onSave,
   keeping,
 }: {
@@ -98,6 +100,8 @@ export function TopBar({
   academyOpen: boolean;
   mode: Mode;
   onMode: (mode: Mode) => void;
+  /** Which generators have been opened, so the New menu can offer the way back. */
+  opened: ReadonlySet<Mode>;
   onSave: () => void;
   /** Whether the work is being kept between visits, for saying so. */
   keeping: Keeping;
@@ -180,59 +184,24 @@ export function TopBar({
         <span className="text-xs-plus font-medium tracking-tight">Typeforge</span>
 
         {/*
-        Four documents, in the order somebody works in them.
+        The four modes used to be a strip here, beside the six view tabs.
 
-        One word each rather than three. They were "Edit a font", "Draw a font"
-        and "Assemble a font", which read better and cost about a hundred and
-        thirty pixels of a toolbar that has none to spare: at thirteen hundred
-        wide the name of the open font was squeezed to nothing at all. The
-        group says what these are, and the longer phrasing is on the hover.
+        Two segmented controls side by side, in the same treatment, at the same
+        size -- and the only way to learn they were different kinds of thing
+        was to press one. The left changed which document you were working on;
+        the right changed which screen you were looking at it through. That is
+        what made an application with one font open read as four applications.
 
-        Edit came first for as long as this bar has existed, and it is the one
-        of the four you cannot use until you have been somewhere else: it works
-        on a font that is already open. Three of these make a font and the
-        fourth is where you then work on it, so they are in that order, and each
-        hover says what the mode takes and what it leaves you with. They are
-        four separate documents rather than four views of one, which is the
-        thing a beginner gets wrong, so the hovers say that too.
+        Three of the four were never navigation. Draw, Trace and Assemble each
+        hold a document of their own, and each has a button that turns what it
+        holds into a typeface and hands it to the editor. They are where a font
+        comes from, so they are with the other ways a font comes from: the New
+        menu on the right, beside Open and the library.
+
+        The fourth was Edit, which is not something anybody picks. It is where
+        you are once there is a font, so the views below are the only strip
+        left in this bar.
       */}
-        <div className={SEGMENT_TRACK} role="group" aria-label="Mode">
-          {(
-            [
-              ["forge", "Draw", "Start a new font from one of twenty styles"],
-              ["quill", "Trace", "Start a new font by reading an existing one back into strokes"],
-              ["assemble", "Assemble", "Start a new font from drawings you made elsewhere"],
-              ["edit", "Edit", "Work on the font that is open: letters, spacing, kerning, checks"],
-            ] as Array<[Mode, string, string]>
-          ).map(([id, label, hint]) => (
-            <button
-              key={id}
-              type="button"
-              aria-pressed={mode === id}
-              onClick={() => onMode(id)}
-              /*
-               * Held shut over a borrowed letter.
-               *
-               * A letter lent to the tools from Draw has the document that was
-               * open put aside behind it. Walking to another tab would leave the
-               * loan on the desk and the real font in a drawer, with nothing on
-               * screen to say why -- and the strip above the canvas says the only
-               * ways out are keeping the drawing and throwing it away, which had
-               * better be true.
-               */
-              disabled={state.loan !== null && id !== mode}
-              title={
-                state.loan === null
-                  ? hint
-                  : `Finish with ${state.loan.letter} first — keep the drawing or throw it away.`
-              }
-              className={cn(segment(mode === id), "disabled:opacity-40")}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
         {/*
         And the six views of the open font, which are nothing to look at
         without one. Six dead tabs were the second thing on the first screen
@@ -439,6 +408,16 @@ export function TopBar({
         {/* Reachable from all three, because all three have something to do
             with somebody else's font: open it, draw from its proportions,
             borrow its spacing, or just put it behind your own letters. */}
+        {/*
+          Where a font comes from, in one group.
+
+          The three that make one, the catalogue to start from, and the file on
+          your disk. They were in two places -- three of them in a strip on the
+          left that looked like navigation, two of them over here -- and the
+          split was not about anything: every one of these answers "I want to
+          begin".
+        */}
+        <NewMenu mode={mode} opened={opened} onMode={onMode} />
         <button type="button" onClick={onLibrary} data-open-library className={OUTLINE_ACTION}>
           Library
         </button>
