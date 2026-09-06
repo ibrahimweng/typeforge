@@ -14,6 +14,7 @@ import * as React from "react";
 
 import { enterStaggered } from "@/anim/motion";
 import { CompositionPanel } from "@/components/CompositionPanel";
+import { Dock, type DockPanel } from "@/components/Dock";
 import { FeaturesPanel } from "@/components/FeaturesPanel";
 import { LetterPanel } from "@/components/LetterPanel";
 import { PathsPanel } from "@/components/PathsPanel";
@@ -29,7 +30,7 @@ import { noCast, type Cast, type CastName } from "@/font/cast";
 import { CutPanel } from "@/components/CutPanel";
 import { noCuts, type CutName, type Cuts } from "@/font/cuts";
 import { hasLetters } from "@/font/library";
-import { DEFAULT_PARAMS, type GlyphParams } from "@/font/types";
+import { DEFAULT_PARAMS, type GlyphParams, type Typeface } from "@/font/types";
 import { store, useAppState, type ViewId } from "@/state/useStore";
 // Imported from the control directly rather than through the UI barrel: the
 // barrel re-exports every control, which pulls the whole kit into the bundle.
@@ -144,42 +145,154 @@ export function Inspector(): React.JSX.Element {
 
   const editingGlyph = scope === "glyph" && glyph !== null;
   const resolved = editingGlyph && glyphName ? store.paramsFor(glyphName) : typeface.params;
+  /*
+   * What the dock is offered, and when each of them is worth drawing.
+   *
+   * This column used to be the same list written out as markup: in one order,
+   * at one width, with every panel open. All three were decided here on
+   * everybody's behalf. They are the person's now, and `Dock` remembers them.
+   *
+   * `when` mirrors each panel's own guard. Three of them return null when
+   * there is nothing to be about, and a header drawn over a body that renders
+   * nothing is a panel that cannot be furled because there is nothing under it
+   * to hide.
+   *
+   * The notes are worked out here rather than inside the panels, because the
+   * dock draws the headers now. A note is most useful on a panel that is
+   * furled -- "3 points" is exactly what you want to know without unfurling
+   * anything -- which is only possible if the header carries it.
+   */
+  const picked = state.selectedNodes.size;
+  const drawing = editingGlyph && state.view === "glyph";
+  const outlines = glyph?.contours.length ?? 0;
+  const points = (many: number): string => `${many} point${many === 1 ? "" : "s"}`;
+
+  const panels: DockPanel[] = [
+    { id: "letter", name: "This letter", when: editingGlyph, body: <LetterPanel /> },
+    {
+      id: "writing",
+      name: "Writing",
+      when: drawing && writesStrokes(state.tool),
+      body: <WritingPanel glyphName={glyphName!} />,
+    },
+    {
+      id: "paths",
+      name: "Paths",
+      when: drawing,
+      note: (
+        <span className="tabular-nums">
+          {outlines} {outlines === 1 ? "path" : "paths"}
+        </span>
+      ),
+      body: <PathsPanel />,
+    },
+    {
+      id: "transform",
+      name: "Transform",
+      when: drawing && outlines > 0,
+      note: <span data-transform-scope>{picked === 0 ? "the whole letter" : points(picked)}</span>,
+      body: <TransformPanel />,
+    },
+    {
+      id: "points",
+      name: "Points",
+      when: drawing && outlines > 0,
+      note: <span data-points-scope>{picked === 0 ? "none picked" : points(picked)}</span>,
+      body: <PointsPanel />,
+    },
+    {
+      id: "params",
+      name: "Parameters",
+      when: scope !== "build",
+      body: (
+        <Parameters
+          scope={scope}
+          glyphName={glyphName}
+          typeface={typeface}
+          editingGlyph={editingGlyph}
+          resolved={resolved}
+          overrides={glyph?.params ?? {}}
+          gesture={gestureRef}
+          listRef={listRef}
+        />
+      ),
+    },
+    {
+      id: "shaping",
+      name: "Cut and cast",
+      when: scope !== "build",
+      body: <Cutting scope={scope} glyphName={glyphName} />,
+    },
+    {
+      /*
+        Where to start: which letters to draw first.
+
+        It used to sit above the parameters, which is what this column is named
+        for and the reason anybody opens it, so somebody adjusting the weight
+        of a font they had been drawing for a week met it every time. A panel
+        of its own is a better answer than an order: it is last, and anybody
+        who does not want it furls it once and never sees it again.
+      */
+      id: "start",
+      name: "Where to start",
+      when: scope === "family",
+      body: (
+        <div data-panel-section="where-to-start">
+          <p className="pb-2 text-2xs leading-snug text-muted-foreground">
+            The handful of letters that set the shape of all the rest.
+          </p>
+          <ControlLetters />
+          <CoachMark id="family" />
+        </div>
+      ),
+    },
+    {
+      /*
+        What the font does with a letter, under the same scope as how a letter
+        is put together -- because a ligature is the same kind of fact as a
+        composite: not how this letter looks, but what the font makes of it.
+      */
+      id: "composition",
+      name: "Built from",
+      when: scope === "build",
+      body: <CompositionPanel />,
+    },
+    { id: "features", name: "Features", when: scope === "build", body: <FeaturesPanel /> },
+  ];
 
   return (
-    <aside
-      aria-label="Parameters"
-      className={cn(
-        SIDE_PANEL,
-        "toolcraft-panel-surface flex shrink-0 flex-col border-l border-border",
-      )}
-    >
-      <div
-        className="flex gap-0.5 border-b border-border bg-card/60 p-1"
-        role="group"
-        aria-label="Inspector scope"
-      >
-        {(["family", "glyph", "build"] as const).map((option) => (
-          <button
-            key={option}
-            type="button"
-            aria-pressed={scope === option}
-            onClick={() => setScope(option)}
-            disabled={option === "glyph" && !glyph}
-            title={
-              option === "family"
-                ? "Every glyph in the font at once"
-                : option === "glyph"
-                  ? glyph
-                    ? `Just ${glyph.name}, which can override any family value`
-                    : "Open a letter to reach its own values"
-                  : "How the letters are built out of each other"
-            }
-            className={segment(
-              scope === option,
-              cn("min-w-0 flex-1 truncate", option === "glyph" && !glyph && "opacity-40"),
-            )}
+    <Dock
+      label="Parameters"
+      panels={panels}
+      head={
+        <>
+          <div
+            className="flex gap-0.5 border-b border-border bg-card/60 p-1"
+            role="group"
+            aria-label="Inspector scope"
           >
-            {/*
+            {(["family", "glyph", "build"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={scope === option}
+                onClick={() => setScope(option)}
+                disabled={option === "glyph" && !glyph}
+                title={
+                  option === "family"
+                    ? "Every glyph in the font at once"
+                    : option === "glyph"
+                      ? glyph
+                        ? `Just ${glyph.name}, which can override any family value`
+                        : "Open a letter to reach its own values"
+                      : "How the letters are built out of each other"
+                }
+                className={segment(
+                  scope === option,
+                  cn("min-w-0 flex-1 truncate", option === "glyph" && !glyph && "opacity-40"),
+                )}
+              >
+                {/*
               Named for what it is, with the letter beside it rather than
               instead of it.
 
@@ -197,25 +310,25 @@ export function Inspector(): React.JSX.Element {
               place in the application that shows you which letter you have was
               quietly changing it.
             */}
-            {option === "glyph" ? (
-              <>
-                {/*
+                {option === "glyph" ? (
+                  <>
+                    {/*
                   A real space rather than a left padding, because the gap has
                   to be in the text and not only in the picture of it. Set with
                   `pl-1` this read `Lettera` to anything that computes an
                   accessible name by joining the text nodes -- a screen reader,
                   and the test below that caught it.
                 */}
-                Letter {glyph && <span className="opacity-60">{glyph.name}</span>}
-              </>
-            ) : (
-              <span className="capitalize">{option}</span>
-            )}
-          </button>
-        ))}
-      </div>
+                    Letter {glyph && <span className="opacity-60">{glyph.name}</span>}
+                  </>
+                ) : (
+                  <span className="capitalize">{option}</span>
+                )}
+              </button>
+            ))}
+          </div>
 
-      {/*
+          {/*
         The way in to the tools, from every view that shows a letter but is not
         the one you can draw in.
 
@@ -231,222 +344,167 @@ export function Inspector(): React.JSX.Element {
         and it says which letter it means because in a grid of a hundred that
         is not obvious.
       */}
-      {glyph && state.view !== "glyph" && (
-        <div className="border-b border-border p-2" data-open-in-editor>
-          <button
-            type="button"
-            onClick={() => store.selectGlyph(glyph.name, { open: true })}
-            className={cn(
-              "w-full rounded border border-border px-2 py-1.5 text-2xs text-muted-foreground",
-              "transition-colors hover:border-accent hover:text-foreground",
-            )}
-          >
-            Open <span className="font-mono text-foreground">{glyph.name}</span> in the editor
-          </button>
-        </div>
-      )}
-
-      {scope === "build" ? (
-        /*
-          What the font does with a letter, under the same scope as how a letter
-          is put together -- because a ligature is the same kind of fact as a
-          composite: not how this letter looks, but what the font makes of it.
-        */
-        <div className="toolcraft-scrollbar flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-3">
-          <CompositionPanel />
-          <div className="border-t border-border pt-4">
-            <FeaturesPanel />
-          </div>
-        </div>
-      ) : (
-        <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto">
-          {/*
-        Under the letter's own scope, because that is what it is about, and in
-        the view where a path is what you are handling.
-
-        A path belongs to one glyph and to no family, so it has no business in
-        the family tab where every other control reaches four hundred and fifty
-        letters at once. Nor in the spacing table, which is also about one
-        letter and reaches this panel for that reason: which way a contour runs
-        is a fact about the drawing, and a column of sidebearings is not the
-        place to be told it.
-      */}
-          {/*
-        What the letter *is*, above the three panels that change how it looks.
-        A level up from them: those redraw it, this decides whether it is there
-        and what it is called.
-      */}
-          {editingGlyph && <LetterPanel />}
-          {/*
-        The hand being written in, above the paths, and only while a write tool
-        is in hand.
-
-        Above them because a written letter's paths are the sweep's rather than
-        anybody's -- the pen is the thing that was drawn and the paths are what
-        came out of it, so the pen is the higher-level object. Only while
-        writing because a saved pen means nothing on a letter that was not
-        written with one, and this rail is already full.
-
-        The pen's three numbers used to be here too and are now in the options
-        bar, a hand's width from the stroke they widen. What is left is the part
-        that is set up rather than adjusted.
-      */}
-          {editingGlyph && state.view === "glyph" && writesStrokes(state.tool) && (
-            <div className="border-b border-border p-3">
-              <WritingPanel glyphName={glyphName!} />
+          {glyph && state.view !== "glyph" && (
+            <div className="border-b border-border p-2" data-open-in-editor>
+              <button
+                type="button"
+                onClick={() => store.selectGlyph(glyph.name, { open: true })}
+                className={cn(
+                  "w-full rounded border border-border px-2 py-1.5 text-2xs text-muted-foreground",
+                  "transition-colors hover:border-accent hover:text-foreground",
+                )}
+              >
+                Open <span className="font-mono text-foreground">{glyph.name}</span> in the editor
+              </button>
             </div>
           )}
-          {editingGlyph && state.view === "glyph" && <PathsPanel />}
-          {/*
-        Under the same scope and the same view as the paths, and for the same
-        reason: a transform acts on one letter's outlines, and the glyph view
-        is where a letter's outlines are in hand.
-      */}
-          {editingGlyph && state.view === "glyph" && <TransformPanel />}
-          {/*
-        And below the transforms, because the order is the order of scope: a
-        path, then the whole drawing, then a point in it. Somebody working
-        their way down the panel goes from the largest thing they can act on
-        to the smallest.
-      */}
-          {editingGlyph && state.view === "glyph" && <PointsPanel />}
-          <div ref={listRef} className="p-3" data-panel-section="params">
-            {PARAMS.map((spec) => {
-              const scaleFactor = spec.emRelative ? typeface.unitsPerEm : 1;
-              const value = resolved[spec.key];
-              const overridden = editingGlyph && glyph!.params[spec.key] !== undefined;
+        </>
+      }
+    />
+  );
+}
 
-              return (
-                <div key={spec.key} className="pb-3.5">
-                  {/* The label lives on the slider itself. This row is only here
-                  when there is something to say beside it. */}
-                  {overridden && (
-                    <div className="flex items-baseline justify-end pb-1">
-                      <button
-                        type="button"
-                        onClick={() => glyphName && store.clearGlyphParam(glyphName, spec.key)}
-                        className="text-2xs text-accent hover:underline"
-                        title="Follow the family value again"
-                      >
-                        reset
-                      </button>
-                    </div>
-                  )}
-                  <Slider
-                    /*
-                     * The slider prints this as its own label, so it has to be the
-                     * name of the control rather than an identifier. It had been
-                     * `family-cornerRadius`, which appeared under every heading in
-                     * the panel as though it meant something.
-                     */
-                    name={spec.label}
-                    value={value / scaleFactor}
-                    min={spec.min}
-                    max={spec.max}
-                    step={spec.step}
-                    unit={spec.unit}
-                    baseValue={DEFAULT_PARAMS[spec.key]}
-                    showFill
-                    onValueChange={(next, meta) => {
-                      const scaled = next * scaleFactor;
-                      const onGlyph = editingGlyph && glyphName !== null;
-                      /*
-                       * A drag arrives as a run of "merge" updates followed by a
-                       * final one. Snapshot at the start and record at the end, so
-                       * the whole gesture is a single undo step.
-                       *
-                       * Whichever set is being edited, which it did not used to
-                       * be: the snapshot was always the family's, and the glyph
-                       * branch never recorded anything at all. Undo then took
-                       * back whatever came before and left the override in
-                       * place -- worse than not undoing, because it undid
-                       * something nobody had asked about.
-                       */
-                      gestureRef.current ??=
-                        onGlyph && glyphName
-                          ? {
-                              on: "glyph",
-                              name: glyphName,
-                              params: { ...(store.glyph(glyphName)?.params ?? {}) },
-                            }
-                          : { on: "family", params: { ...typeface.params } };
-                      const started = gestureRef.current;
-                      if (meta?.history === "merge") {
-                        if (started.on === "glyph") {
-                          store.setGlyphParam(started.name, spec.key, scaled);
-                        } else {
-                          store.setFamilyParam(spec.key, scaled);
-                        }
-                        return;
-                      }
-                      const label = `Set ${spec.label.toLowerCase()}`;
-                      if (started.on === "glyph") {
-                        store.setGlyphParam(started.name, spec.key, scaled);
-                        store.commitGlyphParams(started.name, label, started.params);
-                      } else {
-                        store.setFamilyParam(spec.key, scaled);
-                        store.commitFamilyParams(label, started.params);
-                      }
-                      gestureRef.current = null;
-                    }}
-                  />
-                  <p className="pt-1 text-2xs leading-snug text-muted-foreground">{spec.hint}</p>
+/**
+ * The family parameters, lifted out of the render they were written inside.
+ *
+ * Unchanged otherwise. The dock takes a body per panel rather than one long
+ * column, so what was a block in the middle of the Inspector is a component of
+ * its own, and everything it needs is handed to it: which set is being edited,
+ * what the values currently are, which of them this letter overrides, and the
+ * ref holding what a drag started from.
+ */
+function Parameters({
+  scope,
+  glyphName,
+  typeface,
+  editingGlyph,
+  resolved,
+  overrides,
+  gesture,
+  listRef,
+}: {
+  scope: Scope;
+  glyphName: string | null;
+  typeface: Typeface;
+  editingGlyph: boolean;
+  resolved: GlyphParams;
+  /** Which parameters this letter sets for itself, so the reset link knows. */
+  overrides: Partial<GlyphParams>;
+  /** What the drag in flight started from, kept by the Inspector across renders. */
+  gesture: React.RefObject<
+    | { on: "family"; params: GlyphParams }
+    | { on: "glyph"; name: string; params: Partial<GlyphParams> }
+    | null
+  >;
+  listRef: React.RefObject<HTMLDivElement | null>;
+}): React.JSX.Element {
+  const gestureRef = gesture;
+  return (
+    <>
+      <div ref={listRef} className="p-3" data-panel-section="params">
+        {PARAMS.map((spec) => {
+          const scaleFactor = spec.emRelative ? typeface.unitsPerEm : 1;
+          const value = resolved[spec.key];
+          const overridden = editingGlyph && overrides[spec.key] !== undefined;
+
+          return (
+            <div key={spec.key} className="pb-3.5">
+              {/* The label lives on the slider itself. This row is only here
+              when there is something to say beside it. */}
+              {overridden && (
+                <div className="flex items-baseline justify-end pb-1">
+                  <button
+                    type="button"
+                    onClick={() => glyphName && store.clearGlyphParam(glyphName, spec.key)}
+                    className="text-2xs text-accent hover:underline"
+                    title="Follow the family value again"
+                  >
+                    reset
+                  </button>
                 </div>
-              );
-            })}
-          </div>
+              )}
+              <Slider
+                /*
+                 * The slider prints this as its own label, so it has to be the
+                 * name of the control rather than an identifier. It had been
+                 * `family-cornerRadius`, which appeared under every heading in
+                 * the panel as though it meant something.
+                 */
+                name={spec.label}
+                value={value / scaleFactor}
+                min={spec.min}
+                max={spec.max}
+                step={spec.step}
+                unit={spec.unit}
+                baseValue={DEFAULT_PARAMS[spec.key]}
+                showFill
+                onValueChange={(next, meta) => {
+                  const scaled = next * scaleFactor;
+                  const onGlyph = editingGlyph && glyphName !== null;
+                  /*
+                   * A drag arrives as a run of "merge" updates followed by a
+                   * final one. Snapshot at the start and record at the end, so
+                   * the whole gesture is a single undo step.
+                   *
+                   * Whichever set is being edited, which it did not used to
+                   * be: the snapshot was always the family's, and the glyph
+                   * branch never recorded anything at all. Undo then took
+                   * back whatever came before and left the override in
+                   * place -- worse than not undoing, because it undid
+                   * something nobody had asked about.
+                   */
+                  gestureRef.current ??=
+                    onGlyph && glyphName
+                      ? {
+                          on: "glyph",
+                          name: glyphName,
+                          params: { ...(store.glyph(glyphName)?.params ?? {}) },
+                        }
+                      : { on: "family", params: { ...typeface.params } };
+                  const started = gestureRef.current;
+                  if (meta?.history === "merge") {
+                    if (started.on === "glyph") {
+                      store.setGlyphParam(started.name, spec.key, scaled);
+                    } else {
+                      store.setFamilyParam(spec.key, scaled);
+                    }
+                    return;
+                  }
+                  const label = `Set ${spec.label.toLowerCase()}`;
+                  if (started.on === "glyph") {
+                    store.setGlyphParam(started.name, spec.key, scaled);
+                    store.commitGlyphParams(started.name, label, started.params);
+                  } else {
+                    store.setFamilyParam(spec.key, scaled);
+                    store.commitFamilyParams(label, started.params);
+                  }
+                  gestureRef.current = null;
+                }}
+              />
+              <p className="pt-1 text-2xs leading-snug text-muted-foreground">{spec.hint}</p>
+            </div>
+          );
+        })}
+      </div>
 
-          <Cutting scope={scope} glyphName={glyphName} />
-
-          {/*
-        Where to start, below what the panel is for rather than above it.
-        
-        This block is seven hundred and forty pixels of guidance about which
-        letters to draw first, and it sat above the parameters -- which is what
-        this panel is named for and the reason anybody opens it. Somebody
-        adjusting the weight of a font they have been drawing for a week met it
-        every time. It is one scroll down now, under a rule that says what it
-        is, so a beginner can still find it by reading rather than by knowing.
-      */}
-          {scope === "family" && (
-            <>
-              <div
-                className="border-y border-border bg-card/40 px-3 py-2"
-                data-panel-section="where-to-start"
-              >
-                <h3 className="text-2xs font-medium uppercase tracking-wide text-foreground">
-                  Where to start
-                </h3>
-                <p className="pt-0.5 text-2xs leading-snug text-muted-foreground">
-                  The handful of letters that set the shape of all the rest.
-                </p>
-              </div>
-              <ControlLetters />
-              <CoachMark id="family" />
-            </>
-          )}
-
-          <div className="p-3">
-            <button
-              type="button"
-              onClick={() => {
-                if (editingGlyph && glyphName) {
-                  for (const spec of PARAMS) store.clearGlyphParam(glyphName, spec.key);
-                } else {
-                  const before = { ...typeface.params };
-                  for (const spec of PARAMS)
-                    store.setFamilyParam(spec.key, DEFAULT_PARAMS[spec.key]);
-                  store.commitFamilyParams("Reset parameters", before);
-                }
-              }}
-              className="w-full rounded-md border border-border px-2 py-1.5 text-2xs text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
-            >
-              Reset {scope === "glyph" ? "this glyph" : "all parameters"}
-            </button>
-          </div>
-        </div>
-      )}
-    </aside>
+      <div className="pt-3">
+        <button
+          type="button"
+          onClick={() => {
+            if (editingGlyph && glyphName) {
+              for (const spec of PARAMS) store.clearGlyphParam(glyphName, spec.key);
+            } else {
+              const before = { ...typeface.params };
+              for (const spec of PARAMS) store.setFamilyParam(spec.key, DEFAULT_PARAMS[spec.key]);
+              store.commitFamilyParams("Reset parameters", before);
+            }
+          }}
+          className="w-full rounded-md border border-border px-2 py-1.5 text-2xs text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
+        >
+          Reset {scope === "glyph" ? "this glyph" : "all parameters"}
+        </button>
+      </div>
+    </>
   );
 }
 
