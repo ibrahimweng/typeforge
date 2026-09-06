@@ -444,7 +444,28 @@ export function GlyphEditorView(): React.JSX.Element {
             for. `aria-label` names the letter, because "canvas" says nothing
             about which of six thousand is on screen.
           */}
-          {/** biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: it is interactive. */}
+          {/*
+            The rule below reads `role="application"` as a non-interactive role
+            put on an interactive element, which is true by the taxonomy and
+            not a fault here.
+
+            `application` is a document-structure role rather than a widget
+            one, so a rule sorting roles into interactive and not puts it on
+            the wrong side. What it actually does is tell a screen reader to
+            stop interpreting keys itself and hand them through, and that is
+            the only way the arrows reach this editor: in the browse mode a
+            screen reader uses by default, an arrow press moves through the
+            document and never arrives.
+
+            It is a role worth being careful with, because it takes away the
+            navigation somebody relies on everywhere else, and the two things
+            that make it safe are both here. The keys are described, on the
+            element, so they are read out on arriving. And Tab genuinely
+            leaves -- which it did not before this commit, and which is the
+            fault `glyph-keys.ts` describes. A surface nobody can get out of
+            is the real version of what this rule is worried about.
+          */}
+          {/* biome-ignore lint/a11y/noInteractiveElementToNoninteractiveRole: see above. */}
           <canvas
             ref={canvasRef}
             tabIndex={0}
