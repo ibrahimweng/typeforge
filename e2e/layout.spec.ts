@@ -121,8 +121,17 @@ test("the side panel is about the view it is in", async ({ page }) => {
   await expect(parameters).toHaveCount(0);
   const kerningCanvas = (await page.locator("canvas").first().boundingBox())!;
   const viewport = page.viewportSize()!;
-  // Everything but the pairs list, give or take the border.
-  expect(kerningCanvas.width).toBeGreaterThan(viewport.width - 320);
+  /*
+   * Everything but the pairs list and the tool rail, give or take the border.
+   *
+   * The rail is measured rather than allowed for in the number, because it is
+   * chrome this test is not about: it stands down the left of every view of
+   * the open font on purpose, so that a tool is in the same place whichever
+   * one you are on. What this test is about is the panel of parameters, which
+   * is three hundred pixels and is not here.
+   */
+  const rail = (await page.locator("[data-tool-palette]").boundingBox())!;
+  expect(kerningCanvas.width).toBeGreaterThan(viewport.width - 320 - rail.width);
 
   // Checks holds its findings in the view, so a panel out here could say
   // nothing about them; what it needed was a way to narrow the list.

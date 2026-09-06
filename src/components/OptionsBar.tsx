@@ -155,12 +155,13 @@ export function OptionsBar({ glyphName }: { glyphName: string }): React.JSX.Elem
 
       {tool === "polygon" && <Sides />}
       {/*
-        The pen, beside the stroke it writes rather than in the Inspector.
+        The pen's three numbers, beside the stroke they widen.
 
-        Its own panel, laid out in a row. The three numbers, which stop is
-        being edited and what a change to them will reach are all still said,
-        because all of them are the parts a person can get wrong -- what moved
-        is where they are said, not what.
+        Only the numbers. Which stop is being edited comes with them, because
+        it says what typing in them would move. The saved pens, the grid and
+        taking the ink stay in the Inspector: those are the hand you are
+        writing in rather than the stroke in front of you, and none of them is
+        changed in the middle of one.
       */}
       {writesStrokes(tool) && <PenNumbers glyphName={glyphName} />}
 

@@ -162,17 +162,17 @@ export function ToolPalette({ drawing }: { drawing: boolean }): React.JSX.Elemen
       thing to give up than a label somebody is reading the letter against.
 
       Down the left of the window rather than beside the canvas, and there on
-      every screen. It used to be mounted by whatever drew a letter, so it
-      arrived when you opened one and vanished when you looked at the spacing
-      table -- and a rail that moves is a rail nobody builds a habit around.
-      Every drawing program of the last thirty years keeps it in the same place
-      whatever is on screen, and that is the whole of the reason: your hand
-      knows where the pen is before your eye does.
+      every view of the font being edited. It used to be mounted by whatever
+      drew a letter, so it arrived when you opened one and vanished the moment
+      you looked at the spacing table -- and a rail that moves is a rail nobody
+      builds a habit around. Every drawing program of the last thirty years
+      keeps it in the same place, and that is the whole of the reason: your
+      hand knows where the pen is before your eye does.
 
-      Dimmed rather than gone where there is nothing to draw on. A tool that
-      disappears teaches that the application has modes; a tool that is greyed
-      teaches that this screen is not for drawing, which is the true thing and
-      is one Tab press from the screen that is.
+      Dimmed rather than gone on the views that cannot draw. A rail that
+      disappears teaches that the tools come and go; a rail that is greyed says
+      this screen is not the one to draw on, which is the true thing, and the
+      screen that is stands one tab away in the same window.
     */
     <div
       role="group"

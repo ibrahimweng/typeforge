@@ -144,6 +144,22 @@ function itemsFor(target: MenuTarget, glyphName: string, selected: ReadonlySet<s
  * -- which means taking the focus back on every render, which is a menu whose
  * arrows do not work.
  */
+/**
+ * Put the focus back on the letter, having taken it to open the menu.
+ *
+ * Both ways out of the menu that are a decision rather than a change of
+ * subject: Escape, and choosing a line. Without it the focus is on a button
+ * that is about to be removed, and a focus that lands nowhere goes to the
+ * body -- from where the next Tab starts at the top of the page rather than
+ * where the person was standing.
+ *
+ * Not on a click elsewhere, which is a change of subject: somebody who clicked
+ * a panel wants to be in the panel.
+ */
+function backToTheDrawing(): void {
+  document.querySelector<HTMLCanvasElement>("[data-glyph-canvas]")?.focus();
+}
+
 function linesIn(within: HTMLElement | null): HTMLButtonElement[] {
   return [...(within?.querySelectorAll<HTMLButtonElement>("[data-canvas-menu-item]") ?? [])].filter(
     (line) => !line.disabled,
@@ -177,9 +193,11 @@ export function CanvasMenu({
    * that then does nothing is worse than a list of buttons would have been --
    * and the context-menu key on a keyboard opens this with no pointer
    * involved at all.
+   *
+   * The first line takes the focus as the menu opens, which is where the
+   * arrows start from and is what tells a screen reader that the menu is now
+   * the subject.
    */
-  // The first line takes the focus as it opens, which is where the arrows
-  // start from and is what tells a screen reader the menu is now the subject.
   React.useEffect(() => {
     linesIn(ref.current)[0]?.focus();
   }, []);
@@ -211,12 +229,7 @@ export function CanvasMenu({
     };
     const key = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
-      /*
-       * Back to the drawing, not left on a button that is about to be removed.
-       * A focus that lands nowhere goes to the body, and from there the next
-       * Tab starts at the top of the page rather than where the person was.
-       */
-      document.querySelector<HTMLCanvasElement>("[data-glyph-canvas]")?.focus();
+      backToTheDrawing();
       onClose();
     };
     window.addEventListener("pointerdown", away);
@@ -268,6 +281,7 @@ export function CanvasMenu({
             disabled={!item.run}
             onClick={() => {
               item.run?.();
+              backToTheDrawing();
               onClose();
             }}
             className={cn(
