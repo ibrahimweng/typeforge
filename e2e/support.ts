@@ -382,7 +382,9 @@ export function keptHalves(page: Page): Promise<string[]> {
               resolve([]);
               return;
             }
-            resolve(["draw", "assemble", "edit"].filter((half) => project[half]));
+            // `edits` since format 2, where the edited half became the list
+            // of fonts open rather than the one in front.
+            resolve(["draw", "assemble", "edits"].filter((half) => project[half]));
           };
         };
       }),
@@ -416,8 +418,17 @@ export function keptGlyphs(page: Page): Promise<string[]> {
           };
           get.onsuccess = () => {
             database.close();
-            const project = get.result as { edit?: { glyphs?: Array<{ name?: string }> } };
-            resolve((project?.edit?.glyphs ?? []).map((glyph) => glyph.name ?? ""));
+            const project = get.result as {
+              edits?: Array<{ glyphs?: Array<{ name?: string }> }>;
+            };
+            // Every open font's touched letters together. The question is
+            // whether *this edit* has reached the disk, and which tab it was
+            // made in is not part of it.
+            resolve(
+              (project?.edits ?? []).flatMap((one) =>
+                (one.glyphs ?? []).map((glyph) => glyph.name ?? ""),
+              ),
+            );
           };
         };
       }),

@@ -475,13 +475,23 @@ class Store extends ShapingStore {
    * four files by hand. There is no second code path here to keep right.
    */
   async restoreAll(saved: EditedProject[], front: number): Promise<void> {
+    /*
+     * Decoded before anything is closed.
+     *
+     * A document whose font is not base64 throws here, and there is one in the
+     * browser tests precisely because it happens: a record damaged in storage
+     * passes every check at the door and fails on its bytes. Thrown after the
+     * desk had been cleared, it would have taken away what was open to make
+     * room for a session that never arrived.
+     */
+    const bytes = saved.map((one) => fromBase64(one.font));
     this.closeEveryDocument();
-    for (const one of saved) await this.restoreOne(one);
+    for (const [at, one] of saved.entries()) await this.restoreOne(one, bytes[at]);
     this.goToDocument(Math.min(Math.max(Math.trunc(front), 0), saved.length - 1));
   }
 
-  private async restoreOne(saved: EditedProject): Promise<void> {
-    await this.loadFont(fromBase64(saved.font), saved.fileName);
+  private async restoreOne(saved: EditedProject, bytes: Uint8Array): Promise<void> {
+    await this.loadFont(bytes, saved.fileName);
     const { typeface } = this.state;
     if (!typeface) return;
     applyEdits(typeface, saved);
