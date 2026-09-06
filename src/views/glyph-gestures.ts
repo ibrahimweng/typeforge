@@ -32,6 +32,17 @@ import { CLOSES_WITHIN, NOTHING_UNDER, toolStateFor, type Doing, type Under } fr
 import { toCanvasX, toCanvasY, toFontX, toFontY, type GlyphView } from "@/components/glyph-render";
 import { nodeKey, store } from "@/state/useStore";
 import { hitTestPen, hitTestStrokePoint, penDrag } from "./write-canvas";
+import {
+  boxRound,
+  gripAt,
+  quadForPerspective,
+  quadPulled,
+  scalingFor,
+  turnFor,
+  worthABox,
+} from "./transform-box";
+import { quadMove, type Box as BoxOf } from "@/font/warp";
+import { apply as applyAffine, rotated, scaled, slanted } from "@/font/reshape";
 import { addPoint, mirrorHandle } from "./glyph-edits";
 import {
   guideAt,
@@ -110,6 +121,10 @@ export interface Gestures {
   redraw: () => void;
   /** Say what the tool would do now, after a change this file did not make. */
   refreshPhase: () => void;
+  /** The box round the selection, for the painter. Null when there is none. */
+  box: BoxOf | null;
+  /** Which handle the pointer is on, so it can be lit before it is pressed. */
+  grip: string | null;
   on: {
     pointerDown: (event: React.PointerEvent<HTMLCanvasElement>) => void;
     pointerMove: (event: React.PointerEvent<HTMLCanvasElement>) => void;
@@ -118,6 +133,19 @@ export interface Gestures {
     doubleClick: (event: React.PointerEvent<HTMLCanvasElement>) => void;
   };
 }
+
+/**
+ * What the undo entry is called, by which handle was held.
+ *
+ * Named for the gesture rather than for the matrix behind it, because that is
+ * what somebody is looking for in the history: they turned it, they did not
+ * apply a rotation about the centre of the selection.
+ */
+const WHAT_A_GRIP_DOES: Record<"corner" | "edge" | "turn", string> = {
+  corner: "Resize",
+  edge: "Resize",
+  turn: "Turn",
+};
 
 export function useGlyphGestures(within: {
   typeface: Typeface | null;
@@ -163,6 +191,44 @@ export function useGlyphGestures(within: {
     setAt(where);
   };
   const [, forceRender] = React.useReducer((n: number) => n + 1, 0);
+
+  /*
+   * The box round what is selected, or nothing.
+   *
+   * Nothing when too little is picked for a box to be worth drawing: one point
+   * has no size, and eight handles in the same place are eight things to grab
+   * that all do the same thing. `worthABox` asks that in screen pixels, so the
+   * same selection gains its handles as somebody zooms into it.
+   */
+  const selectionBox = (): BoxOf | null => {
+    if (!glyph || state.selectedNodes.size < 2) return null;
+    const points = [...state.selectedNodes]
+      .map(parseNodeKey)
+      .map((ref) => glyph.contours[ref.contour]?.nodes[ref.node]?.point)
+      .filter((point): point is Vec2 => point !== undefined);
+    const box = boxRound(points);
+    if (!box || !worthABox(box, view)) return null;
+    /*
+     * Held off the selection by a few pixels, and this is not decoration.
+     *
+     * The corners of a box drawn round some points are, by construction, on
+     * the outermost of those points -- so a handle drawn there sits exactly on
+     * top of a node somebody wants to drag, and one of the two has to lose. A
+     * standoff wider than the radius a node answers to means neither does: the
+     * point keeps its press and the handle is a clear few pixels beyond it.
+     *
+     * In screen pixels turned into font units, because what has to clear the
+     * node is the distance on screen and a fixed number of units would vanish
+     * at a low zoom.
+     */
+    const standoff = 11 / view.scale;
+    return {
+      left: box.left - standoff,
+      right: box.right + standoff,
+      bottom: box.bottom - standoff,
+      top: box.top + standoff,
+    };
+  };
 
   const pointerPosition = (event: React.PointerEvent): Vec2 => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -535,12 +601,114 @@ export function useGlyphGestures(within: {
       return;
     }
 
+    /*
+     * A handle of the transform box, after everything the outline offers.
+     *
+     * After, so a point always wins a tie. The first version asked this first,
+     * on the argument that the handles are drawn on top and are what somebody
+     * is aiming at -- and that is true of the drawing and false of the
+     * arithmetic. A box round some points has its corners on the outermost of
+     * those points, so every corner handle sat exactly on a node, and taking
+     * the press first meant the points defining the selection were the ones
+     * that could no longer be dragged. Three tests said so.
+     *
+     * The standoff above is the other half of it: with the handle a clear few
+     * pixels outside the node, neither has to lose.
+     *
+     * The inside of the box is deliberately not taken -- dragging there still
+     * starts a fresh selection, which is what the select tool is for.
+     */
+    const box = state.tool === "select" ? selectionBox() : null;
+    if (box) {
+      const grip = gripAt(box, view, canvasPoint);
+      if (grip && grip.kind !== "inside") {
+        const before = store.snapshotGlyph(glyph.name);
+        if (before) {
+          dragRef.current = {
+            kind: "box",
+            grip,
+            box,
+            from: { x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) },
+            to: { x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) },
+            before,
+            // The outlines as they are now, kept so every frame of the drag is
+            // worked out from these rather than from the frame before it.
+            contours: before.contours.map((one) => ({
+              ...one,
+              nodes: one.nodes.map((node) => ({ ...node })),
+            })),
+            picked: new Set(state.selectedNodes),
+          };
+        }
+        return;
+      }
+    }
+
     dragRef.current = {
       kind: "marquee",
       from: canvasPoint,
       to: canvasPoint,
       additive: event.shiftKey,
     };
+  };
+
+  /**
+   * One frame of a box drag, worked out from the outlines it started with.
+   *
+   * Which transform it is comes from the handle and the modifiers, in the
+   * arrangement every drawing program uses. A corner scales; the ring just
+   * outside it turns; an edge scales one axis. Command turns a corner into a
+   * free distort and an edge into a skew, and command with shift makes the
+   * corner a perspective -- the difference being that a distort moves the one
+   * corner and a perspective moves the one beside it the other way, which is
+   * what keeps the shape a trapezoid.
+   */
+  const applyBox = (
+    drag: Extract<Drag, { kind: "box" }>,
+    held: { square: boolean; fromCentre: boolean; free: boolean },
+  ): void => {
+    if (!glyph) return;
+    const { grip, box, from, to } = drag;
+
+    /* A plain matrix for the three that are one, and a quad map otherwise. */
+    let move: (point: Vec2) => Vec2;
+    if (grip.kind === "turn") {
+      const turned = rotated(turnFor(box, from, to, held), {
+        x: (box.left + box.right) / 2,
+        y: (box.bottom + box.top) / 2,
+      });
+      move = (point) => applyAffine(turned, point);
+    } else if (grip.kind === "corner" && held.free) {
+      const quad = held.square
+        ? quadForPerspective(box, grip.at, to)
+        : quadPulled(box, grip.at, to);
+      move = quadMove(box, quad, held.square ? "perspective" : "distort");
+    } else if (grip.kind === "edge" && held.free) {
+      /*
+       * A skew, which is a slant about the edge opposite the one held. The
+       * left and right handles lean the letter the way an italic leans; the
+       * top and bottom slide it sideways along its own baseline.
+       */
+      const across = grip.at === "left" || grip.at === "right";
+      const reach = across ? box.top - box.bottom : box.right - box.left;
+      const pulled = across ? to.x - from.x : to.y - from.y;
+      const degrees = reach === 0 ? 0 : (Math.atan2(pulled, reach) * 180) / Math.PI;
+      const leaned = slanted(across ? degrees : -degrees, across ? box.bottom : box.left);
+      move = (point) =>
+        across
+          ? applyAffine(leaned, point)
+          : // The other axis, done by swapping the point through the same slant.
+            (() => {
+              const swapped = applyAffine(leaned, { x: point.y, y: point.x });
+              return { x: swapped.y, y: swapped.x };
+            })();
+    } else {
+      const scaling = scalingFor(box, grip.at as never, to, held);
+      const sized = scaled(scaling.x, scaling.y, scaling.about);
+      move = (point) => applyAffine(sized, point);
+    }
+
+    store.warpSelection(glyph.name, drag.contours, drag.picked, move, { cut: false });
   };
 
   /**
@@ -848,6 +1016,16 @@ export function useGlyphGestures(within: {
         forceRender();
         break;
       }
+      case "box": {
+        drag.to = { x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) };
+        applyBox(drag, {
+          square: event.shiftKey,
+          fromCentre: event.altKey,
+          free: event.metaKey || event.ctrlKey,
+        });
+        forceRender();
+        break;
+      }
       case "freehand": {
         drag.trail.push({ x: toFontX(view, canvasPoint.x), y: toFontY(view, canvasPoint.y) });
         forceRender();
@@ -1140,6 +1318,30 @@ export function useGlyphGestures(within: {
        * it, and the next save writes it down as though it had always been
        * there.
        */
+      case "box": {
+        /*
+         * The whole drag as one thing to take back.
+         *
+         * Every frame of it already changed the letter, live and without
+         * writing anything down, so this is where the sixty of them become the
+         * single step somebody meant. Recorded against the outlines the
+         * gesture started with, which the drag has been carrying for exactly
+         * this.
+         */
+        const moved = drag.before.contours.some((contour, at) =>
+          contour.nodes.some((node, node2) => {
+            const now = glyph.contours[at]?.nodes[node2];
+            return !now || now.point.x !== node.point.x || now.point.y !== node.point.y;
+          }),
+        );
+        // A press that went nowhere is not an edit. Without this, taking hold
+        // of a handle and letting go again would put a step on the stack that
+        // undoes to the same letter.
+        if (moved || glyph.contours.length !== drag.before.contours.length) {
+          store.commitGlyphEdit(glyph.name, WHAT_A_GRIP_DOES[drag.grip.kind], drag.before);
+        }
+        break;
+      }
       default: {
         const unhandled: never = drag;
         throw new Error(`a drag nobody releases: ${JSON.stringify(unhandled)}`);
@@ -1185,9 +1387,30 @@ export function useGlyphGestures(within: {
    */
   const refreshPhase = React.useCallback(() => reportPhaseRef.current(atRef.current), []);
 
+  const box = state.tool === "select" ? selectionBox() : null;
+
   return {
     hover,
     at,
+    box,
+    /*
+     * The handle under the pointer, lit before it is pressed.
+     *
+     * A handle that only reacts once it is held is one somebody finds by
+     * pressing things, which on a canvas means pressing things that move the
+     * letter. Read from the last known pointer position rather than tracked
+     * separately, so it cannot disagree with what a press would take.
+     */
+    grip:
+      box && atRef.current && !dragRef.current
+        ? (() => {
+            const on = gripAt(box, view, {
+              x: toCanvasX(view, atRef.current.x),
+              y: toCanvasY(view, atRef.current.y),
+            });
+            return on && on.kind !== "inside" ? on.at : null;
+          })()
+        : null,
     drag: dragRef,
     modifiers: modifiersRef,
     redraw: forceRender,

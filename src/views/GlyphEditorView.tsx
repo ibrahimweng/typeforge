@@ -51,7 +51,7 @@ import { NothingDrawnYet } from "@/components/NothingDrawnYet";
 import { hasLetters } from "@/font/library";
 import { cn } from "@/cn";
 
-import { clamp, hitTestNode, parseNodeKey, segmentUnder } from "./glyph-pointer";
+import { clamp, hitTestNode, parseNodeKey, segmentUnder, toScreen } from "./glyph-pointer";
 
 export function GlyphEditorView(): React.JSX.Element {
   const state = useAppState();
@@ -469,6 +469,36 @@ export function GlyphEditorView(): React.JSX.Element {
           <span aria-live="polite" aria-atomic="true" className="sr-only" data-glyph-picked>
             {picked}
           </span>
+          {/*
+            The box round the selection, said rather than only drawn.
+
+            It is painted on a canvas, so nothing but an eye can find it: not a
+            screen reader, and not a test. Both need to know it is there and
+            where its handles are, and the second is why the corners are here
+            as numbers -- a test that hunted for a handle by guessing at
+            coordinates would be asserting its own arithmetic against the
+            view's.
+
+            Canvas coordinates rather than page ones, because where the canvas
+            sits on the page is not something this element knows and is
+            something every caller already has.
+          */}
+          {gesture.box && (
+            <span
+              className="sr-only"
+              data-transform-box="true"
+              data-transform-corners={JSON.stringify({
+                bottomLeft: toScreen(view, { x: gesture.box.left, y: gesture.box.bottom }),
+                bottomRight: toScreen(view, { x: gesture.box.right, y: gesture.box.bottom }),
+                topRight: toScreen(view, { x: gesture.box.right, y: gesture.box.top }),
+                topLeft: toScreen(view, { x: gesture.box.left, y: gesture.box.top }),
+              })}
+            >
+              A box round the {state.selectedNodes.size} points picked. Drag a corner or an edge to
+              resize them, or just outside a corner to turn them. Hold command on a corner to
+              distort, with shift for perspective, or on an edge to skew.
+            </span>
+          )}
           {/*
           And what is wrong with this letter, over the letter.
 

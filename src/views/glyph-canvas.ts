@@ -619,3 +619,80 @@ export function drawKnifePreview(
 }
 
 // --- geometry helpers ---------------------------------------------------
+
+/**
+ * The box round what is selected, with the handles that reshape it.
+ *
+ * Drawn in screen pixels rather than font units, for the reason the hit test
+ * is: a handle is something a pointer lands on, and a pointer is the same size
+ * whatever the zoom. Sized in font units these would be specks at 100% and
+ * would cover the letter at 800%.
+ *
+ * The box is dashed and the handles are solid. That is not decoration: the
+ * outline of the box is a thing to look through, since the letter is behind
+ * it, and the handles are things to aim at.
+ */
+export function drawTransformBox(
+  context: CanvasRenderingContext2D,
+  box: { left: number; right: number; bottom: number; top: number },
+  view: GlyphView,
+  within: { grip: string | null; quad: Vec2[] | null },
+): void {
+  const accent = readToken("--accent", "#0c8ce9", context.canvas);
+  const corners = [
+    { x: box.left, y: box.bottom },
+    { x: box.right, y: box.bottom },
+    { x: box.right, y: box.top },
+    { x: box.left, y: box.top },
+  ];
+  /*
+   * The quad, when a corner is being pulled: the box as it will be rather than
+   * as it was. Without it a distort would drag the letter and leave the box
+   * behind, so the one thing on screen saying what is happening would be the
+   * one thing not doing it.
+   */
+  const outline = (within.quad ?? corners).map((point) => toScreen(view, point));
+
+  context.save();
+  context.strokeStyle = withAlpha(accent, 0.9);
+  context.lineWidth = 1;
+  context.setLineDash([4, 3]);
+  context.beginPath();
+  for (const [at, point] of outline.entries()) {
+    if (at === 0) context.moveTo(point.x + 0.5, point.y + 0.5);
+    else context.lineTo(point.x + 0.5, point.y + 0.5);
+  }
+  context.closePath();
+  context.stroke();
+  context.setLineDash([]);
+
+  const middles = [
+    { x: (box.left + box.right) / 2, y: box.bottom, name: "bottom" },
+    { x: box.right, y: (box.bottom + box.top) / 2, name: "right" },
+    { x: (box.left + box.right) / 2, y: box.top, name: "top" },
+    { x: box.left, y: (box.bottom + box.top) / 2, name: "left" },
+  ];
+  const named = ["bottomLeft", "bottomRight", "topRight", "topLeft"];
+
+  context.lineWidth = 1;
+  for (const [at, point] of corners.entries()) {
+    handle(context, toScreen(view, point), accent, within.grip === named[at]);
+  }
+  for (const point of middles) {
+    handle(context, toScreen(view, point), accent, within.grip === point.name);
+  }
+  context.restore();
+}
+
+/** One handle: a small square, filled when the pointer is on it. */
+function handle(context: CanvasRenderingContext2D, at: Vec2, colour: string, lit: boolean): void {
+  const size = lit ? 8 : 6;
+  context.beginPath();
+  context.rect(Math.round(at.x) - size / 2 + 0.5, Math.round(at.y) - size / 2 + 0.5, size, size);
+  // Filled with the ground rather than left transparent, so a handle sitting
+  // over a black stem is still a square rather than a smudge.
+  context.fillStyle = lit ? colour : readToken("--canvas", "#000", context.canvas);
+  context.fill();
+  context.strokeStyle = colour;
+  context.stroke();
+}

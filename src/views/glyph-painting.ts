@@ -28,6 +28,8 @@ import type { AppState } from "@/state/useStore";
 import { drawWritten } from "./write-canvas";
 
 import { segmentUnder, type Drag, type Hover } from "./glyph-pointer";
+import { quadForPerspective, quadPulled } from "./transform-box";
+import type { Box as BoxOf } from "@/font/warp";
 import type { Vec2 } from "@/font/types";
 import type { Gestures } from "./glyph-gestures";
 import {
@@ -38,6 +40,7 @@ import {
   drawLasso,
   drawMarks,
   drawMarquee,
+  drawTransformBox,
   drawMetrics,
   drawNodes,
   drawPathOutline,
@@ -66,6 +69,10 @@ export interface Painting {
   drag: Drag | null;
   /** The modifiers as of the last move, for a shape being dragged out. */
   modifiers: { square: boolean; fromCentre: boolean };
+  /** The box round the selection, when there is one worth drawing. */
+  box: BoxOf | null;
+  /** Which of its handles the pointer is on, so it lights before it is held. */
+  grip: string | null;
 }
 
 /**
@@ -80,7 +87,8 @@ export interface Painting {
  * segment about to be cut has to be lit before the nodes go over it.
  */
 export function paintGlyph(context: CanvasRenderingContext2D, within: Painting): void {
-  const { typeface, glyph, state, view, size, neighbours, hover, at, drag, modifiers } = within;
+  const { typeface, glyph, state, view, size, neighbours, hover, at, drag, modifiers, box, grip } =
+    within;
   // The element, for the colour tokens: every colour on this canvas is a custom
   // property read off it rather than a value passed in.
   const canvas = context.canvas;
@@ -185,6 +193,31 @@ export function paintGlyph(context: CanvasRenderingContext2D, within: Painting):
   if (drag?.kind === "knife") drawKnifePreview(context, drag);
   if (drag?.kind === "freehand") drawFreehandPreview(context, drag, view);
   if (drag?.kind === "lasso") drawLasso(context, drag);
+
+  /*
+   * The box round what is selected, over everything else.
+   *
+   * Last, so its handles are never hidden behind a stem: they are the things
+   * being aimed at, and one drawn under the ink is one nobody can see to grab.
+   *
+   * While a corner is being pulled the box is drawn as the quad it is becoming
+   * rather than as the rectangle it was, or a distort would drag the letter
+   * and leave its own outline behind -- the one thing on screen saying what is
+   * happening would be the one thing not doing it.
+   */
+  if (box) {
+    drawTransformBox(context, box, view, {
+      grip,
+      quad:
+        drag?.kind === "box" && drag.grip.kind === "corner"
+          ? quadPoints(
+              modifiers.square
+                ? quadForPerspective(drag.box, drag.grip.at, drag.to)
+                : quadPulled(drag.box, drag.grip.at, drag.to),
+            )
+          : null,
+    });
+  }
   /*
    * The pen's line to wherever the pointer is, and the point that would close
    * the outline marked when it is worth closing.
@@ -242,6 +275,8 @@ export function useGlyphPainting(within: {
       // The three read live rather than depended on -- see above.
       drag: gesture.drag.current,
       modifiers: gesture.modifiers.current,
+      box: gesture.box,
+      grip: gesture.grip,
     });
     /*
      * `state.ground` is in the list below for the reason it is in the proof
@@ -274,3 +309,11 @@ export function useGlyphPainting(within: {
     state.stop,
   ]);
 }
+
+/** A quad as the four points the box painter walks, in order round it. */
+const quadPoints = (quad: ReturnType<typeof quadPulled>): Vec2[] => [
+  quad.bottomLeft,
+  quad.bottomRight,
+  quad.topRight,
+  quad.topLeft,
+];

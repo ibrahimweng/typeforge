@@ -141,6 +141,8 @@ function paint(over: Partial<Painting> = {}): void {
     at: null,
     drag: null,
     modifiers: { square: false, fromCentre: false },
+    box: null,
+    grip: null,
     ...over,
   });
 }

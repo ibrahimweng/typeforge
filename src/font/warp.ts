@@ -434,6 +434,21 @@ export interface Cost {
   after: number;
 }
 
+/** What a warp gives back: the outlines, what it cost, and what is now picked. */
+export interface Warped {
+  contours: Contour[];
+  cost: Cost;
+  /**
+   * The selection, in the keys of the outlines that came out.
+   *
+   * Cutting moves every node after the cut along by one, so the keys somebody
+   * was holding point at different nodes afterwards -- and a second drag on a
+   * selection that had silently slid would take hold of the wrong points. The
+   * caller is handed the new keys rather than left to work them out.
+   */
+  picked: Set<string>;
+}
+
 /**
  * Warp what is picked, and give back the contours and what it cost.
  *
@@ -454,9 +469,10 @@ export function warpContours(
   picked: Picked,
   move: Move,
   { within = 2, cut = true }: { within?: number; cut?: boolean } = {},
-): { contours: Contour[]; cost: Cost } {
+): Warped {
   let before = 0;
   let after = 0;
+  const nowPicked = new Set<string>();
 
   const out = contours.map((contour, index) => {
     const nodes = contour.nodes;
@@ -544,10 +560,14 @@ export function warpContours(
       });
     }
 
-    const moved = built.map(({ node, moves }) => (moves ? moveNode(node, move) : node));
+    const moved = built.map(({ node, moves }, at) => {
+      if (!moves) return node;
+      nowPicked.add(`${index}:${at}`);
+      return moveNode(node, move);
+    });
     after += moved.length;
     return { ...contour, nodes: moved };
   });
 
-  return { contours: out, cost: { before, after } };
+  return { contours: out, cost: { before, after }, picked: nowPicked };
 }
