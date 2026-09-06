@@ -110,7 +110,21 @@ class Store extends ShapingStore {
    */
   adopt(typeface: Typeface, fileName: string): void {
     this.forgetLoan();
-    this.clearHistory();
+    /*
+     * A font arriving joins the ones already open rather than landing on top
+     * of the one in front.
+     *
+     * Unless nothing is open, in which case this is that one: opening a tab
+     * for the first font would leave an empty Untitled beside it, which is a
+     * tab nobody wants and cannot close, since the last one never closes.
+     *
+     * Everything below already resets what belongs to a font -- the checks,
+     * the guides, the masters, the selection -- because it was written for
+     * replacing one document with another. On a clean desk it does the same
+     * job, so none of it changes.
+     */
+    if (this.state.typeface) this.asANewDocument();
+    else this.clearHistory();
     this.controlBaseline = readControls(typeface);
     // Whatever the last UFO carried belongs to the last UFO. Left in place, a
     // font opened afterwards would go out with somebody else's background
@@ -158,6 +172,7 @@ class Store extends ShapingStore {
         about: "edit",
       },
     });
+    this.tellTabs();
     this.touch();
   }
 
@@ -618,7 +633,14 @@ class Store extends ShapingStore {
 
   startBlank(): void {
     this.forgetLoan();
-    this.clearHistory();
+    /*
+     * A new font joins the ones already open, for the reason an opened one
+     * does: these are the two doors into the same room, and one of them
+     * closing your work while the other puts a tab beside it is the kind of
+     * inconsistency somebody finds out about by losing something.
+     */
+    if (this.state.typeface) this.asANewDocument();
+    else this.clearHistory();
     /*
      * With a `.notdef` already in it.
      *
@@ -648,6 +670,7 @@ class Store extends ShapingStore {
       status: null,
     });
     this.captureControlBaseline();
+    this.tellTabs();
     this.touch();
   }
 

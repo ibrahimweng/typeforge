@@ -32,6 +32,7 @@ import type { Glyph, Contour, Typeface } from "@/font/types";
 import type { UfoCarried } from "@/ufo/font";
 import { STARTING_PENS, STARTING_WIDTH } from "@/quill/written";
 import { POLYGON_SIDES } from "@/font/shapes";
+import { documentPart, nameOf, newId, type Aside } from "./documents";
 
 import type { AppState, HistoryEntry } from "./model";
 
@@ -127,6 +128,9 @@ export abstract class StoreCore {
     preview: null,
     revision: 0,
     checks: null,
+    // One font, in front, before anything has been opened.
+    open: [{ id: "font-0", name: "Untitled" }],
+    openAt: 0,
   };
 
   private listeners = new Set<() => void>();
@@ -140,6 +144,21 @@ export abstract class StoreCore {
   } | null = null;
   protected undoStack: HistoryEntry[] = [];
   protected redoStack: HistoryEntry[] = [];
+
+  /*
+   * The fonts that are open but not in front, put aside whole.
+   *
+   * The live state is the font being worked on. It is not a copy of an entry
+   * here and there is no entry here for it: putting one aside is what makes an
+   * entry, and picking one up is what takes it away again. That is the same
+   * arrangement `held` above uses for a loan, for the same reason -- one live
+   * document and the rest in a drawer is a great deal easier to keep honest
+   * than a list where one entry is secretly the real one.
+   *
+   * So `set` needs no mirroring and costs nothing extra on a drag frame. The
+   * only place this can go wrong is the swap itself, which is one function.
+   */
+  protected aside: Aside[] = [];
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -174,6 +193,135 @@ export abstract class StoreCore {
       undoLabel: this.undoStack[this.undoStack.length - 1]?.label ?? null,
       redoLabel: this.redoStack[this.redoStack.length - 1]?.label ?? null,
     });
+  }
+
+  // --- several fonts open at once -----------------------------------------
+
+  /**
+   * The tabs, as the interface needs to see them.
+   *
+   * Rebuilt whenever the set of open fonts changes rather than derived on
+   * every read, because it goes into the state and the state is what decides
+   * whether the toolbar re-renders. Derived, a tab strip would be rebuilt
+   * sixty times a second while somebody dragged a point.
+   */
+  protected tellTabs(): void {
+    const open = this.aside.map((one) => ({ id: one.id, name: nameOf(one.state) }));
+    open.splice(this.at, 0, { id: this.mine, name: nameOf(this.state) });
+    this.set({ open, openAt: this.at });
+  }
+
+  /** Where the font in front sits among the ones put aside. */
+  protected at = 0;
+  /**
+   * What the font in front is called in the list, which nothing else knows.
+   *
+   * The first is named rather than counted, so the id in the state above --
+   * which is written before this field exists -- and this one agree without a
+   * constructor to make them.
+   */
+  protected mine = "font-0";
+
+  /**
+   * Put the font in front aside and pick up another.
+   *
+   * Everything that belongs to a font travels: what it is, what is picked in
+   * it, which screen you were on, and both history stacks. Everything that
+   * belongs to the person stays -- the tool in hand, snapping, the ground --
+   * because a tool that changed when you switched font would be a tool
+   * changing when you were not looking.
+   */
+  goToDocument(index: number): void {
+    if (index === this.at || index < 0 || index > this.aside.length) return;
+    /*
+     * Held shut over a borrowed letter, for the reason the modes were. A loan
+     * has the real document in a drawer already, and putting a second thing in
+     * the same drawer loses one of them.
+     */
+    if (this.state.loan) {
+      this.say(
+        `Finish with ${this.state.loan.letter} first — keep the drawing or throw it away.`,
+        "info",
+      );
+      return;
+    }
+
+    const mine: Aside = { id: this.mine, state: documentPart(this.state) };
+    const stacks = { undo: this.undoStack, redo: this.redoStack };
+    this.stacks.set(this.mine, stacks);
+
+    // Taken out first, then put back in the same place, so the order of the
+    // tabs is the order they were opened in whichever way somebody moves.
+    const taking = this.aside[index > this.at ? index - 1 : index];
+    this.aside = this.aside.filter((one) => one !== taking);
+    this.aside.splice(this.at, 0, mine);
+
+    this.mine = taking.id;
+    this.at = index;
+    const back = this.stacks.get(taking.id);
+    this.undoStack = back ? back.undo : [];
+    this.redoStack = back ? back.redo : [];
+    this.set({ ...taking.state });
+    this.tellTabs();
+  }
+
+  /** The history of each font that is not in front, by its id. */
+  private stacks = new Map<string, { undo: HistoryEntry[]; redo: HistoryEntry[] }>();
+
+  /**
+   * Open a font in a tab of its own rather than over the one in front.
+   *
+   * What `adopt` used to do to whatever was open, done to nothing instead. The
+   * font in front goes aside with everything that belongs to it, and the new
+   * one arrives on a clean desk: no selection, no history, its own view.
+   */
+  protected asANewDocument(): void {
+    const mine: Aside = { id: this.mine, state: documentPart(this.state) };
+    this.stacks.set(this.mine, { undo: this.undoStack, redo: this.redoStack });
+    this.aside.splice(this.at, 0, mine);
+    this.at += 1;
+    this.mine = newId();
+    this.undoStack = [];
+    this.redoStack = [];
+  }
+
+  /**
+   * Close one, and say whether it went.
+   *
+   * The last font is not closable. An application with no document open is a
+   * screen with nothing on it, reachable by accident from a small cross, and
+   * the way back is the New menu -- which is a lot to ask of somebody who
+   * meant to shut a tab.
+   *
+   * Closing the one in front needs another to come forward first, and that is
+   * done by switching to it rather than by hand: switching is the operation
+   * that knows how to move both history stacks, and doing it a second way here
+   * is how the two would come to disagree.
+   */
+  closeDocument(index: number): boolean {
+    const many = this.aside.length + 1;
+    if (many < 2 || index < 0 || index >= many) return false;
+
+    if (index === this.at) {
+      const going = this.mine;
+      // Its right-hand neighbour, or its left when it was last.
+      this.goToDocument(index === many - 1 ? index - 1 : index + 1);
+      // The switch refused, which it does over a borrowed letter.
+      if (this.mine === going) return false;
+      this.aside = this.aside.filter((one) => one.id !== going);
+      this.stacks.delete(going);
+      // The one that came forward may have been to the right of the one that
+      // has gone, in which case everything after it has moved up.
+      if (this.at > index) this.at = index;
+      this.tellTabs();
+      return true;
+    }
+
+    const [dropped] = this.aside.splice(index > this.at ? index - 1 : index, 1);
+    if (dropped) this.stacks.delete(dropped.id);
+    if (index < this.at) this.at -= 1;
+    this.tellTabs();
+    return true;
   }
 
   /** Say something in the toolbar, for anything that has no view of its own. */
