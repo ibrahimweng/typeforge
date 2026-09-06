@@ -99,6 +99,8 @@ function mount(over: Record<string, unknown> = {}): Gestures {
       view: VIEW,
       pan: { x: 0, y: 0 },
       setPan: () => {},
+      // Space is up unless a test says otherwise, which is the ordinary case.
+      hand: { current: false },
       ...over,
     } as never);
     return null;
@@ -119,6 +121,9 @@ const press = (where: { x: number; y: number }, over: Record<string, unknown> = 
     altKey: false,
     metaKey: false,
     ctrlKey: false,
+    // Every real pointer event has one. The middle button's press calls it, to
+    // stop Chrome answering with its own scrolling widget over the canvas.
+    preventDefault: () => {},
     currentTarget: {
       getBoundingClientRect: () => ({ left: 0, top: 0 }),
       setPointerCapture: () => {},
@@ -176,6 +181,37 @@ describe("what a press picks up, tool by tool", () => {
     const two = mount();
     two.on.pointerDown(press(at(150, 300), { altKey: true }));
     expect(two.drag.current).toMatchObject({ kind: "pan" });
+  });
+
+  it("pans while space is held, over a point and with a tool armed", () => {
+    /*
+     * The one people actually use, and the case that has to beat everything
+     * below it: the press is on a point, the knife is in hand, and the answer
+     * is still a pan. Space is checked before the guides and before every
+     * tool, so nothing under the pointer can take the press away from it.
+     */
+    store.setTool("knife");
+    store.addGuide(300, "y");
+    const one = mount({ hand: { current: true } });
+    one.on.pointerDown(press(at(0, 0)));
+    expect(one.drag.current).toMatchObject({ kind: "pan" });
+
+    // And with the hand down again the same press is the knife's.
+    const two = mount({ hand: { current: false } });
+    two.on.pointerDown(press(at(0, 0)));
+    expect(two.drag.current).not.toMatchObject({ kind: "pan" });
+  });
+
+  it("leaves the right button to the menu", () => {
+    /*
+     * Right-clicking a point used to pick it up and start dragging it, with
+     * the drag still running underneath the menu that opened -- so choosing a
+     * line from a menu you opened on a point could also have moved the point.
+     */
+    store.setTool("select");
+    const one = mount();
+    one.on.pointerDown(press(at(0, 0), { button: 2 }));
+    expect(one.drag.current).toBeNull();
   });
 
   /*

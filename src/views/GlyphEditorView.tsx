@@ -37,20 +37,21 @@ import { cursorFor as cursorClass } from "@/font/tools";
 
 import type { GlyphView } from "@/components/glyph-render";
 import { store, useAppState, type ToolState } from "@/state/useStore";
+import { canvasControls, framedAt } from "@/state/framing";
 import { useGlyphGestures } from "./glyph-gestures";
+import { useHand } from "./hand";
 import { describeSelection, useGlyphKeys } from "./glyph-keys";
 import { useGlyphPainting } from "./glyph-painting";
+import { CanvasMenu, type MenuTarget } from "@/components/CanvasMenu";
 import { CoachMark } from "@/components/CoachMark";
 import { GlyphFaults } from "@/components/GlyphFaults";
 import { Versions } from "@/components/Versions";
-import { GroundToggle } from "@/components/GroundToggle";
 import { NumberField } from "@/components/NumberField";
 import { NothingDrawnYet } from "@/components/NothingDrawnYet";
 import { hasLetters } from "@/font/library";
-import { ToolPalette } from "@/components/ToolPalette";
 import { cn } from "@/cn";
 
-import { clamp, parseNodeKey } from "./glyph-pointer";
+import { clamp, hitTestNode, parseNodeKey, segmentUnder } from "./glyph-pointer";
 
 export function GlyphEditorView(): React.JSX.Element {
   const state = useAppState();
@@ -173,9 +174,48 @@ export function GlyphEditorView(): React.JSX.Element {
    * redraw and refresh the sentence after an edit, which is the pointer's job
    * done from the keyboard. Neither needs anything else the gesture holds.
    */
-  const gesture = useGlyphGestures({ typeface, glyph, state, view, pan, setPan });
+  const hand = useHand(canvasRef);
+  const gesture = useGlyphGestures({ typeface, glyph, state, view, pan, setPan, hand: hand.held });
 
   useGlyphPainting({ canvas: canvasRef, typeface, glyph, state, view, size, neighbours, gesture });
+
+  /*
+   * The zoom, told to the strip along the bottom, and the two ways it may set
+   * it from there.
+   *
+   * The number stays here, where the drawing is: a pan writes on every frame
+   * of a drag, and putting the framing in the document store would re-render
+   * the whole application sixty times a second for a letter nobody has
+   * changed. What crosses is the one number the status bar shows and a pair of
+   * functions, which is the smallest thing that lets somebody type 200 into a
+   * field instead of rolling a wheel until it says it.
+   */
+  React.useEffect(() => {
+    framedAt(typeface && glyph ? zoom : null);
+  }, [zoom, typeface, glyph]);
+  React.useEffect(() => {
+    canvasControls({
+      zoomTo: (next) => setZoom(next),
+      fit: () => {
+        setZoom(1);
+        setPan({ x: 0, y: 0 });
+      },
+    });
+    return () => {
+      canvasControls(null);
+      framedAt(null);
+    };
+  }, []);
+
+  /*
+   * What a right click opened the menu on, if one is open.
+   *
+   * Worked out where the click happened rather than inside the menu, because
+   * the hit tests want the view transform and the letter, and the menu wants
+   * neither: it is handed a point and a path and turns them into verbs.
+   */
+  const [menu, setMenu] = React.useState<MenuTarget | null>(null);
+  React.useEffect(() => setMenu(null), [state.selectedGlyph]);
   useGlyphKeys({ glyph, state, gesture, canvas: canvasRef });
 
   /*
@@ -251,25 +291,16 @@ export function GlyphEditorView(): React.JSX.Element {
           className="h-7 w-16 rounded-md border border-input bg-card px-2 text-center text-xs-plus text-foreground outline-none focus-visible:border-accent"
         />
         {/*
-          The one thing in this row that can afford to give way.
-
-          Everything else here is a control with a name on it, and a control
-          whose name has wrapped -- `On` over `black` -- reads as broken. This
-          is a sentence, so it can lose its last words to an ellipsis and still
-          do its job, and the hover carries the whole of it. It only comes up on
-          a narrow window or a long glyph name, but `newGlyph` is a long glyph
-          name and it is the one every new letter starts with.
-        */}
-        {/*
           Gone rather than clipped, once there is no room to say anything.
 
-          Truncation is fine while a few words survive; it is not fine at two.
-          In a nine-hundred-pixel window this row is a label, three letter
-          boxes, six controls and then whatever is left, and what was left was
-          "Dr…" -- which says nothing and reads as a rendering fault rather than
-          as a sentence that did not fit. The whole of it is still on the hover,
-          where it was already, and the three letter boxes beside it are the
-          thing the sentence is about.
+          This is the one thing in the row that is prose rather than a control,
+          so it is the one that can give way -- but truncation is only fine
+          while a few words survive. When the row was also carrying six
+          switches what was left of it was "Dr…", which says nothing and reads
+          as a rendering fault rather than as a sentence that did not fit. The
+          switches have gone to the options bar and this has room again; it
+          still steps aside on a narrow window, where the three letter boxes
+          beside it are the thing it is about.
         */}
         <span
           className="hidden min-w-0 flex-1 truncate pl-1 text-muted-foreground lg:block"
@@ -280,134 +311,16 @@ export function GlyphEditorView(): React.JSX.Element {
         </span>
 
         {/*
-          The guides, at the other end of the same row.
+          The switches, the guides and the polygon's sides used to end this row
+          and are in the options bar now.
 
-          A guide is placed at the height the view is looking at rather than at
-          a number typed into a box, because the reason to want one is almost
-          always "here, level with this" -- and it is then dragged, which is the
-          part that makes it useful. They belong to the font, so one placed
-          while drawing an `n` is still there on the `o` you are lining up
-          against it.
+          They were never about the letters standing either side, which is what
+          this row is for. They were here because there was nowhere else, and
+          the cost of that was visible: on a nine-hundred-pixel window the
+          sentence beside them was truncated to "Dr…" and the polygon's side
+          count -- a control for the tool actually in hand -- was the first
+          thing squeezed off the end.
         */}
-        <span className="ml-auto flex shrink-0 items-center gap-2">
-          <GroundToggle />
-          {/*
-            Two of them, because a guide was only ever horizontal and half of
-            what anybody draws one for is vertical: where a stem should stand,
-            where a sidebearing should fall.
-          */}
-          <button
-            type="button"
-            onClick={() => store.addGuide(typeface.metrics.xHeight, "y")}
-            data-add-guide
-            title="Put a guide across the canvas, then drag it where you want it"
-            className="rounded border border-border px-2 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
-          >
-            Guide ―
-          </button>
-          <button
-            type="button"
-            onClick={() => store.addGuide(Math.round((glyph?.advanceWidth ?? 500) / 2), "x")}
-            data-add-guide-vertical
-            title="Put a guide down the canvas, then drag it where you want it"
-            className="rounded border border-border px-2 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
-          >
-            Guide │
-          </button>
-          {/*
-            Snapping is a switch rather than a modifier, because the two a drag
-            already uses are taken: shift holds it to one axis and alt pans the
-            canvas. A third would be a chord nobody would find.
-          */}
-          <button
-            type="button"
-            onClick={() => store.setSnapping(!state.snapping)}
-            aria-pressed={state.snapping}
-            data-snap-toggle
-            title={
-              state.snapping
-                ? "A dragged point lands on whole units, the metric lines, the guides, and the letter's own points. Press to let it land anywhere."
-                : "A dragged point lands wherever you let go of it. Press to pull it onto the lines worth landing on."
-            }
-            className={cn(
-              "rounded border px-2 py-1 text-2xs transition-colors",
-              state.snapping
-                ? "border-accent bg-accent/15 text-accent"
-                : "border-border text-muted-foreground hover:bg-card hover:text-foreground",
-            )}
-          >
-            Snap
-          </button>
-          {/*
-            The faults, on a switch beside snapping because it is the same kind
-            of thing: a way of drawing that is on or off, rather than something
-            done once. Off by default -- a letter halfway through being drawn is
-            covered in missing extremes and does not need telling.
-          */}
-          <button
-            type="button"
-            onClick={() => store.setMarks(!state.marks)}
-            aria-pressed={state.marks}
-            data-marks-toggle
-            title={
-              state.marks
-                ? "Rings mark where a curve turns without a point on it, and crosses mark points a hair off smooth. Press to stop showing them."
-                : "Ring the two faults you cannot see by looking: curves that turn with no point at the turn, and points a degree or two off smooth."
-            }
-            className={cn(
-              "rounded border px-2 py-1 text-2xs transition-colors",
-              state.marks
-                ? "border-[color:var(--attention)] bg-[color:var(--attention)]/15 text-[color:var(--attention)]"
-                : "border-border text-muted-foreground hover:bg-card hover:text-foreground",
-            )}
-          >
-            Faults
-          </button>
-          {/*
-            The polygon's side count, shown only while the polygon is in hand.
-
-            A control for a tool nobody has picked up is a control in the way,
-            and this row is already the tightest in the view. Beside the tool
-            rather than in the Inspector because it changes what the very next
-            drag produces, and a person setting it is looking at the canvas.
-          */}
-          {state.tool === "polygon" && (
-            <span className="flex items-center gap-1" data-polygon-sides>
-              <span className="text-2xs text-muted-foreground">Sides</span>
-              <button
-                type="button"
-                onClick={() => store.setPolygonSides(state.polygonSides - 1)}
-                disabled={state.polygonSides <= 3}
-                aria-label="One side fewer"
-                className="rounded border border-border px-1.5 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground disabled:opacity-40"
-              >
-                −
-              </button>
-              <span className="w-4 text-center text-2xs tabular-nums text-foreground">
-                {state.polygonSides}
-              </span>
-              <button
-                type="button"
-                onClick={() => store.setPolygonSides(state.polygonSides + 1)}
-                disabled={state.polygonSides >= 24}
-                aria-label="One side more"
-                className="rounded border border-border px-1.5 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground disabled:opacity-40"
-              >
-                +
-              </button>
-            </span>
-          )}
-          {state.guides.length > 0 && (
-            <button
-              type="button"
-              onClick={() => store.clearGuides()}
-              data-clear-guides
-              className="rounded px-1.5 py-1 text-2xs text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Clear {state.guides.length}
-            </button>
-          )}
-        </span>
       </div>
       {/*
         The ground, declared here rather than on the document.
@@ -419,7 +332,6 @@ export function GlyphEditorView(): React.JSX.Element {
         this -- the surface a letter is judged on, not a theme.
       */}
       <div className="flex min-h-0 flex-1">
-        <ToolPalette />
         <div
           ref={measure}
           data-ground={state.ground}
@@ -475,7 +387,15 @@ export function GlyphEditorView(): React.JSX.Element {
             data-glyph-canvas
             style={{ width: size.width, height: size.height }}
             className={cn(
-              cursorClass(state.tool, state.toolState, gesture.drag.current !== null),
+              /*
+                A hand while space is down, and a closed one while it is being
+                dragged. `active:` rather than a second render, because the
+                cursor has to change on the press itself: waiting for React
+                would show the open hand for a frame after the drag started.
+              */
+              hand.out
+                ? "cursor-grab active:cursor-grabbing"
+                : cursorClass(state.tool, state.toolState, gesture.drag.current !== null),
               // Focus has to be visible, or being in the tab order is a place
               // somebody arrives at without being told they have.
               "outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--inspect)] focus-visible:ring-inset",
@@ -493,6 +413,27 @@ export function GlyphEditorView(): React.JSX.Element {
                */
               event.currentTarget.focus();
               gesture.on.pointerDown(event);
+            }}
+            onContextMenu={(event) => {
+              /*
+                Opened on whatever is under the pointer, which is the whole
+                idea: the thing clicked is the argument, so every line in the
+                menu can be a verb and the menu can be short.
+              */
+              event.preventDefault();
+              if (!glyph) return;
+              const rect = event.currentTarget.getBoundingClientRect();
+              const at = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+              const node = hitTestNode(glyph, view, at);
+              setMenu({
+                x: event.clientX,
+                y: event.clientY,
+                node,
+                // Only when the click missed every point. A click on a point is
+                // about that point, and offering to put another one on the edge
+                // underneath it is offering the wrong thing confidently.
+                edge: node ? null : segmentUnder(glyph, view, at),
+              });
             }}
             onPointerMove={gesture.on.pointerMove}
             onPointerUp={gesture.on.pointerUp}
@@ -544,10 +485,32 @@ export function GlyphEditorView(): React.JSX.Element {
               masters={state.masters}
             />
           )}
-          <div className="pointer-events-none absolute bottom-3 left-3 flex gap-3 text-2xs text-muted-foreground tabular-nums">
-            <span>{Math.round(zoom * 100)}%</span>
-            {state.selectedNodes.size > 1 && <span>{state.selectedNodes.size} points</span>}
-          </div>
+          {/*
+            How many points are picked, over the letter.
+
+            The zoom used to be beside it and has gone to the status bar, where
+            it is a field somebody can type into rather than a number they can
+            only read. This is the half that has no control to be: it is a fact
+            about the drawing, so it stays on the drawing.
+          */}
+          {state.selectedNodes.size > 1 && (
+            <div className="pointer-events-none absolute bottom-3 left-3 text-2xs text-muted-foreground tabular-nums">
+              {state.selectedNodes.size} points
+            </div>
+          )}
+          {menu && (
+            <CanvasMenu
+              target={menu}
+              glyphName={glyph.name}
+              selected={state.selectedNodes}
+              onClose={() => {
+                setMenu(null);
+                // What the next click would do can change with what was just
+                // chosen, and the sentence under the canvas has to catch up.
+                gesture.refreshPhase();
+              }}
+            />
+          )}
         </div>
       </div>
       <Numbers

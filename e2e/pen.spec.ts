@@ -12,6 +12,8 @@
 
 import { expect, test } from "@playwright/test";
 
+import { pointOnAnEdge, takeUpTool } from "./support";
+
 const sample = async (page: import("@playwright/test").Page) => {
   await page.setViewportSize({ width: 1500, height: 950 });
   await page.goto("/");
@@ -73,10 +75,15 @@ test("draws a closed curve by holding and pulling", async ({ page }) => {
 test("puts a point on an edge that is already there", async ({ page }) => {
   await sample(page);
   const before = await pathCounts(page);
-  await page.locator("[data-tool='pen']").click();
 
-  // The left flank of the `o`, which is a segment rather than a node.
-  await page.mouse.click(503, 553);
+  // A segment rather than a node, found by asking the application where one is
+  // rather than by trusting a pixel that stops being an edge the moment the
+  // chrome around the canvas changes height.
+  const edge = await pointOnAnEdge(page);
+  // Through the flyout, because the group button carries whichever of the pen
+  // tools was used last -- and finding the edge above used one of the others.
+  await takeUpTool(page, "pen", "pen");
+  await page.mouse.click(edge.x, edge.y);
   const after = await pathCounts(page);
   expect(after.reduce((a, b) => a + b, 0)).toBe(before.reduce((a, b) => a + b, 0) + 1);
 });

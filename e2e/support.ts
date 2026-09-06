@@ -449,3 +449,48 @@ export async function inkLuminance(page: Page): Promise<number> {
     return painted === 0 ? -1 : sum / painted;
   });
 }
+
+/**
+ * A place on the canvas where the letter has an edge, found rather than assumed.
+ *
+ * Three tests used to click at (503, 553), which was the left flank of the
+ * sample `o` at the size the canvas happened to be. That worked until the
+ * chrome around the canvas changed height, at which point all three clicked at
+ * a place with nothing under it and failed in three different ways -- none of
+ * which said "the canvas moved".
+ *
+ * So this asks the application instead. The add-point tool says whether it
+ * would act at the pointer, and it says it in the same line the tests already
+ * read, so sweeping the pointer across the letter until it says yes finds a
+ * real edge at whatever size the canvas currently is.
+ *
+ * It leaves the add-point tool in hand, since every caller takes up its own
+ * tool straight afterwards.
+ */
+export async function pointOnAnEdge(page: Page): Promise<{ x: number; y: number }> {
+  const canvas = page.locator("canvas").first();
+  const box = (await canvas.boundingBox())!;
+  const says = page.locator("[data-tool-says]");
+
+  const group = page.locator('[data-tool-group="pen"]');
+  await group.click();
+  if ((await page.locator('[data-flyout-tool="addPoint"]').count()) === 0) await group.click();
+  await page.locator('[data-flyout-tool="addPoint"]').click();
+  await expect(page.locator("[data-tool-flyout]")).toHaveCount(0);
+
+  /*
+   * Three rows across the middle of the letter rather than one, because a
+   * single row can miss: it is the counter of an `o` that the middle row
+   * crosses, and a letter whose bowl sits high or low would give a row through
+   * empty space. Stepped by four pixels, which is inside the seven the hit
+   * test allows, so an edge cannot be stepped over.
+   */
+  for (const fraction of [0.5, 0.42, 0.58]) {
+    const y = box.y + box.height * fraction;
+    for (let x = box.x + box.width * 0.2; x < box.x + box.width * 0.8; x += 4) {
+      await page.mouse.move(x, y);
+      if ((await says.innerText()).includes("Click to put a point here")) return { x, y };
+    }
+  }
+  throw new Error("no edge found anywhere across the middle of the letter");
+}

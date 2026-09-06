@@ -126,8 +126,10 @@ export function useGlyphGestures(within: {
   view: GlyphView;
   pan: Vec2;
   setPan: React.Dispatch<React.SetStateAction<Vec2>>;
+  /** Whether space is down, so a press pans instead of drawing. */
+  hand: React.RefObject<boolean>;
 }): Gestures {
-  const { typeface, glyph, state, view, pan, setPan } = within;
+  const { typeface, glyph, state, view, pan, setPan, hand } = within;
 
   const dragRef = React.useRef<Drag | null>(null);
   /*
@@ -169,11 +171,32 @@ export function useGlyphGestures(within: {
 
   const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     if (!glyph || !typeface) return;
+    /*
+     * The right button belongs to the menu, so nothing here answers it.
+     *
+     * Without this, right-clicking a point to ask what can be done with it
+     * first picked it up and started dragging it, and the drag was still
+     * running underneath the menu -- so choosing a line from a menu you opened
+     * on a point could also have moved the point.
+     */
+    if (event.button === 2) return;
     const canvasPoint = pointerPosition(event);
     event.currentTarget.setPointerCapture(event.pointerId);
 
-    // Middle button or alt-drag pans the view.
-    if (event.button === 1 || event.altKey) {
+    /*
+     * Space, the middle button or alt with a drag pans the view.
+     *
+     * Space is first because it is the one people use, and because it has to
+     * beat every tool below rather than only the ones that would otherwise
+     * ignore a middle button. Holding it over a point and dragging moves the
+     * letter, not the point.
+     *
+     * The middle button's default is prevented because Chrome answers it with
+     * its own scrolling widget, which appears over the canvas and swallows the
+     * drag that was meant to pan it.
+     */
+    if (hand.current || event.button === 1 || event.altKey) {
+      if (event.button === 1) event.preventDefault();
       dragRef.current = { kind: "pan", from: canvasPoint, startPan: pan };
       return;
     }
