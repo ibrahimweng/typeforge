@@ -18,6 +18,7 @@ import { useQuickActionShortcut } from "@/palette/useShortcut";
 import type { AppShell } from "@/palette/catalogue";
 import { useAppKeys } from "@/keys/useAppKeys";
 import { NextStep } from "@/components/NextStep";
+import { DocumentTabs } from "@/components/DocumentTabs";
 import { OptionsBar } from "@/components/OptionsBar";
 import { StatusBar } from "@/components/StatusBar";
 import { ToolPalette } from "@/components/ToolPalette";
@@ -1026,10 +1027,20 @@ export function App(): React.JSX.Element {
       paramOf: (key) => store.getSnapshot().typeface?.params[key] ?? 0,
       setParam: (key, value) => store.setFamilyParam(key, value),
       hasFont: Boolean(state.typeface),
+      /*
+       * These two are the shape of the catalogue rather than a value read off
+       * it -- an entry per font -- so unlike the readers above they are taken
+       * from this render and are in the list below. It costs a rebuild when a
+       * font is opened, closed, switched or renamed, which is not something
+       * that happens while anything is being dragged.
+       */
+      openFonts: state.open,
+      openAt: state.openAt,
+      goToFont: (at) => store.goToDocument(at),
     }),
-    // Only what changes the shape of the catalogue: which job is in front and
-    // which view it is showing. The values themselves are read live, above.
-    [mode, goToMode, state.view, state.typeface, saveProject],
+    // Only what changes the shape of the catalogue: which job is in front,
+    // which view it is showing, and which fonts are open.
+    [mode, goToMode, state.view, state.typeface, state.open, state.openAt, saveProject],
   );
 
   /*
@@ -1121,6 +1132,16 @@ export function App(): React.JSX.Element {
         onSave={saveProject}
         keeping={keeping}
       />
+
+      {/*
+        Which font, under the bar that says which screen.
+
+        Only in the editor: the three generators hold documents of their own,
+        and a strip of font tabs over a drawing would be the wrong set of
+        documents in the right place. It draws nothing at all until there are
+        two, so nothing here moves for anybody working on one font.
+      */}
+      {mode === "edit" && <DocumentTabs />}
 
       {/*
         What to do next, under the bar and above the work.

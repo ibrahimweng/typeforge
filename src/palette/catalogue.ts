@@ -131,6 +131,17 @@ export interface AppShell {
   toggleHelp: () => void;
   library: () => void;
   selectGlyph: (name: string) => void;
+  /**
+   * The fonts open in the editor, and which of them is in front.
+   *
+   * The palette is the only place one can be reached by typing its name, and
+   * the strip of tabs that reaches them by pointer does not appear until there
+   * are two -- so somebody who has just opened a second font can go back to
+   * the first here before they have noticed the strip.
+   */
+  openFonts: ReadonlyArray<{ id: string; name: string }>;
+  openAt: number;
+  goToFont: (at: number) => void;
   /** Family parameters, for the five views that share a loaded font. */
   paramOf: (key: keyof GlyphParams) => number;
   setParam: (key: keyof GlyphParams, value: number, done: boolean) => void;
@@ -231,9 +242,8 @@ export function catalogue(shell: Shell): Item[] {
     kind: "action",
     group: "Actions",
     label: "Start a new font",
-    hint: "Clear everything and begin again from nothing. Throws away the font that is open and anything drawn on it.",
+    hint: "An empty font, in a tab of its own beside whatever is already open.",
     also: ["restart", "blank", "empty", "fresh", "reset", "start over", "new project"],
-    destructive: true,
     run: shell.newProject,
   });
   add({
@@ -242,9 +252,8 @@ export function catalogue(shell: Shell): Item[] {
     kind: "action",
     group: "Actions",
     label: "Upload a font",
-    hint: "Open a font file or a saved project from this computer. Replaces whatever is open at the moment.",
+    hint: "A font file from this computer, opened beside the ones already open. A saved Typeforge project is the exception: that is a whole session, and it comes back over this one.",
     also: ["import", "load", "ttf", "otf", "woff", "woff2", "browse", "file", "drop"],
-    destructive: true,
     run: shell.openFile,
   });
   add({
@@ -254,7 +263,6 @@ export function catalogue(shell: Shell): Item[] {
     label: "Open a UFO folder",
     hint: "A UFO is a folder rather than a file, which is why it has its own way in: one file input can pick files or folders and not both.",
     also: ["ufo", "folder", "directory", "source", "robofont", "glyphs", "designspace", "import"],
-    destructive: true,
     run: shell.openFolder,
   });
   for (const axis of AXES) {
@@ -364,6 +372,31 @@ export function catalogue(shell: Shell): Item[] {
       },
     });
   }
+
+  /*
+   * And the fonts that are open, by name.
+   *
+   * The strip of tabs is the way anybody will actually do this, and it is on
+   * screen -- but it only appears once there are two, and it is the one place
+   * in the application a font can be reached by typing its name. The tab in
+   * front is left out: it is not somewhere to go.
+   */
+  shell.openFonts.forEach((one, at) => {
+    if (at === shell.openAt) return;
+    add({
+      id: `font:${one.id}`,
+      kind: "view",
+      group: "Go to",
+      label: one.name,
+      hint: "Another font you have open. Your selection, your history and the screen you were on are all still where you left them in it.",
+      also: ["font", "tab", "document", "switch", "open"],
+      where: shell.mode === "edit" ? undefined : "Editing a font",
+      run: () => {
+        shell.setMode("edit");
+        shell.goToFont(at);
+      },
+    });
+  });
 
   // ---- The family's own numbers -----------------------------------------
   for (const spec of PARAMS) {

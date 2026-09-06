@@ -54,9 +54,11 @@ export async function openFont(page: Page): Promise<void> {
 /**
  * A font with nothing in it, reached the way somebody would reach it.
  *
- * Through the palette rather than by calling the store, because starting again
- * throws away whatever is open and so asks first -- and because a test that
- * reaches past the confirmation is not testing the path anybody takes.
+ * Through the palette rather than by calling the store, because that is the
+ * path anybody takes. It used to ask first, and no longer does: a new font
+ * opens in a tab beside whatever was there rather than over it, so there is
+ * nothing to confirm. The confirmation is still clicked if it appears, so this
+ * says nothing either way about whether it should.
  */
 export async function startBlank(page: Page): Promise<void> {
   await page.keyboard.press("ControlOrMeta+k");
