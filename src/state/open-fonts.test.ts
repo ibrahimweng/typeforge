@@ -13,8 +13,11 @@
  * catches either fault.
  */
 
+import { readFileSync } from "node:fs";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { toProject } from "@/project/format";
 import { emptyTypeface, type Glyph, type Typeface } from "@/font/types";
 
 /** A font with a family name, so the tabs can be told apart. */
@@ -260,5 +263,89 @@ describe("closing them", () => {
     expect(store.closeDocument(0)).toBe(true);
     store.adopt(fontCalled("New"), "new.ttf");
     expect(store.getSnapshot().canUndo).toBe(false);
+  });
+});
+
+/*
+ * The four doors a font comes in by, tested through the doors themselves.
+ *
+ * The tests above all use `adopt`, which is the door a generator uses. It is
+ * *not* the one anybody opening a file goes through -- that is `loadFont` --
+ * and when this feature was first wired only two of the four had been thought
+ * about. A test that only ever knocks on one door would have said the feature
+ * worked while the ordinary way in still replaced whatever was open.
+ *
+ * The font is the sample the application ships with, read off disk rather than
+ * fetched, because a real file is the only way to exercise a door whose first
+ * act is to parse one.
+ */
+const SAMPLE = new Uint8Array(
+  readFileSync(new URL("../assets/typeforge-sample.ttf", import.meta.url)),
+);
+
+describe("the doors a font comes in by", () => {
+  it("opens a file beside what is already there", async () => {
+    store.adopt(fontCalled("Bakerloo"), "bakerloo.ttf");
+    await store.loadFont(SAMPLE, "sample.ttf");
+    expect(tabs()).toHaveLength(2);
+    expect(inFront()).toBe(1);
+    store.goToDocument(0);
+    expect(store.getSnapshot().typeface?.meta.familyName).toBe("Bakerloo");
+  });
+
+  it("leaves the desk alone when the file will not open", async () => {
+    /*
+     * Which is why the room is made after the parse and not before it. Made
+     * first, a file that turns out not to be a font would still have put the
+     * work in a tab and left somebody on a blank document with an error on
+     * it -- nothing lost, but nowhere they asked to be, over a file that never
+     * opened.
+     */
+    store.adopt(fontCalled("Bakerloo"), "bakerloo.ttf");
+    await store.loadFont(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]), "notafont.ttf");
+    expect(tabs()).toEqual(["Bakerloo"]);
+    expect(store.getSnapshot().typeface?.meta.familyName).toBe("Bakerloo");
+    expect(store.getSnapshot().status?.tone).toBe("error");
+  });
+
+  it("does not carry the last font's guides onto the new one", async () => {
+    /*
+     * The reason a new document starts from a written-down blank rather than
+     * from whatever the last one left on the desk. `adopt` clears the guides by
+     * hand and `loadFont` does not, so this passes through the door that
+     * forgets -- and guides are kept in font units, so the ones drawn against a
+     * two-thousand-unit face arrive over a thousand-unit one meaning something
+     * else entirely.
+     */
+    store.adopt(fontCalled("Bakerloo"), "bakerloo.ttf");
+    store.addGuide(500, "y");
+    await store.loadFont(SAMPLE, "sample.ttf");
+    expect(store.getSnapshot().guides).toEqual([]);
+    store.goToDocument(0);
+    expect(store.getSnapshot().guides, "and they are still the first font's").toHaveLength(1);
+  });
+
+  it("gives a blank font a tab as an opened one gets", () => {
+    store.adopt(fontCalled("Bakerloo"), "bakerloo.ttf");
+    store.startBlank();
+    expect(tabs()).toEqual(["Bakerloo", "Untitled"]);
+  });
+
+  it("puts a saved project back over the desk rather than beside it", async () => {
+    /*
+     * The one door that replaces. A project is the whole session coming back --
+     * which mode you were in, the drawing, the tracing -- so opening one beside
+     * your work would restore half a session next to the other half.
+     */
+    await store.loadFont(SAMPLE, "sample.ttf");
+    const kept = toProject({ mode: "edit", edit: store.snapshot() }, new Date());
+    expect(kept.edit, "the sample should be saveable at all").toBeDefined();
+
+    store.adopt(fontCalled("Bakerloo"), "bakerloo.ttf");
+    expect(tabs()).toHaveLength(2);
+
+    await store.restore(kept.edit!);
+    expect(tabs()).toHaveLength(2);
+    expect(store.getSnapshot().fileName).toBe("sample.ttf");
   });
 });

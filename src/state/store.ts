@@ -123,8 +123,7 @@ class Store extends ShapingStore {
      * replacing one document with another. On a clean desk it does the same
      * job, so none of it changes.
      */
-    if (this.state.typeface) this.asANewDocument();
-    else this.clearHistory();
+    this.makeRoom();
     this.controlBaseline = readControls(typeface);
     // Whatever the last UFO carried belongs to the last UFO. Left in place, a
     // font opened afterwards would go out with somebody else's background
@@ -172,7 +171,6 @@ class Store extends ShapingStore {
         about: "edit",
       },
     });
-    this.tellTabs();
     this.touch();
   }
 
@@ -453,7 +451,13 @@ class Store extends ShapingStore {
    * document made of glyphs would have quietly thrown away.
    */
   async restore(saved: EditedProject): Promise<void> {
-    await this.loadFont(fromBase64(saved.font), saved.fileName);
+    /*
+     * The one way in that does not open a tab. A saved project is the whole
+     * session coming back -- the mode you were in, the drawing, the tracing --
+     * so it takes the desk over rather than joining what is on it. Opening one
+     * beside your work would restore half a session next to the other half.
+     */
+    await this.loadFont(fromBase64(saved.font), saved.fileName, { beside: false });
     const { typeface } = this.state;
     if (!typeface) return;
     applyEdits(typeface, saved);
@@ -478,12 +482,25 @@ class Store extends ShapingStore {
     this.touch();
   }
 
-  async loadFont(bytes: Uint8Array, fileName: string): Promise<void> {
+  async loadFont(
+    bytes: Uint8Array,
+    fileName: string,
+    { beside = true }: { beside?: boolean } = {},
+  ): Promise<void> {
     this.forgetLoan();
     this.set({ busy: true, status: { message: `Reading ${fileName}…`, tone: "info" } });
     try {
       const { typeface, warnings } = await importFont(bytes, fileName);
-      this.clearHistory();
+      /*
+       * After the parse rather than before it, which is the whole reason this
+       * is not the first line of the method. A font that turns out to be
+       * unreadable would otherwise have already put the one you were working
+       * on into a tab and left you on a blank document with an error on it --
+       * work not lost, but somewhere you did not ask to be, over a file that
+       * never opened.
+       */
+      if (beside) this.makeRoom();
+      else this.clearHistory();
       // A compiled font has no UFO behind it, and the one that was open
       // before is not this font's to carry.
       this.ufo = null;
@@ -559,7 +576,8 @@ class Store extends ShapingStore {
       if (typeface.glyphs.length === 0) {
         throw new Error("That UFO has no glyphs in it.");
       }
-      this.clearHistory();
+      // After the read, for the reason `loadFont` gives above.
+      this.makeRoom();
       this.controlBaseline = readControls(typeface);
       this.ufo = carried;
       this.set({
@@ -639,8 +657,7 @@ class Store extends ShapingStore {
      * closing your work while the other puts a tab beside it is the kind of
      * inconsistency somebody finds out about by losing something.
      */
-    if (this.state.typeface) this.asANewDocument();
-    else this.clearHistory();
+    this.makeRoom();
     /*
      * With a `.notdef` already in it.
      *
@@ -670,7 +687,6 @@ class Store extends ShapingStore {
       status: null,
     });
     this.captureControlBaseline();
-    this.tellTabs();
     this.touch();
   }
 

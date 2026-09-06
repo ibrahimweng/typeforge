@@ -16,7 +16,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { ABOUT_THE_SET, PER_DOCUMENT, SHARED, documentPart, nameOf } from "./documents";
+import {
+  ABOUT_THE_SET,
+  PER_DOCUMENT,
+  SHARED,
+  blankDocument,
+  documentPart,
+  nameOf,
+} from "./documents";
 
 /** Every field `AppState` declares, read from the file that declares it. */
 function fieldsOfAppState(): string[] {
@@ -81,6 +88,16 @@ describe("what belongs to a font and what belongs to the desk", () => {
     // And the list of fonts is its own thing: switching is what changes it,
     // which is the opposite of what shared means.
     expect(ABOUT_THE_SET).toContain("open");
+  });
+
+  it("has a blank for every field it lists, and for no other", () => {
+    /*
+     * The blank is what a new document starts from, so a field on one list and
+     * not the other is a field that quietly arrives holding the last font's
+     * value -- which is the same failure the classification above is for, one
+     * step further along.
+     */
+    expect(Object.keys(blankDocument()).sort()).toEqual([...PER_DOCUMENT].sort());
   });
 
   it("lifts exactly the per-document fields out of a state", () => {

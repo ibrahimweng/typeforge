@@ -32,7 +32,7 @@ import type { Glyph, Contour, Typeface } from "@/font/types";
 import type { UfoCarried } from "@/ufo/font";
 import { STARTING_PENS, STARTING_WIDTH } from "@/quill/written";
 import { POLYGON_SIDES } from "@/font/shapes";
-import { documentPart, nameOf, newId, type Aside } from "./documents";
+import { blankDocument, documentPart, nameOf, newId, type Aside } from "./documents";
 
 import type { AppState, HistoryEntry } from "./model";
 
@@ -186,6 +186,9 @@ export abstract class StoreCore {
     if (this.state.masters.length > 1 && this.state.typeface) {
       shareAcross(this.state.typeface, this.state.masters);
     }
+    // A font renamed is a tab renamed, and the rename happens in a dialog that
+    // has never heard of tabs. Guarded above, so this is free when nothing moved.
+    this.tellTabs();
     this.set({
       revision: this.state.revision + 1,
       canUndo: this.undoStack.length > 0,
@@ -205,9 +208,28 @@ export abstract class StoreCore {
    * whether the toolbar re-renders. Derived, a tab strip would be rebuilt
    * sixty times a second while somebody dragged a point.
    */
-  protected tellTabs(): void {
+  private tellTabs(): void {
     const open = this.aside.map((one) => ({ id: one.id, name: nameOf(one.state) }));
     open.splice(this.at, 0, { id: this.mine, name: nameOf(this.state) });
+    /*
+     * Published only when it has actually changed, which is what lets `touch`
+     * call this on every edit.
+     *
+     * A tab says what the font is called, and a font is renamed in a dialog
+     * that knows nothing about tabs -- so the alternative is a call to this
+     * from every place a family name can be set, and the tab going stale at
+     * whichever one gets missed. Rebuilding a list of half a dozen small
+     * objects and comparing it is nothing beside what `touch` already does;
+     * what would cost something is a new `open` array sixty times a second
+     * while a point is dragged, re-rendering the strip each time, and that is
+     * exactly what this guard stops.
+     */
+    const was = this.state.open;
+    const same =
+      was.length === open.length &&
+      this.at === this.state.openAt &&
+      open.every((one, at) => one.id === was[at].id && one.name === was[at].name);
+    if (same) return;
     this.set({ open, openAt: this.at });
   }
 
@@ -275,7 +297,7 @@ export abstract class StoreCore {
    * font in front goes aside with everything that belongs to it, and the new
    * one arrives on a clean desk: no selection, no history, its own view.
    */
-  protected asANewDocument(): void {
+  private asANewDocument(): void {
     const mine: Aside = { id: this.mine, state: documentPart(this.state) };
     this.stacks.set(this.mine, { undo: this.undoStack, redo: this.redoStack });
     this.aside.splice(this.at, 0, mine);
@@ -283,6 +305,33 @@ export abstract class StoreCore {
     this.mine = newId();
     this.undoStack = [];
     this.redoStack = [];
+    /*
+     * And the desk itself is cleared, rather than left holding the last font's
+     * things for whoever is arriving to overwrite.
+     *
+     * Each caller does set most of this immediately afterwards, so for a while
+     * this looked like work done twice. It is not: what it costs is nineteen
+     * assignments, and what it buys is that a door which forgets one of them
+     * gets a blank rather than the last font's. Guides were the one forgotten
+     * -- they are in font units, so the guides from a two-thousand-unit face
+     * arrive over a thousand-unit one meaning something else entirely -- and
+     * nothing would have said so.
+     */
+    this.set(blankDocument());
+  }
+
+  /**
+   * Make room for a font that is arriving.
+   *
+   * The four doors -- a file, a UFO folder, a generator handing over what it
+   * drew, and a blank one -- all want the same thing and each used to say it in
+   * its own words. A font joins the ones already open; on a desk with nothing
+   * on it, it *is* the one open, because a tab for the first font would leave
+   * an empty Untitled beside it that nobody wants and nobody can close.
+   */
+  protected makeRoom(): void {
+    if (this.state.typeface) this.asANewDocument();
+    else this.clearHistory();
   }
 
   /**

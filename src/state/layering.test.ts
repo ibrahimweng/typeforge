@@ -79,10 +79,10 @@ const SHARED = new Set([
   "push",
   "glyph",
   "clearHistory",
-  // Opening a font joins the ones already open rather than replacing one, and
-  // both halves of that are the kernel's: it holds the fonts put aside.
-  "asANewDocument",
-  "tellTabs",
+  // Opening a font joins the ones already open rather than replacing one. One
+  // name, because the kernel holds the fonts put aside and does the whole of
+  // the putting-aside itself; the four doors above only ask for room.
+  "makeRoom",
   // Four helpers that earned their place higher up the chain.
   "editGlyph",
   "editGlyphLive",

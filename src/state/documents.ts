@@ -107,6 +107,44 @@ export interface Aside {
   state: Pick<AppState, PerDocument>;
 }
 
+/**
+ * A font-shaped hole: every per-document field at the value it has before
+ * anything is open.
+ *
+ * What makes "the new one arrives on a clean desk" true rather than a claim.
+ * Without it each of the four doors a font comes in by has to remember the
+ * whole list itself, and the one that forgets leaves the last font's guides
+ * over the new one -- guides being the field that was actually forgotten, and
+ * they are kept in font units, so at a different unit size they arrive meaning
+ * something else entirely.
+ *
+ * The test beside this holds it to the same list as `PER_DOCUMENT`, so a field
+ * added to one and not the other is caught rather than quietly inherited.
+ */
+export function blankDocument(): Pick<AppState, PerDocument> {
+  return {
+    typeface: null,
+    fileName: "",
+    openWarnings: [],
+    view: "grid",
+    context: { before: "n", after: "n" },
+    guides: [],
+    selectedGlyph: null,
+    selectedNodes: new Set(),
+    selectedGlyphs: new Set(),
+    canUndo: false,
+    canRedo: false,
+    undoLabel: null,
+    redoLabel: null,
+    masters: [],
+    master: "",
+    preview: null,
+    revision: 0,
+    checks: null,
+    lastDerivation: [],
+  };
+}
+
 /** The fields belonging to a font, lifted out of the live state. */
 export function documentPart(state: AppState): Pick<AppState, PerDocument> {
   const part = {} as Record<string, unknown>;
