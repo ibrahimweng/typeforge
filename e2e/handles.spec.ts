@@ -328,7 +328,28 @@ test("offers the settings that are on or off as switches", async ({ page }) => {
 
   await oneWidth.click();
   await expect(oneWidth).toHaveAttribute("aria-checked", "true");
-  await expect.poll(() => advance("i")).toBe(await advance("m"));
+  /*
+   * Both read afresh on every poll, which is the whole of this.
+   *
+   * It used to be `expect.poll(() => advance("i")).toBe(await advance("m"))`,
+   * and the `await` on the right runs once, at the moment the matcher is
+   * built. That is immediately after the click, while the forge is still
+   * redrawing -- so what it captured was the m as it was *before* the switch
+   * took effect, and the poll then waited twenty seconds for the i to become a
+   * width the m no longer had. On WebKit it caught the old value every time:
+   * 1126 for the m, against 1199.6 which is what both letters actually settle
+   * at, since one width is wider than the m's own.
+   *
+   * The assertion is the same one and is now stronger: the two are equal at
+   * the same moment, rather than one of them equalling a number the other had
+   * at some earlier moment.
+   */
+  await expect
+    .poll(async () => {
+      const [narrowNow, wideNow] = await Promise.all([advance("i"), advance("m")]);
+      return narrowNow === wideNow ? "the same width" : `${narrowNow} against ${wideNow}`;
+    })
+    .toBe("the same width");
 
   await expect(page.locator("[data-forge-stage]")).toBeVisible();
   expect(errors).toEqual([]);
