@@ -7,7 +7,7 @@
 
 import { expect, test } from "@playwright/test";
 
-import { FONT_PATH, openFont, startBlank, takeUpTool } from "./support";
+import { FONT_PATH, goToMode, openFont, startBlank, takeUpTool } from "./support";
 
 test.skip(!FONT_PATH, "needs a system font to open");
 
@@ -22,14 +22,14 @@ test("export waits until there is something to export, in every mode", async ({ 
 
   await expect(exportButton).toBeDisabled();
 
-  await page.getByRole("button", { name: "Assemble", exact: true }).click();
+  await goToMode(page, "Assemble");
   await expect(exportButton).toBeDisabled();
 
-  await page.getByRole("button", { name: "Trace", exact: true }).click();
+  await goToMode(page, "Trace");
   await expect(exportButton).toBeDisabled();
 
   // A drawn font is always ready to leave, because the forge always has one.
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
   await expect(exportButton).toBeEnabled();
 });
 

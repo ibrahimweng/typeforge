@@ -2,6 +2,8 @@ import { existsSync } from "node:fs";
 
 import { expect, test, type Page } from "@playwright/test";
 
+import { goToMode } from "./support";
+
 const FONT_CANDIDATES = [
   "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
   "/usr/share/fonts/dejavu/DejaVuSans.ttf",
@@ -60,7 +62,7 @@ async function dragAPoint(page: Page, by: number): Promise<boolean> {
 
 test("a drawn letter can be worked on with the tools and kept", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
 
   // What the letter looks like before anybody touches it, so the assertion at
   // the end is that it looks different rather than that a button was pressed.
@@ -80,14 +82,16 @@ test("a drawn letter can be worked on with the tools and kept", async ({ page })
   await expect(page.locator("[data-paths-panel]")).toContainText("paths");
 
   /*
-   * The tabs are held shut, and this is the assertion that matters most.
+   * The way to anywhere else is held shut, and this is the assertion that
+   * matters most.
    *
-   * The document that was open is put aside behind a loan. Walking to another
-   * tab would leave the borrowed letter on the desk and the real font in a
-   * drawer with nothing on screen to say why.
+   * The document that was open is put aside behind a loan. Leaving for another
+   * document would leave the borrowed letter on the desk and the real font in
+   * a drawer with nothing on screen to say why. It used to be three buttons in
+   * a strip that were disabled; it is one menu now, and it is the only way to
+   * another document, so holding it shut holds all of them.
    */
-  await expect(page.getByRole("button", { name: "Assemble", exact: true })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Trace", exact: true })).toBeDisabled();
+  await expect(page.locator("[data-new-menu]")).toBeDisabled();
 
   const canvas = page.locator("canvas").first();
   const box = (await canvas.boundingBox())!;
@@ -96,10 +100,7 @@ test("a drawn letter can be worked on with the tools and kept", async ({ page })
   await page.locator("[data-loan-keep]").click();
 
   // Back in Draw, and the letter says what it has become.
-  await expect(page.getByRole("button", { name: "Draw", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(page.locator("[data-mode]")).toHaveAttribute("data-mode", "forge");
   await expect(page.locator("[data-forge-imported=n]")).toBeVisible();
   await expect(page.locator("[data-forge-imported=n]")).toContainText("your drawing");
 
@@ -116,7 +117,7 @@ test("a drawn letter can be worked on with the tools and kept", async ({ page })
 
 test("a loan thrown away leaves the letter as it was", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
   const drawnLetter = () => page.locator("[data-forge-stage=n] path").first().getAttribute("d");
   const before = await drawnLetter();
 
@@ -125,10 +126,7 @@ test("a loan thrown away leaves the letter as it was", async ({ page }) => {
   expect(await dragAPoint(page, 40)).toBe(true);
 
   await page.locator("[data-loan-drop]").click();
-  await expect(page.getByRole("button", { name: "Draw", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(page.locator("[data-mode]")).toHaveAttribute("data-mode", "forge");
   // Still a description, still answering the sliders, and unmoved.
   await expect(page.locator("[data-forge-imported=n]")).toHaveCount(0);
   expect(await drawnLetter()).toBe(before);
@@ -148,14 +146,14 @@ test("the font that was open comes back untouched", async ({ page }) => {
     timeout: 45_000,
   });
 
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
   await page.locator("[data-forge-draw-here=n]").click();
   await expect(page.locator("[data-on-loan=n]")).toBeVisible();
   // The desk is one letter and is not the open font.
   await expect(page.getByText("DejaVu Sans", { exact: false })).toHaveCount(0);
 
   await page.locator("[data-loan-drop]").click();
-  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await goToMode(page, "Edit");
   await expect(page.getByText("DejaVu Sans", { exact: false }).first()).toBeVisible();
 });
 
@@ -169,7 +167,7 @@ test("the palette cannot walk out of a loan either", async ({ page }) => {
    * out were keeping the drawing and throwing it away.
    */
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
   await page.locator("[data-forge-draw-here=n]").click();
   await expect(page.locator("[data-on-loan=n]")).toBeVisible();
 
@@ -208,7 +206,7 @@ test("a traced letter can be worked on with the tools too", async ({ page }) => 
    */
   test.setTimeout(240_000);
   await page.goto("/");
-  await page.getByRole("button", { name: "Trace", exact: true }).click();
+  await goToMode(page, "Trace");
   await page
     .getByRole("complementary", { name: "Quill" })
     .locator("input[type=file]")
@@ -229,10 +227,7 @@ test("a traced letter can be worked on with the tools too", async ({ page }) => 
   await page.locator("[data-loan-keep]").click();
 
   // Back in Trace, and the letter is the drawing rather than the strokes.
-  await expect(page.getByRole("button", { name: "Trace", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(page.locator("[data-mode]")).toHaveAttribute("data-mode", "quill");
   await expect(page.locator("[data-quill-byhand=a]")).toBeVisible();
   expect(await traced()).not.toBe(before);
 

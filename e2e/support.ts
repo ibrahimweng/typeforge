@@ -122,7 +122,7 @@ export async function pressSpot(page: Page, x: number, y: number): Promise<void>
 
 export async function openForge(page: Page): Promise<void> {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
   await expect(page.locator("[data-forge-stage]")).toBeVisible();
   await settle(page);
 }
@@ -290,7 +290,7 @@ export const PILE = [
 
 export async function openAssemble(page: Page): Promise<void> {
   await page.goto("/");
-  await page.getByRole("button", { name: "Assemble", exact: true }).click();
+  await goToMode(page, "Assemble");
   await expect(page.locator("[data-assemble-instructions]")).toBeVisible();
 }
 
@@ -494,3 +494,42 @@ export async function pointOnAnEdge(page: Page): Promise<{ x: number; y: number 
   }
   throw new Error("no edge found anywhere across the middle of the letter");
 }
+
+/**
+ * Go to one of the four places, the way somebody now gets there.
+ *
+ * The four used to be a strip of buttons in the toolbar, so a test pressed the
+ * one it wanted by name. Three of them are in the New menu now, beside Open
+ * and the library, and the fourth is not something anybody picks: Edit is
+ * where you are once there is a font, so the way back to it is the line that
+ * names the font.
+ *
+ * Located by what each entry is rather than by what it says, because what it
+ * says changes: an entry whose half already holds work offers to go back to it
+ * instead of offering to start again.
+ *
+ * Already there is not an error. The entry for the place you are standing is
+ * held shut, so this closes the menu and returns rather than failing -- which
+ * keeps a test that walks Draw, Draw, Edit readable.
+ */
+export async function goToMode(
+  page: Page,
+  which: "Draw" | "Trace" | "Assemble" | "Edit",
+): Promise<void> {
+  const entry = which === "Edit" ? "[data-back-to-font]" : `[data-start='${MODE_OF[which]}']`;
+  await page.locator("[data-new-menu]").click();
+  const line = page.locator(entry);
+  await line.first().waitFor();
+  if (await line.first().isDisabled()) {
+    await page.keyboard.press("Escape");
+    return;
+  }
+  await line.first().click();
+  await expect(page.locator("[data-new-list]")).toHaveCount(0);
+}
+
+const MODE_OF: Record<string, string> = {
+  Draw: "forge",
+  Trace: "quill",
+  Assemble: "assemble",
+};

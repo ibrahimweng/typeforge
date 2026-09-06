@@ -8,6 +8,8 @@
  * wide that truncates.
  */
 import { test, expect, type Page } from "@playwright/test";
+
+import { goToMode } from "./support";
 import { existsSync } from "node:fs";
 
 const FONT_CANDIDATES = [
@@ -34,10 +36,10 @@ test("Save is dark until there is something to save", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Save" })).toBeEnabled();
 
   // Assemble starts empty, so both are dark there until a drawing arrives.
-  await page.getByRole("button", { name: "Assemble", exact: true }).click();
+  await goToMode(page, "Assemble");
   await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
   // Draw always has a family, so there is always something to carry on with.
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
   await expect(page.getByRole("button", { name: "Save" })).toBeEnabled();
 });
 
@@ -133,11 +135,11 @@ test("one document's news does not show over another's", async ({ page }) => {
   await openFont(page);
   const status = page.locator("header").getByText("Opened —", { exact: false });
   await expect(status).toBeVisible();
-  for (const mode of ["Draw", "Assemble", "Trace"]) {
-    await page.getByRole("button", { name: mode, exact: true }).click();
+  for (const mode of ["Draw", "Assemble", "Trace"] as const) {
+    await goToMode(page, mode);
     await expect(status, `the editor's news showed in ${mode}`).toHaveCount(0);
   }
-  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await goToMode(page, "Edit");
   await expect(status).toBeVisible();
 });
 

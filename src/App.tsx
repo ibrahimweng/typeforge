@@ -1037,6 +1037,17 @@ export function App(): React.JSX.Element {
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: the page is a drop target for a font file; the Open button is the keyboard path.
     <div
+      /*
+        Which document is in front, said on the shell.
+
+        It used to be readable off the mode strip, because the button for the
+        one you were in was pressed. The strip has gone and the fact has not:
+        it is what decides which stage is drawn, whose undo the toolbar wields
+        and what the New menu offers to go back to. So the shell says it,
+        rather than leaving it to be inferred from which panel happens to be on
+        screen.
+      */
+      data-mode={mode}
       className="flex h-full flex-col"
       onDragOver={(event) => {
         event.preventDefault();

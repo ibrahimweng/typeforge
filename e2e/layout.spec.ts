@@ -7,7 +7,7 @@
 
 import { expect, test } from "@playwright/test";
 
-import { FONT_PATH, inkLuminance, openFont } from "./support";
+import { FONT_PATH, goToMode, inkLuminance, openFont } from "./support";
 
 test.skip(!FONT_PATH, "needs a system font to open");
 
@@ -377,7 +377,7 @@ test("one word for writing a font out, in every mode", async ({ page }) => {
 
   // The dialog it opens says Download, because that is the click where a file
   // really is handed to the browser -- and all four of them now say it.
-  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await goToMode(page, "Edit");
   await page.getByRole("button", { name: "Export", exact: true }).click();
   await expect(page.getByRole("button", { name: "Download", exact: true })).toBeVisible();
 });

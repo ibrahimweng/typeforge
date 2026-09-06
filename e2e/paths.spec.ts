@@ -7,7 +7,7 @@
 
 import { expect, test } from "@playwright/test";
 
-import { FONT_PATH, openFont, takeUpTool } from "./support";
+import { FONT_PATH, goToMode, openFont, takeUpTool } from "./support";
 
 test.skip(!FONT_PATH, "needs a system font to open");
 
@@ -469,7 +469,7 @@ test("letters drawn in Draw can be taken to the tools", async ({ page }) => {
    */
   await page.goto("/");
   await openFont(page);
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
 
   await page.locator("[data-take-to-editor]").getByRole("button").click();
   await expect(page.getByRole("button", { name: "Glyph", exact: true })).toHaveAttribute(
@@ -499,7 +499,7 @@ test("assembling is a way into the tools too, and was the one left out", async (
    * the traced panel does and what the button beside it now does as well.
    */
   await page.goto("/");
-  await page.getByRole("button", { name: "Assemble", exact: true }).click();
+  await goToMode(page, "Assemble");
 
   const handOver = page.locator("[data-take-to-editor]").getByRole("button");
   await expect(handOver).toBeVisible();

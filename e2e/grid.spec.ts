@@ -19,6 +19,8 @@
 
 import { expect, test } from "@playwright/test";
 
+import { goToMode } from "./support";
+
 /** Which ports are lit, with the pointer parked off the grid. */
 async function lit(page: import("@playwright/test").Page): Promise<string[]> {
   await page.mouse.move(700, 100);
@@ -32,7 +34,7 @@ async function lit(page: import("@playwright/test").Page): Promise<string[]> {
 
 test("a cell's port can be reached for and pressed", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
   await page.locator("[data-forge-kit-switch]").click();
   await expect(page.locator("[data-forge-cell-box]").first()).toBeVisible();
 

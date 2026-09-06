@@ -11,6 +11,8 @@
 
 import { expect, test } from "@playwright/test";
 
+import { goToMode } from "./support";
+
 const open = async (page: import("@playwright/test").Page) => {
   await page.keyboard.press("ControlOrMeta+k");
   await expect(page.getByRole("dialog", { name: "Quick actions" })).toBeVisible();
@@ -21,7 +23,7 @@ const dialog = (page: import("@playwright/test").Page) =>
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
 });
 
 test("opens on the shortcut and closes on escape", async ({ page }) => {

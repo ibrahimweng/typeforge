@@ -19,6 +19,8 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 
+import { goToMode } from "./support";
+
 /**
  * The panel's stretches, in the order they are laid out.
  *
@@ -35,7 +37,7 @@ async function sections(page: Page, panel: string): Promise<string[]> {
 
 test("Draw puts the three that decide the font first", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
 
   expect(await sections(page, 'aside[aria-label="Forge"]')).toEqual([
     "start",
@@ -49,7 +51,7 @@ test("Draw puts the three that decide the font first", async ({ page }) => {
 
 test("nothing Draw moved down went away", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
 
   const panel = page.locator('aside[aria-label="Forge"]');
   for (const still of ["Joining", "Cut", "Cast", "Draw n yourself"]) {

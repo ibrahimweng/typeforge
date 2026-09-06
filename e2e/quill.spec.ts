@@ -18,6 +18,8 @@ import { existsSync } from "node:fs";
 
 import { expect, test, type Page } from "@playwright/test";
 
+import { goToMode } from "./support";
+
 const FONT_CANDIDATES = [
   "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
   "/usr/share/fonts/dejavu/DejaVuSans.ttf",
@@ -104,7 +106,7 @@ async function traceAFont(page: Page) {
    */
   test.setTimeout(240_000);
   await page.goto("/");
-  await page.getByRole("button", { name: "Trace", exact: true }).click();
+  await goToMode(page, "Trace");
   await expect(page.getByText("Nothing traced yet")).toBeVisible();
   await page
     .getByRole("complementary", { name: "Quill" })
@@ -129,7 +131,7 @@ test("reads the font off the main thread, and says how far along it is", async (
   page.on("worker", (worker) => started.push(worker.url()));
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Trace", exact: true }).click();
+  await goToMode(page, "Trace");
   await page
     .getByRole("complementary", { name: "Quill" })
     .locator("input[type=file]")
@@ -171,7 +173,7 @@ test("reads the font off the main thread, and says how far along it is", async (
 
 test("a read can be given up on", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Trace", exact: true }).click();
+  await goToMode(page, "Trace");
   await page
     .getByRole("complementary", { name: "Quill" })
     .locator("input[type=file]")
@@ -359,7 +361,7 @@ test("the hand-over waits until there is something to hand over", async ({ page 
   // Nothing traced is not an error, and pressing a button that cannot work is
   // not a thing anybody should be able to do.
   await page.goto("/");
-  await page.getByRole("button", { name: "Trace", exact: true }).click();
+  await goToMode(page, "Trace");
   await expect(page.getByText("Nothing traced yet")).toBeVisible();
   await expect(page.locator("[data-take-to-editor]").getByRole("button")).toBeDisabled();
 });

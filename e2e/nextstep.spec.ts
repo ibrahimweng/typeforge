@@ -13,6 +13,8 @@ import { fileURLToPath } from "node:url";
 
 import { test, expect, type Page } from "@playwright/test";
 
+import { goToMode } from "./support";
+
 const LINE = "[data-next-step]";
 
 // The one fixture that arrives already kerned, which is the rung above the
@@ -32,7 +34,7 @@ async function sample(page: Page): Promise<void> {
 
 test("Draw is told to make it theirs, then offered the way on", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
 
   // Nothing touched yet. The forge draws an alphabet before you arrive, so a
   // letter on screen says nothing about whether this person has done anything.
@@ -79,14 +81,14 @@ test("the ladder is about the font and not about the screen", async ({ page }) =
 
 test("somebody who knows the craft turns it off, and it stays off", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
   await expect(page.locator(LINE)).toBeVisible();
 
   await page.getByRole("button", { name: "Turn this off" }).click();
   await expect(page.locator(LINE)).toBeHidden();
 
   await page.reload();
-  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await goToMode(page, "Draw");
   await expect(page.locator(LINE)).toBeHidden();
 });
 
