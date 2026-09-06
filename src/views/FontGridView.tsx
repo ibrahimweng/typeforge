@@ -26,7 +26,7 @@ import { tile } from "@/components/controls";
 import { CoachMark } from "@/components/CoachMark";
 import { Versions } from "@/components/Versions";
 import { glyphAcross, lettersThatCannotVary } from "@/font/master";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 const CELL_SIZE = 104;
 const CELL_GAP = 8;

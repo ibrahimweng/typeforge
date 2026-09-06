@@ -55,7 +55,7 @@ import { BASES, FAMILIES } from "@/forge/style";
 import { forgeStore, useForge, type Phase } from "@/state/useForge";
 import { store } from "@/state/useStore";
 import { SliderControl as Slider } from "@/ui/components/controls/slider";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 export function ForgePanel({ onEdit }: { onEdit: () => Promise<void> }): React.JSX.Element {
   const state = useForge();

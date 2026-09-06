@@ -19,7 +19,7 @@ import {
   tipOnDuty,
   type TipId,
 } from "@/help/tips";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 export function CoachMark({
   id,

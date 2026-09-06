@@ -29,7 +29,7 @@ import {
 } from "@/components/severity";
 import { hasLetters } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 export function ReportView(): React.JSX.Element {
   const state = useAppState();

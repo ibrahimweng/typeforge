@@ -31,7 +31,7 @@ import { libraryStore, useLibrary, type LoadedFont } from "@/state/useLibrary";
 import { startDrawingFrom } from "@/state/drawn";
 import { assembleStore } from "@/state/useAssemble";
 import { store } from "@/state/useStore";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 const CATEGORIES: Array<[LibraryCategory | "all", string]> = [
   ["all", "All"],

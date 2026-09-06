@@ -24,7 +24,7 @@ import * as React from "react";
 import { enter } from "@/anim/motion";
 import { NumberField } from "@/components/NumberField";
 import { store, useAppState } from "@/state/useStore";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 /** One labelled text field, committed rather than typed. */
 function Text({

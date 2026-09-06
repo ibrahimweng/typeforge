@@ -11,7 +11,7 @@ import * as React from "react";
 
 import { pulse } from "@/anim/motion";
 import { store, useAppState } from "@/state/useStore";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 export function CompositionPanel(): React.JSX.Element | null {
   const state = useAppState();

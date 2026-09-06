@@ -18,7 +18,7 @@ import {
   segment,
 } from "@/components/controls";
 import { viewKey } from "@/keys/useAppKeys";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 const VIEWS: Array<{ id: ViewId; label: string }> = [
   { id: "grid", label: "Font" },

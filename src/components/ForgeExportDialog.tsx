@@ -22,7 +22,7 @@ import { familyOf } from "@/forge/document";
 import { WEIGHTS, weightsOf } from "@/forge/family";
 import { forgeStore, useForge } from "@/state/useForge";
 import { OUTLINE_ACTION, PRIMARY_ACTION } from "@/components/controls";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.JSX.Element {
   const state = useForge();

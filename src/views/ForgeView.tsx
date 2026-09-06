@@ -43,7 +43,7 @@ import { driveId, settingOf, whatGoverns, type Governing } from "@/forge/probe";
 import { segment, tile } from "@/components/controls";
 import { forgeStore, useForge, type Phase } from "@/state/useForge";
 import { useLibrary } from "@/state/useLibrary";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 export function ForgeView(): React.JSX.Element {
   const state = useForge();

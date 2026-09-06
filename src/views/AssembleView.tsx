@@ -35,7 +35,7 @@ import { contoursToSvgPath } from "@/font/geometry";
 import { tile } from "@/components/controls";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
 import { useLibrary } from "@/state/useLibrary";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 type Built = ReturnType<typeof build>;
 

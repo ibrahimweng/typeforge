@@ -10,7 +10,7 @@ import * as React from "react";
 import { attachPressFeedback, switchView } from "@/anim/motion";
 import { loadingTwice } from "@/deferred";
 import { SIDE_PANEL, WIDE_PANEL } from "@/components/controls";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 import { GlyphEditorView } from "@/views/GlyphEditorView";
 import { KerningView } from "@/views/KerningView";
 import { LibraryDialog } from "@/components/LibraryDialog";

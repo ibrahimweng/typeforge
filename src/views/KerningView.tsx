@@ -28,7 +28,7 @@ import { NothingDrawnYet } from "@/components/NothingDrawnYet";
 import { hasLetters } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";
 import { SIDE_PANEL } from "@/components/controls";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 interface PlacedGlyph {
   glyph: Glyph;

@@ -23,7 +23,7 @@ import type * as React from "react";
 import { contourArea, contoursBounds } from "@/font/geometry";
 import type { Contour } from "@/font/types";
 import { nodeKey, store, useAppState } from "@/state/useStore";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 /**
  * Which way round a contour runs, in the words the format uses.

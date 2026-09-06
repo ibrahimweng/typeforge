@@ -48,7 +48,7 @@ import { NumberField } from "@/components/NumberField";
 import { NothingDrawnYet } from "@/components/NothingDrawnYet";
 import { hasLetters } from "@/font/library";
 import { ToolPalette } from "@/components/ToolPalette";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 import { clamp, parseNodeKey } from "./glyph-pointer";
 

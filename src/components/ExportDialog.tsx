@@ -15,7 +15,7 @@ import { exportFont, toDownloadBlob, type ExportFidelity, type ExportFormat } fr
 import { varyByDrawnVersions, varyByWeight } from "@/font/masters";
 import { store, useAppState } from "@/state/useStore";
 import { ufoNameFor, zipUfo } from "@/ufo/intake";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.Element | null {
   const state = useAppState();

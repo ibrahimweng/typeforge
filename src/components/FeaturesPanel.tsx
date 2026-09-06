@@ -30,7 +30,7 @@ import {
   unreachableGlyphs,
 } from "@/font/features";
 import { store, useAppState } from "@/state/useStore";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 const ROW = cn(
   "flex items-center justify-between gap-2 rounded-md border border-border px-2 py-1.5",

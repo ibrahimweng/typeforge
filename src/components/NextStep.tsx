@@ -27,7 +27,7 @@ import { useAssemble } from "@/state/useAssemble";
 import { useDrawing } from "@/state/drawn";
 import { useQuill } from "@/state/useQuill";
 import { store, useAppState } from "@/state/useStore";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 const OFF = "typeforge.nextStep.off";
 

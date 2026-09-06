@@ -42,7 +42,7 @@ import {
   type EffectSpec,
   type PartControl,
 } from "@/forge/parts";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 /** Whether a change is one of a run or the end of one, for the undo stack. */
 export type Phase = "single" | "during" | "end";

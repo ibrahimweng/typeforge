@@ -19,7 +19,7 @@ import { SEVERITY_BADGE, SEVERITY_EDGE, SEVERITY_LABEL } from "@/components/seve
 import { faultsOfGlyph } from "@/font/validate";
 import { whyItCannotVary, type Master } from "@/font/master";
 import type { Glyph, Typeface } from "@/font/types";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 export function GlyphFaults({
   typeface,

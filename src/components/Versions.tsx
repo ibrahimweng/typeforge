@@ -26,7 +26,7 @@ import * as React from "react";
 import { OUTLINE_ACTION, SEGMENT_TRACK, segment } from "@/components/controls";
 import { AXES, axesOf, axisSpec, lettersThatCannotVary } from "@/font/master";
 import { store, useAppState } from "@/state/useStore";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 export function Versions({ compact = false }: { compact?: boolean }): React.JSX.Element | null {
   const state = useAppState();

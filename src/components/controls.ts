@@ -18,7 +18,7 @@
  * what makes a row of tabs feel like buttons rather than text.
  */
 
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 /** The track a segmented control sits in. */
 export const SEGMENT_TRACK = "flex items-center gap-0.5 rounded-md bg-card/60 p-0.5";
