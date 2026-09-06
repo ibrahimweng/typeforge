@@ -28,8 +28,9 @@
 import type * as React from "react";
 
 import { PenNumbers } from "@/components/PenPanel";
+import { WarpControl } from "@/components/WarpControl";
 import { GroundToggle } from "@/components/GroundToggle";
-import { toolInfo, writesStrokes } from "@/font/toolset";
+import { groupOf, toolInfo, writesStrokes } from "@/font/toolset";
 import { store, useAppState } from "@/state/useStore";
 import { cn } from "@/cn";
 
@@ -164,6 +165,15 @@ export function OptionsBar({ glyphName }: { glyphName: string }): React.JSX.Elem
         changed in the middle of one.
       */}
       {writesStrokes(tool) && <PenNumbers glyphName={glyphName} />}
+      {/*
+        The named warps, beside the tool that uses them.
+
+        Only with the select tools, because they bend what is picked and the
+        other eleven tools are for drawing rather than for picking. Only with
+        something picked, which the control decides for itself: a box round one
+        point has no size to bend.
+      */}
+      {groupOf(tool) === "select" && <WarpControl glyphName={glyphName} />}
 
       <span className="ml-auto flex shrink-0 items-center gap-2 pl-3">
         <GroundToggle />

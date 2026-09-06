@@ -1,0 +1,192 @@
+/**
+ * The named warps, in the strip beside the tool that uses them.
+ *
+ * The box on the canvas does everything a matrix or a quad can: scale, turn,
+ * skew, distort, lay back. These are the ones that bend the inside of the box
+ * while its corners stay put, and they are here rather than on the box because
+ * there is nothing to grab for them. A bulge has no corner. What it has is a
+ * name and an amount, which is a picker and a slider.
+ *
+ * ## Why the slider works the way it does
+ *
+ * Every move of it is applied from the outlines the letter had when the
+ * gesture began, not from the ones on screen. Applied to what is drawn, each
+ * step would bend an already bent letter and the amount would run away from
+ * the number under the pointer -- and a field warp that cuts would cut its own
+ * cuts, so dragging from nought to a half and back to nought would leave a
+ * letter with four times the points and none of the shape.
+ *
+ * Letting go writes one entry to the history. Dragging writes none, which is
+ * what makes the whole sweep one thing to take back.
+ *
+ * ## What it costs
+ *
+ * These are the only transforms here that add points, and they have to: only a
+ * matrix takes a cubic to a cubic, so a stem drawn with two points has nothing
+ * between them for a bulge to move. The count is shown beside the slider while
+ * it is being dragged, because a letter that quietly went from forty points to
+ * three hundred is a letter somebody finds out about at the exporter.
+ */
+
+import * as React from "react";
+
+import { fieldMove, WARPS, type Cost, type WarpName } from "@/font/warp";
+import { boxRound } from "@/views/transform-box";
+import { store, useAppState } from "@/state/useStore";
+import { parseNodeKey } from "@/views/glyph-pointer";
+import type { Contour, Vec2 } from "@/font/types";
+import { cn } from "@/cn";
+
+const SWITCH =
+  "rounded border px-2 py-1 text-2xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent";
+
+export function WarpControl({ glyphName }: { glyphName: string }): React.JSX.Element | null {
+  const selected = useAppState((state) => state.selectedNodes);
+  const [name, setName] = React.useState<WarpName>("bulge");
+  const [amount, setAmount] = React.useState(0);
+  const [cost, setCost] = React.useState<Cost | null>(null);
+
+  /*
+   * What the gesture started from: the outlines, the selection, and the box.
+   *
+   * Taken when the slider is first touched and held until it is let go. All
+   * three have to be the ones from the start -- the box included, since a warp
+   * that moved the points would otherwise be measured against a box that had
+   * moved with them, and the bend would wander as the slider moved.
+   */
+  const began = React.useRef<{
+    contours: Contour[];
+    picked: Set<string>;
+    box: { left: number; right: number; bottom: number; top: number };
+  } | null>(null);
+
+  const start = React.useCallback((): boolean => {
+    const glyph = store.glyph(glyphName);
+    if (!glyph) return false;
+    const picked = new Set(store.getSnapshot().selectedNodes);
+    const points = [...picked]
+      .map(parseNodeKey)
+      .map((ref) => glyph.contours[ref.contour]?.nodes[ref.node]?.point)
+      .filter((point): point is Vec2 => point !== undefined);
+    const box = boxRound(points);
+    if (!box || box.right === box.left || box.top === box.bottom) return false;
+    began.current = {
+      contours: glyph.contours.map((one) => ({
+        ...one,
+        nodes: one.nodes.map((node) => ({ ...node })),
+      })),
+      picked,
+      box,
+    };
+    return true;
+  }, [glyphName]);
+
+  const bend = React.useCallback(
+    (to: number) => {
+      const from = began.current;
+      if (!from) return;
+      setCost(
+        store.warpSelection(
+          glyphName,
+          from.contours,
+          from.picked,
+          fieldMove(from.box, name, to),
+          // Cutting is what makes a field warp follow the bend rather than
+          // moving four points and leaving the lines between them straight.
+          { cut: true },
+        ),
+      );
+    },
+    [glyphName, name],
+  );
+
+  /** Let go: one entry in the history for the whole sweep, or none at all. */
+  const settle = React.useCallback(() => {
+    const from = began.current;
+    began.current = null;
+    setCost(null);
+    if (!from) return;
+    if (amount === 0) {
+      // Back where it started is not an edit. Putting the outlines back by
+      // hand rather than trusting the last frame, because a sweep out and back
+      // through a cutting warp does not return the points it took.
+      store.editGlyphLive(glyphName, (one) => {
+        one.contours = from.contours;
+      });
+      store.setSelectedNodes(from.picked);
+      return;
+    }
+    const glyph = store.glyph(glyphName);
+    if (glyph) {
+      store.commitGlyphEdit(glyphName, `${labelOf(name)} the selection`, {
+        ...glyph,
+        contours: from.contours,
+      });
+    }
+    setAmount(0);
+  }, [amount, glyphName, name]);
+
+  // Two points is the least that has a box with any size in it to bend.
+  if (selected.size < 2) return null;
+
+  return (
+    <span className="flex items-center gap-2" data-warp-control>
+      <select
+        aria-label="Which warp"
+        data-warp-name
+        value={name}
+        onChange={(event) => setName(event.target.value as WarpName)}
+        title={WARPS.find((one) => one.id === name)?.hint}
+        className={cn(SWITCH, "border-border bg-card text-foreground")}
+      >
+        {WARPS.map((warp) => (
+          <option key={warp.id} value={warp.id} title={warp.hint}>
+            {warp.name}
+          </option>
+        ))}
+      </select>
+      <input
+        type="range"
+        aria-label="How much"
+        data-warp-amount
+        min={-100}
+        max={100}
+        value={Math.round(amount * 100)}
+        onPointerDown={() => start()}
+        onKeyDown={() => began.current ?? start()}
+        onChange={(event) => {
+          const to = Number(event.target.value) / 100;
+          setAmount(to);
+          // A keyboard change arrives with no press before it, so the baseline
+          // is taken here as well as on the way down.
+          if (!began.current && !start()) return;
+          bend(to);
+        }}
+        onPointerUp={settle}
+        onBlur={settle}
+        className="h-6 w-28 accent-[color:var(--accent)]"
+      />
+      <span className="w-8 text-2xs tabular-nums text-muted-foreground" data-warp-said>
+        {Math.round(amount * 100)}
+      </span>
+      {/*
+        What it is about to cost, while it is being dragged.
+
+        These are the only transforms here that add points, and a letter that
+        quietly went from forty to three hundred is one somebody finds out
+        about at the exporter.
+      */}
+      {cost && cost.after !== cost.before && (
+        <span className="text-2xs text-[color:var(--attention)]" data-warp-cost>
+          {cost.before} → {cost.after} points
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** The verb for the history, which reads better than the noun. */
+function labelOf(name: WarpName): string {
+  const found = WARPS.find((one) => one.id === name);
+  return found ? found.name : "Warp";
+}

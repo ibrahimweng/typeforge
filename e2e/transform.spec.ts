@@ -155,3 +155,71 @@ test("the ring outside a corner turns the selection", async ({ page }) => {
 
   expect(await shape(page), "the letter should have turned").not.toBe(before);
 });
+
+test("a warp bends the selection, and says what it costs", async ({ page }) => {
+  /*
+   * The half of this that a matrix cannot do. A stem drawn with two points has
+   * nothing between them for a bulge to move, so a warp has to cut -- and
+   * cutting is the one thing here that changes a letter's point count, which
+   * is why the control says so while the slider is moving rather than leaving
+   * somebody to find out at the exporter.
+   */
+  await aLetterWithPoints(page);
+  await pickEverything(page);
+  const before = await shape(page);
+  const counts = await pointCounts(page);
+
+  await expect(page.locator("[data-warp-control]")).toBeVisible();
+  await page.locator("[data-warp-name]").selectOption("bulge");
+
+  const slider = page.locator("[data-warp-amount]");
+  const box = (await slider.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.85, box.y + box.height / 2, { steps: 8 });
+
+  // While it is held: the letter has bent and the cost is on screen.
+  await expect(page.locator("[data-warp-cost]")).toContainText("points");
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+
+  expect(await shape(page), "the letter should have bulged").not.toBe(before);
+  expect(await pointCounts(page), "a warp has to cut to follow the bend").not.toEqual(counts);
+
+  // And the whole sweep is one thing to take back.
+  await page.locator("[data-glyph-canvas]").focus();
+  await page.keyboard.press("ControlOrMeta+z");
+  await page.waitForTimeout(300);
+  expect(await pointCounts(page), "one undo should give the points back").toEqual(counts);
+  expect(await shape(page)).toBe(before);
+});
+
+test("every warp in the list actually bends something", async ({ page }) => {
+  /*
+   * Ten names in a menu, and the failure worth guarding is a name that quietly
+   * does nothing. The arithmetic has its own version of this test; this one
+   * says the wiring reaches all ten, which the arithmetic cannot.
+   */
+  await aLetterWithPoints(page);
+  await pickEverything(page);
+  const names = await page
+    .locator("[data-warp-name] option")
+    .evaluateAll((all) => all.map((one) => (one as HTMLOptionElement).value));
+  expect(names.length).toBe(10);
+
+  for (const name of names) {
+    const before = await shape(page);
+    await page.locator("[data-warp-name]").selectOption(name);
+    const slider = page.locator("[data-warp-amount]");
+    await slider.focus();
+    // Through the keyboard, which takes the baseline on the way in rather than
+    // on a press, and is the path a pointer test would never cover.
+    for (let press = 0; press < 12; press++) await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(150);
+    expect(await shape(page), `${name} bent nothing`).not.toBe(before);
+
+    await page.locator("[data-glyph-canvas]").focus();
+    await page.keyboard.press("ControlOrMeta+z");
+    await page.waitForTimeout(150);
+  }
+});
