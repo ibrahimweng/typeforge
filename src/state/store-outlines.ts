@@ -12,6 +12,7 @@ import { simplified, withPointOn, withoutPoint } from "@/font/pen";
 import type { Contour, Vec2 } from "@/font/types";
 import { correctDirection, dominantConvention, insertExtrema } from "@/font/outline";
 import { slice } from "@/font/knife";
+import { warpContours, type Cost, type Move } from "@/font/warp";
 import { shapeFrom, type Box, type ShapeKind } from "@/font/shapes";
 import {
   cornered,
@@ -102,6 +103,62 @@ export abstract class OutlineStore extends EditingStore {
         ),
       }));
     });
+  }
+
+  /**
+   * Bend what is picked, from the box drawn round it.
+   *
+   * Worked out from the outlines the gesture started with rather than from the
+   * ones on screen, and that is the whole shape of this method. A drag calls it
+   * on every frame; computed from what is currently drawn, each frame would
+   * bend an already bent letter, and a field warp that cuts would cut the cuts.
+   * Handed the originals, every frame is the same one movement at a different
+   * size, and letting go is simply the last of them.
+   *
+   * The selection is put back afterwards because cutting moves it. A cut adds a
+   * node, every node after it shifts along by one, and the keys somebody was
+   * holding then point at different points -- so a second drag on the same
+   * selection would take hold of the wrong ones.
+   *
+   * Live, so no undo entry is made here. The caller captured the glyph before
+   * the gesture and records the whole of it with `commitGlyphEdit` when the
+   * pointer comes up, which is what makes a drag one step to take back rather
+   * than sixty.
+   */
+  warpSelection(
+    glyphName: string,
+    from: Contour[],
+    picked: ReadonlySet<string>,
+    move: Move,
+    options: { cut?: boolean; within?: number } = {},
+  ): Cost | null {
+    const glyph = this.glyph(glyphName);
+    if (!glyph || from.length === 0) return null;
+
+    const {
+      contours,
+      cost,
+      picked: now,
+    } = warpContours(
+      from,
+      { has: (contour, node) => picked.has(nodeKey({ contour, node })) },
+      move,
+      options,
+    );
+
+    this.editGlyphLive(glyphName, (one) => {
+      one.contours = contours;
+    });
+    /*
+     * Only when it actually changed, because setting it is a state write and
+     * this runs on every frame of a drag. A quad map cuts nothing, so the keys
+     * are the ones that went in and the comparison is what keeps the selection
+     * from being rewritten sixty times a second.
+     */
+    if (now.size !== picked.size || [...now].some((key) => !picked.has(key))) {
+      this.setSelectedNodes(now);
+    }
+    return cost;
   }
 
   /**

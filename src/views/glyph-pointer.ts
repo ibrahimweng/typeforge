@@ -17,6 +17,8 @@ import { slice } from "@/font/knife";
 import { segmentAt } from "@/font/pen";
 import { toFontX, toFontY, type GlyphView } from "@/components/glyph-render";
 import { nodeKey, store, type NodeRef } from "@/state/useStore";
+import type { Box as BoxOf } from "@/font/warp";
+import type { Grip } from "./transform-box";
 import type { PenHandle } from "./write-canvas";
 
 /** How close a click has to land, in screen pixels, to grab a node. */
@@ -70,6 +72,24 @@ export type Drag =
   | { kind: "anchor"; name: string; before: Anchor[] }
   | { kind: "pan"; from: Vec2; startPan: Vec2 }
   | { kind: "guide"; index: number }
+  /**
+   * A handle of the box round the selection.
+   *
+   * Carries the outlines the gesture started with, because every frame is
+   * worked out from those rather than from what is on screen: computed from
+   * the drawing as it stands, each frame would transform an already
+   * transformed letter and a drag would run away with itself.
+   */
+  | {
+      kind: "box";
+      grip: Exclude<Grip, { kind: "inside" }>;
+      box: BoxOf;
+      from: Vec2;
+      to: Vec2;
+      before: Glyph;
+      contours: Contour[];
+      picked: Set<string>;
+    }
   /*
    * The two that draw rather than move. Both hold canvas coordinates and
    * neither touches the letter until the pointer comes up: a shape half

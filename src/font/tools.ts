@@ -99,7 +99,8 @@ export interface Doing {
     | "penHandle"
     | "strokePoint"
     | "writeTrail"
-    | "lasso";
+    | "lasso"
+    | "box";
   /** For the knife: whether the line as drawn crosses anything. */
   wouldCut?: boolean;
   /** For freehand: whether letting go here would close the loop. */
