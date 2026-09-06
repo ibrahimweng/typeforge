@@ -11,6 +11,7 @@
  */
 
 import { readComposites } from "./composite";
+import { FontFileError, unreadable } from "./damaged";
 import { contoursBounds } from "./geometry";
 import { featuresFromGsub } from "./features";
 import { readGposKerning, toKernClasses, writtenPairs } from "./gpos";
@@ -150,11 +151,34 @@ export async function importFont(
 
   const format = detectFormat(raw);
   if (format === "unknown") {
-    throw new Error(
+    throw new FontFileError(
       "That file does not look like a font. Typeforge reads TrueType (.ttf), OpenType (.otf), WOFF and WOFF2.",
     );
   }
 
+  /*
+   * Everything past here reads the file itself, and a damaged one can make any
+   * of it throw: this module, the sfnt reader, the WOFF decoder, opentype.js
+   * and the tables below it. Whatever comes out lands in the status line
+   * verbatim, so it is turned into a sentence here rather than shown raw.
+   *
+   * `damaged.ts` has the fuzzing that says why. A message somebody meant --
+   * anything thrown as a `FontFileError` -- goes through as it is.
+   */
+  try {
+    return await read(raw, format, fileName, warnings);
+  } catch (error) {
+    if (error instanceof FontFileError) throw error;
+    throw unreadable(fileName, error);
+  }
+}
+
+async function read(
+  raw: Uint8Array,
+  format: FontFormat,
+  fileName: string,
+  warnings: string[],
+): Promise<ImportResult> {
   const bytes = await toSfntBytes(raw, format);
   const sfnt = readSfnt(bytes);
   const isCFF = sfnt.sfntVersion === SFNT_CFF || sfnt.tables.has("CFF ");
