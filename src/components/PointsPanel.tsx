@@ -32,7 +32,7 @@ export function PointsPanel(): React.JSX.Element | null {
   const spare = tidyWouldRemove(glyph.contours);
 
   return (
-    <div data-points-panel>
+    <div>
       {/*
         Picking, above the operations that need something picked.
 

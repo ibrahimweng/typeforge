@@ -29,6 +29,7 @@ import * as React from "react";
 import {
   LEAST_WIDTH,
   MOST_WIDTH,
+  widthWithin,
   arrangePanels,
   inOrder,
   resetLayout,
@@ -53,6 +54,16 @@ export interface DockPanel {
   body: React.ReactNode;
   /** A word or two beside the name, for what the panel is currently about. */
   note?: React.ReactNode;
+  /**
+   * The attribute the browser tests know this panel by.
+   *
+   * On the section rather than on the body, so it names the whole panel --
+   * header included. That is where it belongs now that the dock draws the
+   * header: the paths panel says how many paths there are in its header, and a
+   * marker that covered only the body would say the panel no longer mentions
+   * them. Which is exactly what three tests reported when the header moved.
+   */
+  mark?: string;
 }
 
 /**
@@ -113,6 +124,26 @@ export function Dock({
   const layout = useLayout();
   const column = React.useRef<HTMLDivElement>(null);
 
+  /*
+   * How wide the window is, so the dock can give width back on a small one.
+   *
+   * The fixed column this replaced was three widths, chosen by the stylesheet
+   * from the window. A remembered number in pixels is not, so the ceiling has
+   * to be applied here -- and it is a ceiling rather than a correction, so the
+   * width somebody chose on a big screen is still theirs when they come back
+   * to one.
+   */
+  const [windowWidth, setWindowWidth] = React.useState(() =>
+    typeof window === "undefined" ? 1280 : window.innerWidth,
+  );
+  React.useEffect(() => {
+    const measure = (): void => setWindowWidth(window.innerWidth);
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+  const width = widthWithin(layout.width, windowWidth);
+
   const offered = panels.filter((panel) => panel.when !== false);
   const arranged = inOrder(offered, layout.order);
   const shown = arranged.filter((panel) => !layout.hidden.includes(panel.id));
@@ -139,7 +170,7 @@ export function Dock({
   );
 
   return (
-    <div className="flex shrink-0" style={{ width: layout.width }}>
+    <div className="flex shrink-0" style={{ width }}>
       {/*
         The edge, which is a control and has to look like one.
 
@@ -157,7 +188,7 @@ export function Dock({
           event.preventDefault();
           event.currentTarget.setPointerCapture(event.pointerId);
           const startX = event.clientX;
-          const startWidth = layout.width;
+          const startWidth = width;
           const move = (moving: PointerEvent): void => {
             // Leftwards is wider, because the dock is on the right.
             resizeDock(startWidth + (startX - moving.clientX));
@@ -171,8 +202,8 @@ export function Dock({
         }}
         onKeyDown={(event) => {
           const step = event.shiftKey ? 48 : 16;
-          if (event.key === "ArrowLeft") resizeDock(layout.width + step);
-          else if (event.key === "ArrowRight") resizeDock(layout.width - step);
+          if (event.key === "ArrowLeft") resizeDock(width + step);
+          else if (event.key === "ArrowRight") resizeDock(width - step);
           else if (event.key === "Home") resizeDock(LEAST_WIDTH);
           else if (event.key === "End") resizeDock(MOST_WIDTH);
           else return;
@@ -241,6 +272,7 @@ export function Dock({
               <section
                 key={panel.id}
                 data-panel={panel.id}
+                {...(panel.mark ? { [panel.mark]: true } : {})}
                 data-panel-carried={carrying?.id === panel.id ? "true" : undefined}
                 className={cn(
                   "border-b border-border",

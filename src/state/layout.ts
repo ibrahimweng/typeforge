@@ -54,6 +54,28 @@ export interface Layout {
 export const LEAST_WIDTH = 180;
 export const MOST_WIDTH = 560;
 
+/**
+ * The most of the window the dock may take, whatever width was asked for.
+ *
+ * The column it replaced was three widths rather than one: 224 pixels on a
+ * small window, 256 on a medium one, 288 on a large. That is worth keeping.
+ * A dock set to 400 on a thirty-inch monitor and then opened on a laptop would
+ * otherwise leave 460 pixels of canvas out of 900, and a letter is the point
+ * of the application.
+ *
+ * A ceiling on what is drawn rather than a correction to what was asked for,
+ * so the width a person chose comes back the moment the window is big enough
+ * to honour it. What they set is what they meant; a small window is a reason
+ * to show less of it, not to forget it.
+ */
+export const MOST_OF_THE_WINDOW = 0.3;
+
+/** How wide the dock may actually be drawn, in a window this wide. */
+export function widthWithin(asked: number, window: number): number {
+  const ceiling = Math.max(LEAST_WIDTH, Math.round(window * MOST_OF_THE_WINDOW));
+  return Math.min(asked, ceiling);
+}
+
 const BY_DEFAULT: Layout = { width: 288, order: [], collapsed: [], hidden: [] };
 
 const KEPT = "typeforge.layout";

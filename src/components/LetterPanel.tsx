@@ -107,7 +107,7 @@ export function LetterPanel(): React.JSX.Element | null {
   };
 
   return (
-    <div data-letter-panel>
+    <div>
       <label className="flex flex-col gap-1 pb-2">
         <span className="text-2xs text-muted-foreground">Name</span>
         <input

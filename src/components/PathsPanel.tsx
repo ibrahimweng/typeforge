@@ -97,7 +97,7 @@ export function PathsPanel(): React.JSX.Element | null {
   };
 
   return (
-    <div data-paths-panel>
+    <div>
       {contours.length === 0 ? (
         <p className="text-2xs leading-snug text-muted-foreground">
           This letter has no outlines of its own. It may be built from components, which the Build

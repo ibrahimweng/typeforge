@@ -168,7 +168,13 @@ export function Inspector(): React.JSX.Element {
   const points = (many: number): string => `${many} point${many === 1 ? "" : "s"}`;
 
   const panels: DockPanel[] = [
-    { id: "letter", name: "This letter", when: editingGlyph, body: <LetterPanel /> },
+    {
+      id: "letter",
+      name: "This letter",
+      mark: "data-letter-panel",
+      when: editingGlyph,
+      body: <LetterPanel />,
+    },
     {
       id: "writing",
       name: "Writing",
@@ -177,6 +183,7 @@ export function Inspector(): React.JSX.Element {
     },
     {
       id: "paths",
+      mark: "data-paths-panel",
       name: "Paths",
       when: drawing,
       note: (
@@ -188,6 +195,7 @@ export function Inspector(): React.JSX.Element {
     },
     {
       id: "transform",
+      mark: "data-transform-panel",
       name: "Transform",
       when: drawing && outlines > 0,
       note: <span data-transform-scope>{picked === 0 ? "the whole letter" : points(picked)}</span>,
@@ -195,6 +203,7 @@ export function Inspector(): React.JSX.Element {
     },
     {
       id: "points",
+      mark: "data-points-panel",
       name: "Points",
       when: drawing && outlines > 0,
       note: <span data-points-scope>{picked === 0 ? "none picked" : points(picked)}</span>,

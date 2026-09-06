@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 
 import { landingAmong } from "./Dock";
-import { inOrder } from "@/state/layout";
+import { LEAST_WIDTH, inOrder, widthWithin } from "@/state/layout";
 
 /** Four panels of forty pixels each, starting at the top of the column. */
 const MIDDLES = [
@@ -94,5 +94,39 @@ describe("the order the panels are drawn in", () => {
   it("does not mind an arrangement naming a panel that has gone", () => {
     // A record from a version that had a panel this one does not.
     expect(inOrder(declared, ["gone", "b"]).map((one) => one.id)).toEqual(["b", "a", "c"]);
+  });
+});
+
+describe("how wide the dock may actually be drawn", () => {
+  /*
+   * The column this replaced was three widths chosen by the stylesheet from
+   * the window: 224 pixels on a small one, 288 on a large. A remembered number
+   * in pixels is not, and losing that was a real cost rather than a test to
+   * update -- a dock set wide on a monitor and then opened on a laptop would
+   * have left 460 pixels of canvas out of 900.
+   */
+  it("gives width back when the window is too small to honour it", () => {
+    expect(widthWithin(288, 900)).toBe(270);
+    expect(widthWithin(480, 900)).toBe(270);
+  });
+
+  it("leaves the width alone when there is room for it", () => {
+    expect(widthWithin(288, 1500)).toBe(288);
+    expect(widthWithin(480, 1920)).toBe(480);
+  });
+
+  it("is a ceiling and not a correction, so a wide window gives it back", () => {
+    // The remembered number never changes here. What somebody set is what they
+    // meant; a small window is a reason to show less of it, not to forget it.
+    const asked = 480;
+    expect(widthWithin(asked, 900)).toBeLessThan(asked);
+    expect(widthWithin(asked, 1920)).toBe(asked);
+  });
+
+  it("never squeezes below the floor, however narrow the window", () => {
+    // A dock narrower than this is a column of clipped labels rather than
+    // controls, which helps nobody on a small screen either.
+    expect(widthWithin(288, 400)).toBe(LEAST_WIDTH);
+    expect(widthWithin(288, 100)).toBe(LEAST_WIDTH);
   });
 });

@@ -39,7 +39,7 @@ export function TransformPanel(): React.JSX.Element | null {
   const canAlign = picked > 1;
 
   return (
-    <div data-transform-panel>
+    <div>
       <div className="flex flex-wrap gap-1 pb-2">
         <ToolButton
           onClick={() =>
