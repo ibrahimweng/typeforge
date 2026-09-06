@@ -24,7 +24,7 @@ import { enterStaggered } from "@/anim/motion";
 import { OUTLINE_ACTION, PRIMARY_ACTION } from "@/components/controls";
 import { libraryStore } from "@/state/library-store";
 import { store } from "@/state/useStore";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 /** One way in: what it makes, and what it wants from you. */
 function Route({

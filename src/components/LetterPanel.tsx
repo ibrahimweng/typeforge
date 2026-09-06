@@ -18,7 +18,7 @@ import * as React from "react";
 
 import { freeNameNear } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 const ACTION = cn(
   "rounded border border-border px-1.5 py-1 text-2xs text-muted-foreground transition-colors",

@@ -31,7 +31,7 @@ import { segment, WIDE_PANEL } from "@/components/controls";
 import { contoursToSvgPath } from "@/font/geometry";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
 import { SliderControl as Slider } from "@/ui/components/controls/slider";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 /** A line of the font, as a control. */
 const METRIC_CONTROLS: Array<{

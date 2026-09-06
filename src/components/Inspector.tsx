@@ -34,7 +34,7 @@ import { store, useAppState, type ViewId } from "@/state/useStore";
 // Imported from the control directly rather than through the UI barrel: the
 // barrel re-exports every control, which pulls the whole kit into the bundle.
 import { SliderControl as Slider } from "@/ui/components/controls/slider";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 type Scope = "family" | "glyph" | "build";
 

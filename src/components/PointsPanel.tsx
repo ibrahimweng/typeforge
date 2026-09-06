@@ -20,7 +20,7 @@ import { tidyWouldRemove } from "@/font/nodes";
 import { KEEPS_THE_SHAPE, simplifyWouldRemove } from "@/font/pen";
 import { store, useAppState } from "@/state/useStore";
 import { ToolButton } from "@/components/ToolButton";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 export function PointsPanel(): React.JSX.Element | null {
   const state = useAppState();

@@ -18,7 +18,7 @@ import type { Glyph } from "@/font/types";
 import { NothingDrawnYet } from "@/components/NothingDrawnYet";
 import { hasLetters } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 interface Row {
   glyph: Glyph;

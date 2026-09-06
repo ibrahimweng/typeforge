@@ -16,7 +16,7 @@ import { NOTDEF } from "@/font/library";
 import { drawGlyph, fitEmSquare, prepareCanvas, readToken } from "@/components/glyph-render";
 import { store, useAppState } from "@/state/useStore";
 import { tile } from "@/components/controls";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 const GROUP_LABELS: Record<string, string> = {
   lowercase: "Lowercase",

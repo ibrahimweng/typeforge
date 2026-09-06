@@ -39,7 +39,7 @@ import {
 
 import { GROUPS, TOOLS, groupOf, toolsIn, type GroupId, type ToolInfo } from "@/font/toolset";
 import { store, useAppState, type ToolId } from "@/state/useStore";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 /*
  * A drawn icon rather than a word for each, and the word on the flyout.

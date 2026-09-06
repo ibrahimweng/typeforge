@@ -21,7 +21,7 @@ import * as React from "react";
 
 import { enter } from "@/anim/motion";
 import { SliderControl } from "@/ui/components/controls/slider";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 import { catalogue, type AppShell, type Item } from "./catalogue";
 import { forgeControls } from "./forge-controls";
 import { recentIds, remember } from "./recent";

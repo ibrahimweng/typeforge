@@ -22,7 +22,7 @@ import { exportFont, type ExportFormat } from "@/font/export";
 import { toTypeface } from "@/quill/typeface";
 import { quillStore, useQuill } from "@/state/useQuill";
 import { OUTLINE_ACTION, PRIMARY_ACTION } from "@/components/controls";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 /** A file name that will survive a download folder. */
 function fileNameFor(family: string, format: ExportFormat): string {

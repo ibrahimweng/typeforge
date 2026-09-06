@@ -26,7 +26,7 @@ import {
 } from "@/academy/progress";
 import { useAppState } from "@/state/useStore";
 import { useForge } from "@/state/useForge";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 export function AcademyDrawer({
   mode,

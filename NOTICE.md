@@ -7,6 +7,27 @@ The interface components in `src/ui/` come from **Toolcraft** by Pixel Point
 are used under the Toolcraft Designer License, which permits personal,
 internal, educational and designer client work.
 
+**What is left of it: one slider, 47 files, about 5,500 lines.**
+
+It was 191 files and 23,635 lines, and the application imported three things
+out of all of that: a `cn` helper, one slider, and a stylesheet. The other 144
+files were unreachable — no import anywhere led to them — so they are gone.
+Deleting them also took the compiled stylesheet from 334 KB to 200 KB, because
+Tailwind had been generating utilities for components nobody could open.
+
+`cn` came over to `src/cn.ts`, which is six lines of `clsx` and `tailwind-merge`
+written the way every project using Tailwind writes them. Both are ordinary MIT
+packages this project already depends on. That one move accounted for forty of
+the forty-six places the application touched this library.
+
+So one component stands between this repository and being MIT throughout. It is
+built on `@base-ui/react/slider`, which is MIT and already a direct dependency,
+so replacing it is possible rather than theoretical. It is a design decision
+rather than a cleanup: sliders are the primary control in a tool for drawing
+type, and how they feel is the product.
+
+`src/licensed.test.ts` holds the numbers above and fails if they grow.
+
 That license does **not** permit selling this application as a standalone
 product, or including it in a paid AI software product, app builder, website
 builder, design-to-code service, template marketplace or competing generator.

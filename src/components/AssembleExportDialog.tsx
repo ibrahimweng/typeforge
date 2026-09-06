@@ -17,7 +17,7 @@ import { enter, refuse } from "@/anim/motion";
 import { exportFont, toDownloadBlob, type ExportFormat } from "@/font/export";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
 import { OUTLINE_ACTION, PRIMARY_ACTION } from "@/components/controls";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 export function AssembleExportDialog({ onClose }: { onClose: () => void }): React.JSX.Element {
   const state = useAssemble();

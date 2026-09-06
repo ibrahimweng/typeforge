@@ -22,7 +22,7 @@ import { SliderControl as Slider } from "@/ui/components/controls/slider";
 import { TakeToEditor } from "@/components/TakeToEditor";
 import { store } from "@/state/useStore";
 import { WIDE_PANEL } from "@/components/controls";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 export function QuillPanel({ onEdit }: { onEdit: () => Promise<void> }): React.JSX.Element {
   const state = useQuill();

@@ -29,7 +29,7 @@ import { hasLetters } from "@/font/library";
 import { typefaceAt } from "@/font/masters";
 import { Versions } from "@/components/Versions";
 import { store, useAppState } from "@/state/useStore";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 /*
  * What it opens with, and why this rather than a pangram.

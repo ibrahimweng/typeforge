@@ -19,7 +19,7 @@ import type * as React from "react";
 import { NumberField } from "./NumberField";
 import { store, useAppState } from "@/state/useStore";
 import { isOnePen, nibAt } from "@/quill/sweep";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/cn";
 
 /** One number of the pen, with its name and its unit. */
 function Field({
