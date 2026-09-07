@@ -34,17 +34,28 @@ function frame(page: Page): Promise<string> {
 }
 
 /**
- * How many warm pixels the canvas has: the points drawn as selected.
+ * How many pixels of the canvas are the orange a selected point is drawn in.
  *
- * Counted as "much more red than blue" rather than matched against the token
- * itself, and that is not laziness. The marquee lays a wash of accent over
- * everything inside it, so a lit point *under* the box is the selected orange
- * blended with blue -- near enough to be plainly orange to a person, far
- * enough that an exact match finds none of them. Asked exactly, this test
- * reported zero while the screen showed a box full of orange dots.
+ * Not matched against the token exactly, and that is not laziness. The marquee
+ * lays a wash of accent over everything inside it, so a lit point *under* the
+ * box is the selected orange blended with blue -- plainly orange to a person,
+ * far enough off the token that an exact match finds none of them. Asked
+ * exactly, this test reported zero while the screen showed a box full of dots.
  *
- * The rest of the canvas cannot be mistaken for it. The accent is blue, the
- * outline is blue, and the grounds are grey; only a selected point is warm.
+ * So it is asked as a hue instead, on two axes, and the second one is the
+ * point. Red-against-blue alone is not "the selected orange": the baseline
+ * guide is red too, and it draws its name across the canvas in that red on
+ * every frame. Whether those letters land dark enough to be counted comes down
+ * to how hard a browser rasterises 10px text -- two pixels of it on Chromium,
+ * a hundred and fifty on WebKit, which is a browser difference standing in a
+ * place that has nothing to do with browsers. Green-against-blue tells the two
+ * apart with the whole spectrum to spare: the selected orange sits at 103 under
+ * the wash and 129 without it, and the baseline red at 1.
+ *
+ * Nothing else on the canvas is orange. The accent and the outline are blue,
+ * the grounds are grey, and the one other warm token -- the ring around a
+ * fault, at 57 -- is below the line and is not drawn unless the faults toggle
+ * is turned on, which it is not here.
  */
 function selectedPixels(page: Page): Promise<number> {
   return page.evaluate(() => {
@@ -52,11 +63,12 @@ function selectedPixels(page: Page): Promise<number> {
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return -1;
     const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
-    let warm = 0;
+    let orange = 0;
     for (let i = 0; i < data.length; i += 4) {
-      if (data[i + 3] > 200 && data[i] - data[i + 2] > 60) warm++;
+      const [red, green, blue, alpha] = [data[i], data[i + 1], data[i + 2], data[i + 3]];
+      if (alpha > 200 && red - blue > 60 && green - blue > 70) orange++;
     }
-    return warm;
+    return orange;
   });
 }
 
@@ -77,9 +89,10 @@ test("points light up while the box is still being dragged", async ({ page }) =>
 
   /*
    * A lit point is a filled square four or five pixels across, so it costs
-   * something like twenty warm pixels. Anything under one point's worth is the
-   * antialiasing on something else -- there are two, consistently -- and
-   * demanding a clean zero would be a test failing on a rounded edge.
+   * something like twenty pixels of orange. Asked for the hue rather than for
+   * warmth, an untouched letter comes back at a clean zero -- but the budget of
+   * one point stays, because a test that insists on zero is a test that fails
+   * the day something picks up a rounded orange edge.
    */
   const A_POINT = 16;
   const before = await selectedPixels(page);
@@ -97,7 +110,7 @@ test("points light up while the box is still being dragged", async ({ page }) =>
    * And they are still lit after, which is as much as pixels can say here.
    *
    * Not the same count: mid-drag the points are under the box's wash and some
-   * are still wearing their flash ring, so the warm total is larger while the
+   * are still wearing their flash ring, so the orange total is larger while the
    * shape is out. The claim worth making -- that the points shown are the
    * points taken -- is not one a pixel count can carry, and it is held where
    * it belongs instead: both the preview and the release ask the same function
