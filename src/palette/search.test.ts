@@ -46,6 +46,14 @@ const shell = {
   startFromBase: () => {},
   chooseAlternate: () => {},
   hasFont: true,
+  openFonts: [
+    { id: "font-0", name: "Bakerloo" },
+    { id: "font-1", name: "Metro" },
+  ],
+  openAt: 0,
+  goToFont: () => {},
+  reopenable: "Bakerloo",
+  reopenFont: () => {},
 } as unknown as Shell;
 
 const items = catalogue(shell);
@@ -177,10 +185,31 @@ describe("the catalogue", () => {
     }
   });
 
-  it("marks the entries that throw work away", () => {
+  it("marks the entries that throw work away, and only those", () => {
+    /*
+     * The three file actions were all marked, and none of them throws anything
+     * away any more: a font opened, a UFO folder and a blank one each arrive in
+     * a tab beside what is already open. A confirmation before something that
+     * does not happen is worse than none, because it is the one that teaches
+     * people to click through the one that does.
+     *
+     * What is still marked is starting from a face, which replaces every part
+     * of the drawing in hand.
+     */
     const byId = new Map(items.map((one) => [one.id, one]));
-    expect(byId.get("action:new")?.destructive).toBe(true);
-    expect(byId.get("action:open")?.destructive).toBe(true);
+    expect(byId.get("action:new")?.destructive).toBeUndefined();
+    expect(byId.get("action:open")?.destructive).toBeUndefined();
+    expect(byId.get("action:open-folder")?.destructive).toBeUndefined();
     expect(byId.get("action:save")?.destructive).toBeUndefined();
+    const face = items.find((one) => one.id.startsWith("face:"));
+    expect(face?.destructive, "starting from a face still replaces the drawing").toBe(true);
+  });
+
+  it("offers the other open fonts by name, but not the one in front", () => {
+    // The strip of tabs is the way anybody will do this, and it does not
+    // appear until there are two. This is the only place a font can be reached
+    // by typing what it is called.
+    const fonts = items.filter((one) => one.id.startsWith("font:"));
+    expect(fonts.map((one) => one.label)).toEqual(["Metro"]);
   });
 });

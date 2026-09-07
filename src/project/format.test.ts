@@ -121,16 +121,52 @@ describe("an edited font", () => {
    * -- too slow to write while somebody is drawing, and too big to keep.
    */
   it("carries the file and only the glyphs that were touched", () => {
-    const project = toProject(snapshot({ mode: "edit", edit: fontWith(["B"]) }), WHEN);
-    expect(project.edit?.glyphs.map((glyph) => glyph.name)).toEqual(["B"]);
-    expect(project.edit?.fileName).toBe("Test.ttf");
-    expect(fromBase64(project.edit!.font)).toEqual(new Uint8Array([0, 1, 0, 0, 9, 9, 9]));
+    const project = toProject(snapshot({ mode: "edit", edits: [fontWith(["B"])] }), WHEN);
+    expect(project.edits?.[0]?.glyphs.map((glyph) => glyph.name)).toEqual(["B"]);
+    expect(project.edits?.[0]?.fileName).toBe("Test.ttf");
+    expect(fromBase64(project.edits![0].font)).toEqual(new Uint8Array([0, 1, 0, 0, 9, 9, 9]));
   });
 
   it("carries a font nobody has edited as its own bytes and nothing else", () => {
-    const project = toProject(snapshot({ mode: "edit", edit: fontWith([]) }), WHEN);
-    expect(project.edit?.glyphs).toEqual([]);
-    expect(project.edit?.font.length).toBeGreaterThan(0);
+    const project = toProject(snapshot({ mode: "edit", edits: [fontWith([])] }), WHEN);
+    expect(project.edits?.[0]?.glyphs).toEqual([]);
+    expect(project.edits?.[0]?.font.length).toBeGreaterThan(0);
+  });
+
+  it("writes down every font that is open, in the order their tabs sit in", () => {
+    /*
+     * All of them, because the session is written on a timer: one that kept
+     * only the front font would lose the other tabs on the next reload, work
+     * that was on screen a second earlier, with nothing said.
+     */
+    const project = toProject(
+      { mode: "edit", edits: [fontWith([]), fontWith(["B"])], editAt: 1 },
+      WHEN,
+    );
+    expect(project.edits).toHaveLength(2);
+    expect(project.edits![0].glyphs).toEqual([]);
+    expect(project.edits![1].glyphs.map((glyph) => glyph.name)).toEqual(["B"]);
+    expect(project.editAt).toBe(1);
+  });
+
+  it("leaves out a font with no file behind it, and counts the front against what is left", () => {
+    /*
+     * A font started blank in here carries no original bytes to lay its edits
+     * back over, so there is nothing to write down -- which has always been
+     * true and only matters now that it can be one tab of several. Counted
+     * against the tabs rather than against what was kept, the index would
+     * point past the end of the list or at somebody else's font.
+     */
+    const blank = { typeface: emptyTypeface(), fileName: "" };
+    const kept = toProject({ mode: "edit", edits: [blank, fontWith(["B"])], editAt: 1 }, WHEN);
+    expect(kept.edits).toHaveLength(1);
+    expect(kept.editAt).toBe(0);
+
+    // And when the one in front is the one that cannot be written, the nearest
+    // kept font to its left comes forward rather than nothing at all.
+    const gone = toProject({ mode: "edit", edits: [fontWith([]), blank], editAt: 1 }, WHEN);
+    expect(gone.edits).toHaveLength(1);
+    expect(gone.editAt).toBe(0);
   });
 
   /*
@@ -141,7 +177,7 @@ describe("an edited font", () => {
    * quietly put somebody's edited A onto their B.
    */
   it("lays the saved glyphs back on by name", () => {
-    const saved = toProject(snapshot({ mode: "edit", edit: fontWith(["B"]) }), WHEN).edit!;
+    const saved = toProject(snapshot({ mode: "edit", edits: [fontWith(["B"])] }), WHEN).edits![0];
     saved.glyphs[0].advanceWidth = 987;
 
     const fresh = fontWith([]).typeface;
@@ -166,10 +202,12 @@ describe("an edited font", () => {
     const saved = toProject(
       snapshot({
         mode: "edit",
-        edit: { ...one, masters: [{ id: "m1", name: "Regular", at: { wght: 400 }, glyphs: [] }] },
+        edits: [
+          { ...one, masters: [{ id: "m1", name: "Regular", at: { wght: 400 }, glyphs: [] }] },
+        ],
       }),
       WHEN,
-    ).edit!;
+    ).edits![0];
     expect(saved.masters).toBeUndefined();
     expect(saved.weight).toEqual({ name: "Regular", at: { wght: 400 } });
   });
@@ -180,16 +218,18 @@ describe("an edited font", () => {
     const saved = toProject(
       snapshot({
         mode: "edit",
-        edit: {
-          ...one,
-          masters: [
-            { id: "m1", name: "Regular", at: { wght: 400 }, glyphs: [] },
-            { id: "m2", name: "Bold", at: { wght: 700 }, glyphs: [bold] },
-          ],
-        },
+        edits: [
+          {
+            ...one,
+            masters: [
+              { id: "m1", name: "Regular", at: { wght: 400 }, glyphs: [] },
+              { id: "m2", name: "Bold", at: { wght: 700 }, glyphs: [bold] },
+            ],
+          },
+        ],
       }),
       WHEN,
-    ).edit!;
+    ).edits![0];
 
     expect(saved.masters).toHaveLength(1);
     expect(saved.masters![0].id).toBe("m2");
@@ -201,7 +241,7 @@ describe("an edited font", () => {
   });
 
   it("adds a glyph the saved document has and the font does not", () => {
-    const saved = toProject(snapshot({ mode: "edit", edit: fontWith(["B"]) }), WHEN).edit!;
+    const saved = toProject(snapshot({ mode: "edit", edits: [fontWith(["B"])] }), WHEN).edits![0];
     saved.glyphs[0] = { ...saved.glyphs[0], name: "aacute" };
     const fresh = fontWith([]).typeface;
     applyEdits(fresh, saved);
@@ -288,10 +328,34 @@ describe("what gets turned away", () => {
   });
 
   it("drops a half that arrived empty rather than restoring nothing over the top", () => {
-    const read = readProject({ ...good(), assemble: {}, edit: {} });
+    const read = readProject({ ...good(), assemble: {}, edits: [{}] });
     expect(read).not.toBeNull();
     expect(read!.assemble).toBeUndefined();
-    expect(read!.edit).toBeUndefined();
+    expect(read!.edits).toBeUndefined();
+  });
+
+  it("keeps the fonts it can read and drops the ones it cannot", () => {
+    // One unreadable font among several costs the one, on the same terms as
+    // every other half here: a document is not turned away for a part of it.
+    const read = readProject({
+      ...good(),
+      edits: [{}, { font: "AAA", fileName: "Kept.ttf" }, {}],
+      editAt: 1,
+    });
+    expect(read!.edits).toHaveLength(1);
+    expect(read!.edits![0].fileName).toBe("Kept.ttf");
+    // And the index follows what is left rather than pointing past the end.
+    expect(read!.editAt).toBe(0);
+  });
+
+  it("will not be sent past the end by an index that is wrong", () => {
+    const edits = [
+      { font: "AAA", fileName: "One.ttf" },
+      { font: "BBB", fileName: "Two.ttf" },
+    ];
+    expect(readProject({ ...good(), edits, editAt: 9 })!.editAt).toBe(1);
+    expect(readProject({ ...good(), edits, editAt: -3 })!.editAt).toBe(0);
+    expect(readProject({ ...good(), edits })!.editAt).toBe(0);
   });
 });
 
@@ -314,14 +378,13 @@ describe("saying what is in it", () => {
 /**
  * Bringing an old document forward.
  *
- * The chain is empty, because there has only ever been one version of this
- * format. That is exactly why it is tested with steps of its own rather than
- * with the real table: a mechanism whose first use is the day somebody bumps
- * `FORMAT` is a mechanism nobody has ever seen run, and the day it is first
- * needed is the day every document anybody has saved depends on it.
- *
- * So `migrate` takes its steps as an argument. These tests hand it two and
- * check what a real bump would rely on.
+ * There is one real step in the chain now -- format 1's single edited font
+ * becoming format 2's list of them -- and it is tested below on its own. What
+ * these tests are for is the machinery around it: that steps run in order,
+ * that each is handed what the one before gave back, and that a gap in the
+ * chain stops rather than hands the reader a shape it does not know. One step
+ * cannot show any of that, so `migrate` takes its steps as an argument and
+ * these hand it two.
  */
 describe("bringing a document forward", () => {
   /** A stand-in for a real step: writes down that it ran, and on what. */
@@ -405,5 +468,54 @@ describe("bringing a document forward", () => {
     expect(read.from).toBe(FORMAT);
     // Nothing to say about a document written by this version.
     expect(read.note).toBeNull();
+  });
+});
+
+/**
+ * The one real step there is, run through the real table.
+ *
+ * Every document anybody saved before several fonts could be open at once is a
+ * format 1 document with one `edit` in it, and this is the whole of what
+ * happens to it. The chain's machinery is checked above with steps of its own;
+ * what is checked here is that this step does the right thing to a real
+ * document, since that is the part nobody can test twice.
+ */
+describe("a document from format 1", () => {
+  const older = () => ({
+    typeforge: 1,
+    saved: WHEN.toISOString(),
+    mode: "edit" as const,
+    edit: { font: "AAA", fileName: "One.ttf" },
+  });
+
+  it("becomes a list of one font, in front", () => {
+    const brought = migrate(older(), 1) as Record<string, unknown>;
+    expect(brought.edits).toEqual([{ font: "AAA", fileName: "One.ttf" }]);
+    expect(brought.editAt).toBe(0);
+  });
+
+  it("carries one answer rather than two", () => {
+    /*
+     * The font is moved out of `edit` and not copied. Left in both places the
+     * reader would have two answers to the same question and nothing to say
+     * which was newer, and the first time they disagreed somebody would get
+     * back a font they had already changed.
+     */
+    expect(migrate(older(), 1)).not.toHaveProperty("edit");
+  });
+
+  it("reads end to end, and says which version it came from", () => {
+    const read = readDocument(older());
+    expect(read.project!.edits).toHaveLength(1);
+    expect(read.project!.edits![0].fileName).toBe("One.ttf");
+    expect(read.project!.editAt).toBe(0);
+    expect(read.from).toBe(1);
+    // Older, not newer: there is nothing missing from it to warn about.
+    expect(read.note).toBeNull();
+  });
+
+  it("comes through untouched when it had no font in it at all", () => {
+    const { edit: _, ...without } = older();
+    expect(migrate(without, 1)).toEqual(without);
   });
 });

@@ -354,15 +354,41 @@ describe("reading what was kept", () => {
   /*
    * Through the same door a file goes through.
    *
-   * A session written by an older Typeforge is the same problem as a holiday
+   * A session written by another Typeforge is the same problem as a holiday
    * photo handed to the file picker, and `readProject` is the one place that
    * decides. Restoring half of a document nobody can name would be worse than
    * starting empty.
    */
-  it("turns away a session it cannot read", async () => {
-    const held = new Map<string, unknown>([["current", { typeforge: FORMAT - 1, mode: "edit" }]]);
+  it("turns away a session that is not one of ours", async () => {
+    // Version nought is not a version this format has ever had, so there is
+    // nothing to bring it forward from.
+    const held = new Map<string, unknown>([["current", { typeforge: 0, mode: "edit" }]]);
     running({}, held);
     expect(await kept()).toBeNull();
+  });
+
+  it("brings a session from the format before this one forward", async () => {
+    /*
+     * The other half, and the one that matters more: a session written by the
+     * previous format is not turned away, it is migrated. Everybody who had
+     * this application open before several fonts could be open at once has one
+     * of those in their browser, and it is the only copy of their work.
+     */
+    const held = new Map<string, unknown>([
+      [
+        "current",
+        {
+          typeforge: FORMAT - 1,
+          saved: new Date(0).toISOString(),
+          mode: "edit",
+          edit: { font: "AAA", fileName: "Kept.ttf" },
+        },
+      ],
+    ]);
+    running({}, held);
+    const back = await kept();
+    expect(back).not.toBeNull();
+    expect(back!.edits?.[0].fileName).toBe("Kept.ttf");
   });
 
   it("says nothing rather than failing when the read fails", async () => {
@@ -392,7 +418,7 @@ describe("reading what was kept", () => {
         {
           typeforge: FORMAT,
           mode: "edit",
-          get edit(): never {
+          get edits(): never {
             throw new Error("unreadable");
           },
         },

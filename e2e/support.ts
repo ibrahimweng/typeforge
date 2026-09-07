@@ -54,9 +54,11 @@ export async function openFont(page: Page): Promise<void> {
 /**
  * A font with nothing in it, reached the way somebody would reach it.
  *
- * Through the palette rather than by calling the store, because starting again
- * throws away whatever is open and so asks first -- and because a test that
- * reaches past the confirmation is not testing the path anybody takes.
+ * Through the palette rather than by calling the store, because that is the
+ * path anybody takes. It used to ask first, and no longer does: a new font
+ * opens in a tab beside whatever was there rather than over it, so there is
+ * nothing to confirm. The confirmation is still clicked if it appears, so this
+ * says nothing either way about whether it should.
  */
 export async function startBlank(page: Page): Promise<void> {
   await page.keyboard.press("ControlOrMeta+k");
@@ -380,7 +382,9 @@ export function keptHalves(page: Page): Promise<string[]> {
               resolve([]);
               return;
             }
-            resolve(["draw", "assemble", "edit"].filter((half) => project[half]));
+            // `edits` since format 2, where the edited half became the list
+            // of fonts open rather than the one in front.
+            resolve(["draw", "assemble", "edits"].filter((half) => project[half]));
           };
         };
       }),
@@ -414,8 +418,17 @@ export function keptGlyphs(page: Page): Promise<string[]> {
           };
           get.onsuccess = () => {
             database.close();
-            const project = get.result as { edit?: { glyphs?: Array<{ name?: string }> } };
-            resolve((project?.edit?.glyphs ?? []).map((glyph) => glyph.name ?? ""));
+            const project = get.result as {
+              edits?: Array<{ glyphs?: Array<{ name?: string }> }>;
+            };
+            // Every open font's touched letters together. The question is
+            // whether *this edit* has reached the disk, and which tab it was
+            // made in is not part of it.
+            resolve(
+              (project?.edits ?? []).flatMap((one) =>
+                (one.glyphs ?? []).map((glyph) => glyph.name ?? ""),
+              ),
+            );
           };
         };
       }),

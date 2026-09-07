@@ -91,12 +91,10 @@ test("a new project can be given a letter, which it could not before", async ({ 
   await page.goto("/");
   await openFont(page);
 
-  // Starting again is a palette action and asks first, because it throws away
-  // whatever is open.
-  await page.keyboard.press("ControlOrMeta+k");
-  await page.getByRole("textbox", { name: "Search everything" }).fill("start a new font");
-  await page.getByRole("dialog", { name: "Quick actions" }).getByRole("option").first().click();
-  await page.getByRole("alertdialog").getByRole("button", { name: "Go on" }).click();
+  // Starting again is a palette action, and it no longer asks first: the new
+  // font opens in a tab of its own beside the one that was open, so there is
+  // nothing being thrown away to warn about.
+  await startBlank(page);
 
   await page.getByRole("button", { name: "Font", exact: true }).click();
   // The one glyph every font must carry, and a note saying it is not a letter

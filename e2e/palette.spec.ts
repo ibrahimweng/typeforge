@@ -88,14 +88,34 @@ test("adjusts a control in the palette, and the font moves behind it", async ({ 
 });
 
 test("asks before throwing the work away", async ({ page }) => {
+  /*
+   * Asked of starting from a face, which replaces every part of the drawing in
+   * hand, and no longer of starting a new font, which does not replace
+   * anything: a new font opens in a tab beside the one that was open.
+   *
+   * That is the whole reason this test moved rather than went. A confirmation
+   * in front of something that does not happen is worse than none -- it is the
+   * one that teaches somebody to click through the one that does.
+   */
   await open(page);
-  await page.getByRole("textbox", { name: "Search everything" }).fill("start a new font");
+  await page.getByRole("textbox", { name: "Search everything" }).fill("start from the geometric");
   await page.getByRole("dialog", { name: "Quick actions" }).getByRole("option").first().click();
   const asking = page.getByRole("alertdialog");
   await expect(asking).toBeVisible();
   await expect(asking).toContainText(/no undo/i);
   await asking.getByRole("button", { name: "Keep it" }).click();
   await expect(asking).toBeHidden();
+});
+
+test("does not ask before starting a font, which takes nothing away", async ({ page }) => {
+  await open(page);
+  await page.getByRole("textbox", { name: "Search everything" }).fill("start a new font");
+  await page.getByRole("dialog", { name: "Quick actions" }).getByRole("option").first().click();
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  // And it happened: the editor is in front with an empty font on it. Whether
+  // the font that was open is still open a tab away is `documents.spec.ts`,
+  // which has one to be open -- these tests start in Draw.
+  await expect(page.locator("[data-font-name]")).toContainText("Untitled");
 });
 
 test("walks the list with the arrow keys", async ({ page }) => {

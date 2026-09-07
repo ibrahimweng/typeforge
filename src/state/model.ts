@@ -372,6 +372,25 @@ export interface AppState {
    * What the last edit to a control letter pushed out to the rest of the font,
    * so the change can be shown rather than just silently happening.
    */
+  /**
+   * The fonts that are open, in the order their tabs are drawn.
+   *
+   * Here rather than worked out on demand because it decides whether the
+   * toolbar re-renders, and derived it would be rebuilt on every frame of a
+   * drag. Only what a tab needs: the rest of a font that is not in front is in
+   * a drawer, which is the point.
+   */
+  open: ReadonlyArray<{ id: string; name: string }>;
+  /** Which of them is in front. */
+  openAt: number;
+  /**
+   * What the last font closed was called, or nothing if none has been.
+   *
+   * On the state rather than asked for, because it is what decides whether the
+   * way back is offered at all -- and a control that appears the moment it
+   * becomes useful has to be able to re-render when it does.
+   */
+  reopenable: string | null;
   lastDerivation: ControlChange[];
 }
 

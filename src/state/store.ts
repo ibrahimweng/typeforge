@@ -110,7 +110,20 @@ class Store extends ShapingStore {
    */
   adopt(typeface: Typeface, fileName: string): void {
     this.forgetLoan();
-    this.clearHistory();
+    /*
+     * A font arriving joins the ones already open rather than landing on top
+     * of the one in front.
+     *
+     * Unless nothing is open, in which case this is that one: opening a tab
+     * for the first font would leave an empty Untitled beside it, which is a
+     * tab nobody wants and cannot close, since the last one never closes.
+     *
+     * Everything below already resets what belongs to a font -- the checks,
+     * the guides, the masters, the selection -- because it was written for
+     * replacing one document with another. On a clean desk it does the same
+     * job, so none of it changes.
+     */
+    this.makeRoom();
     this.controlBaseline = readControls(typeface);
     // Whatever the last UFO carried belongs to the last UFO. Left in place, a
     // font opened afterwards would go out with somebody else's background
@@ -388,44 +401,54 @@ class Store extends ShapingStore {
     this.set({ checks: { findings, at } });
   }
 
-  /** The edited half, for writing down. */
-  snapshot():
-    | { typeface: Typeface; fileName: string; masters?: SavedMaster[]; drawing?: string }
-    | undefined {
-    /*
-     * The document of record, which during a loan is not the one on screen.
-     *
-     * A letter borrowed from Draw sits in a typeface of its own with one glyph
-     * in it. That is a desk, not a document, and it must never be what gets
-     * written down: the session is saved on a timer as well as on the button, so
-     * without this a minute spent moving points on a borrowed `n` would quietly
-     * replace whatever font was open with a font containing an `n`. The drawing
-     * goes back to Draw and is saved as part of *that* half.
-     */
-    const { fileName, masters, master } = this.held ? this.held.state : this.state;
-    /*
-     * The first weight is what gets written as the font, not whichever one was
-     * on screen when the timer went off.
-     *
-     * Everything the document holds beyond the drawing is shared, so any master
-     * would give the same meta and the same kerning -- but `glyphs` is the one
-     * thing that is not, and taking it from the Bold would save the Bold as the
-     * font and the Regular as an exception to it.
-     */
-    const typeface = masters[0]?.typeface ?? (this.held ? this.held.state : this.state).typeface;
-    if (!typeface) return undefined;
-    return {
-      typeface,
-      fileName,
-      drawing: master,
-      masters: masters.map((one) => ({
-        id: one.id,
-        name: one.name,
-        at: one.at,
-        // Only what has been drawn in it, on the same terms as the font above.
-        glyphs: one.typeface.glyphs.filter((glyph) => glyph.dirty),
-      })),
-    };
+  /**
+   * The edited half, for writing down: every font that is open, in tab order.
+   *
+   * All of them rather than the one in front, and that is not a nicety. The
+   * session is written on a timer, and a session that kept only the front font
+   * would quietly lose the other tabs on the next reload -- work that was on
+   * screen a second earlier, gone with nothing said.
+   *
+   * The document of record for the one in front is, during a loan, not the one
+   * on screen. A letter borrowed from Draw sits in a typeface of its own with
+   * one glyph in it: that is a desk, not a document, and writing it down would
+   * replace whatever font was open with a font containing an `n`. The drawing
+   * goes back to Draw and is saved as part of *that* half. `everyDocument`
+   * makes that swap, so it is made once rather than here.
+   */
+  snapshots(): Array<{
+    typeface: Typeface;
+    fileName: string;
+    masters?: SavedMaster[];
+    drawing?: string;
+  }> {
+    return this.everyDocument().flatMap((part) => {
+      /*
+       * The first weight is what gets written as the font, not whichever one
+       * was on screen when the timer went off.
+       *
+       * Everything the document holds beyond the drawing is shared, so any
+       * master would give the same meta and the same kerning -- but `glyphs` is
+       * the one thing that is not, and taking it from the Bold would save the
+       * Bold as the font and the Regular as an exception to it.
+       */
+      const typeface = part.masters[0]?.typeface ?? part.typeface;
+      if (!typeface) return [];
+      return [
+        {
+          typeface,
+          fileName: part.fileName,
+          drawing: part.master,
+          masters: part.masters.map((one) => ({
+            id: one.id,
+            name: one.name,
+            at: one.at,
+            // Only what has been drawn in it, on the same terms as the font above.
+            glyphs: one.typeface.glyphs.filter((glyph) => glyph.dirty),
+          })),
+        },
+      ];
+    });
   }
 
   /**
@@ -437,8 +460,38 @@ class Store extends ShapingStore {
    * variations, everything "preserve" export hands back untouched -- which a
    * document made of glyphs would have quietly thrown away.
    */
-  async restore(saved: EditedProject): Promise<void> {
-    await this.loadFont(fromBase64(saved.font), saved.fileName);
+  /**
+   * Put a saved session's fonts back, all of them, and stand in front of the
+   * one that was in front.
+   *
+   * The desk is cleared first rather than restored onto, and that is what makes
+   * this the one way in that does not join what is already open. A project is
+   * the whole session coming back -- the mode you were in, the drawing, the
+   * tracing -- so half a session restored beside the other half would be two
+   * sessions and no way to tell which was which.
+   *
+   * Once the desk is clear the ordinary rule takes over: the first font lands
+   * on it and the rest open beside, exactly as they would if somebody opened
+   * four files by hand. There is no second code path here to keep right.
+   */
+  async restoreAll(saved: EditedProject[], front: number): Promise<void> {
+    /*
+     * Decoded before anything is closed.
+     *
+     * A document whose font is not base64 throws here, and there is one in the
+     * browser tests precisely because it happens: a record damaged in storage
+     * passes every check at the door and fails on its bytes. Thrown after the
+     * desk had been cleared, it would have taken away what was open to make
+     * room for a session that never arrived.
+     */
+    const bytes = saved.map((one) => fromBase64(one.font));
+    this.closeEveryDocument();
+    for (const [at, one] of saved.entries()) await this.restoreOne(one, bytes[at]);
+    this.goToDocument(Math.min(Math.max(Math.trunc(front), 0), saved.length - 1));
+  }
+
+  private async restoreOne(saved: EditedProject, bytes: Uint8Array): Promise<void> {
+    await this.loadFont(bytes, saved.fileName);
     const { typeface } = this.state;
     if (!typeface) return;
     applyEdits(typeface, saved);
@@ -468,7 +521,15 @@ class Store extends ShapingStore {
     this.set({ busy: true, status: { message: `Reading ${fileName}…`, tone: "info" } });
     try {
       const { typeface, warnings } = await importFont(bytes, fileName);
-      this.clearHistory();
+      /*
+       * After the parse rather than before it, which is the whole reason this
+       * is not the first line of the method. A font that turns out to be
+       * unreadable would otherwise have already put the one you were working
+       * on into a tab and left you on a blank document with an error on it --
+       * work not lost, but somewhere you did not ask to be, over a file that
+       * never opened.
+       */
+      this.makeRoom();
       // A compiled font has no UFO behind it, and the one that was open
       // before is not this font's to carry.
       this.ufo = null;
@@ -544,7 +605,8 @@ class Store extends ShapingStore {
       if (typeface.glyphs.length === 0) {
         throw new Error("That UFO has no glyphs in it.");
       }
-      this.clearHistory();
+      // After the read, for the reason `loadFont` gives above.
+      this.makeRoom();
       this.controlBaseline = readControls(typeface);
       this.ufo = carried;
       this.set({
@@ -618,7 +680,13 @@ class Store extends ShapingStore {
 
   startBlank(): void {
     this.forgetLoan();
-    this.clearHistory();
+    /*
+     * A new font joins the ones already open, for the reason an opened one
+     * does: these are the two doors into the same room, and one of them
+     * closing your work while the other puts a tab beside it is the kind of
+     * inconsistency somebody finds out about by losing something.
+     */
+    this.makeRoom();
     /*
      * With a `.notdef` already in it.
      *

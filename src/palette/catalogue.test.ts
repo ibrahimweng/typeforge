@@ -53,6 +53,14 @@ const shell = {
   startFromBase: () => {},
   chooseAlternate: () => {},
   hasFont: true,
+  openFonts: [
+    { id: "font-0", name: "Bakerloo" },
+    { id: "font-1", name: "Metro" },
+  ],
+  openAt: 0,
+  goToFont: () => {},
+  reopenable: "Bakerloo",
+  reopenFont: () => {},
 } as unknown as Shell;
 
 const items: Item[] = catalogue(shell);

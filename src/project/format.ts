@@ -41,13 +41,13 @@ export type Mode = "edit" | "forge" | "assemble" | "quill";
  * The version of this format.
  *
  * Written into every file so that a document from an older Typeforge can be
- * recognised rather than half-read. There is one version so far and this is it.
+ * recognised rather than half-read.
  *
  * Read `MIGRATIONS` below before changing this. Bumping the number without
  * writing the step that goes with it is what turns every document anybody has
  * saved into a file this application refuses to open.
  */
-export const FORMAT = 1;
+export const FORMAT = 2;
 
 /**
  * The oldest version there is a path forward from.
@@ -69,11 +69,14 @@ type Raw = Record<string, unknown>;
  * a version 1 document opened by version 4 goes through three of them and no
  * step has to know about any version but its own.
  *
- * Empty because there has only ever been one version. What goes here is the
- * step for a change that is not additive. A field that is merely new does not
- * need one: `readProject` fills a missing field in, so a document written
- * before it existed already reads as though it always had one, and that is how
- * every change to this format has been made so far.
+ * What goes here is the step for a change that is not additive. A field that is
+ * merely new does not need one: `readProject` fills a missing field in, so a
+ * document written before it existed already reads as though it always had
+ * one, and that is how most changes to this format have been made.
+ *
+ * The one step there is moves format 1's single `edit` into format 2's list of
+ * them. That is not additive because the old field has to go: two places to
+ * look for the same font is two answers with nothing to say which is newer.
  *
  * When you do bump `FORMAT`:
  *
@@ -85,20 +88,34 @@ type Raw = Record<string, unknown>;
  *   3. Leave `OLDEST` alone unless you are deliberately dropping support for
  *      documents that old, which costs somebody their work.
  */
-const MIGRATIONS: Record<number, (document: Raw) => Raw> = {};
+const MIGRATIONS: Record<number, (document: Raw) => Raw> = {
+  /*
+   * 1 to 2: one edited font became several.
+   *
+   * The editor held a font; it now holds however many are open, in the order
+   * their tabs sit in, and which of them was in front. So the one becomes a
+   * list of one and the front is the only thing it can be.
+   *
+   * Moved rather than copied. A document carrying both `edit` and `edits`
+   * would leave the reader two answers to the same question with nothing to
+   * say which is the newer, and the first time they disagreed somebody would
+   * get back a font they had already changed.
+   */
+  1: (document) => {
+    const { edit, ...rest } = document;
+    return edit ? { ...rest, edits: [edit], editAt: 0 } : rest;
+  },
+};
 
 /**
  * Bring a document up to the current version, as far as it will come.
  *
  * Both the table of steps and the version being aimed at can be given rather
- * than reached for, and that is the whole reason this is testable. There is
- * one version of this format, so with the real table and the real `FORMAT`
- * there is nothing for the loop below to do and no test can watch it work. A
- * mechanism whose first run is the day somebody bumps `FORMAT` is one nobody
- * has ever seen work, on the day every saved document depends on it.
- *
- * So a test hands this two steps and a target of 3, and checks they ran in
- * order. Nothing else passes either argument.
+ * than reached for, and that is the whole reason this is testable. There is one
+ * real step, which cannot show that steps run in order, that each is handed
+ * what the one before gave back, or that a gap stops the chain -- and those are
+ * exactly what a bump relies on. So a test hands this two steps of its own and
+ * a target of 3. Nothing outside the tests passes either argument.
  */
 export function migrate(
   raw: Raw,
@@ -127,7 +144,16 @@ export interface Project {
   mode: Mode;
   draw?: DrawnProject;
   assemble?: AssembledProject;
-  edit?: EditedProject;
+  /**
+   * The fonts open in the editor, in the order their tabs sit in.
+   *
+   * A list since format 2. It was one font, and keeping only the one in front
+   * would have meant that opening a second and reloading lost the first --
+   * work that was on screen a second earlier, gone with nothing said.
+   */
+  edits?: EditedProject[];
+  /** Which of them was in front, so a session comes back where it was left. */
+  editAt?: number;
   traced?: TracedProject;
 }
 
@@ -332,19 +358,21 @@ export interface Snapshot {
   draw?: DrawnProject;
   assemble?: AssembledProject;
   /**
-   * The edited half, and every weight of it.
+   * The edited half: every font open in the editor, and every weight of each.
    *
    * `masters` is all of them including the first, whose typeface is the one
    * above -- so what gets written as the font is always the first weight, not
    * whichever one happened to be on screen when the timer went off.
    */
-  edit?: {
+  edits?: Array<{
     typeface: Typeface;
     fileName: string;
     masters?: SavedMaster[];
     /** Which of them was in hand. */
     drawing?: string;
-  };
+  }>;
+  /** Which font was in front, as an index into the list above. */
+  editAt?: number;
   traced?: TracedProject;
 }
 
@@ -376,13 +404,30 @@ export function toProject(snapshot: Snapshot, at: Date): Project {
   if (snapshot.assemble && snapshot.assemble.assembly.pieces.length > 0) {
     project.assemble = snapshot.assemble;
   }
-  if (snapshot.edit?.typeface.source) {
-    project.edit = toEdited(
-      snapshot.edit.typeface,
-      snapshot.edit.fileName,
-      snapshot.edit.masters,
-      snapshot.edit.drawing,
-    );
+  /*
+   * The fonts that can be written down, and where the one in front lands among
+   * them.
+   *
+   * A font with no file behind it -- one started blank in here, which carries
+   * no original bytes to lay its edits back over -- cannot be written, and has
+   * never been written. So the list that comes out can be shorter than the
+   * list of tabs, and the index of the front font is counted against what is
+   * kept rather than against what was open. Counted against the tabs it would
+   * point past the end, or at somebody else's font.
+   */
+  const edits: EditedProject[] = [];
+  let editAt = 0;
+  (snapshot.edits ?? []).forEach((one, at) => {
+    const written = toEdited(one.typeface, one.fileName, one.masters, one.drawing);
+    if (!written) return;
+    // The nearest kept font at or before the one in front, which is the one in
+    // front itself whenever it was kept at all.
+    if (at <= (snapshot.editAt ?? 0)) editAt = edits.length;
+    edits.push(written);
+  });
+  if (edits.length > 0) {
+    project.edits = edits;
+    project.editAt = Math.min(editAt, edits.length - 1);
   }
   if (snapshot.traced && snapshot.traced.letters.length > 0) project.traced = snapshot.traced;
   return project;
@@ -509,6 +554,23 @@ export function readProject(raw: unknown): Project | null {
   return readDocument(raw).project;
 }
 
+/**
+ * The edited fonts, each checked on its own, and which was in front.
+ *
+ * One unreadable font among four costs the one rather than the document, which
+ * is how every other half here is treated. Dropping one moves the ones after
+ * it up, so the index is clamped afterwards rather than trusted: it can then
+ * name the wrong font in a document that was already damaged, which is a
+ * better answer than naming none.
+ */
+function readEdits(project: Partial<Project>): Pick<Project, "edits" | "editAt"> {
+  if (!Array.isArray(project.edits)) return {};
+  const edits = project.edits.filter((one) => one?.font);
+  if (edits.length === 0) return {};
+  const wanted = Math.trunc(Number(project.editAt ?? 0)) || 0;
+  return { edits, editAt: Math.min(Math.max(wanted, 0), edits.length - 1) };
+}
+
 /** The halves of a document, each checked on its own. */
 function readHalves(raw: Raw): Project | null {
   const project = raw as Partial<Project>;
@@ -543,7 +605,7 @@ function readHalves(raw: Raw): Project | null {
      */
     draw: project.draw?.forge?.style ? (project.draw as DrawnProject) : undefined,
     assemble: project.assemble?.assembly ? project.assemble : undefined,
-    edit: project.edit?.font ? project.edit : undefined,
+    ...readEdits(project),
     // Checked for its letters rather than merely for being an object: a traced
     // half with no strokes in it restores an empty Trace view claiming to be
     // where somebody left off, which is the thing this used to do by leaving
@@ -563,7 +625,7 @@ export function describe(project: Project): string {
     const count = project.assemble.assembly.pieces.length;
     halves.push(`${count} assembled ${count === 1 ? "drawing" : "drawings"}`);
   }
-  if (project.edit) halves.push(project.edit.fileName);
+  for (const one of project.edits ?? []) halves.push(one.fileName);
   if (project.traced) {
     const count = project.traced.letters.length;
     halves.push(`${count} traced ${count === 1 ? "letter" : "letters"}`);

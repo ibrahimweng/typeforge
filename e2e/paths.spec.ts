@@ -478,9 +478,16 @@ test("letters drawn in Draw can be taken to the tools", async ({ page }) => {
     { timeout: 120_000 },
   );
 
-  // The font in hand is the one that was just drawn, not the one that was open.
-  await expect(page.getByText("Untitled", { exact: false }).first()).toBeVisible();
-  await expect(page.getByText("DejaVu Sans", { exact: false })).toHaveCount(0);
+  /*
+   * The font in hand is the one that was just drawn, not the one that was
+   * open -- and the one that was open is still open, a tab away. It used to be
+   * thrown away by this, which is why the check was that its name appeared
+   * nowhere at all; now the name is on its tab, so the question is which font
+   * the toolbar says you are working on.
+   */
+  await expect(page.locator("[data-font-name]")).toContainText("Untitled");
+  await expect(page.locator("[data-font-name]")).not.toContainText("DejaVu Sans");
+  await expect(page.locator('[data-document-tab="DejaVu Sans"]')).toBeVisible();
   // And every tool is pointed at it.
   await expect(page.getByRole("group", { name: "Tool" })).toBeVisible();
   await expect(page.locator("[data-paths-panel]")).toContainText("paths");
