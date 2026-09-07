@@ -436,6 +436,54 @@ export function keptGlyphs(page: Page): Promise<string[]> {
 }
 
 /**
+ * The fonts in the edited half, by what each is called and how many letters it
+ * has written down.
+ *
+ * `keptHalves` answers whether the half exists at all, which for the editor is
+ * true from the moment one font is open -- so a test that opens a *second*
+ * font and waits on that is waiting for something that happened before the
+ * second font existed, and reloads into a race with the save it wanted. That
+ * is the trap `keptGlyphs` above was written for, one level up: this asks
+ * which fonts are down rather than whether any are.
+ */
+export function keptFonts(page: Page): Promise<Array<{ name: string; glyphs: number }>> {
+  return page.evaluate(
+    () =>
+      new Promise<Array<{ name: string; glyphs: number }>>((resolve) => {
+        const request = indexedDB.open("typeforge", 1);
+        request.onerror = () => resolve([]);
+        request.onsuccess = () => {
+          const database = request.result;
+          const get = database
+            .transaction("session", "readonly")
+            .objectStore("session")
+            .get("current");
+          get.onerror = () => {
+            database.close();
+            resolve([]);
+          };
+          get.onsuccess = () => {
+            database.close();
+            const project = get.result as {
+              edits?: Array<{
+                fileName?: string;
+                meta?: { familyName?: string };
+                glyphs?: unknown[];
+              }>;
+            };
+            resolve(
+              (project?.edits ?? []).map((one) => ({
+                name: one.meta?.familyName || one.fileName || "",
+                glyphs: one.glyphs?.length ?? 0,
+              })),
+            );
+          };
+        };
+      }),
+  );
+}
+
+/**
  * The colour actually on the canvas, averaged over the pixels that were
  * painted.
  *
