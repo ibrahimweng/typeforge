@@ -161,3 +161,96 @@ test("a font closed by accident can be got back", async ({ page }) => {
   await expect(page.locator("[data-font-name]")).toContainText("DejaVu Sans");
   await expect(page.locator("[data-document-tab]")).toHaveCount(2);
 });
+
+/*
+ * The keys.
+ *
+ * One rule: Alt owns which font. Alt with the arrows for the one either side,
+ * Alt with a number for the one in that place. Every key that means "the next
+ * document" anywhere else belongs to the browser here -- Cmd-1 to Cmd-9,
+ * Ctrl-Tab, Cmd-backtick -- and a page cannot refuse any of them.
+ */
+test("Alt and the arrows walk the tabs, and go round", async ({ page }) => {
+  await page.goto("/");
+  await openFont(page);
+  await startBlank(page);
+  const front = page.locator("[data-font-name]");
+  await expect(front).toContainText("Untitled");
+
+  await page.keyboard.press("Alt+ArrowLeft");
+  await expect(front).toContainText("DejaVu Sans");
+  await page.keyboard.press("Alt+ArrowRight");
+  await expect(front).toContainText("Untitled");
+
+  // Round rather than stopping at the end, as every tab strip does.
+  await page.keyboard.press("Alt+ArrowRight");
+  await expect(front).toContainText("DejaVu Sans");
+});
+
+test("Alt and a number go straight to that tab", async ({ page }) => {
+  /*
+   * Pressed as the physical key, which is how the handler reads it. Option
+   * with a digit does not produce that digit on a Mac -- Option-1 is an
+   * upside-down exclamation mark -- so a handler that parsed the character
+   * would work on a PC and do nothing on half the machines this runs on. This
+   * cannot show that half: the runners are Linux, where Alt-1 is still `1`.
+   * What it holds is that the physical key is what answers.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await startBlank(page);
+
+  await page.keyboard.press("Alt+Digit1");
+  await expect(page.locator("[data-font-name]")).toContainText("DejaVu Sans");
+  await page.keyboard.press("Alt+Digit2");
+  await expect(page.locator("[data-font-name]")).toContainText("Untitled");
+  // A number past the end is not a tab, so nothing moves.
+  await page.keyboard.press("Alt+Digit7");
+  await expect(page.locator("[data-font-name]")).toContainText("Untitled");
+});
+
+test("Alt and the arrows never nudge the selection, even with nowhere to go", async ({ page }) => {
+  /*
+   * The canvas nudges the selection with the arrows, and it was not looking at
+   * Alt. So Alt with an arrow moved the picked points a unit -- an edit nobody
+   * asked for, in the letter on screen, recorded in that font's history.
+   *
+   * Asked with one font open, which is the case that bites and the case a
+   * person is most likely to be in. With two, the switch happens first and the
+   * nudge lands on a letter that is no longer there, so it quietly does
+   * nothing and a test written that way passes with the guard taken out --
+   * which is how this one started. With one there is nowhere to go, the key
+   * has no other job, and the only question left is whether it damages the
+   * letter.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await expect(page.locator("[data-document-tabs]"), "one font, no strip").toHaveCount(0);
+
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await page.locator("[data-glyph-canvas]").click();
+  await page.keyboard.press("ControlOrMeta+a");
+  const undo = page.getByRole("button", { name: "Undo", exact: true });
+  await expect(undo, "nothing has been done to this font yet").toBeDisabled();
+
+  await page.keyboard.press("Alt+ArrowLeft");
+  await page.keyboard.press("Alt+ArrowRight");
+  await expect(undo, "Alt with an arrow is not an edit").toBeDisabled();
+
+  // And the bare arrow still is, which is what makes the line above a guard
+  // rather than a nudge that stopped working.
+  await page.keyboard.press("ArrowLeft");
+  await expect(undo).toBeEnabled();
+});
+
+test("the tab says which key it answers to", async ({ page }) => {
+  // Where a shortcut is actually learnt: the moment somebody reaches for the
+  // slow way to the thing it is for.
+  await page.goto("/");
+  await openFont(page);
+  await startBlank(page);
+  await expect(page.locator('[data-document-tab="DejaVu Sans"]')).toHaveAttribute(
+    "title",
+    "DejaVu Sans — ⌥1",
+  );
+});

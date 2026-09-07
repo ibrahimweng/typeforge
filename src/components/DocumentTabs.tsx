@@ -17,6 +17,7 @@
 import type * as React from "react";
 
 import { store, useAppState } from "@/state/useStore";
+import { DOCUMENT_KEYS, documentKey } from "@/keys/useAppKeys";
 import { cn } from "@/cn";
 
 export function DocumentTabs(): React.JSX.Element | null {
@@ -62,7 +63,14 @@ export function DocumentTabs(): React.JSX.Element | null {
               aria-pressed={inFront}
               data-document-tab={one.name}
               onClick={() => store.goToDocument(at)}
-              title={`${one.name} — one of ${state.open.length} fonts open`}
+              /*
+                And the key it answers to, on the tab itself.
+
+                This is the moment a shortcut is learnt: somebody is reaching
+                for the slow way to the thing it is for. A list of keys in the
+                help drawer is a list somebody has to decide to go and study.
+              */
+              title={`${one.name} — ${documentKey(at) ?? DOCUMENT_KEYS}`}
               className={cn(
                 "min-w-0 max-w-40 truncate px-1.5 py-1 text-2xs transition-colors",
                 inFront ? "font-medium text-foreground" : "text-muted-foreground",
