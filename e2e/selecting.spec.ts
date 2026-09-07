@@ -178,13 +178,36 @@ test("the clock runs only while the button is down", async ({ page }) => {
    * should be the idle one again.
    */
   await aLetterWithPoints(page);
-  expect(await framesAsked(page, 400), "an idle letter animates nothing").toBeLessThan(3);
+
+  /*
+   * A whole second at each of the three, rather than the four tenths this
+   * asked for first.
+   *
+   * Not to make the numbers kinder -- a longer look makes both halves of the
+   * claim harder to satisfy by accident. The drag has more time to prove it is
+   * animating, and the release has more time to betray a loop that did not
+   * really stop.
+   *
+   * Four tenths was too short to say anything on a slow browser. A loaded
+   * WebKit runner managed nine frames in that window where a chromium one
+   * managed thirty, and nine against a bar of ten is a red build about the
+   * runner rather than about the code -- the loop was marching the whole time.
+   */
+  const WATCH = 1000;
+  const idle = await framesAsked(page, WATCH);
+  expect(idle, "an idle letter animates nothing").toBeLessThan(5);
 
   await startSweeping(page);
-  const during = await framesAsked(page, 400);
+  const during = await framesAsked(page, WATCH);
   await page.mouse.up();
-  const after = await framesAsked(page, 400);
+  const after = await framesAsked(page, WATCH);
 
-  expect(during, "the ants need a frame each while the shape is out").toBeGreaterThan(10);
-  expect(after, "and none once it is let go").toBeLessThan(3);
+  /*
+   * Twelve in a second is twelve frames a second, which is half the rate the
+   * slowest runner seen here managed and a fifth of a healthy one. Below that
+   * nothing is marching; there is no rate between "animating" and "stopped"
+   * for this to land in by accident.
+   */
+  expect(during, "the ants need a frame each while the shape is out").toBeGreaterThan(12);
+  expect(after, "and none once it is let go").toBeLessThan(5);
 });
