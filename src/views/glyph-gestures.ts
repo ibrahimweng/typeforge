@@ -56,6 +56,7 @@ import {
   onLastPoint,
   openOutline,
   parseNodeKey,
+  pathUnder,
   segmentUnder,
   type Drag,
   type Hover,
@@ -394,8 +395,10 @@ export function useGlyphGestures(within: {
       return;
     }
     if (state.tool === "selectPath") {
-      const hit = hitTestNode(glyph, view, canvasPoint) ?? segmentUnder(glyph, view, canvasPoint);
-      if (hit) store.selectAllNodes(glyph.name, hit.contour);
+      // The same rule the canvas lights up with, so what was ringed under the
+      // pointer is what the press takes.
+      const under = pathUnder(glyph, view, canvasPoint);
+      if (under !== null) store.selectAllNodes(glyph.name, under);
       else store.setSelectedNodes([]);
       reportPhase(canvasPoint);
       return;

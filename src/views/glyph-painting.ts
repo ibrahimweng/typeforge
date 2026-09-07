@@ -28,7 +28,7 @@ import type { AppState } from "@/state/useStore";
 import { drawWritten } from "./write-canvas";
 
 import { catches, type Catching } from "./glyph-catch";
-import { segmentUnder, type Drag, type Hover } from "./glyph-pointer";
+import { pathUnder, segmentUnder, type Drag, type Hover } from "./glyph-pointer";
 import { quadForPerspective, quadPulled } from "./transform-box";
 import type { Box as BoxOf } from "@/font/warp";
 import type { Vec2 } from "@/font/types";
@@ -184,6 +184,23 @@ export function paintGlyph(context: CanvasRenderingContext2D, within: Painting):
    */
   if (state.highlightPath !== null) {
     drawPathOutline(context, glyph.contours[state.highlightPath], view);
+  }
+  /*
+   * And the shape a whole-shape pick would take, ringed under the pointer.
+   *
+   * This tool showed nothing at all. It takes its shape on the press and sets
+   * no drag, so there was no gesture to draw and nothing was drawn: press,
+   * nothing, let go, a transform box. Every other way of selecting here says
+   * what it is about to take while you are still deciding -- the box and the
+   * ring both draw themselves and light the points they hold -- and this one
+   * asked you to click and find out.
+   *
+   * Ringed rather than filled, and asked of `pathUnder` rather than worked out
+   * again here, so the shape that lights is the shape the press takes.
+   */
+  if (at && state.tool === "selectPath") {
+    const under = pathUnder(glyph, view, at);
+    if (under !== null) drawPathOutline(context, glyph.contours[under], view);
   }
   /*
    * A written letter's nodes are the sweep's, not anybody's.
