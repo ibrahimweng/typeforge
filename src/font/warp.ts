@@ -220,7 +220,9 @@ export const WARPS: ReadonlyArray<{ id: WarpName; name: string; hint: string }> 
   {
     id: "bulge",
     name: "Bulge",
-    hint: "Fattens the middle and pinches the ends, in both directions.",
+    // Says what it does rather than what the word suggests: nothing here is
+    // pinched. The middle swells and the ends are pushed apart with it.
+    hint: "Swells the middle and pushes the ends apart, in both directions.",
   },
   { id: "flag", name: "Flag", hint: "One wave across the selection, as a flag hangs." },
   { id: "wave", name: "Wave", hint: "Two waves across the selection, one riding on the other." },
@@ -310,9 +312,50 @@ function bend(name: WarpName, amount: number, u: number, v: number): Within {
   }
 }
 
+/**
+ * How far each field pushes at an amount of one, before they are levelled.
+ *
+ * The fields are written the way each is clearest to read -- a sine, a
+ * rotation, a scale about the middle -- and written that way they disagree
+ * wildly about what a number means. Measured across the box, Rise moved four
+ * times as far as Fisheye at the same setting, with Twist at three and Wave
+ * and Inflate short of the rest. Five of the ten already agreed, and this is
+ * the number that brings the other five to them.
+ *
+ * Which matters because the slider is one control with ten meanings. Somebody
+ * learns that forty is a gentle bow, picks the next name in the list, and gets
+ * a shove twice the size -- so the number under the pointer is worth nothing
+ * and the only way to find the setting is to drag until it looks right, every
+ * time, for every warp.
+ *
+ * Taken as the slope at a small amount rather than the reach at a full one,
+ * because that is where the work happens and it is exact there for nine of
+ * these. Twist is the tenth: it turns rather than pushes, so its reach bends
+ * away from its slope as the angle opens, and it lands about four percent
+ * short at the very end of the slider. Levelling it at the end instead would
+ * put that error where people actually work.
+ */
+const LEVEL: Record<WarpName, number> = {
+  arc: 1,
+  arch: 1,
+  bulge: 1,
+  flag: 1,
+  // The peak of six tenths of one wave riding on four tenths of two.
+  wave: 0.86874,
+  // Steepest of the radial falloffs: r / (1 + r*r), which peaks at the rim.
+  fisheye: 0.5,
+  // Reaches a whole box height at one, where a bow reaches half.
+  rise: 2,
+  // The gentler falloff, r / (1 + r*r/4), still climbing at the far corner.
+  inflate: 0.94281,
+  squeeze: 1,
+  // A half turn at the middle, which for a small angle is a push of pi/2.
+  twist: Math.PI / 2,
+};
+
 /** One place in the box, bent. */
 export function warpWithin(name: WarpName, amount: number, at: Within): Within {
-  const bent = bend(name, amount, at.u * 2 - 1, at.v * 2 - 1);
+  const bent = bend(name, amount / LEVEL[name], at.u * 2 - 1, at.v * 2 - 1);
   return { u: (bent.u + 1) / 2, v: (bent.v + 1) / 2 };
 }
 

@@ -25,6 +25,7 @@ import {
   withinBox,
   type Box,
   type Quad,
+  type WarpName,
 } from "./warp";
 import type { Contour, GlyphNode, Vec2 } from "./types";
 
@@ -221,6 +222,56 @@ describe("the named warps", () => {
             ).toBe(true);
           }
         }
+      }
+    }
+  });
+
+  it("agree with each other on what the amount means", () => {
+    /*
+     * Ten names and one slider, so the number under it has to mean the same
+     * thing whichever name is picked. Measured rather than declared: the
+     * furthest anything in the box is moved, swept across the whole of it,
+     * which is the only way to compare a sine against a rotation against a
+     * scale about the middle.
+     *
+     * They did not agree before this was pinned. Rise moved four times as far
+     * as Fisheye at the same setting, Twist three, Wave and Inflate a little
+     * under the rest -- so somebody who learned what forty felt like on one
+     * warp had learned nothing about the next. `LEVEL` in the module is what
+     * brings them together, and this is the test that says whether it still
+     * does: change a field's arithmetic and its entry goes stale, and the run
+     * says so rather than the slider quietly meaning two things again.
+     */
+    const reach = (name: WarpName, amount: number): number => {
+      let most = 0;
+      for (let u = 0; u <= 1.0001; u += 0.02) {
+        for (let v = 0; v <= 1.0001; v += 0.02) {
+          const bent = warpWithin(name, amount, { u, v });
+          most = Math.max(most, Math.hypot(bent.u - u, bent.v - v));
+        }
+      }
+      return most;
+    };
+
+    for (const amount of [0.12, 0.4, 1]) {
+      /*
+       * Half the amount, as a fraction of the box: an arc at one bows the
+       * middle out by half the box's height, and that is the bow the other
+       * nine are levelled against.
+       */
+      const wanted = amount / 2;
+      for (const warp of WARPS) {
+        const got = reach(warp.id, amount);
+        /*
+         * A tenth, which is tight enough to catch the four-fold spread this
+         * was written for and loose enough for the one warp that cannot be
+         * exact at both ends of the slider: a twist turns, so its reach falls
+         * behind its slope as the angle opens, by about four percent at one.
+         */
+        expect(
+          Math.abs(got - wanted) / wanted,
+          `${warp.id} at ${amount} reaches ${got}`,
+        ).toBeLessThan(0.1);
       }
     }
   });
