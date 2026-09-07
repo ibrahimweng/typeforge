@@ -16,6 +16,7 @@
  */
 
 import { applyEdits, fromBase64, type EditedProject, type SavedMaster } from "@/project/format";
+import { blankDocument } from "./documents";
 /*
  * Renamed on the way in, because the store's own methods are called the same
  * things. Both resolve correctly -- a bare name inside a method is the module
@@ -484,14 +485,25 @@ class Store extends ShapingStore {
      * desk had been cleared, it would have taken away what was open to make
      * room for a session that never arrived.
      */
-    const bytes = saved.map((one) => fromBase64(one.font));
+    const bytes = saved.map((one) => (one.font === undefined ? null : fromBase64(one.font)));
     this.closeEveryDocument();
     for (const [at, one] of saved.entries()) await this.restoreOne(one, bytes[at]);
     this.goToDocument(Math.min(Math.max(Math.trunc(front), 0), saved.length - 1));
   }
 
-  private async restoreOne(saved: EditedProject, bytes: Uint8Array): Promise<void> {
-    await this.loadFont(bytes, saved.fileName);
+  private async restoreOne(saved: EditedProject, bytes: Uint8Array | null): Promise<void> {
+    /*
+     * A file to lay the letters back over, or a clean sheet to lay the whole
+     * font onto.
+     *
+     * The second is a font that never came from a file -- started blank here,
+     * or drawn and handed to the tools -- and it used not to be written down
+     * at all. `applyEdits` does not care which it is: it matches by name and
+     * appends what it does not find, so on an empty sheet every letter is
+     * something it does not find and the font arrives whole.
+     */
+    if (bytes) await this.loadFont(bytes, saved.fileName);
+    else this.startBlankFor(saved);
     const { typeface } = this.state;
     if (!typeface) return;
     applyEdits(typeface, saved);
@@ -676,6 +688,31 @@ class Store extends ShapingStore {
         },
       });
     }
+  }
+
+  /**
+   * A sheet for a saved font that has no file behind it, at its own size.
+   *
+   * `startBlank` with the em the font was written at and without the `.notdef`
+   * it puts in, because this one brings its own letters and one of them is
+   * that. Left in, `applyEdits` would match it by name and overwrite it, which
+   * is the same answer by luck rather than by intent -- and a font saved
+   * without a `.notdef` would come back with one it never had.
+   */
+  private startBlankFor(saved: EditedProject): void {
+    this.forgetLoan();
+    this.makeRoom();
+    const sheet = emptyTypeface();
+    sheet.unitsPerEm = saved.unitsPerEm || sheet.unitsPerEm;
+    this.controlBaseline = null;
+    this.ufo = null;
+    this.set({
+      ...blankDocument(),
+      typeface: sheet,
+      fileName: saved.fileName,
+      masters: [soleMaster(sheet)],
+      master: "m1",
+    });
   }
 
   startBlank(): void {

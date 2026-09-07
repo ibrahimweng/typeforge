@@ -12,7 +12,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
-import { FONT_PATH, keptHalves, openFont, startBlank } from "./support";
+import { FONT_PATH, keptFonts, keptHalves, openFont, startBlank } from "./support";
 
 test.skip(!FONT_PATH, "needs a system font to open");
 
@@ -121,25 +121,70 @@ test("both fonts are still there after a reload", async ({ page }) => {
   await startBlank(page);
   await expect(page.locator("[data-document-tab]")).toHaveCount(2);
 
-  await expect.poll(() => keptHalves(page), { timeout: 30_000 }).toContain("edits");
+  /*
+   * Waited for by name, not by half.
+   *
+   * The edited half exists from the moment the first font is open, so waiting
+   * on it is waiting for something that happened before the second font did --
+   * and the reload then races the save that carries it. Asking which fonts are
+   * written down asks the actual question.
+   */
+  await expect
+    .poll(() => keptFonts(page).then((fonts) => fonts.map((one) => one.name)), {
+      timeout: 30_000,
+    })
+    .toEqual(["DejaVu Sans", "Untitled"]);
   await page.reload();
 
   /*
-   * Only the opened font comes back, and that is what this test is for rather
-   * than a shortfall of it.
+   * Both of them, and the blank one is the half that used to go.
    *
-   * A font started blank in here carries no original bytes to lay its edits
-   * back over, so it has never been written down -- not since before there
-   * were tabs. What several fonts open at once changed is how easy that is to
-   * walk into: starting one used to replace your work and now sits beside it,
-   * so the tab that cannot be saved is a tab people will actually have. Said
-   * here so that fixing it is a decision somebody makes rather than something
-   * that quietly never happens.
+   * A font started blank here has no original bytes to lay its edits back
+   * over, and for a long while that meant the whole half was skipped: it was
+   * never written down at all. Several fonts open at once only made that
+   * easier to walk into -- starting one used to replace your work and now sits
+   * beside it -- so the tab that could not be saved became a tab people
+   * actually had. It is written whole now, since a font with no file behind it
+   * only ever holds what somebody made in here.
    */
-  await expect(page.locator("[data-font-name]")).toContainText("DejaVu Sans", {
-    timeout: 45_000,
-  });
-  await expect(page.locator("[data-document-tab]")).toHaveCount(0);
+  await expect(page.locator("[data-document-tab]")).toHaveCount(2, { timeout: 60_000 });
+  await expect(page.locator("[data-font-name]")).toContainText("Untitled");
+  await page.locator('[data-document-tab="DejaVu Sans"]').click();
+  await expect(page.locator("[data-font-name]")).toContainText("DejaVu Sans");
+});
+
+test("a letter drawn in a font made here is still drawn after a reload", async ({ page }) => {
+  /*
+   * The work that used to be lost, rather than the tab that used to be lost.
+   * Somebody starts a font, draws in it, and comes back the next day: before
+   * this there was nothing there, no file to go back to, and nothing said.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await startBlank(page);
+  await page.getByRole("button", { name: "Font", exact: true }).click();
+  // A font with only its `.notdef` says it has no letters yet, and this is the
+  // way out of that: it adds one and opens the editor on it.
+  await expect(page.getByText("No letters yet.", { exact: false })).toBeVisible();
+  await page.locator("[data-add-glyph]").click();
+  await expect(page.getByRole("button", { name: "Glyph", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+
+  // Waited for by what is in the font rather than by the half existing, for
+  // the reason the test above gives: the half was there before the letter was.
+  await expect
+    .poll(() => keptFonts(page).then((fonts) => fonts.at(-1)?.glyphs ?? 0), { timeout: 30_000 })
+    .toBe(2);
+  await page.reload();
+
+  await expect(page.locator("[data-font-name]")).toContainText("Untitled", { timeout: 60_000 });
+  await page.getByRole("button", { name: "Font", exact: true }).click();
+  // Not the empty state any more, which is what it gave back before: the font
+  // came back with the letter in it rather than not coming back at all.
+  await expect(page.getByText("No letters yet.", { exact: false })).toHaveCount(0);
+  await expect(page.locator("[data-glyph-cell]"), "the letter came back").toHaveCount(2);
 });
 
 test("two opened fonts both come back after a reload", async ({ page }) => {

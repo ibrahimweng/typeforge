@@ -507,6 +507,78 @@ describe("the doors a font comes in by", () => {
     expect(store.getSnapshot().fileName).toBe("two.ttf");
   });
 
+  it("writes down a font that never came from a file, and gives it back whole", async () => {
+    /*
+     * The one that used to be dropped in silence. A font started blank here
+     * carries no bytes to lay its edits back over, so the whole half was
+     * skipped -- draw in a new font, reload, and there was nothing there. The
+     * same went for a letter taken to the tools from Draw and then edited:
+     * the drawing came back and the point edits did not.
+     */
+    store.startBlank();
+    store.editGlyph(".notdef", "Widen the letter", (glyph) => {
+      glyph.advanceWidth = 613;
+    });
+    store.setMeta({ familyName: "Drawn Here" });
+
+    const kept = toProject(
+      { mode: "edit", edits: store.snapshots(), editAt: inFront() },
+      new Date(),
+    );
+    expect(kept.edits, "a font with no file is still a font").toHaveLength(1);
+    expect(kept.edits![0].font, "and has no file to point at").toBeUndefined();
+
+    // A different desk, so what comes back has to have come from the document.
+    store.adopt(fontCalled("Bakerloo"), "bakerloo.ttf");
+    await store.restoreAll(kept.edits!, kept.editAt ?? 0);
+
+    const back = store.getSnapshot().typeface;
+    expect(back?.meta.familyName).toBe("Drawn Here");
+    expect(back?.glyphs.map((one) => one.name)).toEqual([".notdef"]);
+    expect(back?.glyphs[0].advanceWidth, "the edit came back with it").toBe(613);
+    expect(back?.source, "and it still has no file behind it").toBeNull();
+  });
+
+  it("gives back a font made here at the size it was made at", async () => {
+    // A blank font is a thousand units and an assembled one is whatever its
+    // drawings were measured against. Restored at the wrong size, every letter
+    // in it is the wrong size.
+    const wide = fontCalled("Wide");
+    wide.unitsPerEm = 2048;
+    store.adopt(wide, "");
+    expect(store.getSnapshot().typeface?.source).toBeNull();
+
+    const kept = toProject(
+      { mode: "edit", edits: store.snapshots(), editAt: inFront() },
+      new Date(),
+    );
+    await store.restoreAll(kept.edits!, kept.editAt ?? 0);
+    expect(store.getSnapshot().typeface?.unitsPerEm).toBe(2048);
+  });
+
+  it("brings back a file-backed font and a made-here one side by side", async () => {
+    // The two shapes in one document, because a desk holds both and the
+    // reader has to tell them apart by what each one carries.
+    await store.loadFont(SAMPLE, "sample.ttf");
+    store.startBlank();
+    store.setMeta({ familyName: "Beside It" });
+    expect(tabs()).toEqual(["Typeforge Sample", "Beside It"]);
+
+    const kept = toProject(
+      { mode: "edit", edits: store.snapshots(), editAt: inFront() },
+      new Date(),
+    );
+    expect(kept.edits).toHaveLength(2);
+    expect(kept.edits![0].font, "opened from a file").toBeDefined();
+    expect(kept.edits![1].font, "made here").toBeUndefined();
+
+    await store.restoreAll(kept.edits!, kept.editAt ?? 0);
+    expect(tabs()).toEqual(["Typeforge Sample", "Beside It"]);
+    expect(store.getSnapshot().typeface?.meta.familyName).toBe("Beside It");
+    store.goToDocument(0);
+    expect(store.getSnapshot().typeface?.source, "still read from its file").not.toBeNull();
+  });
+
   it("puts a saved project back over the desk rather than beside it", async () => {
     /*
      * The one door that replaces. A project is the whole session coming back --

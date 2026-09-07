@@ -614,7 +614,21 @@ export function App(): React.JSX.Element {
    * are cheap and the omission is silent, which is the argument for listing all
    * of them here rather than the ones that seemed to matter.
    */
-  const revisions = `${state.revision}:${drawn.count}:${assemble.revision}:${traced.revision}:${mode}`;
+  /*
+   * Which fonts are open, and which is in front.
+   *
+   * `state.revision` counts edits to the font in front and belongs to that
+   * font, so on its own it says nothing about the set: opening a second font,
+   * closing one, moving a tab or switching between them can all leave the
+   * number where it was, and then nothing is written down. Not badly -- not at
+   * all, which is the failure the note above is about, met a second time by a
+   * later change rather than by an omission in the list.
+   *
+   * It cost a second font. Open one, reload, and whether it came back turned
+   * on whether its revision happened to differ from the last one's.
+   */
+  const documents = `${state.open.map((one) => one.id).join(",")}:${state.openAt}`;
+  const revisions = `${state.revision}:${documents}:${drawn.count}:${assemble.revision}:${traced.revision}:${mode}`;
   React.useEffect(() => {
     if (restoring.current) return;
     keeper.soon(() => session(mode));

@@ -88,6 +88,24 @@ describe("what gets written down", () => {
 });
 
 describe("an edited font", () => {
+  /** A font that never came from a file: no source, and letters of its own. */
+  function madeHere(names: string[]): Typeface {
+    const typeface = emptyTypeface();
+    typeface.meta = { ...typeface.meta, familyName: "Made Here" };
+    typeface.glyphs = names.map((name) => ({
+      name,
+      unicodes: [name.codePointAt(0)!],
+      advanceWidth: 500,
+      contours: [],
+      components: [],
+      anchors: [],
+      params: {},
+      dirty: false,
+    }));
+    typeface.glyphIndex = new Map(typeface.glyphs.map((glyph, at) => [glyph.name, at]));
+    return typeface;
+  }
+
   function fontWith(dirty: string[]): { typeface: Typeface; fileName: string } {
     const typeface = emptyTypeface();
     typeface.source = {
@@ -124,13 +142,13 @@ describe("an edited font", () => {
     const project = toProject(snapshot({ mode: "edit", edits: [fontWith(["B"])] }), WHEN);
     expect(project.edits?.[0]?.glyphs.map((glyph) => glyph.name)).toEqual(["B"]);
     expect(project.edits?.[0]?.fileName).toBe("Test.ttf");
-    expect(fromBase64(project.edits![0].font)).toEqual(new Uint8Array([0, 1, 0, 0, 9, 9, 9]));
+    expect(fromBase64(project.edits![0].font!)).toEqual(new Uint8Array([0, 1, 0, 0, 9, 9, 9]));
   });
 
   it("carries a font nobody has edited as its own bytes and nothing else", () => {
     const project = toProject(snapshot({ mode: "edit", edits: [fontWith([])] }), WHEN);
     expect(project.edits?.[0]?.glyphs).toEqual([]);
-    expect(project.edits?.[0]?.font.length).toBeGreaterThan(0);
+    expect(project.edits?.[0]?.font?.length).toBeGreaterThan(0);
   });
 
   it("writes down every font that is open, in the order their tabs sit in", () => {
@@ -149,24 +167,48 @@ describe("an edited font", () => {
     expect(project.editAt).toBe(1);
   });
 
-  it("leaves out a font with no file behind it, and counts the front against what is left", () => {
+  it("writes down a font with no file behind it, whole", () => {
     /*
-     * A font started blank in here carries no original bytes to lay its edits
-     * back over, so there is nothing to write down -- which has always been
-     * true and only matters now that it can be one tab of several. Counted
-     * against the tabs rather than against what was kept, the index would
-     * point past the end of the list or at somebody else's font.
+     * The case this used to skip, and skipping it was not a small gap: a font
+     * started blank here, or drawn and taken to the tools, was simply never
+     * saved. Drawing in a new font and reloading gave back nothing.
+     *
+     * There is no file for anything to be an exception to, so the whole font
+     * goes down -- which is affordable exactly because a font with no file
+     * behind it only ever holds what somebody made in here.
      */
-    const blank = { typeface: emptyTypeface(), fileName: "" };
-    const kept = toProject({ mode: "edit", edits: [blank, fontWith(["B"])], editAt: 1 }, WHEN);
-    expect(kept.edits).toHaveLength(1);
-    expect(kept.editAt).toBe(0);
+    const blank = { typeface: madeHere(["A", "B"]), fileName: "" };
+    const project = toProject({ mode: "edit", edits: [blank] }, WHEN);
+    expect(project.edits).toHaveLength(1);
+    expect(project.edits![0].font, "no file to point at").toBeUndefined();
+    expect(project.edits![0].glyphs.map((one) => one.name)).toEqual(["A", "B"]);
+    expect(project.edits![0].meta.familyName).toBe("Made Here");
+  });
 
-    // And when the one in front is the one that cannot be written, the nearest
-    // kept font to its left comes forward rather than nothing at all.
-    const gone = toProject({ mode: "edit", edits: [fontWith([]), blank], editAt: 1 }, WHEN);
-    expect(gone.edits).toHaveLength(1);
-    expect(gone.editAt).toBe(0);
+  it("writes the em of a font with no file to read it from", () => {
+    /*
+     * Not a detail that can be defaulted: a blank font is a thousand units, an
+     * assembled one is whatever its drawings were measured against, and a
+     * traced one is whatever it was traced from. Restored at the wrong size,
+     * every letter in it is the wrong size.
+     */
+    const wide = madeHere(["A"]);
+    wide.unitsPerEm = 2048;
+    const project = toProject({ mode: "edit", edits: [{ typeface: wide, fileName: "" }] }, WHEN);
+    expect(project.edits![0].unitsPerEm).toBe(2048);
+
+    // And it is not written for a font that has a file, which already says so.
+    const opened = toProject(snapshot({ mode: "edit", edits: [fontWith([])] }), WHEN);
+    expect(opened.edits![0].unitsPerEm, "the file is the one place that says").toBeUndefined();
+  });
+
+  it("keeps the tabs one for one, so the front font is the front font", () => {
+    // Nothing falls out on the way down any more, so the index of the one in
+    // front is the index it was handed rather than a count of what survived.
+    const blank = { typeface: madeHere(["A"]), fileName: "" };
+    const project = toProject({ mode: "edit", edits: [blank, fontWith(["B"])], editAt: 1 }, WHEN);
+    expect(project.edits).toHaveLength(2);
+    expect(project.editAt).toBe(1);
   });
 
   /*

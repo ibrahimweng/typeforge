@@ -221,8 +221,36 @@ export interface TracedProject {
  */
 export interface EditedProject {
   fileName: string;
-  /** The original file, as base64. */
-  font: string;
+  /**
+   * The original file, as base64 -- when there was one.
+   *
+   * Absent for a font that never came from a file: one started blank in here,
+   * or one handed over by Draw, Trace or Assemble. Those have no bytes to lay
+   * anything back over, and for a long while that meant they were not written
+   * down at all: the whole half was skipped, so drawing in a new font and
+   * reloading gave back nothing, and the point edits made to a letter taken to
+   * the tools went the same way.
+   *
+   * Its absence is what says which shape the rest is in. With a file, `glyphs`
+   * holds the exceptions to it, because a font is six thousand letters and
+   * writing all of them down to record that two moved would be fifty megabytes
+   * describing fifty bytes of work. Without one, `glyphs` is the whole font --
+   * which is affordable precisely because a font with no file behind it only
+   * ever holds what somebody made in here.
+   *
+   * `features.ts` already reads a font this way round when it asks which
+   * glyphs are worth looking at, and for the same reason.
+   */
+  font?: string;
+  /**
+   * The em, for a font with no file to read it from.
+   *
+   * Only written in that case, and it is not a detail that can be defaulted: a
+   * blank font is a thousand units, an assembled one is whatever its drawings
+   * were measured against, and a traced one is whatever it was traced from.
+   * Restored at the wrong size, every letter in it is the wrong size.
+   */
+  unitsPerEm?: number;
   meta: Typeface["meta"];
   metrics: Typeface["metrics"];
   params: GlyphParams;
@@ -405,45 +433,48 @@ export function toProject(snapshot: Snapshot, at: Date): Project {
     project.assemble = snapshot.assemble;
   }
   /*
-   * The fonts that can be written down, and where the one in front lands among
-   * them.
+   * Every font that is open, and which of them was in front.
    *
-   * A font with no file behind it -- one started blank in here, which carries
-   * no original bytes to lay its edits back over -- cannot be written, and has
-   * never been written. So the list that comes out can be shorter than the
-   * list of tabs, and the index of the front font is counted against what is
-   * kept rather than against what was open. Counted against the tabs it would
-   * point past the end, or at somebody else's font.
+   * One for one with the tabs, because there is no longer such a thing as a
+   * font that cannot be written down. This used to walk the list keeping count
+   * of what had been dropped, so that the index of the front font pointed at
+   * what was kept rather than at what was open -- a piece of arithmetic that
+   * existed only because fonts with no file behind them fell out here. Nothing
+   * falls out, so it is a plain map and the index is the index.
    */
-  const edits: EditedProject[] = [];
-  let editAt = 0;
-  (snapshot.edits ?? []).forEach((one, at) => {
-    const written = toEdited(one.typeface, one.fileName, one.masters, one.drawing);
-    if (!written) return;
-    // The nearest kept font at or before the one in front, which is the one in
-    // front itself whenever it was kept at all.
-    if (at <= (snapshot.editAt ?? 0)) editAt = edits.length;
-    edits.push(written);
-  });
+  const edits = (snapshot.edits ?? []).map((one) =>
+    toEdited(one.typeface, one.fileName, one.masters, one.drawing),
+  );
   if (edits.length > 0) {
     project.edits = edits;
-    project.editAt = Math.min(editAt, edits.length - 1);
+    // Clamped rather than trusted, on the same terms as the reader below.
+    project.editAt = Math.min(edits.length - 1, Math.max(0, Math.trunc(snapshot.editAt ?? 0)));
   }
   if (snapshot.traced && snapshot.traced.letters.length > 0) project.traced = snapshot.traced;
   return project;
 }
 
+/**
+ * One font as a document, in whichever of the two shapes it has.
+ *
+ * Total: there is no font this cannot write. It used to refuse one with no
+ * file behind it, which read as a small gap and was not -- a font started
+ * blank, or drawn and taken to the tools, was simply never saved.
+ */
 function toEdited(
   typeface: Typeface,
   fileName: string,
   masters?: SavedMaster[],
   drawing?: string,
-): EditedProject | undefined {
-  if (!typeface.source) return undefined;
+): EditedProject {
   const [first, ...rest] = masters ?? [];
+  const source = typeface.source;
   return {
     fileName,
-    font: keptBase64(typeface.source.bytes),
+    font: source ? keptBase64(source.bytes) : undefined,
+    // Read off the file when there is one, so it is written once rather than
+    // in two places that can come to disagree.
+    unitsPerEm: source ? undefined : typeface.unitsPerEm,
     meta: typeface.meta,
     metrics: typeface.metrics,
     params: typeface.params,
@@ -454,7 +485,9 @@ function toEdited(
     alternates: typeface.alternates,
     ligatures: typeface.ligatures,
     sets: typeface.sets,
-    glyphs: typeface.glyphs.filter((glyph) => glyph.dirty),
+    // The exceptions to the file, or the whole font when there is no file for
+    // anything to be an exception to.
+    glyphs: source ? typeface.glyphs.filter((glyph) => glyph.dirty) : typeface.glyphs,
     weight: first ? { name: first.name, at: first.at } : undefined,
     drawing,
     // Left out entirely when there is one weight, so the ordinary document is
@@ -565,7 +598,14 @@ export function readProject(raw: unknown): Project | null {
  */
 function readEdits(project: Partial<Project>): Pick<Project, "edits" | "editAt"> {
   if (!Array.isArray(project.edits)) return {};
-  const edits = project.edits.filter((one) => one?.font);
+  /*
+   * A file to lay letters over, or letters that are the whole font. Either is
+   * a font; neither is an empty object, which is what a truncated record or
+   * something that was never one of ours looks like.
+   */
+  const edits = project.edits.filter(
+    (one) => typeof one?.font === "string" || Array.isArray(one?.glyphs),
+  );
   if (edits.length === 0) return {};
   const wanted = Math.trunc(Number(project.editAt ?? 0)) || 0;
   return { edits, editAt: Math.min(Math.max(wanted, 0), edits.length - 1) };
@@ -625,7 +665,9 @@ export function describe(project: Project): string {
     const count = project.assemble.assembly.pieces.length;
     halves.push(`${count} assembled ${count === 1 ? "drawing" : "drawings"}`);
   }
-  for (const one of project.edits ?? []) halves.push(one.fileName);
+  // By its file name, or by what it calls itself when it never came from a
+  // file -- an empty string in this list would be a half that reads as missing.
+  for (const one of project.edits ?? []) halves.push(one.fileName || one.meta.familyName);
   if (project.traced) {
     const count = project.traced.letters.length;
     halves.push(`${count} traced ${count === 1 ? "letter" : "letters"}`);
