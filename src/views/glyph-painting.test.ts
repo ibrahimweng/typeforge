@@ -140,6 +140,7 @@ function paint(over: Partial<Painting> = {}): void {
     hover: null,
     at: null,
     drag: null,
+    catching: null,
     modifiers: { square: false, fromCentre: false },
     box: null,
     grip: null,

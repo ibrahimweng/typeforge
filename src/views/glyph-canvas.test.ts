@@ -408,7 +408,7 @@ describe("the marks a gesture leaves while it is running", () => {
     ];
     for (const [from, to] of corners) {
       const { context, notes } = recorder();
-      drawMarquee(context, { kind: "marquee", from, to, additive: false });
+      drawMarquee(context, { kind: "marquee", from, to, additive: false }, 0);
       expect(didOnce(notes, "fillRect")).toEqual([10, 20, 100, 200]);
     }
   });
@@ -420,15 +420,19 @@ describe("the marks a gesture leaves while it is running", () => {
    */
   it("closes the lasso's ring while it is still being drawn", () => {
     const { context, notes } = recorder();
-    drawLasso(context, {
-      kind: "lasso",
-      trail: [
-        { x: 0, y: 0 },
-        { x: 50, y: 0 },
-        { x: 50, y: 50 },
-      ],
-      additive: false,
-    });
+    drawLasso(
+      context,
+      {
+        kind: "lasso",
+        trail: [
+          { x: 0, y: 0 },
+          { x: 50, y: 0 },
+          { x: 50, y: 50 },
+        ],
+        additive: false,
+      },
+      0,
+    );
     expect(did(notes, "closePath")).toHaveLength(1);
     expect(did(notes, "lineTo")).toHaveLength(2);
   });
@@ -437,7 +441,7 @@ describe("the marks a gesture leaves while it is running", () => {
     const one = [{ x: 0, y: 0 }];
 
     const lasso = recorder();
-    drawLasso(lasso.context, { kind: "lasso", trail: one, additive: false });
+    drawLasso(lasso.context, { kind: "lasso", trail: one, additive: false }, 0);
     expect(lasso.notes, "lasso").toHaveLength(0);
 
     const pencil = recorder();
@@ -767,9 +771,9 @@ describe("where the colours are read from", () => {
     ["drawAnchors", (c) => drawAnchors(c, anchors, VIEW, { kind: "anchor", name: "top" })],
     [
       "drawMarquee",
-      (c) => drawMarquee(c, { kind: "marquee", from: trail[0], to: trail[1], additive: false }),
+      (c) => drawMarquee(c, { kind: "marquee", from: trail[0], to: trail[1], additive: false }, 0),
     ],
-    ["drawLasso", (c) => drawLasso(c, { kind: "lasso", trail, additive: false })],
+    ["drawLasso", (c) => drawLasso(c, { kind: "lasso", trail, additive: false }, 0)],
     [
       "drawKnifePreview",
       (c) => drawKnifePreview(c, { kind: "knife", from: trail[0], to: trail[1] }),

@@ -27,6 +27,7 @@ import { prepareCanvas, readToken, type GlyphView } from "@/components/glyph-ren
 import type { AppState } from "@/state/useStore";
 import { drawWritten } from "./write-canvas";
 
+import { catches, type Catching } from "./glyph-catch";
 import { segmentUnder, type Drag, type Hover } from "./glyph-pointer";
 import { quadForPerspective, quadPulled } from "./transform-box";
 import type { Box as BoxOf } from "@/font/warp";
@@ -37,6 +38,7 @@ import {
   drawContours,
   drawFreehandPreview,
   drawKnifePreview,
+  drawCaughtCount,
   drawLasso,
   drawMarks,
   drawMarquee,
@@ -67,6 +69,8 @@ export interface Painting {
   at: Vec2 | null;
   /** The gesture in flight, read live from its ref by the caller. */
   drag: Drag | null;
+  /** What a shape being dragged has hold of, for lighting those points up. */
+  catching: Catching | null;
   /** The modifiers as of the last move, for a shape being dragged out. */
   modifiers: { square: boolean; fromCentre: boolean };
   /** The box round the selection, when there is one worth drawing. */
@@ -87,8 +91,21 @@ export interface Painting {
  * segment about to be cut has to be lit before the nodes go over it.
  */
 export function paintGlyph(context: CanvasRenderingContext2D, within: Painting): void {
-  const { typeface, glyph, state, view, size, neighbours, hover, at, drag, modifiers, box, grip } =
-    within;
+  const {
+    typeface,
+    glyph,
+    state,
+    view,
+    size,
+    neighbours,
+    hover,
+    at,
+    drag,
+    catching,
+    modifiers,
+    box,
+    grip,
+  } = within;
   // The element, for the colour tokens: every colour on this canvas is a custom
   // property read off it rather than a value passed in.
   const canvas = context.canvas;
@@ -178,8 +195,17 @@ export function paintGlyph(context: CanvasRenderingContext2D, within: Painting):
    * the other: the pen's while writing, the outline's the rest of the time.
    */
   const writing = writesStrokes(state.tool);
+  /*
+   * One clock for the whole frame, so the ants and the flashes agree.
+   *
+   * Read once rather than per call: two `performance.now()`s in one paint are
+   * two moments, and a ring drawn against a later one than the dashes it sits
+   * inside would drift by a frame at a time.
+   */
+  const now = performance.now();
+
   if (!writing) {
-    drawNodes(context, glyph.contours, view, state.selectedNodes, hover);
+    drawNodes(context, glyph.contours, view, state.selectedNodes, hover, catching, now);
     if (state.marks) drawMarks(context, glyph.contours, view);
     drawAnchors(context, glyph.anchors, view, hover);
   }
@@ -188,11 +214,23 @@ export function paintGlyph(context: CanvasRenderingContext2D, within: Painting):
     selected: state.stop,
   });
 
-  if (drag?.kind === "marquee") drawMarquee(context, drag);
+  if (drag?.kind === "marquee") drawMarquee(context, drag, now);
   if (drag?.kind === "shape") drawShapePreview(context, drag, view, modifiers);
   if (drag?.kind === "knife") drawKnifePreview(context, drag);
   if (drag?.kind === "freehand") drawFreehandPreview(context, drag, view);
-  if (drag?.kind === "lasso") drawLasso(context, drag);
+  if (drag?.kind === "lasso") drawLasso(context, drag, now);
+
+  /*
+   * And how many it has, at the corner being dragged.
+   *
+   * Drawn after the shape so the label is never behind its own fill, and only
+   * while a shape is out: a count of a selection that is no longer being made
+   * is a number sitting on a letter for no reason.
+   */
+  if (catching && catches(drag)) {
+    const corner = drag.kind === "marquee" ? drag.to : drag.trail[drag.trail.length - 1];
+    if (corner) drawCaughtCount(context, corner, catching.keys.size);
+  }
 
   /*
    * The box round what is selected, over everything else.
@@ -274,6 +312,7 @@ export function useGlyphPainting(within: {
       at,
       // The three read live rather than depended on -- see above.
       drag: gesture.drag.current,
+      catching: gesture.catching.current,
       modifiers: gesture.modifiers.current,
       box: gesture.box,
       grip: gesture.grip,
@@ -285,6 +324,16 @@ export function useGlyphPainting(within: {
      * changes when the ground does and the canvas would keep its old colours.
      */
   }, [
+    /*
+     * The beat first, because it is the one that covers the rest.
+     *
+     * Everything below is a document change, and a drag that draws over the
+     * letter without touching it -- a marquee, a lasso, a shape being pulled
+     * out, the knife's line -- changes none of them. Those previews were drawn
+     * by code a browser never reached: the component re-rendered on every move
+     * and this effect, keyed only on the document, did not run again.
+     */
+    gesture.beat,
     typeface,
     glyph,
     view,

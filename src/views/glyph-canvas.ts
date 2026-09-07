@@ -128,12 +128,27 @@ export function drawContours(
   context.restore();
 }
 
+/** How long a point flashes for after a shape sweeps over it, in ms. */
+const A_FLASH = 260;
+
 export function drawNodes(
   context: CanvasRenderingContext2D,
   contours: Contour[],
   view: GlyphView,
   selected: ReadonlySet<string>,
   hover: Hover,
+  /*
+   * What a shape being dragged has hold of right now, or nothing when no
+   * shape is being dragged.
+   *
+   * These are drawn as selected, because that is what they are about to be,
+   * and each flashes once as it is taken. The flash is what makes a fast sweep
+   * legible: a point that changes colour between two frames is a point nobody
+   * saw change, and the whole complaint this answers is not being able to tell
+   * what a drag is picking up while it is picking it up.
+   */
+  catching?: { keys: ReadonlySet<string>; since: ReadonlyMap<string, number> } | null,
+  now = 0,
 ): void {
   const onCurve = readToken("--node-on-curve", "#0c8ce9", context.canvas);
   const offCurve = readToken("--node-off-curve", "#9aa0ad", context.canvas);
@@ -162,7 +177,10 @@ export function drawNodes(
 
     contour.nodes.forEach((node, nodeIndex) => {
       const key = nodeKey({ contour: contourIndex, node: nodeIndex });
-      const isSelected = selected.has(key);
+      const caught = catching?.keys.has(key) ?? false;
+      // Held by the shape counts as selected: the drag is a preview of the
+      // selection it is about to make, so it shows the selection it will make.
+      const isSelected = caught || selected.has(key);
       const point = toScreen(view, node.point);
 
       // Handle arms and their control points.
@@ -200,6 +218,26 @@ export function drawNodes(
       } else {
         const s = NODE_SIZE + 0.5;
         context.fillRect(point.x - s, point.y - s, s * 2, s * 2);
+      }
+
+      /*
+       * And the flash, over the point rather than instead of it: a ring that
+       * grows out and fades, so the eye catches the moment even if it was not
+       * looking there. Drawn from when the point was taken rather than from a
+       * frame count, so a sweep that pauses does not leave a ring hanging.
+       */
+      if (caught) {
+        const age = now - (catching?.since.get(key) ?? now);
+        if (age >= 0 && age < A_FLASH) {
+          const along = age / A_FLASH;
+          context.save();
+          context.strokeStyle = withAlpha(selectedColour, 0.9 * (1 - along));
+          context.lineWidth = 1.5;
+          context.beginPath();
+          context.arc(point.x, point.y, NODE_SIZE + 2 + along * 9, 0, Math.PI * 2);
+          context.stroke();
+          context.restore();
+        }
       }
 
       const nodeHovered =
@@ -282,20 +320,52 @@ export function drawHoverRing(
   context.restore();
 }
 
+/**
+ * How far along the dashes have crawled, from the clock.
+ *
+ * Marching ants: the dashes travel round the shape while it is being dragged.
+ * A still outline is a picture of a selection, and a crawling one is a
+ * selection being made -- which is the difference somebody is looking for when
+ * they are halfway through a sweep and unsure whether the tool heard them.
+ *
+ * Off the wall clock rather than a frame counter, so every repaint draws the
+ * phase the moment deserves however it came to be repainted -- a pointer move,
+ * an edit, or the loop that keeps this going while a hand is still.
+ *
+ * Negative, because a dash offset counted up runs the ants backwards.
+ */
+const ANTS = [4, 3];
+function antsAt(now: number): number {
+  const period = ANTS[0] + ANTS[1];
+  return -((now / 60) % period);
+}
+
 export function drawMarquee(
   context: CanvasRenderingContext2D,
   drag: Extract<Drag, { kind: "marquee" }>,
+  now: number,
 ): void {
   const accent = readToken("--accent", "#0c8ce9", context.canvas);
   context.save();
-  context.strokeStyle = accent;
   context.fillStyle = withAlpha(accent, 0.12);
-  context.lineWidth = 1;
   const x = Math.min(drag.from.x, drag.to.x);
   const y = Math.min(drag.from.y, drag.to.y);
   const width = Math.abs(drag.to.x - drag.from.x);
   const height = Math.abs(drag.to.y - drag.from.y);
   context.fillRect(x, y, width, height);
+
+  /*
+   * Two strokes, dark under light, so the ants read on a black letter and on
+   * a white ground alike. One colour cannot: a dashed accent line over a
+   * filled stem is accent on near-accent, and the marching is what gets lost
+   * first.
+   */
+  context.lineWidth = 1;
+  context.strokeStyle = withAlpha(readToken("--background", "#000", context.canvas), 0.7);
+  context.strokeRect(x + 0.5, y + 0.5, width, height);
+  context.setLineDash(ANTS);
+  context.lineDashOffset = antsAt(now);
+  context.strokeStyle = accent;
   context.strokeRect(x + 0.5, y + 0.5, width, height);
   context.restore();
 }
@@ -565,6 +635,7 @@ export function drawMarks(
 export function drawLasso(
   context: CanvasRenderingContext2D,
   drag: Extract<Drag, { kind: "lasso" }>,
+  now: number,
 ): void {
   if (drag.trail.length < 2) return;
   const colour = readToken("--accent", "#0c8ce9", context.canvas);
@@ -575,9 +646,13 @@ export function drawLasso(
   context.closePath();
   context.fillStyle = withAlpha(colour, 0.12);
   context.fill();
-  context.strokeStyle = colour;
+  // Dark under light, and marching, on the same terms as the box above.
   context.lineWidth = 1;
-  context.setLineDash([4, 3]);
+  context.strokeStyle = withAlpha(readToken("--background", "#000", context.canvas), 0.7);
+  context.stroke();
+  context.setLineDash(ANTS);
+  context.lineDashOffset = antsAt(now);
+  context.strokeStyle = colour;
   context.stroke();
   context.restore();
 }
@@ -695,4 +770,42 @@ function handle(context: CanvasRenderingContext2D, at: Vec2, colour: string, lit
   context.fill();
   context.strokeStyle = colour;
   context.stroke();
+}
+
+/**
+ * How many points the shape has hold of, beside the pointer.
+ *
+ * The highlights say which; this says how many, which is the question a dense
+ * outline cannot answer by eye -- at two hundred points the lit ones overlap
+ * and counting them is not something anybody does mid-drag.
+ *
+ * It follows the corner being dragged rather than sitting somewhere fixed,
+ * because that is where the eye already is. Offset up and left of the pointer
+ * so the cursor never covers it, and flipped back over the shape when the drag
+ * has run out to the edge of the canvas.
+ */
+export function drawCaughtCount(context: CanvasRenderingContext2D, at: Vec2, many: number): void {
+  const label = `${many} ${many === 1 ? "point" : "points"}`;
+  context.save();
+  context.font = "11px ui-monospace, monospace";
+  context.textBaseline = "middle";
+  const width = context.measureText(label).width + 10;
+  const height = 18;
+  // Away from the pointer, and back the other way when there is no room.
+  let x = at.x + 14;
+  let y = at.y - 22;
+  if (x + width > context.canvas.width) x = at.x - 14 - width;
+  if (y < height) y = at.y + 22;
+
+  context.fillStyle = withAlpha(readToken("--background", "#000", context.canvas), 0.85);
+  context.strokeStyle = withAlpha(readToken("--accent", "#0c8ce9", context.canvas), 0.6);
+  context.lineWidth = 1;
+  context.beginPath();
+  context.roundRect(x, y - height / 2, width, height, 4);
+  context.fill();
+  context.stroke();
+
+  context.fillStyle = readToken("--foreground", "#fff", context.canvas);
+  context.fillText(label, x + 5, y);
+  context.restore();
 }
