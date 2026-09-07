@@ -211,6 +211,78 @@ describe("switching between them", () => {
   });
 });
 
+describe("putting them in another order", () => {
+  beforeEach(() => {
+    store.adopt(fontCalled("Bakerloo"), "bakerloo.ttf");
+    store.adopt(fontCalled("Metro"), "metro.ttf");
+    store.adopt(fontCalled("Gill"), "gill.ttf");
+  });
+
+  it("moves one along, and leaves you standing in the same font", () => {
+    // Where you are is a font, not a place in a row. Moving a tab about must
+    // not change which one you are working on.
+    store.goToDocument(1);
+    store.moveDocument(0, 2);
+    expect(tabs()).toEqual(["Metro", "Gill", "Bakerloo"]);
+    expect(store.getSnapshot().typeface?.meta.familyName).toBe("Metro");
+    expect(inFront()).toBe(0);
+  });
+
+  it("moves the one in front, and you go with it", () => {
+    /*
+     * The case every in-place version of this gets wrong. The font in front is
+     * the live state rather than an entry in the list, so its position is a
+     * number kept beside the list -- and moving it has to move that number
+     * without disturbing the order of everything else.
+     */
+    store.goToDocument(2);
+    store.moveDocument(2, 0);
+    expect(tabs()).toEqual(["Gill", "Bakerloo", "Metro"]);
+    expect(inFront()).toBe(0);
+    expect(store.getSnapshot().typeface?.meta.familyName).toBe("Gill");
+  });
+
+  it("moves one from either side of the one in front", () => {
+    // Past the front font from the left, and back from the right. The two
+    // directions are where an index kept beside a list goes wrong one way and
+    // looks right the other.
+    store.goToDocument(1);
+    store.moveDocument(2, 0);
+    expect(tabs()).toEqual(["Gill", "Bakerloo", "Metro"]);
+    expect(inFront()).toBe(2);
+    expect(store.getSnapshot().typeface?.meta.familyName).toBe("Metro");
+
+    store.moveDocument(0, 2);
+    expect(tabs()).toEqual(["Bakerloo", "Metro", "Gill"]);
+    expect(inFront()).toBe(1);
+    expect(store.getSnapshot().typeface?.meta.familyName).toBe("Metro");
+  });
+
+  it("does nothing when asked to put one where it already is, or nowhere", () => {
+    store.moveDocument(1, 1);
+    expect(tabs()).toEqual(["Bakerloo", "Metro", "Gill"]);
+    store.moveDocument(0, 9);
+    expect(tabs()).toEqual(["Bakerloo", "Metro", "Gill"]);
+    store.moveDocument(-1, 0);
+    expect(tabs()).toEqual(["Bakerloo", "Metro", "Gill"]);
+    expect(inFront()).toBe(2);
+  });
+
+  it("keeps what belongs to each font with it", () => {
+    // The order is a fact about the strip, not about any of the fonts in it.
+    store.goToDocument(0);
+    store.setSelectedNodes(["0:7"]);
+    store.moveDocument(0, 2);
+    expect(tabs()).toEqual(["Metro", "Gill", "Bakerloo"]);
+    expect([...store.getSnapshot().selectedNodes]).toEqual(["0:7"]);
+    store.goToDocument(0);
+    expect([...store.getSnapshot().selectedNodes]).toEqual([]);
+    store.goToDocument(2);
+    expect(store.getSnapshot().typeface?.meta.familyName).toBe("Bakerloo");
+    expect([...store.getSnapshot().selectedNodes]).toEqual(["0:7"]);
+  });
+});
+
 describe("closing them", () => {
   beforeEach(() => {
     store.adopt(fontCalled("Bakerloo"), "bakerloo.ttf");

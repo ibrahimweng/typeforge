@@ -10,13 +10,32 @@
  * So these go in through the picker.
  */
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { FONT_PATH, keptHalves, openFont, startBlank } from "./support";
 
 test.skip(!FONT_PATH, "needs a system font to open");
 
 const tabs = "[data-document-tabs]";
+
+/**
+ * Drag one tab onto another, far enough past its middle to land beyond it.
+ *
+ * Onto the far side of the target rather than onto its middle, because the
+ * landing is decided by which middles the pointer has passed -- so a drop
+ * exactly on a middle is the one position the answer is allowed to differ in.
+ */
+async function dragTab(page: Page, moving: string, onto: string): Promise<void> {
+  const from = (await page.locator(`[data-document-tab="${moving}"]`).boundingBox())!;
+  const to = (await page.locator(`[data-document-tab="${onto}"]`).boundingBox())!;
+  const y = from.y + from.height / 2;
+  const past = to.x < from.x ? to.x - 4 : to.x + to.width + 4;
+  await page.mouse.move(from.x + from.width / 2, y);
+  await page.mouse.down();
+  // In steps, because a drag is only a drag once the pointer has moved.
+  await page.mouse.move(past, y, { steps: 12 });
+  await page.mouse.up();
+}
 
 test("no strip of tabs until there is a second font", async ({ page }) => {
   /*
@@ -302,15 +321,86 @@ test("what comes back brings its history with it", async ({ page }) => {
   await expect(undo, "and the edit made before the cross is still there").toBeEnabled();
 });
 
-test("Alt and Shift with an arrow is not a second name for Alt and an arrow", async ({ page }) => {
-  // Nothing else on Alt wants Shift, and letting it through would bind a
-  // chord nobody chose.
+test("Alt and Shift with an arrow moves the tab rather than moving to it", async ({ page }) => {
+  /*
+   * The pairing every application with a strip of tabs uses, and the one a
+   * hand already knows from a browser. This chord used to be turned away on
+   * purpose -- left unhandled it had been a second name for Alt and an arrow,
+   * a chord bound by omission -- and the guard that said so has become the
+   * job.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await startBlank(page);
+  const named = () => page.locator("[data-document-tab]").allTextContents();
+  expect(await named()).toEqual(["DejaVu Sans", "Untitled"]);
+
+  await page.keyboard.press("Alt+Shift+ArrowLeft");
+  expect(await named()).toEqual(["Untitled", "DejaVu Sans"]);
+  // And you are still in the font you were in, which moved with its tab.
+  await expect(page.locator("[data-font-name]")).toContainText("Untitled");
+  await expect(page.locator('[data-document-tab="Untitled"]')).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+
+  await page.keyboard.press("Alt+Shift+ArrowRight");
+  expect(await named()).toEqual(["DejaVu Sans", "Untitled"]);
+});
+
+test("a tab moved past the end stops there rather than wrapping", async ({ page }) => {
+  /*
+   * Unlike moving *between* them, which wraps because a strip has no edge to
+   * walk off. Dragging a tab past the last one puts it last; a tab that leapt
+   * to the other end instead would be a hand that overshot losing its place.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await startBlank(page);
+  const named = () => page.locator("[data-document-tab]").allTextContents();
+  expect(await named()).toEqual(["DejaVu Sans", "Untitled"]);
+
+  await page.keyboard.press("Alt+Shift+ArrowRight");
+  expect(await named(), "already last, so it stays last").toEqual(["DejaVu Sans", "Untitled"]);
+  await expect(page.locator("[data-font-name]")).toContainText("Untitled");
+});
+
+test("a tab dragged past its neighbour swaps with it", async ({ page }) => {
+  /*
+   * The drag itself, in the direction that always looked right and the one
+   * that did not. The landing is counted among the *other* tabs, which is what
+   * makes both directions agree -- the same sum the dock uses down its column,
+   * and the one that was wrong the first time it was written.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await startBlank(page);
+  const named = () => page.locator("[data-document-tab]").allTextContents();
+  expect(await named()).toEqual(["DejaVu Sans", "Untitled"]);
+
+  await dragTab(page, "DejaVu Sans", "Untitled");
+  expect(await named()).toEqual(["Untitled", "DejaVu Sans"]);
+  // Dragged back the other way, which is the direction that hides an
+  // off-by-one when the arithmetic is written the obvious way.
+  await dragTab(page, "DejaVu Sans", "Untitled");
+  expect(await named()).toEqual(["DejaVu Sans", "Untitled"]);
+});
+
+test("a press that goes nowhere is still a click", async ({ page }) => {
+  /*
+   * The name is both the drag handle and the button that goes to the font, so
+   * a press that does not move has to reach the click handler untouched.
+   * Started on the first pixel, a drag would flicker a tab to half opacity
+   * every time somebody switched font.
+   */
   await page.goto("/");
   await openFont(page);
   await startBlank(page);
   await expect(page.locator("[data-font-name]")).toContainText("Untitled");
-  await page.keyboard.press("Alt+Shift+ArrowLeft");
-  await expect(page.locator("[data-font-name]")).toContainText("Untitled");
+
+  await page.locator('[data-document-tab="DejaVu Sans"]').click();
+  await expect(page.locator("[data-font-name]")).toContainText("DejaVu Sans");
+  await expect(page.locator("[data-document-carried]")).toHaveCount(0);
 });
 
 test("the tab says which key it answers to", async ({ page }) => {
@@ -321,6 +411,6 @@ test("the tab says which key it answers to", async ({ page }) => {
   await startBlank(page);
   await expect(page.locator('[data-document-tab="DejaVu Sans"]')).toHaveAttribute(
     "title",
-    "DejaVu Sans — ⌥1",
+    "DejaVu Sans — ⌥1. Drag to reorder, or ⌥⇧← ⌥⇧→.",
   );
 });

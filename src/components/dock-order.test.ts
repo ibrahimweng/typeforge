@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { landingAmong } from "./Dock";
+import { landingAmong } from "./landing";
 import { LEAST_WIDTH, inOrder, widthWithin } from "@/state/layout";
 
 /** Four panels of forty pixels each, starting at the top of the column. */
