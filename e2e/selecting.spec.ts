@@ -14,7 +14,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
-import { FONT_PATH, openFont } from "./support";
+import { FONT_PATH, openFont, takeUpTool } from "./support";
 
 test.skip(!FONT_PATH, "needs a system font to open");
 
@@ -121,6 +121,65 @@ test("points light up while the box is still being dragged", async ({ page }) =>
   );
 });
 
+/**
+ * The most strongly blue horizontal row on the canvas, as a pixel count.
+ *
+ * Written because of what was missing: every test here checked the points a
+ * shape had caught and none checked that the shape itself was on screen. The
+ * box could have stopped drawing entirely and all of them would still pass --
+ * the points would light, the frames would tick -- while the complaint that
+ * started this ("I click and drag and nothing appears") came straight back.
+ *
+ * A row rather than a total, because the marquee's edge is the one horizontal
+ * run of accent on this canvas. The metric lines are grey, the baseline is
+ * red, the guides are vertical, and a letter's own nodes are scattered dots
+ * that never fill a row. So the busiest blue row is the box's edge or it is
+ * nothing much at all, and the two are far apart.
+ */
+function bluestRow(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>("[data-glyph-canvas]");
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return -1;
+    const { data, width, height } = context.getImageData(0, 0, canvas.width, canvas.height);
+    let most = 0;
+    for (let y = 0; y < height; y++) {
+      let run = 0;
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        if (data[i + 3] > 200 && data[i + 2] - data[i] > 100) run++;
+      }
+      most = Math.max(most, run);
+    }
+    return most;
+  });
+}
+
+test("the box draws itself, and not only the points it is taking", async ({ page }) => {
+  /*
+   * The complaint, in the form it actually arrived in: press, drag, and the
+   * canvas stays exactly as it was until the button comes up.
+   *
+   * Checked on the shape rather than on the selection, because those are two
+   * claims and only one of them was ever being made here.
+   */
+  await aLetterWithPoints(page);
+  const before = await bluestRow(page);
+
+  await startSweeping(page);
+  const during = await bluestRow(page);
+  await page.mouse.up();
+
+  /*
+   * The box is swept across most of the canvas, so its edge is hundreds of
+   * pixels wide and dashed four on, three off -- better than half of that. An
+   * idle letter has no horizontal run of accent at all worth the name.
+   */
+  expect(during, "the box has to be on screen while it is being dragged").toBeGreaterThan(
+    before + 100,
+  );
+});
+
 test("the ants keep marching while the hand is still", async ({ page }) => {
   /*
    * The half that is easy to get wrong, and the reason the canvas cannot
@@ -210,4 +269,35 @@ test("the clock runs only while the button is down", async ({ page }) => {
    */
   expect(during, "the ants need a frame each while the shape is out").toBeGreaterThan(12);
   expect(after, "and none once it is let go").toBeLessThan(5);
+});
+
+test("picking a whole shape says which shape, before it is picked", async ({ page }) => {
+  /*
+   * The tool that showed nothing at all.
+   *
+   * It takes its shape on the press and sets no drag, so there was no gesture
+   * to draw and none was drawn: press, nothing, let go, a transform box. That
+   * is the same complaint the box and the ring were fixed for, and this tool
+   * was not touched because none of this file's tests could reach it -- they
+   * all drag, and this one does not.
+   *
+   * Sat one press of `V` away from the box the whole time, since a group key
+   * walks the group rather than staying on it.
+   */
+  await aLetterWithPoints(page);
+  await takeUpTool(page, "select", "selectPath");
+  const canvas = page.locator("[data-glyph-canvas]");
+  const box = (await canvas.boundingBox())!;
+
+  // Off the letter: nothing is ringed, because nothing would be taken.
+  await page.mouse.move(box.x + box.width * 0.06, box.y + box.height * 0.9);
+  await page.waitForTimeout(150);
+  const away = await bluestRow(page);
+
+  // Over a stem: the shape it would take is ringed.
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.26);
+  await page.waitForTimeout(150);
+  const over = await bluestRow(page);
+
+  expect(over, "the shape under the pointer has to be ringed").toBeGreaterThan(away + 20);
 });

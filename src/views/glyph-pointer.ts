@@ -327,6 +327,25 @@ export function segmentUnder(
 }
 
 /**
+ * Which whole shape a pick would take, and nothing about taking it.
+ *
+ * A node first and then the edge under the pointer, which is what "click the
+ * shape" means when the shape is a hairline: aiming at a curve is aiming at
+ * the two pixels it covers, and a point sitting on it is the easier target.
+ *
+ * Exported because two callers need the same answer. The handler that takes
+ * the shape asks it, and so does the painter that lights the shape up before
+ * it is taken -- and a highlight worked out separately from the selection is
+ * one that can ring one contour while the click takes another. A guide that
+ * lies is worse than no guide, which is the whole reason this is one function
+ * rather than two copies of a rule.
+ */
+export function pathUnder(glyph: Glyph, view: GlyphView, canvasPoint: Vec2): number | null {
+  const hit = hitTestNode(glyph, view, canvasPoint) ?? segmentUnder(glyph, view, canvasPoint);
+  return hit ? hit.contour : null;
+}
+
+/**
  * Whether the line as drawn would actually cut anything.
  *
  * Asked of `slice` itself rather than guessed at, so what the cursor promises
