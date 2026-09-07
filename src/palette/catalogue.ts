@@ -35,7 +35,7 @@ import { BASES } from "@/forge/style";
 import type { Mode } from "@/App";
 import type { ViewId } from "@/state/store";
 import { AXES } from "@/font/master";
-import { viewKey } from "@/keys/useAppKeys";
+import { documentKey, viewKey } from "@/keys/useAppKeys";
 import type { Entry, EntryKind } from "./search";
 
 /** A number the palette can move without leaving itself. */
@@ -412,6 +412,9 @@ export function catalogue(shell: Shell): Item[] {
       group: "Go to",
       label: one.name,
       hint: "Another font you have open. Your selection, your history and the screen you were on are all still where you left them in it.",
+      // The tabs answer to Alt and their own number, in the order they sit in,
+      // and to Alt with the arrows for the one either side.
+      keys: documentKey(at) ?? undefined,
       also: ["font", "tab", "document", "switch", "open"],
       where: shell.mode === "edit" ? undefined : "Editing a font",
       run: () => {

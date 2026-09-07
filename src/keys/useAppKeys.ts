@@ -31,6 +31,22 @@ export function viewKey(view: ViewId): string | null {
   return at === -1 ? null : String(at + 1);
 }
 
+/**
+ * How many open fonts answer to a number of their own.
+ *
+ * Nine because there is no tenth key. A tenth font is still reached with the
+ * arrows or by its name in the palette, which is what those are for.
+ */
+const NUMBERED = 9;
+
+/** What a font's number is, for saying so on its tab. */
+export function documentKey(at: number): string | null {
+  return at >= 0 && at < NUMBERED ? `⌥${at + 1}` : null;
+}
+
+/** Both ways to the font beside this one, for saying so once. */
+export const DOCUMENT_KEYS = "⌥← ⌥→";
+
 export function useAppKeys({
   onSave,
   onExport,
@@ -73,12 +89,62 @@ export function useAppKeys({
       }
 
       /*
+       * Which font, on Alt, which is the only modifier left.
+       *
+       * Every key that means "the next document" in something else is the
+       * browser's here and cannot be taken: Cmd-1 through Cmd-9 switch its
+       * tabs, so do Ctrl-Tab and Cmd-backtick, and a page cannot refuse them.
+       * Alt it can have, and Alt is already this application's modifier for
+       * moving something along a strip -- the dock is reordered with Alt and
+       * the arrows.
+       *
+       * So one rule, and it is the whole of it: Alt with the arrows for the
+       * font either side, Alt with a number for the one in that place. The
+       * bare number goes to a view and Alt with it goes to a font, which is
+       * the same number meaning the screen or the document.
+       */
+      if (event.altKey) {
+        if (!editing || busy(event.target)) return;
+        const { open, openAt } = store.getSnapshot();
+        // One font is not a set to move around, and wrapping from it would
+        // land back on itself with the screen flickering to say so.
+        if (open.length < 2) return;
+
+        const step = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+        if (step !== 0) {
+          // Round rather than stopping at the ends, as every tab strip does.
+          event.preventDefault();
+          store.goToDocument((openAt + step + open.length) % open.length);
+          return;
+        }
+
+        /*
+         * Read off `code` rather than `key`, which is the one trap here.
+         *
+         * Option with a digit does not produce that digit on a Mac: Option-1
+         * is `¡`, Option-2 is `™`, and a handler that parsed `key` would work
+         * on a PC and silently do nothing on half the machines this runs on.
+         * `code` is the key that was pressed rather than the character it
+         * made, and a modifier cannot change it.
+         */
+        const digit = /^Digit([1-9])$/.exec(event.code);
+        if (!digit) return;
+        const at = Number(digit[1]) - 1;
+        if (at >= open.length) return;
+        event.preventDefault();
+        store.goToDocument(at);
+        return;
+      }
+
+      /*
        * And the views by number, which is a bare key and so must stand aside
        * for anything being typed into -- a `2` in a sidebearing field is a
        * number, not a request to go to the second tab.
+       *
+       * Alt is not turned away here any more: the block above answers every
+       * Alt press, so a guard for it would be a line that never runs.
        */
       if (!editing) return;
-      if (event.altKey) return;
       if (busy(event.target)) return;
       const at = Number.parseInt(event.key, 10);
       if (!Number.isFinite(at) || at < 1 || at > BY_NUMBER.length) return;

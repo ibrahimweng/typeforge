@@ -188,6 +188,15 @@ export function useGlyphKeys(within: {
         deleteSelectedNodes(glyph, state.selectedNodes);
         return;
       }
+      /*
+       * Alt with the arrows belongs to the tab strip, not to the selection.
+       *
+       * Without this, switching font from a canvas with points picked would
+       * nudge them a unit on the way out -- an edit nobody asked for, in a
+       * letter they are leaving, recorded in the history of the font they are
+       * leaving it in.
+       */
+      if (event.altKey) return;
       const nudge: Record<string, Vec2> = {
         ArrowLeft: { x: -1, y: 0 },
         ArrowRight: { x: 1, y: 0 },
