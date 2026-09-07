@@ -45,15 +45,21 @@ function keptWidth(page: Page, weight: string, letter: string): Promise<number |
             database.close();
             const project = get.result as
               | {
-                  edit?: {
+                  edits?: Array<{
                     masters?: Array<{
                       name: string;
                       glyphs?: Array<{ name: string; advanceWidth: number }>;
                     }>;
-                  };
+                  }>;
                 }
               | undefined;
-            const master = (project?.edit?.masters ?? []).find((one) => one.name === wanted);
+            // Every open font's weights together. `edits` since format 2,
+            // where the edited half became the list of fonts rather than the
+            // one in front; this test has one font open, and the question it
+            // is asking is about a weight rather than about a tab.
+            const master = (project?.edits ?? [])
+              .flatMap((one) => one.masters ?? [])
+              .find((one) => one.name === wanted);
             const glyph = (master?.glyphs ?? []).find((one) => one.name === named);
             resolve(glyph?.advanceWidth ?? null);
           };
