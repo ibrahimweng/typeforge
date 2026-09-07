@@ -243,6 +243,76 @@ test("Alt and the arrows never nudge the selection, even with nowhere to go", as
   await expect(undo).toBeEnabled();
 });
 
+test("the font you just closed comes back on ⌥⇧T", async ({ page }) => {
+  /*
+   * Asked with one font left, which is the whole point of where the key sits
+   * in the handler. One font open is not a reason to refuse this -- it is the
+   * commonest moment for it, because closing the other one is why there is one
+   * left and why somebody is reaching for the key at all.
+   *
+   * Not Cmd-Shift-T, which is what every hand reaches for: that is the
+   * browser's own, it reopens the browser's tab, and a page cannot refuse it
+   * or even hear it.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await startBlank(page);
+  await page.locator('[data-close-document="DejaVu Sans"]').click();
+  await expect(page.locator("[data-document-tabs]"), "one font left").toHaveCount(0);
+  await expect(page.locator("[data-font-name]")).toContainText("Untitled");
+
+  await page.keyboard.press("Alt+Shift+KeyT");
+  await expect(page.locator("[data-font-name]")).toContainText("DejaVu Sans");
+  await expect(page.locator("[data-document-tab]")).toHaveCount(2);
+});
+
+test("⌥⇧T with nothing closed does nothing at all", async ({ page }) => {
+  await page.goto("/");
+  await openFont(page);
+  await startBlank(page);
+  await expect(page.locator("[data-font-name]")).toContainText("Untitled");
+
+  await page.keyboard.press("Alt+Shift+KeyT");
+  await expect(page.locator("[data-document-tab]")).toHaveCount(2);
+  await expect(page.locator("[data-font-name]")).toContainText("Untitled");
+});
+
+test("what comes back brings its history with it", async ({ page }) => {
+  /*
+   * The reason the closed font is kept whole rather than reopened from the
+   * file. An edit made before the cross was pressed is still an edit, and a
+   * font that came back unable to take it back would be a different font
+   * wearing the same name.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await page.locator("[data-glyph-canvas]").click();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.press("ArrowLeft");
+  const undo = page.getByRole("button", { name: "Undo", exact: true });
+  await expect(undo).toBeEnabled();
+
+  await startBlank(page);
+  await page.locator('[data-close-document="DejaVu Sans"]').click();
+  await expect(undo, "the blank font has nothing to take back").toBeDisabled();
+
+  await page.keyboard.press("Alt+Shift+KeyT");
+  await expect(page.locator("[data-font-name]")).toContainText("DejaVu Sans");
+  await expect(undo, "and the edit made before the cross is still there").toBeEnabled();
+});
+
+test("Alt and Shift with an arrow is not a second name for Alt and an arrow", async ({ page }) => {
+  // Nothing else on Alt wants Shift, and letting it through would bind a
+  // chord nobody chose.
+  await page.goto("/");
+  await openFont(page);
+  await startBlank(page);
+  await expect(page.locator("[data-font-name]")).toContainText("Untitled");
+  await page.keyboard.press("Alt+Shift+ArrowLeft");
+  await expect(page.locator("[data-font-name]")).toContainText("Untitled");
+});
+
 test("the tab says which key it answers to", async ({ page }) => {
   // Where a shortcut is actually learnt: the moment somebody reaches for the
   // slow way to the thing it is for.

@@ -47,6 +47,16 @@ export function documentKey(at: number): string | null {
 /** Both ways to the font beside this one, for saying so once. */
 export const DOCUMENT_KEYS = "⌥← ⌥→";
 
+/**
+ * The way back from a cross, and why it is not the key everybody knows.
+ *
+ * Reopening a closed tab is Cmd-Shift-T everywhere, and Cmd-Shift-T is the
+ * browser's own -- it reopens the browser's tab, and a page cannot refuse it
+ * or even hear it. So the same shape on the modifier this application has: the
+ * hand does what it already knows and one finger lands somewhere else.
+ */
+export const REOPEN_KEY = "⌥⇧T";
+
 export function useAppKeys({
   onSave,
   onExport,
@@ -99,12 +109,35 @@ export function useAppKeys({
        * the arrows.
        *
        * So one rule, and it is the whole of it: Alt with the arrows for the
-       * font either side, Alt with a number for the one in that place. The
-       * bare number goes to a view and Alt with it goes to a font, which is
-       * the same number meaning the screen or the document.
+       * font either side, Alt with a number for the one in that place, and Alt
+       * and Shift with T for the one you just closed. The bare number goes to
+       * a view and Alt with it goes to a font, which is the same number
+       * meaning the screen or the document.
        */
       if (event.altKey) {
         if (!editing || busy(event.target)) return;
+
+        /*
+         * The way back from a cross, and it comes before the guard below
+         * rather than after it.
+         *
+         * One font open is not a reason to refuse this -- it is the commonest
+         * moment for it. Somebody has just closed the other one, which is
+         * exactly why there is one left and exactly why they are reaching for
+         * this key.
+         *
+         * `code` again, and for a sharper version of the same reason: Option
+         * and Shift with T on a Mac is a dead accent, not a `T`.
+         */
+        if (event.shiftKey && event.code === "KeyT") {
+          event.preventDefault();
+          store.reopenDocument();
+          return;
+        }
+        // Nothing else here wants Shift, and letting it through would make
+        // Alt-Shift-Right a second name for Alt-Right by accident.
+        if (event.shiftKey) return;
+
         const { open, openAt } = store.getSnapshot();
         // One font is not a set to move around, and wrapping from it would
         // land back on itself with the screen flickering to say so.

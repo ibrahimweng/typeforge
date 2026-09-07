@@ -35,7 +35,7 @@ import { BASES } from "@/forge/style";
 import type { Mode } from "@/App";
 import type { ViewId } from "@/state/store";
 import { AXES } from "@/font/master";
-import { documentKey, viewKey } from "@/keys/useAppKeys";
+import { documentKey, REOPEN_KEY, viewKey } from "@/keys/useAppKeys";
 import type { Entry, EntryKind } from "./search";
 
 /** A number the palette can move without leaving itself. */
@@ -361,6 +361,12 @@ export function catalogue(shell: Shell): Item[] {
       group: "Actions",
       label: `Reopen ${shell.reopenable}`,
       hint: "The last font you closed, put back in front with its history. Kept for this visit only -- a closed font is closed on the next one.",
+      /*
+       * Not Cmd-Shift-T, which is what every hand reaches for and what the
+       * browser reopens its own tabs with -- a page cannot refuse that one or
+       * even hear it. The same shape on the modifier this application has.
+       */
+      keys: REOPEN_KEY,
       also: ["undo close", "closed", "back", "restore", "tab", "reopen"],
       run: shell.reopenFont,
     });
