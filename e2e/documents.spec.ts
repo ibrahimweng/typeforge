@@ -135,3 +135,29 @@ test("two opened fonts both come back after a reload", async ({ page }) => {
   await expect(page.locator("[data-document-tab]")).toHaveCount(2, { timeout: 60_000 });
   await expect(page.locator("[data-font-name]")).toContainText("DejaVu Sans");
 });
+
+test("a font closed by accident can be got back", async ({ page }) => {
+  /*
+   * The cross is small, permanent, and beside the name of a font somebody has
+   * spent an afternoon on -- and the session is written into the browser
+   * straight afterwards, so without a way back a misclick and a reload were
+   * the whole of it. Everything else this application does to a document can
+   * be taken back.
+   *
+   * Through the palette rather than a button on the strip: it is the way back
+   * from a mistake rather than a control anybody reaches for, and it names the
+   * font, which is what makes it worth pressing.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await startBlank(page);
+  await page.locator('[data-close-document="DejaVu Sans"]').click();
+  await expect(page.locator("[data-document-tab]")).toHaveCount(0);
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByRole("textbox", { name: "Search everything" }).fill("reopen");
+  await page.getByRole("dialog", { name: "Quick actions" }).getByRole("option").first().click();
+
+  await expect(page.locator("[data-font-name]")).toContainText("DejaVu Sans");
+  await expect(page.locator("[data-document-tab]")).toHaveCount(2);
+});

@@ -252,9 +252,85 @@ describe("closing them", () => {
     expect(store.getSnapshot().typeface).not.toBeNull();
   });
 
-  it("forgets the history of a font that has gone", () => {
-    // Kept, it would be handed to whatever font later takes that id, and undo
-    // would offer to take back an edit made in a font nobody has open.
+  it("gives back the font that was closed, with its history", () => {
+    /*
+     * The cross is small, permanent and beside the name of a font somebody has
+     * spent an afternoon on, and the session is written down straight
+     * afterwards -- so without this a misclick and a reload were the whole of
+     * it. Everything else here can be taken back.
+     */
+    store.goToDocument(0);
+    store.editGlyph("a", "Widen the letter", (glyph) => {
+      glyph.advanceWidth = 600;
+    });
+    store.goToDocument(2);
+    expect(store.closeDocument(0)).toBe(true);
+    expect(tabs()).toEqual(["Metro", "Gill"]);
+    expect(store.getSnapshot().reopenable).toBe("Bakerloo");
+
+    expect(store.reopenDocument()).toBe(true);
+    expect(store.getSnapshot().typeface?.meta.familyName).toBe("Bakerloo");
+    expect(store.getSnapshot().canUndo, "and what was done in it").toBe(true);
+    expect(store.getSnapshot().undoLabel).toBe("Widen the letter");
+    // Nothing left to come back to, so nothing offers to.
+    expect(store.getSnapshot().reopenable).toBeNull();
+  });
+
+  it("gives back the one that was in front when it was closed, history and all", () => {
+    /*
+     * The other way a tab goes: the one you are looking at. Closing that has
+     * to bring a neighbour forward first, so the going font's history is put
+     * away a step before it is remembered -- which is a step at which it can
+     * be dropped instead, leaving a font that comes back with a live Undo
+     * button and an empty stack behind it.
+     */
+    store.goToDocument(1);
+    store.editGlyph("a", "Widen the letter", (glyph) => {
+      glyph.advanceWidth = 600;
+    });
+    expect(store.closeDocument(1)).toBe(true);
+    expect(tabs()).toEqual(["Bakerloo", "Gill"]);
+
+    expect(store.reopenDocument()).toBe(true);
+    expect(store.getSnapshot().typeface?.meta.familyName).toBe("Metro");
+    expect(store.getSnapshot().canUndo).toBe(true);
+    expect(store.getSnapshot().undoLabel).toBe("Widen the letter");
+    store.undo();
+    expect(store.getSnapshot().typeface?.glyphs[0].advanceWidth).toBe(500);
+  });
+
+  it("offers the one closed most recently, and says so only when there is one", () => {
+    expect(store.getSnapshot().reopenable).toBeNull();
+    store.closeDocument(0);
+    expect(store.getSnapshot().reopenable).toBe("Bakerloo");
+    store.closeDocument(0);
+    expect(store.getSnapshot().reopenable).toBe("Metro");
+    store.reopenDocument();
+    expect(store.getSnapshot().reopenable).toBe("Bakerloo");
+    store.reopenDocument();
+    expect(store.getSnapshot().reopenable).toBeNull();
+    expect(store.reopenDocument(), "and there is nothing else to give back").toBe(false);
+  });
+
+  it("puts the one that comes back in front, beside the rest", () => {
+    store.closeDocument(0);
+    expect(tabs()).toEqual(["Metro", "Gill"]);
+    store.reopenDocument();
+    // Beside them rather than back where it was: a tab strip is the order
+    // things were opened in, and this one has just been opened.
+    expect(tabs()).toEqual(["Metro", "Gill", "Bakerloo"]);
+    expect(inFront()).toBe(2);
+    expect(store.getSnapshot().typeface?.meta.familyName).toBe("Bakerloo");
+  });
+
+  it("does not hand a closed font's history to the next font opened", () => {
+    /*
+     * The history goes with the font rather than with the slot it was in. It
+     * is kept while the font can still be reopened -- but a *new* font must
+     * not arrive able to undo an edit made in one nobody has open, which is
+     * what would happen if a stack were left behind under an id that came
+     * round again.
+     */
     store.goToDocument(0);
     store.editGlyph("a", "Widen the letter", (glyph) => {
       glyph.advanceWidth = 600;

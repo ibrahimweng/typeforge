@@ -138,6 +138,7 @@ export abstract class StoreCore {
     // One font, in front, before anything has been opened.
     open: [{ id: "font-0", name: "Untitled" }],
     openAt: 0,
+    reopenable: null,
   };
 
   private listeners = new Set<() => void>();
@@ -298,6 +299,78 @@ export abstract class StoreCore {
   private stacks = new Map<string, { undo: HistoryEntry[]; redo: HistoryEntry[] }>();
 
   /**
+   * The fonts that have been closed, newest last, with their histories.
+   *
+   * Because the cross on a tab is small, permanent and beside the name of a
+   * font somebody has spent an afternoon on. Everything else this application
+   * does to a document can be taken back; closing one could not, and the
+   * session is written down straight afterwards, so a misclick and a reload
+   * were the whole of it.
+   *
+   * Held for the visit rather than written down. A closed font that came back
+   * on the next visit would not be closed, and a document carrying every font
+   * anybody had ever shut would grow without end. What this is for is the
+   * misclick, and a misclick is noticed in the same minute.
+   */
+  private shut: Array<{
+    id: string;
+    name: string;
+    state: Pick<AppState, PerDocument>;
+    undo: HistoryEntry[];
+    redo: HistoryEntry[];
+  }> = [];
+
+  /** How many closed fonts are kept. Enough for a misclick, not a filing system. */
+  private static readonly REMEMBERED = 8;
+
+  /** Put the most recently closed font back, in front. */
+  reopenDocument(): boolean {
+    const back = this.shut[this.shut.length - 1];
+    if (!back) return false;
+    // Held shut over a borrowed letter, for the reason every other move
+    // between documents is: a loan already has the real document in a drawer.
+    if (this.state.loan) {
+      this.say(
+        `Finish with ${this.state.loan.letter} first — keep the drawing or throw it away.`,
+        "info",
+      );
+      return false;
+    }
+    this.shut.pop();
+    this.makeRoom();
+    this.mine = back.id;
+    this.undoStack = back.undo;
+    this.redoStack = back.redo;
+    this.set({ ...back.state, reopenable: this.shut[this.shut.length - 1]?.name ?? null });
+    /*
+     * `touch` rather than `tellTabs`, because what came back has to be told
+     * the truth about itself.
+     *
+     * `canUndo` and its labels travel with the document, so they say whatever
+     * they said at the moment it was closed -- and a font whose history did
+     * not come back with it would sit there with a live Undo button and an
+     * empty stack behind it. `touch` reads those off the stacks in hand, and
+     * tells the tabs on its way past.
+     */
+    this.touch();
+    this.say(`${back.name} is back.`);
+    return true;
+  }
+
+  /** Remember one on the way out, so the cross has a way back. */
+  private remember(id: string, state: Pick<AppState, PerDocument>): void {
+    this.shut.push({
+      id,
+      name: nameOf(state),
+      state,
+      undo: this.stacks.get(id)?.undo ?? [],
+      redo: this.stacks.get(id)?.redo ?? [],
+    });
+    if (this.shut.length > StoreCore.REMEMBERED) this.shut.shift();
+    this.set({ reopenable: this.shut[this.shut.length - 1].name });
+  }
+
+  /**
    * Open a font in a tab of its own rather than over the one in front.
    *
    * What `adopt` used to do to whatever was open, done to nothing instead. The
@@ -353,6 +426,12 @@ export abstract class StoreCore {
   protected closeEveryDocument(): void {
     this.aside = [];
     this.stacks.clear();
+    // Nothing to come back to. These are not fonts somebody shut; they are the
+    // desk being cleared for a session that is about to arrive, and offering
+    // to reopen one of them would offer to put half the last session back on
+    // top of this one.
+    this.shut = [];
+    this.set({ reopenable: null });
     this.at = 0;
     this.mine = newId();
     this.undoStack = [];
@@ -398,7 +477,11 @@ export abstract class StoreCore {
       this.goToDocument(index === many - 1 ? index - 1 : index + 1);
       // The switch refused, which it does over a borrowed letter.
       if (this.mine === going) return false;
+      const gone = this.aside.find((one) => one.id === going);
       this.aside = this.aside.filter((one) => one.id !== going);
+      // Remembered before its history is dropped, since the way back is only
+      // worth having if what comes back can still be undone.
+      if (gone) this.remember(going, gone.state);
       this.stacks.delete(going);
       // The one that came forward may have been to the right of the one that
       // has gone, in which case everything after it has moved up.
@@ -408,7 +491,10 @@ export abstract class StoreCore {
     }
 
     const [dropped] = this.aside.splice(index > this.at ? index - 1 : index, 1);
-    if (dropped) this.stacks.delete(dropped.id);
+    if (dropped) {
+      this.remember(dropped.id, dropped.state);
+      this.stacks.delete(dropped.id);
+    }
     if (index < this.at) this.at -= 1;
     this.tellTabs();
     return true;

@@ -142,6 +142,9 @@ export interface AppShell {
   openFonts: ReadonlyArray<{ id: string; name: string }>;
   openAt: number;
   goToFont: (at: number) => void;
+  /** What the last font closed was called, when one has been. */
+  reopenable: string | null;
+  reopenFont: () => void;
   /** Family parameters, for the five views that share a loaded font. */
   paramOf: (key: keyof GlyphParams) => number;
   setParam: (key: keyof GlyphParams, value: number, done: boolean) => void;
@@ -342,6 +345,26 @@ export function catalogue(shell: Shell): Item[] {
     also: ["what does", "explain", "guide", "manual", "tour", "docs"],
     run: shell.toggleHelp,
   });
+
+  /*
+   * The way back from a cross on a tab.
+   *
+   * Only when there is something to come back to, because an entry that says
+   * "reopen" when nothing has been closed is an entry that answers a question
+   * nobody asked -- and because naming the font is what makes it worth
+   * pressing: "Reopen Bakerloo" is a fact about your afternoon.
+   */
+  if (shell.reopenable) {
+    add({
+      id: "action:reopen",
+      kind: "action",
+      group: "Actions",
+      label: `Reopen ${shell.reopenable}`,
+      hint: "The last font you closed, put back in front with its history. Kept for this visit only -- a closed font is closed on the next one.",
+      also: ["undo close", "closed", "back", "restore", "tab", "reopen"],
+      run: shell.reopenFont,
+    });
+  }
 
   // ---- Modes and views ---------------------------------------------------
   for (const mode of MODES) {

@@ -1037,10 +1037,21 @@ export function App(): React.JSX.Element {
       openFonts: state.open,
       openAt: state.openAt,
       goToFont: (at) => store.goToDocument(at),
+      reopenable: state.reopenable,
+      reopenFont: () => void store.reopenDocument(),
     }),
     // Only what changes the shape of the catalogue: which job is in front,
     // which view it is showing, and which fonts are open.
-    [mode, goToMode, state.view, state.typeface, state.open, state.openAt, saveProject],
+    [
+      mode,
+      goToMode,
+      state.view,
+      state.typeface,
+      state.open,
+      state.openAt,
+      state.reopenable,
+      saveProject,
+    ],
   );
 
   /*

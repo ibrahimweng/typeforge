@@ -64,16 +64,17 @@ export const PER_DOCUMENT = [
 ] as const;
 
 /**
- * The two that are about the set of fonts rather than about any one of them.
+ * The three that are about the set of fonts rather than about any one of them.
  *
  * A third list rather than filing them under shared, which is where they would
  * behave correctly and read wrongly. Shared means "true of the person, not of
- * the font", and these are true of neither: they are the list of fonts and
- * which one is in front. Putting them with the tool and the ground would say
- * that switching document leaves them alone for the same reason it leaves the
- * pen alone, and it does not -- switching is the thing that changes them.
+ * the font", and these are true of neither: they are the list of fonts, which
+ * one is in front, and what the last one closed was called. Putting them with
+ * the tool and the ground would say that switching document leaves them alone
+ * for the same reason it leaves the pen alone, and it does not -- switching is
+ * the thing that changes them.
  */
-export const ABOUT_THE_SET = ["open", "openAt"] as const;
+export const ABOUT_THE_SET = ["open", "openAt", "reopenable"] as const;
 
 /** What stays on the desk, because it is about the person rather than the font. */
 export const SHARED = [

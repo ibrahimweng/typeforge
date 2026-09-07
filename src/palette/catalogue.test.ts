@@ -59,6 +59,8 @@ const shell = {
   ],
   openAt: 0,
   goToFont: () => {},
+  reopenable: "Bakerloo",
+  reopenFont: () => {},
 } as unknown as Shell;
 
 const items: Item[] = catalogue(shell);

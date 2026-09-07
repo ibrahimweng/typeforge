@@ -383,6 +383,14 @@ export interface AppState {
   open: ReadonlyArray<{ id: string; name: string }>;
   /** Which of them is in front. */
   openAt: number;
+  /**
+   * What the last font closed was called, or nothing if none has been.
+   *
+   * On the state rather than asked for, because it is what decides whether the
+   * way back is offered at all -- and a control that appears the moment it
+   * becomes useful has to be able to re-render when it does.
+   */
+  reopenable: string | null;
   lastDerivation: ControlChange[];
 }
 
