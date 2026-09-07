@@ -31,6 +31,7 @@ import { A_DRAG, draggedPoint } from "@/font/pen";
 import { CLOSES_WITHIN, NOTHING_UNDER, toolStateFor, type Doing, type Under } from "@/font/tools";
 import { toCanvasX, toCanvasY, toFontX, toFontY, type GlyphView } from "@/components/glyph-render";
 import { nodeKey, store } from "@/state/useStore";
+import { caughtBy, keepCatching, type Catching } from "./glyph-catch";
 import { hitTestPen, hitTestStrokePoint, penDrag } from "./write-canvas";
 import {
   boxRound,
@@ -50,14 +51,12 @@ import {
   hitTestHandle,
   hitTestNode,
   hoverKey,
-  inside,
   knifeWouldCut,
   onClosingPoint,
   onLastPoint,
   openOutline,
   parseNodeKey,
   segmentUnder,
-  toScreen,
   type Drag,
   type Hover,
 } from "./glyph-pointer";
@@ -114,7 +113,11 @@ export interface Gestures {
   /** Where the pointer is, for the tools that draw to it from their last point. */
   at: Vec2 | null;
   /** The gesture in flight, read live by the painter rather than per render. */
+  /** Goes up whenever the canvas needs repainting, for the paint to depend on. */
+  beat: number;
   drag: React.RefObject<Drag | null>;
+  /** What the shape being dragged has hold of, and when it took each point. */
+  catching: React.RefObject<Catching | null>;
   /** The modifiers as of the last move, which a pointer-up cannot be asked for. */
   modifiers: React.RefObject<{ square: boolean; fromCentre: boolean }>;
   /** Repaint after an edit React cannot see, for whoever else makes one. */
@@ -160,6 +163,44 @@ export function useGlyphGestures(within: {
   const { typeface, glyph, state, view, pan, setPan, hand } = within;
 
   const dragRef = React.useRef<Drag | null>(null);
+
+  /*
+   * What the shape being dragged has hold of, worked out as it moves.
+   *
+   * On the move rather than on the paint, because the canvas repaints far more
+   * often than the pointer moves once the ants are marching: sixty frames a
+   * second against however many times a hand actually travels. The answer only
+   * changes when the shape does.
+   */
+  const catchingRef = React.useRef<Catching | null>(null);
+
+  /*
+   * The clock the marching ants march to.
+   *
+   * Dashes that crawl are what says "this is happening now", and they have to
+   * crawl when the hand stops as well as when it moves -- a hand held still
+   * over a letter, deciding, is exactly when somebody is looking hardest. So
+   * the repaint cannot come from the pointer: it comes from here, and stops
+   * dead when the button does, because a canvas that repaints for ever after a
+   * drag is a laptop fan that never settles.
+   */
+  const marchingRef = React.useRef<number | null>(null);
+  const march = React.useCallback(() => {
+    if (marchingRef.current !== null) return;
+    const step = (): void => {
+      forceRender();
+      marchingRef.current = requestAnimationFrame(step);
+    };
+    marchingRef.current = requestAnimationFrame(step);
+  }, []);
+  const halt = React.useCallback(() => {
+    if (marchingRef.current === null) return;
+    cancelAnimationFrame(marchingRef.current);
+    marchingRef.current = null;
+    catchingRef.current = null;
+  }, []);
+  // And on the way out, so a canvas unmounted mid-drag leaves nothing running.
+  React.useEffect(() => halt, [halt]);
   /*
    * The modifiers as of the last pointer move, because a pointer-up event
    * carries none that can be trusted: letting go of shift a moment before the
@@ -190,7 +231,17 @@ export function useGlyphGestures(within: {
     atRef.current = where;
     setAt(where);
   };
-  const [, forceRender] = React.useReducer((n: number) => n + 1, 0);
+  /*
+   * A count that goes up whenever something wants the canvas repainted.
+   *
+   * Handed out below, because a re-render is not a repaint here: the painting
+   * runs in an effect keyed on the document, and a drag that draws a box over
+   * the letter changes nothing in the document at all. Without a beat in that
+   * list, `forceRender` re-rendered the component and the effect never ran
+   * again -- so the marquee, the ring, the shape preview and the knife's line
+   * were drawn by code that, in a browser, was never reached.
+   */
+  const [beat, forceRender] = React.useReducer((n: number) => n + 1, 0);
 
   /*
    * The box round what is selected, or nothing.
@@ -1009,7 +1060,19 @@ export function useGlyphGestures(within: {
         );
         break;
       }
-      case "marquee":
+      case "marquee": {
+        drag.to = canvasPoint;
+        catchingRef.current = keepCatching(
+          catchingRef.current,
+          drag,
+          glyph.contours,
+          view,
+          performance.now(),
+        );
+        march();
+        forceRender();
+        break;
+      }
       case "shape":
       case "knife": {
         drag.to = canvasPoint;
@@ -1101,10 +1164,19 @@ export function useGlyphGestures(within: {
        * exists for exactly this, and `commitGlyphEdit` closes it on release so
        * the whole gesture is one thing to take back.
        */
-      case "lasso":
+      case "lasso": {
         drag.trail.push(canvasPoint);
+        catchingRef.current = keepCatching(
+          catchingRef.current,
+          drag,
+          glyph.contours,
+          view,
+          performance.now(),
+        );
+        march();
         forceRender();
         break;
+      }
 
       case "pen": {
         const moved = Math.hypot(canvasPoint.x - drag.from.x, canvasPoint.y - drag.from.y);
@@ -1173,6 +1245,15 @@ export function useGlyphGestures(within: {
   const handlePointerUp = (): void => {
     const drag = dragRef.current;
     dragRef.current = null;
+    /*
+     * The ants stop here, before anything else and whatever the drag was.
+     *
+     * Before the early return below as well: a gesture that ends with no
+     * letter under it still has to stop the clock it started, and a loop left
+     * running is not something anybody would notice until their machine got
+     * warm.
+     */
+    halt();
     if (!drag || !glyph) return;
 
     /*
@@ -1233,20 +1314,14 @@ export function useGlyphGestures(within: {
         break;
       }
       case "marquee": {
+        /*
+         * Asked of `caughtBy` rather than worked out here, because the canvas
+         * lights these same points up while the shape is still being dragged.
+         * Two copies of the rule would be two answers to one question, and the
+         * one on screen would be a guide that lies.
+         */
         const selection = new Set(drag.additive ? state.selectedNodes : []);
-        const left = Math.min(drag.from.x, drag.to.x);
-        const right = Math.max(drag.from.x, drag.to.x);
-        const top = Math.min(drag.from.y, drag.to.y);
-        const bottom = Math.max(drag.from.y, drag.to.y);
-        glyph.contours.forEach((contour, contourIndex) => {
-          contour.nodes.forEach((node, nodeIndex) => {
-            const x = view.originX + node.point.x * view.scale;
-            const y = view.originY - node.point.y * view.scale;
-            if (x >= left && x <= right && y >= top && y <= bottom) {
-              selection.add(nodeKey({ contour: contourIndex, node: nodeIndex }));
-            }
-          });
-        });
+        for (const key of caughtBy(drag, glyph.contours, view)) selection.add(key);
         store.setSelectedNodes(selection);
         forceRender();
         break;
@@ -1287,14 +1362,9 @@ export function useGlyphGestures(within: {
         break;
       }
       case "lasso": {
+        // The same rule the ring is drawn against, for the reason above.
         const picked = new Set(drag.additive ? state.selectedNodes : []);
-        glyph.contours.forEach((contour, contourIndex) => {
-          contour.nodes.forEach((node, nodeIndex) => {
-            if (inside(drag.trail, toScreen(view, node.point))) {
-              picked.add(nodeKey({ contour: contourIndex, node: nodeIndex }));
-            }
-          });
-        });
+        for (const key of caughtBy(drag, glyph.contours, view)) picked.add(key);
         store.setSelectedNodes(picked);
         forceRender();
         break;
@@ -1411,7 +1481,9 @@ export function useGlyphGestures(within: {
             return on && on.kind !== "inside" ? on.at : null;
           })()
         : null,
+    beat,
     drag: dragRef,
+    catching: catchingRef,
     modifiers: modifiersRef,
     redraw: forceRender,
     refreshPhase,

@@ -30,7 +30,7 @@
  * lived; those want a real renderer and are not claimed here.
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as React from "react";
 import { renderToString } from "react-dom/server";
 
@@ -164,10 +164,28 @@ function undoStack(): string[] {
 const says = (): string => store.getSnapshot().toolState.says;
 const selected = (): string[] => [...store.getSnapshot().selectedNodes].sort();
 
+/*
+ * A frame clock, because there is no DOM here and the marquee starts one.
+ *
+ * The marching ants repaint on their own timer rather than on the pointer, so
+ * that they keep crawling while a hand is held still -- which means a drag
+ * reaches for `requestAnimationFrame` the moment it moves. In a browser that
+ * is always there; here nothing is. Stubbed rather than guarded for in the
+ * gesture, because the only caller is a pointer handler and a pointer handler
+ * without a pointer is this test rather than anything real.
+ *
+ * It records the call and runs nothing: what these tests are about is which
+ * points a shape picks up, and a step that painted would only be a step that
+ * painted into no canvas.
+ */
 beforeEach(() => {
+  vi.stubGlobal("requestAnimationFrame", () => 1);
+  vi.stubGlobal("cancelAnimationFrame", () => {});
   seed();
   store.setTool("select");
 });
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("what a press picks up, tool by tool", () => {
   beforeEach(() => seed([stem()]));
