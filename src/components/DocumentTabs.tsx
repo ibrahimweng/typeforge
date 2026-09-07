@@ -92,10 +92,34 @@ export function DocumentTabs(): React.JSX.Element | null {
             every way round it -- a div with a click handler, a nested span
             that stops the event -- is a thing the keyboard cannot reach.
           */
+          // biome-ignore lint/a11y/noStaticElementInteractions: the middle button is a pointer convenience over the cross beside it, which is a real button and the keyboard path.
           <div
             key={one.id}
             data-document-slot={one.id}
             data-document-carried={carrying?.id === one.id ? "true" : undefined}
+            /*
+              The middle button closes the tab, as it does in every browser
+              anybody has this strip open in.
+            */
+            onAuxClick={(event) => {
+              if (event.button !== 1) return;
+              event.preventDefault();
+              store.closeDocument(at);
+            }}
+            /*
+              And the press is refused, which is the half that is easy to miss.
+
+              A middle press is what opens the scroll-anywhere widget on
+              Windows and Linux, and the browser decides that on `mousedown` --
+              `auxclick` comes afterwards and is far too late to stop it. So
+              without this the tab closes *and* the page is left in autoscroll,
+              with a compass stuck under the pointer. Refused on `mousedown`
+              rather than on `pointerdown`, because preventing a pointer event
+              does not prevent the mouse event that follows it.
+            */
+            onMouseDown={(event) => {
+              if (event.button === 1) event.preventDefault();
+            }}
             className={cn(
               "group flex min-w-0 items-center self-end rounded-t-md border border-b-0 px-1",
               inFront ? "border-border bg-background" : "border-transparent hover:bg-background/60",
@@ -182,7 +206,12 @@ export function DocumentTabs(): React.JSX.Element | null {
               aria-label={`Close ${one.name}`}
               data-close-document={one.name}
               onClick={() => store.closeDocument(at)}
-              title={`Close ${one.name}`}
+              /*
+                The other way to do the same thing, said on the control that
+                does it. A middle click is a habit somebody either has or does
+                not, and this is where they would find out they have it.
+              */
+              title={`Close ${one.name} — or middle-click the tab`}
               className={cn(
                 "shrink-0 rounded px-1 py-0.5 text-2xs leading-none transition-colors",
                 "text-muted-foreground/50 hover:bg-destructive/15 hover:text-destructive",

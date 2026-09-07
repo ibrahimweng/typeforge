@@ -403,6 +403,85 @@ test("a press that goes nowhere is still a click", async ({ page }) => {
   await expect(page.locator("[data-document-carried]")).toHaveCount(0);
 });
 
+test("the middle button closes a tab", async ({ page }) => {
+  // What it does in every browser this strip is open in, so a hand that has
+  // the habit brings it with them.
+  await page.goto("/");
+  await openFont(page);
+  await startBlank(page);
+  await expect(page.locator("[data-document-tab]")).toHaveCount(2);
+
+  const tab = (await page.locator('[data-document-tab="DejaVu Sans"]').boundingBox())!;
+  await page.mouse.click(tab.x + tab.width / 2, tab.y + tab.height / 2, { button: "middle" });
+
+  await expect(page.locator("[data-document-tabs]"), "one left, so no strip").toHaveCount(0);
+  await expect(page.locator("[data-font-name]")).toContainText("Untitled");
+});
+
+test("a middle click on the cross closes that tab too, not its neighbour", async ({ page }) => {
+  /*
+   * The handler is on the tab rather than on the name, so the cross is inside
+   * it. Middle-clicking the cross has to close the tab it belongs to -- which
+   * is the same thing its left button does, and would be somebody else's tab
+   * if the index came from the wrong place.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await startBlank(page);
+  await page.setInputFiles("[data-open-input]", FONT_PATH!);
+  await expect(page.locator("[data-document-tab]")).toHaveCount(3, { timeout: 45_000 });
+
+  const cross = (await page.locator('[data-close-document="Untitled"]').boundingBox())!;
+  await page.mouse.click(cross.x + cross.width / 2, cross.y + cross.height / 2, {
+    button: "middle",
+  });
+  expect(await page.locator("[data-document-tab]").allTextContents()).toEqual([
+    "DejaVu Sans",
+    "DejaVu Sans",
+  ]);
+});
+
+test("the middle button does not leave the page in autoscroll", async ({ page }) => {
+  /*
+   * The half that is easy to miss. A middle press opens the scroll-anywhere
+   * widget, and the browser decides that on the press -- `auxclick` comes
+   * afterwards and is far too late to stop it. Asked as "was the press
+   * refused", because the widget itself is browser chrome and not in the page
+   * to look for.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await startBlank(page);
+  const tab = (await page.locator('[data-document-tab="DejaVu Sans"]').boundingBox())!;
+  const refused = await page.evaluate(
+    ([x, y]) => {
+      const at = document.elementFromPoint(x, y)!;
+      const press = new MouseEvent("mousedown", {
+        button: 1,
+        bubbles: true,
+        cancelable: true,
+        clientX: x,
+        clientY: y,
+      });
+      at.dispatchEvent(press);
+      return press.defaultPrevented;
+    },
+    [tab.x + tab.width / 2, tab.y + tab.height / 2],
+  );
+  expect(refused, "a middle press has to be refused, or the page autoscrolls").toBe(true);
+});
+
+test("the left button still switches rather than closing", async ({ page }) => {
+  // The two buttons on the same pixel do different things, and a tab that
+  // closed on an ordinary click would be unusable.
+  await page.goto("/");
+  await openFont(page);
+  await startBlank(page);
+  await page.locator('[data-document-tab="DejaVu Sans"]').click();
+  await expect(page.locator("[data-document-tab]")).toHaveCount(2);
+  await expect(page.locator("[data-font-name]")).toContainText("DejaVu Sans");
+});
+
 test("the tab says which key it answers to", async ({ page }) => {
   // Where a shortcut is actually learnt: the moment somebody reaches for the
   // slow way to the thing it is for.
