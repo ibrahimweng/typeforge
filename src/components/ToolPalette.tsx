@@ -109,10 +109,12 @@ export function ToolPalette({ drawing }: { drawing: boolean }): React.JSX.Elemen
    * would mean a tool key that works only if you have not touched anything,
    * which is not a rule anybody could learn.
    *
-   * One key per group, and pressing it again walks the group. Thirteen tools
-   * cannot have thirteen single keys without colliding with everything else
-   * the editor binds, and the group is what a person means anyway: `P` for
-   * "the pen, whichever of them I had".
+   * One key per group, and pressing it again walks the group -- except the
+   * select group, whose key always hands back the box and needs shift to walk.
+   * Thirteen tools cannot have thirteen single keys without colliding with
+   * everything else the editor binds, and the group is what a person means
+   * anyway: `P` for "the pen, whichever of them I had". The reason `V` is the
+   * exception is with the branch itself, below.
    */
   React.useEffect(() => {
     if (!drawing) return;
@@ -125,7 +127,27 @@ export function ToolPalette({ drawing }: { drawing: boolean }): React.JSX.Elemen
       if (busy(event.target)) return;
       const group = BY_KEY.get(event.key.toLowerCase());
       if (group) {
-        store.takeUpGroup(group);
+        /*
+         * `V` is a way home rather than a walk, and it is the one group where
+         * that is worth the exception.
+         *
+         * The other three are siblings: a rectangle, an ellipse and a polygon
+         * are the same kind of thing and walking between them on one key is
+         * how every drawing program spends it. The select group is not shaped
+         * like that. The box is where the editor lives and the other two are
+         * occasional, so the key somebody presses to get back to the box was
+         * the key that took it away from them -- press `V` while already
+         * holding it and you landed on `selectPath`, which picks whole shapes
+         * and, taking its shape on the press, sets no drag at all. Dragging
+         * there did nothing visible, so the report was that the marquee had
+         * stopped working, from somebody who had pressed the documented key
+         * for the tool that draws it.
+         *
+         * Shift walks it, so the ring and the whole-shape pick are still a
+         * keystroke away rather than being pushed into the flyout.
+         */
+        if (group === "select" && !event.shiftKey) store.setTool("select");
+        else store.takeUpGroup(group);
         setOpen(null);
       }
     };

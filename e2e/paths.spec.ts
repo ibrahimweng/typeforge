@@ -394,6 +394,43 @@ test("the tools answer to a single key, as in every drawing application", async 
   await expect(armed("shape")).toHaveAttribute("data-tool", "rectangle");
 });
 
+test("V hands back the box however many times it is pressed", async ({ page }) => {
+  /*
+   * The one group whose key does not walk, and the reason it does not.
+   *
+   * Pressing `V` while already holding the box used to land on `selectPath`,
+   * which picks a whole shape on the press and sets no drag at all -- so
+   * dragging showed nothing, and the tool that draws the marquee was one press
+   * of its own documented key away. That is a trap laid exactly where somebody
+   * reaches to get out of it.
+   *
+   * Shift still walks, so nothing became unreachable.
+   */
+  await page.goto("/");
+  await openFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  const tools = page.getByRole("group", { name: "Tool" });
+  const select = tools.locator('[data-tool-group="select"]');
+
+  for (let press = 0; press < 4; press++) {
+    await page.keyboard.press("v");
+    await expect(select, `press ${press + 1} of V left the box`).toHaveAttribute(
+      "data-tool",
+      "select",
+    );
+  }
+
+  // Shift is the way along the group, so the ring is still a keystroke away.
+  await page.keyboard.press("Shift+v");
+  await expect(select).toHaveAttribute("data-tool", "selectPath");
+  await page.keyboard.press("Shift+v");
+  await expect(select).toHaveAttribute("data-tool", "lasso");
+
+  // And plain V brings the box straight back from anywhere in the group.
+  await page.keyboard.press("v");
+  await expect(select).toHaveAttribute("data-tool", "select");
+});
+
 test("the way to the tools is the same from every view that shows a letter", async ({ page }) => {
   /*
    * The tools used to sit behind a gesture nobody could see. The font grid
