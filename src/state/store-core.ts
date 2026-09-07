@@ -455,6 +455,34 @@ export abstract class StoreCore {
   }
 
   /**
+   * Move one font along the strip, from where it is to where it was put.
+   *
+   * Rebuilt from the order as it is seen rather than patched in place, with a
+   * hole standing in for the font in front. The live document is not in
+   * `aside` and its position is `at`, so every in-place version of this is
+   * four cases -- moving the front one, moving another past it from the left,
+   * from the right, and not past it at all -- and three of them are the kind
+   * of index arithmetic that is wrong in one direction only. Splice the hole
+   * in, move whatever was asked for, and read the parts back out: one case,
+   * and the answer is the list somebody was looking at.
+   */
+  moveDocument(from: number, to: number): void {
+    const many = this.aside.length + 1;
+    if (from === to) return;
+    if (from < 0 || from >= many || to < 0 || to >= many) return;
+
+    const order: Array<Aside | null> = this.aside.slice();
+    // The hole is the font in front, which is the live state and not an entry.
+    order.splice(this.at, 0, null);
+    const [moving] = order.splice(from, 1);
+    order.splice(to, 0, moving);
+
+    this.at = order.indexOf(null);
+    this.aside = order.filter((one): one is Aside => one !== null);
+    this.tellTabs();
+  }
+
+  /**
    * Close one, and say whether it went.
    *
    * The last font is not closable. An application with no document open is a

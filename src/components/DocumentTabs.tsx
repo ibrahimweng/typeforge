@@ -1,5 +1,5 @@
 /**
- * The fonts that are open, as a strip you can move between.
+ * The fonts that are open, as a strip you can move between and rearrange.
  *
  * Under the toolbar and above everything else, which is where every
  * application that holds more than one document at a time puts them. The row
@@ -14,15 +14,46 @@
  * What the strip is for is the moment there are two.
  */
 
-import type * as React from "react";
+import * as React from "react";
 
 import { store, useAppState } from "@/state/useStore";
-import { DOCUMENT_KEYS, documentKey } from "@/keys/useAppKeys";
+import { DOCUMENT_KEYS, documentKey, MOVE_KEYS } from "@/keys/useAppKeys";
+import { landingAmong } from "@/components/landing";
 import { cn } from "@/cn";
+
+/** How far the pointer has to travel before a press becomes a drag. */
+const A_DRAG = 4;
 
 export function DocumentTabs(): React.JSX.Element | null {
   const state = useAppState();
+  const strip = React.useRef<HTMLDivElement>(null);
+  /** The tab under the pointer and where it would land, while one is carried. */
+  const [carrying, setCarrying] = React.useState<{ id: string; to: number } | null>(null);
+
+  /**
+   * Where the carried tab would land, asked of the tabs actually on screen.
+   *
+   * The same rule the dock uses down its column, handed the middles across the
+   * row instead. It is in `landing.ts` rather than copied here because it is
+   * the sum that was already got wrong once, in the direction that looks right
+   * by hand -- and a second copy is a second chance to get it wrong.
+   */
+  const landingAt = React.useCallback(
+    (x: number, carried: string): number => {
+      const middles = state.open.flatMap((one) => {
+        const tab = strip.current?.querySelector<HTMLElement>(`[data-document-slot="${one.id}"]`);
+        if (!tab) return [];
+        const box = tab.getBoundingClientRect();
+        return [{ id: one.id, middle: box.left + box.width / 2 }];
+      });
+      return landingAmong(middles, carried, x);
+    },
+    [state.open],
+  );
+
   if (state.open.length < 2) return null;
+
+  const others = state.open.filter((one) => one.id !== carrying?.id);
 
   return (
     /*
@@ -37,6 +68,7 @@ export function DocumentTabs(): React.JSX.Element | null {
       be its own problem.
     */
     <div
+      ref={strip}
       role="group"
       aria-label="Open fonts"
       data-document-tabs
@@ -44,6 +76,15 @@ export function DocumentTabs(): React.JSX.Element | null {
     >
       {state.open.map((one, at) => {
         const inFront = at === state.openAt;
+        /*
+          The line goes down the left of whichever tab the carried one would
+          displace, which is the `to`th of the tabs that are not it. Drawn on
+          the tab rather than between them because there is nothing between
+          them to draw on, and a gap of one pixel is not somewhere a line can
+          be seen.
+        */
+        const wouldLandHere =
+          carrying !== null && carrying.id !== one.id && others[carrying.to]?.id === one.id;
         return (
           /*
             Two buttons side by side rather than a cross inside the tab. A
@@ -53,9 +94,13 @@ export function DocumentTabs(): React.JSX.Element | null {
           */
           <div
             key={one.id}
+            data-document-slot={one.id}
+            data-document-carried={carrying?.id === one.id ? "true" : undefined}
             className={cn(
               "group flex min-w-0 items-center self-end rounded-t-md border border-b-0 px-1",
               inFront ? "border-border bg-background" : "border-transparent hover:bg-background/60",
+              carrying?.id === one.id && "opacity-50",
+              wouldLandHere && "border-l-2 border-l-accent",
             )}
           >
             <button
@@ -63,16 +108,61 @@ export function DocumentTabs(): React.JSX.Element | null {
               aria-pressed={inFront}
               data-document-tab={one.name}
               onClick={() => store.goToDocument(at)}
+              onPointerDown={(event) => {
+                /*
+                  A drag that does not start until the pointer has moved, which
+                  is what keeps the same press able to be a click.
+
+                  The name is both the handle and the button that goes to the
+                  font, so a press that goes nowhere has to reach the click
+                  handler untouched -- and a drag that began on the first pixel
+                  of jitter would flicker a tab to half opacity every time
+                  somebody switched font.
+                */
+                if (event.button !== 0) return;
+                const from = event.clientX;
+                let carried = false;
+                /*
+                  Where it would land, kept here rather than read back out of
+                  the state on the way down.
+
+                  The obvious way to write the drop is to reach into
+                  `setCarrying` for the last landing and move the tab from
+                  inside the updater. React calls an updater twice under
+                  StrictMode, on purpose, to catch exactly this -- and moving a
+                  tab is a relative operation, so twice put it back where it
+                  started. The tab was carried, the line was drawn, the drop
+                  did nothing, and it would have done nothing only in
+                  development: a production build calls the updater once and
+                  the bug disappears. The state here is for drawing; the
+                  decision is a plain local.
+                */
+                let to = at;
+                const carry = (moving: PointerEvent): void => {
+                  if (!carried && Math.abs(moving.clientX - from) < A_DRAG) return;
+                  carried = true;
+                  to = landingAt(moving.clientX, one.id);
+                  setCarrying({ id: one.id, to });
+                };
+                const drop = (): void => {
+                  window.removeEventListener("pointermove", carry);
+                  window.removeEventListener("pointerup", drop);
+                  setCarrying(null);
+                  if (carried) store.moveDocument(at, to);
+                };
+                window.addEventListener("pointermove", carry);
+                window.addEventListener("pointerup", drop);
+              }}
               /*
-                And the key it answers to, on the tab itself.
+                And the keys it answers to, on the tab itself.
 
                 This is the moment a shortcut is learnt: somebody is reaching
                 for the slow way to the thing it is for. A list of keys in the
                 help drawer is a list somebody has to decide to go and study.
               */
-              title={`${one.name} — ${documentKey(at) ?? DOCUMENT_KEYS}`}
+              title={`${one.name} — ${documentKey(at) ?? DOCUMENT_KEYS}. Drag to reorder, or ${MOVE_KEYS}.`}
               className={cn(
-                "min-w-0 max-w-40 truncate px-1.5 py-1 text-2xs transition-colors",
+                "min-w-0 max-w-40 cursor-grab truncate px-1.5 py-1 text-2xs transition-colors active:cursor-grabbing",
                 inFront ? "font-medium text-foreground" : "text-muted-foreground",
               )}
             >

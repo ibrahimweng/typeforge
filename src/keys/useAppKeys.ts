@@ -57,6 +57,9 @@ export const DOCUMENT_KEYS = "⌥← ⌥→";
  */
 export const REOPEN_KEY = "⌥⇧T";
 
+/** Moving the tab rather than moving to it, for saying so on the tab. */
+export const MOVE_KEYS = "⌥⇧← ⌥⇧→";
+
 export function useAppKeys({
   onSave,
   onExport,
@@ -109,10 +112,11 @@ export function useAppKeys({
        * the arrows.
        *
        * So one rule, and it is the whole of it: Alt with the arrows for the
-       * font either side, Alt with a number for the one in that place, and Alt
-       * and Shift with T for the one you just closed. The bare number goes to
-       * a view and Alt with it goes to a font, which is the same number
-       * meaning the screen or the document.
+       * font either side, Alt and Shift with them to move the tab rather than
+       * move to it, Alt with a number for the one in that place, and Alt and
+       * Shift with T for the one you just closed. The bare number goes to a
+       * view and Alt with it goes to a font, which is the same number meaning
+       * the screen or the document.
        */
       if (event.altKey) {
         if (!editing || busy(event.target)) return;
@@ -134,10 +138,6 @@ export function useAppKeys({
           store.reopenDocument();
           return;
         }
-        // Nothing else here wants Shift, and letting it through would make
-        // Alt-Shift-Right a second name for Alt-Right by accident.
-        if (event.shiftKey) return;
-
         const { open, openAt } = store.getSnapshot();
         // One font is not a set to move around, and wrapping from it would
         // land back on itself with the screen flickering to say so.
@@ -145,11 +145,33 @@ export function useAppKeys({
 
         const step = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
         if (step !== 0) {
-          // Round rather than stopping at the ends, as every tab strip does.
           event.preventDefault();
+          /*
+             Shift moves the tab rather than moving to it, which is the pairing
+             every application with a strip of tabs uses and the same one a
+             hand already knows from a browser.
+
+             This chord used to be turned away on purpose, because leaving it
+             unhandled had made it a second name for Alt and an arrow -- a
+             chord bound by omission. It has a job now, and the guard that said
+             so has become the job.
+
+             It stops at the ends rather than wrapping, unlike moving between
+             them. Going past the last tab wraps you round to the first because
+             a strip has no edge to walk off; dragging a tab past the last one
+             puts it last, and a tab that leapt to the other end instead would
+             be a hand that overshot losing its place entirely.
+          */
+          if (event.shiftKey) {
+            store.moveDocument(openAt, Math.min(open.length - 1, Math.max(0, openAt + step)));
+            return;
+          }
+          // Round rather than stopping at the ends, as every tab strip does.
           store.goToDocument((openAt + step + open.length) % open.length);
           return;
         }
+        // Nothing else on Alt wants Shift.
+        if (event.shiftKey) return;
 
         /*
          * Read off `code` rather than `key`, which is the one trap here.

@@ -38,6 +38,7 @@ import {
   togglePanel,
   useLayout,
 } from "@/state/layout";
+import { landingAmong } from "@/components/landing";
 import { cn } from "@/cn";
 
 /** One panel offered to the dock. */
@@ -64,33 +65,6 @@ export interface DockPanel {
    * them. Which is exactly what three tests reported when the header moved.
    */
   mark?: string;
-}
-
-/**
- * Where a dragged panel would land, as a place in the list without it.
- *
- * Counted among the *other* panels rather than among all of them, which is the
- * detail that makes it right in both directions. Asked as "which panel would
- * it sit before", a panel dragged downwards lands one place short, because
- * taking it out of the list shifts everything after it up by one. Asked as
- * "how many of the others are above the pointer", the answer is the index it
- * should occupy once it has been taken out, and the same arithmetic works
- * whichever way it is being dragged.
- *
- * Separated from reading the page so it can be tested without one. The rule is
- * four lines and it was wrong the first time, in the direction that is harder
- * to notice: dragging upwards looked right, so a hand test would have passed.
- */
-export function landingAmong(
-  middles: ReadonlyArray<{ id: string; middle: number }>,
-  carried: string,
-  y: number,
-): number {
-  let above = 0;
-  for (const one of middles) {
-    if (one.id !== carried && y > one.middle) above++;
-  }
-  return above;
 }
 
 /** The same question, asked of the headers actually on screen. */
@@ -299,26 +273,35 @@ export function Dock({
                     if (event.button !== 0) return;
                     const from = event.clientY;
                     let carried = false;
+                    let landed = at;
                     const carry = (moving: PointerEvent): void => {
                       if (!carried && Math.abs(moving.clientY - from) < 4) return;
                       carried = true;
-                      setCarrying({
-                        id: panel.id,
-                        to: landingAt(
-                          column.current,
-                          moving.clientY,
-                          panel.id,
-                          shown.map((one) => one.id),
-                        ),
-                      });
+                      landed = landingAt(
+                        column.current,
+                        moving.clientY,
+                        panel.id,
+                        shown.map((one) => one.id),
+                      );
+                      setCarrying({ id: panel.id, to: landed });
                     };
                     const drop = (): void => {
                       window.removeEventListener("pointermove", carry);
                       window.removeEventListener("pointerup", drop);
-                      setCarrying((held) => {
-                        if (held && held.id === panel.id) moveTo(panel.id, held.to);
-                        return null;
-                      });
+                      /*
+                        The move is made here rather than inside the updater,
+                        which is where it used to be.
+
+                        React calls an updater twice under StrictMode to catch
+                        side effects in one, and this had one. It survived only
+                        because `moveTo` builds the whole order afresh and so
+                        gives the same answer twice; the same shape copied to
+                        the tab strip, where moving is relative, put the tab
+                        back where it started and did it only in development.
+                        Nothing here should rely on being idempotent by luck.
+                      */
+                      setCarrying(null);
+                      if (carried) moveTo(panel.id, landed);
                     };
                     window.addEventListener("pointermove", carry);
                     window.addEventListener("pointerup", drop);
