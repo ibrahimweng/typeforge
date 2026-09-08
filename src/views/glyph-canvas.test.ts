@@ -174,16 +174,63 @@ describe("putting an alpha on a colour", () => {
   });
 
   /*
-   * A token is as likely to be an `oklch(...)` as a hex, and there is no
-   * arithmetic to do on one from here. `color-mix` says the same thing to the
-   * browser and works for any colour syntax there will ever be.
+   * A token is as likely to be an `oklch(...)` as a hex, and with no document
+   * to ask -- which is where these tests run -- `color-mix` is what it falls
+   * back to, as it always did.
    */
-  it("mixes anything that is not a hex colour, rather than mangling it", () => {
+  it("mixes anything that is not a hex colour, where there is nothing to ask", () => {
     expect(withAlpha("oklch(0.48 0.22 300)", 0.4)).toBe(
       "color-mix(in oklab, oklch(0.48 0.22 300) 40%, transparent)",
     );
     expect(withAlpha("var(--accent)", 0.75)).toBe(
       "color-mix(in oklab, var(--accent) 75%, transparent)",
+    );
+  });
+
+  /*
+   * And where there is something to ask, it asks, because `color-mix` is the
+   * weaker answer of the two.
+   *
+   * CSS and canvas do not parse the same colours, and a canvas handed one it
+   * does not know drops the assignment without a word -- so the shape is drawn
+   * in whatever colour was set last, or in none anybody can see, with nothing
+   * saying why. `rgba` is the form no canvas has ever refused.
+   *
+   * The browser here is a stand-in, and it has to be: a real one in these
+   * tests would only ever prove what a browser already supports, and the point
+   * is what happens with one that does not. So this one takes `oklch` and
+   * refuses `lch`, which is the shape of the problem rather than any real
+   * browser's actual list.
+   */
+  it("asks the browser for real numbers when there is a browser to ask", () => {
+    const painted = { r: 122, g: 55, b: 207 };
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: () => {
+        let fill = "";
+        return {
+          set fillStyle(value: string) {
+            // Takes a hex or an oklch, and refuses anything else in silence,
+            // which is exactly how a canvas refuses a colour.
+            if (value.startsWith("#") || value.startsWith("oklch(")) fill = value;
+          },
+          get fillStyle() {
+            return fill;
+          },
+          fillRect: () => {},
+          getImageData: () => ({
+            data: new Uint8ClampedArray([painted.r, painted.g, painted.b, 255]),
+          }),
+        };
+      },
+    };
+    vi.stubGlobal("document", { createElement: () => canvas });
+
+    expect(withAlpha("oklch(0.48 0.22 300)", 0.4)).toBe("rgba(122, 55, 207, 0.4)");
+    // Refused in silence, so the mix is still there to fall back on.
+    expect(withAlpha("lch(48% 0.22 300)", 0.4)).toBe(
+      "color-mix(in oklab, lch(48% 0.22 300) 40%, transparent)",
     );
   });
 });
