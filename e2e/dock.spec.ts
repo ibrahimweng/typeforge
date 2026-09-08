@@ -167,22 +167,28 @@ test("a panel dragged past its neighbour lands after it, not beyond it", async (
    * drag land where the hand asked; the arithmetic has its own test, and this
    * says the drag is wired to it.
    */
+  /*
+   * A window the whole dock fits in, which the default one is not everywhere.
+   *
+   * This is a drag between two headers, so both have to be somewhere the
+   * pointer can reach. How tall the dock comes out differs by browser, and
+   * Firefox laid it out with the second header at y=1323 in a 720-high window
+   * -- a thousand pixels below the bottom of it, and past the right edge as
+   * well. The drag was aimed at a place that was not on the screen, so nothing
+   * moved and the order came back untouched.
+   *
+   * Scrolling was tried first and changed nothing: the numbers came back
+   * identical, because what is off screen is the panel the header sits in
+   * rather than the header within a panel. Giving the test a window big
+   * enough is the honest fix -- what it is about is where a dragged panel
+   * lands, not how the dock folds into a short viewport.
+   */
+  await page.setViewportSize({ width: 1600, height: 1600 });
   await openAFont(page);
   const was = await arrangement(page);
   const first = was[0];
   const second = was[1];
 
-  /*
-   * Both headers brought on screen before either is aimed at.
-   *
-   * The dock is as tall as its panels make it, and how tall that is differs by
-   * browser. Firefox laid this one out with the second header at y=1323 --
-   * a thousand pixels below the bottom of the window -- so the drag was aimed
-   * outside the page and the panels never moved at all. The boxes are read
-   * after the scroll, because scrolling is what makes them true.
-   */
-  await page.locator(`[data-panel-header='${second}']`).scrollIntoViewIfNeeded();
-  await page.locator(`[data-panel-header='${first}']`).scrollIntoViewIfNeeded();
   const from = (await page.locator(`[data-panel-header='${first}']`).boundingBox())!;
   const onto = (await page.locator(`[data-panel-header='${second}']`).boundingBox())!;
 
@@ -204,7 +210,6 @@ test("a panel dragged past its neighbour lands after it, not beyond it", async (
   await page.mouse.up();
 
   const now = await arrangement(page);
-  console.log("DOCK DIAGNOSTIC:", JSON.stringify({ was, now, first, second, from, onto }));
   expect(now[0]).toBe(second);
   expect(now[1], `${first} should be second, not further down`).toBe(first);
   expect(now.slice(2)).toEqual(was.slice(2));
