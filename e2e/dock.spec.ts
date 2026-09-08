@@ -172,6 +172,29 @@ test("a panel dragged past its neighbour lands after it, not beyond it", async (
   const first = was[0];
   const second = was[1];
 
+  /*
+   * Furled first, so the header being dragged onto is somewhere a hand could
+   * reach it.
+   *
+   * Open, the first panel is around eleven hundred pixels of controls and its
+   * neighbour's header sits at y=1323 in a window 950 high -- off the bottom
+   * of the screen. This test used to aim at it anyway and pass, because
+   * Chromium lets a driven pointer go outside the viewport. Firefox clamps it
+   * to the edge, so the drag landed short, worked out that it belonged where
+   * it started, and put it back: `data-panel-carried` said one panel was in
+   * hand the whole time, which is what ruled out the drag never starting.
+   *
+   * Chromium was the one being generous. A person cannot drop a panel on a
+   * header they cannot see, so the test should not have been able to either.
+   * Furling puts the headers together at the top, which is the state somebody
+   * reordering panels would put the dock in anyway.
+   */
+  for (const id of was) await page.locator(`[data-panel-furl='${id}']`).click();
+  await expect(page.locator(`[data-panel-furl='${second}']`)).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+
   const from = (await page.locator(`[data-panel-header='${first}']`).boundingBox())!;
   const onto = (await page.locator(`[data-panel-header='${second}']`).boundingBox())!;
 
@@ -206,18 +229,17 @@ test("a panel dragged past its neighbour lands after it, not beyond it", async (
   await page.mouse.up();
 
   const now = await arrangement(page);
-  console.log(
-    "DOCK DIAGNOSTIC:",
-    JSON.stringify({
-      was,
-      now,
-      carriedMidDrag: carried,
-      viewport: page.viewportSize(),
-      from,
-      onto,
-    }),
-  );
-  expect(now[0]).toBe(second);
+  /*
+   * The evidence rides on the failure rather than on every run.
+   *
+   * This one took five runs to pin down, and every one of them turned on
+   * numbers a plain "expected shaping, received params" does not carry: where
+   * the two headers actually were, and whether a panel was in hand at all.
+   * Kept here, they cost nothing while it passes and are the first thing
+   * anybody needs the moment it does not.
+   */
+  const seen = `from y=${from.y} onto y=${onto.y}, carried=${carried}, was ${was.join()}, now ${now.join()}`;
+  expect(now[0], seen).toBe(second);
   expect(now[1], `${first} should be second, not further down`).toBe(first);
   expect(now.slice(2)).toEqual(was.slice(2));
 });
