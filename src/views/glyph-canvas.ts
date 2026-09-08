@@ -17,6 +17,97 @@ import {
 export const NODE_SIZE = 3.5;
 
 /** Apply an alpha to a token colour, which may be hex or a colour function. */
+/**
+ * What a browser makes of a colour string, as `r, g, b`, or null if it will
+ * not take it at all.
+ *
+ * Asked of a canvas rather than worked out here, because the colours in this
+ * application arrive as whatever the stylesheet says -- `oklch` for most of
+ * them, hex for a few -- and writing a converter for each syntax is writing a
+ * colour library nobody asked for. Painting one pixel and reading it back is
+ * the browser's own answer.
+ *
+ * The two sentinels are how a refusal is told from a colour. Assigning a
+ * `fillStyle` a canvas cannot parse is ignored in silence: no throw, no
+ * warning, the old value simply stays. So the colour is set over two different
+ * sentinels, and only a colour that leaves both of them standing was refused
+ * -- one that happens to equal a sentinel cannot equal the other.
+ *
+ * Cached because this runs inside a paint. The answer for a given string never
+ * changes, and `getImageData` is far too expensive to ask sixty times a second
+ * for a colour that has not moved.
+ */
+const RESOLVED = new Map<string, string | null>();
+
+function rgbOf(colour: string): string | null {
+  const known = RESOLVED.get(colour);
+  if (known !== undefined) return known;
+  /*
+   * Nothing is remembered until a canvas has actually answered.
+   *
+   * Caching "could not" from a call made before there is a document -- an
+   * early paint, a worker, a test -- would settle that colour on the fallback
+   * for the life of the page, and it would never be asked again once a browser
+   * was there to answer. Only a real refusal by a real canvas is worth
+   * remembering.
+   */
+  // `typeof` first and separately: `document?.x` still evaluates `document`,
+  // which throws outright where the name was never declared at all.
+  if (typeof document === "undefined") return null;
+  if (typeof document.createElement !== "function") return null;
+  /*
+   * Wrapped, because this is called from inside a paint and the alternative to
+   * a null is a frame that does not happen. Everything in here is capable of
+   * throwing somewhere -- a canvas the browser will not give a context for,
+   * a `getImageData` refused on a tainted or zero-sized surface, a stripped
+   * down `document` in a test -- and none of that is worth a blank letter when
+   * the honest answer is "ask for the mix instead".
+   */
+  try {
+    const scratch = document.createElement("canvas");
+    scratch.width = 1;
+    scratch.height = 1;
+    const context = scratch.getContext("2d", { willReadFrequently: true });
+    if (!context) return null;
+    context.fillStyle = "#ff00ff";
+    context.fillStyle = colour;
+    const first = context.fillStyle;
+    context.fillStyle = "#00ff00";
+    context.fillStyle = colour;
+    if (first === "#ff00ff" && context.fillStyle === "#00ff00") {
+      // A refusal by a real canvas is stable, so this one is worth keeping.
+      RESOLVED.set(colour, null);
+      return null;
+    }
+    context.fillRect(0, 0, 1, 1);
+    const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
+    const answer = `${r}, ${g}, ${b}`;
+    RESOLVED.set(colour, answer);
+    return answer;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A colour with an alpha on it, in a form a canvas will actually take.
+ *
+ * `rgba` wherever it can be reached, and that preference is the whole point.
+ * CSS and canvas do not parse the same set of colours: a stylesheet has taken
+ * `color-mix` for years, and a canvas is a narrower surface that has taken it
+ * for rather less time. Handing a canvas a colour it does not know is not an
+ * error -- the assignment is dropped without a word and the last colour keeps
+ * being used -- so the failure arrives as a shape drawn in the wrong colour,
+ * or in no visible colour at all, with nothing anywhere saying why.
+ *
+ * Nothing here has been seen to fail. It is written this way because the way
+ * it would fail is silent, and a silent failure on the one surface this
+ * application is made of is worth spending a cached pixel to rule out.
+ *
+ * `color-mix` is still the last resort rather than being removed. Where there
+ * is no document to ask -- a unit test, a worker -- it is what this always
+ * did, so this can only widen what works and never narrow it.
+ */
 export function withAlpha(colour: string, alpha: number): string {
   if (colour.startsWith("#")) {
     const hex = colour.slice(1);
@@ -27,6 +118,8 @@ export function withAlpha(colour: string, alpha: number): string {
     const b = value & 255;
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
+  const rgb = rgbOf(colour);
+  if (rgb) return `rgba(${rgb}, ${alpha})`;
   return `color-mix(in oklab, ${colour} ${Math.round(alpha * 100)}%, transparent)`;
 }
 
