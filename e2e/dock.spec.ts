@@ -244,6 +244,55 @@ test("a panel dragged past its neighbour lands after it, not beyond it", async (
   expect(now.slice(2)).toEqual(was.slice(2));
 });
 
+test("a panel says which panel it is however far into it you have scrolled", async ({ page }) => {
+  /*
+   * The dock is taller than the window and always was going to be: six panels
+   * of controls come to well over three thousand pixels in a column seven
+   * hundred and sixty high. Scrolling is the answer to that and it works --
+   * but a panel taller than the column used to take its own name off the
+   * screen with it, and at the bottom of the column not one header was left.
+   * You scroll into a stack of sliders with nothing saying whose they are.
+   *
+   * The header is also the handle for reordering and the button for furling,
+   * so losing it loses both. Stuck to the top of the column, it is there
+   * wherever you are.
+   */
+  await openAFont(page);
+  await page.getByRole("button", { name: "Glyph", exact: true }).click();
+  await expect(page.locator("[data-panel]").first()).toBeVisible();
+
+  const headersInView = () =>
+    page.evaluate(() => {
+      const column = document.querySelector<HTMLElement>("[data-panel]")!.parentElement!;
+      const box = column.getBoundingClientRect();
+      return [...document.querySelectorAll("[data-panel-header]")]
+        .filter((one) => {
+          const at = one.getBoundingClientRect();
+          return at.top >= box.top - 1 && at.bottom <= box.bottom + 1;
+        })
+        .map((one) => one.getAttribute("data-panel-header"));
+    });
+
+  const reach = await page.evaluate(() => {
+    const column = document.querySelector<HTMLElement>("[data-panel]")!.parentElement!;
+    return column.scrollHeight - column.clientHeight;
+  });
+  expect(reach, "this test needs a column taller than its window").toBeGreaterThan(200);
+
+  // Every way down it, including the very bottom, where there used to be none.
+  for (const part of [0, 0.25, 0.5, 0.75, 1]) {
+    await page.evaluate((fraction) => {
+      const column = document.querySelector<HTMLElement>("[data-panel]")!.parentElement!;
+      column.scrollTop = (column.scrollHeight - column.clientHeight) * fraction;
+    }, part);
+    await page.waitForTimeout(120);
+    expect(
+      (await headersInView()).length,
+      `nothing said which panel you were in, ${Math.round(part * 100)}% down`,
+    ).toBeGreaterThan(0);
+  }
+});
+
 test("everything can be put back the way it shipped", async ({ page }) => {
   await openAFont(page);
   const shipped = await arrangement(page);

@@ -256,7 +256,24 @@ export function Dock({
               >
                 <div
                   data-panel-header={panel.id}
-                  className="flex items-center gap-1 px-2 py-1.5"
+                  /*
+                    Stuck to the top of the column while its own panel is being
+                    scrolled through.
+                    
+                    Six panels come to well over three thousand pixels of
+                    controls in a column seven hundred and sixty high, and a
+                    panel taller than the column takes its own name off the
+                    screen with it: you scroll into a stack of sliders with
+                    nothing left saying which panel they belong to, and the
+                    header is also the handle for reordering and the button
+                    for furling, so both go with it.
+
+                    A background is not decoration here. The header sits over
+                    scrolling content once it is stuck, and everything from the
+                    section up is transparent, so without one the sliders would
+                    read straight through the name.
+                  */
+                  className="sticky top-0 z-10 flex items-center gap-1 bg-background px-2 py-1.5"
                   onPointerDown={(event) => {
                     /*
                       A drag starts on the header, because the body is full of
