@@ -79,6 +79,35 @@ export function WarpControl({ glyphName }: { glyphName: string }): React.JSX.Ele
    */
   const holding = React.useRef(false);
 
+  /*
+   * The end of the gesture is listened for on the window, not on the slider.
+   *
+   * Settling on the element's own pointer up looks right and is not enough: a
+   * range input's thumb may or may not hold the pointer capture, and where it
+   * does not the release lands on whatever the pointer is over instead. Then
+   * nothing settles at all -- no entry is written, and the undo that follows
+   * takes back whatever came before the warp while the bend stays on the
+   * letter. Firefox is where that showed, and the first fix here missed it
+   * because it was still asking the element.
+   *
+   * The window sees the release wherever it happens. The handler is idle
+   * unless the slider is being held, so it costs nothing the rest of the time.
+   */
+  const settleRef = React.useRef<() => void>(() => {});
+  const letGo = React.useCallback(() => {
+    if (!holding.current) return;
+    holding.current = false;
+    settleRef.current();
+  }, []);
+  React.useEffect(() => {
+    window.addEventListener("pointerup", letGo);
+    window.addEventListener("pointercancel", letGo);
+    return () => {
+      window.removeEventListener("pointerup", letGo);
+      window.removeEventListener("pointercancel", letGo);
+    };
+  }, [letGo]);
+
   const start = React.useCallback((): boolean => {
     const glyph = store.glyph(glyphName);
     if (!glyph) return false;
@@ -145,6 +174,10 @@ export function WarpControl({ glyphName }: { glyphName: string }): React.JSX.Ele
     setAmount(0);
   }, [amount, glyphName, name]);
 
+  // Kept current, because `settle` is rebuilt as the amount changes and the
+  // window handler above must call the one that knows where the sweep ended.
+  settleRef.current = settle;
+
   // Two points is the least that has a box with any size in it to bend.
   if (selected.size < 2) return null;
 
@@ -172,8 +205,7 @@ export function WarpControl({ glyphName }: { glyphName: string }): React.JSX.Ele
         max={100}
         value={Math.round(amount * 100)}
         onPointerDown={() => {
-          holding.current = true;
-          start();
+          holding.current = start();
         }}
         onKeyDown={() => began.current ?? start()}
         onChange={(event) => {
@@ -184,19 +216,13 @@ export function WarpControl({ glyphName }: { glyphName: string }): React.JSX.Ele
           if (!began.current && !start()) return;
           bend(to);
         }}
-        onPointerUp={() => {
-          holding.current = false;
-          settle();
-        }}
+        onPointerUp={letGo}
         /*
          * A cancelled pointer is a finished gesture too -- a drag the browser
          * takes over, a touch turned into a scroll -- and leaving it held
          * would strand the sweep with nothing to write it down.
          */
-        onPointerCancel={() => {
-          holding.current = false;
-          settle();
-        }}
+        onPointerCancel={letGo}
         onBlur={() => {
           if (!holding.current) settle();
         }}

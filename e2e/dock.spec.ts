@@ -193,6 +193,7 @@ test("a panel dragged past its neighbour lands after it, not beyond it", async (
   await page.mouse.up();
 
   const now = await arrangement(page);
+  console.log("DOCK DIAGNOSTIC:", JSON.stringify({ was, now, first, second, from, onto }));
   expect(now[0]).toBe(second);
   expect(now[1], `${first} should be second, not further down`).toBe(first);
   expect(now.slice(2)).toEqual(was.slice(2));

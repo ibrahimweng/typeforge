@@ -291,6 +291,15 @@ test("hovering a toolbar button changes it before you press", async ({ page }) =
    * applied. Both are worth having; neither is the other.
    */
   const canHover = await page.evaluate(() => matchMedia("(hover: hover)").matches);
+  console.log(
+    "HOVER DIAGNOSTIC:",
+    JSON.stringify({
+      canHover,
+      resting,
+      hovered,
+      classes: await spacing.evaluate((element) => element.className),
+    }),
+  );
   if (canHover) {
     // An unselected tab has to react to the pointer, not just to the click.
     expect(hovered, "a hovering pointer has to change the button").not.toBe(resting);
@@ -519,6 +528,7 @@ test("draws the accented letters and writes them into the font", async ({ page }
     [...bytes],
   );
 
+  console.log("ACCENTED DIAGNOSTIC:", JSON.stringify(measured));
   for (const width of measured.accented) {
     expect(width).toBeGreaterThan(0);
     expect(Math.abs(width - measured.blank)).toBeGreaterThan(0.5);

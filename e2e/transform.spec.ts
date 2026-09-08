@@ -232,6 +232,13 @@ test("a blur in the middle of a warp does not end the sweep", async ({ page }) =
   await slider.evaluate((element) => (element as HTMLInputElement).blur());
   await page.waitForTimeout(100);
 
+  /*
+   * And the pointer taken off the slider before it is let go, which is the
+   * other half of the same fault: a release the element never hears. The
+   * window hears it, which is why it is listened for there.
+   */
+  await page.mouse.move(box.x - 120, box.y + 200);
+
   // And the rest of the same drag, which must still belong to the same sweep.
   await page.mouse.move(box.x + box.width * 0.9, box.y + box.height / 2, { steps: 6 });
   await page.mouse.up();
