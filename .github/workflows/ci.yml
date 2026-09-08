@@ -105,9 +105,17 @@ jobs:
       # project supports. What `check` above adds is hearing about it sooner.
       - run: npm run build
 
-  # Both engines, as two legs of one matrix rather than two jobs one after the
-  # other: they run at the same time, so hearing about WebKit costs no more
-  # wall-clock than not hearing about it did.
+  # All three engines, as legs of one matrix rather than jobs one after the
+  # other: they run at the same time, so hearing about the other two costs no
+  # more wall-clock than not hearing about them did.
+  #
+  # Firefox is here because it was the one family nothing covered, and that
+  # gap was found the hard way: a report that a feature did not work, chased
+  # for hours, with no way to rule out the browser because no run had ever
+  # opened one. Its first run passed 296 and failed four, none of them in the
+  # selecting the report was about -- a dragged panel, a hover, the accented
+  # letters, and a warp whose undo gave back the wrong number of points. The
+  # last of those was a real fault in the slider, not in the test.
   #
   # WebKit is here because this application is a canvas, an IndexedDB and a
   # pile of font loading, and those three are where WebKit differs from
@@ -118,7 +126,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        engine: [chromium, webkit]
+        engine: [chromium, webkit, firefox]
 
     steps:
       - uses: actions/checkout@v7

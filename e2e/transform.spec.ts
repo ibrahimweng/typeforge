@@ -194,6 +194,58 @@ test("a warp bends the selection, and says what it costs", async ({ page }) => {
   expect(await shape(page)).toBe(before);
 });
 
+test("a blur in the middle of a warp does not end the sweep", async ({ page }) => {
+  /*
+   * Found in Firefox and pinned here so it cannot come back anywhere.
+   *
+   * The slider settles on a blur as well as on a pointer up, because a
+   * keyboard sweep never sends a pointer up and would otherwise never be
+   * written down. The trouble is that a blur can also arrive in the middle of
+   * a drag, and settling there ends the gesture early: the baseline is
+   * cleared, the next move of the same drag takes a new one, and the outlines
+   * it calls "before" are the ones the warp has already bent.
+   *
+   * What that costs is undo. The sweep goes down as one entry whose before is
+   * that half-bent state, so taking it back leaves the letter in the middle of
+   * a drag nobody asked to stop at, still carrying the points the cutting
+   * added. Eight came back as twenty-four.
+   *
+   * The blur is forced here rather than waited for. Firefox produced one by
+   * itself and the others did not, and a fault that only one engine happens to
+   * trip is still a fault in all of them -- so this asks for it directly, and
+   * then every browser has to survive it.
+   */
+  await aLetterWithPoints(page);
+  await pickEverything(page);
+  const before = await shape(page);
+  const counts = await pointCounts(page);
+
+  await page.locator("[data-warp-name]").selectOption("bulge");
+  const slider = page.locator("[data-warp-amount]");
+  const box = (await slider.boundingBox())!;
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.7, box.y + box.height / 2, { steps: 6 });
+
+  // The blur, with the hand still down.
+  await slider.evaluate((element) => (element as HTMLInputElement).blur());
+  await page.waitForTimeout(100);
+
+  // And the rest of the same drag, which must still belong to the same sweep.
+  await page.mouse.move(box.x + box.width * 0.9, box.y + box.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+
+  expect(await pointCounts(page), "the warp still has to cut").not.toEqual(counts);
+
+  await page.locator("[data-glyph-canvas]").focus();
+  await page.keyboard.press("ControlOrMeta+z");
+  await page.waitForTimeout(300);
+  expect(await pointCounts(page), "one undo has to give every point back").toEqual(counts);
+  expect(await shape(page), "and the letter it started as").toBe(before);
+});
+
 test("every warp in the list actually bends something", async ({ page }) => {
   /*
    * Ten names in a menu, and the failure worth guarding is a name that quietly

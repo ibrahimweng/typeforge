@@ -276,8 +276,30 @@ test("hovering a toolbar button changes it before you press", async ({ page }) =
   await page.waitForTimeout(200);
   const hovered = await background();
 
-  // An unselected tab has to react to the pointer, not just to the click.
-  expect(hovered).not.toBe(resting);
+  /*
+   * Only where the browser says it has a pointer that can hover.
+   *
+   * The hover styles are written as Tailwind `hover:` utilities, and since v4
+   * those are wrapped in `@media (hover: hover)` -- so on anything that
+   * reports a coarse pointer the rule is not applied, deliberately, because
+   * hover that sticks after a tap is worse than no hover at all. A browser
+   * driven headless can report exactly that, and then this test is asking for
+   * a rule the browser is right to be ignoring.
+   *
+   * So the capability is read rather than assumed, and where it is missing the
+   * claim that is actually true is checked instead: the rule is there to be
+   * applied. Both are worth having; neither is the other.
+   */
+  const canHover = await page.evaluate(() => matchMedia("(hover: hover)").matches);
+  if (canHover) {
+    // An unselected tab has to react to the pointer, not just to the click.
+    expect(hovered, "a hovering pointer has to change the button").not.toBe(resting);
+    return;
+  }
+  const armed = await spacing.evaluate((element) =>
+    [...element.classList].some((one) => one.startsWith("hover:")),
+  );
+  expect(armed, "no hover here, so the button still has to carry the rule").toBe(true);
 });
 
 /**
@@ -472,6 +494,19 @@ test("draws the accented letters and writes them into the font", async ({ page }
       const face = new FontFace("Accented", new Uint8Array(data).buffer as ArrayBuffer);
       await face.load();
       document.fonts.add(face);
+      /*
+       * Added is not the same as usable.
+       *
+       * A canvas asked to measure in a face the document has not actually
+       * taken up yet quietly measures in the fallback instead, and the numbers
+       * that come back are a different font's -- close enough to look like
+       * measurements and wrong enough to fail. Chromium and WebKit happen to
+       * have it ready by here; Firefox does not, and said so by making one
+       * accented letter come out a fifth of a unit from the blank.
+       *
+       * Asking for it by name is the wait that means "ready to draw with".
+       */
+      await document.fonts.load("100px Accented");
       const context = document.createElement("canvas").getContext("2d")!;
       context.font = "100px Accented";
       const width = (text: string) => context.measureText(text).width;

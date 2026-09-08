@@ -60,6 +60,25 @@ export function WarpControl({ glyphName }: { glyphName: string }): React.JSX.Ele
     box: { left: number; right: number; bottom: number; top: number };
   } | null>(null);
 
+  /*
+   * Whether the slider is still being held.
+   *
+   * `onBlur` settles as well as `onPointerUp`, because a keyboard sweep never
+   * sends a pointer up and would otherwise never be written down. But a blur
+   * can also arrive in the middle of a drag -- Firefox is where this was
+   * caught -- and settling there ends the gesture early: the baseline is
+   * cleared, the next move of the same drag calls `start()` again, and the
+   * outlines it takes as "before" are the ones the warp has already bent.
+   *
+   * What that costs is undo. The sweep is written down as one entry whose
+   * before is that half-bent state, so taking it back returns the letter to
+   * the middle of a drag nobody asked to stop at, with the points the cutting
+   * added still in it. Eight points came back as twenty-four.
+   *
+   * So a blur only settles when the hand is off it.
+   */
+  const holding = React.useRef(false);
+
   const start = React.useCallback((): boolean => {
     const glyph = store.glyph(glyphName);
     if (!glyph) return false;
@@ -152,7 +171,10 @@ export function WarpControl({ glyphName }: { glyphName: string }): React.JSX.Ele
         min={-100}
         max={100}
         value={Math.round(amount * 100)}
-        onPointerDown={() => start()}
+        onPointerDown={() => {
+          holding.current = true;
+          start();
+        }}
         onKeyDown={() => began.current ?? start()}
         onChange={(event) => {
           const to = Number(event.target.value) / 100;
@@ -162,8 +184,22 @@ export function WarpControl({ glyphName }: { glyphName: string }): React.JSX.Ele
           if (!began.current && !start()) return;
           bend(to);
         }}
-        onPointerUp={settle}
-        onBlur={settle}
+        onPointerUp={() => {
+          holding.current = false;
+          settle();
+        }}
+        /*
+         * A cancelled pointer is a finished gesture too -- a drag the browser
+         * takes over, a touch turned into a scroll -- and leaving it held
+         * would strand the sweep with nothing to write it down.
+         */
+        onPointerCancel={() => {
+          holding.current = false;
+          settle();
+        }}
+        onBlur={() => {
+          if (!holding.current) settle();
+        }}
         className="h-6 w-28 accent-[color:var(--accent)]"
       />
       <span className="w-8 text-2xs tabular-nums text-muted-foreground" data-warp-said>

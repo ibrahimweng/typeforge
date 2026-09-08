@@ -177,6 +177,17 @@ test("a panel dragged past its neighbour lands after it, not beyond it", async (
 
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
   await page.mouse.down();
+  /*
+   * A small move first, to get the drag started before it is aimed.
+   *
+   * The pointer sensor waits for a few pixels before it calls this a drag
+   * rather than a click, and it arms itself on the first move after the press.
+   * Going straight to the target in one sweep of interpolated moves can have
+   * the whole journey counted as the arming move, and the panel never travels
+   * -- which is what Firefox did here: the order came back untouched, as if
+   * nothing had been dragged at all.
+   */
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 + 8);
   // Just past the second panel's middle, which asks for one place down.
   await page.mouse.move(onto.x + onto.width / 2, onto.y + onto.height / 2 + 4, { steps: 8 });
   await page.mouse.up();
