@@ -94,6 +94,10 @@ export function WarpControl({ glyphName }: { glyphName: string }): React.JSX.Ele
    * unless the slider is being held, so it costs nothing the rest of the time.
    */
   const settleRef = React.useRef<() => void>(() => {});
+  // The amount as it is now, for a settle that runs from a window event and
+  // must not answer with whatever a render happened to close over.
+  const amountNow = React.useRef(0);
+  amountNow.current = amount;
   const letGo = React.useCallback(() => {
     if (!holding.current) return;
     holding.current = false;
@@ -154,7 +158,7 @@ export function WarpControl({ glyphName }: { glyphName: string }): React.JSX.Ele
     began.current = null;
     setCost(null);
     if (!from) return;
-    if (amount === 0) {
+    if (amountNow.current === 0) {
       // Back where it started is not an edit. Putting the outlines back by
       // hand rather than trusting the last frame, because a sweep out and back
       // through a cutting warp does not return the points it took.
@@ -211,9 +215,24 @@ export function WarpControl({ glyphName }: { glyphName: string }): React.JSX.Ele
         onChange={(event) => {
           const to = Number(event.target.value) / 100;
           setAmount(to);
-          // A keyboard change arrives with no press before it, so the baseline
-          // is taken here as well as on the way down.
-          if (!began.current && !start()) return;
+          /*
+           * A change with no gesture behind it starts nothing.
+           *
+           * The baseline used to be taken here for any change that arrived
+           * without one, which is what a keyboard sweep needs -- but a pointer
+           * release can be followed by one last change, and taking a baseline
+           * from that one takes it from outlines the warp has already bent.
+           * The sweep is then written down twice: once properly, and once more
+           * from the middle of itself, and the undo that follows lands in that
+           * middle. Firefox is where the trailing change showed up.
+           *
+           * A keyboard sweep has its baseline from `onKeyDown` before any
+           * change arrives, so requiring a gesture here costs it nothing.
+           */
+          if (!began.current) {
+            if (!holding.current) return;
+            if (!start()) return;
+          }
           bend(to);
         }}
         onPointerUp={letGo}

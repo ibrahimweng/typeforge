@@ -172,6 +172,17 @@ test("a panel dragged past its neighbour lands after it, not beyond it", async (
   const first = was[0];
   const second = was[1];
 
+  /*
+   * Both headers brought on screen before either is aimed at.
+   *
+   * The dock is as tall as its panels make it, and how tall that is differs by
+   * browser. Firefox laid this one out with the second header at y=1323 --
+   * a thousand pixels below the bottom of the window -- so the drag was aimed
+   * outside the page and the panels never moved at all. The boxes are read
+   * after the scroll, because scrolling is what makes them true.
+   */
+  await page.locator(`[data-panel-header='${second}']`).scrollIntoViewIfNeeded();
+  await page.locator(`[data-panel-header='${first}']`).scrollIntoViewIfNeeded();
   const from = (await page.locator(`[data-panel-header='${first}']`).boundingBox())!;
   const onto = (await page.locator(`[data-panel-header='${second}']`).boundingBox())!;
 
