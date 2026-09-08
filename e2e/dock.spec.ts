@@ -172,17 +172,74 @@ test("a panel dragged past its neighbour lands after it, not beyond it", async (
   const first = was[0];
   const second = was[1];
 
+  /*
+   * Furled first, so the header being dragged onto is somewhere a hand could
+   * reach it.
+   *
+   * Open, the first panel is around eleven hundred pixels of controls and its
+   * neighbour's header sits at y=1323 in a window 950 high -- off the bottom
+   * of the screen. This test used to aim at it anyway and pass, because
+   * Chromium lets a driven pointer go outside the viewport. Firefox clamps it
+   * to the edge, so the drag landed short, worked out that it belonged where
+   * it started, and put it back: `data-panel-carried` said one panel was in
+   * hand the whole time, which is what ruled out the drag never starting.
+   *
+   * Chromium was the one being generous. A person cannot drop a panel on a
+   * header they cannot see, so the test should not have been able to either.
+   * Furling puts the headers together at the top, which is the state somebody
+   * reordering panels would put the dock in anyway.
+   */
+  for (const id of was) await page.locator(`[data-panel-furl='${id}']`).click();
+  await expect(page.locator(`[data-panel-furl='${second}']`)).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+
   const from = (await page.locator(`[data-panel-header='${first}']`).boundingBox())!;
   const onto = (await page.locator(`[data-panel-header='${second}']`).boundingBox())!;
 
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
   await page.mouse.down();
+  /*
+   * A small move first, to get the drag started before it is aimed.
+   *
+   * The pointer sensor waits for a few pixels before it calls this a drag
+   * rather than a click, and it arms itself on the first move after the press.
+   * Going straight to the target in one sweep of interpolated moves can have
+   * the whole journey counted as the arming move, and the panel never travels
+   * -- which is what Firefox did here: the order came back untouched, as if
+   * nothing had been dragged at all.
+   */
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 + 8);
   // Just past the second panel's middle, which asks for one place down.
   await page.mouse.move(onto.x + onto.width / 2, onto.y + onto.height / 2 + 4, { steps: 8 });
+
+  /*
+   * Read while the panel is still in hand.
+   *
+   * `data-panel-carried` is set for as long as one is being carried, so this
+   * tells apart the two ways this can look identical from the outside: a drag
+   * that never started, and a drag that started and worked out that it should
+   * land exactly where it began.
+   */
+  const carried = await page
+    .locator("[data-panel-carried='true']")
+    .count()
+    .catch(() => -1);
   await page.mouse.up();
 
   const now = await arrangement(page);
-  expect(now[0]).toBe(second);
+  /*
+   * The evidence rides on the failure rather than on every run.
+   *
+   * This one took five runs to pin down, and every one of them turned on
+   * numbers a plain "expected shaping, received params" does not carry: where
+   * the two headers actually were, and whether a panel was in hand at all.
+   * Kept here, they cost nothing while it passes and are the first thing
+   * anybody needs the moment it does not.
+   */
+  const seen = `from y=${from.y} onto y=${onto.y}, carried=${carried}, was ${was.join()}, now ${now.join()}`;
+  expect(now[0], seen).toBe(second);
   expect(now[1], `${first} should be second, not further down`).toBe(first);
   expect(now.slice(2)).toEqual(was.slice(2));
 });
