@@ -17,6 +17,8 @@ import { LibraryDialog } from "@/components/LibraryDialog";
 import { useQuickActionShortcut } from "@/palette/useShortcut";
 import type { AppShell } from "@/palette/catalogue";
 import { useAppKeys } from "@/keys/useAppKeys";
+import { useHistory } from "@/state/history";
+import { MenuBar } from "@/components/MenuBar";
 import { NextStep } from "@/components/NextStep";
 import { DocumentTabs } from "@/components/DocumentTabs";
 import { OptionsBar } from "@/components/OptionsBar";
@@ -1005,6 +1007,10 @@ export function App(): React.JSX.Element {
     [enterMode],
   );
 
+  // The Edit menu and the top bar's buttons ask the same document. See
+  // `state/history.ts`.
+  const history = useHistory(mode);
+
   const shell: AppShell = React.useMemo(
     () => ({
       mode,
@@ -1142,6 +1148,21 @@ export function App(): React.JSX.Element {
         void dropFiles(event.dataTransfer.files, event.dataTransfer.items);
       }}
     >
+      {/*
+        The menus, above everything, always.
+
+        A menu bar that came and went with the screen would be worth less than
+        no menu bar: the whole of what it offers is being in the same place
+        every time somebody looks, which is what nobody has to be told. See
+        `MenuBar.tsx` for what is in it and what deliberately is not.
+      */}
+      <MenuBar
+        shell={shell}
+        history={history}
+        onFontInfo={() => setNaming(true)}
+        onToggleAcademy={() => setLearning((open) => !open)}
+      />
+
       <TopBar
         onOpenFile={() => inputRef.current?.click()}
         onLibrary={() => void libraryStore.show()}

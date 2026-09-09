@@ -6,9 +6,9 @@
 import type * as React from "react";
 
 import type { Mode } from "@/App";
-import { assembleStore, useAssemble } from "@/state/useAssemble";
-import { redoDrawing, undoDrawing, useDrawing } from "@/state/drawn";
-import { quillStore, useQuill } from "@/state/useQuill";
+import { useAssemble } from "@/state/useAssemble";
+import { useDrawing } from "@/state/drawn";
+import { useQuill } from "@/state/useQuill";
 import { store, useAppState, type AppState, type ViewId } from "@/state/useStore";
 import {
   OUTLINE_ACTION,
@@ -19,6 +19,7 @@ import {
 } from "@/components/controls";
 import { NewMenu } from "@/components/NewMenu";
 import { viewKey } from "@/keys/useAppKeys";
+import { useHistory } from "@/state/history";
 import { cn } from "@/cn";
 
 const VIEWS: Array<{ id: ViewId; label: string }> = [
@@ -111,51 +112,9 @@ export function TopBar({
   const assemble = useAssemble();
   const quill = useQuill();
 
-  /*
-   * Undo belongs to whichever document is in front.
-   *
-   * Wired to the imported font alone, the buttons sat there greyed out while a
-   * font was being drawn, and pulling a stem across the stage could not be
-   * taken back. The two halves keep their own history because they are two
-   * documents, so the toolbar has to ask the one being looked at.
-   */
-  const history =
-    mode === "forge"
-      ? {
-          undo: () => void undoDrawing(),
-          redo: () => void redoDrawing(),
-          canUndo: drawn.canUndo,
-          canRedo: drawn.canRedo,
-        }
-      : mode === "assemble"
-        ? {
-            undo: () => assembleStore.undo(),
-            redo: () => assembleStore.redo(),
-            canUndo: assemble.canUndo,
-            canRedo: assemble.canRedo,
-          }
-        : mode === "quill"
-          ? {
-              undo: () => quillStore.undo(),
-              redo: () => quillStore.redo(),
-              canUndo: quill.canUndo,
-              canRedo: quill.canRedo,
-            }
-          : {
-              undo: () => store.undo(),
-              redo: () => store.redo(),
-              canUndo: state.canUndo,
-              canRedo: state.canRedo,
-              /*
-               * Named, in the editor only, because only the editor's stack has
-               * names on it. The three generators undo a whole set of parameters
-               * at once and the alphabet redraws in front of you; in here the
-               * step taken back can be a point in a letter you are no longer
-               * looking at, and "Undo" alone does not say which.
-               */
-              undoLabel: state.undoLabel,
-              redoLabel: state.redoLabel,
-            };
+  // Whichever document is in front owns it. See `state/history.ts`, which the
+  // Edit menu reads as well.
+  const history = useHistory(mode);
 
   return (
     /*
