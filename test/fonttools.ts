@@ -12,9 +12,11 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { insist } from "./required";
+
 export function hasFontTools(): boolean {
   const probe = spawnSync("python3", ["-c", "import fontTools"], { encoding: "utf8" });
-  return probe.status === 0;
+  return insist(probe.status === 0, "fontTools", "pip install fonttools brotli uharfbuzz");
 }
 
 export interface FontToolsReport {
@@ -331,7 +333,8 @@ print(json.dumps(TTFont(sys.argv[1]).getGlyphOrder()))
 `;
 
 export function hasHarfbuzz(): boolean {
-  return spawnSync("python3", ["-c", "import uharfbuzz"], { encoding: "utf8" }).status === 0;
+  const probe = spawnSync("python3", ["-c", "import uharfbuzz"], { encoding: "utf8" });
+  return insist(probe.status === 0, "HarfBuzz (uharfbuzz)", "pip install uharfbuzz");
 }
 
 /** What each pair is kerned by, as the shaper sees it. */

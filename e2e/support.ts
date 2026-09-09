@@ -2,12 +2,22 @@ import { existsSync, readFileSync } from "node:fs";
 
 import { expect, type Page } from "@playwright/test";
 
+import { insist } from "../test/required";
+
 export const FONT_CANDIDATES = [
   "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
   "/usr/share/fonts/dejavu/DejaVuSans.ttf",
 ];
 
 export const FONT_PATH = FONT_CANDIDATES.find((path) => existsSync(path));
+
+/*
+ * Eight spec files open this font and skip without it, which is most of what
+ * this suite is. The workflow installs it, so in CI its absence is those
+ * files going quiet rather than a machine that has no fonts. See
+ * test/required.ts.
+ */
+insist(FONT_PATH !== undefined, "a system font to open", "apt-get install -y fonts-dejavu-core");
 
 /**
  * The slider that drives a named family parameter.

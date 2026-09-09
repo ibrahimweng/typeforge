@@ -23,10 +23,12 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 
 import type { UfoFiles } from "../src/ufo/font";
+import { insist } from "./required";
 
 /** Whether the UFO half of fontTools can be reached. */
 export function hasUfoLib(): boolean {
-  return spawnSync("python3", ["-c", "import fontTools.ufoLib"], { encoding: "utf8" }).status === 0;
+  const probe = spawnSync("python3", ["-c", "import fontTools.ufoLib"], { encoding: "utf8" });
+  return insist(probe.status === 0, "the UFO half of fontTools", "pip install fonttools");
 }
 
 /** Every file under a directory, keyed by its path inside it. */
