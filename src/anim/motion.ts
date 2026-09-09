@@ -10,7 +10,46 @@
  * a reduced-motion preference is honoured in one place.
  */
 
-import { animate, createTimeline, stagger, utils } from "animejs";
+/*
+ * The animation library is fetched alongside the application rather than
+ * inside it.
+ *
+ * It is a hundred and seventy kilobytes of the boot chunk and nothing is
+ * animating at boot: every one of these runs on an interaction, and the one
+ * thing that happens at startup -- `attachPressFeedback` -- only adds
+ * listeners. So the import is started here, off to one side, and the first
+ * paint does not wait for it.
+ *
+ * What happens if something is asked to animate before it lands is already a
+ * behaviour this file supports. Every function below returns early under
+ * `prefers-reduced-motion`, and `tweenNumber` goes straight to its final
+ * value; not-yet-loaded takes exactly those paths. So the worst case is one
+ * un-animated interaction in the first moments, which is a state the
+ * application is already designed to be correct in.
+ */
+type Anime = typeof import("animejs");
+
+let anime: Anime | null = null;
+
+/*
+ * Started at module load, not on first use. Waiting for an interaction to
+ * begin the download would put the fetch in the way of the very animation it
+ * is for; started here it is almost always in hand before anybody clicks.
+ */
+const arriving: Promise<void> =
+  typeof window === "undefined"
+    ? Promise.resolve()
+    : import("animejs")
+        .then((loaded) => {
+          anime = loaded;
+        })
+        .catch(() => {
+          // An animation library that will not load is not worth an error
+          // anybody has to see: the application is entirely usable without it.
+        });
+
+/** For tests and callers that need to know the library is in hand. */
+export const animationReady = (): Promise<void> => arriving;
 
 /** Shared timings, in milliseconds. */
 export const DURATION = {
@@ -50,7 +89,8 @@ function usable(target: Target): boolean {
  */
 export function enter(target: Target, options: { delay?: number; distance?: number } = {}): void {
   if (!usable(target) || prefersReducedMotion()) return;
-  animate(target as never, {
+  if (!anime) return;
+  anime.animate(target as never, {
     opacity: [0, 1],
     translateY: [options.distance ?? 6, 0],
     duration: DURATION.settle,
@@ -71,11 +111,12 @@ export function enterStaggered(
 ): void {
   if (!usable(target) || prefersReducedMotion()) return;
   const step = options.step ?? 14;
-  animate(target as never, {
+  if (!anime) return;
+  anime.animate(target as never, {
     opacity: [0, 1],
     translateY: [8, 0],
     duration: DURATION.quick,
-    delay: stagger(step, { start: 0, from: "first" }),
+    delay: anime.stagger(step, { start: 0, from: "first" }),
     ease: EASE.out,
   });
   void (options.max ?? 0);
@@ -84,7 +125,8 @@ export function enterStaggered(
 /** Cross-fade the outgoing and incoming panes of a view change. */
 export function switchView(outgoing: Target, incoming: Target): void {
   if (prefersReducedMotion()) return;
-  const timeline = createTimeline({ defaults: { ease: EASE.out } });
+  if (!anime) return;
+  const timeline = anime.createTimeline({ defaults: { ease: EASE.out } });
   if (usable(outgoing)) {
     timeline.add(outgoing as never, { opacity: [1, 0], duration: DURATION.instant }, 0);
   }
@@ -103,7 +145,8 @@ export function switchView(outgoing: Target, incoming: Target): void {
  */
 export function pulse(target: Target): void {
   if (!usable(target) || prefersReducedMotion()) return;
-  animate(target as never, {
+  if (!anime) return;
+  anime.animate(target as never, {
     opacity: [
       { to: 0.45, duration: DURATION.instant },
       { to: 1, duration: DURATION.quick },
@@ -129,8 +172,13 @@ export function tweenNumber(
     onUpdate(to);
     return;
   }
+  if (!anime) {
+    // Not in hand yet, so land on the answer rather than never arriving at it.
+    onUpdate(to);
+    return;
+  }
   const proxy = { value: from };
-  animate(proxy, {
+  anime.animate(proxy, {
     value: to,
     duration: options.duration ?? DURATION.quick,
     ease: EASE.snap,
@@ -145,7 +193,8 @@ export function tweenNumber(
  */
 export function refuse(target: Target): void {
   if (!usable(target) || prefersReducedMotion()) return;
-  animate(target as never, {
+  if (!anime) return;
+  anime.animate(target as never, {
     translateX: [0, -3, 3, -2, 0],
     duration: DURATION.settle,
     ease: EASE.inOut,
@@ -160,7 +209,8 @@ export function refuse(target: Target): void {
  */
 export function press(target: Target): void {
   if (!usable(target) || prefersReducedMotion()) return;
-  const animation = animate(target as never, {
+  if (!anime) return;
+  const animation = anime.animate(target as never, {
     scale: [
       { to: 0.965, duration: DURATION.instant },
       { to: 1, duration: DURATION.quick },
@@ -207,5 +257,6 @@ export function attachPressFeedback(root: HTMLElement): () => void {
  * checked only because of a cast and threw the moment it was first called.
  */
 export function cleanup(animation: { targets?: unknown }): void {
-  utils.cleanInlineStyles(animation as never);
+  if (!anime) return;
+  anime.utils.cleanInlineStyles(animation as never);
 }

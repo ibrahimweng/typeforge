@@ -81,7 +81,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       if (format === "ufo") {
-        const files = store.ufoFiles();
+        const files = await store.ufoFiles();
         if (!files) throw new Error("There is no font open to write.");
         const name = ufoNameFor(typeface.meta.familyName, typeface.meta.styleName);
         const archive = zipUfo(files, name);

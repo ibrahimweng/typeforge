@@ -52,7 +52,16 @@ import {
  * into the JavaScript everybody downloads whether they use it or not.
  */
 import sampleFontUrl from "@/assets/typeforge-sample.ttf?url";
-import { readUfo, writeUfo, type UfoFiles } from "@/ufo/font";
+/*
+ * The UFO reader and writer are fetched when one is opened or written, not
+ * carried into the first paint.
+ *
+ * Between them and the XML parser under them they were a hundred and thirty
+ * kilobytes of the boot chunk, and nothing about starting the application
+ * needs them: a UFO arrives because somebody chose a folder. The type stays a
+ * plain type import, which is erased and costs nothing.
+ */
+import type { UfoFiles } from "@/ufo/font";
 
 /** What the sample is called once it is open, as any other file would be. */
 const SAMPLE_FILE_NAME = "TypeforgeSample-Regular.ttf";
@@ -611,6 +620,7 @@ class Store extends ShapingStore {
   async loadUfo(files: UfoFiles, folderName: string): Promise<void> {
     this.set({ busy: true, status: { message: `Reading ${folderName}…`, tone: "info" } });
     try {
+      const { readUfo } = await import("@/ufo/font");
       const read = readUfo(files);
       if (!read) throw new Error("That folder is not a UFO: it has no metainfo.plist in it.");
       const { typeface, carried } = read;
@@ -658,9 +668,10 @@ class Store extends ShapingStore {
    * TrueType file opened here, goes out as a UFO with nothing carried, which
    * is a perfectly ordinary UFO that simply has no history behind it.
    */
-  ufoFiles(): UfoFiles | null {
+  async ufoFiles(): Promise<UfoFiles | null> {
     const typeface = this.state.typeface;
     if (!typeface) return null;
+    const { writeUfo } = await import("@/ufo/font");
     return writeUfo(typeface, this.ufo ?? undefined);
   }
 
