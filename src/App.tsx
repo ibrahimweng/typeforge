@@ -39,11 +39,7 @@ import type { Keeping } from "@/components/TopBar";
 import { libraryStore } from "@/state/useLibrary";
 import { store, useAppState, type ViewId } from "@/state/useStore";
 import type { UfoFiles } from "@/ufo/font";
-/*
- * Reading a folder or a zip as a UFO is fetched at the moment somebody hands
- * one over. See the note in the store: none of this belongs in the first
- * paint, and every use of it below is already inside an async handler.
- */
+import { filesFromDrop, filesFromPicker, filesFromZip, looksZipped } from "@/ufo/intake";
 
 /*
  * Seven of the views and all seven overlays are fetched when they are first
@@ -906,7 +902,6 @@ export function App(): React.JSX.Element {
        * which directory any of them was in.
        */
       if (files.length > 1) {
-        const { filesFromPicker } = await import("@/ufo/intake");
         const ufo = await filesFromPicker(files);
         if (ufo) {
           await openUfo(ufo, folderNameOf(files) ?? "a folder");
@@ -926,7 +921,6 @@ export function App(): React.JSX.Element {
       }
       // A `.ufoz` is a zipped UFO and part of the format; a folder somebody
       // compressed to send is the same thing by a different route.
-      const { filesFromZip, looksZipped } = await import("@/ufo/intake");
       if (looksZipped(bytes)) {
         const ufo = filesFromZip(bytes);
         if (ufo) {
@@ -951,7 +945,6 @@ export function App(): React.JSX.Element {
       // A folder first, because a dropped folder also arrives as a list of the
       // files inside it and would otherwise open as whichever came first.
       if (items) {
-        const { filesFromDrop } = await import("@/ufo/intake");
         const ufo = await filesFromDrop(items);
         if (ufo) {
           await openUfo(ufo, "the folder you dropped");
