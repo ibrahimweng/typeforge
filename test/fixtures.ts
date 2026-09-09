@@ -12,6 +12,8 @@ import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { insist } from "./required";
+
 const CANDIDATES = [
   "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
   "/usr/share/fonts/dejavu/DejaVuSans.ttf",
@@ -21,7 +23,9 @@ const CANDIDATES = [
 ];
 
 export function findTestFont(): string | null {
-  return CANDIDATES.find((path) => existsSync(path)) ?? null;
+  const found = CANDIDATES.find((path) => existsSync(path)) ?? null;
+  insist(found !== null, "a system font to read", "apt-get install -y fonts-dejavu-core");
+  return found;
 }
 
 export function loadTestFont(): Uint8Array | null {
