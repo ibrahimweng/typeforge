@@ -231,19 +231,30 @@ export function MenuBar(props: {
     if (open !== null) setOpen(title);
   };
 
+  /*
+   * The open title holds the focus, put there rather than assumed.
+   *
+   * WebKit does not focus a button when it is clicked -- long-standing Safari
+   * behaviour, and the reason this is here rather than left to the click.
+   * Without it a menu opened with the mouse left the focus on the body, so the
+   * arrows walked nothing and Escape had nowhere to go back to: on Safari the
+   * keyboard half of this simply did not work, in a way no amount of reading
+   * the component would show.
+   *
+   * It also does the job the arrows used to do for themselves, so there is one
+   * answer to "where is the focus" rather than two.
+   */
+  React.useEffect(() => {
+    if (open === null) return;
+    titles.current?.querySelector<HTMLButtonElement>(`[data-menu-title="${open}"]`)?.focus();
+  }, [open]);
+
   /** The arrows walk the bar, from the titles and from inside an open menu. */
   const step = React.useCallback(
     (from: string, by: 1 | -1): void => {
       const at = menus.findIndex((menu) => menu.title === from);
       if (at < 0) return;
-      const next = menus[(at + by + menus.length) % menus.length];
-      setOpen(next.title);
-      // The title takes the focus so the next arrow has somewhere to start.
-      requestAnimationFrame(() => {
-        titles.current
-          ?.querySelector<HTMLButtonElement>(`[data-menu-title="${next.title}"]`)
-          ?.focus();
-      });
+      setOpen(menus[(at + by + menus.length) % menus.length].title);
     },
     [menus],
   );

@@ -52,6 +52,18 @@ test("hovering a title does nothing while the bar is shut", async ({ page }) => 
   await expect(page.locator('[data-menu-list="View"]')).toHaveCount(0);
 });
 
+/*
+ * The one WebKit does not give you. Safari does not focus a button when it is
+ * clicked, so a menu opened with the mouse left the keyboard on the body and
+ * every key test below passed everywhere else while the feature was broken on
+ * one engine.
+ */
+test("opening with the mouse leaves the keyboard somewhere useful", async ({ page }) => {
+  await page.goto("/");
+  await page.locator('[data-menu-title="File"]').click();
+  await expect(page.locator('[data-menu-title="File"]')).toBeFocused();
+});
+
 test("the arrows walk the bar, from inside an open menu", async ({ page }) => {
   await page.goto("/");
   await page.locator('[data-menu-title="File"]').click();
