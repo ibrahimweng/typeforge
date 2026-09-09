@@ -271,6 +271,37 @@ test("the clock runs only while the button is down", async ({ page }) => {
   expect(after, "and none once it is let go").toBeLessThan(5);
 });
 
+/**
+ * How much accent is on the canvas at all, rather than the longest row of it.
+ *
+ * `bluestRow` above is right for a marquee, which is a horizontal edge and the
+ * only long blue row there is. A ring around a stem is not: it is mostly
+ * vertical, so the longest row of it is a few pixels of the top and bottom
+ * curves and the number barely moves when the ring appears.
+ *
+ * That left the test passing on a margin of nothing. Chromium reads 32 with
+ * nothing ringed against 99 with, which is comfortable; WebKit reads 176
+ * against 196 and needs 197, so it was failing by one pixel the moment
+ * anything took a little height off the canvas -- which a menu bar did.
+ *
+ * Counting the ring rather than its widest row is what the test says it is
+ * checking, and it is a bigger number in the same direction rather than a
+ * smaller threshold: nothing here is being let through that was not before.
+ */
+function accentPixels(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>("[data-glyph-canvas]");
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return -1;
+    const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+    let count = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] > 200 && data[i + 2] - data[i] > 100) count++;
+    }
+    return count;
+  });
+}
+
 test("picking a whole shape says which shape, before it is picked", async ({ page }) => {
   /*
    * The tool that showed nothing at all.
@@ -292,12 +323,21 @@ test("picking a whole shape says which shape, before it is picked", async ({ pag
   // Off the letter: nothing is ringed, because nothing would be taken.
   await page.mouse.move(box.x + box.width * 0.06, box.y + box.height * 0.9);
   await page.waitForTimeout(150);
-  const away = await bluestRow(page);
+  const away = await accentPixels(page);
 
   // Over a stem: the shape it would take is ringed.
   await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.26);
   await page.waitForTimeout(150);
-  const over = await bluestRow(page);
+  const over = await accentPixels(page);
 
-  expect(over, "the shape under the pointer has to be ringed").toBeGreaterThan(away + 20);
+  /*
+   * Half as much again, rather than a fixed number of pixels more. A ring is a
+   * large fraction of the accent on this canvas wherever it is drawn, and how
+   * many pixels that comes to depends on the engine -- which is what the fixed
+   * twenty was quietly assuming did not.
+   */
+  expect(
+    over,
+    `the shape under the pointer has to be ringed: ${away} accent pixels away, ${over} over`,
+  ).toBeGreaterThan(away * 1.5);
 });
