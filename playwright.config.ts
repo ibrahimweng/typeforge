@@ -33,6 +33,14 @@ export default defineConfig({
    */
   fullyParallel: true,
   workers: "50%",
+  /*
+   * The tree is fingerprinted before the first test and after the last, and a
+   * run that was overtaken by an edit fails rather than reporting a result
+   * about code that is no longer there. See e2e/fresh.ts -- it is written down
+   * because it has already cost a wrong answer.
+   */
+  globalSetup: "./e2e/fresh-setup.ts",
+  globalTeardown: "./e2e/fresh-check.ts",
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],
