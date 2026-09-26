@@ -26,7 +26,18 @@
  * than what it is called.
  */
 
+import { modalOpen } from "@/keys/modal";
+
+/*
+ * And never while a modal dialog is up, whatever has the focus.
+ *
+ * The body counting as the canvas is right for a fresh page and wrong behind
+ * a dialog: clicking the dark around one -- or on any part of it that is not
+ * a control -- leaves the focus on the body, and the arrow keys then nudged
+ * the points of the letter being exported. See `keys/modal.ts`.
+ */
 export function meantForTheCanvas(canvas: HTMLCanvasElement | null): boolean {
+  if (modalOpen()) return false;
   const focused = document.activeElement;
   if (focused === null || focused === document.body) return true;
   return focused === canvas;

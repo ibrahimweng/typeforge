@@ -25,6 +25,7 @@ import { enter } from "@/anim/motion";
 import { NumberField } from "@/components/NumberField";
 import { store, useAppState } from "@/state/useStore";
 import { cn } from "@/cn";
+import { useModalFocus } from "@/keys/modal";
 
 /** One labelled text field, committed rather than typed. */
 function Text({
@@ -128,6 +129,9 @@ function Measure({
 export function FontInfoDialog({ onClose }: { onClose: () => void }): React.JSX.Element | null {
   const state = useAppState();
   const panelRef = React.useRef<HTMLDivElement>(null);
+  // Focus in, Tab kept in, and focus handed back on the way out -- the
+  // promise `aria-modal` makes. See `keys/modal.ts`.
+  useModalFocus(panelRef);
 
   React.useEffect(() => {
     if (panelRef.current) enter(panelRef.current, { distance: 10 });

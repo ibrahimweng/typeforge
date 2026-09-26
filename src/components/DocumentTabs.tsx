@@ -20,6 +20,7 @@ import { store, useAppState } from "@/state/useStore";
 import { DOCUMENT_KEYS, documentKey, MOVE_KEYS } from "@/keys/useAppKeys";
 import { landingAmong } from "@/components/landing";
 import { cn } from "@/cn";
+import { followPointer } from "@/components/follow-pointer";
 
 /** How far the pointer has to travel before a press becomes a drag. */
 const A_DRAG = 4;
@@ -168,14 +169,15 @@ export function DocumentTabs(): React.JSX.Element | null {
                   to = landingAt(moving.clientX, one.id);
                   setCarrying({ id: one.id, to });
                 };
-                const drop = (): void => {
-                  window.removeEventListener("pointermove", carry);
-                  window.removeEventListener("pointerup", drop);
-                  setCarrying(null);
-                  if (carried) store.moveDocument(at, to);
-                };
-                window.addEventListener("pointermove", carry);
-                window.addEventListener("pointerup", drop);
+                followPointer({
+                  move: carry,
+                  // A cancelled drag puts the tab back rather than down: the
+                  // browser took the pointer away, which is not a drop.
+                  end: (how) => {
+                    setCarrying(null);
+                    if (carried && how === "up") store.moveDocument(at, to);
+                  },
+                });
               }}
               /*
                 And the keys it answers to, on the tab itself.

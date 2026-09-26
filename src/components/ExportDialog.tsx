@@ -16,6 +16,8 @@ import { varyByDrawnVersions, varyByWeight } from "@/font/masters";
 import { store, useAppState } from "@/state/useStore";
 import { ufoNameFor, zipUfo } from "@/ufo/intake";
 import { cn } from "@/cn";
+import { downloadBlob } from "@/components/download";
+import { useModalFocus } from "@/keys/modal";
 
 export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.Element | null {
   const state = useAppState();
@@ -36,6 +38,9 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
   const [working, setWorking] = React.useState(false);
   const [notes, setNotes] = React.useState<string[]>([]);
   const panelRef = React.useRef<HTMLDivElement>(null);
+  // Focus in, Tab kept in, and focus handed back on the way out -- the
+  // promise `aria-modal` makes. See `keys/modal.ts`.
+  useModalFocus(panelRef);
 
   React.useEffect(() => {
     if (panelRef.current) enter(panelRef.current, { distance: 10 });
@@ -85,14 +90,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
         if (!files) throw new Error("There is no font open to write.");
         const name = ufoNameFor(typeface.meta.familyName, typeface.meta.styleName);
         const archive = zipUfo(files, name);
-        const url = URL.createObjectURL(
-          new Blob([archive as BlobPart], { type: "application/zip" }),
-        );
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `${name}.zip`;
-        link.click();
-        URL.revokeObjectURL(url);
+        downloadBlob(new Blob([archive as BlobPart], { type: "application/zip" }), `${name}.zip`);
         store.setStatus({
           message: `Wrote ${name} (${formatBytes(archive.length)})`,
           tone: "success",
@@ -119,12 +117,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
         ...(varying ? { variable: varying } : {}),
       });
 
-      const url = URL.createObjectURL(toDownloadBlob(result));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = result.fileName;
-      link.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(toDownloadBlob(result), result.fileName);
 
       setNotes(result.notes);
       store.setStatus({

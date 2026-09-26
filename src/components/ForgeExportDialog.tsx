@@ -23,6 +23,8 @@ import { WEIGHTS, weightsOf } from "@/forge/family";
 import { forgeStore, useForge } from "@/state/useForge";
 import { OUTLINE_ACTION, PRIMARY_ACTION } from "@/components/controls";
 import { cn } from "@/cn";
+import { downloadBlob } from "@/components/download";
+import { useModalFocus } from "@/keys/modal";
 
 export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.JSX.Element {
   const state = useForge();
@@ -42,6 +44,9 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
   const [working, setWorking] = React.useState(false);
   const [problem, setProblem] = React.useState<string | null>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
+  // Focus in, Tab kept in, and focus handed back on the way out -- the
+  // promise `aria-modal` makes. See `keys/modal.ts`.
+  useModalFocus(panelRef);
 
   React.useEffect(() => {
     if (panelRef.current) enter(panelRef.current, { distance: 10 });
@@ -72,7 +77,7 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
         format,
         variable: kind === "variable",
       });
-      const url = URL.createObjectURL(
+      downloadBlob(
         new Blob([written.bytes as BlobPart], {
           type: written.fileName.endsWith(".zip")
             ? "application/zip"
@@ -80,12 +85,8 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
               ? "font/otf"
               : "font/ttf",
         }),
+        written.fileName,
       );
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = written.fileName;
-      link.click();
-      URL.revokeObjectURL(url);
       onClose();
     } catch (error) {
       if (panelRef.current) refuse(panelRef.current);

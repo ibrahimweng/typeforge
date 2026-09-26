@@ -56,3 +56,26 @@ export function busy(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return typing(target) || pressable(target);
 }
+
+/** The inputs a person types text into, rather than slides or ticks. */
+const TEXT_INPUTS = new Set(["", "text", "search", "email", "url", "tel", "password", "number"]);
+
+/**
+ * Somewhere a person is writing text, which keeps its own undo.
+ *
+ * Narrower than `typing`, and it has to be. `typing` counts a slider as
+ * somewhere a key belongs to the control, which is right for the space bar and
+ * the arrows a slider moves on -- but a slider has no undo of its own, and a
+ * Cmd-Z pressed at one that fell through to nothing would be a key that works
+ * or does not depending on which control was touched last. Only a field with
+ * text in it has an undo the browser keeps, so only those keep Cmd-Z.
+ */
+export function editingText(target: EventTarget | null): boolean {
+  if (typeof HTMLElement === "undefined" || !(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  if (target.tagName === "TEXTAREA") return true;
+  if (target.tagName === "INPUT") {
+    return TEXT_INPUTS.has((target as HTMLInputElement).type.toLowerCase());
+  }
+  return target.getAttribute("role") === "textbox";
+}

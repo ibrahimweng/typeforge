@@ -16,6 +16,28 @@ import * as React from "react";
 
 import { cn } from "@/cn";
 
+/**
+ * What a draft settles to when the field is left: the number to commit, or
+ * `null` for "put the old value back".
+ *
+ * Pulled out of the component so the rules can be tested without a DOM, and
+ * because the rule that went wrong here was one of these rather than anything
+ * to do with React. `Number("")` is 0, not NaN, so a field someone cleared and
+ * walked away from used to commit a zero -- an advance width of nothing, a
+ * kerning pair wiped -- when what a person clearing a field and leaving it
+ * almost always means is "never mind". Blank, or only spaces, reverts.
+ *
+ * Also `null` when the number would not change, so that leaving a field the
+ * way it was found does not put an entry on the undo stack.
+ */
+export function settleDraft(draft: string, value: number, decimals = 0): number | null {
+  if (draft.trim() === "") return null;
+  const parsed = Number(draft);
+  if (!Number.isFinite(parsed)) return null;
+  const settled = decimals > 0 ? Number(parsed.toFixed(decimals)) : Math.round(parsed);
+  return settled === value ? null : settled;
+}
+
 export function NumberField({
   value,
   onCommit,
@@ -40,6 +62,16 @@ export function NumberField({
   decimals?: number;
 }): React.JSX.Element {
   const [draft, setDraft] = React.useState(String(value));
+  /*
+   * Set by Escape, read by the blur that Escape causes.
+   *
+   * Escape used to reset the draft and then blur, and the blur committed. The
+   * reset is a state update, so it had not landed yet when `onBlur` ran in the
+   * same event: the handler still closed over the typed draft and committed
+   * exactly what Escape was meant to throw away. A ref is read at the moment
+   * of the blur rather than at the last render, so it cannot be stale.
+   */
+  const cancelling = React.useRef(false);
   // Follows the value when it changes underneath -- a nudge with the arrow
   // keys, an undo, a parameter that moved the outline -- so the field never
   // shows a number the glyph no longer has.
@@ -53,14 +85,19 @@ export function NumberField({
       onChange={(event) => setDraft(event.target.value)}
       onClick={(event) => event.stopPropagation()}
       onBlur={() => {
-        const parsed = Number(draft);
-        const settled = decimals > 0 ? Number(parsed.toFixed(decimals)) : Math.round(parsed);
-        if (Number.isFinite(parsed) && settled !== value) onCommit(settled);
+        if (cancelling.current) {
+          cancelling.current = false;
+          setDraft(String(value));
+          return;
+        }
+        const settled = settleDraft(draft, value, decimals);
+        if (settled !== null) onCommit(settled);
         else setDraft(String(value));
       }}
       onKeyDown={(event) => {
         if (event.key === "Enter") event.currentTarget.blur();
         if (event.key === "Escape") {
+          cancelling.current = true;
           setDraft(String(value));
           event.currentTarget.blur();
         }

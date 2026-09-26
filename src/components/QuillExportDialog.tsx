@@ -23,6 +23,8 @@ import { toTypeface } from "@/quill/typeface";
 import { quillStore, useQuill } from "@/state/useQuill";
 import { OUTLINE_ACTION, PRIMARY_ACTION } from "@/components/controls";
 import { cn } from "@/cn";
+import { downloadBlob } from "@/components/download";
+import { useModalFocus } from "@/keys/modal";
 
 /** A file name that will survive a download folder. */
 function fileNameFor(family: string, format: ExportFormat): string {
@@ -38,6 +40,9 @@ export function QuillExportDialog({ onClose }: { onClose: () => void }): React.J
   const [working, setWorking] = React.useState(false);
   const [problem, setProblem] = React.useState<string | null>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
+  // Focus in, Tab kept in, and focus handed back on the way out -- the
+  // promise `aria-modal` makes. See `keys/modal.ts`.
+  useModalFocus(panelRef);
 
   React.useEffect(() => {
     if (panelRef.current) enter(panelRef.current);
@@ -71,16 +76,12 @@ export function QuillExportDialog({ onClose }: { onClose: () => void }): React.J
         // Already fused in `toTypeface`, where the argument for it is written.
         mergeOverlaps: false,
       });
-      const url = URL.createObjectURL(
+      downloadBlob(
         new Blob([written.bytes as BlobPart], {
           type: format === "otf" ? "font/otf" : "font/ttf",
         }),
+        fileNameFor(family, format),
       );
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = fileNameFor(family, format);
-      link.click();
-      URL.revokeObjectURL(url);
       onClose();
     } catch (error) {
       if (panelRef.current) refuse(panelRef.current);
