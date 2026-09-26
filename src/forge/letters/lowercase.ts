@@ -10,6 +10,7 @@ import { spineStart } from "../shapes";
 import type { Style } from "../style";
 import type { Stroke } from "../types";
 import {
+  roundHalf,
   arch,
   arms,
   at,
@@ -35,6 +36,7 @@ import {
   straight,
   thin,
   trough,
+  tReach,
   tStem,
   turn,
 } from "./common";
@@ -140,10 +142,10 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     // Big enough to read as a hook rather than a curl, small enough that the
     // letter does not turn into a walking stick.
-    const radius = Math.max(f.arch * 0.66, f.least);
+    const radius = Math.max(roundHalf(f) * 0.6, f.least);
     // How far left of the stem the bar reaches, which is also how far in from
     // the sidebearing the stem stands: the bar is this letter's left edge.
-    const left = Math.max(f.arch * 0.42, f.least);
+    const left = Math.max(roundHalf(f) * 0.36, f.least);
     const stem = f.edge + left;
     const top = f.crest(f.asc) - radius;
     return finish(f, [
@@ -169,7 +171,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
       ),
       // Reaching further right than left, as the t's bar does, so the two are
       // told apart by more than the hook at the sizes text is set at.
-      crossbar(f, stem - left, stem + f.arch * 0.62),
+      crossbar(f, stem - left, stem + roundHalf(f) * 0.57),
     ]);
   },
 
@@ -390,8 +392,8 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   t: (style) => {
     const f = frame(style);
-    const radius = Math.max(f.arch * 0.42, f.least);
-    const reach = f.arch * 0.7;
+    const radius = Math.max(roundHalf(f) * 0.34, f.least);
+    const reach = tReach(f);
     const stem = tStem(f);
     return finish(f, [
       /*
@@ -407,7 +409,14 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
           straight(at(stem, f.asc * 0.78), at(stem, f.dip(0) + radius)),
           turn(at(stem + radius, f.dip(0) + radius), radius, 180, 270),
         ),
-        f.end,
+        /*
+         * Cut off at the top rather than capped. The top of a t is not the end
+         * of a stem that stands on a line, it is the stroke stopping short of
+         * the ascender, and no text face puts a serif there: given one, the
+         * bar across its top sat just over the crossbar and the t read as a
+         * double cross.
+         */
+        f.plain,
         f.end,
       ),
       crossbar(f, stem - reach * 0.7, stem + reach),
@@ -432,7 +441,14 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   w: (style) => {
     const f = frame(style);
-    const half = f.arch * 0.68;
+    /*
+     * From the round letters (`roundHalf`) rather than the arch. A w is two vees, and a vee's width
+     * is not the rhythm of an n: tied to the shoulder's reach it lost a
+     * quarter of itself when a text face tightened its n, and set 0.77 of the
+     * width of Lora's. Never narrower than it was, though: on a face whose
+     * bowls are small against its pen the arch is the wider of the two.
+     */
+    const half = Math.max(roundHalf(f) * 0.57, f.arch * 0.68);
     const left = f.edge;
     const top = f.x;
     /*
@@ -498,14 +514,17 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         f,
         straight(at(middle + half, f.x), at(middle + (half * f.desc) / f.x, f.desc)),
         f.end,
-        f.end,
+        // The tail is cut, not capped: a slab under a descender is a foot on
+        // a stroke that is not standing on anything.
+        f.plain,
       ),
     ]);
   },
 
   z: (style) => {
     const f = frame(style);
-    const width = f.arch * 1.6;
+    // From the round letters, as the w is and for the same reason.
+    const width = Math.max(roundHalf(f) * 1.36, f.arch * 1.6);
     const left = f.edge;
     /*
      * The two arms hang from the x-height and stand on the baseline, and the

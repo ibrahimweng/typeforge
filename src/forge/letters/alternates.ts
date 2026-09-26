@@ -1,9 +1,10 @@
 import type { Vec2 } from "@/font/types";
 import { seamsOf } from "../script";
-import { bowlPoint, roundCorners, spineEnd, spineStart } from "../shapes";
+import { bowlBetween, bowlPoint, roundCorners, spineEnd, spineStart } from "../shapes";
 import type { Style } from "../style";
 import type { Spine } from "../types";
 import {
+  roundHalf,
   arch,
   at,
   belly,
@@ -27,6 +28,8 @@ import {
   stub,
   thin,
   through,
+  tReach,
+  tStem,
   turn,
   eyeOf,
 } from "./common";
@@ -130,6 +133,71 @@ function entering(apex: Vec2, radius: number): Spine {
 function flick(f: Frame, to: Vec2): Spine {
   const up = (UPSTROKE * Math.PI) / 180;
   return bowed(f, at(to.x - to.y / Math.tan(up), 0), to, 0.1);
+}
+
+/**
+ * The two-storey g: a small bowl sitting on the x-height, a closed loop hung
+ * under the baseline, the link between them and an ear off the top right.
+ *
+ * Built from four strokes rather than one run, and every place two of them meet
+ * is a spine ending on another spine: the link starts on the upper bowl's own
+ * centre-line and stops on the loop's, and the ear grows out of the bowl's.
+ * A butt end laid on a spine is covered by that stroke's ink on either side at
+ * any weight, so nothing shows at a joint and nothing comes apart at a hairline.
+ *
+ * The heights are shared out rather than fixed. The bowl takes a set share of
+ * the x-height, the loop takes whatever is left down to the descender, and both
+ * give way to the pen: at a black weight the loop is pushed below the line and
+ * flattened until there is still daylight inside it and between the two, which
+ * is the choice every heavy text face makes with this letter.
+ */
+function doubleG(f: Frame): Recipe {
+  const loopHalf = Math.max(f.bowl * 0.96, f.least * 1.4);
+  const left = f.edge;
+  // The upper bowl: narrower than the o and set in from the loop's left side.
+  const upperH = Math.max(f.x * 0.33, f.upright + f.half * 0.45, f.least);
+  const upperW = Math.max(upperH * f.wide * 1.02, f.least);
+  const upper = at(left + loopHalf * 0.16 + upperW, f.crest(f.x) - upperH);
+  /*
+   * The loop, hung from just under the baseline to the descender.
+   *
+   * Its top is where the link lands, and it is held clear of the bowl's ink by
+   * at least a pen: two storeys touching are one blot with two holes in it.
+   */
+  const bottom = f.dip(f.desc);
+  const underBowl = upper.y - upperH - f.upright * 2 - Math.max(f.half * 1.2, f.x * 0.06);
+  /*
+   * But never so low that the loop has no hole left in it. At a black weight
+   * there is not the height for two counters, a link and four thicknesses of
+   * pen between the x-height and the descender, and of the things that can
+   * give it is the daylight between the storeys that goes: the two meet where
+   * the link is, which is ink there anyway, and both counters stay open.
+   */
+  const loopLeast = f.upright + Math.max(f.half * 0.45, f.x * 0.035);
+  const top = Math.max(Math.min(f.x * 0.02, underBowl), bottom + loopLeast * 2);
+  const loopH = Math.max((top - bottom) / 2, f.least);
+  const loop = at(left + loopHalf, bottom + loopH);
+  const roundness = 1 - f.square;
+  // Where the link leaves the bowl and where it lands on the loop, both on the
+  // centre-lines, so both ends are buried whatever the pen.
+  const leaves = bowlPoint(upper, upperW, upperH, roundness, f.half, 242);
+  const lands = bowlPoint(loop, loopHalf, loopH, roundness, f.half, 118);
+  // The ear: out of the bowl's top right, level and a little proud of it.
+  const from = bowlPoint(upper, upperW, upperH, roundness, f.half, 38);
+  const earEnd = at(upper.x + upperW + Math.max(f.bowl * 0.42, f.half * 1.6), f.hangs(f.x));
+  return {
+    ...finish(
+      f,
+      [
+        ink(f, ring(f, upper, upperW, upperH)),
+        ink(f, ring(f, loop, loopHalf, loopH)),
+        ink(f, bowed(f, leaves, lands, 0.18), BUTT, BUTT),
+        ink(f, bowed(f, from, earEnd, -0.12), BUTT, f.plain),
+      ],
+      true,
+    ),
+    air: 0.2,
+  };
 }
 
 export const ALTERNATES: Record<LetterName, Alternate[]> = {
@@ -409,6 +477,35 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
 
   Q: [
     {
+      id: "swept",
+      label: "Swept tail",
+      hint: "The tail leaving the foot of the bowl and sweeping out to the right under the line, as a text serif draws it.",
+      build: (style) => {
+        const f = frame(style);
+        const centre = at(f.edge + f.capBowl, f.cap / 2);
+        /*
+         * From the bottom of the bowl, a little left of its middle, on the
+         * bowl's own centre-line so the start is buried; then down and out,
+         * flattening as it goes, to well past the bowl's right side. One arc,
+         * bowed below its chord, so it leaves the bowl falling and arrives
+         * nearly level -- the long stroke Lora and most old-style faces draw.
+         */
+        const leaves = bowlPoint(centre, f.capBowl, f.capBowlH, 1 - f.square, f.half, -100);
+        const reaches = at(
+          centre.x + f.capBowl * 1.3,
+          f.dip(0) - Math.max(f.cap * 0.2, f.half * 2.2),
+        );
+        return finish(
+          f,
+          [
+            ink(f, ring(f, centre, f.capBowl, f.capBowlH)),
+            ink(f, bowed(f, leaves, reaches, -0.2), BUTT, f.plain),
+          ],
+          true,
+        );
+      },
+    },
+    {
       id: "under",
       label: "Tail below",
       hint: "The tail hung under the bowl instead of crossing its wall, which is what a geometric face usually does.",
@@ -429,6 +526,42 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
   ],
 
   G: [
+    {
+      id: "spurred",
+      label: "Upright spur",
+      hint: "The bowl carried round into a short upright on the right, with no bar turned in: the G of most text serifs.",
+      build: (style) => {
+        const f = frame(style);
+        const centre = at(f.edge + f.capBowl, f.cap / 2);
+        const roundness = 1 - f.square;
+        // The same aperture the plain G opens to, so the top end clears.
+        const clear = (((f.half * 2.4) / f.capBowlH) * 180) / Math.PI;
+        const opens = Math.max(32, clear);
+        /*
+         * The bowl stops a little short of its lowest right-hand point and an
+         * upright rises from there to just under the middle of the letter.
+         * The upright starts on the bowl's own centre-line, so its square foot
+         * is inside the bowl's ink; its top is a stroke end like any other and
+         * takes the face's terminal, which on a serif face is the spur.
+         */
+        const joins = 302;
+        const foot = bowlPoint(centre, f.capBowl, f.capBowlH, roundness, f.half, joins);
+        const top = Math.max(f.cap * 0.47, foot.y + f.half * 2);
+        return finish(
+          f,
+          [
+            ink(
+              f,
+              bowlBetween(centre, f.capBowl, f.capBowlH, roundness, f.half, opens, joins),
+              f.end,
+              BUTT,
+            ),
+            ink(f, straight(foot, at(foot.x, top)), BUTT, f.end),
+          ],
+          true,
+        );
+      },
+    },
     {
       id: "bare",
       label: "No bar",
@@ -476,10 +609,11 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
       hint: "Cut off square at the baseline, which is what a squared or technical face wants.",
       build: (style) => {
         const f = frame(style);
-        const reach = f.arch * 0.7;
-        const stem = f.edge + reach * 0.7;
+        const reach = tReach(f);
+        const stem = tStem(f);
         return finish(f, [
-          ink(f, straight(at(stem, 0), at(stem, f.asc * 0.78)), f.end, f.end),
+          // Capped at the foot, cut at the top, as the plain t is.
+          ink(f, straight(at(stem, 0), at(stem, f.asc * 0.78)), f.end, f.plain),
           crossbar(f, stem - reach * 0.7, stem + reach),
         ]);
       },
@@ -632,8 +766,8 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
       hint: "An f that carries below the baseline, as an italic or a display face does.",
       build: (style) => {
         const f = frame(style);
-        const radius = Math.max(f.arch * 0.66, f.least);
-        const left = Math.max(f.arch * 0.42, f.least);
+        const radius = Math.max(roundHalf(f) * 0.6, f.least);
+        const left = Math.max(roundHalf(f) * 0.36, f.least);
         const stem = f.edge + left;
         const lower = Math.max(f.arch * 0.5, f.least);
         const top = f.crest(f.asc) - radius;
@@ -662,7 +796,7 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
             f.end,
             f.end,
           ),
-          crossbar(f, stem - left, stem + f.arch * 0.62),
+          crossbar(f, stem - left, stem + roundHalf(f) * 0.57),
         ]);
       },
     },
@@ -774,6 +908,12 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
   ],
 
   g: [
+    {
+      id: "double",
+      label: "Two storey",
+      hint: "A small bowl over a closed loop, joined by a link, with an ear at the top: the binocular g of most text serifs.",
+      build: (style) => doubleG(frame(style)),
+    },
     {
       id: "curled",
       label: "Curled tail",

@@ -13,7 +13,6 @@ import {
   arm,
   arms,
   at,
-  belly,
   BUTT,
   chain,
   corner,
@@ -24,6 +23,7 @@ import {
   ink,
   junction,
   type LetterName,
+  lobe,
   openBowl,
   type Recipe,
   ring,
@@ -90,9 +90,11 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const upper = f.cap * 0.56;
     // Measured between where the ink has to reach rather than between the
     // lines themselves, so the two bowls fill the capital exactly and the
-    // slight extra keeps them overlapping where they meet.
-    const top = f.crest(f.cap);
-    const base = f.dip(0);
+    // slight extra keeps them overlapping where they meet. On the lines and
+    // not over them: the top and the foot are level runs now, and a flat run
+    // that overshoots is a B standing lower than the H beside it.
+    const top = f.hangs(f.cap);
+    const base = f.sits(0);
     const upperR = Math.max((top - upper) / 2 + f.half * 0.2, f.least);
     const lowerR = Math.max((upper - base) / 2 + f.half * 0.2, f.least);
     /*
@@ -104,11 +106,17 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * against the round capitals instead and both bowls share it, which is also
      * what stops the upper one looking like a mistake beside the lower.
      */
-    const reach = f.capBowl * 0.84;
+    /*
+     * And the lower one reaches further than the upper, which is what keeps a
+     * B from looking top-heavy -- 0.44 of the cap height past the stem above
+     * and 0.52 below, on Lora. Both run level from the stem before they turn:
+     * see `lobe`.
+     */
+    const reach = f.capBowl;
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-      belly(f, at(stem, top - upperR), reach, upperR, -90, 90),
-      belly(f, at(stem, base + lowerR), reach, lowerR, -90, 90),
+      lobe(f, stem, top - upperR * 2, top, reach * 0.98),
+      lobe(f, stem, base, base + lowerR * 2, reach * 1.14),
     ]);
   },
 
@@ -133,13 +141,20 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * The stem's ink stops half a pen past each line, so that is how far the
      * belly may go.
      */
-    const asked = (f.crest(f.cap) - f.dip(0)) / 2;
-    const radius = Math.max(Math.min(asked, f.cap / 2 + f.half * 0.5), f.least);
+    const low = f.sits(0);
+    const high = f.hangs(f.cap);
+    const radius = Math.max((high - low) / 2, f.least);
     return finish(
       f,
       [
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-        belly(f, at(stem, f.cap / 2), radius * f.wide, radius, -90, 90),
+        /*
+         * Run out level before it turns, so a D is nearly as wide as an O
+         * rather than half of one: see `lobe`. And the runs lie on the two
+         * lines rather than over them, as a flat stroke does -- the overshoot
+         * is for the curve, and the curve here is only the right-hand side.
+         */
+        lobe(f, stem, low, high, Math.max(f.capBowl * 1.52, radius * f.wide)),
       ],
       true,
     );
@@ -339,7 +354,13 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const radius = Math.max(f.cap * 0.27, f.least);
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-      belly(f, at(stem, f.crest(f.cap) - radius), radius * f.wide, radius, -90, 90),
+      lobe(
+        f,
+        stem,
+        f.hangs(f.cap) - radius * 2,
+        f.hangs(f.cap),
+        Math.max(f.capBowl * 1.14, radius * f.wide),
+      ),
     ]);
   },
 
@@ -359,7 +380,9 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
       f,
       [
         ink(f, ring(f, centre, f.capBowl, f.capBowlH)),
-        ink(f, straight(leaves, at(centre.x + f.capBowl * 1.02, -f.cap * 0.15)), BUTT, f.end),
+        // Cut rather than capped: a tail is a stroke running out, not a stem
+        // standing on a line, and a serif across it read as a second foot.
+        ink(f, straight(leaves, at(centre.x + f.capBowl * 1.02, -f.cap * 0.15)), BUTT, f.plain),
       ],
       true,
     );
@@ -369,15 +392,23 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const stem = f.edge;
     const radius = Math.max(f.cap * 0.27, f.least);
-    const eye = f.crest(f.cap) - radius;
-    const junction = eye - radius;
-    const reach = stem + radius * 1.9;
+    const junction = f.hangs(f.cap) - radius * 2;
+    const bowl = Math.max(f.capBowl * 1.08, radius * f.wide);
+    /*
+     * The leg leaves the underside of the bowl, not the stem.
+     *
+     * Out of the stem it was a K's leg with a bowl above it. A text R -- and
+     * most sans ones -- springs the leg from partway along the bowl's lower
+     * run, about two fifths of the way out, and takes it straight down to a
+     * foot a little past where the bowl reaches. Started on the bowl's own
+     * centre-line, so its square end is inside that stroke at any weight.
+     */
+    const springs = at(stem + bowl * 0.4, junction);
+    const foot = at(stem + bowl * 1.06, 0);
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-      belly(f, at(stem, eye), radius * f.wide, radius, -90, 90),
-      // From the stem's own centre-line, where the bowl lands, so the leg
-      // grows out of the junction rather than starting beside it.
-      ink(f, straight(at(stem, junction), at(reach, 0)), BUTT, f.end),
+      lobe(f, stem, junction, f.hangs(f.cap), bowl),
+      ink(f, straight(springs, foot), BUTT, f.end),
     ]);
   },
 
@@ -407,7 +438,15 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   U: (style) => {
     const f = frame(style);
-    return finish(f, [trough(f, f.edge, f.cap)]);
+    /*
+     * As wide as an H, whatever the lowercase rhythm is set to.
+     *
+     * The trough is the u's, and the u's width is the shoulder's reach -- a
+     * decision about the lowercase. Handed that, the U narrowed every time the
+     * n did: a text face with a tight n had a U a fifth narrower than its H.
+     */
+    const half = (f.style.metrics.counterWidth + f.style.pen.weight) / 2;
+    return finish(f, [trough(f, f.edge, f.cap, Math.max(half * f.style.metrics.width, f.least))]);
   },
 
   V: (style) => {

@@ -9,6 +9,7 @@
  */
 
 import { contourArea, contourContainsPoint, contoursBounds, reverseContour } from "@/font/geometry";
+import { contoursIntersect } from "@/font/outline";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import {
   FIGURES,
@@ -32,6 +33,9 @@ import {
   decided,
   endPieces,
   endsStraight,
+  hasLength,
+  reversed,
+  shortened,
   spinePath,
   waveBookAt,
   wavy,
@@ -39,7 +43,7 @@ import {
 import { seamsOf, wobbleOf } from "./script";
 import { penReach, reachAlong, sweep } from "./sweep";
 import type { Style } from "./style";
-import type { Stroke, Terminal } from "./types";
+import type { Spine, Stroke, Terminal } from "./types";
 
 export interface Drawn {
   contours: Contour[];
@@ -237,7 +241,7 @@ export function makeLetter(
   const built: Recipe | null = recipe ? recipe(style) : null;
   const strokes = laid ? laid.strokes : built!.strokes;
 
-  const inked = inkAll(strokes, style);
+  const inked = inkAll(strokes, style, name);
   // Cells filled in outright are ink rather than a path for it, so they join
   // the drawing as their own run.
   if (laid && laid.blocks.length > 0) inked.push(laid.blocks);
@@ -610,7 +614,7 @@ function monoAdvance(style: Style): number {
   // -- and it has no recipe of its own to ask.
   for (const name of DRAWN) {
     const built = LETTERS[name](style);
-    const contours = insideTheEdge(leaning(inkAll(built.strokes, style).flat(), style), style);
+    const contours = insideTheEdge(leaning(inkAll(built.strokes, style, name).flat(), style), style);
     widest = Math.max(widest, measure(built, contours, style));
   }
   monoCache.set(style, widest);
@@ -636,7 +640,7 @@ function figureAdvance(style: Style): number {
     // Nudged inside its own left edge as well, which is what the letters
     // themselves get. Measured without it, the widest figure came out narrower
     // than the letter it was measuring, and the two ran past its own advance.
-    const contours = insideTheEdge(leaning(inkAll(built.strokes, style).flat(), style), style);
+    const contours = insideTheEdge(leaning(inkAll(built.strokes, style, name).flat(), style), style);
     widest = Math.max(widest, measure(built, contours, style));
   }
   figureCache.set(style, widest);
@@ -659,6 +663,7 @@ function inkOf(stroke: Stroke, style: Style, others: Contour[] = []): Contour[] 
     ...swept,
     ...ballsFor(stroke, style, swept),
     ...flaresFor(stroke, style),
+    ...teardropsFor(stroke, swept),
     ...serifsFor(stroke, style, others),
   ];
 }
@@ -670,16 +675,391 @@ function inkOf(stroke: Stroke, style: Style, others: Contour[] = []): Contour[] 
  * neighbours: its wings reach sideways along a line, and the next stroke over
  * may be standing on that same line. So every stroke is swept first, and
  * each is inked knowing the swept outlines of all the rest.
+ *
+ * The letter's name is passed for the two things the strokes cannot say for
+ * themselves: whether it is a capital, which never takes a teardrop, and
+ * whether it is a lowercase letter, whose stems take a sloped head.
  */
-function inkAll(strokes: Stroke[], style: Style): Contour[][] {
-  const swept = strokes.map((stroke) => sweep(stroke));
-  return strokes.map((stroke, index) =>
+function inkAll(strokes: Stroke[], style: Style, name = ""): Contour[][] {
+  const capital = isCapitalLike(name);
+  const small = !capital && !FIGURES.includes(name);
+  const dressed = strokes.map((stroke) => dress(stroke, style, small, capital));
+  const swept = dressed.map((stroke) => sweep(stroke));
+  return dressed.map((stroke, index) =>
     inkOf(
       stroke,
       style,
       swept.flatMap((one, other) => (other === index ? [] : one)),
     ),
   );
+}
+
+/**
+ * Each end of a stroke made into what it will actually be drawn as.
+ *
+ * Three decisions that need the finished stroke to make, and so are made here
+ * rather than by the recipe:
+ *
+ * A curved end never wears a serif. A bar laid across the end of a curve sits
+ * at whatever angle the curve happened to be travelling and reads as snapped
+ * off, so a serif face finishes its curves the way a text face does -- with
+ * the face's own terminal -- and until this the serif took every open end and
+ * the terminal controls did nothing at all on a serifed face.
+ *
+ * A teardrop pulls the spine back from its end, so the swelling that closes
+ * the end off lands about where the stroke used to stop rather than hanging
+ * half a stem past it. Only a curved end takes one; a straight end asked for a
+ * teardrop is cut square.
+ *
+ * And the top of a lowercase stem under a sloped head is cut on a slope, down
+ * to the left, so the flag the serif lays there carries on the line the stem
+ * was cut along.
+ *
+ * Every one of these is read off the skeleton -- which way a run ends, which
+ * line it stops on -- and none off the pen, so a letter is drawn with the same
+ * shapes at every weight.
+ */
+function dress(stroke: Stroke, style: Style, small: boolean, capital: boolean): Stroke {
+  if (stroke.spine.closed || stroke.spine.segments.length === 0) return stroke;
+  const straight = endsStraight(stroke.spine);
+  const ends = endsOf(stroke);
+  let pullStart = 0;
+  let pullEnd = 0;
+  const made = (terminal: Terminal, index: 0 | 1): Terminal => {
+    const [, at, outward] = ends[index];
+    const isStraight = index === 0 ? straight.start : straight.end;
+    let end = terminal;
+    if (end.kind === "slab" && !isStraight) {
+      const curved = end.curved ?? { kind: "butt", angle: 0 };
+      end = { kind: curved.kind, angle: curved.angle, open: end.open };
+    }
+    if (end.kind === "teardrop") {
+      if (isStraight || end.open !== true) return { ...end, kind: "butt" };
+      const spine = index === 1 ? stroke.spine : reversed(stroke.spine);
+      const curve = insideOfCurve(spine, at);
+      /*
+       * Only where the drop hangs: on an end whose curve turns back down
+       * beneath it -- the top of a c or an a, the hook of an f, the arm of an
+       * r -- or on a tail below the line, as on a j or a y. An end curling up
+       * off the baseline, as the foot of a c, an e or a t does, is left plain,
+       * and so is every capital: a drop there reads as a blot.
+       *
+       * Asked of the book, because which way a curve turns is the skeleton's
+       * business but the skeleton moves with the pen, and a drop that came and
+       * went along the weight axis would leave a letter the axis cannot follow.
+       */
+      const hangs =
+        !capital &&
+        curve !== null &&
+        (curve.toward.y < -0.25 || at.y < style.metrics.descender * 0.4);
+      if (!decided(hangs)) return { ...end, kind: "butt" };
+      const bend = curve?.radius ?? 0;
+      const radius = dropRadius(stroke, style, outward, bend);
+      const toward = curve?.toward ?? { x: -outward.y, y: outward.x };
+      const side = outward.x * toward.y - outward.y * toward.x > 0 ? 1 : -1;
+      // Pulled back by a share of what the drop adds beyond the stroke's own
+      // width, so a drop with no room to swell is not a shorter stroke.
+      const pull = TEAR_PULL * Math.max(0, radius - halfWidthAcross(stroke, outward));
+      if (index === 0) pullStart = pull;
+      else pullEnd = pull;
+      return { ...end, drop: { radius, bend, side } };
+    }
+    /*
+     * Which leaves the uprights: a serif on one, and a plain cut on one where
+     * the pen is held at an angle -- the top of a T's stem under its arm,
+     * where a cut leaning with the pen stood nine units over the cap line.
+     */
+    const cuttable = end.kind === "slab" || (end.kind === "butt" && style.pen.angle !== 0);
+    if (!cuttable || !isStraight || end.level || Math.abs(outward.x) > 0.02) return end;
+    const { metrics } = style;
+    const lines = [0, metrics.xHeight, metrics.capHeight, metrics.ascender, metrics.descender];
+    if (!lines.some((line) => Math.abs(at.y - line) < 1)) return end;
+    if (
+      end.kind === "slab" &&
+      end.head === "sloped" &&
+      small &&
+      outward.y > 0 &&
+      [metrics.xHeight, metrics.ascender].some((line) => Math.abs(at.y - line) < 1)
+    ) {
+      const inner = levelHalfWidth(stroke, outward);
+      return { ...end, level: true, sink: HEAD_SLOPE * 2 * inner };
+    }
+    /*
+     * An upright standing on a line is cut along the line. Square to the stroke
+     * is the same thing on a pen held straight, but a pen held at an angle
+     * leans its cut with it, and a serifed stem then stood on one corner a few
+     * units through the baseline with the other a few units short of it.
+     */
+    return { ...end, level: true };
+  };
+  const start = made(stroke.start, 0);
+  const end = made(stroke.end, 1);
+  if (start === stroke.start && end === stroke.end) return rounded(stroke, straight);
+  const spine =
+    pullStart > 0 || pullEnd > 0 ? shortened(stroke.spine, pullStart, pullEnd) : stroke.spine;
+  return rounded({ ...stroke, spine, start, end }, straight);
+}
+
+/**
+ * A round cap on a curved end, pulled back only as far as it has to be.
+ *
+ * A round cap adds half a pen past the end of the stroke, and on a straight
+ * run that is taken back off the run before it is drawn -- see `capped`. On a
+ * curve it is left alone, because the curl is what the face is drawn with and
+ * pulling it back cost the hook of an f the top of its arc. But a heavy pen on
+ * a tight letter has no room for the extra half pen at all: the end of an e's
+ * bowl came back round through its own bar and the outline crossed itself. So
+ * where the cap would do that -- and only there -- the curve is pulled back,
+ * by as little as clears it.
+ */
+function rounded(stroke: Stroke, straight: { start: boolean; end: boolean }): Stroke {
+  const startRound = stroke.start.kind === "round" && !straight.start;
+  const endRound = stroke.end.kind === "round" && !straight.end;
+  if (!startRound && !endRound) return stroke;
+  const crosses = (candidate: Stroke) => sweep(candidate).some((one) => contoursIntersect([one]));
+  if (!crosses(stroke)) return stroke;
+  const half = penReach(stroke.pen).across;
+  for (const share of [0.5, 1, 1.5, 2]) {
+    const pulled = {
+      ...stroke,
+      spine: shortened(stroke.spine, startRound ? half * share : 0, endRound ? half * share : 0),
+    };
+    if (!crosses(pulled)) return pulled;
+  }
+  return stroke;
+}
+
+/** A capital in any script: a letter that is its own upper case and has a lower one. */
+function isCapitalLike(name: string): boolean {
+  if (isCapital(name)) return true;
+  return [...name].length === 1 && name.toUpperCase() === name && name.toLowerCase() !== name;
+}
+
+/**
+ * How big a teardrop is.
+ *
+ * Grown with the pen, but more slowly than the pen: a drop half a stem across
+ * on a hairline is lost, and one twice the regular's on a black fills the
+ * counter it hangs into. So it is counted from the geometric mean of the stem
+ * and a tenth of the em, which is the stem itself at a text weight.
+ *
+ * And never more than the curve it finishes has room for: the drop hangs into
+ * the inside of that curve, and past about half of what is left of the
+ * counter across it, it meets whatever is on the other side.
+ */
+function dropRadius(stroke: Stroke, style: Style, outward: Vec2, curve: number): number {
+  const stem = style.pen.weight;
+  const h = halfWidthAcross(stroke, outward);
+  const wanted = TEAR_SIZE * Math.sqrt(stem * style.metrics.unitsPerEm * 0.1);
+  const room = curve > 0 ? h + 0.45 * Math.max(0, curve - 2 * h) : wanted;
+  return Math.max(h, Math.min(wanted, room));
+}
+
+/**
+ * How steeply the top of a lowercase stem falls away to the left under a
+ * sloped head: a little under seventeen degrees, which is about where a broad
+ * nib entering the stroke leaves it.
+ */
+const HEAD_SLOPE = 0.3;
+
+/** A teardrop's radius, in stems. */
+const TEAR_SIZE = 0.56;
+
+/**
+ * How much of what the drop swells by the stroke is pulled back to make room
+ * for it.
+ */
+const TEAR_PULL = 0.6;
+
+/**
+ * The teardrops on one stroke: a curved end swelling into a pear on the inside
+ * of its curve.
+ *
+ * Drawn as one shape laid over the end, like everything else that is hung on a
+ * stroke. Its outer side is a circle standing on the stroke's own outside edge,
+ * touching it exactly at the end of the stroke, so the outside of the curve
+ * runs on into the drop without a step. Its inner side falls back to the
+ * stroke's inside edge along one smooth curve, meeting that edge a couple of
+ * radii back and running along it there, so the stroke thickens into the drop
+ * rather than having a disc stuck on it. The rest of the outline is buried in
+ * ink the stroke has already laid down.
+ *
+ * Always the same five nodes. Where there is no room for the drop -- a heavy
+ * pen in a tight aperture -- it shrinks to the stroke's own width rather than
+ * going, so the letter is drawn with the same shapes at every weight.
+ */
+function teardropsFor(stroke: Stroke, swept: Contour[]): Contour[] {
+  if (stroke.spine.closed || swept.length === 0) return [];
+  const out: Contour[] = [];
+  const band = contoursBounds(swept);
+  const reach = penReach(stroke.pen);
+  const ends = endsOf(stroke);
+  for (const index of [0, 1] as const) {
+    const [terminal, at, outward] = ends[index];
+    if (terminal.kind !== "teardrop" || terminal.open !== true) continue;
+    const spine = index === 1 ? stroke.spine : reversed(stroke.spine);
+    const drop = terminal.drop;
+    if (!drop) continue;
+    const u = outward;
+    // The inside of the curve, square to the way the stroke is going.
+    const side = drop.side;
+    const n = { x: -u.y * side, y: u.x * side };
+    const shift = reachAlong({ x: -u.y, y: u.x }, reach);
+    const lean = shift.x * n.x + shift.y * n.y;
+    // The corner on the outside of the curve, where the drop stands.
+    const outer = lean < 0 ? shift : { x: -shift.x, y: -shift.y };
+    const h = Math.abs(lean);
+    const t = outer.x * u.x + outer.y * u.y;
+    // Round enough to take both corners of the end inside it.
+    const least = (t * t + h * h) / Math.max(h, 1e-6) + 0.5;
+    const bend = drop.bend > 0 ? drop.bend : drop.radius * 4;
+    let radius = Math.max(drop.radius, least);
+    let shape = tear(stroke, spine, at, u, n, outer, radius, bend);
+    for (let tries = 0; tries < 8 && !within(shape, band); tries++) {
+      radius = Math.max(least, radius * 0.82);
+      shape = tear(stroke, spine, at, u, n, outer, radius, bend);
+    }
+    if (!within(shape, band)) shape = tear(stroke, spine, at, u, n, outer, least, bend);
+    out.push(contourArea(shape) < 0 ? reverseContour(shape) : shape);
+  }
+  return out;
+}
+
+/** Whether a shape stays between the top and bottom of the stroke it is hung on. */
+function within(shape: Contour, band: { yMin: number; yMax: number }): boolean {
+  const bounds = contoursBounds([shape]);
+  return bounds.yMax <= band.yMax + 1 && bounds.yMin >= band.yMin - 1;
+}
+
+/**
+ * Which way the inside of the curve is, from the end of a run: toward the
+ * centre of the last piece that turns.
+ */
+function insideOfCurve(spine: Spine, at: Vec2): { toward: Vec2; radius: number } | null {
+  for (let index = spine.segments.length - 1; index >= 0; index--) {
+    const segment = spine.segments[index];
+    // A piece that goes nowhere turns nowhere, whatever its radius says.
+    if (segment.kind === "line" && hasLength(segment)) return null;
+    if (segment.kind !== "arc" || segment.radius < 1e-6 || !hasLength(segment)) continue;
+    const dx = segment.centre.x - at.x;
+    const dy = segment.centre.y - at.y;
+    const length = Math.hypot(dx, dy);
+    return length > 1e-6
+      ? { toward: { x: dx / length, y: dy / length }, radius: segment.radius }
+      : null;
+  }
+  return null;
+}
+
+/**
+ * The point on a run so far back from its end, and which way the run is
+ * travelling there.
+ */
+function backFromEnd(spine: Spine, distance: number): { point: Vec2; heading: Vec2 } {
+  let left = distance;
+  const segments = spine.segments;
+  for (let index = segments.length - 1; index >= 0; index--) {
+    const segment = segments[index];
+    const length =
+      segment.kind === "line"
+        ? Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y)
+        : segment.radius * Math.abs(segment.endAngle - segment.startAngle);
+    if (length < 1e-9) continue;
+    const share = index === 0 ? Math.min(1, left / length) : left / length;
+    if (share <= 1) {
+      if (segment.kind === "line") {
+        const heading = unit(segment.from, segment.to, 1);
+        return {
+          point: {
+            x: segment.to.x - (segment.to.x - segment.from.x) * share,
+            y: segment.to.y - (segment.to.y - segment.from.y) * share,
+          },
+          heading,
+        };
+      }
+      const angle = segment.endAngle - (segment.endAngle - segment.startAngle) * share;
+      return {
+        point: onArc(segment.centre, segment.radius, angle),
+        heading: tangentOnArc(angle, segment.sweepPositive, 1),
+      };
+    }
+    left -= length;
+  }
+  const first = segments[0];
+  return first.kind === "line"
+    ? { point: first.from, heading: unit(first.from, first.to, 1) }
+    : {
+        point: onArc(first.centre, first.radius, first.startAngle),
+        heading: tangentOnArc(first.startAngle, first.sweepPositive, 1),
+      };
+}
+
+/**
+ * One teardrop, worked out in the frame of the end it finishes: `u` the way the
+ * stroke was going, `n` toward the inside of its curve.
+ */
+function tear(
+  stroke: Stroke,
+  spine: Spine,
+  at: Vec2,
+  u: Vec2,
+  n: Vec2,
+  outer: Vec2,
+  radius: number,
+  bend: number,
+): Contour {
+  const k = 0.5523 * radius;
+  const add = (p: Vec2, d: Vec2, by: number): Vec2 => ({ x: p.x + d.x * by, y: p.y + d.y * by });
+  const corner = { x: at.x + outer.x, y: at.y + outer.y };
+  const centre = add(corner, n, radius);
+  const front = add(centre, u, radius);
+  const top = add(centre, n, radius);
+  /*
+   * Where the drop's inner side comes back onto the stroke: two and a half
+   * radii back, or as far as the run goes. Taken off the run itself rather
+   * than off a straight line, because the run is curving -- a point on the
+   * tangent would sit off the stroke's edge and the drop would meet it at an
+   * angle.
+   */
+  const total = spine.segments.reduce(
+    (sum, segment) =>
+      sum +
+      (segment.kind === "line"
+        ? Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y)
+        : segment.radius * Math.abs(segment.endAngle - segment.startAngle)),
+    0,
+  );
+  // And no further round the curve than about a radian of it, or on a tight
+  // curve the point would come back round to face the drop.
+  const back = backFromEnd(spine, Math.min(radius * 2.5, total * 0.8, bend * 1.1));
+  const shift = reachAlong({ x: -back.heading.y, y: back.heading.x }, penReach(stroke.pen));
+  // The inside of the curve there, which round a tight curve is not where it
+  // is at the end: the same side of the way the run is going.
+  const way = u.x * n.y - u.y * n.x;
+  const local = { x: -back.heading.y * way, y: back.heading.x * way };
+  const toward = shift.x * local.x + shift.y * local.y >= 0 ? shift : { x: -shift.x, y: -shift.y };
+  const meets = { x: back.point.x + toward.x, y: back.point.y + toward.y };
+  const span = Math.hypot(top.x - meets.x, top.y - meets.y);
+  return {
+    nodes: [
+      { point: corner, handleIn: null, handleOut: add(corner, u, k), type: "corner" },
+      { point: front, handleIn: add(front, n, -k), handleOut: add(front, n, k), type: "smooth" },
+      {
+        point: top,
+        handleIn: add(top, u, k),
+        handleOut: add(top, u, -span * 0.6),
+        type: "smooth",
+      },
+      {
+        point: meets,
+        handleIn: add(meets, back.heading, span * 0.3),
+        handleOut: null,
+        type: "corner",
+      },
+      node(back.point),
+    ],
+    closed: true,
+  };
 }
 
 /**
@@ -1104,6 +1484,11 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
     // the face is the same size, and from the stroke where the stroke is the
     // wider of the two, or the wing would begin inside the ink it sits on.
     const full = Math.max(reference, inner) + projection;
+    /*
+     * A sloped head: the stem's top was cut falling away to the left by `sink`
+     * across its width, and the flag carries on along the same line.
+     */
+    const shear = level && (terminal.sink ?? 0) > 0 && inner > 0 ? terminal.sink! / (2 * inner) : 0;
     for (const side of [1, -1]) {
       /*
        * A serif never crosses a line the stroke it belongs to is standing on.
@@ -1171,11 +1556,32 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
       const into = { x: -outward.x, y: -outward.y };
       const across = { x: -facing.y * side, y: facing.x * side };
       const underneath = level && across.x * into.x + across.y * into.y > Math.SQRT1_2;
+      /*
+       * And under a sloped head, only the flag on the left: the top of a
+       * lowercase stem is where the pen came in, and it came in from the left.
+       */
+      const behind = shear > 0 && side < 0;
       const refused =
-        !winged || crowded || underneath || crossesALine(at, facing, side, full, inner, style);
+        !winged ||
+        crowded ||
+        underneath ||
+        behind ||
+        crossesALine(at, facing, side, full, inner, style);
+      /*
+       * Refused, the wing shrinks to a sliver held well inside the stroke --
+       * from its spine to a little short of its edge -- so nothing of it shows
+       * and it cannot poke out of a curve or a sloped cut.
+       */
       const from = refused ? 0 : inner;
-      const tip = refused ? inner : Math.min(full, room);
+      const tip = refused ? inner * 0.6 : Math.min(full, room);
       const deep = refused ? BURIED : thickness;
+      const tipDeep = terminal.shape === "wedge" ? deep * WEDGE_TIP : deep;
+      /*
+       * How far the stroke's edge on this side moves out along the wing for
+       * every unit back up the stroke: nothing on an upright, and on a serif
+       * laid level across a diagonal, the diagonal's own slant.
+       */
+      const edgeLean = level ? (across.x * into.x + across.y * into.y) / Math.abs(outward.y) : 0;
       /*
        * Never fillet more than the wing is deep or wide, or the curve would
        * have to begin before the serif does. Measured against whichever wing is
@@ -1186,7 +1592,7 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        * Serif, the Didone, the Slab and the Typewriter all stayed exactly where
        * they were.
        */
-      const bracket = Math.min(terminal.bracket ?? 0, deep, tip - from);
+      const bracket = Math.min(terminal.bracket ?? 0, deep, (tip - from) * 0.8);
       /*
        * A face that undulates undulates here too, and the only way to say that
        * is to draw the bar as a stroke rather than as a shape.
@@ -1201,7 +1607,22 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        */
       const shape: Contour[] = waving(style)
         ? sweptWing(stroke, style, at, facing, side, from, tip, deep)
-        : [wing(at, facing, side, from, tip, deep, bracket)];
+        : [
+            wing(
+              at,
+              facing,
+              side,
+              from,
+              tip,
+              deep,
+              tipDeep,
+              bracket,
+              shear,
+              inner,
+              refused ? 0 : edgeLean,
+              terminal.shape === "wedge",
+            ),
+          ];
       for (const piece of shape) {
         // Wound with the strokes it sits on, or the serif would cancel the stem
         // it is attached to rather than adding to it.
@@ -1487,28 +1908,50 @@ const node = (point: Vec2): GlyphNode => ({
 const SERIF_BITE = 0.35;
 
 /**
+ * How deep a wedge serif is at its tip, against its depth where it meets the
+ * stem. A little under half, which is where a text serif stops reading as a bar
+ * and starts reading as something that tapers.
+ */
+const WEDGE_TIP = 0.42;
+
+/**
  * One wing of a serif.
  *
  * Worked out in the stroke's own frame -- `across` runs along the end of the
  * stroke and `into` runs back up it -- and then written out in the letter's
  * coordinates, so the same code serifs the foot of a stem, the top of an
  * ascender and the end of an arm without knowing which is which.
+ *
+ * `from` is where the wing leaves the stroke and `tip` where it stops; `deep`
+ * is how far back up the stroke it reaches where it meets it, and `tipDeep`
+ * how far at its tip, which is the same on a square serif and less on a wedge.
+ * `shear` tips the whole wing down to the left by so much per unit, which is a
+ * sloped head: the stem's own cut falls away along the same line, measured from
+ * its right-hand edge at `edge` units right of the spine.
  */
 function wing(
   at: Vec2,
   outward: Vec2,
   side: number,
-  inner: number,
+  from: number,
   tip: number,
-  thickness: number,
+  deep: number,
+  tipDeep: number,
   bracket: number,
+  shear = 0,
+  edge = 0,
+  lean = 0,
+  wedge = false,
 ): Contour {
   const across = { x: -outward.y * side, y: outward.x * side };
   const into = { x: -outward.x, y: -outward.y };
-  const place = (u: number, v: number): Vec2 => ({
-    x: at.x + across.x * u + into.x * v,
-    y: at.y + across.y * u + into.y * v,
-  });
+  const place = (u: number, v: number): Vec2 => {
+    const w = v + shear * (edge + side * u);
+    return {
+      x: at.x + across.x * u + into.x * w,
+      y: at.y + across.y * u + into.y * w,
+    };
+  };
 
   /*
    * Started inside the stroke rather than at its edge, so the two overlap and
@@ -1522,44 +1965,94 @@ function wing(
    * thin for the union to find, and the lower wing of the Q's tail came away
    * and hung under the letter as a loose bar.
    */
-  const held = Math.max(0, inner - Math.max(thickness, inner) * SERIF_BITE);
+  const held = Math.max(0, from - Math.max(deep, from) * SERIF_BITE);
 
-  const nodes: GlyphNode[] = [
-    node(place(held, 0)),
-    node(place(tip, 0)),
-    node(place(tip, thickness)),
-  ];
+  /*
+   * Where the stroke's own edge is, so far back up it.
+   *
+   * Straight down from where the wing leaves it on an upright, but a serif
+   * laid level across a diagonal meets a stroke whose edge runs off at a
+   * slant: on the outside of a V's arm the edge falls away from the wing as it
+   * goes down, and a fillet that ran straight up from where the wing began
+   * finished in the paper beside the stroke and came back to it along a flat
+   * step. So the wing follows the edge, whichever way it runs.
+   */
+  /*
+   * Where the edge runs out over the wing -- the inside of a diagonal -- it is
+   * only followed half way to the tip. Past that the stroke has covered the
+   * top of the wing already, and a wing that kept following it would fold
+   * back over its own tip.
+   */
+  const cap = lean > 0 ? (0.5 * (tip - from)) / lean : Infinity;
+  const shift = (v: number): number => lean * Math.min(v, cap);
+  const edgeAt = (v: number): number => from + shift(v);
+  const heldAt = (v: number): number => held + shift(v);
+  const rise = Math.min(bracket, Math.max(0, (tip - edgeAt(deep)) * 0.8));
+  const reachUp = deep + rise;
 
-  if (bracket > 0) {
+  const nodes: GlyphNode[] = [node(place(held, 0)), node(place(tip, 0))];
+  const handle = 0.5523 * rise;
+  // A hair inside the edge rather than on it, so the two overlap and no seam
+  // is left between them.
+  const meetU = Math.max(heldAt(reachUp), edgeAt(reachUp) - Math.min(0.5, from * 0.05));
+  const tangent = (() => {
+    const slant = reachUp < cap ? lean : 0;
+    const length = Math.hypot(slant, 1);
+    return { u: slant / length, v: 1 / length };
+  })();
+
+  if (wedge) {
+    /*
+     * A text serif: thin at its tip, and one long hollow curve from there back
+     * to the stem, arriving running up the stem's own edge. There is no
+     * corner anywhere along the top of it, which is what makes it read as
+     * grown out of the stroke rather than laid across it.
+     */
+    const top = { u: tip, v: tipDeep };
+    const du = top.u - meetU;
+    const dv = reachUp - top.v;
+    nodes.push({
+      point: place(top.u, top.v),
+      handleIn: null,
+      handleOut: place(top.u - du * 0.55, top.v + dv * 0.12),
+      type: "corner",
+    });
+    const pull = Math.max(dv * 0.6, 0);
+    nodes.push({
+      point: place(meetU, reachUp),
+      handleIn: place(meetU - tangent.u * pull, reachUp - tangent.v * pull),
+      handleOut: null,
+      type: "corner",
+    });
+    nodes.push(node(place(heldAt(reachUp), reachUp)));
+    return { nodes, closed: true };
+  }
+
+  nodes.push(node(place(tip, tipDeep)));
+  if (rise > 0) {
     /*
      * The fillet: a quarter turn hollowing out the inside corner where the
      * serif meets the stem. Zero bracket leaves that corner square, which is a
      * slab serif; opening it out is what makes a text serif look grown from the
      * stem rather than stuck on it.
      */
-    const corner = place(inner + bracket, thickness);
-    const meet = place(held, thickness + bracket);
-    const handle = 0.5523 * bracket;
+    const cornerU = edgeAt(deep) + rise;
     nodes.push({
-      point: corner,
+      point: place(cornerU, deep),
       handleIn: null,
-      handleOut: {
-        x: corner.x - across.x * handle * 1,
-        y: corner.y - across.y * handle * 1,
-      },
+      handleOut: place(cornerU - handle, deep),
       type: "tangent",
     });
     nodes.push({
-      point: meet,
-      handleIn: {
-        x: meet.x - into.x * handle,
-        y: meet.y - into.y * handle,
-      },
+      point: place(meetU, reachUp),
+      handleIn: place(meetU - tangent.u * handle, reachUp - tangent.v * handle),
       handleOut: null,
       type: "tangent",
     });
+    nodes.push(node(place(heldAt(reachUp), reachUp)));
   } else {
-    nodes.push(node(place(held, thickness)));
+    nodes.push(node(place(edgeAt(deep), deep)));
+    nodes.push(node(place(heldAt(deep), deep)));
   }
 
   return { nodes, closed: true };

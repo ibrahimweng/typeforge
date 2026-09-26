@@ -94,8 +94,24 @@ export interface Spine {
  * - `round` caps with a half-disc, for a soft display face.
  * - `angled` cuts across at an angle, as a broad nib leaves.
  * - `slab` squares off and then lays a bar across, which is a serif.
+ * - `teardrop` swells into a pear on the inside of a curve, which is how a
+ *   text face finishes the hook of an a, c, f, r or j. Only a curved end takes
+ *   one; a straight end wearing it is cut square.
  */
-export type TerminalKind = "butt" | "round" | "angled" | "slab";
+export type TerminalKind = "butt" | "round" | "angled" | "slab" | "teardrop";
+
+/**
+ * How a serif's bar is drawn: a bar of one depth all the way out, or one that
+ * thins toward its tip, which is what a text serif does.
+ */
+export type SerifShape = "square" | "wedge";
+
+/**
+ * How the serif at the top of a lowercase stem sits: laid level and reaching
+ * both ways, as a slab does, or as one flag sloping down to the left, which is
+ * what a pen leaves where it enters the stroke.
+ */
+export type SerifHead = "level" | "sloped";
 
 export interface Terminal {
   kind: TerminalKind;
@@ -142,6 +158,32 @@ export interface Terminal {
    * which is what a text serif has.
    */
   bracket?: number;
+  /** For `slab`: a bar of one depth, or one that thins toward its tip. */
+  shape?: SerifShape;
+  /** For `slab`: how the top of a lowercase stem is finished. */
+  head?: SerifHead;
+  /**
+   * For `slab`: what a curved end is finished with instead.
+   *
+   * A bar laid across the end of a curve reads as snapped off, so a serif face
+   * finishes its curved ends -- the hook of a c, the arm of an r -- with the
+   * style's own terminal, and this is that terminal.
+   */
+  curved?: { kind: Exclude<TerminalKind, "slab">; angle: number };
+  /**
+   * How far the left corner of a level cut is carried back down the stroke,
+   * in font units: the sloped top a lowercase stem has under a sloped head.
+   * Only read on a level cut.
+   */
+  sink?: number;
+  /**
+   * For `teardrop`: the drop, settled when the end is dressed -- its radius,
+   * the radius of the curve it finishes, and which side of the stroke that
+   * curve turns to (one for the left of the way it is going, minus one for the
+   * right). Settled before the stroke is pulled back to make room for it, so a
+   * pull that swallows the last of a curve does not lose the drop.
+   */
+  drop?: { radius: number; bend: number; side: number };
 }
 
 /**

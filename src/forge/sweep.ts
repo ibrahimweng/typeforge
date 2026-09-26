@@ -862,8 +862,18 @@ function terminalNodes(
       const back = (point.y - at.y) / direction.y;
       return { x: point.x - direction.x * back, y: at.y };
     };
+    /*
+     * And the left corner carried on back down the stroke where the cut is to
+     * slope: the top of a lowercase stem under a sloped head serif, which falls
+     * away to the left along the same line as the flag laid there.
+     */
+    const sink = terminal.sink ?? 0;
+    const sunk = (point: Vec2): Vec2 => ({
+      x: point.x - direction.x * sink,
+      y: point.y - direction.y * sink,
+    });
     return [
-      { point: onLine(left), handleIn: null, handleOut: null, type: "corner" },
+      { point: sunk(onLine(left)), handleIn: null, handleOut: null, type: "corner" },
       { point: onLine(right), handleIn: null, handleOut: null, type: "corner" },
     ];
   }

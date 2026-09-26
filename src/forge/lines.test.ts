@@ -69,7 +69,10 @@ describe("the letters stand on their lines", () => {
         // Uprights and the bars that hang off them: the letters with no curve
         // and no diagonal at either extreme, so there is nothing else in them
         // that could be what is being measured.
-        for (const name of ["E", "F", "H", "I", "L", "T", "one", "four", "exclam"]) {
+        // The D, the B and the P too: their top and foot are level runs out of
+        // the stem, and a level run stops on its line. Only the turn on the
+        // right is round, and it is no higher than the runs it joins.
+        for (const name of ["E", "F", "H", "I", "L", "T", "D", "B", "P", "one", "four", "exclam"]) {
           expect(
             Math.abs(topOf(name, style) - capHeight),
             `${name} misses the cap line`,
@@ -110,9 +113,6 @@ describe("the letters stand on their lines", () => {
           ["C", capHeight],
           ["S", capHeight],
           ["G", capHeight],
-          ["D", capHeight],
-          ["B", capHeight],
-          ["P", capHeight],
           ["zero", capHeight],
           ["three", capHeight],
           ["six", capHeight],

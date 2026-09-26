@@ -17,7 +17,7 @@
 
 import type { WaveAlong } from "./shapes";
 import { noEffects, type Effects } from "@/font/effects";
-import type { JoinKind, Pen, Terminal, TerminalKind } from "./types";
+import type { JoinKind, Pen, SerifHead, SerifShape, Terminal, TerminalKind } from "./types";
 import { NO_SCRIPT, type Script } from "./script";
 
 /** The heights and widths every letter is built against. */
@@ -101,6 +101,16 @@ export interface Parts {
     thickness: number;
     /** How much the inside corner is filleted: zero is a slab, more is a text serif. */
     bracket: number;
+    /**
+     * A bar of one depth all the way out, or one that thins toward its tip.
+     * Square is a slab's; a wedge is what an old-style text serif is.
+     */
+    shape: SerifShape;
+    /**
+     * The top of a lowercase stem: a level bar both ways, or one flag sloping
+     * down to the left, which is where a pen enters the stroke.
+     */
+    head: SerifHead;
   };
   shoulder: {
     /**
@@ -329,15 +339,41 @@ export const FAMILIES: Array<{ id: Family; label: string; hint: string }> = [
  */
 export function terminalFor(style: Style): Terminal {
   const { terminal, slab } = style.parts;
-  if (!slab.on) return { kind: terminal.kind, angle: terminal.angle, open: true };
+  // A kind this version no longer draws, from an old document or a script,
+  // is drawn as the plain cut rather than as nothing.
+  const kind = TERMINAL_KINDS.includes(terminal.kind) ? terminal.kind : "butt";
+  const plain = { kind: kind === "slab" ? "butt" : kind, angle: terminal.angle ?? 0 } as const;
+  if (!slab.on) return { ...plain, open: true };
   const stem = style.pen.weight;
   return {
     kind: "slab",
     open: true,
-    projection: slab.projection * stem,
+    projection: slab.projection * serifReach(style),
     thickness: slab.thickness * stem,
     bracket: slab.bracket * stem,
+    shape: slab.shape === "wedge" ? "wedge" : "square",
+    head: slab.head === "sloped" ? "sloped" : "level",
+    curved: plain,
   };
+}
+
+const TERMINAL_KINDS: TerminalKind[] = ["butt", "angled", "round", "teardrop"];
+
+/**
+ * The stem a serif's reach is counted in.
+ *
+ * The stem itself, down to a light weight -- and there no further. A serif is
+ * something the eye has to find at the end of a stroke, and at a hairline a
+ * reach of two thirds of the stem is a dozen units: the serifs of a light cut
+ * vanished into their own stems and it read as a sans. Real light cuts keep
+ * their serifs about as long as the regular's and only thin them, so below
+ * about nine hundredths of an em the reach is counted from halfway between the
+ * stem and that, while the depth still follows the stem.
+ */
+export function serifReach(style: Style): number {
+  const stem = style.pen.weight;
+  const floor = (stem + style.metrics.unitsPerEm * 0.09) / 2;
+  return Math.max(stem, floor);
 }
 
 const EM = 1000;
@@ -374,7 +410,14 @@ export const SANS: Style = {
   },
   pen: { weight: 92, contrast: 0, angle: 0 },
   parts: {
-    slab: { on: false, projection: 0.65, thickness: 0.43, bracket: 0 },
+    slab: {
+      on: false,
+      projection: 0.65,
+      thickness: 0.43,
+      bracket: 0,
+      shape: "square",
+      head: "level",
+    },
     shoulder: { spring: 0.62, reach: 1, crest: 1 },
     bowl: { width: 1, squareness: 0, aperture: 1 },
     corner: { radius: 0, join: "miter" },
@@ -411,12 +454,49 @@ export const SERIF: Style = {
    * default. So every face here had the geometric one, which is most of why a
    * Serif and a Geometric read as the same drawings with the pen changed.
    */
-  forms: { a: "double", J: "descending" },
+  /*
+   * And the two-storey g beside it, and a J that stands on the line.
+   *
+   * A text serif's g is binocular far more often than not, and set beside a
+   * two-storey a the single-storey one read as a letter borrowed from the sans.
+   * The J hung below the baseline was the old-style choice; a contemporary text
+   * face -- Lora, Source Serif, Merriweather -- sits it on the line with a hook,
+   * which is also what keeps it from colliding with the line below in caps.
+   * The G with an upright spur rather than a bar turned in, and the Q whose
+   * tail sweeps out under the line, are the same kind of decision.
+   */
+  forms: { a: "double", g: "double", G: "spurred", Q: "swept" },
+  /*
+   * A text face's proportions rather than the sans's.
+   *
+   * Measured against Lora at the same x-height: its n is 0.83 of an x-height
+   * from stem edge to stem edge where the sans's is 1.07, its o 0.94 inside
+   * where ours was 1.03, and its extenders reach 0.51 of an x-height below the
+   * line where the sans's stop at 0.40. The capitals were already close -- an
+   * H within two hundredths -- so the cap height and the counter of an H are
+   * left alone and only the lowercase rhythm and the bowls come in.
+   */
+  metrics: { ...SANS.metrics, ascender: 780, descender: -260 },
   parts: {
     ...SANS.parts,
-    slab: { on: true, projection: 0.46, thickness: 0.48, bracket: 0.23 },
-    shoulder: { spring: 0.58, reach: 1, crest: 1 },
-    terminal: { kind: "angled", angle: 12 },
+    /*
+     * A text serif rather than a slab: it thins toward its tip, it is
+     * bracketed well into the stem, and the top of a lowercase stem wears one
+     * flag sloping down to the left, which is where a pen enters the stroke.
+     */
+    slab: {
+      on: true,
+      projection: 0.62,
+      thickness: 0.4,
+      bracket: 0.4,
+      shape: "wedge",
+      head: "sloped",
+    },
+    bowl: { ...SANS.parts.bowl, width: 0.92 },
+    shoulder: { spring: 0.58, reach: 0.76, crest: 1 },
+    // The curved ends -- the hooks of the a, c, f, r, j and y -- swell into a
+    // teardrop rather than taking a bar across, which is what a text face does.
+    terminal: { kind: "teardrop", angle: 12 },
   },
 };
 
@@ -571,7 +651,7 @@ export const FAIRGROUND: Style = {
     ...SANS.parts,
     // Slabs, because a circus face has them and because a slab laid across a
     // thin vertical is what stops reverse contrast reading as a mistake.
-    slab: { on: true, projection: 0.5, thickness: 0.34, bracket: 0 },
+    slab: { ...SANS.parts.slab, on: true, projection: 0.5, thickness: 0.34, bracket: 0 },
     bowl: { width: 1.06, squareness: 0.18, aperture: 1 },
     terminal: { kind: "butt", angle: 0 },
   },
@@ -674,7 +754,7 @@ export const WAVY: Style = {
   forms: { seven: "barred", four: "open" },
   parts: {
     ...SANS.parts,
-    slab: { on: true, projection: 1.55, thickness: 0.52, bracket: 0 },
+    slab: { ...SANS.parts.slab, on: true, projection: 1.55, thickness: 0.52, bracket: 0 },
     bowl: { width: 1.05, squareness: 0, aperture: 1 },
     wave: { length: 152, depth: 34, along: "flat" },
   },
@@ -858,7 +938,7 @@ export const DIDONE: Style = {
      * the bowl -- bisected, and the projection is innocent. Two hundredths of a
      * bracket is a hairline by any reading, and a Q in two pieces is not a Q.
      */
-    slab: { on: true, projection: 0.58, thickness: 0.13, bracket: 0.02 },
+    slab: { ...SANS.parts.slab, on: true, projection: 0.58, thickness: 0.13, bracket: 0.02 },
     /*
      * No balls, and this is the thing this face was most supposed to get.
      *
@@ -905,7 +985,7 @@ export const SLAB: Style = {
   forms: { a: "double" },
   parts: {
     ...SANS.parts,
-    slab: { on: true, projection: 0.6, thickness: 0.74, bracket: 0.04 },
+    slab: { ...SANS.parts.slab, on: true, projection: 0.6, thickness: 0.74, bracket: 0.04 },
     bowl: { width: 1, squareness: 0.08, aperture: 0.78 },
     shoulder: { spring: 0.66, reach: 1, crest: 1 },
   },
@@ -938,7 +1018,10 @@ export const TYPEWRITER: Style = {
   // And a one with a foot on it: a monospaced face gives every letter the same
   // advance, so a bare one sits in a column of white with nothing to fill it.
   forms: { a: "double", one: "footed" },
-  parts: { ...SLAB.parts, slab: { on: true, projection: 0.72, thickness: 0.5, bracket: 0.06 } },
+  parts: {
+    ...SLAB.parts,
+    slab: { ...SANS.parts.slab, on: true, projection: 0.72, thickness: 0.5, bracket: 0.06 },
+  },
 };
 
 /**

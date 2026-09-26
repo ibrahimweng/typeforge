@@ -31,9 +31,23 @@ if (process.env.STYLE) {
 }
 // The forge keys figures and marks by glyph name, as fonts do.
 const GLYPH: Record<string, string> = {
-  "0": "zero", "1": "one", "2": "two", "3": "three", "4": "four", "5": "five", "6": "six", "7": "seven", "8": "eight", "9": "nine",
-  "&": "ampersand", "?": "question", "!": "exclam", ".": "period", ",": "comma",
+  "0": "zero",
+  "1": "one",
+  "2": "two",
+  "3": "three",
+  "4": "four",
+  "5": "five",
+  "6": "six",
+  "7": "seven",
+  "8": "eight",
+  "9": "nine",
+  "&": "ampersand",
+  "?": "question",
+  "!": "exclam",
+  ".": "period",
+  ",": "comma",
 };
+let maxX = 0;
 const emL = typeface.unitsPerEm;
 const emF = base.metrics.unitsPerEm;
 function row(s: string, y: number, which: "lora" | "forge"): string {
@@ -65,9 +79,10 @@ function row(s: string, y: number, which: "lora" | "forge"): string {
       x += r.advanceWidth * k;
     }
   }
+  maxX = Math.max(maxX, x);
   return out.join("");
 }
-const all = [text, ...lines];
+const all = [text, ...lines].filter((s) => s.length > 0);
 const h = 1250;
 let body = "";
 all.forEach((s, i) => {
@@ -78,7 +93,7 @@ all.forEach((s, i) => {
     `<text x="10" y="${(i * 2 + 1) * h + 300}" font-size="90" fill="#06c">Draw</text>` +
     row(s, (i * 2 + 1) * h + 1000, "forge");
 });
-const W = 16000,
+const W = maxX + 100,
   H = all.length * 2 * h;
 writeFileSync(
   process.env.OUT!,
