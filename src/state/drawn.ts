@@ -32,6 +32,13 @@ import type { DrawnProject } from "@/project/format";
 export interface Drawing {
   /** How many times it has changed, which is the store's revision. */
   readonly count: number;
+  /**
+   * The count the last redraw left behind, when all that happened was the
+   * same drawing drawn again (see `drawingRedrawn`). It is how the saver in
+   * App.tsx tells a redraw from an edit: both move the count, and only one of
+   * them is anything to write down.
+   */
+  readonly redrawn: number;
   readonly canUndo: boolean;
   readonly canRedo: boolean;
   /** What it is called, and which of the twenty styles it started from. */
@@ -41,6 +48,7 @@ export interface Drawing {
 
 const NOTHING_DRAWN: Drawing = {
   count: 0,
+  redrawn: -1,
   canUndo: false,
   canRedo: false,
   familyName: "Untitled",
@@ -69,8 +77,22 @@ export function drawingChanged(): number {
   return count;
 }
 
+/**
+ * Say the drawing is to be drawn again, with nothing in it changed.
+ *
+ * Still a new count, since the views memoise against it and have to draw
+ * again -- but remembered as a redraw, so that the arrival of the shaping
+ * library a few seconds into a visit is not taken for an edit and written
+ * down as the newest work in the browser.
+ */
+export function drawingRedrawn(): number {
+  const count = drawing.count + 1;
+  publish({ ...drawing, count, redrawn: count });
+  return count;
+}
+
 /** Say what the drawing is now, from the one place the store writes its state. */
-export function drawingIs(now: Omit<Drawing, "count">): void {
+export function drawingIs(now: Omit<Drawing, "count" | "redrawn">): void {
   if (
     now.canUndo === drawing.canUndo &&
     now.canRedo === drawing.canRedo &&
@@ -79,7 +101,7 @@ export function drawingIs(now: Omit<Drawing, "count">): void {
   ) {
     return;
   }
-  publish({ ...now, count: drawing.count });
+  publish({ ...now, count: drawing.count, redrawn: drawing.redrawn });
 }
 
 export function subscribeToDrawings(listener: () => void): () => void {

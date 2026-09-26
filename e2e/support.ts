@@ -435,10 +435,13 @@ export function keptHalves(page: Page): Promise<string[]> {
         request.onerror = () => resolve([]);
         request.onsuccess = () => {
           const database = request.result;
+          // This tab's own record: each tab writes its session under an id
+          // it keeps in \`sessionStorage\`, which a reload keeps too.
+          const tab = sessionStorage.getItem("typeforge:tab");
           const get = database
             .transaction("session", "readonly")
             .objectStore("session")
-            .get("current");
+            .get(tab ? `tab:${tab}` : "current");
           get.onerror = () => {
             database.close();
             resolve([]);
@@ -476,10 +479,13 @@ export function keptGlyphs(page: Page): Promise<string[]> {
         request.onerror = () => resolve([]);
         request.onsuccess = () => {
           const database = request.result;
+          // This tab's own record: each tab writes its session under an id
+          // it keeps in \`sessionStorage\`, which a reload keeps too.
+          const tab = sessionStorage.getItem("typeforge:tab");
           const get = database
             .transaction("session", "readonly")
             .objectStore("session")
-            .get("current");
+            .get(tab ? `tab:${tab}` : "current");
           get.onerror = () => {
             database.close();
             resolve([]);
@@ -522,10 +528,13 @@ export function keptFonts(page: Page): Promise<Array<{ name: string; glyphs: num
         request.onerror = () => resolve([]);
         request.onsuccess = () => {
           const database = request.result;
+          // This tab's own record: each tab writes its session under an id
+          // it keeps in \`sessionStorage\`, which a reload keeps too.
+          const tab = sessionStorage.getItem("typeforge:tab");
           const get = database
             .transaction("session", "readonly")
             .objectStore("session")
-            .get("current");
+            .get(tab ? `tab:${tab}` : "current");
           get.onerror = () => {
             database.close();
             resolve([]);
