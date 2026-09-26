@@ -44,7 +44,13 @@ import {
 import { buildGposTable, type ResolvedClassKern, type ResolvedPair } from "./kern";
 import { featuresMatchSource } from "./features";
 import { buildGsubTable, type ChainRule, type GlyphSet, type Ligature } from "./gsub";
-import { anythingCut, effectiveParams, paramsAreDefault, resolveGlyphContours } from "./transform";
+import {
+  anythingCut,
+  effectiveParams,
+  paramsAreDefault,
+  resolveAdvanceWidth,
+  resolveGlyphContours,
+} from "./transform";
 import { readyToShape } from "@/forge/layers";
 import { readSfnt, writeSfnt, SFNT_TRUETYPE, type SfntFont } from "./sfnt";
 import {
@@ -360,7 +366,7 @@ async function masterOf(
       const drawn = resolved[index].contours.some((contour) => contour.nodes.length > 0);
       return {
         points,
-        advanceWidth: resolved[index].glyph.advanceWidth,
+        advanceWidth: resolveAdvanceWidth(resolved[index].glyph, typeface),
         leftSideBearing: drawn ? Math.round(bounds.xMin) : 0,
         xMin: bounds.xMin,
       };
@@ -453,7 +459,7 @@ async function exportTrueType(
     const bounds = contoursBounds(entry.contours);
     const hasOutline = entry.contours.some((contour) => contour.nodes.length > 0);
     return {
-      advanceWidth: entry.glyph.advanceWidth,
+      advanceWidth: resolveAdvanceWidth(entry.glyph, typeface),
       leftSideBearing: hasOutline ? Math.round(bounds.xMin) : 0,
     };
   });
@@ -606,7 +612,7 @@ async function exportOpenType(
       name: entry.glyph.name,
       unicode: entry.glyph.unicodes[0],
       unicodes: entry.glyph.unicodes,
-      advanceWidth: Math.max(0, Math.round(entry.glyph.advanceWidth)),
+      advanceWidth: Math.max(0, Math.round(resolveAdvanceWidth(entry.glyph, typeface))),
       path,
     });
   });
@@ -1443,7 +1449,7 @@ function buildBaselineTables(
   });
   const codepoints = mappings.map((entry) => entry.codepoint);
 
-  const advances = typeface.glyphs.map((glyph) => glyph.advanceWidth);
+  const advances = typeface.glyphs.map((glyph) => resolveAdvanceWidth(glyph, typeface));
   const isItalic = /italic|oblique/i.test(typeface.meta.styleName);
   /*
    * The bold bit means "this is the bold of its family", not "this is heavy".
