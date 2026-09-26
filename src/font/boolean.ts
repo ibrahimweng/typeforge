@@ -373,6 +373,40 @@ export function unite(
 }
 
 /**
+ * The ground a set of outlines covers under the non-zero rule, as written.
+ *
+ * Not a union in the sense the one above is. That one is handed shapes and
+ * told what each of them is -- a solid, a counter -- and it re-states each
+ * contour's direction to match before fusing, which is right for shapes and
+ * wrong for a curve that means something by going round a place twice or
+ * backwards. This is handed outlines whose directions are the point: the
+ * cast layer's shadow draws the swept edge of a letter as one long loop that
+ * crosses itself, and what it covers is exactly where that loop winds round
+ * a point at all. Re-stating the direction of a loop like that has no
+ * meaning, so nothing here does it, and nothing here second-guesses the
+ * answer either: there is nothing to compare it against that would be any
+ * more right than it.
+ */
+export function filled(contours: Contour[]): Contour[] {
+  const paper = need();
+  const drawable = contours.filter((contour) => contour.nodes.length >= 2);
+  if (drawable.length === 0) return [];
+  clear(paper);
+  const paths = drawable.map(
+    (contour) =>
+      new paper.Path({
+        segments: contour.nodes.map((node) => toSegment(paper, node)),
+        closed: true,
+      }),
+  );
+  const compound = new paper.CompoundPath({ children: paths });
+  compound.fillRule = "nonzero";
+  const result = withoutStrayHoles(contoursOf(fuse(compound)));
+  clear(paper);
+  return result;
+}
+
+/**
  * Take the second shape out of the first.
  *
  * `from` is expected to be one fused shape already -- run `unite` on it first.

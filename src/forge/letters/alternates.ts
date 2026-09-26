@@ -28,6 +28,7 @@ import {
   thin,
   through,
   turn,
+  eyeOf,
 } from "./common";
 
 // ---------------------------------------------------------------------------
@@ -181,7 +182,7 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
       build: (style) => {
         const f = frame(style);
         const centre = at(f.edge + f.bowl, f.x / 2);
-        const eye = f.x * f.style.parts.crossbar.height;
+        const eye = eyeOf(f, centre);
         const rise = Math.max(-0.85, Math.min(0.85, (eye - centre.y) / f.bowlH));
         const opens = (Math.asin(rise) * 180) / Math.PI;
         const belt = bend(f, centre, f.bowlH, opens, opens + 300);

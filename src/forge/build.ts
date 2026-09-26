@@ -8,7 +8,7 @@
  * boolean geometry on every keystroke to gain nothing anyone can see.
  */
 
-import { contourArea, contoursBounds, reverseContour } from "@/font/geometry";
+import { contourArea, contourContainsPoint, contoursBounds, reverseContour } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import {
   FIGURES,
@@ -237,7 +237,7 @@ export function makeLetter(
   const built: Recipe | null = recipe ? recipe(style) : null;
   const strokes = laid ? laid.strokes : built!.strokes;
 
-  const inked = strokes.map((stroke) => inkOf(stroke, style));
+  const inked = inkAll(strokes, style);
   // Cells filled in outright are ink rather than a path for it, so they join
   // the drawing as their own run.
   if (laid && laid.blocks.length > 0) inked.push(laid.blocks);
@@ -610,13 +610,7 @@ function monoAdvance(style: Style): number {
   // -- and it has no recipe of its own to ask.
   for (const name of DRAWN) {
     const built = LETTERS[name](style);
-    const contours = insideTheEdge(
-      leaning(
-        built.strokes.flatMap((stroke) => inkOf(stroke, style)),
-        style,
-      ),
-      style,
-    );
+    const contours = insideTheEdge(leaning(inkAll(built.strokes, style).flat(), style), style);
     widest = Math.max(widest, measure(built, contours, style));
   }
   monoCache.set(style, widest);
@@ -642,13 +636,7 @@ function figureAdvance(style: Style): number {
     // Nudged inside its own left edge as well, which is what the letters
     // themselves get. Measured without it, the widest figure came out narrower
     // than the letter it was measuring, and the two ran past its own advance.
-    const contours = insideTheEdge(
-      leaning(
-        built.strokes.flatMap((stroke) => inkOf(stroke, style)),
-        style,
-      ),
-      style,
-    );
+    const contours = insideTheEdge(leaning(inkAll(built.strokes, style).flat(), style), style);
     widest = Math.max(widest, measure(built, contours, style));
   }
   figureCache.set(style, widest);
@@ -665,14 +653,33 @@ function figureAdvance(style: Style): number {
  * flares. A four with a ball on its diagonal reached twenty units past the
  * advance every figure had been given.
  */
-function inkOf(stroke: Stroke, style: Style): Contour[] {
+function inkOf(stroke: Stroke, style: Style, others: Contour[] = []): Contour[] {
   const swept = sweep(stroke);
   return [
     ...swept,
     ...ballsFor(stroke, style, swept),
     ...flaresFor(stroke, style),
-    ...serifsFor(stroke, style),
+    ...serifsFor(stroke, style, others),
   ];
+}
+
+/**
+ * The ink of every stroke of a letter, each told where the others are.
+ *
+ * A serif is the one thing hung on a stroke that has to know about its
+ * neighbours: its wings reach sideways along a line, and the next stroke over
+ * may be standing on that same line. So every stroke is swept first, and
+ * each is inked knowing the swept outlines of all the rest.
+ */
+function inkAll(strokes: Stroke[], style: Style): Contour[][] {
+  const swept = strokes.map((stroke) => sweep(stroke));
+  return strokes.map((stroke, index) =>
+    inkOf(
+      stroke,
+      style,
+      swept.flatMap((one, other) => (other === index ? [] : one)),
+    ),
+  );
 }
 
 /**
@@ -1031,7 +1038,7 @@ function flare(
  * stem -- as an edge of the wing rather than as a hole that has to be
  * subtracted.
  */
-function serifsFor(stroke: Stroke, style: Style): Contour[] {
+function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contour[] {
   const out: Contour[] = [];
   const reference = penReach(style.pen).across;
   const ends = endsOf(stroke);
@@ -1129,9 +1136,60 @@ function serifsFor(stroke: Stroke, style: Style): Contour[] {
        * The `one` and the `\u0490` are this refusal on five faces apiece, and so is
        * the Slab's `\u00e6`, the Didone's `\u0431` and the Serif's whole G family.
        */
-      const refused = !winged || crossesALine(at, facing, side, full, inner, style);
+      const room = winged
+        ? roomBeside(at, facing, side, inner, full, thickness, reference, others)
+        : full;
+      /*
+       * And never into another stroke, or so near one that only a hair of
+       * paper is left between them.
+       *
+       * The foot of a k's leg and the foot of its stem stand on the same line
+       * a little way apart, and so do the R's; with long serifs their inner
+       * wings ran to within a few units of each other and the white between
+       * them came out as a stray hairline under the letter. The foot of a b
+       * reached under the bowl, which comes down to the line right beside the
+       * stem, and stuck out of the curve as a notch. So a wing is shortened to
+       * leave half a stem of paper between it and whatever else is standing on
+       * its line -- sharing what there is with a wing coming the other way --
+       * and if that leaves less than a third of the serif, it is not drawn at
+       * all: a stub that short reads as a mistake rather than as a serif.
+       */
+      const crowded = room < inner + projection / 3;
+      /*
+       * And never on an end that is not an end.
+       *
+       * A stroke that starts inside another -- the bowl of an R setting off
+       * from the top of its stem -- has a terminal like any other run, and
+       * was given a serif like any other: a wing laid across the top of the
+       * stem from inside it, which stood out past the stem's own serif as a
+       * notch. What is buried in another stroke is a join, and a join does
+       * not take a serif.
+       */
+      const buried = others.some((contour) => contourContainsPoint(contour, at));
+      /*
+       * Nor on the inside of a shallow diagonal.
+       *
+       * A serif laid level across the end of a leaning stroke has two wings,
+       * and one of them points the way the stroke leans -- under the leg of a
+       * k, above its arm. Where the stroke meets the line steeply, as the legs
+       * of an A do, the stroke covers that wing's root and the two read as
+       * one. Where it meets it at less than forty-five degrees, as the arm and
+       * leg of a k and the leg of an R do, the stroke lies down over the wing
+       * and leaves a long wedge of paper between them: the wing reads as a
+       * loose horizontal bar across the letter, which is what a long serif made
+       * of the k's arm at its x-height. Only the outer wing is drawn there.
+       */
+      const into = { x: -outward.x, y: -outward.y };
+      const across = { x: -facing.y * side, y: facing.x * side };
+      const underneath = level && across.x * into.x + across.y * into.y > Math.SQRT1_2;
+      const refused =
+        !winged ||
+        crowded ||
+        buried ||
+        underneath ||
+        crossesALine(at, facing, side, full, inner, style);
       const from = refused ? 0 : inner;
-      const tip = refused ? inner : full;
+      const tip = refused ? inner : Math.min(full, room);
       const deep = refused ? BURIED : thickness;
       /*
        * Never fillet more than the wing is deep or wide, or the curve would
@@ -1167,6 +1225,45 @@ function serifsFor(stroke: Stroke, style: Style): Contour[] {
     }
   }
   return out;
+}
+
+/**
+ * How far out a serif wing can reach before it comes too near another stroke.
+ *
+ * Walked along the middle of the band the wing would occupy, from the edge of
+ * its own stroke out past where it would end, until it meets the ink of any
+ * other stroke. The wing may then take half of the paper between, less half a
+ * stem: half, because the stroke it has met may be wearing a wing of its own
+ * coming the other way, and the half-stem is the least white that reads as a
+ * gap rather than as a hairline. Nothing met, and it reaches as far as it
+ * asked.
+ */
+function roomBeside(
+  at: Vec2,
+  outward: Vec2,
+  side: number,
+  inner: number,
+  full: number,
+  thickness: number,
+  stem: number,
+  others: Contour[],
+): number {
+  if (others.length === 0) return full;
+  const across = { x: -outward.y * side, y: outward.x * side };
+  const into = { x: -outward.x, y: -outward.y };
+  const clear = stem;
+  const far = full * 2 + clear;
+  const step = 2;
+  for (let u = inner; u <= far; u += step) {
+    const point = {
+      x: at.x + across.x * u + into.x * (thickness / 2),
+      y: at.y + across.y * u + into.y * (thickness / 2),
+    };
+    if (others.some((contour) => contourContainsPoint(contour, point))) {
+      return inner + Math.max(0, u - inner - clear) / 2;
+    }
+  }
+  return full;
 }
 
 /** Whether this wing would reach past a line the stroke end is sitting on. */

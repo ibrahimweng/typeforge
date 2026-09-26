@@ -37,6 +37,9 @@ import {
   thin,
   tStem,
   turn,
+  eyeOf,
+  wallAt,
+  middleBar,
 } from "./common";
 
 export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
@@ -62,7 +65,7 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
       ink(f, straight(at(f.edge, 0), at(apex, f.cap)), f.end, BUTT),
       ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
       arm(f, stem, stem + reach, f.hangs(f.cap, f.bar)),
-      arm(f, stem, stem + reach * 0.86, f.cap * f.style.parts.crossbar.height),
+      arm(f, stem, stem + reach * 0.86, middleBar(f, f.cap)),
       arm(f, stem, stem + reach, f.sits(0, f.bar)),
       // The crossbar of the A half, which meets the diagonal partway down.
       thin(f, straight(at(f.edge + f.capBowl * 0.22, low), at(stem, low)), BUTT, BUTT),
@@ -79,7 +82,7 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
     // The e half, drawn the way the e itself is: the eye at whatever height the
     // crossbar says, and the bowl opened from where the circle reaches it.
-    const eye = f.x * f.style.parts.crossbar.height;
+    const eye = eyeOf(f, second);
     const rise = Math.max(-0.85, Math.min(0.85, (eye - second.y) / f.bowlH));
     const opens = (Math.asin(rise) * 180) / Math.PI;
     const belt = bend(f, second, f.bowlH, opens, opens + 300);
@@ -90,7 +93,8 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         // Open at the top, where the a half runs into the e half. Closed, the
         // two read as an o and an e rather than as one letter.
         openBowl(f, first, bowl, f.bowlH, -80, 150),
-        thin(f, straight(at(second.x - bowl + f.half, eye), spineStart(belt))),
+        // From the middle of the wall, not its inside edge: see `wallAt`.
+        thin(f, straight(at(wallAt(f, second, opens), eye), spineStart(belt))),
         ink(f, belt, BUTT, f.end),
       ],
       true,
@@ -265,7 +269,7 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
         belly(f, at(stem, f.cap / 2), wide, radius, 90, 270),
         arm(f, stem, stem + reach, f.hangs(f.cap, f.bar)),
-        arm(f, stem, stem + reach * 0.86, f.cap * f.style.parts.crossbar.height),
+        arm(f, stem, stem + reach * 0.86, middleBar(f, f.cap)),
         arm(f, stem, stem + reach, f.sits(0, f.bar)),
       ],
       true,
@@ -285,7 +289,7 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const first = at(f.edge + bowl, f.x / 2);
     const second = at(first.x + bowl * 2, f.x / 2);
 
-    const eye = f.x * f.style.parts.crossbar.height;
+    const eye = eyeOf(f, second);
     const rise = Math.max(-0.85, Math.min(0.85, (eye - second.y) / f.bowlH));
     const opens = (Math.asin(rise) * 180) / Math.PI;
     const belt = bend(f, second, f.bowlH, opens, opens + 300);
@@ -294,7 +298,8 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
       f,
       [
         ink(f, ring(f, first, bowl, f.bowlH)),
-        thin(f, straight(at(second.x - bowl + f.half, eye), spineStart(belt))),
+        // From the middle of the wall, not its inside edge: see `wallAt`.
+        thin(f, straight(at(wallAt(f, second, opens), eye), spineStart(belt))),
         ink(f, belt, BUTT, f.end),
       ],
       true,

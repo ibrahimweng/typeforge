@@ -19,8 +19,9 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { readyToShape } from "./layers";
-import { contourArea, contoursBounds } from "@/font/geometry";
-import type { Contour } from "@/font/types";
+import { unite } from "@/font/boolean";
+import { contourArea, contourContainsPoint, contoursBounds, reverseContour } from "@/font/geometry";
+import type { Contour, Vec2 } from "@/font/types";
 import { drawLetter, letterNames } from "./build";
 import { LETTERS } from "./letters";
 import { castInk, noCast, type Cast } from "./cast";
@@ -135,10 +136,10 @@ describe("the shadow", () => {
     const swept = 100 * 400 + reach * across;
     /*
      * To a hundred-thousandth, because the answer is not an approximation of
-     * the swept ground -- it is the swept ground. The shape, the shape moved,
-     * and a band along every edge between them is what a sweep along a line
-     * is, and the only thing left between that and the arithmetic is the
-     * ten-thousandth of a unit a union grows its operands by.
+     * the swept ground -- it is the swept ground. The loop the outline makes as
+     * it is dragged along the throw is exactly the edge of what a sweep along
+     * a line covers, and the only thing left between that and the arithmetic
+     * is the rounding a boolean does.
      *
      * It was a hundredth of the area, because the shadow used to be stamped
      * copies at a spacing of a unit and a half and that leaves a staircase on
@@ -183,6 +184,82 @@ describe("the shadow", () => {
         last = now;
       }
     }
+  }, 60_000);
+
+  it("throws the same shadow whichever way the outline was written", () => {
+    /*
+     * The same letter, written four ways: as drawn, every contour reversed,
+     * every contour started from a different point, and both. A font file can
+     * hand over any of them -- TrueType winds its outer contours clockwise and
+     * PostScript the other way, and where an outline starts is anybody's
+     * guess -- and the ground a shadow covers is a fact about the shape, not
+     * about how it was written down.
+     *
+     * The sweep that was here before got that wrong. Lora's `o`, `a`, `b`, `8`
+     * and `B` came back with their counters filled solid under a shadow that
+     * left Geist's open, and nothing differed between the two but the order of
+     * the points. So each version is checked against the definition itself --
+     * a point is shadow when some point behind it along the throw is ink -- on
+     * a grid through the answer, rather than against one another, which would
+     * pass if all four were wrong the same way.
+     */
+    const rotated = (contour: Contour, by: number): Contour => {
+      const at = by % contour.nodes.length;
+      return { ...contour, nodes: [...contour.nodes.slice(at), ...contour.nodes.slice(0, at)] };
+    };
+    const writings: Array<[string, (contour: Contour, index: number) => Contour]> = [
+      ["as drawn", (contour) => contour],
+      ["reversed", (contour) => reverseContour(contour)],
+      ["restarted", (contour, index) => rotated(contour, 3 + index * 5)],
+      ["both", (contour, index) => rotated(reverseContour(contour), 2 + index * 7)],
+    ];
+    const inInk = (contours: Contour[], point: Vec2): boolean =>
+      contours.reduce(
+        (winding, one) =>
+          winding + (contourContainsPoint(one, point) ? (contourArea(one) >= 0 ? 1 : -1) : 0),
+        0,
+      ) > 0;
+
+    const stem = SANS.pen.weight;
+    const wrong: string[] = [];
+    for (const letter of ["o", "b", "a", "eight", "B"]) {
+      const fused = unite(plain(letter), "nesting", "whole");
+      for (const angle of [-45, 150]) {
+        const throw_ = {
+          x: Math.cos((angle * Math.PI) / 180) * 1.2 * stem,
+          y: Math.sin((angle * Math.PI) / 180) * 1.2 * stem,
+        };
+        for (const [how, write] of writings) {
+          const thrown = castInk(
+            fused.map(write),
+            [],
+            scaleOf(SANS),
+            cast((one) => {
+              one.extrude = { on: true, distance: 1.2, angle };
+            }),
+            "nesting",
+          );
+          const box = contoursBounds(thrown);
+          let missed = 0;
+          let asked = 0;
+          for (let x = box.xMin + 5.3; x < box.xMax; x += 17) {
+            for (let y = box.yMin + 4.1; y < box.yMax; y += 17) {
+              let truth = false;
+              for (let step = 0; step <= 24 && !truth; step++) {
+                const back = step / 24;
+                truth = inInk(fused, { x: x - throw_.x * back, y: y - throw_.y * back });
+              }
+              asked++;
+              if (truth !== inInk(thrown, { x, y })) missed++;
+            }
+          }
+          // Edge samples can land either side of a rounding; a filled counter
+          // is a tenth of the box and more.
+          if (missed / asked > 0.02) wrong.push(`${letter} ${how} at ${angle}: ${missed}/${asked}`);
+        }
+      }
+    }
+    expect(wrong).toEqual([]);
   }, 60_000);
 
   it("leaves the counter of an O open", () => {
@@ -343,6 +420,110 @@ describe("the rim", () => {
   }, 60_000);
 });
 
+describe("the points", () => {
+  it("grow off the corners of the ink and never into a counter", () => {
+    /*
+     * A point is built out of a corner with the ink on the inside of the turn,
+     * and the corners of a counter have the ink on the outside -- so a letter
+     * with points on keeps every counter exactly the size it had.
+     *
+     * It did not. The test for which side the ink was on was flipped for a
+     * counter on top of the counter already running the other way, so every
+     * square corner of every counter grew a spike aimed into the stem and the
+     * bar around it, and the triangle it laid across the corner filled a bite
+     * of the counter in. On a B those spikes met each other, and the union came
+     * back with its outline folded over itself.
+     */
+    // Counter by counter, since a point laid beside a serif can close a pocket
+    // of paper off into a counter of its own, and that is not this question.
+    const counters = (contours: Contour[]): number[] =>
+      contours
+        .filter((one) => contourArea(one) < 0)
+        .map((one) => -contourArea(one))
+        .sort((a, b) => b - a);
+    const kept = (bare: number[], now: number[]): boolean =>
+      bare.every((area) => now.some((other) => Math.abs(other - area) / area < 0.001));
+    for (const style of [SANS, BASES.find((base) => base.name === "Serif")!]) {
+      for (const letter of ["A", "B", "D", "P", "b"]) {
+        const bare = counters(unite(plain(letter, style), "winding", "whole"));
+        const pointed = counters(
+          put(
+            letter,
+            cast((one) => {
+              one.spur = { on: true, size: 0.6 };
+            }),
+            style,
+          ),
+        );
+        expect(bare.length, `${style.name} ${letter}`).toBeGreaterThan(0);
+        expect(kept(bare, pointed), `${style.name} ${letter}: ${bare} against ${pointed}`).toBe(
+          true,
+        );
+      }
+    }
+  });
+});
+
+describe("the fillets", () => {
+  it("fill the corners inside a letter and never stand out of it", () => {
+    /*
+     * A fillet lies between two strokes, in the corner they make, so a letter
+     * wearing them covers no more ground in any direction than it did bare.
+     *
+     * The weld used to be a disc laid on the point where two spines meet, and
+     * an H's crossbar meets its stems at their centre-lines -- so a disc a stem
+     * across stood half a stem out of the outside of both stems, and an E wore
+     * a ball on its back at every arm. Asked at the setting that showed it and
+     * at the default, and on the letters where a join sits on the outside edge.
+     */
+    const stem = SANS.pen.weight;
+    const grown: string[] = [];
+    for (const size of [0.5, 1]) {
+      for (const letter of ["H", "E", "F", "T", "L", "n", "h", "k", "e", "R"]) {
+        const drawn = drawLetter(letter, SANS)!;
+        const welded = castInk(
+          drawn.contours,
+          LETTERS[letter](SANS).strokes,
+          scaleOf(SANS),
+          cast((one) => {
+            one.weld = { on: true, size };
+          }),
+          "winding",
+        );
+        const was = contoursBounds(drawn.contours);
+        const now = contoursBounds(welded);
+        const out = Math.max(
+          was.xMin - now.xMin,
+          now.xMax - was.xMax,
+          was.yMin - now.yMin,
+          now.yMax - was.yMax,
+        );
+        if (out > 0.5) grown.push(`${letter} at ${size}: ${out.toFixed(1)} out`);
+      }
+    }
+    expect(grown).toEqual([]);
+
+    // And they do fill something: the two inside corners of an H are there
+    // to be filled on each side of the bar -- four of them -- and a fillet of
+    // a stem's radius fills the square of a stem less its quarter circle.
+    // Fused first: a letter as drawn is strokes overlapping, and their areas
+    // added up count the overlaps twice.
+    const bare = ink(unite(plain("H"), "winding", "whole"));
+    const filled = ink(
+      castInk(
+        plain("H"),
+        LETTERS.H(SANS).strokes,
+        scaleOf(SANS),
+        cast((one) => {
+          one.weld = { on: true, size: 1 };
+        }),
+        "winding",
+      ),
+    );
+    expect(filled - bare).toBeGreaterThan(stem * stem * 4 * (1 - Math.PI / 4) * 0.8);
+  });
+});
+
 describe("nothing added breaks a letter", () => {
   it("leaves every letter of every face in one piece", () => {
     /*
@@ -382,11 +563,17 @@ describe("which layer goes first", () => {
      * Which is bigger is not the point and is not asserted -- only that the
      * two orders disagree, because an order control that made no difference
      * would be a control that does nothing.
+     *
+     * Thrown across the slots rather than along them. A level slot through a
+     * level throw is the one case where the order genuinely does not matter --
+     * a strip running the width of the letter is the same strip wherever the
+     * letter is slid along it -- and this used to throw level and pass only
+     * because the old sweep was a few hundred units out, differently each way.
      */
     const cuts: Cuts = noCuts();
     cuts.slot = { on: true, count: 3, width: 0.34, angle: 0, inset: 0.1 };
     const shadow = cast((one) => {
-      one.extrude = { on: true, distance: 1.5, angle: 0 };
+      one.extrude = { on: true, distance: 1.5, angle: -45 };
     });
 
     const drawn = drawLetter("H", SANS)!;

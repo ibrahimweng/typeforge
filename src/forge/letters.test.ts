@@ -15,9 +15,11 @@
 import { describe, expect, it } from "vitest";
 
 import { contourArea, contoursBounds, inkRunsAt } from "@/font/geometry";
+import { unite } from "@/font/boolean";
 import { contoursIntersect } from "@/font/outline";
 import { builtFrom, drawLetter, letterNames, reachesOut } from "./build";
 import { startFrom, weighted } from "./document";
+import { readyToShape } from "./layers";
 import { openWaveBook, spineEnd, spineStart, waveBookAt, type WaveBook } from "./shapes";
 import { everyFormOf, recipeOf } from "./letters";
 import { mostLift, seamsOf } from "./script";
@@ -914,4 +916,91 @@ describe("an f is not a t, and a k is not a fan", () => {
     }
     expect(apart).toEqual([]);
   }, 60_000);
+});
+
+describe("a shoulder pushed past its range is still a shoulder", () => {
+  const pushed = (style: Style, spring: number, reach: number): Style => ({
+    ...style,
+    parts: { ...style.parts, shoulder: { ...style.parts.shoulder, spring, reach } },
+  });
+
+  it("keeps the corners of the arch round however high it springs", () => {
+    /*
+     * Measured just under the top of the arch, where a round shoulder has
+     * only its flat and a box has the whole width of the letter. A springing
+     * of 0.9 with a reach of 1.4 left a turn of barely half a pen at each end
+     * of the flat, and the n, m and h came out as boxes -- the run along the
+     * top was four fifths of the letter. Held to a turn of half the arch's
+     * reach, it is well under two thirds on every base.
+     */
+    const boxes: string[] = [];
+    for (const [name, style] of BASES) {
+      for (const letter of ["n", "m", "h"]) {
+        const drawn = drawLetter(letter, pushed(style, 0.95, 1.4));
+        if (!drawn) continue;
+        const box = contoursBounds(drawn.contours);
+        const runs = inkRunsAt(drawn.contours, box.yMax - 2, "y", 48);
+        const longest = Math.max(0, ...runs.map(([from, to]) => to - from));
+        const share = longest / (box.xMax - box.xMin);
+        if (share > 0.65) boxes.push(`${name} ${letter}: ${share.toFixed(2)}`);
+      }
+    }
+    expect(boxes).toEqual([]);
+  });
+
+  it("draws a reach and a springing beyond the controls as the ends of them", () => {
+    // Beyond the panel's own range nothing further happens, so the letters
+    // stay spaced for arches the face was built to hold.
+    for (const [name, style] of BASES) {
+      const past = drawLetter("m", pushed(style, 0.95, 1.6));
+      const end = drawLetter("m", pushed(style, 0.85, 1.3));
+      if (!past || !end) continue;
+      expect(past.advanceWidth, name).toBeCloseTo(end.advanceWidth, 6);
+      expect(contoursBounds(past.contours), name).toEqual(contoursBounds(end.contours));
+    }
+  });
+});
+
+describe("a crossbar pushed low and heavy stays a bar", () => {
+  it("keeps the middle of an E and the eye of an e clear of what is below", async () => {
+    await readyToShape();
+    /*
+     * Straight down through the letter, three bars of ink with paper between
+     * each: the arms of the E, and the top of the e's bowl, its eye and its
+     * bottom. At a height of 0.3 and a thickness of 1.6 the middle arm of an E
+     * landed on the bottom one and the eye of an e sank into the bottom of its
+     * bowl, and the line down the letter met two runs of ink, not three.
+     */
+    const pushed = (style: Style): Style => ({
+      ...style,
+      parts: { ...style.parts, crossbar: { height: 0.3, weight: 1.6 } },
+    });
+    /*
+     * The faces whose E and e are a stem and plain bars. The script faces
+     * draw both as a written stroke with no middle arm to speak of, and the
+     * slab-serifed ones hang serifs off the arm ends that can still meet
+     * when the arms are this crowded -- see the note on `clearBetween`.
+     */
+    const plainly = ["sans", "grotesque", "serif", "display", "geometric", "technical", "didone"];
+    const fused: string[] = [];
+    for (const [name, style] of BASES.filter(([one]) => plainly.includes(one))) {
+      for (const letter of ["E", "e"]) {
+        const drawn = drawLetter(letter, pushed(style));
+        if (!drawn) continue;
+        // Fused, so strokes that overlap read as the one run of ink they are.
+        const ink = unite(drawn.contours, "winding", "whole");
+        const box = contoursBounds(ink);
+        // Left of the middle for the e, clear of the gap its bowl ends in;
+        // for the E, halfway out along the middle arm, the shortest of three.
+        const x = box.xMin + (box.xMax - box.xMin) * (letter === "e" ? 0.38 : 0.55);
+        const runs = inkRunsAt(ink, x, "x", 48);
+        const gaps = runs.slice(1).map(([from], index) => from - runs[index][1]);
+        const least = Math.min(...gaps);
+        if (runs.length < 3 || least < style.pen.weight * 0.2) {
+          fused.push(`${name} ${letter}: ${runs.length} runs, ${least.toFixed(0)} apart`);
+        }
+      }
+    }
+    expect(fused).toEqual([]);
+  });
 });

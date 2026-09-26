@@ -17,7 +17,16 @@
 import type { Vec2 } from "@/font/types";
 import { wrapAngle } from "../angles";
 import { LETTERS, recipeOf } from "../letters";
-import { bowl, bowlBetween, endPieces, reversed, roundCorners, shortened, wavy } from "../shapes";
+import {
+  bowl,
+  bowlBetween,
+  endPieces,
+  reversed,
+  roundCorners,
+  shortened,
+  spineStart,
+  wavy,
+} from "../shapes";
 import { type Style, terminalFor } from "../style";
 import { MITER_LIMIT, penReach, reachAlong } from "../sweep";
 import type { JoinKind, Spine, SpineArc, SpineSegment, Stroke, Terminal } from "../types";
@@ -576,7 +585,7 @@ export function frame(style: Style): Frame {
     desc: metrics.descender,
     over: metrics.overshoot,
     arch: Math.max(
-      ((metrics.counterWidth + pen.weight) / 2) * style.parts.shoulder.reach * metrics.width,
+      ((metrics.counterWidth + pen.weight) / 2) * heldReach(style) * metrics.width,
       least,
     ),
     bowl: Math.max(bowlH * wide, least),
@@ -610,7 +619,7 @@ export function frame(style: Style): Frame {
     hangs: (line, share = 1) => line - upright * share,
     crest: (line) => line + metrics.overshoot - upright,
     dip: (line) => line - metrics.overshoot + upright,
-    bar: style.parts.crossbar.weight,
+    bar: barWeight(style),
     upright,
     end: endFor(style),
     plain: { kind: style.parts.terminal.kind, angle: style.parts.terminal.angle },
@@ -687,6 +696,20 @@ export function hasCorner(spine: Spine): boolean {
 }
 
 /**
+ * How heavy a bar is against the stems, held to what the Crossbar panel
+ * offers: 0.5 to 1.3.
+ *
+ * Every base is inside that, and past the top of it the bars stop being bars.
+ * At 1.6 the three arms of an E and the gaps between them are nearly the same
+ * size, so wherever the middle one goes it reads as a block; and the eye of an
+ * e takes up most of the bowl. A value from outside the range can still
+ * arrive -- a saved document, a script -- and is drawn as the end of it.
+ */
+export function barWeight(style: Style): number {
+  return Math.min(1.3, Math.max(0.5, style.parts.crossbar.weight));
+}
+
+/**
  * A bar can be lighter than the stems it crosses, which is how a crossbar
  * avoids looking heavier than the letter around it.
  */
@@ -697,8 +720,8 @@ export function thin(
   end: Terminal = BUTT,
 ): Stroke {
   uses("crossbar");
-  const { pen, parts } = frame.style;
-  const weight = pen.weight * parts.crossbar.weight;
+  const { pen } = frame.style;
+  const weight = pen.weight * barWeight(frame.style);
   if (start === frame.end || end === frame.end) uses("terminal");
   // Waved against its own width rather than the font's stem, or a bar lighter
   // than the stems would be allowed a deeper wave than it can turn through.
@@ -1374,6 +1397,47 @@ export function crested(frame: Frame, height: number): number {
   return height === frame.x ? height * frame.style.parts.shoulder.crest : height;
 }
 
+/**
+ * How far the arch carries over, held to what the Shoulder panel offers.
+ *
+ * The panel stops at 0.6 and 1.3 (`parts.ts` has the argument for both ends),
+ * and every base sits inside that; a value from outside it can still arrive,
+ * from a saved document or a script, and nothing about the letters is built
+ * for it. The rhythm of an `m` is two arches of this reach side by side, so
+ * past the top of the range the arches were wider than anything else in the
+ * face was spaced for.
+ */
+export function heldReach(style: Style): number {
+  return Math.min(1.3, Math.max(0.6, style.parts.shoulder.reach));
+}
+
+/**
+ * The radius the arch turns through at each end of its flat top.
+ *
+ * The springing sets it: the higher the arch leaves the stem, the less
+ * height there is left to turn in, and the squarer the shoulder. That is the
+ * control working -- but only down to a point. Taken all the way, a springing
+ * of 0.9 left a turn of barely half a pen at each corner of an arch four pens
+ * across, and an n, an m and an h came out as boxes: a lid on two posts, with
+ * the two arches of the m running together into one bar across the top.
+ * Nothing drawn like that reads as an arch.
+ *
+ * So the turn is never tighter than half the arch's own reach. The squarest
+ * shoulder any base draws is the Psychedelic's, at 0.64 of its reach, so none
+ * of them is touched; the top of the Springing slider is, and it now squares
+ * the shoulder as far as a shoulder goes and stops there. And never tighter
+ * than half the pen, below which the inside of the turn would pass through
+ * itself.
+ *
+ * The springing itself is held to the panel's range too, 0.3 to 0.85, for
+ * the same reason the reach is.
+ */
+export function shoulderRadius(frame: Frame, height: number): number {
+  const spring = Math.min(0.85, Math.max(0.3, frame.style.parts.shoulder.spring));
+  const reach = frame.arch;
+  return Math.max(frame.half, reach * 0.5, Math.min(reach, height * (1 - spring)));
+}
+
 export function arch(frame: Frame, fromX: number, height: number): Stroke {
   return ink(frame, archSpine(frame, fromX, height), BUTT, frame.end);
 }
@@ -1405,10 +1469,7 @@ export function archSpine(frame: Frame, fromX: number, height: number, bottom = 
   const reach = frame.arch;
   // Never tighter than half the pen: below that the inside of the turn would
   // pass through itself, which a high springing on a heavy face asks for.
-  const radius = Math.max(
-    frame.half,
-    Math.min(reach, height * (1 - frame.style.parts.shoulder.spring)),
-  );
+  const radius = shoulderRadius(frame, height);
   const landing = fromX + reach * 2;
   /*
    * The crest is where the spine goes, not where the letter reaches: the flat
@@ -1437,10 +1498,7 @@ export function trough(frame: Frame, fromX: number, height: number): Stroke {
   uses("shoulder");
   height = crested(frame, height);
   const reach = frame.arch;
-  const radius = Math.max(
-    frame.half,
-    Math.min(reach, height * (1 - frame.style.parts.shoulder.spring)),
-  );
+  const radius = shoulderRadius(frame, height);
   const rising = fromX + reach * 2;
   // Half a pen up off the baseline and the overshoot back down, so the round
   // bottom of a u finishes level with the round bottom of an o.
@@ -2148,6 +2206,85 @@ export function cyrTe(f: Frame, top: number): Stroke[] {
     ink(f, straight(at(middle, 0), at(middle, top)), f.end, BUTT),
     thin(f, straight(at(middle - half, bar), at(middle + half, bar)), f.end, f.end),
   ];
+}
+
+/**
+ * Where a bar can go between the ink below it and the ink above it.
+ *
+ * The crossbar's height is a share of the letter, and a share knows nothing
+ * about how thick anything is. Low and heavy -- a height of 0.3 and a
+ * thickness of 1.6 -- put the middle arm of an E on top of the bottom one: the
+ * two ran together into a slab at the foot of the letter with the counter
+ * gone, and the eye of an e sank into the bottom of its bowl and filled it.
+ *
+ * So the bar is held clear of both by a third of the white there is to
+ * share between them. A third because it is a proportion rather than a
+ * size: the counters of a heavy face are small and a light face's are large,
+ * and a fixed gap would either stop the light face's bar moving at all or let
+ * the heavy face's touch. It lets the bar sit twice as near one side as the
+ * other, which is more lopsided than any base draws -- every one of them
+ * leaves between 0.41 and 0.48 of the white on the nearer side, in the E and
+ * in the e -- so the bases stand exactly where they did and only the ends of
+ * the control are held. Where there is no white left to share at all, the bar
+ * goes in the middle.
+ *
+ * `below` and `above` are the edges of the ink either side, and `half` is half
+ * the bar's own thickness.
+ */
+export function clearBetween(want: number, below: number, above: number, half: number): number {
+  const white = above - below - half * 2;
+  if (white <= 0) return (below + above) / 2;
+  const gap = white / 3;
+  return Math.min(above - gap - half, Math.max(below + gap + half, want));
+}
+
+/**
+ * The height of the middle of three stacked bars, in a letter `top` tall:
+ * the middle arm of an E, an F, a Xi.
+ *
+ * The arms above and below are this face's bars at the top and on the line,
+ * as `arm` and the letters draw them.
+ */
+export function middleBar(f: Frame, top: number): number {
+  const half = f.upright * f.bar;
+  return clearBetween(top * f.style.parts.crossbar.height, half * 2, top - half * 2, half);
+}
+
+/**
+ * The height of the eye of an e, in a bowl round `centre`.
+ *
+ * Held clear of the inside of the bowl above and below by the same rule as
+ * the middle arm of an E, for the same reason: a low, heavy bar filled the
+ * bottom of the bowl in and the e came out as a disc with a notch in it.
+ */
+export function eyeOf(f: Frame, centre: Vec2): number {
+  return clearBetween(
+    f.x * f.style.parts.crossbar.height,
+    centre.y - f.bowlH + f.upright,
+    centre.y + f.bowlH - f.upright,
+    f.upright * f.bar,
+  );
+}
+
+/**
+ * Where the centre-line of an e's left wall is, at the height of its eye.
+ *
+ * The eye opens at `opens` degrees on the right; the same height on the left
+ * is the mirror of it, and the bowl drawn from there for a degree starts at
+ * that point on whatever shape the bowl has -- round, squared or squat.
+ *
+ * Where the bar starts, and it starts here rather than on the inside edge of
+ * the wall, which is where it used to: half a pen in from the wall's
+ * centre-line at its widest. At the ordinary eye that is exactly where the
+ * inner edge of the wall is, and exactly where the wall runs upright -- so the
+ * bar's square end lay along a curve at the one point it was tangent to it,
+ * and whichever way the rounding went the union came back with a hair of the
+ * counter folded back over the bar. A Serif `e` crossed itself there under
+ * every cut. From the wall's own centre-line the end is buried half a pen
+ * deep, with nothing near it to agree with.
+ */
+export function wallAt(f: Frame, centre: Vec2, opens: number): number {
+  return spineStart(bend(f, centre, f.bowlH, 180 - opens, 181 - opens)).x;
 }
 
 export function crossbar(f: Frame, from: number, to: number): Stroke {

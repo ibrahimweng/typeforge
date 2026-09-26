@@ -33,6 +33,7 @@ import {
   thin,
   trough,
   turn,
+  middleBar,
 } from "./common";
 
 export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
@@ -112,7 +113,7 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const left = f.edge;
     const reach = f.capBowl * 1.6;
     const inset = reach * 0.13;
-    const middle = f.cap * f.style.parts.crossbar.height;
+    const middle = middleBar(f, f.cap);
     return finish(f, [
       thin(
         f,

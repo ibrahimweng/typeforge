@@ -97,7 +97,12 @@ suite("controls used together", { timeout: FONT_SUITE_TIMEOUT }, () => {
    * A bar whose ends meet curves moves too, by stretching the short curves that
    * join it to the bowl. An exact slide is often unavailable: e's bar ends at
    * (305,516) on a curve running down to (420,227), so there is no point on it
-   * at any greater height. Only the bar's own points move either way.
+   * at any greater height. Only the bar's own points move either way -- with
+   * one exception on e. Its bar ends on the right on a straight stub 90 units
+   * tall under the curve of the bowl, and a raise of 100 cannot slide along
+   * that stub without passing its far end and folding the outline back on
+   * itself. The stub is carried up with the bar instead, so one more point
+   * moves, and what is checked is that nothing crossed.
    */
   it("moves a bar whose ends meet curves, without disturbing the bowl", async () => {
     const typeface = await open();
@@ -113,8 +118,10 @@ suite("controls used together", { timeout: FONT_SUITE_TIMEOUT }, () => {
             return now.x !== node.point.x || now.y !== node.point.y;
           }),
         );
-        // The bar's two edges and nothing else.
-        expect(moved, `${name} moved too much at ${shift}`).toHaveLength(4);
+        // The bar's two edges and nothing else, bar the stub at the end of e's.
+        const allowed = name === "e" && shift > 0 ? 5 : 4;
+        expect(moved, `${name} moved too much at ${shift}`).toHaveLength(allowed);
+        expect(contoursIntersect(after), `${name} crosses itself at ${shift}`).toBe(false);
         expect(Math.round(findCrossbar(after)!.bottom - barBefore.bottom)).toBe(shift);
 
         // The letter keeps its height: the bowl is not dragged with the bar.

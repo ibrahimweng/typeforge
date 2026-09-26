@@ -33,6 +33,7 @@ import {
   thin,
   trough,
   turn,
+  middleBar,
 } from "./common";
 
 export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
@@ -151,7 +152,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
       arm(f, stem, stem + reach, f.hangs(f.cap, f.bar)),
-      arm(f, stem, stem + reach * 0.86, f.cap * f.style.parts.crossbar.height),
+      arm(f, stem, stem + reach * 0.86, middleBar(f, f.cap)),
       arm(f, stem, stem + reach, f.sits(0, f.bar)),
     ]);
   },
@@ -163,7 +164,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
       arm(f, stem, stem + reach, f.hangs(f.cap, f.bar)),
-      arm(f, stem, stem + reach * 0.86, f.cap * f.style.parts.crossbar.height),
+      arm(f, stem, stem + reach * 0.86, middleBar(f, f.cap)),
     ]);
   },
 

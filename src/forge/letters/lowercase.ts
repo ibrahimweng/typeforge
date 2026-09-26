@@ -28,6 +28,9 @@ import {
   openBowl,
   type Recipe,
   ring,
+  eyeOf,
+  wallAt,
+  shoulderRadius,
   spine,
   straight,
   thin,
@@ -106,7 +109,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * at half the x-height and nowhere else, an e was the second letter that
      * looked like it had a crossbar and did not listen to the crossbar.
      */
-    const eye = f.x * f.style.parts.crossbar.height;
+    const eye = eyeOf(f, centre);
     const rise = Math.max(-0.85, Math.min(0.85, (eye - centre.y) / f.bowlH));
     const opens = (Math.asin(rise) * 180) / Math.PI;
     const belt = bend(f, centre, f.bowlH, opens, opens + 300);
@@ -122,8 +125,11 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
          * it poked out of the other side the moment the bowl was squared, since
          * a squared bowl at that height is not where a round one is. Measured
          * off the bowl, it meets it whatever shape the bowl has been given.
+         *
+         * And from the middle of the left wall rather than its inside edge,
+         * where a square end against the curve folded the union: `wallAt`.
          */
-        thin(f, straight(at(centre.x - f.bowl + f.half, eye), spineStart(belt))),
+        thin(f, straight(at(wallAt(f, centre, opens), eye), spineStart(belt))),
         ink(f, belt, BUTT, f.end),
       ],
       true,
@@ -349,7 +355,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * the x-height rather than a fault in the r.
      */
     const reach = f.arch;
-    const radius = Math.max(f.half, Math.min(reach, f.x * (1 - f.style.parts.shoulder.spring)));
+    const radius = shoulderRadius(f, f.x);
     const crest = Math.max(f.crest(f.x), radius);
     const landing = stem + Math.max(reach, radius * 2);
     return finish(f, [

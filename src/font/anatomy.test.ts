@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { findCrossbar, findShoulders, shiftCrossbar, shiftShoulders } from "./anatomy";
-import { contoursBounds } from "./geometry";
+import { contourSegments, contoursBounds, cubicAt } from "./geometry";
+import { contoursIntersect } from "./outline";
 import type { Contour, Vec2 } from "./types";
 
 function polygon(points: Vec2[]): Contour {
@@ -194,14 +195,47 @@ describe("findShoulders", () => {
 
 describe("shiftShoulders", () => {
   it("raises where the arch springs", () => {
-    const moved = shiftShoulders([ARCH], 120);
-    expect(moved[0].nodes[3].point).toEqual({ x: 200, y: 920 });
-    expect(moved[0].nodes[8].point).toEqual({ x: 200, y: 620 });
+    const moved = shiftShoulders([ARCH], 100);
+    expect(moved[0].nodes[3].point).toEqual({ x: 200, y: 900 });
+    expect(moved[0].nodes[8].point).toEqual({ x: 200, y: 600 });
   });
 
   it("carries the handle with the point so the curve keeps its shape", () => {
-    const moved = shiftShoulders([ARCH], 120);
-    expect(moved[0].nodes[3].handleOut).toEqual({ x: 350, y: 1120 });
+    const moved = shiftShoulders([ARCH], -100);
+    expect(moved[0].nodes[3].handleOut).toEqual({ x: 350, y: 900 });
+  });
+
+  /**
+   * Raising the junction carries its handle up too, but not past the top of
+   * the arch: the shoulder squares up against it rather than bulging over, and
+   * on a real n bulging over would make the letter taller than the x-height.
+   */
+  it("never lifts the arch above its own top", () => {
+    const moved = shiftShoulders([ARCH], 100);
+    expect(moved[0].nodes[3].handleOut).toEqual({ x: 350, y: 1000 });
+  });
+
+  /**
+   * The stem edge the junction ends is stretched to follow, pinned at its far
+   * end, rather than the junction alone being dragged: dragged past the next
+   * point down, it folds the stem back on itself.
+   */
+  it("stretches the stem edge after the junction instead of folding it", () => {
+    const moved = shiftShoulders([ARCH], -100);
+    expect(moved[0].nodes[2].point).toEqual({ x: 200, y: 1000 });
+    expect(moved[0].nodes[8].point).toEqual({ x: 200, y: 400 });
+    expect(moved[0].nodes[9].point).toEqual({ x: 200, y: 0 });
+  });
+
+  /**
+   * The move goes only as far as the arch has room: past three quarters of
+   * the way to its top the junction would climb the stem above it and drag
+   * the arch after it into a hook.
+   */
+  it("stops short of the top of the arch", () => {
+    const moved = shiftShoulders([ARCH], 400);
+    expect(moved[0].nodes[3].point.y).toBeGreaterThan(800);
+    expect(moved[0].nodes[3].point.y).toBeLessThanOrEqual(800 + 150 * 0.75);
   });
 
   it("leaves the far side of the letter where it was", () => {
@@ -248,8 +282,8 @@ describe("a crossbar attached to curves", () => {
     ],
   };
   const COUNTER = polygon([
-    { x: 200, y: 600 },
-    { x: 700, y: 600 },
+    { x: 200, y: 450 },
+    { x: 700, y: 450 },
     { x: 700, y: 900 },
     { x: 200, y: 900 },
   ]);
@@ -258,7 +292,7 @@ describe("a crossbar attached to curves", () => {
   it("finds the bar between the curved edge and the counter", () => {
     const bar = findCrossbar(SHAPE)!;
     expect(bar.bottom).toBeCloseTo(300, 6);
-    expect(bar.top).toBeCloseTo(600, 6);
+    expect(bar.top).toBeCloseTo(450, 6);
   });
 
   it("moves the bar even where no point on the curve sits at that height", () => {
@@ -306,5 +340,159 @@ describe("a crossbar attached to curves", () => {
   it("moves the bar the other way just as readily", () => {
     const moved = shiftCrossbar(SHAPE, -120);
     expect(moved[0].nodes[1].point.y).toBeCloseTo(180, 6);
+  });
+});
+
+describe("the waist of a P", () => {
+  /**
+   * A P whose bowl has a flat bottom: a straight piece from the stem that runs
+   * on smoothly into the curve of the bowl, as DejaVu and Geist draw P, R and
+   * B. It is not a bar crossing anything, but moving it is how the bowl is
+   * made bigger or smaller, so it moves as a waist: the flat edges travel and
+   * the curves joining them to the bowl stretch after them.
+   */
+  const P_SHAPE: Contour[] = [
+    {
+      closed: true,
+      nodes: [
+        { point: { x: 0, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+        { point: { x: 0, y: 1400 }, handleIn: null, handleOut: null, type: "corner" },
+        {
+          point: { x: 500, y: 1400 },
+          handleIn: null,
+          handleOut: { x: 800, y: 1400 },
+          type: "smooth",
+        },
+        {
+          point: { x: 500, y: 600 },
+          handleIn: { x: 800, y: 600 },
+          handleOut: null,
+          type: "smooth",
+        },
+        { point: { x: 200, y: 600 }, handleIn: null, handleOut: null, type: "corner" },
+        { point: { x: 200, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+      ],
+    },
+    {
+      closed: true,
+      nodes: [
+        { point: { x: 200, y: 800 }, handleIn: null, handleOut: null, type: "corner" },
+        {
+          point: { x: 500, y: 800 },
+          handleIn: null,
+          handleOut: { x: 650, y: 800 },
+          type: "smooth",
+        },
+        {
+          point: { x: 500, y: 1200 },
+          handleIn: { x: 650, y: 1200 },
+          handleOut: null,
+          type: "smooth",
+        },
+        { point: { x: 200, y: 1200 }, handleIn: null, handleOut: null, type: "corner" },
+      ],
+    },
+  ];
+
+  it("moves the waist by the amount asked, and keeps the letter's height", () => {
+    const moved = shiftCrossbar(P_SHAPE, 100);
+    const bar = findCrossbar(moved)!;
+    expect(bar.bottom).toBeCloseTo(700, 6);
+    expect(bar.top).toBeCloseTo(900, 6);
+    expect(contoursBounds(moved).yMax).toBeCloseTo(1400, 6);
+  });
+
+  /**
+   * Stretching the join must not dent the bowl: the curve from the moved bar
+   * to the rest of the bowl stays between its own two ends, with the handles
+   * drawn in along their directions when it would not.
+   */
+  it("stretches the joins without denting the bowl", () => {
+    for (const shift of [100, -100]) {
+      const moved = shiftCrossbar(P_SHAPE, shift);
+      expect(contoursIntersect(moved)).toBe(false);
+      const join = contourSegments(moved[0])[2];
+      if (join.kind !== "cubic") throw new Error("the join should be a curve");
+      const low = Math.min(join.from.y, join.to.y) - 14;
+      const high = Math.max(join.from.y, join.to.y) + 14;
+      for (let i = 1; i < 16; i++) {
+        const { y } = cubicAt(join.from, join.c1, join.c2, join.to, i / 16);
+        expect(y).toBeGreaterThanOrEqual(low);
+        expect(y).toBeLessThanOrEqual(high);
+      }
+    }
+  });
+});
+
+describe("things at a bar's height that are not bars", () => {
+  /**
+   * Two arms either side of a stem whose tops differ by three and a half
+   * units, as the two halves of Lora's 4 do. Read as two levels, those tops
+   * were a bar three and a half units thick, nearer the middle than the real
+   * one, and moving it filled the letter in.
+   */
+  const FOUR_ISH = [rect(400, 0, 200, 1400), rect(0, 400, 400, 200), rect(600, 400, 300, 203.5)];
+
+  it("reads edges a few units apart as one edge", () => {
+    const bar = findCrossbar(FOUR_ISH)!;
+    expect(bar.bottom).toBeCloseTo(400, 6);
+    expect(bar.top).toBeGreaterThan(600);
+    expect(bar.top).toBeLessThan(603.5);
+  });
+
+  it("moves both halves of a bar the stem cuts in two", () => {
+    const moved = shiftCrossbar(FOUR_ISH, 100);
+    expect(contoursBounds([moved[1]]).yMin).toBeCloseTo(500, 6);
+    expect(contoursBounds([moved[2]]).yMin).toBeCloseTo(500, 6);
+    expect(contoursBounds([moved[2]]).yMax).toBeCloseTo(703.5, 6);
+    expect(moved[0]).toBe(FOUR_ISH[0]);
+  });
+});
+
+describe("things at a stem that are not shoulders", () => {
+  /**
+   * An I with bracketed serifs lined up down its left edge. The short upright
+   * ends of the serifs, 1300 units apart on the same x, counted as one stem
+   * carrying on past a junction, so each bracket was a shoulder and the
+   * control put spikes on the serifs of every straight-sided letter.
+   */
+  const I_SHAPE: Contour[] = [
+    {
+      closed: true,
+      nodes: [
+        { point: { x: 0, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+        { point: { x: 0, y: 50 }, handleIn: null, handleOut: { x: 80, y: 50 }, type: "corner" },
+        { point: { x: 100, y: 150 }, handleIn: { x: 100, y: 70 }, handleOut: null, type: "corner" },
+        {
+          point: { x: 100, y: 1250 },
+          handleIn: null,
+          handleOut: { x: 100, y: 1330 },
+          type: "corner",
+        },
+        { point: { x: 0, y: 1350 }, handleIn: { x: 80, y: 1350 }, handleOut: null, type: "corner" },
+        { point: { x: 0, y: 1400 }, handleIn: null, handleOut: null, type: "corner" },
+        { point: { x: 400, y: 1400 }, handleIn: null, handleOut: null, type: "corner" },
+        {
+          point: { x: 400, y: 1350 },
+          handleIn: null,
+          handleOut: { x: 320, y: 1350 },
+          type: "corner",
+        },
+        {
+          point: { x: 300, y: 1250 },
+          handleIn: { x: 300, y: 1330 },
+          handleOut: null,
+          type: "corner",
+        },
+        { point: { x: 300, y: 150 }, handleIn: null, handleOut: { x: 300, y: 70 }, type: "corner" },
+        { point: { x: 400, y: 50 }, handleIn: { x: 320, y: 50 }, handleOut: null, type: "corner" },
+        { point: { x: 400, y: 0 }, handleIn: null, handleOut: null, type: "corner" },
+      ],
+    },
+  ];
+
+  it("does not take the bracket under a serif for a shoulder", () => {
+    expect(findShoulders(I_SHAPE)).toHaveLength(0);
+    expect(shiftShoulders(I_SHAPE, 100)).toBe(I_SHAPE);
   });
 });

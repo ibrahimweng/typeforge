@@ -620,7 +620,6 @@ function chamferTool(shape: Contour[], chamfer: Cuts["chamfer"], stem: number): 
   for (const contour of shape) {
     const nodes = contour.nodes;
     if (nodes.length < 3) continue;
-    const ink = contourArea(contour) >= 0 ? 1 : -1;
 
     for (let index = 0; index < nodes.length; index++) {
       const previous = nodes[(index - 1 + nodes.length) % nodes.length];
@@ -636,8 +635,22 @@ function chamferTool(shape: Contour[], chamfer: Cuts["chamfer"], stem: number): 
 
       const turn = angleBetween(arriving, leaving);
       if (Math.abs(turn) < SHARP) continue;
-      // Ink on the inside of the turn, whichever way this contour runs.
-      if (turn * ink <= 0) continue;
+      /*
+       * Ink on the inside of the turn, which is a turn to the left whichever
+       * contour this is. The shape has come out of a union, so its outlines
+       * run with the ink on their left -- anticlockwise round the outside,
+       * clockwise round a counter -- and a turn to the left has the ink inside
+       * it on both.
+       *
+       * This used to flip the test for a counter, on the reading that a
+       * counter runs the other way and so turns the other way. It does run
+       * the other way, and that already puts the ink on its left; flipping it
+       * again picked out exactly the corners it meant to leave alone -- the
+       * corners of the counters themselves, where the ink is on the outside of
+       * the turn. Every square counter got a cut at each of its corners, aimed
+       * into the stem and the bar around it: a nick into the ink beside every inside corner instead of nothing.
+       */
+      if (turn <= 0) continue;
 
       // Never more than a share of the shorter of the two edges, or the cut
       // reaches past the corner and takes the next one with it.

@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { unite } from "@/font/boolean";
 import { readyToShape } from "./layers";
 import { contourArea, contoursBounds, contoursToSvgPath, inkRunsAt } from "@/font/geometry";
+import { contoursIntersect } from "@/font/outline";
 import type { Contour } from "@/font/types";
 import { drawLetter } from "./build";
 import { anyCut, noCuts, piecesOf, type Cuts, type MotifShape } from "./cut";
@@ -250,6 +251,62 @@ describe("chamfer", () => {
       one.chamfer = { on: true, size: 1.2 };
     });
     expect(removed("E", sans, heavy)).toBeGreaterThan(removed("E", sans, light));
+  });
+
+  it("leaves the corners of the counters alone", () => {
+    /*
+     * A corner of a counter is a corner of the paper, not of the ink: the ink
+     * is on the outside of the turn there, and a chamfer is a cut off a corner
+     * of ink. So the counters of an A, a B, a D and a P come out exactly the
+     * size they went in.
+     *
+     * They did not, because the test for which side the ink was on was flipped
+     * for a counter on top of the counter already running the other way -- and
+     * picked out exactly these corners, putting a nick into the stem beside
+     * each one.
+     */
+    const cuts = cutWith((one) => {
+      one.chamfer = { on: true, size: 0.6 };
+    });
+    // Counter by counter, since a point laid beside a serif can close a pocket
+    // of paper off into a counter of its own, and that is not this question.
+    const counters = (contours: Contour[]): number[] =>
+      contours
+        .filter((one) => contourArea(one) < 0)
+        .map((one) => -contourArea(one))
+        .sort((a, b) => b - a);
+    const kept = (bare: number[], now: number[]): boolean =>
+      bare.every((area) => now.some((other) => Math.abs(other - area) / area < 0.001));
+    for (const letter of ["A", "B", "D", "P"]) {
+      const bare = counters(unite(drawn(letter, sans).contours, "winding", "whole"));
+      const cut = counters(drawn(letter, sans, cuts).contours);
+      expect(bare.length, letter).toBeGreaterThan(0);
+      expect(kept(bare, cut), `${letter}: ${bare} against ${cut}`).toBe(true);
+    }
+  });
+});
+
+describe("an e cut in any face", () => {
+  it("comes out of the union without its outline folded over itself", () => {
+    /*
+     * The bar of an e used to start exactly on the inside edge of the bowl's
+     * left wall, at the one height where that wall runs upright -- a square
+     * end laid against a curve at the point it was tangent to it. Fused, the
+     * counter came back with a hair of itself folded over the bar, and a Serif
+     * `e` crossed itself under the slots, the saw, the breaks and the inline
+     * alike. The inline is asked here because it leaves the bar where it was.
+     */
+    const cuts = cutWith((one) => {
+      one.inline.on = true;
+    });
+    const crossed: string[] = [];
+    for (const style of BASES) {
+      const made = drawLetter("e", style, undefined, cuts);
+      if (!made) continue;
+      const folded = made.contours.filter((contour) => contoursIntersect([contour])).length;
+      if (folded > 0) crossed.push(style.name);
+    }
+    expect(crossed).toEqual([]);
   });
 });
 
