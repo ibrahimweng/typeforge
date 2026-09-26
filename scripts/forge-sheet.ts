@@ -35,7 +35,7 @@ const parts =
           key,
           { ...(value as object), ...(patch[key] ?? {}) },
         ]),
-      ) as Forge["style"]["parts"],
+      ) as unknown as Forge["style"]["parts"],
     },
   });
 const cut =

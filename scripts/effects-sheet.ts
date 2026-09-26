@@ -100,10 +100,10 @@ for (const [name, row] of Object.entries(rows)) {
   typeface.params = { ...DEFAULT_PARAMS, ...params };
   const cuts = noCuts();
   for (const [k, v] of Object.entries(row.cuts ?? {}))
-    Object.assign((cuts as Record<string, object>)[k], v);
+    Object.assign((cuts as unknown as Record<string, object>)[k], v);
   const cast = noCast();
   for (const [k, v] of Object.entries(row.cast ?? {}))
-    Object.assign((cast as Record<string, object>)[k], v);
+    Object.assign((cast as unknown as Record<string, object>)[k], v);
   typeface.cuts = cuts;
   typeface.cast = cast;
   let x = 0;
