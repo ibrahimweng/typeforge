@@ -35,16 +35,17 @@
  * written at it: a click on the dark behind a dialog leaves the focus on the
  * body, and the body is where this listener answers from.
  *
- * And the space stands aside for any control that has the focus, not only
- * the ones typed into: a focused button, link, summary or menu item is
- * pressed with the space bar, and it is the control's key there (see
- * `interactive`). Cmd-K still opens the palette from any of them.
+ * Outside a dialog the space stands aside only for what is typed into or has
+ * nothing but a space to press it with (see `busy`), and not for a focused
+ * button: a click leaves the focus on the button it pressed, so a space that
+ * stood aside for buttons would stop working after almost any click. A button
+ * answers to Enter as well.
  */
 
 import * as React from "react";
 
 import { modalOpen } from "@/keys/modal";
-import { interactive } from "@/keys/typing";
+import { busy } from "@/keys/typing";
 
 export function useQuickActionShortcut(
   onOpen: () => void,
@@ -76,7 +77,7 @@ export function useQuickActionShortcut(
       // A modified space is somebody else's: Ctrl-Space is an input method on
       // several platforms and Shift-Space pages back up a document.
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      if (interactive(event.target)) return;
+      if (busy(event.target)) return;
       // The hand's, over a drawing. Cmd-K above still opens the palette there.
       if (handOnCanvas) return;
       // Otherwise the page scrolls under the palette as it opens.

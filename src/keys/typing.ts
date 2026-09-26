@@ -51,62 +51,6 @@ export function pressable(target: HTMLElement): boolean {
   return role === "checkbox" || role === "radio" || role === "switch";
 }
 
-/**
- * Something the focus is on that does a thing of its own when pressed -- a
- * button, a link, a summary, a select, a menu item, anything carrying a
- * tabindex -- so a bare space pressed there is the control's and not the
- * palette's.
- *
- * Wider than `pressable`, and deliberately so for the space bar alone. The
- * argument over `pressable` is that a button still answers to Enter, so a
- * keyboard user is not stranded when the space is taken. That is true, and it
- * is not the whole of it: the space on a focused button is the platform's own
- * promise, screen readers announce it, and a person who tabs to "Export" and
- * presses the space bar -- which is what the operating system taught them --
- * got a palette instead of the export. The palette has Cmd-K for anybody who
- * wants it from a control; the control has nothing else for its space. So the
- * palette's space stands aside for anything focusable that is not the page
- * itself or a canvas, whose space is spoken for elsewhere (see `hand.ts`).
- *
- * The other window-wide bare keys keep asking `busy`, which is narrower on
- * purpose: an arrow or a Delete meant for the drawing should still reach it
- * after a toolbar button was clicked with the mouse.
- */
-export function interactive(target: EventTarget | null): boolean {
-  if (typeof HTMLElement === "undefined" || !(target instanceof HTMLElement)) return false;
-  if (busy(target)) return true;
-  const tag = target.tagName;
-  if (tag === "BUTTON" || tag === "SELECT" || tag === "SUMMARY" || tag === "INPUT") return true;
-  if ((tag === "A" || tag === "AREA") && target.hasAttribute("href")) return true;
-  const role = target.getAttribute("role");
-  if (role && INTERACTIVE_ROLES.has(role)) return true;
-  // A canvas or the page itself takes the focus without being a control, and
-  // the palette's space is theirs to have.
-  if (tag === "CANVAS" || tag === "BODY" || tag === "HTML") return false;
-  const tabindex = target.getAttribute("tabindex");
-  return (
-    tabindex !== null && Number(tabindex) >= 0 && target.getAttribute("role") !== "application"
-  );
-}
-
-/** The ARIA roles whose element acts when the space bar is pressed on it. */
-const INTERACTIVE_ROLES = new Set([
-  "button",
-  "link",
-  "menuitem",
-  "menuitemcheckbox",
-  "menuitemradio",
-  "option",
-  "tab",
-  "treeitem",
-  "gridcell",
-  "combobox",
-  "listbox",
-  "slider",
-  "spinbutton",
-  "searchbox",
-]);
-
 /** Whether the key belongs to whatever has the focus rather than to us. */
 export function busy(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;

@@ -8,7 +8,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { busy, interactive } from "./typing";
+import { busy } from "./typing";
 
 class FakeElement {
   isContentEditable = false;
@@ -38,33 +38,29 @@ afterAll(() => {
 const el = (tag: string, attrs?: Record<string, string>) =>
   new FakeElement(tag, attrs) as unknown as HTMLElement;
 
-describe("controls that keep the space bar", () => {
-  it("counts buttons, links, summaries and selects", () => {
-    expect(interactive(el("BUTTON"))).toBe(true);
-    expect(interactive(el("A", { href: "#" }))).toBe(true);
-    expect(interactive(el("SUMMARY"))).toBe(true);
-    expect(interactive(el("SELECT"))).toBe(true);
-    expect(interactive(el("INPUT", { type: "range" }))).toBe(true);
-  });
-
-  it("counts anything with a pressable role or in the tab order", () => {
-    expect(interactive(el("DIV", { role: "button" }))).toBe(true);
-    expect(interactive(el("LI", { role: "menuitem" }))).toBe(true);
-    expect(interactive(el("DIV", { tabindex: "0" }))).toBe(true);
-  });
-
-  it("leaves the page, a canvas and plain elements to the palette", () => {
-    expect(interactive(el("BODY"))).toBe(false);
-    expect(interactive(el("CANVAS", { tabindex: "0", role: "application" }))).toBe(false);
-    expect(interactive(el("DIV"))).toBe(false);
-    expect(interactive(el("A"))).toBe(false);
-    expect(interactive(el("DIV", { tabindex: "-1" }))).toBe(false);
-    expect(interactive(null)).toBe(false);
-  });
-
-  it("stays wider than busy, which the other bare keys ask", () => {
+describe("what keeps the palette's space bar", () => {
+  it("leaves a focused button, link or summary to the palette", () => {
+    // A click leaves the focus on the button it pressed; a space that stood
+    // aside for buttons would stop working after almost any click.
     expect(busy(el("BUTTON"))).toBe(false);
+    expect(busy(el("A", { href: "#" }))).toBe(false);
+    expect(busy(el("SUMMARY"))).toBe(false);
+    expect(busy(el("DIV", { role: "button" }))).toBe(false);
+  });
+
+  it("keeps it for the controls with nothing but a space to press them", () => {
     expect(busy(el("INPUT", { type: "checkbox" }))).toBe(true);
-    expect(interactive(el("INPUT", { type: "checkbox" }))).toBe(true);
+    expect(busy(el("INPUT", { type: "radio" }))).toBe(true);
+    expect(busy(el("DIV", { role: "switch" }))).toBe(true);
+  });
+
+  it("keeps it for somewhere text is typed", () => {
+    expect(busy(el("INPUT", { type: "text" }))).toBe(true);
+    expect(busy(el("TEXTAREA"))).toBe(true);
+  });
+
+  it("leaves the page and nothing at all to the palette", () => {
+    expect(busy(el("BODY"))).toBe(false);
+    expect(busy(null)).toBe(false);
   });
 });

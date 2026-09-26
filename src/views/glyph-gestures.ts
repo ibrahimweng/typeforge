@@ -990,6 +990,18 @@ export function useGlyphGestures(within: {
       return;
     }
     const canvasPoint = pointerPosition(event);
+    /*
+     * The ref follows the pointer through a drag as well, so that when it is
+     * let go the lit handle and the sentence are read from where the pointer
+     * is and not from where it was pressed. Left at the press, an undo after
+     * dragging a corner of the selection box put the box back under that stale
+     * position and lit a handle nowhere near the pointer. The handle noted
+     * before the press is forgotten for the same reason: the box moves under a
+     * drag, and a pointer brought back onto that handle afterwards has to be
+     * noticed as a change.
+     */
+    atRef.current = canvasPoint;
+    setGripUnder(null);
     modifiersRef.current = { square: event.shiftKey, fromCentre: event.altKey };
 
     /*
@@ -1473,6 +1485,9 @@ export function useGlyphGestures(within: {
   const handlePointerLeave = (): void => {
     setHover(null);
     noteAt(null);
+    // A handle lit on the way out goes dark: with the select tool neither of
+    // the two above need change, so nothing else would re-render.
+    setGripUnder(null);
     reportPhase(null);
   };
 
