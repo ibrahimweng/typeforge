@@ -418,3 +418,129 @@ export function splitGlyf(
   }
   return records;
 }
+
+/**
+ * A copied composite record, with the glyphs it refers to renumbered.
+ *
+ * A composite names its parts by glyph index, and a preserving export copies
+ * untouched records byte for byte. That is right for the outline and the
+ * hinting and wrong for the references the moment a glyph ahead of a part has
+ * been taken out: `Aacute` still says "glyph 36 and glyph 141", and after a
+ * removal those are `B` and whatever used to follow the acute. The export
+ * wrote exactly that, so every accented letter past a deleted glyph was drawn
+ * from its neighbours' parts.
+ *
+ * So the indices are rewritten through `renumber`, and nothing else is
+ * touched: the placement, the transform, the flags and the instructions after
+ * the last component are all the record's own and all still true. Returns the
+ * record itself when nothing moved, a patched copy when something did, and
+ * null when a part has no place in the new font at all -- which is the caller's
+ * cue to build the glyph afresh rather than write a reference to nothing.
+ * A simple glyph, an empty one or one too damaged to walk comes back as it was.
+ */
+export function renumberComposite(
+  record: Uint8Array,
+  renumber: (glyphIndex: number) => number | undefined,
+): Uint8Array | null {
+  if (record.length < 10) return record;
+  const view = new DataView(record.buffer, record.byteOffset, record.byteLength);
+  if (view.getInt16(0) >= 0) return record;
+
+  let copy: Uint8Array | null = null;
+  let at = 10;
+  for (;;) {
+    if (at + 4 > record.length) return copy ?? record;
+    const flags = view.getUint16(at);
+    const was = view.getUint16(at + 2);
+    const now = renumber(was);
+    if (now === undefined) return null;
+    if (now !== was) {
+      copy ??= new Uint8Array(record);
+      new DataView(copy.buffer).setUint16(at + 2, now);
+    }
+    at += 4 + (flags & ARG_1_AND_2_ARE_WORDS ? 4 : 2);
+    if (flags & WE_HAVE_A_SCALE) at += 2;
+    else if (flags & WE_HAVE_AN_X_AND_Y_SCALE) at += 4;
+    else if (flags & WE_HAVE_A_TWO_BY_TWO) at += 8;
+    if (!(flags & MORE_COMPONENTS)) return copy ?? record;
+  }
+}
+
+/**
+ * A `gvar` table carried across a preserving export, glyph by glyph.
+ *
+ * `gvar` says how each point of each glyph moves along a varying font's axes,
+ * and it says it by glyph number and by point number. Both stop being true in
+ * a preserving export: a removed letter shifts every glyph after it to a new
+ * number, and an edited letter is written with new points that the old deltas
+ * know nothing about -- the Black of an edited `a` comes out as the new
+ * outline with the old outline's movement added to it, which is a shape nobody
+ * drew. So each glyph's variation data is taken from the glyph it was in the
+ * file, and a glyph that was rebuilt, or that the file never had, gets none:
+ * it holds its shape along the axes, which is wrong in a way that shows, where
+ * the old deltas are wrong in a way that looks like damage.
+ *
+ * `sourceOf[i]` is the file's glyph number whose data glyph `i` should carry,
+ * or undefined for none. Returns the new table and which glyphs lost data they
+ * had; throws on a table too damaged to walk.
+ */
+export function carryGvar(
+  gvar: Uint8Array,
+  sourceOf: Array<number | undefined>,
+  rebuilt: boolean[],
+): { gvar: Uint8Array; stilled: number[] } {
+  const view = new DataView(gvar.buffer, gvar.byteOffset, gvar.byteLength);
+  const axisCount = view.getUint16(4);
+  const sharedCount = view.getUint16(6);
+  const sharedAt = view.getUint32(8);
+  const glyphCount = view.getUint16(12);
+  const long = (view.getUint16(14) & 1) === 1;
+  const dataAt = view.getUint32(16);
+  const offsetOf = (index: number) =>
+    long ? view.getUint32(20 + index * 4) : view.getUint16(20 + index * 2) * 2;
+  const dataOf = (index: number): Uint8Array => {
+    if (index >= glyphCount) return new Uint8Array(0);
+    const start = dataAt + offsetOf(index);
+    const end = dataAt + offsetOf(index + 1);
+    if (end <= start || end > gvar.length) return new Uint8Array(0);
+    return gvar.subarray(start, end);
+  };
+
+  const stilled: number[] = [];
+  const records = sourceOf.map((was, index) => {
+    if (was === undefined) return new Uint8Array(0);
+    const data = dataOf(was);
+    if (rebuilt[index]) {
+      if (data.length > 0) stilled.push(index);
+      return new Uint8Array(0);
+    }
+    return data;
+  });
+
+  const shared = gvar.subarray(sharedAt, sharedAt + axisCount * sharedCount * 2);
+  const offsetsSize = (records.length + 1) * 4;
+  const newSharedAt = 20 + offsetsSize;
+  const newDataAt = newSharedAt + shared.length;
+
+  const out = new ByteWriter();
+  out.uint16(1).uint16(0);
+  out.uint16(axisCount).uint16(sharedCount);
+  out.uint32(newSharedAt);
+  out.uint16(records.length);
+  out.uint16(1); // long offsets, so there is no question of what fits
+  out.uint32(newDataAt);
+  let cursor = 0;
+  for (const record of records) {
+    out.uint32(cursor);
+    // Each record on an even boundary, which the short form would need and
+    // readers are entitled to assume.
+    cursor += record.length + (record.length % 2);
+  }
+  out.uint32(cursor);
+  out.bytesFrom(shared);
+  for (const record of records) {
+    out.bytesFrom(record);
+    if (record.length % 2) out.uint8(0);
+  }
+  return { gvar: out.toUint8Array(), stilled };
+}

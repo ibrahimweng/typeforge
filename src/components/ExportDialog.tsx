@@ -113,7 +113,19 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
         format: format === "variable" ? "ttf" : format,
         fidelity: varying ? "rebuild" : preserveAvailable ? fidelity : "rebuild",
         includeKerning,
-        mergeOverlaps,
+        /*
+         * Never merged when it varies, whatever the checkbox last said.
+         *
+         * The checkbox is hidden for a varying font, so the value it holds is
+         * whatever it was left at for a static one -- on by default -- and the
+         * person choosing this format cannot see or change it. A merge re-points
+         * each master on its own, and two masters re-pointed separately no
+         * longer share the points the deltas are measured between; the forge
+         * writes its own varying fonts with this off for the same reason. The
+         * overlaps are flagged in the file instead, which is what a varying
+         * font is supposed to do with them.
+         */
+        mergeOverlaps: varying ? false : mergeOverlaps,
         ...(varying ? { variable: varying } : {}),
       });
 
