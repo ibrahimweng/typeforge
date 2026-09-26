@@ -144,3 +144,22 @@ jobs:
       - run: npx playwright install --with-deps ${{ matrix.engine }}
 
       - run: npm run test:browser -- --project=${{ matrix.engine }}
+
+      # What a failed browser run left behind: the trace of every test that
+      # failed (playwright.config.ts keeps them on failure) and a screenshot of
+      # where each one stopped. They were written to test-results/ on the
+      # runner and thrown away with it, so a leg that went red in CI -- and
+      # WebKit and Firefox are the legs most likely to, and the least likely to
+      # be on the machine of whoever is reading the log -- could only be
+      # understood by reproducing it, which is the one thing a CI failure on
+      # another engine makes hard. `npx playwright show-trace` opens the zip.
+      #
+      # Only on failure: a green run's results are empty directories, and
+      # uploading nothing three times a push is noise in the run's summary.
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: test-results-${{ matrix.engine }}
+          path: test-results/
+          retention-days: 14
+          if-no-files-found: ignore

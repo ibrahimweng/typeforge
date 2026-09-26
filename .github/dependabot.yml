@@ -20,6 +20,8 @@ updates:
       build-tools:
         patterns:
           - vite
+          # Runs the scripts/ files, and pins a Vite major of its own.
+          - vite-node
           - '@vitejs/*'
           - vitest
           - typescript

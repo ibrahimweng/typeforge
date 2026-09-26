@@ -26,6 +26,18 @@
    * Five thousand lines of e2e and the whole of test/ had no type checking at
    * all, which is a strange place to leave a project this strict everywhere
    * else.
+   *
+   * vitest.config.ts was the last file left out, and had drifted the way an
+   * unchecked file does: it set `coverage.all`, an option Vitest 4 no longer
+   * has, and nothing said so.
    */
-  "include": ["src", "test", "e2e", "scripts", "vite.config.ts", "playwright.config.ts"]
+  "include": [
+    "src",
+    "test",
+    "e2e",
+    "scripts",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "playwright.config.ts"
+  ]
 }

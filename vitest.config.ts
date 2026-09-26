@@ -1,3 +1,5 @@
+import { fileURLToPath, URL } from "node:url";
+
 import { defineConfig } from "vitest/config";
 
 /*
@@ -6,7 +8,6 @@ import { defineConfig } from "vitest/config";
  * with, and `test.env` reaches every one of them.
  */
 const measuring = process.argv.includes("--coverage");
-import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
   resolve: {
@@ -58,12 +59,17 @@ export default defineConfig({
       /*
        * Every source file, whether a test reaches it or not.
        *
-       * The default only counts files some test imported, which answers the
-       * wrong question: a module with no test at all is exactly what this is
-       * for, and leaving it out reports the suite as healthier the less of the
-       * application it covers.
+       * With no `include`, only files some test imported are counted, which
+       * answers the wrong question: a module with no test at all is exactly
+       * what this is for, and leaving it out reports the suite as healthier
+       * the less of the application it covers.
+       *
+       * This used to say so with `all: true` as well. Vitest 4 removed that
+       * option -- an `include` now reports every file it matches, reached or
+       * not, which is the same thing -- and went on accepting the key without
+       * a word, because nothing type checked this file. It is in tsconfig.json's
+       * `include` now, and a removed option is an error.
        */
-      all: true,
       include: ["src/**/*.ts", "src/**/*.tsx"],
       exclude: [
         /*
@@ -74,6 +80,8 @@ export default defineConfig({
         "src/ui/**",
         "src/**/*.test.ts",
         "src/**/*.test.tsx",
+        // Test data that lives beside what it tests.
+        "src/**/*.fixture.ts",
         // The entry point and the type declarations: nothing to execute.
         "src/main.tsx",
         "src/vite-env.d.ts",

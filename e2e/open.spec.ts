@@ -5,13 +5,11 @@
  * across five thousand lines. What these files share is in support.ts.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 
 import { expect, test } from "@playwright/test";
 
-import { FONT_PATH, measureInk, openFont } from "./support";
+import { FONT_PATH, measureInk, openFont, sampleWoff2 } from "./support";
 
 test.skip(!FONT_PATH, "needs a system font to open");
 
@@ -41,30 +39,16 @@ test("loads with no console errors and prompts for a font", async ({ page }) => 
  * is to say every font the library fetches, failed to open while a suite full
  * of TrueType tests stayed green.
  *
- * The file is made here rather than kept as a fixture, so what is opened is a
- * real WOFF2 produced by the same encoder rather than a blob nobody can check.
+ * The file is made by `sampleWoff2` in support.ts rather than kept as a
+ * fixture, so what is opened is a real WOFF2 produced by the same encoder
+ * rather than a blob nobody can check. csp.spec.ts opens the same file under
+ * the deployment's security policy.
  */
 test("opens a WOFF2, which is what the web serves", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
 
-  const woff2Path = join(tmpdir(), "typeforge-sample.woff2");
-  if (!existsSync(woff2Path)) {
-    const { Font, woff2 } = await import("fonteditor-core");
-    await woff2.init();
-    const ttf = readFileSync(FONT_PATH!);
-    const font = Font.create(
-      ttf.buffer.slice(ttf.byteOffset, ttf.byteOffset + ttf.byteLength) as ArrayBuffer,
-      { type: "ttf", hinting: true },
-    );
-    const written = font.write({ type: "woff2", hinting: true });
-    // write() is typed as possibly returning text; for woff2 it does not.
-    if (typeof written === "string") throw new Error("woff2 came back as text");
-    writeFileSync(woff2Path, new Uint8Array(written));
-  }
-  // The magic every WOFF2 starts with, so a broken fixture fails here and not
-  // as a mystery in the application.
-  expect(readFileSync(woff2Path).subarray(0, 4).toString("latin1")).toBe("wOF2");
+  const woff2Path = await sampleWoff2();
 
   await page.goto("/");
   await page.setInputFiles("[data-open-input]", woff2Path);
