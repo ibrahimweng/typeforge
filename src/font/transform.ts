@@ -183,7 +183,8 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
       maxWidth: typeface.unitsPerEm * 0.35,
     });
   }
-  if (params.counterScale !== 1) contours = applyCounterScale(contours, params.counterScale);
+  if (params.counterScale !== 1)
+    contours = applyCounterScale(contours, params.counterScale, typeface.unitsPerEm * MIN_STROKE);
   if (params.weight !== 0) {
     // Whether a contour is ink or a hole decides which way it has to move, and
     // that cannot be read off its winding: DejaVu winds the outer contour of I
@@ -1020,8 +1021,12 @@ const BACK_OFF_STEPS = 6;
  * Counters are the enclosed white shapes inside letters such as o, e and a.
  * Scaling them about their own centre opens or closes those spaces without
  * moving the outside of the letter, which is the "middle space" control.
+ *
+ * Only the enclosed counters. The open ones -- the space inside n, h, u, the
+ * aperture of c -- have no contour of their own to scale, and reaching them
+ * would mean moving the strokes that bound them, which is a different control.
  */
-function applyCounterScale(contours: Contour[], factor: number): Contour[] {
+function applyCounterScale(contours: Contour[], factor: number, floor: number): Contour[] {
   if (contours.length < 2) return contours;
 
   /*
@@ -1036,15 +1041,199 @@ function applyCounterScale(contours: Contour[], factor: number): Contour[] {
    * to the letter, which is the one thing the control exists to change.
    */
   const outer = classifyContours(contours);
+  const walls = contours.map((contour) => flattenContour(contour, 8));
+  const amount = Math.abs(factor - 1);
+  const opening = factor > 1;
+
+  /*
+   * How far a wall of ink may give way to the counter beside it, or grow into
+   * it, for a movement that would like to be `wanted`.
+   *
+   * Scaling about the centre moves every point by its distance from the
+   * centre, which has nothing to do with how much ink lies beyond it. A big
+   * counter moved a long way and a small one hardly at all, whatever the
+   * strokes around them were like. At 1.3 the counters of Lora's o, b, B, g
+   * and 8 went straight through their hairlines and out the other side --
+   * white gaps across the stroke -- and Geist's round letters came out a third
+   * of the weight of its straight ones. At 0.7 the same distances went the
+   * other way and every round letter turned bold beside an H that, having no
+   * counter, had not changed at all.
+   *
+   * So the movement is held to a share of the wall it moves into: about as
+   * much of the wall as the setting is away from 1, so at 1.3 a wall keeps
+   * roughly two thirds of itself and at 0.7 gains roughly a third. A wall is
+   * ink, and ink is what an H is made of too; a limit in proportion to the
+   * wall rather than to the counter is what keeps the round letters in the
+   * same colour as the straight ones, as near as a control that only touches
+   * counters can. Opening, the wall is also never taken below the stroke floor
+   * weight keeps to, so nothing tears whatever the numbers.
+   *
+   * Eased rather than cut off. Where there is plenty of wall -- a counter
+   * small for its strokes, or a gentle setting -- the plain scaling comes
+   * through untouched, so a counter keeps its drawn proportions; past a knee
+   * the movement bends over smoothly towards the limit and never reaches it,
+   * so the slider never stops dead and nothing jumps between two settings a
+   * step apart.
+   */
+  const allowed = (wanted: number, wall: number): number => {
+    if (wanted <= 0 || !Number.isFinite(wall)) return wanted;
+    let limit = COUNTER_REACH * amount * wall;
+    if (opening) limit = Math.min(limit, wall - floor);
+    if (limit <= 0) return 0;
+    const knee = limit * COUNTER_KNEE;
+    if (wanted <= knee) return wanted;
+    const rest = limit - knee;
+    return limit - (rest * rest) / (wanted - knee + rest);
+  };
+
   return contours.map((contour, index) => {
     if (outer[index]) return contour;
+    const segments = contourSegments(contour);
+    if (segments.length === 0) return contour;
     const middle = centroid(contour);
-    return mapContour(contour, (point) => ({
-      x: middle.x + (point.x - middle.x) * factor,
-      y: middle.y + (point.y - middle.y) * factor,
-    }));
+    /*
+     * How much wall lies ahead of a point, going one way.
+     *
+     * Up to the outside of the letter, or halfway to the next counter. The bar
+     * across the middle of a B and the waist of an 8 are walls two counters
+     * share, and both of them move into it at once; each measuring the whole
+     * bar and taking its share of that took the bar down to a thread between
+     * them. Half is each counter's own side of it.
+     */
+    const inks = walls.filter((_, which) => which !== index && outer[which]);
+    const holes = walls.filter((_, which) => which !== index && !outer[which]);
+    const wallAhead = (from: Vec2, heading: Vec2): number =>
+      Math.min(rayHitDistance(inks, from, heading), rayHitDistance(holes, from, heading) / 2);
+    const samples: Vec2[] = [];
+    for (const segment of segments) {
+      for (const t of [0, 0.25, 0.5, 0.75]) samples.push(pointOnSegment(segment, t));
+    }
+
+    /*
+     * Each side of the counter separately, and each axis on its own.
+     *
+     * One scale for each of the four sides -- left, right, below and above the
+     * centre -- rather than one for the whole counter or one for every point.
+     * One for the whole counter let its thinnest wall decide for all of it:
+     * Lora's o, whose hairlines are a third of its sides, hardly opened at all.
+     * One for every point opened each part of a counter by what its own wall
+     * could spare, and the straight edges of B, R and 4 leaned over, because
+     * the two ends of an edge had different walls behind them. Four sides,
+     * each moved along its own axis, keep a flat edge flat and square -- a
+     * horizontal edge only ever moves up or down, and all of it by the same
+     * amount -- while a heavy side still gives more than a hairline.
+     *
+     * Each side is asked at every sample on its half of the counter, looking
+     * straight out along the axis it moves on, and takes the tightest answer.
+     */
+    const sides = { left: 1, right: 1, below: 1, above: 1 };
+    for (const at of samples) {
+      const dx = at.x - middle.x;
+      const dy = at.y - middle.y;
+      if (dx !== 0) {
+        const wanted = amount * Math.abs(dx);
+        const wall = wallAhead(at, { x: Math.sign(dx), y: 0 });
+        const key = dx > 0 ? "right" : "left";
+        sides[key] = Math.min(sides[key], allowed(wanted, wall) / wanted);
+      }
+      if (dy !== 0) {
+        const wanted = amount * Math.abs(dy);
+        const wall = wallAhead(at, { x: 0, y: Math.sign(dy) });
+        const key = dy > 0 ? "above" : "below";
+        sides[key] = Math.min(sides[key], allowed(wanted, wall) / wanted);
+      }
+    }
+
+    const scaleOf = (share: number): number => 1 + (factor - 1) * share;
+    const place = (point: Vec2, by: number): Vec2 => {
+      const dx = point.x - middle.x;
+      const dy = point.y - middle.y;
+      const across = scaleOf((dx > 0 ? sides.right : sides.left) * by);
+      const up = scaleOf((dy > 0 ? sides.above : sides.below) * by);
+      return { x: middle.x + dx * across, y: middle.y + dy * up };
+    };
+
+    /*
+     * Then the diagonals. A wall can be thinner on the slant than straight
+     * out along either axis -- the stress of a humanist o runs at an angle --
+     * and a point on the shoulder of a counter moves on the slant. Where one
+     * would go through more wall than it may, the two sides it belongs to are
+     * both drawn back until it does not.
+     */
+    for (let pass = 0; pass < 2; pass++) {
+      for (const at of samples) {
+        const moved = sub(place(at, 1), at);
+        const length = Math.hypot(moved.x, moved.y);
+        if (length === 0) continue;
+        const heading = { x: moved.x / length, y: moved.y / length };
+        const outward = opening ? heading : scaleVec(heading, -1);
+        const wall = wallAhead(at, outward);
+        const most = allowed(length, wall);
+        if (most >= length) continue;
+        const cut = most / length;
+        const dx = at.x - middle.x;
+        const dy = at.y - middle.y;
+        if (dx > 0) sides.right *= cut;
+        else if (dx < 0) sides.left *= cut;
+        if (dy > 0) sides.above *= cut;
+        else if (dy < 0) sides.below *= cut;
+      }
+    }
+
+    // Every point of the counter, handles included, goes through the same
+    // map, so a curve is carried along whole rather than rebuilt.
+    const build = (by: number): Contour => ({
+      ...contour,
+      nodes: contour.nodes.map((node) => ({
+        ...node,
+        point: place(node.point, by),
+        handleIn: node.handleIn ? place(node.handleIn, by) : null,
+        handleOut: node.handleOut ? place(node.handleOut, by) : null,
+      })),
+    });
+
+    /*
+     * And a last check that the counter has crossed nothing it did not cross
+     * already. The rulers above see a flattened outline and ask at a handful
+     * of places; a stroke is a continuous thing. Where a counter would cut a
+     * wall anyway it is backed off evenly, as weight backs off a contour,
+     * rather than piece by piece, which would tear it.
+     */
+    const crossedBefore = contours.map((other, which) =>
+      which === index ? contoursIntersect([contour]) : contoursIntersect([contour, other]),
+    );
+    const sound = (trial: Contour): boolean =>
+      contours.every((other, which) => {
+        if (crossedBefore[which]) return true;
+        return which === index ? !contoursIntersect([trial]) : !contoursIntersect([trial, other]);
+      });
+
+    const full = build(1);
+    if (sound(full)) return full;
+    let low = 0;
+    let high = 1;
+    for (let step = 0; step < BACK_OFF_STEPS; step++) {
+      const half = (low + high) / 2;
+      if (sound(build(half))) low = half;
+      else high = half;
+    }
+    return low === 0 ? contour : build(low);
   });
 }
+
+/**
+ * How much of a counter's wall the middle-space control may take or give, as
+ * a multiple of how far the setting is from 1. At 1.3 a wall loses at most
+ * 1.25 x 0.3 of itself, and in practice a little less because of the easing.
+ */
+const COUNTER_REACH = 1.25;
+/**
+ * Where the easing starts, as a share of that limit; below it the counter is
+ * scaled exactly as before. It sits just past the point where the limit and
+ * plain scaling agree on a counter whose walls are as thick as it is wide, so
+ * such a counter -- the fat counters of a Black -- is scaled exactly.
+ */
+const COUNTER_KNEE = 0.85;
 
 /**
  * Round sharp corners.

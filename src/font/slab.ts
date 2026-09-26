@@ -21,12 +21,31 @@
  * settles it without reference to any measurement, so it holds at any size and
  * any weight.
  *
+ * Two more things are not stroke ends, and both only show up on real fonts.
+ * The straight inside edge of a counter -- the flat back of B's bowls, the
+ * upright of 4's triangle -- has the same shape as a terminal when it is read
+ * against the counter's own winding, so counters are left out altogether: a
+ * stroke never ends on the edge of a hole. And on a font that already has
+ * serifs, the flat ends the shape test finds are the tips of those serifs and
+ * beaks, not the ends of strokes. They are told apart by being much thinner
+ * than the letter's strokes, and are left alone; see `strokeOf`.
+ *
  * The slabs are laid over the letter rather than merged into it, which is how
  * a serif is drawn by hand and what the overlap removal on export already
  * expects.
  */
 
-import { contourSegments, isClockwise, reverseContour, type Segment } from "./geometry";
+import {
+  contourSegments,
+  contoursBounds,
+  flattenContour,
+  inkRunsAt,
+  isClockwise,
+  rayHitDistance,
+  reverseContour,
+  type Segment,
+} from "./geometry";
+import { classifyContours } from "./outline";
 import type { Contour, GlyphNode, Vec2 } from "./types";
 
 export interface SlabOptions {
@@ -74,6 +93,59 @@ const PERPENDICULAR_TOLERANCE = 0.26; // about 15 degrees
 const OPPOSITE_TOLERANCE = -0.9;
 /** How much longer than its stroke an end may measure and still count. */
 const END_SLACK = 1.25;
+/**
+ * How thin an end may be, against the letter's strokes, and still be the end
+ * of one of them rather than the tip of a serif, a beak or a hairline.
+ *
+ * The two populations are far apart, which is what makes a plain ratio enough.
+ * Geist's thinnest real ends -- the tops of n and r, where the arch takes a
+ * bite out of the stem -- measure 0.86 of its stem; Lora's serif tips measure
+ * 0.52 and the tips of the beaks on its E, L and T 0.39 to 0.45. Six tenths
+ * sits in the gap with room either side, and leaves a sans with some contrast
+ * in its arms still counted as a sans.
+ */
+const THINNEST_END = 0.6;
+/**
+ * And how wide. An end much wider than the strokes is not the end of one: on
+ * Lora it is the outer edge of an arm and the beak hanging off it together,
+ * two hundred units tall on an E whose stem is eighty.
+ */
+const WIDEST_END = 1.75;
+
+/**
+ * How thick the strokes of a letter are, as a ruler across it would find.
+ *
+ * Horizontal rulers at several heights, and each run of ink they cross checked
+ * against a vertical ruler through its middle; the shorter of the two is the
+ * thickness of the stroke there. A horizontal ruler alone reads a stem right
+ * but reads a bar lying on its side -- a hyphen, the arm of an E where it
+ * crosses one -- as its whole length, and the shorter of the two answers is
+ * the one that is across the stroke rather than along it. The median over all
+ * the rulers then settles on what most of the letter is made of, which is the
+ * stems: an E ruled at seven heights crosses its stem at six of them.
+ *
+ * Null when there is nothing to rule across, and then no end is turned away
+ * for its width.
+ */
+function strokeOf(contours: Contour[]): number | null {
+  if (contours.length === 0) return null;
+  const box = contoursBounds(contours);
+  const height = box.yMax - box.yMin;
+  if (!(height > 0)) return null;
+  const found: number[] = [];
+  for (const share of [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]) {
+    const y = box.yMin + height * share;
+    for (const [from, to] of inkRunsAt(contours, y)) {
+      const middle = (from + to) / 2;
+      const across = inkRunsAt(contours, middle, "x").find(([low, high]) => low <= y && y <= high);
+      const thickness = across ? Math.min(to - from, across[1] - across[0]) : to - from;
+      if (thickness > 0) found.push(thickness);
+    }
+  }
+  if (found.length === 0) return null;
+  found.sort((first, second) => first - second);
+  return found[Math.floor((found.length - 1) / 2)];
+}
 
 /**
  * Find the stroke ends of one outline.
@@ -84,8 +156,20 @@ const END_SLACK = 1.25;
  */
 export function findTerminals(contours: Contour[], maxWidth: number): Terminal[] {
   const terminals: Terminal[] = [];
+  /*
+   * Only the ink's own outlines. A counter is wound against the letter, so the
+   * convexity test below -- which reads the turn against the contour's own
+   * winding -- sees its corners inside out: the flat back of each of Geist's B
+   * bowls read as a stroke end 232 units across, and a slab stood up in the
+   * middle of the letter, half in the bowl and half in the stem. The same
+   * happened in b and in the triangle of 4. A stroke cannot end on the edge of
+   * a hole, so holes are not asked.
+   */
+  const ink = contours.length > 1 ? classifyContours(contours) : contours.map(() => true);
+  const stroke = strokeOf(contours);
 
-  for (const contour of contours) {
+  for (const [index, contour] of contours.entries()) {
+    if (!ink[index]) continue;
     const segments = contourSegments(contour);
     if (segments.length < 3) continue;
     // Winding says which way a convex corner turns for this contour.
@@ -127,6 +211,29 @@ export function findTerminals(contours: Contour[], maxWidth: number): Terminal[]
       const turnOut = here.x * next.y - here.y * next.x;
       if (Math.sign(turnIn) !== convexSign || Math.sign(turnOut) !== convexSign) continue;
 
+      /*
+       * About as wide as the strokes of the letter it is on.
+       *
+       * The shape test above describes the tip of a serif just as well as the
+       * end of a stem: a short flat edge with its two sides running back square
+       * and parallel. On a font with serifs that is nearly all it finds. Every
+       * stem of Lora already ends in a serif, whose foot is too wide to pass for
+       * an end, so what came back instead were the tips of the serifs
+       * themselves and of the beaks on E, F, L, T and s -- and a slab on each,
+       * standing crosswise on a serif that was already there. That was the row
+       * of little crosses along Lora's E and the second serif piled on every
+       * foot. Those tips are half a stem across or less; the end of a stroke is
+       * the stroke's own width.
+       *
+       * Measured against the letter rather than the em, so a Light and a Black
+       * are judged alike.
+       */
+      if (
+        stroke !== null &&
+        (here.length < stroke * THINNEST_END || here.length > stroke * WIDEST_END)
+      )
+        continue;
+
       // The stroke runs back the way the neighbouring edges point.
       const inward = {
         x: (previous.x * -1 + next.x) / 2,
@@ -149,6 +256,36 @@ export function findTerminals(contours: Contour[], maxWidth: number): Terminal[]
 }
 
 /**
+ * How near the top or bottom of the letter the edge of an arm has to be to
+ * count as that edge, as a share of the arm's thickness.
+ */
+const FLUSH = 0.25;
+/**
+ * How much of the white beside a stroke end a slab may take, from each side.
+ * Less than half, so two slabs reaching for each other -- the feet of an m --
+ * still leave a gap between them rather than meeting.
+ */
+const SHARE_OF_GAP = 0.4;
+/** Where across the slab's thickness the white beside it is measured. */
+const GAP_DEPTHS = [0.15, 0.5, 0.85];
+
+/** Even-odd containment against flattened outlines: is this point in the ink? */
+function insideInk(polylines: Vec2[][], point: Vec2): boolean {
+  let inside = false;
+  for (const polygon of polylines) {
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const a = polygon[i];
+      const b = polygon[j];
+      if (a.y > point.y !== b.y > point.y) {
+        const x = ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x;
+        if (point.x < x) inside = !inside;
+      }
+    }
+  }
+  return inside;
+}
+
+/**
  * Lay a slab across every stroke end.
  *
  * The bars are returned alongside the original contours rather than merged
@@ -163,19 +300,81 @@ export function addSlabs(contours: Contour[], options: SlabOptions): Contour[] {
   const terminals = findTerminals(contours, maxWidth);
   if (terminals.length === 0) return contours;
 
-  const slabs = terminals.map((terminal) => {
-    const half = terminal.width / 2 + projection;
+  const box = contoursBounds(contours);
+  const polylines = contours.map((contour) => flattenContour(contour, 12));
+
+  const slabs: Contour[] = [];
+  for (const terminal of terminals) {
+    const half = terminal.width / 2;
     const along = terminal.along;
     const inward = terminal.inward;
 
-    // Start flush with the end of the stroke so the letter keeps its height,
-    // and reach back into it.
-    const corner = (side: number, depth: number): Vec2 => ({
-      x: terminal.centre.x + along.x * half * side + inward.x * depth,
-      y: terminal.centre.y + along.y * half * side + inward.y * depth,
+    const at = (offset: number, depth: number): Vec2 => ({
+      x: terminal.centre.x + along.x * offset + inward.x * depth,
+      y: terminal.centre.y + along.y * offset + inward.y * depth,
     });
 
-    const points = [corner(-1, 0), corner(1, 0), corner(1, thickness), corner(-1, thickness)];
+    /*
+     * How far the slab may reach out on one side: the projection asked for,
+     * unless the letter comes back within reach.
+     *
+     * A slab used to be the full projection on both sides whatever lay beside
+     * it. The foot of Geist's k sits right up against the foot of its leg, and
+     * the slab ran across the white between them and into the leg, which is
+     * the odd bar there; heavier, the same happens between the feet of an m.
+     * So each side looks along the slab, across the white beside the stroke,
+     * and takes at most a share of what it finds. Rulers that start in ink --
+     * where the side of the stroke is shorter than the slab is thick and the
+     * arch of an n has already sprung away -- say nothing about white and are
+     * not asked.
+     */
+    const reach = (side: -1 | 1): number => {
+      const heading = { x: along.x * side, y: along.y * side };
+      let room = Infinity;
+      for (const share of GAP_DEPTHS) {
+        const start = at(side * (half + 0.5), thickness * share);
+        if (insideInk(polylines, start)) continue;
+        room = Math.min(room, rayHitDistance(polylines, start, heading));
+      }
+      return Math.max(0, Math.min(projection, room * SHARE_OF_GAP));
+    };
+
+    let low = -(half + reach(-1));
+    let high = half + reach(1);
+
+    /*
+     * An arm gets a beak, not a bar.
+     *
+     * The slab reaches across the stroke on both sides, which on a stem is a
+     * serif. On a stroke lying on its side -- the arms of E, F, L, T and Z --
+     * across the stroke is up and down, and a bar there went up past the top of
+     * the letter from the top arm and down below the baseline from the bottom
+     * one: the tall posts through the ends of Geist's E. A slab-serif E has a
+     * beak instead, hanging from the top arm into the letter and standing up
+     * from the bottom arm, flush with the outside of the arm on the other side.
+     *
+     * The outside is whichever edge of the arm is the top or bottom of the
+     * letter. An arm with neither -- the middle arm of E and F, the crossbar of
+     * 4 or t -- gets nothing, because it has no outside to be flush with and a
+     * bar through it both ways is the post again in miniature. An arm that is
+     * both is a bar on its own, a hyphen or a dash, and gets nothing either.
+     */
+    if (Math.abs(inward.x) > Math.abs(inward.y)) {
+      const tolerance = terminal.width * FLUSH;
+      const flush = (side: -1 | 1): boolean => {
+        const corner = at(side * half, 0);
+        return corner.y >= box.yMax - tolerance || corner.y <= box.yMin + tolerance;
+      };
+      const lowFlush = flush(-1);
+      const highFlush = flush(1);
+      if (lowFlush === highFlush) continue;
+      if (lowFlush) low = -half;
+      else high = half;
+    }
+
+    // Start flush with the end of the stroke so the letter keeps its height,
+    // and reach back into it.
+    const points = [at(low, 0), at(high, 0), at(high, thickness), at(low, thickness)];
     const nodes: GlyphNode[] = points.map((point) => ({
       point,
       handleIn: null,
@@ -194,8 +393,9 @@ export function addSlabs(contours: Contour[], options: SlabOptions): Contour[] {
      * grow. It went unseen while slabs were added after the weight, and
      * appeared the moment they were added before it.
      */
-    return isClockwise(slab) === terminal.clockwise ? slab : reverseContour(slab);
-  });
+    slabs.push(isClockwise(slab) === terminal.clockwise ? slab : reverseContour(slab));
+  }
 
+  if (slabs.length === 0) return contours;
   return [...contours, ...slabs];
 }
