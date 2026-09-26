@@ -59,6 +59,13 @@ export interface SlabOptions {
    * flat area whose neighbours happen to be longer still.
    */
   maxWidth: number;
+  /**
+   * Weight still to come, in font units. It grows every slab towards its
+   * neighbour by this much again, so it is taken out of the room first:
+   * leaving it in let the feet of a heavy n grow into each other until a
+   * crack a few units wide was all that parted them.
+   */
+  weight?: number;
 }
 
 /** A stroke end: where it is, how wide, and which way the stroke runs. */
@@ -295,6 +302,7 @@ function insideInk(polylines: Vec2[][], point: Vec2): boolean {
  */
 export function addSlabs(contours: Contour[], options: SlabOptions): Contour[] {
   const { projection, thickness, maxWidth } = options;
+  const growth = Math.max(0, options.weight ?? 0);
   if (projection <= 0 && thickness <= 0) return contours;
 
   const terminals = findTerminals(contours, maxWidth);
@@ -336,7 +344,7 @@ export function addSlabs(contours: Contour[], options: SlabOptions): Contour[] {
         if (insideInk(polylines, start)) continue;
         room = Math.min(room, rayHitDistance(polylines, start, heading));
       }
-      return Math.max(0, Math.min(projection, room * SHARE_OF_GAP));
+      return Math.max(0, Math.min(projection, room * SHARE_OF_GAP - growth));
     };
 
     let low = -(half + reach(-1));

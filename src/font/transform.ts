@@ -15,6 +15,7 @@ import {
   contourArea,
   contourSegments,
   cubicAt,
+  splitCubic,
   cubicDerivativeAt,
   distance,
   flattenContour,
@@ -181,6 +182,7 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
       // thicker and it reads as a box on the end rather than a serif.
       thickness: params.slab * 0.55,
       maxWidth: typeface.unitsPerEm * 0.35,
+      weight: params.weight,
     });
   }
   if (params.counterScale !== 1)
@@ -194,7 +196,7 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
     const obstacles = contours.map((contour) => flattenContour(contour, 8));
     const floor = typeface.unitsPerEm * MIN_STROKE;
     contours = contours.map((contour, index) =>
-      applyWeight(contour, params.weight, outer[index], obstacles, index, floor),
+      applyWeight(contour, params.weight, outer[index], obstacles, index, floor, outer),
     );
     /*
      * And the letter moved over by the weight, so it keeps its sidebearings.
@@ -211,8 +213,12 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
       mapContour(contour, (point) => ({ x: point.x + shift, y: point.y })),
     );
   }
-  if (params.cornerRadius > 0)
-    contours = contours.map((contour) => applyCornerRadius(contour, params.cornerRadius));
+  if (params.cornerRadius > 0) {
+    const outer = classifyContours(contours);
+    contours = contours.map((contour, index) =>
+      applyCornerRadius(contour, params.cornerRadius, outer[index]),
+    );
+  }
   /*
    * The cuts and the cast go on once the letter is the shape it is going to
    * be, and before anything turns or squashes it.
@@ -234,8 +240,33 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
   }
   if (params.xHeightScale !== 1)
     contours = contours.map((contour) => applyVerticalScale(contour, params.xHeightScale));
-  if (params.width !== 1)
+  if (params.width !== 1) {
     contours = contours.map((contour) => applyHorizontalScale(contour, params.width));
+    /*
+     * And the strokes a change of width thinned or thickened, put back.
+     *
+     * Scaling sideways scales a stem with the letter while a bar lying across
+     * it keeps its thickness, so a condensed H had stems thinner than its
+     * crossbar and a widened one had stems like slabs: the width control made
+     * every letter uneven. What a condensed cut actually has is the same
+     * strokes in less room. So each side of every stroke is pushed back out by
+     * however much the scaling took off it -- sideways only, in proportion to
+     * how much that bit of outline faces sideways -- which gives a stem back
+     * its whole width and leaves a bar alone.
+     */
+    const give = widthGive(typeface, params);
+    if (Math.abs(give) > 0.5) {
+      const outer = classifyContours(contours);
+      const obstacles = contours.map((contour) => flattenContour(contour, 8));
+      const floor = typeface.unitsPerEm * MIN_STROKE;
+      contours = contours.map((contour, index) =>
+        applyWeight(contour, give, outer[index], obstacles, index, floor, outer, SIDEWAYS),
+      );
+      contours = contours.map((contour) =>
+        mapContour(contour, (point) => ({ x: point.x + give, y: point.y })),
+      );
+    }
+  }
   if (params.slant !== 0) contours = contours.map((contour) => applySlant(contour, params.slant));
   // Quantising comes last. It has to see the letter as it will finally be
   // drawn, or a stem that weight or width moved would land on a different cell
@@ -261,7 +292,23 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
  */
 export function resolveAdvanceWidth(glyph: Glyph, typeface: Typeface): number {
   const params = effectiveParams(glyph, typeface);
-  return Math.max(0, (glyph.advanceWidth + params.weight * 2) * params.width + params.tracking * 2);
+  return Math.max(
+    0,
+    (glyph.advanceWidth + params.weight * 2) * params.width +
+      params.tracking * 2 +
+      widthGive(typeface, params) * 2,
+  );
+}
+
+/**
+ * How far each side of a stroke is pushed back out after the width scaling:
+ * half of what the scaling took off the font's stem, which is the stem as the
+ * weight left it. Negative when the letter was widened.
+ */
+function widthGive(typeface: Typeface, params: GlyphParams): number {
+  if (params.width === 1) return 0;
+  const stem = cutScaleOf(typeface).stem + params.weight * 2;
+  return (stem * (1 - params.width)) / 2;
 }
 
 function cloneContour(contour: Contour): Contour {
@@ -336,6 +383,8 @@ function applyWeight(
   obstacles: Vec2[][],
   self: number,
   floor: number,
+  roles: boolean[] = [],
+  shape: Shape = ROUND,
 ): Contour {
   const nodes = contour.nodes;
   if (nodes.length < 2) return contour;
@@ -389,7 +438,11 @@ function applyWeight(
       unit.push(null);
       continue;
     }
-    unit.push(mitre(facing(arriving, sign, amount), facing(leaving, sign, amount)));
+    unit.push(
+      shape === ROUND
+        ? mitre(facing(arriving, sign, amount), facing(leaving, sign, amount))
+        : shapedMitre(facing(arriving, sign, amount), facing(leaving, sign, amount), shape),
+    );
   }
 
   /*
@@ -434,7 +487,17 @@ function applyWeight(
    * below turns into the corner a heavier letter has, and holding the point
    * back for them is what made the stroke uneven.
    */
-  const others = obstacles.filter((_, which) => which !== self);
+  /*
+   * And of the other contours, only those that are the other kind: a counter
+   * for an outline, an outline for a counter. Ink running into other ink is
+   * not a collision -- a slab serif laid over the foot of a stem, an accent
+   * touching its letter -- and treating the slab as a wall held the stem's
+   * corners back while its edges went on, so a slabbed n leaned once it was
+   * given weight.
+   */
+  const others = obstacles.filter(
+    (_, which) => which !== self && (roles.length === 0 || roles[which] !== isOuter),
+  );
   const far = farWalls(segments, Math.abs(amount) * 4);
   for (let index = 0; index < count; index++) {
     const direction = unit[index];
@@ -443,6 +506,12 @@ function applyWeight(
       continue;
     }
     const stretch = Math.hypot(direction.x, direction.y);
+    // A point this shape of offset does not move -- the top of a bowl, when
+    // only the sides are being pushed -- has nothing to measure.
+    if (stretch < 1e-9) {
+      reach.push(0);
+      continue;
+    }
     const before = segments[(index - 1 + count) % count];
     const after = segments[index];
     const ahead = (from: Vec2, heading: Vec2, at: number): number =>
@@ -458,9 +527,12 @@ function applyWeight(
         side === "before"
           ? far.at[index] - (1 - along) * far.lengths[(index - 1 + count) % count]
           : far.at[index] + along * far.lengths[index];
+      const heading = shape(facing(local, sign, amount));
+      const size = Math.hypot(heading.x, heading.y);
+      if (size < 1e-9) continue;
       room = Math.min(
         room,
-        ahead(pointOnSegment(at, along), facing(local, sign, amount), position),
+        ahead(pointOnSegment(at, along), scaleVec(heading, 1 / size), position),
       );
     }
     /*
@@ -506,6 +578,7 @@ function applyWeight(
       unit,
       sign,
       amount,
+      shape,
     );
 
   const facingBefore = Math.sign(contourArea(contour));
@@ -564,6 +637,7 @@ function offsetOutline(
   unit: Array<Vec2 | null>,
   sign: number,
   amount: number,
+  shape: Shape = ROUND,
 ): Contour {
   const nodes = contour.nodes;
   const count = nodes.length;
@@ -606,7 +680,7 @@ function offsetOutline(
      * crossing, so it was never cut.
      */
     const before = segments[(index - 1 + count) % count];
-    const arrivingNormal = facing(segmentDirection(before, 1), sign, amount);
+    const arrivingNormal = shape(facing(segmentDirection(before, 1), sign, amount));
     const leaving = segmentDirection(segment, 0);
     const inside = arrivingNormal.x * leaving.x + arrivingNormal.y * leaving.y > 1e-6;
     if (!inside) {
@@ -628,7 +702,7 @@ function offsetOutline(
       const t = step / steps;
       const heading = segmentDirection(segment, t);
       const distanceHere = by[index] + (by[next] - by[index]) * t;
-      const normal = heading.x || heading.y ? facing(heading, sign, amount) : { x: 0, y: 0 };
+      const normal = heading.x || heading.y ? shape(facing(heading, sign, amount)) : { x: 0, y: 0 };
       trace.push({
         point: add2(pointOnSegment(segment, t), scaleVec(normal, distanceHere)),
         node: -1,
@@ -972,6 +1046,36 @@ function mitre(arriving: Vec2, leaving: Vec2): Vec2 {
   return stretch > MITRE_LIMIT ? scaleVec(point, MITRE_LIMIT / stretch) : point;
 }
 
+/**
+ * Which way a point moves, given the way its outline faces: the whole of the
+ * normal for weight, or only the sideways part of it for putting back the
+ * stroke a change of width took away.
+ */
+type Shape = (normal: Vec2) => Vec2;
+const ROUND: Shape = (normal) => normal;
+const SIDEWAYS: Shape = (normal) => ({ x: normal.x, y: 0 });
+
+/**
+ * The corner of two sides that each move by their own shaped amount: the one
+ * point that has moved as far off each side, measured square to it, as that
+ * side itself did. For the round shape this is `mitre`.
+ */
+function shapedMitre(arriving: Vec2, leaving: Vec2, shape: Shape): Vec2 {
+  const a = shape(arriving);
+  const b = shape(leaving);
+  const reachA = a.x * arriving.x + a.y * arriving.y;
+  const reachB = b.x * leaving.x + b.y * leaving.y;
+  const det = arriving.x * leaving.y - arriving.y * leaving.x;
+  // The two sides run on in line, or double back: no corner to solve for.
+  if (Math.abs(det) < 1e-6) return scaleVec(add2(a, b), 0.5);
+  const point = {
+    x: (reachA * leaving.y - reachB * arriving.y) / det,
+    y: (arriving.x * reachB - leaving.x * reachA) / det,
+  };
+  const stretch = Math.hypot(point.x, point.y);
+  return stretch > MITRE_LIMIT ? scaleVec(point, MITRE_LIMIT / stretch) : point;
+}
+
 function scaleVec(vector: Vec2, by: number): Vec2 {
   return { x: vector.x * by, y: vector.y * by };
 }
@@ -1238,13 +1342,36 @@ const COUNTER_KNEE = 0.85;
 /**
  * Round sharp corners.
  *
- * A corner between two straight segments is replaced by two nodes set back
- * along each segment and joined by a curve. Only genuine corners are touched:
- * a node already sitting on a curve, or one whose segments are nearly in line,
- * is left as it is. The radius is clamped so that adjacent corners on a short
- * segment cannot overrun each other.
+ * Every corner: wherever the outline changes direction at a point rather than
+ * turning through it, whatever either side of it is. It used to round only a
+ * corner between two straight runs, which on a letter somebody else drew is a
+ * minority of them -- the H of a serif face meets its brackets with curves, an
+ * e has no straight run at all -- so the control that says it rounds corners
+ * left most of the corners of most fonts exactly as sharp as they were.
+ *
+ * Each side of the corner is cut back by the radius, measured along the
+ * outline, and the two cut ends joined by a circular arc, drawn as one cubic
+ * leaving and arriving in the directions the outline had there. The radius is
+ * held to less than half of either side, so two corners at the ends of a short
+ * stretch cannot eat through it and each other.
  */
-function applyCornerRadius(contour: Contour, radius: number): Contour {
+function applyCornerRadius(contour: Contour, radius: number, isOuter = true): Contour {
+  /*
+   * And held back where it would make the outline cross itself. That happens
+   * at the Black, where the weight has folded a stretch of outline in an
+   * inside corner down to a few units and a rounding cut back along it runs
+   * into the one beside it. A smaller radius on that one contour is the whole
+   * of the answer; the letter is never handed back crossed.
+   */
+  const was = contoursIntersect([contour]);
+  for (const share of [1, 0.5, 0.25]) {
+    const rounded = roundCorners(contour, radius * share, isOuter);
+    if (was || !contoursIntersect([rounded])) return rounded;
+  }
+  return contour;
+}
+
+function roundCorners(contour: Contour, radius: number, isOuter: boolean): Contour {
   /*
    * Points written on top of each other first become one. Weight leaves them
    * where it collapsed a stretch of outline it ran over, and a corner whose
@@ -1269,70 +1396,176 @@ function applyCornerRadius(contour: Contour, radius: number): Contour {
     const last = nodes.pop() as GlyphNode;
     nodes[0] = { ...nodes[0], handleIn: last.handleIn };
   }
-  if (nodes.length < 3 || radius <= 0) return contour;
+  if (!contour.closed || nodes.length < 2 || radius <= 0) return contour;
 
-  // Circular arcs approximated by cubics need their handles at this fraction
-  // of the distance to the original corner.
-  const HANDLE_RATIO = 0.5523;
-  const out: GlyphNode[] = [];
+  const settled: Contour = { closed: true, nodes };
+  const segments = contourSegments(settled);
+  const count = segments.length;
+  if (count !== nodes.length) return contour;
+  const pieces = segments.map(asPiece);
+  const lengths = pieces.map(pieceLength);
+  // Which way round the ink is, so a corner can be told to be an outside one.
+  const winding = Math.sign(contourArea(settled)) * (isOuter ? 1 : -1);
 
-  for (let index = 0; index < nodes.length; index++) {
-    const node = nodes[index];
-    const previous = nodes[(index - 1 + nodes.length) % nodes.length];
-    const next = nodes[(index + 1) % nodes.length];
-
-    // Both sides must be straight, otherwise this is part of a curve already.
-    const straightBefore = !node.handleIn && !previous.handleOut;
-    const straightAfter = !node.handleOut && !next.handleIn;
-    if (!straightBefore || !straightAfter) {
-      out.push(node);
-      continue;
-    }
-
-    const incoming = normalize(sub(node.point, previous.point));
-    const outgoing = normalize(sub(next.point, node.point));
-
-    // A node that barely turns is not a corner worth rounding.
-    const turn = incoming.x * outgoing.y - incoming.y * outgoing.x;
-    const alignment = incoming.x * outgoing.x + incoming.y * outgoing.y;
-    if (Math.abs(turn) < 0.02 && alignment > 0) {
-      out.push(node);
-      continue;
-    }
-
-    // Never take more than half of either neighbouring segment.
-    const limit = Math.min(
-      distance(node.point, previous.point) / 2,
-      distance(node.point, next.point) / 2,
+  // How far each corner is cut back; nought where there is no corner.
+  const cut = nodes.map((_, index) => {
+    const arriving = segmentDirection(segments[(index - 1 + count) % count], 1);
+    const leaving = segmentDirection(segments[index], 0);
+    if (!(arriving.x || arriving.y) || !(leaving.x || leaving.y)) return 0;
+    const cos = arriving.x * leaving.x + arriving.y * leaving.y;
+    // Turning by less than this is a point on a curve drawn slightly off, not
+    // a corner anybody meant.
+    if (cos > Math.cos((CORNER_TURN * Math.PI) / 180)) return 0;
+    /*
+     * An inside corner -- where a crossbar meets a stem, the throat of a
+     * counter -- is softened, not rounded as far as an outside one. Given the
+     * whole radius the H grew webs under its bar and the counter of an A went
+     * round: a rounded face rounds what sticks out and only eases what goes in.
+     */
+    const turn = arriving.x * leaving.y - arriving.y * leaving.x;
+    const outside = turn * winding > 0;
+    const r = Math.min(
+      outside ? radius : radius * INSIDE_SHARE,
+      lengths[(index - 1 + count) % count] * 0.49,
+      lengths[index] * 0.49,
     );
-    const r = Math.min(radius, limit);
-    if (r < 1) {
-      out.push(node);
-      continue;
+    return r < 1 ? 0 : r;
+  });
+  if (cut.every((r) => r === 0)) return settled;
+
+  // Each piece with its two ends cut back.
+  const trimmed = pieces.map((piece, index) => {
+    const next = (index + 1) % count;
+    const from = cut[index] > 0 ? paramAt(piece, cut[index]) : 0;
+    const to = cut[next] > 0 ? paramAt(piece, lengths[index] - cut[next]) : 1;
+    return subPiece(piece, from, Math.max(from, to));
+  });
+
+  const out: Piece[] = [];
+  for (let index = 0; index < count; index++) {
+    if (cut[index] > 0) {
+      const arriving = trimmed[(index - 1 + count) % count];
+      const leaving = trimmed[index];
+      out.push(arcBetween(arriving, leaving));
     }
-
-    const start: Vec2 = { x: node.point.x - incoming.x * r, y: node.point.y - incoming.y * r };
-    const end: Vec2 = { x: node.point.x + outgoing.x * r, y: node.point.y + outgoing.y * r };
-
-    out.push({
-      point: start,
-      handleIn: null,
-      handleOut: {
-        x: start.x + (node.point.x - start.x) * HANDLE_RATIO,
-        y: start.y + (node.point.y - start.y) * HANDLE_RATIO,
-      },
-      type: "tangent",
-    });
-    out.push({
-      point: end,
-      handleIn: {
-        x: end.x + (node.point.x - end.x) * HANDLE_RATIO,
-        y: end.y + (node.point.y - end.y) * HANDLE_RATIO,
-      },
-      handleOut: null,
-      type: "tangent",
-    });
+    out.push(trimmed[index]);
   }
+  return piecesToContour(
+    out.filter((piece) => distance(piece.from, piece.to) > 1e-6 || piece.curved),
+  );
+}
 
-  return { closed: contour.closed, nodes: out };
+/** How much of the radius an inside corner gets. */
+const INSIDE_SHARE = 0.3;
+
+/** Degrees the outline has to turn at a point before it counts as a corner. */
+const CORNER_TURN = 12;
+
+/** One stretch of outline as a cubic, a straight run written as one. */
+interface Piece {
+  from: Vec2;
+  c1: Vec2;
+  c2: Vec2;
+  to: Vec2;
+  curved: boolean;
+}
+
+function asPiece(segment: Segment): Piece {
+  return segment.kind === "line"
+    ? { from: segment.from, c1: segment.from, c2: segment.to, to: segment.to, curved: false }
+    : { from: segment.from, c1: segment.c1, c2: segment.c2, to: segment.to, curved: true };
+}
+
+function pieceLength(piece: Piece): number {
+  if (!piece.curved) return distance(piece.from, piece.to);
+  let total = 0;
+  let last = piece.from;
+  for (let i = 1; i <= 24; i++) {
+    const point = cubicAt(piece.from, piece.c1, piece.c2, piece.to, i / 24);
+    total += distance(last, point);
+    last = point;
+  }
+  return total;
+}
+
+/** The parameter a given distance along a piece. */
+function paramAt(piece: Piece, along: number): number {
+  if (!piece.curved) {
+    const length = distance(piece.from, piece.to);
+    return length > 0 ? Math.min(1, Math.max(0, along / length)) : 0;
+  }
+  const STEPS = 48;
+  let total = 0;
+  let last = piece.from;
+  for (let i = 1; i <= STEPS; i++) {
+    const point = cubicAt(piece.from, piece.c1, piece.c2, piece.to, i / STEPS);
+    const step = distance(last, point);
+    if (total + step >= along) {
+      return (i - 1 + (step > 0 ? (along - total) / step : 0)) / STEPS;
+    }
+    total += step;
+    last = point;
+  }
+  return 1;
+}
+
+/** The part of a piece between two parameters. */
+function subPiece(piece: Piece, from: number, to: number): Piece {
+  if (!piece.curved) {
+    const a = lerp(piece.from, piece.to, from);
+    const b = lerp(piece.from, piece.to, to);
+    return { from: a, c1: a, c2: b, to: b, curved: false };
+  }
+  let curve: [Vec2, Vec2, Vec2, Vec2] = [piece.from, piece.c1, piece.c2, piece.to];
+  if (to < 1) curve = splitCubic(curve[0], curve[1], curve[2], curve[3], to)[0];
+  if (from > 0) {
+    const t = to > 0 ? from / to : 0;
+    curve = splitCubic(curve[0], curve[1], curve[2], curve[3], t)[1];
+  }
+  return { from: curve[0], c1: curve[1], c2: curve[2], to: curve[3], curved: true };
+}
+
+/**
+ * A circular arc from the end of one piece to the start of the next, leaving
+ * and arriving the way the outline was going there.
+ */
+function arcBetween(arriving: Piece, leaving: Piece): Piece {
+  const heading = (piece: Piece, t: 0 | 1): Vec2 => {
+    const d = piece.curved
+      ? normalize(cubicDerivativeAt(piece.from, piece.c1, piece.c2, piece.to, t))
+      : normalize(sub(piece.to, piece.from));
+    return d.x || d.y ? d : normalize(sub(piece.to, piece.from));
+  };
+  const from = arriving.to;
+  const to = leaving.from;
+  const a = heading(arriving, 1);
+  const b = heading(leaving, 0);
+  const chord = distance(from, to);
+  const turn = Math.acos(Math.max(-1, Math.min(1, a.x * b.x + a.y * b.y)));
+  // A circle's arc through this turn: its radius from the chord, its handles
+  // four thirds of the tangent of a quarter of the turn.
+  const half = Math.sin(turn / 2);
+  const handle = half > 1e-6 ? ((4 / 3) * Math.tan(turn / 4) * chord) / (2 * half) : chord / 3;
+  return {
+    from,
+    c1: { x: from.x + a.x * handle, y: from.y + a.y * handle },
+    c2: { x: to.x - b.x * handle, y: to.y - b.y * handle },
+    to,
+    curved: true,
+  };
+}
+
+/** A closed contour through a chain of pieces, each ending where the next begins. */
+function piecesToContour(pieces: Piece[]): Contour {
+  const count = pieces.length;
+  const nodes: GlyphNode[] = pieces.map((piece, index) => {
+    const before = pieces[(index - 1 + count) % count];
+    return {
+      point: { ...piece.from },
+      handleIn: before.curved ? { ...before.c2 } : null,
+      handleOut: piece.curved ? { ...piece.c1 } : null,
+      type: before.curved || piece.curved ? "smooth" : "corner",
+    };
+  });
+  return { closed: true, nodes };
 }
