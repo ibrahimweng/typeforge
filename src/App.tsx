@@ -41,7 +41,7 @@ import {
   type Project,
   type Reading,
 } from "@/project/format";
-import { keeper as makeKeeper, kept } from "@/project/keep";
+import { keeper as makeKeeper, kept, thisTab } from "@/project/keep";
 import { fileNameFor, restore, session } from "@/project/session";
 import type { Keeping } from "@/components/TopBar";
 import { libraryStore } from "@/state/useLibrary";
@@ -555,14 +555,20 @@ export function App(): React.JSX.Element {
    */
   const keptSoFar = React.useRef<Keeping>("unknown");
   const keeper = React.useRef(
-    makeKeeper(undefined, (went) => {
-      const now: Keeping = went ? "kept" : "off";
-      // Set only on a change, so a write every second does not re-render the
-      // whole toolbar every second.
-      if (keptSoFar.current === now) return;
-      keptSoFar.current = now;
-      setKeeping(now);
-    }),
+    makeKeeper(
+      undefined,
+      (went) => {
+        const now: Keeping = went ? "kept" : "off";
+        // Set only on a change, so a write every second does not re-render the
+        // whole toolbar every second.
+        if (keptSoFar.current === now) return;
+        keptSoFar.current = now;
+        setKeeping(now);
+      },
+      // Which record is this tab's; see `thisTab` in `keep.ts`. Claimed once
+      // per page however often this line is evaluated.
+      thisTab(),
+    ),
   ).current;
   const restoring = React.useRef(true);
 
@@ -573,11 +579,14 @@ export function App(): React.JSX.Element {
       // asked for, and it is what gets written back even if putting it back
       // went wrong.
       let was: Mode = "edit";
+      // What was put back, written back as it was; see the note at the probe.
+      let picked: Project | null = null;
       try {
-        const saved = await kept();
+        const saved = await kept(await thisTab());
         if (!live) return;
         if (saved) {
           was = saved.mode;
+          picked = saved;
           const back = await restore(saved);
           if (!live) return;
           setMode(back.mode);
@@ -603,7 +612,16 @@ export function App(): React.JSX.Element {
           // answer until something has been written, so it is asked by writing.
           // What comes back of that goes to the toolbar through the keeper's
           // own report, along with every write after it.
-          await keeper.now(() => session(was));
+          //
+          // And what is written is the record that was picked up, untouched,
+          // when there was one. Gathered afresh it carried a new date, so
+          // opening a second tab on an old session made that old session the
+          // newest on the next visit -- ahead of whatever was actually last
+          // worked on -- and a session that failed to come back was replaced
+          // by the empty one on screen, when the note above says it is kept
+          // for a fix to read tomorrow. Into this tab's own record either way,
+          // so no other tab's work is touched by it.
+          await keeper.now(() => picked ?? session(was));
         }
         restoring.current = false;
       }
@@ -669,8 +687,11 @@ export function App(): React.JSX.Element {
    */
   React.useEffect(() => {
     const flush = () => {
+      // Only when there is something new since the last write. A tab that
+      // was merely looked away from has nothing to add, and writing anyway is
+      // what made visiting an old tab on the way out an edit.
       if (document.visibilityState === "hidden" && !restoring.current) {
-        void keeper.now(() => session(mode));
+        void keeper.flush(() => session(mode));
       }
     };
     document.addEventListener("visibilitychange", flush);

@@ -361,6 +361,7 @@ export interface SavedUfo {
   glifKept?: Record<string, string[]>;
   unreadGlyphs?: Record<string, string>;
   kernGroupNames?: Record<string, { left: string; right: string }>;
+  renamed?: Record<string, string>;
 }
 
 export interface SavedUfoFile {
@@ -470,6 +471,7 @@ export function toSavedUfo(carried: UfoCarried): SavedUfo {
     glifKept: carried.glifKept,
     unreadGlyphs: carried.unreadGlyphs,
     kernGroupNames: carried.kernGroupNames,
+    renamed: carried.renamed,
   };
   savedUfos.set(carried, saved);
   return saved;
@@ -495,6 +497,7 @@ export function fromSavedUfo(saved: unknown): UfoCarried | null {
     glifKept: record(raw.glifKept),
     unreadGlyphs: record(raw.unreadGlyphs),
     kernGroupNames: record(raw.kernGroupNames),
+    renamed: record(raw.renamed),
   };
 }
 
