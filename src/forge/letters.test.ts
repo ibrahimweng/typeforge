@@ -1004,3 +1004,46 @@ describe("a crossbar pushed low and heavy stays a bar", () => {
     expect(fused).toEqual([]);
   });
 });
+
+describe("a serif goes on the outside of a shallow diagonal", () => {
+  it("lays no wing along the top of a k's arm", async () => {
+    /*
+     * The arm of a k meets its x-height at well under forty-five degrees, so
+     * the wing on the inside of its serif lay above the arm with a long wedge
+     * of paper between them, and at a long projection it read as a loose bar
+     * across the middle of the letter. Level with the serif, the arm's ink
+     * should start where the arm's own edge does -- the serif may reach out to
+     * the right of it, never back along it to the left.
+     */
+    await readyToShape();
+    const long = (style: Style): Style => ({
+      ...style,
+      parts: {
+        ...style.parts,
+        slab: { ...style.parts.slab, on: true, projection: 1.2, thickness: 1 },
+      },
+    });
+    const bare = (style: Style): Style => ({
+      ...style,
+      parts: { ...style.parts, slab: { ...style.parts.slab, on: false } },
+    });
+    const loose: string[] = [];
+    for (const style of [SANS, SERIF]) {
+      const y = style.metrics.xHeight - style.pen.weight * 0.5;
+      const armAt = (drawn: Style): number => {
+        const ink = unite(drawLetter("k", drawn)!.contours, "winding", "whole");
+        const runs = inkRunsAt(ink, y, "y", 48);
+        // The run after the stem's is the arm (the serif's outer wing, where
+        // there is one, stands clear of it further right). Measured from the
+        // stem's left edge, since a serifed letter is set with more room
+        // either side and the whole drawing moves over.
+        return runs[1][0] - runs[0][0];
+      };
+      const without = armAt(bare(style));
+      const withSerif = armAt(long(style));
+      if (withSerif < without - 1)
+        loose.push(`${style.name}: ${(without - withSerif).toFixed(0)} units`);
+    }
+    expect(loose).toEqual([]);
+  });
+});

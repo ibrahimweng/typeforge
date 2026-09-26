@@ -1156,17 +1156,6 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        */
       const crowded = room < inner + projection / 3;
       /*
-       * And never on an end that is not an end.
-       *
-       * A stroke that starts inside another -- the bowl of an R setting off
-       * from the top of its stem -- has a terminal like any other run, and
-       * was given a serif like any other: a wing laid across the top of the
-       * stem from inside it, which stood out past the stem's own serif as a
-       * notch. What is buried in another stroke is a join, and a join does
-       * not take a serif.
-       */
-      const buried = others.some((contour) => contourContainsPoint(contour, at));
-      /*
        * Nor on the inside of a shallow diagonal.
        *
        * A serif laid level across the end of a leaning stroke has two wings,
@@ -1183,11 +1172,7 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
       const across = { x: -facing.y * side, y: facing.x * side };
       const underneath = level && across.x * into.x + across.y * into.y > Math.SQRT1_2;
       const refused =
-        !winged ||
-        crowded ||
-        buried ||
-        underneath ||
-        crossesALine(at, facing, side, full, inner, style);
+        !winged || crowded || underneath || crossesALine(at, facing, side, full, inner, style);
       const from = refused ? 0 : inner;
       const tip = refused ? inner : Math.min(full, room);
       const deep = refused ? BURIED : thickness;
