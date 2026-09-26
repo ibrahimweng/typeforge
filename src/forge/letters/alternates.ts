@@ -1,0 +1,800 @@
+import type { Vec2 } from "@/font/types";
+import { seamsOf } from "../script";
+import { bowlPoint, roundCorners, spineEnd, spineStart } from "../shapes";
+import type { Style } from "../style";
+import type { Spine } from "../types";
+import {
+  arch,
+  at,
+  belly,
+  bend,
+  bowed,
+  BUTT,
+  chain,
+  corner,
+  crossbar,
+  figureWidth,
+  finish,
+  type Frame,
+  frame,
+  ink,
+  junction,
+  type LetterName,
+  openBowl,
+  type Recipe,
+  ring,
+  straight,
+  stub,
+  thin,
+  through,
+  turn,
+} from "./common";
+
+// ---------------------------------------------------------------------------
+// Alternates
+// ---------------------------------------------------------------------------
+
+/**
+ * Other ways of drawing the same letter.
+ *
+ * Not everything about a typeface is a number. Whether an a has one storey or
+ * two, whether an A comes to a point or is cut flat across, whether a Q's tail
+ * hangs below the bowl or crosses it -- these are decisions with no in-between,
+ * and no slider reaches them. A face that can only be adjusted is a face that
+ * can only ever be a variation on the one it started as.
+ *
+ * A choice here belongs to the letter rather than to the font, which is the one
+ * place this half of the application is deliberately not family-wide: choosing
+ * a double-storey a says nothing about the g. Everything else still reaches it.
+ * The alternate is a different skeleton, and the pen, the proportions and every
+ * named part are applied to it exactly as they are to the default -- so a font
+ * with a flat-topped A still has one weight, one shoulder and one serif.
+ */
+export interface Alternate {
+  id: string;
+  label: string;
+  /** What it is, for the button's tooltip. */
+  hint: string;
+  build: (style: Style) => Recipe;
+}
+
+/**
+ * The stroke a written letter is entered with: up from the writing line, over
+ * the top, and back down to where the letter proper begins.
+ *
+ * This is the whole of what separates a written script from a drawn one. A
+ * drawn `n` is two stems with an arch between them and a separate stroke run in
+ * from outside to touch the first of them; a written one is a hand that came
+ * off the letter before, climbed to the top of the first stem and turned down,
+ * so the connection and the stem are one path. `enters.ts` slices the reference
+ * and ours down their length and shows it: the reference's `n` carries one run
+ * of ink from a tenth of an x-height before its own origin that is already the
+ * letter, and ours carried a run six hundredths tall with the stem arriving
+ * three hundredths later.
+ *
+ * Read off the reference. Its `n`'s up-stroke leaves the writing line 0.11 of
+ * an x-height before its origin and reaches the x-height 0.30 after it, which
+ * is 68 degrees at the bottom easing to about 64 by the top; its first stem
+ * comes back down almost exactly under the apex, so the two close a wedge
+ * rather than making an arch.
+ *
+ * Steeper than the reference here -- 76 rather than 68 -- and the reason is the
+ * seam. The reference's up-stroke crosses its own origin at 0.15 of an x-height
+ * and ours crosses it at the seam, 0.30, so ours has a shorter climb left to
+ * make on the letter's own side of the boundary and has to make it in less
+ * room. At 68 the written `n` set at 1.61 of an x-height against the
+ * reference's 1.40; at 76 it sets at 1.54.
+ *
+ * And the leg comes down upright rather than leaning back under the apex, which
+ * the reference's very nearly does. Two degrees of lean walks the foot of the
+ * leg away from where the arch springs -- `arch` is told an x and starts its
+ * turn at that x partway up -- and at a pen of 8 the two were ten units apart
+ * and the letter came out in two pieces. Upright, the arch springs on the leg
+ * at every weight, which is what the plain `n` has always relied on.
+ *
+ * Built as a straight run, a turn and a straight run, in that order and with
+ * the turn's radius carrying both tangents -- the same construction `archSpine`
+ * uses, and for the same reason: a chain whose pieces do not leave where the
+ * last one arrived is a spine with a corner in it, and a corner between an arc
+ * and a line is not rounded by anything downstream. Swept, that is a stroke
+ * that crosses itself.
+ */
+const UPSTROKE = 76;
+const FIRST_LEG = 90;
+
+function entering(apex: Vec2, radius: number): Spine {
+  const up = (UPSTROKE * Math.PI) / 180;
+  const down = (FIRST_LEG * Math.PI) / 180;
+  const centre = at(apex.x, apex.y - radius);
+  const on = (angle: number): Vec2 =>
+    at(centre.x + radius * Math.cos(angle), centre.y + radius * Math.sin(angle));
+  const start = on(Math.PI / 2 + up);
+  const end = on(Math.PI / 2 - down);
+  return chain(
+    straight(at(start.x - start.y / Math.tan(up), 0), start),
+    turn(centre, radius, 90 + UPSTROKE, 90 - FIRST_LEG),
+    straight(end, at(end.x + end.y / Math.tan(down), 0)),
+  );
+}
+
+/**
+ * The short rise a written round letter is entered with.
+ *
+ * A stem is entered with a whole up-stroke, because the hand has to climb to
+ * the top of it; a bowl is entered a fifth of the way up its own left flank,
+ * because that is where the stroke that draws it begins. The reference's `o`
+ * shows the difference plainly: its ink starts at -0.03 of an x-height and its
+ * bowl at 0.00, so what hangs outside the letter is a flick and not a stroke.
+ */
+function flick(f: Frame, to: Vec2): Spine {
+  const up = (UPSTROKE * Math.PI) / 180;
+  return bowed(f, at(to.x - to.y / Math.tan(up), 0), to, 0.1);
+}
+
+export const ALTERNATES: Record<LetterName, Alternate[]> = {
+  o: [
+    {
+      id: "written",
+      label: "Written",
+      hint: "The bowl itself starts on the origin, so the letter before it runs into the bowl rather than into a stroke laid against it.",
+      build: (style) => {
+        const f = frame(style);
+        const centre = at(f.edge + f.bowl, f.x / 2);
+        /*
+         * The same bowl, and no extra stroke at all: what makes it written is
+         * where it is put, not what is drawn.
+         *
+         * `seam.ts` reads the reference's `o` as carrying ink from -0.00 to
+         * 0.41 of an x-height on its own origin -- that is the bowl's own left
+         * flank standing on the boundary, not a lead-in reaching back over it.
+         * Its bowl runs -0.03 to 1.13 inside an advance of 1.10, so the letter
+         * before it laps onto the bowl and the letter after laps onto the next.
+         * Marked `entered`, the join stops standing this letter a reach out and
+         * slides it until its own flank crosses the seam on the origin, which
+         * is the same thing.
+         */
+        // Where the flick meets the bowl: a fifth of the way up the left
+        // flank, which is where a hand starts an `o` and where this one hands
+        // over to the letter before it.
+        const meets = f.x * 0.32;
+        const across = f.bowl * Math.sqrt(Math.max(0, 1 - ((meets - centre.y) / f.bowlH) ** 2));
+        return {
+          ...finish(
+            f,
+            [
+              ink(f, flick(f, at(centre.x - across, meets)), f.end, BUTT),
+              ink(f, ring(f, centre, f.bowl, f.bowlH)),
+            ],
+            true,
+          ),
+          entered: true,
+        };
+      },
+    },
+  ],
+
+  e: [
+    {
+      id: "written",
+      label: "Written",
+      hint: "One rising stroke into the loop, at the letter's own weight, instead of a level bar struck through a bowl.",
+      build: (style) => {
+        const f = frame(style);
+        const centre = at(f.edge + f.bowl, f.x / 2);
+        const eye = f.x * f.style.parts.crossbar.height;
+        const rise = Math.max(-0.85, Math.min(0.85, (eye - centre.y) / f.bowlH));
+        const opens = (Math.asin(rise) * 180) / Math.PI;
+        const belt = bend(f, centre, f.bowlH, opens, opens + 300);
+        /*
+         * The bar is the entry, and it climbs.
+         *
+         * A drawn `e` is a bowl with a level bar struck across it, lighter than
+         * the bowl because that is what a crossbar is. A written one has no bar
+         * at all: the hand comes up off the line, runs across the letter to the
+         * far wall, and turns back over the top -- so what looks like a bar is
+         * the first part of the loop, at the letter's own weight, and it rises.
+         *
+         * `over.ts` showed the drawn one plainly: ours put a straight rule
+         * through the letter and out both sides, and the reference's `e` has
+         * nothing straight in it anywhere.
+         *
+         * Two strokes rather than one chained run, because the bar meets the
+         * loop across the tangent and a chain whose pieces do not leave where
+         * the last one arrived is a spine with a corner in it. Two strokes that
+         * cross at the same weight read as one; a corner reads as a knot.
+         */
+        const start = at(
+          centre.x - f.bowl - f.half,
+          seamsOf(f.style.parts.script, f.x, f.half).low,
+        );
+        return {
+          ...finish(
+            f,
+            [
+              ink(f, bowed(f, start, spineStart(belt), 0.06), f.end, BUTT),
+              ink(f, belt, BUTT, f.end),
+            ],
+            true,
+          ),
+          entered: true,
+        };
+      },
+    },
+  ],
+
+  a: [
+    {
+      id: "written",
+      label: "Written",
+      hint: "The bowl starts on the origin, the way a hand arrives at an `a` — round the bowl first and down the stem after.",
+      build: (style) => {
+        const f = frame(style);
+        const centre = at(f.edge + f.bowl, f.x / 2);
+        // The same stem the plain `a` stands, air and all: what changes here is
+        // where the letter is put, not how it is drawn. See the written `o`.
+        const stem = centre.x + f.bowl + f.aside;
+        const meets = f.x * 0.32;
+        const across = f.bowl * Math.sqrt(Math.max(0, 1 - ((meets - centre.y) / f.bowlH) ** 2));
+        return {
+          ...finish(f, [
+            ink(f, flick(f, at(centre.x - across, meets)), f.end, BUTT),
+            ink(f, ring(f, centre, f.bowl, f.bowlH)),
+            ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
+          ]),
+          air: 0.45,
+          entered: true,
+        };
+      },
+    },
+    {
+      id: "double",
+      label: "Two storey",
+      hint: "A bowl with an arched top over it, which is what most text faces use.",
+      build: (style) => {
+        const f = frame(style);
+        const bowlHeight = Math.max(f.x * 0.31, f.least);
+        const bowlWidth = Math.max(bowlHeight * f.wide, f.least);
+        const centre = at(f.edge + bowlWidth, bowlHeight);
+        const stem = centre.x + bowlWidth;
+        // How far over the top reaches before it turns down, held so it can
+        // never ask the pen to turn tighter than it goes round.
+        const over = Math.max(Math.min(bowlWidth, f.x - bowlHeight * 2), f.least);
+        return finish(f, [
+          ink(f, ring(f, centre, bowlWidth, bowlHeight)),
+          // Stem and arch as one run, so the turn at the top is a turn rather
+          // than two square ends meeting.
+          ink(
+            f,
+            chain(
+              straight(at(stem, 0), at(stem, f.x - over)),
+              turn(at(stem - over, f.x - over), over, 0, 135),
+            ),
+            f.end,
+            f.end,
+          ),
+        ]);
+      },
+    },
+  ],
+
+  n: [
+    {
+      id: "written",
+      label: "Written",
+      hint: "Entered with the up-stroke the letter is written with, rather than standing on the line for a join to be run in to it.",
+      build: (style) => {
+        const f = frame(style);
+        // Tight, because the reference's first stem comes down almost under its
+        // own apex: a wide turn there is an arch, and an `n` with two of those
+        // is an `m` with a leg missing.
+        const radius = Math.max(f.x * 0.045, f.least);
+        const spine = entering(at(f.edge, f.crown), radius);
+        const stands = spineEnd(spine);
+        return {
+          ...finish(f, [ink(f, spine, f.end, BUTT), arch(f, stands.x, f.x)]),
+          entered: true,
+        };
+      },
+    },
+  ],
+
+  A: [
+    {
+      id: "flat",
+      label: "Flat top",
+      hint: "Cut across the apex instead of coming to a point, which is what a heavy face does to keep the top from going black.",
+      build: (style) => {
+        const f = frame(style);
+        /*
+         * Never narrower than the pen, however narrow the face is set.
+         *
+         * A bowl is measured by its ink now, so at a heavy weight the round
+         * capitals are drawn much smaller than they used to be -- correctly, since
+         * their ink has to fit between the same two lines -- and everything sized
+         * against them came down with them. An A of a hundred and eighteen units
+         * either side of its apex, drawn with a pen of two hundred and sixty, has
+         * its two legs closer together than the pen is wide.
+         */
+        const half = Math.max(f.capBowl * 0.86, f.least);
+        const left = f.edge;
+        const middle = left + half;
+        const cut = f.capBowl * 0.34;
+        const bar = f.cap * f.style.parts.crossbar.height * 0.58;
+        // Where the two diagonals would be at the height the top is cut.
+        const rise = f.cap;
+        /*
+         * And where they are at the bar's height, which is the same question
+         * the default `A` gets wrong the other way round.
+         *
+         * These two do not meet at a point: the top is cut flat, so each
+         * diagonal stops half a cut short of the middle. Reckoned as though
+         * they met, the bar was drawn for a narrower A than this one and both
+         * ends landed inside it, clear of the diagonals -- invisible under a
+         * thick pen and a piece of its own at a pen of 8.
+         */
+        const inset = ((half - cut / 2) * bar) / rise;
+        const leftFoot = at(left, 0);
+        const rightFoot = at(middle + half, 0);
+        return finish(f, [
+          ink(f, straight(leftFoot, at(middle - cut / 2, rise)), f.end, f.end),
+          ink(f, straight(rightFoot, at(middle + cut / 2, rise)), f.end, f.end),
+          thin(f, straight(at(middle - cut / 2, rise), at(middle + cut / 2, rise))),
+          thin(f, straight(at(left + inset, bar), at(middle + half - inset, bar))),
+        ]);
+      },
+    },
+  ],
+
+  M: [
+    {
+      id: "deep",
+      label: "Vertex down",
+      hint: "The middle carried all the way to the baseline, which widens the two counters and squares the letter off.",
+      build: (style) => {
+        const f = frame(style);
+        const left = f.edge;
+        /*
+         * And wide enough that the vee is a vee.
+         *
+         * Every other letter narrows gracefully; an M does not, because its two
+         * diagonals meet the stems at a corner that sharpens as the letter closes
+         * up, and past a point the inside of that corner cannot be cut back inside
+         * the run it has to be cut back into.
+         */
+        const width = Math.max(f.capBowl * 1.7, f.half * 7);
+        const middle = left + width / 2;
+        const right = left + width;
+        const into = stub(f);
+        const start = at(left, f.cap - into);
+        const end = at(right, f.cap - into);
+        const points = through(f, [start, at(left, f.cap), at(middle, 0), at(right, f.cap), end]);
+        return finish(f, [
+          ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
+          ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
+          ink(
+            f,
+            chain(
+              straight(points[0], points[1]),
+              straight(points[1], points[2]),
+              straight(points[2], points[3]),
+              straight(points[3], points[4]),
+            ),
+          ),
+        ]);
+      },
+    },
+  ],
+
+  R: [
+    {
+      id: "curved",
+      label: "Curved leg",
+      hint: "The leg swung out from under the bowl rather than run straight to the corner.",
+      build: (style) => {
+        const f = frame(style);
+        const stem = f.edge;
+        const radius = Math.max(f.cap * 0.27, f.least);
+        const junction = f.cap - radius * 2;
+        const legRadius = Math.max(junction * 0.62, f.least);
+        return finish(f, [
+          ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+          belly(f, at(stem, f.cap - radius), radius * f.wide, radius, -90, 90),
+          // One arc from the junction to the foot, bowed out to the right.
+          ink(f, bowed(f, at(stem, junction), at(stem + legRadius * 1.5, 0), 0.14), BUTT, f.end),
+        ]);
+      },
+    },
+  ],
+
+  Q: [
+    {
+      id: "under",
+      label: "Tail below",
+      hint: "The tail hung under the bowl instead of crossing its wall, which is what a geometric face usually does.",
+      build: (style) => {
+        const f = frame(style);
+        const centre = at(f.edge + f.capBowl, f.cap / 2);
+        const leaves = bowlPoint(centre, f.capBowl, f.capBowlH, 1 - f.square, f.half, -80);
+        return finish(
+          f,
+          [
+            ink(f, ring(f, centre, f.capBowl, f.capBowlH)),
+            ink(f, straight(leaves, at(leaves.x + f.capBowl * 0.62, -f.cap * 0.16)), BUTT, f.end),
+          ],
+          true,
+        );
+      },
+    },
+  ],
+
+  G: [
+    {
+      id: "bare",
+      label: "No bar",
+      hint: "A G with nothing turned back into it: a C with its end cut level. The cleanest of the geometric Gs.",
+      build: (style) => {
+        const f = frame(style);
+        const centre = at(f.edge + f.capBowl, f.cap / 2);
+        const clear = (((f.half * 2.4) / f.capBowlH) * 180) / Math.PI;
+        return finish(
+          f,
+          [openBowl(f, centre, f.capBowl, f.capBowlH, Math.max(32, clear), 360)],
+          true,
+        );
+      },
+    },
+  ],
+
+  l: [
+    {
+      id: "tailed",
+      label: "With a tail",
+      hint: "Turned out at the foot, which stops an l reading as a figure one.",
+      build: (style) => {
+        const f = frame(style);
+        const radius = Math.max(f.arch * 0.42, f.least);
+        return finish(f, [
+          ink(
+            f,
+            chain(
+              straight(at(f.edge, f.asc), at(f.edge, radius)),
+              turn(at(f.edge + radius, radius), radius, 180, 270),
+            ),
+            f.end,
+            f.end,
+          ),
+        ]);
+      },
+    },
+  ],
+
+  t: [
+    {
+      id: "straight",
+      label: "No foot",
+      hint: "Cut off square at the baseline, which is what a squared or technical face wants.",
+      build: (style) => {
+        const f = frame(style);
+        const reach = f.arch * 0.7;
+        const stem = f.edge + reach * 0.7;
+        return finish(f, [
+          ink(f, straight(at(stem, 0), at(stem, f.asc * 0.78)), f.end, f.end),
+          crossbar(f, stem - reach * 0.7, stem + reach),
+        ]);
+      },
+    },
+  ],
+
+  y: [
+    {
+      id: "straight",
+      label: "Straight tail",
+      hint: "A vee with the right arm carried straight down past the baseline, rather than the tail leaving at its own angle.",
+      build: (style) => {
+        const f = frame(style);
+        const half = f.arch * 0.92;
+        const left = f.edge;
+        const middle = left + half;
+        const top = at(left, f.x);
+        const other = at(middle + half, f.x);
+        const point = corner(f, top, at(middle, 0), other);
+        return finish(f, [
+          ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end),
+          /*
+           * The tail leaves the vee's apex, which is not where `corner` put the
+           * vee's vertex.
+           *
+           * `corner` pushes a vertex out along its own bisector by as far as
+           * the rounding is going to pull the turn back, so that the *rounded*
+           * apex lands where the letter asked for it -- here, on the baseline.
+           * Started at that pushed vertex the tail began below the ink instead
+           * of inside it: on the Marker it hung ninety units under a vee it had
+           * never touched, and on the Casual Script the letter was a `v` with a
+           * loose stub floating beneath it. Both faces round their corners. The
+           * ones that round nothing were fine, because there the pushed vertex
+           * and the apex are the same point, which is why this survived.
+           *
+           * Half a pen above the apex is inside the ink at any weight and any
+           * radius -- the two arms are barely a pen apart by then -- and the cut
+           * is square and buried, so none of it shows.
+           */
+          ink(f, straight(at(middle, f.half), at(middle, f.desc)), BUTT, f.end),
+        ]);
+      },
+    },
+  ],
+
+  J: [
+    {
+      id: "descending",
+      label: "Below the line",
+      hint: "The hook carried under the baseline, which is what an old-style or a display face does with a J.",
+      build: (style) => {
+        const f = frame(style);
+        const radius = Math.max(f.capBowl * 0.55, f.least);
+        const stem = f.edge + radius;
+        return finish(f, [
+          ink(
+            f,
+            chain(
+              straight(at(stem, f.cap), at(stem, f.dip(f.desc) + radius)),
+              turn(at(stem - radius, f.dip(f.desc) + radius), radius, 0, -95),
+            ),
+            f.end,
+            f.end,
+          ),
+        ]);
+      },
+    },
+  ],
+
+  k: [
+    {
+      id: "standing",
+      label: "With the leg standing",
+      hint: "The leg curving over and coming down onto the baseline instead of running out to a point, which is what a hand does with a k it has to carry on out of.",
+      build: (style) => {
+        const f = frame(style);
+        const stem = f.edge;
+        const span = f.arch * 1.7;
+        const waist = f.x * 0.42;
+        const foot = stem + span;
+        /*
+         * Where the leg stops falling and starts standing.
+         *
+         * A straight leg runs out to a point on the baseline, and on a joined
+         * face the lead-out cannot leave from that point: it takes the letter's
+         * rightmost skeleton between half a pen up and the seam, and the last
+         * stretch of a diagonal leg is below that band. So the join left from
+         * partway up the leg and the rest of the leg carried on past it, down
+         * and to the right -- the arm, the join and the tip of the leg all
+         * leaving the same corner pointing the same way.
+         *
+         * Turned upright, the leg's own foot is the rightmost thing there is
+         * and the join leaves from its side, which is what happens on an `n`
+         * and is why an `n` never had this. Half a pen up is as high as the
+         * turn needs to start: it is exactly what the band excludes. Higher
+         * and the fall gets shared with the upright, and at a fifth of the
+         * x-height the diagonal is down to seventeen degrees and reads as a
+         * bar with a drop on the end rather than as a leg.
+         */
+        /*
+         * And never above the junction the leg falls from.
+         *
+         * Half a pen is a floor, not a height: on a face whose x-height is
+         * small against its pen -- a hairline script wound up to a heavy weight
+         * -- a pen and a third is most of the way to the waist, so the leg was
+         * asked to fall from the junction to a knee above it and folded back on
+         * itself. Kept under half the drop, the leg always falls.
+         */
+        const knee = at(foot, Math.min(Math.max(f.half * 1.3, f.least), waist * 0.55));
+        // The arm stops short of the leg rather than on the same line as it,
+        // so the two are not one symmetrical V lying on its side.
+        const arm = at(stem + span * 0.84, f.x);
+        /*
+         * Aimed at the stem's own line rather than at its far edge.
+         *
+         * `junction` aims a vee at the far edge and leaves the apex's own ink
+         * to cover the rest, which holds while the corner is sharp enough to
+         * miter out past its vertex. This vee's corner is blunter than a
+         * straight-legged k's, because the leg leaves it shallower to have
+         * somewhere to turn upright, so the apex reaches less far -- and on the
+         * Formal Script the vee and the stem finished two units apart. Half a
+         * pen deeper is inside the stem's ink at any weight, and it is where a
+         * written k's vee springs from in any case.
+         */
+        const meet = junction(f, arm, stem - f.half, waist, knee);
+        return finish(f, [
+          ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
+          ink(
+            f,
+            chain(
+              straight(arm, meet),
+              roundCorners(
+                chain(straight(meet, knee), straight(knee, at(foot, 0))),
+                Math.max(f.arch * 0.35, f.least),
+                f.half,
+              ),
+            ),
+            f.end,
+            f.end,
+          ),
+        ]);
+      },
+    },
+  ],
+
+  f: [
+    {
+      id: "descending",
+      label: "With a descender",
+      hint: "An f that carries below the baseline, as an italic or a display face does.",
+      build: (style) => {
+        const f = frame(style);
+        const radius = Math.max(f.arch * 0.66, f.least);
+        const left = Math.max(f.arch * 0.42, f.least);
+        const stem = f.edge + left;
+        const lower = Math.max(f.arch * 0.5, f.least);
+        const top = f.crest(f.asc) - radius;
+        const base = f.dip(f.desc) + lower;
+        /*
+         * Written from the top of the hook downwards, which is the direction
+         * the whole run travels.
+         *
+         * Written the other way up it read as three pieces that happened to be
+         * listed together: the first turn ended nowhere near where the straight
+         * began, the chain had a jump in it, and the letter folded. A chain is
+         * a journey, and every piece has to leave where the last one arrived.
+         *
+         * The hook is on the right and the tail on the left, which is the way
+         * round every descending f is drawn: the run starts out over the letter
+         * after this one and finishes under the letter before it.
+         */
+        return finish(f, [
+          ink(
+            f,
+            chain(
+              turn(at(stem + radius, top), radius, 88, 180),
+              straight(at(stem, top), at(stem, base)),
+              turn(at(stem - lower, base), lower, 0, -95),
+            ),
+            f.end,
+            f.end,
+          ),
+          crossbar(f, stem - left, stem + f.arch * 0.62),
+        ]);
+      },
+    },
+  ],
+
+  one: [
+    {
+      id: "footed",
+      label: "With a foot",
+      hint: "A bar across the base, which stops a one leaning on the letters either side of it.",
+      build: (style) => {
+        const f = frame(style);
+        const width = figureWidth(f);
+        const stem = f.edge + width * 0.46;
+        const flag = Math.max(width * 0.3, f.least);
+        return finish(f, [
+          ink(f, straight(at(stem, 0), at(stem, f.cap)), BUTT, f.end),
+          ink(f, straight(at(stem - flag, f.cap * 0.8), at(stem, f.hangs(f.cap))), f.end, BUTT),
+          thin(
+            f,
+            straight(at(stem - flag, f.sits(0, f.bar)), at(stem + flag, f.sits(0, f.bar))),
+            f.end,
+            f.end,
+          ),
+        ]);
+      },
+    },
+  ],
+
+  four: [
+    {
+      id: "open",
+      label: "Open",
+      hint: "The diagonal stopping at the bar rather than closing the counter, which reads more clearly at a small size.",
+      build: (style) => {
+        const f = frame(style);
+        const width = figureWidth(f);
+        const left = f.edge;
+        const stem = left + width * 0.72;
+        const bar = f.cap * 0.28;
+        return finish(f, [
+          ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+          ink(f, straight(at(stem, f.hangs(f.cap)), at(left, bar)), BUTT, f.end),
+          thin(f, straight(at(left, bar), at(left + width, bar)), BUTT, f.end),
+        ]);
+      },
+    },
+  ],
+
+  seven: [
+    {
+      id: "barred",
+      label: "Barred",
+      hint: "A bar across the middle, which is how a seven is written where it would otherwise be read as a one.",
+      build: (style) => {
+        const f = frame(style);
+        const width = figureWidth(f);
+        const left = f.edge;
+        const start = at(left, f.hangs(f.cap));
+        const end = at(left + width * 0.28, 0);
+        const meet = at(corner(f, start, at(left + width, f.cap), end).x, start.y);
+        const bar = f.cap * 0.42;
+        return finish(f, [
+          ink(f, chain(straight(start, meet), straight(meet, end)), f.end, f.end),
+          thin(
+            f,
+            straight(at(left + width * 0.18, bar), at(left + width * 0.78, bar)),
+            f.end,
+            f.end,
+          ),
+        ]);
+      },
+    },
+  ],
+
+  W: [
+    {
+      id: "crossed",
+      label: "Crossed",
+      hint: "The middle carried to the full cap height so the two vees overlap, which is the older way of building a W.",
+      build: (style) => {
+        const f = frame(style);
+        // Never narrower than the pen can hold a vee open, for the same
+        // reason the A is not: the round capitals are measured by their ink
+        // now, so at a heavy weight everything sized against them comes down.
+        const half = Math.max(f.capBowl * 0.62, f.half * 1.6);
+        const left = f.edge;
+        const first = through(f, [
+          at(left, f.cap),
+          at(left + half, 0),
+          at(left + half * 2.4, f.cap),
+        ]);
+        const second = through(f, [
+          at(left + half * 1.2, f.cap),
+          at(left + half * 2.2, 0),
+          at(left + half * 3.2, f.cap),
+        ]);
+        return finish(f, [
+          ink(f, chain(straight(first[0], first[1]), straight(first[1], first[2])), f.end, f.end),
+          ink(
+            f,
+            chain(straight(second[0], second[1]), straight(second[1], second[2])),
+            f.end,
+            f.end,
+          ),
+        ]);
+      },
+    },
+  ],
+
+  g: [
+    {
+      id: "curled",
+      label: "Curled tail",
+      hint: "The descender carried further round, which is warmer than a straight hook and is what a display face tends to want.",
+      build: (style) => {
+        const f = frame(style);
+        const centre = at(f.edge + f.bowl, f.x / 2);
+        const stem = centre.x + f.bowl;
+        const radius = Math.max(f.arch * 0.95, f.least);
+        return finish(f, [
+          ink(f, ring(f, centre, f.bowl, f.bowlH)),
+          ink(
+            f,
+            chain(
+              straight(at(stem, f.x), at(stem, f.dip(f.desc) + radius)),
+              turn(at(stem - radius, f.dip(f.desc) + radius), radius, 0, -150),
+            ),
+            f.end,
+            f.end,
+          ),
+        ]);
+      },
+    },
+  ],
+};

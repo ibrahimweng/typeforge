@@ -35,6 +35,7 @@
 
 import { sweepAll, toleranceFor } from "./sweep";
 import { walkOf } from "./curve";
+import { wrapDegrees } from "@/forge/angles";
 import type { Contour, Glyph, Vec2 } from "@/font/types";
 import type { NibProfile, QuillSpine, QuillStroke } from "./types";
 
@@ -272,11 +273,7 @@ export function blendStrokes(
        */
       let angle = stop.angle;
       for (const one of usable) {
-        let turn = one.strokes[at].nib[index].angle - stop.angle;
-        if (Math.abs(turn) < 360) {
-          while (turn > 180) turn -= 360;
-          while (turn < -180) turn += 360;
-        }
+        const turn = wrapDegrees(one.strokes[at].nib[index].angle - stop.angle);
         angle += turn * one.scalar;
       }
       return {
@@ -306,7 +303,14 @@ export function blendStrokes(
  */
 export function nodeFractions(spine: QuillSpine): number[] {
   const walk = walkOf(spine);
-  if (walk.total <= 0) return spine.segments.map(() => 0);
+  /*
+   * One fraction per node, which is one more than there are segments -- and
+   * that holds for a spine with no length as much as for any other. This used
+   * to answer a zero-length spine with one per *segment*, so a stroke that had
+   * been tapped rather than drawn came back a node short, and the pen stops
+   * seeded from it and the handles drawn along it quietly lost the last one.
+   */
+  if (walk.total <= 0) return new Array<number>(spine.segments.length + 1).fill(0);
   const fractions = [0];
   let covered = 0;
   for (const length of walk.lengths) {

@@ -51,6 +51,7 @@
 import { scatterOf } from "@/font/scatter";
 import type { Vec2 } from "@/font/types";
 
+import { wrapAngle } from "./angles";
 import { alongSpine, reversed, spineEnd, spineLength, spineStart } from "./shapes";
 import type { Spine, SpineArc } from "./types";
 
@@ -534,9 +535,8 @@ function levelArc(seam: Vec2, target: Vec2, room: Room, along: Vec2 = at(1, 0)):
   const centre = at(seam.x + normal.x * radius, seam.y + normal.y * radius);
   const startAngle = Math.atan2(seam.y - centre.y, seam.x - centre.x);
   const finish = Math.atan2(target.y - centre.y, target.x - centre.x);
-  let sweep = finish - startAngle;
-  while (sweep > Math.PI) sweep -= Math.PI * 2;
-  while (sweep <= -Math.PI) sweep += Math.PI * 2;
+  // Half open: a join to a point exactly behind always bends the same way.
+  const sweep = wrapAngle(finish - startAngle, true);
   const arc: SpineArc = {
     kind: "arc",
     centre,
@@ -1000,9 +1000,7 @@ function bowed(from: Vec2, to: Vec2, amount: number): Spine {
   const back = Math.sqrt(Math.max(0, radius * radius - (chord * chord) / 4));
   const centre = at(middle.x - left.x * back, middle.y - left.y * back);
   const startAngle = Math.atan2(from.y - centre.y, from.x - centre.x);
-  let sweep = Math.atan2(to.y - centre.y, to.x - centre.x) - startAngle;
-  while (sweep > Math.PI) sweep -= Math.PI * 2;
-  while (sweep < -Math.PI) sweep += Math.PI * 2;
+  const sweep = wrapAngle(Math.atan2(to.y - centre.y, to.x - centre.x) - startAngle);
   const arc: SpineArc = {
     kind: "arc",
     centre,
@@ -1178,10 +1176,8 @@ function turned(way: Vec2, towards: Vec2, most: number): Vec2 {
 
 /** How far round `towards` is from `way`, in radians, signed and within half a turn. */
 function between(way: Vec2, towards: Vec2): number {
-  let gap = Math.atan2(towards.y, towards.x) - Math.atan2(way.y, way.x);
-  while (gap > Math.PI) gap -= Math.PI * 2;
-  while (gap <= -Math.PI) gap += Math.PI * 2;
-  return gap;
+  // Half open, so exactly behind turns one fixed way rather than either.
+  return wrapAngle(Math.atan2(towards.y, towards.x) - Math.atan2(way.y, way.x), true);
 }
 
 /** The same direction, one unit long. */

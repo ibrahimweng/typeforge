@@ -950,35 +950,31 @@ describe("the fitter", () => {
     };
     const drawn = sweepAll([vee]);
     const fit = fitGlyph("v", drawn.contours, 600, {})!;
-    const spine = fit.glyph.strokes.flatMap((one) => one.spine.segments);
-    // Somewhere along it the run turns by more than a right angle, which is
-    // what a corner is and what a smoothed fit does not have.
-    const heading = (index: number) => {
-      const one = spine[index];
-      const from = one.kind === "cubic" ? one.from : { x: 0, y: 0 };
-      const to = one.kind === "cubic" ? one.to : { x: 0, y: 0 };
-      return Math.atan2(to.y - from.y, to.x - from.x);
-    };
-    let sharpest = 0;
-    for (let index = 1; index < spine.length; index++) {
-      let turn = Math.abs(heading(index) - heading(index - 1));
-      if (turn > Math.PI) turn = Math.PI * 2 - turn;
-      sharpest = Math.max(sharpest, turn);
-    }
-    expect(sharpest, "the bottom of the v was rounded off").toBeGreaterThan(Math.PI / 2);
-
     /*
-     * What the corner is *not* checked for, and why it is said rather than left
-     * to be discovered.
+     * The point of the v, redrawn from the fit, is where the mitred ink put it
+     * -- which is what keeping the corner means to anybody looking at the
+     * letter. A fit that smoothed the vertex into a curve would lift the point
+     * by the best part of a hundred units.
      *
-     * The corner now survives the fit -- that is what is pinned above -- but it
-     * does not survive the sweep, which walks the spine and offsets point by
-     * point. A corner in a centre-line wants a mitre on its outside and a fold
-     * on its inside, and a walk produces neither: it rounds the outside and
-     * lets the inside cross itself. So the ink redrawn from this `v` is some
-     * sixty units out at the vertex, and no tolerance passed to the fitter
-     * changes that. Mitreing the sweep is the fix and it is not done here.
+     * This used to be pinned as a turn of more than a right angle somewhere
+     * along the fitted spine, and it passed for a reason that had nothing to do
+     * with the fitter. Two equal arms walked in an even number of steps -- four
+     * hundred, here -- put a sample exactly on the vertex, and the sweep took that sample from
+     * the incoming side after the join had already been put down, so the
+     * outline doubled back on itself at the bottom of the letter; the fitter
+     * dutifully traced the fold as extra strokes, and one of those turned
+     * sharply. Nudge the second arm by ten units and the old sweep gave no such
+     * turn either. With the fold gone the fitter reads the vertex the way it
+     * reads every other junction -- two arms meeting and a short stroke running
+     * on to the point -- and the point lands within half a unit of where it was.
      */
+    const lowest = (contours: Contour[]) =>
+      Math.min(...contours.flatMap((one) => one.nodes.map((node) => node.point.y)));
+    const redrawn = sweepAll(fit.glyph.strokes).contours;
+    expect(
+      Math.abs(lowest(redrawn) - lowest(drawn.contours)),
+      "the bottom of the v was rounded off",
+    ).toBeLessThan(2);
   });
 
   /*
