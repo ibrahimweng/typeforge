@@ -98,7 +98,7 @@ for (const [name, steps] of Object.entries(rows)) {
   const drawn: string[] = [];
   const faults: string[] = [];
   for (const letter of text) {
-    let result;
+    let result: ReturnType<typeof proof>;
     try {
       result = proof(letter, forge);
     } catch (error) {

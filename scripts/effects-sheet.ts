@@ -110,7 +110,7 @@ for (const [name, row] of Object.entries(rows)) {
   const parts: string[] = [];
   const faults: string[] = [];
   for (const glyph of glyphs) {
-    let contours;
+    let contours: ReturnType<typeof resolveGlyphContours>;
     try {
       contours = resolveGlyphContours(glyph, typeface);
     } catch (error) {
