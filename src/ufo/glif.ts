@@ -39,6 +39,7 @@ import {
   children,
   escapeXml,
   parseXml,
+  writeXml,
   XML_DECLARATION,
   type XmlNode,
 } from "./xml";
@@ -248,11 +249,45 @@ function componentOf(node: XmlNode): Component | null {
 
 /** What a `.glif` file says, as a glyph. Null if it is not one. */
 export function readGlif(source: string): Glyph | null {
+  return readGlifKeeping(source)?.glyph ?? null;
+}
+
+/**
+ * The parts of a glyph's file this application has no place for.
+ *
+ * A `.glif` can carry a note, the image somebody is tracing it over, its own
+ * guidelines and a `lib` of whatever private keys the tools that touched it
+ * wanted to keep -- a mark colour, a spacing group, the last point a script
+ * left selected. None of them is a thing a `Glyph` here can hold, and `Glyph`
+ * is shared with every other part of the application, so it is not the place
+ * to widen for one format.
+ *
+ * So they are kept beside it instead, as the XML they arrived as, and
+ * `writeGlif` puts them back. Dropping them was what saving used to do: a
+ * designer opened their UFO, moved one point and got back every glyph with its
+ * colour and its guides gone.
+ */
+const KEPT = new Set(["note", "image", "guideline", "lib"]);
+
+/** A glyph, and the elements of its file it could not say, as XML. */
+export interface KeptGlif {
+  glyph: Glyph;
+  /** Each carried element, already written out at one level of indent. */
+  kept: string[];
+}
+
+/** What a `.glif` file says, and what it says that the glyph cannot. */
+export function readGlifKeeping(source: string): KeptGlif | null {
   const root = parseXml(source);
   if (root?.name !== "glyph") return null;
   const name = root.attributes.name;
   if (!name) return null;
+  const kept = root.children.filter((one) => KEPT.has(one.name)).map((one) => writeXml(one, 1));
+  const glyph = glyphOf(root, name);
+  return { glyph, kept };
+}
 
+function glyphOf(root: XmlNode, name: string): Glyph {
   const advance = child(root, "advance");
   const outline = child(root, "outline");
 
@@ -368,8 +403,18 @@ function componentTag(component: Component): string {
   ])}/>`;
 }
 
-/** A glyph, as the text of a `.glif` file. */
-export function writeGlif(glyph: Glyph): string {
+/**
+ * A glyph, as the text of a `.glif` file.
+ *
+ * `kept` is what `readGlifKeeping` could not put in the glyph, handed back to
+ * go where the format expects it: the note, the image and the guidelines
+ * after the characters and before the drawing, and the `lib` last. Readers do
+ * not insist on the order, but it is the one every other tool writes, and a
+ * file that comes back in the same order is one whose diff shows only what
+ * somebody actually changed.
+ */
+export function writeGlif(glyph: Glyph, kept: string[] = []): string {
+  const isLib = (one: string) => /^\s*<lib[\s/>]/.test(one);
   const lines: string[] = [
     XML_DECLARATION,
     `<glyph${attributes([
@@ -385,6 +430,8 @@ export function writeGlif(glyph: Glyph): string {
     const hex = codepoint.toString(16).toUpperCase().padStart(4, "0");
     lines.push(`  <unicode${attributes([["hex", hex]])}/>`);
   }
+
+  lines.push(...kept.filter((one) => !isLib(one)));
 
   const inside = [
     ...glyph.contours.map((one) => contourTag(one)).filter(Boolean),
@@ -405,6 +452,8 @@ export function writeGlif(glyph: Glyph): string {
       ])}/>`,
     );
   }
+
+  lines.push(...kept.filter(isLib));
 
   lines.push("</glyph>", "");
   return lines.join("\n");

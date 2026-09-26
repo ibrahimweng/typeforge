@@ -24,14 +24,17 @@ import {
   applyEdits,
   describe as describeProject,
   fromBase64,
+  fromSavedUfo,
   migrate,
   OLDEST,
   readDocument,
   readProject,
   toBase64,
   toProject,
+  toSavedUfo,
   type Snapshot,
 } from "./format";
+import type { UfoCarried } from "@/ufo/font";
 
 const WHEN = new Date("2026-01-02T03:04:05.000Z");
 
@@ -289,6 +292,93 @@ describe("an edited font", () => {
     applyEdits(fresh, saved);
     expect(fresh.glyphIndex.get("aacute")).toBe(3);
     expect(fresh.glyphs).toHaveLength(4);
+  });
+
+  /*
+   * The touched letters say what changed in the ones still there and nothing
+   * about the ones that are not. Laid over a file that still had them, a
+   * removed letter came back and a renamed one came back twice.
+   */
+  it("keeps a removed letter removed and a renamed one under one name", () => {
+    const one = fontWith([]);
+    // B renamed to Bee (which marks it touched), and C removed.
+    one.typeface.glyphs = [
+      one.typeface.glyphs[0],
+      { ...one.typeface.glyphs[1], name: "Bee", dirty: true },
+    ];
+    one.typeface.glyphIndex = new Map(one.typeface.glyphs.map((glyph, at) => [glyph.name, at]));
+    const saved = toProject(snapshot({ mode: "edit", edits: [one] }), WHEN).edits![0];
+    expect(saved.glyphNames).toEqual(["A", "Bee"]);
+
+    const fresh = applyEdits(fontWith([]).typeface, saved);
+    expect(fresh.glyphs.map((glyph) => glyph.name)).toEqual(["A", "Bee"]);
+    expect([...fresh.glyphIndex]).toEqual([
+      ["A", 0],
+      ["Bee", 1],
+    ]);
+  });
+
+  it("reads a document from before the list the way it always did", () => {
+    const saved = toProject(snapshot({ mode: "edit", edits: [fontWith(["B"])] }), WHEN).edits![0];
+    delete saved.glyphNames;
+    const fresh = applyEdits(fontWith([]).typeface, saved);
+    expect(fresh.glyphs.map((glyph) => glyph.name)).toEqual(["A", "B", "C"]);
+  });
+
+  it("writes no list for a font with no file, whose glyphs are already the whole of it", () => {
+    const project = toProject(
+      { mode: "edit", edits: [{ typeface: madeHere(["A"]), fileName: "" }] },
+      WHEN,
+    );
+    expect(project.edits![0].glyphNames).toBeUndefined();
+  });
+});
+
+describe("what a UFO carried, written down", () => {
+  it("comes back through JSON as the same text and the same bytes", () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0xff, 0x00, 0xfe]);
+    const carried: UfoCarried = {
+      glyphsDirectory: "glyphs",
+      untouched: new Map<string, string | Uint8Array>([
+        ["images/sketch.png", png],
+        ["data/notes.txt", "theirs"],
+      ]),
+      originals: new Map([["lib.plist", "<plist/>"]]),
+      glifKept: { a: ["  <note>hi</note>"] },
+      unreadGlyphs: { broken: "broken.glif" },
+      kernGroupNames: { "x/y": { left: "public.kern1.x", right: "public.kern2.y" } },
+    };
+    const saved = JSON.parse(JSON.stringify(toSavedUfo(carried)));
+    const back = fromSavedUfo(saved)!;
+    expect(back.untouched.get("images/sketch.png")).toEqual(png);
+    expect(back.untouched.get("data/notes.txt")).toBe("theirs");
+    expect(back.originals?.get("lib.plist")).toBe("<plist/>");
+    expect(back.glifKept).toEqual(carried.glifKept);
+    expect(back.unreadGlyphs).toEqual(carried.unreadGlyphs);
+    expect(back.kernGroupNames).toEqual(carried.kernGroupNames);
+  });
+
+  it("is written with the font it came with, and only then", () => {
+    const carried: UfoCarried = { glyphsDirectory: "glyphs", untouched: new Map() };
+    const blank = { typeface: emptyTypeface(), fileName: "Folder.ufo" };
+    const project = toProject(
+      {
+        mode: "edit",
+        edits: [
+          { ...blank, ufo: carried },
+          { ...blank, ufo: null },
+        ],
+      },
+      WHEN,
+    );
+    expect(project.edits![0].ufo?.glyphsDirectory).toBe("glyphs");
+    expect(project.edits![1].ufo).toBeUndefined();
+  });
+
+  it("gives back nothing for a record that is not one", () => {
+    expect(fromSavedUfo(null)).toBeNull();
+    expect(fromSavedUfo({ files: [] })).toBeNull();
+    expect(fromSavedUfo("glyphs")).toBeNull();
   });
 });
 

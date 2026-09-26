@@ -23,12 +23,35 @@
 import { attributes, escapeXml, parseXml, XML_DECLARATION, type XmlNode } from "./xml";
 
 /** Anything a plist can hold. */
-export type PlistValue = string | number | boolean | PlistValue[] | { [key: string]: PlistValue };
+export type PlistValue =
+  | string
+  | number
+  | boolean
+  | PlistOpaque
+  | PlistValue[]
+  | { [key: string]: PlistValue };
+
+/**
+ * A `<data>` or `<date>`, carried as the text it was written as.
+ *
+ * Only ever made when a caller asks for it with `keepOpaque`. The readers that
+ * want a value out of a plist are right to drop these -- guessing at a date is
+ * inventing one -- but a file being merged and written back is not asking what
+ * the value means, only that it survive. A `lib.plist` with a thumbnail in it
+ * as `<data>` is somebody's thumbnail, and writing the dictionary back without
+ * it would be deleting it.
+ */
+export class PlistOpaque {
+  constructor(
+    readonly tag: "data" | "date",
+    readonly text: string,
+  ) {}
+}
 
 /** A plist whose root is a dictionary, which every plist in a UFO has. */
 export type PlistDict = Record<string, PlistValue>;
 
-function readValue(node: XmlNode): PlistValue | undefined {
+function readValue(node: XmlNode, keepOpaque = false): PlistValue | undefined {
   switch (node.name) {
     case "string":
       return node.text;
@@ -46,10 +69,13 @@ function readValue(node: XmlNode): PlistValue | undefined {
       return false;
     case "array":
       return node.children
-        .map((one) => readValue(one))
+        .map((one) => readValue(one, keepOpaque))
         .filter((one): one is PlistValue => one !== undefined);
     case "dict":
-      return dictOf(node);
+      return dictOf(node, keepOpaque);
+    case "data":
+    case "date":
+      return keepOpaque ? new PlistOpaque(node.name, node.text) : undefined;
     /*
      * `<data>` and `<date>` are plist types a UFO does not use for anything
      * this reads, and guessing at them would be inventing a value. They come
@@ -69,14 +95,14 @@ function readValue(node: XmlNode): PlistValue | undefined {
  * or two keys in a row, is a malformed file: the key is skipped rather than
  * given a value it does not have.
  */
-function dictOf(node: XmlNode): PlistDict {
+function dictOf(node: XmlNode, keepOpaque = false): PlistDict {
   const out: PlistDict = {};
   for (let at = 0; at < node.children.length; at++) {
     const key = node.children[at];
     if (key.name !== "key") continue;
     const next = node.children[at + 1];
     if (!next || next.name === "key") continue;
-    const value = readValue(next);
+    const value = readValue(next, keepOpaque);
     if (value !== undefined) out[key.text] = value;
     at += 1;
   }
@@ -89,11 +115,14 @@ function dictOf(node: XmlNode): PlistDict {
  * Null covers a file that is not XML, is not a plist, or whose root is not a
  * dictionary. All three mean the same thing to every caller here.
  */
-export function readPlist(source: string): PlistDict | null {
+export function readPlist(
+  source: string,
+  { keepOpaque = false }: { keepOpaque?: boolean } = {},
+): PlistDict | null {
   const root = parseXml(source);
   if (root?.name !== "plist") return null;
   const dict = root.children.find((one) => one.name === "dict");
-  return dict ? dictOf(dict) : null;
+  return dict ? dictOf(dict, keepOpaque) : null;
 }
 
 /* --- writing ------------------------------------------------------------ */
@@ -111,13 +140,21 @@ export function readPlist(source: string): PlistDict | null {
 const STEP = "  ";
 
 function isDict(value: PlistValue): value is { [key: string]: PlistValue } {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    !(value instanceof PlistOpaque)
+  );
 }
 
 function writeValue(value: PlistValue, depth: number): string {
   const pad = STEP.repeat(depth);
   if (typeof value === "string") return `${pad}<string>${escapeXml(value)}</string>`;
   if (typeof value === "boolean") return `${pad}<${value}/>`;
+  if (value instanceof PlistOpaque) {
+    return `${pad}<${value.tag}>${escapeXml(value.text)}</${value.tag}>`;
+  }
   if (typeof value === "number") {
     // An integer is written as one. A plist has both types and the readers on
     // the other side of this are entitled to tell them apart -- `unitsPerEm`

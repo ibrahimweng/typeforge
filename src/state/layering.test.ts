@@ -85,6 +85,10 @@ const SHARED = new Set([
   // which is the one job that wants every document at once.
   "makeRoom",
   "everyDocument",
+  // What each of those documents carried from a UFO, in the same order. The
+  // carried sets are the kernel's because the tabs are, and a set that did not
+  // travel with its tab went out with whichever font happened to be in front.
+  "everyUfo",
   "closeEveryDocument",
   "goToDocument",
   // Four helpers that earned their place higher up the chain.

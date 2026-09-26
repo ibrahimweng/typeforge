@@ -136,20 +136,78 @@ export async function filesFromDrop(items: DataTransferItemList): Promise<UfoFil
   return rootedAtMetainfo(files);
 }
 
-/** A zipped UFO, which is what `.ufoz` is and what a compressed folder is. */
-export function filesFromZip(bytes: Uint8Array): UfoFiles | null {
+/**
+ * How much a zip is allowed to say it holds before it is not opened at all.
+ *
+ * A zip states the size of every file inside it before anything is inflated,
+ * and `unzipSync` believes it: it allocates that many bytes for each entry and
+ * inflates into them. That is what makes a zip bomb work -- a few kilobytes of
+ * deflate that claim, and unpack to, gigabytes -- and a font editor that
+ * opens whatever is dropped on it is exactly the page one would be dropped on.
+ * The tab runs out of memory and takes somebody's unsaved afternoon with it.
+ *
+ * So the sizes are added up as they are read, before a byte is inflated, and
+ * a zip that claims more than this is turned away whole. The numbers are
+ * generous rather than tight. The largest UFOs anybody keeps -- CJK fonts of
+ * sixty thousand glyphs, a background layer or two, a folder of scanned
+ * sketches -- are a few hundred megabytes at worst and usually a few dozen,
+ * and a limit that refused a real font would be a worse bug than the one it
+ * closes. The count is there for the other shape of the same attack: a million
+ * empty entries cost nothing to declare and a great deal to walk.
+ *
+ * Trusting the declared size is safe for the same reason it was dangerous:
+ * `unzipSync` inflates into a buffer of exactly that size and does not grow it,
+ * so an entry that lies about being small cannot unpack into anything larger.
+ */
+export interface ZipLimits {
+  /** The most, in bytes, every entry together may unpack to. */
+  totalBytes: number;
+  /** The most entries the archive may have. */
+  entries: number;
+}
+
+export const ZIP_LIMITS: ZipLimits = {
+  totalBytes: 256 * 1024 * 1024,
+  entries: 200_000,
+};
+
+/** Thrown from inside the filter to stop reading the moment a limit is passed. */
+class TooBig extends Error {}
+
+/**
+ * A zipped UFO, which is what `.ufoz` is and what a compressed folder is.
+ *
+ * Null for bytes that are not a zip, a zip that is not a UFO, and a zip that
+ * says it holds more than `limits` allows -- all three are "this is not a font
+ * that can be opened", which is what the one caller says either way.
+ */
+export function filesFromZip(bytes: Uint8Array, limits: ZipLimits = ZIP_LIMITS): UfoFiles | null {
   let entries: Record<string, Uint8Array>;
+  let total = 0;
+  let count = 0;
   try {
-    entries = unzipSync(bytes);
+    entries = unzipSync(bytes, {
+      filter: (entry) => {
+        /*
+         * Counted before the directories and the rubbish are skipped, because
+         * the count is about how much work the archive is asking for and a
+         * skipped entry is still one somebody made us look at.
+         */
+        count += 1;
+        if (count > limits.entries) throw new TooBig();
+        // A zip lists directories as entries with nothing in them, and the
+        // operating system's leftovers are not worth the memory to inflate.
+        if (entry.name.endsWith("/") || isRubbish(entry.name)) return false;
+        total += entry.originalSize;
+        if (total > limits.totalBytes) throw new TooBig();
+        return true;
+      },
+    });
   } catch {
     return null;
   }
   const files: UfoFiles = new Map();
-  for (const [path, value] of Object.entries(entries)) {
-    // A zip lists directories as entries with nothing in them.
-    if (path.endsWith("/") || isRubbish(path)) continue;
-    files.set(path, value);
-  }
+  for (const [path, value] of Object.entries(entries)) files.set(path, value);
   return rootedAtMetainfo(files);
 }
 

@@ -600,3 +600,154 @@ describe("the doors a font comes in by", () => {
     expect(store.getSnapshot().fileName).toBe("sample.ttf");
   });
 });
+
+/*
+ * A letter on loan when another font arrives.
+ *
+ * During a loan the desk holds one borrowed letter in a typeface of its own,
+ * and the font somebody actually had open is in a drawer. The doors that join
+ * a font to the ones already open used to empty the drawer and tab the desk --
+ * so the tab that should have held their font held an `n`, and their font was
+ * nowhere. Each door is knocked on here, because each had its own copy of the
+ * mistake, and one of them (`loadUfo`) had a different one: it did not touch
+ * the loan at all.
+ */
+describe("a borrowed letter, when a font arrives", () => {
+  const lend = (): void =>
+    store.borrowLetter(
+      { letter: "n", family: "Drawn", from: "forge" },
+      {
+        name: "n",
+        unicodes: [0x6e],
+        advanceWidth: 600,
+        contours: [],
+        components: [],
+        anchors: [],
+        params: {},
+        dirty: false,
+      },
+      {
+        unitsPerEm: 1000,
+        metrics: { ascender: 800, descender: -200, capHeight: 700, xHeight: 500, lineGap: 0 },
+      },
+    );
+
+  const ufoFolder = (): Map<string, string> =>
+    new Map([
+      ["metainfo.plist", plist("<key>formatVersion</key><integer>3</integer>")],
+      ["fontinfo.plist", plist("<key>familyName</key><string>Folder</string>")],
+      ["glyphs/contents.plist", plist("<key>a</key><string>a.glif</string>")],
+      ["glyphs/a.glif", '<glyph name="a" format="2"><advance width="500"/><outline/></glyph>'],
+      ["data/com.somebody.notes.txt", "theirs"],
+    ]);
+
+  it("puts the font that was open into a tab when a file is opened", async () => {
+    store.adopt(fontCalled("Bakerloo"), "bakerloo.ttf");
+    lend();
+    await store.loadFont(SAMPLE, "sample.ttf");
+    expect(store.getSnapshot().loan).toBeNull();
+    expect(tabs()).toEqual(["Bakerloo", "Typeforge Sample"]);
+    store.goToDocument(0);
+    expect(store.getSnapshot().typeface?.meta.familyName).toBe("Bakerloo");
+    expect(store.getSnapshot().typeface?.glyphs.map((one) => one.name)).toEqual(["a"]);
+  });
+
+  it("leaves the loan where it was when the file will not open", async () => {
+    store.adopt(fontCalled("Bakerloo"), "bakerloo.ttf");
+    lend();
+    await store.loadFont(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]), "notafont.ttf");
+    expect(store.getSnapshot().loan?.letter).toBe("n");
+    store.dropLoan();
+    expect(store.getSnapshot().typeface?.meta.familyName).toBe("Bakerloo");
+  });
+
+  it("does the same for a font handed over and for a blank one", () => {
+    store.adopt(fontCalled("Bakerloo"), "bakerloo.ttf");
+    lend();
+    store.adopt(fontCalled("Metro"), "metro.ttf");
+    expect(tabs()).toEqual(["Bakerloo", "Metro"]);
+    lend();
+    store.startBlank();
+    expect(tabs()).toEqual(["Bakerloo", "Metro", "Untitled"]);
+    expect(store.getSnapshot().loan).toBeNull();
+  });
+
+  it("does the same for a UFO, which used to leave the loan standing", async () => {
+    store.adopt(fontCalled("Bakerloo"), "bakerloo.ttf");
+    lend();
+    await store.loadUfo(ufoFolder(), "Folder.ufo");
+    expect(store.getSnapshot().loan).toBeNull();
+    expect(tabs()).toEqual(["Bakerloo", "Folder"]);
+    // And nothing is left in the drawer to be put back over the UFO later.
+    store.dropLoan();
+    expect(store.getSnapshot().typeface?.meta.familyName).toBe("Folder");
+  });
+
+  it("keeps what a UFO carried with its own tab", async () => {
+    await store.loadUfo(ufoFolder(), "Folder.ufo");
+    store.adopt(fontCalled("Bakerloo"), "bakerloo.ttf");
+    expect((await store.ufoFiles())?.has("data/com.somebody.notes.txt")).toBe(false);
+    store.goToDocument(0);
+    expect((await store.ufoFiles())?.get("data/com.somebody.notes.txt")).toBe("theirs");
+  });
+
+  it("writes what a UFO carried into the session and gives it back", async () => {
+    await store.loadUfo(ufoFolder(), "Folder.ufo");
+    store.adopt(fontCalled("Bakerloo"), "bakerloo.ttf");
+    // Through JSON, because that is what the session is on its way to disk.
+    const kept = JSON.parse(
+      JSON.stringify(toProject({ mode: "edit", edits: store.snapshots(), editAt: 0 }, new Date())),
+    );
+    expect(kept.edits[1].ufo, "a font that was not a UFO carries nothing").toBeUndefined();
+
+    store.adopt(fontCalled("Metro"), "metro.ttf");
+    await store.restoreAll(kept.edits, 0);
+    expect(tabs()).toEqual(["Folder", "Bakerloo"]);
+    const out = await store.ufoFiles();
+    expect(out?.get("data/com.somebody.notes.txt")).toBe("theirs");
+  });
+});
+
+describe("a saved session whose file no longer reads", () => {
+  it("skips that font rather than laying it over the one before", async () => {
+    await store.loadFont(SAMPLE, "one.ttf");
+    store.setMeta({ familyName: "One" });
+    const kept = toProject({ mode: "edit", edits: store.snapshots(), editAt: 0 }, new Date());
+    const [first] = kept.edits!;
+    const broken = {
+      ...first,
+      fileName: "two.ttf",
+      font: btoa("not a font at all"),
+      meta: { ...first.meta, familyName: "Two" },
+    };
+
+    await store.restoreAll([first, broken], 1);
+    expect(tabs()).toEqual(["One"]);
+    expect(store.getSnapshot().typeface?.meta.familyName).toBe("One");
+    expect(store.getSnapshot().fileName).toBe("one.ttf");
+    expect(store.getSnapshot().status?.tone).toBe("error");
+  });
+});
+
+describe("a letter removed or renamed in a font with a file", () => {
+  it("stays removed, and is not there twice, after the session comes back", async () => {
+    await store.loadFont(SAMPLE, "sample.ttf");
+    const names = store.getSnapshot().typeface!.glyphs.map((one) => one.name);
+    const [going, renaming] = names.filter((one) => one !== ".notdef").slice(-2);
+    expect(store.removeGlyph(going)).toBe(true);
+    expect(store.renameGlyph(renaming, "renamed.alt")).toBe(true);
+
+    const kept = toProject({ mode: "edit", edits: store.snapshots(), editAt: 0 }, new Date());
+    await store.restoreAll(kept.edits!, 0);
+
+    const back = store.getSnapshot().typeface!.glyphs.map((one) => one.name);
+    expect(back).not.toContain(going);
+    expect(back).not.toContain(renaming);
+    expect(back.filter((one) => one === "renamed.alt")).toHaveLength(1);
+    expect(back).toHaveLength(names.length - 1);
+  });
+});
+
+function plist(inside: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>${inside}</dict></plist>`;
+}

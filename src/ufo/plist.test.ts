@@ -72,6 +72,16 @@ describe("reading a property list", () => {
     );
     expect(plist).toEqual({ ok: 1 });
   });
+
+  it("keeps a data or a date exactly as written when asked to carry it", () => {
+    const source = wrap(
+      `<key>d</key><data>aGk=</data>\n<key>t</key><date>2020-01-01T00:00:00Z</date>`,
+    );
+    const plist = readPlist(source, { keepOpaque: true })!;
+    const written = writePlist(plist);
+    expect(written).toContain("<data>aGk=</data>");
+    expect(written).toContain("<date>2020-01-01T00:00:00Z</date>");
+  });
 });
 
 describe("reading one value out of a plist", () => {
