@@ -12,7 +12,13 @@ import * as React from "react";
 import { contoursBounds } from "@/font/geometry";
 import { NumberField } from "@/components/NumberField";
 import { resolveAdvanceWidth, resolveGlyphContours } from "@/font/transform";
-import { drawGlyph, glyphLabel, prepareCanvas, type GlyphView } from "@/components/glyph-render";
+import {
+  drawGlyph,
+  glyphLabel,
+  prepareCanvas,
+  useDeviceRatio,
+  type GlyphView,
+} from "@/components/glyph-render";
 import { CoachMark } from "@/components/CoachMark";
 import type { Glyph } from "@/font/types";
 import { NothingDrawnYet } from "@/components/NothingDrawnYet";
@@ -201,6 +207,9 @@ function SpacingPreview({
     return () => observer.disconnect();
   }, []);
 
+  // Redrawn when the window moves to a screen of another density, which
+  // changes nothing else in the list below (see `subscribeDeviceRatio`).
+  const ratio = useDeviceRatio();
   React.useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !typeface) return;
@@ -235,7 +244,7 @@ function SpacingPreview({
     for (const item of items) {
       drawGlyph(context, item.glyph, typeface, view, { offsetX: item.x });
     }
-  }, [typeface, revision, text, size]);
+  }, [typeface, revision, text, size, ratio]);
 
   return (
     <div ref={containerRef} className="h-28 shrink-0 bg-[var(--canvas)]">

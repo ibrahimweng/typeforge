@@ -28,6 +28,7 @@ import { linesFor, snapPoint } from "@/font/snap";
 import type { AppState } from "@/state/useStore";
 import type { Glyph, Typeface, Vec2 } from "@/font/types";
 import { A_DRAG, draggedPoint } from "@/font/pen";
+import { editsWhatIsThere } from "@/font/toolset";
 import { CLOSES_WITHIN, NOTHING_UNDER, toolStateFor, type Doing, type Under } from "@/font/tools";
 import { toCanvasX, toCanvasY, toFontX, toFontY, type GlyphView } from "@/components/glyph-render";
 import { nodeKey, store } from "@/state/useStore";
@@ -228,10 +229,30 @@ export function useGlyphGestures(within: {
    * is, and is the one of the pair that is safe to read inside a handler.
    */
   const atRef = React.useRef<Vec2 | null>(null);
+  /*
+   * The ref always, the state only when something draws from it.
+   *
+   * This used to set the state on every pointer move whatever was in hand, and
+   * a new object each time, so hovering over a letter with the select tool
+   * re-rendered the whole editor and repainted the canvas sixty times a second
+   * to draw exactly what was already there. Only the painter reads `at`, and
+   * only for the tools `tracksPointer` names; for the rest the ref is enough,
+   * and the handlers that need the position read that. The same position twice
+   * is not a change either, and is not reported as one.
+   */
   const noteAt = (where: Vec2 | null): void => {
     atRef.current = where;
-    setAt(where);
+    const wanted = where !== null && tracksPointer(state.tool, penIsDrawing(glyph));
+    const next = wanted ? where : null;
+    setAt((current) => (samePoint(current, next) ? current : next));
   };
+  /*
+   * Which handle of the selection box the pointer is over, only so a move onto
+   * or off one re-renders: the answer itself is worked out at render from
+   * `atRef` below, as it was when every move re-rendered, and this is what
+   * stands in for those renders now that most moves do not.
+   */
+  const [, setGripUnder] = React.useState<string | null>(null);
   /*
    * A count that goes up whenever something wants the canvas repainted.
    *
@@ -879,6 +900,12 @@ export function useGlyphGestures(within: {
 
   const updateHover = (canvasPoint: Vec2): Hover => {
     noteAt(canvasPoint);
+    if (state.tool === "select") {
+      const box = selectionBox();
+      const on = box ? gripAt(box, view, canvasPoint) : null;
+      const grip = on && on.kind !== "inside" ? on.at : null;
+      setGripUnder((current) => (current === grip ? current : grip));
+    }
     if (!glyph || state.tool !== "select") {
       setHover((current) => (current === null ? current : null));
       return null;
@@ -1473,14 +1500,16 @@ export function useGlyphGestures(within: {
      * pressing things, which on a canvas means pressing things that move the
      * letter. Read from the last known pointer position rather than tracked
      * separately, so it cannot disagree with what a press would take.
+     *
+     * `atRef` is already in canvas pixels -- it is what `pointerPosition`
+     * measured -- and it used to be put through `toCanvasX` a second time as
+     * though it were in font units, which lit a handle somewhere the pointer
+     * was not. It is handed to `gripAt` as it is, which is what a press does.
      */
     grip:
       box && atRef.current && !dragRef.current
         ? (() => {
-            const on = gripAt(box, view, {
-              x: toCanvasX(view, atRef.current.x),
-              y: toCanvasY(view, atRef.current.y),
-            });
+            const on = gripAt(box, view, atRef.current);
             return on && on.kind !== "inside" ? on.at : null;
           })()
         : null,
@@ -1498,4 +1527,28 @@ export function useGlyphGestures(within: {
       doubleClick: handleDoubleClick,
     },
   };
+}
+
+/**
+ * Whether the painter draws anything from where the pointer is, for this tool.
+ *
+ * The pen, while an outline is being drawn, runs its line from the last point
+ * to the pointer; the point tools light the segment under it; the path picker
+ * lights the path. Nothing else reads the position off state, so for anything
+ * else a move is not worth a render.
+ */
+export function tracksPointer(tool: AppState["tool"], penDrawing: boolean): boolean {
+  if (tool === "pen") return penDrawing;
+  return tool === "selectPath" || editsWhatIsThere(tool);
+}
+
+/** Whether two pointer positions are the same place, `null` being nowhere. */
+export function samePoint(a: Vec2 | null, b: Vec2 | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.x === b.x && a.y === b.y;
+}
+
+function penIsDrawing(glyph: Glyph | null): boolean {
+  return glyph !== null && openOutline(glyph) !== null;
 }

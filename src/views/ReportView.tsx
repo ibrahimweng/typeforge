@@ -30,6 +30,7 @@ import {
 import { hasLetters } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";
 import { cn } from "@/cn";
+import { documentKey, RunGuard, Superseded } from "./report-run";
 
 export function ReportView(): React.JSX.Element {
   const state = useAppState();
@@ -59,12 +60,40 @@ export function ReportView(): React.JSX.Element {
     [report, shown],
   );
 
+  /*
+   * Which document the report on screen is about, and the runs in flight.
+   *
+   * This view is one component for every font, not one per tab, so a switch
+   * leaves it mounted with the last font's report in its state. When the font
+   * in front changes, the report, its progress and any run still going are all
+   * put down -- before paint, so the old findings are never shown under the
+   * new font's name -- and the effect below starts a fresh check, exactly as
+   * it does for a font opened the first time. See `report-run.ts`.
+   */
+  const docKey = documentKey(state);
+  const guard = React.useRef(new RunGuard());
+  const [reportFor, setReportFor] = React.useState(docKey);
+  React.useLayoutEffect(() => {
+    if (reportFor === docKey) return;
+    guard.current.cancel();
+    setReportFor(docKey);
+    setReport(null);
+    setRanAt(null);
+    setProgress(null);
+    setRunning(false);
+  }, [docKey, reportFor]);
+
   const run = React.useCallback(async () => {
     if (!state.typeface) return;
+    const ticket = guard.current.start(docKey);
+    // Asked of the store rather than of this render, because by the time a
+    // batch comes back the render this closure was made in is long gone.
+    const stillOurs = () => guard.current.current(ticket, documentKey(store.getSnapshot()));
     setRunning(true);
     setProgress({ done: 0, total: state.typeface.glyphs.length });
     // Let the pending state paint before the main thread goes to work.
     await new Promise((resolve) => setTimeout(resolve, 0));
+    if (!stillOurs()) return;
     /*
      * The whole font, a batch at a time.
      *
@@ -73,14 +102,31 @@ export function ReportView(): React.JSX.Element {
      * and printing "0 errors" underneath. Now it breathes between batches: the
      * page stays usable, the count runs up while it works, and nothing is left
      * out.
+     *
+     * Stopped between batches once it is no longer wanted: the progress
+     * callback is called before every batch, so throwing from it there ends a
+     * superseded run at the next breath rather than walking the rest of a font
+     * nobody is looking at.
      */
-    const found = await validateWholeTypeface(
-      state.typeface,
-      // The weights go in as well, because whether a letter can vary is a fact
-      // about two drawings and this is the one place that reads the whole font.
-      { format: "truetype", masters: state.masters },
-      setProgress,
-    );
+    let found: ValidationReport;
+    try {
+      found = await validateWholeTypeface(
+        state.typeface,
+        // The weights go in as well, because whether a letter can vary is a
+        // fact about two drawings and this is the one place that reads the
+        // whole font.
+        { format: "truetype", masters: state.masters },
+        (progress) => {
+          if (!stillOurs()) throw new Superseded();
+          setProgress(progress);
+        },
+      );
+    } catch (error) {
+      if (error instanceof Superseded) return;
+      throw error;
+    }
+    // And once more at the end, for a switch made during the last batch.
+    if (!stillOurs()) return;
     setReport(found);
     setRanAt(state.revision);
     /*
@@ -89,11 +135,14 @@ export function ReportView(): React.JSX.Element {
      * This view knowing about the faults and nothing else knowing is how a
      * fault ships: the line under the top bar cannot point at one, the tab
      * cannot carry a count, and somebody has to remember to come here.
+     *
+     * Only for the document it was run on, which `stillOurs` has just made
+     * sure is the one in front: `checked` writes to whatever font is.
      */
     store.checked(found.findings, state.revision);
     setProgress(null);
     setRunning(false);
-  }, [state.typeface, state.revision, state.masters]);
+  }, [state.typeface, state.revision, state.masters, docKey]);
 
   // Check once when a font is first opened, so the view is never empty.
   React.useEffect(() => {
@@ -102,7 +151,10 @@ export function ReportView(): React.JSX.Element {
 
   React.useEffect(() => {
     if (report && listRef.current) {
-      enterStaggered(Array.from(listRef.current.children) as Element[], { step: 12 });
+      // Capped, because a report can run to hundreds of findings and twelve
+      // milliseconds apiece would still be fading the bottom of the list in
+      // seconds after it arrived.
+      enterStaggered(Array.from(listRef.current.children) as Element[], { step: 12, max: 240 });
     }
   }, [report]);
 

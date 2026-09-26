@@ -104,14 +104,22 @@ export function enter(target: Target, options: { delay?: number; distance?: numb
  *
  * The stagger is deliberately tight and capped: a long cascade looks decorative
  * and delays the last item past the point of being useful.
+ *
+ * `max` is the cap, in milliseconds between the first item starting and the
+ * last: past it, the step between items shrinks so the whole list still
+ * arrives inside it. It used to be accepted and thrown away, so the checks
+ * view -- which can list six hundred findings at twelve milliseconds apiece --
+ * spent seven seconds fading the bottom of its list in, well after anybody
+ * had scrolled to it. Left out, the stagger is uncapped, which is right for
+ * the short lists that are all the other callers have.
  */
 export function enterStaggered(
   target: Target,
   options: { step?: number; max?: number } = {},
 ): void {
   if (!usable(target) || prefersReducedMotion()) return;
-  const step = options.step ?? 14;
   if (!anime) return;
+  const step = staggerStep(countOf(target), options.step ?? 14, options.max);
   anime.animate(target as never, {
     opacity: [0, 1],
     translateY: [8, 0],
@@ -119,7 +127,25 @@ export function enterStaggered(
     delay: anime.stagger(step, { start: 0, from: "first" }),
     ease: EASE.out,
   });
-  void (options.max ?? 0);
+}
+
+/**
+ * The gap between items for a stagger of `count` of them, `step` apart, whose
+ * whole run from the first start to the last is at most `max`.
+ *
+ * Only ever narrows the step, never widens it: a short list under the cap
+ * keeps its own pace rather than being stretched out to fill it.
+ */
+export function staggerStep(count: number, step: number, max?: number): number {
+  if (max === undefined || count < 2) return step;
+  return Math.max(0, Math.min(step, max / (count - 1)));
+}
+
+function countOf(target: Target): number {
+  if (!target) return 0;
+  if (typeof target === "string") return document.querySelectorAll(target).length;
+  if (target instanceof Element) return 1;
+  return (target as Element[]).length;
 }
 
 /** Cross-fade the outgoing and incoming panes of a view change. */

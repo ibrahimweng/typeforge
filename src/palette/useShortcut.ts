@@ -27,11 +27,24 @@
  * without asking what the machine is -- and asking is unreliable anyway, since
  * `navigator.platform` has been deprecated for years and lies about iPads on
  * purpose.
+ *
+ * Neither key opens anything while a modal dialog is up. The palette would
+ * open behind it -- or, worse, over it, with the dialog still holding the
+ * focus trap -- and a space typed at a focused button in the dialog would be
+ * eaten as well. `modalOpen` is asked rather than the focus, for the reason
+ * written at it: a click on the dark behind a dialog leaves the focus on the
+ * body, and the body is where this listener answers from.
+ *
+ * And the space stands aside for any control that has the focus, not only
+ * the ones typed into: a focused button, link, summary or menu item is
+ * pressed with the space bar, and it is the control's key there (see
+ * `interactive`). Cmd-K still opens the palette from any of them.
  */
 
 import * as React from "react";
 
-import { busy } from "@/keys/typing";
+import { modalOpen } from "@/keys/modal";
+import { interactive } from "@/keys/typing";
 
 export function useQuickActionShortcut(
   onOpen: () => void,
@@ -43,6 +56,8 @@ export function useQuickActionShortcut(
       // Never on a repeat: holding the key down should open it once, not once
       // per repeat for as long as it is held.
       if (event.repeat) return;
+      // A dialog has the keyboard until it closes.
+      if (modalOpen()) return;
 
       if (event.key === "k" || event.key === "K") {
         if (!event.metaKey && !event.ctrlKey) return;
@@ -61,7 +76,7 @@ export function useQuickActionShortcut(
       // A modified space is somebody else's: Ctrl-Space is an input method on
       // several platforms and Shift-Space pages back up a document.
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      if (busy(event.target)) return;
+      if (interactive(event.target)) return;
       // The hand's, over a drawing. Cmd-K above still opens the palette there.
       if (handOnCanvas) return;
       // Otherwise the page scrolls under the palette as it opens.

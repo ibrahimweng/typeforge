@@ -22,7 +22,7 @@ import { contoursToPath2D } from "@/font/geometry";
 import { applyLigatures } from "@/font/features";
 import { resolveAdvanceWidth, resolveGlyphContours } from "@/font/transform";
 import type { Glyph, Typeface } from "@/font/types";
-import { prepareCanvas, readToken } from "@/components/glyph-render";
+import { prepareCanvas, readToken, useDeviceRatio } from "@/components/glyph-render";
 import { GroundToggle } from "@/components/GroundToggle";
 import { NothingDrawnYet } from "@/components/NothingDrawnYet";
 import { hasLetters } from "@/font/library";
@@ -30,6 +30,7 @@ import { typefaceAt } from "@/font/masters";
 import { Versions } from "@/components/Versions";
 import { store, useAppState } from "@/state/useStore";
 import { cn } from "@/cn";
+import { memoBy } from "./memo-by";
 
 /*
  * What it opens with, and why this rather than a pangram.
@@ -210,6 +211,30 @@ export function ProofView(): React.JSX.Element {
   const lineHeight = size * leading;
   const height = Math.max(200, Math.ceil((lines + 1) * lineHeight) + 48);
 
+  /*
+   * Each letter's path, built once per letter rather than once per character.
+   *
+   * This used to resolve the outline -- components and all -- and build a new
+   * `Path2D` for every character placed, on every redraw: a paragraph is a few
+   * hundred characters made of a few dozen letters, and the dials redraw it on
+   * every tick. The paths are in font units and the size is applied by the
+   * transform, so the same path serves every size, line height and width; the
+   * cache is only thrown away when the font itself is a different object or
+   * its revision moves, which is when a letter's outline can have changed.
+   */
+  const pathOf = React.useMemo(
+    () =>
+      memoBy((glyph: Glyph): Path2D | null => {
+        if (!typeface) return null;
+        const contours = resolveGlyphContours(glyph, typeface);
+        return contours.length === 0 ? null : contoursToPath2D(contours);
+      }),
+    [typeface, state.revision],
+  );
+
+  // Redrawn when the window moves to a screen of another density, which
+  // changes nothing else in the list below (see `subscribeDeviceRatio`).
+  const ratio = useDeviceRatio();
   React.useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !typeface) return;
@@ -218,12 +243,12 @@ export function ProofView(): React.JSX.Element {
 
     context.fillStyle = readToken("--glyph-fill", "#eeeeee", canvas);
     for (const one of placed) {
-      const contours = resolveGlyphContours(one.glyph, typeface);
-      if (contours.length === 0) continue;
+      const path = pathOf(one.glyph);
+      if (!path) continue;
       context.save();
       context.translate(MARGIN + one.x * scale, MARGIN + (one.line + 1) * lineHeight);
       context.scale(scale, -scale);
-      context.fill(contoursToPath2D(contours), "nonzero");
+      context.fill(path, "nonzero");
       context.restore();
     }
     /*
@@ -235,7 +260,18 @@ export function ProofView(): React.JSX.Element {
      * the new white page. `state.ground` is named here to say that the paint
      * depends on it even though the pixels do not pass through it.
      */
-  }, [typeface, placed, scale, lineHeight, width, height, state.revision, state.ground]);
+  }, [
+    typeface,
+    placed,
+    pathOf,
+    scale,
+    lineHeight,
+    width,
+    height,
+    state.revision,
+    state.ground,
+    ratio,
+  ]);
 
   if (!typeface) {
     return (

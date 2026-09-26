@@ -16,6 +16,7 @@ import {
   formatCodepoint,
   glyphLabel,
   prepareCanvas,
+  useDeviceRatio,
   readToken,
 } from "@/components/glyph-render";
 import { groupGlyphs } from "@/font/groups";
@@ -357,6 +358,14 @@ const GlyphCell = React.memo(function GlyphCell({
    */
   const glyph = preview === null ? drawn : (glyphAcross(name, state.masters, preview) ?? drawn);
 
+  /*
+   * Redrawn when the window moves to a screen of another density, which
+   * changes nothing else in the list below. Subscribed per cell, unlike the
+   * document, because it only ever fires on that move -- and every cell does
+   * need redrawing then -- and the cells share one media query between them
+   * (see `subscribeDeviceRatio`).
+   */
+  const ratio = useDeviceRatio();
   React.useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !typeface || !glyph) return;
@@ -367,7 +376,7 @@ const GlyphCell = React.memo(function GlyphCell({
     drawGlyph(context, glyph, typeface, view, {
       fill: readToken("--glyph-fill", "#eeeeee"),
     });
-  }, [glyph, typeface, revision, preview]);
+  }, [glyph, typeface, revision, preview, ratio]);
 
   // A name with nothing behind it means the font changed under the row while
   // it was on screen; the next render has the right letters in it.

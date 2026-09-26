@@ -7,6 +7,8 @@
  * strips all agree on where a glyph sits.
  */
 
+import * as React from "react";
+
 import { contoursToPath2D } from "@/font/geometry";
 import { resolveGlyphContours } from "@/font/transform";
 import type { Glyph, Typeface } from "@/font/types";
@@ -44,6 +46,70 @@ export function fitEmSquare(
  */
 export function deviceRatio(): number {
   return Math.min(typeof window === "undefined" ? 1 : window.devicePixelRatio || 1, 2);
+}
+
+/**
+ * Be told when the device pixel ratio changes.
+ *
+ * It changes more often than it looks: a window dragged from a laptop's
+ * screen onto an external monitor, a browser zoom (which is a ratio change as
+ * far as a canvas is concerned), a display's scaling changed in the system
+ * settings. A canvas sized for the old ratio keeps its backing store until
+ * something happens to redraw it, so the letters went soft on the move to a
+ * sharper screen -- or were drawn at half size, since `applyView` reads the
+ * new ratio while the store was sized for the old one -- until the next edit.
+ *
+ * There is no event for the ratio itself. The idiom is a media query for the
+ * exact resolution in force now, which stops matching the moment it changes;
+ * the query is then for a resolution that no longer holds, so it is re-armed
+ * at the new one each time it fires. Answers with a subscribe function of
+ * the shape `useSyncExternalStore` takes; the window is passed in so the
+ * re-arming can be tested without one.
+ */
+export function watchDeviceRatio(
+  win: Pick<Window, "matchMedia" | "devicePixelRatio"> | null,
+): (onChange: () => void) => () => void {
+  /*
+   * One query for however many canvases are listening -- the font grid has a
+   * canvas per cell -- armed when the first arrives and dropped when the last
+   * goes, rather than a query each.
+   */
+  const listeners = new Set<() => void>();
+  let query: MediaQueryList | null = null;
+  const disarm = (): void => {
+    query?.removeEventListener("change", fire);
+    query = null;
+  };
+  const arm = (): void => {
+    disarm();
+    if (!win || typeof win.matchMedia !== "function") return;
+    query = win.matchMedia(`(resolution: ${win.devicePixelRatio || 1}dppx)`);
+    query.addEventListener("change", fire);
+  };
+  function fire(): void {
+    arm();
+    for (const listener of [...listeners]) listener();
+  }
+  return (onChange) => {
+    listeners.add(onChange);
+    if (listeners.size === 1) arm();
+    return () => {
+      listeners.delete(onChange);
+      if (listeners.size === 0) disarm();
+    };
+  };
+}
+
+/** The page's own watch, shared by every canvas on it. */
+export const subscribeDeviceRatio = watchDeviceRatio(typeof window === "undefined" ? null : window);
+
+/**
+ * The capped device pixel ratio, as state: a component that draws to a canvas
+ * reads this and names it in its paint effect's dependencies, so the canvas is
+ * redrawn at the new ratio when the window moves to another screen.
+ */
+export function useDeviceRatio(): number {
+  return React.useSyncExternalStore(subscribeDeviceRatio, deviceRatio, () => 1);
 }
 
 /**

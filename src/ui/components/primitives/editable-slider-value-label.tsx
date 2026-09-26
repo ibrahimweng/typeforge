@@ -39,6 +39,17 @@ export function EditableSliderValueLabel({
 }: EditableSliderValueLabelProps): React.JSX.Element {
   const [editing, setEditing] = useState(false);
   const editorRef = useRef<HTMLSpanElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  /*
+   * Set when editing ends from the keyboard, so the focus goes back to the
+   * button it started from. The editor is unmounted the moment editing ends,
+   * and a focused element that leaves the page drops the focus on the body --
+   * so a keyboard user who pressed Enter or Escape was thrown out of the panel
+   * and had to Tab back in from the top. Not set when editing ends on a blur:
+   * the focus went somewhere on purpose then, and pulling it back would undo
+   * the click that moved it.
+   */
+  const returnFocus = useRef(false);
   const valueLabelRef = useRef(valueLabel);
   const isEditableValueLabel = hasEditableNumericValueLabel(valueLabel);
   const valueTextClassName = getEditableValueTextClassName({ layout, textAlign });
@@ -59,6 +70,9 @@ export function EditableSliderValueLabel({
       editor.textContent = valueLabelRef.current;
       editor.focus();
       selectEditableText(editor);
+    } else if (returnFocus.current) {
+      returnFocus.current = false;
+      buttonRef.current?.focus();
     }
   }, [editing]);
 
@@ -84,6 +98,12 @@ export function EditableSliderValueLabel({
     setEditing(false);
   }
 
+  function endFromKeyboard(commit: boolean): void {
+    returnFocus.current = true;
+    if (commit) commitDraft();
+    else setEditing(false);
+  }
+
   return (
     <span className={getValueLabelContainerClassName(layout)}>
       {layout === "reference" ? <SliderValueLabelMeasure valueLabel={widestValueLabel} /> : null}
@@ -92,14 +112,16 @@ export function EditableSliderValueLabel({
           ariaLabel={ariaLabel}
           editorRef={editorRef}
           layout={layout}
-          onCancel={() => setEditing(false)}
-          onCommit={commitDraft}
+          onBlur={commitDraft}
+          onCancel={() => endFromKeyboard(false)}
+          onCommit={() => endFromKeyboard(true)}
           onStep={onStep}
           textClassName={valueTextClassName}
         />
       ) : (
         <EditableSliderValueButton
           ariaLabel={ariaLabel}
+          buttonRef={buttonRef}
           layout={layout}
           onBeginEditing={() => setEditing(true)}
           textClassName={valueTextClassName}
@@ -158,6 +180,7 @@ function EditableSliderValueEditor({
   ariaLabel,
   editorRef,
   layout,
+  onBlur,
   onCancel,
   onCommit,
   onStep,
@@ -166,6 +189,7 @@ function EditableSliderValueEditor({
   ariaLabel: string;
   editorRef: React.RefObject<HTMLSpanElement | null>;
   layout: EditableSliderValueLabelLayout;
+  onBlur: () => void;
   onCancel: () => void;
   onCommit: () => void;
   onStep?: (direction: -1 | 1, currentDraft: string) => string | undefined;
@@ -176,7 +200,7 @@ function EditableSliderValueEditor({
       aria-label={ariaLabel}
       className={`col-start-1 row-start-1 cursor-text p-0 text-[color:var(--foreground)] outline-none ${layout === "content" ? "justify-self-start" : ""} ${textClassName}`}
       contentEditable
-      onBlur={onCommit}
+      onBlur={onBlur}
       onFocus={(event) => selectEditableText(event.currentTarget)}
       onKeyDown={(event) => {
         if (event.key === "Enter") {
@@ -211,12 +235,14 @@ function EditableSliderValueEditor({
 
 function EditableSliderValueButton({
   ariaLabel,
+  buttonRef,
   layout,
   onBeginEditing,
   textClassName,
   valueLabel,
 }: {
   ariaLabel: string;
+  buttonRef: React.RefObject<HTMLButtonElement | null>;
   layout: EditableSliderValueLabelLayout;
   onBeginEditing: () => void;
   textClassName: string;
@@ -243,6 +269,7 @@ function EditableSliderValueButton({
       onMouseUp={beginEditableActivation}
       onPointerDown={stopEditableActivation}
       onPointerUp={beginEditableActivation}
+      ref={buttonRef}
       type="button"
     >
       <span
