@@ -230,10 +230,22 @@ export function guessCharacter(file: string): string {
   const ufo = /^([A-Za-z])_$/.exec(stem);
   if (ufo) return ufo[1].toUpperCase();
 
+  /*
+   * Six hex digits say more than Unicode has: it stops at U+10FFFF, and
+   * `String.fromCodePoint` throws a RangeError past that rather than returning
+   * anything. It threw from inside the import, so one file called
+   * `u110000.svg` in a folder of fifty took the other forty-nine down with it.
+   * A surrogate is refused too -- U+D800 to U+DFFF are halves of a pair, not
+   * characters, and a lone one mapped into a font is a cmap entry no text can
+   * ever reach. Either way the file is left unmapped, which the panel shows
+   * and a person can fix, rather than guessed at.
+   */
   const hex = /^(?:uni|u\+?)([0-9a-fA-F]{4,6})$/.exec(stem);
   if (hex) {
     const code = Number.parseInt(hex[1], 16);
-    if (Number.isFinite(code) && code > 0) return String.fromCodePoint(code);
+    const surrogate = code >= 0xd800 && code <= 0xdfff;
+    if (code > 0 && code <= 0x10ffff && !surrogate) return String.fromCodePoint(code);
+    return "";
   }
 
   if (stem.length === 1) return stem;

@@ -465,7 +465,10 @@ On Vercel, importing this repository is enough: `vercel.json` sets the
 framework, the build command and the output directory, so no dashboard
 configuration is needed. Every path rewrites to `index.html` because the app
 runs on one page, and hashed asset files are marked immutable so repeat visits
-do not refetch them.
+do not refetch them. Every response also carries security headers: a
+Content-Security-Policy that allows scripts, workers and fetches only from the
+site itself and the font libraries it downloads from, and headers that stop
+the page being framed or its files being sniffed as another type.
 
 ```bash
 npm run build   # produces dist/

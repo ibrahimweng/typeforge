@@ -10,6 +10,8 @@
  * variations) exactly as they arrived.
  */
 
+import type { Unzlib } from "fflate";
+
 import { readComposites } from "./composite";
 import { FontFileError, unreadable } from "./damaged";
 import { contoursBounds } from "./geometry";
@@ -50,6 +52,130 @@ export function detectFormat(bytes: Uint8Array): FontFormat {
   const version = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
   if (version === 0x00010000) return "truetype";
   return "unknown";
+}
+
+/**
+ * The most a WOFF may say it unpacks to.
+ *
+ * The header's `totalSfntSize` is a number the file chose, and fonteditor-core
+ * allocates an `ArrayBuffer` of exactly that size before it writes a byte. The
+ * largest fonts anyone ships -- a full CJK face with hinting -- are a few tens
+ * of megabytes, so four times the biggest of them is room for anything real and
+ * still refuses a header that asks the tab for four gigabytes.
+ */
+export const MAX_WOFF_SFNT_BYTES = 128 * 1024 * 1024;
+
+/** The input is fed to the inflater this much at a time; see `inflateTable`. */
+const INFLATE_SLICE = 16 * 1024;
+
+/*
+ * fflate's streaming inflater, passed in rather than imported: the library is
+ * loaded on demand, when a WOFF turns up, and a test wants to watch what it is
+ * fed. The type alone costs nothing at run time.
+ */
+type ZlibStream = typeof Unzlib;
+
+/**
+ * Inflate one WOFF table, holding it to the length the table directory gave.
+ *
+ * It used to be `unzlibSync` with nothing else said, and that trusted the one
+ * thing a compressed stream cannot be trusted about, which is how big it is.
+ * Deflate reaches better than a thousand to one on a run of zeros, so a WOFF of
+ * a few megabytes could unpack a single table to gigabytes, and the tab went
+ * down allocating it before anything had the chance to say the file was bad.
+ * Then every byte of that was copied again into a plain number array, which is
+ * eight times the memory of the bytes it holds.
+ *
+ * Every table in a WOFF declares its uncompressed length, `origLength`, and the
+ * specification says a table whose inflated length differs is an error. So the
+ * length is the limit. The stream is fed a slice at a time and stops the moment
+ * the output passes what was declared, which bounds the time as well as the
+ * memory: a single `unzlibSync` into a fixed buffer would stop growing it but
+ * would still decode the whole bomb, writing past the end into nothing. And a
+ * stream that ends short, or never ends at all, is refused as well, because a
+ * table shorter than its directory entry puts every table after it at the wrong
+ * offset in the sfnt that is written from them.
+ *
+ * Exported for the tests, which is the only way to reach the mismatch cases
+ * without building a font whose other tables would fail first.
+ */
+export function inflateTable(
+  deflated: Uint8Array,
+  expected: number,
+  Stream: ZlibStream,
+): Uint8Array {
+  const out = new Uint8Array(expected);
+  let written = 0;
+  let ended = false;
+
+  const stream = new Stream();
+  stream.ondata = (chunk, final) => {
+    if (written + chunk.length > expected) {
+      throw new Error(`WOFF table inflates past its declared ${expected} bytes`);
+    }
+    out.set(chunk, written);
+    written += chunk.length;
+    if (final) ended = true;
+  };
+
+  for (let at = 0; at < deflated.length && !ended; at += INFLATE_SLICE) {
+    const end = Math.min(at + INFLATE_SLICE, deflated.length);
+    stream.push(deflated.subarray(at, end), end === deflated.length);
+  }
+
+  if (!ended || written !== expected) {
+    throw new Error(`WOFF table inflates to ${written} bytes, not the declared ${expected}`);
+  }
+  return out;
+}
+
+/**
+ * The `inflate` callback fonteditor-core asks for, told what each table should
+ * come to.
+ *
+ * The reader calls it with the compressed bytes and nothing else -- not the
+ * tag, not the declared length -- so the lengths are read here from the same
+ * table directory, in the same order and under the same condition it uses to
+ * decide a table is compressed at all (`compLength < origLength`). The n-th
+ * call is then the n-th compressed table. The header's total is checked here
+ * too, for the allocation described at `MAX_WOFF_SFNT_BYTES`.
+ *
+ * It hands back a `Uint8Array` rather than the number array it is given. The
+ * reader only reads `.length` from it and passes it to its writer, which copies
+ * anything indexable byte by byte, so the typed array serves and the eightfold
+ * copy into numbers is gone.
+ */
+export function woffInflater(
+  bytes: Uint8Array,
+  Stream: ZlibStream,
+): (deflated: number[]) => Uint8Array {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (bytes.length < 44) throw new Error("WOFF header is cut short");
+
+  const numTables = view.getUint16(12);
+  const totalSfntSize = view.getUint32(16);
+  if (totalSfntSize > MAX_WOFF_SFNT_BYTES) {
+    throw new Error(`WOFF claims to unpack to ${totalSfntSize} bytes`);
+  }
+  if (44 + numTables * 20 > bytes.length) throw new Error("WOFF table directory is cut short");
+
+  const expected: number[] = [];
+  for (let i = 0; i < numTables; i++) {
+    const entry = 44 + i * 20;
+    const compLength = view.getUint32(entry + 8);
+    const origLength = view.getUint32(entry + 12);
+    if (compLength < origLength) expected.push(origLength);
+  }
+
+  let next = 0;
+  return (deflated) => {
+    const length = expected[next++];
+    if (length === undefined) throw new Error("WOFF has more compressed tables than it lists");
+    if (length > totalSfntSize) {
+      throw new Error(`WOFF table claims ${length} bytes of a ${totalSfntSize}-byte font`);
+    }
+    return inflateTable(Uint8Array.from(deflated), length, Stream);
+  };
 }
 
 /** Unwrap web font containers so everything downstream sees plain sfnt bytes. */
@@ -93,15 +219,18 @@ async function toSfntBytes(bytes: Uint8Array, format: FontFormat): Promise<Uint8
   // WOFF stores each table zlib-compressed and expects the caller to supply a
   // synchronous inflate. fflate is a few kilobytes and works the same in the
   // browser and in Node, where DecompressionStream would only be async.
-  const { unzlibSync } = await import("fflate");
+  const { Unzlib } = await import("fflate");
 
   const font = Font.create(buffer, {
     type: format,
     hinting: true,
     kerning: true,
-    // The reader hands over a plain number array and expects one back, so
-    // convert either side of fflate, which works in typed arrays.
-    inflate: (deflated: number[]) => Array.from(unzlibSync(Uint8Array.from(deflated))),
+    // Typed as returning `number[]`, which is what the reader's typings say;
+    // what the reader does with it is read `.length` and index it, and the
+    // typed array does both. `woffInflater` has why that matters.
+    ...(format === "woff"
+      ? { inflate: woffInflater(bytes, Unzlib) as unknown as (deflated: number[]) => number[] }
+      : {}),
   });
   // Without `toBuffer` this hands back an ArrayBuffer, which is what we want in
   // the browser; the Node typings describe the Buffer variant instead.
