@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Glyph, Typeface } from "@/font/types";
 import { emptyTypeface } from "@/font/types";
-import { looksLikeUfo, readUfo, textOf, writeUfo, type UfoFiles } from "./font";
+import { looksLikeUfo, readUfo, textOf, withRename, writeUfo, type UfoFiles } from "./font";
 import { readPlist, writePlist } from "./plist";
 
 /** The smallest thing that is a UFO, plus whatever a test wants to add. */
@@ -346,7 +346,10 @@ describe("the claimed files, merged rather than replaced", () => {
     const { typeface, carried } = readUfo(files)!;
     typeface.kernClasses = [{ id: "new", name: "new", left: ["A", "B"], right: ["V"], value: -5 }];
     const groups = readPlist(textOf(writeUfo(typeface, carried).get("groups.plist")))!;
-    expect(groups["public.kern1.0"]).toEqual(["x", "y"]);
+    // The file's group had nothing kerning with it and no class behind it, so
+    // it goes -- but its name is still not given to other letters, since a
+    // feature file somewhere may still say it.
+    expect(groups["public.kern1.0"]).toBeUndefined();
     expect(groups["public.kern1.0.1"]).toEqual(["A", "B"]);
   });
 
@@ -420,5 +423,171 @@ describe("the parts of a glyph's file that are not its drawing", () => {
     expect(written).toContain("<key>public.markColor</key>");
     // The lib goes last, where every other tool puts it.
     expect(written.indexOf("<lib>")).toBeGreaterThan(written.indexOf("<outline"));
+  });
+});
+
+/**
+ * The groups, written from a font that has moved on since it was read.
+ *
+ * `groups.plist` starts from the file's own, so that the groups this
+ * application does not model survive. Which left three faults: deleted and
+ * renamed glyphs still named in the groups, kerning groups whose class had
+ * been removed still written, and -- from those two together -- a glyph in two
+ * kerning groups on one side, which ufoLib refuses to open.
+ */
+describe("groups, after the font has changed", () => {
+  const names = ["A", "Aacute", "O", "Q", "V", "W", "acutecomb", "gravecomb"];
+  const folder = (groups: Record<string, string[]>, kerning: Record<string, unknown> = {}) =>
+    ufo({
+      "glyphs/contents.plist": writePlist(
+        Object.fromEntries(names.map((name) => [name, `${name}.glif`])),
+      ),
+      ...Object.fromEntries(
+        names.map((name) => [
+          `glyphs/${name}.glif`,
+          `<glyph name="${name}" format="2"><advance width="500"/><outline/></glyph>`,
+        ]),
+      ),
+      "groups.plist": writePlist(groups),
+      "kerning.plist": writePlist(kerning as Record<string, Record<string, number>>),
+    });
+  const groupsOf = (out: UfoFiles) => readPlist(textOf(out.get("groups.plist")))!;
+  const without = (typeface: Typeface, gone: string) => {
+    typeface.glyphs = typeface.glyphs.filter((one) => one.name !== gone);
+    typeface.glyphIndex = new Map(typeface.glyphs.map((one, at) => [one.name, at]));
+  };
+
+  it("takes a deleted glyph out of every group, and leaves names the file never had", () => {
+    const { typeface, carried } = readUfo(
+      folder({ topMarks: ["acutecomb", "gravecomb", "someoneElses"] }),
+    )!;
+    without(typeface, "gravecomb");
+    expect(groupsOf(writeUfo(typeface, carried)).topMarks).toEqual(["acutecomb", "someoneElses"]);
+  });
+
+  it("follows a renamed glyph into the groups it was in", () => {
+    const read = readUfo(folder({ topMarks: ["acutecomb", "gravecomb"] }))!;
+    const { typeface } = read;
+    typeface.glyphs = typeface.glyphs.map((one) =>
+      one.name === "acutecomb" ? { ...one, name: "acute.cmb" } : one,
+    );
+    typeface.glyphIndex = new Map(typeface.glyphs.map((one, at) => [one.name, at]));
+    const carried = withRename(
+      withRename(read.carried, "acutecomb", "acute.x"),
+      "acute.x",
+      "acute.cmb",
+    );
+    expect(carried.renamed).toEqual({ acutecomb: "acute.cmb" });
+    expect(groupsOf(writeUfo(typeface, carried)).topMarks).toEqual(["acute.cmb", "gravecomb"]);
+    // And a rename back is no rename at all.
+    expect(withRename(carried, "acute.cmb", "acutecomb").renamed).toEqual({});
+  });
+
+  it("drops a kerning group whose class was removed", () => {
+    const { typeface, carried } = readUfo(
+      folder(
+        { "public.kern1.O": ["O", "Q"], "public.kern2.V": ["V", "W"], topMarks: ["acutecomb"] },
+        { "public.kern1.O": { "public.kern2.V": -30 } },
+      ),
+    )!;
+    typeface.kernClasses = [];
+    const out = writeUfo(typeface, carried);
+    expect(groupsOf(out)).toEqual({ topMarks: ["acutecomb"] });
+    expect(out.has("kerning.plist")).toBe(false);
+  });
+
+  it("puts a glyph in one kerning group per side after a class is remade", () => {
+    const { typeface, carried } = readUfo(
+      folder(
+        { "public.kern1.O": ["O", "Q"], "public.kern2.V": ["V", "W"] },
+        { "public.kern1.O": { "public.kern2.V": -30 } },
+      ),
+    )!;
+    typeface.kernClasses = [
+      { id: "made-here", name: "O / V", left: ["O", "Q"], right: ["V", "W"], value: -45 },
+    ];
+    const groups = groupsOf(writeUfo(typeface, carried));
+    const kern1 = Object.entries(groups).filter(([name]) => name.startsWith("public.kern1."));
+    expect(kern1).toHaveLength(1);
+    expect(kern1[0][1]).toEqual(["O", "Q"]);
+  });
+
+  it("keeps a glyph two classes share in the first, and the second's value as a pair", () => {
+    const typeface = typefaceWith(names.map((name) => glyph(name)));
+    typeface.kernClasses = [
+      { id: "one", name: "one", left: ["A", "Aacute"], right: ["V", "W"], value: -80 },
+      { id: "two", name: "two", left: ["Aacute", "O"], right: ["V", "Q"], value: -20 },
+    ];
+    const out = writeUfo(typeface);
+    const groups = groupsOf(out);
+    const seen = new Map<string, number>();
+    for (const [name, members] of Object.entries(groups)) {
+      if (!name.startsWith("public.kern1.")) continue;
+      for (const member of members as string[]) seen.set(member, (seen.get(member) ?? 0) + 1);
+    }
+    expect([...seen.values()].every((count) => count === 1)).toBe(true);
+    expect(seen.get("Aacute")).toBe(1);
+
+    // Read back, every pair resolves to what the model said: first class wins.
+    const kerning = readPlist(textOf(out.get("kerning.plist")))! as Record<
+      string,
+      Record<string, number>
+    >;
+    const groupOf = (glyphName: string, prefix: string) =>
+      Object.entries(groups).find(
+        ([name, members]) => name.startsWith(prefix) && (members as string[]).includes(glyphName),
+      )?.[0] ?? glyphName;
+    const lookup = (left: string, right: string): number | undefined => {
+      const l = groupOf(left, "public.kern1.");
+      const r = groupOf(right, "public.kern2.");
+      return kerning[left]?.[right] ?? kerning[left]?.[r] ?? kerning[l]?.[right] ?? kerning[l]?.[r];
+    };
+    expect(lookup("Aacute", "V")).toBe(-80);
+    expect(lookup("Aacute", "W")).toBe(-80);
+    expect(lookup("Aacute", "Q")).toBe(-20);
+    expect(lookup("O", "V")).toBe(-20);
+    expect(lookup("A", "Q")).toBeUndefined();
+  });
+});
+
+/*
+ * What a glyph's file held that a glyph here cannot -- a note, guidelines, its
+ * own lib -- is kept by the name the file had. Looked up by the name now, a
+ * rename left all of it behind.
+ */
+describe("what a glyph's file kept, after a rename", () => {
+  const folder = () =>
+    ufo({
+      "glyphs/contents.plist": writePlist({ a: "a.glif" }),
+      "glyphs/a.glif": `<glyph name="a" format="2"><advance width="500"/><note>mind the bowl</note><outline/></glyph>`,
+    });
+  const noteIn = (out: UfoFiles, name: string) => {
+    const contents = readPlist(textOf(out.get("glyphs/contents.plist")))!;
+    return textOf(out.get(`glyphs/${contents[name] as string}`)).includes("mind the bowl");
+  };
+
+  it("follows the glyph to its new name", () => {
+    const read = readUfo(folder())!;
+    const { typeface } = read;
+    typeface.glyphs = typeface.glyphs.map((one) =>
+      one.name === "a" ? { ...one, name: "a.ss01" } : one,
+    );
+    typeface.glyphIndex = new Map(typeface.glyphs.map((one, at) => [one.name, at]));
+    expect(noteIn(writeUfo(typeface, withRename(read.carried, "a", "a.ss01")), "a.ss01")).toBe(
+      true,
+    );
+  });
+
+  it("is not handed to a new glyph that took the old name", () => {
+    const read = readUfo(folder())!;
+    const { typeface } = read;
+    typeface.glyphs = [
+      ...typeface.glyphs.map((one) => (one.name === "a" ? { ...one, name: "a.ss01" } : one)),
+      glyph("a"),
+    ];
+    typeface.glyphIndex = new Map(typeface.glyphs.map((one, at) => [one.name, at]));
+    const out = writeUfo(typeface, withRename(read.carried, "a", "a.ss01"));
+    expect(noteIn(out, "a.ss01")).toBe(true);
+    expect(noteIn(out, "a")).toBe(false);
   });
 });

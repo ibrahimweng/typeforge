@@ -122,7 +122,23 @@ export interface UfoCarried {
    * by name, renamed in every file by opening and saving it.
    */
   kernGroupNames?: Record<string, { left: string; right: string }>;
+  /**
+   * The glyphs renamed since the file was read: the name the file has for
+   * each, and the name it goes by now.
+   *
+   * Everything the model holds is renamed in place (`library.ts` names the
+   * eight places), but the groups the model does not hold -- a mark feature's,
+   * a spacing script's -- are only in `groups.plist` as it arrived, under the
+   * old names. This is what lets the writer follow a rename into them rather
+   * than dropping the letter out of the group as though it had been deleted.
+   * Kept up by the store's rename, and taken back by its undo.
+   */
+  renamed?: Record<string, string>;
 }
+
+// Folding a rename into a carried set lives on its own, so that the store can
+// do it without pulling the whole UFO reader into the first screen.
+export { withRename } from "./renamed";
 
 /** What a read produces: the font, and what has to travel with it. */
 export interface ReadUfo {
@@ -367,6 +383,14 @@ export function readUfo(files: UfoFiles): ReadUfo | null {
   const originals: UfoFiles = new Map();
   for (const [path, source] of files) {
     if (MERGED.has(path)) originals.set(path, textOf(source));
+    /*
+     * And which glyphs the file had, which the writer needs to tell a group
+     * member that has since been deleted from one that was never a glyph in
+     * this folder at all. The first is a stale name to take out; the second
+     * is somebody else's business -- a group can name glyphs another tool
+     * keeps elsewhere -- and is left exactly as it was.
+     */
+    if (path === `${glyphsDirectory}/contents.plist`) originals.set(path, textOf(source));
     if (CLAIMED.has(path) || readFiles.has(path)) continue;
     untouched.set(path, source);
   }
@@ -547,10 +571,30 @@ export function writeUfo(typeface: Typeface, carried?: UfoCarried): UfoFiles {
     contents[name] = fileName;
     unread.push(name);
   }
+  /*
+   * What each glyph's file held that the glyph cannot -- the note, the image,
+   * the guidelines, its own lib -- found under the name the file had for it.
+   *
+   * It is kept by that name, and looked up by the glyph's name now, so a
+   * renamed letter went out without any of it: the designer's note on `a`
+   * was gone from `a.ss01` for nothing more than a change of name. The rename
+   * map says which file name a glyph came from. A name that was renamed away
+   * and has since been given to a new letter is not that letter's, so the new
+   * one gets nothing rather than its predecessor's note.
+   */
+  const renamedFrom = new Map(
+    Object.entries(carried?.renamed ?? {}).map(([was, is]) => [is, was] as const),
+  );
+  const keptFor = (name: string): string[] | undefined => {
+    const was = renamedFrom.get(name);
+    if (was !== undefined) return carried?.glifKept?.[was];
+    if (carried?.renamed?.[name] !== undefined) return undefined;
+    return carried?.glifKept?.[name];
+  };
   for (const glyph of typeface.glyphs) {
     const fileName = fileNameFor(glyph.name, taken);
     contents[glyph.name] = fileName;
-    files.set(`${glyphsDirectory}/${fileName}`, writeGlif(glyph, carried?.glifKept?.[glyph.name]));
+    files.set(`${glyphsDirectory}/${fileName}`, writeGlif(glyph, keptFor(glyph.name)));
   }
   files.set(`${glyphsDirectory}/contents.plist`, writePlist(contents));
 
@@ -562,52 +606,141 @@ export function writeUfo(typeface: Typeface, carried?: UfoCarried): UfoFiles {
    * format reserves, because a name without them is a plain glyph list that
    * kerning will not look in.
    *
-   * Every group the file had is kept, kerning or not: the groups that feed a
-   * mark feature or a spacing script are nothing this application models and
-   * nothing it has any business deleting. A kerning class that came out of a
-   * named group goes back under that name, with whatever members it has now.
-   * Only a class made here, or one whose group has already been given other
-   * members by a class written before it, is given a new name -- one nothing
-   * in the file is already called.
+   * Every group the file had that is not kerning is kept: the groups that feed
+   * a mark feature or a spacing script are nothing this application models
+   * and nothing it has any business deleting. A kerning class that came out
+   * of a named group goes back under that name, with whatever members it has
+   * now. Only a class made here, or one whose group has already been given
+   * other members by a class written before it, is given a new name -- one
+   * nothing in the file is already called.
+   *
+   * Starting from the groups as they arrived is what keeps those, and it is
+   * also what went wrong three ways, because the file's groups are a record
+   * of the font as it was read and the font has moved on since:
+   *
+   *   - A glyph deleted or renamed here stayed in every group under the name
+   *     it had, naming a glyph the folder no longer has. Now a deleted one is
+   *     taken out and a renamed one is followed (`renamed` above).
+   *   - A kerning group whose class was removed here was still written, with
+   *     nothing kerning against it. Every `public.kern1.` and `public.kern2.`
+   *     group now comes from a class that is still here, and none from the
+   *     file alone -- the classes *are* the kerning groups, read that way.
+   *   - Which made the third: remove a class and make one with the same
+   *     letters, and the letters were in the old group and the new one. The
+   *     format allows a glyph in one kerning group per side, since otherwise
+   *     which of two values applies has no answer, and ufoLib refuses to open
+   *     a folder that breaks that. This model does let a letter sit in two
+   *     classes, with the first one winning -- so a letter an earlier class
+   *     already took is left out of the later group, and whatever the later
+   *     class meant for it that the earlier one did not already decide is
+   *     written as a pair of glyphs instead. Glyph pairs beat groups in every
+   *     reader, so it means the same thing.
    */
-  const groups: PlistDict = originalPlist(carried, "groups.plist");
+  const original = originalPlist(carried, "groups.plist");
+  const renamed = carried?.renamed ?? {};
+  const present = new Set([...typeface.glyphs.map((glyph) => glyph.name), ...unread]);
+  const contentsBefore = originalPlist(carried, `${glyphsDirectory}/contents.plist`);
+  // Without a record of what the file had -- a session saved before one was
+  // kept -- every name that is not a glyph now is treated as one that was.
+  const hadBefore =
+    Object.keys(contentsBefore).length > 0 ? new Set(Object.keys(contentsBefore)) : null;
+  const now = (member: string): string | null => {
+    const to = renamed[member];
+    if (to !== undefined) return present.has(to) ? to : null;
+    if (present.has(member)) return member;
+    return hadBefore && !hadBefore.has(member) ? member : null;
+  };
+
+  const KERN1 = "public.kern1.";
+  const KERN2 = "public.kern2.";
+  const groups: PlistDict = {};
+  for (const [name, members] of Object.entries(original)) {
+    if (name.startsWith(KERN1) || name.startsWith(KERN2)) continue;
+    if (!Array.isArray(members)) {
+      groups[name] = members;
+      continue;
+    }
+    const kept: PlistValue[] = [];
+    for (const member of members) {
+      if (typeof member !== "string") {
+        kept.push(member);
+        continue;
+      }
+      const to = now(member);
+      if (to !== null && !kept.includes(to)) kept.push(to);
+    }
+    groups[name] = kept;
+  }
+
   const kerning: PlistDict = {};
+  const has = (left: string, right: string): boolean =>
+    (kerning[left] as PlistDict | undefined)?.[right] !== undefined;
   const add = (left: string, right: string, value: number) => {
     const seconds = (kerning[left] as PlistDict | undefined) ?? {};
     seconds[right] = value;
     kerning[left] = seconds;
   };
 
-  const assigned = new Map<string, string>();
+  /** Which group each glyph went into, per side, and each group by members. */
+  const claimed = { [KERN1]: new Map<string, string>(), [KERN2]: new Map<string, string>() };
+  const byMembers = { [KERN1]: new Map<string, string>(), [KERN2]: new Map<string, string>() };
+  const assigned = new Set<string>();
   const sideOf = (
     members: string[],
     preferred: string | undefined,
-    prefix: string,
+    prefix: typeof KERN1 | typeof KERN2,
     index: number,
-  ): string => {
+  ): { name: string | null; left: string[] } => {
+    // The same letters as a group already written on this side is that group:
+    // a group kerned against three others reads as three classes.
     const key = JSON.stringify(members);
-    if (preferred?.startsWith(prefix) && (assigned.get(preferred) ?? key) === key) {
-      assigned.set(preferred, key);
-      groups[preferred] = [...members];
-      return preferred;
-    }
+    const same = byMembers[prefix].get(key);
+    if (same) return { name: same, left: [] };
+
+    const taken = claimed[prefix];
+    const fresh = members.filter((member) => !taken.has(member));
+    const out = members.filter((member) => taken.has(member));
+    if (fresh.length === 0) return { name: null, left: out };
     // One glyph on a side is written as that glyph rather than as a group of
-    // one, which is what it means and what keeps the file readable.
-    if (members.length === 1) return members[0];
-    let name = `${prefix}${index}`;
-    for (let count = 1; name in groups || assigned.has(name); count++) {
-      name = `${prefix}${index}.${count}`;
+    // one, which is what it means and what keeps the file readable -- unless
+    // the file called it a group, in which case it goes back as one.
+    const usePreferred = preferred?.startsWith(prefix) && !assigned.has(preferred);
+    if (!usePreferred && members.length === 1) return { name: members[0], left: [] };
+    let name = usePreferred ? (preferred as string) : `${prefix}${index}`;
+    if (!usePreferred) {
+      // Not a name the file used either, even for a group now gone: a feature
+      // file somewhere may still say it, and should not find other letters.
+      for (let count = 1; name in original || assigned.has(name); count++) {
+        name = `${prefix}${index}.${count}`;
+      }
     }
-    assigned.set(name, key);
-    groups[name] = [...members];
-    return name;
+    assigned.add(name);
+    byMembers[prefix].set(key, name);
+    for (const member of fresh) taken.set(member, name);
+    groups[name] = [...fresh];
+    return { name, left: out };
   };
 
   typeface.kernClasses.forEach((kernClass, index) => {
     const named = carried?.kernGroupNames?.[kernClass.id];
-    const left = sideOf(kernClass.left, named?.left, "public.kern1.", index);
-    const right = sideOf(kernClass.right, named?.right, "public.kern2.", index);
-    add(left, right, kernClass.value);
+    const left = sideOf(kernClass.left, named?.left, KERN1, index);
+    const right = sideOf(kernClass.right, named?.right, KERN2, index);
+    if (left.name !== null && right.name !== null) add(left.name, right.name, kernClass.value);
+
+    // The letters left out of a group, as pairs, where no class before this
+    // one has already said what they are. First class wins, as it does in
+    // `resolvedKerning`.
+    if (left.left.length === 0 && right.left.length === 0) return;
+    const leftOut = new Set(left.left);
+    const rightOut = new Set(right.left);
+    const earlier = typeface.kernClasses.slice(0, index);
+    for (const first of kernClass.left) {
+      for (const second of kernClass.right) {
+        if (!leftOut.has(first) && !rightOut.has(second)) continue;
+        if (earlier.some((one) => one.left.includes(first) && one.right.includes(second))) continue;
+        if (!has(first, second)) add(first, second, kernClass.value);
+      }
+    }
   });
   for (const pair of typeface.kerning) add(pair.left, pair.right, pair.value);
 

@@ -259,6 +259,32 @@ export interface SourceFont {
   /** True when outlines came from a CFF table rather than glyf. */
   isCFF: boolean;
   fileName: string;
+  /**
+   * What the file said when it was read, before anybody changed anything.
+   *
+   * The tables above are the file's own bytes, and every one of them that
+   * addresses a glyph does it by number: the nth outline in `glyf`, the nth
+   * name in `post`, a mark attached to glyph 212. The document addresses glyphs
+   * by name and lets them be removed, added and renamed, so by the time a
+   * preserving export runs, "glyph 212" in the file and `typeface.glyphs[212]`
+   * can be two different letters. This is the key between the two: the name
+   * and characters each glyph had at each position in the file, which is what
+   * lets the export find a glyph's original outline by who it is rather than
+   * by where it now happens to sit, and tell which of the file's tables still
+   * describe the font being written.
+   *
+   * The metadata likewise, so that the export can tell a family name somebody
+   * edited from one that is only what the file already said, and rewrite the
+   * `name` table in the first case without disturbing it in the second.
+   *
+   * Optional because a source assembled anywhere but the importer has nothing
+   * to say here, and the export treats its absence as "cannot tell" and plays
+   * safe rather than guessing.
+   */
+  imported?: {
+    meta: FontMeta;
+    glyphs: Array<{ name: string; unicodes: number[] }>;
+  };
 }
 
 export interface Typeface {

@@ -29,8 +29,21 @@ describe("the undo chords", () => {
     expect(press({ ctrlKey: true, shiftKey: true, key: "Z" })).toBe("redo");
   });
 
-  it("follows the key rather than the letter on a layout that moves it", () => {
-    expect(press({ metaKey: true, key: "y", code: "KeyZ" })).toBe("undo");
+  it("follows the letter printed on the key on a layout that moves it", () => {
+    // QWERTZ: the key in QWERTY's Z position is Y, and Ctrl-Y is not undo.
+    expect(press({ ctrlKey: true, key: "y", code: "KeyZ" })).toBeNull();
+    // ...and its Z sits where QWERTY has Y.
+    expect(press({ ctrlKey: true, key: "z", code: "KeyY" })).toBe("undo");
+    // Dvorak: QWERTY's Z position is the semicolon.
+    expect(press({ metaKey: true, key: ";", code: "KeyZ" })).toBeNull();
+    expect(press({ metaKey: true, key: "z", code: "Slash" })).toBe("undo");
+  });
+
+  it("falls back to the position on a layout with no Latin letters", () => {
+    // Russian: the Z position reports "я".
+    expect(press({ metaKey: true, key: "я", code: "KeyZ" })).toBe("undo");
+    expect(press({ metaKey: true, shiftKey: true, key: "Я", code: "KeyZ" })).toBe("redo");
+    expect(press({ metaKey: true, key: "ч", code: "KeyX" })).toBeNull();
   });
 
   it("leaves a bare z, and Alt, to whoever else wants them", () => {

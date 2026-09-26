@@ -27,10 +27,24 @@
  * without asking what the machine is -- and asking is unreliable anyway, since
  * `navigator.platform` has been deprecated for years and lies about iPads on
  * purpose.
+ *
+ * Neither key opens anything while a modal dialog is up. The palette would
+ * open behind it -- or, worse, over it, with the dialog still holding the
+ * focus trap -- and a space typed at a focused button in the dialog would be
+ * eaten as well. `modalOpen` is asked rather than the focus, for the reason
+ * written at it: a click on the dark behind a dialog leaves the focus on the
+ * body, and the body is where this listener answers from.
+ *
+ * Outside a dialog the space stands aside only for what is typed into or has
+ * nothing but a space to press it with (see `busy`), and not for a focused
+ * button: a click leaves the focus on the button it pressed, so a space that
+ * stood aside for buttons would stop working after almost any click. A button
+ * answers to Enter as well.
  */
 
 import * as React from "react";
 
+import { modalOpen } from "@/keys/modal";
 import { busy } from "@/keys/typing";
 
 export function useQuickActionShortcut(
@@ -43,6 +57,8 @@ export function useQuickActionShortcut(
       // Never on a repeat: holding the key down should open it once, not once
       // per repeat for as long as it is held.
       if (event.repeat) return;
+      // A dialog has the keyboard until it closes.
+      if (modalOpen()) return;
 
       if (event.key === "k" || event.key === "K") {
         if (!event.metaKey && !event.ctrlKey) return;

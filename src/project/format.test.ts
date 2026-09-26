@@ -358,6 +358,19 @@ describe("what a UFO carried, written down", () => {
     expect(back.kernGroupNames).toEqual(carried.kernGroupNames);
   });
 
+  // The renames since the folder was read, which is what lets the writer
+  // follow a renamed letter into the groups the model does not hold. Lost on
+  // a restore, the letter drops out of those groups as though deleted.
+  it("keeps the renames made since the folder was read", () => {
+    const carried: UfoCarried = {
+      glyphsDirectory: "glyphs",
+      untouched: new Map(),
+      renamed: { acutecomb: "acute.cmb" },
+    };
+    const back = fromSavedUfo(JSON.parse(JSON.stringify(toSavedUfo(carried))))!;
+    expect(back.renamed).toEqual({ acutecomb: "acute.cmb" });
+  });
+
   it("is written with the font it came with, and only then", () => {
     const carried: UfoCarried = { glyphsDirectory: "glyphs", untouched: new Map() };
     const blank = { typeface: emptyTypeface(), fileName: "Folder.ufo" };

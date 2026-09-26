@@ -250,7 +250,8 @@ test("comes up anyway when what was kept will not come back", async ({ page }) =
               mode: "edit",
               edit: { fileName: "Broken.ttf", font: "not base64 !!!", glyphs: [] },
             },
-            "current",
+            // Into this tab's own record, which is the one a reload reads.
+            `tab:${sessionStorage.getItem("typeforge:tab")}`,
           );
           transaction.oncomplete = () => {
             database.close();

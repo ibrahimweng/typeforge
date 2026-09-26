@@ -36,8 +36,18 @@ export interface LoadedFont {
 export interface LibraryState {
   open: boolean;
   catalogue: Catalogue | null;
-  /** True while the catalogue or a font is being fetched. */
-  busy: boolean;
+  /**
+   * True while the catalogue is being fetched, and `loading` while a font is.
+   *
+   * Two flags, because they are two fetches that overlap. There used to be one
+   * `busy` for both, and whichever finished first cleared it for the other:
+   * choose a family while the catalogue was still arriving, and the font
+   * landing first said the catalogue was done. Worse, "Try again" was disabled
+   * on `busy`, so a font that hung -- and before there were timeouts, one could
+   * hang for minutes -- also held the catalogue's retry button down.
+   */
+  fetching: boolean;
+  loading: boolean;
   query: string;
   category: LibraryCategory | "all";
   /** The font being looked at, once it has been fetched and read. */
@@ -56,7 +66,8 @@ class LibraryStore {
   private state: LibraryState = {
     open: false,
     catalogue: null,
-    busy: false,
+    fetching: false,
+    loading: false,
     query: "",
     category: "all",
     loaded: null,
@@ -69,6 +80,13 @@ class LibraryStore {
   private listeners = new Set<() => void>();
   /** Cancels a fetch that is no longer wanted, so a fast typist is not queued. */
   private inFlight: AbortController | null = null;
+  /**
+   * The same for the catalogue. A second refresh -- "Use it" pressed after a
+   * key was pasted, while the first attempt is still waiting on Fontsource --
+   * replaces the first rather than racing it, so the list on screen is always
+   * the answer to the last question asked.
+   */
+  private refreshing: AbortController | null = null;
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -91,11 +109,30 @@ class LibraryStore {
     this.set({ open: false });
   }
 
-  /** Fetch the catalogue, or fetch it again after a key was given. */
+  /**
+   * Fetch the catalogue, or fetch it again after a key was given.
+   *
+   * Each source is given a deadline inside `fetchCatalogue`, so this always
+   * comes back -- with the built-in list and a sentence, at worst. The signal
+   * here is for the other way to stop: a newer refresh superseding this one,
+   * whose answer is the one that should land.
+   */
   async refresh(): Promise<void> {
-    this.set({ busy: true, problem: null });
-    const catalogue = await fetchCatalogue({ googleKey: this.state.googleKey || undefined });
-    this.set({ catalogue, busy: false, problem: catalogue.problem });
+    this.refreshing?.abort();
+    const controller = new AbortController();
+    this.refreshing = controller;
+    this.set({ fetching: true, problem: null });
+
+    try {
+      const catalogue = await fetchCatalogue({
+        googleKey: this.state.googleKey || undefined,
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
+      this.set({ catalogue, fetching: false, problem: catalogue.problem });
+    } finally {
+      if (this.refreshing === controller) this.refreshing = null;
+    }
   }
 
   setQuery(query: string): void {
@@ -130,7 +167,7 @@ class LibraryStore {
     this.inFlight?.abort();
     const controller = new AbortController();
     this.inFlight = controller;
-    this.set({ busy: true, problem: null });
+    this.set({ loading: true, problem: null });
 
     try {
       const fetched = await download({ font, weight, italic }, controller.signal);
@@ -144,12 +181,12 @@ class LibraryStore {
         measured: measure(typeface),
         from: fetched.from,
       };
-      this.set({ loaded, busy: false });
+      this.set({ loaded, loading: false });
       return loaded;
     } catch (error) {
       if (controller.signal.aborted) return null;
       this.set({
-        busy: false,
+        loading: false,
         problem: error instanceof Error ? error.message : "That font could not be fetched.",
       });
       return null;

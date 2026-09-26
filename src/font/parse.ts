@@ -488,6 +488,19 @@ async function read(
     source,
   };
 
+  /*
+   * What the file said, kept beside its bytes.
+   *
+   * Copied rather than shared, because the glyphs and the metadata above are
+   * the document and are about to be edited in place; this has to go on
+   * saying what the file said after they have stopped saying it. See
+   * `SourceFont.imported` for what reads it.
+   */
+  source.imported = {
+    meta: { ...typeface.meta },
+    glyphs: glyphs.map((glyph) => ({ name: glyph.name, unicodes: [...glyph.unicodes] })),
+  };
+
   if (isCFF) {
     warnings.push(
       "This is a PostScript-flavoured OpenType font. Exporting it as TrueType converts the curves, which is normal and lossless to the eye.",

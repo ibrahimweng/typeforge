@@ -15,8 +15,25 @@
  * and it is marked as short so nobody concludes the catalogue is thirty fonts.
  */
 
-/** What the font world calls the kinds of face, which is not what this app does. */
-export type LibraryCategory = "sans-serif" | "serif" | "display" | "handwriting" | "monospace";
+/**
+ * What the font world calls the kinds of face, which is not what this app does.
+ *
+ * `other` is for anything a source files under a name that is not one of the
+ * five. It used to be read as sans-serif, which is a guess presented as a
+ * fact: Fontsource files a handful of families as "other" -- the DSEG
+ * segment-display faces among them, seventeen when this was written -- and
+ * every one of them turned up under Sans, where somebody looking for a
+ * grotesque found a digital clock.
+ * A family whose kind is not known is shown under All and under Other, and
+ * nowhere it would be mistaken for something it is not.
+ */
+export type LibraryCategory =
+  | "sans-serif"
+  | "serif"
+  | "display"
+  | "handwriting"
+  | "monospace"
+  | "other";
 
 export interface LibraryFont {
   /** Lower-case hyphenated, as Fontsource names them: `playfair-display`. */
@@ -28,6 +45,12 @@ export interface LibraryFont {
   /** `normal`, `italic`, or both. */
   styles: string[];
   variable: boolean;
+  /**
+   * The scripts the family is cut for, as the services name them: `latin`,
+   * `latin-ext`, `cyrillic`, `greek`, and so on. Absent when the source did
+   * not say, which is read as Latin -- it is what nearly all of them are.
+   */
+  subsets?: string[];
 }
 
 export type CatalogueSource = "fontsource" | "google" | "builtin";
@@ -39,6 +62,8 @@ export interface Catalogue {
   problem: string | null;
 }
 
+import { CATALOGUE_TIMEOUT, within } from "./within";
+
 const FONTSOURCE = "https://api.fontsource.org/v1/fonts";
 const GOOGLE = "https://www.googleapis.com/webfonts/v1/webfonts";
 
@@ -49,6 +74,16 @@ const CATEGORIES = new Set<LibraryCategory>([
   "handwriting",
   "monospace",
 ]);
+
+/*
+ * Kinds that are not type at all, and are left out of the list rather than
+ * filed somewhere. Fontsource carries the icon sets -- Material Symbols and
+ * the like, eight of them when this was written -- as if they were families, and there is nothing in one for this
+ * application to do: no letters to measure, no spacing to borrow, and a
+ * drawing seeded from one would be seeded from pictograms. Offering it only
+ * to fail when somebody chose it is worse than not offering it.
+ */
+const NOT_TYPE = new Set(["icons", "icon"]);
 
 /**
  * Fetch the catalogue.
@@ -107,11 +142,13 @@ function reason(error: unknown): string {
 }
 
 async function fromFontsource(signal?: AbortSignal): Promise<LibraryFont[]> {
-  const response = await fetch(FONTSOURCE, { signal });
-  if (!response.ok) throw new Error(`answered ${response.status}`);
-  const body: unknown = await response.json();
-  if (!Array.isArray(body)) throw new Error("answered with something that is not a list");
-  return body.map(readFontsource).filter((font): font is LibraryFont => font !== null);
+  return within(CATALOGUE_TIMEOUT, signal, async (deadline) => {
+    const response = await fetch(FONTSOURCE, { signal: deadline });
+    if (!response.ok) throw new Error(`answered ${response.status}`);
+    const body: unknown = await response.json();
+    if (!Array.isArray(body)) throw new Error("answered with something that is not a list");
+    return body.map(readFontsource).filter((font): font is LibraryFont => font !== null);
+  });
 }
 
 /**
@@ -127,6 +164,7 @@ function readFontsource(raw: unknown): LibraryFont | null {
   const id = typeof entry.id === "string" ? entry.id : null;
   const family = typeof entry.family === "string" ? entry.family : null;
   if (!id || !family) return null;
+  if (typeof entry.category === "string" && NOT_TYPE.has(entry.category)) return null;
 
   const weights = Array.isArray(entry.weights)
     ? entry.weights
@@ -144,15 +182,24 @@ function readFontsource(raw: unknown): LibraryFont | null {
     weights: weights.length > 0 ? weights : [400],
     styles: styles.length > 0 ? styles : ["normal"],
     variable: entry.variable !== undefined && entry.variable !== false,
+    subsets: stringsIn(entry.subsets),
   };
 }
 
+function stringsIn(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const strings = raw.filter((item): item is string => typeof item === "string");
+  return strings.length > 0 ? strings : undefined;
+}
+
 async function fromGoogle(key: string, signal?: AbortSignal): Promise<LibraryFont[]> {
-  const response = await fetch(`${GOOGLE}?key=${encodeURIComponent(key)}&sort=popularity`, {
-    signal,
+  const body = await within(CATALOGUE_TIMEOUT, signal, async (deadline) => {
+    const response = await fetch(`${GOOGLE}?key=${encodeURIComponent(key)}&sort=popularity`, {
+      signal: deadline,
+    });
+    if (!response.ok) throw new Error(`answered ${response.status}`);
+    return (await response.json()) as { items?: unknown };
   });
-  if (!response.ok) throw new Error(`answered ${response.status}`);
-  const body = (await response.json()) as { items?: unknown };
   if (!Array.isArray(body.items)) throw new Error("answered with no list of fonts");
 
   return body.items
@@ -161,6 +208,7 @@ async function fromGoogle(key: string, signal?: AbortSignal): Promise<LibraryFon
       const entry = raw as Record<string, unknown>;
       const family = typeof entry.family === "string" ? entry.family : null;
       if (!family) return null;
+      if (typeof entry.category === "string" && NOT_TYPE.has(entry.category)) return null;
       // Google publishes variants as "400", "700italic", "regular", "italic".
       const variants = Array.isArray(entry.variants)
         ? entry.variants.filter((v): v is string => typeof v === "string")
@@ -183,16 +231,18 @@ async function fromGoogle(key: string, signal?: AbortSignal): Promise<LibraryFon
         weights: weights.length > 0 ? weights : [400],
         styles,
         variable: false,
+        subsets: stringsIn(entry.subsets),
       };
     })
     .filter((font): font is LibraryFont => font !== null);
 }
 
-function categoryOf(raw: unknown): LibraryCategory {
+/** The kind a source filed a family under, or `other` when it is not one of ours. */
+export function categoryOf(raw: unknown): LibraryCategory {
   if (typeof raw === "string" && CATEGORIES.has(raw as LibraryCategory)) {
     return raw as LibraryCategory;
   }
-  return "sans-serif";
+  return "other";
 }
 
 /** The id Fontsource gives a family, which is also what its CDN paths use. */
@@ -299,4 +349,5 @@ const BUILT_IN: LibraryFont[] = (
   weights: [400, 700],
   styles: ["normal"],
   variable: false,
+  subsets: ["latin"],
 }));

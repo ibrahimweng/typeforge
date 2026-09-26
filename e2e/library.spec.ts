@@ -23,7 +23,7 @@ test.skip(!FONT_PATH, "needs a system font to open");
 test("lists the catalogue and measures what you choose", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await stubLibrary(page);
+  const { fetched } = await stubLibrary(page);
   await openForge(page);
   await openLibrary(page);
 
@@ -37,6 +37,9 @@ test("lists the catalogue and measures what you choose", async ({ page }) => {
   await expect(page.locator("[data-library-measured]")).toContainText("Contrast");
   await expect(page.locator("[data-library-sample] path").first()).toBeVisible();
   await expect(page.locator("[data-library-action]")).toHaveCount(4);
+  // The Latin subset out of the nine Google names, and only that: not the
+  // first file in the stylesheet, and not the fallback host.
+  expect(fetched).toEqual([expect.stringMatching(/\/playfairdisplay\/v1\/latin\.woff2$/)]);
   expect(errors).toEqual([]);
 });
 
@@ -121,4 +124,42 @@ test("borrows a font's spacing onto a set of drawings", async ({ page }) => {
   await page.getByRole("button", { name: "Close the library" }).click();
 
   await expect.poll(() => advanceOf("H")).not.toBe(before);
+});
+
+/**
+ * A font still arriving leaves the catalogue's retry alone.
+ *
+ * There was one `busy` flag for the catalogue and the font both, and "Try
+ * again" was disabled on it -- so while a family was being fetched, the button
+ * that asks for the list again said "Fetching…" and could not be pressed,
+ * though the list was long since there. With no timeouts either, a font file
+ * that never arrived held it that way until the dialog was closed.
+ */
+test("can ask for the catalogue again while a font is still arriving", async ({ page }) => {
+  await stubLibrary(page);
+  // Registered after the stub, so it is the one that answers: a font file
+  // that never comes. Released at the end so the page can close cleanly.
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**://fonts.gstatic.com/**", async (route) => {
+    await held;
+    await route.abort();
+  });
+  await openForge(page);
+  await openLibrary(page);
+  await expect(page.locator("[data-library-footer]")).toContainText("from Fontsource");
+
+  await page.locator('[data-library-font="inter"]').click();
+  await expect(page.locator("[data-library]")).toContainText("Fetching…");
+
+  const retry = page.locator("[data-library-retry]");
+  await expect(retry).toBeEnabled();
+  await expect(retry).toHaveText("Try again");
+  await retry.click();
+  // The list comes back, and the font is still the one being waited for.
+  await expect(page.locator("[data-library-font]")).toHaveCount(CATALOGUE.length);
+  await expect(page.locator("[data-library-measured]")).toHaveCount(0);
+  release();
 });

@@ -19,7 +19,13 @@ import * as React from "react";
  */
 const MOST_ROWS = 400;
 
-import { drawGlyph, prepareCanvas, readToken, type GlyphView } from "@/components/glyph-render";
+import {
+  drawGlyph,
+  prepareCanvas,
+  readToken,
+  useDeviceRatio,
+  type GlyphView,
+} from "@/components/glyph-render";
 import { resolveAdvanceWidth } from "@/font/transform";
 import type { Glyph, Typeface } from "@/font/types";
 import { CoachMark } from "@/components/CoachMark";
@@ -102,6 +108,9 @@ export function KerningView(): React.JSX.Element | null {
     return { scale, originX: 40, originY: top + typeface.metrics.ascender * scale };
   }, [typeface, placed, size]);
 
+  // Redrawn when the window moves to a screen of another density, which
+  // changes nothing else in the list below (see `subscribeDeviceRatio`).
+  const ratio = useDeviceRatio();
   React.useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !typeface) return;
@@ -140,7 +149,7 @@ export function KerningView(): React.JSX.Element | null {
         context.stroke();
       }
     }
-  }, [typeface, placed, view, size, selectedPair, state.revision]);
+  }, [typeface, placed, view, size, selectedPair, state.revision, ratio]);
 
   const pairs = React.useMemo(() => {
     if (!typeface) return [];
@@ -519,17 +528,22 @@ function ClassList({
               value={kernClass.right}
               onCommit={(right) => store.updateKernClass(kernClass.id, { right })}
             />
-            <label className="flex items-center gap-2 pt-1.5">
+            {/*
+              The same field as the pair's value above, for the same reasons:
+              written to the font on Enter or on leaving rather than per
+              keystroke, which put a step on the undo stack for every digit
+              and set the whole class to 0 on the way through a lone "-".
+              Escape puts the old value back.
+            */}
+            <div className="flex items-center gap-2 pt-1.5">
               <span className="w-10 shrink-0 text-2xs text-muted-foreground">Value</span>
-              <input
-                type="number"
+              <NumberField
                 value={kernClass.value}
-                onChange={(event) =>
-                  store.updateKernClass(kernClass.id, { value: Number(event.target.value) || 0 })
-                }
-                className="h-6 w-full rounded border border-input bg-card px-1.5 text-2xs tabular-nums outline-none focus-visible:border-accent"
+                onCommit={(value) => store.updateKernClass(kernClass.id, { value })}
+                label={`Kerning for class ${kernClass.name}`}
+                className="h-6 w-full border-input bg-card text-left text-2xs"
               />
-            </label>
+            </div>
             <p className="pt-1.5 text-2xs text-muted-foreground tabular-nums">
               {kernClass.left.length * kernClass.right.length} combinations
             </p>

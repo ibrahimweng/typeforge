@@ -23,7 +23,15 @@ import {
   type Roles,
 } from "./outline";
 import { removeOverlaps } from "./overlap";
-import { buildGlyfTables, splitGlyf, type CompositeRef, type GlyfBuildInput } from "./glyf";
+import {
+  buildGlyfTables,
+  carryGvar,
+  renumberComposite,
+  splitGlyf,
+  type CompositeRef,
+  type GlyfBuildInput,
+} from "./glyf";
+import { mergeKerning } from "./gpos-merge";
 import {
   buildFvar,
   buildGvar,
@@ -48,7 +56,13 @@ import {
   buildName,
   buildOs2,
   buildPost,
+  changedNameIds,
   familyNames,
+  fontRevisionOf,
+  nameValues,
+  patchName,
+  readVariationSequences,
+  rebuildPost,
 } from "./tables";
 import type { Glyph, Typeface } from "./types";
 
@@ -163,7 +177,24 @@ export async function exportFont(
   }
   const tolerance = options.curveTolerance ?? 0.5;
   const includeKerning = options.includeKerning ?? true;
-  const mergeOverlaps = options.mergeOverlaps ?? true;
+  /*
+   * A varying font is never merged, whoever asked.
+   *
+   * The deltas are the difference between two lists of points, so every master
+   * has to arrive with the same points in the same order. A union re-points
+   * whatever it is given, and it re-points each master on its own terms: where
+   * two strokes meet differently as the pen widens, the Regular and the Black
+   * come out with different outlines and the letter is left standing at one
+   * weight for the whole axis. The dialog used to send `true` here for a
+   * varying font, from a checkbox it had hidden, so the caller cannot be
+   * trusted to have thought about it; the overlaps are flagged in the file
+   * instead (see `OVERLAP_SIMPLE` in `glyf.ts`), which is what the format asks
+   * a varying font to do with them. Only when it really will vary: an OTF
+   * asked to vary is refused above and written static, and a static font can
+   * be merged like any other.
+   */
+  const varies = options.variable !== undefined && options.format === "ttf";
+  const mergeOverlaps = varies ? false : (options.mergeOverlaps ?? true);
   const roles = options.roles ?? "nesting";
   const now = options.now ?? Date.now();
 
@@ -360,29 +391,54 @@ async function exportTrueType(
   );
   const preserving = context.fidelity === "preserve" && typeface.source !== null;
 
-  // In preserve mode an untouched glyph is copied rather than re-encoded, which
-  // is what keeps its hinting intact.
+  /*
+   * In preserve mode an untouched glyph is copied rather than re-encoded, which
+   * is what keeps its hinting intact -- and the copy has to be of *this*
+   * glyph's record.
+   *
+   * It was taken by position, `originalRecords[index]`, which is only the same
+   * thing while nobody has added or removed a letter. Remove one and every
+   * glyph after it was written with its neighbour's outline: take out the
+   * `exclam` and the whole alphabet shifted along by one, each letter drawn as
+   * the one before it, with nothing on screen to say so. So the records are
+   * looked up by who the glyph was in the file (see `SourceFont.imported`),
+   * and a glyph the file never had is built rather than copied.
+   *
+   * A copied composite names its parts by number too, and those numbers move
+   * with the same removal. They are renumbered to where the parts now sit, and
+   * a composite whose part is not in the font any more is built afresh from
+   * the model instead.
+   */
+  const identity = preserving ? sourceIdentity(typeface) : null;
   let originalRecords: Uint8Array[] = [];
   if (preserving) {
     const source = typeface.source!;
     const glyf = source.tables.get("glyf");
     const loca = source.tables.get("loca");
     const head = source.tables.get("head");
-    if (glyf && loca && head) {
+    const maxp = source.tables.get("maxp");
+    if (glyf && loca && head && maxp && maxp.length >= 6) {
       const indexToLocFormat = new DataView(head.buffer, head.byteOffset, head.byteLength).getInt16(
         50,
       );
-      originalRecords = splitGlyf(glyf, loca, indexToLocFormat, typeface.glyphs.length);
+      const numGlyphs = new DataView(maxp.buffer, maxp.byteOffset, maxp.byteLength).getUint16(4);
+      originalRecords = splitGlyf(glyf, loca, indexToLocFormat, numGlyphs);
     }
   }
+  const renumber = (was: number): number | undefined => identity?.currentOf.get(was);
 
   const familyChanged = hasFamilyEdits(typeface);
-  const inputs: GlyfBuildInput[] = resolved.map((entry, index) => ({
-    contours: entry.contours,
-    original: originalRecords[index],
-    rebuild: !preserving || familyChanged || entry.glyph.dirty || !originalRecords[index],
-    composite: compositeRefsFor(entry.glyph, typeface),
-  }));
+  const inputs: GlyfBuildInput[] = resolved.map((entry, index) => {
+    const was = identity?.originalOf[index];
+    const record = was === undefined ? undefined : originalRecords[was];
+    const original = record ? (renumberComposite(record, renumber) ?? undefined) : undefined;
+    return {
+      contours: entry.contours,
+      original,
+      rebuild: !preserving || familyChanged || entry.glyph.dirty || !original,
+      composite: compositeRefsFor(entry.glyph, typeface),
+    };
+  });
 
   const varying = context.variable;
   const invented: Array<{ id: number; value: string }> = [];
@@ -404,6 +460,16 @@ async function exportTrueType(
   const { hmtx, numberOfHMetrics } = buildHmtx(metrics);
 
   const tables = preserving ? new Map(typeface.source!.tables) : new Map<string, Uint8Array>();
+  if (preserving && identity) {
+    dropStaleTables(tables, identity, context.notes);
+    carryVariations(
+      tables,
+      typeface,
+      identity,
+      inputs.map((input) => input.rebuild),
+      context.notes,
+    );
+  }
 
   tables.set("glyf", built.glyf);
   tables.set("loca", built.loca);
@@ -475,18 +541,17 @@ async function exportTrueType(
     }
   }
 
-  if (preserving) {
+  if (preserving && identity) {
     patchHead(tables, built.bounds, built.indexToLocFormat);
     patchHhea(tables, numberOfHMetrics);
     patchMaxp(tables, typeface.glyphs.length, built.maxPoints, built.maxContours);
     patchWinMetrics(tables, built.bounds);
-    // `post` version 2 lists glyph names against the old glyph order. We keep
-    // the glyph order, so it stays valid and is left alone.
+    patchIdentityTables(tables, typeface, identity, invented);
   } else {
     buildBaselineTables(tables, typeface, built, numberOfHMetrics, context.now, invented);
   }
 
-  applyKerning(tables, typeface, context.includeKerning);
+  applyKerning(tables, typeface, context.includeKerning, false, context.notes);
   applyAlternates(
     tables,
     typeface,
@@ -554,9 +619,44 @@ async function exportOpenType(
     context.notes.push("A .notdef glyph was added, which OpenType requires in first position.");
   }
 
-  const font = new OpenTypeFont({
-    familyName: typeface.meta.familyName || "Untitled",
-    styleName: typeface.meta.styleName || "Regular",
+  /*
+   * The same account of the face that the TrueType path gives, in the terms
+   * opentype.js takes it in.
+   *
+   * It was handed the family and the style and nothing else, and filled in the
+   * rest itself: a weight class of 500 for every face whatever it weighed, the
+   * REGULAR bit on a Black Italic, and the style name straight into name id 2
+   * -- so a SemiBold went out as family "Inter", style "SemiBold", which is the
+   * one thing that id may not say and which splits the family in every font
+   * menu that reads it. Now the old pair and the typographic pair come from
+   * `familyNames`, the weight from the document, and the style bits by the
+   * same rules `buildOs2` and `buildHead` use.
+   */
+  const named = familyNames(typeface.meta);
+  const isItalic = /italic|oblique/i.test(typeface.meta.styleName);
+  const isBold = named.styleName === "Bold" || named.styleName === "Bold Italic";
+  let fsSelection = 0x80; // USE_TYPO_METRICS, as the TrueType path sets it
+  if (isItalic) fsSelection |= 0x01;
+  if (isBold) fsSelection |= 0x20;
+  if (!isItalic && !isBold) fsSelection |= 0x40; // REGULAR
+  const familyName = named.familyName || "Untitled";
+  const styleName = named.styleName || "Regular";
+
+  /*
+   * Built apart and then handed over, because the declared type of the
+   * constructor's options lists only the handful of fields this used to pass.
+   * opentype.js reads every one below (see `Font` in its source).
+   */
+  const fontOptions = {
+    familyName,
+    styleName,
+    // The full and PostScript names are the face's real ones, as `buildName`
+    // writes them, rather than opentype.js's joining of the old pair.
+    fullName: `${typeface.meta.familyName} ${typeface.meta.styleName}`.trim() || undefined,
+    postScriptName:
+      `${typeface.meta.familyName}-${typeface.meta.styleName}`
+        .replace(/[^A-Za-z0-9-]/g, "")
+        .slice(0, 63) || undefined,
     unitsPerEm: typeface.unitsPerEm,
     ascender: typeface.metrics.ascender,
     descender: typeface.metrics.descender,
@@ -565,13 +665,40 @@ async function exportOpenType(
     copyright: typeface.meta.copyright || undefined,
     license: typeface.meta.license || undefined,
     version: typeface.meta.version || undefined,
+    weightClass: typeface.meta.weightClass,
+    widthClass: 5,
+    fsSelection,
+    italicAngle: isItalic ? -12 : 0,
     glyphs,
-  });
+  };
+  const font = new OpenTypeFont(fontOptions);
+
+  /*
+   * Name ids 16 and 17 are written by opentype.js whatever happens, copied from
+   * ids 1 and 2 when nobody says otherwise. Said here for a face outside the
+   * four the old pair can hold, which is when they carry the family and the
+   * style a font menu should group it under.
+   */
+  if (named.typographicFamily) {
+    const names = font.names as unknown as Record<string, Record<string, { en: string }>>;
+    for (const platform of ["unicode", "macintosh", "windows"]) {
+      if (!names[platform]) continue;
+      names[platform].preferredFamily = { en: named.typographicFamily };
+      names[platform].preferredSubfamily = { en: named.typographicStyle };
+    }
+  }
 
   // opentype.js writes no kerning, so reopen its output and add the tables.
   const written = new Uint8Array(font.toArrayBuffer());
   const sfnt = readSfnt(written);
-  applyKerning(sfnt.tables, typeface, context.includeKerning, glyphs.length !== resolved.length);
+  patchOpenTypeHead(sfnt.tables, typeface.meta.version, isBold, isItalic);
+  applyKerning(
+    sfnt.tables,
+    typeface,
+    context.includeKerning,
+    glyphs.length !== resolved.length,
+    context.notes,
+  );
   // OpenType is always a rebuild: the curves are re-encoded, so there is no
   // source table in here to trade against.
   applyAlternates(
@@ -583,6 +710,29 @@ async function exportOpenType(
     context.notes,
   );
   return writeSfnt(sfnt);
+}
+
+/**
+ * The two fields of `head` that opentype.js decides for itself and gets wrong.
+ *
+ * It sets the bold bit of `macStyle` for any weight from 600 up, so a SemiBold
+ * and an ExtraBold both claim to be the family's bold, which is the job of one
+ * face only (see `buildBaselineTables`); and it writes no revision at all. Both
+ * are set as the TrueType path sets them.
+ */
+function patchOpenTypeHead(
+  tables: Map<string, Uint8Array>,
+  version: string,
+  isBold: boolean,
+  isItalic: boolean,
+): void {
+  const head = tables.get("head");
+  if (!head || head.length < 46) return;
+  const copy = new Uint8Array(head);
+  const view = new DataView(copy.buffer);
+  view.setInt32(4, Math.round(fontRevisionOf(version) * 65536));
+  view.setUint16(44, (isBold ? 1 : 0) | (isItalic ? 2 : 0));
+  tables.set("head", copy);
 }
 
 /**
@@ -738,9 +888,18 @@ function applyKerning(
   typeface: Typeface,
   include: boolean,
   shifted = false,
+  notes: string[] = [],
 ): void {
   if (!include || (typeface.kerning.length === 0 && typeface.kernClasses.length === 0)) {
     tables.delete("kern");
+    /*
+     * No kerning asked for, or none left in the document, is a statement about
+     * the kerning and about nothing else: the file's own GPOS loses its `kern`
+     * feature and keeps its marks. Left alone it went out still kerning, with
+     * the pairs somebody had deleted or asked to leave out.
+     */
+    const existing = tables.get("GPOS");
+    if (existing) replaceKerning(tables, existing, null, notes);
     return;
   }
 
@@ -799,7 +958,48 @@ function applyKerning(
   tables.delete("kern");
 
   const gpos = buildGposTable(pairs, classKerns);
-  if (gpos) tables.set("GPOS", gpos);
+  /*
+   * Into the font's own GPOS when it has one, rather than over the top of it.
+   *
+   * This used to set the table it had just built in place of whatever was
+   * there, which on a preserving export was the imported font's GPOS -- the
+   * kerning in it, and with the kerning its mark attachment, its mark-to-mark
+   * stacking and its cursive joins, none of which this application models or
+   * could put back. Every imported font with kerning came out with its accents
+   * sitting on the baseline. The kerning is now traded on its own and the rest
+   * of the table kept; see `gpos-merge.ts` for how. A rebuild has no GPOS in
+   * `tables` at this point and gets the table as built.
+   */
+  const existing = tables.get("GPOS");
+  if (existing) replaceKerning(tables, existing, gpos, notes);
+  else if (gpos) tables.set("GPOS", gpos);
+}
+
+/**
+ * Swap the kerning in an existing GPOS for `kerning`, keeping everything else.
+ *
+ * Should the file's table be one that cannot be walked, or the result not fit
+ * the format's sixteen-bit lists, the file's own table is kept as it arrived
+ * and the note says the kerning on screen did not reach it. That is the
+ * lesser loss of the two on offer: a font whose kerning is the imported
+ * kerning, rather than one whose accents have all fallen off.
+ */
+function replaceKerning(
+  tables: Map<string, Uint8Array>,
+  existing: Uint8Array,
+  kerning: Uint8Array | null,
+  notes: string[],
+): void {
+  try {
+    const merged = mergeKerning(existing, kerning);
+    if (merged) tables.set("GPOS", merged);
+    else tables.delete("GPOS");
+  } catch {
+    notes.push(
+      "The source font's positioning table could not be combined with the kerning on screen, " +
+        "so it was kept as it arrived: the kerning in the file is the kerning the font came with.",
+    );
+  }
 }
 
 /**
@@ -838,6 +1038,396 @@ function hasFamilyEdits(typeface: Typeface): boolean {
   return !paramsAreDefault(typeface.params);
 }
 
+/**
+ * How the glyphs being written line up with the glyphs in the imported file.
+ *
+ * Worked out by name against what the importer recorded (`SourceFont.imported`)
+ * rather than by position, because position is exactly what adding, removing
+ * and reordering letters changes. Names are unique within a document and a
+ * rename marks the glyph as touched, so a glyph that carries a name the file
+ * had at some position, and has not been touched, is the glyph that was there.
+ *
+ * Where the importer recorded nothing -- a source assembled some other way --
+ * nothing is known, and everything below errs towards rebuilding: each glyph
+ * is encoded afresh and every table that addresses glyphs by number is taken
+ * as no longer describing the font.
+ */
+interface SourceIdentity {
+  /** For each glyph being written, its index in the file, if it was there. */
+  originalOf: Array<number | undefined>;
+  /** For each index in the file, where that glyph is being written now. */
+  currentOf: Map<number, number>;
+  /**
+   * Every glyph of the file is still at its own index, with anything new after
+   * them. A table that names glyphs by number -- GSUB, GPOS, GDEF -- still
+   * means what it meant, because none of the numbers it uses has moved.
+   */
+  prefixIntact: boolean;
+  /** The same glyphs in the same order and no others: every count still holds. */
+  sameGlyphs: boolean;
+  /** And every one of them still called what the file called it. */
+  sameNames: boolean;
+  /** No character has moved to a different glyph, been added or been taken away. */
+  sameCharacters: boolean;
+}
+
+function sourceIdentity(typeface: Typeface): SourceIdentity {
+  const imported = typeface.source?.imported;
+  const originalOf: Array<number | undefined> = typeface.glyphs.map(() => undefined);
+  const currentOf = new Map<number, number>();
+  if (!imported) {
+    return {
+      originalOf,
+      currentOf,
+      prefixIntact: false,
+      sameGlyphs: false,
+      sameNames: false,
+      sameCharacters: false,
+    };
+  }
+
+  const wasAt = new Map(imported.glyphs.map((glyph, index) => [glyph.name, index]));
+  typeface.glyphs.forEach((glyph, index) => {
+    const was = wasAt.get(glyph.name);
+    if (was === undefined) return;
+    originalOf[index] = was;
+    currentOf.set(was, index);
+  });
+  /*
+   * A glyph renamed where it stands.
+   *
+   * A name the file never had, sitting at a position whose own name has gone
+   * from the font altogether, is that glyph under a new name: removing a
+   * letter closes the gap from behind and adding one appends, so nothing else
+   * leaves an unknown name exactly where a known one disappeared. Recognising
+   * it matters for everything that numbers glyphs -- the `GSUB` that turns
+   * `f i` into glyph 212 still means the right thing when glyph 212 has only
+   * been renamed -- and changes nothing about its outline, which a rename marks
+   * as touched and so is built afresh regardless.
+   */
+  typeface.glyphs.forEach((_, index) => {
+    if (originalOf[index] !== undefined || index >= imported.glyphs.length) return;
+    if (currentOf.has(index)) return;
+    originalOf[index] = index;
+    currentOf.set(index, index);
+  });
+
+  const prefixIntact =
+    typeface.glyphs.length >= imported.glyphs.length &&
+    imported.glyphs.every((_, index) => originalOf[index] === index);
+  const sameGlyphs = prefixIntact && typeface.glyphs.length === imported.glyphs.length;
+  const sameNames =
+    sameGlyphs &&
+    imported.glyphs.every((glyph, index) => typeface.glyphs[index].name === glyph.name);
+  const sameList = (one: number[], other: number[]) =>
+    one.length === other.length && one.every((value, index) => value === other[index]);
+  const sameCharacters =
+    prefixIntact &&
+    typeface.glyphs.every((glyph, index) =>
+      index < imported.glyphs.length
+        ? sameList(glyph.unicodes, imported.glyphs[index].unicodes)
+        : glyph.unicodes.length === 0,
+    );
+  return { originalOf, currentOf, prefixIntact, sameGlyphs, sameNames, sameCharacters };
+}
+
+/**
+ * Tables that hold one entry for every glyph, and so stop being valid the
+ * moment the count changes -- even if every glyph that was there still is.
+ */
+const PER_GLYPH_TABLES = ["hdmx", "LTSH", "HVAR", "VVAR", "vmtx", "vhea", "sbix"];
+
+/**
+ * Tables that name glyphs by number, and so stop being true the moment a
+ * number they use is given to a different glyph.
+ */
+const GLYPH_NUMBERED_TABLES = [
+  "GDEF",
+  "GSUB",
+  "GPOS",
+  "kern",
+  "morx",
+  "mort",
+  "kerx",
+  "COLR",
+  "SVG ",
+  "EBLC",
+  "EBDT",
+  "EBSC",
+  "CBLC",
+  "CBDT",
+  "MATH",
+  "JSTF",
+  "VORG",
+];
+
+/**
+ * The varying font's other tables, which are nothing without `gvar`: a font
+ * whose `fvar` offers a weight axis and whose outlines do not move along it is
+ * a slider that does nothing.
+ */
+const VARIATION_TABLES = ["fvar", "avar", "cvar", "MVAR"];
+
+/**
+ * Take out the file's tables that no longer describe the font being written.
+ *
+ * A preserving export copies everything it does not model, and it copied these
+ * too, whatever had happened to the glyphs: an `hdmx` with a row for every
+ * glyph in a font that now has one more or one less, which fontTools reports
+ * and a strict reader refuses; a mark attachment in `GPOS` still pinning an
+ * accent to glyph 212 when glyph 212 is now a different letter. Dropped rather
+ * than rewritten, because none of them is modelled here and a table that is
+ * absent is a feature missing where one that is wrong is a font that renders
+ * wrongly. The GSUB and GPOS the document does model are written again from it
+ * afterwards, so its ligatures, alternates and kerning go back in.
+ */
+function dropStaleTables(
+  tables: Map<string, Uint8Array>,
+  identity: SourceIdentity,
+  notes: string[],
+): void {
+  const dropped: string[] = [];
+  const drop = (tag: string) => {
+    if (tables.delete(tag)) dropped.push(tag.trim());
+  };
+  if (!identity.sameGlyphs) for (const tag of PER_GLYPH_TABLES) drop(tag);
+  // `gvar` is not dropped with them: it is carried glyph by glyph instead, in
+  // `carryVariations`, which is what the slider needs to go on working.
+  if (!identity.prefixIntact) for (const tag of GLYPH_NUMBERED_TABLES) drop(tag);
+  if (dropped.length === 0) return;
+  notes.push(
+    `Letters were added, removed or reordered, so the source font's ${dropped.join(", ")} ` +
+      `${dropped.length === 1 ? "table, which counts" : "tables, which count"} glyphs by number, ` +
+      `could not be carried over. The kerning, ligatures and alternates on screen were written ` +
+      `again; anything else in ${dropped.length === 1 ? "it" : "them"} is not in the file.`,
+  );
+}
+
+/**
+ * The file's `gvar`, with each glyph's movement following the glyph.
+ *
+ * Copied whole, it described the file's glyphs by the file's numbers and the
+ * file's points: after a removal every glyph moved with its neighbour's deltas,
+ * and an edited glyph moved its new points by the old ones. `carryGvar` in
+ * `glyf.ts` does the renumbering and takes the movement off every glyph that
+ * was rebuilt, and the note names those, since they now hold one shape along
+ * the whole axis. Should the table not be readable, it goes with the rest of
+ * the variation tables rather than being left to describe the wrong glyphs.
+ */
+function carryVariations(
+  tables: Map<string, Uint8Array>,
+  typeface: Typeface,
+  identity: SourceIdentity,
+  rebuilt: boolean[],
+  notes: string[],
+): void {
+  const gvar = tables.get("gvar");
+  if (!gvar) return;
+  try {
+    const carried = carryGvar(gvar, identity.originalOf, rebuilt);
+    tables.set("gvar", carried.gvar);
+    if (carried.stilled.length === 0) return;
+    const named = carried.stilled.slice(0, 8).map((index) => typeface.glyphs[index].name);
+    notes.push(
+      `${carried.stilled.length} edited ${carried.stilled.length === 1 ? "glyph no longer varies" : "glyphs no longer vary"}: ` +
+        "the source font's variations described the old outline, and applied to the new one " +
+        `would distort it. ${named.join(", ")}${carried.stilled.length > 8 ? ", and others" : ""} ` +
+        `${carried.stilled.length === 1 ? "keeps" : "keep"} the shape drawn here at every setting.`,
+    );
+  } catch {
+    for (const tag of ["gvar", ...VARIATION_TABLES]) tables.delete(tag);
+    notes.push(
+      "The source font's variations could not be carried across the edits, so this is a " +
+        "static font at its default setting.",
+    );
+  }
+}
+
+/**
+ * Bring the file's own `cmap`, `post`, `name` and the fields beside them up to
+ * date with the document.
+ *
+ * A preserving export copied all three straight through, so an edit to any of
+ * the things they record never reached the file: a character given to a new
+ * letter still typed the old one, a renamed glyph kept its old name, a family
+ * renamed on screen installed under the name it arrived with. Each is left
+ * alone while it still says what the document says -- which keeps what is in
+ * them that this application does not model, a `cmap`'s variation sequences
+ * or a `name` table's localised names -- and rewritten when it does not.
+ */
+function patchIdentityTables(
+  tables: Map<string, Uint8Array>,
+  typeface: Typeface,
+  identity: SourceIdentity,
+  invented: Array<{ id: number; value: string }>,
+): void {
+  const imported = typeface.source?.imported;
+
+  if (!identity.sameCharacters || !tables.has("cmap")) {
+    const mappings: Array<{ codepoint: number; glyphId: number }> = [];
+    typeface.glyphs.forEach((glyph, index) => {
+      for (const codepoint of glyph.unicodes) mappings.push({ codepoint, glyphId: index });
+    });
+    /*
+     * The variation sequences come along, which the document does not model:
+     * each renumbered to where its glyph now is, and dropped with its glyph.
+     * The default ones name no glyph and are kept as they were.
+     */
+    const existing = tables.get("cmap");
+    const sequences = (existing ? readVariationSequences(existing) : []).map((one) => ({
+      ...one,
+      mappings: one.mappings.flatMap((mapping) => {
+        const glyphId = identity.currentOf.get(mapping.glyphId);
+        return glyphId === undefined ? [] : [{ codepoint: mapping.codepoint, glyphId }];
+      }),
+    }));
+    tables.set("cmap", buildCmap(mappings, sequences));
+    const codepoints = mappings.map((entry) => entry.codepoint);
+    patchCharacterRange(tables, codepoints);
+  }
+
+  /*
+   * Names are compared by position as well as by name, because the table is
+   * a list against glyph ids: the same names in a different order are wrong
+   * names for every glyph that moved.
+   */
+  if (!identity.sameNames || !tables.has("post")) {
+    const isItalic = /italic|oblique/i.test(typeface.meta.styleName);
+    tables.set(
+      "post",
+      rebuildPost(
+        tables.get("post"),
+        isItalic ? -12 : 0,
+        typeface.unitsPerEm,
+        typeface.glyphs.map((glyph) => glyph.name),
+      ),
+    );
+  }
+
+  /*
+   * The names the metadata changed, and any a varying font invented for its
+   * axes and instances -- which `fvar` points at by number, and which a
+   * preserving export would otherwise leave pointing at whatever the file
+   * happened to keep under those numbers.
+   */
+  const replace = imported
+    ? changedNameIds(imported.meta, typeface.meta)
+    : new Set(nameValues(typeface.meta).map((entry) => entry.id));
+  for (const entry of invented) replace.add(entry.id);
+  const source = tables.get("name");
+  if (replace.size > 0 || !source) {
+    tables.set(
+      "name",
+      patchName(source ?? new Uint8Array(6), replace, [...nameValues(typeface.meta), ...invented]),
+    );
+  }
+
+  if (!imported || imported.meta.version !== typeface.meta.version) {
+    const head = tables.get("head");
+    if (head && head.length >= 8) {
+      const copy = new Uint8Array(head);
+      new DataView(copy.buffer).setInt32(
+        4,
+        Math.round(fontRevisionOf(typeface.meta.version) * 65536),
+      );
+      tables.set("head", copy);
+    }
+  }
+  if (!imported || imported.meta.weightClass !== typeface.meta.weightClass) {
+    const os2 = tables.get("OS/2");
+    if (os2 && os2.length >= 6) {
+      const copy = new Uint8Array(os2);
+      new DataView(copy.buffer).setUint16(4, typeface.meta.weightClass);
+      tables.set("OS/2", copy);
+    }
+  }
+  if (
+    !imported ||
+    imported.meta.styleName !== typeface.meta.styleName ||
+    imported.meta.familyName !== typeface.meta.familyName
+  ) {
+    patchStyleBits(tables, typeface);
+  }
+}
+
+/**
+ * The style as the file's bits state it, brought into line with a new style name.
+ *
+ * A preserving export rewrote the names and left the bits that say the same
+ * thing in another way, so a Regular renamed Bold Italic went out as a family's
+ * bold italic by name and its regular by `fsSelection`, `macStyle` and an
+ * upright italic angle -- and systems that read the bits, which is most of
+ * them when deciding what the bold and italic buttons pick, took it for the
+ * regular. The rules are the rebuild's (see `buildBaselineTables`): italic
+ * from the style name, bold only for the face whose old-style name is Bold.
+ * Every other bit is the file's own and left alone. The italic angle is only
+ * invented when the file had none and the face is now italic, and set upright
+ * when it is not, so a real italic keeps the angle it was drawn at.
+ */
+function patchStyleBits(tables: Map<string, Uint8Array>, typeface: Typeface): void {
+  const isItalic = /italic|oblique/i.test(typeface.meta.styleName);
+  const named = familyNames(typeface.meta);
+  const isBold = named.styleName === "Bold" || named.styleName === "Bold Italic";
+
+  const os2 = tables.get("OS/2");
+  if (os2 && os2.length >= 64) {
+    const copy = new Uint8Array(os2);
+    const view = new DataView(copy.buffer);
+    // ITALIC, BOLD, REGULAR and OBLIQUE are the style; the rest are the file's.
+    let bits = view.getUint16(62) & ~(0x01 | 0x20 | 0x40 | 0x200);
+    if (isItalic) bits |= 0x01;
+    if (isBold) bits |= 0x20;
+    if (!isItalic && !isBold) bits |= 0x40;
+    view.setUint16(62, bits);
+    tables.set("OS/2", copy);
+  }
+
+  const head = tables.get("head");
+  if (head && head.length >= 46) {
+    const copy = new Uint8Array(head);
+    const view = new DataView(copy.buffer);
+    view.setUint16(44, (view.getUint16(44) & ~0x03) | (isBold ? 1 : 0) | (isItalic ? 2 : 0));
+    tables.set("head", copy);
+  }
+
+  const post = tables.get("post");
+  if (post && post.length >= 8) {
+    const copy = new Uint8Array(post);
+    const view = new DataView(copy.buffer);
+    const was = view.getInt32(4) / 65536;
+    const angle = isItalic ? (was !== 0 ? was : -12) : 0;
+    if (angle !== was) {
+      view.setInt32(4, Math.round(angle * 65536));
+      tables.set("post", copy);
+      // And the caret, which leans with the letters or stands upright.
+      const hhea = tables.get("hhea");
+      if (hhea && hhea.length >= 24) {
+        const caret = new Uint8Array(hhea);
+        const caretView = new DataView(caret.buffer);
+        const rise = angle === 0 ? 1 : typeface.unitsPerEm;
+        const run =
+          angle === 0 ? 0 : Math.round(-typeface.unitsPerEm * Math.tan((angle * Math.PI) / 180));
+        caretView.setInt16(18, rise);
+        caretView.setInt16(20, run);
+        tables.set("hhea", caret);
+      }
+    }
+  }
+}
+
+/** The lowest and highest character in `OS/2`, kept in step with a rewritten `cmap`. */
+function patchCharacterRange(tables: Map<string, Uint8Array>, codepoints: number[]): void {
+  const os2 = tables.get("OS/2");
+  if (!os2 || os2.length < 68) return;
+  const copy = new Uint8Array(os2);
+  const view = new DataView(copy.buffer);
+  const first = codepoints.length ? Math.min(...codepoints) : 0;
+  const last = codepoints.length ? Math.max(...codepoints) : 0;
+  view.setUint16(64, Math.min(0xffff, first));
+  view.setUint16(66, Math.min(0xffff, last));
+  tables.set("OS/2", copy);
+}
+
 function buildBaselineTables(
   tables: Map<string, Uint8Array>,
   typeface: Typeface,
@@ -873,7 +1463,7 @@ function buildBaselineTables(
       unitsPerEm: typeface.unitsPerEm,
       bounds: built.bounds,
       indexToLocFormat: built.indexToLocFormat,
-      fontRevision: Number.parseFloat(typeface.meta.version) || 1,
+      fontRevision: fontRevisionOf(typeface.meta.version),
       createdAt: now,
       modifiedAt: now,
       isItalic,

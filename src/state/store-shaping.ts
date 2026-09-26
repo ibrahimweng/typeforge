@@ -32,6 +32,7 @@ import {
 import { cloneGlyph } from "@/font/types";
 import { alignMasters } from "@/font/master";
 import type { Anchor, Contour, KernClass, KernPair, Typeface } from "@/font/types";
+import { withRename } from "@/ufo/renamed";
 import { nodeKey } from "./model";
 import { firstLetterName } from "./store-core";
 import { ParameterStore } from "./store-parameters";
@@ -53,6 +54,17 @@ export abstract class ShapingStore extends ParameterStore {
     } else {
       glyph.anchors.push({ name, x: Math.round(x), y: Math.round(y) });
     }
+    /*
+     * Marked as touched, which none of the anchor edits used to be.
+     *
+     * A saved session keeps only the letters that were touched and re-reads
+     * the rest from the original file (`format.ts`), so an anchor placed on a
+     * letter of an imported font and never anything else was quietly put back
+     * where the file had it on the next restore. Left set on undo, like every
+     * other edit here: a letter saved that did not need to be costs a few
+     * bytes, and one not saved that did costs the work.
+     */
+    glyph.dirty = true;
     const after = glyph.anchors.map((a) => ({ ...a }));
 
     this.push({
@@ -81,6 +93,9 @@ export abstract class ShapingStore extends ParameterStore {
     } else {
       glyph.anchors.push({ name, x: Math.round(x), y: Math.round(y) });
     }
+    // Touched, for the same reason as `setAnchor`: a drag may be the last
+    // thing that happens before the tab is closed.
+    glyph.dirty = true;
     this.touch();
   }
 
@@ -93,6 +108,7 @@ export abstract class ShapingStore extends ParameterStore {
     const before = glyph.anchors.map((a) => ({ ...a }));
     const after = before.filter((a) => a.name !== name);
     glyph.anchors = after.map((a) => ({ ...a }));
+    glyph.dirty = true;
     this.push({
       label: `Remove ${name} anchor`,
       undo: () => {
@@ -120,6 +136,7 @@ export abstract class ShapingStore extends ParameterStore {
 
     const index = typeface.glyphIndex.get(glyphName)!;
     typeface.glyphs[index].anchors = after;
+    typeface.glyphs[index].dirty = true;
     this.push({
       label: "Suggest anchors",
       undo: () => {
@@ -139,6 +156,16 @@ export abstract class ShapingStore extends ParameterStore {
     const before = typeface.glyphs.map((g) => g.anchors.map((a) => ({ ...a })));
     const result = deriveAnchors(typeface);
     const after = typeface.glyphs.map((g) => g.anchors.map((a) => ({ ...a })));
+    /*
+     * Only the letters whose anchors actually moved are marked, since this
+     * runs over the whole font and a session that saved every letter of an
+     * imported one because a button was pressed would be the whole font again.
+     * Compared as text, which is safe here because both sides were built by
+     * the same copy above.
+     */
+    typeface.glyphs.forEach((g, i) => {
+      if (JSON.stringify(before[i]) !== JSON.stringify(after[i])) g.dirty = true;
+    });
 
     this.push({
       label: "Read anchors from the font",
@@ -411,8 +438,38 @@ export abstract class ShapingStore extends ParameterStore {
    * font of six thousand letters: the library functions replace the arrays
    * they change rather than reaching into them, so holding the old arrays is
    * enough to hold the old state.
+   *
+   * Enough for the arrays, and not for the letters in them, which is where
+   * this used to go wrong. Every letter a removal did not touch sits in both
+   * the old array and the new one as the same object, and the live font is
+   * the new one -- so the next `editGlyph`, drag or anchor move reached into
+   * an object the old array was also holding. Remove `b`, set `c` to 900,
+   * undo, undo: the width's own undo put a fresh `c` into the new array, the
+   * removal's undo put the old array back, and the old array's `c` was the
+   * one that had been edited in place. The removal came back with an edit
+   * that had already been taken back riding on it.
+   *
+   * So a structural change hands the font letters of its own. The snapshots
+   * keep the objects they were taken with and nothing live ever points at
+   * them again: the font is given a copy of every letter when the change is
+   * made, and a fresh copy of the snapshot on every undo and redo. That keeps
+   * the invariant in one place instead of in every writer -- there are a
+   * dozen that edit a letter in place, and some of them in other files -- at
+   * the cost of one copy of the font per add, remove, rename or duplicate,
+   * which is the same bargain `buildAccentedGlyphs` already makes, and none
+   * at all for a kerning or feature edit, where the glyph array is the same
+   * one before and after and nothing needs detaching.
    */
-  private editFont(label: string, mutate: (typeface: Typeface) => boolean): boolean {
+  private editFont(
+    label: string,
+    mutate: (typeface: Typeface) => boolean,
+    /**
+     * Anything outside the typeface that has to move with the change, and
+     * back with its undo: a rename is also a rename in the UFO's carried
+     * groups. `after` runs once the change has been made and again on redo.
+     */
+    alongside?: { before: () => void; after: () => void },
+  ): boolean {
     const typeface = this.state.typeface;
     if (!typeface) return false;
 
@@ -442,20 +499,30 @@ export abstract class ShapingStore extends ParameterStore {
      * costs nothing.
      */
     const structural = before.glyphs !== after.glyphs;
+    const install = (held: ReturnType<typeof hold>) => {
+      Object.assign(typeface, held);
+      // Detached from the snapshot, per the note above. The index is only
+      // positions, and a copy keeps every letter where it was.
+      if (structural) typeface.glyphs = held.glyphs.map(cloneGlyph);
+    };
     const spread = () => {
       if (structural) alignMasters(typeface, this.state.masters);
     };
+    install(after);
     spread();
+    alongside?.after();
 
     this.push({
       label,
       undo: () => {
-        Object.assign(typeface, before);
+        install(before);
         spread();
+        alongside?.before();
       },
       redo: () => {
-        Object.assign(typeface, after);
+        install(after);
         spread();
+        alongside?.after();
       },
     });
     this.touch();
@@ -528,7 +595,27 @@ export abstract class ShapingStore extends ParameterStore {
       return false;
     }
 
-    const done = this.editFont("Rename a letter", (one) => callGlyph(one, from, wanted));
+    /*
+     * And in the groups a UFO carried, which the model does not hold and so
+     * the library cannot rename: without this, writing the folder back out
+     * found the old name in a mark group, no glyph by it, and took the letter
+     * out of the group as though it had been deleted.
+     */
+    const carried = this.ufo;
+    const done = this.editFont(
+      "Rename a letter",
+      (one) => callGlyph(one, from, wanted),
+      carried
+        ? {
+            before: () => {
+              this.ufo = carried;
+            },
+            after: () => {
+              this.ufo = withRename(carried, from, wanted);
+            },
+          }
+        : undefined,
+    );
     if (done && this.state.selectedGlyph === from) this.set({ selectedGlyph: wanted });
     return done;
   }

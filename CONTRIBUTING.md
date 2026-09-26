@@ -38,7 +38,7 @@ npm run lint         # Biome, formatting and lint together
 npm run typecheck    # tsc -b --noEmit
 npm test             # vitest, about four minutes
 npm run build        # type checks again, then builds
-npm run test:browser # Playwright, both engines, about twenty minutes each
+npm run test:browser # Playwright, all three engines, about twenty minutes each
 ```
 
 The browser suite is the slow one and it is worth running before a change to
@@ -47,6 +47,33 @@ anything a pointer touches. One file at a time is usually enough while you work:
 ```bash
 npx playwright test e2e/writing.spec.ts
 ```
+
+Only Chromium, WebKit or Firefox, rather than all three, with `--project`:
+
+```bash
+npx playwright test --project=chromium e2e/writing.spec.ts
+```
+
+`e2e/csp.spec.ts` runs against a second server that the suite starts for it: a
+real build, served by `vite preview` with the headers in `vercel.json`. If you
+change the security policy there, that file and `test/csp.test.ts` are what
+tell you whether the application still works under it.
+
+## Scripts
+
+The files in `scripts/` are for looking at things a test cannot judge — sheets
+of drawn letters, traces, measurements against a reference — and they import
+the application with the same `@/` paths it uses itself, so they run through
+Vite rather than straight on Node:
+
+```bash
+npx vite-node scripts/tally.ts
+```
+
+`vite-node` is a devDependency, so that runs the pinned copy `npm ci` installed
+rather than whatever `npx` would otherwise fetch. It used not to be, and every
+command in these files and in the README went to the network for a package the
+project never named, at whichever version was newest that day.
 
 It runs against Chromium and WebKit. CI runs both as one matrix, so they finish
 together, but locally they are one after the other and that is forty minutes.

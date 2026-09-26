@@ -39,6 +39,7 @@ import {
   useLayout,
 } from "@/state/layout";
 import { landingAmong } from "@/components/landing";
+import { widthToRemember } from "@/components/dock-width";
 import { cn } from "@/cn";
 import { followPointer, type PointerEnd } from "@/components/follow-pointer";
 
@@ -164,9 +165,14 @@ export function Dock({
           event.currentTarget.setPointerCapture(event.pointerId);
           const startX = event.clientX;
           const startWidth = width;
+          // What was chosen, as well as what is shown: on a small window the
+          // two differ, and the choice is not the drag's to forget unless the
+          // drag goes somewhere under the ceiling (see `dock-width.ts`).
+          const remembered = layout.width;
           const move = (moving: PointerEvent): void => {
             // Leftwards is wider, because the dock is on the right.
-            resizeDock(startWidth + (startX - moving.clientX));
+            const proposed = startWidth + (startX - moving.clientX);
+            resizeDock(widthToRemember(remembered, windowWidth, proposed));
           };
           // Each width was applied as it went, so up or cancelled there is
           // only the listening to stop.
@@ -174,8 +180,12 @@ export function Dock({
         }}
         onKeyDown={(event) => {
           const step = event.shiftKey ? 48 : 16;
-          if (event.key === "ArrowLeft") resizeDock(width + step);
-          else if (event.key === "ArrowRight") resizeDock(width - step);
+          // From the width on screen, but without writing the ceiling back
+          // over the width that was chosen -- the same rule as the drag.
+          const nudge = (by: number): void =>
+            resizeDock(widthToRemember(layout.width, windowWidth, width + by));
+          if (event.key === "ArrowLeft") nudge(step);
+          else if (event.key === "ArrowRight") nudge(-step);
           else if (event.key === "Home") resizeDock(LEAST_WIDTH);
           else if (event.key === "End") resizeDock(MOST_WIDTH);
           else return;

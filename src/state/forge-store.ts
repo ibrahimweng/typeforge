@@ -58,7 +58,7 @@ import type { PartName } from "@/forge/parts";
 import { baseNamed } from "@/forge/document";
 import { SANS, type Metrics, type Parts, type Style } from "@/forge/style";
 import { readyToShape } from "@/forge/layers";
-import { drawingChanged, drawingIs, drawingReadableBy } from "./drawn";
+import { drawingChanged, drawingIs, drawingReadableBy, drawingRedrawn } from "./drawn";
 import type { Pen } from "@/forge/types";
 
 /** Which letter's controls are being shown, and whether they apply to it alone. */
@@ -651,7 +651,7 @@ class ForgeStore {
     this.set({
       forge: again,
       settled: this.state.settled === this.state.forge ? again : { ...this.state.settled },
-      revision: drawingChanged(),
+      revision: drawingRedrawn(),
       settledRevision: this.state.settledRevision + 1,
     });
   }

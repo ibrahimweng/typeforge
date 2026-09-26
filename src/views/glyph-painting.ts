@@ -23,7 +23,12 @@ import { resolveComponents } from "@/font/composite";
 import { isReshaped, resolveGlyphContours } from "@/font/transform";
 import type { Glyph, Typeface } from "@/font/types";
 import { editsWhatIsThere, writesStrokes } from "@/font/toolset";
-import { prepareCanvas, readToken, type GlyphView } from "@/components/glyph-render";
+import {
+  prepareCanvas,
+  readToken,
+  useDeviceRatio,
+  type GlyphView,
+} from "@/components/glyph-render";
 import type { AppState } from "@/state/useStore";
 import { drawWritten } from "./write-canvas";
 
@@ -301,6 +306,9 @@ export function useGlyphPainting(within: {
   const { typeface, glyph, state, view, size, neighbours, gesture } = within;
   const canvasRef = within.canvas;
   const { hover, at } = gesture;
+  // Redrawn when the window moves to a screen of another density, which
+  // changes nothing else in the list below (see `subscribeDeviceRatio`).
+  const ratio = useDeviceRatio();
 
   /*
    * The three refs are left out of the list below on purpose.
@@ -364,6 +372,14 @@ export function useGlyphPainting(within: {
     state.marks,
     state.tool,
     at,
+    /*
+     * The lit handle of the selection box. It used to come round with `at`,
+     * which changed on every move whatever the tool; `at` now only changes for
+     * the tools that draw from it, so the handle lighting up needs its own
+     * place in the list.
+     */
+    gesture.grip,
+    ratio,
     state.highlightPath,
     /*
      * The lit stop, which picking one does not otherwise announce: pickStop

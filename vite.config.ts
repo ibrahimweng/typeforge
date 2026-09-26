@@ -1,10 +1,72 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
+import { readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 
+import { defineConfig, type Plugin } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+
+/**
+ * The headers the deployment sends, sent by `vite preview` too.
+ *
+ * They live in vercel.json and nowhere else, which meant that nothing but the
+ * deployment ever ran the application under them -- and the one that matters,
+ * the Content-Security-Policy, can break the application outright without a
+ * single test noticing. It has: the WOFF2 decoder is Emscripten output, its
+ * bindings are built with `new Function`, and a policy without 'unsafe-eval'
+ * made every compressed font -- every font the library fetches -- fail to open
+ * in production while the whole suite, run against a dev server with no policy
+ * at all, stayed green.
+ *
+ * So the preview server reads the same file and sends the same headers, and
+ * e2e/csp.spec.ts opens a WOFF2 against a built copy of the application under
+ * them. Read from vercel.json rather than copied here, so there is one policy
+ * and the test is of that one.
+ *
+ * Preview only, not the dev server. The dev server injects an inline script
+ * for React's refresh runtime and talks to itself over a WebSocket, neither of
+ * which the policy allows or should; it is a different program from the one
+ * that ships, and a policy written for the one that ships would only get in
+ * its way.
+ *
+ * `source` in vercel.json is a path-to-regexp pattern. The two in use --
+ * `/(.*)` and `/assets/(.*)` -- are also regular expressions that mean the same
+ * thing, and that is all this reads them as; a pattern with named parameters
+ * would need more, and would fail the check in e2e/csp.spec.ts rather than
+ * quietly match nothing.
+ */
+function deploymentHeaders(): Plugin {
+  interface Rule {
+    source: string;
+    headers: Array<{ key: string; value: string }>;
+  }
+  const read = (): Rule[] =>
+    (
+      JSON.parse(readFileSync(new URL("./vercel.json", import.meta.url), "utf8")) as {
+        headers?: Rule[];
+      }
+    ).headers ?? [];
+
+  return {
+    name: "typeforge:deployment-headers",
+    configurePreviewServer(server) {
+      const rules = read().map((rule) => ({
+        pattern: new RegExp(`^${rule.source}$`),
+        headers: rule.headers,
+      }));
+      server.middlewares.use((request, response, next) => {
+        const path = (request.url ?? "/").split("?")[0];
+        for (const rule of rules) {
+          if (!rule.pattern.test(path)) continue;
+          for (const { key, value } of rule.headers) response.setHeader(key, value);
+        }
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), deploymentHeaders()],
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },

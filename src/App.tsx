@@ -41,7 +41,7 @@ import {
   type Project,
   type Reading,
 } from "@/project/format";
-import { keeper as makeKeeper, kept } from "@/project/keep";
+import { keeper as makeKeeper, kept, thisTab } from "@/project/keep";
 import { fileNameFor, restore, session } from "@/project/session";
 import type { Keeping } from "@/components/TopBar";
 import { libraryStore } from "@/state/useLibrary";
@@ -397,6 +397,34 @@ function folderNameOf(files: FileList): string | null {
   return null;
 }
 
+/** The counters the saver watches, as they were when it last looked. */
+interface Seen {
+  edit: number;
+  documents: string;
+  drawn: number;
+  assemble: number;
+  traced: number;
+  mode: Mode;
+}
+
+/**
+ * Whether all that moved between two looks is a redraw: each counter either
+ * where it was, or one step on to exactly the count its store's last redraw
+ * left. One step, so that an edit landing beside a redraw still counts.
+ */
+function redrawOnly(
+  was: Seen,
+  now: Seen,
+  redrawn: { edit: number; drawn: number; assemble: number },
+): boolean {
+  if (was.documents !== now.documents || was.mode !== now.mode || was.traced !== now.traced) {
+    return false;
+  }
+  const still = (key: "edit" | "drawn" | "assemble") =>
+    now[key] === was[key] || (now[key] === redrawn[key] && now[key] === was[key] + 1);
+  return still("edit") && still("drawn") && still("assemble");
+}
+
 export function App(): React.JSX.Element {
   const state = useAppState();
   const drawn = useDrawing();
@@ -523,12 +551,30 @@ export function App(): React.JSX.Element {
    * drawn nothing to draw again. It waits on the same promise from its own
    * module instead.
    */
+  /*
+   * What those redraws left the two stores' revisions at, so the saver below
+   * can tell them from edits. See `redrawOnly`.
+   */
+  const redrawnAt = React.useRef({ edit: -1, assemble: -1 });
   React.useEffect(() => {
     let live = true;
     void readyToShape().then(() => {
       if (!live) return;
+      const was = {
+        edit: store.getSnapshot().revision,
+        assemble: assembleStore.getSnapshot().revision,
+      };
       store.refresh();
       assembleStore.refresh();
+      const now = {
+        edit: store.getSnapshot().revision,
+        assemble: assembleStore.getSnapshot().revision,
+      };
+      // Only the ones that moved: `store.refresh` does nothing with no font open.
+      redrawnAt.current = {
+        edit: now.edit === was.edit ? -1 : now.edit,
+        assemble: now.assemble === was.assemble ? -1 : now.assemble,
+      };
     });
     return () => {
       live = false;
@@ -555,14 +601,20 @@ export function App(): React.JSX.Element {
    */
   const keptSoFar = React.useRef<Keeping>("unknown");
   const keeper = React.useRef(
-    makeKeeper(undefined, (went) => {
-      const now: Keeping = went ? "kept" : "off";
-      // Set only on a change, so a write every second does not re-render the
-      // whole toolbar every second.
-      if (keptSoFar.current === now) return;
-      keptSoFar.current = now;
-      setKeeping(now);
-    }),
+    makeKeeper(
+      undefined,
+      (went) => {
+        const now: Keeping = went ? "kept" : "off";
+        // Set only on a change, so a write every second does not re-render the
+        // whole toolbar every second.
+        if (keptSoFar.current === now) return;
+        keptSoFar.current = now;
+        setKeeping(now);
+      },
+      // Which record is this tab's; see `thisTab` in `keep.ts`. Claimed once
+      // per page however often this line is evaluated.
+      thisTab(),
+    ),
   ).current;
   const restoring = React.useRef(true);
 
@@ -573,11 +625,14 @@ export function App(): React.JSX.Element {
       // asked for, and it is what gets written back even if putting it back
       // went wrong.
       let was: Mode = "edit";
+      // What was put back, written back as it was; see the note at the probe.
+      let picked: Project | null = null;
       try {
-        const saved = await kept();
+        const saved = await kept(await thisTab());
         if (!live) return;
         if (saved) {
           was = saved.mode;
+          picked = saved;
           const back = await restore(saved);
           if (!live) return;
           setMode(back.mode);
@@ -603,9 +658,27 @@ export function App(): React.JSX.Element {
           // answer until something has been written, so it is asked by writing.
           // What comes back of that goes to the toolbar through the keeper's
           // own report, along with every write after it.
-          await keeper.now(() => session(was));
+          //
+          // And what is written is the record that was picked up, untouched,
+          // when there was one. Gathered afresh it carried a new date, so
+          // opening a second tab on an old session made that old session the
+          // newest on the next visit -- ahead of whatever was actually last
+          // worked on -- and a session that failed to come back was replaced
+          // by the empty one on screen, when the note above says it is kept
+          // for a fix to read tomorrow. Into this tab's own record either way,
+          // so no other tab's work is touched by it.
+          await keeper.now(() => picked ?? session(was));
+          restoring.current = false;
         }
-        restoring.current = false;
+        /*
+         * Only by the run that is still live. React runs this effect twice in
+         * development, and the first run is abandoned at its first await; put
+         * down there, the flag said the restore was over while the second run
+         * was still putting the session back, so a change landing in that
+         * window was taken for an edit -- and the tab wrote a fresh session
+         * over the kept one on its way out, a broken one included, before
+         * anybody had touched anything.
+         */
       }
     })();
     return () => {
@@ -647,11 +720,43 @@ export function App(): React.JSX.Element {
    * on whether its revision happened to differ from the last one's.
    */
   const documents = `${state.open.map((one) => one.id).join(",")}:${state.openAt}`;
-  const revisions = `${state.revision}:${documents}:${drawn.count}:${assemble.revision}:${traced.revision}:${mode}`;
+  /*
+   * And a redraw is not an edit.
+   *
+   * The shaping library arrives a few seconds into every visit and every store
+   * is asked to draw again, which moves the same counters an edit moves. Taken
+   * for an edit, it made every tab write its session a moment after opening --
+   * with a new date, so a tab merely opened on an old session made that the
+   * newest work in the browser, and a session that had failed to come back was
+   * written over by the empty one on screen before anybody touched anything.
+   * So the counters are compared with what they were, and a change that is
+   * exactly one redraw and nothing else is let pass.
+   */
+  const seen = React.useRef<Seen | null>(null);
   React.useEffect(() => {
+    const now: Seen = {
+      edit: state.revision,
+      documents,
+      drawn: drawn.count,
+      assemble: assemble.revision,
+      traced: traced.revision,
+      mode,
+    };
+    const was = seen.current;
+    seen.current = now;
     if (restoring.current) return;
+    if (was && redrawOnly(was, now, { ...redrawnAt.current, drawn: drawn.redrawn })) return;
     keeper.soon(() => session(mode));
-  }, [revisions, keeper, mode]);
+  }, [
+    state.revision,
+    documents,
+    drawn.count,
+    drawn.redrawn,
+    assemble.revision,
+    traced.revision,
+    keeper,
+    mode,
+  ]);
 
   /*
    * And written down on the way out, without waiting for the pause.
@@ -669,8 +774,11 @@ export function App(): React.JSX.Element {
    */
   React.useEffect(() => {
     const flush = () => {
+      // Only when there is something new since the last write. A tab that
+      // was merely looked away from has nothing to add, and writing anyway is
+      // what made visiting an old tab on the way out an edit.
       if (document.visibilityState === "hidden" && !restoring.current) {
-        void keeper.now(() => session(mode));
+        void keeper.flush(() => session(mode));
       }
     };
     document.addEventListener("visibilitychange", flush);

@@ -13,7 +13,13 @@ import { pulse } from "@/anim/motion";
 import { CoachMark } from "@/components/CoachMark";
 import { CONTROL_GLYPHS, CONTROL_GROUPS } from "@/font/control";
 import { NOTDEF } from "@/font/library";
-import { drawGlyph, fitEmSquare, prepareCanvas, readToken } from "@/components/glyph-render";
+import {
+  drawGlyph,
+  fitEmSquare,
+  prepareCanvas,
+  readToken,
+  useDeviceRatio,
+} from "@/components/glyph-render";
 import { store, useAppState } from "@/state/useStore";
 import { tile } from "@/components/controls";
 import { cn } from "@/cn";
@@ -34,6 +40,9 @@ function ControlThumb({ name }: { name: string }): React.JSX.Element {
   const typeface = state.typeface;
   const selected = state.selectedGlyph === name;
   const followers = glyph ? store.followersOf(name) : [];
+  // Redrawn when the window moves to a screen of another density, which
+  // changes nothing else in the list below (see `subscribeDeviceRatio`).
+  const ratio = useDeviceRatio();
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
@@ -46,7 +55,7 @@ function ControlThumb({ name }: { name: string }): React.JSX.Element {
       fill: readToken("--glyph-fill", "#eeeeee"),
       centreOnOutline: true,
     });
-  }, [glyph, typeface, state.revision]);
+  }, [glyph, typeface, state.revision, ratio]);
 
   if (!glyph) {
     return (

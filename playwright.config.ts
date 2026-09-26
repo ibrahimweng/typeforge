@@ -13,6 +13,10 @@ const SANDBOX_CHROMIUM = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
 const executablePath =
   PRESET_CHROMIUM ?? (existsSync(SANDBOX_CHROMIUM) ? SANDBOX_CHROMIUM : undefined);
 
+/** Where the shipped build is served from. e2e/csp.spec.ts names the same port. */
+const PREVIEW_PORT = 5184;
+const PREVIEW_DIR = "node_modules/.typeforge-preview";
+
 export default defineConfig({
   testDir: "./e2e",
   timeout: 90_000,
@@ -50,15 +54,17 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   /*
-   * Two engines, because one of them is the one this application is most
-   * likely to be wrong in.
+   * Three engines, because each of the other two is where this application is
+   * likelier to be wrong than in Chromium.
    *
    * Everything here runs on a canvas, in IndexedDB and against fonts the
    * browser has to load, and those three are where WebKit differs from
    * Chromium rather than where it agrees. Testing Chromium alone was testing
    * the half that was never going to be the problem: a Safari user would have
    * found the fault first, on their own work, with no test able to reproduce
-   * what they saw.
+   * what they saw. Firefox is here for the same reason and was added after a
+   * report nobody could rule the browser out of -- see the browser job in
+   * .github/workflows/ci.yml.
    *
    * Chromium first so the ordinary run is unchanged, and `--project` picks one
    * when only one is wanted:
@@ -82,18 +88,39 @@ export default defineConfig({
       use: { ...devices["Desktop Firefox"] },
     },
   ],
-  webServer: {
-    // Bind the address Playwright polls, rather than "localhost". Vite resolves
-    // "localhost" itself, and on a runner with IPv6 that can land on ::1 while
-    // the poll below asks 127.0.0.1, so the server comes up healthy and the
-    // wait times out anyway. Naming one address leaves nothing to resolve.
-    command: "npm run dev -- --host 127.0.0.1 --port 5183 --strictPort",
-    url: "http://127.0.0.1:5183",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-    // Without these a server that fails to boot reports only "timed out",
-    // which says nothing about why.
-    stdout: "pipe",
-    stderr: "pipe",
-  },
+  webServer: [
+    {
+      // Bind the address Playwright polls, rather than "localhost". Vite resolves
+      // "localhost" itself, and on a runner with IPv6 that can land on ::1 while
+      // the poll below asks 127.0.0.1, so the server comes up healthy and the
+      // wait times out anyway. Naming one address leaves nothing to resolve.
+      command: "npm run dev -- --host 127.0.0.1 --port 5183 --strictPort",
+      url: "http://127.0.0.1:5183",
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+      // Without these a server that fails to boot reports only "timed out",
+      // which says nothing about why.
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+    /*
+     * The application as it ships: built, and served with the headers the
+     * deployment sends -- the Content-Security-Policy above all. Only
+     * e2e/csp.spec.ts talks to it, and that file says why it has to exist.
+     *
+     * Built into node_modules rather than dist/, so a run of the suite never
+     * overwrites a build somebody made on purpose, and nothing new needs
+     * ignoring. `vite build` rather than `npm run build`: the type check is
+     * not what this is testing, and it is the slow half. The build is about
+     * five seconds and runs beside the dev server's start rather than after it.
+     */
+    {
+      command: `npx vite build --outDir ${PREVIEW_DIR} --emptyOutDir --logLevel warn && npx vite preview --outDir ${PREVIEW_DIR} --host 127.0.0.1 --port ${PREVIEW_PORT} --strictPort`,
+      url: `http://127.0.0.1:${PREVIEW_PORT}`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 180_000,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  ],
 });

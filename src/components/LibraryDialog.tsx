@@ -41,6 +41,7 @@ const CATEGORIES: Array<[LibraryCategory | "all", string]> = [
   ["display", "Display"],
   ["handwriting", "Hand"],
   ["monospace", "Mono"],
+  ["other", "Other"],
 ];
 
 export function LibraryDialog({
@@ -107,7 +108,21 @@ export function LibraryDialog({
             className="ml-2 h-7 w-48 rounded-md border border-input bg-card px-2 text-2xs outline-none focus-visible:border-accent"
           />
           <div className="flex gap-0.5" role="group" aria-label="Kind">
-            {CATEGORIES.map(([id, label]) => (
+            {CATEGORIES.filter(
+              /*
+               * Other is offered only when there is something in it. The five
+               * named kinds are always there, since every source files most of
+               * its families under them; Other is a handful of oddities in the
+               * full catalogue and nothing at all in the built-in list, where a
+               * button that always answers "Nothing matches that" is noise.
+               * Still shown while it is the chosen filter, so the button that
+               * is pressed never disappears from under the pointer.
+               */
+              ([id]) =>
+                id !== "other" ||
+                state.category === "other" ||
+                state.catalogue?.fonts.some((font) => font.category === "other"),
+            ).map(([id, label]) => (
               <button
                 key={id}
                 type="button"
@@ -148,7 +163,7 @@ function Families({ fonts }: { fonts: LibraryFont[] }): React.JSX.Element {
   if (!state.catalogue) {
     return (
       <div className="flex w-64 shrink-0 items-center justify-center border-r border-border text-2xs text-muted-foreground">
-        {state.busy ? "Fetching the catalogue…" : "No catalogue."}
+        {state.fetching ? "Fetching the catalogue…" : "No catalogue."}
       </div>
     );
   }
@@ -201,7 +216,7 @@ function Chosen({
   if (!loaded) {
     return (
       <div className="flex min-w-0 flex-1 items-center justify-center p-6 text-center text-2xs leading-relaxed text-muted-foreground">
-        {state.busy ? "Fetching…" : "Choose a family to see what it is made of."}
+        {state.loading ? "Fetching…" : "Choose a family to see what it is made of."}
       </div>
     );
   }
@@ -438,10 +453,14 @@ function Footer(): React.JSX.Element {
         <button
           type="button"
           onClick={() => void libraryStore.refresh()}
-          disabled={state.busy}
+          // The catalogue's own flag, not the font's: a family being fetched
+          // on the right has nothing to do with whether the list can be asked
+          // for again. See `fetching` in the store.
+          disabled={state.fetching}
+          data-library-retry
           className="ml-auto rounded px-1.5 py-0.5 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
         >
-          {state.busy ? "Fetching…" : "Try again"}
+          {state.fetching ? "Fetching…" : "Try again"}
         </button>
       </div>
 

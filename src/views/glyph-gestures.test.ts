@@ -37,7 +37,7 @@ import { renderToString } from "react-dom/server";
 import type { GlyphView } from "@/components/glyph-render";
 import { emptyTypeface, type Contour, type Glyph, type GlyphNode } from "@/font/types";
 import { store } from "@/state/useStore";
-import { useGlyphGestures, type Gestures } from "./glyph-gestures";
+import { samePoint, tracksPointer, useGlyphGestures, type Gestures } from "./glyph-gestures";
 
 const VIEW: GlyphView = { scale: 0.5, originX: 100, originY: 400 };
 
@@ -796,5 +796,30 @@ describe("double clicking", () => {
     seed([stem(), { closed: true, nodes: [node(300, 0), node(400, 0), node(400, 700)] }]);
     mount().on.doubleClick(press(at(100, 0)));
     expect(selected()).toEqual(["0:0", "0:1", "0:2", "0:3"]);
+  });
+});
+
+describe("which tools the pointer's position is kept for", () => {
+  it("is the pen only while it is drawing", () => {
+    expect(tracksPointer("pen", true)).toBe(true);
+    expect(tracksPointer("pen", false)).toBe(false);
+  });
+
+  it("is the tools that light what is under the pointer", () => {
+    expect(tracksPointer("addPoint", false)).toBe(true);
+    expect(tracksPointer("scissors", false)).toBe(true);
+    expect(tracksPointer("selectPath", false)).toBe(true);
+  });
+
+  it("is not the select tool, which re-rendered on every move for nothing", () => {
+    expect(tracksPointer("select", false)).toBe(false);
+    expect(tracksPointer("rectangle", false)).toBe(false);
+  });
+
+  it("does not count the same place twice as a move", () => {
+    expect(samePoint({ x: 1, y: 2 }, { x: 1, y: 2 })).toBe(true);
+    expect(samePoint(null, null)).toBe(true);
+    expect(samePoint({ x: 1, y: 2 }, { x: 1, y: 3 })).toBe(false);
+    expect(samePoint(null, { x: 0, y: 0 })).toBe(false);
   });
 });

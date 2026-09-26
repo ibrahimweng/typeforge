@@ -40,6 +40,7 @@ import { store, useAppState, type ToolState } from "@/state/useStore";
 import { canvasControls, framedAt } from "@/state/framing";
 import { useGlyphGestures } from "./glyph-gestures";
 import { useHand } from "./hand";
+import { useNativeWheel } from "./wheel";
 import { describeSelection, useGlyphKeys } from "./glyph-keys";
 import { useGlyphPainting } from "./glyph-painting";
 import { CanvasMenu, type MenuTarget } from "@/components/CanvasMenu";
@@ -174,6 +175,25 @@ export function GlyphEditorView(): React.JSX.Element {
    * redraw and refresh the sentence after an edit, which is the pointer's job
    * done from the keyboard. Neither needs anything else the gesture holds.
    */
+  /*
+   * Ctrl or Command with the wheel zooms, matching every design tool, and a
+   * plain wheel pans. Bound natively rather than through `onWheel`, which
+   * React registers passive: the `preventDefault` here is what stops the
+   * browser zooming the whole page along with the letter on Ctrl-wheel and on
+   * a trackpad pinch (which arrives as a wheel with `ctrlKey` held), and
+   * scrolling the page on a plain wheel. See `wheel.ts`.
+   */
+  useNativeWheel(canvasRef, (event) => {
+    event.preventDefault();
+    if (event.ctrlKey || event.metaKey) {
+      const deltaY = event.deltaY;
+      setZoom((current) => clamp(current * (deltaY < 0 ? 1.1 : 0.9), 0.1, 24));
+    } else {
+      const { deltaX, deltaY } = event;
+      setPan((current) => ({ x: current.x - deltaX, y: current.y - deltaY }));
+    }
+  });
+
   const hand = useHand(canvasRef);
   const gesture = useGlyphGestures({ typeface, glyph, state, view, pan, setPan, hand: hand.held });
 
@@ -440,14 +460,6 @@ export function GlyphEditorView(): React.JSX.Element {
             onPointerCancel={gesture.on.pointerUp}
             onDoubleClick={gesture.on.doubleClick}
             onPointerLeave={gesture.on.pointerLeave}
-            onWheel={(event) => {
-              // Ctrl or command with the wheel zooms, matching every design tool.
-              if (event.ctrlKey || event.metaKey) {
-                setZoom((current) => clamp(current * (event.deltaY < 0 ? 1.1 : 0.9), 0.1, 24));
-              } else {
-                setPan((current) => ({ x: current.x - event.deltaX, y: current.y - event.deltaY }));
-              }
-            }}
           />
           {/*
             The keys, for a screen reader, and what is picked, as it changes.

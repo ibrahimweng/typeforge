@@ -1,7 +1,10 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { expect, type Page } from "@playwright/test";
 
+import { googleStylesheet } from "../src/library/google-css.fixture";
 import { insist } from "../test/required";
 
 export const FONT_CANDIDATES = [
@@ -33,6 +36,36 @@ export async function paramSlider(page: Page, label: string) {
   const slider = panel.getByRole("slider", { name: label });
   await expect(slider, `no family parameter called ${label}`).toBeVisible();
   return slider;
+}
+
+/**
+ * The test font as a WOFF2, made on first use and kept in the temp directory.
+ *
+ * Made rather than kept as a fixture, so what is opened is a real WOFF2
+ * produced by the same encoder rather than a blob nobody can check. Shared by
+ * open.spec.ts, which opens it against the dev server, and csp.spec.ts, which
+ * opens it under the deployment's security policy -- the decoder is the part
+ * of the application most likely to want something a policy forbids.
+ */
+export async function sampleWoff2(): Promise<string> {
+  const woff2Path = join(tmpdir(), "typeforge-sample.woff2");
+  if (!existsSync(woff2Path)) {
+    const { Font, woff2 } = await import("fonteditor-core");
+    await woff2.init();
+    const ttf = readFileSync(FONT_PATH!);
+    const font = Font.create(
+      ttf.buffer.slice(ttf.byteOffset, ttf.byteOffset + ttf.byteLength) as ArrayBuffer,
+      { type: "ttf", hinting: true },
+    );
+    const written = font.write({ type: "woff2", hinting: true });
+    // write() is typed as possibly returning text; for woff2 it does not.
+    if (typeof written === "string") throw new Error("woff2 came back as text");
+    writeFileSync(woff2Path, new Uint8Array(written));
+  }
+  // The magic every WOFF2 starts with, so a broken fixture fails here and not
+  // as a mystery in the application.
+  expect(readFileSync(woff2Path).subarray(0, 4).toString("latin1")).toBe("wOF2");
+  return woff2Path;
 }
 
 /** Open the test font through the file input the toolbar drives. */
@@ -216,12 +249,28 @@ export const CATALOGUE = [
   },
 ];
 
-/** Answer the catalogue, and serve the sample font for any file asked for. */
+/**
+ * Answer the catalogue, and serve the sample font for the files asked for.
+ *
+ * Google's stylesheet is answered the way it answers a browser: one block per
+ * subset, Cyrillic first and Latin last -- see src/library/google-css.fixture.ts.
+ * Only the Latin file is a font. The others answer with bytes that are not
+ * one, so a picker that takes the wrong block fails here the way it would
+ * have failed for a real user, with a family that cannot be read, rather than
+ * passing quietly: every other subset used to be served the sample font too,
+ * and a download that fetched Cyrillic was indistinguishable from one that
+ * fetched Latin. A 404 would not do, since that sends the download on to
+ * Fontsource, which this stub also answers, and hides the mistake again.
+ *
+ * Returns the font files that were asked for, in order, so a test can say
+ * which one it expected.
+ */
 export async function stubLibrary(
   page: Page,
   options: { catalogue?: boolean } = {},
-): Promise<void> {
+): Promise<{ fetched: string[] }> {
   const bytes = readFileSync(FONT_PATH!);
+  const fetched: string[] = [];
   await page.route("**://api.fontsource.org/**", async (route) => {
     if (options.catalogue === false) {
       await route.fulfill({ status: 503, contentType: "text/plain", body: "no" });
@@ -234,18 +283,27 @@ export async function stubLibrary(
     });
   });
   await page.route("**://fonts.googleapis.com/**", async (route) => {
+    const family = /family=([^:&]+)/.exec(route.request().url())?.[1] ?? "Sample";
     await route.fulfill({
       status: 200,
       contentType: "text/css",
-      body: "@font-face{src:url(https://fonts.gstatic.com/s/x/v1/sample.ttf) format('truetype');}",
+      body: googleStylesheet(decodeURIComponent(family.replace(/\+/g, " "))),
     });
   });
   await page.route("**://fonts.gstatic.com/**", async (route) => {
-    await route.fulfill({ status: 200, contentType: "font/ttf", body: bytes });
+    const url = route.request().url();
+    fetched.push(url);
+    if (/\/latin\.woff2$/.test(url)) {
+      await route.fulfill({ status: 200, contentType: "font/woff2", body: bytes });
+    } else {
+      await route.fulfill({ status: 200, contentType: "font/woff2", body: "not the latin subset" });
+    }
   });
   await page.route("**://cdn.jsdelivr.net/**", async (route) => {
+    fetched.push(route.request().url());
     await route.fulfill({ status: 200, contentType: "font/ttf", body: bytes });
   });
+  return { fetched };
 }
 
 export async function openLibrary(page: Page): Promise<void> {
@@ -377,10 +435,13 @@ export function keptHalves(page: Page): Promise<string[]> {
         request.onerror = () => resolve([]);
         request.onsuccess = () => {
           const database = request.result;
+          // This tab's own record: each tab writes its session under an id
+          // it keeps in \`sessionStorage\`, which a reload keeps too.
+          const tab = sessionStorage.getItem("typeforge:tab");
           const get = database
             .transaction("session", "readonly")
             .objectStore("session")
-            .get("current");
+            .get(tab ? `tab:${tab}` : "current");
           get.onerror = () => {
             database.close();
             resolve([]);
@@ -418,10 +479,13 @@ export function keptGlyphs(page: Page): Promise<string[]> {
         request.onerror = () => resolve([]);
         request.onsuccess = () => {
           const database = request.result;
+          // This tab's own record: each tab writes its session under an id
+          // it keeps in \`sessionStorage\`, which a reload keeps too.
+          const tab = sessionStorage.getItem("typeforge:tab");
           const get = database
             .transaction("session", "readonly")
             .objectStore("session")
-            .get("current");
+            .get(tab ? `tab:${tab}` : "current");
           get.onerror = () => {
             database.close();
             resolve([]);
@@ -464,10 +528,13 @@ export function keptFonts(page: Page): Promise<Array<{ name: string; glyphs: num
         request.onerror = () => resolve([]);
         request.onsuccess = () => {
           const database = request.result;
+          // This tab's own record: each tab writes its session under an id
+          // it keeps in \`sessionStorage\`, which a reload keeps too.
+          const tab = sessionStorage.getItem("typeforge:tab");
           const get = database
             .transaction("session", "readonly")
             .objectStore("session")
-            .get("current");
+            .get(tab ? `tab:${tab}` : "current");
           get.onerror = () => {
             database.close();
             resolve([]);

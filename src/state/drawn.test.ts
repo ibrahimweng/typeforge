@@ -16,6 +16,7 @@ import {
   drawingChanged,
   drawingIs,
   drawingReadableBy,
+  drawingRedrawn,
   drawingSoFar,
   drawingToKeep,
   subscribeToDrawings,
@@ -36,6 +37,21 @@ describe("what the shell can see", () => {
     expect(drawingChanged()).toBe(before + 1);
     expect(drawingChanged()).toBe(before + 2);
     expect(drawingSoFar().count).toBe(before + 2);
+  });
+
+  /*
+   * A redraw moves the count, since the views draw again against it, and says
+   * which count it was -- which is how the saver knows not to write down the
+   * shaping library arriving as though it were an edit.
+   */
+  it("remembers which count was only a redraw, and keeps it past the next report", () => {
+    const at = drawingRedrawn();
+    expect(drawingSoFar().count).toBe(at);
+    expect(drawingSoFar().redrawn).toBe(at);
+    drawingIs({ ...FRESH, canUndo: true });
+    expect(drawingSoFar().redrawn).toBe(at);
+    expect(drawingChanged()).toBe(at + 1);
+    expect(drawingSoFar().redrawn).toBe(at);
   });
 
   it("keeps the count across a change to everything else", () => {

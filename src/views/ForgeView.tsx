@@ -45,6 +45,7 @@ import { forgeStore, useForge, type Phase } from "@/state/useForge";
 import { useLibrary } from "@/state/useLibrary";
 import { cn } from "@/cn";
 import { followPointer } from "@/components/follow-pointer";
+import { useNativeWheel, zoomAbout } from "./wheel";
 
 export function ForgeView(): React.JSX.Element {
   const state = useForge();
@@ -96,6 +97,14 @@ function Stage({
   const svgRef = React.useRef<SVGSVGElement>(null);
   const [held, setHeld] = React.useState<string | null>(null);
   const [view, setView] = React.useState({ zoom: 1, x: 0, y: 0 });
+  /*
+   * The wheel, bound natively so it can keep the page from zooming too (see
+   * `wheel.ts`). Bound up here, before the early return below, because it is
+   * a hook; the handler it calls needs the drawing's size, which is only
+   * known after that return, so it is handed over through a ref each render.
+   */
+  const onWheel = React.useRef<((event: WheelEvent) => void) | null>(null);
+  useNativeWheel(svgRef, (event) => onWheel.current?.(event));
   /*
    * The handle put there by pressing a spot, and what was said about it.
    *
@@ -213,20 +222,25 @@ function Stage({
    * the thing being examined is nowhere near the middle, and zooming about the
    * middle carries it off the edge of the screen.
    */
-  const wheel = (event: React.WheelEvent<SVGSVGElement>) => {
+  const wheel = (event: WheelEvent) => {
     const box = svgRef.current?.getBoundingClientRect();
     if (!box) return;
-    const zoom = Math.min(CLOSEST, Math.max(FURTHEST, view.zoom * Math.exp(-event.deltaY / 400)));
+    // Every wheel over the stage is the stage's: without this Ctrl-wheel and a
+    // trackpad pinch zoomed the whole page along with the letter.
+    event.preventDefault();
     const at = {
       x: (event.clientX - box.left) / box.width,
       y: (event.clientY - box.top) / box.height,
     };
-    setView((was) => ({
-      zoom,
-      x: was.x + width * (1 / was.zoom - 1 / zoom) * at.x,
-      y: was.y + height * (1 / was.zoom - 1 / zoom) * at.y,
-    }));
+    const deltaY = event.deltaY;
+    // The zoom and the pan are both worked from `was`, never from `view`,
+    // which is the render this handler was made in and is stale by the second
+    // tick of a fast scroll.
+    setView((was) =>
+      zoomAbout(was, deltaY, at, { width, height }, { closest: CLOSEST, furthest: FURTHEST }),
+    );
   };
+  onWheel.current = wheel;
 
   const startPan = (event: React.PointerEvent<SVGRectElement>) => {
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -341,7 +355,6 @@ function Stage({
         role="img"
         aria-label={`The letter ${letter}`}
         data-forge-stage={letter}
-        onWheel={wheel}
         onDoubleClick={probe}
       >
         {/* Somewhere to grab that is not the letter, for panning. */}

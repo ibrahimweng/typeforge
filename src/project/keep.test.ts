@@ -28,7 +28,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FORMAT, type Project } from "./format";
-import { SETTLE, askToPersist, forget, keep, keeper, kept } from "./keep";
+import { SETTLE, SLOTS, askToPersist, claimTab, forget, keep, keeper, kept } from "./keep";
 
 type Handler = (() => void) | null;
 
@@ -75,14 +75,8 @@ function browser(faults: Faults = {}, held = new Map<string, unknown>()) {
   const connections: { shut: boolean }[] = [];
   let stores = 0;
 
-  const objectStore = (queue: (settle: () => void) => void) => ({
-    put(value: unknown, key: string) {
-      held.set(key, value);
-    },
-    delete(key: string) {
-      held.delete(key);
-    },
-    get(key: string) {
+  const objectStore = (queue: (settle: () => void) => void) => {
+    const reading = (answer: () => unknown) => {
       const request: { result: unknown; onsuccess: Handler; onerror: Handler } = {
         result: undefined,
         onsuccess: null,
@@ -93,12 +87,50 @@ function browser(faults: Faults = {}, held = new Map<string, unknown>()) {
           request.onerror?.();
           return;
         }
-        request.result = held.get(key);
+        request.result = answer();
         request.onsuccess?.();
       });
       return request;
-    },
-  });
+    };
+    return {
+      put(value: unknown, key: string) {
+        held.set(key, value);
+      },
+      delete(key: string) {
+        held.delete(key);
+      },
+      clear() {
+        held.clear();
+      },
+      // Both in key order, as a browser gives them, which is what pairs them up.
+      getAllKeys() {
+        return reading(() => [...held.keys()].sort());
+      },
+      getAll() {
+        return reading(() =>
+          [...held.entries()]
+            .sort(([one], [other]) => (one < other ? -1 : one > other ? 1 : 0))
+            .map(([, value]) => value),
+        );
+      },
+      get(key: string) {
+        const request: { result: unknown; onsuccess: Handler; onerror: Handler } = {
+          result: undefined,
+          onsuccess: null,
+          onerror: null,
+        };
+        queue(() => {
+          if (faults.readFails) {
+            request.onerror?.();
+            return;
+          }
+          request.result = held.get(key);
+          request.onsuccess?.();
+        });
+        return request;
+      },
+    };
+  };
 
   // A connection per `open`, as a browser hands them out, so that closing one
   // of them can be told apart from closing the same one twice.
@@ -687,5 +719,185 @@ describe("asking to keep the storage", () => {
       },
     });
     await expect(askToPersist()).resolves.toBeNull();
+  });
+});
+
+/**
+ * Two tabs, one database.
+ *
+ * Every tab wrote the same record, and wrote it every time it was hidden
+ * whether or not anything had happened in it -- so with two fonts open in two
+ * tabs, the one that came back next visit was the one looked away from last.
+ * Each tab now has a record of its own, writes it only when it has something
+ * new, and a visit picks up its own record or else the newest.
+ */
+describe("more than one tab", () => {
+  const at = (iso: string, fileName: string) =>
+    session({ saved: iso, edits: [{ font: "AAA", fileName }] } as unknown as Partial<Project>);
+
+  it("gives each tab its own record, so neither overwrites the other", async () => {
+    const fake = running();
+    await keep(at("2026-01-01T00:00:00.000Z", "One.ttf"), "one");
+    await keep(at("2026-01-02T00:00:00.000Z", "Two.ttf"), "two");
+    expect([...fake.held.keys()].sort()).toEqual(["tab:one", "tab:two"]);
+  });
+
+  it("puts a tab's own record back on a reload, and the newest in a new tab", async () => {
+    running();
+    await keep(at("2026-01-01T00:00:00.000Z", "One.ttf"), "one");
+    await keep(at("2026-01-02T00:00:00.000Z", "Two.ttf"), "two");
+    expect((await kept("one"))!.edits?.[0].fileName).toBe("One.ttf");
+    expect((await kept("three"))!.edits?.[0].fileName).toBe("Two.ttf");
+    expect((await kept())!.edits?.[0].fileName).toBe("Two.ttf");
+  });
+
+  it("still reads the record every tab used to share, until something newer is kept", async () => {
+    const held = new Map<string, unknown>([["current", at("2026-01-01T00:00:00.000Z", "Old.ttf")]]);
+    running({}, held);
+    expect((await kept("fresh"))!.edits?.[0].fileName).toBe("Old.ttf");
+    await keep(at("2026-01-03T00:00:00.000Z", "New.ttf"), "fresh");
+    expect((await kept("another"))!.edits?.[0].fileName).toBe("New.ttf");
+  });
+
+  it("steps over a record that will not read for the next newest", async () => {
+    const held = new Map<string, unknown>([
+      ["tab:good", at("2026-01-01T00:00:00.000Z", "Good.ttf")],
+      ["tab:bad", { typeforge: 0, saved: "2026-01-05T00:00:00.000Z" }],
+    ]);
+    running({}, held);
+    expect((await kept("new"))!.edits?.[0].fileName).toBe("Good.ttf");
+  });
+
+  it("trims the oldest records past the limit, never the visiting tab's", async () => {
+    const fake = running();
+    await keep(at("2020-01-01T00:00:00.000Z", "Mine.ttf"), "mine");
+    for (let day = 1; day <= SLOTS + 2; day += 1) {
+      const date = `2026-01-${String(day).padStart(2, "0")}T00:00:00.000Z`;
+      await keep(at(date, `Tab${day}.ttf`), `t${day}`);
+    }
+    await kept("mine");
+    expect(fake.held.size).toBe(SLOTS);
+    expect(fake.held.has("tab:mine")).toBe(true);
+    expect(fake.held.has(`tab:t${SLOTS + 2}`)).toBe(true);
+    expect(fake.held.has("tab:t1")).toBe(false);
+  });
+
+  it("throws every tab's record away when asked to start again", async () => {
+    const fake = running();
+    await keep(session(), "one");
+    await keep(session());
+    await forget();
+    expect(fake.held.size).toBe(0);
+  });
+
+  it("writes to the tab it was given", async () => {
+    const fake = running();
+    const write = keeper(100, undefined, Promise.resolve("mine"));
+    await write.now(() => session());
+    expect([...fake.held.keys()]).toEqual(["tab:mine"]);
+  });
+
+  /*
+   * Hiding the tab flushes, and a flush with nothing new to say says nothing.
+   * This is what used to make glancing at an old tab on the way out an edit.
+   */
+  it("flushes only when something has changed since the last write", async () => {
+    vi.useFakeTimers();
+    running();
+    const write = keeper(100, undefined, "mine");
+    let made = 0;
+    const make = () => {
+      made += 1;
+      return session();
+    };
+
+    expect(await write.flush(make)).toBe(false);
+    expect(made).toBe(0);
+
+    write.soon(make);
+    expect(await write.flush(make)).toBe(true);
+    expect(made).toBe(1);
+
+    // Written, so there is nothing more to write -- and the settle that was
+    // waiting went with the flush.
+    expect(await write.flush(make)).toBe(false);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(made).toBe(1);
+  });
+
+  it("flushes again after a write that did not go", async () => {
+    running({ writing: "abort" });
+    const write = keeper(100, undefined, "mine");
+    write.soon(() => session());
+    expect(await write.flush(() => session())).toBe(false);
+    vi.unstubAllGlobals();
+    running();
+    expect(await write.flush(() => session())).toBe(true);
+  });
+});
+
+describe("knowing which tab this is", () => {
+  const storage = (start: Record<string, string> = {}) => {
+    const items = new Map(Object.entries(start));
+    return {
+      items,
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => void items.set(key, value),
+    };
+  };
+
+  it("keeps the id it had across a reload", async () => {
+    const kept = storage({ "typeforge:tab": "abc" });
+    vi.stubGlobal("sessionStorage", kept);
+    vi.stubGlobal("navigator", {});
+    expect(await claimTab()).toBe("abc");
+  });
+
+  it("makes one up, and remembers it, in a new tab", async () => {
+    const kept = storage();
+    vi.stubGlobal("sessionStorage", kept);
+    vi.stubGlobal("navigator", {});
+    const id = await claimTab();
+    expect(id.length).toBeGreaterThan(0);
+    expect(kept.items.get("typeforge:tab")).toBe(id);
+  });
+
+  /*
+   * "Duplicate tab" copies `sessionStorage`, so the copy arrives believing it
+   * is the original. The lock the original holds is how it finds out.
+   */
+  it("takes a new id when another live tab already holds this one", async () => {
+    const taken = new Set<string>(["typeforge:tab:abc"]);
+    vi.stubGlobal("sessionStorage", storage({ "typeforge:tab": "abc" }));
+    vi.stubGlobal("navigator", {
+      locks: {
+        request: (
+          name: string,
+          _options: unknown,
+          callback: (lock: object | null) => unknown,
+        ): Promise<unknown> => {
+          if (taken.has(name)) return Promise.resolve(callback(null));
+          taken.add(name);
+          void callback({ name });
+          return new Promise(() => {});
+        },
+      },
+    });
+    const id = await claimTab();
+    expect(id).not.toBe("abc");
+    expect(taken.has(`typeforge:tab:${id}`)).toBe(true);
+  });
+
+  it("gets by without sessionStorage at all", async () => {
+    vi.stubGlobal("sessionStorage", {
+      getItem: () => {
+        throw new Error("denied");
+      },
+      setItem: () => {
+        throw new Error("denied");
+      },
+    });
+    vi.stubGlobal("navigator", {});
+    expect((await claimTab()).length).toBeGreaterThan(0);
   });
 });

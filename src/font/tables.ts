@@ -146,10 +146,43 @@ export function buildHmtx(metrics: Array<{ advanceWidth: number; leftSideBearing
  * consumer reads. A format 12 subtable is added only when the font actually has
  * codepoints above U+FFFF, since format 4 cannot reach them.
  */
-export function buildCmap(mappings: Array<{ codepoint: number; glyphId: number }>): Uint8Array {
-  const sorted = [...mappings]
-    .filter((entry) => entry.codepoint >= 0 && entry.codepoint <= 0x10ffff)
-    .sort((a, b) => a.codepoint - b.codepoint);
+export function buildCmap(
+  mappings: Array<{ codepoint: number; glyphId: number }>,
+  /**
+   * Variation sequences to write as a format 14 subtable, already in this
+   * font's glyph ids. See `readVariationSequences`.
+   */
+  sequences: VariationSelector[] = [],
+): Uint8Array {
+  /*
+   * One glyph per character, and the first one listed gets it.
+   *
+   * Two glyphs claiming the same codepoint is something the editor tries to
+   * stop (`claimedBy` in `library.ts`) and cannot always: an imported font can
+   * arrive that way, and a letter pasted or duplicated in can land on a
+   * character that is already taken. Written through as it was, the codepoint
+   * came out twice in a row. Format 4 then has a segment ending where the next
+   * one starts, and the endCodes are required to strictly increase, because a
+   * reader finds a character by binary search over them; format 12 has two
+   * groups covering the same character, which the specification forbids for
+   * the same reason. fontTools refuses the one and shapers answer the other
+   * with whichever group the search happens to land on.
+   *
+   * The first rather than the last because the list arrives in glyph order,
+   * which is the order a font menu, the glyph grid and every earlier export
+   * have shown them in, so the glyph that already answered to the character
+   * keeps it. Decided before the sort rather than after it so that the answer
+   * does not depend on how the sort treats ties.
+   */
+  const claimed = new Set<number>();
+  const unique: Array<{ codepoint: number; glyphId: number }> = [];
+  for (const entry of mappings) {
+    if (entry.codepoint < 0 || entry.codepoint > 0x10ffff) continue;
+    if (claimed.has(entry.codepoint)) continue;
+    claimed.add(entry.codepoint);
+    unique.push(entry);
+  }
+  const sorted = unique.sort((a, b) => a.codepoint - b.codepoint);
 
   const bmp = sorted.filter((entry) => entry.codepoint <= 0xffff);
   const needsFormat12 = sorted.some((entry) => entry.codepoint > 0xffff);
@@ -160,6 +193,14 @@ export function buildCmap(mappings: Array<{ codepoint: number; glyphId: number }
   ];
   if (needsFormat12) {
     subtables.push({ platformId: 3, encodingId: 10, data: buildCmapFormat12(sorted) });
+  }
+  const withSequences = sequences.filter(
+    (one) => one.defaults.length > 0 || one.mappings.length > 0,
+  );
+  if (withSequences.length > 0) {
+    // Unicode platform, encoding 5, which is the only place format 14 lives --
+    // and first in the list, which is sorted by platform and then encoding.
+    subtables.unshift({ platformId: 0, encodingId: 5, data: buildCmapFormat14(withSequences) });
   }
 
   const writer = new ByteWriter();
@@ -366,6 +407,34 @@ export function buildName(
    */
   invented: Array<{ id: number; value: string }> = [],
 ): Uint8Array {
+  const entries = [...nameValues(meta), ...invented]
+    .filter((entry) => entry.value.length > 0)
+    // In order of id, which the format requires of the records and which the
+    // list above is only in by luck once anything is added to it.
+    .sort((one, other) => one.id - other.id);
+
+  // Windows platform, Unicode BMP encoding, US English: the combination every
+  // system reads.
+  return writeNameRecords(
+    entries.map((entry) => ({
+      platformId: 3,
+      encodingId: 1,
+      languageId: 0x0409,
+      nameId: entry.id,
+      bytes: encodeUtf16Be(entry.value),
+    })),
+  );
+}
+
+/**
+ * Every name id this application writes, with what it writes there.
+ *
+ * Empty strings included, because the caller that patches an existing table
+ * needs to know that an id is ours to say even when what we say is nothing:
+ * a family renamed from "Inter Display" to plain "Inter" has no typographic
+ * family any more, and the old one has to come out rather than be left behind.
+ */
+export function nameValues(meta: FontMeta): Array<{ id: number; value: string }> {
   const named = familyNames(meta);
   const fullName = `${meta.familyName} ${meta.styleName}`.trim();
   const postScriptName = sanitisePostScriptName(`${meta.familyName}-${meta.styleName}`);
@@ -383,33 +452,157 @@ export function buildName(
     typographicFamily: named.typographicFamily,
     typographicStyle: named.typographicStyle,
   };
+  return NAME_IDS.map(([id, key]) => ({ id, value: values[key] ?? "" }));
+}
 
-  const entries = [...NAME_IDS.map(([id, key]) => ({ id, value: values[key] ?? "" })), ...invented]
-    .filter((entry) => entry.value.length > 0)
-    // In order of id, which the format requires of the records and which the
-    // list above is only in by luck once anything is added to it.
-    .sort((one, other) => one.id - other.id);
+/**
+ * Which name ids each field of the metadata is written into.
+ *
+ * The family and the style between them decide six: the old pair, the full
+ * name, the PostScript name and the typographic pair, since `familyNames`
+ * moves a SemiBold between the old pair and the new one depending on both.
+ */
+const NAME_IDS_OF: Record<keyof FontMeta, number[]> = {
+  familyName: [1, 2, 4, 6, 16, 17],
+  styleName: [1, 2, 4, 6, 16, 17],
+  version: [5],
+  copyright: [0],
+  manufacturer: [8],
+  designer: [9],
+  license: [13],
+  weightClass: [],
+};
 
-  // Windows platform, Unicode BMP encoding, US English: the combination every
-  // system reads.
-  const strings = entries.map((entry) => encodeUtf16Be(entry.value));
+/**
+ * The name ids that have to be rewritten because the metadata changed.
+ *
+ * Compared field by field against what the file said, so that correcting the
+ * designer's name rewrites name id 9 and leaves the family exactly as the
+ * type designer wrote it -- typographic names, Macintosh records, localised
+ * names and all -- rather than replacing everything with the handful of
+ * records this application knows how to write.
+ */
+export function changedNameIds(before: FontMeta, after: FontMeta): Set<number> {
+  const ids = new Set<number>();
+  for (const key of Object.keys(NAME_IDS_OF) as Array<keyof FontMeta>) {
+    if (before[key] !== after[key]) for (const id of NAME_IDS_OF[key]) ids.add(id);
+  }
+  return ids;
+}
+
+interface NameRecord {
+  platformId: number;
+  encodingId: number;
+  languageId: number;
+  nameId: number;
+  bytes: Uint8Array;
+}
+
+function writeNameRecords(records: NameRecord[]): Uint8Array {
   const writer = new ByteWriter();
   writer.uint16(0); // format
-  writer.uint16(entries.length);
-  writer.uint16(6 + entries.length * 12); // offset to the string storage
+  writer.uint16(records.length);
+  writer.uint16(6 + records.length * 12); // offset to the string storage
 
   let stringOffset = 0;
-  entries.forEach((entry, index) => {
-    writer.uint16(3); // platformID: Windows
-    writer.uint16(1); // encodingID: Unicode BMP
-    writer.uint16(0x0409); // languageID: en-US
-    writer.uint16(entry.id);
-    writer.uint16(strings[index].length);
+  for (const record of records) {
+    writer.uint16(record.platformId);
+    writer.uint16(record.encodingId);
+    writer.uint16(record.languageId);
+    writer.uint16(record.nameId);
+    writer.uint16(record.bytes.length);
     writer.uint16(stringOffset);
-    stringOffset += strings[index].length;
-  });
-  for (const string of strings) writer.bytesFrom(string);
+    stringOffset += record.bytes.length;
+  }
+  for (const record of records) writer.bytesFrom(record.bytes);
   return writer.toUint8Array();
+}
+
+/**
+ * An imported font's `name` table with some of its names replaced.
+ *
+ * A preserving export used to hand the file's own table back untouched, so a
+ * family renamed on screen went out under its old name: a font menu would list
+ * the edited font beside the original under one name, and the operating system
+ * would take one for the other. Rebuilding the table from scratch is no better
+ * the other way round, because it holds far more than this application models
+ * -- the unique id, the trademark, the URLs, sample text, names in other
+ * languages, and the names of a varying font's axes and instances that `fvar`
+ * and `STAT` point at by number.
+ *
+ * So every record for an id in `replace` goes, on every platform and in every
+ * language, because a Macintosh record still holding the old family is a
+ * second answer to the same question. The new value goes in once, as the
+ * Windows English record every system reads, and only if it is not empty.
+ * Everything else is copied as it was. Records that name their language by tag
+ * rather than by number (format 1) are dropped with the tags, since this writes
+ * format 0; they are rare, and the Windows English record says the same thing.
+ */
+export function patchName(
+  source: Uint8Array,
+  replace: ReadonlySet<number>,
+  values: Array<{ id: number; value: string }>,
+): Uint8Array {
+  const kept: NameRecord[] = [];
+  try {
+    const view = new DataView(source.buffer, source.byteOffset, source.byteLength);
+    const count = view.getUint16(2);
+    const storage = view.getUint16(4);
+    for (let index = 0; index < count; index++) {
+      const at = 6 + index * 12;
+      const record = {
+        platformId: view.getUint16(at),
+        encodingId: view.getUint16(at + 2),
+        languageId: view.getUint16(at + 4),
+        nameId: view.getUint16(at + 6),
+      };
+      if (replace.has(record.nameId) || record.languageId >= 0x8000) continue;
+      const length = view.getUint16(at + 8);
+      const start = storage + view.getUint16(at + 10);
+      if (start + length > source.length) continue;
+      kept.push({ ...record, bytes: source.slice(start, start + length) });
+    }
+  } catch {
+    // A table too damaged to walk keeps nothing, and the names below stand
+    // on their own.
+  }
+
+  for (const { id, value } of values) {
+    if (!replace.has(id) || value.length === 0) continue;
+    kept.push({
+      platformId: 3,
+      encodingId: 1,
+      languageId: 0x0409,
+      nameId: id,
+      bytes: encodeUtf16Be(value),
+    });
+  }
+
+  // In the order the format requires: platform, encoding, language, then id.
+  kept.sort(
+    (one, other) =>
+      one.platformId - other.platformId ||
+      one.encodingId - other.encodingId ||
+      one.languageId - other.languageId ||
+      one.nameId - other.nameId,
+  );
+  return writeNameRecords(kept);
+}
+
+/**
+ * The number in a version string, for `head.fontRevision`.
+ *
+ * The version is kept as the name table writes it, which is "Version 2.001"
+ * as often as it is "2.001", and `parseFloat` reads the first of those as not
+ * a number at all -- so every imported font went out claiming revision 1.0,
+ * which is the field installers compare to decide whether a font is newer
+ * than the one already installed. The first number in the string is the
+ * revision whichever way it is written; a string with none in it is 1.0.
+ */
+export function fontRevisionOf(version: string): number {
+  const found = /(\d+(?:\.\d+)?)/.exec(version);
+  const value = found ? Number.parseFloat(found[1]) : Number.NaN;
+  return Number.isFinite(value) ? value : 1;
 }
 
 function encodeUtf16Be(value: string): Uint8Array {
@@ -549,5 +742,148 @@ export function buildOs2(input: Os2Input): Uint8Array {
   writer.uint16(0); // usDefaultChar
   writer.uint16(32); // usBreakChar: space
   writer.uint16(2); // usMaxContext
+  return writer.toUint8Array();
+}
+
+/**
+ * A new `post` for an imported font whose glyphs have changed.
+ *
+ * The names are this font's, because a `post` table lists them against glyph
+ * ids and the file's own list describes the glyph order it arrived with: after
+ * a letter is removed every name past it belongs to its neighbour, and after
+ * one is added the list is a name short, which fontTools reports and some
+ * readers refuse. The rest -- the italic angle, where the underline goes and
+ * how thick it is, whether the face is monospaced -- is the file's own, carried
+ * across from its table rather than replaced with defaults, since nothing that
+ * happened to the glyph set changed any of it.
+ */
+export function rebuildPost(
+  source: Uint8Array | undefined,
+  italicAngle: number,
+  unitsPerEm: number,
+  glyphNames: string[],
+): Uint8Array {
+  const post = buildPost(italicAngle, unitsPerEm, glyphNames);
+  // italicAngle, underlinePosition, underlineThickness and isFixedPitch, which
+  // sit between the version and the memory hints in every version of the table.
+  if (source && source.length >= 16) post.set(source.subarray(4, 16), 4);
+  return post;
+}
+
+/**
+ * One variation selector's sequences, from a `cmap` format 14 subtable.
+ *
+ * A variation sequence is a character followed by a selector -- U+845B U+E0100
+ * for the one form of a kanji a Japanese place name needs, U+2764 U+FE0F for
+ * the heart drawn as an emoji rather than as text. `defaults` are the ranges of
+ * base characters for which the sequence means the glyph the character already
+ * maps to, so they name no glyph; `mappings` are the ones that mean a glyph of
+ * their own, named by id.
+ */
+export interface VariationSelector {
+  selector: number;
+  /** Ranges of base characters, as a first character and how many follow it. */
+  defaults: Array<[number, number]>;
+  mappings: Array<{ codepoint: number; glyphId: number }>;
+}
+
+/**
+ * The variation sequences in an existing `cmap`, if it has any.
+ *
+ * Read so that a `cmap` rebuilt for a preserving export can carry them: the
+ * rest of the table is written from the document, which does not model these,
+ * and dropping them loses every alternate form the font offered through them.
+ * A table with none, or one too damaged to read, gives an empty list.
+ */
+export function readVariationSequences(cmap: Uint8Array): VariationSelector[] {
+  try {
+    const view = new DataView(cmap.buffer, cmap.byteOffset, cmap.byteLength);
+    const count = view.getUint16(2);
+    for (let index = 0; index < count; index++) {
+      const record = 4 + index * 8;
+      const at = view.getUint32(record + 4);
+      if (view.getUint16(record) !== 0 || view.getUint16(record + 2) !== 5) continue;
+      if (view.getUint16(at) !== 14) continue;
+      const uint24 = (offset: number) =>
+        (view.getUint8(offset) << 16) |
+        (view.getUint8(offset + 1) << 8) |
+        view.getUint8(offset + 2);
+      const selectors: VariationSelector[] = [];
+      const selectorCount = view.getUint32(at + 6);
+      for (let slot = 0; slot < selectorCount; slot++) {
+        const entry = at + 10 + slot * 11;
+        const defaultsAt = view.getUint32(entry + 3);
+        const mappingsAt = view.getUint32(entry + 7);
+        const selector: VariationSelector = { selector: uint24(entry), defaults: [], mappings: [] };
+        if (defaultsAt !== 0) {
+          const ranges = view.getUint32(at + defaultsAt);
+          for (let one = 0; one < ranges; one++) {
+            const range = at + defaultsAt + 4 + one * 4;
+            selector.defaults.push([uint24(range), view.getUint8(range + 3)]);
+          }
+        }
+        if (mappingsAt !== 0) {
+          const mappings = view.getUint32(at + mappingsAt);
+          for (let one = 0; one < mappings; one++) {
+            const mapping = at + mappingsAt + 4 + one * 5;
+            selector.mappings.push({
+              codepoint: uint24(mapping),
+              glyphId: view.getUint16(mapping + 3),
+            });
+          }
+        }
+        selectors.push(selector);
+      }
+      return selectors;
+    }
+  } catch {
+    // Nothing worth keeping from a table that cannot be walked.
+  }
+  return [];
+}
+
+function buildCmapFormat14(selectors: VariationSelector[]): Uint8Array {
+  const sorted = [...selectors].sort((one, other) => one.selector - other.selector);
+  const uint24 = (writer: ByteWriter, value: number) =>
+    writer
+      .uint8(value >> 16)
+      .uint8(value >> 8)
+      .uint8(value);
+
+  const header = 10 + sorted.length * 11;
+  let cursor = header;
+  const offsets = sorted.map((one) => {
+    const defaults = one.defaults.length > 0 ? cursor : 0;
+    cursor += one.defaults.length > 0 ? 4 + one.defaults.length * 4 : 0;
+    const mappings = one.mappings.length > 0 ? cursor : 0;
+    cursor += one.mappings.length > 0 ? 4 + one.mappings.length * 5 : 0;
+    return { defaults, mappings };
+  });
+
+  const writer = new ByteWriter();
+  writer.uint16(14);
+  writer.uint32(cursor);
+  writer.uint32(sorted.length);
+  sorted.forEach((one, index) => {
+    uint24(writer, one.selector);
+    writer.uint32(offsets[index].defaults);
+    writer.uint32(offsets[index].mappings);
+  });
+  for (const one of sorted) {
+    if (one.defaults.length > 0) {
+      writer.uint32(one.defaults.length);
+      for (const [start, more] of [...one.defaults].sort((a, b) => a[0] - b[0])) {
+        uint24(writer, start);
+        writer.uint8(more);
+      }
+    }
+    if (one.mappings.length > 0) {
+      writer.uint32(one.mappings.length);
+      for (const mapping of [...one.mappings].sort((a, b) => a.codepoint - b.codepoint)) {
+        uint24(writer, mapping.codepoint);
+        writer.uint16(mapping.glyphId);
+      }
+    }
+  }
   return writer.toUint8Array();
 }
