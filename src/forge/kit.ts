@@ -21,6 +21,7 @@
  * tiles were never the ink. They are where the ink runs.
  */
 
+import { wrapAngle } from "./angles";
 import { contourArea, contoursBounds, type Bounds } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { alongSpine, spineLength } from "./shapes";
@@ -473,9 +474,7 @@ function bend(from: Vec2, corner: Vec2, to: Vec2, radius: number, penHalf: numbe
   const away = fits / Math.sin(halfTurn);
   const centre = { x: corner.x + bisector.x * away, y: corner.y + bisector.y * away };
   const startAngle = Math.atan2(touchOne.y - centre.y, touchOne.x - centre.x);
-  let turn = Math.atan2(touchOther.y - centre.y, touchOther.x - centre.x) - startAngle;
-  while (turn > Math.PI) turn -= Math.PI * 2;
-  while (turn < -Math.PI) turn += Math.PI * 2;
+  const turn = wrapAngle(Math.atan2(touchOther.y - centre.y, touchOther.x - centre.x) - startAngle);
 
   return {
     segments: [

@@ -1,8 +1,9 @@
 /**
  * The keys this view answers, which are the ones about a letter.
  *
- * Nudging a selection, deleting points, closing an outline, copying a drawing
- * from one letter into another, and undo.
+ * Nudging a selection, deleting points, closing an outline, and copying a
+ * drawing from one letter into another. Undo is the application's, in
+ * `keys/useAppKeys.ts`, because it is the same key in every view.
  *
  * Listened for on the window, and answered only when the canvas has the focus
  * or nothing does. The listener is on the window because a key pressed at a
@@ -97,18 +98,19 @@ export function useGlyphKeys(within: {
    */
   const { redraw, refreshPhase } = gesture;
 
-  // Keyboard: nudge the selection, delete points, undo and redo.
+  // Keyboard: nudge the selection, delete points, close outlines.
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!glyph) return;
       if (!meantForTheCanvas(canvas.current)) return;
 
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
-        event.preventDefault();
-        if (event.shiftKey) store.redo();
-        else store.undo();
-        return;
-      }
+      /*
+       * Undo and redo are not here any more. They were, and so answered only
+       * in this view and only with the canvas focused, while every menu said
+       * Cmd-Z worked everywhere. They are answered once, for the whole
+       * application, in `keys/useAppKeys.ts` -- and answering them here as
+       * well would take two steps back for every press.
+       */
       /*
        * Carrying a drawing from one letter to another, on the keys everything
        * else uses for it. Before these two there was no way at all: an `m`

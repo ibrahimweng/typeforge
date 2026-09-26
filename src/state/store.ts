@@ -15,7 +15,13 @@
  * the class says how the parts fit together.
  */
 
-import { applyEdits, fromBase64, type EditedProject, type SavedMaster } from "@/project/format";
+import {
+  applyEdits,
+  fromBase64,
+  fromSavedUfo,
+  type EditedProject,
+  type SavedMaster,
+} from "@/project/format";
 import { blankDocument } from "./documents";
 /*
  * Renamed on the way in, because the store's own methods are called the same
@@ -61,7 +67,7 @@ import sampleFontUrl from "@/assets/typeforge-sample.ttf?url";
  * needs them: a UFO arrives because somebody chose a folder. The type stays a
  * plain type import, which is erased and costs nothing.
  */
-import type { UfoFiles } from "@/ufo/font";
+import type { UfoCarried, UfoFiles } from "@/ufo/font";
 
 /** What the sample is called once it is open, as any other file would be. */
 const SAMPLE_FILE_NAME = "TypeforgeSample-Regular.ttf";
@@ -119,7 +125,7 @@ class Store extends ShapingStore {
    * happening for no reason at all.
    */
   adopt(typeface: Typeface, fileName: string): void {
-    this.forgetLoan();
+    this.returnLoan();
     /*
      * A font arriving joins the ones already open rather than landing on top
      * of the one in front.
@@ -431,8 +437,12 @@ class Store extends ShapingStore {
     fileName: string;
     masters?: SavedMaster[];
     drawing?: string;
+    ufo?: UfoCarried | null;
   }> {
-    return this.everyDocument().flatMap((part) => {
+    // What each font carried from its UFO, in the same order, so a session
+    // reopened and exported gives back the folder rather than the drawings.
+    const carried = this.everyUfo();
+    return this.everyDocument().flatMap((part, at) => {
       /*
        * The first weight is what gets written as the font, not whichever one
        * was on screen when the timer went off.
@@ -449,6 +459,7 @@ class Store extends ShapingStore {
           typeface,
           fileName: part.fileName,
           drawing: part.master,
+          ufo: carried[at],
           masters: part.masters.map((one) => ({
             id: one.id,
             name: one.name,
@@ -495,12 +506,37 @@ class Store extends ShapingStore {
      * room for a session that never arrived.
      */
     const bytes = saved.map((one) => (one.font === undefined ? null : fromBase64(one.font)));
+    /*
+     * A borrowed letter is let go of rather than handed back, because the
+     * whole session is being replaced and the document in the drawer is part
+     * of the one going. Handed back, it would be put back on the desk by the
+     * first font below to open, beside a session that never had it.
+     */
+    this.forgetLoan();
     this.closeEveryDocument();
-    for (const [at, one] of saved.entries()) await this.restoreOne(one, bytes[at]);
-    this.goToDocument(Math.min(Math.max(Math.trunc(front), 0), saved.length - 1));
+    /*
+     * Which saved font landed in which tab, because a font whose file can no
+     * longer be read does not get one -- and every tab after it is then one
+     * place further left than the document says.
+     */
+    const landed: number[] = [];
+    const failed: string[] = [];
+    for (const [at, one] of saved.entries()) {
+      if (await this.restoreOne(one, bytes[at])) landed.push(at);
+      else failed.push(one.fileName || one.meta?.familyName || "a font");
+    }
+    const wanted = Math.min(Math.max(Math.trunc(front), 0), saved.length - 1);
+    // The one asked for, or the nearest before it that did open.
+    let tab = landed.length - 1;
+    while (tab > 0 && landed[tab] > wanted) tab -= 1;
+    this.goToDocument(Math.max(tab, 0));
+    if (failed.length > 0) {
+      this.say(`${failed.join(", ")} could not be reopened: the file would not read.`, "error");
+    }
   }
 
-  private async restoreOne(saved: EditedProject, bytes: Uint8Array | null): Promise<void> {
+  /** Put one saved font back, and say whether it came back. */
+  private async restoreOne(saved: EditedProject, bytes: Uint8Array | null): Promise<boolean> {
     /*
      * A file to lay the letters back over, or a clean sheet to lay the whole
      * font onto.
@@ -511,10 +547,25 @@ class Store extends ShapingStore {
      * appends what it does not find, so on an empty sheet every letter is
      * something it does not find and the font arrives whole.
      */
-    if (bytes) await this.loadFont(bytes, saved.fileName);
-    else this.startBlankFor(saved);
+    /*
+     * A file that no longer reads is the end of this one.
+     *
+     * `loadFont` says so in the status line and leaves the desk as it was --
+     * which, for every font after the first, is the font restored before this
+     * one. Carrying on regardless laid this font's letters, names and kerning
+     * over that one: two fonts reopened as one, the first quietly overwritten
+     * by the second.
+     */
+    if (bytes) {
+      if (!(await this.loadFont(bytes, saved.fileName))) return false;
+    } else {
+      this.startBlankFor(saved);
+      // A font that came from a UFO has no bytes behind it but does have what
+      // the folder carried, and the folder is what an export gives back.
+      this.ufo = saved.ufo ? fromSavedUfo(saved.ufo) : null;
+    }
     const { typeface } = this.state;
-    if (!typeface) return;
+    if (!typeface) return false;
     applyEdits(typeface, saved);
     /*
      * And the weights, after the letters, because every one of them is built by
@@ -535,13 +586,23 @@ class Store extends ShapingStore {
       },
     });
     this.touch();
+    return true;
   }
 
-  async loadFont(bytes: Uint8Array, fileName: string): Promise<void> {
-    this.forgetLoan();
+  /**
+   * Open a font file, and say whether it opened.
+   *
+   * The answer is for `restoreOne`, which has to know. Everything else goes on
+   * reading the status line, which is where a person finds out.
+   */
+  async loadFont(bytes: Uint8Array, fileName: string): Promise<boolean> {
     this.set({ busy: true, status: { message: `Reading ${fileName}…`, tone: "info" } });
     try {
       const { typeface, warnings } = await importFont(bytes, fileName);
+      // A borrowed letter's drawer is emptied back onto the desk before the
+      // desk is tabbed, for the reason `returnLoan` gives. After the parse, so
+      // a file that does not open leaves the loan exactly where it was.
+      this.returnLoan();
       /*
        * After the parse rather than before it, which is the whole reason this
        * is not the first line of the method. A font that turns out to be
@@ -591,6 +652,7 @@ class Store extends ShapingStore {
         },
       });
       this.touch();
+      return true;
     } catch (error) {
       this.set({
         busy: false,
@@ -599,6 +661,7 @@ class Store extends ShapingStore {
           tone: "error",
         },
       });
+      return false;
     }
   }
 
@@ -627,7 +690,11 @@ class Store extends ShapingStore {
       if (typeface.glyphs.length === 0) {
         throw new Error("That UFO has no glyphs in it.");
       }
-      // After the read, for the reason `loadFont` gives above.
+      // After the read, for the reason `loadFont` gives above -- the loan
+      // included, which this door used to leave standing, so the letter's
+      // one-glyph desk was what went into a tab and the real document stayed
+      // in a drawer for a later `dropLoan` to put back over the UFO.
+      this.returnLoan();
       this.makeRoom();
       this.controlBaseline = readControls(typeface);
       this.ufo = carried;
@@ -727,7 +794,7 @@ class Store extends ShapingStore {
   }
 
   startBlank(): void {
-    this.forgetLoan();
+    this.returnLoan();
     /*
      * A new font joins the ones already open, for the reason an opened one
      * does: these are the two doors into the same room, and one of them
@@ -893,6 +960,26 @@ class Store extends ShapingStore {
   private forgetLoan(): void {
     this.held = null;
     if (this.state.loan) this.set({ loan: null });
+  }
+
+  /**
+   * End a loan because another font is arriving, with the real document put
+   * back first so it is what goes into a tab.
+   *
+   * What `adopt`, `loadFont`, `loadUfo` and `startBlank` used to do was
+   * `forgetLoan`: empty the drawer and let `makeRoom` tab whatever was on the
+   * desk. What was on the desk was the loan -- one borrowed letter in a
+   * typeface of its own -- so the font somebody had open went nowhere at all,
+   * and the tab it should have been in held an `n`. Those four doors join the
+   * fonts already open rather than replacing them, so the font in the drawer
+   * is one of those, and it goes back where it was before the new one comes.
+   *
+   * The borrowed letter is let go of, as it always was: nothing was kept, so
+   * Draw still has the letter exactly as it lent it.
+   */
+  private returnLoan(): void {
+    if (this.held) this.dropLoan();
+    else if (this.state.loan) this.set({ loan: null });
   }
 
   /** End the loan and put back what was on the desk, keeping nothing. */

@@ -44,6 +44,7 @@ import { segment, tile } from "@/components/controls";
 import { forgeStore, useForge, type Phase } from "@/state/useForge";
 import { useLibrary } from "@/state/useLibrary";
 import { cn } from "@/cn";
+import { followPointer } from "@/components/follow-pointer";
 
 export function ForgeView(): React.JSX.Element {
   const state = useForge();
@@ -242,12 +243,8 @@ function Stage({
         y: from.view.y + (pointer.clientY - from.pointer.y) * perPixel,
       });
     };
-    const done = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", done);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", done);
+    // Up or cancelled, a pan is over either way and there is nothing to undo.
+    followPointer({ move, end: () => {} });
   };
 
   /** Where a pointer is, in the units the letter is drawn in. */
@@ -316,15 +313,19 @@ function Stage({
             -(pointer.clientY - from.y) * perPixel;
       apply(handle, valueAfter(handle, moved), "during");
     };
-    const done = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", done);
-      // Close the run, or the next edit would fold into this drag.
-      forgeStore.endGesture();
-      setHeld(null);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", done);
+    followPointer({
+      move,
+      /*
+       * Closed the same way whether the pointer came up or was cancelled.
+       * What the drag moved has already been applied as it went, so a cancel
+       * leaves it where it got to -- one undo takes it back -- and the gesture
+       * has to be closed either way, or the next edit would fold into this one.
+       */
+      end: () => {
+        forgeStore.endGesture();
+        setHeld(null);
+      },
+    });
   };
 
   const left = -metrics.unitsPerEm * 0.06 + view.x;

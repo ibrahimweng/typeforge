@@ -19,12 +19,14 @@ import * as React from "react";
  */
 const MOST_ROWS = 400;
 
-import { tweenNumber } from "@/anim/motion";
 import { drawGlyph, prepareCanvas, readToken, type GlyphView } from "@/components/glyph-render";
 import { resolveAdvanceWidth } from "@/font/transform";
 import type { Glyph, Typeface } from "@/font/types";
 import { CoachMark } from "@/components/CoachMark";
 import { NothingDrawnYet } from "@/components/NothingDrawnYet";
+import { NumberField } from "@/components/NumberField";
+import { modalOpen } from "@/keys/modal";
+import { busy } from "@/keys/typing";
 import { hasLetters } from "@/font/library";
 import { store, useAppState } from "@/state/useStore";
 import { SIDE_PANEL } from "@/components/controls";
@@ -221,6 +223,21 @@ export function KerningView(): React.JSX.Element | null {
               store.setKerning(selectedPair.left, selectedPair.right, finalValue);
             }
           }}
+          /*
+            A cancelled drag puts the pair back where it started.
+
+            Without this the browser taking the pointer away -- a touch it
+            decided was a scroll, a pen leaving the tablet -- left the drag
+            open with the live value showing and nothing on the undo stack for
+            it, and the next move over the canvas went on kerning with no
+            button held.
+          */
+          onPointerCancel={() => {
+            const drag = dragRef.current;
+            dragRef.current = null;
+            if (!drag || !selectedPair) return;
+            store.setKerningLive(selectedPair.left, selectedPair.right, drag.startValue);
+          }}
         >
           <canvas ref={canvasRef} style={{ width: size.width, height: size.height }} />
         </div>
@@ -317,19 +334,27 @@ function PairEditor({
   source: "pair" | "class" | "none";
   unitsPerEm: number;
 }): React.JSX.Element {
-  const [display, setDisplay] = React.useState(value);
-  const previous = React.useRef(value);
-
-  React.useEffect(() => {
-    tweenNumber(previous.current, value, setDisplay);
-    previous.current = value;
-  }, [value]);
-
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      /*
+       * Bare arrows, and Shift for the bigger step -- nothing else.
+       *
+       * Alt with an arrow is the tab strip's, and this used to answer it too:
+       * `useAppKeys` switched to the next font, and then this listener, still
+       * bound to the pair on screen, kerned that pair in the font just arrived
+       * at. An edit nobody asked for, in a font they had only glanced at.
+       * Cmd and Ctrl with an arrow are the browser's and the system's.
+       */
+      if (event.altKey || event.metaKey || event.ctrlKey) return;
+      /*
+       * Not while the focus is somewhere the arrows mean something else. The
+       * old check listed `input` and `textarea`, which misses a `select` --
+       * one walks its options on the arrows -- and anything contenteditable
+       * or with a textbox role. `busy` is the rule every other window-wide key
+       * uses, and it is right about all of them. And nothing behind a dialog.
+       */
+      if (busy(event.target) || modalOpen()) return;
       event.preventDefault();
       const step = (event.shiftKey ? 10 : 1) * (event.key === "ArrowLeft" ? -1 : 1);
       store.setKerning(left, right, store.kerningFor(left, right) + step);
@@ -347,12 +372,25 @@ function PairEditor({
       <span className="font-mono text-xs-plus">
         {left} <span className="text-muted-foreground">/</span> {right}
       </span>
-      <input
-        type="number"
-        value={Math.round(display)}
-        onChange={(event) => store.setKerning(left, right, Number(event.target.value) || 0)}
-        className="h-7 w-24 rounded-md border border-input bg-card px-2 text-xs-plus tabular-nums outline-none focus-visible:border-accent"
-        aria-label={`Kerning between ${left} and ${right}`}
+      {/*
+        Committed on Enter or on leaving, not on every keystroke.
+
+        It used to write to the font as each character landed, which put an
+        entry on the undo stack for every digit -- "-120" was four steps to
+        take back -- and on the way there set the pair to 0, because a lone
+        "-" is not a number and `|| 0` made it one. `NumberField` is the field
+        the spacing table and the glyph editor already share for exactly this,
+        and Escape there puts the old value back.
+
+        Shown at the pair's value, no longer tweened towards it: a field that
+        counts its way to a number is a field whose draft changes underneath
+        the person about to type in it.
+      */}
+      <NumberField
+        value={value}
+        onCommit={(next) => store.setKerning(left, right, next)}
+        label={`Kerning between ${left} and ${right}`}
+        className="h-7 w-24 rounded-md border-input bg-card px-2 text-left text-xs-plus"
       />
       <span className="text-2xs text-muted-foreground tabular-nums">
         {perMille > 0 ? "+" : ""}

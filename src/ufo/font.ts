@@ -34,7 +34,7 @@ import {
   type KernPair,
   type Typeface,
 } from "@/font/types";
-import { fileNameFor, readGlif, writeGlif } from "./glif";
+import { fileNameFor, readGlifKeeping, writeGlif } from "./glif";
 import {
   numberAt,
   readPlist,
@@ -44,7 +44,7 @@ import {
   type PlistDict,
   type PlistValue,
 } from "./plist";
-import { children, parseXml } from "./xml";
+import { children, escapeXml, parseXml } from "./xml";
 
 /**
  * A UFO as a set of paths and what is in them, with `/` between the parts.
@@ -80,6 +80,48 @@ export interface UfoCarried {
   untouched: UfoFiles;
   /** The folder the default layer's glyphs came out of. */
   glyphsDirectory: string;
+  /*
+   * The rest is optional because a carried set is also written down in a saved
+   * session, and one saved before these existed has none of them. Absent reads
+   * as "nothing more was kept", which is what such a session means.
+   */
+  /**
+   * The files this reader claims, as they arrived: `fontinfo.plist`,
+   * `groups.plist`, `lib.plist` and `layercontents.plist`.
+   *
+   * Claimed is not the same as understood. This application models perhaps a
+   * dozen of the hundred-odd keys `fontinfo.plist` can hold, the kerning
+   * groups and none of the others, and one key of `lib.plist`. Writing those
+   * files from the model alone threw the rest away -- the OS/2 fields, the
+   * mark-feature groups, every key another tool left in the lib -- so the
+   * writer now starts from what arrived and lays what is modelled over it.
+   */
+  originals?: UfoFiles;
+  /**
+   * What each glyph's file held that a glyph here cannot, by glyph name: the
+   * note, the image, the guidelines, the glyph's own `lib`. Written out as
+   * XML; `readGlifKeeping` says why they are not on the glyph itself.
+   */
+  glifKept?: Record<string, string[]>;
+  /**
+   * The glyphs `contents.plist` names whose files could not be read, and the
+   * file each one is in.
+   *
+   * Their files stay in `untouched`, exactly as they were. Recorded here too
+   * because a file alone is not enough to keep a glyph: `contents.plist` is
+   * rewritten, and a `.glif` it no longer mentions is a glyph no reader will
+   * find. A file this parser cannot read is not a file nobody can.
+   */
+  unreadGlyphs?: Record<string, string>;
+  /**
+   * The group names a kerning class came out of, by the class's id.
+   *
+   * A class here is its members and nothing else, so without this every group
+   * went back out renamed to `public.kern1.0`, `public.kern1.1` and so on -- a
+   * font whose groups other tools, feature files and the designer all refer to
+   * by name, renamed in every file by opening and saving it.
+   */
+  kernGroupNames?: Record<string, { left: string; right: string }>;
 }
 
 /** What a read produces: the font, and what has to travel with it. */
@@ -97,6 +139,15 @@ const CLAIMED = new Set([
   "kerning.plist",
   "lib.plist",
 ]);
+
+/**
+ * The claimed files whose every key is not modelled, and which are therefore
+ * kept as they arrived so the writer can lay the model over them rather than
+ * replace them. `metainfo.plist` is not among them: it says who wrote the
+ * folder, and that is now us. `kerning.plist` is not either: every entry in it
+ * is modelled, so what the model says is the whole of it.
+ */
+const MERGED = new Set(["fontinfo.plist", "groups.plist", "lib.plist", "layercontents.plist"]);
 
 /** Whether a set of files looks like a UFO at all. */
 export function looksLikeUfo(files: UfoFiles): boolean {
@@ -201,7 +252,11 @@ function readFontInfo(typeface: Typeface, info: PlistDict): void {
  * class here, with the single glyph standing as a class of one, because that is
  * what this model has to say it with and because it is what the pair means.
  */
-function readKerning(files: UfoFiles): { kerning: KernPair[]; kernClasses: KernClass[] } {
+function readKerning(files: UfoFiles): {
+  kerning: KernPair[];
+  kernClasses: KernClass[];
+  names: Record<string, { left: string; right: string }>;
+} {
   const groups = readPlist(textOf(files.get("groups.plist"))) ?? {};
   const kerning = readPlist(textOf(files.get("kerning.plist"))) ?? {};
 
@@ -214,6 +269,7 @@ function readKerning(files: UfoFiles): { kerning: KernPair[]; kernClasses: KernC
 
   const pairs: KernPair[] = [];
   const classes: KernClass[] = [];
+  const names: Record<string, { left: string; right: string }> = {};
 
   for (const [left, seconds] of Object.entries(kerning)) {
     if (typeof seconds !== "object" || seconds === null || Array.isArray(seconds)) continue;
@@ -225,6 +281,7 @@ function readKerning(files: UfoFiles): { kerning: KernPair[]; kernClasses: KernC
         pairs.push({ left, right, value: Math.round(value) });
         continue;
       }
+      names[`${left}/${right}`] = { left, right };
       classes.push({
         id: `${left}/${right}`,
         // The names as the file has them, so that somebody who opens the
@@ -236,7 +293,7 @@ function readKerning(files: UfoFiles): { kerning: KernPair[]; kernClasses: KernC
       });
     }
   }
-  return { kerning: pairs, kernClasses: classes };
+  return { kerning: pairs, kernClasses: classes, names };
 }
 
 /** A UFO, as a typeface, or null if it is not one. */
@@ -251,19 +308,32 @@ export function readUfo(files: UfoFiles): ReadUfo | null {
   const contents = readPlist(textOf(files.get(`${glyphsDirectory}/contents.plist`)));
 
   const glyphs: Glyph[] = [];
+  const glifKept: Record<string, string[]> = {};
+  const unreadGlyphs: Record<string, string> = {};
   const readFiles = new Set<string>([`${glyphsDirectory}/contents.plist`]);
   if (contents) {
     for (const [name, fileName] of Object.entries(contents)) {
       if (typeof fileName !== "string") continue;
       const path = `${glyphsDirectory}/${fileName}`;
       if (!files.has(path)) continue;
+      const read = readGlifKeeping(textOf(files.get(path)));
+      /*
+       * Claimed only once it has been read. A file that is claimed is a file
+       * the writer replaces, and one this parser could not read has nothing to
+       * replace it with -- claiming it first is what used to delete it on the
+       * next save. So it stays with everything else that is carried, and its
+       * name is remembered so `contents.plist` goes on pointing at it.
+       */
+      if (!read) {
+        unreadGlyphs[name] = fileName;
+        continue;
+      }
       readFiles.add(path);
-      const glyph = readGlif(textOf(files.get(path)));
-      if (!glyph) continue;
+      if (read.kept.length > 0) glifKept[name] = read.kept;
       // `contents.plist` is what says which glyph a file holds. The name
       // inside the file should agree and is not guaranteed to, so the mapping
       // wins -- it is the one the rest of the folder refers to.
-      glyphs.push({ ...glyph, name });
+      glyphs.push({ ...read.glyph, name });
     }
   }
 
@@ -289,17 +359,29 @@ export function readUfo(files: UfoFiles): ReadUfo | null {
 
   typeface.glyphs = glyphs;
   typeface.glyphIndex = new Map(glyphs.map((glyph, index) => [glyph.name, index]));
-  const { kerning, kernClasses } = readKerning(files);
+  const { kerning, kernClasses, names } = readKerning(files);
   typeface.kerning = kerning;
   typeface.kernClasses = kernClasses;
 
   const untouched: UfoFiles = new Map();
+  const originals: UfoFiles = new Map();
   for (const [path, source] of files) {
+    if (MERGED.has(path)) originals.set(path, textOf(source));
     if (CLAIMED.has(path) || readFiles.has(path)) continue;
     untouched.set(path, source);
   }
 
-  return { typeface, carried: { untouched, glyphsDirectory } };
+  return {
+    typeface,
+    carried: {
+      untouched,
+      glyphsDirectory,
+      originals,
+      glifKept,
+      unreadGlyphs,
+      kernGroupNames: names,
+    },
+  };
 }
 
 /* --- writing ------------------------------------------------------------ */
@@ -308,6 +390,122 @@ export function readUfo(files: UfoFiles): ReadUfo | null {
 function put(dict: PlistDict, key: string, value: number | string | undefined): void {
   if (value === undefined || value === "") return;
   dict[key] = value;
+}
+
+/** The `fontinfo.plist` keys this application models, and so owns on the way out. */
+const MODELLED_INFO = [
+  "familyName",
+  "styleName",
+  "unitsPerEm",
+  "ascender",
+  "descender",
+  "capHeight",
+  "xHeight",
+  "copyright",
+  "openTypeNameDesigner",
+  "openTypeNameManufacturer",
+  "openTypeNameLicense",
+  "openTypeOS2WeightClass",
+  "openTypeOS2TypoLineGap",
+  "versionMajor",
+  "versionMinor",
+];
+
+/**
+ * What the model says, laid over what the file said.
+ *
+ * Walked in the original's order rather than spread, so a key that was there
+ * stays where it was and the file's diff is the lines that changed. A key the
+ * model owns and now leaves out is gone -- a copyright somebody cleared is a
+ * copyright cleared, not one to be quietly restored from the file -- and a key
+ * the model has never heard of is exactly what it was.
+ */
+function overlay(original: PlistDict, mine: PlistDict, owned: Iterable<string>): PlistDict {
+  const owns = new Set(owned);
+  const out: PlistDict = {};
+  for (const [key, value] of Object.entries(original)) {
+    if (!owns.has(key)) out[key] = value;
+    else if (key in mine) out[key] = mine[key];
+  }
+  for (const [key, value] of Object.entries(mine)) {
+    if (!(key in out)) out[key] = value;
+  }
+  return out;
+}
+
+/** A claimed file as it arrived, read with everything in it kept. */
+function originalPlist(carried: UfoCarried | undefined, path: string): PlistDict {
+  const source = carried?.originals?.get(path);
+  if (source === undefined) return {};
+  return readPlist(textOf(source), { keepOpaque: true }) ?? {};
+}
+
+function fontInfoOf(typeface: Typeface, original: PlistDict): PlistDict {
+  const info: PlistDict = {};
+  const owned = new Set(MODELLED_INFO);
+  put(info, "familyName", typeface.meta.familyName);
+  put(info, "styleName", typeface.meta.styleName);
+  put(info, "unitsPerEm", typeface.unitsPerEm);
+  put(info, "ascender", typeface.metrics.ascender);
+  put(info, "descender", typeface.metrics.descender);
+  put(info, "capHeight", typeface.metrics.capHeight);
+  put(info, "xHeight", typeface.metrics.xHeight);
+  put(info, "copyright", typeface.meta.copyright);
+  put(info, "openTypeNameDesigner", typeface.meta.designer);
+  put(info, "openTypeNameManufacturer", typeface.meta.manufacturer);
+  put(info, "openTypeNameLicense", typeface.meta.license);
+  put(info, "openTypeOS2WeightClass", typeface.meta.weightClass);
+  // Zero is what the reader makes of a gap the file did not state, so it is
+  // written only when it is something else -- or when the file said zero.
+  if (typeface.metrics.lineGap !== 0 || "openTypeOS2TypoLineGap" in original) {
+    put(info, "openTypeOS2TypoLineGap", typeface.metrics.lineGap);
+  }
+  const [major, minor] = typeface.meta.version.split(".");
+  const majorNumber = Number.parseInt(major ?? "", 10);
+  if (Number.isFinite(majorNumber)) {
+    info.versionMajor = majorNumber;
+    info.versionMinor = Number.parseInt(minor ?? "0", 10) || 0;
+  } else {
+    // A version that is not a number is one the model cannot say, so the
+    // file's own is left where it was rather than deleted.
+    owned.delete("versionMajor");
+    owned.delete("versionMinor");
+  }
+  return overlay(original, info, owned);
+}
+
+/**
+ * `layercontents.plist`, with every layer the folder still has.
+ *
+ * The other layers are carried through untouched -- their folders are in the
+ * set this writes -- and this file is the only thing that says they are
+ * layers. Written with only the default one, as it used to be, the background
+ * sketches were still on disk and invisible to every tool that opened the
+ * folder: kept in the most useless sense there is.
+ */
+function layerContentsOf(carried: UfoCarried | undefined, glyphsDirectory: string): string {
+  const source = carried?.originals?.get("layercontents.plist");
+  const pairs = source === undefined ? [] : layerPairs(textOf(source));
+  if (!pairs.some((pair) => pair[1] === glyphsDirectory)) {
+    pairs.unshift(["public.default", glyphsDirectory]);
+  }
+  // Written by hand for the same reason it is read by hand: this is the one
+  // file in a UFO whose root is an array.
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+    '<plist version="1.0">',
+    "<array>",
+    ...pairs.flatMap(([name, directory]) => [
+      "  <array>",
+      `    <string>${escapeXml(name)}</string>`,
+      `    <string>${escapeXml(directory)}</string>`,
+      "  </array>",
+    ]),
+    "</array>",
+    "</plist>",
+    "",
+  ].join("\n");
 }
 
 /**
@@ -324,56 +522,35 @@ export function writeUfo(typeface: Typeface, carried?: UfoCarried): UfoFiles {
   const glyphsDirectory = carried?.glyphsDirectory ?? "glyphs";
 
   files.set("metainfo.plist", writePlist({ creator: "com.typeforge", formatVersion: 3 }));
-
-  const info: PlistDict = {};
-  put(info, "familyName", typeface.meta.familyName);
-  put(info, "styleName", typeface.meta.styleName);
-  put(info, "unitsPerEm", typeface.unitsPerEm);
-  put(info, "ascender", typeface.metrics.ascender);
-  put(info, "descender", typeface.metrics.descender);
-  put(info, "capHeight", typeface.metrics.capHeight);
-  put(info, "xHeight", typeface.metrics.xHeight);
-  put(info, "copyright", typeface.meta.copyright);
-  put(info, "openTypeNameDesigner", typeface.meta.designer);
-  put(info, "openTypeNameManufacturer", typeface.meta.manufacturer);
-  put(info, "openTypeNameLicense", typeface.meta.license);
-  put(info, "openTypeOS2WeightClass", typeface.meta.weightClass);
-  if (typeface.metrics.lineGap !== 0) {
-    put(info, "openTypeOS2TypoLineGap", typeface.metrics.lineGap);
-  }
-  const [major, minor] = typeface.meta.version.split(".");
-  const majorNumber = Number.parseInt(major ?? "", 10);
-  if (Number.isFinite(majorNumber)) {
-    info.versionMajor = majorNumber;
-    info.versionMinor = Number.parseInt(minor ?? "0", 10) || 0;
-  }
-  files.set("fontinfo.plist", writePlist(info));
-
   files.set(
-    "layercontents.plist",
-    // Written by hand for the same reason it is read by hand: this is the one
-    // file in a UFO whose root is an array.
-    [
-      '<?xml version="1.0" encoding="UTF-8"?>',
-      '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
-      '<plist version="1.0">',
-      "<array>",
-      "  <array>",
-      "    <string>public.default</string>",
-      `    <string>${glyphsDirectory}</string>`,
-      "  </array>",
-      "</array>",
-      "</plist>",
-      "",
-    ].join("\n"),
+    "fontinfo.plist",
+    writePlist(fontInfoOf(typeface, originalPlist(carried, "fontinfo.plist"))),
   );
+  files.set("layercontents.plist", layerContentsOf(carried, glyphsDirectory));
 
   const taken = new Set<string>();
   const contents: PlistDict = {};
+  /*
+   * The glyphs this could not read go back into `contents.plist` first, under
+   * the files they were already in, so nothing written below can land on top
+   * of one. A glyph of the same name that is in the model now -- somebody made
+   * one -- supersedes it, and then the old file goes, or two files would claim
+   * the one name.
+   */
+  const unread: string[] = [];
+  for (const [name, fileName] of Object.entries(carried?.unreadGlyphs ?? {})) {
+    if (typeface.glyphIndex.has(name)) {
+      files.delete(`${glyphsDirectory}/${fileName}`);
+      continue;
+    }
+    taken.add(fileName.toLowerCase());
+    contents[name] = fileName;
+    unread.push(name);
+  }
   for (const glyph of typeface.glyphs) {
     const fileName = fileNameFor(glyph.name, taken);
     contents[glyph.name] = fileName;
-    files.set(`${glyphsDirectory}/${fileName}`, writeGlif(glyph));
+    files.set(`${glyphsDirectory}/${fileName}`, writeGlif(glyph, carried?.glifKept?.[glyph.name]));
   }
   files.set(`${glyphsDirectory}/contents.plist`, writePlist(contents));
 
@@ -384,8 +561,16 @@ export function writeUfo(typeface: Typeface, carried?: UfoCarried): UfoFiles {
    * is how a UFO says the same thing. The group names carry the prefixes the
    * format reserves, because a name without them is a plain glyph list that
    * kerning will not look in.
+   *
+   * Every group the file had is kept, kerning or not: the groups that feed a
+   * mark feature or a spacing script are nothing this application models and
+   * nothing it has any business deleting. A kerning class that came out of a
+   * named group goes back under that name, with whatever members it has now.
+   * Only a class made here, or one whose group has already been given other
+   * members by a class written before it, is given a new name -- one nothing
+   * in the file is already called.
    */
-  const groups: PlistDict = {};
+  const groups: PlistDict = originalPlist(carried, "groups.plist");
   const kerning: PlistDict = {};
   const add = (left: string, right: string, value: number) => {
     const seconds = (kerning[left] as PlistDict | undefined) ?? {};
@@ -393,13 +578,35 @@ export function writeUfo(typeface: Typeface, carried?: UfoCarried): UfoFiles {
     kerning[left] = seconds;
   };
 
-  typeface.kernClasses.forEach((kernClass, index) => {
+  const assigned = new Map<string, string>();
+  const sideOf = (
+    members: string[],
+    preferred: string | undefined,
+    prefix: string,
+    index: number,
+  ): string => {
+    const key = JSON.stringify(members);
+    if (preferred?.startsWith(prefix) && (assigned.get(preferred) ?? key) === key) {
+      assigned.set(preferred, key);
+      groups[preferred] = [...members];
+      return preferred;
+    }
     // One glyph on a side is written as that glyph rather than as a group of
     // one, which is what it means and what keeps the file readable.
-    const left = kernClass.left.length === 1 ? kernClass.left[0] : `public.kern1.${index}`;
-    const right = kernClass.right.length === 1 ? kernClass.right[0] : `public.kern2.${index}`;
-    if (kernClass.left.length > 1) groups[left] = [...kernClass.left];
-    if (kernClass.right.length > 1) groups[right] = [...kernClass.right];
+    if (members.length === 1) return members[0];
+    let name = `${prefix}${index}`;
+    for (let count = 1; name in groups || assigned.has(name); count++) {
+      name = `${prefix}${index}.${count}`;
+    }
+    assigned.set(name, key);
+    groups[name] = [...members];
+    return name;
+  };
+
+  typeface.kernClasses.forEach((kernClass, index) => {
+    const named = carried?.kernGroupNames?.[kernClass.id];
+    const left = sideOf(kernClass.left, named?.left, "public.kern1.", index);
+    const right = sideOf(kernClass.right, named?.right, "public.kern2.", index);
     add(left, right, kernClass.value);
   });
   for (const pair of typeface.kerning) add(pair.left, pair.right, pair.value);
@@ -407,10 +614,14 @@ export function writeUfo(typeface: Typeface, carried?: UfoCarried): UfoFiles {
   if (Object.keys(groups).length > 0) files.set("groups.plist", writePlist(groups));
   if (Object.keys(kerning).length > 0) files.set("kerning.plist", writePlist(kerning));
 
-  files.set(
-    "lib.plist",
-    writePlist({ "public.glyphOrder": typeface.glyphs.map((glyph) => glyph.name) }),
-  );
+  /*
+   * The lib, with the one key this models laid over whatever else was in it.
+   * The glyphs that could not be read keep a place in the order, at the end,
+   * so a tool that can read them finds them where a font expects its glyphs.
+   */
+  const lib = originalPlist(carried, "lib.plist");
+  lib["public.glyphOrder"] = [...typeface.glyphs.map((glyph) => glyph.name), ...unread];
+  files.set("lib.plist", writePlist(lib));
 
   return files;
 }

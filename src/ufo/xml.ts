@@ -145,3 +145,34 @@ export function attributes(pairs: Array<[string, string | number | undefined]>):
 
 /** The declaration every file in a UFO opens with. */
 export const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>';
+
+/**
+ * An element read by `parseXml`, written back out as text.
+ *
+ * For the parts of a file this application carries rather than understands --
+ * a glyph's own `lib`, its guidelines, the image somebody is tracing it over.
+ * The tree above is what the reader kept of them, so writing the tree is what
+ * puts them back, indented the way everything else here is so the file does
+ * not come back with its whitespace rearranged.
+ *
+ * Every attribute goes back, empty ones included: `attributes` above leaves an
+ * empty value out because the writers here use that to mean "not set", and
+ * an attribute somebody else wrote empty was set to exactly that. Text beside
+ * child elements is written first, because the tree keeps it as one run and no
+ * longer knows where among the children it sat -- which is lossless for every
+ * element a UFO actually uses, none of which mixes the two.
+ */
+export function writeXml(node: XmlNode, depth = 0): string {
+  const pad = "  ".repeat(depth);
+  const attrs = Object.entries(node.attributes)
+    .map(([name, value]) => ` ${name}="${escapeXml(String(value))}"`)
+    .join("");
+  if (node.children.length === 0) {
+    return node.text === ""
+      ? `${pad}<${node.name}${attrs}/>`
+      : `${pad}<${node.name}${attrs}>${escapeXml(node.text)}</${node.name}>`;
+  }
+  const inside = node.children.map((one) => writeXml(one, depth + 1));
+  if (node.text !== "") inside.unshift(`${pad}  ${escapeXml(node.text)}`);
+  return `${pad}<${node.name}${attrs}>\n${inside.join("\n")}\n${pad}</${node.name}>`;
+}

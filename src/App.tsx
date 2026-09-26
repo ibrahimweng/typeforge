@@ -34,7 +34,13 @@ import { readyToShape } from "@/forge/layers";
 import { detectFormat } from "@/font/parse";
 import { looksJoined } from "@/quill/joined";
 import { toTypeface as quillToTypeface } from "@/quill/typeface";
-import { describe, readDocument, type Mode as SavedMode, type Reading } from "@/project/format";
+import {
+  describe,
+  readDocument,
+  type Mode as SavedMode,
+  type Project,
+  type Reading,
+} from "@/project/format";
 import { keeper as makeKeeper, kept } from "@/project/keep";
 import { fileNameFor, restore, session } from "@/project/session";
 import type { Keeping } from "@/components/TopBar";
@@ -42,6 +48,7 @@ import { libraryStore } from "@/state/useLibrary";
 import { store, useAppState, type ViewId } from "@/state/useStore";
 import type { UfoFiles } from "@/ufo/font";
 import { filesFromDrop, filesFromPicker, filesFromZip, looksZipped } from "@/ufo/intake";
+import { downloadBlob } from "@/components/download";
 
 /*
  * Seven of the views and all seven overlays are fetched when they are first
@@ -334,6 +341,22 @@ export type Mode = "edit" | "forge" | "assemble" | "quill";
  * was open, Trace included -- see `TracedProject`, where what is written and
  * what deliberately is not are argued.
  */
+/**
+ * The generators a saved document had open, from the halves it carries.
+ *
+ * Asked in two places -- picking a session back up on load, and opening a
+ * project file -- and those two used to disagree: only the first remembered
+ * that a document with a drawing in it is a document whose Draw has been
+ * opened. One answer, so there is one list to add a fifth half to.
+ */
+function halvesIn(project: Pick<Project, "draw" | "traced" | "assemble">): Mode[] {
+  return [
+    ...(project.draw ? (["forge"] as const) : []),
+    ...(project.traced ? (["quill"] as const) : []),
+    ...(project.assemble ? (["assemble"] as const) : []),
+  ];
+}
+
 function libraryMode(mode: Mode): Exclude<SavedMode, "quill"> {
   return mode === "quill" ? "edit" : mode;
 }
@@ -561,13 +584,7 @@ export function App(): React.JSX.Element {
           // The halves the file carried were opened in the session that wrote
           // it, so the menu offers the way back to them rather than offering
           // to start over the top of work somebody has just reopened.
-          setOpened(
-            new Set<Mode>([
-              ...(saved.draw ? (["forge"] as const) : []),
-              ...(saved.traced ? (["quill"] as const) : []),
-              ...(saved.assemble ? (["assemble"] as const) : []),
-            ]),
-          );
+          setOpened(new Set<Mode>(halvesIn(saved)));
           if (back.halves.length > 0) {
             store.say(`Picked up where you left off — ${back.halves.join(", ")}.`);
           }
@@ -662,15 +679,11 @@ export function App(): React.JSX.Element {
 
   const saveProject = React.useCallback(() => {
     const project = session(mode);
-    const blob = new Blob([JSON.stringify(project)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = fileNameFor(project);
-    link.click();
-    // Given back after the click rather than immediately: revoked too early,
-    // Safari has already thrown the download away.
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    // See `components/download.ts` for why the URL outlives the click.
+    downloadBlob(
+      new Blob([JSON.stringify(project)], { type: "application/json" }),
+      fileNameFor(project),
+    );
     store.say(`Saved ${fileNameFor(project)} — ${describe(project)}.`);
   }, [mode]);
 
@@ -696,8 +709,21 @@ export function App(): React.JSX.Element {
       store.say(reading.note ?? `${file.name} is not a font or a Typeforge project.`, "error");
       return;
     }
-    const back = await restore(reading.project);
+    const project = reading.project;
+    const back = await restore(project);
     setMode(back.mode);
+    /*
+     * And the halves it carried count as opened, as they do when a session is
+     * picked up on load -- this is the same restore by a different door, and
+     * without it the New menu offered to start a drawing over the top of the
+     * one that had just come out of the file.
+     *
+     * Added to rather than replaced, unlike on load. There, nothing had been
+     * opened yet; here, `restore` puts back only the halves the file has and
+     * leaves the rest as they were, so a half opened earlier in this session
+     * still holds what it held.
+     */
+    setOpened((was) => new Set<Mode>([...was, ...halvesIn(project)]));
     /*
      * What came back, and what may not have, as one sentence.
      *
@@ -707,11 +733,8 @@ export function App(): React.JSX.Element {
      * `say` it would not be told at all: the status line holds one message, so
      * the second replaces the first the moment it arrives.
      */
-    const opened = `Opened ${file.name} — ${back.halves.join(", ") || "nothing in it"}.`;
-    store.say(
-      reading.note ? `${opened} ${reading.note}` : opened,
-      reading.note ? "info" : "success",
-    );
+    const said = `Opened ${file.name} — ${back.halves.join(", ") || "nothing in it"}.`;
+    store.say(reading.note ? `${said} ${reading.note}` : said, reading.note ? "info" : "success");
   }, []);
 
   React.useEffect(() => {
@@ -1109,6 +1132,9 @@ export function App(): React.JSX.Element {
     onExport: React.useCallback(() => setExporting(true), []),
     onOpenFile: React.useCallback(() => inputRef.current?.click(), []),
     editing: mode === "edit" && state.typeface !== null,
+    // Cmd-Z in every mode, taking back whatever the Edit menu would.
+    undo: history.undo,
+    redo: history.redo,
   });
 
   return (

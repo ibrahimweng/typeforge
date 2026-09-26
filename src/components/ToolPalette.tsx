@@ -39,6 +39,7 @@ import {
 
 import { GROUPS, TOOLS, groupOf, toolsIn, type GroupId, type ToolInfo } from "@/font/toolset";
 import { store, useAppState, type ToolId } from "@/state/useStore";
+import { modalOpen } from "@/keys/modal";
 import { busy } from "@/keys/typing";
 import { cn } from "@/cn";
 
@@ -124,7 +125,9 @@ export function ToolPalette({ drawing }: { drawing: boolean }): React.JSX.Elemen
         return;
       }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (busy(event.target)) return;
+      // Nor behind a dialog: a `p` typed at the export dialog's backdrop is
+      // not a request for the pen. See `keys/modal.ts`.
+      if (busy(event.target) || modalOpen()) return;
       const group = BY_KEY.get(event.key.toLowerCase());
       if (group) {
         /*

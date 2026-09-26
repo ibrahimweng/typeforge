@@ -33,6 +33,9 @@ import type {
   NamedSet,
   Typeface,
 } from "@/font/types";
+// A type and nothing else: the UFO reader is fetched when a folder is opened,
+// and this file is read on the first screen.
+import type { UfoCarried, UfoFiles } from "@/ufo/font";
 
 /** Which half of the application was open. */
 export type Mode = "edit" | "forge" | "assemble" | "quill";
@@ -284,6 +287,35 @@ export interface EditedProject {
   /** Only the glyphs that have been touched. */
   glyphs: Glyph[];
   /**
+   * Every glyph the font has, by name, in order -- for a font with a file.
+   *
+   * The touched glyphs say what changed in the letters that are still there,
+   * and nothing about the ones that are not. Laid over a file that still has
+   * them, a letter somebody removed came back on the next visit, and a letter
+   * somebody renamed came back twice: once under its new name from `glyphs`,
+   * once under its old one from the file. The list is what says which of the
+   * file's letters are still in the font, and in what order.
+   *
+   * A name per glyph is tens of kilobytes for a large font, beside the font
+   * itself at most of a megabyte, which is a price worth paying for a session
+   * that gives back what was left rather than what was opened.
+   *
+   * Optional, because every document written before this has none, and those
+   * go on being read the way they always were: letters laid over the file and
+   * nothing taken away.
+   */
+  glyphNames?: string[];
+  /**
+   * What a font opened from a UFO carried that it does not model: its other
+   * layers, its images, its `data` directory, the keys of its plists this
+   * application does not know. Without it, a session reopened and exported
+   * gave back a folder with all of that gone.
+   *
+   * Absent for a font that did not come from a UFO, and in every document
+   * written before this existed.
+   */
+  ufo?: SavedUfo;
+  /**
    * What the first weight is called and where it sits on the axis.
    *
    * Derivable from `meta.styleName` and `meta.weightClass` and saved anyway,
@@ -312,6 +344,29 @@ export interface EditedProject {
    * it had been drawing and got the other one.
    */
   drawing?: string;
+}
+
+/**
+ * A UFO's carried set, as JSON.
+ *
+ * A file is text or bytes, and JSON has no bytes, so each goes in as whichever
+ * it is: text as itself, bytes as base64. Kept apart by field rather than
+ * guessed at on the way back, because a PNG that happened to be valid UTF-8
+ * read back as text would be written out as a different file.
+ */
+export interface SavedUfo {
+  glyphsDirectory: string;
+  files: SavedUfoFile[];
+  originals?: SavedUfoFile[];
+  glifKept?: Record<string, string[]>;
+  unreadGlyphs?: Record<string, string>;
+  kernGroupNames?: Record<string, { left: string; right: string }>;
+}
+
+export interface SavedUfoFile {
+  path: string;
+  text?: string;
+  base64?: string;
 }
 
 /** A weight's name and where it sits, without its drawing. */
@@ -377,6 +432,72 @@ export function fromBase64(text: string): Uint8Array {
   return bytes;
 }
 
+/*
+ * A carried set written out once and kept.
+ *
+ * What a UFO carries never changes after the folder is read -- it is what the
+ * application does not touch -- and the session is written every time the
+ * drawing settles. Base64 for a folder of tracing images is not work to do on
+ * every one of those. Weak, for the reason `encoded` above is.
+ */
+const savedUfos = new WeakMap<UfoCarried, SavedUfo>();
+
+function savedFiles(files: UfoFiles): SavedUfoFile[] {
+  return [...files].map(([path, value]) =>
+    typeof value === "string" ? { path, text: value } : { path, base64: keptBase64(value) },
+  );
+}
+
+function loadedFiles(saved: unknown): UfoFiles {
+  const files: UfoFiles = new Map();
+  if (!Array.isArray(saved)) return files;
+  for (const one of saved as SavedUfoFile[]) {
+    if (typeof one?.path !== "string") continue;
+    if (typeof one.text === "string") files.set(one.path, one.text);
+    else if (typeof one.base64 === "string") files.set(one.path, fromBase64(one.base64));
+  }
+  return files;
+}
+
+/** What a UFO carried, as something a session can hold. */
+export function toSavedUfo(carried: UfoCarried): SavedUfo {
+  const known = savedUfos.get(carried);
+  if (known) return known;
+  const saved: SavedUfo = {
+    glyphsDirectory: carried.glyphsDirectory,
+    files: savedFiles(carried.untouched),
+    originals: carried.originals ? savedFiles(carried.originals) : undefined,
+    glifKept: carried.glifKept,
+    unreadGlyphs: carried.unreadGlyphs,
+    kernGroupNames: carried.kernGroupNames,
+  };
+  savedUfos.set(carried, saved);
+  return saved;
+}
+
+/**
+ * And back, or null when what was saved is not one.
+ *
+ * Checked rather than trusted, like everything else read out of a document:
+ * the worst a damaged record can do here is lose what the folder carried,
+ * which is better than restoring a font that throws when it is exported.
+ */
+export function fromSavedUfo(saved: unknown): UfoCarried | null {
+  if (typeof saved !== "object" || saved === null) return null;
+  const raw = saved as Partial<SavedUfo>;
+  if (typeof raw.glyphsDirectory !== "string" || !Array.isArray(raw.files)) return null;
+  const record = <T>(value: unknown): T | undefined =>
+    typeof value === "object" && value !== null && !Array.isArray(value) ? (value as T) : undefined;
+  return {
+    glyphsDirectory: raw.glyphsDirectory,
+    untouched: loadedFiles(raw.files),
+    originals: raw.originals ? loadedFiles(raw.originals) : undefined,
+    glifKept: record(raw.glifKept),
+    unreadGlyphs: record(raw.unreadGlyphs),
+    kernGroupNames: record(raw.kernGroupNames),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Writing
 // ---------------------------------------------------------------------------
@@ -398,6 +519,8 @@ export interface Snapshot {
     masters?: SavedMaster[];
     /** Which of them was in hand. */
     drawing?: string;
+    /** What it carried, when it was opened from a UFO. */
+    ufo?: UfoCarried | null;
   }>;
   /** Which font was in front, as an index into the list above. */
   editAt?: number;
@@ -443,7 +566,7 @@ export function toProject(snapshot: Snapshot, at: Date): Project {
    * falls out, so it is a plain map and the index is the index.
    */
   const edits = (snapshot.edits ?? []).map((one) =>
-    toEdited(one.typeface, one.fileName, one.masters, one.drawing),
+    toEdited(one.typeface, one.fileName, one.masters, one.drawing, one.ufo),
   );
   if (edits.length > 0) {
     project.edits = edits;
@@ -466,6 +589,7 @@ function toEdited(
   fileName: string,
   masters?: SavedMaster[],
   drawing?: string,
+  ufo?: UfoCarried | null,
 ): EditedProject {
   const [first, ...rest] = masters ?? [];
   const source = typeface.source;
@@ -488,6 +612,10 @@ function toEdited(
     // The exceptions to the file, or the whole font when there is no file for
     // anything to be an exception to.
     glyphs: source ? typeface.glyphs.filter((glyph) => glyph.dirty) : typeface.glyphs,
+    // Which of the file's letters are still here, which the exceptions above
+    // cannot say. Without a file, `glyphs` is the whole font and says it.
+    glyphNames: source ? typeface.glyphs.map((glyph) => glyph.name) : undefined,
+    ufo: ufo ? toSavedUfo(ufo) : undefined,
     weight: first ? { name: first.name, at: first.at } : undefined,
     drawing,
     // Left out entirely when there is one weight, so the ordinary document is
@@ -710,6 +838,34 @@ export function applyEdits(typeface: Typeface, saved: EditedProject): Typeface {
     } else {
       typeface.glyphs[at] = glyph;
     }
+  }
+
+  /*
+   * And then only the letters the font still had, in the order it had them.
+   *
+   * This is what takes a removed letter back out of the file it was removed
+   * from, and the old name of a renamed one with it -- the new name is a
+   * touched glyph and arrived above. A document with no list is one written
+   * before there was one, and is left as it always was.
+   *
+   * A saved glyph the list does not mention is kept rather than dropped. The
+   * two are written together and should agree; when they do not, keeping
+   * somebody's drawing is the mistake worth making.
+   */
+  if (Array.isArray(saved.glyphNames)) {
+    const byName = new Map(typeface.glyphs.map((glyph) => [glyph.name, glyph]));
+    const kept: Glyph[] = [];
+    for (const name of saved.glyphNames) {
+      const glyph = typeof name === "string" ? byName.get(name) : undefined;
+      if (!glyph) continue;
+      kept.push(glyph);
+      byName.delete(name);
+    }
+    for (const glyph of saved.glyphs) {
+      if (byName.get(glyph.name) === glyph) kept.push(glyph);
+    }
+    typeface.glyphs = kept;
+    typeface.glyphIndex = new Map(kept.map((glyph, index) => [glyph.name, index]));
   }
   return typeface;
 }

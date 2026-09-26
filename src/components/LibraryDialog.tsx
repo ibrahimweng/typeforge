@@ -32,6 +32,7 @@ import { startDrawingFrom } from "@/state/drawn";
 import { assembleStore } from "@/state/useAssemble";
 import { store } from "@/state/useStore";
 import { cn } from "@/cn";
+import { useModalFocus } from "@/keys/modal";
 
 const CATEGORIES: Array<[LibraryCategory | "all", string]> = [
   ["all", "All"],
@@ -51,6 +52,9 @@ export function LibraryDialog({
 }): React.JSX.Element | null {
   const state = useLibrary();
   const panelRef = React.useRef<HTMLDivElement>(null);
+  // Focus in, Tab kept in, and focus handed back on the way out -- the
+  // promise `aria-modal` makes. See `keys/modal.ts`.
+  useModalFocus(panelRef, state.open);
 
   React.useEffect(() => {
     if (state.open && panelRef.current) enter(panelRef.current, { distance: 10 });

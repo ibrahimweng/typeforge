@@ -30,11 +30,11 @@
  * spoilt by turning a control up.
  */
 
+import { TAU, wrapAngle } from "./angles";
 import type { Vec2 } from "@/font/types";
 import type { Spine, SpineArc, SpineLine, SpineSegment } from "./types";
 
 const at = (x: number, y: number): Vec2 => ({ x, y });
-const TAU = Math.PI * 2;
 
 /**
  * How much room a turn is given above the absolute limit.
@@ -1667,9 +1667,9 @@ export function roundCorners(spine: Spine, radius: number, penHalf: number): Spi
     const middle = at(vertex.x + bisector.x * away, vertex.y + bisector.y * away);
 
     const startAngle = Math.atan2(touchBefore.y - middle.y, touchBefore.x - middle.x);
-    let sweep = Math.atan2(touchAfter.y - middle.y, touchAfter.x - middle.x) - startAngle;
-    while (sweep > Math.PI) sweep -= TAU;
-    while (sweep < -Math.PI) sweep += TAU;
+    const sweep = wrapAngle(
+      Math.atan2(touchAfter.y - middle.y, touchAfter.x - middle.x) - startAngle,
+    );
 
     before.to = touchBefore;
     after.from = touchAfter;

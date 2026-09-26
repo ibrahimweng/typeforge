@@ -165,6 +165,30 @@ describe("a zipped UFO", () => {
     expect(flat.has("metainfo.plist")).toBe(true);
   });
 
+  /*
+   * A zip bomb: a few kilobytes that unpack to more memory than the tab has.
+   * Zeroes deflate to almost nothing, which is the whole trick, so a small
+   * limit and a modest file of them stand in for the real thing without the
+   * test itself having to allocate a gigabyte.
+   */
+  it("refuses an archive that says it unpacks to more than the limit", () => {
+    const zeroes = new Uint8Array(4 * 1024 * 1024);
+    const bomb = zipUfo(new Map([...files, ["data/zeroes.bin", zeroes]]), "Bomb.ufo");
+    expect(bomb.length).toBeLessThan(64 * 1024);
+    expect(filesFromZip(bomb, { totalBytes: 1024 * 1024, entries: 1000 })).toBeNull();
+    // And the same archive opens under a limit it fits in, so the refusal is
+    // about the size and nothing else.
+    expect(filesFromZip(bomb, { totalBytes: 8 * 1024 * 1024, entries: 1000 })).not.toBeNull();
+  });
+
+  it("refuses an archive with more entries than the limit", () => {
+    const many: UfoFiles = new Map(files);
+    for (let at = 0; at < 50; at++) many.set(`data/${at}.txt`, "x");
+    const archive = zipUfo(many, "Many.ufo");
+    expect(filesFromZip(archive, { totalBytes: 1024 * 1024, entries: 20 })).toBeNull();
+    expect(filesFromZip(archive)).not.toBeNull();
+  });
+
   it("gives back nothing for bytes that are not an archive", () => {
     expect(filesFromZip(new Uint8Array([1, 2, 3, 4]))).toBeNull();
     expect(looksZipped(new Uint8Array([1, 2, 3, 4]))).toBe(false);

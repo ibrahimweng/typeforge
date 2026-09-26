@@ -77,6 +77,23 @@ describe("a letter written with a pen", () => {
     expect(fractions[2]).toBeCloseTo(1, 6);
   });
 
+  /*
+   * A stroke that was tapped rather than drawn has no length, and it still has
+   * one more node than it has segments. It used to come back a node short.
+   */
+  it("gives a spine with no length one fraction per node, not per segment", () => {
+    const here = { x: 40, y: 40 };
+    const dot: QuillSpine = {
+      segments: [
+        { kind: "line", from: here, to: here },
+        { kind: "line", from: here, to: here },
+      ],
+      closed: false,
+    };
+    expect(nodeFractions(dot)).toEqual([0, 0, 0]);
+    expect(nodeFractions(bent())).toHaveLength(bent().segments.length + 1);
+  });
+
   it("gives a fresh stroke the same pen at every stop", () => {
     const pen = penAtNodes(bent(), [{ at: 0, contrast: 0.5, angle: 30 }]);
     expect(pen).toHaveLength(3);

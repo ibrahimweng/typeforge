@@ -18,6 +18,8 @@ import { exportFont, toDownloadBlob, type ExportFormat } from "@/font/export";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
 import { OUTLINE_ACTION, PRIMARY_ACTION } from "@/components/controls";
 import { cn } from "@/cn";
+import { downloadBlob } from "@/components/download";
+import { useModalFocus } from "@/keys/modal";
 
 export function AssembleExportDialog({ onClose }: { onClose: () => void }): React.JSX.Element {
   const state = useAssemble();
@@ -25,6 +27,9 @@ export function AssembleExportDialog({ onClose }: { onClose: () => void }): Reac
   const [working, setWorking] = React.useState(false);
   const [problem, setProblem] = React.useState<string | null>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
+  // Focus in, Tab kept in, and focus handed back on the way out -- the
+  // promise `aria-modal` makes. See `keys/modal.ts`.
+  useModalFocus(panelRef);
 
   const assembled = React.useMemo(() => build(state.assembly), [state.assembly, state.revision]);
 
@@ -56,12 +61,7 @@ export function AssembleExportDialog({ onClose }: { onClose: () => void }): Reac
         includeKerning: true,
         mergeOverlaps: true,
       });
-      const url = URL.createObjectURL(toDownloadBlob(result));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = result.fileName;
-      link.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(toDownloadBlob(result), result.fileName);
       onClose();
     } catch (error) {
       if (panelRef.current) refuse(panelRef.current);

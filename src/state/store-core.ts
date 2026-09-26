@@ -57,14 +57,42 @@ export function firstLetterName(typeface: Typeface): string | null {
 export abstract class StoreCore {
   /** The control letters as the font was opened, never updated afterwards. */
   /**
-   * What the open UFO holds that this application does not model.
+   * What each open UFO holds that this application does not model, by the id
+   * of the font it belongs to.
    *
    * Kept off `AppState` deliberately: nothing renders from it and it is a
    * megabyte of somebody's background layers, so putting it in the state
    * would have every subscriber re-render whenever it changed and every
    * snapshot carry it.
+   *
+   * By font rather than one for the whole desk, which is what it was. With
+   * several fonts open that was one UFO's background layers for all of them:
+   * open a folder, open a TrueType beside it, switch back, and the folder
+   * went out without its layers -- or the TrueType went out with them.
    */
-  protected ufo: UfoCarried | null = null;
+  private ufos = new Map<string, UfoCarried>();
+
+  /** What the font in front carries, which is what everything above means by it. */
+  protected get ufo(): UfoCarried | null {
+    return this.ufos.get(this.mine) ?? null;
+  }
+
+  protected set ufo(carried: UfoCarried | null) {
+    if (carried) this.ufos.set(this.mine, carried);
+    else this.ufos.delete(this.mine);
+  }
+
+  /**
+   * What each open font carries, in the order their tabs sit in -- the same
+   * order `everyDocument` gives them, and with the same exception during a
+   * loan: the font of record is the one put away, and what it carries went
+   * into the drawer with it.
+   */
+  protected everyUfo(): Array<UfoCarried | null> {
+    const carried = this.aside.map((one) => this.ufos.get(one.id) ?? null);
+    carried.splice(this.at, 0, this.held ? this.held.ufo : this.ufo);
+    return carried;
+  }
 
   protected controlBaseline: ControlReadings | null = null;
   /**
@@ -366,7 +394,11 @@ export abstract class StoreCore {
       undo: this.stacks.get(id)?.undo ?? [],
       redo: this.stacks.get(id)?.redo ?? [],
     });
-    if (this.shut.length > StoreCore.REMEMBERED) this.shut.shift();
+    if (this.shut.length > StoreCore.REMEMBERED) {
+      // Past the way back, so what it carried has nowhere left to go.
+      const forgotten = this.shut.shift();
+      if (forgotten) this.ufos.delete(forgotten.id);
+    }
     this.set({ reopenable: this.shut[this.shut.length - 1].name });
   }
 
@@ -426,6 +458,7 @@ export abstract class StoreCore {
   protected closeEveryDocument(): void {
     this.aside = [];
     this.stacks.clear();
+    this.ufos.clear();
     // Nothing to come back to. These are not fonts somebody shut; they are the
     // desk being cleared for a session that is about to arrive, and offering
     // to reopen one of them would offer to put half the last session back on

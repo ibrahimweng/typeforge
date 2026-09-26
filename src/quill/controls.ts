@@ -51,7 +51,14 @@ import type { Vec2 } from "@/font/types";
 import type { FieldControl } from "@/forge/parts";
 import { scatterOf } from "@/font/scatter";
 import { alongSpine, walkOf } from "./curve";
-import type { QuillGlyph, QuillSegment, QuillSpine, QuillStroke, WidthProfile } from "./types";
+import type {
+  QuillCubic,
+  QuillGlyph,
+  QuillSegment,
+  QuillSpine,
+  QuillStroke,
+  WidthProfile,
+} from "./types";
 
 /**
  * The hand a set of strokes is drawn with.
@@ -260,28 +267,49 @@ const onlyMoves = (map: Affine): boolean =>
 /** Whether a map does nothing at all, so a spine can be handed back untouched. */
 const doesNothing = (map: Affine): boolean => onlyMoves(map) && map.e === 0 && map.f === 0;
 
-/** The cubic through the same places as an arc, to within a fraction of a unit. */
-function arcAsCubic(segment: Extract<QuillSegment, { kind: "arc" }>): QuillSegment {
+/**
+ * The cubics through the same places as an arc, to within a fraction of a unit.
+ *
+ * One cubic per quarter turn or less. The standard handle length for a circular
+ * arc, `4/3 tan(sweep/4) r`, is only good for a small sweep. On a radius of a
+ * hundred units the cubic it gives is within three hundredths of a unit at a
+ * quarter turn, out by 1.8 units at a half turn and by 27 at three quarters,
+ * and at a whole turn the tangent is infinite and the handles go with it -- a
+ * whole circle, leaned, came back as a spike off the edge of the canvas. This used to
+ * make one cubic of whatever it was given; it now cuts the arc into equal
+ * pieces of at most a quarter turn first, which is what every font format does
+ * for the same reason.
+ */
+export function arcAsCubics(segment: Extract<QuillSegment, { kind: "arc" }>): QuillCubic[] {
   const on = (angle: number): Vec2 => ({
     x: segment.centre.x + Math.cos(angle) * segment.radius,
     y: segment.centre.y + Math.sin(angle) * segment.radius,
   });
   const sweep = segment.endAngle - segment.startAngle;
-  const from = on(segment.startAngle);
-  const to = on(segment.endAngle);
-  // The standard handle length for a circular arc of this sweep, which puts the
-  // cubic within a fraction of a unit of the arc for any sweep up to a quarter
-  // turn and well inside a unit for a half.
-  const k = (4 / 3) * Math.tan(sweep / 4) * segment.radius;
-  const leaving = { x: -Math.sin(segment.startAngle), y: Math.cos(segment.startAngle) };
-  const arriving = { x: -Math.sin(segment.endAngle), y: Math.cos(segment.endAngle) };
-  return {
-    kind: "cubic",
-    from,
-    c1: { x: from.x + leaving.x * k, y: from.y + leaving.y * k },
-    c2: { x: to.x - arriving.x * k, y: to.y - arriving.y * k },
-    to,
-  };
+  // A hair under a whole number of quarters is still that many, not one more.
+  const pieces = Math.max(1, Math.ceil(Math.abs(sweep) / (Math.PI / 2) - 1e-9));
+  const step = sweep / pieces;
+  const k = (4 / 3) * Math.tan(step / 4) * segment.radius;
+  const cubics: QuillCubic[] = [];
+  for (let piece = 0; piece < pieces; piece++) {
+    const startAngle = segment.startAngle + step * piece;
+    // The last piece ends on the arc's own end rather than on a sum of steps.
+    const endAngle = piece === pieces - 1 ? segment.endAngle : startAngle + step;
+    const from = on(startAngle);
+    const to = on(endAngle);
+    const leaving = { x: -Math.sin(startAngle), y: Math.cos(startAngle) };
+    const arriving = { x: -Math.sin(endAngle), y: Math.cos(endAngle) };
+    cubics.push({
+      kind: "cubic",
+      from,
+      c1: { x: from.x + leaving.x * k, y: from.y + leaving.y * k },
+      c2: { x: to.x - arriving.x * k, y: to.y - arriving.y * k },
+      to,
+    });
+  }
+  // Consecutive pieces share their meeting point exactly, not merely closely.
+  for (let piece = 1; piece < cubics.length; piece++) cubics[piece].from = cubics[piece - 1].to;
+  return cubics;
 }
 
 /**
@@ -296,24 +324,32 @@ function arcAsCubic(segment: Extract<QuillSegment, { kind: "arc" }>): QuillSegme
  * stroke its exactness, and it costs it honestly: the segment changes kind, so
  * `isExact` reports the truth afterwards.
  */
-function mapSegment(segment: QuillSegment, map: Affine): QuillSegment {
-  if (doesNothing(map)) return segment;
+function mapSegment(segment: QuillSegment, map: Affine): QuillSegment[] {
+  if (doesNothing(map)) return [segment];
   if (segment.kind === "line") {
-    return { kind: "line", from: applied(map, segment.from), to: applied(map, segment.to) };
+    return [{ kind: "line", from: applied(map, segment.from), to: applied(map, segment.to) }];
   }
   if (segment.kind === "cubic") {
-    return {
-      kind: "cubic",
-      from: applied(map, segment.from),
-      c1: applied(map, segment.c1),
-      c2: applied(map, segment.c2),
-      to: applied(map, segment.to),
-    };
+    return [
+      {
+        kind: "cubic",
+        from: applied(map, segment.from),
+        c1: applied(map, segment.c1),
+        c2: applied(map, segment.c2),
+        to: applied(map, segment.to),
+      },
+    ];
   }
   if (onlyMoves(map)) {
-    return { ...segment, centre: applied(map, segment.centre) };
+    return [{ ...segment, centre: applied(map, segment.centre) }];
   }
-  return mapSegment(arcAsCubic(segment), map);
+  /*
+   * An arc of more than a quarter turn becomes several cubics, so one segment
+   * in can be several out -- which is why this answers a list and the spine is
+   * rebuilt with `flatMap`. Nothing downstream counts segments: the width and
+   * the pen are placed by length along the spine, not by node.
+   */
+  return arcAsCubics(segment).flatMap((cubic) => mapSegment(cubic, map));
 }
 
 /**
@@ -538,7 +574,7 @@ export function restyleStroke(
   return {
     spine: {
       ...reached.spine,
-      segments: reached.spine.segments.map((segment) => mapSegment(segment, map)),
+      segments: reached.spine.segments.flatMap((segment) => mapSegment(segment, map)),
     },
     width: restyleWidth(stroke.width, style),
     nib: [{ at: 0, contrast: style.contrast, angle: style.nibAngle }],

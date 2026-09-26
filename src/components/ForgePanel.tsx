@@ -56,6 +56,7 @@ import { forgeStore, useForge, type Phase } from "@/state/useForge";
 import { store } from "@/state/useStore";
 import { SliderControl as Slider } from "@/ui/components/controls/slider";
 import { cn } from "@/cn";
+import { downloadBlob } from "@/components/download";
 
 export function ForgePanel({ onEdit }: { onEdit: () => Promise<void> }): React.JSX.Element {
   const state = useForge();
@@ -797,12 +798,7 @@ function Trip({ letter }: { letter: string }): React.JSX.Element {
   const send = (): void => {
     const svg = forgeStore.letterAsSvg(letter);
     if (!svg) return;
-    const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${nameForFile(letter)}.svg`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(new Blob([svg], { type: "image/svg+xml" }), `${nameForFile(letter)}.svg`);
   };
 
   const receive = async (file: File | undefined): Promise<void> => {

@@ -40,6 +40,7 @@ import {
 } from "@/state/layout";
 import { landingAmong } from "@/components/landing";
 import { cn } from "@/cn";
+import { followPointer, type PointerEnd } from "@/components/follow-pointer";
 
 /** One panel offered to the dock. */
 export interface DockPanel {
@@ -167,12 +168,9 @@ export function Dock({
             // Leftwards is wider, because the dock is on the right.
             resizeDock(startWidth + (startX - moving.clientX));
           };
-          const stop = (): void => {
-            window.removeEventListener("pointermove", move);
-            window.removeEventListener("pointerup", stop);
-          };
-          window.addEventListener("pointermove", move);
-          window.addEventListener("pointerup", stop);
+          // Each width was applied as it went, so up or cancelled there is
+          // only the listening to stop.
+          followPointer({ move, end: () => {} });
         }}
         onKeyDown={(event) => {
           const step = event.shiftKey ? 48 : 16;
@@ -302,9 +300,7 @@ export function Dock({
                       );
                       setCarrying({ id: panel.id, to: landed });
                     };
-                    const drop = (): void => {
-                      window.removeEventListener("pointermove", carry);
-                      window.removeEventListener("pointerup", drop);
+                    const drop = (how: PointerEnd): void => {
                       /*
                         The move is made here rather than inside the updater,
                         which is where it used to be.
@@ -318,10 +314,10 @@ export function Dock({
                         Nothing here should rely on being idempotent by luck.
                       */
                       setCarrying(null);
-                      if (carried) moveTo(panel.id, landed);
+                      // Cancelled is not dropped: the panel goes back where it was.
+                      if (carried && how === "up") moveTo(panel.id, landed);
                     };
-                    window.addEventListener("pointermove", carry);
-                    window.addEventListener("pointerup", drop);
+                    followPointer({ move: carry, end: drop });
                   }}
                 >
                   <button

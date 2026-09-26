@@ -25,6 +25,7 @@
 
 import { ROUND_NIB } from "./types";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
+import { nearestTurn, wrapDegrees } from "@/forge/angles";
 import { contourArea } from "@/font/geometry";
 import { alongSpine, fitCubics, headingOn, leftOf, pointOn, walkOf, type SpineWalk } from "./curve";
 import type {
@@ -146,11 +147,7 @@ export function nibAt(profile: NibProfile, fraction: number): Nib {
     const from = stops[index - 1];
     const span = to.at - from.at;
     const across = span <= 0 ? 1 : (fraction - from.at) / span;
-    let turn = to.angle - from.angle;
-    if (Math.abs(turn) < 360) {
-      while (turn > 180) turn -= 360;
-      while (turn < -180) turn += 360;
-    }
+    const turn = wrapDegrees(to.angle - from.angle);
     return {
       contrast: from.contrast + (to.contrast - from.contrast) * across,
       angle: from.angle + turn * across,
@@ -246,18 +243,28 @@ const MITRE_LIMIT = 4;
  * the next, and a bowl and an arch are built to. Only the ones that actually
  * turn need anything between their two offsets.
  *
- * The wrap of a closed spine is left out on purpose. A ring's seam is where the
- * fit wrapped itself, which is smooth by construction, and a ring with a real
- * corner at exactly that point would want splitting rather than joining.
+ * On a closed spine that includes the wrap, from the last segment back into the
+ * first. It was left out once, on the reasoning that a ring's seam is where the
+ * fit wrapped itself and so is smooth by construction -- which is true of a
+ * traced `o` and false of anything drawn with a corner at its first node. A
+ * square ring swept with a mitre came out with three mitred corners and one
+ * bevelled one, because the sides simply ran from the last sample to the
+ * first in a straight line. A smooth seam is still not a corner: it turns by
+ * nothing, so the fifteen-degree test below passes it over like any other
+ * smooth join, and including the wrap costs a ring that does not need it
+ * nothing at all. The wrap sits at a fraction of exactly one, which is where
+ * `sideOf` walks up to it last.
  */
 function cornersOf(spine: QuillSpine, walk: SpineWalk): Corner[] {
   const found: Corner[] = [];
   if (walk.total <= 0) return found;
+  const count = spine.segments.length;
+  const joins = spine.closed ? count : count - 1;
   let covered = 0;
-  for (let index = 0; index < spine.segments.length - 1; index++) {
+  for (let index = 0; index < joins; index++) {
     covered += walk.lengths[index];
     const incoming = headingOn(spine.segments[index], 1);
-    const outgoing = headingOn(spine.segments[index + 1], 0);
+    const outgoing = headingOn(spine.segments[(index + 1) % count], 0);
     const turn = incoming.x * outgoing.y - incoming.y * outgoing.x;
     const along = incoming.x * outgoing.x + incoming.y * outgoing.y;
     /*
@@ -280,7 +287,8 @@ function cornersOf(spine: QuillSpine, walk: SpineWalk): Corner[] {
      */
     if (Math.abs(turn) < 0.26 && along > 0) continue;
     found.push({
-      at: covered / walk.total,
+      // The wrap is at one exactly, whatever the running sum rounded to.
+      at: index === count - 1 ? 1 : covered / walk.total,
       point: pointOn(spine.segments[index], 1),
       incoming,
       outgoing,
@@ -352,9 +360,7 @@ function joinAt(
    * out of.
    */
   const start = Math.atan2(from.y - corner.point.y, from.x - corner.point.x);
-  let finish = Math.atan2(to.y - corner.point.y, to.x - corner.point.x);
-  while (finish - start > Math.PI) finish -= Math.PI * 2;
-  while (finish - start < -Math.PI) finish += Math.PI * 2;
+  const finish = nearestTurn(start, Math.atan2(to.y - corner.point.y, to.x - corner.point.x));
   const points: Vec2[] = [from];
   /*
    * Enough chords that the arc is inside a tenth of a unit of the circle.
@@ -396,11 +402,23 @@ function sideOf(
 ): Vec2[] {
   const points: Vec2[] = [];
   let next = 0;
-  const joinsUpTo = (fraction: number): void => {
-    while (next < corners.length && corners[next].at <= fraction) {
+  /*
+   * How close, as a fraction, a sample has to be to a corner to count as
+   * landing on it: a millionth of a unit along the spine.
+   */
+  const onCorner = 1e-6 / Math.max(walk.total, 1e-9);
+  /*
+   * Emits every corner up to the fraction, and says whether one of them sat on
+   * the fraction itself.
+   */
+  const joinsUpTo = (fraction: number): boolean => {
+    let landed = false;
+    while (next < corners.length && corners[next].at <= fraction + onCorner) {
+      if (Math.abs(corners[next].at - fraction) <= onCorner) landed = true;
       points.push(...joinAt(corners[next], profile, pen, side, join));
       next += 1;
     }
+    return landed;
   };
   for (let step = 0; step <= steps; step++) {
     const fraction = step / steps;
@@ -413,8 +431,18 @@ function sideOf(
      * another, and no number of samples ever lands on the turn itself. Walking
      * the corners alongside the samples puts each join exactly where the spine
      * bends, whatever the step size.
+     *
+     * And when a sample lands exactly on a corner, the sample is dropped. The
+     * join has already put down the offset on both sides of the turn, ending
+     * on the outgoing one, and `alongSpine` answers a fraction that sits on a
+     * join from the *incoming* segment -- so sampling there as well stepped
+     * the side back to where the join began and then forward again, a fold in
+     * the outline the fit had to follow. Any spine of two equal lines walked
+     * in an even number of steps did it -- an `L` of two three-hundred-unit
+     * arms is walked in three hundred. The join's last point is the
+     * outgoing sample at that place, so nothing is lost by leaving it out.
      */
-    joinsUpTo(fraction);
+    if (joinsUpTo(fraction)) continue;
     const { point, heading } = alongSpine(spine, walk, fraction);
     const half = widthAt(profile, fraction) / 2;
     const reach = reachAcross(heading, half, nibAt(pen, fraction));
@@ -626,8 +654,13 @@ function sweepRing(stroke: QuillStroke, walk: SpineWalk, tolerance: number): Dra
 
   const loopOf = (side: 1 | -1) => {
     const points = sideOf(stroke.spine, walk, stroke.width, stroke.nib, side, steps, corners, join);
-    // The sample at one is the sample at nought; fitting the run with the first
-    // point repeated is what carries the tangent across the seam.
+    /*
+     * The sample at one is the sample at nought; fitting the run with the first
+     * point repeated is what carries the tangent across the seam. When the seam
+     * is a corner the last point is instead the join's outgoing offset, which
+     * is the same place again, so it goes just the same and the join's own
+     * approach and mitre are what lead back into the start.
+     */
     points.pop();
     return fitCubics([...points, points[0]], tolerance);
   };

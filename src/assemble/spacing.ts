@@ -272,12 +272,30 @@ export function kernBetween(
   em: number,
 ): number {
   if (!left.silhouette.drawn || !right.silhouette.drawn) return 0;
-  const rows = Math.min(left.silhouette.rows.length, right.silhouette.rows.length);
+
+  /*
+   * Compared at the same heights, which the rows alone do not give.
+   *
+   * Each silhouette is sampled across its own letter, so row twenty of an x is
+   * at a quarter of the x-height and row twenty of an l is somewhere near the
+   * x-height itself. Pairing them by index measured the x's foot against the
+   * l's stem at a different height and called it a gap, and every pair of
+   * letters of different heights was kerned off shapes that are never beside
+   * each other. The forge's kerner samples every letter on one grid of heights
+   * for exactly this reason (`src/forge/kern.ts`); the silhouettes here are
+   * also what the sidebearings are measured from, where their own resolution
+   * matters, so rather than resample them the two are read at a shared set of
+   * heights across the band both letters occupy, each from its own nearest
+   * row. A height outside either letter is skipped, as an empty row always was.
+   */
+  const band = sharedBand(left.silhouette, right.silhouette);
+  if (!band) return 0;
 
   let closest = Infinity;
-  for (let index = 0; index < rows; index++) {
-    const leftEdge = left.silhouette.right[index];
-    const rightEdge = right.silhouette.left[index];
+  for (let index = 0; index < ROWS; index++) {
+    const at = band.low + ((index + 0.5) / ROWS) * (band.high - band.low);
+    const leftEdge = left.silhouette.right[nearestRow(left.silhouette, at)];
+    const rightEdge = right.silhouette.left[nearestRow(right.silhouette, at)];
     if (!Number.isFinite(leftEdge) || !Number.isFinite(rightEdge)) continue;
     // White after the first letter's ink at this row, plus white before the
     // second's.
@@ -293,6 +311,37 @@ export function kernBetween(
   const excess = closest - reference;
   if (excess <= 0) return 0;
   return -Math.round(settings.kern * excess);
+}
+
+/**
+ * The heights a silhouette speaks for: its rows, and half a step either side.
+ *
+ * The rows are inset half a step from the letter's top and bottom (see
+ * `silhouetteOf`), so the half step puts the ends back where the letter is.
+ */
+function spanOf(silhouette: Silhouette): { low: number; high: number; step: number } {
+  const { rows } = silhouette;
+  const step = rows.length > 1 ? (rows[rows.length - 1] - rows[0]) / (rows.length - 1) : 0;
+  return { low: rows[0] - step / 2, high: rows[rows.length - 1] + step / 2, step };
+}
+
+/** The heights both letters cover, or null where they do not meet at all. */
+function sharedBand(one: Silhouette, other: Silhouette): { low: number; high: number } | null {
+  if (one.rows.length === 0 || other.rows.length === 0) return null;
+  const a = spanOf(one);
+  const b = spanOf(other);
+  const low = Math.max(a.low, b.low);
+  const high = Math.min(a.high, b.high);
+  return high > low ? { low, high } : null;
+}
+
+/** The row of this silhouette nearest a height inside its span. */
+function nearestRow(silhouette: Silhouette, at: number): number {
+  const { rows } = silhouette;
+  const { step } = spanOf(silhouette);
+  if (!(step > 0)) return 0;
+  const index = Math.round((at - rows[0]) / step);
+  return Math.min(rows.length - 1, Math.max(0, index));
 }
 
 /**

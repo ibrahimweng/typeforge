@@ -43,7 +43,7 @@ import {
 } from "./document";
 import { expectationFor, detectFit } from "./fit";
 import { glyphNameFor, SLOTS, SLOT_GROUPS, slotFor, slotsIn } from "./slots";
-import { DEFAULT_SPACING, silhouetteOf, insetOf } from "./spacing";
+import { DEFAULT_SPACING, insetOf, kernBetween, silhouetteOf, spaceOne } from "./spacing";
 import { toTypeface } from "./typeface";
 import { draw, startFrom } from "@/forge/document";
 import { letterSvg } from "@/forge/exchange";
@@ -321,6 +321,18 @@ describe("guessing which character a file is for", () => {
   it("reads a codepoint", () => {
     expect(guessCharacter("uni0041.svg")).toBe("A");
     expect(guessCharacter("u0062.svg")).toBe("b");
+    expect(guessCharacter("u1F600.svg")).toBe("\u{1F600}");
+    expect(guessCharacter("u10FFFF.svg")).toBe("\u{10FFFF}");
+  });
+
+  it("leaves a codepoint Unicode does not have unmapped rather than throwing", () => {
+    // `String.fromCodePoint` throws past U+10FFFF, and it threw out of the
+    // import, taking every other file in the batch with it.
+    expect(guessCharacter("u110000.svg")).toBe("");
+    expect(guessCharacter("uniFFFFFF.svg")).toBe("");
+    // Half of a surrogate pair is not a character either.
+    expect(guessCharacter("uniD800.svg")).toBe("");
+    expect(guessCharacter("uDFFF.svg")).toBe("");
   });
 
   it("reads the names the font world uses", () => {
@@ -637,6 +649,36 @@ describe("kerning", () => {
       corner(0, 100),
     ],
   };
+
+  it("compares two letters of different heights at the same heights", () => {
+    /*
+     * A tall letter whose right side is open below an arm at the top, beside a
+     * short box. At every height the box has, the tall one is a bare stem with
+     * the arm's whole length of white beside it -- a Γ before an o, which wants
+     * pulling in. Each silhouette is sampled over its own letter, and the rows
+     * used to be paired by index: the box's top rows met the Γ's arm, seven
+     * hundred units up, and the closest approach they found was the arm tip at
+     * the box's shoulder, which never happens on a page. That said no kern.
+     */
+    const em = METRICS.unitsPerEm;
+    const place = (character: string, contours: Contour[]) => {
+      const silhouette = silhouetteOf(contours, METRICS);
+      return { character, silhouette, spaced: spaceOne(silhouette, DEFAULT_SPACING, METRICS) };
+    };
+    // In font coordinates here, y up: `box` is only a rectangle.
+    const gamma = place("Γ", [box(0, 0, 100, 700), box(0, 600, 500, 100)]);
+    const short = place("o", [box(0, 0, 300, 400)]);
+    const tall = place("l", [box(0, 0, 300, 700)]);
+
+    expect(kernBetween(gamma, short, DEFAULT_SPACING, em)).toBeLessThan(-em * 0.05);
+    // Two flat sides stay unkerned whatever their heights.
+    expect(kernBetween(tall, short, DEFAULT_SPACING, em)).toBe(0);
+    expect(kernBetween(short, tall, DEFAULT_SPACING, em)).toBe(0);
+    // And two letters that never share a height have nothing to say.
+    const high = place("'", [box(0, 600, 100, 100)]);
+    const low = place(",", [box(0, -200, 100, 100)]);
+    expect(kernBetween(high, low, DEFAULT_SPACING, em)).toBe(0);
+  });
 
   it("pulls a pair together when one leans away from the other", () => {
     const assembly = from([

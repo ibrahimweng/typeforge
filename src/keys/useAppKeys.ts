@@ -19,7 +19,9 @@
 
 import * as React from "react";
 
-import { busy } from "@/keys/typing";
+import { historyChord } from "@/keys/history-keys";
+import { modalOpen } from "@/keys/modal";
+import { busy, editingText } from "@/keys/typing";
 import { store, type ViewId } from "@/state/useStore";
 
 /** The views, in the order the tabs show them, so 1 is the first tab. */
@@ -65,15 +67,63 @@ export function useAppKeys({
   onExport,
   onOpenFile,
   editing,
+  undo,
+  redo,
 }: {
   onSave: () => void;
   onExport: () => void;
   onOpenFile: () => void;
   /** Whether the six numbered views are on screen to be gone to. */
   editing: boolean;
+  /**
+   * The undo pair for whichever document is in front, from `useHistory` --
+   * the same pair the Edit menu and the top bar's buttons run.
+   */
+  undo: () => void;
+  redo: () => void;
 }): void {
+  /*
+   * Read through a ref, because `useHistory` hands back a new pair on every
+   * render and binding the listener to them would take it off the window and
+   * put it back again after every edit. The ref always holds the pair for the
+   * document in front at the moment the key is pressed.
+   */
+  const history = React.useRef({ undo, redo });
+  history.current = { undo, redo };
+
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      /*
+       * Nothing behind a dialog. A dialog is modal because what is behind it
+       * is not to be touched until it closes, and that includes saving the
+       * document in the middle of naming it. See `keys/modal.ts`.
+       */
+      if (modalOpen()) return;
+
+      /*
+       * Undo and redo, everywhere, and before the repeat guard because
+       * holding Cmd-Z to walk back through a run of edits is how people use it.
+       *
+       * These used to live with the glyph editor's keys and so answered only
+       * there, and only with the canvas focused -- while the Edit menu and the
+       * top bar advertised Cmd-Z in every mode. In Draw, Trace and Assemble
+       * the key did nothing at all, and in the editor it did nothing once any
+       * button had been clicked. Here it runs whatever `useHistory` says the
+       * document in front undoes with, which is the pair the menu runs.
+       *
+       * Except in a text field, where Cmd-Z belongs to the text: somebody who
+       * has just mistyped a family name means to take back the typing, not the
+       * last point they moved in a letter they cannot see.
+       */
+      const chord = historyChord(event);
+      if (chord) {
+        if (editingText(event.target)) return;
+        event.preventDefault();
+        if (chord === "redo") history.current.redo();
+        else history.current.undo();
+        return;
+      }
+
       if (event.repeat) return;
 
       if (event.metaKey || event.ctrlKey) {

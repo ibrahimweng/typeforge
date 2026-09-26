@@ -29,6 +29,7 @@
  * repaired afterwards: see `strokeLimit`.
  */
 
+import { nearestTurn } from "./angles";
 import { contourArea, reverseContour } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { folded } from "./shapes";
@@ -607,11 +608,9 @@ function outerJoin(
     return Math.atan2(local.y / (reach.along || 1e-9), local.x / (reach.across || 1e-9));
   };
   const start = angleOf(from);
-  let finish = angleOf(to);
   // The short way round. The long way would sweep the pen back through the
   // stroke it just came out of.
-  while (finish - start > Math.PI) finish -= Math.PI * 2;
-  while (finish - start < -Math.PI) finish += Math.PI * 2;
+  const finish = nearestTurn(start, angleOf(to));
   return [
     {
       kind: "ellipse",

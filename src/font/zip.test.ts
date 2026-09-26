@@ -69,6 +69,26 @@ describe("a zip of several files", () => {
     expect(one).toEqual(other);
   });
 
+  it("says its names are UTF-8, so one that is not ASCII comes back as it was named", () => {
+    /*
+     * Without general-purpose bit 11 a reader takes the name as code page 437,
+     * and Python's `zipfile` does exactly that -- so this round trip is the
+     * check that matters, and the flag is read out of both headers as well in
+     * case there is no unarchiver here to run it.
+     */
+    const name = "Grotesk-Äußerst-日本.ttf";
+    const archive = zip([{ name, bytes: bytes("font") }]);
+    const view = new DataView(archive.buffer);
+    expect(view.getUint16(6, true) & 0x0800).toBe(0x0800);
+    const central = view.getUint32(archive.length - 22 + 16, true);
+    expect(view.getUint32(central, true)).toBe(0x02014b50);
+    expect(view.getUint16(central + 8, true) & 0x0800).toBe(0x0800);
+
+    const back = unzips(archive);
+    if (!back) return;
+    expect(Object.keys(back).map((n) => n.normalize("NFC"))).toEqual([name.normalize("NFC")]);
+  });
+
   it("holds nothing at all", () => {
     const archive = zip([]);
     expect(archive.length).toBe(22);

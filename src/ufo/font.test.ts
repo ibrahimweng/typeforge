@@ -13,8 +13,8 @@ import { describe, expect, it } from "vitest";
 
 import type { Glyph, Typeface } from "@/font/types";
 import { emptyTypeface } from "@/font/types";
-import { looksLikeUfo, readUfo, writeUfo, type UfoFiles } from "./font";
-import { writePlist } from "./plist";
+import { looksLikeUfo, readUfo, textOf, writeUfo, type UfoFiles } from "./font";
+import { readPlist, writePlist } from "./plist";
 
 /** The smallest thing that is a UFO, plus whatever a test wants to add. */
 function ufo(extra: Record<string, string> = {}): UfoFiles {
@@ -285,5 +285,140 @@ describe("a UFO read and written again", () => {
     const out = writeUfo(typefaceWith([glyph("a"), glyph("A")]));
     const back = readUfo(out)!;
     expect(back.typeface.glyphs.map((one) => one.name).sort()).toEqual(["A", "a"]);
+  });
+});
+
+describe("the claimed files, merged rather than replaced", () => {
+  /*
+   * The writer owns `fontinfo.plist`, `groups.plist`, `lib.plist` and
+   * `layercontents.plist`, and used to write each from the model alone. The
+   * model is a dozen keys of fontinfo, the kerning groups and one lib key, so
+   * a round trip threw away the rest of every one of them.
+   */
+  it("keeps the fontinfo keys the model does not have, where they were", () => {
+    const files = ufo({
+      "fontinfo.plist": writePlist({
+        familyName: "Test Sans",
+        openTypeOS2Panose: [2, 11, 5, 2, 4, 5, 4, 2, 2, 4],
+        unitsPerEm: 1000,
+        postscriptBlueValues: [-10, 0, 500, 510],
+        copyright: "Old",
+      }),
+    });
+    const { typeface, carried } = readUfo(files)!;
+    typeface.meta.familyName = "Renamed";
+    typeface.meta.copyright = "";
+    const info = readPlist(textOf(writeUfo(typeface, carried).get("fontinfo.plist")))!;
+    expect(info.familyName).toBe("Renamed");
+    expect(info.openTypeOS2Panose).toEqual([2, 11, 5, 2, 4, 5, 4, 2, 2, 4]);
+    expect(info.postscriptBlueValues).toEqual([-10, 0, 500, 510]);
+    // Cleared in the model is cleared in the file, not restored from it.
+    expect(info.copyright).toBeUndefined();
+    expect(Object.keys(info).slice(0, 3)).toEqual([
+      "familyName",
+      "openTypeOS2Panose",
+      "unitsPerEm",
+    ]);
+  });
+
+  it("keeps the groups that are not kerning, and the kerning groups' names", () => {
+    const files = ufo({
+      "groups.plist": writePlist({
+        "public.kern1.O": ["O", "Q"],
+        "public.kern2.solo": ["V"],
+        topMarks: ["acutecomb", "gravecomb"],
+      }),
+      "kerning.plist": writePlist({ "public.kern1.O": { "public.kern2.solo": -30 } }),
+    });
+    const { typeface, carried } = readUfo(files)!;
+    const out = writeUfo(typeface, carried);
+    const groups = readPlist(textOf(out.get("groups.plist")))!;
+    expect(groups.topMarks).toEqual(["acutecomb", "gravecomb"]);
+    expect(groups["public.kern1.O"]).toEqual(["O", "Q"]);
+    // A group of one stays a group, because that is what the file called it.
+    expect(groups["public.kern2.solo"]).toEqual(["V"]);
+    const kerning = readPlist(textOf(out.get("kerning.plist")))!;
+    expect(kerning).toEqual({ "public.kern1.O": { "public.kern2.solo": -30 } });
+  });
+
+  it("names a class made here without taking a name the file already uses", () => {
+    const files = ufo({ "groups.plist": writePlist({ "public.kern1.0": ["x", "y"] }) });
+    const { typeface, carried } = readUfo(files)!;
+    typeface.kernClasses = [{ id: "new", name: "new", left: ["A", "B"], right: ["V"], value: -5 }];
+    const groups = readPlist(textOf(writeUfo(typeface, carried).get("groups.plist")))!;
+    expect(groups["public.kern1.0"]).toEqual(["x", "y"]);
+    expect(groups["public.kern1.0.1"]).toEqual(["A", "B"]);
+  });
+
+  it("keeps every lib key, a data value included", () => {
+    const lib = `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>com.somebody.colour</key><string>red</string>
+  <key>public.glyphOrder</key><array><string>a</string></array>
+  <key>com.somebody.thumb</key><data>aGVsbG8=</data>
+</dict></plist>`;
+    const { typeface, carried } = readUfo(ufo({ "lib.plist": lib }))!;
+    const written = textOf(writeUfo(typeface, carried).get("lib.plist"));
+    expect(written).toContain("<data>aGVsbG8=</data>");
+    const back = readPlist(written)!;
+    expect(back["com.somebody.colour"]).toBe("red");
+    expect(back["public.glyphOrder"]).toEqual(["a"]);
+  });
+
+  it("lists every layer it carried, not only the default one", () => {
+    const layers = `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><array>
+  <array><string>public.default</string><string>glyphs</string></array>
+  <array><string>public.background</string><string>glyphs.public.background</string></array>
+</array></plist>`;
+    const files = ufo({
+      "layercontents.plist": layers,
+      "glyphs.public.background/contents.plist": writePlist({ a: "a.glif" }),
+      "glyphs.public.background/a.glif": "<glyph name='a' format='2'><outline/></glyph>",
+    });
+    const { typeface, carried } = readUfo(files)!;
+    const out = writeUfo(typeface, carried);
+    const written = textOf(out.get("layercontents.plist"));
+    expect(written).toContain("<string>public.background</string>");
+    expect(written).toContain("<string>glyphs.public.background</string>");
+    expect(out.has("glyphs.public.background/a.glif")).toBe(true);
+  });
+});
+
+describe("the parts of a glyph's file that are not its drawing", () => {
+  it("keeps a glif it could not read, and keeps pointing at it", () => {
+    const files = ufo({
+      "glyphs/contents.plist": writePlist({ a: "a.glif", broken: "broken.glif" }),
+      "glyphs/broken.glif": "<notAGlyph/>",
+    });
+    const first = readUfo(files)!;
+    expect(first.typeface.glyphs.map((one) => one.name)).toEqual(["a"]);
+    const out = writeUfo(first.typeface, first.carried);
+    expect(out.get("glyphs/broken.glif")).toBe("<notAGlyph/>");
+    expect(readPlist(textOf(out.get("glyphs/contents.plist")))!.broken).toBe("broken.glif");
+  });
+
+  it("keeps a glyph's lib, guidelines, image and note", () => {
+    const files = ufo({
+      "glyphs/a.glif": `<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="a" format="2">
+  <advance width="500"/>
+  <note>round &amp; round</note>
+  <image fileName="sketch.png" xScale="0.5"/>
+  <guideline x="250" angle="90" name="middle"/>
+  <outline/>
+  <lib><dict><key>public.markColor</key><string>1,0,0,1</string></dict></lib>
+</glyph>`,
+    });
+    const { typeface, carried } = readUfo(files)!;
+    typeface.glyphs[0].advanceWidth = 520;
+    const written = textOf(writeUfo(typeface, carried).get("glyphs/a.glif"));
+    expect(written).toContain('<advance width="520"/>');
+    expect(written).toContain("<note>round &amp; round</note>");
+    expect(written).toContain('<image fileName="sketch.png" xScale="0.5"/>');
+    expect(written).toContain('<guideline x="250" angle="90" name="middle"/>');
+    expect(written).toContain("<key>public.markColor</key>");
+    // The lib goes last, where every other tool puts it.
+    expect(written.indexOf("<lib>")).toBeGreaterThan(written.indexOf("<outline"));
   });
 });

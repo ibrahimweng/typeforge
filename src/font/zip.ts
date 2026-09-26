@@ -65,6 +65,20 @@ export function crc32(bytes: Uint8Array): number {
  */
 const STAMP = { time: 0, date: 0x21 };
 
+/**
+ * General-purpose bit 11: the names in this entry are UTF-8.
+ *
+ * The names were always written as UTF-8 and the archive never said so, and a
+ * zip that does not say so is read as IBM code page 437 -- that is the format's
+ * default, and Python's `zipfile`, Windows Explorer and a good many unarchivers
+ * hold to it. So "Grotesk-Kursiv-Äußerst.ttf" came out as "Grotesk-Kursiv-├äu├ƒerst.ttf",
+ * which is not the file anybody named. For a plain ASCII name the two readings
+ * agree, so the flag is set on every entry rather than decided per name: one
+ * rule, and an archive whose header bytes do not depend on what the font was
+ * called.
+ */
+const UTF8_NAMES = 0x0800;
+
 /** A store-only zip archive of these files, in the order given. */
 export function zip(entries: ZipEntry[]): Uint8Array {
   const locals: Uint8Array[] = [];
@@ -79,7 +93,7 @@ export function zip(entries: ZipEntry[]): Uint8Array {
     const head = new DataView(local.buffer);
     head.setUint32(0, 0x04034b50, true); // local file header
     head.setUint16(4, 20, true); // version needed: 2.0
-    head.setUint16(6, 0, true); // flags
+    head.setUint16(6, UTF8_NAMES, true); // flags
     head.setUint16(8, 0, true); // method: stored
     head.setUint16(10, STAMP.time, true);
     head.setUint16(12, STAMP.date, true);
@@ -97,7 +111,7 @@ export function zip(entries: ZipEntry[]): Uint8Array {
     listing.setUint32(0, 0x02014b50, true); // central directory header
     listing.setUint16(4, 20, true); // version made by
     listing.setUint16(6, 20, true); // version needed
-    listing.setUint16(8, 0, true);
+    listing.setUint16(8, UTF8_NAMES, true); // flags, as in the local header
     listing.setUint16(10, 0, true); // method: stored
     listing.setUint16(12, STAMP.time, true);
     listing.setUint16(14, STAMP.date, true);
