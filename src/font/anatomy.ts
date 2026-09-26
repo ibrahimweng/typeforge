@@ -277,8 +277,12 @@ interface BarPiece {
 
 interface BarPlan extends Crossbar {
   pieces: BarPiece[];
-  /** How far a reshaped join may overshoot its own ends, in font units. */
-  slack: number;
+  /**
+   * For a waist, the heights between which the letter is reshaped: the
+   * nearest flat edge above the bar and below it. Null for
+   * a bar that moves on its own.
+   */
+  waist: { above: number; below: number } | null;
 }
 
 /**
@@ -327,7 +331,7 @@ function followEnd(
     // That is the waist of a B, P or R rather than a bar crossing anything,
     // and it is kept as such so the letter can be judged as a whole; the
     // curve itself is the attachment, and the move has to reshape it cleanly
-    // or not happen (see `reshapeJoin`).
+    // or not happen (see `warpWaist`).
     if (first.segment.kind !== "cubic") return null;
     const far = farEnd(first.segment, walk);
     // Which way the bowl goes from here does not matter to a waist, and after
@@ -551,6 +555,7 @@ function planCrossbar(contours: Contour[]): BarPlan | null {
       const pieces: BarPiece[] = [];
       const paired = new Set<FlatEdge>();
       let broken = false;
+      let waist = false;
       for (const floor of floorLevel) {
         // The ceiling this floor is the underside of: the one overlapping it most.
         let partner: FlatEdge | null = null;
@@ -590,10 +595,16 @@ function planCrossbar(contours: Contour[]): BarPlan | null {
           break;
         }
         pieces.push({ ends: [...left.ends, ...right.ends] });
+        if (left.kind === "bowl" || right.kind === "bowl") waist = true;
       }
       if (broken || pieces.length === 0) continue;
       if (ceilingLevel.some((ceiling) => !paired.has(ceiling))) continue;
-      best = { bottom, top, pieces, slack: Math.max(1, height * 0.01) };
+      let reach: BarPlan["waist"] = null;
+      if (waist) {
+        reach = waistReach(contours, band, tolerance);
+        if (!reach) continue;
+      }
+      best = { bottom, top, pieces, waist: reach };
       bestDistance = distance;
     }
   }
@@ -649,7 +660,6 @@ function moveEnd(
   end: Extract<BarEnd, { kind: "attached" }>,
   shift: number,
   edits: Map<string, NodeEdit>,
-  slack: number,
 ): boolean {
   const contour = contours[end.contour];
   const segments = contourSegments(contour);
@@ -657,7 +667,6 @@ function moveEnd(
   let near = chain[chain.length - 1];
   let attachment = step(contour, segments, near, end.walk);
   if (!attachment) return false;
-  if (end.smooth) return reshapeJoin(contour, end, attachment, shift, slack, edits);
 
   // Moving away from a curved attachment, a straight stub between it and the
   // bar is better lengthened than carried. Geist's e ends its bar on a stub
@@ -739,97 +748,82 @@ function moveEnd(
   return true;
 }
 
-/** How far a waist may pass the far end of its join, in multiples of the slack. */
-const PASS_LIMIT = 3.5;
-/** How far a join's handles may be drawn in to keep it from denting, longest first. */
-const HANDLE_REACH = [1, 0.8, 0.6, 0.45, 0.3, 0.2];
-
 /**
- * Move the end of a waist bar, where its flat edge flows on into the bowl.
+ * How far above and below a waist bar the letter gives way when it moves.
  *
- * This is the move the first version made for B, P and R: the bar's point
- * travels straight up or down, its handle with it so the join stays smooth,
- * and the curve joining it to the bowl stretches while its far end stays put.
- * What it did not check is whether that curve still makes sense. Raise
- * DejaVu's P by 100 and the curve under the bowl, whose far handle still
- * points down towards where the bar used to be, sags 23 units below the new
- * bar before coming back up to it: a dent in the bottom of the bowl.
- *
- * So the handles are drawn in along their own directions -- which keeps the
- * curve smooth where it meets the bar and where it meets the rest of the bowl
- * -- until the curve stays between its two ends. If it cannot, the move is
- * refused, and the caller's back-off finds how far it can cleanly go. Lora's
- * bowls meet the stem without a flat edge at all, so it has no waist bar to
- * find and its B, P and R are left as drawn.
+ * Above, the nearest flat edge -- the inside top of the upper counter of B, P
+ * and R, which the top stroke sits on; below, the same for the lower counter
+ * of B, or the baseline under P and R. Everything
+ * outside these stays as drawn, so the top and bottom strokes keep their
+ * thickness and the letter its height.
  */
-function reshapeJoin(
-  contour: Contour,
-  end: Extract<BarEnd, { kind: "attached" }>,
-  attachment: { segment: Segment; next: number },
-  shift: number,
-  slack: number,
-  edits: Map<string, NodeEdit>,
-): boolean {
-  const nearIndex = end.chain[0];
-  const farIndex = attachment.next;
-  const nearNode = contour.nodes[nearIndex];
-  const farNode = contour.nodes[farIndex];
-  const forward = end.walk === "forward";
-  const nearSide: "handleIn" | "handleOut" = forward ? "handleOut" : "handleIn";
-  const farSide: "handleIn" | "handleOut" = forward ? "handleIn" : "handleOut";
-
-  const from = { x: nearNode.point.x, y: nearNode.point.y + shift };
-  const to = farNode.point;
-  // The bar may go a little past the height of the join's far end, but only
-  // a little. Past it, the far end becomes a new low or high point of the
-  // bowl: a notch in the bottom of P's bowl when its waist is raised 164
-  // units in DejaVu, a hook where R's leg leaves. Holding the bar short of it
-  // altogether stopped B, P and R about halfway at settings that look fine:
-  // moved by 100, DejaVu's R passes by 51 units of a letter 1493 tall, and
-  // that is a soft S no one would call a dent.
-  const before = to.y - nearNode.point.y;
-  const after = to.y - from.y;
-  if (Math.sign(after) !== Math.sign(before) && Math.abs(after) > slack * PASS_LIMIT) return false;
-
-  const nearHandle = nearNode[nearSide];
-  const farHandle = farNode[farSide];
-  const nearReach = nearHandle ? { x: nearHandle.x, y: nearHandle.y + shift } : from;
-  const farReach = farHandle ?? to;
-  const along = (base: Vec2, handle: Vec2, k: number): Vec2 => ({
-    x: base.x + (handle.x - base.x) * k,
-    y: base.y + (handle.y - base.y) * k,
-  });
-  const low = Math.min(from.y, to.y) - slack;
-  const high = Math.max(from.y, to.y) + slack;
-
-  for (const farK of HANDLE_REACH) {
-    for (const nearK of [1, farK]) {
-      const c1 = along(from, nearReach, nearK);
-      const c2 = along(to, farReach, farK);
-      let clean = true;
-      for (let i = 1; i < 16 && clean; i++) {
-        const y = cubicAt(from, c1, c2, to, i / 16).y;
-        if (y < low || y > high) clean = false;
+function waistReach(
+  contours: Contour[],
+  band: Crossbar,
+  tolerance: number,
+): { above: number; below: number } | null {
+  // Only straight flat edges count. A curve turning level -- the inside of
+  // the arch over the bowl of DejaVu's a -- is not an edge anything sits on,
+  // and warping up to it sheared the a's terminal; with no flat edge above,
+  // the a is not a waist and is left as drawn.
+  const levels: number[] = [];
+  for (const contour of contours) {
+    for (const segment of contourSegments(contour)) {
+      if (segment.kind === "line" && isHorizontal(segment.from, segment.to)) {
+        levels.push((segment.from.y + segment.to.y) / 2);
       }
-      if (!clean) continue;
-
-      const moved = moveNode(nearNode, 0, shift);
-      const nearKey = `${end.contour}:${nearIndex}`;
-      edits.set(nearKey, {
-        ...edits.get(nearKey),
-        point: moved.point,
-        handleIn: moved.handleIn,
-        handleOut: moved.handleOut,
-        [nearSide]: nearHandle ? c1 : null,
-      });
-      if (farHandle) {
-        const farKey = `${end.contour}:${farIndex}`;
-        edits.set(farKey, { ...edits.get(farKey), [farSide]: c2 });
-      }
-      return true;
     }
   }
-  return false;
+  const above = Math.min(...levels.filter((y) => y > band.top + tolerance));
+  const below = Math.max(...levels.filter((y) => y < band.bottom - tolerance));
+  if (!Number.isFinite(above) || !Number.isFinite(below)) return null;
+  return { above, below };
+}
+
+/**
+ * Move a waist bar by reshaping the letter around it.
+ *
+ * Stretching only the curves that join the bar to its bowls was the first way
+ * of doing this, and it cannot be done cleanly: the rest of each bowl stays
+ * where it was, so the join has to bend to meet it, which on DejaVu's B, P and
+ * R showed as S-waves in the counters, a kink in the bottom of P's bowl and a
+ * hook where R's leg leaves. A designer moving the waist redraws the bowls,
+ * and this does the same: every point and handle between the counter's top
+ * edge and the bar is spread over the new distance, the bar itself moves as it
+ * is, and below it everything down to the next counter's bottom or the
+ * baseline is spread the same way. Nothing moves sideways, so no curve reaches
+ * further out than it did, and because the map never reverses, the order of
+ * everything up the letter is kept -- the outline can only cross itself
+ * through the approximation of a curve by its handles, which the caller checks
+ * for. Every node stays, so a variable font's masters still match.
+ */
+function warpWaist(
+  contours: Contour[],
+  bar: Crossbar,
+  waist: { above: number; below: number },
+  shift: number,
+): Contour[] | null {
+  const { above, below } = waist;
+  const upper = (above - bar.top - shift) / (above - bar.top);
+  const lower = (bar.bottom + shift - below) / (bar.bottom - below);
+  // A bowl squeezed to a quarter of its height is not a bowl any more.
+  if (upper < 0.25 || lower < 0.25) return null;
+  const map = (y: number): number => {
+    if (y >= above || y <= below) return y;
+    if (y > bar.top) return above - (above - y) * upper;
+    if (y < bar.bottom) return below + (y - below) * lower;
+    return y + shift;
+  };
+  const at = (point: Vec2 | null): Vec2 | null => (point ? { x: point.x, y: map(point.y) } : null);
+  return contours.map((contour) => ({
+    closed: contour.closed,
+    nodes: contour.nodes.map((node) => ({
+      ...node,
+      point: { x: node.point.x, y: map(node.point.y) },
+      handleIn: at(node.handleIn),
+      handleOut: at(node.handleOut),
+    })),
+  }));
 }
 
 function applyEdits(contours: Contour[], edits: Map<string, NodeEdit>): Contour[] {
@@ -870,6 +864,9 @@ export function shiftCrossbar(contours: Contour[], shift: number): Contour[] {
   if (shift === 0) return contours;
   const plan = planCrossbar(contours);
   if (!plan) return contours;
+  const { waist } = plan;
+  if (waist)
+    return asFarAsClean(contours, shift, (amount) => warpWaist(contours, plan, waist, amount));
 
   return asFarAsClean(contours, shift, (amount) => {
     const edits = new Map<string, NodeEdit>();
@@ -880,7 +877,7 @@ export function shiftCrossbar(contours: Contour[], shift: number): Contour[] {
             const moved = moveNode(contours[end.contour].nodes[index], 0, amount);
             edits.set(`${end.contour}:${index}`, moved);
           }
-        } else if (!moveEnd(contours, end, amount, edits, plan.slack)) {
+        } else if (!moveEnd(contours, end, amount, edits)) {
           return null;
         }
       }

@@ -403,23 +403,29 @@ describe("the waist of a P", () => {
   });
 
   /**
-   * Stretching the join must not dent the bowl: the curve from the moved bar
-   * to the rest of the bowl stays between its own two ends, with the handles
-   * drawn in along their directions when it would not.
+   * The bowl is redrawn around the new waist rather than bent to meet it:
+   * everything between the counter's top edge and the baseline is spread up or
+   * down, nothing moves sideways, and the top stroke above the counter stays
+   * exactly as drawn.
    */
-  it("stretches the joins without denting the bowl", () => {
+  it("redraws the bowl around the waist without widening it", () => {
     for (const shift of [100, -100]) {
       const moved = shiftCrossbar(P_SHAPE, shift);
       expect(contoursIntersect(moved)).toBe(false);
+      expect(moved.map((contour) => contour.nodes.length)).toEqual([6, 4]);
+      const was = contoursBounds(P_SHAPE);
+      const now = contoursBounds(moved);
+      expect(now.xMax).toBeCloseTo(was.xMax, 6);
+      expect(now.yMin).toBeCloseTo(was.yMin, 6);
+      // The counter's top edge and the stroke above it are where they were.
+      expect(moved[1].nodes[2].point.y).toBe(1200);
+      expect(moved[1].nodes[3].point.y).toBe(1200);
+      expect(moved[0].nodes[2]).toEqual(P_SHAPE[0].nodes[2]);
+      // And the bowl's curves stay smooth: a handle that was level still is.
       const join = contourSegments(moved[0])[2];
       if (join.kind !== "cubic") throw new Error("the join should be a curve");
-      const low = Math.min(join.from.y, join.to.y) - 14;
-      const high = Math.max(join.from.y, join.to.y) + 14;
-      for (let i = 1; i < 16; i++) {
-        const { y } = cubicAt(join.from, join.c1, join.c2, join.to, i / 16);
-        expect(y).toBeGreaterThanOrEqual(low);
-        expect(y).toBeLessThanOrEqual(high);
-      }
+      expect(join.c2.y).toBeCloseTo(join.to.y, 6);
+      expect(cubicAt(join.from, join.c1, join.c2, join.to, 0.5).x).toBeLessThanOrEqual(800);
     }
   });
 });

@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { findCrossbar, findShoulders, shiftCrossbar, shiftShoulders } from "./anatomy";
+import { contourSegments, cubicAt } from "./geometry";
 import { contoursIntersect } from "./outline";
 import { importFont } from "./parse";
 import { resolveGlyphContours } from "./transform";
@@ -32,6 +33,30 @@ beforeAll(async () => {
   }
 });
 
+/** How far the outline actually reaches, curves included, by sampling them. */
+function inkExtent(contours: Contour[]) {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (const contour of contours) {
+    for (const segment of contourSegments(contour)) {
+      for (let i = 0; i <= 32; i++) {
+        const point =
+          segment.kind === "line"
+            ? segment.from
+            : cubicAt(segment.from, segment.c1, segment.c2, segment.to, i / 32);
+        xs.push(point.x);
+        ys.push(point.y);
+      }
+    }
+  }
+  return {
+    xMin: Math.min(...xs),
+    xMax: Math.max(...xs),
+    yMin: Math.min(...ys),
+    yMax: Math.max(...ys),
+  };
+}
+
 const outline = (letter: string): Contour[] => {
   const found = outlines.get(letter);
   if (!found) throw new Error(`no ${letter} in the sample font`);
@@ -44,13 +69,11 @@ describe("the crossbar on the sample font", () => {
   });
 
   /**
-   * G has a bar that is not held by anything on one side, and i, j and 3
-   * straight pieces that happen to face each other across the middle. (The
-   * top of the bowl of a meets its stem the way the waist of a P does, a flat
-   * edge flowing into the bowl, and moves as one.)
+   * G has a bar that is not held by anything on one side, and a, i, j and 3
+   * straight pieces that happen to face each other across the middle.
    */
   it("is not found where there is none, and those letters are left alone", () => {
-    for (const letter of "Gijs3kKoOnmS") {
+    for (const letter of "Gaijs3kKoOnmS") {
       const contours = outline(letter);
       expect(findCrossbar(contours), letter).toBeNull();
       expect(shiftCrossbar(contours, 0.08 * typeface.unitsPerEm), letter).toBe(contours);
@@ -66,27 +89,30 @@ describe("the crossbar on the sample font", () => {
   });
 
   /**
-   * The waist of B, P and R moves by the amount asked with only the bar's own
-   * four points, the joins to the bowls stretching after them.
+   * The waist of B, P and R moves by the amount asked, the bowls redrawn
+   * around it: the letter keeps its height and every node, nothing crosses,
+   * and no curve bulges out past the bowl as drawn.
    */
-  it("moves the waist of B, P and R and nothing else", () => {
+  it("moves the waist of B, P and R and redraws the bowls cleanly", () => {
     for (const letter of "BPR") {
       const before = outline(letter);
       const bar = findCrossbar(before)!;
-      for (const shift of [-100, 100]) {
+      const was = inkExtent(before);
+      for (const shift of [-100, 100, -164, 164]) {
+        const label = `${letter} ${shift}`;
         const after = shiftCrossbar(before, shift);
-        const moved = before.flatMap((contour, ci) =>
-          contour.nodes.filter((node, ni) => {
-            const now = after[ci].nodes[ni].point;
-            return now.x !== node.point.x || now.y !== node.point.y;
-          }),
-        );
-        expect(moved, `${letter} ${shift}`).toHaveLength(4);
-        expect(findCrossbar(after)!.bottom - bar.bottom, `${letter} ${shift}`).toBeCloseTo(
-          shift,
-          6,
-        );
-        expect(contoursIntersect(after), `${letter} ${shift}`).toBe(false);
+        expect(
+          after.map((contour) => contour.nodes.length),
+          label,
+        ).toEqual(before.map((contour) => contour.nodes.length));
+        expect(findCrossbar(after)!.bottom - bar.bottom, label).toBeCloseTo(shift, 6);
+        expect(contoursIntersect(after), label).toBe(false);
+        const now = inkExtent(after);
+        const give = (was.xMax - was.xMin) * 0.01;
+        expect(now.yMin, label).toBeCloseTo(was.yMin, 3);
+        expect(now.yMax, label).toBeCloseTo(was.yMax, 3);
+        expect(now.xMin, label).toBeGreaterThanOrEqual(was.xMin - give);
+        expect(now.xMax, label).toBeLessThanOrEqual(was.xMax + give);
       }
     }
   });

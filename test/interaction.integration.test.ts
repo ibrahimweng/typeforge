@@ -97,12 +97,17 @@ suite("controls used together", { timeout: FONT_SUITE_TIMEOUT }, () => {
    * A bar whose ends meet curves moves too, by stretching the short curves that
    * join it to the bowl. An exact slide is often unavailable: e's bar ends at
    * (305,516) on a curve running down to (420,227), so there is no point on it
-   * at any greater height. Only the bar's own points move either way -- with
-   * one exception on e. Its bar ends on the right on a straight stub 90 units
-   * tall under the curve of the bowl, and a raise of 100 cannot slide along
-   * that stub without passing its far end and folding the outline back on
-   * itself. The stub is carried up with the bar instead, so one more point
-   * moves, and what is checked is that nothing crossed.
+   * at any greater height. On e only the bar's own points move either way --
+   * bar one: its bar ends on the right on a straight stub 90 units tall under
+   * the curve of the bowl, and a raise of 100 cannot slide along that stub
+   * without passing its far end and folding the outline back on itself, so the
+   * stub is carried up with the bar.
+   *
+   * B, P and R are different. Their bar is a waist, the flat of a bowl flowing
+   * into its curve, and stretching only the joins bent the bowls into S-waves,
+   * kinks and hooks. The bowls are redrawn around the moved waist instead, so
+   * more points move; what is checked is that the bar moved by the shift,
+   * nothing crossed, and the letter kept its height and its node count.
    */
   it("moves a bar whose ends meet curves, without disturbing the bowl", async () => {
     const typeface = await open();
@@ -118,9 +123,13 @@ suite("controls used together", { timeout: FONT_SUITE_TIMEOUT }, () => {
             return now.x !== node.point.x || now.y !== node.point.y;
           }),
         );
-        // The bar's two edges and nothing else, bar the stub at the end of e's.
-        const allowed = name === "e" && shift > 0 ? 5 : 4;
-        expect(moved, `${name} moved too much at ${shift}`).toHaveLength(allowed);
+        if (name === "e") {
+          // The bar's two edges and nothing else, bar the stub at its end.
+          expect(moved, `e moved too much at ${shift}`).toHaveLength(shift > 0 ? 5 : 4);
+        }
+        expect(after.map((contour) => contour.nodes.length)).toEqual(
+          before.map((contour) => contour.nodes.length),
+        );
         expect(contoursIntersect(after), `${name} crosses itself at ${shift}`).toBe(false);
         expect(Math.round(findCrossbar(after)!.bottom - barBefore.bottom)).toBe(shift);
 
