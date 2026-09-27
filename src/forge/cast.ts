@@ -257,9 +257,7 @@ function swept(shape: Contour[], convolve: (contour: Contour) => Contour): Conto
    * closed kept a star of them.
    */
   const kept = counters.flatMap((counter) => {
-    // On the hundredth-unit grid from the start, for the reason `groundOf`
-    // gives; there is no area here to check an answer against.
-    const loop = onGrid(convolve(counter), 100);
+    const loop = convolve(counter);
     const box = contoursBounds([loop, counter]);
     const frame = poly([
       { x: box.xMin - 10, y: box.yMin - 10 },
@@ -284,12 +282,12 @@ function swept(shape: Contour[], convolve: (contour: Contour) => Contour): Conto
  * can lose track of. A light Handwriting e grown by a rim came back as five
  * specks, then as nothing at all. The same loop with its coordinates set to a
  * hundredth of a unit -- far below anything a font file records -- resolves
- * cleanly, so that is the second try, a tenth the third, and the solid as it
- * was is the last answer rather than nothing.
+ * cleanly. So a thousandth is the second try, a hundredth the third, a tenth
+ * the fourth, and the solid as it was is the last answer rather than nothing.
  */
 function groundOf(loop: Contour, solid: Contour): Contour[] {
   const least = contourArea(solid) * 0.999;
-  for (const grid of [0, 100, 10]) {
+  for (const grid of [0, 1000, 100, 10]) {
     const ground = filled([grid === 0 ? loop : onGrid(loop, grid)]);
     const area = ground.reduce((total, one) => total + contourArea(one), 0);
     if (area >= least) return ground;
@@ -652,7 +650,28 @@ function convolvedRound(contour: Contour, corners: Vec2[]): Contour {
     // Round the figure from the corner the last piece used to this one's, the
     // way the outline turns here.
     if (before.corner !== piece.corner) {
-      const cross = before.leave.x * piece.enter.y - before.leave.y * piece.enter.x;
+      let cross = before.leave.x * piece.enter.y - before.leave.y * piece.enter.x;
+      const dot = before.leave.x * piece.enter.x + before.leave.y * piece.enter.y;
+      /*
+       * Where the outline all but doubles back -- the sharp tip of a brushed
+       * foot -- the two headings are nearly opposite, and which side of
+       * straight back they fall on is a question about a handle a unit long.
+       * Read the wrong way, the loop went round the inside of the tip and a
+       * Black Brush H came back with a round bite out of every foot. The
+       * chords of the two pieces say which way the outline really turned.
+       */
+      if (dot < -0.85) {
+        const a = {
+          x: before.edge.to.x - before.edge.from.x,
+          y: before.edge.to.y - before.edge.from.y,
+        };
+        const b = {
+          x: piece.edge.to.x - piece.edge.from.x,
+          y: piece.edge.to.y - piece.edge.from.y,
+        };
+        const chords = a.x * b.y - a.y * b.x;
+        cross = Math.abs(chords) > 1e-9 ? chords : 1;
+      }
       const forward = (piece.corner - before.corner + count) % count;
       const way = Math.abs(cross) > 1e-9 ? (cross > 0 ? 1 : -1) : forward <= count / 2 ? 1 : -1;
       let corner = before.corner;

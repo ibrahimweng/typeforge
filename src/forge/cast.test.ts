@@ -19,7 +19,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { readyToShape } from "./layers";
-import { unite } from "@/font/boolean";
+import { subtract, unite } from "@/font/boolean";
 import {
   contourArea,
   contourContainsPoint,
@@ -633,6 +633,43 @@ describe("at the ends of the weight range", () => {
     }
     expect(performance.now() - started).toBeLessThan(3000);
   }, 60_000);
+
+  it("grows a rim round every letter of a light script, however its loop resolves", () => {
+    /*
+     * The rim's loop round a light Handwriting e crosses itself twice a hair
+     * apart along two nearly tangent curves, and resolved as it stands it
+     * came back as five specks and then as nothing at all.
+     */
+    const face = BASES.find((one) => one.name === "Handwriting")!;
+    const light = weightedStyle(face, face.pen.weight, 30);
+    const rim = cast((one) => {
+      one.outline = { on: true, width: 0.18 };
+    });
+    for (const letter of "eaon") {
+      const out = castOn(letter, light, rim);
+      expect(piecesOf(out), letter).toBe(1);
+      expect(ink(out), letter).toBeGreaterThan(ink(unite(plain(letter, light), "winding")));
+    }
+  });
+
+  it("grows a rim that covers the whole letter it was grown round", () => {
+    /*
+     * A rim is the letter grown, so it holds the letter. Where a brushed
+     * outline comes to a tip sharp enough to double back on itself, the rim's
+     * loop once went round the inside of the tip, and a Black Brush H came
+     * back with a round bite out of every foot.
+     */
+    const rim = cast((one) => {
+      one.outline = { on: true, width: 0.18 };
+    });
+    for (const style of [brush, weightedStyle(brush, brush.pen.weight, 200), black]) {
+      for (const letter of "HEmk") {
+        const was = unite(plain(letter, style), "winding");
+        const left = subtract(was, castOn(letter, style, rim), "winding");
+        expect(ink(left), `${letter} at ${style.pen.weight}`).toBeLessThan(2);
+      }
+    }
+  });
 
   it("puts no hair-thin points on a brushed outline's small kinks", () => {
     /*
