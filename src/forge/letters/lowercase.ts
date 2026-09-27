@@ -129,7 +129,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const opening = f.style.parts.script.on ? 0 : Math.min(1, blackness(f.style) / 0.5);
     const barHalf = f.upright * f.bar;
     const crown = centre.y + f.bowlH - f.upright;
-    const deep = f.half * 2 * 0.56 * opening;
+    const deep = f.half * 2 * 0.6 * opening;
     /*
      * But never so low that the tail shuts the aperture under the bar: that
      * keeps a quarter of a stem, and more where the tail ends in a flare,

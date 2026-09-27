@@ -60,7 +60,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      */
     // And wider at a black weight, or its counter is a pinhole -- one a rim
     // closes to a speck rather than a counter.
-    const half = Math.max(f.capBowl * 0.86, f.least) + f.half * 0.45 * heaviness(f) + f.gain * 0.45;
+    const half = Math.max(f.capBowl * 0.86, f.least) + f.half * 0.45 * heaviness(f) + f.gain * 0.7;
     const left = f.edge;
     const middle = left + half;
     const foot = at(left, 0);
@@ -87,11 +87,12 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * But not so low that there is no paper under it: at a Black, taken down
      * by a further third of a stem, the bar sat on the baseline and the A was
      * a solid triangle with a hole in it. Below the Black the bar comes down
-     * as it did; past it, it holds a stem of clear space between the feet.
+     * as it did; past it, it holds three quarters of a stem of clear space
+     * between the feet.
      */
     const heavy = heaviness(f);
     // Not on a text serif, whose feet already stand apart on their serifs.
-    const under = bookish(f) ? 0 : f.half * 2 * Math.min(1, blackness(f.style));
+    const under = bookish(f) ? 0 : f.half * 1.5 * Math.min(1, blackness(f.style));
     const bar = Math.max(
       Math.min(
         f.cap * f.style.parts.crossbar.height * 0.58,

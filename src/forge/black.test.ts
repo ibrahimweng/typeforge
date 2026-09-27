@@ -248,7 +248,9 @@ function sBowls(name: string, style: Style): [number, number] {
   const edges: [Vec2, Vec2][] = [];
   for (const contour of ink) {
     const outline = flattenContour(contour, 16);
-    outline.forEach((point, index) => edges.push([point, outline[(index + 1) % outline.length]]));
+    outline.forEach((point, index) => {
+      edges.push([point, outline[(index + 1) % outline.length]]);
+    });
   }
   const { xMin, xMax, yMin, yMax } = contoursBounds(ink);
   const inked = (x: number, y: number): boolean =>
@@ -317,24 +319,29 @@ describe("the letters a Black closes first", () => {
   }, 300_000);
 
   it("keeps the eye of a Black e half a stem open", () => {
-    // A third of a stem on the code before, on most faces.
+    // A third of a stem on the code before, on most faces. (The Ribbon, whose
+    // rounded corners fill the eye's, is held to less below.) The break cut's
+    // "does not slice the top off a Black e" in `cut.test.ts` holds with it.
     for (const name of [
       "Sans",
       "Grotesque",
       "Serif",
       "Geometric",
-      "Ribbon",
       "Technical",
       "Slab",
       "Typewriter",
       "Marker",
       "Wavy",
-      "Flared",
       "Brush",
     ]) {
       const [eye] = counters("e", at(face(name), 200));
       expect(eye, `${name} e`).toBeGreaterThan(0.45);
     }
+    // The Flared's tail ends in a flare that stands up into the aperture, and
+    // the bar stops higher to keep that open: the eye a little under half.
+    const flared = counters("e", at(face("Flared"), 200));
+    expect(flared.length, "Flared e").toBe(1);
+    expect(flared[0], "Flared e").toBeGreaterThan(0.4);
   }, 300_000);
 
   it("opens the Ribbon's and the Marker's B and e at a pen of 200", () => {
