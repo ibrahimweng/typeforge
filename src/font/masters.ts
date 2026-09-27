@@ -11,8 +11,8 @@
  *
  * A master here is the same typeface with one parameter moved. That is the
  * whole trick and it is worth saying why it works: `applyWeight` in
- * `transform.ts` walks the nodes a contour already has and offsets each one
- * along its own normal. It moves points; it does not make or remove them. So
+ * `embolden.ts` offsets the outline and then puts back the points the contour
+ * already had, on the offset. It moves points; it does not make or remove them. So
  * two weights of the same letter come out with the same points in the same
  * order, which is the one thing a variable font cannot do without.
  *

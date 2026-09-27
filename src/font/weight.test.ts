@@ -19,7 +19,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { exportFont } from "./export";
-import { contoursBounds, cubicAt } from "./geometry";
+import { contourSegments, contoursBounds, cubicAt, flattenContour } from "./geometry";
 import { importFont } from "./parse";
 import { contoursIntersect } from "./outline";
 import { resolveAdvanceWidth, resolveGlyphContours } from "./transform";
@@ -193,6 +193,188 @@ describe("weight", () => {
     // The same white on the left as before, and on the right.
     expect(heavy.xMin).toBeCloseTo(rest.xMin, 6);
     expect(360 - heavy.xMax).toBeCloseTo(300 - rest.xMax, 6);
+  });
+});
+
+/** An ellipse of four cubics, anticlockwise unless asked otherwise. */
+function ellipse(cx: number, cy: number, rx: number, ry: number, clockwise = false): Contour {
+  const kx = rx * 0.5523;
+  const ky = ry * 0.5523;
+  const at = (x: number, y: number, inX: number, inY: number, outX: number, outY: number) => ({
+    point: { x: cx + x, y: cy + y },
+    handleIn: { x: cx + inX, y: cy + inY },
+    handleOut: { x: cx + outX, y: cy + outY },
+    type: "smooth" as const,
+  });
+  const nodes = [
+    at(rx, 0, rx, -ky, rx, ky),
+    at(0, ry, kx, ry, -kx, ry),
+    at(-rx, 0, -rx, ky, -rx, -ky),
+    at(0, -ry, -kx, -ry, kx, -ry),
+  ];
+  if (!clockwise) return { closed: true, nodes };
+  return {
+    closed: true,
+    nodes: nodes
+      .slice()
+      .reverse()
+      .map((node) => ({ ...node, handleIn: node.handleOut, handleOut: node.handleIn })),
+  };
+}
+
+/**
+ * A serif I: a stem a hundred wide, and serifs thirty thick reaching seventy
+ * either side of it, joined to the stem by brackets of radius thirty.
+ */
+function serifI(): Contour {
+  const node = (
+    x: number,
+    y: number,
+    handleIn: [number, number] | null = null,
+    handleOut: [number, number] | null = null,
+  ): GlyphNode => ({
+    point: { x, y },
+    handleIn: handleIn && { x: handleIn[0], y: handleIn[1] },
+    handleOut: handleOut && { x: handleOut[0], y: handleOut[1] },
+    type: handleIn || handleOut ? "smooth" : "corner",
+  });
+  return {
+    closed: true,
+    nodes: [
+      node(130, 0),
+      node(370, 0),
+      node(370, 30),
+      node(330, 30, null, [313, 30]),
+      node(300, 60, [300, 47]),
+      node(300, 640, null, [300, 653]),
+      node(330, 670, [313, 670]),
+      node(370, 670),
+      node(370, 700),
+      node(130, 700),
+      node(130, 670),
+      node(170, 670, null, [187, 670]),
+      node(200, 640, [200, 653]),
+      node(200, 60, null, [200, 47]),
+      node(170, 30, [187, 30]),
+      node(130, 30),
+    ],
+  };
+}
+
+/** Where a line crosses the outlines, in order along it. */
+function crossings(contours: Contour[], at: number, vertical: boolean): number[] {
+  const out: number[] = [];
+  for (const contour of contours) {
+    const points = flattenContour(contour, 64);
+    points.forEach((a, index) => {
+      const b = points[(index + 1) % points.length];
+      const [pa, pb] = vertical ? [a.x, b.x] : [a.y, b.y];
+      if ((pa - at) * (pb - at) >= 0) return;
+      const f = (at - pa) / (pb - pa);
+      out.push(vertical ? a.y + (b.y - a.y) * f : a.x + (b.x - a.x) * f);
+    });
+  }
+  return out.sort((p, q) => p - q);
+}
+
+describe("a lighter or bolder cut", () => {
+  /*
+   * What the slider made of a real serif face at its ends was not a lighter
+   * or bolder cut of it. Every point moved by the weight until it ran out of
+   * room, so a stem ninety units wide lost eighty of them while its hairlines,
+   * stopped at a floor, lost almost nothing, and where the two met the outline
+   * tore: serif feet came away in drips, stems bowed, bowls went polygonal.
+   * A light cut thins a stroke in proportion to it -- never below a third of
+   * what it was -- and keeps straight things straight and round things round.
+   */
+  it("thins a thick stroke by more than a hairline, and neither to nothing", () => {
+    // An o with sides ninety units thick and a top and bottom thirty thick.
+    const { typeface, glyph } = letter([
+      ellipse(300, 300, 250, 250, true),
+      ellipse(300, 300, 160, 220),
+    ]);
+    const light = at(typeface, glyph, { weight: -40 });
+    const middle = 300 - 40;
+    const across = crossings(light, 301, false);
+    const down = crossings(light, middle + 1, true);
+    expect(across).toHaveLength(4);
+    expect(down).toHaveLength(4);
+    const side = across[1] - across[0];
+    const top = down[3] - down[2];
+    // Both got lighter...
+    expect(side).toBeLessThan(90 - 40);
+    expect(top).toBeLessThan(30);
+    // ...and neither went below a third of itself.
+    expect(side).toBeGreaterThanOrEqual(90 * 0.3);
+    expect(top).toBeGreaterThanOrEqual(30 * 0.3);
+  });
+
+  it("keeps a round letter round, lighter and bolder", () => {
+    const { typeface, glyph } = letter([
+      ellipse(300, 300, 250, 250, true),
+      ellipse(300, 300, 160, 220),
+    ]);
+    for (const weight of [-40, -20, 30, 60]) {
+      for (const contour of at(typeface, glyph, { weight })) {
+        // Every contour of an o turns one way all the way round: a dent or a
+        // flat facet between two points is a turn the other way, or none.
+        const points = flattenContour(contour, 48);
+        let turning = 0;
+        points.forEach((point, index) => {
+          const next = points[(index + 1) % points.length];
+          const after = points[(index + 2) % points.length];
+          const turn =
+            (next.x - point.x) * (after.y - next.y) - (next.y - point.y) * (after.x - next.x);
+          const size =
+            Math.hypot(next.x - point.x, next.y - point.y) *
+            Math.hypot(after.x - next.x, after.y - next.y);
+          const angle = size > 0 ? turn / size : 0;
+          if (turning === 0 && Math.abs(angle) > 1e-3) turning = Math.sign(angle);
+          expect(angle * turning, `weight ${weight}`).toBeGreaterThan(-1e-3);
+        });
+      }
+    }
+  });
+
+  it("keeps a serif letter's stem straight and upright, lighter and bolder", () => {
+    const { typeface, glyph } = letter([serifI()]);
+    for (const weight of [-40, -20, 30, 60]) {
+      const [shape] = at(typeface, glyph, { weight });
+      expect(shape.nodes).toHaveLength(16);
+      expect(contoursIntersect([shape])).toBe(false);
+      // The stem's two sides are the segments from point 4 to 5 and 12 to 13.
+      for (const [a, b] of [
+        [4, 5],
+        [12, 13],
+      ]) {
+        const segment = contourSegments(shape)[a];
+        expect(segment.kind, `weight ${weight}`).toBe("line");
+        expect(shape.nodes[a].point.x).toBeCloseTo(shape.nodes[b].point.x, 3);
+      }
+      const stem = shape.nodes[4].point.x - shape.nodes[12].point.x;
+      if (weight < 0) {
+        expect(stem).toBeLessThan(100);
+        expect(stem).toBeGreaterThanOrEqual(100 / 3 - 0.5);
+      } else expect(stem).toBeCloseTo(100 + 2 * weight, 0);
+    }
+  });
+
+  it("thins a serif without tearing it", () => {
+    const { typeface, glyph } = letter([serifI()]);
+    const [shape] = at(typeface, glyph, { weight: -40 });
+    // Down through each serif's overhang, top and bottom, beside the stem --
+    // which after the letter has moved over by the weight is here.
+    for (const x of [140, 280]) {
+      const runs = crossings([shape], x, true);
+      expect(runs).toHaveLength(4);
+      for (const [low, high] of [
+        [runs[0], runs[1]],
+        [runs[2], runs[3]],
+      ]) {
+        expect(high - low).toBeLessThan(30);
+        expect(high - low).toBeGreaterThanOrEqual(30 / 3 - 0.5);
+      }
+    }
   });
 });
 
