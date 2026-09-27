@@ -87,7 +87,7 @@ const h = 1250;
 let body = "";
 all.forEach((s, i) => {
   body +=
-    `<text x="10" y="${i * 2 * h + 300}" font-size="90" fill="#c00">Lora</text>` +
+    `<text x="10" y="${i * 2 * h + 300}" font-size="90" fill="#c00">Ref</text>` +
     row(s, i * 2 * h + 1000, "lora");
   body +=
     `<text x="10" y="${(i * 2 + 1) * h + 300}" font-size="90" fill="#06c">Draw</text>` +
