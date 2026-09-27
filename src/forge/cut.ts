@@ -423,12 +423,15 @@ function inlineTool(strokes: Stroke[], inline: Cuts["inline"], stem: number): Co
      */
     // The straighter of the two is the stem, and it is the one kept whole.
     const alongside = strokes.filter(
-      (other, at) =>
-        at !== index && arcsIn(other) < arcsIn(stroke) && runsAlongside(stroke, other),
+      (other, at) => at !== index && arcsIn(other) < arcsIn(stroke) && runsAlongside(stroke, other),
     );
     grooves.push(
       ...(alongside.length > 0
-        ? subtract(groove, alongside.flatMap((other) => sweep(other)), "winding")
+        ? subtract(
+            groove,
+            alongside.flatMap((other) => sweep(other)),
+            "winding",
+          )
         : groove),
     );
     if (back > 0) return;
@@ -644,7 +647,7 @@ function splitTool(strokes: Stroke[], split: Cuts["split"], stem: number): Conto
     const bands = cutting.get(stroke) ?? [];
     if (bands.length === 0) return [];
     const others = inkBut(stroke);
-    return others.length === 0 ? bands : subtract(bands, others, "winding");
+    return facingOut(others.length === 0 ? bands : subtract(bands, others, "winding"));
   });
   /*
    * And where two strokes that come away together overlap, the ground both
@@ -662,9 +665,23 @@ function splitTool(strokes: Stroke[], split: Cuts["split"], stem: number): Conto
     const both = intersect(mine, theirs, "winding");
     if (both.length === 0) continue;
     const rest = inkBut(one, other);
-    knives.push(...(rest.length === 0 ? both : subtract(both, rest, "winding")));
+    knives.push(...facingOut(rest.length === 0 ? both : subtract(both, rest, "winding")));
   }
   return knives;
+}
+
+/**
+ * The pieces of a knife wound the way ink is.
+ *
+ * A subtraction that takes nothing away can hand its shape back wound the
+ * other way round, and the knives are fused under the non-zero rule before
+ * they cut: where a band wound one way overlapped a piece wound the other,
+ * the two cancelled, and the ground between them stood across the break as a
+ * sliver -- the foot of a Roundhand L, the tail of a Formal Script y.
+ */
+function facingOut(contours: Contour[]): Contour[] {
+  const total = contours.reduce((sum, contour) => sum + contourArea(contour), 0);
+  return total < 0 ? contours.map(reverseContour) : contours;
 }
 
 /** A gap in one stroke: where along it, and the band that cuts it. */

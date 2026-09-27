@@ -1354,35 +1354,37 @@ function split(
 
 /**
  * The nodes with everything between two crossing points taken out, going
- * forwards from the first to the second, and one node left where they cross.
+ * forwards from the first to the second, and the outline pinched to the point
+ * where they cross.
+ *
+ * The nodes inside the loop are not dropped but gathered onto that point, so
+ * the outline keeps as many nodes as it had, each with the handles it had.
+ * The loop only opens at some weights: the z of a Ribbon has it at the Black
+ * and not at the Regular, and a variable font can only carry a letter across
+ * the axis when every master has the same nodes -- dropped, the z stood still.
  */
 function cutLoop(nodes: GlyphNode[], from: EdgeAt, to: EdgeAt, at: Vec2): GlyphNode[] {
   const count = nodes.length;
   const straight = (edge: number) => !nodes[edge].handleOut && !nodes[(edge + 1) % count].handleIn;
   const [before] = split(edgeCurve(nodes, from.edge), from.t);
   const [, after] = split(edgeCurve(nodes, to.edge), to.t);
-  const kept: GlyphNode[] = [];
-  // From the node after the loop ends round to the node the loop starts on.
-  for (let index = (to.edge + 1) % count; ; index = (index + 1) % count) {
-    const node = { ...nodes[index] };
-    if (index === (to.edge + 1) % count) node.handleIn = straight(to.edge) ? null : after[2];
-    if (index === from.edge) {
-      node.handleOut = straight(from.edge) ? null : before[1];
-      kept.push(node);
-      break;
-    }
-    kept.push(node);
-    if (kept.length > count) return nodes;
+  const inside = (to.edge - from.edge + count) % count;
+  if (inside === 0) return nodes;
+  const kept = nodes.map((node) => ({ ...node }));
+  const first = (from.edge + 1) % count;
+  const last = to.edge;
+  const onto = (handle: Vec2 | null): Vec2 | null => (handle ? { ...at } : null);
+  for (let step = 0; step < inside; step++) {
+    const index = (first + step) % count;
+    const node = kept[index];
+    node.point = { ...at };
+    node.handleIn =
+      index === first ? (straight(from.edge) ? null : before[2]) : onto(node.handleIn);
+    node.handleOut = index === last ? (straight(to.edge) ? null : after[1]) : onto(node.handleOut);
   }
-  kept.push({
-    point: at,
-    handleIn: straight(from.edge) ? null : before[2],
-    handleOut: straight(to.edge) ? null : after[1],
-    type: "corner",
-  });
-  // A loop that starts and ends on the same edge leaves that edge's far node
-  // at the start; nothing else to do.
-  return kept.length >= 3 ? kept : nodes;
+  kept[from.edge].handleOut = straight(from.edge) ? null : before[1];
+  kept[(to.edge + 1) % count].handleIn = straight(to.edge) ? null : after[2];
+  return kept;
 }
 
 /**

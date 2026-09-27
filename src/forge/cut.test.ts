@@ -12,6 +12,8 @@ import {
 import { contoursIntersect } from "@/font/outline";
 import type { Contour, Vec2 } from "@/font/types";
 import { drawLetter } from "./build";
+import { editCast, editCut, editPen, proof, startFrom } from "./document";
+import { noEffects } from "./effects";
 import { anyCut, noCuts, piecesOf, type Cuts, type MotifShape } from "./cut";
 import { weightedStyle } from "./family";
 import { BASES, type Style } from "./style";
@@ -777,6 +779,71 @@ describe("where strokes meet", () => {
         const fused = unite(drawn(letter, style).contours, "winding", "whole");
         for (const contour of fused) {
           expect(foldsBack(contour), `${name} ${letter} at ${weight}`).toBe(false);
+        }
+      }
+    }
+  });
+});
+
+describe("the settings the Draw panel offers, at its lightest and its Black pen", () => {
+  const face = (name: string) => BASES.find((base) => base.name === name)!;
+  /** A face as the panel sets it: the pen's own weight, with no effects. */
+  const at = (name: string, weight: number) => {
+    const forge = startFrom(face(name));
+    return editPen({ ...forge, effects: noEffects() }, { weight });
+  };
+
+  it("fuses letters under counters and fillets without folding them", () => {
+    /*
+     * The letters themselves were clean, but fused they kept a fold a
+     * millionth of a unit wide on top of a serif or at the foot of a stem, and
+     * the counters and the fillets were handed that fold: a Brush H, n, m and
+     * r at 200, a Flared E and N at 30, and a Didone k and a Slab K at 30 all
+     * came back with an outline running back over itself.
+     */
+    const cases: Array<[string, number, string]> = [
+      ["Brush", 200, "Hnmr"],
+      ["Flared", 30, "HEnN"],
+      ["Didone", 30, "k"],
+      ["Slab", 30, "kKV"],
+    ];
+    for (const [name, weight, letters] of cases) {
+      const plain = at(name, weight);
+      for (const forge of [
+        editCut(plain, "motif", { on: true }),
+        editCast(plain, "weld", { on: true, size: 1 }),
+      ]) {
+        for (const letter of letters) {
+          for (const contour of proof(letter, forge)?.contours ?? []) {
+            expect(foldsBack(contour), `${name} ${letter} at ${weight}`).toBe(false);
+          }
+        }
+      }
+    }
+  });
+
+  it("breaks a script without leaving slivers across the breaks", () => {
+    /*
+     * Where two strokes come away from a third together, the ground both
+     * their knives cross is cut as well. That piece could come back from the
+     * subtraction wound the wrong way round, and fused with the rest of the
+     * knife under the non-zero rule the two cancelled: a sliver stood across
+     * the break at the foot of a Roundhand L, and the outline of a Formal y
+     * or a Casual g ran over itself.
+     */
+    const cases: Array<[string, number | null, string]> = [
+      ["Roundhand", null, "Lr"],
+      ["Roundhand", 30, "r"],
+      ["Formal Script", null, "y"],
+      ["Casual Script", null, "g"],
+      ["Handwriting", 200, "k"],
+    ];
+    for (const [name, weight, letters] of cases) {
+      const plain = weight === null ? at(name, face(name).pen.weight) : at(name, weight);
+      const forge = editCut(plain, "split", { on: true });
+      for (const letter of letters) {
+        for (const contour of proof(letter, forge)?.contours ?? []) {
+          expect(foldsBack(contour), `${name} ${letter}`).toBe(false);
         }
       }
     }
