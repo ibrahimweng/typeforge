@@ -97,16 +97,42 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   question: (style) => {
     const f = frame(style);
-    const radius = Math.max(figureWidth(f) * 0.42, f.least);
-    const centre = at(f.edge + radius, f.crest(f.cap) - radius);
     const radiusDot = stopRadius(f);
     // The neck stops clear of the dot under it, which at a black weight is
     // higher than three tenths of the cap height.
-    const neck = Math.max(f.cap * 0.3, radiusDot * 2 + f.half * 1.8);
+    const neck = Math.max(f.cap * 0.3, radiusDot * 2 + f.half * 0.9);
+    /*
+     * The hook and the neck are one run, the neck leaving the hook along its
+     * own tangent, so there is no join to see.
+     *
+     * Drawn as two strokes butted together at a fixed point on the hook, they
+     * met at whatever angle the neck happened to leave at, and at a black
+     * weight -- where the neck has to stop high, clear of a big dot -- it left
+     * nearly level and the join was a notch. So the hook is made no bigger than
+     * leaves the neck room to leave it on a tangent, and where even that is
+     * not enough the neck stops a little nearer the dot.
+     */
+    const crest = f.crest(f.cap);
+    const radius = Math.max(Math.min(figureWidth(f) * 0.42, (crest - neck) / 2.2), f.least);
+    const centre = at(f.edge + radius, crest - radius);
+    // Past what the hook can give, the neck stops closer to the dot instead.
+    const foot = at(centre.x, Math.min(neck, centre.y - radius * 1.15));
+    const leaves = -90 + (Math.acos(radius / (centre.y - foot.y)) * 180) / Math.PI;
+    /*
+     * Always in three pieces, which is what a turn of two hundred and thirty
+     * degrees or so takes anyway: pinned, so a hook that turns a little less
+     * at some weight is still drawn with the points of the others.
+     */
+    const turned = turn(centre, radius, 190, leaves);
+    const hook = {
+      ...turned,
+      segments: turned.segments.map((segment) =>
+        segment.kind === "arc" ? { ...segment, pieces: 3 } : segment,
+      ),
+    };
     return finish(f, [
-      ink(f, turn(centre, radius, 190, -35), f.end, BUTT),
-      ink(f, straight(pointOn(centre, radius, -35), at(centre.x, neck)), BUTT, f.end),
-      dot(f, at(centre.x, radiusDot), radiusDot),
+      ink(f, chain(hook, straight(pointOn(centre, radius, leaves), foot)), f.end, f.end),
+      dot(f, at(foot.x, radiusDot), radiusDot),
     ]);
   },
 

@@ -1,6 +1,7 @@
 import type { Vec2 } from "@/font/types";
 import { seamsOf } from "../script";
 import { bowlBetween, bowlPoint, roundCorners, spineEnd, spineStart } from "../shapes";
+import { penReach, reachAlong } from "../sweep";
 import type { Style } from "../style";
 import type { Spine } from "../types";
 import {
@@ -18,6 +19,7 @@ import {
   finish,
   type Frame,
   frame,
+  headingAt,
   ink,
   junction,
   type LetterName,
@@ -547,16 +549,40 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const joins = 302;
         const foot = bowlPoint(centre, f.capBowl, f.capBowlH, roundness, f.half, joins);
         const top = Math.max(f.cap * 0.47, foot.y + f.half * 2);
+        /*
+         * And the bowl's end is cut upright, and the upright stands on the
+         * cut's outer corner with its outer side along it.
+         *
+         * Cut square, the bowl's end came up to the upright at a slant: its
+         * outer corner stood out beyond the upright as a point, with a notch
+         * between the two, and the heavier the pen the bigger both. Carrying the
+         * cut's inner corner on round the curve until it stands over the outer
+         * one gives the bowl an upright end, and the upright is set on it.
+         */
+        const bowl = bowlBetween(centre, f.capBowl, f.capBowlH, roundness, f.half, opens, joins);
+        const end = spineEnd(bowl);
+        // The way the last piece that goes anywhere is travelling: a bowl can
+        // finish on a run of no length.
+        const heading =
+          [...bowl.segments]
+            .reverse()
+            .map((segment) => headingAt(segment, "end"))
+            .find((way) => Math.hypot(way.x, way.y) > 0.5) ?? at(1, 0);
+        const pen = penReach(f.style.pen);
+        const reach = reachAlong(at(-heading.y, heading.x), pen);
+        const outer =
+          heading.x * reach.y - heading.y * reach.x < 0 ? reach : at(-reach.x, -reach.y);
+        const corner = at(end.x + outer.x, end.y + outer.y);
+        const carry = heading.x > 0.05 ? (2 * outer.x) / heading.x : 0;
+        const upright = f.square < 0.01 && carry > 0;
+        const cut = upright ? (Math.atan(carry / (2 * pen.across)) * 180) / Math.PI : 0;
+        const side = Math.abs(reachAlong(at(1, 0), pen).x);
+        const stand = upright ? at(corner.x - side, corner.y + 1) : foot;
         return finish(
           f,
           [
-            ink(
-              f,
-              bowlBetween(centre, f.capBowl, f.capBowlH, roundness, f.half, opens, joins),
-              f.end,
-              BUTT,
-            ),
-            ink(f, straight(foot, at(foot.x, top)), BUTT, f.end),
+            ink(f, bowl, f.end, upright ? { kind: "angled", angle: cut } : BUTT),
+            ink(f, straight(stand, at(stand.x, top)), BUTT, f.end),
           ],
           true,
         );

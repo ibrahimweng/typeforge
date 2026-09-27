@@ -11,10 +11,13 @@ import type { Style } from "../style";
 import type { Stroke } from "../types";
 import {
   barWeight,
+  cutsLevel,
+  leaving,
   arm,
   arms,
   at,
   BUTT,
+  LEVEL,
   chain,
   corner,
   corners,
@@ -315,6 +318,22 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const middle = left + width / 2;
     const right = left + width;
     const dip = f.cap * 0.16;
+    if (cutsLevel(f)) {
+      // Each diagonal cut level on the cap line inside its stem: see `leaving`.
+      let topLeft = at(left, f.cap);
+      let topRight = at(right, f.cap);
+      let vertex = at(middle, dip);
+      for (let pass = 0; pass < 3; pass++) {
+        topLeft = leaving(f, at(left, f.cap), 1, vertex, 1);
+        topRight = leaving(f, at(right, f.cap), -1, vertex, -1);
+        vertex = corner(f, topLeft, at(middle, dip), topRight);
+      }
+      return finish(f, [
+        ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
+        ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
+        ink(f, chain(straight(topLeft, vertex), straight(vertex, topRight)), LEVEL, LEVEL),
+      ]);
+    }
     const into = stub(f);
     const start = at(left, f.cap - into);
     const end = at(right, f.cap - into);
@@ -344,13 +363,25 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const left = f.edge;
     const right = left + f.capBowl * 1.35;
+    const stems = [
+      ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
+      ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
+    ];
+    if (cutsLevel(f)) {
+      let top = at(left, f.cap);
+      let foot = at(right, 0);
+      for (let pass = 0; pass < 3; pass++) {
+        top = leaving(f, at(left, f.cap), 1, foot, 1);
+        foot = leaving(f, at(right, 0), -1, top, 1);
+      }
+      return finish(f, [...stems, ink(f, straight(top, foot), LEVEL, LEVEL)]);
+    }
     const into = stub(f);
     const start = at(left, f.cap - into);
     const end = at(right, into);
     const [top, foot] = corners(f, [start, at(left, f.cap), at(right, 0), end]);
     return finish(f, [
-      ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
-      ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
+      ...stems,
       ink(f, chain(straight(start, top), straight(top, foot), straight(foot, end))),
     ]);
   },

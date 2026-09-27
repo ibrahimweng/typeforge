@@ -27,6 +27,7 @@ import {
   ring,
   straight,
   thin,
+  turn,
   headingAt,
 } from "./common";
 
@@ -43,15 +44,19 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   one: (style) => {
     const f = frame(style);
     const stem = f.edge + figureWidth(f) * 0.5;
+    /*
+     * The flag, which is what stops a one reading as a lowercase l.
+     *
+     * Measured out from the stem's edge rather than from its spine, and at the
+     * same slope: at a black weight the stem swallowed half of a flag laid out
+     * from the middle of it, and what was left was a stub.
+     */
+    const top = f.hangs(f.cap);
+    const out = Math.max(figureWidth(f) * 0.42, figureWidth(f) * 0.3 + f.half * 1.1);
+    const fall = ((top - f.cap * 0.78) * out) / (figureWidth(f) * 0.42);
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, BUTT),
-      // The flag, which is what stops a one reading as a lowercase l.
-      ink(
-        f,
-        straight(at(stem - figureWidth(f) * 0.42, f.cap * 0.78), at(stem, f.hangs(f.cap))),
-        f.end,
-        BUTT,
-      ),
+      ink(f, straight(at(stem - out, top - fall), at(stem, top)), f.end, BUTT),
     ]);
   },
 
@@ -209,14 +214,50 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const width = figureWidth(f);
     const left = f.edge;
     const shoulder = f.cap * 0.56;
+    const bar = thin(
+      f,
+      straight(at(left, f.hangs(f.cap, f.bar)), at(left + width, f.hangs(f.cap, f.bar))),
+      f.end,
+      f.end,
+    );
+    if (f.square < 0.01) {
+      /*
+       * The bowl leaves the foot of the stem rather than starting beside it.
+       *
+       * Begun at the top of its own circle a little right of the stem, the bowl
+       * rose past where the stem stopped, and at a black weight the two met at
+       * a corner with a notch cut into it. So the bowl begins where the stem
+       * ends, travelling straight up out of it on a tighter turn that carries
+       * it over into the bowl proper: the stem's end and the turn's start are
+       * the same cut, level across the same pen, and the join is flush.
+       *
+       * The bowl is as tall as Lora's -- its top about three fifths of the way
+       * up -- and never so tall that no counter is left under the bar.
+       */
+      const floor = f.dip(0);
+      const ceiling = Math.min(
+        f.cap * 0.6,
+        f.cap - f.upright * f.bar * 2 - f.half * 0.6 - f.upright,
+      );
+      const radius = Math.max((ceiling - floor) / 2, f.least);
+      const tight = Math.min(Math.max(radius * 0.6, f.least), radius);
+      const centre = at(left + tight, floor + radius);
+      const top = centre.y + radius;
+      const joint = top - tight;
+      return finish(f, [
+        bar,
+        ink(f, straight(at(left, f.cap), at(left, joint)), BUTT, BUTT),
+        ink(
+          f,
+          chain(turn(at(left + tight, joint), tight, 180, 90), turn(centre, radius, 90, -150)),
+          BUTT,
+          f.end,
+        ),
+      ]);
+    }
     const radius = Math.max(Math.min(shoulder, width / 2), f.least);
     return finish(f, [
-      thin(
-        f,
-        straight(at(left, f.hangs(f.cap, f.bar)), at(left + width, f.hangs(f.cap, f.bar))),
-        f.end,
-        f.end,
-      ),
+      bar,
       ink(f, straight(at(left, f.cap), at(left, shoulder)), BUTT, BUTT),
       ink(f, bend(f, at(left + radius, f.dip(0) + radius), radius, 100, -150), BUTT, f.end),
     ]);

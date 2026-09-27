@@ -226,6 +226,9 @@ export const FIGURES = [
 ];
 
 export const BUTT: Terminal = { kind: "butt" };
+
+/** A plain cut lying along the line the stroke stops on, whatever angle it arrives at. */
+export const LEVEL: Terminal = { kind: "butt", level: true };
 export const at = (x: number, y: number): Vec2 => ({ x, y });
 export const deg = (degrees: number): number => (degrees * Math.PI) / 180;
 
@@ -998,6 +1001,68 @@ export const stub = (f: Frame): number =>
   Math.max(f.half * 5, f.cap * 0.3);
 
 /**
+ * Where a diagonal leaving a stem at a line has to start, for its outer edge
+ * to cross that line just outside the stem's inner edge.
+ *
+ * The other way to join a diagonal to a stem is a stub run down the stem and a
+ * corner (see `stub`), which is right while the corner stays where it was put.
+ * But `through` moves a sharp corner in along its bisector to keep its point
+ * on the line, and at a black weight it moved the N's ninety units into the
+ * letter: the stub leaned off the stem, and its edge stood out of the stem's
+ * inner side as a step. A diagonal cut level on the line needs no corner at
+ * all -- its cut lies inside the stem and along the line the stem stops on --
+ * and where its outer edge leaves the stem is decided here, exactly.
+ *
+ * `from` is the stem's spine on the line, `inward` which way the letter lies
+ * from it (1 to the right), `to` where the diagonal is going and `side` which
+ * edge of it is the outer one, as the side of travel (1 to the left).
+ */
+export function leaving(f: Frame, from: Vec2, inward: 1 | -1, to: Vec2, side: 1 | -1): Vec2 {
+  const pen = penReach(f.style.pen);
+  const stemReach = Math.abs(reachAlong(at(1, 0), pen).x);
+  const target = from.x + inward * (stemReach + f.half * 0.1);
+  // Where the edge on one side of a diagonal from (x, line) crosses the line.
+  const crossing = (x: number, which: 1 | -1): number => {
+    const d = towards(at(x, from.y), to);
+    const offset = reachAlong(at(-d.y * which, d.x * which), pen);
+    return x + offset.x - (offset.y / d.y) * d.x;
+  };
+  let x = target;
+  for (let pass = 0; pass < 12; pass++) x += target - crossing(x, side);
+  /*
+   * And never so far over that the cut's other corner comes out of the far
+   * side of the stem: a diagonal wider along the line than the stem is
+   * lets its outer edge leave further into the letter instead.
+   */
+  const outside = from.x - inward * stemReach;
+  for (let pass = 0; pass < 12; pass++) {
+    const miss = outside - crossing(x, -side as 1 | -1);
+    if (miss * inward <= 0) break;
+    x += miss;
+  }
+  return at(x, from.y);
+}
+
+/**
+ * Whether a face joins its diagonals to its stems with a level cut rather than
+ * a stub and a corner: a serifed face that does not round its corners or its
+ * ends, which a cut lying square on the line would leave poking out of the
+ * stem. Only the serifed faces, whose stems are strokes that stop on the line
+ * anyway: the sans faces are laid on a grid by their spines (see `kit.ts`),
+ * and a diagonal that starts beside its stem rather than on it crossed out of
+ * the stem's own column.
+ */
+export function cutsLevel(f: Frame): boolean {
+  const { wave } = f.style.parts;
+  return (
+    f.style.parts.slab.on &&
+    f.radius < 1 &&
+    f.end.kind !== "round" &&
+    (wave.depth <= 0 || wave.along === "off")
+  );
+}
+
+/**
  * Skeleton vertices for a run that should reach a given set of points.
  *
  * A skeleton says where the middle of a stroke runs, and at a sharp corner the
@@ -1576,136 +1641,30 @@ export function trough(frame: Frame, fromX: number, height: number, reach = fram
 }
 
 /**
- * The spine of an s, as two turns tangent to each other at the waist.
+ * The spine of an s.
  *
- * Two circles of equal radius stacked so they touch: at the point they meet,
- * both are travelling horizontally, so the stroke passes through the middle of
- * the letter flat and changes which way it is bending without a kink. The
- * radius is fixed by the height -- four radii from top to bottom -- which is
- * also why an s comes out narrower than an o without anyone deciding that it
- * should.
+ * A round face draws it as two wide bowls with a spine falling between them:
+ * see `roundSpine`. A squared face, whose turns are not circles, stacks two
+ * bends tangent at the waist.
  */
 export function spine(frame: Frame, height: number, left: number): { stroke: Stroke } {
+  if (frame.square < 0.01) {
+    return { stroke: ink(frame, roundSpine(frame, height, left), frame.end, frame.end) };
+  }
   /*
    * Four radii from top to bottom, unless the pen will not go round one that
-   * small, in which case the s grows rather than closing up.
-   *
-   * The two turns have to stay tangent -- that is the whole construction -- so
-   * the radius cannot be raised on its own. Raising it and putting both centres
-   * back the same distance from a common middle keeps them touching and lets
-   * the letter reach a little past its x-height, which is what a display weight
-   * asks for anyway. At a pen of two hundred and sixty units the old radius was
-   * exactly half the pen, and the counter closed to nothing.
-   *
-   * The height asked for is the height of the ink, so the four radii span the
-   * pen's own width less than it: the two turns are the top and bottom of the
-   * letter and each of them carries half a pen past its own centre line. Both
-   * centres stay where they were -- the pair is symmetric about the middle of
-   * the letter, so taking the same off each end moves neither.
+   * small, in which case the s grows rather than closing up. The height asked
+   * for is the height of the ink, so the four radii span the pen's own width
+   * less than it.
    */
   const radius = Math.max((height + frame.over * 2 - frame.upright * 2) / 4, frame.least);
   const foot = height / 2 - radius * 2;
   /*
-   * And the ends carried less far round the further the pen has to reach.
-   *
-   * Each half of an s is most of a circle and what is left inside it is a
-   * counter that closes as the pen widens; measuring the letter by its ink made
-   * the radius smaller by half a pen at each end, and the heaviest bases folded.
-   * Opening the ends instead is what a heavy face does anyway, and it is the
-   * same fix the G already has. Measured in pen widths rather than in degrees,
-   * so a hairline keeps its long tight curl and a display weight lets go of it.
+   * And the ends carried less far round the further the pen has to reach:
+   * measured in pen widths rather than in degrees, so a hairline keeps its
+   * long tight curl and a display weight lets go of it.
    */
   const opening = (r: number): number => ((frame.half * 0.6) / r) * (180 / Math.PI);
-  /*
-   * Two turns and a diagonal between them, where there is room for one.
-   *
-   * Two equal circles stacked tangent make an s exactly half as wide as it is
-   * tall, with a level waist and the two halves the same size -- which reads
-   * as top-heavy, because the eye takes the upper half of any shape for the
-   * larger. A text s is three quarters of an x-height across (Lora's 0.74; this
-   * was 0.61), its lower half is the bigger, and its spine runs down across the
-   * letter rather than lying level through it.
-   *
-   * So the turns are smaller than a quarter of the height, set apart, the upper
-   * one to the left and the lower to the right, and the spine is the line that
-   * touches both between them: tangent where it leaves the one and where it
-   * reaches the other, so the run has no corner anywhere. A squared face,
-   * whose turns are not circles, keeps the two stacked bowls.
-   */
-  const span = radius * 4;
-  /*
-   * Never more than a quarter of the height, which is the two turns stacked
-   * tangent with no spine between them -- what a black weight comes down to.
-   * The run keeps its three pieces at every weight, even when the middle one
-   * is a unit long, because a weight axis interpolates between the same
-   * pieces: an s that was two turns at one end and three pieces at the other
-   * could not be put on it at all.
-   */
-  /*
-   * But never tighter than the pen will go round with a counter left inside
-   * it. Held to a quarter of the height, a black s had turns about as small
-   * as half its own pen: the inside of each turn collapsed to a point, the
-   * outline folded back on itself there, and the letter came out as a
-   * zig-zag. A turn wider than that is set further out to the side instead,
-   * so the spine still runs tangent between them -- the s widens, which is
-   * what a black s does.
-   */
-  const small = Math.max(
-    Math.min(Math.max(span * 0.235, frame.half * 1.45, frame.least), span / 4),
-    frame.half * 1.2,
-  );
-  if (frame.square < 0.01) {
-    const upperR = small * 0.95;
-    const lowerR = small * 1.05;
-    const upperY = foot + span - upperR;
-    const lowerY = foot + lowerR;
-    // Far enough apart for a spine to run tangent between the two, with a
-    // little straight in it.
-    const rise = upperY - lowerY;
-    const clear = (upperR + lowerR) * 1.04;
-    const apart = Math.sqrt(Math.max(0, clear * clear - rise * rise));
-    const across = Math.max(
-      span * 0.62 * frame.wide,
-      upperR + lowerR + frame.half,
-      apart + upperR + lowerR,
-    );
-    const dx = Math.max(across / 2 - small, apart / 2, 1);
-    const middle = left + across / 2;
-    const upper = at(middle - dx, upperY);
-    const lower = at(middle + dx, lowerY);
-    const dX = lower.x - upper.x;
-    const dY = lower.y - upper.y;
-    const d = Math.hypot(dX, dY);
-    const alpha = Math.acos(Math.min(1, (upperR + lowerR) / d));
-    const toward = Math.atan2(dY, dX);
-    // The one of the two internal tangents the run can travel along: leaving
-    // the upper turn anticlockwise and arriving on the lower one clockwise.
-    const t = [toward + alpha, toward - alpha].find(
-      (angle) => -Math.sin(angle) * dX + Math.cos(angle) * dY > 0,
-    ) as number;
-    const leave = (t * 180) / Math.PI;
-    const leaves = pointOn(upper, upperR, leave);
-    const lands = pointOn(lower, lowerR, leave + 180);
-    const fromAngle = 25 + opening(upperR);
-    // Anticlockwise from the top right round to where the spine leaves.
-    let leaveAt = leave;
-    while (leaveAt <= fromAngle) leaveAt += 360;
-    let landAt = leave + 180;
-    const toAngle = -155 + opening(lowerR);
-    while (landAt <= toAngle) landAt += 360;
-    return {
-      stroke: ink(
-        frame,
-        chain(
-          turn(upper, upperR, fromAngle, leaveAt),
-          straight(leaves, lands),
-          turn(lower, lowerR, landAt, toAngle),
-        ),
-        frame.end,
-        frame.end,
-      ),
-    };
-  }
   const middle = left + bendWidth(frame, radius);
   const upper = at(middle, foot + radius * 3);
   const lower = at(middle, foot + radius);
@@ -1721,6 +1680,137 @@ export function spine(frame: Frame, height: number, left: number): { stroke: Str
       frame.end,
     ),
   };
+}
+
+/**
+ * The run of a round s: two bowls wider than they are tall, and a spine that
+ * falls across the letter between them.
+ *
+ * Seven pieces at every weight, so a weight axis can follow it: from the upper
+ * terminal a turn up to the top, a flat run left along it, a turn down the left
+ * side to where the spine leaves, the spine, a turn down the right side of the
+ * lower bowl, a flat run left along the bottom, and a turn up into the lower
+ * terminal.
+ *
+ * Built from circles alone, as it was, the two bowls were as tall as they were
+ * wide. A black pen needs a turn at least as big as itself to go round, so the
+ * two turns ate the whole height between them: the waist lay level, or even
+ * climbed, through the middle of the letter; the spine, drawn nearly flat by a
+ * pen that is thin along a flat, came out a hairline; and the counters closed
+ * to slits. A bold s is the other way about -- its spine is the steepest and
+ * heaviest thing in it and its bowls are wide and open -- and the flat runs
+ * along the top and the bottom are where that width comes from without costing
+ * any height.
+ *
+ * So the turns are no bigger than the pen needs, the spine falls at a fixed
+ * slope, and the flats take up whatever width is left. Only where the pen
+ * leaves no room for a slope that steep -- the heaviest weights -- does the
+ * spine lie flatter, and past that the letter grows taller than the line
+ * rather than closing up.
+ */
+function roundSpine(frame: Frame, height: number, left: number): Spine {
+  // The height the spine spans: the ink's, less half a pen top and bottom.
+  const inked = height + frame.over * 2 - frame.upright * 2;
+  // How wide the spine runs from the left of the upper bowl to the right of
+  // the lower one: three fifths of its height, as an s has always been.
+  const width = inked * 0.62 * frame.wide;
+  const least = Math.max(frame.half * 1.08, frame.least);
+  /*
+   * How far the lower bowl's turn sits right of the upper one's, for a turn of
+   * radius r and a spine falling at `slope` across a height h. The spine
+   * leaves the upper turn and reaches the lower one square to itself, so the
+   * two turns and the spine between them fix it.
+   */
+  const shift = (r: number, slope: number, h: number): number =>
+    -2 * r * Math.sin(slope) + (h - 2 * r * (1 + Math.cos(slope))) / Math.tan(slope);
+  // What is left of the height for the spine to fall through.
+  const fall = (r: number, slope: number, h: number): number => h - 2 * r * (1 + Math.cos(slope));
+  /*
+   * The slope a text s's spine falls at, and the radius that gives the letter
+   * its width at that slope: the lower bowl's right side lands on the far edge
+   * of the letter. Linear in the radius, so written out.
+   */
+  const steep = (30 * Math.PI) / 180;
+  const flattest = (21 * Math.PI) / 180;
+  const denominator = 2 * (Math.sin(steep) + (1 + Math.cos(steep)) / Math.tan(steep) - 1);
+  const fitted = (inked / Math.tan(steep) - width) / denominator;
+  const radius = Math.max(Math.min(fitted, inked * 0.24), least);
+  /*
+   * A turn held up by the pen leaves the lower bowl short of the far edge, and
+   * the spine is laid flatter until it reaches it -- but never flatter than a
+   * pen thin along a flat can draw with weight in it. What the letter still
+   * lacks after that, it lacks: a black s is narrower than its o.
+   */
+  let slope = steep;
+  if (shift(radius, steep, inked) < width - 2 * radius) {
+    let lo = flattest;
+    let hi = steep;
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      if (shift(radius, mid, inked) < width - 2 * radius) hi = mid;
+      else lo = mid;
+    }
+    slope = Math.max(flattest, (lo + hi) / 2);
+  }
+  /*
+   * And a spine has to have some length to it, or the two turns cross. Where
+   * the height leaves none -- a pen more than a third of the x-height -- the
+   * letter grows, evenly above and below, by as much as the spine is short.
+   */
+  const shortest = (r: number, a: number): number => r * 0.2 * Math.sin(a);
+  /*
+   * A steep spine takes less height than a flat one, so a letter that has to
+   * grow stands its spine up as far as it can while the lower bowl still sits
+   * to the right of the upper, and grows by what is left.
+   */
+  const growth = (a: number): number => Math.max(0, shortest(radius, a) - fall(radius, a, inked));
+  if (growth(slope) > 0) {
+    let best = slope;
+    for (let d = 21; d <= 50; d++) {
+      const a = (d * Math.PI) / 180;
+      const ok = shift(radius, a, inked + growth(a)) >= radius * 0.15;
+      if (ok && growth(a) < growth(best)) best = a;
+    }
+    slope = best;
+  }
+  const grow = Math.max(0, shortest(radius, slope) - fall(radius, slope, inked));
+  const span = inked + grow;
+  const top = frame.hangs(height) + frame.over + grow / 2;
+  const bottom = frame.sits(0) - frame.over - grow / 2;
+  const across = shift(radius, slope, span);
+  const leftSide = left;
+  const upper = at(leftSide + radius, top - radius);
+  const lower = at(upper.x + across, bottom + radius);
+  const rightSide = lower.x + radius;
+  const degrees = (slope * 180) / Math.PI;
+  const leaves = pointOn(upper, radius, 270 - degrees);
+  const lands = pointOn(lower, radius, 90 - degrees);
+  /*
+   * The terminals turn on a wider circle than the bowls, wide enough to come
+   * most of the way across the letter before they end, so the top and the foot
+   * are each one long curve into their end rather than a bowl's corner, a flat
+   * and a hook. Each ends travelling forty degrees off level, where the cut
+   * across it stands nearly upright and a beak can hang straight down from its
+   * outside corner, and a little inside the side of the letter it is on.
+   */
+  const inset = (rightSide - leftSide) * 0.04;
+  const room = rightSide - inset - upper.x;
+  const fromAngle = 40;
+  const toAngle = fromAngle - 180;
+  const end = Math.max((room * 0.88) / Math.cos(deg(fromAngle)), least);
+  const headX = Math.max(upper.x + 1, rightSide - inset - end * Math.cos(deg(fromAngle)));
+  const footX = Math.min(lower.x - 1, leftSide + inset - end * Math.cos(deg(toAngle)));
+  const head = at(headX, top - end);
+  const foot = at(footX, bottom + end);
+  return chain(
+    turn(head, end, fromAngle, 90),
+    straight(at(headX, top), at(upper.x, top)),
+    turn(upper, radius, 90, 270 - degrees),
+    straight(leaves, lands),
+    turn(lower, radius, 90 - degrees, -90),
+    straight(at(lower.x, bottom), at(footX, bottom)),
+    turn(foot, end, -90, toAngle),
+  );
 }
 
 /**

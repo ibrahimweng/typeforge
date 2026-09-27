@@ -224,7 +224,7 @@ describe("the curved ends of a serif face", () => {
   it("reads the terminal's angle on a serif face", () => {
     const square = at(SERIF, {}, { terminal: { kind: "angled", angle: 0 } });
     const cut = at(SERIF, {}, { terminal: { kind: "angled", angle: 25 } });
-    for (const name of ["c", "e", "s"]) {
+    for (const name of ["c", "e"]) {
       expect(draw(name, cut), name).not.toEqual(draw(name, square));
     }
   });
@@ -232,7 +232,8 @@ describe("the curved ends of a serif face", () => {
   it("never hangs a teardrop on a capital or on a foot curling up off the line", () => {
     const drop = at(SERIF);
     const flat = at(SERIF, {}, { terminal: { kind: "butt" } });
-    for (const name of ["C", "S", "G", "e", "t"]) {
+    // Nor on an s, whose two ends wear beaks as the capital's do.
+    for (const name of ["C", "S", "G", "e", "t", "s"]) {
       expect(draw(name, drop), name).toEqual(draw(name, flat));
     }
   });

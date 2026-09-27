@@ -706,7 +706,12 @@ function inkAll(strokes: Stroke[], style: Style, name = ""): Contour[][] {
   const lettered = name === "" || figure || /^\p{L}$/u.test(decidedBy(name));
   // The S is the one capital whose foot comes back round to the left and
   // wears a beak there; the J's hook, which does the same, keeps a plain end.
-  const footBeak = capital && ["S", "\u0405"].includes(decidedBy(name));
+  /*
+   * The lowercase s takes the same two beaks, as Lora's and every text s
+   * does: a drop on its head and a plain foot read as a c and a hook, and at a
+   * black weight the drop filled the upper counter.
+   */
+  const footBeak = ["S", "\u0405", "s", "\u0455"].includes(decidedBy(name));
   // And the J is the one capital whose hook ends in a drop, as Lora's does:
   // cut plain, its end came to a point under the letter.
   const capitalDrop = capital && ["J", "\u0408"].includes(decidedBy(name));
@@ -787,10 +792,10 @@ function dress(
      * A capital's curved end on a face with text serifs wears a beak: the top
      * of a C, a G and an S, and the foot of an S where it comes back round to
      * the left. Not the foot of a C, which Lora and every face like it leave
-     * as a plain cut, and not a lowercase letter, whose ends take the drop.
+     * as a plain cut, and no lowercase letter but the s, whose ends take the drop.
      */
     if (
-      capital &&
+      (capital || footBeak) &&
       !isStraight &&
       terminal.kind === "slab" &&
       terminal.shape === "wedge" &&
@@ -800,12 +805,13 @@ function dress(
       const curve = insideOfCurve(spine, at);
       const top = curve !== null && curve.toward.y < -0.25;
       const foot = footBeak && curve !== null && curve.toward.y > 0.25 && outward.x < -0.2;
+      const height = capital ? style.metrics.capHeight : style.metrics.xHeight;
       if (decided(top || foot)) {
         return {
           kind: "butt",
           open: true,
           beak: {
-            reach: top ? style.metrics.capHeight * (1 - BEAK) : style.metrics.capHeight * BEAK,
+            reach: top ? height * (1 - BEAK) : height * BEAK,
             way: top ? -1 : 1,
           },
         };
@@ -1960,8 +1966,26 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        * from its spine to a little short of its edge -- so nothing of it shows
        * and it cannot poke out of a curve or a sloped cut.
        */
+      /*
+       * Where a refused wing goes: back along the run itself rather than along
+       * the line the end points, which on a curve leaves the stroke -- see
+       * below -- and square across the run there.
+       */
+      const buried = straightEnd
+        ? {
+            point: {
+              x: at.x - facing.x * (3 + inner * 0.6),
+              y: at.y - facing.y * (3 + inner * 0.6),
+            },
+            heading: facing,
+          }
+        : backFromEnd(which === 1 ? stroke.spine : reversed(stroke.spine), 3 + inner * 0.6);
       const from = refused ? 0 : inner;
-      const tip = refused ? inner * 0.6 : Math.min(full, room);
+      // And no longer than the stroke is wide where it is put, which on a
+      // curve with contrast is not how wide it is at the end.
+      const tip = refused
+        ? Math.min(inner, halfWidthAcross(stroke, buried.heading)) * 0.6
+        : Math.min(full, room);
       /*
        * A wing cut short by a neighbour is made shallower with it, so it
        * stays the shape of a serif rather than becoming a stub with a full
@@ -2016,10 +2040,14 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
                * A refused wing is set back into the stroke by a little more
                * than its own depth, so none of it lies on the end: on a curved
                * end cut at the pen's angle the sliver stood out of the foot
-               * of every c, e and t at a black weight as a hair.
+               * of every c, e and t at a black weight as a hair. And set back
+               * by as much again as it is long, so a cut slanting across the
+               * end up to forty-five degrees still covers it: the Didone's s
+               * and c, whose ends are cut at a slant, showed both slivers as
+               * hairs standing out of the cut.
                */
-              refused ? { x: at.x - facing.x * 3, y: at.y - facing.y * 3 } : at,
-              facing,
+              refused ? buried.point : at,
+              refused ? buried.heading : facing,
               side,
               from,
               tip,

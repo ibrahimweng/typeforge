@@ -14,8 +14,9 @@ import { contoursBounds, flattenContour, inkRunsAt } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import type { Contour } from "@/font/types";
 import { drawLetter } from "./build";
-import { formsOf } from "./letters";
-import { BASES, SANS, SERIF, type Style } from "./style";
+import { formsOf, recipeOf } from "./letters";
+import { BASES, DIDONE, SANS, SERIF, type Style } from "./style";
+import type { SpineSegment } from "./types";
 
 function styled(base: Style, weight: number, contrast: number): Style {
   return { ...base, pen: { ...base.pen, weight, contrast } };
@@ -501,5 +502,135 @@ describe("the Serif base's colour", () => {
     const ratio = Math.min(...crown) / Math.max(...sides);
     expect(ratio).toBeGreaterThan(0.33);
     expect(ratio).toBeLessThan(0.47);
+  });
+});
+
+describe("the Serif at a black weight, joined cleanly", () => {
+  /** Which way a piece of spine is travelling at one of its ends, in degrees. */
+  function heading(segment: SpineSegment, end: "start" | "end"): number {
+    if (segment.kind === "line") {
+      return (
+        (Math.atan2(segment.to.y - segment.from.y, segment.to.x - segment.from.x) * 180) / Math.PI
+      );
+    }
+    const angle = end === "start" ? segment.startAngle : segment.endAngle;
+    const way = segment.sweepPositive ? 1 : -1;
+    return (Math.atan2(Math.cos(angle) * way, -Math.sin(angle) * way) * 180) / Math.PI;
+  }
+
+  it("falls the s's spine down across the letter at every weight", () => {
+    /*
+     * Two circles as big as a black pen needs left no height for a spine: the
+     * waist lay level, or climbed, and the pen -- thin along a flat -- drew it
+     * as a hairline between two slit counters.
+     */
+    for (const base of [SERIF, SANS]) {
+      for (const weight of [30, 96, 200]) {
+        const style = { ...base, pen: { ...base.pen, weight } };
+        const [stroke] = recipeOf("s")!(style).strokes;
+        const lines = stroke.spine.segments.filter((segment) => segment.kind === "line");
+        const longest = lines.reduce((a, b) =>
+          Math.hypot(a.to.x - a.from.x, a.to.y - a.from.y) >
+          Math.hypot(b.to.x - b.from.x, b.to.y - b.from.y)
+            ? a
+            : b,
+        );
+        const fall = -heading(longest, "start");
+        expect(fall, `${base.name} at ${weight}`).toBeGreaterThan(20);
+        expect(fall, `${base.name} at ${weight}`).toBeLessThan(60);
+      }
+    }
+  });
+
+  it("wears a beak on both ends of the s, with the same points at every weight", () => {
+    const shapes = WEIGHTS.map((weight) =>
+      serifDraw("s", serifAt(weight)).map((contour) => contour.nodes.length),
+    );
+    for (const shape of shapes) {
+      expect(shape).toEqual(shapes[0]);
+      // The run and two four-point beaks: no drop.
+      expect(shape.slice(1)).toEqual([4, 4]);
+    }
+  });
+
+  it("runs the N's diagonal straight from the cap line to the baseline", () => {
+    /*
+     * Chained to a stub down each stem, the diagonal's corner was moved into
+     * the letter at a black weight and the stub leaned off the stem with it:
+     * its edge stood out of the stem's inner side as a step.
+     */
+    for (const weight of WEIGHTS) {
+      const strokes = recipeOf("N")!(serifAt(weight)).strokes;
+      const diagonal = strokes.find((stroke) =>
+        stroke.spine.segments.some(
+          (segment) => segment.kind === "line" && Math.abs(segment.to.x - segment.from.x) > 1,
+        ),
+      )!;
+      expect(diagonal.spine.segments, `${weight}`).toHaveLength(1);
+      const [line] = diagonal.spine.segments;
+      if (line.kind !== "line") throw new Error("not a line");
+      expect(line.from.y).toBeCloseTo(cap, 3);
+      expect(line.to.y).toBeCloseTo(0, 3);
+      for (const contour of serifDraw("N", serifAt(weight))) {
+        expect(contoursIntersect([contour]), `${weight}`).toBe(false);
+      }
+    }
+  });
+
+  it("leaves the 5's bowl from the foot of its stem", () => {
+    for (const weight of [...WEIGHTS, 260]) {
+      const strokes = recipeOf("five")!(serifAt(weight)).strokes;
+      const stem = strokes.find(
+        (stroke) =>
+          stroke.spine.segments.length === 1 &&
+          stroke.spine.segments[0].kind === "line" &&
+          Math.abs(stroke.spine.segments[0].to.x - stroke.spine.segments[0].from.x) < 1e-6,
+      )!;
+      const bowl = strokes.find((stroke) => stroke.spine.segments[0].kind === "arc")!;
+      const foot = stem.spine.segments[0].kind === "line" ? stem.spine.segments[0].to : null;
+      const first = bowl.spine.segments[0];
+      if (first.kind !== "arc" || !foot) throw new Error("not a bowl");
+      const leaves = {
+        x: first.centre.x + first.radius * Math.cos(first.startAngle),
+        y: first.centre.y + first.radius * Math.sin(first.startAngle),
+      };
+      expect(Math.hypot(leaves.x - foot.x, leaves.y - foot.y), `${weight}`).toBeLessThan(1);
+    }
+  });
+
+  it("flies the 1's flag as far out past its stem at a black weight as at the regular", () => {
+    const reach = (weight: number): number => {
+      const one = serifDraw("one", serifAt(weight));
+      const stem = across(one, cap * 0.4)[0][0];
+      let flag = stem;
+      for (let y = cap * 0.6; y < cap; y += 4) {
+        flag = Math.min(flag, ...across(one, y).map(([a]) => a));
+      }
+      return stem - flag;
+    };
+    expect(reach(200)).toBeGreaterThan(reach(96) * 0.95);
+  });
+
+  it("runs the question mark's hook into its neck along one tangent", () => {
+    for (const weight of [...WEIGHTS, 260]) {
+      const [hook] = recipeOf("question")!(serifAt(weight)).strokes;
+      const [arc, neck] = hook.spine.segments;
+      expect(neck, `${weight}`).toBeDefined();
+      expect(Math.abs(heading(arc, "end") - heading(neck, "start")), `${weight}`).toBeLessThan(1);
+    }
+  });
+
+  it("buries the serif a curved end refuses inside the stroke, on the Didone's s", () => {
+    // Set back only three units, the sliver stood out of an end cut at a
+    // slant as a hairline beside the Didone's s at a black weight.
+    for (const weight of WEIGHTS) {
+      const drawn = draw("s", { ...DIDONE, pen: { ...DIDONE.pen, weight } });
+      const [run, ...rest] = drawn;
+      for (const piece of rest) {
+        for (const node of piece.nodes) {
+          expect(inkAt([run], node.point.x, node.point.y), `${weight}`).toBe(true);
+        }
+      }
+    }
   });
 });
