@@ -109,8 +109,8 @@ describe("the two-storey g", () => {
     expect(formsOf("g").map((form) => form.id)).toContain("double");
   });
 
-  it("is the Serif base's g", () => {
-    expect(SERIF.forms?.g).toBe("double");
+  it("is offered beside the Serif base's own, Lora's", () => {
+    expect(SERIF.forms?.g).toBe("humanist");
   });
 
   it("has two counters and never crosses itself, light to black, any contrast", () => {
@@ -392,7 +392,9 @@ describe("the beaks on the Serif's curved capitals", () => {
     for (const weight of WEIGHTS) {
       for (const name of ["C", "S"]) {
         const drawn = serifDraw(name, serifAt(weight));
-        expect(upright(drawn, true), `${name} at ${weight}`).toBeGreaterThan(cap * 0.1);
+        // Lora's C closes further round than the old one did, so at a
+        // hairline the upright a couple of units in is its beak's end alone.
+        expect(upright(drawn, true), `${name} at ${weight}`).toBeGreaterThan(cap * 0.085);
       }
     }
   });
@@ -490,7 +492,8 @@ describe("the Serif base's colour", () => {
     expect(n.advanceWidth - (nb.xMax - nb.xMin)).toBeCloseTo(68, -1);
     const H = drawLetter("H", SERIF)!;
     const hb = contoursBounds(H.contours);
-    expect(H.advanceWidth - (hb.xMax - hb.xMin)).toBeCloseTo(95, -1);
+    // Lora's H stands 55 units off each side.
+    expect(H.advanceWidth - (hb.xMax - hb.xMin)).toBeCloseTo(110, -1);
   });
 
   it("thins its o's crown to about four tenths of its sides, as Lora's is", () => {

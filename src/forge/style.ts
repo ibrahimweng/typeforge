@@ -149,10 +149,11 @@ export interface Metrics {
     widths: Record<string, number>;
     /**
      * How much of the Bold's width is kept at a Black (a blackness of one),
-     * eased back from all of it at the Bold. Past its Bold a face has no
-     * drawing to follow, and a Black held to a Bold's widths shut the small
-     * counters -- the a's, the e's eye, the A's -- that the construction's
-     * own widening keeps open. Left out, all of it, all the way.
+     * eased back from all of it at the Bold toward halfway between the
+     * Regular's own width and the construction's. Past its Bold a face has
+     * no drawing to follow, and a Black held to a Bold's widths shut the
+     * small counters -- the a's, the e's eye, the v's wings -- that the
+     * construction's own widening keeps open. Left out, all of it.
      */
     kept?: number;
   };
@@ -514,13 +515,16 @@ const TERMINAL_KINDS: TerminalKind[] = ["butt", "angled", "round", "teardrop", "
  * slowly than their stems, so past an eighth of an em the serif gains a third
  * of what the stem does.
  */
-export function serifReach(style: Style): number {
+export function serifReach(style: Style, ordinary = false): number {
   const stem = style.pen.weight;
   const em = style.metrics.unitsPerEm;
   const light = em * 0.09;
-  const heavy = em * (style.parts.slab.hold ?? 0.125);
+  // `ordinary`: as every face grows its serifs, whatever this one's own hold,
+  // for the things measured in serifs that are not their length.
+  const heavy = em * ((ordinary ? undefined : style.parts.slab.hold) ?? 0.125);
+  const past = (ordinary ? undefined : style.parts.slab.past) ?? 1 / 3;
   if (stem < light) return (stem + light) / 2;
-  if (stem > heavy) return heavy + (stem - heavy) * (style.parts.slab.past ?? 1 / 3);
+  if (stem > heavy) return heavy + (stem - heavy) * past;
   return stem;
 }
 
@@ -844,7 +848,7 @@ export const SERIF: Style = {
    * tail sweeps out under the line, are the same kind of decision.
    */
   forms: {
-    a: "double",
+    a: "humanist",
     g: "humanist",
     G: "spurred",
     Q: "humanist",
@@ -866,6 +870,12 @@ export const SERIF: Style = {
     hyphen: "humanist",
     slash: "humanist",
     exclam: "humanist",
+    A: "humanist",
+    w: "humanist",
+    W: "humanist",
+    k: "humanist",
+    K: "humanist",
+    s: "humanist",
   },
   /*
    * A text face's proportions rather than the sans's.
@@ -896,61 +906,61 @@ export const SERIF: Style = {
       at: 0.47,
       kept: 0.5,
       widths: {
-        a: 0.805,
-        b: 0.927,
-        c: 0.914,
-        d: 0.926,
-        e: 0.855,
-        f: 0.919,
+        a: 0.879,
+        b: 0.929,
+        c: 0.962,
+        d: 0.928,
+        e: 0.95,
+        f: 0.923,
         g: 1.021,
-        h: 0.946,
-        k: 0.97,
-        m: 0.978,
-        n: 0.952,
-        o: 0.889,
-        p: 0.943,
-        q: 0.946,
-        r: 0.982,
-        s: 0.84,
+        h: 0.951,
+        k: 0.978,
+        m: 0.98,
+        n: 0.957,
+        o: 0.94,
+        p: 0.945,
+        q: 0.948,
+        r: 0.985,
+        s: 0.88,
         t: 1.087,
-        u: 1.007,
-        v: 0.9,
-        w: 0.803,
-        x: 0.824,
-        y: 0.874,
+        u: 1.013,
+        v: 0.906,
+        w: 0.807,
+        x: 0.829,
+        y: 0.879,
         z: 0.993,
-        A: 0.691,
-        B: 0.725,
-        C: 0.942,
-        D: 0.978,
-        E: 0.987,
-        F: 1.054,
+        A: 0.846,
+        B: 0.727,
+        C: 0.996,
+        D: 0.979,
+        E: 0.989,
+        F: 1.056,
         G: 0.95,
-        H: 0.933,
-        J: 1.207,
-        K: 0.967,
-        L: 1.053,
-        M: 1.005,
-        N: 0.958,
-        O: 0.919,
-        P: 0.696,
+        H: 0.938,
+        J: 1.211,
+        K: 0.974,
+        L: 1.055,
+        M: 1.008,
+        N: 0.961,
+        O: 0.952,
+        P: 0.698,
         Q: 0.98,
-        R: 0.911,
+        R: 0.914,
         S: 0.947,
         T: 1.076,
-        U: 0.92,
-        V: 0.949,
-        W: 0.957,
-        X: 0.961,
-        Y: 0.905,
+        U: 0.923,
+        V: 0.952,
+        W: 0.959,
+        X: 0.965,
+        Y: 0.909,
         Z: 1.032,
-        zero: 0.847,
-        one: 0.705,
+        zero: 0.894,
+        one: 0.709,
         two: 0.872,
         three: 0.841,
         four: 0.936,
         six: 0.892,
-        seven: 0.859,
+        seven: 0.861,
         eight: 0.833,
         nine: 0.894,
         question: 0.787,
@@ -1045,21 +1055,21 @@ export const SERIF: Style = {
       f: 1.303,
       g: 1.016,
       h: 0.936,
-      k: 0.943,
+      k: 0.92,
       m: 0.875,
       n: 0.927,
       o: 0.889,
       p: 0.826,
       q: 0.811,
       r: 0.88,
-      s: 1.011,
+      s: 0.935,
       t: 1.278,
       u: 0.933,
       v: 0.865,
       x: 0.927,
       y: 0.941,
       z: 1.19,
-      A: 0.775,
+      A: 0.776,
       B: 1.036,
       C: 0.897,
       D: 1.017,
@@ -1068,7 +1078,7 @@ export const SERIF: Style = {
       G: 1.023,
       H: 0.987,
       J: 1.135,
-      K: 1.086,
+      K: 1.055,
       L: 1.176,
       M: 1.15,
       N: 1.033,
@@ -1114,7 +1124,7 @@ export const SERIF: Style = {
       shape: "wedge",
       head: "sloped",
       hold: 0.087,
-      past: 0.12,
+      past: 0.1,
     },
     /*
      * Lora's c and C close in further than the sans's: the drop on the c
@@ -2956,19 +2966,26 @@ const PROPORTIONED = new WeakMap<Style, Map<string, Style>>();
  * cached.
  */
 export function proportioned(style: Style, name: string): Style {
-  let factor = style.metrics.proportions?.[name] ?? 1;
-  // And at a heavy weight, the width the face's Bold draws the letter at: see
-  // `metrics.bold`. Reached along the weight and held past it.
+  const own = style.metrics.proportions?.[name] ?? 1;
+  let factor = own;
+  /*
+   * And at a heavy weight, the width the face's Bold draws the letter at: see
+   * `metrics.bold`. Reached along the weight, and past the Bold eased back
+   * toward halfway between the Regular's own width and the construction's,
+   * which is how wide a Black has to stand to keep counters it has no
+   * drawing for.
+   */
   const bold = style.metrics.bold;
-  const heavy = bold?.widths[name];
-  if (bold && heavy !== undefined && heavy > 0) {
+  if (bold) {
     const black = blackness(style);
-    const kept = bold.kept ?? 1;
-    const share =
-      black <= bold.at
-        ? black / bold.at
-        : 1 - (1 - kept) * Math.min(1, (black - bold.at) / Math.max(1 - bold.at, 1e-6));
-    factor *= 1 + (heavy - 1) * share;
+    const heavy = bold.widths[name] ?? 1;
+    if (black <= bold.at) factor = own * (1 + (heavy - 1) * (black / bold.at));
+    else {
+      const eased =
+        (1 - (bold.kept ?? 1)) * Math.min(1, (black - bold.at) / Math.max(1 - bold.at, 1e-6));
+      const target = 1 + (own - 1) * 0.5;
+      factor = own * heavy + (target - own * heavy) * eased;
+    }
   }
   if (factor === 1 || !(factor > 0)) return style;
   let known = PROPORTIONED.get(style);
@@ -3088,8 +3105,15 @@ export function narrowed(style: Style): number {
   const give = metrics.heavyCounter;
   if (!give) return metrics.counterWidth;
   // Past the text weight, as every other heavy-weight change is: see `blackness`.
-  const gained = blackness(style) * BLACK_SPAN * metrics.xHeight;
+  let gained = blackness(style) * BLACK_SPAN * metrics.xHeight;
   if (gained <= 0) return drawn;
+  /*
+   * A face drawn to its Bold (see `metrics.bold`) closes its counters as its
+   * Bold does as far as the Bold, and past it a quarter as fast: a Black
+   * carried on at a Bold's rate had the feet of its m's serifs meeting.
+   */
+  const bold = metrics.bold ? metrics.bold.at * BLACK_SPAN * metrics.xHeight : Infinity;
+  if (gained > bold) gained = bold + (gained - bold) * 0.25;
   /*
    * Given back unit for unit as far as the Black; past it, an Ultra's counter
    * keeps closing, but ever more slowly, towards a fifth of the x-height it

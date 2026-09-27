@@ -1290,7 +1290,8 @@ const HEAD_SLOPE = 0.3;
  * another ninety, and the top of every n, i and l was a wedge.
  */
 function headSlope(style: Style): number {
-  return HEAD_SLOPE * Math.min(1, serifReach(style) / Math.max(style.pen.weight, 1e-9));
+  // The nib's slope, however long the face holds its serifs: see `Parts.slab.hold`.
+  return HEAD_SLOPE * Math.min(1, serifReach(style, true) / Math.max(style.pen.weight, 1e-9));
 }
 
 /**

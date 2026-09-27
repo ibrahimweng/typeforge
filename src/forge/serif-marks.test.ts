@@ -203,8 +203,10 @@ describe("the Serif face's small counters at Black", () => {
   });
 
   it("keeps the e's eye open", () => {
-    const { counters } = raster(draw("e", black)).regions();
-    expect(counters[0]).toBeGreaterThan(27000);
+    // Lora's e, and so the Serif's, is 0.83 of the old one's width, and its
+    // Black eye is smaller by about as much: still more than a stem across.
+    const { counters } = raster(draw("e", black, SERIF.forms?.e)).regions();
+    expect(counters[0]).toBeGreaterThan(18000);
   });
 
   it("keeps the A's counter open", () => {
@@ -213,10 +215,11 @@ describe("the Serif face's small counters at Black", () => {
   });
 
   it("keeps the g's link out of its upper counter and both counters open", () => {
-    const { counters, pieces } = raster(draw("g", black, "double")).regions();
+    // The Serif's own g, Lora's, whose loop is lighter and a little narrower.
+    const { counters, pieces } = raster(draw("g", black, SERIF.forms?.g)).regions();
     expect(pieces).toBe(1);
     expect(counters.length).toBe(2);
-    expect(counters[1]).toBeGreaterThan(29000);
+    expect(counters[1]).toBeGreaterThan(25000);
   });
 
   it("draws them with the same nodes at every weight", () => {

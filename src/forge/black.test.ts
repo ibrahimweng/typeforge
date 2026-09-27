@@ -16,9 +16,16 @@ import type { Contour, Vec2 } from "@/font/types";
 import { drawLetter } from "./build";
 import { BASES, blackness, spacingOf, type Style } from "./style";
 
-/** A letter in the form its face draws it by default -- the Sans's grotesque s, e, a. */
+/**
+ * A letter in the form its face draws it by default -- the Sans's grotesque
+ * s, e, a, and the Serif's Lora-shaped ones (see `letters/humanist.ts`).
+ */
 const drawnAs = (name: string, style: Style) =>
-  drawLetter(name, style, style.name === "Sans" ? style.forms?.[name] : undefined);
+  drawLetter(
+    name,
+    style,
+    style.name === "Sans" || style.name === "Serif" ? style.forms?.[name] : undefined,
+  );
 
 beforeAll(async () => {
   await ready();
