@@ -38,6 +38,7 @@ import {
   trough,
   turn,
   middleBar,
+  heaviness,
 } from "./common";
 
 export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
@@ -55,7 +56,8 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * either side of its apex, drawn with a pen of two hundred and sixty, has
      * its two legs closer together than the pen is wide.
      */
-    const half = Math.max(f.capBowl * 0.86, f.least);
+    // And wider at a black weight on a text face, or its counter is a pinhole.
+    const half = Math.max(f.capBowl * 0.86, f.least) + f.half * 0.45 * heaviness(f);
     const left = f.edge;
     const middle = left + half;
     const foot = at(left, 0);
@@ -78,10 +80,12 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      */
     const lean = Math.hypot(half, f.cap) / half;
     const inside = f.cap - f.half * lean;
-    const bar = Math.min(
-      f.cap * f.style.parts.crossbar.height * 0.58,
-      inside * 0.42 - (f.half * barWeight(f.style)) / 2,
-    );
+    const bar =
+      Math.min(
+        f.cap * f.style.parts.crossbar.height * 0.58,
+        inside * 0.42 - (f.half * barWeight(f.style)) / 2,
+      ) -
+      f.half * 0.3 * heaviness(f);
     /*
      * Where the diagonals actually are at that height, so the bar meets them
      * rather than poking out either side -- or, as it did, stopping short.

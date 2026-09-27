@@ -34,6 +34,8 @@ import {
   tStem,
   turn,
   eyeOf,
+  heaviness,
+  lighter,
 } from "./common";
 
 // ---------------------------------------------------------------------------
@@ -166,7 +168,9 @@ function doubleG(f: Frame): Recipe {
    * Its top is where the link lands, and it is held clear of the bowl's ink by
    * at least a pen: two storeys touching are one blot with two holes in it.
    */
-  const bottom = f.dip(f.desc);
+  // Hung a little lower at a black weight, where the loop needs the height to
+  // keep a round counter rather than a slot.
+  const bottom = f.dip(f.desc) - f.half * 0.45 * heaviness(f);
   const underBowl = upper.y - upperH - f.upright * 2 - Math.max(f.half * 1.2, f.x * 0.06);
   /*
    * But never so low that the loop has no hole left in it. At a black weight
@@ -182,7 +186,14 @@ function doubleG(f: Frame): Recipe {
   const roundness = 1 - f.square;
   // Where the link leaves the bowl and where it lands on the loop, both on the
   // centre-lines, so both ends are buried whatever the pen.
-  const leaves = bowlPoint(upper, upperW, upperH, roundness, f.half, 242);
+  /*
+   * At a black weight the link leaves further round the bowl's left side,
+   * where the bowl is a stem thick and buries its end: off the thin bottom
+   * its end stood into the counter as a nick. And the loop and the link are
+   * drawn lighter, so the loop keeps a round counter rather than a slot.
+   */
+  const heavy = heaviness(f);
+  const leaves = bowlPoint(upper, upperW, upperH, roundness, f.half, 242 - 22 * heavy);
   const lands = bowlPoint(loop, loopHalf, loopH, roundness, f.half, 118);
   // The ear: out of the bowl's top right, level and a little proud of it.
   const from = bowlPoint(upper, upperW, upperH, roundness, f.half, 38);
@@ -191,9 +202,12 @@ function doubleG(f: Frame): Recipe {
     ...finish(
       f,
       [
-        ink(f, ring(f, upper, upperW, upperH)),
-        ink(f, ring(f, loop, loopHalf, loopH)),
-        ink(f, bowed(f, leaves, lands, 0.18), BUTT, BUTT),
+        lighter(ink(f, ring(f, upper, upperW, upperH)), 1 - 0.12 * heavy),
+        lighter(ink(f, ring(f, loop, loopHalf, loopH)), 1 - 0.22 * heavy),
+        lighter(
+          ink(f, bowed(f, leaves, lands, Math.max(0.18 - 0.12 * heavy, 0.06)), BUTT, BUTT),
+          1 - 0.36 * heavy,
+        ),
         ink(f, bowed(f, from, earEnd, -0.12), BUTT, f.plain),
       ],
       true,
@@ -324,14 +338,22 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
       build: (style) => {
         const f = frame(style);
         const bowlHeight = Math.max(f.x * 0.31, f.least);
-        const bowlWidth = Math.max(bowlHeight * f.wide, f.least);
+        /*
+         * At a black weight the bowl is lighter than the stem and wider, and
+         * the stem stands off it by the difference, so the counter is the
+         * bowl's own and not what the stem leaves of it: drawn at the stem's
+         * weight in the regular's room, it closed to a slit.
+         */
+        const heavy = heaviness(f);
+        const bowlPen = { ...f.style.pen, weight: f.style.pen.weight * (1 - 0.2 * heavy) };
+        const bowlWidth = Math.max(bowlHeight * f.wide + f.half * 0.35 * heavy, f.least);
         const centre = at(f.edge + bowlWidth, bowlHeight);
-        const stem = centre.x + bowlWidth;
+        const stem = centre.x + bowlWidth + (f.style.pen.weight - bowlPen.weight) / 2;
         // How far over the top reaches before it turns down, held so it can
         // never ask the pen to turn tighter than it goes round.
         const over = Math.max(Math.min(bowlWidth, f.x - bowlHeight * 2), f.least);
         return finish(f, [
-          ink(f, ring(f, centre, bowlWidth, bowlHeight)),
+          { ...ink(f, ring(f, centre, bowlWidth, bowlHeight)), pen: bowlPen },
           // Stem and arch as one run, so the turn at the top is a turn rather
           // than two square ends meeting.
           ink(

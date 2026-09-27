@@ -7,8 +7,10 @@
  */
 
 import { spineEnd } from "../shapes";
+import { penReach, reachAlong } from "../sweep";
 import type { Style } from "../style";
-import type { Spine, Terminal } from "../types";
+import type { Vec2 } from "@/font/types";
+import type { Spine, Stroke, Terminal } from "../types";
 import {
   arm,
   at,
@@ -17,18 +19,22 @@ import {
   bend,
   bendWidth,
   bent,
+  bookish,
   brace,
   BUTT,
   chain,
   chevrons,
+  deg,
   dot,
   enclosed,
   figureWidth,
   finish,
   fraction,
+  type Frame,
   frame,
   ink,
   joined,
+  LEVEL,
   type LetterName,
   ordinal,
   outOf,
@@ -51,6 +57,210 @@ import {
   turnedDown,
 } from "./common";
 
+/** The hairline of a text face's marks: the thin of its own pen, with a floor. */
+function hairline(f: Frame): number {
+  const { weight, contrast } = f.style.pen;
+  return Math.max(
+    weight * (1 - Math.min(Math.max(contrast, 0), 0.9)) * 0.9,
+    f.style.metrics.unitsPerEm * 0.012,
+  );
+}
+
+/**
+ * An upright wedge, wide at the top and narrow at the foot, cut level at both.
+ *
+ * Drawn as two leaning strokes side by side, each a parallelogram half the
+ * width of the top: together their outer edges are the two sides of the
+ * wedge, and between them there is no gap as long as the foot is at least half
+ * as wide as the top, which it is held to.
+ */
+function wedge(
+  f: Frame,
+  x: number,
+  top: number,
+  bottom: number,
+  topWide: number,
+  footWide: number,
+): Stroke[] {
+  const a = topWide;
+  const b = Math.max(footWide, a * 0.52);
+  const w = a / 2;
+  const h = Math.max(top - bottom, 1);
+  return [-1, 1].map((side) => {
+    const from = at(x + side * (a / 2 - w / 2), top);
+    const to = at(x + side * (b / 2 - w / 2), bottom);
+    const lean = Math.atan2(Math.abs(to.x - from.x), h);
+    return {
+      spine: straight(from, to),
+      pen: { ...f.style.pen, contrast: 0, weight: w * Math.cos(lean) },
+      start: LEVEL,
+      end: LEVEL,
+    };
+  });
+}
+
+/** How wide a text face's straight quote is across its top: Lora's is 0.72 of its full stop. */
+function quoteWidth(f: Frame): number {
+  return stopRadius(f) * 1.44;
+}
+
+/** One straight quote: a wedge from the cap height down about a third of it. */
+function quote(f: Frame, x: number): Stroke[] {
+  const wide = quoteWidth(f);
+  const depth = Math.max(f.cap * 0.31, wide * 1.7);
+  return wedge(f, x, f.cap, f.cap - depth, wide, wide * 0.55);
+}
+
+/**
+ * A text face's slash and backslash: from below the descender to the
+ * ascender, as its parentheses are, leaning well over, and cut level at both
+ * ends. Drawn from the cap height to six tenths of the descender it stood
+ * shorter than the parentheses either side of it and nearly upright.
+ */
+function solidus(f: Frame, side: 1 | -1): Stroke {
+  const foot = f.desc * 0.92;
+  const head = f.asc;
+  const lean = (head - foot) * 0.36;
+  const from = at(side === 1 ? f.edge : f.edge + lean, foot);
+  const to = at(side === 1 ? f.edge + lean : f.edge, head);
+  return { ...ink(f, straight(from, to), LEVEL, LEVEL) };
+}
+
+/**
+ * How far a bracket's arms reach from its upright. On a text face, past the
+ * upright by at least most of a stem: at Black the arms were otherwise stubs
+ * and the bracket read as a bar.
+ */
+function bracketReach(f: Frame): number {
+  const w = f.arch * 0.52;
+  return bookish(f) ? Math.max(w, f.half + f.arch * 0.36) : w;
+}
+
+/**
+ * A comma's drop: a round head and a tail drawn down and to the left out of
+ * its right side, thinning to a point.
+ *
+ * The tail is drawn with a broad nib held so that it is at its widest where
+ * the tail leaves the head, travelling straight down, and at its thinnest
+ * where the tail finishes, travelling down and away to the left -- which is
+ * how a pen draws a comma, and what makes the tail taper without anything
+ * having to be tapered. `centre` is the middle of the head.
+ */
+function drop(f: Frame, centre: Vec2, radius: number): Stroke[] {
+  const reach = radius * 3.4;
+  const bend = 42;
+  const R = reach / Math.sin(deg(bend));
+  const pen = { weight: radius * 2.55, contrast: 0.9, angle: 90 - bend + 8 };
+  /*
+   * The tail starts where the right corner of its first cut sits just inside
+   * the head's right side, so its right edge leaves the head running straight
+   * down, as a tangent to it: started further in, the head met the tail in a
+   * notch, and further out the corner stood proud of the head as a spur. The
+   * cut's other corner then lies inside the head as well.
+   */
+  const corner = reachAlong(at(1, 0), penReach(pen));
+  const from = at(centre.x + radius * 0.96 - corner.x, centre.y + radius * 0.22 - corner.y);
+  const pivot = at(from.x - R, from.y);
+  const arc = turn(pivot, R, 0, -bend);
+  return [
+    dot(f, centre, radius),
+    {
+      spine: { ...arc, segments: arc.segments.map((one) => ({ ...one, pieces: 2 })) },
+      pen,
+      start: BUTT,
+      end: BUTT,
+    },
+  ];
+}
+
+/**
+ * A text face's parenthesis: a crescent from the ascender to below the
+ * descender, as thick as a stem in the middle and a hairline at each end.
+ *
+ * A pen that does not change its width cannot draw one, and a broad nib thins
+ * it far too little round a curve this shallow. So it is three runs that share
+ * their tips: each leaves a tip along the same line, turns down onto the
+ * upright and comes back to the other tip the same way. The outer one runs
+ * straight a little way before it turns, which carries it further out; the
+ * inner one turns on a tighter curve and stands upright for a stretch through
+ * the middle, which keeps it further in; and the third lies between them. So
+ * the three lie side by side through the middle and close up to one hairline
+ * at the tips, which is what a crescent is -- with the difference shared
+ * between a lead on the outside and a flat on the inside, neither is long
+ * enough to see. Only the outer run reaches the tips; the others stop a unit
+ * inside them, a hair narrower, so no two edges lie on top of each other.
+ *
+ * Each run is drawn with a broad nib held level, at its widest upright in the
+ * middle and a little lighter at the leaning tips, and cut level there.
+ *
+ * `side` is 1 for the opening one and -1 for the closing one.
+ */
+function crescent(f: Frame, side: 1 | -1): Stroke[] {
+  const t = hairline(f);
+  const thick = Math.max(f.style.pen.weight * 0.84, t * 1.6);
+  const tip = deg(42);
+  const pen = { weight: 0, contrast: 0.9, angle: 0 };
+  const nib = t / Math.hypot(Math.cos(tip), 0.1 * Math.sin(tip));
+  const top = f.asc - t * 0.1;
+  const bottom = f.desc + t * 0.1;
+  const middle = (top + bottom) / 2;
+  const d = at(-Math.sin(tip), -Math.cos(tip));
+  // How far a run's middle stands out from its tip, for a lead of a given
+  // length and a turn of a given share of the radius that would reach the
+  // middle with no flat at all.
+  const full = (lead: number): number => (top + lead * d.y - middle) / Math.sin(tip);
+  const out = (lead: number, share: number): number =>
+    -lead * d.x + full(lead) * share * (1 - Math.cos(tip));
+  const apart = Math.max(thick - nib, nib * 0.2);
+  // Half the difference from the outer run's lead, half from the inner's flat.
+  const lead = apart / 2 / Math.tan(tip / 2);
+  const share = 1 - apart / 2 / (full(0) * (1 - Math.cos(tip)));
+  const runs = [
+    { lead, share: 1 },
+    { lead: lead / 2, share: (1 + share) / 2 },
+    { lead: 0, share },
+  ];
+  const reach = out(lead, 1);
+  // The tips stand at the right of the opening one and the left of the closing
+  // one, far enough in that the crescent's outer side sits on the edge.
+  const left = f.style.metrics.sidebearing;
+  const tipX = side === 1 ? left + nib * 0.5 + reach : left + t * 0.5;
+  const place = (p: Vec2): Vec2 => at(tipX + side * p.x, p.y);
+  const turnsAt = 180 - (tip * 180) / Math.PI;
+  const arc = (centre: Vec2, radius: number, from: number, to: number): Spine => {
+    const drawn =
+      side === 1
+        ? turn(place(centre), radius, from, to)
+        : turn(place(centre), radius, 180 - from, 180 - to);
+    return { ...drawn, segments: drawn.segments.map((one) => ({ ...one, pieces: 2 })) };
+  };
+  return runs.map((run, index) => {
+    const inset = index === 0 ? 0 : 1;
+    const from = at(d.x * inset, top + d.y * inset);
+    const high = at(d.x * (run.lead + inset), top + d.y * (run.lead + inset));
+    const radius = full(run.lead + inset) * run.share;
+    const centre = at(high.x + radius * Math.cos(tip), high.y - radius * Math.sin(tip));
+    const upright = centre.x - radius;
+    const low = (p: Vec2): Vec2 => at(p.x, 2 * middle - p.y);
+    const pieces: Spine[] = [straight(place(from), place(high)), arc(centre, radius, turnsAt, 180)];
+    if (index > 0) {
+      pieces.push(
+        straight(place(at(upright, centre.y)), place(at(upright, 2 * middle - centre.y))),
+      );
+    }
+    pieces.push(
+      arc(low(centre), radius, 180, 360 - turnsAt),
+      straight(place(low(high)), place(low(from))),
+    );
+    return {
+      spine: chain(...pieces),
+      pen: { ...pen, weight: index === 0 ? nib : nib * 0.96 },
+      start: BUTT,
+      end: BUTT,
+    };
+  });
+}
+
 export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   // --- punctuation -------------------------------------------------------
 
@@ -68,6 +278,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
   comma: (style) => {
     const f = frame(style);
     const radius = stopRadius(f);
+    if (bookish(f)) return finish(f, drop(f, at(f.edge, radius), radius));
     return finish(f, [tail(f, radius)]);
   },
 
@@ -83,6 +294,12 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
   semicolon: (style) => {
     const f = frame(style);
     const radius = stopRadius(f);
+    if (bookish(f)) {
+      return finish(f, [
+        ...drop(f, at(f.edge, radius), radius),
+        dot(f, at(f.edge, f.x - radius), radius),
+      ]);
+    }
     return finish(f, [tail(f, radius), dot(f, at(f.edge, f.x - radius), radius)]);
   },
 
@@ -138,6 +355,26 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   hyphen: (style) => {
     const f = frame(style);
+    /*
+     * A text face's hyphen is a short heavy bar a little above the middle of
+     * the x-height: Lora's is two thirds of an x-height long and three
+     * quarters of a stem thick. Drawn as a crossbar it was a hairline, since
+     * a pen with contrast is at its thinnest going across.
+     */
+    if (bookish(f)) {
+      const width = f.x * 0.62 + f.half * 0.4;
+      const thick = Math.max(f.style.pen.weight * 0.74, hairline(f) * 1.5);
+      const y = f.x * 0.6;
+      const round: Terminal = { kind: "butt" };
+      return finish(f, [
+        {
+          spine: straight(at(f.edge - f.half + (thick / 2) * 0, y), at(f.edge - f.half + width, y)),
+          pen: { ...f.style.pen, contrast: 0, weight: thick },
+          start: round,
+          end: round,
+        },
+      ]);
+    }
     const width = f.arch * 0.7;
     return finish(f, [
       thin(f, straight(at(f.edge, axis(f)), at(f.edge + width, axis(f))), f.plain, f.plain),
@@ -146,6 +383,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   parenleft: (style) => {
     const f = frame(style);
+    if (bookish(f)) return finish(f, crescent(f, 1));
     const radius = Math.max(f.cap * 0.72, f.least);
     const centre = at(f.edge + radius, f.cap * 0.4);
     return finish(f, [ink(f, turn(centre, radius, 145, 215), f.end, f.end)]);
@@ -153,6 +391,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   parenright: (style) => {
     const f = frame(style);
+    if (bookish(f)) return finish(f, crescent(f, -1));
     const radius = Math.max(f.cap * 0.72, f.least);
     const centre = at(f.edge - radius + f.arch * 0.32, f.cap * 0.4);
     return finish(f, [ink(f, turn(centre, radius, 35, -35), f.end, f.end)]);
@@ -160,6 +399,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   slash: (style) => {
     const f = frame(style);
+    if (bookish(f)) return finish(f, [solidus(f, 1)]);
     const lean = f.arch * 0.75;
     return finish(f, [
       ink(f, straight(at(f.edge, f.desc * 0.6), at(f.edge + lean, f.cap)), f.plain, f.plain),
@@ -168,6 +408,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   quotesingle: (style) => {
     const f = frame(style);
+    if (bookish(f)) return finish(f, quote(f, f.edge));
     return finish(f, [
       ink(f, straight(at(f.edge, f.cap * 0.72), at(f.edge, f.cap)), f.plain, f.plain),
     ]);
@@ -175,6 +416,10 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   quotedbl: (style) => {
     const f = frame(style);
+    if (bookish(f)) {
+      const one = quoteWidth(f);
+      return finish(f, [...quote(f, f.edge), ...quote(f, f.edge + one * 1.65)]);
+    }
     const gap = f.style.pen.weight * 1.6;
     return finish(f, [
       ink(f, straight(at(f.edge, f.cap * 0.72), at(f.edge, f.cap)), f.plain, f.plain),
@@ -365,7 +610,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   bracketleft: (style) => {
     const f = frame(style);
-    const w = f.arch * 0.52;
+    const w = bracketReach(f);
     const { foot, head } = tall(f);
     return finish(f, [
       ink(
@@ -383,7 +628,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   bracketright: (style) => {
     const f = frame(style);
-    const w = f.arch * 0.52;
+    const w = bracketReach(f);
     const { foot, head } = tall(f);
     return finish(f, [
       ink(
@@ -401,6 +646,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   backslash: (style) => {
     const f = frame(style);
+    if (bookish(f)) return finish(f, [solidus(f, -1)]);
     const lean = f.arch * 0.75;
     return finish(f, [
       ink(f, straight(at(f.edge, f.cap), at(f.edge + lean, f.desc * 0.6)), f.plain, f.plain),
@@ -609,7 +855,9 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
   /** Five spokes from one middle, which is what keeps it from reading as a star. */
   asterisk: (style) => {
     const f = frame(style);
-    const reach = Math.max(f.cap * 0.2, f.style.pen.weight * f.bar * 1.3);
+    // A text face's asterisk is a large mark hung from the cap height: Lora's
+    // is three fifths of it across.
+    const reach = Math.max(f.cap * (bookish(f) ? 0.3 : 0.2), f.style.pen.weight * f.bar * 1.3);
     const centre = at(f.edge + reach, f.cap - reach * 1.05);
     return finish(
       f,
@@ -780,8 +1028,12 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
      * that sets the size, and the mark gets larger rather than filling in.
      */
     const inner = Math.max(f.capBowlH * 0.38, f.half * 2.35);
-    const outer = Math.max(f.capBowlH * 0.94, inner + f.style.pen.weight * 1.55);
-    const centre = at(f.edge + outer, f.cap * 0.46);
+    // A text face's is larger, from below the line to the cap height, as Lora's is.
+    const outer = Math.max(
+      f.capBowlH * (bookish(f) ? 1.08 : 0.94),
+      inner + f.style.pen.weight * 1.55,
+    );
+    const centre = at(f.edge + outer, f.cap * (bookish(f) ? 0.4 : 0.46));
     const stem = centre.x + bendWidth(f, inner);
     return finish(
       f,

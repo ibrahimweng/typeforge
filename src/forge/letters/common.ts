@@ -313,8 +313,9 @@ export function bend(
   radius: number,
   fromDegrees: number,
   toDegrees: number,
+  width = bendWidth(f, radius),
 ): Spine {
-  const halfWidth = bendWidth(f, radius);
+  const halfWidth = width;
   const roundness = 1 - f.square;
   if (toDegrees >= fromDegrees) {
     return bowlBetween(centre, halfWidth, radius, roundness, f.half, fromDegrees, toDegrees);
@@ -1449,6 +1450,53 @@ export function dot(frame: Frame, centre: Vec2, radius: number): Stroke {
   };
 }
 
+/*
+ * The punctuation of a text face.
+ *
+ * A sans draws its comma, its quotes and its parentheses with the pen it draws
+ * its letters with, and that is right for it: a monoline face has monoline
+ * marks. A text serif does not. Its comma is a drop with a tail drawn out of it
+ * to a point, its quotes are wedges, its parentheses are tall crescents thin
+ * at both ends, and its hyphen is a short heavy bar -- Lora's are all of these
+ * -- and drawn with the letters' pen they came out as pills and bars on the
+ * Serif face: a round-ended stick for a comma, two posts for a quote, a paren
+ * the height of a capital as thick at its ends as in the middle, and a hyphen
+ * the size of a full stop.
+ *
+ * So a face with serifs and a real contrast draws them as a text face does.
+ * Each is a fixed number of strokes at every weight, so a weight axis can run
+ * between them.
+ */
+export function bookish(f: Frame): boolean {
+  const { slab, script } = f.style.parts;
+  // Held near upright: a pen turned on its side, as the Fairground's is, is a
+  // poster face whose marks follow its own reversed contrast.
+  return slab.on && !script.on && f.style.pen.contrast >= 0.3 && Math.abs(f.style.pen.angle) < 30;
+}
+
+/** A stroke drawn with its pen's weight scaled. */
+export function lighter(stroke: Stroke, by: number): Stroke {
+  return { ...stroke, pen: { ...stroke.pen, weight: stroke.pen.weight * by } };
+}
+
+/**
+ * How far past a text weight a text face has been taken, from nothing at a
+ * pen of 96 to one at 200, and on to one and a half.
+ *
+ * A black text face does not draw its small counters with the stem's pen. Its
+ * two-storey a and g carry lighter bowls, wider, and its e and A widen too:
+ * drawn at the stem's weight into the room a regular has, the a's lower
+ * counter came down to a slit, the e's eye to a chink and the A's to a
+ * pinhole. Nothing here changes a node, only how heavy and how wide.
+ *
+ * Only an old-style text face, whose serifs are wedges: a didone's black is
+ * its own design, drawn from its own default weight.
+ */
+export function heaviness(f: Frame): number {
+  if (!bookish(f) || f.style.parts.slab.shape !== "wedge") return 0;
+  return Math.min(Math.max((f.style.pen.weight - 96) / 104, 0), 1.5);
+}
+
 /**
  * How big a full stop is: a little under a stem across on a face with no
  * contrast, and larger than the stem as the contrast rises, since the stem
@@ -1461,7 +1509,14 @@ export function stopRadius(f: Frame): number {
   if (f.style.parts.script.on) return f.half * 0.95;
   const { contrast } = f.style.pen;
   const c = Math.min(Math.max(contrast, 0), 0.95);
-  return Math.max(f.half * (0.95 + 0.6 * c), f.style.metrics.unitsPerEm * 0.045 * c);
+  const radius = Math.max(f.half * (0.95 + 0.6 * c), f.style.metrics.unitsPerEm * 0.045 * c);
+  /*
+   * But never so big that a colon's two dots meet. A heavy face with contrast
+   * grew its full stop past a fifth of the x-height, and at Black the colon
+   * and the semicolon came out as one blot. A face without contrast never
+   * gets there: its dot is under a stem, and it is left as it was.
+   */
+  return Math.min(radius, Math.max(f.x * 0.2, f.half));
 }
 
 /**

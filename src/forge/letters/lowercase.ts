@@ -39,6 +39,8 @@ import {
   tStem,
   turn,
   tittle,
+  heaviness,
+  lighter,
 } from "./common";
 
 export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
@@ -114,7 +116,12 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const eye = eyeOf(f, centre);
     const rise = Math.max(-0.85, Math.min(0.85, (eye - centre.y) / f.bowlH));
     const opens = (Math.asin(rise) * 180) / Math.PI;
-    const belt = bend(f, centre, f.bowlH, opens, opens + 300);
+    /*
+     * Wider and a little lighter at a black weight, so the eye stays open:
+     * see `heaviness`. Lowering the bar instead cut the tail short.
+     */
+    const heavy = heaviness(f);
+    const belt = bend(f, centre, f.bowlH, opens, opens + 300, f.bowl + f.half * 0.3 * heavy);
     return finish(
       f,
       [
@@ -147,7 +154,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
           BUTT,
           { kind: "butt", level: true },
         ),
-        ink(f, belt, BUTT, f.end),
+        lighter(ink(f, belt, BUTT, f.end), 1 - 0.14 * heavy),
       ],
       true,
     );

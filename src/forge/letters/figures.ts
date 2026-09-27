@@ -255,11 +255,33 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         ),
       ]);
     }
+    /*
+     * A squared bowl joins its stem the way the round one does: out of the
+     * stem's own foot, on a tight turn, and along a flat into the bowl. Begun
+     * a little left of the top of its own curve instead, the bowl's first cut
+     * leaned with the curve: at a black weight it stood in the counter as a
+     * notch, and at a text weight the stem stopped above the bowl altogether
+     * and the five came in two pieces. The run keeps its flat at every weight,
+     * a unit long where the turn takes the whole of it.
+     */
     const radius = Math.max(Math.min(shoulder, width / 2), f.least);
+    const centre = at(left + radius, f.dip(0) + radius);
+    const top = centre.y + radius;
+    const tight = Math.min(Math.max(radius * 0.6, f.least), radius * 0.98);
+    const joint = top - tight;
     return finish(f, [
       bar,
-      ink(f, straight(at(left, f.cap), at(left, shoulder)), BUTT, BUTT),
-      ink(f, bend(f, at(left + radius, f.dip(0) + radius), radius, 100, -150), BUTT, f.end),
+      ink(f, straight(at(left, f.cap), at(left, joint)), BUTT, BUTT),
+      ink(
+        f,
+        chain(
+          turn(at(left + tight, joint), tight, 180, 90),
+          straight(at(left + tight, top), at(Math.max(centre.x, left + tight + 1), top)),
+          bend(f, at(Math.max(centre.x, left + tight + 1), centre.y), radius, 90, -150),
+        ),
+        BUTT,
+        f.end,
+      ),
     ]);
   },
 
