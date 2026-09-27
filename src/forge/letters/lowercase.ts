@@ -116,20 +116,28 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * looked like it had a crossbar and did not listen to the crossbar.
      */
     /*
-     * And at a heavy weight the bar comes down and goes lighter until the eye
-     * above it is half a stem deep. Two horizontals and a crossbar share the
-     * x-height, and at a Black on a text x-height the eye was left a third of
-     * a stem -- a chink, beside an o whose counter had widened with the pen.
-     * A Black e carries a lighter bar than its bowl and a smaller aperture
-     * than its Regular, and the eye is the counter the letter is read by.
+     * And at a heavy weight the bar comes down until the eye above it is half
+     * a stem deep. Two horizontals and a crossbar share the x-height, and at a
+     * Black on a text x-height the eye was left a third of a stem -- a chink,
+     * beside an o whose counter had widened with the pen. A Black e trades
+     * some of its aperture for its eye, which is the counter it is read by.
+     *
+     * Lowered, not lightened: a bar lighter than the bowl moved where a break
+     * laid along it falls, and the break sliced the bowl above it.
      */
-    const opening = Math.min(1, blackness(f.style) / 0.5);
-    const bar = 1 - EP.bar * opening;
+    // Not in a joined hand, whose e is a loop written round from its join.
+    const opening = f.style.parts.script.on ? 0 : Math.min(1, blackness(f.style) / 0.5);
+    const barHalf = f.upright * f.bar;
     const crown = centre.y + f.bowlH - f.upright;
-    const deep = f.half * 2 * EP.deep * opening;
-    // Never so low that the aperture under the bar is shut by the tail.
-    const floor = centre.y - f.bowlH + f.upright + f.upright * f.bar * bar + deep * EP.below;
-    const eye = Math.max(Math.min(eyeOf(f, centre), crown - f.upright * f.bar * bar - deep), floor);
+    const deep = f.half * 2 * 0.56 * opening;
+    /*
+     * But never so low that the tail shuts the aperture under the bar: that
+     * keeps a quarter of a stem, and more where the tail ends in a flare,
+     * which stands up further into it.
+     */
+    const below = f.half * 2 * opening * (f.style.parts.flare.spread > 0 ? 0.33 : 0.26);
+    const floor = centre.y - f.bowlH + f.upright + barHalf + below;
+    const eye = Math.max(Math.min(eyeOf(f, centre), crown - barHalf - deep), floor);
     const rise = Math.max(-0.85, Math.min(0.85, (eye - centre.y) / f.bowlH));
     const opens = (Math.asin(rise) * 180) / Math.PI;
     /*
@@ -169,7 +177,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
          * spur -- at a black weight half a stem of it. A text e's bar runs
          * flush with the outside of the bowl, and the eye closes square.
          */
-        lighter(thin(
+        thin(
           f,
           straight(
             // The wall of the bowl as it is drawn, which a heavy weight
@@ -186,7 +194,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
           ),
           BUTT,
           { kind: "butt", level: true },
-        ), bar),
+        ),
         lighter(ink(f, belt, BUTT, f.end), 1 - 0.14 * light),
       ],
       true,
@@ -610,5 +618,3 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     ]);
   },
 };
-
-export const EP = { bar: 0, deep: 0.58, below: 0.9 };

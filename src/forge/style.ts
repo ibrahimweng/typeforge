@@ -2266,11 +2266,18 @@ export function heavierPen(style: Style): Pen {
     const black = blackness(style);
     if (black <= 0) return pen;
     const base = BASES.find((one) => one.name === style.name);
-    const own = base ? base.pen.weight * (style.metrics.xHeight / base.metrics.xHeight) : pen.weight;
+    const own = base
+      ? base.pen.weight * (style.metrics.xHeight / base.metrics.xHeight)
+      : pen.weight;
     if (pen.weight <= own) return pen;
     const weight = own + (pen.weight - own) * 0.5;
     const thin = pen.weight * (1 - pen.contrast);
-    return { ...pen, weight, contrast: Math.max(0, 1 - thin / weight), own: pen.own ?? pen.contrast };
+    return {
+      ...pen,
+      weight,
+      contrast: Math.max(0, 1 - thin / weight),
+      own: pen.own ?? pen.contrast,
+    };
   }
   const wanted = Math.min(0.56, 0.37 * blackness(style));
   if (wanted <= pen.contrast) return pen;

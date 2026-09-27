@@ -90,14 +90,18 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * as it did; past it, it holds a stem of clear space between the feet.
      */
     const heavy = heaviness(f);
-    const under = f.half * 2 * Math.min(1, blackness(f.style));
+    // Not on a text serif, whose feet already stand apart on their serifs.
+    const under = bookish(f) ? 0 : f.half * 2 * Math.min(1, blackness(f.style));
     const bar = Math.max(
       Math.min(
         f.cap * f.style.parts.crossbar.height * 0.58,
         inside * 0.42 - (f.half * barWeight(f.style)) / 2,
       ) -
         f.half * 0.3 * heavy,
-      Math.min(under + f.upright * barWeight(f.style), inside * 0.5),
+      Math.min(
+        under + f.upright * barWeight(f.style),
+        inside * 0.42 - (f.half * barWeight(f.style)) / 2,
+      ),
     );
     /*
      * Where the diagonals actually are at that height, so the bar meets them

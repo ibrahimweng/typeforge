@@ -1070,7 +1070,6 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
    * the same nodes at every weight.
    */
   ampersand: (style) => {
-
     const f = frame(style);
     const C = f.cap;
     const pinned = (run: Spine, pieces: number): Spine => ({
@@ -1095,11 +1094,11 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
      * a Black ampersand was a slit. And the loop moves out to the right to
      * find the room rather than up past the cap height, as a Black's does.
      */
-    const black = Math.min(1, blackness(f.style) / AMP.at);
-    const R = Math.max(wantR * fits, f.half * (1.5 + AMP.R * black), f.least);
-    const r = Math.max(wantr * fits, f.half * (1.15 + AMP.r * black), f.least);
+    const black = Math.min(1, blackness(f.style) / 0.6);
+    const R = Math.max(wantR * fits, f.half * (1.5 + 0.25 * black), f.least);
+    const r = Math.max(wantr * fits, f.half * (1.15 + 0.5 * black), f.least);
     const bowlAt = at(f.edge + R, f.dip(0) + R);
-    const loopY = Math.max(f.crest(C) - r, bowlAt.y + (r + R) * 1.02 * (1 - AMP.slide * black));
+    const loopY = Math.max(f.crest(C) - r, bowlAt.y + (r + R) * 1.02 * (1 - 0.35 * black));
     const rise = loopY - bowlAt.y;
     const clear = (r + R) * 1.08;
     const over = Math.max(C * 0.05, Math.sqrt(Math.max(0, clear * clear - rise * rise)));
@@ -1200,5 +1199,3 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
   guillemotleft: (style) => chevrons(frame(style), -1),
   guillemotright: (style) => chevrons(frame(style), 1),
 };
-
-export const AMP = { at: 0.6, R: 0.25, r: 0.5, slide: 0.35 };
