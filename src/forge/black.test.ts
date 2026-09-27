@@ -16,6 +16,10 @@ import type { Contour, Vec2 } from "@/font/types";
 import { drawLetter } from "./build";
 import { BASES, blackness, spacingOf, type Style } from "./style";
 
+/** A letter in the form its face draws it by default -- the Sans's grotesque s, e, a. */
+const drawnAs = (name: string, style: Style) =>
+  drawLetter(name, style, style.name === "Sans" ? style.forms?.[name] : undefined);
+
 beforeAll(async () => {
   await ready();
 });
@@ -98,7 +102,7 @@ function openness(hole: Contour): number {
  * is simply not there, and the count says so.
  */
 function counters(name: string, style: Style): number[] {
-  const drawn = drawLetter(name, style)!;
+  const drawn = drawnAs(name, style)!;
   const stem = style.pen.weight;
   return unite(drawn.contours, "winding")
     .filter((contour) => contourArea(contour) < -((stem * 0.25) ** 2))
@@ -186,7 +190,7 @@ describe("what a heavy weight changes", () => {
     expect(spacingOf(black)).toBeLessThan(sans.metrics.sidebearing * 0.85);
     expect(spacingOf(black)).toBeGreaterThan(sans.metrics.sidebearing * 0.6);
     // An o's crown is lighter than its sides.
-    const o = drawLetter("o", black)!;
+    const o = drawnAs("o", black)!;
     const hole = unite(o.contours, "winding").find((one) => contourArea(one) < 0)!;
     const outline = flattenContour(hole, 16);
     const ink = unite(o.contours, "winding").find((one) => contourArea(one) > 0)!;
@@ -195,7 +199,7 @@ describe("what a heavy weight changes", () => {
     const crown = Math.max(...outer.map((p) => p.y)) - Math.max(...outline.map((p) => p.y));
     expect(crown / side).toBeLessThan(0.75);
     // And the o widens with the n, as a Black's does.
-    const n = drawLetter("n", black)!;
+    const n = drawnAs("n", black)!;
     expect(o.advanceWidth / n.advanceWidth).toBeGreaterThan(0.85);
   });
 
@@ -232,7 +236,7 @@ describe("what a heavy weight changes", () => {
       const base = face(name);
       for (const letter of letters) {
         const shape = (weight: number): string =>
-          drawLetter(letter, at(base, weight))!
+          drawnAs(letter, at(base, weight))!
             .contours.map((contour) => contour.nodes.length)
             .join(",");
         const drawn = shape(base.pen.weight);
@@ -252,7 +256,7 @@ describe("what a heavy weight changes", () => {
  * the lower right.
  */
 function sBowls(name: string, style: Style): [number, number] {
-  const ink = unite(drawLetter(name, style)!.contours, "winding");
+  const ink = unite(drawnAs(name, style)!.contours, "winding");
   const edges: [Vec2, Vec2][] = [];
   for (const contour of ink) {
     const outline = flattenContour(contour, 16);
@@ -315,12 +319,12 @@ describe("the letters a Black closes first", () => {
         expect(upper, `${name} s at ${weight}, upper`).toBeGreaterThan(0.15);
         expect(lower, `${name} s at ${weight}, lower`).toBeGreaterThan(0.15);
         const wide = (letter: string): number => {
-          const box = contoursBounds(drawLetter(letter, style)!.contours);
+          const box = contoursBounds(drawnAs(letter, style)!.contours);
           return box.xMax - box.xMin;
         };
         expect(wide("s") / wide("o"), `${name} s at ${weight}`).toBeGreaterThan(0.8);
         // And on its lines: at the end of the axis it hung below the baseline.
-        const box = contoursBounds(drawLetter("s", style)!.contours);
+        const box = contoursBounds(drawnAs("s", style)!.contours);
         expect(box.yMin, `${name} s at ${weight}`).toBeGreaterThan(-style.metrics.overshoot * 2);
       }
     }
@@ -375,7 +379,7 @@ describe("the letters a Black closes first", () => {
       const base = face(name);
       for (const weight of [base.pen.weight, 200, 260]) {
         const style = at(base, weight);
-        const holes = unite(drawLetter("B", style)!.contours, "winding").filter(
+        const holes = unite(drawnAs("B", style)!.contours, "winding").filter(
           (contour) => contourArea(contour) < 0,
         );
         expect(holes.length, `${name} B at ${weight}`).toBe(2);
@@ -386,18 +390,18 @@ describe("the letters a Black closes first", () => {
   it("stands a Black c's ends apart and a Black A's bar off the line", () => {
     for (const name of ["Sans", "Geometric"]) {
       const style = at(face(name), 200);
-      const box = (letter: string) => contoursBounds(drawLetter(letter, style)!.contours);
+      const box = (letter: string) => contoursBounds(drawnAs(letter, style)!.contours);
       // The c's ends out over the right of its bowl, not cut off over its
       // middle where it read as a bracket.
       const [c, o] = [box("c"), box("o")];
       expect((c.xMax - c.xMin) / (o.xMax - o.xMin), `${name} c`).toBeGreaterThan(0.8);
       // And paper under the A's bar: sat on the baseline, the A was a solid
       // triangle with a hole in it.
-      const holes = unite(drawLetter("A", style)!.contours, "winding").filter(
+      const holes = unite(drawnAs("A", style)!.contours, "winding").filter(
         (contour) => contourArea(contour) < 0,
       );
       expect(holes.length, `${name} A`).toBe(1);
-      const ink = unite(drawLetter("A", style)!.contours, "winding");
+      const ink = unite(drawnAs("A", style)!.contours, "winding");
       const middle = (box("A").xMin + box("A").xMax) / 2;
       const clear = (y: number): boolean =>
         !ink.some(

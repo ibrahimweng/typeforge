@@ -2882,7 +2882,9 @@ export function heavierPen(style: Style): Pen {
    */
   if (capital) {
     if (wanted <= own) return pen.own === undefined ? pen : { ...pen, contrast: own };
-    return wanted === pen.contrast && pen.own !== undefined ? pen : { ...pen, contrast: wanted, own };
+    return wanted === pen.contrast && pen.own !== undefined
+      ? pen
+      : { ...pen, contrast: wanted, own };
   }
   if (wanted <= pen.contrast) return pen;
   return { ...pen, contrast: wanted, own };

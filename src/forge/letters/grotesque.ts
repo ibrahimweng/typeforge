@@ -395,7 +395,13 @@ export function grotesqueCapitalB(style: Style): Recipe {
   return finish(f, [
     ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
     ink(f, lobeRun(f, stem, f.hangs(f.cap), waist, X(lerp(409, 392)), 150 * u)),
-    ink(f, lobeRun(f, stem, waist, f.sits(0), X(lerp(439, 423)), 160 * u)),
+    /*
+     * Its top half a unit under the upper's foot: drawn on exactly the same
+     * line, the two bars' edges coincided and a union of the letter -- which
+     * is how its counters are counted, and how it is exported -- lost the
+     * lower counter at some weights.
+     */
+    ink(f, lobeRun(f, stem, waist - 0.5, f.sits(0), X(lerp(439, 423)), 160 * u)),
   ]);
 }
 
@@ -877,10 +883,7 @@ export function grotesqueSmallR(style: Style): Recipe {
     BUTT,
     f.end,
   );
-  return finish(f, [
-    ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
-    arm,
-  ]);
+  return finish(f, [ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end), arm]);
 }
 
 /**
