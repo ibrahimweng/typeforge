@@ -56,6 +56,7 @@ import {
   thin,
   turn,
   turnedDown,
+  hookFrom,
 } from "./common";
 
 /** The hairline of a text face's marks: the thin of its own pen, with a floor. */
@@ -378,7 +379,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
      * degrees or so takes anyway: pinned, so a hook that turns a little less
      * at some weight is still drawn with the points of the others.
      */
-    const turned = turn(centre, radius, 190, leaves);
+    const turned = turn(centre, radius, hookFrom(f), leaves);
     const hook = {
       ...turned,
       segments: turned.segments.map((segment) =>

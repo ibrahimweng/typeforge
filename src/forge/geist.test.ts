@@ -213,7 +213,7 @@ describe("the Sans stays clean from a hairline to a Black", () => {
 
   it("never crosses itself", () => {
     const folded: string[] = [];
-    for (const weight of [30, 87, 200, 260]) {
+    for (const weight of [30, 87, 172, 200, 230, 260]) {
       for (const name of letters) {
         for (const contour of draw(name, at(weight)).contours) {
           if (contoursIntersect([contour])) folded.push(`${name}@${weight}`);
@@ -226,7 +226,7 @@ describe("the Sans stays clean from a hairline to a Black", () => {
   it("keeps the same points at every weight, so a weight axis can run through it", () => {
     const moved: string[] = [];
     for (const name of letters) {
-      const counts = [30, 87, 200, 260].map((weight) =>
+      const counts = [30, 87, 172, 200, 230, 260].map((weight) =>
         draw(name, at(weight))
           .contours.map((contour) => contour.nodes.length)
           .join("+"),
@@ -285,5 +285,101 @@ describe("the other bases", () => {
     const o = contoursBounds(drawLetter("o", geometric)!.contours);
     // A circle, as it was.
     expect((o.xMax - o.xMin) / (o.yMax - o.yMin)).toBeCloseTo(1, 1);
+  });
+});
+
+describe("past Geist Black, an Ultra", () => {
+  const ultras = [200, 230, 260];
+  const short = [..."acemnorsuvwxz"];
+  const lowercase = [..."abcdefghijklmnopqrstuvwxyz"];
+
+  it("keeps every lowercase letter between its lines", () => {
+    const out: string[] = [];
+    for (const weight of ultras) {
+      for (const name of lowercase) {
+        const box = contoursBounds(draw(name, at(weight)).contours);
+        const top = short.includes(name) ? SANS.metrics.xHeight : SANS.metrics.ascender;
+        const bottom = "gjpqy".includes(name) ? SANS.metrics.descender : 0;
+        const over = SANS.metrics.overshoot + 8;
+        if (box.yMax > top + over || box.yMin < bottom - over) {
+          out.push(`${name}@${weight}: ${Math.round(box.yMin)}..${Math.round(box.yMax)}`);
+        }
+      }
+    }
+    expect(out).toEqual([]);
+  });
+
+  it("keeps its counters open", () => {
+    const pen = 260;
+    // Each counter as a gap on a line across the letter: at least a fifth of the pen.
+    const gaps = (name: string, at_: number, along: "x" | "y") => {
+      const runs = inkRunsAt(draw(name, at(pen)).contours, at_, along);
+      const merged: Array<[number, number]> = [];
+      for (const run of [...runs].sort((a, b) => a[0] - b[0])) {
+        const last = merged[merged.length - 1];
+        if (last && run[0] <= last[1] + 0.5) last[1] = Math.max(last[1], run[1]);
+        else merged.push([run[0], run[1]]);
+      }
+      return merged.slice(1).map((run, index) => run[0] - merged[index][1]);
+    };
+    const middle = (name: string) => {
+      const box = contoursBounds(draw(name, at(pen)).contours);
+      return (box.xMin + box.xMax) / 2;
+    };
+    const least = pen * 0.2;
+    // Across the n, the o, the e's eye and the u at mid x-height.
+    for (const name of ["n", "o", "u", "d", "b"]) {
+      const found = gaps(name, SANS.metrics.xHeight * 0.45, "y");
+      expect(Math.max(...found), name).toBeGreaterThan(least);
+    }
+    // Down the middle of the s: two counters; of the e: the eye; of the a: the bowl.
+    const s = gaps("s", middle("s"), "x");
+    expect(s.length, "s").toBeGreaterThanOrEqual(2);
+    for (const gap of s) expect(gap, "s").toBeGreaterThan(least * 0.8);
+    expect(Math.max(...gaps("e", middle("e"), "x")), "e").toBeGreaterThan(least);
+    expect(Math.max(...gaps("a", middle("a") - 20, "x")), "a").toBeGreaterThan(least * 0.5);
+  });
+
+  it("grows only moderately wider, and never narrower, as the pen grows", () => {
+    for (const name of ["n", "o", "H", "E", "s", "e"]) {
+      const widths = [172, 200, 230, 260].map((weight) => draw(name, at(weight)).advanceWidth);
+      for (let index = 1; index < widths.length; index++) {
+        expect(widths[index], name).toBeGreaterThanOrEqual(widths[index - 1] - 1);
+      }
+      expect(widths[3] / widths[0], name).toBeLessThan(1.35);
+    }
+  });
+});
+
+describe("Geist Black's horizontals", () => {
+  const thickness = (name: string, x: number, pen = 172) => {
+    const drawn = draw(name, at(pen));
+    const box = contoursBounds(drawn.contours);
+    const runs = inkRunsAt(drawn.contours, box.xMin + (box.xMax - box.xMin) * x, "x");
+    return runs.map(([a, b]) => b - a);
+  };
+
+  it("draws the capitals' bars heavier than the lowercase's crowns", () => {
+    // Geist Black: E and T 142 on a stem of 172; o 127; e's bar 98.
+    for (const one of thickness("E", 0.72)) expect(one).toBeCloseTo(142, -1);
+    expect(thickness("T", 0.9)[0]).toBeCloseTo(142, -1);
+    expect(thickness("o", 0.5)[0]).toBeCloseTo(127, -1);
+    expect(thickness("e", 0.45)[1]).toBeCloseTo(98, -1);
+  });
+
+  it("sets the E, F and H bars and arms where Geist's are", () => {
+    const bar = (name: string, x: number) => {
+      const drawn = draw(name, at(172));
+      const box = contoursBounds(drawn.contours);
+      const runs = inkRunsAt(drawn.contours, box.xMin + (box.xMax - box.xMin) * x, "x");
+      return runs.map(([a, b]) => (a + b) / 2);
+    };
+    // Geist Black: the E's and H's bars centred at 356, the F's at 347.
+    expect(bar("E", 0.72)[1]).toBeCloseTo(356, -1);
+    expect(bar("F", 0.72)[0]).toBeCloseTo(347, -1);
+    expect(bar("H", 0.5)[0]).toBeCloseTo(357, -1);
+    // And the E as wide as Geist Black's, 518 of ink.
+    const e = contoursBounds(draw("E", at(172)).contours);
+    expect(e.xMax - e.xMin).toBeCloseTo(518, -1);
   });
 });

@@ -48,7 +48,7 @@ import {
 } from "./shapes";
 import { seamsOf, wobbleOf } from "./script";
 import { penReach, reachAlong, sweep } from "./sweep";
-import { heavier, proportioned, type Style, serifReach, spacingOf } from "./style";
+import { capitalled, heavier, proportioned, type Style, serifReach, spacingOf } from "./style";
 import type { Spine, Stroke, Terminal } from "./types";
 
 export interface Drawn {
@@ -155,8 +155,10 @@ export function decidedBy(name: string): string {
  */
 function widthOf(style: Style, name: string): Style {
   const table = style.metrics.proportions;
-  if (!table) return style;
-  return proportioned(style, table[name] !== undefined ? name : decidedBy(name));
+  const owner = table?.[name] !== undefined ? name : decidedBy(name);
+  const wide = table ? proportioned(style, owner) : style;
+  // A capital's pen, on a face that gives its capitals less contrast.
+  return capitalled(wide, owner);
 }
 
 /** A round letter is set a little tighter, or it looks loose beside a flat one. */
@@ -909,6 +911,13 @@ function inkAll(strokes: Stroke[], style: Style, name = ""): Contour[][] {
   // And the J is the one capital whose hook ends in a drop, as Lora's does:
   // cut plain, its end came to a point under the letter.
   const capitalDrop = capital && ["J", "\u0408"].includes(decidedBy(name));
+  /*
+   * And a figure's curved ends, and the question mark's, hang a drop wherever
+   * they stop -- the head of a 2, both ends of a 3, the hood of a 6 and the
+   * tail of a 9 -- as Lora's and every text face's figures do: cut plain, a
+   * text face's figures read as a sans's with serifs on their feet.
+   */
+  const anyDrop = figure || decidedBy(name) === "question";
   const dressed = strokes.map((stroke) =>
     dress(
       stroke,
@@ -918,6 +927,7 @@ function inkAll(strokes: Stroke[], style: Style, name = ""): Contour[][] {
       lettered ? (figure ? "figure" : "letter") : "other",
       footBeak,
       capitalDrop,
+      anyDrop,
     ),
   );
   const swept = dressed.map((stroke) => sweep(stroke));
@@ -963,6 +973,7 @@ function dress(
   kind: "letter" | "figure" | "other",
   footBeak = false,
   capitalDrop = false,
+  anyDrop = false,
 ): Stroke {
   if (stroke.spine.closed || stroke.spine.segments.length === 0) return stroke;
   const straight = endsStraight(stroke.spine);
@@ -1043,7 +1054,7 @@ function dress(
        * went along the weight axis would leave a letter the axis cannot follow.
        */
       const hangs =
-        (capitalDrop && curve !== null) ||
+        ((capitalDrop || anyDrop) && curve !== null) ||
         (!capital &&
           curve !== null &&
           (curve.toward.y < -0.25 || at.y < style.metrics.descender * 0.4));

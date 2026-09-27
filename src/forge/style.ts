@@ -108,6 +108,43 @@ export interface Metrics {
    * heavy -- and the spacing closes with it: see `narrowed`.
    */
   heavyCounter?: number;
+  /**
+   * The most contrast a heavy weight takes on: see `heavierPen`. Left out,
+   * the horizontals go on thinning to the pen's limit, which on a face with
+   * little contrast of its own reads as a fat face rather than as an Ultra.
+   */
+  heavyContrast?: number;
+  /**
+   * How much of the contrast a heavy weight gains the capitals and figures
+   * take, as a share. Left out, all of it. Geist Black's E, T and 2 carry
+   * horizontals of 142 on a stem of 172, where its o's crown is 127: the
+   * capitals stand taller, and thinned as far as the lowercase they look
+   * lighter than it.
+   */
+  capitalContrast?: number;
+  /** Set on the style a capital or figure is drawn with: see `capitalContrast`. Never saved. */
+  capital?: boolean;
+  /**
+   * Set on the style a letter drawn lighter across than the face is drawn
+   * with, past the Black (`lighterAcross` in `letters/grotesque.ts`): its pen
+   * is taken as it is. Never saved.
+   */
+  lighterAcross?: boolean;
+  /** The bowls' superness the face was drawn with, once `heavier` has rounded them. Never saved. */
+  drawnSuperness?: number;
+  /**
+   * Each letter's width at the face's Bold against its Regular, where the
+   * construction's own way of growing a heavy letter is not the face's: `at`
+   * is how black the Bold is (see `blackness`), and the letter reaches its
+   * factor there and holds it past it.
+   *
+   * A heavy weight here keeps its counters open by widening the letters, and
+   * most faces do much the same. Lora does not, or not evenly: its Bold's o is
+   * the width of its Regular's to the unit and its A and its w within a
+   * dozen, while its B and its n take forty or fifty more -- which is a
+   * drawing, letter by letter, and is written down as one.
+   */
+  bold?: { at: number; widths: Record<string, number> };
   /** The counter the face was drawn with, once `heavier` has narrowed it. */
   drawnCounter?: number;
   /**
@@ -181,6 +218,16 @@ export interface Parts {
      * down to the left, which is where a pen enters the stroke.
      */
     head: SerifHead;
+    /**
+     * The stem, as a share of the em, past which the serif stops lengthening
+     * with it, and how much of what the stem gains after that it still takes.
+     * Left out, an eighth of the em and a third. A text face like Lora holds
+     * its serifs nearly where its Regular has them all the way to its Bold --
+     * 64 units past a stem of 87, and 66 past one of 142 -- so a heavy cut's
+     * serifs thicken rather than reach.
+     */
+    hold?: number;
+    past?: number;
   };
   shoulder: {
     /**
@@ -460,9 +507,9 @@ export function serifReach(style: Style): number {
   const stem = style.pen.weight;
   const em = style.metrics.unitsPerEm;
   const light = em * 0.09;
-  const heavy = em * 0.125;
+  const heavy = em * (style.parts.slab.hold ?? 0.125);
   if (stem < light) return (stem + light) / 2;
-  if (stem > heavy) return heavy + (stem - heavy) / 3;
+  if (stem > heavy) return heavy + (stem - heavy) * (style.parts.slab.past ?? 1 / 3);
   return stem;
 }
 
@@ -560,6 +607,8 @@ export const SANS: Style = {
     // Geist's figures are proportional: its one is 385 wide, its zero 672.
     figures: "proportional",
     heavyCounter: 1.3,
+    heavyContrast: 0.42,
+    capitalContrast: 0.61,
     /* Geist Regular's own sidebearings, over 80 (a capital's over 80 after its 12 of extra). */
     sides: {
       a: [0.59, 0.44],
@@ -732,6 +781,13 @@ export const SANS: Style = {
     nine: "grotesque",
     ampersand: "grotesque",
     question: "grotesque",
+    E: "grotesque",
+    F: "grotesque",
+    H: "grotesque",
+    L: "grotesque",
+    T: "grotesque",
+    U: "grotesque",
+    i: "grotesque",
   },
   parts: {
     ...PLAIN.parts,
@@ -755,7 +811,7 @@ export const SERIF: Style = {
    * sits a few degrees round from the top. At 0.42 ours was 0.59 of the thick,
    * which reads as a sans with serifs rather than as a text face.
    */
-  pen: { weight: 96, contrast: 0.6, angle: 8 },
+  pen: { weight: 87, contrast: 0.55, angle: 8 },
   /*
    * The two-storey a, which is what most text faces use and what none of them
    * were asking for.
@@ -776,7 +832,25 @@ export const SERIF: Style = {
    * The G with an upright spur rather than a bar turned in, and the Q whose
    * tail sweeps out under the line, are the same kind of decision.
    */
-  forms: { a: "double", g: "double", G: "spurred", Q: "swept", y: "hooked" },
+  forms: {
+    a: "double",
+    g: "double",
+    G: "spurred",
+    Q: "humanist",
+    y: "hooked",
+    // Lora's own: see `letters/humanist.ts`.
+    e: "humanist",
+    u: "humanist",
+    t: "humanist",
+    U: "humanist",
+    M: "humanist",
+    N: "humanist",
+    o: "humanist",
+    c: "humanist",
+    O: "humanist",
+    C: "humanist",
+    zero: "humanist",
+  },
   /*
    * A text face's proportions rather than the sans's.
    *
@@ -794,10 +868,218 @@ export const SERIF: Style = {
    */
   metrics: {
     ...PLAIN.metrics,
-    ascender: 780,
-    descender: -260,
+    xHeight: 500,
+    capHeight: 700,
+    ascender: 755,
+    descender: -255,
+    overshoot: 16,
     sidebearing: 34,
     capitalSpacing: 1.4,
+    // LORA-BOLD-BEGIN (fitted to Lora Bold at a pen of 142)
+    bold: {
+      at: 0.47,
+      widths: {
+        a: 0.805,
+        b: 0.927,
+        c: 0.914,
+        d: 0.926,
+        e: 0.856,
+        f: 0.919,
+        g: 0.943,
+        h: 0.946,
+        k: 0.97,
+        m: 0.978,
+        n: 0.952,
+        o: 0.889,
+        p: 0.943,
+        q: 0.946,
+        r: 0.982,
+        s: 0.84,
+        t: 1.087,
+        u: 1.007,
+        v: 0.9,
+        w: 0.803,
+        x: 0.824,
+        y: 0.874,
+        z: 0.993,
+        A: 0.691,
+        B: 0.725,
+        C: 0.942,
+        D: 0.978,
+        E: 0.987,
+        F: 1.054,
+        G: 0.95,
+        H: 0.933,
+        J: 1.207,
+        K: 0.967,
+        L: 1.053,
+        M: 1.005,
+        N: 0.958,
+        O: 0.919,
+        P: 0.696,
+        Q: 0.98,
+        R: 0.911,
+        S: 0.947,
+        T: 1.076,
+        U: 0.92,
+        V: 0.949,
+        W: 0.957,
+        X: 0.961,
+        Y: 0.905,
+        Z: 1.032,
+        zero: 0.847,
+        one: 0.708,
+        two: 0.872,
+        three: 0.841,
+        four: 0.936,
+        six: 0.892,
+        seven: 0.859,
+        eight: 0.833,
+        nine: 0.894,
+        question: 0.787,
+      },
+    },
+    // LORA-BOLD-END
+    // LORA-TABLES-BEGIN (fitted to Lora Regular: see lora.test.ts)
+    sides: {
+      a: [1, 0.74],
+      b: [0.24, 1.24],
+      c: [1.21, 1],
+      d: [1.24, 0.88],
+      e: [1.24, 1.15],
+      f: [0.74, -1.65],
+      g: [1.03, -0.47],
+      h: [0.76, 0.88],
+      i: [1.06, 0.97],
+      j: [-2.59, 2.18],
+      k: [0.76, 0.21],
+      l: [0.74, 1],
+      m: [1.06, 0.94],
+      n: [1.09, 0.88],
+      o: [1.21, 1.21],
+      p: [0.85, 1.24],
+      q: [1.24, 0.44],
+      r: [1.06, 0.21],
+      s: [1.53, 1.21],
+      t: [0.62, 0.12],
+      u: [0.76, 0.85],
+      v: [0.18, 0.09],
+      w: [0.18, 0.03],
+      x: [0.65, 0.32],
+      y: [0.12, 0.12],
+      z: [1.18, 1.29],
+      A: [-0.58, -0.75],
+      B: [1.22, 0.75],
+      C: [0.95, 0.48],
+      D: [1.22, 0.95],
+      E: [1.22, 0.92],
+      F: [1.22, 0.31],
+      G: [0.98, 0.22],
+      H: [1.22, 1.22],
+      I: [1.22, 1.22],
+      J: [-0.46, 0.48],
+      K: [1.22, -0.25],
+      L: [1.22, 0.22],
+      M: [0.89, 0.6],
+      N: [1.28, 0.86],
+      O: [0.95, 0.89],
+      P: [1.22, 0.36],
+      Q: [0.95, -0.11],
+      R: [1.22, -0.4],
+      S: [1.31, 0.89],
+      T: [0.25, 0.28],
+      U: [0.51, 0.48],
+      V: [-0.52, -0.93],
+      W: [-0.19, -0.84],
+      X: [-0.14, -0.61],
+      Y: [-0.58, -0.69],
+      Z: [0.86, 1.01],
+      zero: [1.65, 1.62],
+      one: [0.53, 1.03],
+      two: [1.35, 1.53],
+      three: [1.29, 1.47],
+      four: [0.35, 1],
+      five: [1.53, 1.32],
+      six: [1.65, 1.44],
+      seven: [0.65, 0.59],
+      eight: [1.74, 1.47],
+      nine: [1.41, 1.74],
+      ampersand: [1.06, -0.24],
+      question: [0.97, 1.08],
+      exclam: [2.18, 2.21],
+      period: [1.88, 1.91],
+      comma: [1.94, 1.79],
+      semicolon: [2.06, 1.97],
+      colon: [1.97, 1.94],
+      quotesingle: [1.82, 1.82],
+      quotedbl: [1.82, 1.85],
+      parenleft: [1.06, 0.5],
+      parenright: [0.53, 1.03],
+      hyphen: [1.97, 1.97],
+      slash: [0.62, 0.59],
+    },
+    proportions: {
+      a: 1.069,
+      b: 0.84,
+      c: 0.83,
+      d: 0.826,
+      e: 0.796,
+      f: 1.303,
+      g: 1.031,
+      h: 0.936,
+      k: 0.943,
+      m: 0.875,
+      n: 0.927,
+      o: 0.889,
+      p: 0.826,
+      q: 0.811,
+      r: 0.88,
+      s: 1.011,
+      t: 1.278,
+      u: 0.933,
+      v: 0.865,
+      x: 0.927,
+      y: 0.941,
+      z: 1.19,
+      A: 0.775,
+      B: 1.036,
+      C: 0.897,
+      D: 1.017,
+      E: 1.128,
+      F: 0.984,
+      G: 1.023,
+      H: 0.987,
+      J: 1.135,
+      K: 1.086,
+      L: 1.176,
+      M: 1.15,
+      N: 1.033,
+      O: 0.948,
+      P: 1.029,
+      Q: 1.027,
+      R: 0.964,
+      S: 0.96,
+      T: 0.984,
+      U: 1.035,
+      V: 0.795,
+      X: 0.857,
+      Y: 0.821,
+      Z: 1.158,
+      zero: 0.943,
+      one: 0.981,
+      two: 0.942,
+      three: 1.226,
+      four: 1.141,
+      six: 0.984,
+      seven: 0.954,
+      eight: 1.028,
+      nine: 0.982,
+      question: 0.889,
+    },
+    // LORA-TABLES-END
+    fit: 1,
+    figures: "proportional",
+    heavyCounter: 1.3,
   },
   parts: {
     ...PLAIN.parts,
@@ -808,13 +1090,20 @@ export const SERIF: Style = {
      */
     slab: {
       on: true,
-      projection: 0.62,
+      projection: 0.74,
       thickness: 0.4,
       bracket: 0.4,
       shape: "wedge",
       head: "sloped",
+      hold: 0.087,
+      past: 0.12,
     },
-    bowl: { ...PLAIN.parts.bowl, width: 0.92 },
+    /*
+     * Lora's c and C close in further than the sans's: the drop on the c
+     * hangs at about forty degrees round from the top, and its foot ends
+     * a third of the way up the right.
+     */
+    bowl: { ...PLAIN.parts.bowl, width: 0.92, aperture: 0.75 },
     shoulder: { spring: 0.58, reach: 0.76, crest: 1 },
     // The curved ends -- the hooks of the a, c, f, r, j and y -- swell into a
     // teardrop rather than taking a bar across, which is what a text face does.
@@ -2562,9 +2851,78 @@ export function heavierPen(style: Style): Pen {
       own: pen.own ?? pen.contrast,
     };
   }
-  const wanted = Math.min(0.56, 0.37 * blackness(style));
+  const { heavyContrast, capitalContrast } = style.metrics;
+  if (style.metrics.lighterAcross) return pen;
+  let wanted = Math.min(0.56, 0.37 * blackness(style));
+  const own = pen.own ?? pen.contrast;
+  const capital = style.metrics.capital && capitalContrast !== undefined;
+  /*
+   * Given back past the Black, towards the lowercase's own at an Ultra: the
+   * capitals' and figures' counters are as short as the lowercase's by then,
+   * and an 8 or a 4 with horizontals a third heavier closed up.
+   */
+  if (capital && wanted > own) {
+    const past = Math.min(1, Math.max(0, (blackness(style) - 0.67) / 0.83));
+    const share = capitalContrast + (1 - capitalContrast) * past * past;
+    wanted = own + (wanted - own) * share;
+  }
+  /*
+   * Eased into the face's limit rather than stopped at it, and only past the
+   * Black: the same pen as ever up to there.
+   */
+  if (heavyContrast !== undefined) {
+    const ease = heavyContrast * 0.3;
+    const knee = heavyContrast - ease;
+    if (wanted > knee) wanted = knee + ease * (1 - Math.exp((knee - wanted) / ease));
+  }
+  /*
+   * Never less than the pen already has -- but a capital's is worked out
+   * afresh from the face's own, since the style it is drawn from was made
+   * heavier for the lowercase first.
+   */
+  if (capital) {
+    if (wanted <= own) return pen.own === undefined ? pen : { ...pen, contrast: own };
+    return wanted === pen.contrast && pen.own !== undefined ? pen : { ...pen, contrast: wanted, own };
+  }
   if (wanted <= pen.contrast) return pen;
-  return { ...pen, contrast: wanted, own: pen.own ?? pen.contrast };
+  return { ...pen, contrast: wanted, own };
+}
+
+const CAPITALLED = new WeakMap<Style, Map<string, Style>>();
+const FIGURES = new Set([
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+]);
+
+/**
+ * The style a capital or a figure is drawn with, on a face that gives them
+ * less of a heavy weight's contrast than its lowercase: see `capitalContrast`.
+ * The same object back for everything else.
+ */
+export function capitalled(style: Style, name: string): Style {
+  if (style.metrics.capitalContrast === undefined || style.metrics.capital) return style;
+  const capital =
+    FIGURES.has(name) ||
+    ([...name].length === 1 && name.toUpperCase() === name && name.toLowerCase() !== name);
+  if (!capital) return style;
+  let known = CAPITALLED.get(style);
+  if (!known) {
+    known = new Map();
+    CAPITALLED.set(style, known);
+  }
+  const had = known.get(name);
+  if (had) return had;
+  const made = { ...style, metrics: { ...style.metrics, capital: true } };
+  known.set(name, made);
+  return made;
 }
 
 const PROPORTIONED = new WeakMap<Style, Map<string, Style>>();
@@ -2578,8 +2936,15 @@ const PROPORTIONED = new WeakMap<Style, Map<string, Style>>();
  * cached.
  */
 export function proportioned(style: Style, name: string): Style {
-  const factor = style.metrics.proportions?.[name];
-  if (factor === undefined || factor === 1 || !(factor > 0)) return style;
+  let factor = style.metrics.proportions?.[name] ?? 1;
+  // And at a heavy weight, the width the face's Bold draws the letter at: see
+  // `metrics.bold`. Reached along the weight and held past it.
+  const bold = style.metrics.bold;
+  const heavy = bold?.widths[name];
+  if (bold && heavy !== undefined && heavy > 0) {
+    factor *= 1 + (heavy - 1) * Math.min(1, blackness(style) / bold.at);
+  }
+  if (factor === 1 || !(factor > 0)) return style;
   let known = PROPORTIONED.get(style);
   if (!known) {
     known = new Map();
@@ -2617,10 +2982,47 @@ export function heavier(style: Style): Style {
           counterWidth: counter,
           drawnCounter: style.metrics.drawnCounter ?? style.metrics.counterWidth,
         };
-  const made = pen === style.pen && metrics === style.metrics ? style : { ...style, pen, metrics };
+  const parts = rounder(style);
+  const made =
+    pen === style.pen && metrics === style.metrics && parts === style.parts
+      ? style
+      : {
+          ...style,
+          pen,
+          metrics:
+            parts === style.parts
+              ? metrics
+              : {
+                  ...metrics,
+                  drawnSuperness: style.metrics.drawnSuperness ?? style.parts.bowl.superness,
+                },
+          parts,
+        };
   HEAVIER.set(style, made);
   HEAVIER.set(made, made);
   return made;
+}
+
+/**
+ * The parts a heavy weight past the Black is drawn with, on a face that eases
+ * its contrast (`metrics.heavyContrast`): the superelliptic bowls rounding
+ * off towards ellipses.
+ *
+ * A superellipse's tight corners, offset inwards by a pen that is by then half
+ * the x-height, leave a counter of flats and knuckles -- a lemon rather than
+ * an oval -- so past the Black the flat sides give way, and at an Ultra the
+ * bowl is an ellipse and its counter a clean pill. Same pieces at every
+ * weight: only the shape of the three arcs changes.
+ */
+function rounder(style: Style): Style["parts"] {
+  if (style.metrics.heavyContrast === undefined) return style.parts;
+  const drawn = style.metrics.drawnSuperness ?? style.parts.bowl.superness;
+  if (!(drawn > 0)) return style.parts;
+  const t = Math.min(1, Math.max(0, (blackness(style) - 0.67) / 0.63));
+  // Never quite to nought, where an arch is drawn from other pieces: see `archSpine`.
+  const superness = drawn * Math.max(0.04, 1 - t * t * (3 - 2 * t));
+  if (superness === style.parts.bowl.superness) return style.parts;
+  return { ...style.parts, bowl: { ...style.parts.bowl, superness } };
 }
 
 /**
@@ -2662,5 +3064,16 @@ export function narrowed(style: Style): number {
   // Past the text weight, as every other heavy-weight change is: see `blackness`.
   const gained = blackness(style) * BLACK_SPAN * metrics.xHeight;
   if (gained <= 0) return drawn;
-  return Math.max(drawn - give * gained, Math.min(drawn, pen.weight * 0.75));
+  /*
+   * Given back unit for unit as far as the Black; past it, an Ultra's counter
+   * keeps closing, but ever more slowly, towards a fifth of the x-height it
+   * never reaches. Held at three quarters of the stem instead, as it once was,
+   * the counter turned round at the Black and opened again with the pen, and
+   * at 0.26 of the em the n stood half as wide again as the Black's.
+   */
+  const linear = drawn - give * gained;
+  const floor = Math.min(drawn, Math.max(metrics.xHeight * 0.2, pen.weight * 0.34));
+  const ease = metrics.xHeight * 0.1;
+  if (linear >= floor + ease) return linear;
+  return floor + ease * Math.exp((linear - floor - ease) / ease);
 }

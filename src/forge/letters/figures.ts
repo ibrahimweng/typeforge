@@ -30,6 +30,7 @@ import {
   thin,
   turn,
   headingAt,
+  hookFrom,
 } from "./common";
 
 export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
@@ -110,7 +111,7 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
       return at(left + Math.abs(shift.x - (u.x * shift.y) / u.y), 0);
     };
     const miss = (angle: number): number => {
-      const run = bend(f, centre, radius, 190, angle, wide);
+      const run = bend(f, centre, radius, hookFrom(f), angle, wide);
       const from = spineEnd(run);
       const heading = headingAt(run.segments[run.segments.length - 1], "end");
       const to = toward(from);
@@ -129,7 +130,7 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     for (let angle = 5; angle >= -75; angle -= 5) tryAt(angle);
     const coarse = leaves;
     for (let angle = coarse + 4; angle >= coarse - 4; angle -= 1) tryAt(angle);
-    const over = bend(f, centre, radius, 190, leaves, wide);
+    const over = bend(f, centre, radius, hookFrom(f), leaves, wide);
     return finish(f, [
       ink(f, over, f.end, BUTT),
       ink(f, straight(spineEnd(over), toward(spineEnd(over))), BUTT, {

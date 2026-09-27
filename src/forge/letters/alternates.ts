@@ -21,6 +21,13 @@ import {
   grotesqueCapitalA,
   grotesqueCapitalB,
   grotesqueCapitalC,
+  grotesqueCapitalE,
+  grotesqueCapitalF,
+  grotesqueCapitalH,
+  grotesqueCapitalL,
+  grotesqueCapitalT,
+  grotesqueCapitalU,
+  grotesqueI,
   grotesqueCapitalV,
   grotesqueCapitalY,
   grotesqueAmpersand,
@@ -60,6 +67,20 @@ import {
   grotesqueZ,
   grotesqueZero,
 } from "./grotesque";
+import {
+  humanistC,
+  humanistCapitalC,
+  humanistCapitalN,
+  humanistCapitalO,
+  humanistO,
+  humanistZero,
+  humanistCapitalM,
+  humanistCapitalQ,
+  humanistCapitalU,
+  humanistE,
+  humanistT,
+  humanistU,
+} from "./humanist";
 import {
   roundHalf,
   arch,
@@ -1240,6 +1261,17 @@ const GROTESQUE: Array<[LetterName, string, (style: Style) => Recipe]> = [
     "A superelliptic hook, a straight diagonal and a short upright neck.",
     grotesqueQuestion,
   ],
+  [
+    "E",
+    "The lowest arm the longest, the middle a little short and near the middle.",
+    grotesqueCapitalE,
+  ],
+  ["F", "The middle arm a little short and a little below the middle.", grotesqueCapitalF],
+  ["H", "The bar a little above the middle, the stems set wide.", grotesqueCapitalH],
+  ["L", "A long foot, as a neo-grotesque's is.", grotesqueCapitalL],
+  ["T", "A wide bar hung from the cap line.", grotesqueCapitalT],
+  ["U", "Set wide, with a round trough.", grotesqueCapitalU],
+  ["i", "A square dot, less tall than wide at a heavy weight.", grotesqueI],
 ];
 for (const [name, hint, build] of GROTESQUE) {
   if (!ALTERNATES[name]) ALTERNATES[name] = [];
@@ -1254,4 +1286,43 @@ for (const [name, hint, build] of GROTESQUE) {
       ? LETTERS[name](style)
       : build(style);
   ALTERNATES[name].push({ id: "grotesque", label: "Grotesque", hint, build: drawn });
+}
+
+/*
+ * The old-style text face's own letters, offered on every face and drawn by
+ * default on the Serif: see `humanist.ts`.
+ */
+const HUMANIST: Array<[LetterName, string, (style: Style) => Recipe]> = [
+  ["e", "The eye set high over a long belly, as an old-style face draws it.", humanistE],
+  ["u", "The right stem carried on down to the line on its own serifs.", humanistU],
+  ["t", "Standing well over the x-height under a wedge rising from the bar.", humanistT],
+  ["U", "The right side a hairline, written on the way back up.", humanistCapitalU],
+  [
+    "o",
+    "The sides heavier than a stem and the crown a hairline, as a broad nib leaves them.",
+    humanistO,
+  ],
+  ["c", "The sides heavier than a stem, as a broad nib leaves them.", humanistC],
+  [
+    "O",
+    "The sides heavier than a stem and the crown a hairline, as a broad nib leaves them.",
+    humanistCapitalO,
+  ],
+  ["C", "The sides heavier than a stem, as a broad nib leaves them.", humanistCapitalC],
+  ["zero", "The sides heavier than a stem, as a broad nib leaves them.", humanistZero],
+  ["N", "Hairline stems and a heavy diagonal, as a broad nib draws it.", humanistCapitalN],
+  ["M", "Splayed stems, the left a hairline, and the vertex on the line.", humanistCapitalM],
+  [
+    "Q",
+    "The tail leaving the foot nearly level and falling away right in a long S.",
+    humanistCapitalQ,
+  ],
+];
+for (const [name, hint, build] of HUMANIST) {
+  if (!ALTERNATES[name]) ALTERNATES[name] = [];
+  const drawn = (style: Style) =>
+    (style.parts.script.on || Math.abs(Math.abs(style.pen.angle) - 90) < 30) && LETTERS[name]
+      ? LETTERS[name](style)
+      : build(style);
+  ALTERNATES[name].push({ id: "humanist", label: "Humanist", hint, build: drawn });
 }

@@ -1593,6 +1593,26 @@ export function bookish(f: Frame): boolean {
   return slab.on && !script.on && contrast >= 0.3 && Math.abs(f.style.pen.angle) < 30;
 }
 
+/**
+ * Whether this face finishes its curved ends in a drop, as a text serif does.
+ *
+ * A hook that ends in a drop is drawn further round than one cut plain: the
+ * drop is the end of the stroke turning in on itself, and a 2 or a question
+ * mark whose hook stopped where a plain cut does hung its drop straight down
+ * the side of the figure like a pipe.
+ */
+export function drops(f: Frame): boolean {
+  const end = f.end;
+  return end.kind === "teardrop" || (end.kind === "slab" && end.curved?.kind === "teardrop");
+}
+
+/** Where a figure's or a question mark's hook starts, in degrees. */
+export function hookFrom(f: Frame): number {
+  return drops(f) ? HOOK_DROP : 190;
+}
+
+const HOOK_DROP = 165;
+
 /** A stroke drawn with its pen's weight scaled. */
 export function lighter(stroke: Stroke, by: number): Stroke {
   if (by === 1) return stroke;
@@ -1640,6 +1660,8 @@ export function stopRadius(f: Frame): number {
   }
   // A joined hand keeps the pen's own dot: its comma is run into the join.
   if (f.style.parts.script.on) return f.half * 0.95;
+  // Lora's full stop is 117 across on a stem of 87.
+  if (drops(f)) return Math.min(f.half * 1.345, Math.max(f.x * 0.2, f.half));
   const { contrast } = f.style.pen;
   const c = Math.min(Math.max(contrast, 0), 0.95);
   const radius = Math.max(f.half * (0.95 + 0.6 * c), f.style.metrics.unitsPerEm * 0.045 * c);
@@ -1667,6 +1689,16 @@ export function tittle(f: Frame, x: number): Stroke {
     const side = f.half * 1.03;
     const high = f.asc - side;
     return dot(f, at(x, Math.max(high, f.x + f.half * 0.6 + side)), side);
+  }
+  /*
+   * A face that ends its curves in drops dots its i as Lora does: an oval a
+   * little taller than wide, 108 across on a stem of 87, its top 27 under the
+   * ascender and rising to it by a Bold.
+   */
+  if (drops(f)) {
+    const round = f.half * 1.24;
+    const top = f.asc - Math.max(0, 0.31 * f.half * 2 - (f.style.pen.weight - 87) * 0.5);
+    return dot(f, at(x, Math.max(top - round, f.x + f.half * 0.6 + round)), round);
   }
   const radius = Math.max(f.half * (0.55 + c), f.style.metrics.unitsPerEm * 0.04 * c);
   const y = Math.min(f.x + f.half * 1.5 + radius, f.asc + f.over - radius);
