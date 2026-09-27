@@ -2197,3 +2197,89 @@ export const BASES: Style[] = [
   MONOLINE_SCRIPT,
   ROUNDHAND,
 ];
+
+/**
+ * How far past its own text weight a face has been taken: nought up to it,
+ * one at about a Black, and on to one and a half.
+ *
+ * Measured as a stem against an x-height rather than in units, because that
+ * is the question a heavy weight raises -- how much of the room between two
+ * lines the ink has taken -- and it holds when the lines move. It starts at
+ * whichever is heavier of the base's own weight and a text weight, so a face
+ * drawn heavy to begin with (the Display, the Fairground) is left as it was
+ * designed, and a hairline base (the Wavy, the Monoline Script) is not treated
+ * as bold at a regular stem.
+ *
+ * Everything a type designer does to a Black hangs off this one number, and
+ * none of it changes a node, so every weight still interpolates with every
+ * other: the pen takes contrast (`heavierPen`), the letters stand further
+ * apart (`spacingOf`), and the bowls widen so their counters keep open
+ * (`frame` in `letters/common.ts`).
+ */
+export function blackness(style: Style): number {
+  const { pen, metrics } = style;
+  if (pen.black !== undefined) return pen.black;
+  if (metrics.xHeight <= 0) return 0;
+  const base = BASES.find((one) => one.name === style.name);
+  const own = base ? base.pen.weight / base.metrics.xHeight : TEXT_STEM;
+  const from = Math.max(own, TEXT_STEM);
+  return Math.min(Math.max((pen.weight / metrics.xHeight - from) / BLACK_SPAN, 0), 1.5);
+}
+
+/** A text stem against its x-height, a little over the Sans's own. */
+const TEXT_STEM = 0.19;
+/** How much further a Black's stem goes: the Sans at a pen of 200. */
+const BLACK_SPAN = 0.2;
+
+/**
+ * The pen a heavy weight is drawn with: its horizontals lighter than its stems.
+ *
+ * A monolinear Black is not monolinear. Drawn with the stem's pen all round,
+ * an o at a fifth of the em has a crown and a foot each as thick as its sides
+ * and the x-height leaves a pinhole between them; the bowl of a b, the eye of
+ * an e and the two counters of an 8 went the same way. Every real Black thins
+ * its horizontals -- a third lighter than the stems is where the grotesques
+ * sit -- and that is what contrast on an upright pen is. So the pen gains it,
+ * never loses any it had, and a face whose own contrast is already more
+ * (the Serif, the Display, the scripts) is drawn exactly as before.
+ */
+export function heavierPen(style: Style): Pen {
+  const { pen } = style;
+  const wanted = Math.min(0.56, 0.37 * blackness(style));
+  if (wanted <= pen.contrast) return pen;
+  return { ...pen, contrast: wanted, own: pen.own ?? pen.contrast };
+}
+
+const HEAVIER = new WeakMap<Style, Style>();
+
+/**
+ * The style a letter is actually drawn with at its weight: see `blackness`.
+ *
+ * The same object back when nothing changes, which is every weight up to the
+ * face's own; and the same object for the same style every time, so asking
+ * twice costs nothing and a drawing cached against it stays cached.
+ */
+export function heavier(style: Style): Style {
+  const known = HEAVIER.get(style);
+  if (known) return known;
+  const pen = heavierPen(style);
+  const made = pen === style.pen ? style : { ...style, pen };
+  HEAVIER.set(style, made);
+  HEAVIER.set(made, made);
+  return made;
+}
+
+/**
+ * The white either side of a letter at its weight.
+ *
+ * A heavy stem pushes its ink out towards the letter beside it, and with the
+ * sidebearing held where the regular had it the two stems of an `nn` came
+ * nearer each other than the n's own counter is wide -- the word fell into a
+ * row of blots. A heavy cut opens its spacing as it closes its counters, by
+ * about a quarter of what its stem gains.
+ */
+export function spacingOf(style: Style): number {
+  const { sidebearing, xHeight } = style.metrics;
+  const gained = blackness(style) * BLACK_SPAN * xHeight;
+  return sidebearing + gained * 0.25;
+}

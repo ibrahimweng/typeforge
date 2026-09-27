@@ -19,6 +19,7 @@ import {
   chain,
   corner,
   figureWidth,
+  heavyFigure,
   finish,
   frame,
   ink,
@@ -64,8 +65,19 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const width = figureWidth(f);
     const left = f.edge;
-    const radius = Math.max(width / 2, f.least);
-    const centre = at(left + radius, f.crest(f.cap) - radius);
+    /*
+     * As tall as the regular's bowl and only wider at a heavy weight: grown
+     * round with the figure's width, the bowl took the whole height and left
+     * the diagonal a stub, and the two read as an omega.
+     */
+    const grown = heavyFigure(f) / 2;
+    // And at a heavy weight no more than three tenths of the height, so the
+    // diagonal under it has the length to read as one.
+    const drawn = width / 2 - grown;
+    const low = Math.min(drawn, (f.crest(f.cap) - f.dip(0)) * 0.3);
+    const radius = Math.max(drawn + (low - drawn) * Math.min(1, f.gain / (f.x * 0.05)), f.least);
+    const wide = bendWidth(f, radius) + grown;
+    const centre = at(left + radius + grown, f.crest(f.cap) - radius);
     /*
      * Over the top, then a straight run down to the baseline, then out along it.
      *
@@ -98,7 +110,7 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
       return at(left + Math.abs(shift.x - (u.x * shift.y) / u.y), 0);
     };
     const miss = (angle: number): number => {
-      const run = bend(f, centre, radius, 190, angle);
+      const run = bend(f, centre, radius, 190, angle, wide);
       const from = spineEnd(run);
       const heading = headingAt(run.segments[run.segments.length - 1], "end");
       const to = toward(from);
@@ -117,7 +129,7 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     for (let angle = 5; angle >= -75; angle -= 5) tryAt(angle);
     const coarse = leaves;
     for (let angle = coarse + 4; angle >= coarse - 4; angle -= 1) tryAt(angle);
-    const over = bend(f, centre, radius, 190, leaves);
+    const over = bend(f, centre, radius, 190, leaves, wide);
     return finish(f, [
       ink(f, over, f.end, BUTT),
       ink(f, straight(spineEnd(over), toward(spineEnd(over))), BUTT, {
@@ -136,7 +148,10 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const top = f.crest(f.cap);
     const base = f.dip(0);
     const radius = Math.max((top - base) / 4, f.least);
-    const middle = left + width - radius;
+    // Wider, not taller, at a heavy weight, or the two counters are slits.
+    const grown = heavyFigure(f) / 2;
+    const wide = bendWidth(f, radius) + grown;
+    const middle = left + width - radius - grown;
     const tongue = radius * 0.3;
     return finish(
       f,
@@ -150,7 +165,7 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         ink(
           f,
           chain(
-            bend(f, at(middle, top - radius), radius, 160, -90),
+            bend(f, at(middle, top - radius), radius, 160, -90, wide),
             straight(at(middle, top - radius * 2), at(middle - tongue, top - radius * 2)),
           ),
           f.end,
@@ -160,7 +175,7 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
           f,
           chain(
             straight(at(middle - tongue, base + radius * 2), at(middle, base + radius * 2)),
-            bend(f, at(middle, base + radius), radius, 90, -160),
+            bend(f, at(middle, base + radius), radius, 90, -160, wide),
           ),
           BUTT,
           f.end,
@@ -249,7 +264,11 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         ink(f, straight(at(left, f.cap), at(left, joint)), BUTT, BUTT),
         ink(
           f,
-          chain(turn(at(left + tight, joint), tight, 180, 90), turn(centre, radius, 90, -150)),
+          chain(
+            turn(at(left + tight, joint), tight, 180, 90),
+            // Wider at a heavy weight, or the counter under the bar is a slit.
+            bend(f, centre, radius, 90, -150, radius + heavyFigure(f) / 2),
+          ),
           BUTT,
           f.end,
         ),
@@ -264,7 +283,13 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * and the five came in two pieces. The run keeps its flat at every weight,
      * a unit long where the turn takes the whole of it.
      */
-    const radius = Math.max(Math.min(shoulder, width / 2), f.least);
+    // As tall as the regular's at a heavy weight, and wider: see `heavyFigure`.
+    const grown = heavyFigure(f) / 2;
+    // And never so tall that it runs into the bar, as the round one is held.
+    const under = f.cap - f.upright * f.bar * 2 - f.half * 0.6 - f.upright;
+    const drawn = Math.min(shoulder, width / 2 - grown);
+    const held = Math.min(drawn, (under - f.dip(0)) / 2);
+    const radius = Math.max(drawn + (held - drawn) * Math.min(1, f.gain / (f.x * 0.05)), f.least);
     const centre = at(left + radius, f.dip(0) + radius);
     const top = centre.y + radius;
     const tight = Math.min(Math.max(radius * 0.6, f.least), radius * 0.98);
@@ -276,8 +301,15 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         f,
         chain(
           turn(at(left + tight, joint), tight, 180, 90),
-          straight(at(left + tight, top), at(Math.max(centre.x, left + tight + 1), top)),
-          bend(f, at(Math.max(centre.x, left + tight + 1), centre.y), radius, 90, -150),
+          straight(at(left + tight, top), at(Math.max(centre.x, left + tight + 1) + grown, top)),
+          bend(
+            f,
+            at(Math.max(centre.x, left + tight + 1) + grown, centre.y),
+            radius,
+            90,
+            -150,
+            bendWidth(f, radius) + grown,
+          ),
         ),
         BUTT,
         f.end,
@@ -294,13 +326,31 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * joining them is written from a point to one above it and the letter is
      * drawn backwards through itself.
      */
-    const radius = Math.max(Math.min(width / 2, (f.crest(f.cap) - f.dip(0)) / 2), f.least);
-    const centre = at(left + radius, f.dip(0) + radius);
+    const grown = heavyFigure(f) / 2;
+    /*
+     * And short enough to leave a counter between the bowl and the hood that
+     * runs over it: the two are the same height, one a span above the other,
+     * and at a heavy weight on a face with tall figures the hood lay on the
+     * bowl's back with a hairline between.
+     */
+    const span = f.crest(f.cap) - f.dip(0);
+    const round = Math.max(Math.min(width / 2 - grown, span / 2), f.least);
+    const room = Math.min(round, (span - f.upright * 2 - f.half * 0.9) / 2);
+    // Though never so short that its own counter closes, which on a pen held
+    // on its side -- thick across the horizontals -- is the nearer danger.
+    const floor = Math.min(round, f.upright + f.half * 0.6);
+    const radius = Math.max(
+      round + (Math.max(room, floor) - round) * Math.min(1, f.gain / (f.x * 0.05)),
+      f.least,
+    );
+    // Wider rather than taller at a heavy weight: see `heavyFigure`.
+    const wide = bendWidth(f, round) + grown;
+    const centre = at(left + round + grown, f.dip(0) + radius);
     const hood = Math.max(f.crest(f.cap) - radius, centre.y);
     return finish(
       f,
       [
-        ink(f, ring(f, centre, bendWidth(f, radius), radius)),
+        ink(f, ring(f, centre, wide, radius)),
         /*
          * The stroke that arrives at the bowl from the upper right, as one run:
          * over the top, then straight down the left to meet the ring.
@@ -312,11 +362,8 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         ink(
           f,
           chain(
-            bend(f, at(centre.x, hood), radius, 60, 180),
-            straight(
-              at(centre.x - bendWidth(f, radius), hood),
-              at(centre.x - bendWidth(f, radius), centre.y),
-            ),
+            bend(f, at(centre.x, hood), radius, 60, 180, wide),
+            straight(at(centre.x - wide, hood), at(centre.x - wide, centre.y)),
           ),
           f.end,
           BUTT,
@@ -345,11 +392,21 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const waist = f.cap * 0.56;
     const upper = Math.max((f.crest(f.cap) - waist) / 2, f.least);
     const lower = Math.max((waist - f.dip(0)) / 2, f.least);
+    // Both rings wider at a heavy weight, or their counters are slits.
+    const grown = heavyFigure(f) / 2;
     return finish(
       f,
       [
-        ink(f, ring(f, at(left + width / 2, f.crest(f.cap) - upper), bendWidth(f, upper), upper)),
-        ink(f, ring(f, at(left + width / 2, f.dip(0) + lower), bendWidth(f, lower), lower)),
+        ink(
+          f,
+          ring(
+            f,
+            at(left + width / 2, f.crest(f.cap) - upper),
+            bendWidth(f, upper) + grown * 0.9,
+            upper,
+          ),
+        ),
+        ink(f, ring(f, at(left + width / 2, f.dip(0) + lower), bendWidth(f, lower) + grown, lower)),
       ],
       true,
     );
@@ -359,23 +416,37 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const width = figureWidth(f);
     const left = f.edge;
-    const radius = Math.max(Math.min(width / 2, (f.crest(f.cap) - f.dip(0)) / 2), f.least);
-    const centre = at(left + radius, f.crest(f.cap) - radius);
+    const grown = heavyFigure(f) / 2;
+    /*
+     * And short enough to leave a counter between the bowl and the hood that
+     * runs over it: the two are the same height, one a span above the other,
+     * and at a heavy weight on a face with tall figures the hood lay on the
+     * bowl's back with a hairline between.
+     */
+    const span = f.crest(f.cap) - f.dip(0);
+    const round = Math.max(Math.min(width / 2 - grown, span / 2), f.least);
+    const room = Math.min(round, (span - f.upright * 2 - f.half * 0.9) / 2);
+    // Though never so short that its own counter closes, which on a pen held
+    // on its side -- thick across the horizontals -- is the nearer danger.
+    const floor = Math.min(round, f.upright + f.half * 0.6);
+    const radius = Math.max(
+      round + (Math.max(room, floor) - round) * Math.min(1, f.gain / (f.x * 0.05)),
+      f.least,
+    );
+    const wide = bendWidth(f, round) + grown;
+    const centre = at(left + round + grown, f.crest(f.cap) - radius);
     const foot = Math.min(f.dip(0) + radius, centre.y);
     return finish(
       f,
       [
-        ink(f, ring(f, centre, bendWidth(f, radius), radius)),
+        ink(f, ring(f, centre, wide, radius)),
         // The mirror of a six: down the right from the bowl, then round the
         // bottom and away.
         ink(
           f,
           chain(
-            straight(
-              at(centre.x + bendWidth(f, radius), centre.y),
-              at(centre.x + bendWidth(f, radius), foot),
-            ),
-            bend(f, at(centre.x, foot), radius, 0, -120),
+            straight(at(centre.x + wide, centre.y), at(centre.x + wide, foot)),
+            bend(f, at(centre.x, foot), radius, 0, -120, wide),
           ),
           BUTT,
           f.end,

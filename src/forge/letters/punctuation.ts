@@ -223,7 +223,7 @@ function crescent(f: Frame, side: 1 | -1): Stroke[] {
   const reach = out(lead, 1);
   // The tips stand at the right of the opening one and the left of the closing
   // one, far enough in that the crescent's outer side sits on the edge.
-  const left = f.style.metrics.sidebearing;
+  const left = f.edge - f.half;
   const tipX = side === 1 ? left + nib * 0.5 + reach : left + t * 0.5;
   const place = (p: Vec2): Vec2 => at(tipX + side * p.x, p.y);
   const turnsAt = 180 - (tip * 180) / Math.PI;

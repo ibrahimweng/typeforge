@@ -28,7 +28,7 @@ import {
   spineStart,
   wavy,
 } from "../shapes";
-import { type Style, terminalFor } from "../style";
+import { blackness, heavier, spacingOf, type Style, terminalFor } from "../style";
 import { MITER_LIMIT, penReach, reachAlong, sweep } from "../sweep";
 import { contoursIntersect } from "@/font/outline";
 import type { JoinKind, Spine, SpineArc, SpineSegment, Stroke, Terminal } from "../types";
@@ -529,6 +529,12 @@ export interface Frame {
   /** The terminal this style puts on a stroke end. */
   end: Terminal;
   /**
+   * How much stem this weight has gained past the face's own text weight, in
+   * font units: nought at and below it. What a heavy letter widens by, so its
+   * counters keep open as its stems close in on them -- see `blackness`.
+   */
+  gain: number;
+  /**
    * The same terminal without the serif.
    *
    * For the marks a serif face leaves bare. A hyphen with a serif on each end
@@ -558,7 +564,9 @@ export interface Frame {
  */
 export const ASIDE = 0.53;
 
-export function frame(style: Style): Frame {
+export function frame(drawn: Style): Frame {
+  // The style as a letter is drawn at this weight: see `blackness`.
+  const style = heavier(drawn);
   const { metrics, pen } = style;
   const half = pen.weight / 2;
   const least = half * 1.06;
@@ -584,7 +592,7 @@ export function frame(style: Style): Frame {
   return {
     style,
     half,
-    edge: metrics.sidebearing + half,
+    edge: spacingOf(style) + half,
     x: metrics.xHeight,
     cap: metrics.capHeight,
     asc: metrics.ascender,
@@ -594,7 +602,7 @@ export function frame(style: Style): Frame {
       ((metrics.counterWidth + pen.weight) / 2) * heldReach(style) * metrics.width,
       least,
     ),
-    bowl: Math.max(bowlH * wide, least),
+    bowl: Math.max(bowlH * wide, least, heldOpen(style, bowlH, upright)),
     crown: metrics.xHeight * style.parts.shoulder.crest,
     aside,
     bowlH,
@@ -628,8 +636,40 @@ export function frame(style: Style): Frame {
     bar: barWeight(style),
     upright,
     end: endFor(style),
+    gain: blackness(style) * metrics.xHeight * 0.2,
     plain: { kind: style.parts.terminal.kind, angle: style.parts.terminal.angle },
   };
+}
+
+/**
+ * How wide a lowercase bowl has to be for its counter to stay open, at a
+ * weight past the face's own: see `blackness`. Nought below that.
+ *
+ * An o is as wide as it is tall, and the x-height does not grow with the pen,
+ * so left to itself a heavy o closed from the sides as its stems thickened --
+ * at a fifth of the em the Sans o was two stems with a slit between them,
+ * beside an n whose arch had widened with the pen and kept its whole counter.
+ * A Black widens its round letters with its flat ones. So the counter is kept
+ * at most of the n's, and never narrower than about two thirds of the stem,
+ * though never much wider than it is tall either -- the scripts, whose
+ * x-height is a third of the em, would otherwise come out as long as a word.
+ *
+ * A floor under the drawn width rather than a new width, so everything up to
+ * the weight where it starts to bite is drawn exactly as before.
+ */
+function heldOpen(style: Style, bowlH: number, upright: number): number {
+  const black = blackness(style);
+  if (black <= 0) return 0;
+  const { pen, metrics } = style;
+  const wide = style.parts.bowl.width * metrics.width;
+  // The sides of an upright bowl are the stem; its crown and foot are what
+  // the pen leaves across a horizontal.
+  const tall = bowlH * 2 - upright * 2;
+  const counter = Math.max(
+    pen.weight * 0.62,
+    Math.min(metrics.counterWidth * 0.8 * wide, tall * 1.1),
+  );
+  return ((counter + pen.weight) / 2) * Math.min(1, black * 4);
 }
 
 /**
@@ -1471,12 +1511,15 @@ export function bookish(f: Frame): boolean {
   const { slab, script } = f.style.parts;
   // Held near upright: a pen turned on its side, as the Fairground's is, is a
   // poster face whose marks follow its own reversed contrast.
-  return slab.on && !script.on && f.style.pen.contrast >= 0.3 && Math.abs(f.style.pen.angle) < 30;
+  // The face's own contrast, not what a heavy weight lent it: see `Pen.own`.
+  const contrast = f.style.pen.own ?? f.style.pen.contrast;
+  return slab.on && !script.on && contrast >= 0.3 && Math.abs(f.style.pen.angle) < 30;
 }
 
 /** A stroke drawn with its pen's weight scaled. */
 export function lighter(stroke: Stroke, by: number): Stroke {
-  return { ...stroke, pen: { ...stroke.pen, weight: stroke.pen.weight * by } };
+  if (by === 1) return stroke;
+  return inherit(stroke, { ...stroke, pen: { ...stroke.pen, weight: stroke.pen.weight * by } });
 }
 
 /**
@@ -1489,11 +1532,12 @@ export function lighter(stroke: Stroke, by: number): Stroke {
  * counter came down to a slit, the e's eye to a chink and the A's to a
  * pinhole. Nothing here changes a node, only how heavy and how wide.
  *
- * Only an old-style text face, whose serifs are wedges: a didone's black is
- * its own design, drawn from its own default weight.
+ * An old-style text face counts from a pen of 96, which is where its regular
+ * is drawn; every other face from its own weight, by `blackness` -- the same
+ * letters close up the same way on a grotesque or a slab at their Black.
  */
 export function heaviness(f: Frame): number {
-  if (!bookish(f) || f.style.parts.slab.shape !== "wedge") return 0;
+  if (!bookish(f) || f.style.parts.slab.shape !== "wedge") return blackness(f.style);
   return Math.min(Math.max((f.style.pen.weight - 96) / 104, 0), 1.5);
 }
 
@@ -1768,7 +1812,8 @@ function roundSpine(frame: Frame, height: number, left: number): Spine {
   const inked = height + frame.over * 2 - frame.upright * 2;
   // How wide the spine runs from the left of the upper bowl to the right of
   // the lower one: three fifths of its height, as an s has always been.
-  const width = inked * 0.62 * frame.wide;
+  // And wider by what a heavy stem gains, as the o beside it is.
+  const width = inked * 0.62 * frame.wide + (frame.gain * frame.x) / height;
   const least = Math.max(frame.half * 1.08, frame.least);
   /*
    * How far the lower bowl's turn sits right of the upper one's, for a turn of
@@ -2664,6 +2709,22 @@ export function belly(
 }
 
 /**
+ * How far a bowl hung on a stem reaches out, at a heavy weight never so short
+ * that its counter closes.
+ *
+ * The stem and the far side of the bowl each take half a pen out of the reach,
+ * and at a Black that left the upper bowl of a B a chink; a Black runs its
+ * bowls out further, until the counter is about as wide as it is tall. What
+ * was asked, at and below the face's own weight.
+ */
+export function heldReachOut(f: Frame, halfHeight: number, asked: number): number {
+  if (f.gain <= 0) return asked;
+  const inside = halfHeight * 2 - f.upright * 2;
+  const open = f.half * 2 + Math.max(f.half * 1.24, Math.min(inside * 1.1, f.capBowl));
+  return Math.max(asked, asked + (open - asked) * Math.min(1, f.gain / (f.x * 0.05)));
+}
+
+/**
  * A bowl off a stem that runs straight before it turns: the D, the P, the R,
  * the two of a B.
  *
@@ -2681,8 +2742,9 @@ export function belly(
  * at both joins, and both ends square on the stem's centre-line where the stem
  * covers them.
  */
-export function lobe(f: Frame, stem: number, low: number, high: number, reach: number): Stroke {
+export function lobe(f: Frame, stem: number, low: number, high: number, asked: number): Stroke {
   const halfHeight = Math.max((high - low) / 2, f.least);
+  const reach = heldReachOut(f, halfHeight, asked);
   const middle = (high + low) / 2;
   const curve = Math.max(Math.min(reach, halfHeight * 1.08 * f.wide), f.least);
   const run = reach - curve;
@@ -2742,7 +2804,24 @@ export function hook(style: Style, side: number): Recipe {
  * each other at that one width.
  */
 export function figureWidth(frame: Frame): number {
-  return Math.max(frame.cap * 0.62 * frame.style.metrics.width, frame.least * 2);
+  return Math.max(
+    frame.cap * 0.62 * frame.style.metrics.width + heavyFigure(frame),
+    frame.least * 2,
+  );
+}
+
+/**
+ * How much wider a figure is at a heavy weight: most of what the stem gains,
+ * or the zero is a slit. Nought at and below the face's own weight.
+ *
+ * Taken as width alone. A figure's bowls are as tall as the lines allow at
+ * every weight, and a recipe that sized a round bowl off the figure's width
+ * keeps its height off the regular's and runs the gain out sideways -- grown
+ * round instead, the two's bowl took the whole height and the six's hood sat
+ * on top of its own bowl.
+ */
+export function heavyFigure(frame: Frame): number {
+  return frame.gain * 0.8;
 }
 
 // ---------------------------------------------------------------------------
@@ -2876,7 +2955,8 @@ export function sized(style: Style, fraction: number, penShare = fraction ** 0.6
       counterWidth: m.counterWidth * fraction,
       sidebearing: m.sidebearing * fraction,
     },
-    pen: { ...style.pen, weight },
+    // As heavy a weight as the letter it is drawn for: see `Pen.black`.
+    pen: { ...style.pen, weight, black: blackness(style) },
     parts: {
       ...style.parts,
       corner: { ...corner, radius: corner.radius * fraction },
@@ -3039,7 +3119,7 @@ export function setSmall(
 ): Stroke[] {
   const little = sized(style, fraction, penShare);
   const strokes = setInside(() => recipeOf(name, borrowing)!(little).strokes);
-  return strokes.map((stroke) => shovedStroke(stroke, left - little.metrics.sidebearing, foot));
+  return strokes.map((stroke) => shovedStroke(stroke, left - spacingOf(little), foot));
 }
 
 /**

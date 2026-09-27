@@ -220,6 +220,22 @@ export interface Pen {
   contrast: number;
   /** Degrees. Zero means the pen is broadest vertically, thinning horizontals. */
   angle: number;
+  /**
+   * The contrast the face itself was drawn with, where a heavy weight has
+   * added some of its own: see `heavierPen` in `style.ts`. Left out otherwise.
+   *
+   * For the decisions about what kind of face this is -- whether it draws its
+   * punctuation as a text serif does -- which must not change along a weight
+   * axis, or the letters stop having the same points at every weight.
+   */
+  own?: number;
+  /**
+   * How far past its text weight the letter this is drawn for stands, where
+   * that is a different letter: a superior figure is drawn with a pen heavier
+   * against its size than the full-size letters, so that it holds its colour,
+   * and it is a Regular's figure all the same. See `blackness` in `style.ts`.
+   */
+  black?: number;
 }
 
 /**

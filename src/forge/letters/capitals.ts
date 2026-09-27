@@ -6,7 +6,7 @@
  * imports it; see it for what a recipe is and how the table is used.
  */
 
-import { bowlPoint } from "../shapes";
+import { bowlPoint, spineEnd } from "../shapes";
 import type { Style } from "../style";
 import type { Stroke } from "../types";
 import {
@@ -38,7 +38,9 @@ import {
   trough,
   turn,
   middleBar,
+  bookish,
   heaviness,
+  lighter,
 } from "./common";
 
 export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
@@ -56,8 +58,9 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * either side of its apex, drawn with a pen of two hundred and sixty, has
      * its two legs closer together than the pen is wide.
      */
-    // And wider at a black weight on a text face, or its counter is a pinhole.
-    const half = Math.max(f.capBowl * 0.86, f.least) + f.half * 0.45 * heaviness(f);
+    // And wider at a black weight, or its counter is a pinhole -- one a rim
+    // closes to a speck rather than a counter.
+    const half = Math.max(f.capBowl * 0.86, f.least) + f.half * 0.45 * heaviness(f) + f.gain * 0.45;
     const left = f.edge;
     const middle = left + half;
     const foot = at(left, 0);
@@ -113,8 +116,17 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     // slight extra keeps them overlapping where they meet. On the lines and
     // not over them: the top and the foot are level runs now, and a flat run
     // that overshoots is a B standing lower than the H beside it.
-    const top = f.hangs(f.cap);
-    const base = f.sits(0);
+    /*
+     * And at a heavy weight the two bowls are drawn a little lighter than the
+     * stem, as a Black's are -- the waist between them is two horizontals
+     * side by side, and at the stem's weight the upper counter closed to a
+     * chink. Still level with the stem's ends on both lines.
+     */
+    // Not on a text serif or a joined hand, whose bowls meet their stem in a
+    // bracket or a loop that a lighter pen opens a pinhole in.
+    const light = bookish(f) || f.style.parts.script.on ? 1 : 1 - 0.14 * heaviness(f);
+    const top = f.hangs(f.cap, light);
+    const base = f.sits(0, light);
     const upperR = Math.max((top - upper) / 2 + f.half * 0.2, f.least);
     const lowerR = Math.max((upper - base) / 2 + f.half * 0.2, f.least);
     /*
@@ -135,8 +147,8 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const reach = f.capBowl;
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-      lobe(f, stem, top - upperR * 2, top, reach * 0.98),
-      lobe(f, stem, base, base + lowerR * 2, reach * 1.14),
+      lighter(lobe(f, stem, top - upperR * 2, top, reach * 0.98), light),
+      lighter(lobe(f, stem, base, base + lowerR * 2, reach * 1.14), light),
     ]);
   },
 
@@ -232,12 +244,20 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      */
     const clear = (((f.half * 2.4) / f.capBowlH) * 180) / Math.PI;
     const opens = Math.max(32, past + clear);
+    /*
+     * And at a heavy weight the bar hangs from the end of the bowl rather than
+     * straddling it. The bowl is cut out of the same pieces at every weight and
+     * cannot carry on past its own seam, which is the centre line, so at a
+     * Black the bowl stopped there and the top half of the bar stood out on a
+     * step beside it. Hung so its top edge is the bowl's cut, the two are one
+     * flush corner.
+     */
+    const bowl = openBowl(f, centre, f.capBowl, f.capBowlH, opens, 360, past);
+    const cut = spineEnd(bowl.spine).y;
+    const hung = centre.y + (cut - f.upright - centre.y) * Math.min(1, f.gain / (f.x * 0.05));
     return finish(
       f,
-      [
-        openBowl(f, centre, f.capBowl, f.capBowlH, opens, 360, past),
-        ink(f, straight(at(right, centre.y), at(right - f.capBowl * 0.55, centre.y)), BUTT, f.end),
-      ],
+      [bowl, ink(f, straight(at(right, hung), at(right - f.capBowl * 0.55, hung)), BUTT, f.end)],
       true,
     );
   },

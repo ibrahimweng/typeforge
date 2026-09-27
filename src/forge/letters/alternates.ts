@@ -9,6 +9,7 @@ import {
   arch,
   at,
   belly,
+  heldReachOut,
   bend,
   bowed,
   BUTT,
@@ -487,13 +488,39 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const f = frame(style);
         const stem = f.edge;
         const radius = Math.max(f.cap * 0.27, f.least);
-        const junction = f.cap - radius * 2;
+        /*
+         * The bowl's top lies along the cap line, as the stem's end does:
+         * centred a radius under the line itself, its ink stood half a pen
+         * over the stem and left a step at the corner.
+         */
+        const top = f.hangs(f.cap);
+        const junction = top - radius * 2;
         const legRadius = Math.max(junction * 0.62, f.least);
         return finish(f, [
           ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-          belly(f, at(stem, f.cap - radius), radius * f.wide, radius, -90, 90),
+          // Wider at a heavy weight, or the bowl's counter is a chink.
+          belly(
+            f,
+            at(stem, top - radius),
+            heldReachOut(f, radius, radius * f.wide),
+            radius,
+            -90,
+            90,
+          ),
           // One arc from the junction to the foot, bowed out to the right.
-          ink(f, bowed(f, at(stem, junction), at(stem + legRadius * 1.5, 0), 0.14), BUTT, f.end),
+          // Sprung further along the bowl at a heavy weight, so there is a crotch
+          // between the leg and the stem rather than a wedge of solid ink.
+          ink(
+            f,
+            bowed(
+              f,
+              at(stem + f.gain * 1.3, junction),
+              at(stem + legRadius * 1.5 + f.gain * 1.3, 0),
+              0.14,
+            ),
+            BUTT,
+            f.end,
+          ),
         ]);
       },
     },

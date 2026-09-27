@@ -600,8 +600,7 @@ describe("at the ends of the weight range", () => {
      * A counter's own corners tie off small loops, wound backwards, when the
      * rim is worked out -- and they used to be filled as paper along with the
      * counter. Every square counter came back with a speck in each corner,
-     * and the counter of a Black A, which the rim should close altogether,
-     * kept a star of them.
+     * and the counter of a Black A kept a star of them.
      */
     const rim = cast((one) => {
       one.outline = { on: true, width: 0.18 };
@@ -611,7 +610,15 @@ describe("at the ends of the weight range", () => {
       const specks = holes.filter((one) => -contourArea(one) < SANS.pen.weight ** 2 * 0.25);
       expect(specks.length, letter).toBe(0);
     }
-    expect(castOn("A", black, rim).filter((one) => contourArea(one) < 0)).toEqual([]);
+    /*
+     * A Black A widens enough now to keep its counter under a rim (see
+     * `blackness` in `style.ts`), so what is asked of it is the same: a
+     * counter or nothing, and no star of specks.
+     */
+    const specks = castOn("A", black, rim).filter(
+      (one) => contourArea(one) < 0 && -contourArea(one) < black.pen.weight ** 2 * 0.25,
+    );
+    expect(specks).toEqual([]);
   });
 
   it("grows a rim over points on a brushed face in a moment, and leaves the letter", () => {

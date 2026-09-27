@@ -42,7 +42,7 @@ import {
 } from "./shapes";
 import { seamsOf, wobbleOf } from "./script";
 import { penReach, reachAlong, sweep } from "./sweep";
-import { type Style, serifReach } from "./style";
+import { heavier, type Style, serifReach, spacingOf } from "./style";
 import type { Spine, Stroke, Terminal } from "./types";
 
 export interface Drawn {
@@ -201,7 +201,7 @@ export interface Made extends Drawn {
  */
 export function makeLetter(
   name: string,
-  style: Style,
+  given: Style,
   form?: string,
   cuts?: Cuts,
   kit?: Kit,
@@ -223,6 +223,8 @@ export function makeLetter(
   // `WaveBook`. A letter built from parts keeps no page of its own -- the base
   // and the mark each open theirs as they are drawn.
   waveBookAt(name);
+  // The style as it is drawn at this weight: see `blackness` in `style.ts`.
+  const style = heavier(given);
   const parts = builtFrom(name);
   if (parts) return marked(parts, style, form, cuts, kit, cast, effects);
 
@@ -318,9 +320,7 @@ export function makeLetter(
    */
   const joinsUp = style.parts.script.on && built?.width !== undefined;
   const shortfall =
-    solid.length > 0 && !joinsUp
-      ? Math.max(0, style.metrics.sidebearing - contoursBounds(solid).xMin)
-      : 0;
+    solid.length > 0 && !joinsUp ? Math.max(0, spacingOf(style) - contoursBounds(solid).xMin) : 0;
   const placed = slid(cut, shortfall);
   const placedSolid = solid === cut ? placed : slid(solid, shortfall);
 
@@ -354,7 +354,7 @@ export function makeLetter(
    */
   const extra =
     !style.metrics.monospaced && !laid && !joinsUp && isCapitalLike(name)
-      ? style.metrics.sidebearing * Math.max(0, (style.metrics.capitalSpacing ?? 1) - 1)
+      ? spacingOf(style) * Math.max(0, (style.metrics.capitalSpacing ?? 1) - 1)
       : 0;
   if (extra > 0) {
     centring += extra;
@@ -443,7 +443,7 @@ function marked(
    * with one accent in it from limping.
    */
   const bounds = contoursBounds(contours);
-  const { sidebearing } = style.metrics;
+  const sidebearing = spacingOf(style);
   /*
    * And none of it on a joined face, where the letter's width is not the
    * letter's to change.
@@ -576,7 +576,7 @@ function leaning(contours: Contour[], style: Style): Contour[] {
  */
 function insideTheEdge(contours: Contour[], style: Style): Contour[] {
   if (contours.length === 0) return contours;
-  const shortfall = style.metrics.sidebearing - contoursBounds(contours).xMin;
+  const shortfall = spacingOf(style) - contoursBounds(contours).xMin;
   if (shortfall <= 0) return contours;
   const shift = (point: Vec2): Vec2 => ({ x: point.x + shortfall, y: point.y });
   return contours.map((contour) => ({
@@ -637,8 +637,8 @@ function monoAdvance(style: Style): number {
 }
 
 function measure(recipe: Recipe, contours: Contour[], style: Style): number {
-  if (contours.length === 0) return style.metrics.sidebearing * 2;
-  const trailing = style.metrics.sidebearing * (recipe.round ? ROUND_TIGHTENING : 1);
+  if (contours.length === 0) return spacingOf(style) * 2;
+  const trailing = spacingOf(style) * (recipe.round ? ROUND_TIGHTENING : 1);
   return contoursBounds(contours).xMax + trailing;
 }
 

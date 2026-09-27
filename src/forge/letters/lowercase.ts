@@ -39,6 +39,7 @@ import {
   tStem,
   turn,
   tittle,
+  bookish,
   heaviness,
   lighter,
 } from "./common";
@@ -121,7 +122,14 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * see `heaviness`. Lowering the bar instead cut the tail short.
      */
     const heavy = heaviness(f);
-    const belt = bend(f, centre, f.bowlH, opens, opens + 300, f.bowl + f.half * 0.3 * heavy);
+    /*
+     * On a face whose bar runs flush out of its bowl, only past a Black: to
+     * a Black the contrast the pen takes on keeps the eye open by itself, and
+     * a bowl changed there moved where a break laid along the bar falls, so
+     * that it sliced the bowl. Past it the eye closes without the help.
+     */
+    const light = bookish(f) ? heavy : Math.max(0, heavy - 1.1) * 2;
+    const belt = bend(f, centre, f.bowlH, opens, opens + 300, f.bowl + f.half * 0.3 * light);
     return finish(
       f,
       [
@@ -149,12 +157,18 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
           f,
           straight(
             at(wallAt(f, centre, opens), eye),
-            at(spineStart(belt).x + f.reach(at(1, 0)) * Math.cos((opens * Math.PI) / 180), eye),
+            at(
+              spineStart(belt).x +
+                // The bowl's own pen, which is lighter than the stem's at a
+                // heavy weight: to the stem's reach the bar stood out past it.
+                f.reach(at(1, 0)) * (1 - 0.14 * light) * Math.cos((opens * Math.PI) / 180),
+              eye,
+            ),
           ),
           BUTT,
           { kind: "butt", level: true },
         ),
-        lighter(ink(f, belt, BUTT, f.end), 1 - 0.14 * heavy),
+        lighter(ink(f, belt, BUTT, f.end), 1 - 0.14 * light),
       ],
       true,
     );

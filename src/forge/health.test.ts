@@ -44,7 +44,7 @@ describe("what has gone wrong", () => {
   });
 
   it("notices a counter that has closed", () => {
-    // Heavy and condensed together: the figures come down to sixteen units of
+    // Heavy and condensed together: the counters come down to a few units of
     // hole, which is a printing fault rather than a counter.
     const narrow: Forge = {
       ...heavier(startFrom(SANS), 260),
@@ -53,9 +53,14 @@ describe("what has gone wrong", () => {
         metrics: { ...SANS.metrics, width: 0.6 },
       },
     };
+    /*
+     * Which letters, rather than the eight by name: a heavy weight now widens
+     * its figures to keep their counters (see `heavyFigure`), so at this width
+     * it is the letters with two rings side by side that go first.
+     */
     const closing = troubles(narrow).find((one) => one.what === "Counters closing up");
-    expect(closing, "a heavy condensed cut closes its figures").toBeDefined();
-    expect(closing!.letters).toContain("eight");
+    expect(closing, "a heavy condensed cut closes its counters").toBeDefined();
+    expect(closing!.letters.length).toBeGreaterThan(0);
   });
 
   it("notices letters running into the one before", () => {
