@@ -534,3 +534,159 @@ describe("measured in stems", () => {
     expect(Math.abs(thin - heavy)).toBeLessThan(0.06);
   });
 });
+
+describe("at the ends of the weight range", () => {
+  const black = weightedStyle(sans, sans.pen.weight, 200);
+  const light = weightedStyle(sans, sans.pen.weight, 30);
+
+  it("breaks an arm off flush with the stem it leaves, with no stub left on the stem", () => {
+    /*
+     * The gap used to be placed a stem's half width plus an eighth of a stem
+     * along the arm, and turned square to the arm. On a Black that eighth was
+     * a sliver twenty-five units wide left standing on the stem beside every
+     * gap, and on an n -- whose arch leaves its stem heading up and over --
+     * the gap was a slash across the shoulder with a wedge of arch left on top
+     * of the stem. The stem is what has to come out clean: at every height
+     * the arm used to join it, the ink starting at the stem's outside edge
+     * runs exactly one stem across and stops.
+     */
+    const cuts = cutWith((one) => {
+      one.split.on = true;
+    });
+    for (const [letter, heights] of [
+      ["H", [0.45, 0.5, 0.55]],
+      ["n", [0.8, 0.9]],
+    ] as const) {
+      const cut = drawn(letter, black, cuts).contours;
+      const box = contoursBounds(cut);
+      for (const share of heights) {
+        const y = box.yMin + (box.yMax - box.yMin) * share;
+        const [first] = inkRunsAt(cut, y);
+        expect(first, `${letter} at ${share}`).toBeDefined();
+        expect(first[1] - first[0], `${letter} at ${share}`).toBeCloseTo(black.pen.weight, 0);
+      }
+    }
+  });
+
+  it("keeps a Black e whole when the groove is let out through its ends", () => {
+    /*
+     * With the inset taken off, the groove used to be run a stem past both
+     * ends of every stroke, as part of the stroke's own spine. The bar of an
+     * e ends inside the wall of its bowl, and the bowl's tail comes back round
+     * under its own start -- so the groove crossed itself, the ground inside
+     * the loop came out wound as ink, and the whole lower half of a Black e
+     * was cut away with it.
+     */
+    const cuts = cutWith((one) => {
+      one.inline = { on: true, width: 0.3, inset: 0 };
+    });
+    for (const style of [black, sans, light]) {
+      expect(removed("e", style, cuts), `pen ${style.pen.weight}`).toBeLessThan(0.45);
+    }
+  });
+
+  it("chamfers every letter rather than losing some of them altogether", () => {
+    /*
+     * A union hands back points doubled up a hair apart wherever two strokes'
+     * ends met, and each read as a corner with edges a ten-thousandth long.
+     * The chamfer laid a triangle of no area on every one of them, and a
+     * knife holding a few of those took the whole letter with it: a light
+     * Serif H, a Black Grotesque E, a Flared s and a Brush r all came back as
+     * nothing.
+     */
+    const cuts = cutWith((one) => {
+      one.chamfer.on = true;
+    });
+    const face = (name: string) => BASES.find((base) => base.name === name)!;
+    for (const [letter, style] of [
+      ["H", weightedStyle(face("Serif"), face("Serif").pen.weight, 30)],
+      ["H", weightedStyle(face("Fairground"), face("Fairground").pen.weight, 200)],
+      ["k", weightedStyle(face("Fairground"), face("Fairground").pen.weight, 200)],
+      ["E", weightedStyle(face("Grotesque"), face("Grotesque").pen.weight, 200)],
+      ["s", face("Flared")],
+      ["r", face("Brush")],
+    ] as const) {
+      expect(removed(letter, style, cuts), `${style.name} ${letter}`).toBeLessThan(0.1);
+    }
+  });
+
+  it("grooves a light Slab b and g rather than filling their bowls in", () => {
+    /*
+     * The groove of a round bowl runs down the stem it is drawn against, a
+     * hair from the stem's own groove, and the knife those two made was
+     * fused so that taking it away filled the whole bowl in: counter, groove
+     * and all, a black disc on a stick.
+     */
+    const cuts = cutWith((one) => {
+      one.inline.on = true;
+    });
+    const slab = BASES.find((base) => base.name === "Slab")!;
+    const light = weightedStyle(slab, slab.pen.weight, 30);
+    for (const letter of "bg") {
+      const holes = drawn(letter, light, cuts).contours.filter(
+        (contour) => contourArea(contour) < 0,
+      );
+      const hole = holes.reduce((total, contour) => total - contourArea(contour), 0);
+      const was = unite(drawn(letter, light).contours, "winding").reduce(
+        (total, contour) => total + Math.min(0, contourArea(contour)),
+        0,
+      );
+      expect(hole, letter).toBeGreaterThan(-was);
+    }
+  });
+
+  it("opens a counter out past its edge without cutting through the stroke round it", () => {
+    /*
+     * A motif larger than its counter was held to the letter's silhouette,
+     * which is the far side of the stroke: a square at 1.2 on a light o
+     * reached through the thin sides of the bowl and cut the o into pieces.
+     */
+    const cuts = cutWith((one) => {
+      one.motif = { on: true, shape: "square", size: 1.2 };
+    });
+    for (const style of [light, sans]) {
+      for (const letter of "obdpq") {
+        expect(
+          piecesOf(drawn(letter, style, cuts).contours),
+          `${letter} at ${style.pen.weight}`,
+        ).toBe(1);
+      }
+    }
+  });
+
+  it("leaves alone a counter its shape will not go into", () => {
+    /*
+     * A diamond in the triangle of a 4 has to shrink until its points clear
+     * the sloping side, which on a light face is a speck: the counter was
+     * filled in for it and the 4 came back a solid wedge with a pinhole.
+     */
+    const cuts = cutWith((one) => {
+      one.motif = { on: true, shape: "diamond", size: 1 };
+    });
+    const hole = (contours: Contour[]) =>
+      contours.reduce((total, contour) => total - Math.min(0, contourArea(contour)), 0);
+    const was = hole(unite(drawn("four", light).contours, "winding"));
+    expect(was).toBeGreaterThan(0);
+    expect(hole(drawn("four", light, cuts).contours)).toBeGreaterThan(was * 0.2);
+  });
+
+  it("leaves no chips of ink standing on their own", () => {
+    /*
+     * A band at the font's own heights passes a hair under the top of an r's
+     * terminal and the spur of an s, and what it left above itself was a
+     * speck a few units across. Nobody cut that; it is dirt.
+     */
+    const cuts = cutWith((one) => {
+      one.slot = { on: true, count: 3, width: 0.34, angle: 0, inset: 0.14 };
+    });
+    for (const style of [light, sans, black]) {
+      for (const letter of "rsaegRE") {
+        const chips = drawn(letter, style, cuts).contours.filter(
+          (contour) =>
+            contourArea(contour) > 0 && contourArea(contour) < style.pen.weight ** 2 * 0.2,
+        );
+        expect(chips.length, `${letter} at pen ${style.pen.weight}`).toBe(0);
+      }
+    }
+  });
+});

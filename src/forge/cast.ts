@@ -14,14 +14,20 @@
  * doubling on a hairline, and a family cast from one description has to stay
  * cast the same way at every weight.
  *
- * The two that move the whole letter -- the shadow and the rim -- are done by
- * copying it and fusing the copies, which is exactly what those shapes are.
- * All the copies go into a single union rather than being added one at a time,
- * so a shadow twenty copies long costs one boolean and not twenty.
+ * The two that move the whole letter -- the shadow and the rim -- are the
+ * ground the letter covers as a line or a small round figure is dragged over
+ * every point of it. Both are built the same exact way, as the one loop each
+ * outline makes while that happens, resolved once (`swept`).
  */
 
-import { filled, intersect, loaded, subtract, unite, type Roles } from "@/font/boolean";
-import { contourArea, contourContainsPoint, reverseContour, splitCubic } from "@/font/geometry";
+import { filled, loaded, subtract, unite, type Roles } from "@/font/boolean";
+import {
+  contourArea,
+  contourContainsPoint,
+  contoursBounds,
+  reverseContour,
+  splitCubic,
+} from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import type { CutScale } from "./cut";
 import { alongSpine } from "./shapes";
@@ -97,16 +103,42 @@ export function castInk(
 
   let shape = unite(ink, roles, "whole");
   const stem = Math.max(scale.stem, 1);
+  const smallest = Math.min(
+    Infinity,
+    ...shape.map((contour) => -contourArea(contour)).filter((area) => area > 0),
+  );
 
   const local: Contour[] = [];
   if (cast.spur.on) local.push(...spurTool(shape, cast.spur, stem));
-  if (cast.weld.on) local.push(...weldTool(strokes, cast.weld, stem));
+  if (cast.weld.on) local.push(...weldTool(strokes, cast.weld, stem, shape));
   if (local.length > 0) shape = unite([...shape, ...local], "winding", "whole");
 
   if (cast.extrude.on) shape = extruded(shape, cast.extrude, stem);
   if (cast.outline.on) shape = outlined(shape, cast.outline.width * stem);
 
-  return shape;
+  return withoutSpecks(shape, stem, smallest);
+}
+
+/**
+ * The letter with the pinholes the cast closed off filled back in.
+ *
+ * Growing a letter shuts every notch narrower than twice what it grew by, and
+ * a notch deeper than it is wide is shut at its mouth and left as a pocket of
+ * paper inside the ink: the rim round a Brush face left a white speck in the
+ * foot of every stem, where the brush had left a nick. A shadow does the same
+ * where it runs across a narrow gap. None of them is a counter anybody drew,
+ * and at text size each is a fault in the print.
+ *
+ * So a hole smaller than a tenth of a stem square goes -- and never one as
+ * large as half the smallest counter the letter went in with, so a small eye
+ * the letter really has is never taken for one.
+ */
+function withoutSpecks(shape: Contour[], stem: number, smallest: number): Contour[] {
+  const floor = Math.min(stem * stem * 0.1, smallest * 0.5);
+  return shape.filter((contour) => {
+    const area = contourArea(contour);
+    return area >= 0 || -area >= floor;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -141,36 +173,6 @@ function extruded(shape: Contour[], extrude: Cast["extrude"], stem: number): Con
 
   const radians = (extrude.angle * Math.PI) / 180;
   return sweptAlong(shape, Math.cos(radians) * reach, Math.sin(radians) * reach);
-}
-
-/**
- * A shape and the same shape moved, fused into one, and tidied after.
- *
- * The approximate sweep, and it is the right one where the move is short
- * against the shape being moved. Two copies of a stem five units apart overlap
- * along almost their whole length, so their union is the ground between them
- * to within the width of a hair -- which is what the rim is built out of, eight
- * short moves that add up to a sixteen-sided figure.
- *
- * An exact sweep was tried here when the shadow's was built out of a band
- * along every edge. The rim lays one move on top of the last eight times
- * over, so by the fourth the shape it was banding had hundreds of curved
- * edges and paper ran out of stack resolving their crossings. The shadow's
- * sweep is a convolution now, one loop rather than a band per edge, and has
- * not been tried here since.
- *
- * Tidied because every union leaves the straight runs chopped into collinear
- * pieces, and the next one would carry all of them.
- *
- * Refitting the curves as well was tried and is not here. It takes the point
- * count down by two thirds and takes the shape apart while doing it -- a
- * letter that was eleven contours came back as two hundred and eleven, because
- * an outline moved even a tenth of a unit no longer touches the copy of itself
- * it is supposed to be fusing with. The union has to be handed exactly what it
- * was given, and only the points that change nothing can go.
- */
-function grownBy(shape: Contour[], dx: number, dy: number): Contour[] {
-  return tidied(unite([...shape, ...moved(shape, dx, dy)], "winding", "whole"));
 }
 
 /**
@@ -214,6 +216,18 @@ function grownBy(shape: Contour[], dx: number, dy: number): Contour[] {
  */
 function sweptAlong(shape: Contour[], dx: number, dy: number): Contour[] {
   if (Math.hypot(dx, dy) < 1e-9) return shape;
+  return swept(shape, (contour) => convolved(contour, dx, dy));
+}
+
+/**
+ * The ground a shape covers as a figure is dragged over every point of it,
+ * given the one loop each outline makes as that happens.
+ *
+ * The part of the shadow's sweep that is not about the shadow, so the rim can
+ * be made the same way: each solid's loop resolved on its own, each counter's
+ * paper worked out on its own and taken back out, islands laid back on.
+ */
+function swept(shape: Contour[], convolve: (contour: Contour) => Contour): Contour[] {
   const solids = shape.filter((contour) => contour.nodes.length >= 2 && contourArea(contour) >= 0);
   const counters = shape.filter((contour) => contour.nodes.length >= 2 && contourArea(contour) < 0);
   if (solids.length === 0) return shape;
@@ -222,18 +236,80 @@ function sweptAlong(shape: Contour[], dx: number, dy: number): Contour[] {
     counters.some((counter) => contourContainsPoint(counter, solid.nodes[0].point)),
   );
   const sweep = (some: Contour[]): Contour[] => {
-    const each = some.map((solid) => filled([convolved(solid, dx, dy)]));
+    const each = some.map((solid) => groundOf(convolve(solid), solid));
     return each.length === 1 ? each[0] : unite(each.flat(), "winding", "whole");
   };
   const ground = sweep(solids);
 
+  /*
+   * A counter's paper survives where the counter's loop winds round it once
+   * the wrong way -- exactly once, which a fill rule cannot be asked for. So
+   * the loop is laid inside a frame wound the right way round, where the
+   * paper that survives is exactly the ground wound round no times at all,
+   * and it is the frame less everything filled.
+   *
+   * It used to be the loop reversed and filled on its own, which fills
+   * everything the loop winds round either way: the small loops a counter's
+   * corners tie off, wound backwards, came back as paper too. Under the
+   * shadow they landed outside the counter and were cut away; under the rim
+   * they land in its corners, and every square counter came back with a speck
+   * of paper standing in each corner, and a Black A whose counter should have
+   * closed kept a star of them.
+   */
   const kept = counters.flatMap((counter) => {
-    const open = reverseContour(counter);
-    return intersect([open], filled([reverseContour(convolved(counter, dx, dy))]), "winding");
+    // On the hundredth-unit grid from the start, for the reason `groundOf`
+    // gives; there is no area here to check an answer against.
+    const loop = onGrid(convolve(counter), 100);
+    const box = contoursBounds([loop, counter]);
+    const frame = poly([
+      { x: box.xMin - 10, y: box.yMin - 10 },
+      { x: box.xMax + 10, y: box.yMin - 10 },
+      { x: box.xMax + 10, y: box.yMax + 10 },
+      { x: box.xMin - 10, y: box.yMax + 10 },
+    ]);
+    return subtract([reverseContour(counter)], filled([frame, loop]), "winding");
   });
   let swept = kept.length > 0 ? subtract(ground, kept, "winding") : ground;
   if (islands.length > 0) swept = unite([...swept, ...sweep(islands)], "winding", "whole");
   return tidied(swept);
+}
+
+/**
+ * What a solid's loop winds round, checked against the one thing it has to
+ * be: something at least as large as the solid it was made from, since the
+ * ground a shape covers as anything is dragged over it includes the shape.
+ *
+ * Paper resolves a loop that crosses itself by finding where it crosses, and
+ * two crossings a hair apart along a nearly tangent pair of curves are ones it
+ * can lose track of. A light Handwriting e grown by a rim came back as five
+ * specks, then as nothing at all. The same loop with its coordinates set to a
+ * hundredth of a unit -- far below anything a font file records -- resolves
+ * cleanly, so that is the second try, a tenth the third, and the solid as it
+ * was is the last answer rather than nothing.
+ */
+function groundOf(loop: Contour, solid: Contour): Contour[] {
+  const least = contourArea(solid) * 0.999;
+  for (const grid of [0, 100, 10]) {
+    const ground = filled([grid === 0 ? loop : onGrid(loop, grid)]);
+    const area = ground.reduce((total, one) => total + contourArea(one), 0);
+    if (area >= least) return ground;
+  }
+  return [solid];
+}
+
+/** An outline with every point and handle set to the nearest step of `1 / per`. */
+function onGrid(contour: Contour, per: number): Contour {
+  const snap = (point: Vec2 | null): Vec2 | null =>
+    point && { x: Math.round(point.x * per) / per, y: Math.round(point.y * per) / per };
+  return {
+    ...contour,
+    nodes: contour.nodes.map((node) => ({
+      ...node,
+      point: snap(node.point) as Vec2,
+      handleIn: snap(node.handleIn),
+      handleOut: snap(node.handleOut),
+    })),
+  };
 }
 
 /**
@@ -465,81 +541,220 @@ function offLine(from: Vec2, point: Vec2, to: Vec2): number {
 /**
  * The letter grown outwards all round.
  *
- * Grown by a sixteen-sided figure rather than by a circle, which is the same
- * thing to look at -- at sixteen sides the flats are a fiftieth of the rim's
- * own width -- and a very different thing to compute. A figure with a centre
- * of symmetry is the sum of segments through that centre, and a regular
- * sixteen-gon is the sum of eight of them. So growing by it is growing by one
- * segment eight times over, and every one of those is the union of a shape
- * with a copy of itself: the same cheap operation the shadow is built from.
+ * Grown by a regular figure of `SIDES` sides rather than by a circle, which is
+ * the same thing to look at -- at that many sides the flats are a hundredth of
+ * the rim's own width -- and is a shape with corners the construction below
+ * can name one at a time.
  *
- * Done instead as sixteen copies laid round a circle and fused in one go, it
- * took a seventh of a second a letter on its own, and three seconds a letter
- * on top of a shadow -- a union of seventeen copies of an already complicated
- * shape is not seventeen times the work of a union of two, it is very much
- * worse. Eight unions of two shapes each is the same answer in a fraction of
- * the time.
+ * Done exactly, the way the shadow is: each outline walked once, every piece
+ * of it carried out to the corner of the figure that faces the way the piece
+ * faces, and a run round the figure's own corners put in wherever the outline
+ * turns (`convolvedRound` has it). One loop an outline, resolved once, and the
+ * counters worked out on their own exactly as the shadow's are.
+ *
+ * It used to be eight unions of the shape with a copy of itself, each copy
+ * moved a short way along one of eight directions, which sums to a sixteen-
+ * sided figure. Every one of those unions left a notch at every convex corner
+ * for the next one to double, and that was the whole of the trouble with it.
+ * A Flared `k` went into the first round at 42 points and came out of the
+ * eighth at 348. On a letter that already had corners to spare it ran away: a
+ * Brush letter with points on went into the rim at a few hundred points and
+ * took four to twenty seconds a letter to come out, fringed with the notches
+ * as fine hair, and one `m` came out as nothing at all. A Sans with breaks,
+ * the rim and points took eight seconds over a Black `R`.
  *
  * This grows the counters closed as well as the outside out, which is what
  * growing a shape does and is worth knowing before turning it up: on a light
  * face a rim of half a stem will fill the eye of an e.
- *
- * It is still the expensive one, and the reason is worth writing down because
- * four ways of making it cheaper have been tried and none of them worked.
- *
- * Each round leaves a notch at every convex corner -- that is exactly what the
- * approximate sweep gets wrong -- and every notch is points the next round
- * doubles. A Flared `k` goes into the first round at 42 points and comes out of
- * the eighth at 348, and the last two rounds cost more than the first six
- * together. The rim alone is about 90ms on that letter and all four operations
- * together about 185ms, which is the worst of the letters measured.
- *
- * What does not help. The shadow's exact sweep, when it laid a band along
- * every edge, could not be used, because by the fourth round the shape it was
- * banding had hundreds of curved edges: paper ran out of stack. (Its
- * convolution, which replaced the bands, has not been tried here.) Splitting each round into
- * four shorter moves, which should converge on the exact answer, runs out of
- * stack the same way and where it survives it disagrees with itself -- one
- * letter grew 35% more, another 12% less. Rejoining curves in the tidy recovers
- * nothing: a union cuts a curve where two boundaries cross, and a crossing is a
- * real corner, so the pieces are not two halves of one curve and the point
- * count comes back the same to the point. Taking the eight directions in a
- * spread order rather than in a fan is worse by more than a factor of ten,
- * because consecutive near-parallel moves are what keeps the shape simple.
- *
- * What would work is not a tuning: it is `S + P = S union (every edge + P)`,
- * where each edge's own region is built directly from the sixteen-gon's
- * supporting vertex as the tangent turns -- the shadow's convolution, with the
- * sixteen-gon in place of the segment. That is exact, and the shape it hands back is the
- * shape rather than the shape with notches in it. It is a piece of work rather
- * than an edit, and the test below holds the point count still until somebody
- * does it.
  */
 function outlined(shape: Contour[], width: number): Contour[] {
   if (width <= 0) return shape;
+  const corners = Array.from({ length: SIDES }, (_, index) => {
+    const angle = ((index + 0.5) / SIDES) * Math.PI * 2;
+    return { x: Math.cos(angle) * width, y: Math.sin(angle) * width };
+  });
+  return swept(shape, (contour) => convolvedRound(contour, corners));
+}
 
-  const SIDES = 8;
-  /*
-   * How long each segment has to be for the eight of them to sum to a figure
-   * reaching `width` all round. The sum of their supports in any direction is
-   * `half` times the sum of |cos| over the eight angles, which comes to very
-   * nearly eight times two-over-pi whichever direction is asked -- that near
-   * constancy is the same fact as the figure being nearly a circle.
-   */
-  const half = width / ((2 / Math.PI) * SIDES);
+/** How many sides the figure a rim is grown by has. */
+const SIDES = 24;
 
-  let grown = shape;
-  let back = { x: 0, y: 0 };
-  for (let side = 0; side < SIDES; side++) {
-    const angle = (side / SIDES) * Math.PI;
-    const dx = Math.cos(angle) * half * 2;
-    const dy = Math.sin(angle) * half * 2;
-    grown = grownBy(grown, dx, dy);
-    // Every segment runs one way only, so the shape creeps as it grows. The
-    // creep is exactly half of what it grew by, and is taken back at the end.
-    back = { x: back.x - dx / 2, y: back.y - dy / 2 };
+/**
+ * One outline's path as a convex figure is dragged all the way round it: its
+ * convolution with the figure.
+ *
+ * The shadow's construction with a polygon in place of a line. Each piece of
+ * the outline faces one way, out to its right, and the figure's corner that
+ * reaches furthest that way is the one the piece is carried out to. Where the
+ * outline turns, the corner that reaches furthest changes, and the loop runs
+ * round the figure's own corners from the one to the other -- the way the
+ * outline turned, which at a convex corner of the ink is the rounded corner of
+ * the rim, and at a concave one is a small loop back on itself that the fill
+ * rule then ignores.
+ *
+ * A curve that turns through one of the figure's edge directions faces two
+ * corners, one either side of that place, so it is cut there first; after
+ * that every piece has one corner of its own.
+ */
+function convolvedRound(contour: Contour, corners: Vec2[]): Contour {
+  const count = corners.length;
+  // The figure's edge directions. Opposite edges are parallel, so half of them.
+  const turns: Vec2[] = [];
+  for (let index = 0; index < count / 2; index++) {
+    const a = corners[index];
+    const b = corners[(index + 1) % count];
+    turns.push({ x: b.x - a.x, y: b.y - a.y });
   }
-  return moved(grown, back.x, back.y);
+  const facing = (direction: Vec2): number => {
+    // Out to the right of the way the outline runs.
+    const out = { x: direction.y, y: -direction.x };
+    let best = 0;
+    let most = -Infinity;
+    corners.forEach((corner, index) => {
+      const reach = corner.x * out.x + corner.y * out.y;
+      if (reach > most) {
+        most = reach;
+        best = index;
+      }
+    });
+    return best;
+  };
+
+  const pieces: Array<{ edge: Edge; corner: number; enter: Vec2; leave: Vec2 }> = [];
+  const nodes = contour.nodes;
+  for (let index = 0; index < nodes.length; index++) {
+    const from = nodes[index];
+    const to = nodes[(index + 1) % nodes.length];
+    for (const edge of cutAtAll(from, to, turns)) {
+      const enter = headingOf(edge, "start");
+      const leave = headingOf(edge, "end");
+      if (!enter || !leave) continue;
+      const middle = headingOf(edge, "middle") ?? enter;
+      pieces.push({ edge, corner: facing(middle), enter, leave });
+    }
+  }
+  if (pieces.length === 0) return contour;
+
+  const out: GlyphNode[] = [];
+  const shift = (point: Vec2, corner: number): Vec2 => ({
+    x: point.x + corners[corner].x,
+    y: point.y + corners[corner].y,
+  });
+  const push = (point: Vec2) => {
+    const last = out[out.length - 1];
+    if (last && same(last.point, point)) return;
+    out.push({ point, handleIn: null, handleOut: null, type: "corner" });
+  };
+  for (let index = 0; index < pieces.length; index++) {
+    const before = pieces[(index - 1 + pieces.length) % pieces.length];
+    const piece = pieces[index];
+    const at = piece.edge.from;
+    // Round the figure from the corner the last piece used to this one's, the
+    // way the outline turns here.
+    if (before.corner !== piece.corner) {
+      const cross = before.leave.x * piece.enter.y - before.leave.y * piece.enter.x;
+      const forward = (piece.corner - before.corner + count) % count;
+      const way = Math.abs(cross) > 1e-9 ? (cross > 0 ? 1 : -1) : forward <= count / 2 ? 1 : -1;
+      let corner = before.corner;
+      for (let step = 0; step < count && corner !== piece.corner; step++) {
+        corner = (corner + way + count) % count;
+        push(shift(at, corner));
+      }
+    }
+    const { edge, corner } = piece;
+    const start = shift(edge.from, corner);
+    push(start);
+    const last = out[out.length - 1];
+    last.handleOut = edge.c1 && shift(edge.c1, corner);
+    out.push({
+      point: shift(edge.to, corner),
+      handleIn: edge.c2 && shift(edge.c2, corner),
+      handleOut: null,
+      type: "corner",
+    });
+  }
+  /*
+   * Without the pieces too short to be anything.
+   *
+   * A curve cut at every one of the figure's directions can leave a piece a
+   * hundredth of a unit long between two cuts that fall almost together, and
+   * a loop carrying a few of those is one paper cannot resolve: a light
+   * Handwriting e grown by a rim came back as five specks and then as
+   * nothing. The piece's two ends are one point for any purpose a font has.
+   */
+  const kept: GlyphNode[] = [];
+  for (const node of out) {
+    const last = kept[kept.length - 1];
+    if (last && distance(last.point, node.point) < 0.05) {
+      last.handleOut = node.handleOut;
+      continue;
+    }
+    kept.push(node);
+  }
+  while (kept.length > 2 && distance(kept[kept.length - 1].point, kept[0].point) < 0.05) {
+    kept[0].handleIn = kept[kept.length - 1].handleIn;
+    kept.pop();
+  }
+  return { closed: true, nodes: kept };
+}
+
+/** One edge of an outline, cut wherever it turns through any of these directions. */
+function cutAtAll(from: GlyphNode, to: GlyphNode, directions: Vec2[]): Edge[] {
+  const start = from.point;
+  const finish = to.point;
+  if (from.handleOut === null && to.handleIn === null) {
+    return same(start, finish) ? [] : [{ from: start, c1: null, c2: null, to: finish }];
+  }
+  const one = from.handleOut ?? start;
+  const other = to.handleIn ?? finish;
+  const at: number[] = [];
+  for (const { x: dx, y: dy } of directions) {
+    const cross = (a: Vec2, b: Vec2): number => (b.x - a.x) * dy - (b.y - a.y) * dx;
+    const a = cross(start, one);
+    const b = cross(one, other);
+    const c = cross(other, finish);
+    const square = a - 2 * b + c;
+    const linear = -2 * a + 2 * b;
+    if (Math.abs(square) < 1e-12) {
+      if (Math.abs(linear) > 1e-12) at.push(-a / linear);
+    } else {
+      const under = linear * linear - 4 * square * a;
+      if (under >= 0) {
+        const root = Math.sqrt(under);
+        at.push((-linear + root) / (2 * square), (-linear - root) / (2 * square));
+      }
+    }
+  }
+  const cuts = [...new Set(at.filter((value) => value > 1e-6 && value < 1 - 1e-6))].sort(
+    (x, y) => x - y,
+  );
+  const pieces: Edge[] = [];
+  let piece: [Vec2, Vec2, Vec2, Vec2] = [start, one, other, finish];
+  let eaten = 0;
+  for (const cut of cuts) {
+    const where = (cut - eaten) / (1 - eaten);
+    if (where <= 1e-9 || where >= 1 - 1e-9) continue;
+    const [before, after] = splitCubic(piece[0], piece[1], piece[2], piece[3], where);
+    pieces.push({ from: before[0], c1: before[1], c2: before[2], to: before[3] });
+    piece = after;
+    eaten = cut;
+  }
+  pieces.push({ from: piece[0], c1: piece[1], c2: piece[2], to: piece[3] });
+  return pieces;
+}
+
+/** Which way a piece of outline is heading at its start, its end or half way. */
+function headingOf(edge: Edge, where: "start" | "end" | "middle"): Vec2 | null {
+  if (edge.c1 === null && edge.c2 === null) return away(edge.from, edge.to);
+  const c1 = edge.c1 ?? edge.from;
+  const c2 = edge.c2 ?? edge.to;
+  if (where === "start")
+    return away(edge.from, c1) ?? away(edge.from, c2) ?? away(edge.from, edge.to);
+  if (where === "end") return away(c2, edge.to) ?? away(c1, edge.to) ?? away(edge.from, edge.to);
+  // The derivative of the cubic at a half, which is a multiple of this.
+  const x = edge.to.x + c2.x - c1.x - edge.from.x;
+  const y = edge.to.y + c2.y - c1.y - edge.from.y;
+  return away({ x: 0, y: 0 }, { x, y }) ?? away(edge.from, edge.to);
 }
 
 /**
@@ -561,6 +776,8 @@ function spurTool(shape: Contour[], spur: Cast["spur"], stem: number): Contour[]
 
   /** Below this the outline is carrying on rather than turning. */
   const SHARP = (25 * Math.PI) / 180;
+  /** Above this it is going back the way it came. */
+  const REVERSED = (165 * Math.PI) / 180;
 
   const added: Contour[] = [];
   for (const contour of shape) {
@@ -580,6 +797,14 @@ function spurTool(shape: Contour[], spur: Cast["spur"], stem: number): Contour[]
 
       const turn = angleBetween(arriving, leaving);
       if (Math.abs(turn) < SHARP) continue;
+      /*
+       * Nor on a corner so sharp the outline all but doubles back on itself.
+       * The point laid there lies along the edge rather than out of the
+       * corner, and fused with the letter it left a hair of no width
+       * standing along the baseline of a Flared n -- which a chamfer after it
+       * read as a corner of no size and took the whole letter away with.
+       */
+      if (Math.abs(turn) > REVERSED) continue;
       /*
        * Ink on the inside of the turn, which is a turn to the left whichever
        * contour this is. The shape has come out of a union, so its outlines
@@ -601,7 +826,19 @@ function spurTool(shape: Contour[], spur: Cast["spur"], stem: number): Contour[]
       // spike reaches the next corner and the two run together.
       const room = Math.min(distance(here.point, previous.point), distance(here.point, next.point));
       const base = Math.min(size * 0.7, room * 0.45);
-      if (base <= 0) continue;
+      /*
+       * And never longer than its base can hold up.
+       *
+       * A brushed outline turns sharply now and then over a unit or two -- a
+       * kink in the side of a stem, the step of a serif -- and a full-length
+       * point stood on a base that narrow is a hair: a Brush face with points
+       * on came back with whiskers standing off the middle of every stem, and
+       * a rim grown over them turned each into a tuft of fur. Held to a
+       * little over twice its base, a point on a short edge is a short point,
+       * and one too small to see is not drawn.
+       */
+      const reach = Math.min(size, base * 2.4);
+      if (reach < size * 0.2) continue;
 
       // Out of the corner is against the turn, along `arriving - leaving`.
       // The other sign points into the letter and buries the spike.
@@ -610,7 +847,7 @@ function spurTool(shape: Contour[], spur: Cast["spur"], stem: number): Contour[]
       added.push(
         poly([
           { x: here.point.x - arriving.x * base, y: here.point.y - arriving.y * base },
-          { x: here.point.x + out.x * size, y: here.point.y + out.y * size },
+          { x: here.point.x + out.x * reach, y: here.point.y + out.y * reach },
           { x: here.point.x + leaving.x * base, y: here.point.y + leaving.y * base },
         ]),
       );
@@ -642,12 +879,30 @@ function spurTool(shape: Contour[], spur: Cast["spur"], stem: number): Contour[]
  * cannot do that, because it is built between the edges it fills and never
  * reaches past either of them.
  */
-function weldTool(strokes: Stroke[], weld: Cast["weld"], stem: number): Contour[] {
+function weldTool(
+  strokes: Stroke[],
+  weld: Cast["weld"],
+  stem: number,
+  shape: Contour[] = [],
+): Contour[] {
   const size = weld.size * stem;
   if (size <= 0 || strokes.length < 2) return [];
 
   const near = stem * 1.15;
   const samples = strokes.map((stroke) => alongSpine(stroke.spine, SAMPLES));
+
+  // Whether a point is ink: inside an odd number of the fused outlines.
+  const ink =
+    shape.length === 0
+      ? undefined
+      : (point: Vec2): boolean =>
+          shape.filter((contour) => contourContainsPoint(contour, point)).length % 2 === 1;
+
+  // Every stroke but the two meeting, as somewhere an arm can run into.
+  const thirds = (one: number, other: number): Array<{ line: Vec2[]; stroke: Stroke }> =>
+    strokes
+      .map((stroke, index) => ({ line: samples[index], stroke, index }))
+      .filter(({ index }) => index !== one && index !== other);
 
   const added: Contour[] = [];
   for (let one = 0; one < samples.length; one++) {
@@ -669,8 +924,16 @@ function weldTool(strokes: Stroke[], weld: Cast["weld"], stem: number): Contour[
       }
       if (closest >= near || where === null) continue;
       const arms = [
-        ...armsOf(strokes[one], samples[one], at[0], where, strokes[other], 0),
-        ...armsOf(strokes[other], samples[other], at[1], where, strokes[one], 1),
+        ...armsOf(strokes[one], samples[one], at[0], where, strokes[other], 0, thirds(one, other)),
+        ...armsOf(
+          strokes[other],
+          samples[other],
+          at[1],
+          where,
+          strokes[one],
+          1,
+          thirds(one, other),
+        ),
       ].sort((a, b) => a.angle - b.angle);
       for (let index = 0; index < arms.length; index++) {
         const from = arms[index];
@@ -678,7 +941,7 @@ function weldTool(strokes: Stroke[], weld: Cast["weld"], stem: number): Contour[
         // Only the corners between the two strokes. A stroke that bends at the
         // join has a corner of its own there, and it is not a join.
         if (from.stroke === to.stroke) continue;
-        const fillet = filletBetween(where, from, to, size);
+        const fillet = filletBetween(where, from, to, size, ink);
         if (fillet) added.push(fillet);
       }
     }
@@ -729,6 +992,7 @@ function armsOf(
   join: Vec2,
   meeting: Stroke,
   which: number,
+  thirds: Array<{ line: Vec2[]; stroke: Stroke }> = [],
 ): Arm[] {
   const reach = penReach(stroke.pen);
   const clear = penReach(meeting.pen).across * 1.2 + 1;
@@ -746,6 +1010,19 @@ function armsOf(
       else if (next < 0 || next > last) break;
       length += distance(spine[at], spine[next]);
       at = next;
+      /*
+       * Stopped where it runs into another stroke.
+       *
+       * The crossbar of an H runs from one stem to the other, and a fillet
+       * sized against the whole crossbar -- the part buried in the far stem
+       * and out the other side of it -- reached past the far stem's inside
+       * edge. What is there to fill against is the run between the two.
+       */
+      const blocked = thirds.some(({ line, stroke: third }) => {
+        const near = Math.min(...line.map((point) => distance(point, spine[at])));
+        return near < penReach(third.pen).across;
+      });
+      if (blocked) break;
       path.push(spine[at]);
       // Far enough along for a direction to be read off, and no further.
       toward ??= length >= reach.across * 0.25 ? spine[at] : null;
@@ -805,7 +1082,13 @@ function straightFor(join: Vec2, arm: Arm, side: Vec2): number {
  * The radius is taken down where the arms are too short for it, so a fillet
  * never runs past the end of the stroke it is filling against.
  */
-function filletBetween(join: Vec2, from: Arm, to: Arm, radius: number): Contour | null {
+function filletBetween(
+  join: Vec2,
+  from: Arm,
+  to: Arm,
+  radius: number,
+  ink?: (point: Vec2) => boolean,
+): Contour | null {
   let opening = to.angle - from.angle;
   if (opening <= 0) opening += Math.PI * 2;
   // Nearly straight on is a stroke carrying on through, and nearly shut is two
@@ -826,7 +1109,37 @@ function filletBetween(join: Vec2, from: Arm, to: Arm, radius: number): Contour 
     straightFor(join, from, n1) - cornerAlong1,
     straightFor(join, to, n2) - cornerAlong2,
   );
-  const r = Math.min(radius, room / reachFromCorner);
+  let r = Math.min(radius, room / reachFromCorner);
+  /*
+   * Held to where both edges really are.
+   *
+   * The fillet is built against the straight lines the two arms leave along,
+   * and the letter's ink does not always run along them as far as that: a
+   * leg cut off square at the baseline, a bowl on a Black face whose inside
+   * turns away sooner than its spine does. Where the arc would touch an edge
+   * that is not there, the fillet stood out of the letter -- a lump hanging
+   * under the crossbar of a Black A, a flag on the top of a Black e. So the
+   * ink is looked for just inside each touching point -- part way in from the
+   * edge, since the heading an arm is read off leans a unit or two over its
+   * length -- and the radius halved until both are found, or the corner left
+   * alone.
+   */
+  if (ink) {
+    let found = false;
+    for (let tries = 0; tries < 4 && r > 0.5; tries++) {
+      const reach = r * reachFromCorner;
+      const lean = (u: Vec2, n: Vec2, half: number, along: number): Vec2 => ({
+        x: join.x + u.x * (along + reach) + n.x * half * 0.6,
+        y: join.y + u.y * (along + reach) + n.y * half * 0.6,
+      });
+      if (ink(lean(u1, n1, from.half, cornerAlong1)) && ink(lean(u2, n2, to.half, cornerAlong2))) {
+        found = true;
+        break;
+      }
+      r /= 2;
+    }
+    if (!found) return null;
+  }
   if (!(r > 0.5)) return null;
 
   const along1 = cornerAlong1 + r * reachFromCorner;
@@ -874,21 +1187,6 @@ function filletBetween(join: Vec2, from: Arm, to: Arm, radius: number): Contour 
 // ---------------------------------------------------------------------------
 // Shapes and small arithmetic
 // ---------------------------------------------------------------------------
-
-/** The same contours, every point of them moved. */
-function moved(contours: Contour[], dx: number, dy: number): Contour[] {
-  const shift = (point: Vec2 | null): Vec2 | null =>
-    point === null ? null : { x: point.x + dx, y: point.y + dy };
-  return contours.map((contour) => ({
-    ...contour,
-    nodes: contour.nodes.map((node) => ({
-      ...node,
-      point: { x: node.point.x + dx, y: node.point.y + dy },
-      handleIn: shift(node.handleIn),
-      handleOut: shift(node.handleOut),
-    })),
-  }));
-}
 
 /** A closed polygon of corners. */
 function poly(points: Vec2[]): Contour {

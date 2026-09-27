@@ -20,7 +20,13 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { readyToShape } from "./layers";
 import { unite } from "@/font/boolean";
-import { contourArea, contourContainsPoint, contoursBounds, reverseContour } from "@/font/geometry";
+import {
+  contourArea,
+  contourContainsPoint,
+  contoursBounds,
+  flattenContour,
+  reverseContour,
+} from "@/font/geometry";
 import type { Contour, Vec2 } from "@/font/types";
 import { drawLetter, letterNames } from "./build";
 import { LETTERS } from "./letters";
@@ -28,6 +34,8 @@ import { castInk, noCast, type Cast } from "./cast";
 import { piecesOf, scaleOf } from "./cut";
 import { shapedInk } from "./layers";
 import { noCuts, type Cuts } from "@/font/cuts";
+import { draw, editCast, editCut, setCastOrder, startFrom } from "./document";
+import { weightedStyle } from "./family";
 import { BASES, SANS } from "./style";
 
 beforeAll(async () => {
@@ -55,23 +63,16 @@ const plain = (letter: string, style = SANS): Contour[] => drawLetter(letter, st
  * behind the most of it.
  *
  * Measured rather than chosen: a Flared `k` is 42 points, comes out of the rim
- * at 432 and out of all four operations at 304 -- fewer, because a shadow under
- * the rim fills in the notches the rim would otherwise have left. A sixth over
- * each is room for a boolean library that resolves a crossing a hair
- * differently, and nothing like room for the operation to start leaving twice
- * as much.
+ * at 103 and out of all four operations at 105. A sixth over each is room for
+ * a boolean library that resolves a crossing a hair differently, and nothing
+ * like room for the operation to start leaving twice as much.
  *
- * The rim was 348 until every corner of the sweep started leaving a wedge
- * behind, which is what lets a letter come off the pen with the same nodes at
- * the Thin as at the Black -- see `outerJoin` in `sweep.ts`. A wedge is cut in
- * two pieces however far it turns, so a corner that used to be two nodes is now
- * three, and a rim traces every corner of the letter eight times over. Cutting
- * the wedge in one piece instead was tried, to get the nodes back: it does get
- * the rim back under 348, and it flattens the sharp joins enough that the four
- * operations together came out at 1,192 against 304. Two it is, and the
- * twenty-four per cent is what the weight axis costs here.
+ * The rim used to come out at 432 and all four at 304. It was grown by eight
+ * unions of the letter with a copy of itself, each leaving a notch at every
+ * corner for the next to double; it is one exact loop an outline now, the way
+ * the shadow is, and the corners it rounds are the only points it adds.
  */
-const POINT_BUDGET = { rim: 504, everything: 355 };
+const POINT_BUDGET = { rim: 120, everything: 125 };
 
 describe("the shadow", () => {
   it("reaches as far as it is thrown, and no further", () => {
@@ -377,15 +378,8 @@ describe("the rim", () => {
 
   /**
    * And how many points it leaves, which is the cost of the operation written
-   * where a test can see it.
-   *
-   * The rim grows the letter by a sixteen-sided figure in eight passes, and
-   * each pass leaves a notch at every convex corner that the next one doubles.
-   * Those points are what the operation after the rim pays for, what the file
-   * carries, and what makes the rim the slow one -- so the number is the thing
-   * to hold still. It is not a good number. `outlined` says what would make it
-   * a good one and what has already been tried and does not; until somebody
-   * does that, this stops it quietly getting worse.
+   * where a test can see it: what the operation after the rim pays for, and
+   * what the file carries.
    */
   it("leaves no more points behind than it already does", () => {
     const flared = BASES.find((one) => one.name === "Flared")!;
@@ -592,5 +586,135 @@ describe("which layer goes first", () => {
     // The same objects, not merely the same shape: a letter nothing reaches
     // should not be rebuilt, which is what keeps a whole font cheap to draw.
     expect(same.contours).toBe(drawn.contours);
+  });
+});
+
+describe("at the ends of the weight range", () => {
+  const black = weightedStyle(SANS, SANS.pen.weight, 200);
+  const brush = BASES.find((one) => one.name === "Brush")!;
+  const castOn = (letter: string, style: typeof SANS, one: Cast): Contour[] =>
+    drawLetter(letter, style, undefined, undefined, undefined, one)!.contours;
+
+  it("grows a rim without leaving specks of paper in the corners of the counters", () => {
+    /*
+     * A counter's own corners tie off small loops, wound backwards, when the
+     * rim is worked out -- and they used to be filled as paper along with the
+     * counter. Every square counter came back with a speck in each corner,
+     * and the counter of a Black A, which the rim should close altogether,
+     * kept a star of them.
+     */
+    const rim = cast((one) => {
+      one.outline = { on: true, width: 0.18 };
+    });
+    for (const letter of "RABE") {
+      const holes = castOn(letter, SANS, rim).filter((one) => contourArea(one) < 0);
+      const specks = holes.filter((one) => -contourArea(one) < SANS.pen.weight ** 2 * 0.25);
+      expect(specks.length, letter).toBe(0);
+    }
+    expect(castOn("A", black, rim).filter((one) => contourArea(one) < 0)).toEqual([]);
+  });
+
+  it("grows a rim over points on a brushed face in a moment, and leaves the letter", () => {
+    /*
+     * The rim was eight unions of the letter with a copy of itself, each one
+     * doubling the notches the last had left. On a Brush letter with points
+     * on it that ran away: four to twenty seconds a letter, fringed with fine
+     * hair, and one m came back as nothing at all.
+     */
+    const both = cast((one) => {
+      one.outline = { on: true, width: 0.18 };
+      one.spur = { on: true, size: 0.4 };
+    });
+    const started = performance.now();
+    for (const letter of "Hm") {
+      const out = castOn(letter, brush, both);
+      expect(ink(out), letter).toBeGreaterThan(ink(unite(plain(letter, brush), "winding")));
+      expect(piecesOf(out), letter).toBe(1);
+    }
+    expect(performance.now() - started).toBeLessThan(3000);
+  }, 60_000);
+
+  it("puts no hair-thin points on a brushed outline's small kinks", () => {
+    /*
+     * A brushed stem kinks sharply over a unit or two here and there, and a
+     * full-length point stood on a base that narrow was a whisker standing
+     * off the side of the stem, half way up it. An H and an m have corners
+     * at their feet and their heads and none in the middle of a stem, so no
+     * point may stand out of the letter anywhere in between.
+     */
+    const points = cast((one) => {
+      one.spur = { on: true, size: 0.4 };
+    });
+    for (const letter of "Hm") {
+      const was = unite(plain(letter, brush), "winding");
+      const box = contoursBounds(was);
+      const edge = was.flatMap((one) => {
+        const path = flattenContour(one, 16);
+        return path.map((point, index) => [point, path[(index + 1) % path.length]] as const);
+      });
+      const off = (point: Vec2): number =>
+        Math.min(
+          ...edge.map(([a, b]) => {
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            const t = Math.max(
+              0,
+              Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / (dx * dx + dy * dy || 1)),
+            );
+            return Math.hypot(point.x - a.x - dx * t, point.y - a.y - dy * t);
+          }),
+        );
+      const tall = box.yMax - box.yMin;
+      const whiskers = castOn(letter, brush, points)
+        .flatMap((one) => one.nodes.map((node) => node.point))
+        .filter(
+          (point) =>
+            point.y > box.yMin + tall * 0.15 && point.y < box.yMax - tall * 0.15 && off(point) > 3,
+        );
+      expect(whiskers, letter).toEqual([]);
+    }
+  });
+
+  it("keeps the fillets inside the letter on a Black", () => {
+    /*
+     * A fillet is built against the straight lines the two strokes leave a
+     * join along, and on a Black the ink stops following those lines early:
+     * the legs of an A are cut off at the baseline under the crossbar, the
+     * inside of an e's bowl turns away. The fillet stood out of the letter
+     * there -- a lump under the A, a flag on top of the e.
+     */
+    const weld = cast((one) => {
+      one.weld = { on: true, size: 1 };
+    });
+    for (const letter of "AeH") {
+      const was = contoursBounds(plain(letter, black));
+      const now = contoursBounds(castOn(letter, black, weld));
+      expect(now.yMax, letter).toBeLessThanOrEqual(was.yMax + 0.5);
+      expect(now.yMin, letter).toBeGreaterThanOrEqual(was.yMin - 0.5);
+      expect(now.xMin, letter).toBeGreaterThanOrEqual(was.xMin - 0.5);
+      expect(now.xMax, letter).toBeLessThanOrEqual(was.xMax + 0.5);
+    }
+  });
+});
+
+describe("a point and a chamfer on the same corner", () => {
+  it("never lose the letter between them", () => {
+    /*
+     * A point laid on a corner so sharp the outline all but doubles back lies
+     * along the edge rather than out of it, and fused with the letter it left
+     * a hair of no width along the baseline. A chamfer cut afterwards read
+     * the tip of that hair as a corner, laid a triangle of no area on it, and
+     * the knife took the whole letter: with the cast before the cut, a
+     * Flared n, m and r came back as nothing.
+     */
+    const flared = BASES.find((one) => one.name === "Flared")!;
+    const plainForge = startFrom(flared);
+    let forge = editCast(plainForge, "spur", { on: true });
+    forge = editCut(forge, "chamfer", { on: true });
+    forge = setCastOrder(forge, "before");
+    for (const letter of "nmr") {
+      const was = ink(unite(draw(letter, plainForge)!.contours, "winding"));
+      expect(ink(draw(letter, forge)!.contours), letter).toBeGreaterThan(was * 0.9);
+    }
   });
 });
