@@ -848,6 +848,7 @@ function contoursOf(item: paper.PathItem): Contour[] {
     paths
       .filter((path) => path.segments && path.segments.length >= 2)
       .map(fromPath)
+      .map(withoutStutter)
       /*
        * Without the specks paper leaves behind.
        *
@@ -863,6 +864,109 @@ function contoursOf(item: paper.PathItem): Contour[] {
        */
       .filter((contour) => Math.abs(contourArea(contour)) >= SPECK)
   );
+}
+
+/**
+ * The outline without the folds a boolean leaves where it hesitated.
+ *
+ * Where two edges of a union meet at the hair the nudge put between them,
+ * paper can answer with nodes a millionth of a unit apart that step forward,
+ * back and forward again, or with a spike: a straight edge run out a fraction
+ * of a unit and straight back along itself, or a curve that leaves a point and
+ * returns to it along the same line. None of it draws anything -- but the
+ * outline now runs back over itself, and anything asking whether it crosses
+ * itself says yes: a Flared H at Black had one in the top of each serif, and
+ * the next boolean handed that outline is handed a fold to judge.
+ *
+ * So both are taken out. Closer than a thousandth of a unit is the same place,
+ * which is what the nudge assumes too, and a run of nodes in the same place is
+ * one node -- unless the curve between them encloses something, because a
+ * curve that leaves a point and comes back to it round a loop is a shape. And
+ * a corner where a straight edge turns straight back on itself is no corner:
+ * the outline goes on from the one before it to the one after.
+ */
+const SAME_PLACE = 1e-3;
+
+function withoutStutter(contour: Contour): Contour {
+  let nodes = contour.nodes;
+  if (nodes.length < 3) return contour;
+  const same = (a: Vec2, b: Vec2): boolean =>
+    Math.abs(a.x - b.x) < SAME_PLACE && Math.abs(a.y - b.y) < SAME_PLACE;
+  const leaving = (node: GlyphNode, handle: Vec2 | null): Vec2 =>
+    handle ? { x: handle.x - node.point.x, y: handle.y - node.point.y } : { x: 0, y: 0 };
+  // Two nodes in one place with nothing enclosed between them: the handles, if
+  // any, lie along one line, so the curve goes out and comes back the same way.
+  const onTop = (a: GlyphNode, b: GlyphNode): boolean => {
+    if (!same(a.point, b.point)) return false;
+    const out = leaving(a, a.handleOut);
+    const back = leaving(b, b.handleIn);
+    return Math.abs(out.x * back.y - out.y * back.x) < SAME_PLACE;
+  };
+  // A straight edge in and a straight edge out, pointing back the way it came.
+  const spike = (before: GlyphNode, node: GlyphNode, after: GlyphNode): boolean => {
+    if (before.handleOut || node.handleIn || node.handleOut || after.handleIn) return false;
+    const inX = node.point.x - before.point.x;
+    const inY = node.point.y - before.point.y;
+    const outX = after.point.x - node.point.x;
+    const outY = after.point.y - node.point.y;
+    const lengths = Math.hypot(inX, inY) * Math.hypot(outX, outY);
+    if (lengths === 0) return false;
+    return inX * outX + inY * outY < 0 && Math.abs(inX * outY - inY * outX) < lengths * 1e-6;
+  };
+
+  // A curve out to a node and the same curve back again, which is a spike
+  // whatever shape the curve is.
+  const retraced = (before: GlyphNode, node: GlyphNode, after: GlyphNode): boolean => {
+    const handle = (owner: GlyphNode, one: Vec2 | null): Vec2 => one ?? owner.point;
+    const near = (a: Vec2, b: Vec2): boolean => Math.hypot(a.x - b.x, a.y - b.y) < 0.01;
+    return (
+      same(before.point, after.point) &&
+      near(handle(node, node.handleIn), handle(node, node.handleOut)) &&
+      near(handle(before, before.handleOut), handle(after, after.handleIn))
+    );
+  };
+
+  let changed = false;
+  for (let pass = 0; pass < nodes.length && nodes.length >= 3; pass++) {
+    const count = nodes.length;
+    let at = -1;
+    let merge = false;
+    let back = false;
+    for (let index = 0; index < count; index++) {
+      const node = nodes[index];
+      const next = nodes[(index + 1) % count];
+      if (onTop(node, next)) {
+        at = index;
+        merge = true;
+        break;
+      }
+      if (spike(nodes[(index + count - 1) % count], node, next)) {
+        at = index;
+        break;
+      }
+      if (count > 3 && retraced(nodes[(index + count - 1) % count], node, next)) {
+        at = index;
+        back = true;
+        break;
+      }
+    }
+    if (at < 0) break;
+    changed = true;
+    const kept = [...nodes];
+    if (back) {
+      // The node at the tip goes, and so does the one it came back to.
+      const before = (at + count - 1) % count;
+      const after = (at + 1) % count;
+      kept[before] = { ...kept[before], handleOut: kept[after].handleOut };
+      for (const gone of [at, after].sort((p, q) => q - p)) kept.splice(gone, 1);
+    } else if (merge) {
+      const next = (at + 1) % count;
+      kept[at] = { ...kept[at], handleOut: kept[next].handleOut };
+      kept.splice(next, 1);
+    } else kept.splice(at, 1);
+    nodes = kept;
+  }
+  return changed && nodes.length >= 2 ? { ...contour, nodes } : contour;
 }
 
 /** A node's handles are absolute here and relative to the point in paper. */

@@ -525,7 +525,10 @@ function splitTool(strokes: Stroke[], split: Cuts["split"], stem: number): Conto
       // in the same place.
       const way = index < SAMPLES / 2 ? 1 : -1;
       const placed = gapBeside(strokes[gives], strokes[keeps], index / SAMPLES, way, gap, stem);
-      if (placed) found.push({ ...placed, stroke: gives });
+      if (placed) {
+        const meet = samples[keeps][gives === one ? where[1] : where[0]];
+        found.push({ ...placed, stroke: gives, keeps, meet });
+      }
     }
   }
 
@@ -538,8 +541,34 @@ function splitTool(strokes: Stroke[], split: Cuts["split"], stem: number): Conto
    * each stem, came back as a chip floating between two slits.
    */
   const spare = gap * 0.75;
+  /*
+   * Where three strokes meet, two breaks rather than three.
+   *
+   * The bowl of an R and its leg both leave the stem at the foot of the bowl,
+   * and the leg also leaves the bowl there: three breaks at one join, each
+   * cut flush against a different side, and on a Black what was left between
+   * them was a chip of bowl and a wedge of leg sticking out of the stem at
+   * odd angles. The two lower bowls of a B leave the stem together and meet
+   * each other at the waist, and the waist was slashed through as well.
+   *
+   * A stencil cuts the piece away from the backbone and leaves the piece
+   * itself whole. So where two strokes both give way to the same third one
+   * at nearly the same place on it, the break between the two of them is not
+   * cut: the bowl and the leg of the R come away from the stem as one piece,
+   * the bowls of the B as one.
+   */
+  const together = (a: Gap, b: Gap): boolean =>
+    a.stroke !== b.stroke &&
+    a.keeps === b.keeps &&
+    Math.hypot(a.meet.x - b.meet.x, a.meet.y - b.meet.y) < stem * 1.5;
+  const between = (one: Gap, a: number, b: number): boolean =>
+    (one.stroke === a && one.keeps === b) || (one.stroke === b && one.keeps === a);
+  const joined = found.filter(
+    (one) =>
+      !found.some((a) => found.some((b) => together(a, b) && between(one, a.stroke, b.stroke))),
+  );
   const kept: Gap[] = [];
-  for (const one of found) {
+  for (const one of joined) {
     if (
       kept.some((other) => other.stroke === one.stroke && Math.abs(other.at - one.at) < gap + spare)
     ) {
@@ -564,7 +593,17 @@ function splitTool(strokes: Stroke[], split: Cuts["split"], stem: number): Conto
     const mine = kept.filter((one) => one.stroke === stroke);
     const bands = mine.flatMap((one) => intersect([one.band], one.local, "winding"));
     if (bands.length === 0) return [];
-    const others = strokes.filter((_, index) => index !== stroke).flatMap((one) => sweep(one));
+    // Not the strokes this one comes away together with: where the bowl and
+    // the leg of an R overlap at the foot of the bowl, each knife kept off
+    // the other's ink left the overlap standing as a bridge across the gap.
+    const partners = new Set(
+      joined.flatMap((a) =>
+        a.stroke === stroke ? joined.filter((b) => together(a, b)).map((b) => b.stroke) : [],
+      ),
+    );
+    const others = strokes
+      .filter((_, index) => index !== stroke && !partners.has(index))
+      .flatMap((one) => sweep(one));
     return others.length === 0 ? bands : subtract(bands, others, "winding");
   });
 }
@@ -572,6 +611,9 @@ function splitTool(strokes: Stroke[], split: Cuts["split"], stem: number): Conto
 /** A gap in one stroke: where along it, and the band that cuts it. */
 interface Gap {
   stroke: number;
+  /** The stroke it gives way to, and the place on that stroke's spine it met it. */
+  keeps: number;
+  meet: Vec2;
   /** How far along the stroke's spine the middle of the gap is. */
   at: number;
   band: Contour;
@@ -645,7 +687,18 @@ function gapBeside(
     if (nearest.distance >= need) {
       // Between this sample and the last one, where the spine crossed the line
       // the middle of the gap has to sit on.
-      let centre = point;
+      /*
+       * Already clear at the first step, which is a stroke that starts a
+       * little way off the other one -- the leg of an R leaves the foot of the
+       * bowl, not the stem. Laid through the point itself the band stood off
+       * the stem by however far that was, and left a wedge of leg bridging
+       * the gap it was meant to open. Moved in along the line to the stem
+       * until it is flush, like every other break.
+       */
+      let centre = {
+        x: nearest.point.x + side.x * need,
+        y: nearest.point.y + side.y * need,
+      };
       if (previous && previous.off < previous.need) {
         const share = (previous.need - previous.off) / (nearest.distance - previous.off || 1);
         const t = Math.min(Math.max(share, 0), 1);
@@ -670,6 +723,28 @@ function gapBeside(
       const reach = ((across + (gap / 2) * cosine) / sine) * 1.6 + clearance;
       const g = gap / 2;
       const around = reach + gap;
+      // How far along the stroke the band crosses it where it is laid: the
+      // gap's own width and the slant of the cut across the stroke.
+      const crossing = ((g + across * cosine) / sine) * 1.25 + clearance;
+      /*
+       * A break crosses the stroke once. Where the stroke turns after leaving
+       * and runs along the other one inside the band's reach, the band lies
+       * along it instead of across it: the bowl of a Black e leaves the end of
+       * its bar at a slant and then runs over the top of the counter just
+       * that far above the bar, and the break sliced the whole top off the
+       * letter. Nothing is cut there rather than that.
+       */
+      let inside = 0;
+      for (let other = 0; other <= FINE; other++) {
+        if (Math.abs(other * step - at) > crossing * 2) continue;
+        const there = nearestOn(wall, path[other]);
+        // On this side of the other stroke only: a bar that starts past the
+        // middle of the leg it leaves is also that far off it on the far side.
+        const out = away(there.point, path[other]);
+        if (!out || out.x * side.x + out.y * side.y <= 0) continue;
+        if (Math.abs(there.distance - need) < g) inside += step;
+      }
+      if (inside > (gap / sine) * 1.5 + clearance) return null;
       const piece = spineBetween(
         giving.spine,
         Math.max(0, at - around),
