@@ -184,6 +184,12 @@ export interface Terminal {
    * pull that swallows the last of a curve does not lose the drop.
    */
   drop?: { radius: number; bend: number; side: number };
+  /**
+   * For `slab`: an end that is cut plain rather than serifed -- one stopping in
+   * mid-air at an angle, as the neck of a question mark and the flag of a one
+   * do, or one on a symbol rather than a letter. Drawn as the serif refused.
+   */
+  bare?: boolean;
 }
 
 /**

@@ -154,6 +154,7 @@ function tangents(segment: SpineSegment): { start: Vec2; end: Vec2 } {
 
 /** A quarter turn anticlockwise: the left of the direction travelled. */
 const leftOf = (direction: Vec2): Vec2 => ({ x: -direction.y, y: direction.x });
+const dot = (a: Vec2, b: Vec2): number => a.x * b.x + a.y * b.y;
 
 function pointOnArc(arc: SpineArc, angle: number): Vec2 {
   return {
@@ -793,13 +794,14 @@ function terminalNodes(
   at: Vec2,
   direction: Vec2,
   reach: PenReach,
+  straight = true,
 ): GlyphNode[] {
   const normal = leftOf(direction);
   const shift = reachAlong(normal, reach);
   const left = { x: at.x + shift.x, y: at.y + shift.y };
   const right = { x: at.x - shift.x, y: at.y - shift.y };
 
-  if (terminal.kind === "round") {
+  if (terminal.kind === "round" && straight) {
     /*
      * A half turn of the pen itself, which with contrast is a half ellipse.
      *
@@ -816,7 +818,7 @@ function terminalNodes(
       -dx * Math.sin(reach.angle) + dy * Math.cos(reach.angle),
       dx * Math.cos(reach.angle) + dy * Math.sin(reach.angle),
     );
-    const arc: OffsetEllipse = {
+    return ellipseNodes({
       kind: "ellipse",
       centre: at,
       rx: reach.across,
@@ -827,24 +829,69 @@ function terminalNodes(
       // it, which is decided by which side of the direction of travel we are on.
       to: fromAngle - Math.PI,
       /*
-       * And two pieces, said rather than worked out.
-       *
-       * A half turn wants two quarter-turn pieces and an arc is cut into
-       * `ceil(sweep / 90 degrees)` of them -- which is exactly two here, and
-       * only exactly two when the subtraction above comes out at exactly pi.
-       * It does not always: `fromAngle` is read off the stroke's own direction,
-       * so it is whatever the letter's geometry makes it, and subtracting pi
-       * from a large angle loses the last bit or two. Landing a hair over,
-       * `ceil` gives three and the cap arrives with a node it does not have at
-       * the next weight along -- which a variable font cannot join, since two
-       * weights meet only where they are drawn with the same points. A Display
-       * `V` came off with twelve nodes at the Thin and the Black and thirteen
-       * at the Regular and the Bold, and the whole of the difference was one
-       * node in a cap that is the same half circle at all four.
+       * And two pieces, said rather than worked out: a half turn is exactly
+       * two quarter turns, and subtracting pi from a large angle can land a
+       * hair over and make `ceil` say three -- a node the next weight along
+       * does not have, which a variable font cannot join.
        */
       pieces: CAP_PIECES,
+    });
+  }
+
+  if (terminal.kind === "round") {
+    /*
+     * On a curved end, half an ellipse laid square on the end of the stroke:
+     * across from one corner to the other, and out along the way the stroke
+     * was going by as far as the pen reaches that way.
+     *
+     * Not the pen's own half turn, which is right on a straight end and wrong
+     * here: held at an angle with contrast, it leaves the corners heading
+     * somewhere other than along the sides, and on the hook of a c or the tail
+     * of a y the cap folded back over the side it started from. This one
+     * leaves both corners running straight on along the stroke, so it meets
+     * the sides without a kink -- and on a round pen it is the same half
+     * circle the pen's was.
+     */
+    const k = 0.5523;
+    const across = {
+      x: shift.x - direction.x * dot(shift, direction),
+      y: shift.y - direction.y * dot(shift, direction),
     };
-    return ellipseNodes(arc);
+    const lean = Math.abs(dot(shift, direction));
+    const outward = reachAlong(direction, reach);
+    const depth = Math.max(
+      Math.hypot(outward.x, outward.y),
+      lean + Math.hypot(across.x, across.y) * 0.25,
+    );
+    const tip = { x: at.x + direction.x * depth, y: at.y + direction.y * depth };
+    const outFrom = (point: Vec2): number =>
+      depth - dot({ x: point.x - at.x, y: point.y - at.y }, direction);
+    return [
+      {
+        point: left,
+        handleIn: null,
+        handleOut: {
+          x: left.x + direction.x * outFrom(left) * k,
+          y: left.y + direction.y * outFrom(left) * k,
+        },
+        type: "smooth",
+      },
+      {
+        point: tip,
+        handleIn: { x: tip.x + across.x * k, y: tip.y + across.y * k },
+        handleOut: { x: tip.x - across.x * k, y: tip.y - across.y * k },
+        type: "smooth",
+      },
+      {
+        point: right,
+        handleIn: {
+          x: right.x + direction.x * outFrom(right) * k,
+          y: right.y + direction.y * outFrom(right) * k,
+        },
+        handleOut: null,
+        type: "smooth",
+      },
+    ];
   }
 
   if (terminal.level && Math.abs(direction.y) > 1e-3) {
@@ -879,16 +926,28 @@ function terminalNodes(
   }
 
   if (terminal.kind === "angled" && terminal.angle) {
-    // Slide the two corners in opposite directions along the stroke, which is
-    // the cut a nib held at an angle leaves.
+    /*
+     * The cut a nib held at an angle leaves: the two corners slid along the
+     * stroke in opposite directions.
+     *
+     * On a straight end, that is the side's last node moved on or back along
+     * the same line. On a curved one it is not: a corner slid back up the
+     * tangent lands off the side, with the side's own curve still aimed at
+     * where it was, and the hook of a c folded over itself. So a curved end
+     * carries one corner on by the whole slide and leaves the other where the
+     * side stops -- the same angle, and nothing the side drew is moved.
+     */
     const slide = Math.tan((terminal.angle * Math.PI) / 180) * reach.across;
-    const move = (point: Vec2, way: number): Vec2 => ({
-      x: point.x + direction.x * slide * way,
-      y: point.y + direction.y * slide * way,
+    const move = (point: Vec2, by: number): Vec2 => ({
+      x: point.x + direction.x * by,
+      y: point.y + direction.y * by,
     });
+    const [on, back] = straight
+      ? [slide, -slide]
+      : [Math.max(0, 2 * slide), Math.max(0, -2 * slide)];
     return [
-      { point: move(left, 1), handleIn: null, handleOut: null, type: "corner" },
-      { point: move(right, -1), handleIn: null, handleOut: null, type: "corner" },
+      { point: move(left, on), handleIn: null, handleOut: null, type: "corner" },
+      { point: move(right, back), handleIn: null, handleOut: null, type: "corner" },
     ];
   }
 
@@ -1026,12 +1085,34 @@ export function sweep(stroke: Stroke): Contour[] {
 
   const last = headed[headed.length - 1];
   const first = headed[0];
-  const endNodes = terminalNodes(stroke.end, segmentEnd(last.segment), last.end, reach);
+  /*
+   * Whether each end arrives straight, asked the way `endsStraight` asks it:
+   * the first piece back from the end that is not a line of no length. A run
+   * carries pieces of no length on purpose, and the hook of a c ends on one.
+   */
+  const arrives = (from: number, step: number): boolean => {
+    for (let index = from; index >= 0 && index < headed.length; index += step) {
+      const segment = headed[index].segment;
+      if (segment.kind !== "line") return false;
+      if (Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y) > 1e-9) break;
+    }
+    return true;
+  };
+  const endStraight = arrives(headed.length - 1, -1);
+  const startStraight = arrives(0, 1);
+  const endNodes = terminalNodes(
+    stroke.end,
+    segmentEnd(last.segment),
+    last.end,
+    reach,
+    endStraight,
+  );
   const startNodes = terminalNodes(
     stroke.start,
     segmentStart(first.segment),
     { x: -first.start.x, y: -first.start.y },
     reach,
+    startStraight,
   );
 
   /*
@@ -1056,8 +1137,8 @@ export function sweep(stroke: Stroke): Contour[] {
    */
   let leftNodes = stitch(left);
   let rightNodes = stitch([...right].reverse().map(reverseOffset));
-  const levelStart = slides(stroke.start);
-  const levelEnd = slides(stroke.end);
+  const levelStart = slides(stroke.start, startStraight);
+  const levelEnd = slides(stroke.end, endStraight);
   // Counted against what the sides started with, not against what is left of
   // them: a stroke of one straight run has two nodes a side and both of them
   // are replaced, which is right, and a rule applied one end at a time would
@@ -1086,14 +1167,15 @@ export function sweep(stroke: Stroke): Contour[] {
  * Whether a terminal's cut is the side's own end node moved, rather than a
  * shape added on after it.
  *
- * The two that move are a level cut and an angled one, and they are never the
- * same terminal: `level` is only ever put on a butt or a slab, and an angled
- * nib is neither. So each of them is asked for on its own terms.
+ * The two that move are a level cut and an angled one on a straight end, and
+ * they are never the same terminal: `level` is only ever put on a butt or a
+ * slab, and an angled nib is neither. An angled cut on a curve adds its moved
+ * corner after the side instead -- see `terminalNodes`.
  */
-function slides(terminal: Terminal): boolean {
+function slides(terminal: Terminal, straight: boolean): boolean {
   if (terminal.kind === "round") return false;
   if (terminal.level === true) return true;
-  return terminal.kind === "angled" && Boolean(terminal.angle);
+  return straight && terminal.kind === "angled" && Boolean(terminal.angle);
 }
 
 /**

@@ -349,8 +349,10 @@ export function terminalFor(style: Style): Terminal {
     kind: "slab",
     open: true,
     projection: slab.projection * serifReach(style),
-    thickness: slab.thickness * stem,
-    bracket: slab.bracket * stem,
+    // Deep in proportion to the stem, and no deeper than the reach allows: a
+    // light cut's serifs thin with its stems, a black's stop growing with them.
+    thickness: slab.thickness * Math.min(stem, serifReach(style)),
+    bracket: slab.bracket * Math.min(stem, serifReach(style)),
     shape: slab.shape === "wedge" ? "wedge" : "square",
     head: slab.head === "sloped" ? "sloped" : "level",
     curved: plain,
@@ -360,20 +362,30 @@ export function terminalFor(style: Style): Terminal {
 const TERMINAL_KINDS: TerminalKind[] = ["butt", "angled", "round", "teardrop"];
 
 /**
- * The stem a serif's reach is counted in.
+ * The stem a serif is measured in.
  *
- * The stem itself, down to a light weight -- and there no further. A serif is
- * something the eye has to find at the end of a stroke, and at a hairline a
- * reach of two thirds of the stem is a dozen units: the serifs of a light cut
- * vanished into their own stems and it read as a sans. Real light cuts keep
- * their serifs about as long as the regular's and only thin them, so below
- * about nine hundredths of an em the reach is counted from halfway between the
- * stem and that, while the depth still follows the stem.
+ * The stem itself through the text weights -- and past them it is not, at
+ * either end. A serif is something the eye has to find at the end of a
+ * stroke, and at a hairline a reach of two thirds of the stem is a dozen
+ * units: the serifs of a light cut vanished into their own stems and it read
+ * as a sans. Real light cuts keep their serifs about as long as the regular's
+ * and only thin them, so below nine hundredths of an em the reach is counted
+ * from halfway between the stem and that.
+ *
+ * And at a black weight a serif two thirds of a two-hundred-unit stem long and
+ * as deep again is a flag rather than a serif: the heads of the i, the j and
+ * the l stood out like pennants. Real heavy cuts grow their serifs much more
+ * slowly than their stems, so past an eighth of an em the serif gains a third
+ * of what the stem does.
  */
 export function serifReach(style: Style): number {
   const stem = style.pen.weight;
-  const floor = (stem + style.metrics.unitsPerEm * 0.09) / 2;
-  return Math.max(stem, floor);
+  const em = style.metrics.unitsPerEm;
+  const light = em * 0.09;
+  const heavy = em * 0.125;
+  if (stem < light) return (stem + light) / 2;
+  if (stem > heavy) return heavy + (stem - heavy) / 3;
+  return stem;
 }
 
 const EM = 1000;

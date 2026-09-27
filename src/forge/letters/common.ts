@@ -29,7 +29,8 @@ import {
   wavy,
 } from "../shapes";
 import { type Style, terminalFor } from "../style";
-import { MITER_LIMIT, penReach, reachAlong } from "../sweep";
+import { MITER_LIMIT, penReach, reachAlong, sweep } from "../sweep";
+import { contoursIntersect } from "@/font/outline";
 import type { JoinKind, Spine, SpineArc, SpineSegment, Stroke, Terminal } from "../types";
 
 /**
@@ -896,19 +897,46 @@ export function capped(frame: Frame, stroke: Stroke): Stroke {
    * A square cut and a serif alike, because both of them are the same promise
    * -- that the letter stops here -- made in two different shapes.
    */
-  const cut = (terminal: Terminal, lean: number): Terminal =>
-    lean > 0 && (terminal.kind === "butt" || terminal.kind === "slab")
+  /*
+   * And only where what is left of the run once a round cap at the other end
+   * has been pulled back still has the length to slide along -- the tick of a
+   * currency sign at a black weight is a short run with a cap on one end and a
+   * level cut on the other, and the cut slid past the cap and folded it.
+   */
+  const left = (segment: SpineSegment): number =>
+    segment.kind !== "line"
+      ? 0
+      : Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y) -
+        (first === last ? fromStart + fromEnd : 0);
+  const slides = (segment: SpineSegment, which: "start" | "end"): boolean => {
+    if (segment.kind !== "line") return false;
+    const heading = headingAt(segment, which);
+    const offset = reachAlong(at(-heading.y, heading.x), penReach(frame.style.pen));
+    return Math.abs(offset.y / (heading.y || 1e-9)) <= left(segment) * 0.8;
+  };
+  const cut = (terminal: Terminal, lean: number, segment: SpineSegment, which: "start" | "end") =>
+    lean > 0 &&
+    (terminal.kind === "butt" || terminal.kind === "slab" || terminal.kind === "teardrop") &&
+    slides(segment, which)
       ? { ...terminal, level: true }
       : terminal;
-  const start = cut(stroke.start, startLean);
-  const end = cut(stroke.end, endLean);
+  const start = cut(stroke.start, startLean, first, "start");
+  const end = cut(stroke.end, endLean, last, "end");
   if (fromStart <= 0 && fromEnd <= 0) return inherit(stroke, { ...stroke, start, end });
-  return inherit(stroke, {
-    ...stroke,
-    start,
-    end,
-    spine: shortened(stroke.spine, fromStart, fromEnd),
-  });
+  const pulled = { ...stroke, start, end, spine: shortened(stroke.spine, fromStart, fromEnd) };
+  /*
+   * A run too short for its caps is cut square instead, at its full length.
+   * The arms of a guillemet at a black weight are pulled back so far to make
+   * room for their caps that the two caps meet in the middle and the outline
+   * crosses itself; cut square where they were drawn to stop, they are clear.
+   * Only where the letter has run out of room for a round end at all.
+   */
+  if (sweep(pulled).some((contour) => contoursIntersect([contour]))) {
+    const square = (terminal: Terminal): Terminal =>
+      terminal.kind === "round" ? { ...terminal, kind: "butt" } : terminal;
+    return inherit(stroke, { ...stroke, start: square(start), end: square(end) });
+  }
+  return inherit(stroke, pulled);
 }
 
 /**

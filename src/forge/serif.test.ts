@@ -20,7 +20,11 @@ import { PART_SPECS } from "./parts";
 import { openWaveBook, waveBookAt, type WaveBook } from "./shapes";
 import { SERIF, SLAB, serifReach, type Style } from "./style";
 
-function at(base: Style, pen: Partial<Style["pen"]> = {}, parts: Record<string, object> = {}): Style {
+function at(
+  base: Style,
+  pen: Partial<Style["pen"]> = {},
+  parts: Record<string, object> = {},
+): Style {
   return {
     ...base,
     pen: { ...base.pen, ...pen },
@@ -51,7 +55,10 @@ function inked(contours: Contour[], point: Vec2): boolean {
       if (a.y <= point.y) {
         if (b.y > point.y && (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y) > 0)
           winding++;
-      } else if (b.y <= point.y && (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y) < 0)
+      } else if (
+        b.y <= point.y &&
+        (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y) < 0
+      )
         winding--;
     }
   }
@@ -142,9 +149,7 @@ describe("the serifs on the capitals", () => {
         if (wedge) {
           expect(tip, `${style.name} I at ${weight}: tip against root`).toBeLessThan(root * 0.6);
         } else {
-          expect(tip, `${style.name} I at ${weight}: tip against root`).toBeGreaterThan(
-            root * 0.7,
-          );
+          expect(tip, `${style.name} I at ${weight}: tip against root`).toBeGreaterThan(root * 0.7);
         }
       }
     }
@@ -167,16 +172,19 @@ describe("the head of a lowercase stem", () => {
         expect(high - low, `${name} at ${weight}: slope across the stem`).toBeGreaterThan(
           stem * 0.2,
         );
-        // A flag out to the left, below the line.
-        const flag = runAt(contours, top - stem * 0.6 - 3, left + 2);
-        expect(left - flag[0], `${name} at ${weight}: the flag`).toBeGreaterThan(
+        // A flag out to the left, below the line: the furthest the ink reaches
+        // left of the stem anywhere in its head.
+        let furthest = left;
+        for (let y = top - 2; y > top - stem * 1.5; y -= 2) {
+          if (inked(contours, { x: left + 2, y }))
+            furthest = Math.min(furthest, runAt(contours, y, left + 2)[0]);
+        }
+        expect(left - furthest, `${name} at ${weight}: the flag`).toBeGreaterThan(
           serifReach(sloped) * 0.35,
         );
         // And nothing to the right of the i's or the l's stem at its head.
         if (name === "i" || name === "l") {
-          expect(inked(contours, { x: right + 6, y: top - 4 }), `${name} at ${weight}`).toBe(
-            false,
-          );
+          expect(inked(contours, { x: right + 6, y: top - 4 }), `${name} at ${weight}`).toBe(false);
         }
       }
     }

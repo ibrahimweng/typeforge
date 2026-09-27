@@ -1029,7 +1029,9 @@ function Control({
    * compared, and behind a menu they have to be remembered.
    */
   if (control.options) {
-    const chosen = String(values[control.key]);
+    // A choice a saved document predates reads as the first of them, which is
+    // what the drawing falls back to as well, rather than as none pressed.
+    const chosen = String(values[control.key] ?? control.options[0].value);
     return (
       <div className="py-1">
         <div className="pb-1 text-2xs text-foreground">{control.label}</div>
