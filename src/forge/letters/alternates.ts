@@ -71,6 +71,7 @@ import {
 } from "./grotesque";
 import {
   humanistA,
+  humanistAmpersand,
   humanistAt,
   humanistS,
   humanistK,
@@ -1306,6 +1307,7 @@ const HUMANIST: Array<[LetterName, string, (style: Style) => Recipe]> = [
   ["t", "Standing well over the x-height under a wedge rising from the bar.", humanistT],
   ["U", "The right side a hairline, written on the way back up.", humanistCapitalU],
   ["g", "A link swinging out to the left and an ear rising into a drop.", humanistG],
+  ["ampersand", "A loop and a bowl joined across, a long diagonal into a foot.", humanistAmpersand],
   ["at", "A small a whose tail runs out into the ring, on the face's own pen.", humanistAt],
   ["a", "Two storeys, the bowl hung low and light under an arch ending in a drop.", humanistA],
   ["j", "The tail carried round under the line and back up into a drop.", humanistJ],

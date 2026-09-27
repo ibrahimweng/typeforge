@@ -43,6 +43,7 @@ import {
   leaving,
   lighter,
   openBowl,
+  pointOn,
   type Recipe,
   ring,
   roundHalf,
@@ -1275,3 +1276,99 @@ export function humanistSeven(style: Style): Recipe {
 
 /** How far the seven's stem bows off its chord, and which way: out to the right. */
 const SEVEN_BOW = -0.035;
+
+/**
+ * The ampersand as Lora draws it: a small loop at the cap height and a large
+ * bowl on the line, joined by the one run that crosses between them, and a
+ * long diagonal leaving the loop's left side and running down to the right
+ * into a foot along the line. The bowl comes round and up into a short arm
+ * standing under a flat bar, as a text face's does. Every turn is tangent to
+ * the runs either side of it, and every one is drawn in fixed pieces.
+ *
+ * The construction's ampersand crossed a straight arm through its diagonal
+ * under a bar that floated free of it, and ran half as wide again as Lora's.
+ */
+export function humanistAmpersand(style: Style): Recipe {
+  const f = frame(style);
+  const C = f.cap;
+  const R = Math.max(C * 0.235, f.half * 1.4);
+  const r = Math.max(C * 0.12, f.half * 1.2);
+  const bowlAt = at(f.edge + R, f.dip(0) + R);
+  /*
+   * The loop over the bowl, and where a heavy pen leaves the two no room
+   * one over the other, out to the right until the run between them has a
+   * length to cross on, as a Black's loop sits -- never up past the cap line.
+   */
+  const rise = f.crest(C) - r - bowlAt.y;
+  const clear = (r + R) * 1.02;
+  const over = Math.max(C * 0.02, Math.sqrt(Math.max(0, clear * clear - rise * rise)));
+  const loopAt = at(bowlAt.x + over, f.crest(C) - r);
+  // The run that crosses from the bowl's upper left to the loop's lower
+  // right: the tangent common to both, between them.
+  const d = at(loopAt.x - bowlAt.x, loopAt.y - bowlAt.y);
+  const apart = Math.hypot(d.x, d.y);
+  const phi = Math.atan2(d.y, d.x);
+  const spread = Math.acos(Math.min(1, (r + R) / apart));
+  const theta = phi + spread;
+  const n = at(Math.cos(theta), Math.sin(theta));
+  const onBowl = at(bowlAt.x + R * n.x, bowlAt.y + R * n.y);
+  const onLoop = at(loopAt.x - r * n.x, loopAt.y - r * n.y);
+  const degrees = (radians: number) => (radians * 180) / Math.PI;
+  const bowlTo = degrees(theta) - 360;
+  const loopFrom = degrees(theta) + 180;
+  // The arm, standing on the bowl's right a little up from its middle.
+  const armFrom = pointOn(bowlAt, R, ARM_LEAVES);
+  const head = Math.max(f.hangs(C * 0.5), armFrom.y + f.half);
+  const lean = Math.tan((ARM_LEAVES * Math.PI) / 180);
+  const armTop = at(armFrom.x - (head - armFrom.y) * lean, head);
+  // The diagonal, off the loop's lower left and down into its foot.
+  const leaves = 220;
+  const from = pointOn(loopAt, r, leaves);
+  const slope = Math.tan((50 * Math.PI) / 180);
+  const foot = Math.max(C * 0.12, f.half * 1.6);
+  const line = f.sits(0);
+  const kneeY = line + foot * (1 - Math.sin((40 * Math.PI) / 180));
+  const knee = at(from.x + (from.y - kneeY) / slope, kneeY);
+  const turnAt = at(knee.x + foot * Math.cos((40 * Math.PI) / 180), line + foot);
+  const heel = at(turnAt.x, line);
+  const reach = f.half + (f.end.projection ?? f.half * 0.6);
+  return finish(f, [
+    ink(
+      f,
+      chain(pinned(turn(bowlAt, R, ARM_LEAVES, bowlTo), 4), straight(onBowl, onLoop)),
+      BUTT,
+      BUTT,
+    ),
+    // The arm on its own, run on a little way down into the bowl: at a heavy
+    // weight the run up to the loop crosses over it.
+    ink(
+      f,
+      chain(straight(armTop, armFrom), pinned(turn(bowlAt, R, ARM_LEAVES, ARM_LEAVES - 12), 1)),
+      BUTT,
+      BUTT,
+    ),
+    // The loop on its own, taken on from a little back along the run into
+    // it: in one run with it, the loop's end came round across the run.
+    ink(f, pinned(turn(loopAt, r, loopFrom - 10, leaves + 360), 4), BUTT, BUTT),
+    ink(
+      f,
+      chain(
+        pinned(turn(loopAt, r, leaves - 12, leaves), 1),
+        straight(from, knee),
+        pinned(turn(turnAt, foot, 220, 270), 1),
+        straight(heel, at(heel.x + Math.min(f.half * 1.2, C * 0.07), line)),
+      ),
+      BUTT,
+      BUTT,
+    ),
+    ink(f, straight(at(armTop.x - reach, head), at(armTop.x + reach * 1.1, head)), BUTT, BUTT),
+  ]);
+}
+
+/** Where the ampersand's arm leaves its bowl, in degrees round from the right. */
+const ARM_LEAVES = 8;
+
+/** A turn drawn in so many pieces at every weight. */
+function pinned(spine: Spine, pieces: number): Spine {
+  return inPieces(spine, pieces);
+}
