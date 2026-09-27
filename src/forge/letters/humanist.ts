@@ -940,7 +940,9 @@ function kay(
   return finish(f, [
     ink(f, straight(at(stem, 0), at(stem, rise)), f.end, f.end),
     hairlined(ink(f, straight(arm, into), f.end, BUTT), 0.62),
-    ink(f, straight(leaves, foot), BUTT, f.end),
+    // Bowed a little and cut level on the line, as Lora's leg flares into
+    // its end: on a foot serif, the serif's inside wing stood out as a spur.
+    ink(f, bowed(f, leaves, at(foot.x + f.half * 0.4, foot.y), R_LEG_BOW * 0.8), BUTT, LEVEL),
   ]);
 }
 
@@ -1228,7 +1230,8 @@ function bookS(style: Style, capital: boolean): Recipe {
    * an x-height left the counters slits with a fold at each end.
    */
   // Past the Bold only: Lora's Bold s is as heavy as its n.
-  const heavy = Math.min(1, Math.max(0, heaviness(f) - 0.5));
+  // The capital has the cap height to turn in, and is not lightened.
+  const heavy = capital ? 0 : Math.min(1, Math.max(0, heaviness(f) - 0.5));
   return finish(
     f,
     [
@@ -1292,7 +1295,7 @@ export function humanistAmpersand(style: Style): Recipe {
   const f = frame(style);
   const C = f.cap;
   const R = Math.max(C * 0.235, f.half * 1.4);
-  const r = Math.max(C * 0.12, f.half * 1.2);
+  const r = Math.max(C * 0.12, f.half * 1.3);
   const bowlAt = at(f.edge + R, f.dip(0) + R);
   /*
    * The loop over the bowl, and where a heavy pen leaves the two no room
@@ -1372,3 +1375,33 @@ const ARM_LEAVES = 8;
 function pinned(spine: Spine, pieces: number): Spine {
   return inPieces(spine, pieces);
 }
+
+/**
+ * The R whose leg leaves the bowl and falls in a curve, steep at first and
+ * flattening into its end on the line, cut level there with no serif, as
+ * Lora's does: the construction's straight leg ended on a foot serif whose
+ * inside wing stood out to the left as a spur.
+ */
+export function humanistCapitalR(style: Style): Recipe {
+  const f = frame(style);
+  const recipe = LETTERS.R(style);
+  const [stem, lobe, leg] = recipe.strokes;
+  const [run] = leg?.spine.segments ?? [];
+  if (!stem || !lobe || run?.kind !== "line") return recipe;
+  const foot = at(run.to.x + f.half * 1.6, run.to.y);
+  return {
+    ...recipe,
+    strokes: [
+      stem,
+      lobe,
+      inherit(leg, {
+        ...leg,
+        spine: bowed(f, run.from, foot, R_LEG_BOW),
+        end: LEVEL,
+      }),
+    ],
+  };
+}
+
+/** How far the R's leg bows off its chord: up and to the right. */
+const R_LEG_BOW = 0.1;

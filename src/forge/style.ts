@@ -908,6 +908,7 @@ export const SERIF: Style = {
     S: "humanist",
     seven: "humanist",
     ampersand: "humanist",
+    R: "humanist",
   },
   /*
    * A text face's proportions rather than the sans's.

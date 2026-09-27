@@ -93,6 +93,7 @@ import {
   humanistZero,
   humanistCapitalM,
   humanistCapitalQ,
+  humanistCapitalR,
   humanistCapitalS,
   humanistSeven,
   humanistCapitalU,
@@ -1321,6 +1322,7 @@ const HUMANIST: Array<[LetterName, string, (style: Style) => Recipe]> = [
   ["k", "A hairline arm into the stem and the leg leaving the arm.", humanistK],
   ["s", "Run a little wider past a Black, so both counters stay open.", humanistS],
   ["S", "One S-curve from end to end, its spine on the bowls' own tangents.", humanistCapitalS],
+  ["R", "The leg falling from the bowl in a curve into a level end.", humanistCapitalR],
   ["K", "A hairline arm into the stem and the leg leaving the arm.", humanistCapitalK],
   ["W", "Two vees crossing, the middle running up to a point with no serif.", humanistCapitalW],
   [

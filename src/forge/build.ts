@@ -2160,9 +2160,16 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        * The `one` and the `\u0490` are this refusal on five faces apiece, and so is
        * the Slab's `\u00e6`, the Didone's `\u0431` and the Serif's whole G family.
        */
-      let room = winged
-        ? roomBeside(at, facing, side, inner, full, thickness, reference, others)
-        : full;
+      /*
+       * A text serif keeps its inner wings to a Black and past it, trimmed:
+       * the paper held between two of them stops growing with the pen at a
+       * fifth of the x-height, where held at three quarters of the pen the n,
+       * the h and the m lost them past a Bold and stood on their outer wings
+       * alone -- and a wing trimmed short is still drawn (see `crowded`).
+       */
+      const text = terminal.shape === "wedge";
+      const paper = text ? Math.min(reference, style.metrics.xHeight * 0.14) : reference;
+      let room = winged ? roomBeside(at, facing, side, inner, full, thickness, paper, others) : full;
       /*
        * And never into the other end of its own stroke. The two arms of a v,
        * a V and each vee of a W are one run, so the strokes beside it do not
@@ -2193,7 +2200,7 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        * and if that leaves less than a third of the serif, it is not drawn at
        * all: a stub that short reads as a mistake rather than as a serif.
        */
-      const crowded = room < inner + projection / 3;
+      const crowded = room < inner + projection / (text ? 5 : 3);
       /*
        * Nor on the inside of a shallow diagonal.
        *
