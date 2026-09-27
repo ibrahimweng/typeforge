@@ -591,6 +591,12 @@ export const SANS: Style = {
     },
   },
   pen: { weight: 87, contrast: 0.06, angle: 0 },
+  /*
+   * The forms a neo-grotesque takes where the plain sans takes the other:
+   * the two-storey a, the y whose tail runs straight on, the G with a spur
+   * standing under its bar, and the R whose leg comes out of the bowl.
+   */
+  forms: { a: "double", y: "straight", G: "spurred", R: "curved" },
   parts: {
     ...PLAIN.parts,
     bowl: { width: 0.845, squareness: 0, aperture: 1, superness: 0.15 },

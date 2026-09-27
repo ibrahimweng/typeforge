@@ -1780,7 +1780,8 @@ export function spine(
   heavy = true,
 ): { stroke: Stroke } {
   if (frame.superness > 0 && frame.square < ROUND_S) {
-    return { stroke: ink(frame, grotesqueSpine(frame, height, left), frame.end, frame.end) };
+    const drawn = ink(frame, grotesqueSpine(frame, height, left), frame.end, frame.end);
+    return { stroke: inherit(drawn, { ...drawn, join: "round" }) };
   }
   if (frame.square < ROUND_S) {
     const drawn = ink(frame, roundSpine(frame, height, left, heavy), frame.end, frame.end);
@@ -1864,29 +1865,53 @@ function grotesqueSpine(frame: Frame, height: number, left: number): Spine {
   const lowerWide = wide * 0.53;
   const upper = at(leftSide + upperWide, top - upperHalf);
   const lower = at(rightSide - lowerWide, bottom + lowerHalf);
-  // The side runs on this far before it turns into the spine.
-  const run = tall * 0.04;
-  const radius = Math.max(tall * 0.27, frame.least);
+  // The side runs on this far before it turns into the spine, and the turn is
+  // no tighter than the pen will go round.
+  const radius = Math.max(tall * 0.15, frame.least);
+  const run = Math.max(0, Math.min(tall * 0.04, (upper.y - lower.y) / 2 - radius));
   const turnA = at(leftSide + radius, upper.y - run);
   const turnB = at(rightSide - radius, lower.y + run);
+  const middle = at((turnA.x + turnB.x) / 2, (turnA.y + turnB.y) / 2);
+  /*
+   * Where the spine leaves the first turn. On a text weight, the tangent the
+   * two turns share, less a hair: the spine leaves at a corner of three
+   * degrees, as the round s does (see `TEXT_KINK`), so the corner is there at
+   * every weight and a weight axis can follow it. Where the pen leaves no
+   * tangent that falls -- a Black, whose turns fill the height -- the spine
+   * still falls at fourteen degrees through the middle of the letter, and the
+   * corner it leaves at is the pen's own round.
+   */
+  const heading = (angle: number): number => {
+    const from = pointOn(turnA, radius, angle);
+    return (Math.atan2(middle.y - from.y, middle.x - from.x) * 180) / Math.PI;
+  };
   const dx = turnB.x - turnA.x;
   const dy = turnB.y - turnA.y;
-  const apart = Math.hypot(dx, dy);
-  // Where the tangent leaves the first turn: its radius is at the angle whose
-  // projection on the line between the centres is half the gap.
-  const leave =
-    Math.atan2(dy, dx) - Math.acos(Math.min(1, (2 * radius) / Math.max(apart, 1e-9)));
-  const leaveDegrees = (leave * 180) / Math.PI;
-  const from = pointOn(turnA, radius, leaveDegrees);
-  const to = pointOn(turnB, radius, leaveDegrees + 180);
+  const ratio = (2 * radius) / Math.max(Math.hypot(dx, dy), 1e-9);
+  let leave =
+    ratio < 1 ? ((Math.atan2(dy, dx) - Math.acos(ratio)) * 180) / Math.PI - TEXT_KINK : Number.NaN;
+  if (leave < 0) leave += 360;
+  const steepest = -14;
+  if (!(leave > 180 && leave < 300) || heading(leave) > steepest) {
+    let lo = 180;
+    let hi = 300;
+    for (let pass = 0; pass < 50; pass++) {
+      const mid = (lo + hi) / 2;
+      if (heading(mid) > steepest) hi = mid;
+      else lo = mid;
+    }
+    leave = (lo + hi) / 2;
+  }
+  const from = pointOn(turnA, radius, leave);
+  const to = pointOn(turnB, radius, leave - 180);
   const headAngle = capital ? -9 : -4;
   const tailAngle = capital ? 165 : 167;
   return chain(
     bend(frame, upper, upperHalf, headAngle, 180, upperWide),
     straight(at(leftSide, upper.y), at(leftSide, turnA.y)),
-    turn(turnA, radius, 180, leaveDegrees < 180 ? leaveDegrees + 360 : leaveDegrees),
+    pinned(turn(turnA, radius, 180, leave), 1),
     straight(from, to),
-    turn(turnB, radius, (((leaveDegrees + 180) % 360) + 360) % 360, 0),
+    pinned(turn(turnB, radius, leave - 180, 0), 1),
     straight(at(rightSide, turnB.y), at(rightSide, lower.y)),
     bend(frame, lower, lowerHalf, 0, tailAngle - 360, lowerWide),
   );
