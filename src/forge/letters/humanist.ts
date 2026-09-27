@@ -17,6 +17,7 @@
 
 import type { Style } from "../style";
 import { LETTERS } from "../letters";
+import { bowlPoint } from "../shapes";
 import type { Stroke } from "../types";
 import {
   at,
@@ -26,7 +27,12 @@ import {
   crested,
   crossbar,
   finish,
+  dot,
+  figureWidth,
+  LEVEL,
+  stopRadius,
   frame,
+  heaviness,
   inherit,
   ink,
   lighter,
@@ -37,6 +43,7 @@ import {
   straight,
   stub,
   through,
+  tittle,
   turn,
   tReach,
   tStem,
@@ -283,6 +290,10 @@ function isBowl(stroke: Stroke): boolean {
  * heavy as ever across its horizontals: see `SWELL`.
  */
 function swollen(style: Style, recipe: Recipe): Recipe {
+  // Not on a face whose runs undulate: a wave is ridden at the pen's own
+  // width, and a heavier pen on it folded the o's inside.
+  const { wave } = style.parts;
+  if (wave.along !== "off" && wave.depth > 0) return recipe;
   const f = frame(style);
   return {
     ...recipe,
@@ -317,4 +328,162 @@ export function humanistCapitalN(style: Style): Recipe {
       return upright ? hairlined(f, stroke, 0.58) : stroke;
     }),
   };
+}
+
+/**
+ * The binocular g as Lora draws it: a small bowl, a link that swings out to
+ * the left under it and runs into the loop's top, a loop wider than the
+ * bowl and light across its top, and an ear rising out of the bowl's top
+ * right over the x-height and turning down into a drop.
+ */
+export function humanistG(style: Style): Recipe {
+  const f = frame(style);
+  const heavy = heaviness(f);
+  const loopHalf = Math.max(f.bowl * 1.0, f.least * 1.4);
+  const left = f.edge;
+  const upperH = Math.max(f.x * 0.33, f.upright + f.half * 0.45, f.least);
+  const upperW = Math.max(upperH * f.wide * 1.0, f.least);
+  const upper = at(left + loopHalf * 0.12 + upperW, f.crest(f.x) - upperH);
+  const bottom = f.dip(f.desc) - f.half * 0.45 * heavy;
+  const underBowl = upper.y - upperH - f.upright * 2 - Math.max(f.half * 1.2, f.x * 0.06);
+  const loopLeast = f.upright + Math.max(f.half * 0.45, f.x * 0.035);
+  const top = Math.max(Math.min(f.x * 0.02, underBowl), bottom + loopLeast * 2);
+  const loopH = Math.max((top - bottom) / 2, f.least);
+  const loop = at(left + loopHalf, bottom + loopH);
+  const roundness = 1 - f.square;
+  const leaves = bowlPoint(upper, upperW, upperH, roundness, f.half, 250 - 25 * heavy, f.superness);
+  const lands = bowlPoint(loop, loopHalf, loopH, roundness, f.half, 140, f.superness);
+  // The ear, out of the bowl's top right, up over the x-height and down into its drop.
+  const from = bowlPoint(upper, upperW, upperH, roundness, f.half, 22, f.superness);
+  const earEnd = at(upper.x + upperW + Math.max(f.bowl * 0.45, f.half * 1.6), f.x + f.x * 0.1);
+  return {
+    ...finish(
+      f,
+      [
+        lighter(ink(f, ring(f, upper, upperW, upperH)), 1 - 0.12 * heavy),
+        lighter(ink(f, ring(f, loop, loopHalf, loopH)), 0.86 - 0.14 * heavy),
+        lighter(
+          ink(f, bowed(f, leaves, lands, Math.max(LINK_BOW - 0.12 * heavy, 0.06)), BUTT, BUTT),
+          0.45 + 0.15 * heavy,
+        ),
+        lighter(ink(f, bowed(f, from, earEnd, EAR_BOW), BUTT, f.end), 0.72),
+      ],
+      true,
+    ),
+    air: 0.2,
+  };
+}
+
+/** How far the g's link swings out to the left of its chord. */
+const LINK_BOW = Number(process.env.LINKBOW ?? 0.35);
+/** How far the g's ear arches over its chord. */
+const EAR_BOW = Number(process.env.EARBOW ?? 0.45);
+
+/**
+ * The j with its tail carried round under the line and back up into a drop,
+ * well out to the left, as Lora's is.
+ */
+export function humanistJ(style: Style): Recipe {
+  const f = frame(style);
+  const radius = Math.max(f.arch * 0.5, f.least);
+  const stem = f.edge + radius * 1.35;
+  const turnAt = f.dip(f.desc) + radius;
+  return finish(f, [
+    ink(
+      f,
+      chain(
+        straight(at(stem, f.x), at(stem, turnAt)),
+        turn(at(stem - radius, turnAt), radius, 0, -150),
+      ),
+      f.end,
+      f.end,
+    ),
+    tittle(f, stem),
+  ]);
+}
+
+/**
+ * The five with a heavy flag and a hairline stem, as a broad nib held level
+ * draws it: Lora's flag is 70 units deep and turns up at its end over the cap
+ * line, and its stem is 45 across.
+ */
+export function humanistFive(style: Style): Recipe {
+  const f = frame(style);
+  const recipe = LETTERS.five(style);
+  const [, stem, ...rest] = recipe.strokes;
+  const width = figureWidth(f);
+  const left = f.edge;
+  const deep = f.style.pen.weight * 0.8;
+  const y = f.cap - deep / 2;
+  const flag: Stroke = inherit(stem, {
+    spine: straight(at(left - f.half * 0.5, y), at(left + width * 0.82, y)),
+    pen: { ...f.style.pen, contrast: 0, weight: deep },
+    start: BUTT,
+    end: BUTT,
+  });
+  const curl = lighter(
+    ink(
+      f,
+      bowed(f, at(left + width * 0.78, y), at(left + width * 0.9, f.cap + f.cap * 0.09), 0.2),
+      BUTT,
+      f.plain,
+    ),
+    0.6,
+  );
+  return { ...recipe, strokes: [flag, curl, hairlined(f, stem, 0.52), ...rest] };
+}
+
+/**
+ * The hyphen as Lora sets it: 0.71 of an x-height long, eight tenths of a
+ * stem deep, its middle at 0.64 of the x-height.
+ */
+export function humanistHyphen(style: Style): Recipe {
+  const f = frame(style);
+  const deep = f.style.pen.weight * 0.78;
+  const y = f.x * 0.64;
+  return finish(f, [
+    {
+      spine: straight(at(f.edge - f.half, y), at(f.edge - f.half + f.x * 0.71, y)),
+      pen: { ...f.style.pen, contrast: 0, weight: deep },
+      start: BUTT,
+      end: BUTT,
+    },
+  ]);
+}
+
+/** The solidus as Lora draws it: from the descender to over the ascender, leaning well over. */
+export function humanistSlash(style: Style): Recipe {
+  const f = frame(style);
+  const foot = f.desc - f.over;
+  const head = f.asc + f.over * 0.3;
+  const lean = (head - foot) * 0.53;
+  return finish(f, [
+    lighter(ink(f, straight(at(f.edge, foot), at(f.edge + lean, head)), LEVEL, LEVEL), 0.72),
+  ]);
+}
+
+/**
+ * The exclamation mark as a pen draws it: a wedge, round at its head and
+ * a stem and a quarter across there, narrowing to half a stem at its foot.
+ */
+export function humanistExclam(style: Style): Recipe {
+  const f = frame(style);
+  const stop = stopRadius(f);
+  const x = f.edge + f.half * 0.25;
+  const head = f.crest(f.cap) + f.upright;
+  const cap = f.half * 1.22;
+  const foot = Math.max(f.cap * 0.33, stop * 2 + f.half * 0.9);
+  const side = (dir: number): Stroke => {
+    const drawn = ink(
+      f,
+      straight(at(x + dir * cap * 0.5, head - cap), at(x + dir * f.half * 0.04, foot)),
+      BUTT,
+      BUTT,
+    );
+    return inherit(drawn, {
+      ...drawn,
+      pen: { ...f.style.pen, contrast: 0, weight: cap },
+    });
+  };
+  return finish(f, [side(-1), side(1), dot(f, at(x, head - cap), cap), dot(f, at(x, stop), stop)]);
 }

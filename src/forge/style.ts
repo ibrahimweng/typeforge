@@ -144,7 +144,18 @@ export interface Metrics {
    * dozen, while its B and its n take forty or fifty more -- which is a
    * drawing, letter by letter, and is written down as one.
    */
-  bold?: { at: number; widths: Record<string, number> };
+  bold?: {
+    at: number;
+    widths: Record<string, number>;
+    /**
+     * How much of the Bold's width is kept at a Black (a blackness of one),
+     * eased back from all of it at the Bold. Past its Bold a face has no
+     * drawing to follow, and a Black held to a Bold's widths shut the small
+     * counters -- the a's, the e's eye, the A's -- that the construction's
+     * own widening keeps open. Left out, all of it, all the way.
+     */
+    kept?: number;
+  };
   /** The counter the face was drawn with, once `heavier` has narrowed it. */
   drawnCounter?: number;
   /**
@@ -834,7 +845,7 @@ export const SERIF: Style = {
    */
   forms: {
     a: "double",
-    g: "double",
+    g: "humanist",
     G: "spurred",
     Q: "humanist",
     y: "hooked",
@@ -850,6 +861,11 @@ export const SERIF: Style = {
     O: "humanist",
     C: "humanist",
     zero: "humanist",
+    j: "humanist",
+    five: "humanist",
+    hyphen: "humanist",
+    slash: "humanist",
+    exclam: "humanist",
   },
   /*
    * A text face's proportions rather than the sans's.
@@ -878,14 +894,15 @@ export const SERIF: Style = {
     // LORA-BOLD-BEGIN (fitted to Lora Bold at a pen of 142)
     bold: {
       at: 0.47,
+      kept: 0.5,
       widths: {
         a: 0.805,
         b: 0.927,
         c: 0.914,
         d: 0.926,
-        e: 0.856,
+        e: 0.855,
         f: 0.919,
-        g: 0.943,
+        g: 1.021,
         h: 0.946,
         k: 0.97,
         m: 0.978,
@@ -928,7 +945,7 @@ export const SERIF: Style = {
         Y: 0.905,
         Z: 1.032,
         zero: 0.847,
-        one: 0.708,
+        one: 0.705,
         two: 0.872,
         three: 0.841,
         four: 0.936,
@@ -947,11 +964,11 @@ export const SERIF: Style = {
       c: [1.21, 1],
       d: [1.24, 0.88],
       e: [1.24, 1.15],
-      f: [0.74, -1.65],
-      g: [1.03, -0.47],
+      f: [0.74, 0.06],
+      g: [1.03, 0.06],
       h: [0.76, 0.88],
       i: [1.06, 0.97],
-      j: [-2.59, 2.18],
+      j: [0.21, 2.18],
       k: [0.76, 0.21],
       l: [0.74, 1],
       m: [1.06, 0.94],
@@ -963,12 +980,12 @@ export const SERIF: Style = {
       s: [1.53, 1.21],
       t: [0.62, 0.12],
       u: [0.76, 0.85],
-      v: [0.18, 0.09],
-      w: [0.18, 0.03],
+      v: [0.21, 0.09],
+      w: [0.21, 0.06],
       x: [0.65, 0.32],
-      y: [0.12, 0.12],
+      y: [0.21, 0.12],
       z: [1.18, 1.29],
-      A: [-0.58, -0.75],
+      A: [-0.19, -0.34],
       B: [1.22, 0.75],
       C: [0.95, 0.48],
       D: [1.22, 0.95],
@@ -977,7 +994,7 @@ export const SERIF: Style = {
       G: [0.98, 0.22],
       H: [1.22, 1.22],
       I: [1.22, 1.22],
-      J: [-0.46, 0.48],
+      J: [-0.19, 0.48],
       K: [1.22, -0.25],
       L: [1.22, 0.22],
       M: [0.89, 0.6],
@@ -985,14 +1002,14 @@ export const SERIF: Style = {
       O: [0.95, 0.89],
       P: [1.22, 0.36],
       Q: [0.95, -0.11],
-      R: [1.22, -0.4],
+      R: [1.22, -0.34],
       S: [1.31, 0.89],
       T: [0.25, 0.28],
       U: [0.51, 0.48],
-      V: [-0.52, -0.93],
-      W: [-0.19, -0.84],
-      X: [-0.14, -0.61],
-      Y: [-0.58, -0.69],
+      V: [-0.19, -0.34],
+      W: [-0.19, -0.34],
+      X: [-0.14, -0.34],
+      Y: [-0.19, -0.34],
       Z: [0.86, 1.01],
       zero: [1.65, 1.62],
       one: [0.53, 1.03],
@@ -1004,7 +1021,7 @@ export const SERIF: Style = {
       seven: [0.65, 0.59],
       eight: [1.74, 1.47],
       nine: [1.41, 1.74],
-      ampersand: [1.06, -0.24],
+      ampersand: [1.06, 0.06],
       question: [0.97, 1.08],
       exclam: [2.18, 2.21],
       period: [1.88, 1.91],
@@ -1017,6 +1034,7 @@ export const SERIF: Style = {
       parenright: [0.53, 1.03],
       hyphen: [1.97, 1.97],
       slash: [0.62, 0.59],
+      yen: [0.82, 0.79],
     },
     proportions: {
       a: 1.069,
@@ -1025,7 +1043,7 @@ export const SERIF: Style = {
       d: 0.826,
       e: 0.796,
       f: 1.303,
-      g: 1.031,
+      g: 1.016,
       h: 0.936,
       k: 0.943,
       m: 0.875,
@@ -2944,7 +2962,13 @@ export function proportioned(style: Style, name: string): Style {
   const bold = style.metrics.bold;
   const heavy = bold?.widths[name];
   if (bold && heavy !== undefined && heavy > 0) {
-    factor *= 1 + (heavy - 1) * Math.min(1, blackness(style) / bold.at);
+    const black = blackness(style);
+    const kept = bold.kept ?? 1;
+    const share =
+      black <= bold.at
+        ? black / bold.at
+        : 1 - (1 - kept) * Math.min(1, (black - bold.at) / Math.max(1 - bold.at, 1e-6));
+    factor *= 1 + (heavy - 1) * share;
   }
   if (factor === 1 || !(factor > 0)) return style;
   let known = PROPORTIONED.get(style);

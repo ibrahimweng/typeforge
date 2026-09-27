@@ -69,6 +69,12 @@ import {
 } from "./grotesque";
 import {
   humanistC,
+  humanistExclam,
+  humanistHyphen,
+  humanistSlash,
+  humanistFive,
+  humanistJ,
+  humanistG,
   humanistCapitalC,
   humanistCapitalN,
   humanistCapitalO,
@@ -1297,6 +1303,12 @@ const HUMANIST: Array<[LetterName, string, (style: Style) => Recipe]> = [
   ["u", "The right stem carried on down to the line on its own serifs.", humanistU],
   ["t", "Standing well over the x-height under a wedge rising from the bar.", humanistT],
   ["U", "The right side a hairline, written on the way back up.", humanistCapitalU],
+  ["g", "A link swinging out to the left and an ear rising into a drop.", humanistG],
+  ["j", "The tail carried round under the line and back up into a drop.", humanistJ],
+  ["five", "A heavy flag turning up at its end, over a hairline stem.", humanistFive],
+  ["hyphen", "Long and deep, a little over the middle of the x-height.", humanistHyphen],
+  ["slash", "From the descender to over the ascender, leaning well over.", humanistSlash],
+  ["exclam", "A wedge, round at its head, narrowing to its foot.", humanistExclam],
   [
     "o",
     "The sides heavier than a stem and the crown a hairline, as a broad nib leaves them.",
