@@ -2,9 +2,15 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { unite } from "@/font/boolean";
 import { readyToShape } from "./layers";
-import { contourArea, contoursBounds, contoursToSvgPath, inkRunsAt } from "@/font/geometry";
+import {
+  contourArea,
+  contoursBounds,
+  contoursToSvgPath,
+  flattenContour,
+  inkRunsAt,
+} from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
-import type { Contour } from "@/font/types";
+import type { Contour, Vec2 } from "@/font/types";
 import { drawLetter } from "./build";
 import { anyCut, noCuts, piecesOf, type Cuts, type MotifShape } from "./cut";
 import { weightedStyle } from "./family";
@@ -690,3 +696,107 @@ describe("at the ends of the weight range", () => {
     }
   });
 });
+
+describe("where strokes meet", () => {
+  const face = (name: string) => BASES.find((base) => base.name === name)!;
+  const blackOf = (name: string) => weightedStyle(face(name), face(name).pen.weight, 200);
+  const breaks = cutWith((one) => {
+    one.split.on = true;
+  });
+
+  it("breaks a Black R and e without leaving chips where three strokes meet", () => {
+    /*
+     * The bowl and the leg of an R both leave the stem at the foot of the
+     * bowl, and the leg leaves the bowl there too. Three breaks cut flush
+     * against three different sides left a chip of leg standing loose beside
+     * the stem on a Black, and the bowl of a Black e, sliced along the top of
+     * its bar, dropped a crescent of its own. What comes away is one piece.
+     */
+    for (const [name, letters] of [
+      ["Sans", "Re"],
+      ["Slab", "R"],
+    ] as const) {
+      const style = blackOf(name);
+      for (const letter of letters) {
+        const solids = drawn(letter, style, breaks).contours.filter(
+          (contour) => contourArea(contour) > 0,
+        );
+        for (const solid of solids) {
+          expect(contourArea(solid), `${name} ${letter}`).toBeGreaterThan(style.pen.weight ** 2);
+        }
+      }
+    }
+  });
+
+  it("does not slice the top off a Black e", () => {
+    // Its bowl leaves the end of the bar at a slant and runs over the counter
+    // just above the bar, so a break laid flush along the bar lay along the
+    // bowl instead and took a fifth of the letter with it.
+    for (const name of ["Sans", "Slab"]) {
+      expect(removed("e", blackOf(name), breaks), name).toBeLessThan(0.05);
+    }
+  });
+
+  it("keeps a stem's groove whole where a bowl or an arch runs into it", () => {
+    /*
+     * A bowl meets its stem along the stem's own line, so its groove slid
+     * into the stem's at a tangent and ran out in hair-thin points either
+     * side of the join, with the wall between groove and counter thinned to
+     * nothing. The bowl's groove now stops at the stem's edge, so the stem's
+     * groove is a hole of its own beside the bowl's.
+     */
+    const cuts = cutWith((one) => {
+      one.inline.on = true;
+    });
+    for (const name of ["Geometric", "Sans", "Serif", "Slab"]) {
+      for (const letter of "abdgpqn") {
+        const holes = drawn(letter, face(name), cuts).contours.filter(
+          (contour) => contourArea(contour) < 0,
+        );
+        expect(holes.length, `${name} ${letter}`).toBe(letter === "n" ? 2 : 3);
+      }
+    }
+  });
+
+  it("fuses a letter into an outline that never runs back over itself", () => {
+    /*
+     * Where two strokes' edges meet at the hair the fuse nudges them apart
+     * by, the union came back with nodes a millionth of a unit apart stepping
+     * forward, back and forward again: invisible, but a fold that every cut
+     * and cast after it was handed. A Flared H at Black had one on top of
+     * each serif.
+     */
+    const cases: Array<[string, number, string]> = [
+      ["Flared", 200, "HMWXY"],
+      ["Flared", 30, "GTWYd"],
+      ["Brush", 30, "BDHIKR"],
+    ];
+    for (const [name, weight, letters] of cases) {
+      const style = weightedStyle(face(name), face(name).pen.weight, weight);
+      for (const letter of letters) {
+        const fused = unite(drawn(letter, style).contours, "winding", "whole");
+        for (const contour of fused) {
+          expect(foldsBack(contour), `${name} ${letter} at ${weight}`).toBe(false);
+        }
+      }
+    }
+  });
+});
+
+/** Whether any two edges of a flattened contour cross, strictly. */
+function foldsBack(contour: Contour): boolean {
+  const points = flattenContour(contour, 12);
+  const count = points.length;
+  const side = (p: Vec2, q: Vec2, r: Vec2) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  for (let i = 0; i < count; i++) {
+    const [a, b] = [points[i], points[(i + 1) % count]];
+    for (let j = i + 2; j < count; j++) {
+      if (i === 0 && j === count - 1) continue;
+      const [c, d] = [points[j], points[(j + 1) % count]];
+      const one = side(a, b, c) * side(a, b, d);
+      const two = side(c, d, a) * side(c, d, b);
+      if (one < 0 && two < 0) return true;
+    }
+  }
+  return false;
+}

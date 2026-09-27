@@ -196,9 +196,6 @@ describe("the shapes changed for the Serif base stay clean on every base", () =>
       for (const weight of [30, 200]) {
         const style = { ...base, pen: { ...base.pen, weight } };
         for (const name of letters) {
-          // A joined z at a black weight already folded before any of this
-          // (the Monoline Script's, at 200); it is not one of these shapes.
-          if (name === "z" && base.family === "script" && weight === 200) continue;
           for (const form of [
             undefined,
             ...formsOf(name)

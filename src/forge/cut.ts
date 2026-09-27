@@ -410,7 +410,27 @@ function inlineTool(strokes: Stroke[], inline: Cuts["inline"], stem: number): Co
       end: { kind: "butt" },
       join: "round",
     });
-    grooves.push(...groove);
+    /*
+     * Kept out of a stroke it runs alongside.
+     *
+     * The bowl of an a, a b or a g touches its stem along the stem's own
+     * line, so the bowl's groove slides into the stem's groove at a tangent:
+     * the ink between the groove and the counter thinned away to nothing
+     * beside the stem, and the white of the groove ran out in two hair-thin
+     * points above and below the join. Where a stroke runs into another one
+     * nearly parallel to it, its groove stops at the other's edge instead,
+     * and the stem keeps its own two walls and its own groove whole.
+     */
+    // The straighter of the two is the stem, and it is the one kept whole.
+    const alongside = strokes.filter(
+      (other, at) =>
+        at !== index && arcsIn(other) < arcsIn(stroke) && runsAlongside(stroke, other),
+    );
+    grooves.push(
+      ...(alongside.length > 0
+        ? subtract(groove, alongside.flatMap((other) => sweep(other)), "winding")
+        : groove),
+    );
     if (back > 0) return;
     /*
      * With the inset taken off, run out past each end that is free.
@@ -443,6 +463,26 @@ function inlineTool(strokes: Stroke[], inline: Cuts["inline"], stem: number): Co
     }
   });
   return grooves;
+}
+
+/**
+ * Whether one stroke's spine runs inside another's ink nearly parallel to it,
+ * which is how a bowl meets its stem and not how an arm leaves one.
+ */
+function runsAlongside(stroke: Stroke, other: Stroke): boolean {
+  const path = alongSpine(stroke.spine, 64);
+  const wall = alongSpine(other.spine, 64);
+  if (path.length < 3 || wall.length < 2) return false;
+  for (let index = 1; index + 1 < path.length; index++) {
+    const nearest = nearestOn(wall, path[index]);
+    const half = halfWidth(other.pen, { x: -nearest.along.y, y: nearest.along.x });
+    if (nearest.distance >= half) continue;
+    const heading = away(path[index - 1], path[index + 1]);
+    if (!heading) continue;
+    const sine = Math.abs(heading.x * nearest.along.y - heading.y * nearest.along.x);
+    if (sine < 0.35) return true;
+  }
+  return false;
 }
 
 /**
@@ -589,23 +629,42 @@ function splitTool(strokes: Stroke[], split: Cuts["split"], stem: number): Conto
    * exactly on the edge of the stroke that stays, however that edge curves.
    */
   const giving = [...new Set(kept.map((one) => one.stroke))];
-  return giving.flatMap((stroke) => {
-    const mine = kept.filter((one) => one.stroke === stroke);
-    const bands = mine.flatMap((one) => intersect([one.band], one.local, "winding"));
+  const swept = strokes.map((one) => sweep(one));
+  const inkBut = (...except: number[]) =>
+    swept.flatMap((one, index) => (except.includes(index) ? [] : one));
+  const cutting = new Map(
+    giving.map((stroke) => [
+      stroke,
+      kept
+        .filter((one) => one.stroke === stroke)
+        .flatMap((one) => intersect([one.band], one.local, "winding")),
+    ]),
+  );
+  const knives = giving.flatMap((stroke) => {
+    const bands = cutting.get(stroke) ?? [];
     if (bands.length === 0) return [];
-    // Not the strokes this one comes away together with: where the bowl and
-    // the leg of an R overlap at the foot of the bowl, each knife kept off
-    // the other's ink left the overlap standing as a bridge across the gap.
-    const partners = new Set(
-      joined.flatMap((a) =>
-        a.stroke === stroke ? joined.filter((b) => together(a, b)).map((b) => b.stroke) : [],
-      ),
-    );
-    const others = strokes
-      .filter((_, index) => index !== stroke && !partners.has(index))
-      .flatMap((one) => sweep(one));
+    const others = inkBut(stroke);
     return others.length === 0 ? bands : subtract(bands, others, "winding");
   });
+  /*
+   * And where two strokes that come away together overlap, the ground both
+   * their bands cross. Each knife is kept off every other stroke's ink, so
+   * where the bowl and the leg of an R overlap at the foot of the bowl
+   * neither cut it, and the overlap stood across the gap as a bridge.
+   */
+  const pairs = joined.flatMap((a) =>
+    joined.filter((b) => together(a, b) && a.stroke < b.stroke).map((b) => [a.stroke, b.stroke]),
+  );
+  for (const [one, other] of pairs) {
+    const mine = cutting.get(one) ?? [];
+    const theirs = cutting.get(other) ?? [];
+    if (mine.length === 0 || theirs.length === 0) continue;
+    const both = intersect(mine, theirs, "winding");
+    if (both.length === 0) continue;
+    const rest = inkBut(one, other);
+    knives.push(...(rest.length === 0 ? both : subtract(both, rest, "winding")));
+  }
+  return knives;
 }
 
 /** A gap in one stroke: where along it, and the band that cuts it. */

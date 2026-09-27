@@ -1173,12 +1173,216 @@ export function sweep(stroke: Stroke): Contour[] {
     }
   }
 
+  const outline = facing(
+    { nodes: joinedAtSeams([leftNodes, endNodes, rightNodes, startNodes]), closed: true },
+    1,
+  );
+  return [crowded(spine, pen) ? withoutBackLoops(outline, pen.weight) : outline];
+}
+
+/**
+ * Whether a spine has a run between two turns shorter than the pen is wide.
+ *
+ * Every inside corner is trimmed where the two sides meeting at it cross --
+ * but only against its own two neighbours. When a run is shorter than the pen,
+ * the inside of the corner before it and the corner after it overlap, and the
+ * crossing lies past the end of the run: the z of a Black joining script, whose
+ * diagonal is shorter than its own stroke is thick, came out with a small loop
+ * wound backwards inside it. Asked first because it is cheap and rare; the
+ * search for the loop is neither.
+ */
+function crowded(spine: Spine, pen: Pen): boolean {
+  const segments = spine.segments;
+  if (segments.length < 3) return false;
+  return segments.some((segment, index) => {
+    if (index === 0 || index === segments.length - 1 || segment.kind !== "line") return false;
+    const length = Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y);
+    return length > 1e-6 && length < pen.weight * 1.5;
+  });
+}
+
+/** A point along a contour's edge: which edge, and how far along it. */
+interface EdgeAt {
+  edge: number;
+  t: number;
+}
+
+/**
+ * The outline with the small loops that wind backwards cut out of it.
+ *
+ * A loop like that is where one side of the stroke has run back over itself;
+ * under a non-zero fill it draws nothing the rest of the outline does not
+ * already draw, and it is not a shape to anything that reads the outline. Cut
+ * at the crossing, with the curves on either side split there so the outline
+ * keeps its shape exactly up to the point.
+ *
+ * Only small ones, and only backwards ones. A stroke that crosses itself on
+ * purpose -- the loop of a script l -- winds its loop the same way as the rest
+ * of the letter and encloses a real piece of it.
+ */
+function withoutBackLoops(contour: Contour, weight: number): Contour {
+  let nodes = contour.nodes;
+  for (let pass = 0; pass < 4 && nodes.length > 3; pass++) {
+    const whole = contourArea({ nodes, closed: true });
+    const loop = backLoop(nodes, Math.sign(whole), weight * weight * 0.05);
+    if (!loop) break;
+    nodes = cutLoop(nodes, loop.from, loop.to, loop.at);
+  }
+  return nodes === contour.nodes ? contour : { ...contour, nodes };
+}
+
+const LOOP_STEPS = 12;
+
+function edgeCurve(nodes: GlyphNode[], edge: number): [Vec2, Vec2, Vec2, Vec2] {
+  const a = nodes[edge];
+  const b = nodes[(edge + 1) % nodes.length];
+  return [a.point, a.handleOut ?? a.point, b.handleIn ?? b.point, b.point];
+}
+
+function bezierAt([p0, p1, p2, p3]: [Vec2, Vec2, Vec2, Vec2], t: number): Vec2 {
+  const u = 1 - t;
+  return {
+    x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+    y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
+  };
+}
+
+/** The first small loop wound against the contour, if there is one. */
+function backLoop(
+  nodes: GlyphNode[],
+  winding: number,
+  smallest: number,
+): { from: EdgeAt; to: EdgeAt; at: Vec2 } | null {
+  const count = nodes.length;
+  const points: Vec2[] = [];
+  const where: EdgeAt[] = [];
+  for (let edge = 0; edge < count; edge++) {
+    const curve = edgeCurve(nodes, edge);
+    const straight = !nodes[edge].handleOut && !nodes[(edge + 1) % count].handleIn;
+    const steps = straight ? 1 : LOOP_STEPS;
+    for (let step = 0; step < steps; step++) {
+      points.push(bezierAt(curve, step / steps));
+      where.push({ edge, t: step / steps });
+    }
+  }
+  const total = points.length;
+  const side = (p: Vec2, q: Vec2, r: Vec2) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  for (let i = 0; i < total; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % total];
+    for (let j = i + 2; j < total; j++) {
+      if (i === 0 && j === total - 1) continue;
+      const c = points[j];
+      const d = points[(j + 1) % total];
+      const d1 = side(a, b, c);
+      const d2 = side(a, b, d);
+      const d3 = side(c, d, a);
+      const d4 = side(c, d, b);
+      if (!(d1 * d2 < 0 && d3 * d4 < 0)) continue;
+      const s = d3 / (d3 - d4);
+      const at = { x: a.x + (b.x - a.x) * s, y: a.y + (b.y - a.y) * s };
+      const u = d1 / (d1 - d2);
+      // The two ways round from one crossing to the other; the loop is the
+      // smaller of them.
+      const inner = [at, ...points.slice(i + 1, j + 1)];
+      const outer = [at, ...points.slice(j + 1), ...points.slice(0, i + 1)];
+      const area = (ring: Vec2[]) =>
+        ring.reduce((sum, p, k) => {
+          const q = ring[(k + 1) % ring.length];
+          return sum + (p.x * q.y - q.x * p.y) / 2;
+        }, 0);
+      const inside = area(inner);
+      const outside = area(outer);
+      const [loop, ring, rest, first, second] =
+        Math.abs(inside) <= Math.abs(outside)
+          ? [inside, inner, outer, i, j]
+          : [outside, outer, inner, j, i];
+      // Nothing enclosed is nothing to take out: the points a round join
+      // stacks on one spot touch rather than loop.
+      if (Math.abs(loop) >= smallest || Math.abs(loop) < 0.01) continue;
+      // Wound with the letter, it is only dead weight if the rest of the
+      // outline covers it anyway -- a twist in the side, not a loop of ink.
+      if (Math.sign(loop) === winding && !within(rest, middleOf(ring))) continue;
+      const fractionOf = (index: number, share: number): EdgeAt => {
+        const here = where[index];
+        const next = where[(index + 1) % total];
+        const end = next.edge === here.edge ? next.t : 1;
+        return { edge: here.edge, t: here.t + (end - here.t) * share };
+      };
+      const shares = first === i ? [s, u] : [u, s];
+      return { from: fractionOf(first, shares[0]), to: fractionOf(second, shares[1]), at };
+    }
+  }
+  return null;
+}
+
+function middleOf(ring: Vec2[]): Vec2 {
+  const sum = ring.reduce((total, p) => ({ x: total.x + p.x, y: total.y + p.y }), { x: 0, y: 0 });
+  return { x: sum.x / ring.length, y: sum.y / ring.length };
+}
+
+function within(ring: Vec2[], point: Vec2): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i];
+    const b = ring[j];
+    if (a.y > point.y !== b.y > point.y) {
+      const x = ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x;
+      if (point.x < x) inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** Split a cubic at t: the curve before and the curve after. */
+function split(
+  [p0, p1, p2, p3]: [Vec2, Vec2, Vec2, Vec2],
+  t: number,
+): [[Vec2, Vec2, Vec2, Vec2], [Vec2, Vec2, Vec2, Vec2]] {
+  const lerp = (p: Vec2, q: Vec2) => ({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t });
+  const a = lerp(p0, p1);
+  const b = lerp(p1, p2);
+  const c = lerp(p2, p3);
+  const d = lerp(a, b);
+  const e = lerp(b, c);
+  const f = lerp(d, e);
   return [
-    facing(
-      { nodes: joinedAtSeams([leftNodes, endNodes, rightNodes, startNodes]), closed: true },
-      1,
-    ),
+    [p0, a, d, f],
+    [f, e, c, p3],
   ];
+}
+
+/**
+ * The nodes with everything between two crossing points taken out, going
+ * forwards from the first to the second, and one node left where they cross.
+ */
+function cutLoop(nodes: GlyphNode[], from: EdgeAt, to: EdgeAt, at: Vec2): GlyphNode[] {
+  const count = nodes.length;
+  const straight = (edge: number) => !nodes[edge].handleOut && !nodes[(edge + 1) % count].handleIn;
+  const [before] = split(edgeCurve(nodes, from.edge), from.t);
+  const [, after] = split(edgeCurve(nodes, to.edge), to.t);
+  const kept: GlyphNode[] = [];
+  // From the node after the loop ends round to the node the loop starts on.
+  for (let index = (to.edge + 1) % count; ; index = (index + 1) % count) {
+    const node = { ...nodes[index] };
+    if (index === (to.edge + 1) % count) node.handleIn = straight(to.edge) ? null : after[2];
+    if (index === from.edge) {
+      node.handleOut = straight(from.edge) ? null : before[1];
+      kept.push(node);
+      break;
+    }
+    kept.push(node);
+    if (kept.length > count) return nodes;
+  }
+  kept.push({
+    point: at,
+    handleIn: straight(from.edge) ? null : before[2],
+    handleOut: straight(to.edge) ? null : after[1],
+    type: "corner",
+  });
+  // A loop that starts and ends on the same edge leaves that edge's far node
+  // at the start; nothing else to do.
+  return kept.length >= 3 ? kept : nodes;
 }
 
 /**
