@@ -7,7 +7,7 @@
  */
 
 import { bowlPoint, spineEnd } from "../shapes";
-import type { Style } from "../style";
+import { blackness, type Style } from "../style";
 import type { Stroke } from "../types";
 import {
   barWeight,
@@ -83,12 +83,22 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      */
     const lean = Math.hypot(half, f.cap) / half;
     const inside = f.cap - f.half * lean;
-    const bar =
+    /*
+     * But not so low that there is no paper under it: at a Black, taken down
+     * by a further third of a stem, the bar sat on the baseline and the A was
+     * a solid triangle with a hole in it. Below the Black the bar comes down
+     * as it did; past it, it holds a stem of clear space between the feet.
+     */
+    const heavy = heaviness(f);
+    const under = f.half * 2 * Math.min(1, blackness(f.style));
+    const bar = Math.max(
       Math.min(
         f.cap * f.style.parts.crossbar.height * 0.58,
         inside * 0.42 - (f.half * barWeight(f.style)) / 2,
       ) -
-      f.half * 0.3 * heaviness(f);
+        f.half * 0.3 * heavy,
+      Math.min(under + f.upright * barWeight(f.style), inside * 0.5),
+    );
     /*
      * Where the diagonals actually are at that height, so the bar meets them
      * rather than poking out either side -- or, as it did, stopping short.
@@ -127,8 +137,16 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const light = bookish(f) || f.style.parts.script.on ? 1 : 1 - 0.14 * heaviness(f);
     const top = f.hangs(f.cap, light);
     const base = f.sits(0, light);
-    const upperR = Math.max((top - upper) / 2 + f.half * 0.2, f.least);
-    const lowerR = Math.max((upper - base) / 2 + f.half * 0.2, f.least);
+    /*
+     * The two waist runs cross each other by a little, so the bowls hold
+     * together -- but by no more than their own ink is deep. Crossed by a
+     * fifth of the pen, a pen with contrast (the Didone's, a brush's, any
+     * face's at a Black) drew its waist as two hairlines with a slit of paper
+     * between them: a pinhole in every B.
+     */
+    const cross = Math.min(f.half * 0.2, f.upright * light * 0.45);
+    const upperR = Math.max((top - upper) / 2 + cross, f.least);
+    const lowerR = Math.max((upper - base) / 2 + cross, f.least);
     /*
      * How far the bowls reach out, which is not the same as how tall they are.
      *

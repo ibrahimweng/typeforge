@@ -8,7 +8,7 @@
 
 import { spineEnd } from "../shapes";
 import { penReach, reachAlong } from "../sweep";
-import type { Style } from "../style";
+import { blackness, type Style } from "../style";
 import type { Vec2 } from "@/font/types";
 import type { Spine, Stroke, Terminal } from "../types";
 import {
@@ -969,8 +969,10 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     const f = frame(style);
     const height = f.cap * 0.62;
     const step = height * 0.53;
-    const upper = spine(f, height, f.edge).stroke;
-    const lower = spine(f, height, f.edge).stroke;
+    // The text s at every weight: a Black's is wider than a section mark
+    // has room for, one tucked under the other.
+    const upper = spine(f, height, f.edge, false).stroke;
+    const lower = spine(f, height, f.edge, false).stroke;
     return {
       strokes: [
         shovedStroke(finish(f, [upper]).strokes[0], 0, f.cap - height + f.desc * 0.06),
@@ -1068,6 +1070,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
    * the same nodes at every weight.
    */
   ampersand: (style) => {
+
     const f = frame(style);
     const C = f.cap;
     const pinned = (run: Spine, pieces: number): Spine => ({
@@ -1086,10 +1089,17 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     const wantR = Math.max(C * 0.24, f.half * 1.75);
     const wantr = Math.max(C * 0.14, f.half * 1.45);
     const fits = Math.min(1, span / 2.05 / (wantR + wantr));
-    const R = Math.max(wantR * fits, f.half * 1.5, f.least);
-    const r = Math.max(wantr * fits, f.half * 1.15, f.least);
+    /*
+     * At a heavy weight both turn wider than the pen alone asks, or their
+     * counters are the width of what is left between two stems: the loop of
+     * a Black ampersand was a slit. And the loop moves out to the right to
+     * find the room rather than up past the cap height, as a Black's does.
+     */
+    const black = Math.min(1, blackness(f.style) / AMP.at);
+    const R = Math.max(wantR * fits, f.half * (1.5 + AMP.R * black), f.least);
+    const r = Math.max(wantr * fits, f.half * (1.15 + AMP.r * black), f.least);
     const bowlAt = at(f.edge + R, f.dip(0) + R);
-    const loopY = Math.max(f.crest(C) - r, bowlAt.y + (r + R) * 1.02);
+    const loopY = Math.max(f.crest(C) - r, bowlAt.y + (r + R) * 1.02 * (1 - AMP.slide * black));
     const rise = loopY - bowlAt.y;
     const clear = (r + R) * 1.08;
     const over = Math.max(C * 0.05, Math.sqrt(Math.max(0, clear * clear - rise * rise)));
@@ -1190,3 +1200,5 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
   guillemotleft: (style) => chevrons(frame(style), -1),
   guillemotright: (style) => chevrons(frame(style), 1),
 };
+
+export const AMP = { at: 0.6, R: 0.25, r: 0.5, slide: 0.35 };

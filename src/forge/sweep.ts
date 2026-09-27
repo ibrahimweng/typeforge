@@ -518,6 +518,51 @@ function kinksOf(headed: Headed[], closed: boolean): Kink[] {
   return found;
 }
 
+/**
+ * Where a curve's offset and a straight one's cross on the inside of a corner
+ * between them, and the curve's own parameter there: the crossing nearest the
+ * corner that lies on both pieces. Null on the outside, where they part.
+ */
+function curveCrossing(
+  before: OffsetSegment,
+  after: OffsetSegment,
+): { point: Vec2; t: number } | null {
+  const curveFirst = before.kind === "ellipse";
+  const arc = (curveFirst ? before : after) as OffsetEllipse;
+  const line = (curveFirst ? after : before) as OffsetSegment;
+  if (arc.kind !== "ellipse" || line.kind !== "line") return null;
+  if (arc.rx <= 1e-9 || arc.ry <= 1e-9) return null;
+  const local = (point: Vec2): Vec2 => {
+    const turned = rotate({ x: point.x - arc.centre.x, y: point.y - arc.centre.y }, -arc.rotation);
+    return { x: turned.x / arc.rx, y: turned.y / arc.ry };
+  };
+  const a = local(line.from);
+  const b = local(line.to);
+  const d = { x: b.x - a.x, y: b.y - a.y };
+  const qa = d.x * d.x + d.y * d.y;
+  const qb = 2 * (a.x * d.x + a.y * d.y);
+  const qc = a.x * a.x + a.y * a.y - 1;
+  const disc = qb * qb - 4 * qa * qc;
+  if (qa < 1e-18 || disc < 0) return null;
+  const sweep = arc.to - arc.from;
+  const way = sweep >= 0 ? 1 : -1;
+  const span = Math.abs(sweep);
+  let best: { point: Vec2; t: number; s: number } | null = null;
+  for (const sign of [-1, 1]) {
+    const s = (-qb + sign * Math.sqrt(disc)) / (2 * qa);
+    if (s <= 1e-9 || s >= 1 - 1e-9) continue;
+    const t0 = Math.atan2(a.y + d.y * s, a.x + d.x * s);
+    let u = ((t0 - arc.from) * way) % (2 * Math.PI);
+    if (u < 0) u += 2 * Math.PI;
+    if (u <= 1e-9 || u >= span - 1e-9) continue;
+    const t = arc.from + u * way;
+    // Nearest the corner: the end of the line before it, the start after.
+    const near = curveFirst ? s : 1 - s;
+    if (!best || near < best.s) best = { point: ellipseAt(arc, t), t, s: near };
+  }
+  return best ? { point: best.point, t: best.t } : null;
+}
+
 function offsetStart(segment: OffsetSegment): Vec2 {
   return segment.kind === "line" ? segment.from : ellipseAt(segment, segment.from);
 }
@@ -760,6 +805,34 @@ function sideRun(
         filling.set(kink.before, stall(point));
         continue;
       }
+    }
+
+    /*
+     * A curve running into a straight piece at a corner: on the inside, cut
+     * both back to where their offsets cross, as two straight pieces are. A
+     * wedge there is a loop of outline turned back on itself. Where the corner
+     * is too slight for the two to cross at all -- the offset of a curve drawn
+     * with contrast is not quite the pen's reach -- the straight piece is run
+     * from where the curve's offset ends, which is a step of a hair.
+     */
+    if (!straight && kink.turn * side > 0 && (before.kind === "line" || after.kind === "line")) {
+      const cut = curveCrossing(before, after);
+      let point: Vec2;
+      if (cut) {
+        point = cut.point;
+        if (before.kind === "line") before.to = point;
+        else before.to = cut.t;
+        if (after.kind === "line") after.from = point;
+        else after.from = cut.t;
+      } else if (after.kind === "line") {
+        point = offsetEnd(before);
+        after.from = point;
+      } else {
+        point = offsetStart(after);
+        (before as OffsetLine).to = point;
+      }
+      filling.set(kink.before, stall(point));
+      continue;
     }
 
     const wedge = outerJoin(before, after, kink.at, reach, join === "miter" ? "round" : join);

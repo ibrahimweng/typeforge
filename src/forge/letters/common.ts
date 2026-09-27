@@ -1746,9 +1746,16 @@ export function trough(frame: Frame, fromX: number, height: number, reach = fram
  * see `roundSpine`. A squared face, whose turns are not circles, stacks two
  * bends tangent at the waist.
  */
-export function spine(frame: Frame, height: number, left: number): { stroke: Stroke } {
-  if (frame.square < 0.01) {
-    return { stroke: ink(frame, roundSpine(frame, height, left), frame.end, frame.end) };
+export function spine(
+  frame: Frame,
+  height: number,
+  left: number,
+  heavy = true,
+): { stroke: Stroke } {
+  if (frame.square < ROUND_S) {
+    const drawn = ink(frame, roundSpine(frame, height, left, heavy), frame.end, frame.end);
+    const pen = heavy ? blackPen(frame, drawn, height) : drawn;
+    return { stroke: inherit(pen, { ...pen, join: "round" }) };
   }
   /*
    * Four radii from top to bottom, unless the pen will not go round one that
@@ -1807,7 +1814,142 @@ export function spine(frame: Frame, height: number, left: number): { stroke: Str
  * spine lie flatter, and past that the letter grows taller than the line
  * rather than closing up.
  */
-function roundSpine(frame: Frame, height: number, left: number): Spine {
+function roundSpine(frame: Frame, height: number, left: number, heavy: boolean): Spine {
+  const text = textS(frame, height, left);
+  const black = heavy ? blackOf(frame, height) : 0;
+  const s = black > 0 ? blend(text, blackS(frame, height, left), black * black * (3 - 2 * black)) : text;
+  const { top, bottom, upper, lower, radius, leave, end, fromAngle, headX, footX } = s;
+  const head = at(headX, top - end);
+  const foot = at(footX, bottom + end);
+  const leaves = pointOn(upper, radius, leave);
+  const lands = pointOn(lower, radius, leave - 180);
+  return chain(
+    turn(head, end, fromAngle, 90),
+    straight(at(headX, top), at(upper.x, top)),
+    pinned(turn(upper, radius, 90, leave), 2),
+    straight(leaves, lands),
+    pinned(turn(lower, radius, leave - 180, -90), 2),
+    straight(at(lower.x, bottom), at(footX, bottom)),
+    turn(foot, end, -90, fromAngle - 180),
+  );
+}
+
+/** A turn drawn in so many pieces at every weight: see `SpineArc.pieces`. */
+function pinned(spine: Spine, pieces: number): Spine {
+  return { ...spine, segments: spine.segments.map((one) => ({ ...one, pieces })) };
+}
+
+/**
+ * TODO doc: how far an s of this height is drawn as a Black s.
+ */
+function blackOf(frame: Frame, height: number): number {
+  // Not a pen held on its side, whose heavy strokes are the level ones, nor a
+  // joined hand, whose s is written into and out of along the line.
+  const { pen, parts } = frame.style;
+  if (parts.script.on || Math.abs(Math.abs(pen.angle) - 90) < 30) return 0;
+  const heavy = Math.min(1, heaviness(frame) / 0.8);
+  const cramped = (frame.half * 2) / height;
+  return heavy * Math.min(1, Math.max(0, (cramped - 0.26) / 0.12));
+}
+
+/**
+ * TODO doc: the s's pen at a heavy weight: turned, so the spine is heavy.
+ */
+function blackPen(frame: Frame, stroke: Stroke, height: number): Stroke {
+  const black = blackOf(frame, height);
+  const { pen } = stroke;
+  const tilt = Math.abs(pen.angle) < 15 ? SPARAMS.tilt * black : 0;
+  if (tilt === 0) return stroke;
+  return inherit(stroke, { ...stroke, pen: { ...pen, angle: pen.angle + tilt } });
+}
+
+/** TODO doc: squareness below which an s is drawn round. */
+const ROUND_S = 0.3;
+
+/** An s, as the numbers its seven pieces are laid out from. */
+interface SShape {
+  top: number;
+  bottom: number;
+  upper: Vec2;
+  lower: Vec2;
+  radius: number;
+  /** Where on the upper turn the spine leaves, in degrees. */
+  leave: number;
+  end: number;
+  fromAngle: number;
+  headX: number;
+  footX: number;
+}
+
+function blend(a: SShape, b: SShape, t: number): SShape {
+  const mix = (p: number, q: number): number => p + (q - p) * t;
+  const mixed = (p: Vec2, q: Vec2): Vec2 => at(mix(p.x, q.x), mix(p.y, q.y));
+  return {
+    top: mix(a.top, b.top),
+    bottom: mix(a.bottom, b.bottom),
+    upper: mixed(a.upper, b.upper),
+    lower: mixed(a.lower, b.lower),
+    radius: mix(a.radius, b.radius),
+    leave: mix(a.leave, b.leave),
+    end: mix(a.end, b.end),
+    fromAngle: mix(a.fromAngle, b.fromAngle),
+    headX: mix(a.headX, b.headX),
+    footX: mix(a.footX, b.footX),
+  };
+}
+
+/**
+ * A Black s.
+ *
+ * TODO doc
+ */
+function blackS(frame: Frame, height: number, left: number): SShape {
+  const inked = height + frame.over * 2 - frame.upright * 2;
+  const P = SPARAMS;
+  const width = inked * 0.62 * frame.wide + (P.w * frame.gain * frame.x) / height;
+  const radius = Math.max(frame.least, frame.half * (P.r + 0.3 * Math.max(0, heaviness(frame) - 1)));
+  const laid = (grow: number) => {
+    const top = frame.hangs(height) + frame.over + grow / 2;
+    const bottom = frame.sits(0) - frame.over - grow / 2;
+    const upper = at(left + radius, top - radius);
+    const lower = at(left + width - radius, bottom + radius);
+    const fallAt = (angle: number): number => {
+      const from = pointOn(upper, radius, angle);
+      const to = pointOn(lower, radius, angle - 180);
+      return (Math.atan2(from.y - to.y, to.x - from.x) * 180) / Math.PI;
+    };
+    // Where the spine leaves the turn: as far round as keeps it falling at
+    // least as steeply as a black s's spine does, and no further.
+    let leave = P.leave;
+    while (fallAt(leave) < P.fall && leave > P.least) leave -= 1;
+    return { top, bottom, upper, lower, leave, fall: fallAt(leave) };
+  };
+  /*
+   * And where even the tightest turns leave the spine no fall at all -- a
+   * pen half the height of the letter, as a section mark's small s has at
+   * a Black -- the letter grows past its lines, as the text s does, rather
+   * than running its spine uphill.
+   */
+  let grow = 0;
+  let shape = laid(0);
+  while (shape.fall < P.least_fall && grow < height) {
+    grow += 4;
+    shape = laid(grow);
+  }
+  const { top, bottom, upper, lower, leave } = shape;
+  const rightSide = left + width;
+  const inset = width * P.inset;
+  const fromAngle = P.from;
+  const room = rightSide - inset - upper.x;
+  const end = Math.max((room * P.endShare) / Math.cos(deg(fromAngle)), frame.least);
+  const headX = Math.max(upper.x + 1, rightSide - inset - end * Math.cos(deg(fromAngle)));
+  const footX = Math.min(lower.x - 1, left + inset + end * Math.cos(deg(fromAngle)));
+  return { top, bottom, upper, lower, radius, leave, end, fromAngle, headX, footX };
+}
+
+export const SPARAMS = { least_fall: 14, join: "round", kink: 3, fall: 22, least: 165, tilt: 10, w: 1.1, r: 1.25, leave: 185, inset: 0.04, from: 60, endShare: 0.88 };
+
+function textS(frame: Frame, height: number, left: number): SShape {
   // The height the spine spans: the ink's, less half a pen top and bottom.
   const inked = height + frame.over * 2 - frame.upright * 2;
   // How wide the spine runs from the left of the upper bowl to the right of
@@ -1883,8 +2025,6 @@ function roundSpine(frame: Frame, height: number, left: number): Spine {
   const lower = at(upper.x + across, bottom + radius);
   const rightSide = lower.x + radius;
   const degrees = (slope * 180) / Math.PI;
-  const leaves = pointOn(upper, radius, 270 - degrees);
-  const lands = pointOn(lower, radius, 90 - degrees);
   /*
    * The terminals turn on a wider circle than the bowls, wide enough to come
    * most of the way across the letter before they end, so the top and the foot
@@ -1900,17 +2040,7 @@ function roundSpine(frame: Frame, height: number, left: number): Spine {
   const end = Math.max((room * 0.88) / Math.cos(deg(fromAngle)), least);
   const headX = Math.max(upper.x + 1, rightSide - inset - end * Math.cos(deg(fromAngle)));
   const footX = Math.min(lower.x - 1, leftSide + inset - end * Math.cos(deg(toAngle)));
-  const head = at(headX, top - end);
-  const foot = at(footX, bottom + end);
-  return chain(
-    turn(head, end, fromAngle, 90),
-    straight(at(headX, top), at(upper.x, top)),
-    turn(upper, radius, 90, 270 - degrees),
-    straight(leaves, lands),
-    turn(lower, radius, 90 - degrees, -90),
-    straight(at(lower.x, bottom), at(footX, bottom)),
-    turn(foot, end, -90, toAngle),
-  );
+  return { top, bottom, upper, lower, radius, leave: 270 - degrees - SPARAMS.kink, end, fromAngle, headX, footX };
 }
 
 /**
@@ -1938,9 +2068,30 @@ export function openBowl(
    * eight degrees wider and the bowl ends where it always did.
    */
   carry = 0,
+  /** How many half-pens more clear the gap is held to: see `blackGap`. */
+  wider = 0,
 ): Stroke {
   uses("bowl");
-  const [from, to] = opening(f, centre, halfHeight, fromDegrees, toDegrees);
+  const [asked, until] = opening(f, centre, halfHeight, fromDegrees, toDegrees, wider);
+  /*
+   * And at a heavy weight the cut is laid where that angle falls on the bowl
+   * as it is drawn, not on a circle. A Black's bowls are wider than they are
+   * tall, and a ray at the regular's angle met the crown of one a third of
+   * the way across: the c ended over its own middle and read as a bracket.
+   */
+  const black = Math.min(1, blackness(f.style));
+  const symmetric = Math.abs(fromDegrees + toDegrees - 360) < 1e-9;
+  const run = symmetric ? Math.max(0, halfWidth - halfHeight) * black : 0;
+  let from = asked;
+  let to = until;
+  if (run > 0) {
+    // Where on the round of the bowl each end is cut: far enough round that
+    // the ends' inner corners stand a stem and a bit apart, measured upright.
+    const clear = (Math.asin(Math.min(0.95, (1.2 + wider / 2) * (f.half / halfHeight))) * 180) / Math.PI;
+    const round = asked + (Math.max(clear, 20) - asked) * black;
+    from = (Math.atan2(halfHeight * Math.sin(deg(round)), run + halfHeight * Math.cos(deg(round))) * 180) / Math.PI;
+    to = 360 - from;
+  }
   return ink(
     f,
     bowlBetween(centre, halfWidth, halfHeight, 1 - f.square, f.half, from, to + carry),
@@ -1964,17 +2115,27 @@ export function openBowl(
  * c would fuse it into an o with a scar -- which is the same fault the G had
  * before its aperture was measured in pen widths rather than in degrees.
  */
+/**
+ * How much wider a c's gap is held at a heavy weight, in half-pens: its two
+ * ends' own ink comes most of the way across the gap, and a Black c whose
+ * ends stood the regular's distance apart read as an o with a notch in it.
+ */
+export function blackGap(f: Frame): number {
+  return 0.5 * Math.min(1, blackness(f.style));
+}
+
 export function opening(
   f: Frame,
   centre: Vec2,
   halfHeight: number,
   fromDegrees: number,
   toDegrees: number,
+  wider = 0,
 ): [number, number] {
   void centre;
   const middle = (fromDegrees + 360 + toDegrees) / 2;
   const half = (fromDegrees + 360 - toDegrees) / 2;
-  const clear = ((f.half * 2.4) / Math.max(halfHeight, f.least)) * (180 / Math.PI);
+  const clear = ((f.half * (2.4 + wider)) / Math.max(halfHeight, f.least)) * (180 / Math.PI);
   const wanted = Math.max(half * f.style.parts.bowl.aperture, clear);
   return [middle + wanted - 360, middle - wanted];
 }
@@ -2645,8 +2806,8 @@ export function eyeOf(f: Frame, centre: Vec2): number {
  * every cut. From the wall's own centre-line the end is buried half a pen
  * deep, with nothing near it to agree with.
  */
-export function wallAt(f: Frame, centre: Vec2, opens: number): number {
-  return spineStart(bend(f, centre, f.bowlH, 180 - opens, 181 - opens)).x;
+export function wallAt(f: Frame, centre: Vec2, opens: number, width?: number): number {
+  return spineStart(bend(f, centre, f.bowlH, 180 - opens, 181 - opens, width)).x;
 }
 
 export function crossbar(f: Frame, from: number, to: number): Stroke {

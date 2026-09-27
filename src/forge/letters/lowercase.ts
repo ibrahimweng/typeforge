@@ -7,7 +7,7 @@
  */
 
 import { spineStart } from "../shapes";
-import type { Style } from "../style";
+import { blackness, type Style } from "../style";
 import type { Stroke } from "../types";
 import {
   roundHalf,
@@ -40,6 +40,7 @@ import {
   turn,
   tittle,
   bookish,
+  blackGap,
   heaviness,
   lighter,
 } from "./common";
@@ -82,7 +83,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   c: (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
-    return finish(f, [openBowl(f, centre, f.bowl, f.bowlH)], true);
+    return finish(f, [openBowl(f, centre, f.bowl, f.bowlH, 55, 305, 0, blackGap(f))], true);
   },
 
   d: (style) => {
@@ -114,7 +115,21 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * at half the x-height and nowhere else, an e was the second letter that
      * looked like it had a crossbar and did not listen to the crossbar.
      */
-    const eye = eyeOf(f, centre);
+    /*
+     * And at a heavy weight the bar comes down and goes lighter until the eye
+     * above it is half a stem deep. Two horizontals and a crossbar share the
+     * x-height, and at a Black on a text x-height the eye was left a third of
+     * a stem -- a chink, beside an o whose counter had widened with the pen.
+     * A Black e carries a lighter bar than its bowl and a smaller aperture
+     * than its Regular, and the eye is the counter the letter is read by.
+     */
+    const opening = Math.min(1, blackness(f.style) / 0.5);
+    const bar = 1 - EP.bar * opening;
+    const crown = centre.y + f.bowlH - f.upright;
+    const deep = f.half * 2 * EP.deep * opening;
+    // Never so low that the aperture under the bar is shut by the tail.
+    const floor = centre.y - f.bowlH + f.upright + f.upright * f.bar * bar + deep * EP.below;
+    const eye = Math.max(Math.min(eyeOf(f, centre), crown - f.upright * f.bar * bar - deep), floor);
     const rise = Math.max(-0.85, Math.min(0.85, (eye - centre.y) / f.bowlH));
     const opens = (Math.asin(rise) * 180) / Math.PI;
     /*
@@ -129,7 +144,8 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * that it sliced the bowl. Past it the eye closes without the help.
      */
     const light = bookish(f) ? heavy : Math.max(0, heavy - 1.1) * 2;
-    const belt = bend(f, centre, f.bowlH, opens, opens + 300, f.bowl + f.half * 0.3 * light);
+    const beltWidth = f.bowl + f.half * 0.3 * light;
+    const belt = bend(f, centre, f.bowlH, opens, opens + 300, beltWidth);
     return finish(
       f,
       [
@@ -153,10 +169,13 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
          * spur -- at a black weight half a stem of it. A text e's bar runs
          * flush with the outside of the bowl, and the eye closes square.
          */
-        thin(
+        lighter(thin(
           f,
           straight(
-            at(wallAt(f, centre, opens), eye),
+            // The wall of the bowl as it is drawn, which a heavy weight
+            // has widened: at the width the bowl would have had, the bar
+            // stopped short of it and left a pinhole under its end.
+            at(wallAt(f, centre, opens, blackness(f.style) > 0 ? beltWidth : undefined), eye),
             at(
               spineStart(belt).x +
                 // The bowl's own pen, which is lighter than the stem's at a
@@ -167,7 +186,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
           ),
           BUTT,
           { kind: "butt", level: true },
-        ),
+        ), bar),
         lighter(ink(f, belt, BUTT, f.end), 1 - 0.14 * light),
       ],
       true,
@@ -591,3 +610,5 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     ]);
   },
 };
+
+export const EP = { bar: 0, deep: 0.58, below: 0.9 };

@@ -2223,7 +2223,16 @@ export function blackness(style: Style): number {
   const base = BASES.find((one) => one.name === style.name);
   const own = base ? base.pen.weight / base.metrics.xHeight : TEXT_STEM;
   const from = Math.max(own, TEXT_STEM);
-  return Math.min(Math.max((pen.weight / metrics.xHeight - from) / BLACK_SPAN, 0), 1.5);
+  /*
+   * And a face that starts heavy has less of the way to go: it arrives at a
+   * Black at the same stem as every other face does, because what closes a
+   * counter is how much of the x-height the stem has taken, not how far the
+   * slider has moved. Counted over the whole span from the Sans's text stem,
+   * the Ribbon and the Marker came to a pen of 200 not halfway to a Black
+   * and with their B and e nearly shut.
+   */
+  const span = Math.max(TEXT_STEM + BLACK_SPAN - from, BLACK_SPAN / 4);
+  return Math.min(Math.max((pen.weight / metrics.xHeight - from) / span, 0), 1.5);
 }
 
 /** A text stem against its x-height, a little over the Sans's own. */
@@ -2245,6 +2254,24 @@ const BLACK_SPAN = 0.2;
  */
 export function heavierPen(style: Style): Pen {
   const { pen } = style;
+  /*
+   * A pen held on its side draws its horizontals with the whole weight, and
+   * at a Black of a reversed face two of them took all but a sliver of the
+   * x-height: the Fairground's e and o were slits. So there the weight goes
+   * where a reversed Black puts it -- into the thin verticals, which carry on
+   * growing with the weight asked for -- and the horizontals take only half
+   * of what the weight gains past the face's own.
+   */
+  if (Math.abs(Math.abs(pen.angle) - 90) < 30) {
+    const black = blackness(style);
+    if (black <= 0) return pen;
+    const base = BASES.find((one) => one.name === style.name);
+    const own = base ? base.pen.weight * (style.metrics.xHeight / base.metrics.xHeight) : pen.weight;
+    if (pen.weight <= own) return pen;
+    const weight = own + (pen.weight - own) * 0.5;
+    const thin = pen.weight * (1 - pen.contrast);
+    return { ...pen, weight, contrast: Math.max(0, 1 - thin / weight), own: pen.own ?? pen.contrast };
+  }
   const wanted = Math.min(0.56, 0.37 * blackness(style));
   if (wanted <= pen.contrast) return pen;
   return { ...pen, contrast: wanted, own: pen.own ?? pen.contrast };
