@@ -26,6 +26,7 @@ import {
   roundCorners,
   shortened,
   spineStart,
+  superQuarter,
   wavy,
 } from "../shapes";
 import { blackness, heavier, spacingOf, type Style, terminalFor } from "../style";
@@ -317,6 +318,26 @@ export function bend(
 ): Spine {
   const halfWidth = width;
   const roundness = 1 - f.square;
+  // A quarter laid on the axes is its own three arcs: see `superQuarter`.
+  const low = Math.min(fromDegrees, toDegrees);
+  if (
+    Math.abs(Math.abs(toDegrees - fromDegrees) - 90) < 1e-9 &&
+    Math.abs(low / 90 - Math.round(low / 90)) < 1e-9
+  ) {
+    const arcs = superQuarter(
+      centre,
+      halfWidth,
+      radius,
+      roundness,
+      f.half,
+      f.superness,
+      Math.round(low / 90),
+    );
+    if (arcs) {
+      const quarter = { segments: arcs, closed: false };
+      return toDegrees > fromDegrees ? quarter : reversed(quarter);
+    }
+  }
   if (toDegrees >= fromDegrees) {
     return bowlBetween(
       centre,
@@ -689,9 +710,15 @@ function heldOpen(style: Style, bowlH: number, upright: number): number {
    * bowls and its arches are held open to most of a stem.
    */
   const least = style.parts.script.on ? SCRIPT_COUNTER : 0.62;
+  /*
+   * A superelliptic bowl is drawn narrower than a circle because its flat
+   * sides make it look as wide as one; at a Black the counter it keeps is the
+   * n's, as it is on any other face, not the n's narrowed again.
+   */
+  const across = style.parts.bowl.superness > 0 ? 1 : wide;
   const counter = Math.max(
     pen.weight * least,
-    Math.min(metrics.counterWidth * 0.8 * wide, tall * 1.1),
+    Math.min(metrics.counterWidth * 0.8 * across, tall * 1.1),
   );
   return ((counter + pen.weight) / 2) * Math.min(1, black * 4);
 }
@@ -1461,9 +1488,19 @@ export interface MarkBox {
  * with an accent in it has done it. Text weights are left exactly as they are:
  * the limit only bites where the alternative is an accent that does not fit.
  */
+/**
+ * The room above the x-height an accent is drawn in: up to the ascender, or on
+ * a face whose ascenders stop level with its capitals -- a neo-grotesque's --
+ * up to a tenth of the em above them, which is where Geist's accents reach.
+ */
+function markRoom(f: Frame): number {
+  const ceiling = f.asc > f.cap + 1 ? f.asc : f.cap + f.style.metrics.unitsPerEm * 0.1;
+  return Math.max(ceiling - f.x, f.style.metrics.unitsPerEm * 0.1);
+}
+
 export function markFrame(style: Style): Frame {
   const f = frame(style);
-  const room = Math.max(f.asc - f.x, style.metrics.unitsPerEm * 0.1);
+  const room = markRoom(f);
   const most = room * 0.42;
   if (style.pen.weight <= most) return f;
   return frame({ ...style, pen: { ...style.pen, weight: most } });
@@ -1488,7 +1525,7 @@ export function shortEnd(f: Frame): Terminal {
 }
 
 export function markBox(f: Frame): MarkBox {
-  const room = Math.max(f.asc - f.x, f.style.metrics.unitsPerEm * 0.1);
+  const room = markRoom(f);
   const w = Math.max(f.bowl * 0.42, f.half * 1.1);
   /*
    * Sized by the ink it leaves, not by where its spine runs.
@@ -1508,6 +1545,19 @@ export function markBox(f: Frame): MarkBox {
 }
 
 export function dot(frame: Frame, centre: Vec2, radius: number): Stroke {
+  /*
+   * On a face that cuts its ends level the dots are cut level too: square,
+   * as a neo-grotesque's full stop and tittle are. A round dot beside a level-cut stroke is the one soft thing in the
+   * letter.
+   */
+  if (squareDots(frame)) {
+    return {
+      spine: straight(at(centre.x, centre.y - radius), at(centre.x, centre.y + radius)),
+      pen: { ...frame.style.pen, contrast: 0, weight: radius * 2 },
+      start: BUTT,
+      end: BUTT,
+    };
+  }
   const round: Terminal = { kind: "round" };
   return {
     spine: straight(at(centre.x - 0.5, centre.y), at(centre.x + 0.5, centre.y)),
@@ -1575,7 +1625,15 @@ export function heaviness(f: Frame): number {
  * of its stem. And never a speck at a hairline weight on a face with contrast:
  * a light text face keeps its dots about the size of the regular's.
  */
+/** Whether this face's dots are square: see `dot`. */
+export function squareDots(f: Frame): boolean {
+  return f.style.parts.terminal.kind === "level";
+}
+
 export function stopRadius(f: Frame): number {
+  // A square full stop reads as the same weight as a round one a little
+  // larger: Geist's is 109 units on a stem of 87.
+  if (squareDots(f) && !f.style.parts.script.on) return Math.min(f.half * 1.25, f.x * 0.2);
   // A joined hand keeps the pen's own dot: its comma is run into the join.
   if (f.style.parts.script.on) return f.half * 0.95;
   const { contrast } = f.style.pen;
@@ -1599,6 +1657,12 @@ export function stopRadius(f: Frame): number {
 export function tittle(f: Frame, x: number): Stroke {
   const { contrast } = f.style.pen;
   const c = Math.min(Math.max(contrast, 0), 0.95);
+  if (squareDots(f)) {
+    // Square, a little wider than the stem, its top level with the ascender.
+    const side = f.half * 1.03;
+    const high = Math.min(f.x + f.half * 1.9 + side, f.asc - side);
+    return dot(f, at(x, Math.max(high, f.x + f.half * 0.6 + side)), side);
+  }
   const radius = Math.max(f.half * (0.55 + c), f.style.metrics.unitsPerEm * 0.04 * c);
   const y = Math.min(f.x + f.half * 1.5 + radius, f.asc + f.over - radius);
   return dot(f, at(x, Math.max(y, f.x + f.half * 0.6 + radius)), radius);
@@ -1684,7 +1748,7 @@ export function heldReach(style: Style): number {
 export function shoulderRadius(frame: Frame, height: number): number {
   const spring = Math.min(0.85, Math.max(0.3, frame.style.parts.shoulder.spring));
   const reach = frame.arch;
-  return Math.max(frame.half, reach * 0.5, Math.min(reach, height * (1 - spring)));
+  return Math.max(frame.least, reach * 0.5, Math.min(reach, height * (1 - spring)));
 }
 
 export function arch(frame: Frame, fromX: number, height: number): Stroke {
@@ -1732,6 +1796,23 @@ export function archSpine(frame: Frame, fromX: number, height: number, bottom = 
    */
   const crest = Math.max(frame.hangs(height) + frame.over, radius);
   const top = crest - radius;
+  if (frame.superness > 0) {
+    /*
+     * On a face whose bowls are superelliptic the arch is too: two quarters
+     * of one, springing from the stem's middle and running flat across the
+     * crest. The corner it turns in is tighter than a circle's, so its outside
+     * dives into the stem well below the x-height and the stroke leaves the
+     * stem thinned -- the notch a grotesque's n, m and h have where the arch
+     * meets the stem, arrived at by the shape rather than cut in afterwards.
+     */
+    const middle = at((fromX + landing) / 2, top);
+    const half = (landing - fromX) / 2;
+    return chain(
+      bend(frame, middle, radius, 180, 90, half),
+      bend(frame, middle, radius, 90, 0, half),
+      straight(at(landing, top), at(landing, Math.min(bottom, top))),
+    );
+  }
   return chain(
     turn(at(fromX + radius, top), radius, 180, 90),
     straight(at(fromX + radius, crest), at(landing - radius, crest)),
@@ -1752,6 +1833,22 @@ export function trough(frame: Frame, fromX: number, height: number, reach = fram
   // Half a pen up off the baseline and the overshoot back down, so the round
   // bottom of a u finishes level with the round bottom of an o.
   const floor = Math.min(frame.sits(0) - frame.over, height - radius);
+  if (frame.superness > 0) {
+    // Superelliptic, as the arch is: see `archSpine`.
+    const middle = at((fromX + rising) / 2, floor + radius);
+    const half = (rising - fromX) / 2;
+    return ink(
+      frame,
+      chain(
+        straight(at(fromX, height), at(fromX, floor + radius)),
+        bend(frame, middle, radius, 180, 270, half),
+        bend(frame, middle, radius, 270, 360, half),
+        straight(at(rising, floor + radius), at(rising, height)),
+      ),
+      frame.end,
+      frame.end,
+    );
+  }
   return ink(
     frame,
     chain(
@@ -1779,10 +1876,6 @@ export function spine(
   left: number,
   heavy = true,
 ): { stroke: Stroke } {
-  if (frame.superness > 0 && frame.square < ROUND_S) {
-    const drawn = ink(frame, grotesqueSpine(frame, height, left), frame.end, frame.end);
-    return { stroke: inherit(drawn, { ...drawn, join: "round" }) };
-  }
   if (frame.square < ROUND_S) {
     const drawn = ink(frame, roundSpine(frame, height, left, heavy), frame.end, frame.end);
     const pen = heavy ? blackPen(frame, drawn, height) : drawn;
@@ -1826,96 +1919,8 @@ export function spine(
   };
 }
 
-
-/**
- * The run of a neo-grotesque s: two superelliptic half-bowls and a spine
- * swung between them on two turns.
- *
- * Built the way Geist's is. The head comes up from a terminal just below the
- * middle of the upper bowl, over a flat crown and down a flat left side; the
- * side runs on a little, then turns into the spine, which crosses the letter
- * on a straight tangent to a matching turn on the right, down into the lower
- * bowl's side, round a flat foot and up into the tail's terminal. So the
- * crown and the foot are the same firm superelliptic round as the o's, and the
- * spine is a real diagonal rather than the S-curve two stacked circles leave.
- *
- * The lower bowl is a little wider than the upper and reaches further left, as
- * every grotesque's s does so it does not look as if it is falling over; and
- * the two turns are point-symmetric about the middle of the letter, so the
- * spine passes through it. Eleven pieces or so at every weight: each is laid
- * from fixed angles, and only the tangent's two angles move with the pen.
- */
-function grotesqueSpine(frame: Frame, height: number, left: number): Spine {
-  const capital = height !== frame.x;
-  const top = frame.hangs(height) + frame.over;
-  const bottom = frame.sits(0) - frame.over;
-  const tall = top - bottom;
-  // Geist's s is seven tenths as wide as it is tall along its spine, its S
-  // two thirds: against the bowl's own width, so the Width control reaches it.
-  const share = capital ? 0.77 : 0.84;
-  const wide = Math.max(
-    tall * share * frame.wide + (1.45 * frame.gain * frame.x) / height,
-    frame.least * 3,
-  );
-  const leftSide = left;
-  const rightSide = left + wide;
-  const upperHalf = Math.max(tall * (capital ? 0.235 : 0.26), frame.least);
-  const lowerHalf = Math.max(tall * (capital ? 0.24 : 0.232), frame.least);
-  const upperWide = wide * 0.485;
-  const lowerWide = wide * 0.53;
-  const upper = at(leftSide + upperWide, top - upperHalf);
-  const lower = at(rightSide - lowerWide, bottom + lowerHalf);
-  // The side runs on this far before it turns into the spine, and the turn is
-  // no tighter than the pen will go round.
-  const radius = Math.max(tall * 0.15, frame.least);
-  const run = Math.max(0, Math.min(tall * 0.04, (upper.y - lower.y) / 2 - radius));
-  const turnA = at(leftSide + radius, upper.y - run);
-  const turnB = at(rightSide - radius, lower.y + run);
-  const middle = at((turnA.x + turnB.x) / 2, (turnA.y + turnB.y) / 2);
-  /*
-   * Where the spine leaves the first turn. On a text weight, the tangent the
-   * two turns share, less a hair: the spine leaves at a corner of three
-   * degrees, as the round s does (see `TEXT_KINK`), so the corner is there at
-   * every weight and a weight axis can follow it. Where the pen leaves no
-   * tangent that falls -- a Black, whose turns fill the height -- the spine
-   * still falls at fourteen degrees through the middle of the letter, and the
-   * corner it leaves at is the pen's own round.
-   */
-  const heading = (angle: number): number => {
-    const from = pointOn(turnA, radius, angle);
-    return (Math.atan2(middle.y - from.y, middle.x - from.x) * 180) / Math.PI;
-  };
-  const dx = turnB.x - turnA.x;
-  const dy = turnB.y - turnA.y;
-  const ratio = (2 * radius) / Math.max(Math.hypot(dx, dy), 1e-9);
-  let leave =
-    ratio < 1 ? ((Math.atan2(dy, dx) - Math.acos(ratio)) * 180) / Math.PI - TEXT_KINK : Number.NaN;
-  if (leave < 0) leave += 360;
-  const steepest = -14;
-  if (!(leave > 180 && leave < 300) || heading(leave) > steepest) {
-    let lo = 180;
-    let hi = 300;
-    for (let pass = 0; pass < 50; pass++) {
-      const mid = (lo + hi) / 2;
-      if (heading(mid) > steepest) hi = mid;
-      else lo = mid;
-    }
-    leave = (lo + hi) / 2;
-  }
-  const from = pointOn(turnA, radius, leave);
-  const to = pointOn(turnB, radius, leave - 180);
-  const headAngle = capital ? -9 : -4;
-  const tailAngle = capital ? 165 : 167;
-  return chain(
-    bend(frame, upper, upperHalf, headAngle, 180, upperWide),
-    straight(at(leftSide, upper.y), at(leftSide, turnA.y)),
-    pinned(turn(turnA, radius, 180, leave), 1),
-    straight(from, to),
-    pinned(turn(turnB, radius, leave - 180, 0), 1),
-    straight(at(rightSide, turnB.y), at(rightSide, lower.y)),
-    bend(frame, lower, lowerHalf, 0, tailAngle - 360, lowerWide),
-  );
-}
+/** How steeply a grotesque's s falls across the letter, in degrees: see `textS`. */
+const GROTESQUE_FALL = 22;
 
 /**
  * The run of a round s: two bowls wider than they are tall, and a spine that
@@ -2128,7 +2133,15 @@ function textS(frame: Frame, height: number, left: number): SShape {
   // How wide the spine runs from the left of the upper bowl to the right of
   // the lower one: three fifths of its height, as an s has always been.
   // And wider by what a heavy stem gains, as the o beside it is.
-  const width = inked * 0.62 * frame.wide + (frame.gain * frame.x) / height;
+  /*
+   * A superelliptic face's s is wider -- Geist's is seven tenths as wide as
+   * it is tall, its S two thirds -- and against the bowl's own width, which
+   * on those faces is narrower than a circle's.
+   */
+  const grotesque = frame.superness > 0;
+  const capital = height !== frame.x;
+  const share = grotesque ? (capital ? 0.77 : 0.84) : 0.62;
+  const width = inked * share * frame.wide + (frame.gain * frame.x) / height;
   const least = Math.max(frame.half * 1.08, frame.least);
   /*
    * How far the lower bowl's turn sits right of the upper one's, for a turn of
@@ -2145,8 +2158,9 @@ function textS(frame: Frame, height: number, left: number): SShape {
    * its width at that slope: the lower bowl's right side lands on the far edge
    * of the letter. Linear in the radius, so written out.
    */
-  const steep = (30 * Math.PI) / 180;
-  const flattest = (21 * Math.PI) / 180;
+  // A grotesque's spine lies flatter across the letter than a humanist's.
+  const steep = ((grotesque ? GROTESQUE_FALL : 30) * Math.PI) / 180;
+  const flattest = ((grotesque ? GROTESQUE_FALL - 1 : 21) * Math.PI) / 180;
   const denominator = 2 * (Math.sin(steep) + (1 + Math.cos(steep)) / Math.tan(steep) - 1);
   const fitted = (inked / Math.tan(steep) - width) / denominator;
   const radius = Math.max(Math.min(fitted, inked * 0.24), least);
@@ -2206,11 +2220,26 @@ function textS(frame: Frame, height: number, left: number): SShape {
    * across it stands nearly upright and a beak can hang straight down from its
    * outside corner, and a little inside the side of the letter it is on.
    */
-  const inset = (rightSide - leftSide) * 0.04;
+  const inset = (rightSide - leftSide) * (grotesque ? 0.01 : 0.04);
   const room = rightSide - inset - upper.x;
-  const fromAngle = 40;
+  // A grotesque carries its ends round until they are travelling nearly
+  // upright, where the level cut lies across them: see `Terminal.aligned`.
+  // Less far round as the pen gets heavier, or the inside of a level cut comes
+  // down onto the spine.
+  let fromAngle = grotesque ? (capital ? 12 : 8) + 45 * Math.min(1, blackness(frame.style)) : 40;
+  let end = Math.max((room * 0.88) / Math.cos(deg(fromAngle)), least);
+  /*
+   * And never so far round that the end comes down past the bowl it finishes:
+   * on a wide s the head's turn is wide too, and carried round to upright it
+   * reached down across the spine.
+   */
+  for (let pass = 0; grotesque && pass < 40; pass++) {
+    const drop = end * (1 - Math.sin(deg(fromAngle)));
+    if (drop <= radius * 1.7 || fromAngle >= 60) break;
+    fromAngle += 2;
+    end = Math.max((room * 0.88) / Math.cos(deg(fromAngle)), least);
+  }
   const toAngle = fromAngle - 180;
-  const end = Math.max((room * 0.88) / Math.cos(deg(fromAngle)), least);
   const headX = Math.max(upper.x + 1, rightSide - inset - end * Math.cos(deg(fromAngle)));
   const footX = Math.min(lower.x - 1, leftSide + inset - end * Math.cos(deg(toAngle)));
   return {
@@ -3144,7 +3173,9 @@ export function lobe(f: Frame, stem: number, low: number, high: number, asked: n
 export function hook(style: Style, side: number): Recipe {
   const f = markFrame(style);
   const m = markBox(f);
-  const radius = Math.max(f.x * 0.15, f.least);
+  // And no deeper than a shallow descender leaves room for: a neo-grotesque's
+  // is only three tenths of its x-height.
+  const radius = Math.max(Math.min(f.x * 0.15, -f.desc * 0.45), f.least);
   const from = side < 0 ? 0 : 180;
   return finish(f, [
     ink(
@@ -3608,7 +3639,7 @@ export function brace(f: Frame, facing: 1 | -1): Recipe {
    * stroke through itself. The radius decides where the runs are instead, which
    * is the same construction with the dependency the other way round.
    */
-  const radius = Math.max(Math.min(w * 0.5, room * 0.34), f.half);
+  const radius = Math.max(Math.min(w * 0.5, room * 0.34), f.least);
   /*
    * The straight runs get what is left, and they get it first.
    *

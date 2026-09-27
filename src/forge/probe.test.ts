@@ -79,7 +79,9 @@ describe("what governs a spot", () => {
       y: style.metrics.xHeight * 0.86,
     });
     expect(found).not.toBeNull();
-    expect(driveId(found!.handle.drive)).toBe("part:shoulder:spring");
+    // Where the shoulder springs, or how high it rises: on the Sans, whose
+    // arch is superelliptic, the height moves this part of it the most.
+    expect(["part:shoulder:spring", "part:shoulder:crest"]).toContain(driveId(found!.handle.drive));
     // And it knows which run it was: an n's arch is the shoulder's.
     expect(found!.parts).toContain("shoulder");
   });

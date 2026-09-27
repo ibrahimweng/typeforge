@@ -288,7 +288,10 @@ describe("the character set", () => {
         const heightOf = (name: string): number =>
           contoursBounds(drawLetter(name, style)!.contours).yMax;
         expect(heightOf("H")).toBeGreaterThan(heightOf("n"));
-        expect(heightOf("l")).toBeGreaterThan(heightOf("H"));
+        // No shorter than the capitals, and on most faces taller: a
+        // neo-grotesque such as the Sans stands its ascenders level with its
+        // capitals, as Geist and Helvetica do.
+        expect(heightOf("l")).toBeGreaterThanOrEqual(heightOf("H"));
         /*
          * Within a few units, because a nib held at an angle puts a slight
          * bulge on the outside of a turn: the offset of a circle swept by an

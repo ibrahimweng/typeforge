@@ -36,7 +36,7 @@ import { shapedInk } from "./layers";
 import { noCuts, type Cuts } from "@/font/cuts";
 import { draw, editCast, editCut, setCastOrder, startFrom } from "./document";
 import { weightedStyle } from "./family";
-import { BASES, SANS } from "./style";
+import { BASES, proportioned, SANS } from "./style";
 
 beforeAll(async () => {
   await readyToShape();
@@ -477,7 +477,7 @@ describe("the fillets", () => {
         const drawn = drawLetter(letter, SANS)!;
         const welded = castInk(
           drawn.contours,
-          LETTERS[letter](SANS).strokes,
+          LETTERS[letter](proportioned(SANS, letter)).strokes,
           scaleOf(SANS),
           cast((one) => {
             one.weld = { on: true, size };
@@ -506,7 +506,7 @@ describe("the fillets", () => {
     const filled = ink(
       castInk(
         plain("H"),
-        LETTERS.H(SANS).strokes,
+        LETTERS.H(proportioned(SANS, "H")).strokes,
         scaleOf(SANS),
         cast((one) => {
           one.weld = { on: true, size: 1 };
@@ -613,12 +613,13 @@ describe("at the ends of the weight range", () => {
     /*
      * A Black A widens enough now to keep its counter under a rim (see
      * `blackness` in `style.ts`), so what is asked of it is the same: a
-     * counter or nothing, and no star of specks.
+     * counter or nothing, and no star of specks. The Sans's Black A is
+     * narrow, like Geist's, and its counter is a small triangle under the rim
+     * -- smaller than a speck is measured here -- so what is counted is holes:
+     * one at most.
      */
-    const specks = castOn("A", black, rim).filter(
-      (one) => contourArea(one) < 0 && -contourArea(one) < black.pen.weight ** 2 * 0.25,
-    );
-    expect(specks).toEqual([]);
+    const holes = castOn("A", black, rim).filter((one) => contourArea(one) < 0);
+    expect(holes.length).toBeLessThanOrEqual(1);
   });
 
   it("grows a rim over points on a brushed face in a moment, and leaves the letter", () => {

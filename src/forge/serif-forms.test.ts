@@ -15,7 +15,7 @@ import { contoursIntersect } from "@/font/outline";
 import type { Contour } from "@/font/types";
 import { drawLetter } from "./build";
 import { formsOf, recipeOf } from "./letters";
-import { BASES, DIDONE, SANS, SERIF, type Style } from "./style";
+import { BASES, DIDONE, GEOMETRIC, SANS, SERIF, type Style } from "./style";
 import type { SpineSegment } from "./types";
 
 function styled(base: Style, weight: number, contrast: number): Style {
@@ -217,8 +217,10 @@ describe("the shapes changed for the Serif base stay clean on every base", () =>
   }
 
   it("leaves the sans's capitals where they were", () => {
-    // The proportions came in on the Serif base; the sans keeps its circle.
-    const sans = contoursBounds(draw("O", SANS));
+    // The proportions came in on the Serif base; the plain sans keeps its
+    // circle. The Geometric is that sans, where the Sans itself is now drawn
+    // after Geist, whose O is narrower than a circle by design.
+    const sans = contoursBounds(draw("O", GEOMETRIC));
     const serif = contoursBounds(draw("O", SERIF));
     expect(sans.xMax - sans.xMin).toBeGreaterThan(serif.xMax - serif.xMin);
   });

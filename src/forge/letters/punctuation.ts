@@ -47,6 +47,7 @@ import {
   signWidth,
   spine,
   spread,
+  squareDots,
   stopRadius,
   straight,
   superior,
@@ -261,6 +262,36 @@ function crescent(f: Frame, side: 1 | -1): Stroke[] {
   });
 }
 
+/**
+ * Where the upper dot of a colon stands: at the x-height on most faces, and
+ * lower on one with square dots, whose colon Geist sets with its top at 0.87
+ * of the x-height so the two dots sit about the middle of the lowercase.
+ */
+function upperStop(f: Frame, radius: number): number {
+  if (!squareDots(f)) return f.x - radius;
+  // Never nearer the full stop than two thirds of a dot, nor above the x-height.
+  return Math.min(Math.max(f.x * 0.873 - radius, radius * 3.7), f.x - radius);
+}
+
+/**
+ * The comma of a face with square dots: the full stop, and a straight tail
+ * leaning down to the left out of its foot, cut level under the line.
+ */
+function squareComma(f: Frame, radius: number): Stroke[] {
+  const side = radius * 2;
+  const top = at(f.edge + side * 0.12, radius);
+  const foot = at(f.edge - side * 0.25, Math.min(f.desc * 0.95, -radius * 2.2));
+  return [
+    dot(f, at(f.edge, radius), radius),
+    {
+      spine: straight(top, foot),
+      pen: { ...f.style.pen, contrast: 0, weight: radius * 0.95 },
+      start: BUTT,
+      end: { ...f.end, open: true },
+    },
+  ];
+}
+
 export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   // --- punctuation -------------------------------------------------------
 
@@ -279,6 +310,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     const f = frame(style);
     const radius = stopRadius(f);
     if (bookish(f)) return finish(f, drop(f, at(f.edge, radius), radius));
+    if (squareDots(f)) return finish(f, squareComma(f, radius));
     return finish(f, [tail(f, radius)]);
   },
 
@@ -287,13 +319,19 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     const radius = stopRadius(f);
     return finish(f, [
       dot(f, at(f.edge, radius), radius),
-      dot(f, at(f.edge, f.x - radius), radius),
+      dot(f, at(f.edge, upperStop(f, radius)), radius),
     ]);
   },
 
   semicolon: (style) => {
     const f = frame(style);
     const radius = stopRadius(f);
+    if (squareDots(f)) {
+      return finish(f, [
+        ...squareComma(f, radius),
+        dot(f, at(f.edge, upperStop(f, radius)), radius),
+      ]);
+    }
     if (bookish(f)) {
       return finish(f, [
         ...drop(f, at(f.edge, radius), radius),

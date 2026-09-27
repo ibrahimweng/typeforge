@@ -869,7 +869,7 @@ function alignedCut(headed: Headed[], atEnd: boolean): { axis: "x" | "y"; value:
         1e-9
       : Math.abs(one.segment.endAngle - one.segment.startAngle) > 1e-9,
   );
-  if (!last || last.segment.kind !== "arc") return null;
+  if (last?.segment.kind !== "arc") return null;
   const tip = atEnd ? segmentEnd(last.segment) : segmentStart(last.segment);
   const heading = atEnd ? last.end : last.start;
   // Level unless the curve is nearly running across when it stops: a c whose
@@ -898,68 +898,127 @@ function cutAlong(
   run: OffsetSegment[],
   atEnd: boolean,
   cut: { axis: "x" | "y"; value: number },
-): void {
+  furthest: number,
+): (() => void) | null {
   const order = atEnd ? [...run.keys()].reverse() : [...run.keys()];
-  const found = order.find((index) => {
-    const one = run[index];
-    return one.kind === "ellipse"
+  const travels = (one: OffsetSegment): boolean =>
+    one.kind === "ellipse"
       ? Math.abs(one.to - one.from) > 1e-9 && (one.rx > 1e-9 || one.ry > 1e-9)
       : Math.hypot(one.to.x - one.from.x, one.to.y - one.from.y) > 1e-9;
-  });
-  if (found === undefined) return;
-  const arc = run[found];
-  if (arc.kind !== "ellipse") return;
-  const coordinate = (t: number): number => {
-    const point = ellipseAt(arc, t);
-    return (cut.axis === "y" ? point.y : point.x) - cut.value;
-  };
-  const sweep = arc.to - arc.from;
-  const way = Math.sign(sweep);
-  const end = atEnd ? arc.to : arc.from;
-  // How far along the curve the end may be carried on, and how far back.
-  const onward = Math.PI / 3;
-  const back = Math.abs(sweep) * 0.98;
-  const lowest = atEnd ? end - way * back : end - way * onward;
-  const highest = atEnd ? end + way * onward : end + way * back;
-  const steps = 96;
-  let best: number | null = null;
-  let previous = coordinate(lowest);
-  for (let step = 1; step <= steps; step++) {
-    const t0 = lowest + ((highest - lowest) * (step - 1)) / steps;
-    const t1 = lowest + ((highest - lowest) * step) / steps;
-    const value = coordinate(t1);
-    if (previous === 0 || previous * value < 0) {
-      let a = t0;
-      let b = t1;
-      let fa = previous;
-      for (let pass = 0; pass < 60; pass++) {
-        const middle = (a + b) / 2;
-        const fm = coordinate(middle);
-        if (fa * fm <= 0) b = middle;
-        else {
-          a = middle;
-          fa = fm;
+  const found = order.findIndex((index) => travels(run[index]));
+  if (found < 0) return null;
+  const outermost = run[order[found]];
+  if (outermost.kind !== "ellipse") return null;
+  const off = (point: Vec2): number => (cut.axis === "y" ? point.y : point.x) - cut.value;
+  /*
+   * Where along a piece the side meets the line, nearest its outer end: `t`
+   * is the ellipse's own angle, or the share of the way along a straight.
+   */
+  const rootIn = (one: OffsetSegment, from: number, to: number, near: number): number | null => {
+    const value = (t: number): number =>
+      off(
+        one.kind === "ellipse"
+          ? ellipseAt(one, t)
+          : {
+              x: one.from.x + (one.to.x - one.from.x) * t,
+              y: one.from.y + (one.to.y - one.from.y) * t,
+            },
+      );
+    const steps = 96;
+    let best: number | null = null;
+    let previous = value(from);
+    for (let step = 1; step <= steps; step++) {
+      const t0 = from + ((to - from) * (step - 1)) / steps;
+      const t1 = from + ((to - from) * step) / steps;
+      const here = value(t1);
+      if (previous === 0 || previous * here < 0) {
+        let a = t0;
+        let b = t1;
+        let fa = previous;
+        for (let pass = 0; pass < 60; pass++) {
+          const middle = (a + b) / 2;
+          const fm = value(middle);
+          if (fa * fm <= 0) b = middle;
+          else {
+            a = middle;
+            fa = fm;
+          }
         }
+        const root = (a + b) / 2;
+        if (best === null || Math.abs(root - near) < Math.abs(best - near)) best = root;
       }
-      const root = (a + b) / 2;
-      if (best === null || Math.abs(root - end) < Math.abs(best - end)) best = root;
+      previous = here;
     }
-    previous = value;
+    return best;
+  };
+  /*
+   * First on the outermost piece itself, carried on past its end or brought
+   * back along it; then, where the line lies further back than that piece
+   * reaches, on the pieces before it -- the ones the cut passes are left
+   * standing where it falls, at no length, so the side keeps its points.
+   */
+  const sweep = outermost.to - outermost.from;
+  const way = Math.sign(sweep);
+  const end = atEnd ? outermost.to : outermost.from;
+  const start = atEnd ? outermost.from : outermost.to;
+  let hit: { at: number; root: number } | null = null;
+  const onward = rootIn(outermost, end, end + way * (atEnd ? 1 : -1) * (Math.PI / 3), end);
+  const within = rootIn(outermost, start, end, end);
+  const pick = [onward, within].filter((one): one is number => one !== null);
+  if (pick.length > 0) {
+    const root = pick.reduce((a, b) => (Math.abs(a - end) <= Math.abs(b - end) ? a : b));
+    hit = { at: found, root };
+  } else {
+    // Back along the side no further than about a pen: a cut that has to go
+    // further than that is not the end of this stroke being squared off.
+    let travelled = lengthOf(outermost);
+    for (let step = found + 1; step < order.length && !hit && travelled < furthest; step++) {
+      const one = run[order[step]];
+      if (!travels(one)) continue;
+      travelled += lengthOf(one);
+      const [from, to] = one.kind === "ellipse" ? [one.from, one.to] : [0, 1];
+      const [outer, inner] = atEnd ? [to, from] : [from, to];
+      const root = rootIn(one, inner, outer, outer);
+      if (root !== null) hit = { at: step, root };
+    }
   }
-  if (best === null) return;
-  const pieces = arc.pieces ?? Math.max(1, Math.ceil(Math.abs(sweep) / (Math.PI / 2) - A_QUARTER));
-  const moved: OffsetEllipse = atEnd
-    ? { ...arc, to: best, pieces }
-    : { ...arc, from: best, pieces };
-  run[found] = moved;
-  // Whatever of no length followed the end moves with it.
-  const tip = ellipseAt(moved, best);
-  const rest = atEnd ? order.slice(0, order.indexOf(found)) : order.slice(0, order.indexOf(found));
-  for (const index of rest) {
+  if (!hit) return null;
+  const { at: position, root } = hit;
+  return () => {
+    const index = order[position];
     const one = run[index];
-    if (one.kind === "line") run[index] = { kind: "line", from: tip, to: tip };
-    else run[index] = { ...one, centre: tip, rx: 0, ry: 0 };
-  }
+    let tip: Vec2;
+    if (one.kind === "ellipse") {
+      const pieces =
+        one.pieces ??
+        Math.max(1, Math.ceil(Math.abs(one.to - one.from) / (Math.PI / 2) - A_QUARTER));
+      const moved: OffsetEllipse = atEnd
+        ? { ...one, to: root, pieces }
+        : { ...one, from: root, pieces };
+      run[index] = moved;
+      tip = ellipseAt(moved, root);
+    } else {
+      tip = {
+        x: one.from.x + (one.to.x - one.from.x) * root,
+        y: one.from.y + (one.to.y - one.from.y) * root,
+      };
+      run[index] = atEnd
+        ? { kind: "line", from: one.from, to: tip }
+        : { kind: "line", from: tip, to: one.to };
+    }
+    // Whatever lay past the cut is left standing on it, at no length.
+    for (const other of order.slice(0, position)) {
+      const piece = run[other];
+      if (piece.kind === "line") run[other] = { kind: "line", from: tip, to: tip };
+      else run[other] = { ...piece, centre: tip, rx: 0, ry: 0 };
+    }
+  };
+}
+
+/** How long one side piece is, near enough: an ellipse's by its mean radius. */
+function lengthOf(one: OffsetSegment): number {
+  if (one.kind === "line") return Math.hypot(one.to.x - one.from.x, one.to.y - one.from.y);
+  return ((one.rx + one.ry) / 2) * Math.abs(one.to - one.from);
 }
 
 /**
@@ -1278,8 +1337,17 @@ export function sweep(stroke: Stroke): Contour[] {
       if (!terminal.aligned) continue;
       const cut = alignedCut(headed, atEnd);
       if (!cut) continue;
-      cutAlong(left, atEnd, cut);
-      cutAlong(right, atEnd, cut);
+      /*
+       * Both sides or neither: one side carried to the line and the other left
+       * where it stopped is a cut slanting across the stroke, and on a short
+       * hook it ran across the counter.
+       */
+      const leftCut = cutAlong(left, atEnd, cut, reach.across * 2.5);
+      const rightCut = cutAlong(right, atEnd, cut, reach.across * 2.5);
+      if (leftCut && rightCut) {
+        leftCut();
+        rightCut();
+      }
     }
   }
 

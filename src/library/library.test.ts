@@ -214,16 +214,19 @@ describe("borrowing a font's rhythm", () => {
     const borrowed = borrowFrom(typeface, LETTERS);
     expect(borrowed.found).toBe(LETTERS.length);
     const H = borrowed.bearings.get("H")!;
-    // The drawn font spaces everything the same, so this is its sidebearing
-    // over its em, whatever those two numbers happen to be.
-    expect(H.left).toBeCloseTo(SANS.metrics.sidebearing / SANS.metrics.unitsPerEm, 2);
+    // An H is flat-sided, so the drawn font gives it its sidebearing -- the
+    // capitals' share of it, which on the Sans is a little more than the
+    // lowercase's -- over its em, whatever those numbers happen to be.
+    const capitals = SANS.metrics.capitalSpacing ?? 1;
+    expect(H.left).toBeCloseTo((SANS.metrics.sidebearing * capitals) / SANS.metrics.unitsPerEm, 2);
   });
 
   it("scales into the target's units rather than the source's", async () => {
     const wide = { ...SANS, metrics: { ...SANS.metrics, unitsPerEm: 2048, sidebearing: 200 } };
     const borrowed = borrowFrom(await fontFrom(wide), LETTERS);
     const H = borrowed.bearings.get("H")!;
-    expect(H.left * 1000).toBeCloseTo((200 / 2048) * 1000, 0);
+    const capitals = SANS.metrics.capitalSpacing ?? 1;
+    expect(H.left * 1000).toBeCloseTo(((200 * capitals) / 2048) * 1000, 0);
   });
 
   it("hands back the difference from what the drawings already have", async () => {

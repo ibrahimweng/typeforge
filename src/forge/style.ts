@@ -531,37 +531,33 @@ export const SANS: Style = {
      * the ink: see `proportions`.
      */
     proportions: {
-      a: 1.02,
       b: 0.965,
       c: 1.121,
       d: 0.965,
       e: 0.97,
-      f: 1.3,
-      g: 0.962,
+
       h: 0.994,
-      j: 1.272,
+
       k: 1.217,
       m: 0.936,
       n: 0.994,
       p: 0.965,
       q: 0.965,
-      r: 0.578,
-     
-      t: 1.187,
+
       u: 0.976,
       v: 1.287,
       w: 1.394,
       x: 1.353,
-      y: 1.294,
-      z: 1.385,
+
+      z: 1.3,
       A: 1.13,
       B: 1.401,
-      H: 1.384,
+      H: 1.38,
       C: 1.122,
       D: 1.134,
       E: 1.299,
       F: 1.273,
-      G: 0.942,
+
       K: 1.336,
       L: 1.377,
       M: 1.296,
@@ -569,37 +565,56 @@ export const SANS: Style = {
       O: 1.022,
       P: 1.337,
       Q: 1.007,
-      R: 1.326,
-     
+
       T: 1.008,
       U: 1.332,
       V: 1.076,
       W: 1.15,
-      X: 1.106,
+      X: 1.15,
       Y: 1.066,
       Z: 1.265,
       zero: 1.084,
       two: 1.052,
-     
+
       four: 1.222,
       five: 0.909,
       six: 1.059,
-      seven: 1.146,
+
       eight: 1.403,
       nine: 1.059,
-      question: 1.044,
+      onequarter: 1.2,
+      onehalf: 1.2,
+      threequarters: 1.12,
     },
   },
   pen: { weight: 87, contrast: 0.06, angle: 0 },
   /*
-   * The forms a neo-grotesque takes where the plain sans takes the other:
-   * the two-storey a, the y whose tail runs straight on, the G with a spur
-   * standing under its bar, and the R whose leg comes out of the bowl.
+   * The forms a neo-grotesque takes where the plain sans takes another: see
+   * `letters/grotesque.ts`.
    */
-  forms: { a: "double", y: "straight", G: "spurred", R: "curved" },
+  forms: {
+    a: "grotesque",
+    f: "grotesque",
+    g: "grotesque",
+    r: "grotesque",
+    j: "grotesque",
+    t: "grotesque",
+    y: "grotesque",
+    G: "grotesque",
+    J: "grotesque",
+    R: "grotesque",
+    one: "grotesque",
+    seven: "grotesque",
+    ampersand: "grotesque",
+    question: "grotesque",
+  },
   parts: {
     ...PLAIN.parts,
-    bowl: { width: 0.845, squareness: 0, aperture: 1, superness: 0.15 },
+    bowl: { width: 0.845, squareness: 0, aperture: 0.8, superness: 0.15 },
+    // High enough that the springing still shapes the arch on an n this narrow:
+    // below it the turn is held to the arch's own half-width and the control
+    // does nothing.
+    shoulder: { spring: 0.72, reach: 1, crest: 1 },
     terminal: { kind: "level", angle: 0 },
   },
 };

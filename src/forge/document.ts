@@ -37,7 +37,7 @@ import type { Ends } from "./script";
 import type { Imported } from "./exchange";
 import { weightClassOf, weightedStyle, type Family } from "./family";
 import { partsUsedBy, type PartName } from "./parts";
-import { BASES, SANS, type Parts, type Style } from "./style";
+import { BASES, proportioned, SANS, type Parts, type Style } from "./style";
 
 /** A letter that has been told to differ, and in what. */
 export type Overrides = Partial<{ [K in keyof Parts]: Partial<Parts[K]> }>;
@@ -696,7 +696,9 @@ export function layOut(forge: Forge, letters?: string[]): Forge {
   for (const letter of letters ?? letterNames()) {
     const recipe = recipeOf(letter, formOf(forge, letter));
     if (!recipe) continue;
-    const tiles = seedTiles(recipe(styleFor(letter, forge)).strokes, styleFor(letter, forge), kit);
+    const style = styleFor(letter, forge);
+    // Laid out at the letter's own width, as it is drawn: see `proportioned`.
+    const tiles = seedTiles(recipe(proportioned(style, letter)).strokes, style, kit);
     if (tiles) glyphs[letter] = tiles;
     else delete glyphs[letter];
   }

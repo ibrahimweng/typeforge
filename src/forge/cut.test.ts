@@ -734,8 +734,11 @@ describe("where strokes meet", () => {
     // Its bowl leaves the end of the bar at a slant and runs over the counter
     // just above the bar, so a break laid flush along the bar lay along the
     // bowl instead and took a fifth of the letter with it.
+    // A break is a slot a gap wide, and on the Sans -- narrower since it was
+    // fitted to Geist -- the slot beside the bar is a larger share of a
+    // smaller letter. A sliced-off top was a fifth.
     for (const name of ["Sans", "Slab"]) {
-      expect(removed("e", blackOf(name), breaks), name).toBeLessThan(0.05);
+      expect(removed("e", blackOf(name), breaks), name).toBeLessThan(0.085);
     }
   });
 

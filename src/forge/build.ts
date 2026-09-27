@@ -479,7 +479,14 @@ function marked(
    * anyway.
    */
   const reaching = style.parts.script.on && reachesEither(parts.base);
-  const shortfall = reaching ? 0 : Math.max(0, sidebearing - bounds.xMin);
+  /*
+   * Measured against the letter's own left edge where that stands inside the
+   * sidebearing: a face fitted optically sets its O and its v closer than the
+   * sidebearing on purpose, and an accent nowhere near that edge is no reason
+   * to push the letter back out.
+   */
+  const edge = Math.min(sidebearing, contoursBounds(base.contours).xMin);
+  const shortfall = reaching ? 0 : Math.max(0, edge - bounds.xMin);
   const placed = shortfall > 0 ? shoved(contours, { x: shortfall, y: 0 }) : contours;
   const spaced =
     shortfall > 0
@@ -645,7 +652,11 @@ const FIT_SAMPLES = 32;
  * How much of the white measured is given back. More than all of it, because
  * the zone left out at top and bottom is where a round side has the most.
  */
-const FIT_GAIN = 1.5;
+const FIT_GAIN = 1.8;
+/** How far a side's depth changes between two readings to count as an arm. */
+const FIT_JUMP = 1.5;
+/** The most an arm's side is given back, against the sidebearing. */
+const FIT_ARM = 0.45;
 
 function fitted(
   name: string,
@@ -661,7 +672,7 @@ function fitted(
   // which is what a tabular figure is: a one standing at the left of a column
   // made for an eight is a one with a hole after it.
   if (FIGURES.includes(name)) {
-    const advance = figureAdvance(style);
+    const advance = figureInk(style) + spacingOf(style) * FIGURE_SIDES * 2;
     return { shift: (advance - box.xMax - box.xMin) / 2, advance };
   }
   const top = isCapitalLike(name) ? style.metrics.capHeight : style.metrics.xHeight;
@@ -676,30 +687,54 @@ function fitted(
   const limit = FIT_LIMIT * top;
   let left = 0;
   let right = 0;
+  const inkLeft = box.xMin;
+  const inkRight = box.xMax;
+  /*
+   * Whether a side is an arm's rather than a curve's or a diagonal's: its
+   * depth jumps, from nothing along the arm to deep beside it, where a round
+   * or a slanting side changes a little at every step. An arm stands out
+   * into the white beside it and the eye counts that white as the letter's
+   * own -- Geist gives its E, L, r and k half what it gives its v -- so an
+   * arm's side is given back no more than half the sidebearing.
+   */
+  let leftJumps = false;
+  let rightJumps = false;
   if (to - from >= top * 0.4) {
+    let lastLeft = -1;
+    let lastRight = -1;
+    let leftFlat = 0;
+    let rightFlat = 0;
     for (let index = 0; index < FIT_SAMPLES; index++) {
       const y = from + ((to - from) * (index + 0.5)) / FIT_SAMPLES;
       const runs = inkRunsAt(contours, y, "y", 16);
-      if (runs.length === 0) {
-        left += limit;
-        right += limit;
-        continue;
-      }
-      left += Math.min(runs[0][0] - box.xMin, limit);
-      right += Math.min(box.xMax - runs[runs.length - 1][1], limit);
+      const deepLeft = runs.length === 0 ? limit * 4 : runs[0][0] - inkLeft;
+      const deepRight = runs.length === 0 ? limit * 4 : inkRight - runs[runs.length - 1][1];
+      if (lastLeft >= 0 && Math.abs(deepLeft - lastLeft) > limit * FIT_JUMP) leftJumps = true;
+      if (lastRight >= 0 && Math.abs(deepRight - lastRight) > limit * FIT_JUMP) rightJumps = true;
+      lastLeft = deepLeft;
+      lastRight = deepRight;
+      left += Math.min(deepLeft, limit);
+      right += Math.min(deepRight, limit);
+      if (deepLeft < 2) leftFlat += 1;
+      if (deepRight < 2) rightFlat += 1;
     }
-    left = (left / FIT_SAMPLES) * fit * FIT_GAIN;
-    right = (right / FIT_SAMPLES) * fit * FIT_GAIN;
+    /*
+     * And a side that stands flat on its edge for much of the zone is a stem,
+     * however it turns at the top: the right of an n rounds into its shoulder
+     * and is spaced as the stem it mostly is.
+     */
+    left = leftFlat >= FIT_SAMPLES * 0.4 ? 0 : (left / FIT_SAMPLES) * fit * FIT_GAIN;
+    right = rightFlat >= FIT_SAMPLES * 0.4 ? 0 : (right / FIT_SAMPLES) * fit * FIT_GAIN;
   } else {
     // A mark with no sides of its own is set as a round letter is.
     left = right = limit * 0.5 * fit;
   }
   // Never closer than a quarter of the plain sidebearing: a v that touched its
   // neighbour would be a kerning pair, not a spacing.
-  left = Math.min(left, spacing * 0.75);
-  right = Math.min(right, spacing * 0.75);
-  const shift = spacing - left - box.xMin;
-  return { shift, advance: box.xMax + shift + spacing - right };
+  left = Math.min(left, spacing * (leftJumps ? FIT_ARM : 0.75));
+  right = Math.min(right, spacing * (rightJumps ? FIT_ARM : 0.75));
+  const shift = spacing - left - inkLeft;
+  return { shift, advance: inkRight + shift + spacing - right };
 }
 
 /**
@@ -774,6 +809,31 @@ function figureAdvance(style: Style): number {
     widest = Math.max(widest, measure(built, contours, style));
   }
   figureCache.set(style, widest);
+  return widest;
+}
+
+/**
+ * How much of the sidebearing a tabular figure keeps either side of the
+ * widest figure, on a face fitted optically: Geist's zero stands 54 units off
+ * each side of a column cut for it, on a sidebearing of 80.
+ */
+const FIGURE_SIDES = 0.68;
+
+const figureInkCache = new WeakMap<Style, number>();
+
+/** The ink width of the widest figure, for a face fitted optically. */
+function figureInk(style: Style): number {
+  const known = figureInkCache.get(style);
+  if (known !== undefined) return known;
+  let widest = 0;
+  for (const name of FIGURES) {
+    const built = LETTERS[name](widthOf(style, name));
+    const contours = leaning(inkAll(built.strokes, style, name).flat(), style);
+    if (contours.length === 0) continue;
+    const box = contoursBounds(contours);
+    widest = Math.max(widest, box.xMax - box.xMin);
+  }
+  figureInkCache.set(style, widest);
   return widest;
 }
 
@@ -898,8 +958,14 @@ function dress(
      */
     if (end.kind === "level") {
       const { kind: _, angle: __, ...rest } = end;
+      // A straight end already square to one of the lines is a plain cut:
+      // there is nothing to slide, and sliding nothing still costs the side
+      // the node it stands in for.
+      const square = isStraight && (Math.abs(outward.x) < 1e-6 || Math.abs(outward.y) < 1e-6);
       end =
-        end.open === true ? { ...rest, kind: "butt", aligned: true } : { ...rest, kind: "butt" };
+        end.open === true && !square
+          ? { ...rest, kind: "butt", aligned: true }
+          : { ...rest, kind: "butt" };
     }
     if (end.kind === "slab" && !isStraight) {
       const curved = end.curved ?? { kind: "butt", angle: 0 };

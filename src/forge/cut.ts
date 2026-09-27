@@ -1310,7 +1310,7 @@ function motifShape(shape: MotifShape, box: Bounds, size: number): Contour[] {
       // A small disc in the middle of the counter, so the letter closes up to
       // a ring with a point in it -- which is most of what an inline face and
       // a geometric display face have in common.
-      return [disc(middle, wide * 0.42, tall * 0.42)];
+      return [disc(middle, wide * 0.47, tall * 0.47)];
     case "ring":
       // A disc with a hole: the counter becomes two rings, one inside the
       // other. Drawn as one shape and its own counter, so it stays a hole

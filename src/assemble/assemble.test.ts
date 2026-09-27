@@ -816,8 +816,26 @@ describe("the pile itself", () => {
 describe("assembling a real alphabet", () => {
   const alphabet = "HxpobcenAOEVWmTLi";
 
+  /*
+   * The Sans spaced with a constant sidebearing, and the assembler's own white
+   * (`DEFAULT_SPACING`, calibrated on the Sans as it was): the comparisons
+   * below are made against a font that gives every letter the same white
+   * whatever its shape. The Sans itself now fits its sides optically, gives
+   * its capitals more room and spaces a stem at Geist's 80, which is the
+   * assembler's own job done twice.
+   */
+  const CONSTANT = {
+    ...SANS,
+    metrics: {
+      ...SANS.metrics,
+      fit: 0,
+      capitalSpacing: 1,
+      sidebearing: DEFAULT_SPACING.white * 1000,
+    },
+  };
+
   const sheets = () => {
-    const forge = startFrom(SANS);
+    const forge = startFrom(CONSTANT);
     return alphabet.split("").map((letter) => {
       const svg = letterSvg(letter, forge)!;
       return pieceFrom(`${letter}.svg`, svg)!;
@@ -825,7 +843,7 @@ describe("assembling a real alphabet", () => {
   };
 
   const source = () => {
-    const forge = startFrom(SANS);
+    const forge = startFrom(CONSTANT);
     return { forge, metrics: forge.style.metrics };
   };
 

@@ -714,6 +714,42 @@ function bowlSegments(
 }
 
 /**
+ * One quarter of a round superelliptic bowl, as its own three arcs and nothing
+ * else: `quarter` nought is from the right round to the top, one from the top
+ * to the left, and so on anticlockwise. Null where the bowl is not one whose
+ * corners fill its quarters, which `bowlBetween` then draws instead.
+ *
+ * For the turns that are a quarter by construction -- the shoulder of an n,
+ * the foot of a u, the hook of a g -- which asked of `bowlBetween` came with
+ * every other piece of the loop stood on its ends at no length, as the runs
+ * whose extent the pen decides have to be, and a shoulder of three arcs was
+ * drawn with nine coincident nodes either side of it.
+ */
+export function superQuarter(
+  centre: Vec2,
+  halfWidth: number,
+  halfHeight: number,
+  roundness: number,
+  penHalf: number,
+  superness: number,
+  quarter: number,
+): SpineSegment[] | null {
+  if (!(superness > 0)) return null;
+  const [width, height] = holds(halfWidth, halfHeight, penHalf);
+  const loop = bowlSegments(
+    centre,
+    width,
+    height,
+    bowlRadius(width, height, roundness, penHalf),
+    superness,
+    penHalf,
+  );
+  if (loop.length !== 12) return null;
+  const which = ((quarter % 4) + 4) % 4;
+  return loop.slice(which * 3, which * 3 + 3);
+}
+
+/**
  * A bowl whose corners are superelliptic rather than circular: the squarish
  * round of a neo-grotesque's o.
  *
@@ -750,13 +786,50 @@ function superSegments(
   const least = Math.min(halfWidth, halfHeight);
   const r0 = Math.min(radius, least);
   // The box each corner turns in: the whole quarter on a round bowl, and the
-  // same share of each side as the rounded corner took on a squared one.
-  const cornerW = (r0 * halfWidth) / least;
-  const cornerH = (r0 * halfHeight) / least;
+  // rounded corner's own square on a squared one -- a squarer box than that
+  // asks a corner already at the pen's limit to be flatter one way than the
+  // pen goes round.
+  const whole = r0 >= least - 1e-9;
+  const cornerW = whole ? halfWidth : r0;
+  const cornerH = whole ? halfHeight : r0;
   const exponent = 2 + 2 * Math.min(Math.max(superness, 0), 1);
-  const phi = basketTurn(exponent);
-  const tight = basketRadius(cornerW, cornerH, exponent, phi, penHalf * CLEARANCE);
-  const { side, crown } = basketRadii(cornerW, cornerH, tight, phi);
+  let phi = basketTurn(exponent);
+  let tight = basketRadius(cornerW, cornerH, exponent, phi, penHalf * CLEARANCE);
+  let { side, crown } = basketRadii(cornerW, cornerH, tight, phi);
+  /*
+   * A bowl squeezed to little more than the pen -- the bowl of an ae at a
+   * Black -- has no room for three arcs all rounder than the pen goes round.
+   * Where one comes out tighter, the turn is shared out differently between
+   * them: whichever split, from nearly all corner to nearly all flat, leaves
+   * the tightest of the three roundest. That rounds a squeezed bowl off toward
+   * a plain oval rather than turning the inside of a corner through itself.
+   */
+  const pen = penHalf * CLEARANCE;
+  if (Math.min(side, crown, tight) < pen) {
+    let best = { phi, tight, side, crown, least: Math.min(side, crown, tight) };
+    for (let degrees = 0.5; degrees <= 44; degrees += 0.5) {
+      const turn = (degrees * Math.PI) / 180;
+      const corner = Math.min(Math.max(pen, tight), cornerW, cornerH);
+      const radii = basketRadii(cornerW, cornerH, corner, turn);
+      const least = Math.min(radii.side, radii.crown, corner);
+      if (least > best.least + 1e-9) best = { phi: turn, tight: corner, ...radii, least };
+    }
+    ({ phi, tight, side, crown } = best);
+  }
+  let sideTurn = phi;
+  let crownTurn = phi;
+  /*
+   * And where no split will do -- a bowl hardly deeper than its pen, as the
+   * tail of a g at a Black is, or many times as tall as it is wide, as the
+   * belly of an OE drawn at full tension is -- it is drawn as the rounded
+   * rectangle it has become: the pen's own round in the corner and a run as
+   * straight as an arc can be along the long side. Still three arcs, so the
+   * bowl has the same points at this weight as at every other.
+   */
+  if (!(Math.min(side, crown, tight) >= pen * 0.999)) {
+    const flat = flatCorner(cornerW, cornerH, Math.min(pen, cornerW, cornerH) - 0.5, phi);
+    ({ tight, side, crown, sideTurn, crownTurn } = flat);
+  }
   const right = centre.x + halfWidth;
   const left = centre.x - halfWidth;
   const top = centre.y + halfHeight;
@@ -774,8 +847,6 @@ function superSegments(
     sweepPositive: true,
   });
   const run = (from: Vec2, to: Vec2): SpineSegment => ({ kind: "line", from, to });
-  const s = Math.sin(phi);
-  const c = Math.cos(phi);
   const quarterTurn = Math.PI / 2;
   /*
    * One corner, turned to face whichever way it has to: `ox`, `oy` is the
@@ -786,11 +857,16 @@ function superSegments(
   const corner = (ox: number, oy: number, quarter: number): SpineSegment[] => {
     // In the corner's own frame the side runs up x = w, the crown along y = h.
     const w = quarter % 2 === 0 ? cornerW : cornerH;
-    const h = quarter % 2 === 0 ? cornerH : cornerW;
     const [first, last] = quarter % 2 === 0 ? [side, crown] : [crown, side];
+    const [leaves, arrives] = quarter % 2 === 0 ? [sideTurn, crownTurn] : [crownTurn, sideTurn];
     const firstCentre = at(w - first, 0);
-    const bend = at(firstCentre.x + first * c - tight * c, first * s - tight * s);
-    const lastCentre = at(0, h - last);
+    const bend = at(
+      firstCentre.x + (first - tight) * Math.cos(leaves),
+      (first - tight) * Math.sin(leaves),
+    );
+    const lastAt = quarterTurn - arrives;
+    const turned = at(bend.x + tight * Math.cos(lastAt), bend.y + tight * Math.sin(lastAt));
+    const lastCentre = at(turned.x - last * Math.cos(lastAt), turned.y - last * Math.sin(lastAt));
     const turnBy = quarter * quarterTurn;
     const place = (p: Vec2): Vec2 => {
       const cos = Math.cos(turnBy);
@@ -801,11 +877,25 @@ function superSegments(
     const b = place(bend);
     const d = place(lastCentre);
     return [
-      arc(a.x, a.y, first, turnBy, turnBy + phi),
-      arc(b.x, b.y, tight, turnBy + phi, turnBy + quarterTurn - phi),
-      arc(d.x, d.y, last, turnBy + quarterTurn - phi, turnBy + quarterTurn),
+      arc(a.x, a.y, first, turnBy, turnBy + leaves),
+      arc(b.x, b.y, tight, turnBy + leaves, turnBy + lastAt),
+      arc(d.x, d.y, last, turnBy + lastAt, turnBy + quarterTurn),
     ];
   };
+  /*
+   * A bowl whose corners take the whole of each quarter -- every round one,
+   * which is decided by the style and not by the pen -- has no straight runs
+   * at any weight, so it is drawn without them rather than with four runs of
+   * no length, which came out as a pile of coincident nodes on every side.
+   */
+  if (whole) {
+    return [
+      ...corner(insideRight, insideTop, 0),
+      ...corner(insideLeft, insideTop, 1),
+      ...corner(insideLeft, insideBottom, 2),
+      ...corner(insideRight, insideBottom, 3),
+    ];
+  }
   return [
     run(at(right, centre.y), at(right, insideTop)),
     ...corner(insideRight, insideTop, 0),
@@ -817,6 +907,44 @@ function superSegments(
     ...corner(insideRight, insideBottom, 3),
     run(at(right, insideBottom), at(right, centre.y)),
   ];
+}
+
+/**
+ * The corner of a bowl too squeezed for a superellipse: in a `w` by `h` box,
+ * the pen's round `tight` carried on from the shorter side, and the longer
+ * side run in as one very flat arc -- the straight run of a rounded rectangle,
+ * drawn as an arc so the bowl keeps its three pieces a quarter.
+ *
+ * Solved for the turn the flat arc takes: it has to arrive level at the top of
+ * the box having left the round tangent, which is one equation in one angle.
+ */
+function flatCorner(
+  w: number,
+  h: number,
+  tight: number,
+  phi: number,
+): { tight: number; side: number; crown: number; sideTurn: number; crownTurn: number } {
+  // Laid out with the long side as the crown, and turned back after.
+  const wide = w >= h;
+  const long = wide ? w : h;
+  const short = wide ? h : w;
+  const r = Math.min(tight, short - 1e-3);
+  const room = Math.PI / 2 - phi;
+  const miss = (turn: number): number =>
+    r + (long - r) / Math.sin(turn) - (short - r * Math.cos(turn)) / (1 - Math.cos(turn));
+  let lo = 1e-6;
+  let hi = room - 1e-6;
+  if (miss(hi) <= 0) lo = hi;
+  for (let pass = 0; pass < 200 && hi - lo > 1e-15; pass++) {
+    const middle = (lo + hi) / 2;
+    if (miss(middle) < 0) lo = middle;
+    else hi = middle;
+  }
+  const turn = (lo + hi) / 2;
+  const flat = r + (long - r) / Math.sin(turn);
+  return wide
+    ? { tight: r, side: r, crown: flat, sideTurn: phi, crownTurn: turn }
+    : { tight: r, side: flat, crown: r, sideTurn: turn, crownTurn: phi };
 }
 
 /**
@@ -2033,6 +2161,17 @@ function cutAfter(segment: SpineSegment, centre: Vec2, degrees: number): SpineSe
  */
 function onArcAngle(arc: SpineArc, point: Vec2): number {
   const raw = Math.atan2(point.y - arc.centre.y, point.x - arc.centre.x);
+  /*
+   * A point on one of the arc's own ends is that end. Worked out through
+   * `atan2` it can come back a hair past it, and a hair past the end of an
+   * arc is read below as nearly a whole turn short of it: on the long, flat
+   * arcs of a superelliptic bowl cut exactly where two of them meet, that drew
+   * the rest of a circle thousands of units across.
+   */
+  const near = (a: number, b: number): boolean =>
+    Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b))) < 1e-7;
+  if (near(raw, arc.endAngle)) return arc.endAngle;
+  if (near(raw, arc.startAngle)) return arc.startAngle;
   const way = arc.sweepPositive ? 1 : -1;
   let angle = raw;
   while ((angle - arc.startAngle) * way < 0) angle += TAU * way;

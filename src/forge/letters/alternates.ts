@@ -5,6 +5,22 @@ import { penReach, reachAlong } from "../sweep";
 import type { Style } from "../style";
 import type { Spine } from "../types";
 import {
+  grotesqueA,
+  grotesqueAmpersand,
+  grotesqueCapitalG,
+  grotesqueF,
+  grotesqueG,
+  grotesqueJ,
+  grotesqueJay,
+  grotesqueOne,
+  grotesqueQuestion,
+  grotesqueR,
+  grotesqueSeven,
+  grotesqueSmallR,
+  grotesqueT,
+  grotesqueY,
+} from "./grotesque";
+import {
   roundHalf,
   arch,
   at,
@@ -1097,3 +1113,52 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
     },
   ],
 };
+
+/*
+ * The neo-grotesque's own letters, offered on every face and drawn by default
+ * on the Sans: see `grotesque.ts`.
+ */
+const GROTESQUE: Array<[LetterName, string, (style: Style) => Recipe]> = [
+  [
+    "a",
+    "A spur at the foot of the stem and a terminal cut level, as a neo-grotesque draws it.",
+    grotesqueA,
+  ],
+  [
+    "g",
+    "Single storey, the tail running down the stem and hooking flat under the bowl.",
+    grotesqueG,
+  ],
+  ["f", "A flat hook cut upright at the ascender, and a bar reaching further right.", grotesqueF],
+  ["j", "The tail turning out into a short flat foot under the line.", grotesqueJay],
+  [
+    "r",
+    "The n's own shoulder, running flat along the x-height to an upright cut.",
+    grotesqueSmallR,
+  ],
+  [
+    "t",
+    "The foot turning out along the baseline, the head cut level above the x-height.",
+    grotesqueT,
+  ],
+  ["y", "The right arm running straight on under the line into a short flat foot.", grotesqueY],
+  ["G", "A bar with an upright under it standing on the baseline.", grotesqueCapitalG],
+  ["J", "Wide, with the hook sitting on the baseline and no descender.", grotesqueJ],
+  ["R", "The leg leaving the foot of the bowl and coming down nearly upright.", grotesqueR],
+  ["one", "A flag curving off the head, and no foot.", grotesqueOne],
+  [
+    "seven",
+    "The stroke falling from the arm and settling upright on the baseline.",
+    grotesqueSeven,
+  ],
+  ["ampersand", "A small loop at the head, a round bowl and a straight leg.", grotesqueAmpersand],
+  [
+    "question",
+    "A superelliptic hook, a straight diagonal and a short upright neck.",
+    grotesqueQuestion,
+  ],
+];
+for (const [name, hint, build] of GROTESQUE) {
+  if (!ALTERNATES[name]) ALTERNATES[name] = [];
+  ALTERNATES[name].push({ id: "grotesque", label: "Grotesque", hint, build });
+}

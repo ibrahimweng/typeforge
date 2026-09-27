@@ -309,7 +309,7 @@ describe("the controls", () => {
     const terminal = PART_SPECS.find((spec) => spec.name === "terminal")!;
     expect(
       terminal.controls.find((control) => control.key === "kind")?.options?.map((one) => one.value),
-    ).toEqual(["butt", "angled", "round", "teardrop"]);
+    ).toEqual(["butt", "level", "angled", "round", "teardrop"]);
   });
 
   it("starts the Serif as a text serif and leaves the slab faces square", () => {
