@@ -657,6 +657,10 @@ const FIT_GAIN = 1.8;
 const FIT_JUMP = 1.5;
 /** The most an arm's side is given back, against the sidebearing. */
 const FIT_ARM = 0.45;
+/** A proportional figure's sidebearing, against a letter's. */
+const FIGURE_SPACING = 0.75;
+/** And how much of its white a figure's side gives back, against a letter's. */
+const FIGURE_FIT = 0.1;
 
 function fitted(
   name: string,
@@ -671,11 +675,26 @@ function fitted(
   // The figures keep their one width, and each is set in the middle of it,
   // which is what a tabular figure is: a one standing at the left of a column
   // made for an eight is a one with a hole after it.
-  if (FIGURES.includes(name)) {
+  const figure = FIGURES.includes(name);
+  if (figure && style.metrics.figures !== "proportional") {
     const advance = figureInk(style) + spacingOf(style) * FIGURE_SIDES * 2;
     return { shift: (advance - box.xMax - box.xMin) / 2, advance };
   }
-  const top = isCapitalLike(name) ? style.metrics.capHeight : style.metrics.xHeight;
+  // The sides the eye sets, where the face lists them: see `metrics.sides`.
+  const set = style.metrics.sides?.[name] ?? style.metrics.sides?.[decidedBy(name)];
+  if (set) {
+    /*
+     * And closed at a heavy weight only half as fast as a straight side is:
+     * Geist Black's figures and diagonals stand nearly where its Regular's
+     * do (its 5 and its v give back six units and one) while its n and H
+     * give back twenty.
+     */
+    const plain = style.metrics.sidebearing;
+    const unit = plain > 0 ? plain * Math.sqrt(spacingOf(style) / plain) : spacingOf(style);
+    const shift = unit * set[0] - box.xMin;
+    return { shift, advance: box.xMax + shift + unit * set[1] };
+  }
+  const top = figure || isCapitalLike(name) ? style.metrics.capHeight : style.metrics.xHeight;
   /*
    * The zone with its top and bottom twelfths left out: every shoulder and
    * every bowl turns there, and a flat side that rounds into a crown -- the
@@ -683,7 +702,10 @@ function fitted(
    */
   const from = Math.max(top / 12, box.yMin);
   const to = Math.min((top * 11) / 12, box.yMax);
-  const spacing = spacingOf(style);
+  // A proportional figure is set closer than a letter, as figures are: Geist
+  // stands its two 60 units off either side, its H 92 and its n 80.
+  const spacing = spacingOf(style) * (figure ? FIGURE_SPACING : 1);
+  const gain = figure ? FIT_GAIN * FIGURE_FIT : FIT_GAIN;
   const limit = FIT_LIMIT * top;
   let left = 0;
   let right = 0;
@@ -723,8 +745,8 @@ function fitted(
      * however it turns at the top: the right of an n rounds into its shoulder
      * and is spaced as the stem it mostly is.
      */
-    left = leftFlat >= FIT_SAMPLES * 0.4 ? 0 : (left / FIT_SAMPLES) * fit * FIT_GAIN;
-    right = rightFlat >= FIT_SAMPLES * 0.4 ? 0 : (right / FIT_SAMPLES) * fit * FIT_GAIN;
+    left = leftFlat >= FIT_SAMPLES * 0.4 ? 0 : (left / FIT_SAMPLES) * fit * gain;
+    right = rightFlat >= FIT_SAMPLES * 0.4 ? 0 : (right / FIT_SAMPLES) * fit * gain;
   } else {
     // A mark with no sides of its own is set as a round letter is.
     left = right = limit * 0.5 * fit;

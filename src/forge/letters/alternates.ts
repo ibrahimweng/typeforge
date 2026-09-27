@@ -1,4 +1,5 @@
 import type { Vec2 } from "@/font/types";
+import { LETTERS } from "../letters";
 import { seamsOf } from "../script";
 import { bowlBetween, bowlPoint, roundCorners, spineEnd, spineStart } from "../shapes";
 import { penReach, reachAlong } from "../sweep";
@@ -6,19 +7,58 @@ import type { Style } from "../style";
 import type { Spine } from "../types";
 import {
   grotesqueA,
+  grotesqueAt,
+  grotesqueC,
+  grotesqueE,
+  grotesqueHyphen,
+  grotesqueNumberSign,
+  grotesqueParenLeft,
+  grotesqueQuoteDouble,
+  grotesqueQuoteSingle,
+  grotesqueParenRight,
+  grotesquePercent,
+  grotesqueSlash,
+  grotesqueCapitalA,
+  grotesqueCapitalB,
+  grotesqueCapitalC,
+  grotesqueCapitalV,
+  grotesqueCapitalY,
   grotesqueAmpersand,
   grotesqueCapitalG,
+  grotesqueCapitalK,
+  grotesqueCapitalP,
+  grotesqueCapitalQ,
+  grotesqueCapitalS,
+  grotesqueCapitalZ,
+  grotesqueExclam,
+  grotesqueEight,
   grotesqueF,
+  grotesqueFive,
+  grotesqueFour,
   grotesqueG,
   grotesqueJ,
   grotesqueJay,
+  grotesqueL,
+  grotesqueK,
+  grotesqueM,
+  grotesqueN,
+  grotesqueNine,
   grotesqueOne,
   grotesqueQuestion,
   grotesqueR,
+  grotesqueS,
   grotesqueSeven,
+  grotesqueSix,
   grotesqueSmallR,
   grotesqueT,
+  grotesqueSmallW,
+  grotesqueV,
+  grotesqueW,
+  grotesqueThree,
+  grotesqueTwo,
   grotesqueY,
+  grotesqueZ,
+  grotesqueZero,
 } from "./grotesque";
 import {
   roundHalf,
@@ -1142,7 +1182,7 @@ const GROTESQUE: Array<[LetterName, string, (style: Style) => Recipe]> = [
     grotesqueT,
   ],
   ["y", "The right arm running straight on under the line into a short flat foot.", grotesqueY],
-  ["G", "A bar with an upright under it standing on the baseline.", grotesqueCapitalG],
+  ["G", "The C's ring run into an upright under a bar, on the baseline.", grotesqueCapitalG],
   ["J", "Wide, with the hook sitting on the baseline and no descender.", grotesqueJ],
   ["R", "The leg leaving the foot of the bowl and coming down nearly upright.", grotesqueR],
   ["one", "A flag curving off the head, and no foot.", grotesqueOne],
@@ -1151,6 +1191,49 @@ const GROTESQUE: Array<[LetterName, string, (style: Style) => Recipe]> = [
     "The stroke falling from the arm and settling upright on the baseline.",
     grotesqueSeven,
   ],
+  ["l", "The stem turning out at its foot into a short tail cut upright.", grotesqueL],
+  ["k", "The leg leaving the arm rather than the stem, both cut level.", grotesqueK],
+  ["K", "The leg leaving the arm rather than the stem, both cut level.", grotesqueCapitalK],
+  ["M", "Upright stems and a vertex carried down to the baseline, cut flat.", grotesqueM],
+  ["s", "Two superelliptic bowls and a straight spine, both ends cut level.", grotesqueS],
+  ["S", "Two superelliptic bowls and a straight spine, both ends cut level.", grotesqueCapitalS],
+  ["z", "Bars at the stem's weight and a diagonal run square into their ends.", grotesqueZ],
+  ["Z", "Bars at the stem's weight and a diagonal run square into their ends.", grotesqueCapitalZ],
+  ["v", "Both strokes cut level, meeting in a flat vertex on the baseline.", grotesqueV],
+  ["w", "A middle apex reaching the x-height, every stroke cut level.", grotesqueSmallW],
+  ["V", "Both strokes cut level, meeting in a flat vertex on the baseline.", grotesqueCapitalV],
+  ["Q", "A straight tail through the foot of the O, cut level.", grotesqueCapitalQ],
+  ["e", "A level bar and a terminal cut level well up the right.", grotesqueE],
+  ["c", "The o's ring cut level at both ends.", grotesqueC],
+  ["C", "The O's ring cut level at both ends.", grotesqueCapitalC],
+  ["B", "Flat-sided bowls, the lower the wider, meeting below the middle.", grotesqueCapitalB],
+  ["P", "A flat-sided bowl, deeper than the B's upper.", grotesqueCapitalP],
+  ["Y", "Straight arms cut level, meeting low on the stem.", grotesqueCapitalY],
+  ["A", "A flat head cut level on the cap line, and a low bar.", grotesqueCapitalA],
+  ["N", "The diagonal cut level on the cap line and the baseline.", grotesqueN],
+  ["W", "A middle apex reaching the cap line, every stroke cut level.", grotesqueW],
+  ["exclam", "A stem narrowing to its foot over a square dot.", grotesqueExclam],
+  ["quotesingle", "Tapered, narrowing to its foot.", grotesqueQuoteSingle],
+  ["quotedbl", "Tapered, narrowing to their feet.", grotesqueQuoteDouble],
+  ["hyphen", "A third of an em long, at the stem's weight.", grotesqueHyphen],
+  ["parenleft", "Tall, from over the ascender to under the line, cut level.", grotesqueParenLeft],
+  ["parenright", "Tall, from over the ascender to under the line, cut level.", grotesqueParenRight],
+  ["slash", "Long, from under the line to over the ascender, cut level.", grotesqueSlash],
+  [
+    "numbersign",
+    "Slanted uprights and two bars, a little lighter than the stem.",
+    grotesqueNumberSign,
+  ],
+  ["percent", "Narrow ovals and a long diagonal cut level.", grotesquePercent],
+  ["at", "A single-storey a whose stem runs on into a wide ring round it.", grotesqueAt],
+  ["zero", "A tall superelliptic ring, as a neo-grotesque's is.", grotesqueZero],
+  ["eight", "Two rings touching at the waist, the upper smaller and narrower.", grotesqueEight],
+  ["two", "A bowl running down in one reverse curve into the foot, cut level.", grotesqueTwo],
+  ["three", "Two bowls, the lower the larger, meeting at a short square tongue.", grotesqueThree],
+  ["four", "Closed at the head, with a low bar carried a little past the stem.", grotesqueFour],
+  ["five", "A short leaning stem cut level, and a round bowl swung out of it.", grotesqueFive],
+  ["six", "A tall hood rising out of the bowl to a terminal cut level.", grotesqueSix],
+  ["nine", "A tall tail falling from the bowl to a terminal cut level.", grotesqueNine],
   ["ampersand", "A small loop at the head, a round bowl and a straight leg.", grotesqueAmpersand],
   [
     "question",
@@ -1160,5 +1243,15 @@ const GROTESQUE: Array<[LetterName, string, (style: Style) => Recipe]> = [
 ];
 for (const [name, hint, build] of GROTESQUE) {
   if (!ALTERNATES[name]) ALTERNATES[name] = [];
-  ALTERNATES[name].push({ id: "grotesque", label: "Grotesque", hint, build });
+  /*
+   * A joined hand draws its own letters, into and out of the join: a
+   * grotesque's square-cut bars and level ends have nowhere for the join to
+   * run in, and on a slanted, swelling pen they came apart from it. And a pen
+   * held on its side draws its own, whose heavy strokes are the level ones.
+   */
+  const drawn = (style: Style) =>
+    (style.parts.script.on || Math.abs(Math.abs(style.pen.angle) - 90) < 30) && LETTERS[name]
+      ? LETTERS[name](style)
+      : build(style);
+  ALTERNATES[name].push({ id: "grotesque", label: "Grotesque", hint, build: drawn });
 }

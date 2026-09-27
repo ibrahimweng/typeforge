@@ -72,8 +72,14 @@ const SHARE = 0.55;
  * is rows and columns. At a twentieth of an em the Sans came out on a 169 by 140
  * grid with 6,808 cells filled, and here it is 146 by 125 with 3,352 -- eleven
  * kilobytes off a font that was a hundred and four.
+ *
+ * Brought down from 0.085 when the Sans took Geist's own sidebearings: Geist
+ * sets its T and its A as close as a V (25 and 21 units a side) and kerns the
+ * pair by 90, and on sides that tight the room this measures in `AT` came to
+ * 0.07 of the em -- under the old line, so the pair every font closes first
+ * went unkerned.
  */
-const WORTH = 0.085;
+const WORTH = 0.065;
 
 /** And no pair is moved further than this, whatever the measurement says. */
 const LIMIT = 0.1;

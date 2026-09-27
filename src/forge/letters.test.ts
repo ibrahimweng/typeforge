@@ -250,10 +250,20 @@ describe("the character set", () => {
         }
       });
 
-      /** A column of figures only lines up if the figures are all one width. */
-      it("gives every figure the same width", () => {
+      /**
+       * A column of figures only lines up if the figures are all one width --
+       * unless the face sets them proportional, as Geist does and the Sans
+       * does after it, and then each is spaced by its own ink: the one the
+       * narrowest of them, the zero among the widest.
+       */
+      it("gives every figure the same width, or its own where the face sets them proportional", () => {
         const widths = FIGURES.map((name) => Math.round(drawLetter(name, style)!.advanceWidth));
-        expect(new Set(widths).size, `figure widths: ${widths.join(", ")}`).toBe(1);
+        if (style.metrics.figures === "proportional") {
+          expect(Math.min(...widths), `figure widths: ${widths.join(", ")}`).toBe(widths[1]);
+          expect(widths[0], `figure widths: ${widths.join(", ")}`).toBeGreaterThan(widths[1] * 1.4);
+        } else {
+          expect(new Set(widths).size, `figure widths: ${widths.join(", ")}`).toBe(1);
+        }
       });
 
       it("stands the lowercase on the baseline and the capitals with it", () => {

@@ -1633,7 +1633,11 @@ export function squareDots(f: Frame): boolean {
 export function stopRadius(f: Frame): number {
   // A square full stop reads as the same weight as a round one a little
   // larger: Geist's is 109 units on a stem of 87.
-  if (squareDots(f) && !f.style.parts.script.on) return Math.min(f.half * 1.25, f.x * 0.2);
+  // At a Black it is barely wider than the stem -- Geist Black's is 179 on a
+  // stem of 172 -- or it outweighs the letters it ends.
+  if (squareDots(f) && !f.style.parts.script.on) {
+    return Math.min(f.half * (1.25 - 0.3 * Math.min(1, heaviness(f))), f.x * 0.2);
+  }
   // A joined hand keeps the pen's own dot: its comma is run into the join.
   if (f.style.parts.script.on) return f.half * 0.95;
   const { contrast } = f.style.pen;
@@ -1658,9 +1662,10 @@ export function tittle(f: Frame, x: number): Stroke {
   const { contrast } = f.style.pen;
   const c = Math.min(Math.max(contrast, 0), 0.95);
   if (squareDots(f)) {
-    // Square, a little wider than the stem, its top level with the ascender.
+    // Square, a little wider than the stem, its top level with the ascender --
+    // at every weight, as Geist's is, the Thin's as high as the Black's.
     const side = f.half * 1.03;
-    const high = Math.min(f.x + f.half * 1.9 + side, f.asc - side);
+    const high = f.asc - side;
     return dot(f, at(x, Math.max(high, f.x + f.half * 0.6 + side)), side);
   }
   const radius = Math.max(f.half * (0.55 + c), f.style.metrics.unitsPerEm * 0.04 * c);

@@ -176,7 +176,15 @@ describe("what a heavy weight changes", () => {
     const sans = face("Sans");
     const black = at(sans, 200);
     expect(blackness(black)).toBeGreaterThan(0.9);
-    expect(spacingOf(black)).toBeGreaterThan(sans.metrics.sidebearing + 20);
+    // A face that keeps its counters opens its spacing as its stems grow.
+    const grotesque = at(face("Grotesque"), 200);
+    expect(spacingOf(grotesque)).toBeGreaterThan(face("Grotesque").metrics.sidebearing + 20);
+    /*
+     * The Sans closes its counters as Geist's Black does, and its spacing with
+     * them: Geist Black sets its n 61 units off each side, its Regular 80.
+     */
+    expect(spacingOf(black)).toBeLessThan(sans.metrics.sidebearing * 0.85);
+    expect(spacingOf(black)).toBeGreaterThan(sans.metrics.sidebearing * 0.6);
     // An o's crown is lighter than its sides.
     const o = drawLetter("o", black)!;
     const hole = unite(o.contours, "winding").find((one) => contourArea(one) < 0)!;

@@ -80,6 +80,37 @@ export interface Metrics {
    */
   fit?: number;
   /**
+   * Whether the figures share one width, as a column of numbers wants, or are
+   * each spaced by their own ink, as figures in running text want. Tabular, or
+   * left out, is the one width; proportional needs `fit` to space them.
+   */
+  figures?: "tabular" | "proportional";
+  /**
+   * Sides the eye sets rather than the measure, per letter: each side's white
+   * as a multiple of the sidebearing at this weight, before a capital's extra.
+   *
+   * The fitting in `build.ts` finds a letter's white from its drawing and
+   * gives it back, and for most letters that is where a foundry lands too.
+   * For a few it is not, because a foundry spaces some shapes by habit as much
+   * as by area: Geist sets its T and its Z as open as a V (25 a side) but its
+   * E at 57 and its L at 47, its x and k at 47 where the measure says 20, and
+   * its B and R at 62 where their round sides would give back as much as a D.
+   * Those letters are listed here, measured off Geist, and the rest are
+   * fitted.
+   */
+  sides?: Record<string, [number, number]>;
+  /**
+   * How much counter a heavy weight gives back for the stem it gains, unit
+   * for unit, past the text weight (see `blackness`). Left out, a heavier pen keeps the
+   * counters where they were and the letters run wider, which is how every
+   * face here grows by default. Geist does the other thing -- its Black's n
+   * has 155 units of counter where its Regular has 250, on a stem twice as
+   * heavy -- and the spacing closes with it: see `narrowed`.
+   */
+  heavyCounter?: number;
+  /** The counter the face was drawn with, once `heavier` has narrowed it. */
+  drawnCounter?: number;
+  /**
    * How much wider or narrower than the face's rhythm a letter is drawn, by
    * letter, as a multiple of `width`.
    *
@@ -526,9 +557,66 @@ export const SANS: Style = {
     sidebearing: 80,
     capitalSpacing: 1.15,
     fit: 1,
+    // Geist's figures are proportional: its one is 385 wide, its zero 672.
+    figures: "proportional",
+    heavyCounter: 1.3,
+    /* Geist Regular's own sidebearings, over 80 (a capital's over 80 after its 12 of extra). */
+    sides: {
+      a: [0.59, 0.44],
+      c: [0.59, 0.46],
+      f: [0.75, 0.53],
+      k: [1, 0.59],
+      l: [1, 0.5],
+      v: [0.28, 0.28],
+      w: [0.28, 0.28],
+      t: [0.69, 0.46],
+      x: [0.59, 0.59],
+      z: [0.71, 0.71],
+      A: [0.11, 0.11],
+      B: [1, 0.63],
+      C: [0.46, 0.4],
+      G: [0.46, 0.53],
+      J: [0.69, 0.81],
+      K: [1, 0.19],
+      L: [1, 0.44],
+      R: [1, 0.63],
+      T: [0.16, 0.16],
+      U: [0.81, 0.81],
+      V: [0.11, 0.11],
+      W: [0.11, 0.11],
+      X: [0.19, 0.19],
+      Y: [0.11, 0.11],
+      Z: [0.19, 0.19],
+      zero: [0.68, 0.68],
+      one: [0.5, 1.38],
+      two: [0.75, 0.75],
+      three: [0.63, 0.63],
+      four: [0.63, 0.63],
+      five: [0.75, 0.75],
+      six: [0.75, 0.75],
+      seven: [0.5, 0.5],
+      eight: [0.5, 0.5],
+      nine: [0.75, 0.75],
+      question: [0.59, 0.59],
+      period: [0.59, 0.59],
+      comma: [0.59, 0.59],
+      colon: [1.15, 1.15],
+      semicolon: [1.15, 1.15],
+      quotesingle: [0.61, 0.61],
+      quotedbl: [0.61, 0.61],
+      parenleft: [0.59, 0.59],
+      parenright: [0.59, 0.59],
+      slash: [0.5, 0.81],
+      hyphen: [0.59, 0.59],
+      // Geist's reaches past both its sides (-10 and -5); held just inside.
+      numbersign: [0.1, 0.1],
+      percent: [0.59, 0.59],
+      at: [0.61, 0.61],
+    },
     /*
      * Each letter's width against the rhythm, fitted to Geist's by measuring
-     * the ink: see `proportions`.
+     * the ink: see `proportions`. For the plain forms: the grotesque ones the
+     * Sans draws by default are drawn in Geist's own units and take none of it.
      */
     proportions: {
       b: 0.965,
@@ -575,11 +663,9 @@ export const SANS: Style = {
       Z: 1.265,
       zero: 1.084,
       two: 1.052,
-
       four: 1.222,
       five: 0.909,
       six: 1.059,
-
       eight: 1.403,
       nine: 1.059,
       onequarter: 1.2,
@@ -594,6 +680,8 @@ export const SANS: Style = {
    */
   forms: {
     a: "grotesque",
+    c: "grotesque",
+    e: "grotesque",
     f: "grotesque",
     g: "grotesque",
     r: "grotesque",
@@ -604,7 +692,44 @@ export const SANS: Style = {
     J: "grotesque",
     R: "grotesque",
     one: "grotesque",
+    k: "grotesque",
+    l: "grotesque",
+    K: "grotesque",
+    M: "grotesque",
+    N: "grotesque",
+    W: "grotesque",
+    v: "grotesque",
+    w: "grotesque",
+    A: "grotesque",
+    B: "grotesque",
+    C: "grotesque",
+    P: "grotesque",
+    Q: "grotesque",
+    V: "grotesque",
+    Y: "grotesque",
+    s: "grotesque",
+    S: "grotesque",
+    z: "grotesque",
+    Z: "grotesque",
+    exclam: "grotesque",
+    hyphen: "grotesque",
+    quotesingle: "grotesque",
+    quotedbl: "grotesque",
+    parenleft: "grotesque",
+    parenright: "grotesque",
+    slash: "grotesque",
+    numbersign: "grotesque",
+    percent: "grotesque",
+    at: "grotesque",
+    zero: "grotesque",
+    two: "grotesque",
+    three: "grotesque",
+    four: "grotesque",
+    five: "grotesque",
+    six: "grotesque",
     seven: "grotesque",
+    eight: "grotesque",
+    nine: "grotesque",
     ampersand: "grotesque",
     question: "grotesque",
   },
@@ -2483,7 +2608,16 @@ export function heavier(style: Style): Style {
   const known = HEAVIER.get(style);
   if (known) return known;
   const pen = heavierPen(style);
-  const made = pen === style.pen ? style : { ...style, pen };
+  const counter = narrowed(style);
+  const metrics =
+    counter === style.metrics.counterWidth
+      ? style.metrics
+      : {
+          ...style.metrics,
+          counterWidth: counter,
+          drawnCounter: style.metrics.drawnCounter ?? style.metrics.counterWidth,
+        };
+  const made = pen === style.pen && metrics === style.metrics ? style : { ...style, pen, metrics };
   HEAVIER.set(style, made);
   HEAVIER.set(made, made);
   return made;
@@ -2500,6 +2634,33 @@ export function heavier(style: Style): Style {
  */
 export function spacingOf(style: Style): number {
   const { sidebearing, xHeight } = style.metrics;
+  /*
+   * A face whose heavy weights close their counters closes its spacing with
+   * them, about as the square root of the counter: Geist Black sets its n 61
+   * units off each side against the Regular's 80, on a counter of 155
+   * against 250.
+   */
+  if (style.metrics.heavyCounter) {
+    const drawn = style.metrics.drawnCounter ?? style.metrics.counterWidth;
+    return sidebearing * (narrowed(style) / drawn) ** 0.55;
+  }
   const gained = blackness(style) * BLACK_SPAN * xHeight;
   return sidebearing + gained * 0.25;
+}
+
+/**
+ * The counter a letter is drawn with at this weight: the face's own, less
+ * what `metrics.heavyCounter` gives back for the stem gained past the face's
+ * own pen -- though never less than three quarters of a stem, so the heaviest
+ * pen still has a counter to hold open.
+ */
+export function narrowed(style: Style): number {
+  const { metrics, pen } = style;
+  const drawn = metrics.drawnCounter ?? metrics.counterWidth;
+  const give = metrics.heavyCounter;
+  if (!give) return metrics.counterWidth;
+  // Past the text weight, as every other heavy-weight change is: see `blackness`.
+  const gained = blackness(style) * BLACK_SPAN * metrics.xHeight;
+  if (gained <= 0) return drawn;
+  return Math.max(drawn - give * gained, Math.min(drawn, pen.weight * 0.75));
 }

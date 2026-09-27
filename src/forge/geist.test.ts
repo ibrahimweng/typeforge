@@ -200,6 +200,15 @@ describe("the Sans stays clean from a hairline to a Black", () => {
     "comma",
     "colon",
     "semicolon",
+    "quotesingle",
+    "quotedbl",
+    "parenleft",
+    "parenright",
+    "hyphen",
+    "slash",
+    "at",
+    "numbersign",
+    "percent",
   ]);
 
   it("never crosses itself", () => {
@@ -225,6 +234,44 @@ describe("the Sans stays clean from a hairline to a Black", () => {
       if (new Set(counts).size > 1) moved.push(`${name}: ${counts.join(" | ")}`);
     }
     expect(moved).toEqual([]);
+  });
+});
+
+describe("figures and spacing as Geist sets them", () => {
+  const sides = (name: string) => {
+    const drawn = draw(name);
+    const box = contoursBounds(drawn.contours);
+    return [box.xMin, drawn.advanceWidth - box.xMax];
+  };
+
+  it("sets its figures proportional, each at Geist's own sidebearings", () => {
+    // Geist Regular: the one 40 and 110, the zero 54 a side, the two 60.
+    const one = sides("one");
+    expect(one[0]).toBeCloseTo(40, -1);
+    expect(one[1]).toBeCloseTo(110, -1);
+    expect(sides("zero")[0]).toBeCloseTo(54, -1);
+    expect(sides("two")[1]).toBeCloseTo(60, -1);
+    expect(draw("one").advanceWidth).toBeLessThan(draw("zero").advanceWidth * 0.65);
+  });
+
+  it("sets the letters the fitting would set too close where Geist opens them", () => {
+    // Geist: x and k 47 on the open side, T and Z 25 and 27, B and R 62.
+    expect(sides("x")[0]).toBeCloseTo(47, -1);
+    expect(sides("k")[1]).toBeCloseTo(47, -1);
+    expect(sides("T")[0]).toBeCloseTo(25, -1);
+    expect(sides("R")[1]).toBeCloseTo(62, -1);
+  });
+
+  it("closes its counters and its spacing at a Black, as Geist Black does", () => {
+    const n = (weight: number) => {
+      const drawn = draw("n", at(weight));
+      const box = contoursBounds(drawn.contours);
+      return { width: box.xMax - box.xMin, side: box.xMin };
+    };
+    // Geist Black's n is 499 of ink on a stem of 172, set 61 off each side.
+    const black = n(172);
+    expect(black.width).toBeLessThan(560);
+    expect(black.side).toBeLessThan(75);
   });
 });
 
