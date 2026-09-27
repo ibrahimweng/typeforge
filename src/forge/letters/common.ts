@@ -22,6 +22,7 @@ import {
   bowlBetween,
   bowlPoint,
   endPieces,
+  OVAL,
   reversed,
   roundCorners,
   shortened,
@@ -289,7 +290,7 @@ export function pointOn(centre: Vec2, radius: number, degrees: number): Vec2 {
  * construction is now the general case rather than a special one.
  */
 export function ring(f: Frame, centre: Vec2, halfWidth: number, halfHeight = halfWidth): Spine {
-  return bowl(centre, halfWidth, halfHeight, 1 - f.square, f.half, f.superness);
+  return bowl(centre, halfWidth, halfHeight, 1 - f.square, f.half, f.curve);
 }
 
 /**
@@ -330,7 +331,7 @@ export function bend(
       radius,
       roundness,
       f.half,
-      f.superness,
+      f.curve,
       Math.round(low / 90),
     );
     if (arcs) {
@@ -347,11 +348,11 @@ export function bend(
       f.half,
       fromDegrees,
       toDegrees,
-      f.superness,
+      f.curve,
     );
   }
   return reversed(
-    bowlBetween(centre, halfWidth, radius, roundness, f.half, toDegrees, fromDegrees, f.superness),
+    bowlBetween(centre, halfWidth, radius, roundness, f.half, toDegrees, fromDegrees, f.curve),
   );
 }
 
@@ -474,6 +475,13 @@ export interface Frame {
   square: number;
   /** How far the round of a bowl gathers into its corners: see `Parts.bowl`. */
   superness: number;
+  /**
+   * The superness the bowls are drawn with: the face's own, or on a face
+   * whose bowls are ovals (`Parts.bowl.oval`) the least there is, which
+   * turns each corner of a bowl taller than it is wide into the three arcs
+   * of an ellipse rather than a quarter circle stood on straight sides.
+   */
+  curve: number;
   /** How wide a bowl is against its height. */
   wide: number;
   /**
@@ -605,6 +613,9 @@ export interface Frame {
  */
 export const ASIDE = 0.53;
 
+/** The superness an oval face draws its bowls with: see `Frame.curve`. */
+const OVAL_CURVE = OVAL / 10;
+
 /** How much narrower down the middle a held bowl is at the Black: see `frame`. */
 const HEAVY_GIVE = 0.03;
 
@@ -713,6 +724,12 @@ export function frame(drawn: Style): Frame {
     capBowlH,
     square: style.parts.bowl.squareness,
     superness: style.parts.bowl.superness ?? 0,
+    curve:
+      (style.parts.bowl.superness ?? 0) > 0
+        ? style.parts.bowl.superness
+        : style.parts.bowl.oval
+          ? OVAL_CURVE
+          : 0,
     wide,
     least,
     radius: style.parts.corner.radius,
@@ -1169,9 +1186,17 @@ export const stub = (f: Frame): number =>
  * from it (1 to the right), `to` where the diagonal is going and `side` which
  * edge of it is the outer one, as the side of travel (1 to the left).
  */
-export function leaving(f: Frame, from: Vec2, inward: 1 | -1, to: Vec2, side: 1 | -1): Vec2 {
+export function leaving(
+  f: Frame,
+  from: Vec2,
+  inward: 1 | -1,
+  to: Vec2,
+  side: 1 | -1,
+  // How far the stem reaches either side of its spine, where it is not the
+  // pen's own: a hairline stem's.
+  stemReach = Math.abs(reachAlong(at(1, 0), penReach(f.style.pen)).x),
+): Vec2 {
   const pen = penReach(f.style.pen);
-  const stemReach = Math.abs(reachAlong(at(1, 0), pen).x);
   const target = from.x + inward * (stemReach + f.half * 0.1);
   // Where the edge on one side of a diagonal from (x, line) crosses the line.
   const crossing = (x: number, which: 1 | -1): number => {
@@ -1317,12 +1342,44 @@ export function overhang(
    * and gets rounded instead.
    */
   const mitred = half / Math.max(sinHalf, 1e-6);
-  const point =
+  let point =
     f.join === "bevel"
       ? half * sinHalf
       : f.join === "round" || mitred > f.half * MITER_LIMIT
         ? half
         : mitred;
+  /*
+   * And where the sweep would decide the limit the other way, its answer: it
+   * measures where the two outer edges really cross, each laid off its spine
+   * by the pen's own offset, and on a thin pen with contrast the two arms of a
+   * vee are offset so differently that the average called a hairline v's
+   * point past the limit when it was not -- the point was carried out and
+   * hung forty-five units under the line.
+   */
+  if (f.join !== "bevel" && f.join !== "round") {
+    const pen = penReach(f.style.pen);
+    const a = towards(vertex, before);
+    const b = towards(vertex, after);
+    const outside = (along: Vec2, other: Vec2): Vec2 => {
+      const normal = at(-along.y, along.x);
+      return normal.x * other.x + normal.y * other.y > 0 ? at(along.y, -along.x) : normal;
+    };
+    const ra = reachAlong(outside(a, b), pen);
+    const rb = reachAlong(outside(b, a), pen);
+    const det = a.x * -b.y - a.y * -b.x;
+    if (Math.abs(det) > 1e-9) {
+      const dx = rb.x - ra.x;
+      const dy = rb.y - ra.y;
+      const t = (dx * -b.y - dy * -b.x) / det;
+      const crossing = at(ra.x + a.x * t, ra.y + a.y * t);
+      const within = Math.hypot(crossing.x, crossing.y) <= pen.across * MITER_LIMIT;
+      const estimated = mitred <= f.half * MITER_LIMIT;
+      if (within !== estimated) {
+        const bisector = towards(at(0, 0), at(a.x + b.x, a.y + b.y));
+        point = within ? -(crossing.x * bisector.x + crossing.y * bisector.y) : half;
+      }
+    }
+  }
   if (f.radius <= 0) return point;
   const cosHalf = Math.sqrt(Math.max(0, 1 - sinHalf * sinHalf));
   const spare =
@@ -1728,7 +1785,16 @@ export function stopRadius(f: Frame): number {
   // A joined hand keeps the pen's own dot: its comma is run into the join.
   if (f.style.parts.script.on) return f.half * 0.95;
   // Lora's full stop is 117 across on a stem of 87.
-  if (drops(f)) return Math.min(f.half * 1.345, Math.max(f.x * 0.2, f.half));
+  /*
+   * And past the Regular growing at half the rate the stem does: Lora Bold's
+   * full stop is 145 across on a stem of 142, where its Regular's is 117 on
+   * 87. Grown with the stem, a Bold's stops were 191 across and a Black's
+   * colon ran its two dots together.
+   */
+  if (drops(f)) {
+    const regular = f.x * 0.087;
+    return Math.min(f.half * 1.345, regular * 1.345 + Math.max(0, f.half - regular) * 0.5);
+  }
   const { contrast } = f.style.pen;
   const c = Math.min(Math.max(contrast, 0), 0.95);
   const radius = Math.max(f.half * (0.95 + 0.6 * c), f.style.metrics.unitsPerEm * 0.045 * c);
@@ -1762,10 +1828,17 @@ export function tittle(f: Frame, x: number): Stroke {
    * little taller than wide, 108 across on a stem of 87, its top 27 under the
    * ascender and rising to it by a Bold.
    */
+  /*
+   * And past a Bold no larger than fits between the x-height and the
+   * ascender with a little air under it: grown with the pen and held clear
+   * of the stem by a share of it, a Black's dot floated a hundred and forty
+   * units over the ascender, into the line above.
+   */
   if (drops(f)) {
-    const round = f.half * 1.24;
+    const gap = Math.min(f.half * 0.6, f.x * 0.1);
+    const round = Math.min(f.half * 1.24, (f.asc - f.x - gap) / 2);
     const top = f.asc - Math.max(0, 0.31 * f.half * 2 - (f.style.pen.weight - 87) * 0.5);
-    return dot(f, at(x, Math.max(top - round, f.x + f.half * 0.6 + round)), round);
+    return dot(f, at(x, Math.max(top - round, f.x + gap + round)), round);
   }
   const radius = Math.max(f.half * (0.55 + c), f.style.metrics.unitsPerEm * 0.04 * c);
   const y = Math.min(f.x + f.half * 1.5 + radius, f.asc + f.over - radius);
@@ -2420,7 +2493,7 @@ export function openBowl(
   }
   return ink(
     f,
-    bowlBetween(centre, halfWidth, halfHeight, 1 - f.square, f.half, from, to + carry, f.superness),
+    bowlBetween(centre, halfWidth, halfHeight, 1 - f.square, f.half, from, to + carry, f.curve),
     f.end,
     f.end,
   );
@@ -3197,7 +3270,7 @@ export function belly(
       f.half,
       fromDegrees,
       toDegrees,
-      f.superness,
+      f.curve,
     ),
     BUTT,
     BUTT,
@@ -3247,13 +3320,13 @@ export function lobe(f: Frame, stem: number, low: number, high: number, asked: n
   if (run < 1) return belly(f, at(stem, middle), Math.max(reach, f.least), halfHeight, -90, 90);
   const centre = at(stem + run, middle);
   const roundness = 1 - f.square;
-  const below = bowlPoint(centre, curve, halfHeight, roundness, f.half, -90, f.superness);
-  const above = bowlPoint(centre, curve, halfHeight, roundness, f.half, 90, f.superness);
+  const below = bowlPoint(centre, curve, halfHeight, roundness, f.half, -90, f.curve);
+  const above = bowlPoint(centre, curve, halfHeight, roundness, f.half, 90, f.curve);
   return ink(
     f,
     chain(
       straight(at(stem, below.y), below),
-      bowlBetween(centre, curve, halfHeight, roundness, f.half, -90, 90, f.superness),
+      bowlBetween(centre, curve, halfHeight, roundness, f.half, -90, 90, f.curve),
       straight(above, at(stem, above.y)),
     ),
     BUTT,

@@ -292,7 +292,9 @@ function sBowls(name: string, style: Style): [number, number] {
     for (let y = yMin; y <= yMax; y += step) {
       const upper = y > (yMin + yMax) / 2;
       const side = (x - xMin) / (xMax - xMin);
-      if (upper ? side > 0.45 : side < 0.55) continue;
+      // Each counter in its own two thirds: an old-style s's head runs well
+      // out to the right, and its upper counter with it.
+      if (upper ? side > 0.62 : side < 0.38) continue;
       if (inked(x, y)) continue;
       if (!walled(x, y, 0, 1) || !walled(x, y, 0, -1) || !walled(x, y, upper ? -1 : 1, 0)) {
         continue;
@@ -329,7 +331,15 @@ describe("the letters a Black closes first", () => {
           const box = contoursBounds(drawnAs(letter, style)!.contours);
           return box.xMax - box.xMin;
         };
-        expect(wide("s") / wide("o"), `${name} s at ${weight}`).toBeGreaterThan(0.8);
+        /*
+         * The Serif's s keeps its bowls round rather than running them out
+         * sideways, as Lora's does (its Bold s is 0.77 of its o): run out to
+         * the o's width, its spine lay flat across the letter and past a
+         * Black the s stood wider than the o.
+         */
+        expect(wide("s") / wide("o"), `${name} s at ${weight}`).toBeGreaterThan(
+          name === "Serif" ? 0.55 : 0.8,
+        );
         // And on its lines: at the end of the axis it hung below the baseline.
         const box = contoursBounds(drawnAs("s", style)!.contours);
         expect(box.yMin, `${name} s at ${weight}`).toBeGreaterThan(-style.metrics.overshoot * 2);

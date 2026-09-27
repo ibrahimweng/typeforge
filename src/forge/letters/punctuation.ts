@@ -488,7 +488,13 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     const f = frame(style);
     if (bookish(f)) {
       const one = quoteWidth(f);
-      return finish(f, [...quote(f, f.edge), ...quote(f, f.edge + one * 1.65)]);
+      /*
+       * The white between the two marks Lora's: 55 at the Regular, closing to
+       * 32 by the Bold -- and never less at a hairline weight, where the marks
+       * narrow and, set a share of their own width apart, read as one.
+       */
+      const gap = Math.max(f.x * 0.11 - Math.max(0, f.half - f.x * 0.087) * 0.8, f.x * 0.04);
+      return finish(f, [...quote(f, f.edge), ...quote(f, f.edge + one + gap)]);
     }
     const gap = f.style.pen.weight * 1.6;
     return finish(f, [

@@ -299,6 +299,12 @@ export interface Parts {
      * sides outright and leaves circular corners on them.
      */
     superness: number;
+    /**
+     * Whether a bowl taller or wider than it is round is an oval, as a text
+     * face's o is, rather than a circle's quarters on straight sides: see
+     * `Frame.curve`. Only read where the superness is nought.
+     */
+    oval?: boolean;
   };
   corner: {
     /**
@@ -898,6 +904,9 @@ export const SERIF: Style = {
     k: "humanist",
     K: "humanist",
     s: "humanist",
+    at: "humanist",
+    S: "humanist",
+    seven: "humanist",
   },
   /*
    * A text face's proportions rather than the sans's.
@@ -923,6 +932,8 @@ export const SERIF: Style = {
     overshoot: 16,
     sidebearing: 34,
     capitalSpacing: 1.4,
+    // Lora's word space, 263 at the Regular and the Bold, a little more past it.
+    wordSpace: [263 / 500, 280 / 500],
     // LORA-BOLD-BEGIN (fitted to Lora Bold at a pen of 142)
     bold: {
       at: 0.47,
@@ -951,7 +962,7 @@ export const SERIF: Style = {
         x: 0.829,
         y: 0.879,
         z: 0.993,
-        A: 0.846,
+        A: 0.762,
         B: 0.727,
         C: 0.996,
         D: 0.979,
@@ -981,6 +992,7 @@ export const SERIF: Style = {
         two: 0.872,
         three: 0.841,
         four: 0.936,
+        five: 0.87,
         six: 0.892,
         seven: 0.861,
         eight: 0.833,
@@ -1066,6 +1078,7 @@ export const SERIF: Style = {
       parenright: [0.53, 1.03],
       hyphen: [1.97, 1.97],
       slash: [0.62, 0.59],
+      at: [1.47, 1.24],
       yen: [0.82, 0.79],
     },
     proportions: {
@@ -1153,7 +1166,8 @@ export const SERIF: Style = {
      * hangs at about forty degrees round from the top, and its foot ends
      * a third of the way up the right.
      */
-    bowl: { ...PLAIN.parts.bowl, width: 0.92, aperture: 0.75 },
+    // Ovals, as Lora's o is, not circles stood on straight sides.
+    bowl: { ...PLAIN.parts.bowl, width: 0.92, aperture: 0.75, oval: true },
     shoulder: { spring: 0.58, reach: 0.76, crest: 1 },
     // The curved ends -- the hooks of the a, c, f, r, j and y -- swell into a
     // teardrop rather than taking a bar across, which is what a text face does.

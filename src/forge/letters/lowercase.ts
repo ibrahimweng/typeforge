@@ -139,7 +139,9 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const floor = centre.y - f.bowlH + f.upright + barHalf + below;
     const eye = Math.max(Math.min(eyeOf(f, centre), crown - barHalf - deep), floor);
     const rise = Math.max(-0.85, Math.min(0.85, (eye - centre.y) / f.bowlH));
-    const opens = (Math.asin(rise) * 180) / Math.PI;
+    // Where the bowl is an oval, the ray to the point on it at that height,
+    // as it is drawn: a quarter circle's angle landed well under the bar.
+    const oval = f.curve > 0 && !(f.superness > 0);
     /*
      * Wider and a little lighter at a black weight, so the eye stays open:
      * see `heaviness`. Lowering the bar instead cut the tail short.
@@ -153,6 +155,12 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      */
     const light = bookish(f) ? heavy : Math.max(0, heavy - 1.1) * 2;
     const beltWidth = f.bowl + f.half * 0.3 * light;
+    const opens =
+      ((oval
+        ? Math.atan2(rise * f.bowlH, beltWidth * Math.sqrt(1 - rise * rise))
+        : Math.asin(rise)) *
+        180) /
+      Math.PI;
     const belt = bend(f, centre, f.bowlH, opens, opens + 300, beltWidth);
     return finish(
       f,

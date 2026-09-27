@@ -1465,7 +1465,14 @@ function beaksFor(stroke: Stroke): Contour[] {
      * curve, where a heavy stroke's inner corner stood out past it as a spike.
      */
     const inner = outer === a ? b : a;
-    const shape = beakShape(outer, tip, inner, at, u);
+    /*
+     * Closed through a point back inside the stroke rather than through the
+     * end of its spine: closed along the end's own cut, the beak and the
+     * stroke only met edge to edge there, and a renderer drew the seam
+     * between them as a hairline of white.
+     */
+    const within = { x: at.x - u.x * width * 0.5, y: at.y - u.y * width * 0.5 };
+    const shape = beakShape(outer, tip, inner, within, u);
     /*
      * At the limit of the weight axis the inner corner can come round past the
      * upright, and the beak would fold. It is then drawn as a speck buried in

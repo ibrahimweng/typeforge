@@ -467,7 +467,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * on the wall itself there is nothing to cross -- it grows out of the
      * stroke, which is what a tail does.
      */
-    const leaves = bowlPoint(centre, f.capBowl, f.capBowlH, 1 - f.square, f.half, -52, f.superness);
+    const leaves = bowlPoint(centre, f.capBowl, f.capBowlH, 1 - f.square, f.half, -52, f.curve);
     return finish(
       f,
       [

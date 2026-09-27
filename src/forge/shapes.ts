@@ -830,6 +830,22 @@ function superSegments(
     const flat = flatCorner(cornerW, cornerH, Math.min(pen, cornerW, cornerH) - 0.5, phi);
     ({ tight, side, crown, sideTurn, crownTurn } = flat);
   }
+  /*
+   * An oval's quarter is not a superellipse's: its curve runs from the
+   * flattest at the long sides to the tightest at the ends, with no corner
+   * tighter than both. Fitted as a superellipse of n = 2, the three arcs put
+   * their tightest in the middle, and the o of a text face had a shoulder
+   * two thirds of the way up each side. So an oval's quarter is three arcs
+   * of thirty degrees each whose radii run evenly from one end to the other.
+   */
+  if (whole && superness <= OVAL) {
+    const oval = ovalCorner(cornerW, cornerH);
+    if (oval && Math.min(oval.side, oval.tight, oval.crown) >= pen * 0.999) {
+      ({ tight, side, crown } = oval);
+      sideTurn = Math.PI / 6;
+      crownTurn = Math.PI / 6;
+    }
+  }
   const right = centre.x + halfWidth;
   const left = centre.x - halfWidth;
   const top = centre.y + halfHeight;
@@ -907,6 +923,31 @@ function superSegments(
     ...corner(insideRight, insideBottom, 3),
     run(at(right, insideBottom), at(right, centre.y)),
   ];
+}
+
+/**
+ * The superness at or under which a bowl is drawn as an oval: see
+ * `ovalCorner`. The least a Sans's bowls come down to is well over it.
+ */
+export const OVAL = 1e-3;
+
+/**
+ * The three radii of an oval's quarter in a `w` by `h` box, each arc turning
+ * thirty degrees and the middle one's radius halfway between the other two:
+ * leaving the side upright and arriving on the crown level are then two
+ * linear conditions on the side's radius and the crown's. Null where the box
+ * is too long for that to keep every radius positive.
+ */
+function ovalCorner(w: number, h: number): { side: number; tight: number; crown: number } | null {
+  const s = 0.5;
+  const c = Math.sqrt(3) / 2;
+  const p = 1 - c + (c - s) / 2;
+  const q = s + (c - s) / 2;
+  const determinant = p * p - q * q;
+  const side = (w * p - h * q) / determinant;
+  const crown = (h * p - w * q) / determinant;
+  if (!(side > 0 && crown > 0)) return null;
+  return { side, tight: (side + crown) / 2, crown };
 }
 
 /**

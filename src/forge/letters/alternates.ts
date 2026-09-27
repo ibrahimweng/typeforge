@@ -71,6 +71,7 @@ import {
 } from "./grotesque";
 import {
   humanistA,
+  humanistAt,
   humanistS,
   humanistK,
   humanistCapitalK,
@@ -91,6 +92,8 @@ import {
   humanistZero,
   humanistCapitalM,
   humanistCapitalQ,
+  humanistCapitalS,
+  humanistSeven,
   humanistCapitalU,
   humanistE,
   humanistT,
@@ -286,10 +289,10 @@ function doubleG(f: Frame): Recipe {
    * drawn lighter, so the loop keeps a round counter rather than a slot.
    */
   const heavy = heaviness(f);
-  const leaves = bowlPoint(upper, upperW, upperH, roundness, f.half, 242 - 22 * heavy, f.superness);
-  const lands = bowlPoint(loop, loopHalf, loopH, roundness, f.half, 118, f.superness);
+  const leaves = bowlPoint(upper, upperW, upperH, roundness, f.half, 242 - 22 * heavy, f.curve);
+  const lands = bowlPoint(loop, loopHalf, loopH, roundness, f.half, 118, f.curve);
   // The ear: out of the bowl's top right, level and a little proud of it.
-  const from = bowlPoint(upper, upperW, upperH, roundness, f.half, 38, f.superness);
+  const from = bowlPoint(upper, upperW, upperH, roundness, f.half, 38, f.curve);
   const earEnd = at(upper.x + upperW + Math.max(f.bowl * 0.42, f.half * 1.6), f.hangs(f.x));
   return {
     ...finish(
@@ -640,7 +643,7 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
           1 - f.square,
           f.half,
           -100,
-          f.superness,
+          f.curve,
         );
         const reaches = at(
           centre.x + f.capBowl * 1.3,
@@ -663,15 +666,7 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
       build: (style) => {
         const f = frame(style);
         const centre = at(f.edge + f.capBowl, f.cap / 2);
-        const leaves = bowlPoint(
-          centre,
-          f.capBowl,
-          f.capBowlH,
-          1 - f.square,
-          f.half,
-          -80,
-          f.superness,
-        );
+        const leaves = bowlPoint(centre, f.capBowl, f.capBowlH, 1 - f.square, f.half, -80, f.curve);
         return finish(
           f,
           [
@@ -704,15 +699,7 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
          * takes the face's terminal, which on a serif face is the spur.
          */
         const joins = 302;
-        const foot = bowlPoint(
-          centre,
-          f.capBowl,
-          f.capBowlH,
-          roundness,
-          f.half,
-          joins,
-          f.superness,
-        );
+        const foot = bowlPoint(centre, f.capBowl, f.capBowlH, roundness, f.half, joins, f.curve);
         const top = Math.max(f.cap * 0.47, foot.y + f.half * 2);
         /*
          * And the bowl's end is cut upright, and the upright stands on the
@@ -732,7 +719,7 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
           f.half,
           opens,
           joins,
-          f.superness,
+          f.curve,
         );
         const end = spineEnd(bowl);
         // The way the last piece that goes anywhere is travelling: a bowl can
@@ -1319,8 +1306,10 @@ const HUMANIST: Array<[LetterName, string, (style: Style) => Recipe]> = [
   ["t", "Standing well over the x-height under a wedge rising from the bar.", humanistT],
   ["U", "The right side a hairline, written on the way back up.", humanistCapitalU],
   ["g", "A link swinging out to the left and an ear rising into a drop.", humanistG],
+  ["at", "A small a whose tail runs out into the ring, on the face's own pen.", humanistAt],
   ["a", "Two storeys, the bowl hung low and light under an arch ending in a drop.", humanistA],
   ["j", "The tail carried round under the line and back up into a drop.", humanistJ],
+  ["seven", "The stem bowed as it falls, ending in a round tail.", humanistSeven],
   ["five", "A heavy flag turning up at its end, over a hairline stem.", humanistFive],
   ["hyphen", "Long and deep, a little over the middle of the x-height.", humanistHyphen],
   ["slash", "From the descender to over the ascender, leaning well over.", humanistSlash],
@@ -1329,6 +1318,7 @@ const HUMANIST: Array<[LetterName, string, (style: Style) => Recipe]> = [
   ["w", "Two vees crossing, the middle running up to a point with no serif.", humanistW],
   ["k", "A hairline arm into the stem and the leg leaving the arm.", humanistK],
   ["s", "Run a little wider past a Black, so both counters stay open.", humanistS],
+  ["S", "One S-curve from end to end, its spine on the bowls' own tangents.", humanistCapitalS],
   ["K", "A hairline arm into the stem and the leg leaving the arm.", humanistCapitalK],
   ["W", "Two vees crossing, the middle running up to a point with no serif.", humanistCapitalW],
   [

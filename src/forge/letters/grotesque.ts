@@ -750,7 +750,7 @@ export function grotesqueAmpersand(style: Style): Recipe {
   const across = (p: Vec2) => (p.x - foot.x) * leg.y - (p.y - foot.y) * leg.x;
   let meet = 400;
   for (let d = 290; d <= 420; d += 0.5) {
-    const p = bowlPoint(bowl, bowlW, bowlH, 1 - f.square, f.half, d, f.superness);
+    const p = bowlPoint(bowl, bowlW, bowlH, 1 - f.square, f.half, d, f.curve);
     if (across(p) > 0) {
       meet = d;
       break;
@@ -1125,7 +1125,7 @@ function angleAt(
   left: boolean,
 ): number {
   const height = (degrees: number): number =>
-    bowlPoint(centre, halfW, halfH, 1 - f.square, f.half, degrees, f.superness).y;
+    bowlPoint(centre, halfW, halfH, 1 - f.square, f.half, degrees, f.curve).y;
   // Along the side from its lowest point to its highest, where it only climbs.
   let low = left ? 270 : -90;
   let high = 90;
@@ -1305,7 +1305,7 @@ export function grotesqueFive(style: Style): Recipe {
    */
   const reach = penReach(f.style.pen);
   const insideAt = (degrees: number): Vec2 => {
-    const p = bowlPoint(centre, halfW, halfH, 1 - f.square, f.half, degrees, f.superness);
+    const p = bowlPoint(centre, halfW, halfH, 1 - f.square, f.half, degrees, f.curve);
     const nx = (p.x - centre.x) / (halfW * halfW);
     const ny = (p.y - centre.y) / (halfH * halfH);
     const length = Math.hypot(nx, ny) || 1;
@@ -1334,7 +1334,7 @@ export function grotesqueFive(style: Style): Recipe {
   // stem's left edge, as a light pen's did.
   const outsideAt = (degrees: number): Vec2 => {
     const inside = insideAt(degrees);
-    const p = bowlPoint(centre, halfW, halfH, 1 - f.square, f.half, degrees, f.superness);
+    const p = bowlPoint(centre, halfW, halfH, 1 - f.square, f.half, degrees, f.curve);
     return at(p.x * 2 - inside.x, p.y * 2 - inside.y);
   };
   const lean = (stemTop.x - stemFoot.x) / (stemTop.y - stemFoot.y);
@@ -2601,7 +2601,7 @@ export function grotesqueAt(style: Style): Recipe {
    * further in.
    */
   const joins = 0;
-  const landing = bowlPoint(outer, outerW, outerH, 1 - f.square, rf.half, joins, f.superness);
+  const landing = bowlPoint(outer, outerW, outerH, 1 - f.square, rf.half, joins, f.curve);
   const turnY = landing.y;
   const hook = Math.max(
     (landing.x - X(lerp(608, 654)) - grow * 0.3) / 2,
@@ -2714,7 +2714,7 @@ export function grotesqueE(style: Style): Recipe {
    * than itself and the bar's end stood past it as a small square step.
    */
   const onRing = (degrees: number): Vec2 =>
-    bowlPoint(centre, halfW, f.bowlH, 1 - f.square, f.half, degrees, f.superness);
+    bowlPoint(centre, halfW, f.bowlH, 1 - f.square, f.half, degrees, f.curve);
   // The pen's reach out of the ring's outside at an angle on it.
   const outwardAt = (degrees: number): Vec2 => {
     const here = onRing(degrees);

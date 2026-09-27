@@ -31,6 +31,7 @@ import {
   turn,
   headingAt,
   hookFrom,
+  towards,
 } from "./common";
 
 export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
@@ -131,9 +132,18 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const coarse = leaves;
     for (let angle = coarse + 4; angle >= coarse - 4; angle -= 1) tryAt(angle);
     const over = bend(f, centre, radius, hookFrom(f), leaves, wide);
+    /*
+     * The diagonal begun a little way back up inside the bowl's end: begun on
+     * it, the two cut ends only met edge to edge, and a renderer drew the
+     * seam across the stroke as a hairline of white.
+     */
+    const joins = spineEnd(over);
+    const lands = toward(joins);
+    const way = towards(lands, joins);
+    const overlap = at(joins.x + way.x * f.half * 0.3, joins.y + way.y * f.half * 0.3);
     return finish(f, [
       ink(f, over, f.end, BUTT),
-      ink(f, straight(spineEnd(over), toward(spineEnd(over))), BUTT, {
+      ink(f, straight(overlap, lands), BUTT, {
         kind: "butt",
         level: true,
       }),
