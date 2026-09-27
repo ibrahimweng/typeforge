@@ -852,6 +852,116 @@ function sideRun(
 // Terminals
 // ---------------------------------------------------------------------------
 
+/** The sine of the steepest a curved end may arrive and still be cut upright. */
+const CUT_LEVEL_FROM = 0.4;
+
+/**
+ * The line a curved end is cut along when its terminal is `aligned`: level
+ * through the end of the spine where the stroke arrives more up and down than
+ * across, and plumb where it arrives more across. Nothing for a straight end,
+ * which `terminalNodes` slides exactly as it does a level cut.
+ */
+function alignedCut(headed: Headed[], atEnd: boolean): { axis: "x" | "y"; value: number } | null {
+  const order = atEnd ? [...headed].reverse() : headed;
+  const last = order.find((one) =>
+    one.segment.kind === "line"
+      ? Math.hypot(one.segment.to.x - one.segment.from.x, one.segment.to.y - one.segment.from.y) >
+        1e-9
+      : Math.abs(one.segment.endAngle - one.segment.startAngle) > 1e-9,
+  );
+  if (!last || last.segment.kind !== "arc") return null;
+  const tip = atEnd ? segmentEnd(last.segment) : segmentStart(last.segment);
+  const heading = atEnd ? last.end : last.start;
+  // Level unless the curve is nearly running across when it stops: a c whose
+  // hook has turned only a little past its crown is still cut level, as every
+  // grotesque cuts it, where an f's hook that runs out flat is cut upright.
+  return Math.abs(heading.y) >= CUT_LEVEL_FROM * Math.hypot(heading.x, heading.y)
+    ? { axis: "y", value: tip.y }
+    : { axis: "x", value: tip.x };
+}
+
+/**
+ * One side of a curved end carried on, or brought back, along its own curve
+ * until it meets the line the end is cut along.
+ *
+ * The side is an offset of the spine's arc -- a circle, or an ellipse under a
+ * pen with contrast -- and it is moved along that same curve, so the letter's
+ * outline is exactly what it was up to the new end and the cut is a straight
+ * line between two points that both lie on it. The outside of a turn reaches
+ * further than the spine before it meets the line and the inside stops short,
+ * which is what a cut level across a curve is.
+ *
+ * Drawn in the pieces the side had before it moved, so a side carried past a
+ * right angle is not a node more at one weight than at another.
+ */
+function cutAlong(
+  run: OffsetSegment[],
+  atEnd: boolean,
+  cut: { axis: "x" | "y"; value: number },
+): void {
+  const order = atEnd ? [...run.keys()].reverse() : [...run.keys()];
+  const found = order.find((index) => {
+    const one = run[index];
+    return one.kind === "ellipse"
+      ? Math.abs(one.to - one.from) > 1e-9 && (one.rx > 1e-9 || one.ry > 1e-9)
+      : Math.hypot(one.to.x - one.from.x, one.to.y - one.from.y) > 1e-9;
+  });
+  if (found === undefined) return;
+  const arc = run[found];
+  if (arc.kind !== "ellipse") return;
+  const coordinate = (t: number): number => {
+    const point = ellipseAt(arc, t);
+    return (cut.axis === "y" ? point.y : point.x) - cut.value;
+  };
+  const sweep = arc.to - arc.from;
+  const way = Math.sign(sweep);
+  const end = atEnd ? arc.to : arc.from;
+  // How far along the curve the end may be carried on, and how far back.
+  const onward = Math.PI / 3;
+  const back = Math.abs(sweep) * 0.98;
+  const lowest = atEnd ? end - way * back : end - way * onward;
+  const highest = atEnd ? end + way * onward : end + way * back;
+  const steps = 96;
+  let best: number | null = null;
+  let previous = coordinate(lowest);
+  for (let step = 1; step <= steps; step++) {
+    const t0 = lowest + ((highest - lowest) * (step - 1)) / steps;
+    const t1 = lowest + ((highest - lowest) * step) / steps;
+    const value = coordinate(t1);
+    if (previous === 0 || previous * value < 0) {
+      let a = t0;
+      let b = t1;
+      let fa = previous;
+      for (let pass = 0; pass < 60; pass++) {
+        const middle = (a + b) / 2;
+        const fm = coordinate(middle);
+        if (fa * fm <= 0) b = middle;
+        else {
+          a = middle;
+          fa = fm;
+        }
+      }
+      const root = (a + b) / 2;
+      if (best === null || Math.abs(root - end) < Math.abs(best - end)) best = root;
+    }
+    previous = value;
+  }
+  if (best === null) return;
+  const pieces = arc.pieces ?? Math.max(1, Math.ceil(Math.abs(sweep) / (Math.PI / 2) - A_QUARTER));
+  const moved: OffsetEllipse = atEnd
+    ? { ...arc, to: best, pieces }
+    : { ...arc, from: best, pieces };
+  run[found] = moved;
+  // Whatever of no length followed the end moves with it.
+  const tip = ellipseAt(moved, best);
+  const rest = atEnd ? order.slice(0, order.indexOf(found)) : order.slice(0, order.indexOf(found));
+  for (const index of rest) {
+    const one = run[index];
+    if (one.kind === "line") run[index] = { kind: "line", from: tip, to: tip };
+    else run[index] = { ...one, centre: tip, rx: 0, ry: 0 };
+  }
+}
+
 /**
  * The nodes that close one end of a stroke, running from the left side across
  * to the right.
@@ -911,6 +1021,12 @@ function terminalNodes(
     });
   }
 
+  if (terminal.aligned && !straight && terminal.kind !== "round") {
+    // Cut along a line by moving the two sides: see `cutAlong`. The cut is the
+    // straight run between where they now stop, and needs no nodes of its own.
+    return [];
+  }
+
   if (terminal.kind === "round") {
     /*
      * On a curved end, half an ellipse laid square on the end of the stroke:
@@ -967,7 +1083,8 @@ function terminalNodes(
     ];
   }
 
-  if (terminal.level && Math.abs(direction.y) > 1e-3) {
+  const flat = Math.abs(direction.y) >= Math.abs(direction.x);
+  if ((terminal.level || (terminal.aligned && flat)) && Math.abs(direction.y) > 1e-3) {
     /*
      * Both corners of the cut slid along the stroke until they are level with
      * where it was meant to stop.
@@ -998,7 +1115,7 @@ function terminalNodes(
     ];
   }
 
-  if (terminal.level && Math.abs(direction.x) > 1e-3) {
+  if ((terminal.level || (terminal.aligned && !flat)) && Math.abs(direction.x) > 1e-3) {
     /*
      * A level cut on an arm lying along a line: the corners slid until they
      * stand one above the other, square across the arm. A pen held at an
@@ -1153,6 +1270,18 @@ export function sweep(stroke: Stroke): Contour[] {
   const join = stroke.join ?? "miter";
   const left = sideRun(headed, 1, reach, join, spine.closed);
   const right = sideRun(headed, -1, reach, join, spine.closed);
+  if (!spine.closed) {
+    for (const [terminal, atEnd] of [
+      [stroke.start, false],
+      [stroke.end, true],
+    ] as const) {
+      if (!terminal.aligned) continue;
+      const cut = alignedCut(headed, atEnd);
+      if (!cut) continue;
+      cutAlong(left, atEnd, cut);
+      cutAlong(right, atEnd, cut);
+    }
+  }
 
   if (spine.closed) {
     /*
@@ -1472,6 +1601,7 @@ function cutLoop(nodes: GlyphNode[], from: EdgeAt, to: EdgeAt, at: Vec2): GlyphN
 function slides(terminal: Terminal, straight: boolean): boolean {
   if (terminal.kind === "round") return false;
   if (terminal.level === true) return true;
+  if (terminal.aligned === true) return straight;
   return straight && terminal.kind === "angled" && Boolean(terminal.angle);
 }
 

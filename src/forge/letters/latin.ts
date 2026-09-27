@@ -203,7 +203,7 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   Hbar: (style) => {
     const f = frame(style);
     const left = f.edge;
-    const right = left + f.style.metrics.counterWidth + f.style.pen.weight;
+    const right = left + f.style.metrics.counterWidth * (f.style.metrics.stretch ?? 1) + f.style.pen.weight;
     const bar = f.cap * f.style.parts.crossbar.height;
     // Across both stems and out past the left of them, which is what tells an
     // H-bar from an H at a glance.

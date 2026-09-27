@@ -288,7 +288,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   H: (style) => {
     const f = frame(style);
     const left = f.edge;
-    const right = left + f.style.metrics.counterWidth + f.style.pen.weight;
+    const right = left + f.style.metrics.counterWidth * (f.style.metrics.stretch ?? 1) + f.style.pen.weight;
     return finish(f, [
       ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
       ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
@@ -466,7 +466,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * on the wall itself there is nothing to cross -- it grows out of the
      * stroke, which is what a tail does.
      */
-    const leaves = bowlPoint(centre, f.capBowl, f.capBowlH, 1 - f.square, f.half, -52);
+    const leaves = bowlPoint(centre, f.capBowl, f.capBowlH, 1 - f.square, f.half, -52, f.superness);
     return finish(
       f,
       [

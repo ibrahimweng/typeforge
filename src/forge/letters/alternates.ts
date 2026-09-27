@@ -194,10 +194,10 @@ function doubleG(f: Frame): Recipe {
    * drawn lighter, so the loop keeps a round counter rather than a slot.
    */
   const heavy = heaviness(f);
-  const leaves = bowlPoint(upper, upperW, upperH, roundness, f.half, 242 - 22 * heavy);
-  const lands = bowlPoint(loop, loopHalf, loopH, roundness, f.half, 118);
+  const leaves = bowlPoint(upper, upperW, upperH, roundness, f.half, 242 - 22 * heavy, f.superness);
+  const lands = bowlPoint(loop, loopHalf, loopH, roundness, f.half, 118, f.superness);
   // The ear: out of the bowl's top right, level and a little proud of it.
-  const from = bowlPoint(upper, upperW, upperH, roundness, f.half, 38);
+  const from = bowlPoint(upper, upperW, upperH, roundness, f.half, 38, f.superness);
   const earEnd = at(upper.x + upperW + Math.max(f.bowl * 0.42, f.half * 1.6), f.hangs(f.x));
   return {
     ...finish(
@@ -541,7 +541,15 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
          * bowed below its chord, so it leaves the bowl falling and arrives
          * nearly level -- the long stroke Lora and most old-style faces draw.
          */
-        const leaves = bowlPoint(centre, f.capBowl, f.capBowlH, 1 - f.square, f.half, -100);
+        const leaves = bowlPoint(
+          centre,
+          f.capBowl,
+          f.capBowlH,
+          1 - f.square,
+          f.half,
+          -100,
+          f.superness,
+        );
         const reaches = at(
           centre.x + f.capBowl * 1.3,
           f.dip(0) - Math.max(f.cap * 0.2, f.half * 2.2),
@@ -563,7 +571,15 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
       build: (style) => {
         const f = frame(style);
         const centre = at(f.edge + f.capBowl, f.cap / 2);
-        const leaves = bowlPoint(centre, f.capBowl, f.capBowlH, 1 - f.square, f.half, -80);
+        const leaves = bowlPoint(
+          centre,
+          f.capBowl,
+          f.capBowlH,
+          1 - f.square,
+          f.half,
+          -80,
+          f.superness,
+        );
         return finish(
           f,
           [
@@ -596,7 +612,15 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
          * takes the face's terminal, which on a serif face is the spur.
          */
         const joins = 302;
-        const foot = bowlPoint(centre, f.capBowl, f.capBowlH, roundness, f.half, joins);
+        const foot = bowlPoint(
+          centre,
+          f.capBowl,
+          f.capBowlH,
+          roundness,
+          f.half,
+          joins,
+          f.superness,
+        );
         const top = Math.max(f.cap * 0.47, foot.y + f.half * 2);
         /*
          * And the bowl's end is cut upright, and the upright stands on the
@@ -608,7 +632,16 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
          * cut's inner corner on round the curve until it stands over the outer
          * one gives the bowl an upright end, and the upright is set on it.
          */
-        const bowl = bowlBetween(centre, f.capBowl, f.capBowlH, roundness, f.half, opens, joins);
+        const bowl = bowlBetween(
+          centre,
+          f.capBowl,
+          f.capBowlH,
+          roundness,
+          f.half,
+          opens,
+          joins,
+          f.superness,
+        );
         const end = spineEnd(bowl);
         // The way the last piece that goes anywhere is travelling: a bowl can
         // finish on a run of no length.

@@ -288,7 +288,7 @@ export function pointOn(centre: Vec2, radius: number, degrees: number): Vec2 {
  * construction is now the general case rather than a special one.
  */
 export function ring(f: Frame, centre: Vec2, halfWidth: number, halfHeight = halfWidth): Spine {
-  return bowl(centre, halfWidth, halfHeight, 1 - f.square, f.half);
+  return bowl(centre, halfWidth, halfHeight, 1 - f.square, f.half, f.superness);
 }
 
 /**
@@ -318,10 +318,19 @@ export function bend(
   const halfWidth = width;
   const roundness = 1 - f.square;
   if (toDegrees >= fromDegrees) {
-    return bowlBetween(centre, halfWidth, radius, roundness, f.half, fromDegrees, toDegrees);
+    return bowlBetween(
+      centre,
+      halfWidth,
+      radius,
+      roundness,
+      f.half,
+      fromDegrees,
+      toDegrees,
+      f.superness,
+    );
   }
   return reversed(
-    bowlBetween(centre, halfWidth, radius, roundness, f.half, toDegrees, fromDegrees),
+    bowlBetween(centre, halfWidth, radius, roundness, f.half, toDegrees, fromDegrees, f.superness),
   );
 }
 
@@ -433,6 +442,8 @@ export interface Frame {
   capBowlH: number;
   /** How square the bowls are: nought round, one as square as the pen allows. */
   square: number;
+  /** How far the round of a bowl gathers into its corners: see `Parts.bowl`. */
+  superness: number;
   /** How wide a bowl is against its height. */
   wide: number;
   /**
@@ -623,6 +634,7 @@ export function frame(drawn: Style): Frame {
     capBowl: Math.max(capBowlH * wide, half * 1.7),
     capBowlH,
     square: style.parts.bowl.squareness,
+    superness: style.parts.bowl.superness ?? 0,
     wide,
     least,
     radius: style.parts.corner.radius,
@@ -972,7 +984,10 @@ export function capped(frame: Frame, stroke: Stroke): Stroke {
   };
   const cut = (terminal: Terminal, lean: number, segment: SpineSegment, which: "start" | "end") =>
     lean > 0 &&
-    (terminal.kind === "butt" || terminal.kind === "slab" || terminal.kind === "teardrop") &&
+    (terminal.kind === "butt" ||
+      terminal.kind === "slab" ||
+      terminal.kind === "teardrop" ||
+      terminal.kind === "level") &&
     slides(segment, which)
       ? { ...terminal, level: true }
       : terminal;
@@ -2158,7 +2173,12 @@ export function openBowl(
   const run = symmetric ? Math.max(0, halfWidth - halfHeight) * black : 0;
   let from = asked;
   let to = until;
-  if (run > 0) {
+  /*
+   * A superelliptic bowl has its flat sides whatever its width, so it is cut
+   * the same way however narrow it is: measured on a circle, a Black c on
+   * one opened ninety degrees each side and was left a bracket.
+   */
+  if (run > 0 || (symmetric && black > 0 && f.superness > 0)) {
     // Where on the round of the bowl each end is cut: far enough round that
     // the ends' inner corners stand a stem and a bit apart, measured upright.
     const clear =
@@ -2172,7 +2192,7 @@ export function openBowl(
   }
   return ink(
     f,
-    bowlBetween(centre, halfWidth, halfHeight, 1 - f.square, f.half, from, to + carry),
+    bowlBetween(centre, halfWidth, halfHeight, 1 - f.square, f.half, from, to + carry, f.superness),
     f.end,
     f.end,
   );
@@ -2941,7 +2961,16 @@ export function belly(
 ): Stroke {
   return ink(
     f,
-    bowlBetween(centre, halfWidth, halfHeight, 1 - f.square, f.half, fromDegrees, toDegrees),
+    bowlBetween(
+      centre,
+      halfWidth,
+      halfHeight,
+      1 - f.square,
+      f.half,
+      fromDegrees,
+      toDegrees,
+      f.superness,
+    ),
     BUTT,
     BUTT,
   );
@@ -2990,13 +3019,13 @@ export function lobe(f: Frame, stem: number, low: number, high: number, asked: n
   if (run < 1) return belly(f, at(stem, middle), Math.max(reach, f.least), halfHeight, -90, 90);
   const centre = at(stem + run, middle);
   const roundness = 1 - f.square;
-  const below = bowlPoint(centre, curve, halfHeight, roundness, f.half, -90);
-  const above = bowlPoint(centre, curve, halfHeight, roundness, f.half, 90);
+  const below = bowlPoint(centre, curve, halfHeight, roundness, f.half, -90, f.superness);
+  const above = bowlPoint(centre, curve, halfHeight, roundness, f.half, 90, f.superness);
   return ink(
     f,
     chain(
       straight(at(stem, below.y), below),
-      bowlBetween(centre, curve, halfHeight, roundness, f.half, -90, 90),
+      bowlBetween(centre, curve, halfHeight, roundness, f.half, -90, 90, f.superness),
       straight(above, at(stem, above.y)),
     ),
     BUTT,

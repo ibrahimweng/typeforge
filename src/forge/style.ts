@@ -70,6 +70,35 @@ export interface Metrics {
    */
   monospaced?: boolean;
   /**
+   * How far each side is fitted to the white it already has, nought to one.
+   *
+   * Nought, or left out, sets every letter the same sidebearing either side
+   * of its ink and tightens the round ones by a fixed share on the right. One
+   * measures each side -- a stem is flat against its box, an o leaves wedges
+   * of white beside it, a v a whole triangle -- and gives back as much as it
+   * already has: see `fitted` in `build.ts`.
+   */
+  fit?: number;
+  /**
+   * How much wider or narrower than the face's rhythm a letter is drawn, by
+   * letter, as a multiple of `width`.
+   *
+   * The rhythm sets most widths -- an n and an o follow from the counter and
+   * the bowl -- but not all of them. How wide an H stands beside its n, how
+   * far an x or a z reaches, how broad an S is: each of those is its own
+   * decision in every face that has ever been drawn by hand, and a face
+   * modelled on one has to be able to say so. Applied exactly as the width
+   * is, to the horizontal measures a letter is built from and to nothing
+   * else, so the strokes keep their weight.
+   */
+  proportions?: Record<string, number>;
+  /**
+   * The factor from `proportions` a letter is being drawn at, set by
+   * `proportioned` and read by the few skeletons measured off the counter
+   * rather than off the width. Never saved: nought or left out is one.
+   */
+  stretch?: number;
+  /**
    * Degrees the whole letter leans, to the right when positive.
    *
    * Taken on the finished outline rather than on the skeleton. A shear is an
@@ -159,6 +188,14 @@ export interface Parts {
      * from a technical one, and is not reachable by adjusting a circle.
      */
     squareness: number;
+    /**
+     * How far the round of a bowl is pushed toward its corners: nought is a
+     * circle, and turned up the sides and the crown run flatter and the
+     * turning gathers in the corners -- the superellipse of a neo-grotesque's
+     * o, firm without being square. Not the squareness, which straightens the
+     * sides outright and leaves circular corners on them.
+     */
+    superness: number;
   };
   corner: {
     /**
@@ -369,7 +406,7 @@ export function terminalFor(style: Style): Terminal {
   };
 }
 
-const TERMINAL_KINDS: TerminalKind[] = ["butt", "angled", "round", "teardrop"];
+const TERMINAL_KINDS: TerminalKind[] = ["butt", "angled", "round", "teardrop", "level"];
 
 /**
  * The stem a serif is measured in.
@@ -401,7 +438,7 @@ export function serifReach(style: Style): number {
 const EM = 1000;
 
 /**
- * The sans.
+ * The plain sans every other base is built from.
  *
  * Monolinear, flat terminals, a shoulder springing from just below the middle:
  * the plainest set of decisions that still reads as designed rather than as
@@ -414,7 +451,7 @@ const EM = 1000;
  * conventions of the writing system rather than anyone's design, and are
  * arrived at here by construction rather than measured off an existing font.
  */
-export const SANS: Style = {
+const PLAIN: Style = {
   name: "Sans",
   family: "sans",
   blurb: "The plain case. One thickness, flat ends, ordinary proportions.",
@@ -441,7 +478,7 @@ export const SANS: Style = {
       head: "level",
     },
     shoulder: { spring: 0.62, reach: 1, crest: 1 },
-    bowl: { width: 1, squareness: 0, aperture: 1 },
+    bowl: { width: 1, squareness: 0, aperture: 1, superness: 0 },
     corner: { radius: 0, join: "miter" },
     terminal: { kind: "butt", angle: 0 },
     crossbar: { height: 0.52, weight: 1 },
@@ -461,8 +498,108 @@ export const SANS: Style = {
  * the join. Nothing about the letters themselves is different, which is the
  * point of building it this way.
  */
+/**
+ * The sans: a neo-grotesque in the manner of Geist.
+ *
+ * Built on the plain sans above, with the decisions that make a modern
+ * grotesque rather than a generic one. The proportions are compact -- an n
+ * whose counter is not three stems across, an x-height of 0.53 of the em, the
+ * ascenders level with the capitals -- and the stems carry a touch of contrast
+ * so the crowns of the round letters sit a little lighter than their sides.
+ *
+ * Measured against Geist Regular at every point, and arrived at by moving the
+ * numbers the other faces are built from rather than by drawing anything
+ * separately: the same skeletons, the same pen, fitted.
+ */
+export const SANS: Style = {
+  ...PLAIN,
+  name: "Sans",
+  blurb: "A neo-grotesque: compact, even, cut level at its curved ends.",
+  metrics: {
+    ...PLAIN.metrics,
+    xHeight: 530,
+    capHeight: 710,
+    ascender: 710,
+    descender: -150,
+    overshoot: 12,
+    counterWidth: 250,
+    sidebearing: 80,
+    capitalSpacing: 1.15,
+    fit: 1,
+    /*
+     * Each letter's width against the rhythm, fitted to Geist's by measuring
+     * the ink: see `proportions`.
+     */
+    proportions: {
+      a: 1.02,
+      b: 0.965,
+      c: 1.121,
+      d: 0.965,
+      e: 0.97,
+      f: 1.3,
+      g: 0.962,
+      h: 0.994,
+      j: 1.272,
+      k: 1.217,
+      m: 0.936,
+      n: 0.994,
+      p: 0.965,
+      q: 0.965,
+      r: 0.578,
+      s: 1.415,
+      t: 1.187,
+      u: 0.976,
+      v: 1.287,
+      w: 1.394,
+      x: 1.353,
+      y: 1.294,
+      z: 1.385,
+      A: 1.13,
+      B: 1.401,
+      H: 1.384,
+      C: 1.122,
+      D: 1.134,
+      E: 1.299,
+      F: 1.273,
+      G: 0.942,
+      K: 1.336,
+      L: 1.377,
+      M: 1.296,
+      N: 1.258,
+      O: 1.022,
+      P: 1.337,
+      Q: 1.007,
+      R: 1.326,
+      S: 1.299,
+      T: 1.008,
+      U: 1.332,
+      V: 1.076,
+      W: 1.15,
+      X: 1.106,
+      Y: 1.066,
+      Z: 1.265,
+      zero: 1.084,
+      two: 1.052,
+      three: 1.594,
+      four: 1.222,
+      five: 0.909,
+      six: 1.059,
+      seven: 1.146,
+      eight: 1.403,
+      nine: 1.059,
+      question: 1.044,
+    },
+  },
+  pen: { weight: 87, contrast: 0.06, angle: 0 },
+  parts: {
+    ...PLAIN.parts,
+    bowl: { width: 0.845, squareness: 0, aperture: 1, superness: 0.15 },
+    terminal: { kind: "level", angle: 0 },
+  },
+};
+
 export const SERIF: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Serif",
   family: "serif",
   blurb: "Contrast, an angled pen, and bracketed serifs.",
@@ -510,14 +647,14 @@ export const SERIF: Style = {
    * loose again as the face it was measured against.
    */
   metrics: {
-    ...SANS.metrics,
+    ...PLAIN.metrics,
     ascender: 780,
     descender: -260,
     sidebearing: 34,
     capitalSpacing: 1.4,
   },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     /*
      * A text serif rather than a slab: it thins toward its tip, it is
      * bracketed well into the stem, and the top of a lowercase stem wears one
@@ -531,7 +668,7 @@ export const SERIF: Style = {
       shape: "wedge",
       head: "sloped",
     },
-    bowl: { ...SANS.parts.bowl, width: 0.92 },
+    bowl: { ...PLAIN.parts.bowl, width: 0.92 },
     shoulder: { spring: 0.58, reach: 0.76, crest: 1 },
     // The curved ends -- the hooks of the a, c, f, r, j and y -- swell into a
     // teardrop rather than taking a bar across, which is what a text face does.
@@ -548,7 +685,7 @@ export const SERIF: Style = {
  * numbers sits where a text face would refuse to go.
  */
 export const DISPLAY: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Display",
   family: "display",
   blurb: "A fat face: as heavy as the counters will take, with the weight all on the uprights.",
@@ -562,13 +699,13 @@ export const DISPLAY: Style = {
    * they turn. Set tight it reads as one block of colour, which is what it was
    * invented to do.
    */
-  metrics: { ...SANS.metrics, xHeight: 575, counterWidth: 285, sidebearing: 34, width: 1.02 },
+  metrics: { ...PLAIN.metrics, xHeight: 575, counterWidth: 285, sidebearing: 34, width: 1.02 },
   pen: { weight: 205, contrast: 0.55, angle: 0 },
   // The apex cut flat, which its own hint says is what a heavy face does to
   // keep the top of an A from going black.
   forms: { A: "flat" },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     shoulder: { spring: 0.66, reach: 1.02, crest: 1 },
     /*
      * Narrower than tall, which is both what a fat face is and what keeps its
@@ -578,7 +715,7 @@ export const DISPLAY: Style = {
      * hundred and eighty -- and an `o` wider than an `n` is a face whose
      * rhythm has inverted.
      */
-    bowl: { width: 0.92, squareness: 0.12, aperture: 0.9 },
+    bowl: { width: 0.92, squareness: 0.12, aperture: 0.9, superness: 0 },
     corner: { radius: 0, join: "round" },
     terminal: { kind: "butt", angle: 0 },
   },
@@ -599,11 +736,11 @@ export const DISPLAY: Style = {
 
 /** Geometric: circles, points, one thickness. */
 export const GEOMETRIC: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Geometric",
   family: "sans",
   blurb: "Circles and points, one thickness throughout.",
-  metrics: { ...SANS.metrics, xHeight: 500, counterWidth: 380, sidebearing: 58 },
+  metrics: { ...PLAIN.metrics, xHeight: 500, counterWidth: 380, sidebearing: 58 },
   pen: { weight: 86, contrast: 0, angle: 0 },
   /*
    * The three letters a geometric face argues about, and every one of these
@@ -615,9 +752,9 @@ export const GEOMETRIC: Style = {
    */
   forms: { Q: "under", G: "bare", M: "deep" },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     shoulder: { spring: 0.55, reach: 1, crest: 1 },
-    bowl: { width: 1, squareness: 0, aperture: 1 },
+    bowl: { width: 1, squareness: 0, aperture: 1, superness: 0 },
     corner: { radius: 0, join: "miter" },
     terminal: { kind: "butt", angle: 0 },
   },
@@ -625,19 +762,19 @@ export const GEOMETRIC: Style = {
 
 /** Ribbon: one heavy stroke bent round, with the corners opened right out. */
 export const RIBBON: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Ribbon",
   family: "display",
   blurb: "One heavy stroke bent round. Corners opened until the joints disappear.",
-  metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 330, sidebearing: 46 },
+  metrics: { ...PLAIN.metrics, xHeight: 560, counterWidth: 330, sidebearing: 46 },
   pen: { weight: 150, contrast: 0, angle: 0 },
   // A single bent stroke cannot tell an l from a one, so the l is turned out
   // at the foot -- which is what its alternate exists for.
   forms: { l: "tailed" },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     shoulder: { spring: 0.4, reach: 1.05, crest: 1 },
-    bowl: { width: 1, squareness: 0.5, aperture: 1 },
+    bowl: { width: 1, squareness: 0.5, aperture: 1, superness: 0 },
     corner: { radius: 220, join: "round" },
     terminal: { kind: "butt", angle: 0 },
   },
@@ -645,19 +782,19 @@ export const RIBBON: Style = {
 
 /** Technical: squared off, narrow, corners just off the pen's limit. */
 export const TECHNICAL: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Technical",
   family: "display",
   blurb: "Squared off and narrow, with the corners just off the limit.",
-  metrics: { ...SANS.metrics, counterWidth: 300, sidebearing: 52, width: 0.9 },
+  metrics: { ...PLAIN.metrics, counterWidth: 300, sidebearing: 52, width: 0.9 },
   pen: { weight: 78, contrast: 0, angle: 0 },
   // The t cut off square at the baseline, which its own hint calls the
   // squared or technical face's.
   forms: { t: "straight" },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     shoulder: { spring: 0.78, reach: 0.82, crest: 1 },
-    bowl: { width: 0.82, squareness: 0.92, aperture: 1 },
+    bowl: { width: 0.82, squareness: 0.92, aperture: 1, superness: 0 },
     corner: { radius: 45, join: "round" },
     terminal: { kind: "butt", angle: 0 },
   },
@@ -665,7 +802,7 @@ export const TECHNICAL: Style = {
 
 /** Fairground: the pen turned a quarter, so the horizontals are the thick strokes. */
 export const FAIRGROUND: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Fairground",
   family: "display",
   blurb:
@@ -677,7 +814,7 @@ export const FAIRGROUND: Style = {
    * Wide, heavy, slabbed and set on the older forms, it reads as the poster it
    * is named after rather than as a sans with its pen turned.
    */
-  metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 400, sidebearing: 46, width: 1.1 },
+  metrics: { ...PLAIN.metrics, xHeight: 560, counterWidth: 400, sidebearing: 46, width: 1.1 },
   // Not as far as reverse contrast will go: at seven tenths the uprights thin
   // to hairlines and the right stem of an `n` all but leaves. Six tenths keeps
   // the horizontals carrying the weight and the letters legible, which is what
@@ -687,24 +824,24 @@ export const FAIRGROUND: Style = {
   // that overlap, and a one with a foot so it does not lean on its neighbours.
   forms: { W: "crossed", one: "footed" },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     // Slabs, because a circus face has them and because a slab laid across a
     // thin vertical is what stops reverse contrast reading as a mistake.
-    slab: { ...SANS.parts.slab, on: true, projection: 0.5, thickness: 0.34, bracket: 0 },
-    bowl: { width: 1.06, squareness: 0.18, aperture: 1 },
+    slab: { ...PLAIN.parts.slab, on: true, projection: 0.5, thickness: 0.34, bracket: 0 },
+    bowl: { width: 1.06, squareness: 0.18, aperture: 1, superness: 0 },
     terminal: { kind: "butt", angle: 0 },
   },
 };
 
 /** Marker: leaned over, drawn with a flat pen held at an angle. */
 export const MARKER: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Marker",
   family: "hand",
   blurb:
     "A felt tip on paper: one width whichever way it goes, and an edge that followed the grain.",
   metrics: {
-    ...SANS.metrics,
+    ...PLAIN.metrics,
     // A hand leans a little; thirteen degrees was a typeface being italic.
     slant: 8,
     // Handwriting runs a larger x-height than type does, and sits looser.
@@ -723,10 +860,10 @@ export const MARKER: Style = {
    */
   pen: { weight: 126, contrast: 0.06, angle: 0 },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     // A hand does not close its apertures, and a bullet tip cannot draw a
     // corner: the tip has a radius and so does everything it draws.
-    bowl: { width: 0.98, squareness: 0.1, aperture: 1.06 },
+    bowl: { width: 0.98, squareness: 0.1, aperture: 1.06, superness: 0 },
     corner: { radius: 30, join: "round" },
     /*
      * Square, and not for want of trying.
@@ -781,20 +918,20 @@ export const MARKER: Style = {
  * a ribbon.
  */
 export const WAVY: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Wavy",
   family: "display",
   blurb: "Thin, wide, and rippling along every run that lies flat.",
-  metrics: { ...SANS.metrics, width: 1.12, sidebearing: 44 },
+  metrics: { ...PLAIN.metrics, width: 1.12, sidebearing: 44 },
   pen: { weight: 44, contrast: 0, angle: 0 },
   // A wave needs something long and flat to happen along, and the barred seven
   // and the open four both give it one where the plain forms give it a
   // diagonal.
   forms: { seven: "barred", four: "open" },
   parts: {
-    ...SANS.parts,
-    slab: { ...SANS.parts.slab, on: true, projection: 1.55, thickness: 0.52, bracket: 0 },
-    bowl: { width: 1.05, squareness: 0, aperture: 1 },
+    ...PLAIN.parts,
+    slab: { ...PLAIN.parts.slab, on: true, projection: 1.55, thickness: 0.52, bracket: 0 },
+    bowl: { width: 1.05, squareness: 0, aperture: 1, superness: 0 },
     wave: { length: 152, depth: 34, along: "flat" },
   },
 };
@@ -808,18 +945,18 @@ export const WAVY: Style = {
  * the stroke swelling rather than as a serif stuck on.
  */
 export const FLARED: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Flared",
   family: "display",
   blurb: "Condensed and swelling at every stroke end, the art-nouveau way.",
-  metrics: { ...SANS.metrics, width: 0.78, capHeight: 740, xHeight: 500, sidebearing: 42 },
+  metrics: { ...PLAIN.metrics, width: 0.78, capHeight: 740, xHeight: 500, sidebearing: 42 },
   pen: { weight: 118, contrast: 0.34, angle: 0 },
   // The art-nouveau f and J, both carried below the line as a display face
   // does with them.
   forms: { f: "descending", J: "descending" },
   parts: {
-    ...SANS.parts,
-    bowl: { width: 0.94, squareness: 0.1, aperture: 1 },
+    ...PLAIN.parts,
+    bowl: { width: 0.94, squareness: 0.1, aperture: 1, superness: 0 },
     corner: { radius: 0, join: "miter" },
     flare: { spread: 0.3, depth: 1.1, curve: 0.95 },
   },
@@ -835,18 +972,18 @@ export const FLARED: Style = {
  * block of colour with the words cut out of it, which is the point.
  */
 export const PSYCHEDELIC: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Psychedelic",
   family: "display",
   blurb: "Heavy, swollen, nearly shut, with a ball on every open end.",
-  metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 300, sidebearing: 40, width: 1.04 },
+  metrics: { ...PLAIN.metrics, xHeight: 560, counterWidth: 300, sidebearing: 40, width: 1.04 },
   pen: { weight: 168, contrast: 0.62, angle: 0 },
   // The warm curled g and the descending f, both of which their own hints
   // give to a display face.
   forms: { g: "curled", f: "descending" },
   parts: {
-    ...SANS.parts,
-    bowl: { width: 1.02, squareness: 0.1, aperture: 0.42 },
+    ...PLAIN.parts,
+    bowl: { width: 1.02, squareness: 0.1, aperture: 0.42, superness: 0 },
     shoulder: { spring: 0.72, reach: 1, crest: 1 },
     ball: { size: 1.75, drop: 0.4 },
   },
@@ -864,12 +1001,12 @@ export const PSYCHEDELIC: Style = {
  * the l with a tail are all hands rather than types.
  */
 export const BRUSH: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Brush",
   family: "hand",
   blurb: "The signwriter's hand: leaned over, chisel-cut, drawn in cursive shapes.",
   metrics: {
-    ...SANS.metrics,
+    ...PLAIN.metrics,
     slant: 15,
     xHeight: 505,
     capHeight: 700,
@@ -881,8 +1018,8 @@ export const BRUSH: Style = {
   },
   pen: { weight: 132, contrast: 0.66, angle: -17 },
   parts: {
-    ...SANS.parts,
-    bowl: { width: 0.94, squareness: 0.28, aperture: 0.86 },
+    ...PLAIN.parts,
+    bowl: { width: 0.94, squareness: 0.28, aperture: 0.86, superness: 0 },
     shoulder: { spring: 0.5, reach: 0.96, crest: 1 },
     corner: { radius: 0, join: "miter" },
     terminal: { kind: "butt", angle: 0 },
@@ -917,11 +1054,11 @@ export const BRUSH: Style = {
  * different letter; it is the same skeletons with three numbers moved.
  */
 export const GROTESQUE: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Grotesque",
   family: "sans",
   blurb: "A sans that has closed up: tight apertures, high shoulders, squared bowls.",
-  metrics: { ...SANS.metrics, xHeight: 535, width: 0.97, counterWidth: 318 },
+  metrics: { ...PLAIN.metrics, xHeight: 535, width: 0.97, counterWidth: 318 },
   pen: { weight: 104, contrast: 0.06, angle: 0 },
   /*
    * The two-storey a, which is what most text faces use and what none of them
@@ -934,8 +1071,8 @@ export const GROTESQUE: Style = {
    */
   forms: { a: "double", R: "curved" },
   parts: {
-    ...SANS.parts,
-    bowl: { width: 0.97, squareness: 0.14, aperture: 0.62 },
+    ...PLAIN.parts,
+    bowl: { width: 0.97, squareness: 0.14, aperture: 0.62, superness: 0 },
     shoulder: { spring: 0.74, reach: 1, crest: 1 },
   },
 };
@@ -950,11 +1087,11 @@ export const GROTESQUE: Style = {
  * of the display ones.
  */
 export const DIDONE: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Didone",
   family: "serif",
   blurb: "Contrast at its limit and serifs left as unbracketed hairlines.",
-  metrics: { ...SANS.metrics, xHeight: 500, width: 0.98 },
+  metrics: { ...PLAIN.metrics, xHeight: 500, width: 0.98 },
   pen: { weight: 118, contrast: 0.8, angle: 0 },
   /*
    * The two-storey a, which is what most text faces use and what none of them
@@ -967,7 +1104,7 @@ export const DIDONE: Style = {
    */
   forms: { a: "double" },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     /*
      * Longer than the old-style's, and no thinner or squarer than this.
      *
@@ -977,7 +1114,7 @@ export const DIDONE: Style = {
      * the bowl -- bisected, and the projection is innocent. Two hundredths of a
      * bracket is a hairline by any reading, and a Q in two pieces is not a Q.
      */
-    slab: { ...SANS.parts.slab, on: true, projection: 0.58, thickness: 0.13, bracket: 0.02 },
+    slab: { ...PLAIN.parts.slab, on: true, projection: 0.58, thickness: 0.13, bracket: 0.02 },
     /*
      * No balls, and this is the thing this face was most supposed to get.
      *
@@ -992,7 +1129,7 @@ export const DIDONE: Style = {
      * So it waits for somewhere a base can say "not on this letter". A face is
      * a set of decisions and this is one it cannot make yet.
      */
-    bowl: { width: 0.96, squareness: 0, aperture: 0.9 },
+    bowl: { width: 0.96, squareness: 0, aperture: 0.9, superness: 0 },
     crossbar: { height: 0.52, weight: 0.9 },
   },
 };
@@ -1006,11 +1143,11 @@ export const DIDONE: Style = {
  * what an Egyptian is.
  */
 export const SLAB: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Slab",
   family: "serif",
   blurb: "Serifs as heavy as the stems, and no contrast to soften them.",
-  metrics: { ...SANS.metrics, xHeight: 528, width: 1.02, counterWidth: 340 },
+  metrics: { ...PLAIN.metrics, xHeight: 528, width: 1.02, counterWidth: 340 },
   pen: { weight: 112, contrast: 0.05, angle: 0 },
   /*
    * The two-storey a, which is what most text faces use and what none of them
@@ -1023,9 +1160,9 @@ export const SLAB: Style = {
    */
   forms: { a: "double" },
   parts: {
-    ...SANS.parts,
-    slab: { ...SANS.parts.slab, on: true, projection: 0.6, thickness: 0.74, bracket: 0.04 },
-    bowl: { width: 1, squareness: 0.08, aperture: 0.78 },
+    ...PLAIN.parts,
+    slab: { ...PLAIN.parts.slab, on: true, projection: 0.6, thickness: 0.74, bracket: 0.04 },
+    bowl: { width: 1, squareness: 0.08, aperture: 0.78, superness: 0 },
     shoulder: { spring: 0.66, reach: 1, crest: 1 },
   },
 };
@@ -1059,7 +1196,7 @@ export const TYPEWRITER: Style = {
   forms: { a: "double", one: "footed" },
   parts: {
     ...SLAB.parts,
-    slab: { ...SANS.parts.slab, on: true, projection: 0.72, thickness: 0.5, bracket: 0.06 },
+    slab: { ...PLAIN.parts.slab, on: true, projection: 0.72, thickness: 0.5, bracket: 0.06 },
   },
 };
 
@@ -1079,7 +1216,7 @@ export const TYPEWRITER: Style = {
  * first, every one of them sat flush against its neighbours.
  */
 export const HANDWRITING: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Handwriting",
   family: "script",
   blurb:
@@ -1112,7 +1249,7 @@ export const HANDWRITING: Style = {
    * so the face keeps its colour and its fit and only its proportion changes.
    */
   metrics: {
-    ...SANS.metrics,
+    ...PLAIN.metrics,
     xHeight: 350,
     capHeight: 656,
     ascender: 726,
@@ -1206,7 +1343,7 @@ export const HANDWRITING: Style = {
     e: "written",
   },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     /*
      * Cut square, on all four of these, and the note is here because it is not
      * what any of them would choose.
@@ -1265,7 +1402,7 @@ export const HANDWRITING: Style = {
      * overshoot did -- a taller bowl is a wider one at the same ratio. 0.56
      * reads 0.795 here.
      */
-    bowl: { width: 0.56, squareness: 0, aperture: 1 },
+    bowl: { width: 0.56, squareness: 0, aperture: 1, superness: 0 },
     script: {
       ...NO_SCRIPT,
       on: true,
@@ -1434,7 +1571,7 @@ export const HANDWRITING: Style = {
  * formal. The others are hands writing; this one is a hand performing.
  */
 export const FORMAL_SCRIPT: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Formal Script",
   family: "script",
   blurb:
@@ -1453,7 +1590,7 @@ export const FORMAL_SCRIPT: Style = {
    * the metric because a descender loop reaches past its line.
    */
   metrics: {
-    ...SANS.metrics,
+    ...PLAIN.metrics,
     xHeight: 332,
     // Under the ascender by the gap this face already had, brought down in the
     // same proportion. Left at the Sans' 700 it stood level with the new
@@ -1542,7 +1679,7 @@ export const FORMAL_SCRIPT: Style = {
     e: "written",
   },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     // Square, for the reason set out on the Handwriting above.
     terminal: { kind: "butt", angle: 0 },
     /*
@@ -1556,7 +1693,7 @@ export const FORMAL_SCRIPT: Style = {
     corner: { radius: 46, join: "round" },
     // An oval, as on the Handwriting. 0.55 reads 0.822, and is the floor of
     // its own control; the reference's 0.799 would want 0.539.
-    bowl: { width: 0.55, squareness: 0, aperture: 1 },
+    bowl: { width: 0.55, squareness: 0, aperture: 1, superness: 0 },
     // The arch stops short, as on the Handwriting. 0.86 reads 0.88 and 0.88.
     shoulder: { spring: 0.5, reach: 0.7, crest: 0.86 },
     script: {
@@ -1658,7 +1795,7 @@ export const FORMAL_SCRIPT: Style = {
  * because a fast hand cuts corners, and the writing does not sit still.
  */
 export const CASUAL_SCRIPT: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Casual Script",
   family: "script",
   blurb:
@@ -1670,7 +1807,7 @@ export const CASUAL_SCRIPT: Style = {
   // furthest; it stops at the Telma end of the range rather than the Dancing
   // Script end, because a fast informal hand is not a formal one.
   metrics: {
-    ...SANS.metrics,
+    ...PLAIN.metrics,
     xHeight: 350,
     capHeight: 645,
     ascender: 729,
@@ -1742,12 +1879,12 @@ export const CASUAL_SCRIPT: Style = {
     e: "written",
   },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     // Square, for the reason set out on the Handwriting above.
     terminal: { kind: "butt", angle: 0 },
     corner: { radius: 70, join: "round" },
     // An oval, as on the Handwriting. 0.56 reads 0.799.
-    bowl: { width: 0.56, squareness: 0, aperture: 1.08 },
+    bowl: { width: 0.56, squareness: 0, aperture: 1.08, superness: 0 },
     // The arch stops short, as on the Handwriting. This face already sat
     // lowest of the four, so it asks for the least. 0.95 reads 0.89 and 0.91.
     shoulder: { spring: 0.48, reach: 0.8, crest: 0.95 },
@@ -1880,13 +2017,13 @@ export const CASUAL_SCRIPT: Style = {
  * hundredths and the colour by nothing that holds a direction.
  */
 export const MONOLINE_SCRIPT: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Monoline Script",
   family: "script",
   blurb:
     "A hairline of one thickness, drawn rather than written. Long looped ascenders, a hard lean, and a drop of ink on every open end.",
   metrics: {
-    ...SANS.metrics,
+    ...PLAIN.metrics,
     // Over the line, as on the Handwriting. Never named here before; it was
     // taking the Sans' 10.
     overshoot: 30,
@@ -1937,7 +2074,7 @@ export const MONOLINE_SCRIPT: Style = {
     e: "written",
   },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     // Square, for the reason set out on the Handwriting above.
     terminal: { kind: "butt", angle: 0 },
     /*
@@ -1973,7 +2110,7 @@ export const MONOLINE_SCRIPT: Style = {
     // An oval, as on the Handwriting. This face runs at a width of 0.95, which
     // multiplies the bowl, so it asks for more than the others; 0.66 reads
     // 0.801.
-    bowl: { width: 0.66, squareness: 0, aperture: 1 },
+    bowl: { width: 0.66, squareness: 0, aperture: 1, superness: 0 },
     // The arch stops short, as on the Handwriting. 0.85 reads 0.88 and 0.91.
     shoulder: { spring: 0.6, reach: 0.65, crest: 0.85 },
     script: {
@@ -2113,13 +2250,13 @@ export const MONOLINE_SCRIPT: Style = {
  * that checks the journey reads the same numbers this face was placed between.
  */
 export const ROUNDHAND: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Roundhand",
   family: "script",
   blurb:
     "The joined face built to be moved rather than to be one hand. Middling everything, with room on both sides of every control.",
   metrics: {
-    ...SANS.metrics,
+    ...PLAIN.metrics,
     xHeight: 420,
     capHeight: 708,
     ascender: 735,
@@ -2137,11 +2274,11 @@ export const ROUNDHAND: Style = {
   pen: { weight: 74, contrast: 0.24, angle: 28 },
   forms: { k: "standing", l: "tailed", g: "curled", t: "straight", f: "descending" },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     // Square, for the reason set out on the Handwriting above.
     terminal: { kind: "butt", angle: 0 },
     corner: { radius: 60, join: "round" },
-    bowl: { width: 0.96, squareness: 0, aperture: 1 },
+    bowl: { width: 0.96, squareness: 0, aperture: 1, superness: 0 },
     shoulder: { spring: 0.56, reach: 0.98, crest: 1 },
     script: {
       ...NO_SCRIPT,
@@ -2282,6 +2419,34 @@ export function heavierPen(style: Style): Pen {
   const wanted = Math.min(0.56, 0.37 * blackness(style));
   if (wanted <= pen.contrast) return pen;
   return { ...pen, contrast: wanted, own: pen.own ?? pen.contrast };
+}
+
+const PROPORTIONED = new WeakMap<Style, Map<string, Style>>();
+
+/**
+ * The style a letter's skeleton is built with: the face's own, with the
+ * letter's width from `metrics.proportions` folded into `width`.
+ *
+ * The same object back for a letter that has no entry, and the same object
+ * every time for one that does, so everything cached against a style stays
+ * cached.
+ */
+export function proportioned(style: Style, name: string): Style {
+  const factor = style.metrics.proportions?.[name];
+  if (factor === undefined || factor === 1 || !(factor > 0)) return style;
+  let known = PROPORTIONED.get(style);
+  if (!known) {
+    known = new Map();
+    PROPORTIONED.set(style, known);
+  }
+  const had = known.get(name);
+  if (had) return had;
+  const made = {
+    ...style,
+    metrics: { ...style.metrics, width: style.metrics.width * factor, stretch: factor },
+  };
+  known.set(name, made);
+  return made;
 }
 
 const HEAVIER = new WeakMap<Style, Style>();

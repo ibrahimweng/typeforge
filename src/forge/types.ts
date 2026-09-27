@@ -97,8 +97,14 @@ export interface Spine {
  * - `teardrop` swells into a pear on the inside of a curve, which is how a
  *   text face finishes the hook of an a, c, f, r or j. Only a curved end takes
  *   one; a straight end wearing it is cut square.
+ * - `level` cuts every open end along the nearer of the two lines the letter
+ *   is built on: level with the baseline where the stroke arrives more up and
+ *   down than across, upright where it arrives across. On a curve that is not
+ *   square to the stroke -- the outside runs on past the spine and the inside
+ *   stops short -- which is how a neo-grotesque finishes its c, its s and its
+ *   G. See `Terminal.aligned`.
  */
-export type TerminalKind = "butt" | "round" | "angled" | "slab" | "teardrop";
+export type TerminalKind = "butt" | "round" | "angled" | "slab" | "teardrop" | "level";
 
 /**
  * How a serif's bar is drawn: a bar of one depth all the way out, or one that
@@ -130,6 +136,15 @@ export interface Terminal {
    * `slab`. A round cap is dealt with by pulling the spine back instead.
    */
   level?: boolean;
+  /**
+   * Cut along the nearer of the level and the upright through the end of the
+   * spine, whichever is closer to square across the stroke: the `level`
+   * terminal, settled when the end is dressed. On a straight end it slides the
+   * corners as a level cut does; on a curved one it carries each side along
+   * its own curve to the line, so the cut is exact and nothing the sides drew
+   * is moved off them.
+   */
+  aligned?: boolean;
   /**
    * Whether this is a real end of the letter rather than one buried inside
    * another stroke.

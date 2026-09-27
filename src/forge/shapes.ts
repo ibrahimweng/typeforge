@@ -279,10 +279,14 @@ export function bowl(
   halfHeight: number,
   roundness: number,
   penHalf: number,
+  superness = 0,
 ): Spine {
   const [width, height] = holds(halfWidth, halfHeight, penHalf);
   const radius = bowlRadius(width, height, roundness, penHalf);
-  return { segments: bowlSegments(centre, width, height, radius), closed: true };
+  return {
+    segments: bowlSegments(centre, width, height, radius, superness, penHalf),
+    closed: true,
+  };
 }
 
 /**
@@ -323,9 +327,17 @@ export function bowlBetween(
   penHalf: number,
   fromDegrees: number,
   toDegrees: number,
+  superness = 0,
 ): Spine {
   const [width, height] = holds(halfWidth, halfHeight, penHalf);
-  const loop = bowlSegments(centre, width, height, bowlRadius(width, height, roundness, penHalf));
+  const loop = bowlSegments(
+    centre,
+    width,
+    height,
+    bowlRadius(width, height, roundness, penHalf),
+    superness,
+    penHalf,
+  );
   const start = ((fromDegrees % 360) + 360) % 360;
   const span = Math.min(360, Math.max(0, toDegrees - fromDegrees));
   const finish = start + span;
@@ -640,7 +652,12 @@ function bowlSegments(
   halfWidth: number,
   halfHeight: number,
   radius: number,
+  superness = 0,
+  penHalf = 0,
 ): SpineSegment[] {
+  if (superness > 0) {
+    return superSegments(centre, halfWidth, halfHeight, radius, superness, penHalf);
+  }
   const r = Math.min(radius, halfWidth, halfHeight);
   const right = centre.x + halfWidth;
   const left = centre.x - halfWidth;
@@ -697,6 +714,185 @@ function bowlSegments(
 }
 
 /**
+ * A bowl whose corners are superelliptic rather than circular: the squarish
+ * round of a neo-grotesque's o.
+ *
+ * A circle turns at the same rate all the way round, and so does the corner of
+ * a rounded rectangle; what makes a grotesque's o look firm rather than drawn
+ * with compasses is that it does not. It runs nearly straight down its sides
+ * and across its crown and does most of its turning in the corners -- the
+ * curve |x/a|^n + |y/b|^n = 1 with n a little over two, which a designer draws
+ * as four nodes at the extremes with handles six tenths of the way out
+ * rather than the 0.55 a circle takes.
+ *
+ * That curve does not offset to itself, so it cannot be drawn here as it is:
+ * everything this engine sweeps is lines and circular arcs, whose offsets are
+ * exact. So each quarter is three arcs, tangent where they meet -- a long flat
+ * one leaving the side, a tight one round the corner, a long flat one onto the
+ * crown -- which is how a basket-handle arch has been set out with compasses
+ * for as long as there have been masons. Fitted to the superellipse by where
+ * the corner passes the diagonal, it keeps within a unit or two of the true
+ * curve at text sizes, and offsets exactly at every weight.
+ *
+ * `superness` runs from nought, which is the circle, to one, which is n = 4.
+ * The same nine pieces a rounded rectangle has, each corner now three, at
+ * every weight: the straight runs are kept at no length where the corners
+ * meet, so the node count does not depend on the shape.
+ */
+function superSegments(
+  centre: Vec2,
+  halfWidth: number,
+  halfHeight: number,
+  radius: number,
+  superness: number,
+  penHalf: number,
+): SpineSegment[] {
+  const least = Math.min(halfWidth, halfHeight);
+  const r0 = Math.min(radius, least);
+  // The box each corner turns in: the whole quarter on a round bowl, and the
+  // same share of each side as the rounded corner took on a squared one.
+  const cornerW = (r0 * halfWidth) / least;
+  const cornerH = (r0 * halfHeight) / least;
+  const exponent = 2 + 2 * Math.min(Math.max(superness, 0), 1);
+  const phi = basketTurn(exponent);
+  const tight = basketRadius(cornerW, cornerH, exponent, phi, penHalf * CLEARANCE);
+  const { side, crown } = basketRadii(cornerW, cornerH, tight, phi);
+  const right = centre.x + halfWidth;
+  const left = centre.x - halfWidth;
+  const top = centre.y + halfHeight;
+  const bottom = centre.y - halfHeight;
+  const insideRight = right - cornerW;
+  const insideLeft = left + cornerW;
+  const insideTop = top - cornerH;
+  const insideBottom = bottom + cornerH;
+  const arc = (cx: number, cy: number, r: number, from: number, to: number): SpineArc => ({
+    kind: "arc",
+    centre: at(cx, cy),
+    radius: r,
+    startAngle: from,
+    endAngle: to,
+    sweepPositive: true,
+  });
+  const run = (from: Vec2, to: Vec2): SpineSegment => ({ kind: "line", from, to });
+  const s = Math.sin(phi);
+  const c = Math.cos(phi);
+  const quarterTurn = Math.PI / 2;
+  /*
+   * One corner, turned to face whichever way it has to: `ox`, `oy` is the
+   * corner of the box it turns in (the inside corner, where a rounded
+   * rectangle's arc would be centred) and `sx`, `sy` the way out from there.
+   * Laid out on the first quarter and mirrored, walking anticlockwise.
+   */
+  const corner = (ox: number, oy: number, quarter: number): SpineSegment[] => {
+    // In the corner's own frame the side runs up x = w, the crown along y = h.
+    const w = quarter % 2 === 0 ? cornerW : cornerH;
+    const h = quarter % 2 === 0 ? cornerH : cornerW;
+    const [first, last] = quarter % 2 === 0 ? [side, crown] : [crown, side];
+    const firstCentre = at(w - first, 0);
+    const bend = at(firstCentre.x + first * c - tight * c, first * s - tight * s);
+    const lastCentre = at(0, h - last);
+    const turnBy = quarter * quarterTurn;
+    const place = (p: Vec2): Vec2 => {
+      const cos = Math.cos(turnBy);
+      const sin = Math.sin(turnBy);
+      return at(ox + p.x * cos - p.y * sin, oy + p.x * sin + p.y * cos);
+    };
+    const a = place(firstCentre);
+    const b = place(bend);
+    const d = place(lastCentre);
+    return [
+      arc(a.x, a.y, first, turnBy, turnBy + phi),
+      arc(b.x, b.y, tight, turnBy + phi, turnBy + quarterTurn - phi),
+      arc(d.x, d.y, last, turnBy + quarterTurn - phi, turnBy + quarterTurn),
+    ];
+  };
+  return [
+    run(at(right, centre.y), at(right, insideTop)),
+    ...corner(insideRight, insideTop, 0),
+    run(at(insideRight, top), at(insideLeft, top)),
+    ...corner(insideLeft, insideTop, 1),
+    run(at(left, insideTop), at(left, insideBottom)),
+    ...corner(insideLeft, insideBottom, 2),
+    run(at(insideLeft, bottom), at(insideRight, bottom)),
+    ...corner(insideRight, insideBottom, 3),
+    run(at(right, insideBottom), at(right, centre.y)),
+  ];
+}
+
+/**
+ * How far each flat arc of a superelliptic corner turns, in radians: most of
+ * the quarter left to the corner on a nearly round bowl, less as it squares.
+ * Fitted against the true curve for n from 2.2 to 3.
+ */
+function basketTurn(exponent: number): number {
+  const degrees =
+    exponent <= 2.2
+      ? 19
+      : exponent <= 2.4
+        ? 19 - (exponent - 2.2) * 30
+        : exponent <= 2.6
+          ? 13 - (exponent - 2.4) * 10
+          : Math.max(8, 11 - (exponent - 2.6) * 2.5);
+  return (degrees * Math.PI) / 180;
+}
+
+/**
+ * The two flat radii of a corner turning in a `w` by `h` box, given the tight
+ * one: the three arcs must leave the side upright and arrive on the crown
+ * level, which is two linear conditions on the two unknowns.
+ */
+function basketRadii(
+  w: number,
+  h: number,
+  tight: number,
+  phi: number,
+): { side: number; crown: number } {
+  const s = Math.sin(phi);
+  const c = Math.cos(phi);
+  const along = w + tight * (s - c);
+  const up = h + tight * (s - c);
+  const determinant = (1 - c) ** 2 - s * s;
+  return {
+    side: (along * (1 - c) - s * up) / determinant,
+    crown: (up * (1 - c) - s * along) / determinant,
+  };
+}
+
+/**
+ * The tight radius: the corner put through the superellipse's own diagonal,
+ * where |x/w| = |y/h| = 2^(-1/n). Held at least what the pen can go round,
+ * never so large the flat arcs would be tighter than it, and never larger
+ * than the box.
+ */
+function basketRadius(w: number, h: number, exponent: number, phi: number, pen: number): number {
+  const k = 2 ** (-1 / exponent);
+  const s = Math.sin(phi);
+  const c = Math.cos(phi);
+  const half = Math.SQRT1_2;
+  const miss = (r: number): number => {
+    const { side } = basketRadii(w, h, r, phi);
+    const x = w - side * (1 - c) - r * c + r * half;
+    const y = side * s - r * s + r * half;
+    return x / w + y / h - 2 * k;
+  };
+  const at0 = miss(0);
+  const at1 = miss(1);
+  let r = Math.abs(at1 - at0) > 1e-12 ? -at0 / (at1 - at0) : Math.min(w, h);
+  // Neither flat arc may be tighter than the corner: where one would be, the
+  // corner is eased until the two are equal, which both conditions are linear
+  // in.
+  for (const which of ["side", "crown"] as const) {
+    const f = (t: number): number => basketRadii(w, h, t, phi)[which] - t;
+    if (f(r) < 0) {
+      const f0 = f(0);
+      const f1 = f(1);
+      if (Math.abs(f1 - f0) > 1e-12) r = Math.min(r, -f0 / (f1 - f0));
+    }
+  }
+  return Math.min(Math.max(r, Math.min(pen, w, h)), Math.min(w, h));
+}
+
+/**
  * Whether a segment goes anywhere at all.
  *
  * An arc needs both a radius and a turn. Asked only for the radius, an arc that
@@ -727,9 +923,17 @@ export function bowlPoint(
   roundness: number,
   penHalf: number,
   degrees: number,
+  superness = 0,
 ): Vec2 {
   const [width, height] = holds(halfWidth, halfHeight, penHalf);
-  const loop = bowlSegments(centre, width, height, bowlRadius(width, height, roundness, penHalf));
+  const loop = bowlSegments(
+    centre,
+    width,
+    height,
+    bowlRadius(width, height, roundness, penHalf),
+    superness,
+    penHalf,
+  );
   const wanted = ((degrees % 360) + 360) % 360;
   for (const segment of loop) {
     const from = angleOf(centre, segmentStart(segment));

@@ -81,6 +81,14 @@ export const PART_SPECS: PartSpec[] = [
         step: 0.01,
       },
       {
+        key: "superness",
+        label: "Tension",
+        hint: "Nought is a circle. Turned up, the round of every bowl gathers into its corners and runs flatter along the sides and the crown -- the firm, squarish round of a neo-grotesque o, which is a superellipse rather than a circle with its sides cut straight.",
+        min: 0,
+        max: 1,
+        step: 0.01,
+      },
+      {
         key: "aperture",
         label: "Aperture",
         hint: "How far open a c, C, S, G or e stands. Below one the two ends reach round toward each other until the letter is nearly closed, which is what a heavy display face does; it never closes further than the pen can clear.",
@@ -251,12 +259,17 @@ export const PART_SPECS: PartSpec[] = [
       {
         key: "kind",
         label: "Finish",
-        hint: "Flat, cut at an angle as a broad nib leaves it, rounded off, or swelling into a teardrop on the inside of the curve, which is how a text face ends its hooks. A teardrop only goes on a curved end; a straight one is cut flat.",
+        hint: "Flat, level with the lines, cut at an angle as a broad nib leaves it, rounded off, or swelling into a teardrop on the inside of the curve, which is how a text face ends its hooks. A teardrop only goes on a curved end; a straight one is cut flat.",
         min: 0,
         max: 0,
         step: 0,
         options: [
           { value: "butt", label: "Flat", hint: "Cut square across the stroke." },
+          {
+            value: "level",
+            label: "Level",
+            hint: "Cut level with the baseline, or upright where the stroke runs across: the curved ends of a c, an s and a G finished as a neo-grotesque finishes them.",
+          },
           { value: "angled", label: "Angled", hint: "Cut across at the angle below." },
           { value: "round", label: "Round", hint: "Capped with the pen itself." },
           { value: "teardrop", label: "Teardrop", hint: "Swelling on the inside of a curve." },

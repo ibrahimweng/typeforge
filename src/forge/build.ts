@@ -8,7 +8,13 @@
  * boolean geometry on every keystroke to gain nothing anyone can see.
  */
 
-import { contourArea, contourContainsPoint, contoursBounds, reverseContour } from "@/font/geometry";
+import {
+  contourArea,
+  contourContainsPoint,
+  contoursBounds,
+  inkRunsAt,
+  reverseContour,
+} from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import {
@@ -42,7 +48,7 @@ import {
 } from "./shapes";
 import { seamsOf, wobbleOf } from "./script";
 import { penReach, reachAlong, sweep } from "./sweep";
-import { heavier, type Style, serifReach, spacingOf } from "./style";
+import { heavier, proportioned, type Style, serifReach, spacingOf } from "./style";
 import type { Spine, Stroke, Terminal } from "./types";
 
 export interface Drawn {
@@ -78,7 +84,7 @@ export interface Bone {
 export function skeletonOf(name: string, style: Style, form?: string): Bone[] {
   const recipe = recipeOf(name, form);
   if (!recipe) return [];
-  return recipe(style).strokes.map((stroke) => {
+  return recipe(widthOf(style, name)).strokes.map((stroke) => {
     const reach = penReach(stroke.pen);
     return {
       path: spinePath(stroke.spine),
@@ -140,6 +146,17 @@ export { letterBehind } from "./letters";
  */
 export function decidedBy(name: string): string {
   return builtFrom(name)?.base ?? letterBehind(name) ?? name;
+}
+
+/**
+ * The style a letter's skeleton is drawn with, at that letter's own width: see
+ * `metrics.proportions`. A letter with no entry of its own takes the one of
+ * the letter it is built from, so an H-bar is as wide as the H.
+ */
+function widthOf(style: Style, name: string): Style {
+  const table = style.metrics.proportions;
+  if (!table) return style;
+  return proportioned(style, table[name] !== undefined ? name : decidedBy(name));
 }
 
 /** A round letter is set a little tighter, or it looks loose beside a flat one. */
@@ -240,7 +257,7 @@ export function makeLetter(
   const laid = kit?.on && hasTiles(kit, name) ? assemble(kit.glyphs[name], style, kit) : null;
   const recipe = laid ? null : recipeOf(name, form);
   if (!laid && !recipe) return null;
-  const built: Recipe | null = recipe ? recipe(style) : null;
+  const built: Recipe | null = recipe ? recipe(widthOf(style, name)) : null;
   const strokes = laid ? laid.strokes : built!.strokes;
 
   const inked = inkAll(strokes, style, name);
@@ -345,7 +362,13 @@ export function makeLetter(
     // because one of them happens to have an empty column down its side.
     advanceWidth = laid.advanceWidth;
   } else {
-    advanceWidth = advanceFor(name, built!, placedSolid, style);
+    const sides = fitted(name, built!, placedSolid, style);
+    if (sides) {
+      centring = sides.shift;
+      advanceWidth = sides.advance;
+    } else {
+      advanceWidth = advanceFor(name, built!, placedSolid, style);
+    }
   }
 
   /*
@@ -591,6 +614,95 @@ function insideTheEdge(contours: Contour[], style: Style): Contour[] {
 }
 
 /**
+ * How much white a side of a letter already has inside its own box, and so how
+ * much less it is given outside it: the optical fitting a face asks for with
+ * `metrics.fit`.
+ *
+ * A flat side -- the stem of an n, of an H -- stands right on the edge of its
+ * box, and the white beside it is the sidebearing and nothing else. A round
+ * side meets its box at one point and leaves wedges of white above and below
+ * that; a diagonal leaves a whole triangle. Set all three at the same
+ * sidebearing and the round and the pointed letters float apart from their
+ * neighbours, which is the oldest problem in spacing and what every foundry
+ * answers by spacing its o and its v tighter than its n.
+ *
+ * Here that is measured rather than tabled. Across the letter's zone -- the
+ * x-height for the lowercase, the cap height for the rest -- the distance from
+ * the box's edge in to the ink is sampled, each reading held to a limit so a
+ * deep bay does not count for more than the eye credits it with, and the mean
+ * is how much the side gives back. Against Geist, whose spacing is set by eye,
+ * that lands its o at 29 against 33, its v at 51 against 58, its A at 51
+ * against 62: the same classes, found from the drawing, so an alternate or a
+ * letter somebody has reshaped is spaced by what it now is.
+ *
+ * Left alone for the figures, which share one width, a letter that sets its
+ * own width, and anything too small in its zone to have sides -- a full stop,
+ * a quote -- which keeps the plain sidebearing.
+ */
+const FIT_LIMIT = 40 / 530;
+const FIT_SAMPLES = 32;
+/**
+ * How much of the white measured is given back. More than all of it, because
+ * the zone left out at top and bottom is where a round side has the most.
+ */
+const FIT_GAIN = 1.5;
+
+function fitted(
+  name: string,
+  recipe: Recipe,
+  contours: Contour[],
+  style: Style,
+): { shift: number; advance: number } | null {
+  const fit = style.metrics.fit ?? 0;
+  if (fit <= 0 || contours.length === 0) return null;
+  if (recipe.width !== undefined) return null;
+  const box = contoursBounds(contours);
+  // The figures keep their one width, and each is set in the middle of it,
+  // which is what a tabular figure is: a one standing at the left of a column
+  // made for an eight is a one with a hole after it.
+  if (FIGURES.includes(name)) {
+    const advance = figureAdvance(style);
+    return { shift: (advance - box.xMax - box.xMin) / 2, advance };
+  }
+  const top = isCapitalLike(name) ? style.metrics.capHeight : style.metrics.xHeight;
+  /*
+   * The zone with its top and bottom twelfths left out: every shoulder and
+   * every bowl turns there, and a flat side that rounds into a crown -- the
+   * right of an n, the left of a b -- is still a flat side to the eye.
+   */
+  const from = Math.max(top / 12, box.yMin);
+  const to = Math.min((top * 11) / 12, box.yMax);
+  const spacing = spacingOf(style);
+  const limit = FIT_LIMIT * top;
+  let left = 0;
+  let right = 0;
+  if (to - from >= top * 0.4) {
+    for (let index = 0; index < FIT_SAMPLES; index++) {
+      const y = from + ((to - from) * (index + 0.5)) / FIT_SAMPLES;
+      const runs = inkRunsAt(contours, y, "y", 16);
+      if (runs.length === 0) {
+        left += limit;
+        right += limit;
+        continue;
+      }
+      left += Math.min(runs[0][0] - box.xMin, limit);
+      right += Math.min(box.xMax - runs[runs.length - 1][1], limit);
+    }
+    left = (left / FIT_SAMPLES) * fit * FIT_GAIN;
+    right = (right / FIT_SAMPLES) * fit * FIT_GAIN;
+  } else {
+    // A mark with no sides of its own is set as a round letter is.
+    left = right = limit * 0.5 * fit;
+  }
+  // Never closer than a quarter of the plain sidebearing: a v that touched its
+  // neighbour would be a kerning pair, not a spacing.
+  left = Math.min(left, spacing * 0.75);
+  right = Math.min(right, spacing * 0.75);
+  const shift = spacing - left - box.xMin;
+  return { shift, advance: box.xMax + shift + spacing - right };
+}
+
+/**
  * How much room the letter takes on the line.
  *
  * Measured off the drawing rather than stated by the recipe, so a terminal or
@@ -625,7 +737,7 @@ function monoAdvance(style: Style): number {
   // it and carries the base's advance, so it cannot be the widest thing here
   // -- and it has no recipe of its own to ask.
   for (const name of DRAWN) {
-    const built = LETTERS[name](style);
+    const built = LETTERS[name](widthOf(style, name));
     const contours = insideTheEdge(
       leaning(inkAll(built.strokes, style, name).flat(), style),
       style,
@@ -651,7 +763,7 @@ function figureAdvance(style: Style): number {
   if (known !== undefined) return known;
   let widest = 0;
   for (const name of FIGURES) {
-    const built = LETTERS[name](style);
+    const built = LETTERS[name](widthOf(style, name));
     // Nudged inside its own left edge as well, which is what the letters
     // themselves get. Measured without it, the widest figure came out narrower
     // than the letter it was measuring, and the two ran past its own advance.
@@ -779,6 +891,16 @@ function dress(
     const [, at, outward] = ends[index];
     const isStraight = index === 0 ? straight.start : straight.end;
     let end = terminal;
+    /*
+     * A level finish is a plain cut, laid along the nearer of the two lines
+     * the letter is built on: see `Terminal.aligned`. Only on an end that is
+     * seen -- one buried in another stroke is cut square as it always was.
+     */
+    if (end.kind === "level") {
+      const { kind: _, angle: __, ...rest } = end;
+      end =
+        end.open === true ? { ...rest, kind: "butt", aligned: true } : { ...rest, kind: "butt" };
+    }
     if (end.kind === "slab" && !isStraight) {
       const curved = end.curved ?? { kind: "butt", angle: 0 };
       /*
