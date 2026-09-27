@@ -179,6 +179,33 @@ export function withValue(style: Style, drive: AnyDrive, value: number): Style {
   };
 }
 
+/*
+ * The nudged styles, kept so that the same nudge is the same style object.
+ *
+ * Every press on a letter nudges the same candidates by the same amounts, and
+ * what the drawing remembers about a style it remembers by the object: a
+ * monospaced face's common advance is the widest of all its letters, measured
+ * once per style. Built afresh each time, every press on a Typewriter letter
+ * measured the whole alphabet again for every control it tried -- a minute for
+ * a dozen presses on eight letters.
+ */
+const NUDGED = new WeakMap<Style, Map<string, Style>>();
+
+function nudged(style: Style, drive: AnyDrive, value: number): Style {
+  let known = NUDGED.get(style);
+  if (!known) {
+    known = new Map();
+    NUDGED.set(style, known);
+  }
+  const key = `${driveId(drive)}=${value}`;
+  let made = known.get(key);
+  if (!made) {
+    made = withValue(style, drive, value);
+    known.set(key, made);
+  }
+  return made;
+}
+
 function outlineOf(contours: Contour[], em: number, slide = 0): Vec2[] {
   const most = em * SPACING;
   const points: Vec2[] = [];
@@ -399,7 +426,7 @@ export function whatGoverns(
     const nudge = to - candidate.value;
     if (nudge === 0) continue;
 
-    const other = makeLetter(letter, withValue(style, candidate.drive, to), form);
+    const other = makeLetter(letter, nudged(style, candidate.drive, to), form);
     const run = other?.runs[hit.index];
     if (!other || !run) continue;
 

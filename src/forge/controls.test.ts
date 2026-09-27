@@ -684,10 +684,21 @@ describe("no control is decoration", () => {
         const waving = withPart(withPart(plain, "wave", "depth", 26), "wave", "along", "both");
         const flaring = withPart(plain, "flare", "spread", 0.4);
         const balled = withPart(plain, "ball", "size", 1.2);
-        const changed = [plain, waving, flaring, balled].some((ready) =>
-          NAMES.some((name) => {
-            const before = drawLetter(name, withPart(ready, spec.name, control.key, low));
-            const after = drawLetter(name, withPart(ready, spec.name, control.key, high));
+        /*
+         * Letter by letter, each asked of every face, rather than face by face.
+         * The question is the same -- any letter under any face -- but a
+         * control that shows only on the last face (a ball's drop) used to have
+         * every letter of the first three drawn twice before it got there,
+         * which was most of the time this test took.
+         */
+        const faces = [plain, waving, flaring, balled].map((ready) => ({
+          low: withPart(ready, spec.name, control.key, low),
+          high: withPart(ready, spec.name, control.key, high),
+        }));
+        const changed = NAMES.some((name) =>
+          faces.some((face) => {
+            const before = drawLetter(name, face.low);
+            const after = drawLetter(name, face.high);
             return (
               contoursToSvgPath(before!.contours) !== contoursToSvgPath(after!.contours) ||
               before!.advanceWidth !== after!.advanceWidth
