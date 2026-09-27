@@ -10,6 +10,7 @@ import { bowlPoint } from "../shapes";
 import type { Style } from "../style";
 import type { Stroke } from "../types";
 import {
+  barWeight,
   arm,
   arms,
   at,
@@ -65,7 +66,19 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * the A quietly ignored the crossbar control, which is the one thing this
      * whole idea cannot afford.
      */
-    const bar = f.cap * f.style.parts.crossbar.height * 0.58;
+    /*
+     * And never so high that the counter over it closes. The legs' inside
+     * edges meet well below the apex at a heavy weight -- by half a stem over
+     * the sine of the legs' lean -- and a bar at the regular's height left a
+     * notch of paper above it the size of a serif. Held to the lower two fifths
+     * of what is left under that point, as the regular's bar is.
+     */
+    const lean = Math.hypot(half, f.cap) / half;
+    const inside = f.cap - f.half * lean;
+    const bar = Math.min(
+      f.cap * f.style.parts.crossbar.height * 0.58,
+      inside * 0.42 - (f.half * barWeight(f.style)) / 2,
+    );
     /*
      * Where the diagonals actually are at that height, so the bar meets them
      * rather than poking out either side -- or, as it did, stopping short.

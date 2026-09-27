@@ -20,7 +20,6 @@ import {
   corner,
   corners,
   crossbar,
-  dot,
   finish,
   frame,
   ink,
@@ -39,6 +38,7 @@ import {
   tReach,
   tStem,
   turn,
+  tittle,
 } from "./common";
 
 export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
@@ -131,7 +131,22 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
          * And from the middle of the left wall rather than its inside edge,
          * where a square end against the curve folded the union: `wallAt`.
          */
-        thin(f, straight(at(wallAt(f, centre, opens), eye), spineStart(belt))),
+        /*
+         * And out to the bowl's outside edge on the right, cut upright there.
+         * Stopped at the middle of the wall, the outer half of the wall under
+         * the bar was left open and the bar's end stood in the aperture as a
+         * spur -- at a black weight half a stem of it. A text e's bar runs
+         * flush with the outside of the bowl, and the eye closes square.
+         */
+        thin(
+          f,
+          straight(
+            at(wallAt(f, centre, opens), eye),
+            at(spineStart(belt).x + f.reach(at(1, 0)) * Math.cos((opens * Math.PI) / 180), eye),
+          ),
+          BUTT,
+          { kind: "butt", level: true },
+        ),
         ink(f, belt, BUTT, f.end),
       ],
       true,
@@ -145,7 +160,10 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const radius = Math.max(roundHalf(f) * 0.6, f.least);
     // How far left of the stem the bar reaches, which is also how far in from
     // the sidebearing the stem stands: the bar is this letter's left edge.
-    const left = Math.max(roundHalf(f) * 0.36, f.least);
+    // At least half a stem clear of the stem's own edge: at a black weight
+    // the bar reached six units past it, and stood out as a notch rather than
+    // as a bar.
+    const left = Math.max(roundHalf(f) * 0.36, f.least, f.half * 1.5);
     const stem = f.edge + left;
     const top = f.crest(f.asc) - radius;
     return finish(f, [
@@ -219,10 +237,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   i: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    return finish(f, [
-      ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
-      dot(f, at(stem, f.x + f.half * 1.5 + f.half * 0.55), f.half * 0.55),
-    ]);
+    return finish(f, [ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end), tittle(f, stem)]);
   },
 
   /*
@@ -254,7 +269,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         f.end,
         f.end,
       ),
-      dot(f, at(stem, f.x + f.half * 1.5 + f.half * 0.55), f.half * 0.55),
+      tittle(f, stem),
     ]);
   },
 
@@ -489,12 +504,16 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const half = f.arch * 0.92;
     const left = f.edge;
     const middle = left + half;
-    // The left diagonal carries a little past where the two cross, so its
-    // square end is inside the other stroke rather than standing out of it.
-    const past = f.half * 1.1;
-    const drop = past / Math.hypot(1, f.x / half);
+    /*
+     * The left diagonal stops on the tail's own spine a little above the
+     * baseline, so both corners of its square end are buried in the tail.
+     * Carried on past the crossing instead, the corner on its right stood out
+     * of the tail's right side as a spur; stopped on the line, it would be cut
+     * level along it and stand out as a ledge.
+     */
+    const lift = f.half * 0.5;
     return finish(f, [
-      ink(f, straight(at(left, f.x), at(middle + (drop * half) / f.x, -drop)), f.end, BUTT),
+      ink(f, straight(at(left, f.x), at(middle + (half * lift) / f.x, lift)), f.end, BUTT),
       /*
        * One straight run: down from the x-height, through the apex the left
        * diagonal ends at, and on into the descender at the angle it arrived

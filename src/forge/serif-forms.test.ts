@@ -225,3 +225,281 @@ describe("the shapes changed for the Serif base stay clean on every base", () =>
     expect(sans.xMax - sans.xMin).toBeGreaterThan(serif.xMax - serif.xMin);
   });
 });
+
+/*
+ * Set against Lora at a light, a regular and a black weight, the second round:
+ * the ampersand, the y's tail, the beaks on the arms and the curved ends of the
+ * capitals, the inner wings that closed counters at a black weight, the drops
+ * that hung past the descender, the A, the f and the 4 at a black weight, and
+ * the spacing and contrast of the base itself.
+ */
+
+/** The ink along a horizontal line, as the union the strokes are filled as. */
+function across(contours: Contour[], y: number): Array<[number, number]> {
+  const crossings: Array<[number, number]> = [];
+  for (const contour of contours) {
+    const points = flattenContour(contour, 24);
+    for (let k = 0; k < points.length; k++) {
+      const a = points[k];
+      const b = points[(k + 1) % points.length];
+      if (a.y <= y === b.y <= y) continue;
+      crossings.push([a.x + ((y - a.y) / (b.y - a.y)) * (b.x - a.x), b.y > a.y ? 1 : -1]);
+    }
+  }
+  crossings.sort((p, q) => p[0] - q[0]);
+  const runs: Array<[number, number]> = [];
+  let winding = 0;
+  let from = 0;
+  for (const [x, turn] of crossings) {
+    const was = winding;
+    winding += turn;
+    if (was === 0 && winding !== 0) from = x;
+    if (was !== 0 && winding === 0) runs.push([from, x]);
+  }
+  return runs;
+}
+
+/** The same, along a vertical line. */
+function down(contours: Contour[], x: number): Array<[number, number]> {
+  const turned = contours.map((contour) => ({
+    ...contour,
+    nodes: contour.nodes.map((node) => ({
+      ...node,
+      point: { x: -node.point.y, y: node.point.x },
+      handleIn: node.handleIn && { x: -node.handleIn.y, y: node.handleIn.x },
+      handleOut: node.handleOut && { x: -node.handleOut.y, y: node.handleOut.x },
+    })),
+  }));
+  return across(turned, x)
+    .map(([a, b]): [number, number] => [-b, -a])
+    .reverse();
+}
+
+/** The paper between the runs of ink along a line. */
+function gaps(runs: Array<[number, number]>): number[] {
+  return runs.slice(1).map((run, index) => run[0] - runs[index][1]);
+}
+
+function inkAt(contours: Contour[], x: number, y: number): boolean {
+  return across(contours, y).some(([a, b]) => a <= x && x <= b);
+}
+
+const serifAt = (weight: number, more: Partial<Style["pen"]> = {}): Style => ({
+  ...SERIF,
+  pen: { ...SERIF.pen, weight, ...more },
+});
+
+function serifDraw(name: string, style: Style): Contour[] {
+  return draw(name, style, style.forms?.[name]);
+}
+
+const cap = SERIF.metrics.capHeight;
+
+describe("the Serif ampersand", () => {
+  it("is one clean piece with a loop over a bowl, at every weight", () => {
+    for (const weight of WEIGHTS) {
+      const amp = serifDraw("ampersand", serifAt(weight));
+      for (const contour of amp) expect(contoursIntersect([contour]), `${weight}`).toBe(false);
+      const { counters, pieces } = regions(amp);
+      expect(pieces, `pieces at ${weight}`).toBe(1);
+      expect(counters, `counters at ${weight}`).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("runs its leg out along the baseline to the right of everything else", () => {
+    for (const weight of WEIGHTS) {
+      const amp = serifDraw("ampersand", serifAt(weight));
+      const b = contoursBounds(amp);
+      const foot = Math.max(...across(amp, weight * 0.1).map(([, right]) => right));
+      expect(foot, `${weight}`).toBeGreaterThan(b.xMax - weight * 0.15);
+    }
+  });
+});
+
+describe("the Serif y", () => {
+  it("hooks its tail round to the left into a drop", () => {
+    for (const weight of WEIGHTS) {
+      const style = serifAt(weight);
+      const y = serifDraw("y", style);
+      const low = style.metrics.descender * 0.88;
+      const widest = Math.max(...across(y, low).map(([a, b]) => b - a));
+      expect(widest, `${weight}`).toBeGreaterThan(weight * 1.3);
+    }
+  });
+
+  it("has no spur where the arm meets the tail, serifs or none", () => {
+    for (const style of [SERIF, { ...SANS, pen: { ...SANS.pen, weight: 96 } }]) {
+      for (const form of [undefined, style.forms?.y]) {
+        const y = draw("y", style, form);
+        const edge = (at: number) => Math.max(...across(y, at).map(([, right]) => right));
+        const [a, b] = [edge(-40), edge(40)];
+        for (const at of [-20, -10, -5, 0, 5, 10, 20]) {
+          const line = a + ((b - a) * (at + 40)) / 80;
+          expect(edge(at), `${style.name} ${form ?? ""} at ${at}`).toBeLessThan(line + 1.5);
+        }
+      }
+    }
+  });
+});
+
+describe("the beaks on a Serif arm", () => {
+  it("run a long way down (or up) off the ends of the E, T, L and Z", () => {
+    for (const weight of WEIGHTS) {
+      const style = serifAt(weight);
+      const depth = cap * 0.14;
+      const E = serifDraw("E", style);
+      const e = contoursBounds(E);
+      expect(inkAt(E, e.xMax - 2, cap - depth), `E top at ${weight}`).toBe(true);
+      expect(inkAt(E, e.xMax - 2, depth), `E foot at ${weight}`).toBe(true);
+      const T = serifDraw("T", style);
+      const t = contoursBounds(T);
+      expect(inkAt(T, t.xMax - 2, cap - depth), `T right at ${weight}`).toBe(true);
+      expect(inkAt(T, t.xMin + 2, cap - depth), `T left at ${weight}`).toBe(true);
+      const L = serifDraw("L", style);
+      expect(inkAt(L, contoursBounds(L).xMax - 2, depth), `L at ${weight}`).toBe(true);
+      const Z = serifDraw("Z", style);
+      const arm = Math.min(...across(Z, cap - 3).map(([a]) => a));
+      expect(inkAt(Z, arm + 2, cap - depth), `Z top at ${weight}`).toBe(true);
+      const foot = Math.max(...across(Z, 3).map(([, right]) => right));
+      expect(inkAt(Z, foot - 2, depth), `Z foot at ${weight}`).toBe(true);
+    }
+  });
+
+  it("stays off the sans", () => {
+    const E = draw("E", SANS);
+    expect(inkAt(E, contoursBounds(E).xMax - 2, cap * 0.83)).toBe(false);
+  });
+});
+
+describe("the beaks on the Serif's curved capitals", () => {
+  /** How tall the ink is a couple of units in from the outermost edge. */
+  function upright(contours: Contour[], upper: boolean): number {
+    const rows: number[] = [];
+    for (let y = upper ? cap * 0.55 : 0; y < (upper ? cap + 20 : cap * 0.45); y += 2) rows.push(y);
+    const edge = upper
+      ? Math.max(...rows.flatMap((y) => across(contours, y).map(([, b]) => b)))
+      : Math.min(...rows.flatMap((y) => across(contours, y).map(([a]) => a)));
+    const x = upper ? edge - 2 : edge + 2;
+    return Math.max(
+      0,
+      ...down(contours, x)
+        .filter(([a, b]) => (upper ? b > cap * 0.5 : a < cap * 0.5))
+        .map(([a, b]) => b - a),
+    );
+  }
+
+  it("hangs an upright beak off the top of the C and the S", () => {
+    for (const weight of WEIGHTS) {
+      for (const name of ["C", "S"]) {
+        const drawn = serifDraw(name, serifAt(weight));
+        expect(upright(drawn, true), `${name} at ${weight}`).toBeGreaterThan(cap * 0.1);
+      }
+    }
+  });
+
+  it("stands one on the foot of the S", () => {
+    for (const weight of WEIGHTS) {
+      const S = serifDraw("S", serifAt(weight));
+      expect(upright(S, false), `${weight}`).toBeGreaterThan(cap * 0.1);
+    }
+  });
+});
+
+describe("the Serif at a black weight", () => {
+  it("keeps the inner wings of the V, the W and the v from closing on each other", () => {
+    const style = serifAt(200);
+    for (const name of ["V", "W", "v", "w"]) {
+      const drawn = serifDraw(name, style);
+      const top = contoursBounds(drawn).yMax;
+      for (const y of [top - 4, top - 12]) {
+        for (const gap of gaps(across(drawn, y))) {
+          expect(gap, `${name} at ${Math.round(y)}`).toBeGreaterThan(200 * 0.4);
+        }
+      }
+    }
+  });
+
+  it("leaves the counters of the n family open between their feet", () => {
+    // The walkthrough's settings: more contrast and reach than the base.
+    const style: Style = {
+      ...SERIF,
+      pen: { weight: 200, contrast: 0.6, angle: 12 },
+      metrics: {
+        ...SERIF.metrics,
+        xHeight: 500,
+        capHeight: 700,
+        ascender: 755,
+        descender: -255,
+        sidebearing: 35,
+      },
+      parts: { ...SERIF.parts, slab: { ...SERIF.parts.slab, projection: 0.7, bracket: 0.5 } },
+    };
+    for (const name of ["n", "h", "m", "u", "H", "N", "M"]) {
+      const drawn = serifDraw(name, style);
+      for (const y of [3, 20, 45]) {
+        for (const gap of gaps(across(drawn, y))) {
+          expect(gap, `${name} at ${y}`).toBeGreaterThan(100);
+        }
+      }
+    }
+  });
+
+  it("keeps a counter over the A's bar", () => {
+    const A = serifDraw("A", serifAt(200));
+    const b = contoursBounds(A);
+    const middle = (b.xMin + b.xMax) / 2;
+    const paper = gaps(down(A, middle));
+    expect(Math.max(...paper)).toBeGreaterThan(cap * 0.12);
+  });
+
+  it("carries the f's bar clear of its stem", () => {
+    const f = serifDraw("f", serifAt(200));
+    const stem = across(f, SERIF.metrics.xHeight * 0.4)[0][0];
+    const bar = Math.min(...across(f, SERIF.metrics.xHeight - 30).map(([a]) => a));
+    expect(stem - bar).toBeGreaterThan(200 * 0.25);
+  });
+
+  it("draws a 4 with a counter and its bar out past the stem", () => {
+    const four = serifDraw("four", serifAt(200));
+    expect(regions(four).counters).toBeGreaterThanOrEqual(1);
+    const stem = Math.max(...across(four, cap * 0.7).map(([, b]) => b));
+    let bar = 0;
+    for (let y = cap * 0.12; y < cap * 0.4; y += 4) {
+      bar = Math.max(bar, ...across(four, y).map(([, b]) => b));
+    }
+    expect(bar - stem).toBeGreaterThan(200 * 0.25);
+  });
+
+  it("keeps the drops of the zeta, the xi and the final sigma within the descender", () => {
+    for (const weight of [150, 200]) {
+      for (const name of ["\u03b6", "\u03be", "\u03c2"]) {
+        const drawn = serifDraw(name, serifAt(weight));
+        const low = contoursBounds(drawn).yMin;
+        expect(low, `${name} at ${weight}`).toBeGreaterThanOrEqual(
+          SERIF.metrics.descender - SERIF.metrics.overshoot - 1,
+        );
+      }
+    }
+  });
+});
+
+describe("the Serif base's colour", () => {
+  it("is spaced as tightly as Lora, and its capitals a little looser", () => {
+    const n = drawLetter("n", SERIF)!;
+    const nb = contoursBounds(n.contours);
+    expect(n.advanceWidth - (nb.xMax - nb.xMin)).toBeCloseTo(68, -1);
+    const H = drawLetter("H", SERIF)!;
+    const hb = contoursBounds(H.contours);
+    expect(H.advanceWidth - (hb.xMax - hb.xMin)).toBeCloseTo(95, -1);
+  });
+
+  it("thins its o's crown to about four tenths of its sides, as Lora's is", () => {
+    const o = draw("o", SERIF);
+    const b = contoursBounds(o);
+    const sides = across(o, (b.yMin + b.yMax) / 2).map(([a, c]) => c - a);
+    const crown = down(o, (b.xMin + b.xMax) / 2).map(([a, c]) => c - a);
+    const ratio = Math.min(...crown) / Math.max(...sides);
+    expect(ratio).toBeGreaterThan(0.33);
+    expect(ratio).toBeLessThan(0.47);
+  });
+});

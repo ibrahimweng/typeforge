@@ -42,7 +42,7 @@ import {
 } from "./shapes";
 import { seamsOf, wobbleOf } from "./script";
 import { penReach, reachAlong, sweep } from "./sweep";
-import type { Style } from "./style";
+import { type Style, serifReach } from "./style";
 import type { Spine, Stroke, Terminal } from "./types";
 
 export interface Drawn {
@@ -348,6 +348,18 @@ export function makeLetter(
     advanceWidth = advanceFor(name, built!, placedSolid, style);
   }
 
+  /*
+   * A capital's extra room, either side. Only where the letter is spaced by
+   * its own ink: a monospaced column or a grid cell already says where it goes.
+   */
+  const extra =
+    !style.metrics.monospaced && !laid && !joinsUp && isCapitalLike(name)
+      ? style.metrics.sidebearing * Math.max(0, (style.metrics.capitalSpacing ?? 1) - 1)
+      : 0;
+  if (extra > 0) {
+    centring += extra;
+    advanceWidth += extra * 2;
+  }
   const slide = shortfall + centring;
   return {
     advanceWidth,
@@ -667,6 +679,7 @@ function inkOf(stroke: Stroke, style: Style, others: Contour[] = []): Contour[] 
   const swept = sweep(stroke);
   return [
     ...swept,
+    ...beaksFor(stroke),
     ...ballsFor(stroke, style, swept),
     ...flaresFor(stroke, style),
     ...teardropsFor(stroke, swept),
@@ -691,8 +704,22 @@ function inkAll(strokes: Stroke[], style: Style, name = ""): Contour[][] {
   const small = !capital && !FIGURES.includes(name);
   const figure = FIGURES.includes(name);
   const lettered = name === "" || figure || /^\p{L}$/u.test(decidedBy(name));
+  // The S is the one capital whose foot comes back round to the left and
+  // wears a beak there; the J's hook, which does the same, keeps a plain end.
+  const footBeak = capital && ["S", "\u0405"].includes(decidedBy(name));
+  // And the J is the one capital whose hook ends in a drop, as Lora's does:
+  // cut plain, its end came to a point under the letter.
+  const capitalDrop = capital && ["J", "\u0408"].includes(decidedBy(name));
   const dressed = strokes.map((stroke) =>
-    dress(stroke, style, small, capital, lettered ? (figure ? "figure" : "letter") : "other"),
+    dress(
+      stroke,
+      style,
+      small,
+      capital,
+      lettered ? (figure ? "figure" : "letter") : "other",
+      footBeak,
+      capitalDrop,
+    ),
   );
   const swept = dressed.map((stroke) => sweep(stroke));
   return dressed.map((stroke, index) =>
@@ -735,6 +762,8 @@ function dress(
   small: boolean,
   capital: boolean,
   kind: "letter" | "figure" | "other",
+  footBeak = false,
+  capitalDrop = false,
 ): Stroke {
   if (stroke.spine.closed || stroke.spine.segments.length === 0) return stroke;
   const straight = endsStraight(stroke.spine);
@@ -754,6 +783,34 @@ function dress(
        */
       if (curved.kind !== "butt") end = { kind: curved.kind, angle: curved.angle, open: end.open };
     }
+    /*
+     * A capital's curved end on a face with text serifs wears a beak: the top
+     * of a C, a G and an S, and the foot of an S where it comes back round to
+     * the left. Not the foot of a C, which Lora and every face like it leave
+     * as a plain cut, and not a lowercase letter, whose ends take the drop.
+     */
+    if (
+      capital &&
+      !isStraight &&
+      terminal.kind === "slab" &&
+      terminal.shape === "wedge" &&
+      terminal.open === true
+    ) {
+      const spine = index === 1 ? stroke.spine : reversed(stroke.spine);
+      const curve = insideOfCurve(spine, at);
+      const top = curve !== null && curve.toward.y < -0.25;
+      const foot = footBeak && curve !== null && curve.toward.y > 0.25 && outward.x < -0.2;
+      if (decided(top || foot)) {
+        return {
+          kind: "butt",
+          open: true,
+          beak: {
+            reach: top ? style.metrics.capHeight * (1 - BEAK) : style.metrics.capHeight * BEAK,
+            way: top ? -1 : 1,
+          },
+        };
+      }
+    }
     if (end.kind === "teardrop") {
       if (isStraight || end.open !== true) return { ...end, kind: "butt" };
       const spine = index === 1 ? stroke.spine : reversed(stroke.spine);
@@ -770,9 +827,10 @@ function dress(
        * went along the weight axis would leave a letter the axis cannot follow.
        */
       const hangs =
-        !capital &&
-        curve !== null &&
-        (curve.toward.y < -0.25 || at.y < style.metrics.descender * 0.4);
+        (capitalDrop && curve !== null) ||
+        (!capital &&
+          curve !== null &&
+          (curve.toward.y < -0.25 || at.y < style.metrics.descender * 0.4));
       // Not hung, the end is what it would have been with a plain cut asked
       // for: on a serif face, the serif refused on a curve.
       if (!decided(hangs)) return terminal.kind === "slab" ? terminal : { ...end, kind: "butt" };
@@ -782,7 +840,20 @@ function dress(
       const side = outward.x * toward.y - outward.y * toward.x > 0 ? 1 : -1;
       // Pulled back by a share of what the drop adds beyond the stroke's own
       // width, so a drop with no room to swell is not a shorter stroke.
-      const pull = TEAR_PULL * Math.max(0, radius - halfWidthAcross(stroke, outward));
+      /*
+       * Except a tail heading down into the descender -- the hook of a zeta, a
+       * xi or a final sigma with no room left to turn -- which is pulled back
+       * by as much of the drop as would reach past the descender's overshoot.
+       * At a heavy weight it hung twenty-seven units below the descender.
+       */
+      const pull =
+        outward.y < -0.7
+          ? Math.max(
+              0,
+              dropOvershoot(stroke, outward, side, radius) -
+                (at.y - (style.metrics.descender - style.metrics.overshoot)),
+            )
+          : TEAR_PULL * Math.max(0, radius - halfWidthAcross(stroke, outward));
       if (index === 0) pullStart = pull;
       else pullEnd = pull;
       return { ...end, drop: { radius, bend, side } };
@@ -804,7 +875,13 @@ function dress(
       kind === "letter"
         ? onLine || Math.abs(outward.y) <= 0.35
         : kind === "figure" && Math.abs(at.y) < 1 && outward.y < -0.9;
-    if (end.kind === "slab" && isStraight && !serifed) return { ...end, bare: true };
+    /*
+     * Refused a serif, a straight end is still cut the way it would have been
+     * with one: level on the line it stops on, or square across an arm. Cut
+     * with the pen instead, the top of a four's stem leaned off the cap line
+     * and the end of its bar leaned with it.
+     */
+    if (end.kind === "slab" && isStraight && !serifed) end = { ...end, bare: true };
     /*
      * Which leaves the uprights: a serif on one, and a plain cut on one where
      * the pen is held at an angle -- the top of a T's stem under its arm,
@@ -812,17 +889,25 @@ function dress(
      */
     const cuttable =
       end.kind === "slab" || (end.kind === "butt" && style.parts.slab.on && style.pen.angle !== 0);
+    /*
+     * The end of an arm wearing a beak is cut square across the arm, so the
+     * beak's upright outside and the arm's end are one edge.
+     */
+    if (end.kind === "slab" && isStraight && !end.level && Math.abs(outward.y) < 1e-3) {
+      return { ...end, level: true };
+    }
     if (!cuttable || !isStraight || end.level || Math.abs(outward.x) > 0.02) return end;
     if (!onLine) return end;
     if (
       end.kind === "slab" &&
       end.head === "sloped" &&
+      !end.bare &&
       small &&
       outward.y > 0 &&
       [metrics.xHeight, metrics.ascender].some((line) => Math.abs(at.y - line) < 1)
     ) {
       const inner = levelHalfWidth(stroke, outward);
-      return { ...end, level: true, sink: HEAD_SLOPE * 2 * inner };
+      return { ...end, level: true, sink: headSlope(style) * 2 * inner };
     }
     /*
      * An upright standing on a line is cut along the line. Square to the stroke
@@ -970,6 +1055,38 @@ function dropRadius(stroke: Stroke, style: Style, outward: Vec2, curve: number):
  */
 const HEAD_SLOPE = 0.3;
 
+/**
+ * The slope a head is cut at under this pen: the nib's own through the text
+ * weights, and flatter past them, by as much as the serif grows more slowly
+ * than the stem (see `serifReach`). Held at the text slope, a black stem's head
+ * fell away sixty units across its own width and the flag carried on down
+ * another ninety, and the top of every n, i and l was a wedge.
+ */
+function headSlope(style: Style): number {
+  return HEAD_SLOPE * Math.min(1, serifReach(style) / Math.max(style.pen.weight, 1e-9));
+}
+
+/**
+ * How far past the end of its stroke a drop reaches, along the way the stroke
+ * is going: the same arithmetic `teardropsFor` lays the drop out with, asked
+ * before the stroke is pulled back to make room for it.
+ */
+function dropOvershoot(stroke: Stroke, u: Vec2, side: number, radius: number): number {
+  const n = { x: -u.y * side, y: u.x * side };
+  const shift = reachAlong({ x: -u.y, y: u.x }, penReach(stroke.pen));
+  const lean = shift.x * n.x + shift.y * n.y;
+  const outer = lean < 0 ? shift : { x: -shift.x, y: -shift.y };
+  const h = Math.abs(lean);
+  const t = outer.x * u.x + outer.y * u.y;
+  const least = (t * t + h * h) / Math.max(h, 1e-6) + 0.5;
+  /*
+   * Heading straight down, the drop always reaches below the stroke it hangs
+   * on, so `teardropsFor` shrinks it to the least that holds the end's two
+   * corners -- and that is what it reaches past the end by.
+   */
+  return Math.max(0, t + (u.y < -0.7 ? least : Math.max(radius, least)));
+}
+
 /** A teardrop's radius, in stems. */
 const TEAR_SIZE = 0.56;
 
@@ -1031,6 +1148,105 @@ function teardropsFor(stroke: Stroke, swept: Contour[]): Contour[] {
     out.push(contourArea(shape) < 0 ? reverseContour(shape) : shape);
   }
   return out;
+}
+
+/**
+ * Where a capital's curved beak stops, as a share of the cap height from the
+ * line it hangs from. Lora's C, G and S beaks all run about three tenths of the
+ * cap height down from the top of the letter, or up from the foot.
+ */
+const BEAK = 0.3;
+
+/**
+ * The beaks on one stroke: an upright wedge off a curved end.
+ *
+ * Its outside is a straight upright line down (or up) from the end's outer
+ * corner, which is what makes it read as a beak rather than as a drop: the
+ * curve stops and the letter falls away square. Its inside comes back up from
+ * the tip in one hollow curve to the end's inner corner, so the stroke
+ * thickens into it. Always the same four nodes, and the rest of it is buried
+ * in the stroke.
+ */
+function beaksFor(stroke: Stroke): Contour[] {
+  if (stroke.spine.closed) return [];
+  const out: Contour[] = [];
+  const ends = endsOf(stroke);
+  for (const index of [0, 1] as const) {
+    const [terminal, at, u] = ends[index];
+    const beak = terminal.beak;
+    if (!beak) continue;
+    const spine = index === 1 ? stroke.spine : reversed(stroke.spine);
+    const curve = insideOfCurve(spine, at);
+    if (!curve) continue;
+    const shift = reachAlong({ x: -u.y, y: u.x }, penReach(stroke.pen));
+    const a = { x: at.x + shift.x, y: at.y + shift.y };
+    const b = { x: at.x - shift.x, y: at.y - shift.y };
+    const outer = shift.x * curve.toward.x + shift.y * curve.toward.y < 0 ? a : b;
+    const width = Math.hypot(shift.x, shift.y) * 2;
+    // To the height asked for, and never less than most of a stroke past the
+    // corner it leaves from.
+    const tipY =
+      beak.way < 0
+        ? Math.min(beak.reach, outer.y - width * 0.8)
+        : Math.max(beak.reach, outer.y + width * 0.8);
+    const tip = { x: outer.x, y: tipY };
+    /*
+     * The inside is one hollow curve from the tip back to the end's inner
+     * corner: leaving the tip upright and arriving at the corner along the
+     * stroke's own inner edge, so the stroke runs on into the beak without a
+     * step. Its handles are held short of the upright, so it can never cross
+     * it, and it arrives at the corner rather than somewhere back round the
+     * curve, where a heavy stroke's inner corner stood out past it as a spike.
+     */
+    const inner = outer === a ? b : a;
+    const shape = beakShape(outer, tip, inner, at, u);
+    /*
+     * At the limit of the weight axis the inner corner can come round past the
+     * upright, and the beak would fold. It is then drawn as a speck buried in
+     * the stroke a little back from its end: the same four nodes.
+     */
+    const back = { x: at.x - u.x * 3, y: at.y - u.y * 3 };
+    const kept = contoursIntersect([shape])
+      ? {
+          nodes: [
+            node(back),
+            node({ x: back.x + 1, y: back.y }),
+            node({ x: back.x + 1, y: back.y + 1 }),
+            node({ x: back.x, y: back.y + 1 }),
+          ],
+          closed: true,
+        }
+      : shape;
+    out.push(contourArea(kept) < 0 ? reverseContour(kept) : kept);
+  }
+  return out;
+}
+
+/** The four nodes of a beak: see `beaksFor`. */
+function beakShape(outer: Vec2, tip: Vec2, inner: Vec2, at: Vec2, u: Vec2): Contour {
+  const across = tip.x - inner.x;
+  const rise = inner.y - tip.y;
+  const run = Math.hypot(across, rise);
+  const along = u.x * across > 1e-6 ? Math.min(run * 0.45, (0.8 * across) / u.x) : run * 0.45;
+  return {
+    nodes: [
+      node(outer),
+      {
+        point: tip,
+        handleIn: null,
+        handleOut: { x: tip.x, y: tip.y + rise * 0.5 },
+        type: "corner",
+      },
+      {
+        point: inner,
+        handleIn: { x: inner.x + u.x * along, y: inner.y + u.y * along },
+        handleOut: null,
+        type: "corner",
+      },
+      node(at),
+    ],
+    closed: true,
+  };
 }
 
 /** Whether a shape stays between the top and bottom of the stroke it is hung on. */
@@ -1547,7 +1763,8 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
   const out: Contour[] = [];
   const reference = penReach(style.pen).across;
   const ends = endsOf(stroke);
-  for (const [terminal, at, outward, straightEnd] of ends) {
+  for (const [which, [terminal, at, outward, straightEnd]] of ends.entries()) {
+    const mate = ends[1 - which];
     if (terminal.kind !== "slab") continue;
     /*
      * Only a straight stroke gets a serif.
@@ -1568,7 +1785,7 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
      */
     const winged = straightEnd;
     const projection = terminal.projection ?? 0;
-    const thickness = terminal.thickness ?? 0;
+    let thickness = terminal.thickness ?? 0;
     if (projection <= 0 || thickness <= 0) continue;
 
     /*
@@ -1608,12 +1825,36 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
     // the projection beyond it. Measured from the stem so that every serif in
     // the face is the same size, and from the stroke where the stroke is the
     // wider of the two, or the wing would begin inside the ink it sits on.
-    const full = Math.max(reference, inner) + projection;
+    let full = Math.max(reference, inner) + projection;
+    /*
+     * A text serif on the end of an arm is a beak: a long upright wedge, as
+     * the arms of Lora's E, T, L and Z end. At the size of a foot it read as
+     * a nick at a regular weight and was lost altogether at a light one. So
+     * the beak on an arm lying along a line runs down (or up) off it about a
+     * quarter of the cap height, and the one on a middle arm, which reaches
+     * both ways, about half that each way.
+     */
+    const arm = winged && terminal.shape === "wedge" && Math.abs(outward.y) < 1e-3;
+    if (arm) {
+      const { unitsPerEm, capHeight } = style.metrics;
+      const edge = [1, -1].some((side) => crossesALine(at, outward, side, full, inner, style));
+      const beak = Math.min(Math.max(full * 1.6, unitsPerEm * 0.11), capHeight * 0.24);
+      full = edge ? beak : Math.max(full, beak * 0.5);
+      // And never thinner at its root than a third of the serif's reach, or at
+      // a hairline weight it is a scratch rather than a beak.
+      thickness = Math.max(thickness, serifReach(style) * 0.3);
+    }
     /*
      * A sloped head: the stem's top was cut falling away to the left by `sink`
      * across its width, and the flag carries on along the same line.
      */
     const shear = level && (terminal.sink ?? 0) > 0 && inner > 0 ? terminal.sink! / (2 * inner) : 0;
+    // And the flag itself no longer than the serif grows, for the same reason.
+    if (shear > 0) {
+      full =
+        Math.max(reference, inner) +
+        projection * Math.min(1, serifReach(style) / Math.max(style.pen.weight, 1e-9));
+    }
     for (const side of [1, -1]) {
       /*
        * A serif never crosses a line the stroke it belongs to is standing on.
@@ -1646,9 +1887,24 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        * The `one` and the `\u0490` are this refusal on five faces apiece, and so is
        * the Slab's `\u00e6`, the Didone's `\u0431` and the Serif's whole G family.
        */
-      const room = winged
+      let room = winged
         ? roomBeside(at, facing, side, inner, full, thickness, reference, others)
         : full;
+      /*
+       * And never into the other end of its own stroke. The two arms of a v,
+       * a V and each vee of a W are one run, so the strokes beside it do not
+       * include the arm the inner wing is reaching toward: at a black weight
+       * the two inner wings at the top ran almost into each other and left a
+       * little heart-shaped counter between them. The other end is given the
+       * same room, so the paper left is shared as it is between two strokes.
+       */
+      if (winged && mate && mate[0].kind === "slab" && Math.abs(mate[1].y - at.y) < 1) {
+        const across = { x: -facing.y * side, y: facing.x * side };
+        const apart = (mate[1].x - at.x) * across.x + (mate[1].y - at.y) * across.y;
+        if (apart > 0) {
+          room = Math.min(room, inner + Math.max(0, apart - 2 * inner - reference * 1.5) / 2);
+        }
+      }
       /*
        * And never into another stroke, or so near one that only a hair of
        * paper is left between them.
@@ -1706,7 +1962,22 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        */
       const from = refused ? 0 : inner;
       const tip = refused ? inner * 0.6 : Math.min(full, room);
-      const deep = refused ? BURIED : thickness;
+      /*
+       * A wing cut short by a neighbour is made shallower with it, so it
+       * stays the shape of a serif rather than becoming a stub with a full
+       * bracket standing on it.
+       */
+      const short = refused || full <= inner ? 1 : Math.max(0, (tip - inner) / (full - inner));
+      /*
+       * And a head no deeper than a text weight's. The flag and its bracket
+       * grew with the serif, and at a black weight the two together ran a
+       * quarter of the x-height down the side of the stem: the top of every
+       * n, i and l was a wedge rather than a flag.
+       */
+      const headCap = shear > 0 ? style.metrics.unitsPerEm * 0.045 : Infinity;
+      const deep = refused
+        ? BURIED
+        : Math.min(thickness * Math.max(0.55, Math.min(1, short)), headCap);
       const tipDeep = terminal.shape === "wedge" ? deep * WEDGE_TIP : deep;
       /*
        * How far the stroke's edge on this side moves out along the wing for
@@ -1724,7 +1995,7 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        * Serif, the Didone, the Slab and the Typewriter all stayed exactly where
        * they were.
        */
-      const bracket = Math.min(terminal.bracket ?? 0, deep, (tip - from) * 0.8);
+      const bracket = Math.min(terminal.bracket ?? 0, deep, (tip - from) * 0.8, headCap);
       /*
        * A face that undulates undulates here too, and the only way to say that
        * is to draw the bar as a stroke rather than as a shape.
@@ -1741,7 +2012,13 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
         ? sweptWing(stroke, style, at, facing, side, from, tip, deep)
         : [
             wing(
-              at,
+              /*
+               * A refused wing is set back into the stroke by a little more
+               * than its own depth, so none of it lies on the end: on a curved
+               * end cut at the pen's angle the sliver stood out of the foot
+               * of every c, e and t at a black weight as a hair.
+               */
+              refused ? { x: at.x - facing.x * 3, y: at.y - facing.y * 3 } : at,
               facing,
               side,
               from,
@@ -1789,7 +2066,14 @@ function roomBeside(
   if (others.length === 0) return full;
   const across = { x: -outward.y * side, y: outward.x * side };
   const into = { x: -outward.x, y: -outward.y };
-  const clear = stem;
+  /*
+   * Three quarters of the pen, where this was half. Half a pen of paper
+   * between two facing wings under the counter of an n is what the eye reads
+   * as a gap at a text weight, but at a black one the two bracketed wings
+   * rising either side of it closed the bottom of the counter down to a
+   * keyhole.
+   */
+  const clear = stem * 1.5;
   const far = full * 2 + clear;
   const step = 2;
   for (let u = inner; u <= far; u += step) {

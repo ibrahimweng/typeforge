@@ -42,6 +42,16 @@ export interface Metrics {
   /** White space left either side of a letter. */
   sidebearing: number;
   /**
+   * How much more of it a capital takes, as a multiple. One, or left out, is
+   * the same as the lowercase.
+   *
+   * A capital is taller, so the same white beside it reads as less: Lora sets
+   * its capitals half as loose again as its lowercase -- 45 units a side
+   * against 30 -- and a text face spaced for its lowercase alone set words in
+   * capitals cramped.
+   */
+  capitalSpacing?: number;
+  /**
    * How wide every letter runs, as a multiple.
    *
    * Applied to the horizontal measures a letter is built from and to nothing
@@ -456,7 +466,13 @@ export const SERIF: Style = {
   name: "Serif",
   family: "serif",
   blurb: "Contrast, an angled pen, and bracketed serifs.",
-  pen: { weight: 96, contrast: 0.42, angle: 8 },
+  /*
+   * Lora's o is 102 units across its sides and 38 across its crown and its
+   * base, a thin stroke four tenths of the thick one, and its thinnest point
+   * sits a few degrees round from the top. At 0.42 ours was 0.59 of the thick,
+   * which reads as a sans with serifs rather than as a text face.
+   */
+  pen: { weight: 96, contrast: 0.6, angle: 8 },
   /*
    * The two-storey a, which is what most text faces use and what none of them
    * were asking for.
@@ -477,7 +493,7 @@ export const SERIF: Style = {
    * The G with an upright spur rather than a bar turned in, and the Q whose
    * tail sweeps out under the line, are the same kind of decision.
    */
-  forms: { a: "double", g: "double", G: "spurred", Q: "swept" },
+  forms: { a: "double", g: "double", G: "spurred", Q: "swept", y: "hooked" },
   /*
    * A text face's proportions rather than the sans's.
    *
@@ -488,7 +504,18 @@ export const SERIF: Style = {
    * H within two hundredths -- so the cap height and the counter of an H are
    * left alone and only the lowercase rhythm and the bowls come in.
    */
-  metrics: { ...SANS.metrics, ascender: 780, descender: -260 },
+  /*
+   * And set as tight as Lora: its lowercase averages 32 units a side on an
+   * x-height of 500, which is 34 on ours. The sans's 55 set the serif half as
+   * loose again as the face it was measured against.
+   */
+  metrics: {
+    ...SANS.metrics,
+    ascender: 780,
+    descender: -260,
+    sidebearing: 34,
+    capitalSpacing: 1.4,
+  },
   parts: {
     ...SANS.parts,
     /*

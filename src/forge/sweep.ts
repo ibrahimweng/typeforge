@@ -925,6 +925,24 @@ function terminalNodes(
     ];
   }
 
+  if (terminal.level && Math.abs(direction.x) > 1e-3) {
+    /*
+     * A level cut on an arm lying along a line: the corners slid until they
+     * stand one above the other, square across the arm. A pen held at an
+     * angle otherwise leans the end of every arm with it, and the beak serif
+     * laid there -- whose outside is upright -- stood a step proud of one
+     * corner of it.
+     */
+    const plumb = (point: Vec2): Vec2 => {
+      const back = (point.x - at.x) / direction.x;
+      return { x: at.x, y: point.y - direction.y * back };
+    };
+    return [
+      { point: plumb(left), handleIn: null, handleOut: null, type: "corner" },
+      { point: plumb(right), handleIn: null, handleOut: null, type: "corner" },
+    ];
+  }
+
   if (terminal.kind === "angled" && terminal.angle) {
     /*
      * The cut a nib held at an angle leaves: the two corners slid along the

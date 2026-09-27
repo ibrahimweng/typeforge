@@ -6,9 +6,9 @@
  * imports it; see it for what a recipe is and how the table is used.
  */
 
-import { spineEnd, spineStart } from "../shapes";
+import { spineEnd } from "../shapes";
 import type { Style } from "../style";
-import type { Terminal } from "../types";
+import type { Spine, Terminal } from "../types";
 import {
   arm,
   at,
@@ -41,6 +41,7 @@ import {
   signWidth,
   spine,
   spread,
+  stopRadius,
   straight,
   superior,
   tail,
@@ -60,19 +61,19 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   period: (style) => {
     const f = frame(style);
-    const radius = f.half * 0.95;
+    const radius = stopRadius(f);
     return finish(f, [dot(f, at(f.edge, radius), radius)]);
   },
 
   comma: (style) => {
     const f = frame(style);
-    const radius = f.half * 0.95;
+    const radius = stopRadius(f);
     return finish(f, [tail(f, radius)]);
   },
 
   colon: (style) => {
     const f = frame(style);
-    const radius = f.half * 0.95;
+    const radius = stopRadius(f);
     return finish(f, [
       dot(f, at(f.edge, radius), radius),
       dot(f, at(f.edge, f.x - radius), radius),
@@ -81,13 +82,13 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   semicolon: (style) => {
     const f = frame(style);
-    const radius = f.half * 0.95;
+    const radius = stopRadius(f);
     return finish(f, [tail(f, radius), dot(f, at(f.edge, f.x - radius), radius)]);
   },
 
   exclam: (style) => {
     const f = frame(style);
-    const radius = f.half * 0.95;
+    const radius = stopRadius(f);
     return finish(f, [
       ink(f, straight(at(f.edge, radius * 3), at(f.edge, f.cap)), f.end, f.end),
       dot(f, at(f.edge, radius), radius),
@@ -98,10 +99,13 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     const f = frame(style);
     const radius = Math.max(figureWidth(f) * 0.42, f.least);
     const centre = at(f.edge + radius, f.crest(f.cap) - radius);
-    const radiusDot = f.half * 0.95;
+    const radiusDot = stopRadius(f);
+    // The neck stops clear of the dot under it, which at a black weight is
+    // higher than three tenths of the cap height.
+    const neck = Math.max(f.cap * 0.3, radiusDot * 2 + f.half * 1.8);
     return finish(f, [
       ink(f, turn(centre, radius, 190, -35), f.end, BUTT),
-      ink(f, straight(pointOn(centre, radius, -35), at(centre.x, f.cap * 0.3)), BUTT, f.end),
+      ink(f, straight(pointOn(centre, radius, -35), at(centre.x, neck)), BUTT, f.end),
       dot(f, at(centre.x, radiusDot), radiusDot),
     ]);
   },
@@ -770,30 +774,120 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
   },
 
   /*
-   * The ampersand, which is the one mark in a font that is not a shape anybody
-   * can name. It is drawn here as what it came from: a small loop above a
-   * larger one, joined down the left, with the leg crossing out to the right.
+   * The ampersand, drawn the way a text face draws it: a small loop at the
+   * cap height, whose right side runs down and across into a larger bowl on
+   * the baseline, and a long diagonal leaving the loop's left side and
+   * crossing everything on its way down to a foot that turns out along the
+   * line. The bowl comes round and up into an arm on the right, finished with
+   * a flat bar where the face has serifs.
+   *
+   * The loop and the bowl are joined by the one straight run that is tangent
+   * to both, so the stroke passes from one into the other the way an S does.
+   * That needs the two circles clear of each other, and at a heavy weight
+   * they are not -- stacked straight up they overlap -- so the loop moves over
+   * to the right until they are, which is where a black ampersand's loop sits
+   * anyway. Every turn is drawn in a fixed number of pieces, so the letter has
+   * the same nodes at every weight.
    */
   ampersand: (style) => {
     const f = frame(style);
-    const topR = Math.max(f.cap * 0.155, f.least);
-    const botR = Math.max(f.cap * 0.245, f.least);
-    const top = at(f.edge + bendWidth(f, topR) + f.cap * 0.06, f.crest(f.cap) - topR);
-    const bottom = at(f.edge + bendWidth(f, botR), f.dip(0) + botR);
-    const loop = bend(f, top, topR, -34, 250);
-    const belly = bend(f, bottom, botR, 108, 336);
-    const leg = at(bottom.x + botR * 2.1, f.cap * 0.5);
-    return finish(
-      f,
-      [
-        ink(f, loop, f.end, BUTT),
-        ink(f, straight(spineEnd(loop), spineStart(belly)), BUTT, BUTT),
-        ink(f, belly, BUTT, BUTT),
-        ink(f, straight(spineEnd(belly), leg), BUTT, f.end),
-        ink(f, straight(spineStart(loop), at(leg.x * 0.88, f.dip(0) + botR * 0.55)), BUTT, BUTT),
-      ],
-      true,
-    );
+    const C = f.cap;
+    const pinned = (run: Spine, pieces: number): Spine => ({
+      ...run,
+      segments: run.segments.map((one) => (one.kind === "arc" ? { ...one, pieces } : one)),
+    });
+    /*
+     * The bowl and the loop, as large as the face asks and no tighter than
+     * the pen goes round -- and, between those, small enough to stand one
+     * above the other with the spine running down between them. Where even
+     * the tightest pair cannot, at the limit of the weight axis, the loop
+     * rises past the cap height rather than sliding round beside the bowl,
+     * where the spine between them turned uphill and the letter folded.
+     */
+    const span = f.crest(C) - f.dip(0);
+    const wantR = Math.max(C * 0.24, f.half * 1.75);
+    const wantr = Math.max(C * 0.14, f.half * 1.45);
+    const fits = Math.min(1, span / 2.05 / (wantR + wantr));
+    const R = Math.max(wantR * fits, f.half * 1.5, f.least);
+    const r = Math.max(wantr * fits, f.half * 1.15, f.least);
+    const bowlAt = at(f.edge + R, f.dip(0) + R);
+    const loopY = Math.max(f.crest(C) - r, bowlAt.y + (r + R) * 1.02);
+    const rise = loopY - bowlAt.y;
+    const clear = (r + R) * 1.08;
+    const over = Math.max(C * 0.05, Math.sqrt(Math.max(0, clear * clear - rise * rise)));
+    const loopAt = at(bowlAt.x + over, loopY);
+    // Where the tangent common to both circles, crossing between them, meets
+    // each: on the loop's lower right and the bowl's upper left.
+    const apart = Math.hypot(over, rise);
+    const joinAt =
+      ((Math.atan2(rise, over) + Math.PI + Math.acos(Math.min(1, (r + R) / apart))) * 180) /
+        Math.PI -
+      360;
+    const leave = pointOn(loopAt, r, joinAt);
+    const arrive = pointOn(bowlAt, R, joinAt + 180);
+    // The diagonal leaves the loop at forty-five degrees and turns out along
+    // the baseline into its foot.
+    const from = pointOn(loopAt, r, 225);
+    const foot = Math.max(C * 0.14, f.half * 1.9);
+    const line = f.sits(0);
+    const kneeY = line + foot * (1 - Math.SQRT1_2);
+    const knee = at(from.x + (from.y - kneeY), kneeY);
+    const heel = at(knee.x + foot * Math.SQRT1_2, line);
+    // The arm: up and a little to the right out of the bowl, to about half
+    // the cap height.
+    const armFrom = pointOn(bowlAt, R, 345);
+    const top = C * 0.52;
+    // Never below where the arm leaves the bowl, which at the limit of the
+    // weight axis is higher than half the cap height.
+    const head = Math.max(f.hangs(top), armFrom.y + f.half * 0.6);
+    // Leaving the bowl along its own tangent there, exactly: a heading a hair
+    // off it puts a join into the run, and the join folds.
+    const armTo = at(armFrom.x + (head - armFrom.y) * Math.tan((15 * Math.PI) / 180), head);
+    const serifed = style.parts.slab.on;
+    const reach = f.half + (f.end.projection ?? f.half * 0.6);
+    return finish(f, [
+      ink(f, pinned(turn(loopAt, r, 218, joinAt + 8), 4), BUTT, BUTT),
+      ink(
+        f,
+        chain(
+          pinned(turn(loopAt, r, 208, 225), 1),
+          straight(from, knee),
+          pinned(turn(at(heel.x, line + foot), foot, 225, 270), 1),
+          straight(heel, at(heel.x + f.half * 1.2, line)),
+        ),
+        BUTT,
+        BUTT,
+      ),
+      ink(
+        f,
+        chain(
+          pinned(turn(loopAt, r, joinAt + 18, joinAt), 1),
+          straight(leave, arrive),
+          pinned(turn(bowlAt, R, joinAt + 180, 345), 3),
+        ),
+        BUTT,
+        BUTT,
+      ),
+      // The arm on its own, run in from a little way back round the bowl: at
+      // a black weight its top comes up under the spine, and in one run with
+      // it the two edges met and the outline folded.
+      ink(
+        f,
+        chain(pinned(turn(bowlAt, R, 330, 345), 1), straight(armFrom, armTo)),
+        BUTT,
+        serifed ? BUTT : f.end,
+      ),
+      ...(serifed
+        ? [
+            ink(
+              f,
+              straight(at(armTo.x - reach, head), at(armTo.x + reach * 1.15, head)),
+              BUTT,
+              BUTT,
+            ),
+          ]
+        : []),
+    ]);
   },
 
   periodcentered: (style) => {

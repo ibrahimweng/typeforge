@@ -1385,6 +1385,35 @@ export function dot(frame: Frame, centre: Vec2, radius: number): Stroke {
 }
 
 /**
+ * How big a full stop is: a little under a stem across on a face with no
+ * contrast, and larger than the stem as the contrast rises, since the stem
+ * is measured at the pen's widest and a dot is round. Lora's full stop is 1.36
+ * of its stem. And never a speck at a hairline weight on a face with contrast:
+ * a light text face keeps its dots about the size of the regular's.
+ */
+export function stopRadius(f: Frame): number {
+  // A joined hand keeps the pen's own dot: its comma is run into the join.
+  if (f.style.parts.script.on) return f.half * 0.95;
+  const { contrast } = f.style.pen;
+  const c = Math.min(Math.max(contrast, 0), 0.95);
+  return Math.max(f.half * (0.95 + 0.6 * c), f.style.metrics.unitsPerEm * 0.045 * c);
+}
+
+/**
+ * The dot over an i or a j: the same reasoning as `stopRadius`, a little
+ * smaller, as Lora's is (108 across against a full stop of 117), and set above
+ * the x-height by a stem and a half -- or less, where a black weight would
+ * otherwise carry it past the ascender.
+ */
+export function tittle(f: Frame, x: number): Stroke {
+  const { contrast } = f.style.pen;
+  const c = Math.min(Math.max(contrast, 0), 0.95);
+  const radius = Math.max(f.half * (0.55 + c), f.style.metrics.unitsPerEm * 0.04 * c);
+  const y = Math.min(f.x + f.half * 1.5 + radius, f.asc + f.over - radius);
+  return dot(f, at(x, Math.max(y, f.x + f.half * 0.6 + radius)), radius);
+}
+
+/**
  * The tail of a comma, and the lower half of a semicolon.
  *
  * Drawn with its own round pen rather than the font's. On a face with contrast
@@ -1612,15 +1641,38 @@ export function spine(frame: Frame, height: number, left: number): { stroke: Str
    * pieces: an s that was two turns at one end and three pieces at the other
    * could not be put on it at all.
    */
-  const small = Math.min(Math.max(span * 0.235, frame.half * 1.45, frame.least), span / 4);
+  /*
+   * But never tighter than the pen will go round with a counter left inside
+   * it. Held to a quarter of the height, a black s had turns about as small
+   * as half its own pen: the inside of each turn collapsed to a point, the
+   * outline folded back on itself there, and the letter came out as a
+   * zig-zag. A turn wider than that is set further out to the side instead,
+   * so the spine still runs tangent between them -- the s widens, which is
+   * what a black s does.
+   */
+  const small = Math.max(
+    Math.min(Math.max(span * 0.235, frame.half * 1.45, frame.least), span / 4),
+    frame.half * 1.2,
+  );
   if (frame.square < 0.01) {
     const upperR = small * 0.95;
     const lowerR = small * 1.05;
-    const across = Math.max(span * 0.62 * frame.wide, upperR + lowerR + frame.half);
-    const dx = Math.max(across / 2 - small, 1);
+    const upperY = foot + span - upperR;
+    const lowerY = foot + lowerR;
+    // Far enough apart for a spine to run tangent between the two, with a
+    // little straight in it.
+    const rise = upperY - lowerY;
+    const clear = (upperR + lowerR) * 1.04;
+    const apart = Math.sqrt(Math.max(0, clear * clear - rise * rise));
+    const across = Math.max(
+      span * 0.62 * frame.wide,
+      upperR + lowerR + frame.half,
+      apart + upperR + lowerR,
+    );
+    const dx = Math.max(across / 2 - small, apart / 2, 1);
     const middle = left + across / 2;
-    const upper = at(middle - dx, foot + span - upperR);
-    const lower = at(middle + dx, foot + lowerR);
+    const upper = at(middle - dx, upperY);
+    const lower = at(middle + dx, lowerY);
     const dX = lower.x - upper.x;
     const dY = lower.y - upper.y;
     const d = Math.hypot(dX, dY);
@@ -2415,7 +2467,15 @@ export function crossbar(f: Frame, from: number, to: number): Stroke {
    * given a serif at each end the pair hung down beside the stem and the t
    * read as a cross with a bracket on it.
    */
-  return thin(f, straight(at(from, height), at(to, height)), f.plain, f.plain);
+  /*
+   * Cut upright where the face cuts its ends plain, so a pen held at an angle
+   * does not lean the ends of the bar with it: the bar of a t or an f on the
+   * serif face ended in two slanting cuts, the left one a notch against the
+   * stem at a black weight.
+   */
+  const end: Terminal =
+    f.plain.kind === "angled" || f.plain.kind === "round" ? f.plain : { ...f.plain, level: true };
+  return thin(f, straight(at(from, height), at(to, height)), end, end);
 }
 
 /**

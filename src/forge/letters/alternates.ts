@@ -622,6 +622,56 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
 
   y: [
     {
+      id: "hooked",
+      label: "Hooked tail",
+      hint: "The right arm runs on through the vee and curls round to the left under the line, as a text face's does.",
+      build: (style) => {
+        const f = frame(style);
+        const half = f.arch * 0.92;
+        const left = f.edge;
+        const middle = left + half;
+        const top = at(middle + half, f.x);
+        const apex = at(middle, 0);
+        // Where the left arm stops: on the tail's own spine, just above the
+        // baseline, so both corners of its square end are buried in the tail.
+        // Stopped on the line it was cut level along it, and the cut stood out
+        // of the tail as a ledge.
+        const lift = f.half * 0.5;
+        const stop = at(middle + (half * lift) / f.x, lift);
+        const heading = {
+          x: (apex.x - top.x) / Math.hypot(half, f.x),
+          y: -f.x / Math.hypot(half, f.x),
+        };
+        // To the right of the way the tail is going, which is where it turns.
+        const right = { x: heading.y, y: -heading.x };
+        const radius = Math.max(f.arch * 0.62, f.half * 1.7);
+        const centreY = f.dip(f.desc) + radius;
+        const kneeY = centreY - radius * right.y;
+        const along = (kneeY - top.y) / heading.y;
+        const knee = at(top.x + heading.x * along, kneeY);
+        const centre = at(knee.x + radius * right.x, centreY);
+        const from = (Math.atan2(knee.y - centre.y, knee.x - centre.x) * 180) / Math.PI;
+        const hook = turn(centre, radius, from, -112);
+        return finish(f, [
+          /*
+           * The left arm stops inside the tail, just above where the two
+           * spines cross. Carried on past them, its square end stood out of
+           * the right side of the tail as a spur at every weight.
+           */
+          ink(f, straight(at(left, f.x), stop), f.end, BUTT),
+          ink(
+            f,
+            chain(straight(top, knee), {
+              ...hook,
+              segments: hook.segments.map((one) => ({ ...one, pieces: 2 })),
+            }),
+            f.end,
+            f.end,
+          ),
+        ]);
+      },
+    },
+    {
       id: "straight",
       label: "Straight tail",
       hint: "A vee with the right arm carried straight down past the baseline, rather than the tail leaving at its own angle.",

@@ -40,6 +40,7 @@ import {
   eyeOf,
   wallAt,
   middleBar,
+  tittle,
 } from "./common";
 
 export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
@@ -342,10 +343,9 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const apart = f.style.metrics.counterWidth * 0.55 + f.style.pen.weight;
     const first = f.edge;
     const stem = first + apart + radius;
-    const dotUp = f.x + f.half * 1.5 + f.half * 0.55;
     return finish(f, [
       ink(f, straight(at(first, 0), at(first, f.x)), f.end, f.end),
-      dot(f, at(first, dotUp), f.half * 0.55),
+      tittle(f, first),
       ink(
         f,
         chain(
@@ -355,7 +355,7 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         f.end,
         f.end,
       ),
-      dot(f, at(stem, dotUp), f.half * 0.55),
+      tittle(f, stem),
     ]);
   },
 

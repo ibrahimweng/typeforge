@@ -6,8 +6,10 @@
  * imports it; see it for what a recipe is and how the table is used.
  */
 
+import type { Vec2 } from "@/font/types";
 import { spineEnd } from "../shapes";
 import type { Style } from "../style";
+import { penReach, reachAlong } from "../sweep";
 import {
   arm,
   at,
@@ -25,6 +27,7 @@ import {
   ring,
   straight,
   thin,
+  headingAt,
 } from "./common";
 
 export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
@@ -68,12 +71,56 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * sharp sends the inner side through itself. Left as separate strokes they
      * simply overlap, which the letter is full of anyway.
      */
-    const leaves = -22;
+    /*
+     * The diagonal runs from where the bowl leaves off down to the baseline,
+     * cut level along it with its left corner on the foot's left end, and the
+     * bowl is carried round exactly as far as it has to be to leave travelling
+     * the diagonal's way.
+     *
+     * Aimed at the middle of the foot and cut square instead, at a black
+     * weight the diagonal's end stood out under the foot's left end as a spur,
+     * and the bowl and the diagonal met at an angle with a notch on the
+     * outside of it.
+     */
+    const pen = penReach(style.pen);
+    const toward = (from: Vec2): Vec2 => {
+      // Where on the baseline the run lands so its left corner is on `left`:
+      // half the width a band at this slant covers along the line.
+      const d = { x: left - from.x, y: -from.y };
+      const length = Math.hypot(d.x, d.y) || 1;
+      const u = { x: d.x / length, y: d.y / length };
+      const shift = reachAlong({ x: -u.y, y: u.x }, pen);
+      return at(left + Math.abs(shift.x - (u.x * shift.y) / u.y), 0);
+    };
+    const miss = (angle: number): number => {
+      const run = bend(f, centre, radius, 190, angle);
+      const from = spineEnd(run);
+      const heading = headingAt(run.segments[run.segments.length - 1], "end");
+      const to = toward(from);
+      return Math.abs(Math.atan2(to.y - from.y, to.x - from.x) - Math.atan2(heading.y, heading.x));
+    };
+    // Coarse, then to the degree about the best of it.
+    let leaves = -22;
+    let best = Infinity;
+    const tryAt = (angle: number) => {
+      const off = miss(angle);
+      if (off < best) {
+        best = off;
+        leaves = angle;
+      }
+    };
+    for (let angle = 5; angle >= -75; angle -= 5) tryAt(angle);
+    const coarse = leaves;
+    for (let angle = coarse + 4; angle >= coarse - 4; angle -= 1) tryAt(angle);
     const over = bend(f, centre, radius, 190, leaves);
     return finish(f, [
       ink(f, over, f.end, BUTT),
-      ink(f, straight(spineEnd(over), at(left, f.sits(0))), BUTT, BUTT),
-      arm(f, left, left + width, f.sits(0, f.bar)),
+      ink(f, straight(spineEnd(over), toward(spineEnd(over))), BUTT, {
+        kind: "butt",
+        level: true,
+      }),
+      // Started inside the diagonal's foot, so its own cut end is buried.
+      arm(f, left + f.half, left + width, f.sits(0, f.bar)),
     ]);
   },
 
@@ -85,11 +132,34 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const base = f.dip(0);
     const radius = Math.max((top - base) / 4, f.least);
     const middle = left + width - radius;
+    const tongue = radius * 0.3;
     return finish(
       f,
       [
-        ink(f, bend(f, at(middle, top - radius), radius, 160, -90), f.end, BUTT),
-        ink(f, bend(f, at(middle, base + radius), radius, 90, -160), BUTT, f.end),
+        /*
+         * Each bowl carried a little way on to the left along the waist, so
+         * the two meet in a short tongue rather than in a point. Meeting where
+         * each turned, the two cut ends stood at an angle to each other and
+         * left a notch on the left of the waist, a deep one at a black weight.
+         */
+        ink(
+          f,
+          chain(
+            bend(f, at(middle, top - radius), radius, 160, -90),
+            straight(at(middle, top - radius * 2), at(middle - tongue, top - radius * 2)),
+          ),
+          f.end,
+          BUTT,
+        ),
+        ink(
+          f,
+          chain(
+            straight(at(middle - tongue, base + radius * 2), at(middle, base + radius * 2)),
+            bend(f, at(middle, base + radius), radius, 90, -160),
+          ),
+          BUTT,
+          f.end,
+        ),
       ],
       true,
     );
@@ -99,14 +169,38 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const width = figureWidth(f);
     const left = f.edge;
-    const stem = left + width * 0.72;
+    /*
+     * Wide enough at a heavy weight for a counter between the diagonal and
+     * the stem, and the bar carried out past the stem by more than a hair:
+     * held to the regular's proportions, a black four had its counter closed
+     * to a point and its bar ending flush with the stem.
+     */
+    const stem = left + Math.max(width * 0.72, f.half * 4.2);
     const bar = f.cap * 0.28;
     const top = at(stem, f.hangs(f.cap));
-    const end = at(left + width, bar);
-    const meet = corner(f, top, at(left, bar), end);
+    const reach = stem + Math.max(left + width - stem, f.half * 1.7);
+    const guess = corner(f, top, at(left, bar), at(reach, bar));
+    // The bar level: from wherever the corner came to rest, straight across.
+    const meet = corner(f, top, at(left, bar), at(reach, guess.y));
+    const end = at(reach, meet.y);
+    /*
+     * The diagonal starts where its upper edge runs out of the stem's top left
+     * corner, so the two meet in a point on the cap line. Started on the stem's
+     * middle it left the corner of its own square end standing out beside the
+     * top of the stem as a flag, a big one at a black weight.
+     */
+    const heading = { x: meet.x - top.x, y: meet.y - top.y };
+    const length = Math.hypot(heading.x, heading.y);
+    const normal = { x: heading.y / length, y: -heading.x / length };
+    const pen = penReach(style.pen);
+    const edge = reachAlong(normal, pen);
+    // The offset to the diagonal's upper edge, and the stem's half width.
+    const up = edge.y > 0 ? edge : { x: -edge.x, y: -edge.y };
+    const flank = Math.abs(reachAlong(at(1, 0), pen).x);
+    const start = at(stem - flank - up.x, f.cap - up.y);
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-      ink(f, chain(straight(top, meet), straight(meet, end)), BUTT, f.end),
+      ink(f, chain(straight(start, meet), straight(meet, end)), BUTT, f.end),
     ]);
   },
 

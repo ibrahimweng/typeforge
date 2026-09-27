@@ -190,6 +190,14 @@ export interface Terminal {
    * do, or one on a symbol rather than a letter. Drawn as the serif refused.
    */
   bare?: boolean;
+  /**
+   * A beak on a curved end: the upright wedge a text face's C, G and S carry
+   * where their curves stop, running from the end straight down (or up) the
+   * outside of the letter. `reach` is the height its tip stops at, in font
+   * units, and `way` which way it runs: minus one down, one up.
+   * Settled when the end is dressed; the end itself is then a plain cut.
+   */
+  beak?: { reach: number; way: number };
 }
 
 /**
