@@ -48,7 +48,15 @@ import {
 } from "./shapes";
 import { seamsOf, wobbleOf } from "./script";
 import { penReach, reachAlong, sweep } from "./sweep";
-import { capitalled, heavier, proportioned, type Style, serifReach, spacingOf } from "./style";
+import {
+  BASES,
+  capitalled,
+  heavier,
+  proportioned,
+  type Style,
+  serifReach,
+  spacingOf,
+} from "./style";
 import type { Spine, Stroke, Terminal } from "./types";
 
 export interface Drawn {
@@ -338,10 +346,30 @@ export function makeLetter(
    * font would open by them.
    */
   const joinsUp = style.parts.script.on && built?.width !== undefined;
+  /*
+   * A slanted letter is spaced as it stands upright and then leaned in that
+   * space, as an oblique is: the shear about the middle of the x-height keeps
+   * the middle of each letter where it was, so the rhythm is the upright's.
+   * Spaced off the leaned drawing instead, every letter whose descender swung
+   * left past its edge (a g, a y) or whose ascender or bar swung right (an f,
+   * a t, an E, a one) took extra room for it, and the line opened into holes
+   * beside exactly those letters.
+   */
+  const upright =
+    lean !== 0 && obliqued(style) && !style.metrics.monospaced && !laid && !joinsUp
+      ? wobbled(inked.flat())
+      : null;
+  const measured = upright ?? solid;
   const shortfall =
-    solid.length > 0 && !joinsUp ? Math.max(0, spacingOf(style) - contoursBounds(solid).xMin) : 0;
+    measured.length > 0 && !joinsUp
+      ? Math.max(0, spacingOf(style) - contoursBounds(measured).xMin)
+      : 0;
   const placed = slid(cut, shortfall);
-  const placedSolid = solid === cut ? placed : slid(solid, shortfall);
+  const placedSolid = upright
+    ? slid(upright, shortfall)
+    : solid === cut
+      ? placed
+      : slid(solid, shortfall);
 
   let advanceWidth: number;
   /*
@@ -530,6 +558,16 @@ function shoved(contours: Contour[], by: Vec2): Contour[] {
 }
 
 /** How far a letter leans, as a shear rather than as an angle. */
+/**
+ * Whether a face is slanted from an upright one -- an oblique, spaced as its
+ * upright is -- rather than drawn slanted, as a hand is, whose letters are
+ * placed by where their leaning ink falls.
+ */
+function obliqued(style: Style): boolean {
+  const base = BASES.find((one) => one.name === style.name);
+  return !base?.metrics.slant;
+}
+
 function leanOf(style: Style): number {
   return style.metrics.slant ? Math.tan((style.metrics.slant * Math.PI) / 180) : 0;
 }

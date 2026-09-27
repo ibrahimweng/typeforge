@@ -109,6 +109,19 @@ export interface Metrics {
    */
   heavyCounter?: number;
   /**
+   * Below the pen `from`, each bowl and arch is held as wide through its
+   * middle as at `from`, widening by `grow` of it over the whole way to no pen
+   * at all: see `frame` in `letters/common.ts`. Left out, a lighter pen widens
+   * the bowls (their insides grow taller) and narrows the arches (the counter
+   * is kept), which is how every other face here thins.
+   */
+  lightHeld?: { from: number; grow: number };
+  /**
+   * The word space as shares of the x-height, at the face's own pen and at
+   * its Black (see `blackness`), held past it. Left out, it follows the arch.
+   */
+  wordSpace?: [number, number];
+  /**
    * The most contrast a heavy weight takes on: see `heavierPen`. Left out,
    * the horizontals go on thinning to the pen's limit, which on a face with
    * little contrast of its own reads as a fat face rather than as an Ultra.
@@ -624,11 +637,17 @@ export const SANS: Style = {
     heavyCounter: 1.3,
     heavyContrast: 0.42,
     capitalContrast: 0.61,
+    // Geist Thin's o and n are both a little wider down the stroke than the Regular's.
+    lightHeld: { from: 87, grow: 0.085 },
+    // Geist's word space: 250 at the Thin and the Regular, 221 at the Black.
+    wordSpace: [250 / 530, 221 / 530],
     /* Geist Regular's own sidebearings, over 80 (a capital's over 80 after its 12 of extra). */
     sides: {
       a: [0.59, 0.44],
       c: [0.59, 0.46],
       f: [0.75, 0.53],
+      // Its foot reaches back to the letter before (Geist -5); held inside.
+      j: [0.1, 1],
       k: [1, 0.59],
       l: [1, 0.5],
       v: [0.28, 0.28],
@@ -675,6 +694,7 @@ export const SANS: Style = {
       // Geist's reaches past both its sides (-10 and -5); held just inside.
       numbersign: [0.1, 0.1],
       percent: [0.59, 0.59],
+      asterisk: [0.59, 0.59],
       at: [0.61, 0.61],
     },
     /*
@@ -751,6 +771,7 @@ export const SANS: Style = {
     r: "grotesque",
     j: "grotesque",
     t: "grotesque",
+    u: "grotesque",
     y: "grotesque",
     G: "grotesque",
     J: "grotesque",
@@ -784,6 +805,7 @@ export const SANS: Style = {
     slash: "grotesque",
     numbersign: "grotesque",
     percent: "grotesque",
+    asterisk: "grotesque",
     at: "grotesque",
     zero: "grotesque",
     two: "grotesque",
@@ -3058,9 +3080,23 @@ export function heavier(style: Style): Style {
  * weight: only the shape of the three arcs changes.
  */
 function rounder(style: Style): Style["parts"] {
-  if (style.metrics.heavyContrast === undefined) return style.parts;
   const drawn = style.metrics.drawnSuperness ?? style.parts.bowl.superness;
   if (!(drawn > 0)) return style.parts;
+  /*
+   * And lighter than a face that holds its widths below its own pen
+   * (`metrics.lightHeld`), towards the plain ellipse Geist Thin's o is: the
+   * superness the Regular was tuned to, drawn with a hairline, gave flat
+   * flanks and tight shoulders -- rounded rectangles for the o, the % and
+   * the loop of the &.
+   */
+  const held = style.metrics.lightHeld;
+  if (held && style.pen.weight < held.from) {
+    const light = Math.min(1, (held.from - style.pen.weight) / (held.from - 30));
+    const superness = drawn * (1 - 0.7 * light);
+    if (superness === style.parts.bowl.superness) return style.parts;
+    return { ...style.parts, bowl: { ...style.parts.bowl, superness } };
+  }
+  if (style.metrics.heavyContrast === undefined) return style.parts;
   const t = Math.min(1, Math.max(0, (blackness(style) - 0.67) / 0.63));
   // Never quite to nought, where an arch is drawn from other pieces: see `archSpine`.
   const superness = drawn * Math.max(0.04, 1 - t * t * (3 - 2 * t));

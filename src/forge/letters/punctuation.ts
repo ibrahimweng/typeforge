@@ -270,8 +270,19 @@ function crescent(f: Frame, side: 1 | -1): Stroke[] {
  */
 function upperStop(f: Frame, radius: number): number {
   if (!squareDots(f)) return f.x - radius;
-  // Never nearer the full stop than two thirds of a dot, nor above the x-height.
-  return Math.min(Math.max(f.x * 0.873 - radius, radius * 3.7), f.x - radius);
+  /*
+   * Its top rises a little as the pen thins and more as it grows: 0.90 of
+   * the x-height at Geist Thin, 0.87 at the Regular, 0.96 at the Black -- a
+   * heavy colon held at the Regular's height set its two dots nearly
+   * touching. Never nearer the full stop than two thirds of a dot, nor above
+   * the x-height.
+   */
+  const stem = f.half * 2;
+  const share =
+    stem < 86
+      ? 0.874 + 0.028 * Math.min(1, (86 - stem) / 56)
+      : 0.874 + 0.09 * Math.min(1, (stem - 86) / 86);
+  return Math.min(Math.max(f.x * share - radius, radius * 3.7), f.x - radius);
 }
 
 /**
@@ -281,7 +292,17 @@ function upperStop(f: Frame, radius: number): number {
 function squareComma(f: Frame, radius: number): Stroke[] {
   const side = radius * 2;
   const top = at(f.edge + side * 0.12, radius);
-  const foot = at(f.edge - side * 0.25, Math.min(f.desc * 0.95, -radius * 2.2));
+  /*
+   * Its tail as deep as Geist's: 125 under the line at the Thin, 155 at the
+   * Regular, 159 at the Black and no deeper past it. Drawn as deep as the
+   * dot is big, a Black's ran well below the descender.
+   */
+  const stem = f.half * 2;
+  const depth =
+    125 +
+    30 * Math.min(1, Math.max(0, (stem - 30) / 56)) +
+    4 * Math.min(1, Math.max(0, (stem - 86) / 86));
+  const foot = at(f.edge - side * 0.25, -(depth / 530) * f.x);
   return [
     dot(f, at(f.edge, radius), radius),
     {
@@ -298,6 +319,16 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   space: (style) => {
     const f = frame(style);
+    /*
+     * A face measured off another's word space keeps it (`metrics.wordSpace`):
+     * Geist's is 250 at the Thin and the Regular and 221 at the Black. Taken
+     * off the arch, a Thin's shrank with its stem and its words ran together.
+     */
+    const given = f.style.metrics.wordSpace;
+    if (given) {
+      const t = Math.min(1, blackness(f.style) / 0.67);
+      return { strokes: [], width: f.x * (given[0] + (given[1] - given[0]) * t) };
+    }
     return { strokes: [], width: f.arch * 1.1 };
   },
 

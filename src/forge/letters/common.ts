@@ -446,6 +446,15 @@ export interface Frame {
    */
   bowl: number;
   /**
+   * The bowl as the pen alone would grow it at a heavy weight, before a face
+   * that holds its widths (`metrics.lightHeld`) holds it: what a letter drawn
+   * in Geist's own measures, Regular to Black, is scaled by, since those
+   * measures already carry the Black's widths.
+   */
+  grownBowl: number;
+  /** The same for a capital: see `grownBowl`. */
+  grownCapBowl: number;
+  /**
    * How high an arch reaches on this face -- the x-height, brought down by the
    * shoulder's crest. A stem that a shoulder springs from stands here, or the
    * stem pokes up past its own arch.
@@ -596,6 +605,9 @@ export interface Frame {
  */
 export const ASIDE = 0.53;
 
+/** How much narrower down the middle a held bowl is at the Black: see `frame`. */
+const HEAVY_GIVE = 0.03;
+
 export function frame(drawn: Style): Frame {
   // The style as a letter is drawn at this weight: see `blackness`.
   const style = heavier(drawn);
@@ -618,9 +630,48 @@ export function frame(drawn: Style): Frame {
    * which is what a circle is.
    */
   const bowlH = Math.max(metrics.xHeight / 2 + metrics.overshoot - upright, least);
+  /*
+   * Lighter than the face's own pen, on a face that holds its widths
+   * (`metrics.lightHeld`): each bowl and arch as wide through its middle as
+   * the regular's, widening a little as the pen thins -- Geist Thin's o and n
+   * both run five or six per cent wider down the middle of the stroke than
+   * the Regular's, so each loses about as much ink width as the other. Grown
+   * from the pen as every other face does, a thin pen made each bowl taller
+   * inside and so wider, and left each arch its counter and so narrower: the
+   * Thin's o stood a hundred units wider than its n.
+   */
+  const held = metrics.lightHeld;
+  const lighter = held && pen.weight < held.from;
+  const lightUpright = lighter
+    ? Math.abs(reachAlong(at(0, 1), penReach({ ...pen, weight: held.from })).y)
+    : upright;
+  const lightGrow = lighter ? 1 + held.grow * ((held.from - pen.weight) / held.from) : 1;
+  /*
+   * And heavier, the bowls held about as wide down the middle as the
+   * regular's too, a little under it at the Black -- Geist Black's o is 196
+   * down the stroke against the Regular's 200 -- where grown from the pen
+   * they lost a tenth and the Black's o came out narrower than its n. Never
+   * narrower than they were, past the Black, where the counters need room.
+   */
+  const heavierHeld = held && pen.weight > held.from;
+  const heldUpright = held
+    ? Math.abs(reachAlong(at(0, 1), penReach({ ...pen, weight: held.from })).y)
+    : upright;
+  const heavyKeep = heavierHeld ? 1 - HEAVY_GIVE * Math.min(1, blackness(style) / 0.67) : 1;
+  const bowlAcross = lighter
+    ? Math.max(metrics.xHeight / 2 + metrics.overshoot - lightUpright, least) * lightGrow
+    : heavierHeld
+      ? Math.max(bowlH, (metrics.xHeight / 2 + metrics.overshoot - heldUpright) * heavyKeep)
+      : bowlH;
+  const archWeight = lighter ? held.from : pen.weight;
   // In stem widths, and that is the whole of it: see `ASIDE`.
   const aside = style.parts.script.on ? pen.weight * ASIDE : 0;
   const capBowlH = Math.max(metrics.capHeight / 2 + metrics.overshoot - upright, least);
+  const capAcross = lighter
+    ? Math.max(metrics.capHeight / 2 + metrics.overshoot - lightUpright, least) * lightGrow
+    : heavierHeld
+      ? Math.max(capBowlH, (metrics.capHeight / 2 + metrics.overshoot - heldUpright) * heavyKeep)
+      : capBowlH;
   return {
     style,
     half,
@@ -631,12 +682,17 @@ export function frame(drawn: Style): Frame {
     desc: metrics.descender,
     over: metrics.overshoot,
     arch: Math.max(
-      ((metrics.counterWidth + pen.weight) / 2) * heldReach(style) * metrics.width,
+      ((metrics.counterWidth + archWeight) / 2) * lightGrow * heldReach(style) * metrics.width,
       least,
       // A joined hand's arches open with its bowls at a Black: see `heldOpen`.
       style.parts.script.on ? heldOpen(style, bowlH, upright) : 0,
     ),
-    bowl: Math.max(bowlH * wide, least, heldOpen(style, bowlH, upright)),
+    bowl: Math.max(bowlAcross * wide, least, heldOpen(style, bowlH, upright)),
+    grownBowl: Math.max(
+      (heavierHeld ? bowlH : bowlAcross) * wide,
+      least,
+      heldOpen(style, bowlH, upright),
+    ),
     crown: metrics.xHeight * style.parts.shoulder.crest,
     aside,
     bowlH,
@@ -652,7 +708,8 @@ export function frame(drawn: Style): Frame {
      * pen and three quarters there is no capital left to draw, so that is the
      * floor, and a heavy cut widens rather than closing up.
      */
-    capBowl: Math.max(capBowlH * wide, half * 1.7),
+    capBowl: Math.max(capAcross * wide, half * 1.7),
+    grownCapBowl: Math.max((heavierHeld ? capBowlH : capAcross) * wide, half * 1.7),
     capBowlH,
     square: style.parts.bowl.squareness,
     superness: style.parts.bowl.superness ?? 0,
@@ -1655,8 +1712,18 @@ export function stopRadius(f: Frame): number {
   // larger: Geist's is 109 units on a stem of 87.
   // At a Black it is barely wider than the stem -- Geist Black's is 179 on a
   // stem of 172 -- or it outweighs the letters it ends.
+  /*
+   * Geist's full stop is 59 across on a Thin stem of 30, 109 on 86 and 179 on
+   * 172: a light one is not the stem's own speck but keeps a body of about
+   * six hundredths of the x-height, and a heavy one gains a little less than
+   * the stem does.
+   */
   if (squareDots(f) && !f.style.parts.script.on) {
-    return Math.min(f.half * (1.25 - 0.3 * Math.min(1, heaviness(f))), f.x * 0.2);
+    const stem = f.half * 2;
+    const base = f.x * 0.0604;
+    const regular = base + 0.893 * Math.min(stem, 86);
+    const across = regular + 0.81 * Math.max(0, stem - 86);
+    return Math.min(across / 2, f.x * 0.2);
   }
   // A joined hand keeps the pen's own dot: its comma is run into the join.
   if (f.style.parts.script.on) return f.half * 0.95;
