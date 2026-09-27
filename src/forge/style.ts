@@ -546,7 +546,7 @@ export const SANS: Style = {
       p: 0.965,
       q: 0.965,
       r: 0.578,
-      s: 1.415,
+     
       t: 1.187,
       u: 0.976,
       v: 1.287,
@@ -570,7 +570,7 @@ export const SANS: Style = {
       P: 1.337,
       Q: 1.007,
       R: 1.326,
-      S: 1.299,
+     
       T: 1.008,
       U: 1.332,
       V: 1.076,
@@ -580,7 +580,7 @@ export const SANS: Style = {
       Z: 1.265,
       zero: 1.084,
       two: 1.052,
-      three: 1.594,
+     
       four: 1.222,
       five: 0.909,
       six: 1.059,

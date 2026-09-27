@@ -1779,6 +1779,9 @@ export function spine(
   left: number,
   heavy = true,
 ): { stroke: Stroke } {
+  if (frame.superness > 0 && frame.square < ROUND_S) {
+    return { stroke: ink(frame, grotesqueSpine(frame, height, left), frame.end, frame.end) };
+  }
   if (frame.square < ROUND_S) {
     const drawn = ink(frame, roundSpine(frame, height, left, heavy), frame.end, frame.end);
     const pen = heavy ? blackPen(frame, drawn, height) : drawn;
@@ -1820,6 +1823,73 @@ export function spine(
       frame.end,
     ),
   };
+}
+
+
+/**
+ * The run of a neo-grotesque s: two superelliptic half-bowls and a spine
+ * swung between them on two turns.
+ *
+ * Built the way Geist's is. The head comes up from a terminal just below the
+ * middle of the upper bowl, over a flat crown and down a flat left side; the
+ * side runs on a little, then turns into the spine, which crosses the letter
+ * on a straight tangent to a matching turn on the right, down into the lower
+ * bowl's side, round a flat foot and up into the tail's terminal. So the
+ * crown and the foot are the same firm superelliptic round as the o's, and the
+ * spine is a real diagonal rather than the S-curve two stacked circles leave.
+ *
+ * The lower bowl is a little wider than the upper and reaches further left, as
+ * every grotesque's s does so it does not look as if it is falling over; and
+ * the two turns are point-symmetric about the middle of the letter, so the
+ * spine passes through it. Eleven pieces or so at every weight: each is laid
+ * from fixed angles, and only the tangent's two angles move with the pen.
+ */
+function grotesqueSpine(frame: Frame, height: number, left: number): Spine {
+  const capital = height !== frame.x;
+  const top = frame.hangs(height) + frame.over;
+  const bottom = frame.sits(0) - frame.over;
+  const tall = top - bottom;
+  // Geist's s is seven tenths as wide as it is tall along its spine, its S
+  // two thirds: against the bowl's own width, so the Width control reaches it.
+  const share = capital ? 0.77 : 0.84;
+  const wide = Math.max(
+    tall * share * frame.wide + (1.45 * frame.gain * frame.x) / height,
+    frame.least * 3,
+  );
+  const leftSide = left;
+  const rightSide = left + wide;
+  const upperHalf = Math.max(tall * (capital ? 0.235 : 0.26), frame.least);
+  const lowerHalf = Math.max(tall * (capital ? 0.24 : 0.232), frame.least);
+  const upperWide = wide * 0.485;
+  const lowerWide = wide * 0.53;
+  const upper = at(leftSide + upperWide, top - upperHalf);
+  const lower = at(rightSide - lowerWide, bottom + lowerHalf);
+  // The side runs on this far before it turns into the spine.
+  const run = tall * 0.04;
+  const radius = Math.max(tall * 0.27, frame.least);
+  const turnA = at(leftSide + radius, upper.y - run);
+  const turnB = at(rightSide - radius, lower.y + run);
+  const dx = turnB.x - turnA.x;
+  const dy = turnB.y - turnA.y;
+  const apart = Math.hypot(dx, dy);
+  // Where the tangent leaves the first turn: its radius is at the angle whose
+  // projection on the line between the centres is half the gap.
+  const leave =
+    Math.atan2(dy, dx) - Math.acos(Math.min(1, (2 * radius) / Math.max(apart, 1e-9)));
+  const leaveDegrees = (leave * 180) / Math.PI;
+  const from = pointOn(turnA, radius, leaveDegrees);
+  const to = pointOn(turnB, radius, leaveDegrees + 180);
+  const headAngle = capital ? -9 : -4;
+  const tailAngle = capital ? 165 : 167;
+  return chain(
+    bend(frame, upper, upperHalf, headAngle, 180, upperWide),
+    straight(at(leftSide, upper.y), at(leftSide, turnA.y)),
+    turn(turnA, radius, 180, leaveDegrees < 180 ? leaveDegrees + 360 : leaveDegrees),
+    straight(from, to),
+    turn(turnB, radius, (((leaveDegrees + 180) % 360) + 360) % 360, 0),
+    straight(at(rightSide, turnB.y), at(rightSide, lower.y)),
+    bend(frame, lower, lowerHalf, 0, tailAngle - 360, lowerWide),
+  );
 }
 
 /**
