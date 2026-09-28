@@ -39,6 +39,7 @@ import {
 } from "./accents";
 import { reachesCast, type Cast } from "./cast";
 import { effectInk, reachesEffects, type Effects } from "./effects";
+import { hairlineWeight, risesSteeply, splitVees } from "./letters/humanist";
 import { reaches, scaleOf, type Cuts } from "./cut";
 import { shapedInk } from "./layers";
 import { assemble, hasTiles, type Kit } from "./kit";
@@ -973,7 +974,15 @@ function inkOf(stroke: Stroke, style: Style, others: Contour[] = []): Contour[] 
  * whether it is a lowercase letter, whose stems take a sloped head.
  */
 function inkAll(given: Stroke[], style: Style, name = ""): Contour[][] {
-  const strokes = style.metrics.risingHairline ? given.map(risen) : given;
+  const thinned =
+    style.metrics.risingHairline && !style.metrics.risingOwn?.includes(decidedBy(name));
+  // A text serif's vees drawn in one run are taken apart first, so their
+  // rising arms can be thinned too: see `splitVees`.
+  const strokes = thinned
+    ? (style.parts.slab.on && style.parts.slab.shape === "wedge" ? splitVees(given) : given).map(
+        risen,
+      )
+    : given;
   const capital = isCapitalLike(name);
   const small = !capital && !FIGURES.includes(name);
   const figure = FIGURES.includes(name);
@@ -1042,13 +1051,8 @@ function risen(stroke: Stroke): Stroke {
           1e-3),
   );
   if (!straightOn) return stroke;
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const rising =
-    dx * dy > 0 && Math.abs(dy) > Math.abs(dx) * 0.4 && Math.abs(dx) > Math.abs(dy) * 0.15;
-  if (!rising) return stroke;
-  const own = Math.min(Math.max(stroke.pen.own ?? stroke.pen.contrast, 0), 0.95);
-  const thin = Math.max(stroke.pen.weight * (1 - own) * 1.25, 1);
+  if (!risesSteeply(from, to)) return stroke;
+  const thin = hairlineWeight(stroke.pen);
   if (thin >= stroke.pen.weight) return stroke;
   return { ...stroke, pen: { ...stroke.pen, weight: thin, contrast: 0 } };
 }
@@ -1214,7 +1218,14 @@ function dress(
     const serifed =
       kind === "letter"
         ? onLine || Math.abs(outward.y) <= 0.35
-        : kind === "figure" && Math.abs(at.y) < 1 && outward.y < -0.9;
+        : kind === "figure" &&
+          ((Math.abs(at.y) < 1 && outward.y < -0.9) ||
+            // And a text serif's beak on a figure's arm lying along a line, its
+            // edge on the line, as Lora's seven, two and five end.
+            (end.kind === "slab" &&
+              end.shape === "wedge" &&
+              Math.abs(outward.y) <= 0.35 &&
+              lines.some((line) => Math.abs(at.y - line) <= halfWidthAcross(stroke, outward) + 1)));
     /*
      * Refused a serif, a straight end is still cut the way it would have been
      * with one: level on the line it stops on, or square across an arm. Cut
@@ -1523,7 +1534,69 @@ function teardropsFor(stroke: Stroke, swept: Contour[]): Contour[] {
       radius = Math.max(least, radius * 0.82);
       shape = tear(stroke, spine, at, u, n, outer, radius, bend);
     }
-    if (!within(shape, band)) shape = tear(stroke, spine, at, u, n, outer, least, bend);
+    if (!within(shape, band)) {
+      radius = least;
+      shape = tear(stroke, spine, at, u, n, outer, least, bend);
+    }
+    /*
+     * And never one that crosses itself: on a hairline of a very high
+     * contrast, the neck the drop leaves the stroke by is so narrow that the
+     * curve out of it rose over the drop's own closing edge -- the Serif's c
+     * at a contrast of 0.9 past a Black. Drawn again until it does not, and
+     * only taken again where it does not and still keeps to the stroke's
+     * band; a drop that already did not is left as it was.
+     */
+    const kept = radius;
+    // Asked of the drop as it will be stored, on the unit grid: a crossing
+    // too slight to see in the drawing is still one once rounded.
+    const folds = (drop: Contour) =>
+      contoursIntersect([
+        {
+          ...drop,
+          nodes: drop.nodes.map((one) => ({
+            ...one,
+            point: { x: Math.round(one.point.x), y: Math.round(one.point.y) },
+            handleIn: one.handleIn && {
+              x: Math.round(one.handleIn.x),
+              y: Math.round(one.handleIn.y),
+            },
+            handleOut: one.handleOut && {
+              x: Math.round(one.handleOut.x),
+              y: Math.round(one.handleOut.y),
+            },
+          })),
+        },
+      ]) || contoursIntersect([drop]);
+    const again: Array<[number, boolean]> = [
+      // The tail left the stroke less steeply, then closed back onto its own
+      // foot, whose edge it cannot then rise over.
+      [0.2, false],
+      [0.1, false],
+      [0, false],
+      [0.3, true],
+      [0, true],
+    ];
+    const clean = (drop: Contour) => !folds(drop) && within(drop, band);
+    if (folds(shape)) {
+      const tries = [
+        ...again.map(
+          ([pull, close]) =>
+            () =>
+              tear(stroke, spine, at, u, n, outer, kept, bend, pull, close),
+        ),
+        // And failing both, taken smaller.
+        ...[1, 2, 3, 4, 5, 6].map(
+          (k) => () => tear(stroke, spine, at, u, n, outer, Math.max(least, kept * 0.9 ** k), bend),
+        ),
+      ];
+      for (const attempt of tries) {
+        const next = attempt();
+        if (clean(next)) {
+          shape = next;
+          break;
+        }
+      }
+    }
     out.push(contourArea(shape) < 0 ? reverseContour(shape) : shape);
   }
   return out;
@@ -1722,6 +1795,11 @@ function tear(
   outer: Vec2,
   radius: number,
   bend: number,
+  // How far the tail's curve leaves the stroke along it, against its span.
+  pull = 0.3,
+  // Whether the drop closes back onto the tail's own foot rather than onto
+  // the spine: see `teardropsFor`.
+  close = false,
 ): Contour {
   const k = 0.5523 * radius;
   const add = (p: Vec2, d: Vec2, by: number): Vec2 => ({ x: p.x + d.x * by, y: p.y + d.y * by });
@@ -1767,6 +1845,9 @@ function tear(
     behind = centre;
   }
   const span = Math.hypot(top.x - meets.x, top.y - meets.y);
+  // Closed back along the edge to the drop's corner, a hair from the tail's
+  // foot, so the closing edge leaves the foot away from the tail.
+  if (close) behind = add(meets, { x: corner.x - meets.x, y: corner.y - meets.y }, 0.01);
   return {
     nodes: [
       { point: corner, handleIn: null, handleOut: add(corner, u, k), type: "corner" },
@@ -1779,7 +1860,7 @@ function tear(
       },
       {
         point: meets,
-        handleIn: add(meets, back.heading, span * 0.3),
+        handleIn: add(meets, back.heading, span * pull),
         handleOut: null,
         type: "corner",
       },
@@ -2642,27 +2723,22 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        * they were.
        */
       /*
-       * Held to the depth only while the bracket asks for no more than the
-       * depth does. Past that it grows on in step with the depth, shortened
-       * wings and all, so the Bracket control keeps working over its whole
-       * range: clamped to the depth outright, the Serif's own bracket already
-       * sat at the ceiling and the top half of the slider did nothing.
+       * And whatever the bracket asks for past the serif's own thickness
+       * carried on up the stroke, so the whole of the control does something:
+       * held to the depth alone, everything past it on the slider was the
+       * same serif. Counted from the thickness, not from the depth a short
+       * serif is cut down to, because every base's own bracket sits between
+       * the two somewhere, and counted from the depth, their defaults moved.
        */
       const asked = terminal.bracket ?? 0;
-      const thick = Math.max(thickness, 1e-9);
-      const bracketCap = refused ? deep : deep * Math.max(1, asked / thick);
-      /*
-       * A square slab's fillet runs as far along the wing as up the stem, so
-       * it stops short of the tip. A wedge's bracket is one hollow from the
-       * tip up the stem and only rises, so once it is asked for more than the
-       * depth it may climb further than the wing is long -- or the top of the
-       * slider stalls against the wing instead of against the depth.
-       */
-      const along =
-        terminal.shape === "wedge" && !refused
-          ? Math.min(0.8 * Math.max(1, asked / thick), WEDGE_CLIMB)
-          : 0.8;
-      const bracket = Math.min(asked, bracketCap, (tip - from) * along, headCap);
+      const held = Math.min(asked, deep, (tip - from) * 0.8, headCap);
+      const past = Math.max(0, asked - (terminal.thickness ?? asked));
+      // A text serif's hollow runs from its tip to wherever it meets the
+      // stem, so it can climb as far as it likes; a square serif's fillet
+      // turns along the wing too, and stops short of its tip.
+      const wedge = terminal.shape === "wedge";
+      const bracket = held + (wedge ? 0 : Math.max(0, Math.min(past, (tip - from) * 0.8 - held)));
+      const climb = wedge && !refused ? Math.min(past * BRACKET_CLIMB, headCap) : 0;
       /*
        * A face that undulates undulates here too, and the only way to say that
        * is to draw the bar as a stroke rather than as a shape.
@@ -2701,7 +2777,7 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
               inner,
               refused ? 0 : edgeLean,
               terminal.shape === "wedge",
-              along,
+              climb,
             ),
           ];
       for (const piece of shape) {
@@ -3017,6 +3093,12 @@ const node = (point: Vec2): GlyphNode => ({
 const SERIF_BITE = 0.35;
 
 /**
+ * How far up the stem a text serif's hollow climbs for each unit of bracket
+ * asked for past the serif's own thickness.
+ */
+const BRACKET_CLIMB = 2;
+
+/**
  * How deep a wedge serif is at its tip, against its depth where it meets the
  * stem. A little under half, which is where a text serif stops reading as a bar
  * and starts reading as something that tapers.
@@ -3029,9 +3111,6 @@ const WEDGE_TIP = 0.42;
 const INSIDE_REACH = 0.8;
 /** How far the handles of that hollow reach toward its corner. */
 const INSIDE_PULL = 0.6;
-
-/** How far a wedge serif's bracket may climb the stem, in lengths of its wing. */
-const WEDGE_CLIMB = 1.25;
 
 /**
  * One wing of a serif.
@@ -3061,7 +3140,7 @@ function wing(
   edge = 0,
   lean = 0,
   wedge = false,
-  climb = 0.8,
+  climb = 0,
 ): Contour {
   const across = { x: -outward.y * side, y: outward.x * side };
   const into = { x: -outward.x, y: -outward.y };
@@ -3107,7 +3186,9 @@ function wing(
   const shift = (v: number): number => lean * Math.min(v, cap);
   const edgeAt = (v: number): number => from + shift(v);
   const heldAt = (v: number): number => held + shift(v);
-  let rise = Math.min(bracket, Math.max(0, (tip - edgeAt(deep)) * climb));
+  // And on a text serif, whatever the bracket asked for past the serif's
+  // depth, climbing on up the stroke: see `BRACKET_CLIMB`.
+  let rise = Math.min(bracket, Math.max(0, (tip - edgeAt(deep)) * 0.8)) + (wedge ? climb : 0);
   /*
    * On the inside of a diagonal, no higher up the stroke than the edge is
    * followed, so the hollow arrives along the edge itself. Carried on past

@@ -17,11 +17,19 @@
 
 import { blackness, type Style } from "../style";
 import { LETTERS } from "../letters";
-import { bowl, bowlPoint, spineStart } from "../shapes";
-import { penReach, reachAlong } from "../sweep";
+import { bowl, bowlBetween, bowlPoint, spineEnd, spineStart } from "../shapes";
+import { penReach, reachAlong, sweep } from "../sweep";
+import { contoursBounds, inkRunsAt } from "@/font/geometry";
+import { contoursIntersect } from "@/font/outline";
 import type { Vec2 } from "@/font/types";
 import type { Spine, Stroke, Terminal } from "../types";
 import {
+  arm,
+  bendWidth,
+  figureWidth,
+  headingAt,
+  heavyFigure,
+  hookFrom,
   at,
   barWeight,
   bowed,
@@ -57,7 +65,15 @@ import {
   tReach,
   tStem,
   uses,
+  bookish,
 } from "./common";
+
+/** How much further round the e's tail runs than the construction's, in degrees. */
+const E_TAIL = 5;
+/** And how much shorter at the heaviest, so its aperture stays open. */
+const E_SHORT = 8;
+/** And how many degrees further round its bowl starts at the heaviest, lifting its bar. */
+const E_LIFT = 14;
 
 /** Where Lora's e has its bar, against where its H has its: 0.62 of the x-height to 0.51. */
 const EYE = 0.62 / 0.52;
@@ -86,7 +102,22 @@ export function humanistE(style: Style): Recipe {
     height += (wanted - drawn.bar) / style.metrics.xHeight;
     drawn = eyed(style, height);
   }
+  /*
+   * Past a Black, the bar lifted off the tail: held a stem and a half deep,
+   * the eye pushed the bar down until the tail's end ran up under it and the
+   * aperture was a chink, the tail's end sliced off against the bar. Begun a
+   * little further round, the bowl hangs its bar higher and shares the
+   * height between the two.
+   */
+  const f = frame(style);
+  const past = textSerif(f) ? Math.min(1, Math.max(0, (heaviness(f) - 1) / 0.5)) : 0;
+  if (past > 0) drawn = eyed(style, height, E_LIFT * past);
   return drawn.recipe;
+}
+
+/** Whether a face is a text serif's -- wedge serifs on a pen with contrast. */
+function textSerif(f: ReturnType<typeof frame>): boolean {
+  return bookish(f) && f.style.parts.slab.shape === "wedge";
 }
 
 /**
@@ -100,14 +131,20 @@ export function humanistE(style: Style): Recipe {
  * leaning in over it -- a notch above a flat-ended bar that stood proud of
  * the bowl -- and stopped inside the bowl its lower half stood out as a step.
  */
-function eyed(style: Style, height: number): { recipe: Recipe; bar: number; asked: number } {
+function eyed(
+  style: Style,
+  height: number,
+  lift = 0,
+): { recipe: Recipe; bar: number; asked: number } {
   const raised = {
     ...style,
     parts: { ...style.parts, crossbar: { ...style.parts.crossbar, height } },
   };
   const drawn = swollen(raised, LETTERS.e(raised));
-  const [across, belt, ...rest] = drawn.strokes;
-  if (!belt || belt.spine.closed) return { recipe: drawn, bar: 0, asked: 0 };
+  const [across, given, ...rest] = drawn.strokes;
+  if (!given || given.spine.closed) return { recipe: drawn, bar: 0, asked: 0 };
+  const belt =
+    lift > 0 ? inherit(given, { ...given, spine: startedLater(given.spine, lift) }) : given;
   const [run] = across.spine.segments;
   const [first] = belt.spine.segments;
   let drawnBar = across;
@@ -118,7 +155,10 @@ function eyed(style: Style, height: number): { recipe: Recipe; bar: number; aske
     const from = spineStart(belt.spine);
     const way = first.endAngle >= first.startAngle ? 1 : -1;
     const dir = at(-Math.sin(first.startAngle) * way, Math.cos(first.startAngle) * way);
-    if (dir.y > 0.2) {
+    // Cut level only where the bowl rises steeply out of the bar: at the
+    // slider's heaviest with the pen at 60 it began nearly level, and its
+    // level cut slid a corner out three times the letter's width.
+    if (dir.y > 0.5) {
       const normal = at(dir.y, -dir.x);
       const out = reachAlong(normal.x >= 0 ? normal : at(-normal.x, -normal.y), penReach(belt.pen));
       const lean = dir.x / dir.y;
@@ -149,14 +189,84 @@ function eyed(style: Style, height: number): { recipe: Recipe; bar: number; aske
   const { terminal } = style.parts;
   const foot: Terminal =
     terminal.kind === "angled" ? { kind: "angled", angle: terminal.angle } : BUTT;
+  /*
+   * And the tail carried on round, as far as Lora's reaches -- out under the
+   * side of the bowl and up to a fifth of the x-height -- to a Bold; back to
+   * the construction's by a Black; and short of it past a Black, where the
+   * heavy pen carried the tail up into the bar's underside and the aperture
+   * closed, the tail's end sliced off against the bar.
+   */
+  const f = frame(style);
+  // A text serif's: on a sans drawing this e, past a Black was left as it was.
+  const heavy = textSerif(f) ? heaviness(f) : Math.min(1, heaviness(f));
+  const more =
+    heavy <= 1
+      ? E_TAIL * Math.min(1, Math.max(0, 1 - (heavy - 0.44) / 0.56))
+      : -E_SHORT * Math.min(1, (heavy - 1) / 0.5);
+  /*
+   * On the last piece that turns: a bend ends on pieces of no length, kept so
+   * every weight has the same points, and those are moved to the new end.
+   */
+  const segments = [...belt.spine.segments];
+  let turns = segments.length - 1;
+  while (turns >= 0) {
+    const one = segments[turns];
+    if (one.kind === "arc" && Math.abs(one.endAngle - one.startAngle) > 1e-6) break;
+    turns--;
+  }
+  const lastTurn = segments[turns];
+  if (lastTurn?.kind === "arc" && more !== 0) {
+    const way = lastTurn.sweepPositive ? 1 : -1;
+    const span = Math.abs(lastTurn.endAngle - lastTurn.startAngle);
+    const by = Math.max((more * Math.PI) / 180, -span * 0.8);
+    // Carried on in the first of the pieces of no length, or cut back on the
+    // piece itself: either way the same points at every weight.
+    let end = lastTurn.endAngle + way * by;
+    if (more > 0 && turns + 1 < segments.length) {
+      segments[turns + 1] = { ...lastTurn, startAngle: lastTurn.endAngle, endAngle: end };
+      turns++;
+    } else if (more < 0) {
+      segments[turns] = { ...lastTurn, endAngle: end };
+    } else {
+      end = lastTurn.endAngle;
+    }
+    for (let k = turns + 1; k < segments.length; k++) {
+      segments[k] = { ...lastTurn, startAngle: end, endAngle: end };
+    }
+  }
+  const tail = { ...belt.spine, segments };
   return {
     recipe: {
       ...drawn,
-      strokes: [drawnBar, inherit(belt, { ...belt, start: bowlStart, end: foot }), ...rest],
+      strokes: [
+        drawnBar,
+        inherit(belt, { ...belt, spine: tail, start: bowlStart, end: foot }),
+        ...rest,
+      ],
     },
     bar: barY,
     asked: askedY,
   };
+}
+
+/**
+ * A bend begun `degrees` further round its first piece that turns, the
+ * pieces of no length before it moved onto its new start so every weight has
+ * the same points.
+ */
+function startedLater(spine: Spine, degrees: number): Spine {
+  const segments = [...spine.segments];
+  const first = segments.findIndex(
+    (one) => one.kind === "arc" && Math.abs(one.endAngle - one.startAngle) > 1e-6,
+  );
+  const turn = segments[first];
+  if (turn?.kind !== "arc") return spine;
+  const way = turn.sweepPositive ? 1 : -1;
+  const span = Math.abs(turn.endAngle - turn.startAngle);
+  const startAngle = turn.startAngle + way * Math.min((degrees * Math.PI) / 180, span * 0.8);
+  segments[first] = { ...turn, startAngle };
+  for (let k = 0; k < first; k++) segments[k] = { ...turn, startAngle, endAngle: startAngle };
+  return { ...spine, segments };
 }
 
 /**
@@ -195,18 +305,30 @@ export function humanistU(style: Style): Recipe {
   ]);
 }
 
+/** How far the t's flag sags in toward the stem, against its length. */
+const T_FLAG_SAG = 0.12;
+
 /** Lora's t stands this far up the ascender. */
 const T_TOP = 640 / 755;
 
 /**
- * The t standing well over the x-height, its stem cut off under a wedge that
- * rises from the left end of the bar to the stem's head, as Lora's does.
+ * The t standing well over the x-height under a flag, as Lora's does: the bar
+ * reaching out past the stem on the left, and from its end a flag rising in
+ * a concave sweep to the head, which is only the right part of the stem --
+ * four tenths of it across at the Regular and half at the Bold, the stem's
+ * left corner carved away under the flag.
  */
 export function humanistT(style: Style): Recipe {
   const f = frame(style);
   const radius = Math.max(roundHalf(f) * 0.34, f.least, f.half * 1.5);
   const reach = tReach(f);
-  const stem = tStem(f);
+  const stemHalf = Math.abs(reachAlong(at(1, 0), penReach(f.style.pen)).x);
+  /*
+   * The bar reaching past the stem on the left by half a stem at least, as
+   * Lora's Bold does: held to the construction's reach alone it came in with
+   * the heavier stem, and past a Black the flag had nowhere to stand.
+   */
+  const stem = Math.max(tStem(f), f.edge + stemHalf * (1 + 2 * T_OVERHANG));
   /*
    * As tall at every weight as Lora's, less the little a heavy stem's own
    * ink adds: grown by two half-pens over the x-height, a Black t stood over
@@ -214,32 +336,97 @@ export function humanistT(style: Style): Recipe {
    */
   const top = Math.max(f.asc * T_TOP + Math.max(0, f.half - 43.5) * 0.3, f.x + f.half);
   const bar = f.hangs(f.x, f.bar);
-  const barLeft = stem - reach * 0.7;
+  const barLeft = stem - Math.max(reach * 0.7, stemHalf * (1 + 2 * T_OVERHANG));
+  const stemLeft = stem - stemHalf;
+  const stemRight = stem + stemHalf;
+  // The flag's pen, and how far across it reaches from its spine along a row.
+  const flagOf = (share: number) =>
+    lighter(ink(f, straight(at(barLeft, bar), at(stem, top)), LEVEL, LEVEL), share);
   /*
-   * The wedge laid from the bar's left end up to the stem's head, and cut
-   * level with the stem at the top and with the bar at its foot, so the
-   * head is one flat and the wedge's foot lies inside the bar: cut square
-   * across themselves, the two ends stood out of the head in steps and the
-   * wedge's foot out of the bar.
+   * The arc leaves the bar flatter than its chord and reaches the head
+   * steeper, each by the angle its sag turns it through, and a pen crosses a
+   * row wider the flatter it runs: measured along the chord alone, the foot
+   * stood out past the bar's end past a Black.
    */
-  const light = lighter(ink(f, straight(at(barLeft, bar), at(stem, top)), LEVEL, LEVEL), 0.75);
-  const chordOf = (from: Vec2, to: Vec2) => {
-    const d = towards(from, to);
-    const side = reachAlong(at(-d.y, d.x), penReach(light.pen));
+  /*
+   * And no deeper than keeps the arc's radius clear of the pen: on a short
+   * flag under a heavy monoline pen, a sans drawing this t, the sag bent the
+   * arc tighter than the pen and its inner edge folded.
+   */
+  let sag = T_FLAG_SAG;
+  let turned = 2 * Math.atan(2 * sag);
+  const chordOf = (pen: Stroke, from: Vec2, to: Vec2, by: number) => {
+    const c = towards(from, to);
+    const d = at(c.x * Math.cos(by) - c.y * Math.sin(by), c.x * Math.sin(by) + c.y * Math.cos(by));
+    const side = reachAlong(at(-d.y, d.x), penReach(pen.pen));
     return Math.abs(side.x - (side.y / d.y) * d.x);
   };
-  // Its head's left corner on the stem's left edge, and its foot's on the
-  // bar's left end.
-  const stemHalf = Math.abs(reachAlong(at(1, 0), penReach(f.style.pen)).x);
-  let wedgeTop = at(stem, top);
-  let foot = at(barLeft, bar);
+  /*
+   * Drawn at the weight that makes its head the share of the stem Lora's
+   * is, its right corner on the stem's right edge and its foot on the bar's
+   * left end, each found again as the other moves.
+   */
+  let pen = flagOf(0.75);
+  let wedgeTop = at(stemRight, top);
+  const crossed = crossbar(f, barLeft, stem + reach);
+  const barTop = bar + Math.abs(reachAlong(at(0, 1), penReach(crossed.pen)).y);
+  // Its foot cut halfway up the bar, so it sweeps out to meet the bar's end.
+  const footY = bar + (barTop - bar) * T_FOOT_RISE;
+  let foot = at(barLeft, footY);
   for (let pass = 0; pass < 6; pass++) {
-    const chord = chordOf(foot, wedgeTop);
-    wedgeTop = at(stem - stemHalf + chord, top);
-    foot = at(barLeft + chord + f.half * 0.15, bar);
+    const chord = chordOf(pen, foot, wedgeTop, turned);
+    pen = lighter(pen, Math.min(1.2, (T_HEAD * stemHalf) / chord));
+    wedgeTop = at(stemRight - chordOf(pen, foot, wedgeTop, turned), top);
+    foot = at(barLeft + chordOf(pen, foot, wedgeTop, -turned) + f.half * 0.15, footY);
+    const length = Math.hypot(wedgeTop.x - foot.x, wedgeTop.y - foot.y);
+    sag = Math.min(T_FLAG_SAG, length / (8 * 1.4 * (pen.pen.weight / 2)));
+    turned = 2 * Math.atan(2 * sag);
   }
-  const pen = light;
-  const wedge = inherit(pen, { ...pen, spine: straight(foot, wedgeTop) });
+  /*
+   * Bowed less, down to all but straight, where the bow folds the flag's
+   * level ends over themselves: a short, shallow flag on a face with a taller
+   * x-height, where each cut slides its corner past the first piece.
+   */
+  const flagWith = (bow: number) =>
+    inherit(pen, { ...pen, spine: inPieces(bowed(f, foot, wedgeTop, -bow), 3) });
+  let wedge = flagWith(sag);
+  for (let bow = sag / 2; bow > 1e-3 && contoursIntersect(sweep(wedge)); bow /= 2) {
+    wedge = flagWith(bow);
+  }
+  if (contoursIntersect(sweep(wedge))) wedge = flagWith(1e-4);
+  /*
+   * The stem's head cut to slope down to the left, from its right corner to
+   * where its left edge goes in under the flag: as deep as the cut can go
+   * while it stays inside the flag's inner edge all the way up, since the
+   * flag is concave and a cut carried past it opened a sliver of paper
+   * between the two.
+   */
+  const flagInk = sweep(wedge);
+  const width = stemRight - stemLeft;
+  const innerAt = (y: number) => {
+    const runs = inkRunsAt(flagInk, y, "y", 16);
+    return runs.length > 0 ? Math.max(...runs.map((run) => run[1])) : -Infinity;
+  };
+  const covers = (y: number) =>
+    inkRunsAt(flagInk, y, "y", 16).some(([from, to]) => from <= stemLeft + 0.5 && to >= stemLeft);
+  let sink = 0;
+  let fallback = 0;
+  for (let depth = top - barTop; depth > 0; depth -= (top - barTop) / 48) {
+    let inside = true;
+    for (let k = 1; k < 16 && inside; k++) {
+      const y = top - (depth * k) / 16;
+      const cut = stemRight - (width * k) / 16;
+      inside = cut <= innerAt(y) + 0.5;
+    }
+    if (!inside) continue;
+    fallback ||= depth;
+    // And the cut's low corner in under the flag, not standing out past it.
+    if (covers(top - depth)) {
+      sink = depth;
+      break;
+    }
+  }
+  sink ||= fallback;
   return finish(f, [
     ink(
       f,
@@ -248,13 +435,20 @@ export function humanistT(style: Style): Recipe {
         // Round the foot and on up into the tail, as Lora's is.
         inPieces(turn(at(stem + radius, f.dip(0) + radius), radius, 180, 305), 2),
       ),
-      LEVEL,
+      { ...LEVEL, sink },
       f.end,
     ),
     wedge,
-    crossbar(f, barLeft, stem + reach),
+    crossed,
   ]);
 }
+
+/** Lora's t head against its stem: 0.41 at the Regular, 0.53 at the Bold. */
+const T_HEAD = 0.47;
+/** How far up the bar the t's flag stands, from the bar's middle to its top. */
+const T_FOOT_RISE = 0.5;
+/** How far the t's bar reaches past its stem on the left, at least, against the stem. */
+const T_OVERHANG = 0.45;
 
 /**
  * The U whose right side is a hairline: the left stem comes down heavy and
@@ -525,7 +719,7 @@ export function humanistG(style: Style): Recipe {
   const loopH = Math.max((top - bottom) / 2, f.least);
   const loop = at(left + loopHalf, bottom + loopH);
   const roundness = 1 - f.square;
-  const leaves = bowlPoint(upper, upperW, upperH, roundness, f.half, 250 - 25 * heavy, f.curve);
+  const leaves = bowlPoint(upper, upperW, upperH, roundness, f.half, 260 - 25 * heavy, f.curve);
   const lands = bowlPoint(loop, loopHalf, loopH, roundness, f.half, 140, f.curve);
   // The ear, out of the bowl's top right, up over the x-height and down into its drop.
   const from = bowlPoint(upper, upperW, upperH, roundness, f.half, 22, f.curve);
@@ -553,7 +747,7 @@ export function humanistG(style: Style): Recipe {
           // In two pieces at every weight, however little a heavy one turns.
           ink(
             f,
-            inPieces(bowed(f, leaves, lands, Math.max(LINK_BOW - 0.12 * heavy, 0.06)), 2),
+            inPieces(bowed(f, leaves, lands, -Math.max(LINK_BOW - 0.12 * heavy, 0.06)), 2),
             BUTT,
             BUTT,
           ),
@@ -568,7 +762,7 @@ export function humanistG(style: Style): Recipe {
 }
 
 /** How far the g's link swings out to the left of its chord. */
-const LINK_BOW = 0.35;
+const LINK_BOW = 0.3;
 /** How far the g's ear arches over its chord. */
 const EAR_BOW = 0.45;
 
@@ -937,6 +1131,156 @@ export function humanistCapitalW(style: Style): Recipe {
 }
 
 /**
+ * The vees drawn in one run -- the construction's v, V and Y, the M's
+ * middle, the w's and W's two -- taken apart into one stroke a piece on a
+ * text serif whose rising strokes are hairlines (see `inkAll` in
+ * `build.ts`), so each rising piece can be drawn light as Lora's are: its
+ * v's rising arm is 52 units across against the falling arm's 91, where the
+ * one run drew both on the same pen.
+ *
+ * Each piece keeps the one run's points: at every corner the two outer edges
+ * still meet where they met, on the line the vee stands on or hangs from, so
+ * each spine is laid again to put its outer edge through its corners at its
+ * own weight, and each end is cut along its neighbour's outer edge, the two
+ * meeting in the same mitred point. Cut level on the line instead, a flat
+ * narrower than the heavy arm left that arm's inside corner standing out
+ * past the light one, and past a Black the foot of the v was an X.
+ *
+ * And a rising arm run on into a tail, as the hooked y's is, drawn light.
+ */
+/**
+ * Whether a straight run rises to the right steeply enough to be drawn as a
+ * hairline: not so flat it reads as a bar, not so steep it reads as a stem.
+ */
+export function risesSteeply(from: Vec2, to: Vec2): boolean {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  return dx * dy > 0 && Math.abs(dy) > Math.abs(dx) * 0.4 && Math.abs(dx) > Math.abs(dy) * 0.15;
+}
+
+/** The weight a rising stroke is drawn at as a hairline: a pen's thin stroke, and never nothing. */
+export function hairlineWeight(pen: Stroke["pen"]): number {
+  const own = Math.min(Math.max(pen.own ?? pen.contrast, 0), 0.95);
+  return Math.max(pen.weight * (1 - own) * 1.25, 1);
+}
+
+export function splitVees(given: Stroke[]): Stroke[] {
+  return given.flatMap((stroke) => {
+    const segments = stroke.spine.segments;
+    const thinWeight = hairlineWeight(stroke.pen);
+    if (thinWeight >= stroke.pen.weight) return [stroke];
+    const thinPen = { ...stroke.pen, weight: thinWeight, contrast: 0, own: 0 };
+    const rises = risesSteeply;
+    const [first, ...rest] = segments;
+    // The y's arm and tail.
+    if (
+      first?.kind === "line" &&
+      rest.length > 0 &&
+      rest.every((one) => one.kind === "arc") &&
+      rises(first.from, first.to)
+    ) {
+      return [inherit(stroke, { ...stroke, pen: thinPen })];
+    }
+    if (stroke.spine.closed || segments.length < 2) return [stroke];
+    if (!segments.every((one) => one.kind === "line")) return [stroke];
+    const points = [
+      segments[0].kind === "line" ? segments[0].from : at(0, 0),
+      ...segments.map((one) => (one.kind === "line" ? one.to : at(0, 0))),
+    ];
+    const n = segments.length;
+    const dirs = segments.map((_, i) => towards(points[i], points[i + 1]));
+    // Steep pieces only, and at least one of them rising: not an arm and a
+    // bar, as the 4's diagonal and foot are.
+    if (dirs.some((d) => Math.abs(d.y) < 0.37)) return [stroke];
+    if (!segments.some((_, i) => rises(points[i], points[i + 1]))) return [stroke];
+    const pens = segments.map((_, i) => (rises(points[i], points[i + 1]) ? thinPen : stroke.pen));
+    const leftOf = (d: Vec2) => at(-d.y, d.x);
+    const cross = (u: Vec2, v: Vec2) => u.x * v.y - u.y * v.x;
+    // Which side of the run is outside each corner: the right of the way it
+    // travels where it turns left, and the other way about.
+    const outside = (k: number) => (cross(dirs[k - 1], dirs[k]) > 0 ? -1 : 1);
+    // A piece's edge on one side, as the sweep draws it.
+    const edge = (pen: Stroke["pen"], d: Vec2, side: number) => {
+      const r = reachAlong(leftOf(d), penReach(pen));
+      return at(r.x * side, r.y * side);
+    };
+    // Two lines' crossing; where they run parallel, where the first starts.
+    const meet = (p: Vec2, u: Vec2, q: Vec2, v: Vec2) => {
+      const across = cross(u, v);
+      if (Math.abs(across) < 1e-9) return p;
+      const t = cross(at(q.x - p.x, q.y - p.y), v) / across;
+      return at(p.x + u.x * t, p.y + u.y * t);
+    };
+    // Where the one run's outer edges met at each corner.
+    const tips: Vec2[] = [];
+    for (let k = 1; k < n; k++) {
+      const side = outside(k);
+      const a = edge(stroke.pen, dirs[k - 1], side);
+      const b = edge(stroke.pen, dirs[k], side);
+      tips[k] = meet(
+        at(points[k].x + a.x, points[k].y + a.y),
+        dirs[k - 1],
+        at(points[k].x + b.x, points[k].y + b.y),
+        dirs[k],
+      );
+    }
+    // Each spine laid again so its outer edge runs through its corners' tips
+    // at its own weight; the run's two ends stay where they were.
+    const lines = segments.map((_, i) => {
+      let d = dirs[i];
+      let from = points[i];
+      for (let pass = 0; pass < 4; pass++) {
+        const start =
+          i === 0
+            ? points[0]
+            : (() => {
+                const e = edge(pens[i], d, outside(i));
+                return at(tips[i].x - e.x, tips[i].y - e.y);
+              })();
+        const end =
+          i === n - 1
+            ? points[n]
+            : (() => {
+                const e = edge(pens[i], d, outside(i + 1));
+                return at(tips[i + 1].x - e.x, tips[i + 1].y - e.y);
+              })();
+        d = towards(start, end);
+        from = start;
+      }
+      return { from, d };
+    });
+    // Each end cut along its neighbour's outer edge.
+    const outerLine = (i: number, side: number) => {
+      const e = edge(pens[i], lines[i].d, side);
+      return { p: at(lines[i].from.x + e.x, lines[i].from.y + e.y), u: lines[i].d };
+    };
+    const cutAt = (i: number, k: number, outward: Vec2) => {
+      const other = k === i ? i - 1 : i + 1;
+      const along = outerLine(other, outside(k));
+      const point = meet(lines[i].from, lines[i].d, along.p, along.u);
+      const shift = reachAlong(leftOf(outward), penReach(pens[i]));
+      const facing = cross(outward, along.u);
+      const slide = Math.abs(facing) < 1e-9 ? 0 : -cross(shift, along.u) / facing;
+      const angle = (Math.atan(slide / penReach(pens[i]).across) * 180) / Math.PI;
+      return { point, terminal: { kind: "angled", angle } as Terminal };
+    };
+    return segments.map((_, i) => {
+      const d = lines[i].d;
+      const start =
+        i === 0 ? { point: points[0], terminal: stroke.start } : cutAt(i, i, at(-d.x, -d.y));
+      const end = i === n - 1 ? { point: points[n], terminal: stroke.end } : cutAt(i, i + 1, d);
+      return inherit(stroke, {
+        ...stroke,
+        pen: pens[i],
+        spine: straight(start.point, end.point),
+        start: start.terminal,
+        end: end.terminal,
+      });
+    });
+  });
+}
+
+/**
  * The K and the k as a broad nib draws them: a hairline arm running down
  * from its serif into the stem, and a full leg leaving the arm a third of
  * the way out from the stem and running down to its own serif, as Lora's
@@ -960,10 +1304,12 @@ function kay(
     hairlined(ink(f, straight(arm, into), f.end, BUTT), 0.62),
     // Bowed a little and cut level on the line, as Lora's leg flares into
     // its end: on a foot serif, the serif's inside wing stood out as a spur.
-    ink(f, bowed(f, leaves, at(foot.x + f.half * 0.4, foot.y), R_LEG_BOW * 0.8), BUTT, LEVEL),
+    ink(f, bowed(f, leaves, at(foot.x + f.half * 0.4, foot.y), K_LEG_BOW), BUTT, LEVEL),
   ]);
 }
 
+/** How far the K's leg bows off its chord: up and to the right. */
+const K_LEG_BOW = 0.08;
 /** How far out along the arm the leg leaves it, from the stem. */
 const K_LEAVES = 0.3;
 /** How far out the leg's foot stands against the arm's reach. */
@@ -1056,20 +1402,31 @@ function bookSpine(
   const slope = 30 - S_BEND - (30 - S_BEND) * Math.min(1, didone);
   let shape = laid(width / 2, width / 2.6, 30);
   let best = Infinity;
-  for (let k = 0; k <= 10; k++) {
-    // Narrower than asked, where that is what keeps the bowls round.
-    const a = (width / 2) * (1 - 0.3 * (k / 10));
+  /*
+   * Narrower than asked, where that is what keeps the bowls round -- and on a
+   * text face as far again, where that is what keeps the spine running
+   * forward: past a Black the widened s asked for bowls too flat for a spine
+   * with so little fall to cross them, and the search took a spine that
+   * crossed half of them, the lower bowl standing back under the upper one
+   * in an s that leaned like an italic. A didone keeps the old reach, whose
+   * counters close before its spine leans.
+   */
+  const narrowest = didone > 0 ? 10 : 20;
+  // And a spine allowed to lie flatter, a Black's, where it has little to fall.
+  const flatter = didone > 0 ? 0 : 8;
+  for (let k = 0; k <= narrowest; k++) {
+    const a = (width / 2) * (1 - 0.6 * (k / 20));
     const most = Math.min(a * 2, tall / 2);
     for (let i = 0; i <= 40; i++) {
       const b = most - (most - a / 2) * (i / 40);
-      for (let degrees = 0; degrees <= 30 - S_BEND / 2; degrees += 1) {
+      for (let degrees = 0; degrees <= 30 - S_BEND / 2 + flatter; degrees += 1) {
         const tried = laid(a, b, degrees);
         if (!(tried.r.side > 0 && tried.r.crown > 0)) continue;
         const cost =
           ((tried.across - 2 * a) / a) ** 2 * 40 +
           (a / b - 1.3) ** 2 +
           ((slope - degrees) / 30) ** 2 * 0.5 +
-          (k / 10) ** 2 * 3 +
+          (k / 20) ** 2 * 12 +
           (Math.max(0, roundest - tried.r.side) / roundest) ** 2 * 200 +
           (Math.max(0, tall * 0.05 - tried.fall) / tall) ** 2 * 400;
         if (cost < best) {
@@ -1172,8 +1529,14 @@ const S_BEND = 24;
 
 /** How much lighter the lowercase s is drawn at a Black than its stem, along its level runs. */
 const S_LIGHTER = 0.2;
-/** And how much lighter across its uprights. */
-const S_UPRIGHT = 0.5;
+/**
+ * And how much lighter across its uprights: no more than keeps the counters
+ * open now the spine runs forward (see `bookSpine`) -- at a half, the Black's
+ * s was a hairline letter between an o and an e.
+ */
+const S_UPRIGHT = 0.35;
+/** A didone's, whose bowls turn on a pen five times as wide as it is deep. */
+const S_DIDONE_UPRIGHT = 0.5;
 
 /** Lora's s spine against the stem the construction's pen gives it. */
 const S_SPINE = 1.25;
@@ -1280,6 +1643,8 @@ function bookS(style: Style, capital: boolean): Recipe {
   // Past the Bold only: Lora's Bold s is as heavy as its n.
   // The capital has the cap height to turn in, and is not lightened.
   const heavy = capital ? 0 : Math.min(1, Math.max(0, heaviness(f) - 0.5));
+  // A didone's s as it was: see `S_UPRIGHT`.
+  const upright = f.style.pen.contrast > 0.6 ? S_DIDONE_UPRIGHT : S_UPRIGHT;
   return finish(
     f,
     [
@@ -1291,15 +1656,10 @@ function bookS(style: Style, capital: boolean): Recipe {
        */
       hairlined(
         lighter(
-          ink(
-            f,
-            bookSpine(f, height, f.edge, width, f.half * (1 - S_UPRIGHT * heavy)),
-            f.end,
-            f.end,
-          ),
+          ink(f, bookSpine(f, height, f.edge, width, f.half * (1 - upright * heavy)), f.end, f.end),
           1 - S_LIGHTER * heavy,
         ),
-        (1 - S_UPRIGHT * heavy) / (1 - S_LIGHTER * heavy),
+        (1 - upright * heavy) / (1 - S_LIGHTER * heavy),
       ),
     ],
     true,
@@ -1317,30 +1677,291 @@ export function humanistCapitalS(style: Style): Recipe {
 }
 
 /**
- * The seven as Lora's: the arm running out to the right and the stem leaving
- * it in one bowed stroke that stands more upright as it falls, ending on the
- * line in a round tail rather than on a foot serif. The construction's
- * straight stem stood on a serif, as an l's does, and read as a letter.
+ * The G as Lora's: the bowl carried round into a short upright on the right
+ * that stands to half the cap height under a serif reaching both ways, as a
+ * foot does upside down.
+ *
+ * The spurred G it is drawn from (`alternates.ts`) stood its upright on the
+ * bowl at 302 degrees, half a stem left of Lora's, and left its top a plain
+ * cut: an upright stopping in mid-air wears no serif.
  */
-export function humanistSeven(style: Style): Recipe {
+export function humanistCapitalG(style: Style): Recipe {
   const f = frame(style);
-  const recipe = LETTERS.seven(style);
-  const [only] = recipe.strokes;
-  const [arm, fall] = only?.spine.segments ?? [];
-  if (arm?.kind !== "line" || fall?.kind !== "line") return recipe;
-  // The round cap on a curved end reaches only a few units on past it.
-  const end = at(fall.to.x + f.half * 0.4, f.dip(0) + 5);
+  const centre = at(f.edge + f.capBowl, f.cap / 2);
+  const roundness = 1 - f.square;
+  const clear = (((f.half * 2.4) / f.capBowlH) * 180) / Math.PI;
+  const opens = Math.max(32, clear);
+  const joins = G_JOINS;
+  const foot = bowlPoint(centre, f.capBowl, f.capBowlH, roundness, f.half, joins, f.curve);
+  const bowl = bowlBetween(centre, f.capBowl, f.capBowlH, roundness, f.half, opens, joins, f.curve);
+  const end = spineEnd(bowl);
+  const heading =
+    [...bowl.segments]
+      .reverse()
+      .map((segment) => headingAt(segment, "end"))
+      .find((way) => Math.hypot(way.x, way.y) > 0.5) ?? at(1, 0);
+  const pen = penReach(f.style.pen);
+  const reach = reachAlong(at(-heading.y, heading.x), pen);
+  const outer = heading.x * reach.y - heading.y * reach.x < 0 ? reach : at(-reach.x, -reach.y);
+  const corner = at(end.x + outer.x, end.y + outer.y);
+  const carry = heading.x > 0.05 ? (2 * outer.x) / heading.x : 0;
+  const upright = f.square < 0.01 && carry > 0;
+  const cut = upright ? (Math.atan(carry / (2 * pen.across)) * 180) / Math.PI : 0;
+  const side = Math.abs(reachAlong(at(1, 0), pen).x);
+  const stand = upright ? at(corner.x - side, corner.y + 1) : foot;
+  /*
+   * The serif: a hairline laid across the upright's head, its top where
+   * Lora's is, reaching out each side as far as a foot serif reaches past a
+   * stem -- and held off the bowl's inside on the left, so a heavy weight's
+   * does not run into the counter's wall.
+   */
+  const slab = f.end.kind === "slab" ? f.end : null;
+  const drawnThin = thin(f, straight(at(0, 0), at(1, 0)), BUTT, BUTT);
+  const thinDeep = Math.abs(reachAlong(at(0, 1), penReach(drawnThin.pen)).y);
+  // As deep as the face's own serifs, no deeper than its hairline.
+  const serif = slab ? lighter(drawnThin, Math.min(1, slab.thickness! / 2 / thinDeep)) : drawnThin;
+  const deep = Math.abs(reachAlong(at(0, 1), penReach(serif.pen)).y);
+  const top = Math.max(f.cap * G_TOP - deep, foot.y + f.half * 2);
+  const wing = slab ? slab.projection! * G_WING : f.half * 0.6;
+  return finish(
+    f,
+    [
+      ink(f, bowl, f.end, upright ? { kind: "angled", angle: cut } : BUTT),
+      ink(f, straight(stand, at(stand.x, top)), BUTT, LEVEL),
+      inherit(serif, {
+        ...serif,
+        spine: straight(at(stand.x - side - wing, top), at(stand.x + side + wing, top)),
+      }),
+    ],
+    true,
+  );
+}
+
+/** Where on its bowl the G's upright stands, in degrees round from the right. */
+const G_JOINS = 312;
+/** The top of the G's serif, against the cap height: Lora's is at 0.49. */
+const G_TOP = 0.49;
+/** How far the G's serif reaches past its upright each side, against a foot serif's: as far, as Lora's does. */
+const G_WING = 1;
+
+/** The least the question mark's neck turns on, against half the pen. */
+const Q_TURN = 1.3;
+
+/**
+ * The question mark as Lora's: the hook carried round and down, and the neck
+ * leaving it down to the left and bending back to stand upright over the dot
+ * -- one S from the hook's end to the neck's foot, where the construction's
+ * neck was a straight slant ending in mid-air at an angle.
+ *
+ * Otherwise the construction's (see `punctuation.ts`): the hook no bigger
+ * than leaves the neck room to leave it on a tangent, the neck stopping
+ * clear of the dot, and the dot under the neck's foot.
+ */
+export function humanistQuestion(style: Style): Recipe {
+  const f = frame(style);
+  const radiusDot = stopRadius(f);
+  const neck = Math.max(f.cap * 0.3, radiusDot * 2 + f.half * 0.9);
+  const crest = f.crest(f.cap);
+  const radius = Math.max(Math.min(figureWidth(f) * 0.42, (crest - neck) / 2.2), f.least);
+  const centre = at(f.edge + radius, crest - radius);
+  let foot = at(centre.x, Math.min(neck, centre.y - radius * 1.15));
+  /*
+   * The neck as a second circle touching the hook's from outside, turned the
+   * other way, whose lowest-left point is the neck's foot, travelling
+   * straight down: the circle through the foot with its centre level with it
+   * and its edge on the hook's. Where the two touch, the hook hands over.
+   */
+  const b = centre.y - foot.y;
+  let r = (b * b - radius * radius) / (2 * radius);
+  /*
+   * No tighter than the pen turns cleanly: past a Bold the hook sits so low
+   * over the dot that the neck's circle came down to the pen's own half, and
+   * held there it no longer touched the hook -- a notch at the hand-over.
+   * Held wider, the foot moves out to the right until the two touch again.
+   */
+  const least = Math.max(f.least, f.half * Q_TURN);
+  if (r < least) {
+    r = least;
+    const reach = Math.sqrt(Math.max(0, (radius + r) ** 2 - b * b));
+    foot = at(centre.x - (r - reach), foot.y);
+  }
+  const other = at(foot.x + r, foot.y);
+  const apart = Math.hypot(other.x - centre.x, other.y - centre.y);
+  const touch = at(
+    centre.x + ((other.x - centre.x) * radius) / apart,
+    centre.y + ((other.y - centre.y) * radius) / apart,
+  );
+  const degrees = (from: Vec2, to: Vec2) =>
+    (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI;
+  const leaves = degrees(centre, touch);
+  const turned = turn(centre, radius, hookFrom(f), leaves);
+  const hook = {
+    ...turned,
+    segments: turned.segments.map((segment) =>
+      segment.kind === "arc" ? { ...segment, pieces: 3 } : segment,
+    ),
+  };
+  let enters = degrees(other, touch);
+  if (enters < 0) enters += 360;
   return finish(f, [
-    inherit(only, {
-      ...only,
-      spine: chain(straight(arm.from, arm.to), bowed(f, arm.to, end, SEVEN_BOW)),
-      end: { kind: "round" },
-    }),
+    ink(f, chain(hook, inPieces(turn(other, r, enters, 180), 2)), f.end, f.end),
+    dot(f, at(foot.x, radiusDot), radiusDot),
   ]);
 }
 
-/** How far the seven's stem bows off its chord, and which way: out to the right. */
-const SEVEN_BOW = -0.035;
+/**
+ * The two as Lora's: the diagonal leaving the bowl as the bowl's own curve
+ * and easing into an S down to the foot -- steeper than its chord where it
+ * leaves the bowl, flatter through the middle and steeper again into the
+ * foot -- where the construction's ran as one straight band.
+ *
+ * Otherwise the construction's two (see `figures.ts`): the bowl carried round
+ * exactly as far as leaves it travelling the way the diagonal sets off, the
+ * diagonal cut level on the line with its left corner on the foot's end, and
+ * the foot from where the diagonal's left edge crosses its top.
+ */
+export function humanistTwo(style: Style): Recipe {
+  const f = frame(style);
+  const width = figureWidth(f);
+  const left = f.edge;
+  const grown = heavyFigure(f) / 2;
+  const drawn = width / 2 - grown;
+  const low = Math.min(drawn, (f.crest(f.cap) - f.dip(0)) * 0.3);
+  const radius = Math.max(drawn + (low - drawn) * Math.min(1, f.gain / (f.x * 0.05)), f.least);
+  const wide = bendWidth(f, radius) + grown;
+  const centre = at(left + radius + grown, f.crest(f.cap) - radius);
+  const pen = penReach(style.pen);
+  // How far each end of the S turns off its chord: see `TWO_SAG`.
+  const turned = 2 * Math.atan(2 * TWO_SAG);
+  const rotate = (v: Vec2, by: number): Vec2 =>
+    at(v.x * Math.cos(by) - v.y * Math.sin(by), v.x * Math.sin(by) + v.y * Math.cos(by));
+  /*
+   * Where on the baseline the run lands so its left corner is on `left`,
+   * reckoned along the way the S arrives there, steeper than its chord.
+   */
+  const toward = (from: Vec2): Vec2 => {
+    let lands = at(left, 0);
+    for (let pass = 0; pass < 3; pass++) {
+      const d = { x: lands.x - from.x, y: lands.y - from.y };
+      const length = Math.hypot(d.x, d.y) || 1;
+      const u = rotate({ x: d.x / length, y: d.y / length }, turned);
+      const shift = reachAlong({ x: -u.y, y: u.x }, pen);
+      lands = at(left + Math.abs(shift.x - (u.x * shift.y) / u.y), 0);
+    }
+    return lands;
+  };
+  // The bowl leaves travelling the way the S sets off: its chord, turned steeper.
+  const miss = (angle: number): number => {
+    const run = bend(f, centre, radius, hookFrom(f), angle, wide);
+    const from = spineEnd(run);
+    const heading = headingAt(run.segments[run.segments.length - 1], "end");
+    const to = toward(from);
+    const aim = rotate(towards(from, to), turned);
+    // Wrapped, so headings either side of straight back do not read a turn apart.
+    const apart = Math.atan2(aim.y, aim.x) - Math.atan2(heading.y, heading.x);
+    return Math.abs(Math.atan2(Math.sin(apart), Math.cos(apart)));
+  };
+  let leaves = -22;
+  let best = Infinity;
+  const tryAt = (angle: number) => {
+    const off = miss(angle);
+    if (off < best) {
+      best = off;
+      leaves = angle;
+    }
+  };
+  for (let angle = 5; angle >= -75; angle -= 5) tryAt(angle);
+  const coarse = leaves;
+  for (let angle = coarse + 4; angle >= coarse - 4; angle -= 1) tryAt(angle);
+  const over = bend(f, centre, radius, hookFrom(f), leaves, wide);
+  const joins = spineEnd(over);
+  const lands = toward(joins);
+  const middle = at((joins.x + lands.x) / 2, (joins.y + lands.y) / 2);
+  /*
+   * The S as two arcs bowed opposite ways about its middle, which meet there
+   * on one tangent; begun a little way back up inside the bowl's end so the
+   * two cut ends do not meet edge to edge.
+   */
+  const leaving = rotate(towards(joins, lands), turned);
+  const overlap = at(joins.x - leaving.x * f.half * 0.3, joins.y - leaving.y * f.half * 0.3);
+  const diagonal = chain(
+    straight(overlap, joins),
+    bowed(f, joins, middle, TWO_SAG),
+    bowed(f, middle, lands, -TWO_SAG),
+  );
+  // The way it arrives on the line, for where its edges cross the foot's top.
+  const way = rotate(towards(lands, joins), turned);
+  const footTop = f.sits(0, f.bar) * 2;
+  const edges = (y: number): number[] =>
+    [1, -1].map((side) => {
+      const across = reachAlong({ x: -way.y * side, y: way.x * side }, pen);
+      return lands.x + across.x + ((y - lands.y - across.y) * way.x) / Math.max(way.y, 1e-6);
+    });
+  const heel = Math.min(...edges(footTop));
+  const toe = Math.max(...edges(0));
+  const footFrom = heel < toe ? (heel + toe) / 2 : heel + 2;
+  return finish(f, [
+    ink(f, over, f.end, BUTT),
+    ink(f, diagonal, BUTT, { kind: "butt", level: true }),
+    arm(f, footFrom, left + width, f.sits(0, f.bar)),
+  ]);
+}
+
+/** How far each half of the two's S bows off its chord, against its length. */
+const TWO_SAG = 0.06;
+
+/**
+ * The seven as Lora's: the arm running out to the right from a beak, and the
+ * stem leaving its right end falling straight down, turning into its slant
+ * within a sixth of the height and then bowing a little more upright as it
+ * falls, to end on the line in a round tail rather than on a foot serif.
+ *
+ * The construction's stem left the arm's end at its slant, so the corner was
+ * a point and the stem stood half a stem left of Lora's all the way down; and
+ * drawn in one run with the arm, the arm's end took a nick of a beak where
+ * Lora's hangs a quarter of the cap height.
+ */
+export function humanistSeven(style: Style): Recipe {
+  const f = frame(style);
+  const width = figureWidth(f);
+  const left = f.edge;
+  const armY = f.hangs(f.cap);
+  // The stem's right edge flush with the arm's end.
+  const stemHalf = Math.abs(reachAlong(at(1, 0), penReach(f.style.pen)).x);
+  const right = left + width;
+  const stemX = right - stemHalf;
+  const rad = (degrees: number) => (degrees * Math.PI) / 180;
+  // The turn out of the corner, from straight down into the slant.
+  const bendR = Math.max(f.cap * SEVEN_TURN + f.half, f.half * 1.3);
+  const centre = at(stemX - bendR, armY);
+  const leaves = -SEVEN_SLANT;
+  const turned = at(
+    centre.x + bendR * Math.cos(rad(leaves)),
+    centre.y + bendR * Math.sin(rad(leaves)),
+  );
+  // And on down to the line, the chord a little steeper than the slant the
+  // turn left it on, so the bow brings it more upright as it falls.
+  const bowTurn = 2 * Math.atan(2 * SEVEN_BOW);
+  const chordFromUpright = rad(SEVEN_SLANT) - bowTurn;
+  const floor = f.dip(0) + 5;
+  const end = at(turned.x - (turned.y - floor) * Math.tan(chordFromUpright), floor);
+  return finish(f, [
+    arm(f, right, left, armY),
+    ink(
+      f,
+      chain(inPieces(turn(centre, bendR, 0, leaves), 2), bowed(f, turned, end, -SEVEN_BOW)),
+      BUTT,
+      { kind: "round" },
+    ),
+  ]);
+}
+
+/** How far the seven's stem bows off its chord, below the turn out of the corner. */
+const SEVEN_BOW = 0.012;
+/** How far off upright the seven's stem leaves the turn: Lora's is 22 degrees. */
+const SEVEN_SLANT = 22;
+/** The radius of the seven's turn out of the corner, against the cap height. */
+const SEVEN_TURN = 0.36;
 
 /**
  * The ampersand as Lora draws it: a small loop at the cap height and a large
@@ -1537,10 +2158,11 @@ function pinned(spine: Spine, pieces: number): Spine {
 }
 
 /**
- * The R whose leg leaves the bowl and falls in a curve, steep at first and
- * flattening into its end on the line, cut level there with no serif, as
- * Lora's does: the construction's straight leg ended on a foot serif whose
- * inside wing stood out to the left as a spur.
+ * The R whose leg leaves the bowl as Lora's does: straight down at its
+ * slant, and in its last few units turning out along the line into a toe
+ * cut upright, with no serif -- where the construction's leg was bowed all
+ * the way down, leaning out further than Lora's, and a serif at its foot
+ * stood its inner wing out to the left as a spur.
  */
 export function humanistCapitalR(style: Style): Recipe {
   const f = frame(style);
@@ -1548,7 +2170,33 @@ export function humanistCapitalR(style: Style): Recipe {
   const [stem, lobe, leg] = recipe.strokes;
   const [run] = leg?.spine.segments ?? [];
   if (!stem || !lobe || run?.kind !== "line") return recipe;
-  const foot = at(run.to.x + f.half * 1.6, run.to.y);
+  const rad = (degrees: number) => (degrees * Math.PI) / 180;
+  // Leaving the bowl's foot a third of a stem further out than the
+  // construction's, where Lora's leaves it.
+  const from = at(run.from.x + f.half * 2 * R_LEAVES, run.from.y);
+  const base = run.to.y;
+  const pen = penReach(leg.pen);
+  // The toe's spine level, its lower edge on the line.
+  const lift = Math.abs(reachAlong(at(0, -1), pen).y);
+  const r = Math.max(f.half * R_KICK, lift * 1.3, f.least);
+  // Turning left, anticlockwise: each point on the turn stands a right angle
+  // clockwise of the way it is travelling.
+  const on = (heading: number) => rad(heading - 90);
+  const toeY = base + lift;
+  const kneeY = toeY + r * (Math.sin(on(-R_SLANT)) - Math.sin(on(0)));
+  const knee = at(from.x + (from.y - kneeY) / Math.tan(rad(R_SLANT)), kneeY);
+  const centre = at(knee.x - r * Math.cos(on(-R_SLANT)), knee.y - r * Math.sin(on(-R_SLANT)));
+  let toe = at(centre.x, toeY);
+  /*
+   * And out as far as puts its toe past the bowl: past a Bold the bowl widens
+   * with the pen, and the leg under it stood back beneath its left half, a
+   * P with a stub under it.
+   */
+  const bowlRight = contoursBounds(sweep(lobe)).xMax;
+  // Lora's toe stands past its bowl a quarter of the leg's height at the
+  // Regular, and at the Bold (whose bowl here is the wider) a little past it.
+  const reach = R_TOE + (R_TOE_BOLD - R_TOE) * Math.min(1, heaviness(f) / 0.44);
+  toe = at(Math.max(toe.x, bowlRight + reach * Math.abs(from.y - base)), toeY);
   return {
     ...recipe,
     strokes: [
@@ -1556,12 +2204,24 @@ export function humanistCapitalR(style: Style): Recipe {
       lobe,
       inherit(leg, {
         ...leg,
-        spine: bowed(f, run.from, foot, R_LEG_BOW),
-        end: LEVEL,
+        spine: chain(
+          straight(from, knee),
+          inPieces(turn(centre, r, -R_SLANT - 90, -90), 2),
+          straight(at(centre.x, toeY), toe),
+        ),
+        end: BUTT,
       }),
     ],
   };
 }
 
-/** How far the R's leg bows off its chord: up and to the right. */
-const R_LEG_BOW = 0.1;
+/** How much further out along the bowl's foot the R's leg leaves it, against the stem. */
+const R_LEAVES = 0.32;
+/** The R's leg's slant, off level: Lora's is 56 degrees. */
+const R_SLANT = 56;
+/** The radius of the turn into the R's toe, against half the pen. */
+const R_KICK = 1.6;
+/** How far the R's toe stands past its bowl at least, against the leg's height. */
+const R_TOE = 0.25;
+/** And at the Bold, where the bowl drawn here is nearly as wide as Lora's toe reaches. */
+const R_TOE_BOLD = 0.04;

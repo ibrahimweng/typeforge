@@ -156,6 +156,13 @@ export interface Metrics {
    * didone set that way had a y whose tail was as heavy as its stem.
    */
   risingHairline?: boolean;
+  /**
+   * The letters left as drawn on a face whose rising strokes are hairlines:
+   * a text face's z, Z and slash carry their weight on the rising diagonal,
+   * and a letter that draws its own hairline -- the Serif's A -- is not
+   * thinned again.
+   */
+  risingOwn?: string[];
   /** The bowls' superness the face was drawn with, once `heavier` has rounded them. Never saved. */
   drawnSuperness?: number;
   /**
@@ -193,6 +200,12 @@ export interface Metrics {
      * Black face keeps, against its own H and o. Left out, one.
      */
     past?: Record<string, number>;
+    /**
+     * The sidebearings at the Bold against the Regular's, reached by the
+     * Bold and held past it: Lora Bold sets its rounds a quarter tighter
+     * than its Regular (an o 31 a side against 41) and its stems a little.
+     */
+    spacing?: number;
   };
   /** The counter the face was drawn with, once `heavier` has narrowed it. */
   drawnCounter?: number;
@@ -947,7 +960,7 @@ export const SERIF: Style = {
   forms: {
     a: "humanist",
     g: "humanist",
-    G: "spurred",
+    G: "humanist",
     Q: "humanist",
     y: "hooked",
     // Lora's own: see `letters/humanist.ts`.
@@ -976,6 +989,8 @@ export const SERIF: Style = {
     at: "humanist",
     S: "humanist",
     seven: "humanist",
+    two: "humanist",
+    question: "humanist",
     ampersand: "humanist",
     R: "humanist",
   },
@@ -1003,12 +1018,24 @@ export const SERIF: Style = {
     overshoot: 16,
     sidebearing: 34,
     capitalSpacing: 1.4,
+    /*
+     * The rising strokes of the vees and the x drawn as hairlines, as Lora's
+     * are -- the right arm of its v is 52 units across against the left's 91
+     * -- where a pen held nearly level gave both arms of a v the same weight
+     * and the v, w and y stood dark in a line of text. But not the z's and
+     * the Z's diagonals, which Lora draws heavy, nor the A, which draws its
+     * own: thinned again, its hairline leg stood apart from the other at
+     * the apex past a Black.
+     */
+    risingHairline: true,
+    risingOwn: ["z", "Z", "slash", "A"],
     // Lora's word space, 263 at the Regular and the Bold, a little more past it.
     wordSpace: [263 / 500, 280 / 500],
     // LORA-BOLD-BEGIN (fitted to Lora Bold at a pen of 142)
     bold: {
       at: 0.47,
       kept: 0.5,
+      spacing: 0.82,
       widths: {
         a: 0.879,
         b: 0.929,
@@ -3516,7 +3543,12 @@ function rounder(style: Style): Style["parts"] {
  * about a quarter of what its stem gains.
  */
 export function spacingOf(style: Style): number {
-  const { sidebearing, xHeight } = style.metrics;
+  const { sidebearing, xHeight, bold } = style.metrics;
+  // A face drawn to its Bold closes up to the Bold's spacing: see `bold.spacing`.
+  const tighter =
+    bold?.spacing === undefined
+      ? 1
+      : 1 + (bold.spacing - 1) * Math.min(1, blackness(style) / bold.at);
   /*
    * A face whose heavy weights close their counters closes its spacing with
    * them, about as the square root of the counter: Geist Black sets its n 61
@@ -3525,10 +3557,10 @@ export function spacingOf(style: Style): number {
    */
   if (style.metrics.heavyCounter) {
     const drawn = style.metrics.drawnCounter ?? style.metrics.counterWidth;
-    return sidebearing * (narrowed(style) / drawn) ** 0.55;
+    return sidebearing * (narrowed(style) / drawn) ** 0.55 * tighter;
   }
   const gained = blackness(style) * BLACK_SPAN * xHeight;
-  return sidebearing + gained * 0.25;
+  return (sidebearing + gained * 0.25) * tighter;
 }
 
 /**
