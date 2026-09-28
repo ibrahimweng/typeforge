@@ -55,7 +55,9 @@ so the counters' ends stay round up to 260.
 **@.** The ring is as wide as Geist 1.7.2's at every weight: it was 31 units
 narrow at the Thin, whose ring stands further out than the Regular's, and 45
 at the Black. The tail now runs round to where Geist's ends, found by where
-it is across rather than by a height. It was 119 short at the Black.
+it is across rather than by a height. It was 119 short at the Black. The ring also reaches Geist's 710 at every
+weight. It stopped 27 short at the Thin, and at the Black it now sits as low as
+Geist's.
 
 **8.** Heavy weights use the same lighter pen plus a slightly wider ring, so
 the upper counter stays an oval past the Black instead of a slot. The rings

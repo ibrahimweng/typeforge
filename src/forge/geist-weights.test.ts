@@ -486,6 +486,10 @@ describe("the at sign", () => {
       const { contours } = draw("at", weight);
       const ink = contoursBounds(contours);
       expect(Math.abs(ink.xMax - ink.xMin - width), `@ at ${weight}`).toBeLessThan(15);
+      // Up to 710 at every weight, as Geist's is: the ring stopped 27 short
+      // of it on the Thin, and the Black's hung 22 short of Geist's -128.
+      expect(Math.abs(ink.yMax - 710), `@ top at ${weight}`).toBeLessThan(8);
+      expect(ink.yMin, `@ foot at ${weight}`).toBeLessThan(-85);
       const under = filled(contours, -40, "y");
       const end = under[under.length - 1][1] - ink.xMin;
       expect(Math.abs(end - tail), `tail at ${weight}`).toBeLessThan(15);

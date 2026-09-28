@@ -3867,9 +3867,12 @@ export function grotesqueAt(style: Style): Recipe {
   // middle against the Regular's 372: half of that is already in the face's
   // own widening of its light letters.
   const light = thinness(f);
-  const outer = at(X(lerp(457, 500) + 3 * light) + grow * 0.3, up(f, lerp(304, 300)));
+  // And from under the line to 710 at every weight, lower at the Black:
+  // Geist's ring stands round 302 on the Thin and 291 on the Black, 816
+  // tall on the Thin -- grown upward here, where the tail's end stays put.
+  const outer = at(X(lerp(457, 500) + 3 * light) + grow * 0.3, up(f, lerp(304, 291) + 7 * light));
   const outerW = held(f, (lerp(370, 400) + 14 * light) * u + grow);
-  const outerH = held(f, up(f, lerp(366, 350)) + grow * 0.3);
+  const outerH = held(f, up(f, lerp(366, 363) + 22 * light) + grow * 0.3);
   const rf: Frame = { ...f, half: ringPen.weight / 2 };
   /*
    * The stem's turn lands exactly on the ring, at its widest where it runs
