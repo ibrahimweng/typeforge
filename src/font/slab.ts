@@ -664,7 +664,8 @@ export function weighSlabs(
       if (!insideInk(moved, from)) return side;
       const out = rayHitDistance(moved, from, { x: v.x * sign, y: v.y * sign }) - depth;
       if (!Number.isFinite(out) || Math.abs(out) > Math.abs(weight) * 1.5 + 1) return side;
-      return along + out;
+      // Made lighter, no shorter than `resize` keeps any slab.
+      return weight >= 0 ? along + out : Math.max(along + out, hairline / 2, along / 3);
     };
     return {
       c,

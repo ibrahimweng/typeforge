@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { contoursBounds } from "./geometry";
 import { blankGlyph } from "./library";
-import { addSlabs, findTerminals } from "./slab";
+import { addSlabs, findTerminals, weighSlabs } from "./slab";
 import { resolveAdvanceWidth, resolveGlyphContours } from "./transform";
 import { type Contour, DEFAULT_PARAMS, emptyTypeface, type GlyphParams, type Vec2 } from "./types";
 
@@ -391,6 +391,22 @@ describe("which ends a slab serif gives a slab", () => {
       expect(Math.abs(terminal.inward.x)).toBeLessThan(1e-9);
       expect(Math.abs(terminal.inward.y)).toBeCloseTo(1, 9);
     }
+  });
+});
+
+describe("weighing slabs", () => {
+  /*
+   * A slab end flush with the letter's own edge finishes where the weight
+   * left that edge; made lighter, still no shorter than any slab is kept.
+   * Without the floor, a slab as wide as a thin stem went to a sliver.
+   */
+  it("keeps a flush slab end no shorter than a lighter slab is kept", () => {
+    const letter = [stem(0, 0, 100, 700)];
+    const slab = stem(0, 0, 100, 60);
+    const lighter = [stem(40, 0, 20, 700)];
+    const [weighed] = weighSlabs([slab], letter, -40, 1000, lighter);
+    const box = contoursBounds([weighed]);
+    expect(box.xMax - box.xMin).toBeGreaterThanOrEqual(100 / 3 - 0.5);
   });
 });
 

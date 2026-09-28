@@ -1111,15 +1111,20 @@ function keepHeights(
     return total;
   };
   /*
-   * Never past where a point was drawn. Lifted with the level edges beside
-   * it, the small spur at the top of Lora's light q, which had moved less
-   * than they had, went twelve units past where it was drawn.
+   * Never past where a point on an edge was drawn. Lifted with the level
+   * edges beside it, the small spur at the top of Lora's light q, which had
+   * moved less than they had, went twelve units past where it was drawn.
+   * Only on the edges: inside the letter -- the bottom of a counter, above
+   * the bottom of a bowl -- a point is carried along with the edge it is
+   * across the stroke from, or the stroke between them changes weight.
    */
+  const edgeLines = groups.flatMap((group) => group.lines);
+  const onEdgeLine = (y: number) => edgeLines.some((line) => Math.abs(y - line) <= tolerance);
   const shift = (at: Vec2 | null, drawnAt: Vec2 | null | undefined): Vec2 | null => {
     if (!at) return null;
     const by = field(at);
     let y = at.y + by;
-    if (drawnAt) {
+    if (drawnAt && onEdgeLine(drawnAt.y)) {
       if (by > 0) y = Math.min(y, Math.max(at.y, drawnAt.y));
       else if (by < 0) y = Math.max(y, Math.min(at.y, drawnAt.y));
     }
