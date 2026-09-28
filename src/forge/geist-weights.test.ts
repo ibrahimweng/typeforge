@@ -636,6 +636,15 @@ describe("the stops and the bar at the heavy weights", () => {
   });
 });
 
+describe("the percent past the old Black", () => {
+  it("is Geist Black's width at pen 194", () => {
+    // Geist's Black (a stem of 194) is 777 across. Moved apart from pen 172
+    // on, as if nothing heavier than a stem of 172 were drawn, it was 828.
+    const ink = box("percent", 194);
+    expect(Math.abs(ink.xMax - ink.xMin - 777)).toBeLessThan(15);
+  });
+});
+
 describe("the dollar", () => {
   it("has Geist's long light bar, and Geist's sides", () => {
     // Geist's bar runs from 90 under the line to 800, 74 across at the

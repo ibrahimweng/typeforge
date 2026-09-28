@@ -3805,7 +3805,9 @@ export function grotesquePercent(style: Style): Recipe {
   const held3 = (a: number, b: number, thin: number) =>
     light ? lerp(a, b, thin) : a + (b - a) * Math.min(t, 1);
   const stem = f.half * 2;
-  const past = Math.max(0, stem - 172 * (f.x / 530));
+  // Past the current Geist's Black, a stem of 194: its UltraBlack (172, this
+  // Black's measures) and its Black differ by a dozen units across.
+  const past = Math.max(0, stem - NOW_BLACK * (f.x / 530));
   // Past the Black no heavier at the crowns than the Black's, or the rings
   // stood past both lines and their counters closed to slits.
   const ringWeight = stem * held3(0.83, 0.71, 1);
