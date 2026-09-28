@@ -1427,9 +1427,12 @@ function followCounters(
      * below the counter, the wall of an e bent back out below its eye and
      * the leg of an R kinked.
      *
-     * At every height, but eased away towards another counter above or below
-     * -- the two bowls of a B, the loops of an 8 or a g -- which has its own
-     * map, halfway to it.
+     * At every height, but handed over to another counter above or below --
+     * the two bowls of a B, the loops of an 8 or a g -- across the gap
+     * between them, so that between them the two maps share the ink out
+     * whole. Each eased to nothing halfway, the ink in the gap moved less
+     * than above it and below it, and the serif on the arm of Lora's &,
+     * which stands there, was sheared into a lozenge.
      */
     let above = Infinity;
     let below = Infinity;
@@ -1438,8 +1441,8 @@ function followCounters(
       const them = contoursBounds([other]);
       const overlap = Math.min(them.xMax, was.xMax) - Math.max(them.xMin, was.xMin);
       if (overlap <= 0) return;
-      if (them.yMin >= was.yMax) above = Math.min(above, Math.max(1, (them.yMin - was.yMax) / 2));
-      if (them.yMax <= was.yMin) below = Math.min(below, Math.max(1, (was.yMin - them.yMax) / 2));
+      if (them.yMin >= was.yMax) above = Math.min(above, Math.max(1, them.yMin - was.yMax));
+      if (them.yMax <= was.yMin) below = Math.min(below, Math.max(1, was.yMin - them.yMax));
     });
     const ease = (u: number) => u * u * (3 - 2 * u);
     const hub = Math.min(was.xMax, Math.max(was.xMin, centroid(contour).x));

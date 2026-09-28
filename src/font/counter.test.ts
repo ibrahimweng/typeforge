@@ -205,6 +205,30 @@ describe("middle space", () => {
     expect(upper.xMax - upper.xMin).toBeGreaterThan(320);
   });
 
+  /*
+   * Regression: between two counters one above the other, each eased its
+   * map to nothing halfway to the other, so the ink in the gap stayed where
+   * it was while the ink above and below it moved: the wall there dented,
+   * and the serif on the arm of Lora's &, which stands in that gap, sheared.
+   */
+  it("moves the wall between two stacked counters with the rest of it", () => {
+    const outside = polygon([
+      { x: 0, y: 0 },
+      { x: 600, y: 0 },
+      { x: 600, y: 500 },
+      { x: 600, y: 1000 },
+      { x: 0, y: 1000 },
+    ]);
+    const letter = [outside, rect(100, 100, 400, 300), rect(100, 600, 300, 300)];
+    const [moved] = resolve(letter, 1.4);
+    const right = moved.nodes.filter((node) => node.point.x > 300).map((node) => node.point);
+    const ends = right.filter((point) => point.y !== 500).map((point) => point.x);
+    const middle = right.find((point) => point.y === 500)!.x;
+    expect(Math.min(...ends)).toBeGreaterThan(600);
+    expect(middle).toBeGreaterThanOrEqual(Math.min(...ends) - 0.5);
+    expect(middle).toBeLessThanOrEqual(Math.max(...ends) + 0.5);
+  });
+
   it("moves the outside of the letter across with the counter, never up or down", () => {
     const resolved = resolve(ring(1000, 100), 1.4);
     const box = contoursBounds([resolved[0]]);
