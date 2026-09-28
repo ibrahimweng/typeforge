@@ -10,7 +10,8 @@
  */
 
 import { beforeAll, describe, expect, it } from "vitest";
-import { ready } from "@/font/boolean";
+import { ready, unite } from "@/font/boolean";
+import { contourArea } from "@/font/geometry";
 import type { Vec2 } from "@/font/types";
 import { contoursIntersect } from "@/font/outline";
 import { drawLetter } from "./build";
@@ -201,5 +202,34 @@ describe("a lead-out at a heavy weight", () => {
       }
     }
     expect(across).toEqual([]);
+  });
+});
+
+describe("the written e at a heavy weight", () => {
+  /*
+   * Its loop is as wide as the face's other bowls. Drawn as a circle on the
+   * bowl's height, it stayed narrow while every other bowl widened to keep its
+   * counter, and from a pen of 200 up the eye closed to nothing.
+   */
+  it("keeps an eye open", () => {
+    const shut: string[] = [];
+    for (const name of JOINED) {
+      const own = base(name);
+      if (own.forms?.e !== "written") continue;
+      for (const weight of [200, 260]) {
+        const style = at(own, weight);
+        // Entered, as it is in a word: without its lead-in a written letter is
+        // drawn as the plain one. The eye is then the one closed counter.
+        const drawn = joiningWithout({ exit: false }, () => drawLetter("e", style, "written"))!;
+        const holes = unite(drawn.contours, "winding")
+          .map((contour) => -contourArea(contour))
+          .filter((area) => area > 0);
+        const eye = Math.max(0, ...holes);
+        // A slit of white a tenth of the x-height across at the least.
+        const least = (style.metrics.xHeight * 0.1) ** 2;
+        if (eye < least) shut.push(`${name} @${weight}: ${eye.toFixed(0)}`);
+      }
+    }
+    expect(shut).toEqual([]);
   });
 });

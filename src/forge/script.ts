@@ -1567,6 +1567,14 @@ export function planJoin(
    * letter reaches well right of the band below it, the lead-out leaves from
    * there instead, carrying on the way the stroke was going if it climbs.
    */
+  /*
+   * Running level or climbing to the right, whichever way the recipe drew the
+   * run: a lead-out carried on along it is lighter than the run itself, so
+   * its ink starts inside the run's before it turns up. Not a falling run, or
+   * an upright one, whose foot is on the line.
+   */
+  const alongOrUp = (way: Vec2) =>
+    Math.abs(way.x) > 0.3 && (way.x < 0 ? -way.y : way.y) > -0.05 * Math.abs(way.x);
   const under =
     ending || exitAt > seams.low
       ? []
@@ -1580,7 +1588,7 @@ export function planJoin(
              * before the lead-out is. A `K` left from the foot of its leg hung
              * its lead-out under the baseline.
              */
-            (one.point.y >= (room.join ?? room.half) * 0.85 || one.way.x * one.way.y > 0),
+            (one.point.y >= (room.join ?? room.half) * 0.85 || alongOrUp(one.way)),
         );
   const leaves =
     under.length > 0

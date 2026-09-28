@@ -524,7 +524,15 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const eye = eyeOf(f, centre);
         const rise = Math.max(-0.85, Math.min(0.85, (eye - centre.y) / f.bowlH));
         const opens = (Math.asin(rise) * 180) / Math.PI;
-        const belt = bend(f, centre, f.bowlH, opens, opens + 300);
+        /*
+         * As wide as every other bowl on the face, not as round as its height.
+         * The two are the same at a text weight; past it a heavy face keeps
+         * its counters by drawing its bowls wider, and the `e` alone, drawn as
+         * a circle on its height, stayed narrow -- at a pen of 260 its loop was
+         * eighty-six units wide under a pen of two hundred and sixty, and the
+         * eye closed to nothing.
+         */
+        const belt = bend(f, centre, f.bowlH, opens, opens + 300, f.bowl);
         /*
          * The bar is the entry, and it climbs.
          *
@@ -551,7 +559,15 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
           ...finish(
             f,
             [
-              ink(f, bowed(f, start, spineStart(belt), 0.06), f.end, BUTT),
+              /*
+               * At the weight of the join it is, past the text weight: it is
+               * the up-stroke, and a heavy hand's up-strokes stay light. At
+               * the whole pen of 260 it filled the eye it rises under.
+               */
+              lighter(
+                ink(f, bowed(f, start, spineStart(belt), 0.06), f.end, BUTT),
+                joinWeight(style),
+              ),
               ink(f, belt, BUTT, f.end),
             ],
             true,
