@@ -31,6 +31,7 @@ import {
   reverseContour,
   splitCubic,
 } from "@/font/geometry";
+import { contoursIntersect } from "@/font/outline";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import type { CutScale } from "./cut";
 import { alongSpine } from "./shapes";
@@ -126,7 +127,11 @@ export function castInk(
   if (cast.extrude.on) shape = extruded(shape, cast.extrude, stem);
   if (cast.outline.on) shape = outlined(shape, cast.outline.width * stem);
 
-  return withoutSpecks(shape, stem, smallest);
+  const done = withoutSpecks(shape, stem, smallest);
+  // No outline left crossing itself: see the same step in `cutInk`.
+  return done.some((contour) => contoursIntersect([contour]))
+    ? unite(done, "winding", "whole")
+    : done;
 }
 
 /**

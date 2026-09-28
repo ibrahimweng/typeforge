@@ -162,18 +162,33 @@ describe("cuts in the parameter stack", () => {
     expect(ink(stem)).toBeCloseTo(90 * 700, 6);
   });
 
-  it("does nothing with the two that are made out of a skeleton", () => {
+  it("does nothing with the breaks, which are made out of a skeleton", () => {
     const face = font();
     face.cuts = cutWith((one) => {
-      one.inline.on = true;
       one.split.on = true;
     });
-    // Not an approximation: a letter out of a file has no spine to sweep again
-    // and no join to find, so the honest answer is the letter unchanged.
+    // Not an approximation: a letter out of a file has no join to find, so
+    // the honest answer is the letter unchanged.
     expect(ink(resolveGlyphContours(named(face, "H"), face))).toBeCloseTo(
       ink(resolveGlyphContours(named(face, "H"), font())),
       6,
     );
+  });
+
+  it("grooves a letter out of a file, a wall in from every edge", () => {
+    // The groove is the letter shrunk by a wall, which needs no skeleton: the
+    // H's stems and bar each get one, as one groove, closed at every end.
+    const face = font();
+    face.cuts = cutWith((one) => {
+      one.inline.on = true;
+    });
+    const cut = resolveGlyphContours(named(face, "H"), face);
+    const plain = ink(resolveGlyphContours(named(face, "H"), font()));
+    expect(ink(cut)).toBeLessThan(plain * 0.85);
+    expect(cut.filter((contour) => contourArea(contour) < 0)).toHaveLength(1);
+    const box = contoursBounds(cut);
+    expect(box.xMin).toBeCloseTo(100, 0);
+    expect(box.xMax).toBeCloseTo(500, 0);
   });
 
   it("cuts before the letter is sheared, so the bands lean with it", () => {

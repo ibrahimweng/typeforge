@@ -771,7 +771,7 @@ describe("a point and a chamfer on the same corner", () => {
 
 describe("a rim after a cut that cannot reach an imported letter", () => {
   /*
-   * Inline follows a letter's strokes, and a letter from a font file has
+   * The breaks follow a letter's strokes, and a letter from a font file has
    * none, so the cut hands its ink back untouched -- still the raw contours,
    * wound however the font wound them. The rim after it was told to read them
    * as wound by a boolean, and on a letter wound the other way round it went
@@ -785,7 +785,7 @@ describe("a rim after a cut that cannot reach an imported letter", () => {
       one.outline.on = true;
     });
     const cuts: Cuts = noCuts();
-    cuts.inline.on = true;
+    cuts.split.on = true;
     const scale = cutScaleOf(typeface);
     for (const char of "HEna") {
       const glyph = typeface.glyphs.find((one) => one.unicodes.includes(char.codePointAt(0) ?? 0));

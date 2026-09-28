@@ -32,6 +32,7 @@ import {
   reverseContour,
   type Bounds,
 } from "@/font/geometry";
+import { contoursIntersect } from "@/font/outline";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { alongSpine, spineLength } from "./shapes";
 import { eroded, outlined } from "./cast";
@@ -73,8 +74,8 @@ export {
  * Whether any of the cuts that are on can do anything to this ink.
  *
  * Which is not the same question, and the difference is a whole boolean. An
- * imported letter with only the inline switched on is reached by nothing: the
- * groove needs a skeleton and there is none. Fusing it anyway would leave the
+ * imported letter with only the breaks switched on is reached by nothing: a
+ * break needs a skeleton and there is none. Fusing it anyway would leave the
  * drawing identical and its outline rewritten, which is work done to no end
  * and a letter that reports itself as having changed when it has not.
  */
@@ -235,6 +236,14 @@ export function cutInk(
     ),
   );
   shape = withoutCrumbs(shape, stem, smallest, hairline);
+  /*
+   * And no outline left crossing itself. A chamfer laid across the corner
+   * where an outline starts, or a tooth across one of a few points, can
+   * leave a loop of a unit or two tied in it -- nothing on the page, and a
+   * fault in the file; one more union resolves it.
+   */
+  if (shape.some((contour) => contoursIntersect([contour])))
+    shape = unite(shape, "winding", "whole");
 
   return {
     contours: shape,
