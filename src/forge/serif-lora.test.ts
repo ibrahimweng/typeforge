@@ -208,6 +208,22 @@ describe("the Serif's e", () => {
       expect(barFoot - tail, `e at ${weight}`).toBeGreaterThan(weight * 0.08);
     }
   });
+
+  it("cuts its bowl level under the bar without folding, the pen tilted back", () => {
+    // The cut's outer corner slid on past the end of the bowl's first sliver
+    // of a piece, and the edge doubled back under the bar's end.
+    for (const [angle, weight] of [
+      [-10, 230],
+      [-10, 260],
+      [-20, 200],
+      [-20, 230],
+    ]) {
+      const style = { ...SERIF, pen: { ...SERIF.pen, weight, angle } };
+      for (const contour of draw("e", weight, style).contours) {
+        expect(contoursIntersect([contour]), `e at ${weight}, pen ${angle}`).toBe(false);
+      }
+    }
+  });
 });
 
 describe("the Serif's R", () => {
