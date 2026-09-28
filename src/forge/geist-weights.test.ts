@@ -604,3 +604,28 @@ describe("the Sans's sidebearings", () => {
     }
   });
 });
+
+describe("the heavy s's counters", () => {
+  it("are narrow and tall, as Geist Black's are, not low slots", () => {
+    // Geist Black's upper counter is 92 across and 70 high. Lightened in its
+    // sides alone, the s's was 150 across and 60 high.
+    for (const name of ["s", "S"]) {
+      const { contours } = draw(name, 172);
+      const ink = contoursBounds(contours);
+      // The widest white between two runs of ink, in the upper half.
+      let widest = { width: 0, x: 0, y: 0 };
+      for (let y = ink.yMin + (ink.yMax - ink.yMin) * 0.55; y < ink.yMax; y += 4) {
+        const runs = filled(contours, y, "y");
+        for (let index = 1; index < runs.length; index++) {
+          const width = runs[index][0] - runs[index - 1][1];
+          if (width > widest.width) widest = { width, x: (runs[index][0] + runs[index - 1][1]) / 2, y };
+        }
+      }
+      const column = filled(contours, widest.x, "x");
+      const below = column.filter(([, to]) => to <= widest.y).at(-1)!;
+      const above = column.find(([from]) => from >= widest.y)!;
+      const high = above[0] - below[1];
+      expect(widest.width / high, name).toBeLessThan(1.9);
+    }
+  });
+});

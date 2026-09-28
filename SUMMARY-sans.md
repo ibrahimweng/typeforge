@@ -44,6 +44,14 @@ to the Black, the s and S spread as wide as Geist's, within about 6 units (the
 s was 35 units narrow at pen 130, which sits halfway between Geist's Regular
 and Black, and 40 at the Black).
 
+**Heavy s counters.** The lighter pen that rounds them now takes its
+lightness mostly from the crowns and spine rather than the sides, as Geist's
+weight is set: at the Black the counters are narrow and tall (about 95 across
+and 60 high, against Geist's 92 and 70) instead of 150-by-60 slots with the
+weight in the spine. The bowls are carried out by what the crowns give up, so
+the letter keeps its height. Past the Black the sides take the lightness back,
+so the counters' ends stay round up to 260.
+
 **8.** Heavy weights use the same lighter pen plus a slightly wider ring, so
 the upper counter stays an oval past the Black instead of a slot.
 
@@ -105,8 +113,8 @@ strokes as white; they now use a filled (nonzero) ruler.
 
 ## What still differs from Geist
 
-- **s counters at the Black.** Geist's are a little taller and more oval than
-  Draw's round-ended ones, and past the Black Draw's close to slots.
+- **s counters at the Black.** Close to Geist's size and shape now; Geist's
+  upper counter still runs a little more into the terminal, as a teardrop.
 - **8 at the Black.** Geist's eight is wider with a pinched waist. Draw's is
   two rings touching, and its counters are larger.
 - **@.** It is close at the Regular. At the Black the ring is heavier and

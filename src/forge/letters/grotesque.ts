@@ -1901,6 +1901,12 @@ function ess(given: Frame, e: Ess): Stroke[] {
   const t = heaviness(f) / 0.67;
   const lerp = (pair: [number, number]) => pair[0] + (pair[1] - pair[0]) * Math.min(t, 1.5);
   const H = (y: number) => (y / e.geist) * e.height;
+  const lightShare = 0.02 + (SPLIT_SIDES - 0.02) * Math.min(1, Math.max(0, (t - 0.3) / 0.7));
+  const lift =
+    (f.style.pen.weight * (1 - Math.min(Math.max(f.style.pen.contrast, 0), 0.95)) *
+      lightShare *
+      crownsGive(t)) /
+    2;
   const beyond =
     Math.max(0, heaviness(f) - 0.67) * f.x * 0.2 * 0.3 +
     (e.blackWiden ?? 0) * e.unit * Math.min(1, t * 2);
@@ -1985,8 +1991,8 @@ function ess(given: Frame, e: Ess): Stroke[] {
    * times would read the next bowl's answer.
    */
   for (let pass = 0; pass < 48; pass++) {
-    const top = f.crest(e.height) + grow;
-    const bottom = f.dip(0) - grow;
+    const top = f.crest(e.height) + grow + lift;
+    const bottom = f.dip(0) - grow - lift;
     const upperY = H(lerp(e.upper.y)) + grow + spread[0];
     const lowerY = H(lerp(e.lower.y)) - grow - spread[1];
     if (pass === 0)
@@ -2122,8 +2128,9 @@ function ess(given: Frame, e: Ess): Stroke[] {
    */
   const share = 0.02 + (SPLIT_SIDES - 0.02) * Math.min(1, Math.max(0, (t - 0.3) / 0.7));
   const along = tilted.weight * (1 - Math.min(Math.max(tilted.contrast, 0), 0.95));
-  const lighter = tilted.weight * (1 - share);
-  const pen = { ...tilted, weight: lighter, contrast: Math.max(0, 1 - along / lighter) };
+  const lighter = tilted.weight * (1 - share * (1 - crownsGive(t)));
+  const alongNow = along * (1 - share * crownsGive(t));
+  const pen = { ...tilted, weight: lighter, contrast: Math.max(0, 1 - alongNow / lighter) };
   const out = (tilted.weight - lighter) * SIDE_OUT + 0.01;
   /*
    * The swells drawn with half that pen, their spines carried out by the
@@ -2278,6 +2285,20 @@ function ess(given: Frame, e: Ess): Stroke[] {
 const SPLIT_SIDES = 0.26;
 /** How far out its sides are carried again, against what the pen gave up. */
 const SIDE_OUT = 0.5;
+/**
+ * How that lightness is shared between the sides and the crowns and spine.
+ * Geist's heavy s is heavier in its sides than across its crowns and spine,
+ * so its counters are narrow and tall; lightened in the sides alone, they
+ * came out wide, low slots with the weight in the spine.
+ */
+const CROWNS_GIVE = 0.6;
+/**
+ * Given back to the sides past the Black, all of it by pen 215 or so: there the
+ * crowns and spine have no height to spare, and a counter left tall in the
+ * middle ends square.
+ */
+const crownsGive = (t: number): number =>
+  CROWNS_GIVE * (1 - Math.min(1, Math.max(0, t - 1) / 0.25));
 
 /** A point on a bowl as drawn, at an angle. */
 function pointOnBowl(f: Frame, centre: Vec2, halfW: number, halfH: number, degrees: number): Vec2 {
