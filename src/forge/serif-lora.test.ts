@@ -155,6 +155,22 @@ describe("the Serif's two and seven", () => {
     }
   });
 
+  it("hands the two's bowl on to its diagonal without a step", () => {
+    for (const weight of [87, 142, 200]) {
+      // Down the right edge from the bowl's side into the diagonal. Thinned
+      // as a y's rising arm, the diagonal stood in from the bowl's end.
+      let before = Number.NaN;
+      for (let y = CAP * 0.62; y >= CAP * 0.3; y -= 5) {
+        const runs = row("two", weight, y);
+        const right = runs[runs.length - 1][1];
+        if (!Number.isNaN(before)) {
+          expect(Math.abs(right - before), `2 at ${weight}, row ${y.toFixed(0)}`).toBeLessThan(8);
+        }
+        before = right;
+      }
+    }
+  });
+
   it("stands the two on a foot with Lora's upright serif at its right end", () => {
     for (const weight of [30, 87, 142, 260]) {
       // Over the foot's top, at the foot's right end: the serif.

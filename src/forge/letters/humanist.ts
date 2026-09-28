@@ -1204,7 +1204,10 @@ export function splitVees(given: Stroke[]): Stroke[] {
       first?.kind === "line" &&
       rest.length > 0 &&
       rest.every((one) => one.kind === "arc") &&
-      rises(first.from, first.to)
+      rises(first.from, first.to) &&
+      // A whole arm, not the few units a stroke is begun back inside another
+      // by: the two's S, begun so inside its bowl, was thinned as a y's arm.
+      Math.hypot(first.to.x - first.from.x, first.to.y - first.from.y) > stroke.pen.weight
     ) {
       // With as much contrast as keeps the tail's bottom, running level, as
       // deep as the full pen's: on a pen with none it came down fourteen
