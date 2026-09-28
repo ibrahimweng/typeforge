@@ -730,6 +730,11 @@ export const SANS: Style = {
       percent: [0.59, 0.59],
       asterisk: [0.59, 0.59],
       asciicircum: [0.5, 0.5],
+      // Geist's brackets and braces stand well off the side they open from.
+      bracketleft: [1.15, 0.19],
+      bracketright: [0.19, 1.15],
+      braceleft: [0.56, 0.19],
+      braceright: [0.19, 0.56],
       at: [0.61, 0.61],
     },
     /*
@@ -844,6 +849,10 @@ export const SANS: Style = {
     asterisk: "grotesque",
     at: "grotesque",
     asciicircum: "grotesque",
+    bracketleft: "grotesque",
+    bracketright: "grotesque",
+    braceleft: "grotesque",
+    braceright: "grotesque",
     zero: "grotesque",
     two: "grotesque",
     three: "grotesque",

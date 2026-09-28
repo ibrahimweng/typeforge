@@ -2320,6 +2320,87 @@ export function grotesqueCaret(style: Style): Recipe {
 }
 
 /**
+ * The Sans's square brackets, measured off Geist: from 750 down to -110 at
+ * every weight, and wide -- 240 across on the Regular (172 on the Thin, 346
+ * on the Black) -- so the arms stay long past the Black. The plain bracket's
+ * arms reach a fixed share of an arch, and from a Black on the stem swallowed
+ * them and the bracket set as a solid bar.
+ */
+function grotesqueBracket(style: Style, way: 1 | -1): Recipe {
+  const f = frame(style);
+  const [X, lerp] = squared(f);
+  const wide = lerp(240, 346, 172);
+  const x = (u: number) => (way === 1 ? X(u) : X(wide) + X(0) - X(u));
+  const stem = x(0) + way * f.half;
+  const top = f.hangs(up(f, 750));
+  const bottom = f.sits(up(f, -110));
+  return finish(f, [
+    ink(
+      f,
+      chain(
+        straight(at(x(wide), top), at(stem, top)),
+        straight(at(stem, top), at(stem, bottom)),
+        straight(at(stem, bottom), at(x(wide), bottom)),
+      ),
+      BUTT,
+      BUTT,
+    ),
+  ]);
+}
+
+export const grotesqueBracketLeft = (style: Style): Recipe => grotesqueBracket(style, 1);
+export const grotesqueBracketRight = (style: Style): Recipe => grotesqueBracket(style, -1);
+
+/**
+ * The Sans's braces, as Geist draws them: each half an arm cut upright that
+ * turns into the stem, and the stem turning out again into a short nose cut
+ * upright at the middle, so the point is a level stub between two round
+ * turns rather than the plain brace's sharp beak. Geist's measures, from the
+ * nose: the stem's middle 143 in on the Regular (126 on the Thin, 175 on the
+ * Black), the arms' ends 329 (288, 370), from 750 (750, 764) down to -115
+ * (-113, -132).
+ */
+function grotesqueBrace(style: Style, way: 1 | -1): Recipe {
+  const f = frame(style);
+  const [X, lerp] = squared(f);
+  const wide = lerp(329, 370, 288);
+  const middle = lerp(143, 175, 126);
+  const x = (u: number) => (way === 1 ? X(u) : X(wide) + X(0) - X(u));
+  const angle = (degrees: number) => (way === 1 ? degrees : 180 - degrees);
+  const k = X(1) - X(0);
+  const top = f.hangs(up(f, lerp(750, 764, 750)));
+  const bottom = f.sits(up(f, lerp(-115, -132, -113)));
+  const centre = (top + bottom) / 2;
+  const stem = x(middle);
+  // The turn into each arm, as round as Geist's, and short of the arm's end.
+  const outer = Math.max(Math.min(lerp(131, 118, 150) * k, (wide - middle) * k - 1), 1);
+  // The turn out into the nose, as wide as the nose is long, and leaving a
+  // piece of the stem standing between it and the turn into the arm.
+  const nose = Math.max(Math.min(middle * k, (top - centre - outer) * 0.7), 1);
+  const half = (end: number, up: 1 | -1): Stroke => {
+    const arm = at(stem + way * outer, end);
+    const knee = end - up * outer;
+    const heel = centre + up * nose;
+    return ink(
+      f,
+      chain(
+        straight(at(x(wide), end), arm),
+        turn(at(stem + way * outer, knee), outer, angle(90 * up), angle(180 * up)),
+        straight(at(stem, knee), at(stem, heel)),
+        turn(at(stem - way * nose, heel), nose, angle(0), angle(-90 * up)),
+        straight(at(stem - way * nose, centre), at(x(0), centre)),
+      ),
+      BUTT,
+      BUTT,
+    );
+  };
+  return finish(f, [half(top, 1), half(bottom, -1)]);
+}
+
+export const grotesqueBraceLeft = (style: Style): Recipe => grotesqueBrace(style, 1);
+export const grotesqueBraceRight = (style: Style): Recipe => grotesqueBrace(style, -1);
+
+/**
  * How far the s's spine turns from straight, in radians: see `curvedSpine`.
  * Geist's leaves each bowl this much steeper than a straight tangent would
  * and lies this much flatter through its middle.

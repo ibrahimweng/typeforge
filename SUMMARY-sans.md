@@ -40,8 +40,9 @@ stays hidden inside the bowl, so every weight and every family master has the
 same points.
 The spine is a gentle S-curve, as Geist's is: two arcs that meet in the middle,
 steeper where they leave the bowls than through the centre. From the Regular
-to the Black, the s and S spread as wide as Geist's, within about 6 units at
-the Bold and the Black (the s was 45 units narrow at the Bold).
+to the Black, the s and S spread as wide as Geist's, within about 6 units (the
+s was 35 units narrow at pen 130, which sits halfway between Geist's Regular
+and Black, and 40 at the Black).
 
 **8.** Heavy weights use the same lighter pen plus a slightly wider ring, so
 the upper counter stays an oval past the Black instead of a slot.

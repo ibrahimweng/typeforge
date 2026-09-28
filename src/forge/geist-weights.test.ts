@@ -10,7 +10,13 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { contourArea, contourContainsPoint, contoursBounds, inkRunsAt } from "@/font/geometry";
+import {
+  contourArea,
+  contourContainsPoint,
+  contoursBounds,
+  crossesItself,
+  inkRunsAt,
+} from "@/font/geometry";
 import type { Contour } from "@/font/types";
 import { drawLetter } from "./build";
 import { formOf, startFrom } from "./document";
@@ -452,24 +458,70 @@ describe("the s's spine", () => {
 
 describe("the s's width", () => {
   it("spreads as Geist's does from the Regular to the Black", () => {
-    // Geist's ink widths at its Regular, Bold and Black. The s was about 45
-    // units narrow at the Bold and the Black, the S about 20.
-    const geist: Record<string, [number, number][]> = {
-      s: [
-        [87, 432],
-        [130, 496],
-        [172, 539],
-      ],
-      S: [
-        [87, 530],
-        [130, 577],
-        [172, 609],
-      ],
-    };
-    for (const [name, widths] of Object.entries(geist)) {
-      for (const [weight, width] of widths) {
+    // Geist's ink widths at its Regular and Black. Pen 130 is halfway between
+    // the two, so its width is too. The s was about 35 units narrow at 130
+    // and 40 at the Black, the S about 20.
+    const geist: Record<string, [number, number]> = { s: [432, 539], S: [530, 609] };
+    for (const [name, [regular, black]] of Object.entries(geist)) {
+      for (const weight of [87, 130, 172]) {
+        const width = regular + ((black - regular) * (weight - 87)) / (172 - 87);
         const ink = box(name, weight);
         expect(Math.abs(ink.xMax - ink.xMin - width), `${name} at ${weight}`).toBeLessThan(15);
+      }
+    }
+  });
+});
+
+describe("the rebuilt letters", () => {
+  it("never cross themselves once rounded to whole units, as a font stores them", () => {
+    const whole = (point: { x: number; y: number }) => ({
+      x: Math.round(point.x),
+      y: Math.round(point.y),
+    });
+    for (const name of ["a", "e", "s", "S", "dollar", "eight", "y"]) {
+      for (const weight of [30, 87, 130, 172, 215, 260]) {
+        draw(name, weight).contours.forEach((contour, index) => {
+          const stored = {
+            ...contour,
+            nodes: contour.nodes.map((node) => ({
+              ...node,
+              point: whole(node.point),
+              handleIn: node.handleIn && whole(node.handleIn),
+              handleOut: node.handleOut && whole(node.handleOut),
+            })),
+          };
+          expect(crossesItself(stored), `${name} at ${weight}, contour ${index}`).toBe(false);
+        });
+      }
+    }
+  });
+});
+
+describe("the brackets and braces", () => {
+  it("are as wide as Geist's and stay open past the Black", () => {
+    // Geist's ink widths at the Regular and the Black. The plain bracket was
+    // 110 units narrow at the Regular and set solid from the Black on.
+    const geist: Record<string, [number, number]> = {
+      bracketleft: [240, 346],
+      bracketright: [240, 346],
+      braceleft: [329, 370],
+      braceright: [329, 370],
+    };
+    for (const [name, [regular, black]] of Object.entries(geist)) {
+      for (const [weight, width] of [
+        [87, regular],
+        [172, black],
+      ]) {
+        const ink = box(name, weight);
+        expect(Math.abs(ink.xMax - ink.xMin - width), `${name} at ${weight}`).toBeLessThan(15);
+      }
+      for (const weight of [172, 260]) {
+        const { contours } = draw(name, weight);
+        const ink = contoursBounds(contours);
+        // Through the middle of the upper half, the stem alone is ink.
+        const y = ink.yMax - (ink.yMax - ink.yMin) * 0.25;
+        const across = filled(contours, y, "y").reduce((sum, [from, to]) => sum + to - from, 0);
+        expect(across, `${name} at ${weight}`).toBeLessThan((ink.xMax - ink.xMin) * 0.75);
       }
     }
   });
