@@ -467,8 +467,18 @@ function marked(
 
   for (const markName of parts.marks) {
     // The mark gets the tool's marks too, or an accented letter comes out with
-    // a roughened body under a machined accent.
-    const mark = makeLetter(markName, style, undefined, undefined, undefined, undefined, effects);
+    // a roughened body under a machined accent; and, where the letter is
+    // drawn in the face's forms, the face's own form of the mark, or the
+    // Sans's à wore the plain sans's grave over Geist's a.
+    const mark = makeLetter(
+      markName,
+      style,
+      form === undefined ? undefined : style.forms?.[markName],
+      undefined,
+      undefined,
+      undefined,
+      effects,
+    );
     if (!mark || mark.contours.length === 0) return null;
 
     // Measured against everything placed so far, so a second mark stacks on

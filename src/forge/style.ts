@@ -754,6 +754,8 @@ export const SANS: Style = {
       equal: [0.5, 0.5],
       underscore: [0.55, 0.55],
       asciitilde: [0.5, 0.5],
+      grave: [0.55, 0.55],
+      acute: [0.55, 0.55],
       at: [0.61, 0.61],
     },
     /*
@@ -879,6 +881,8 @@ export const SANS: Style = {
     equal: "grotesque",
     underscore: "grotesque",
     asciitilde: "grotesque",
+    grave: "grotesque",
+    acute: "grotesque",
     zero: "grotesque",
     two: "grotesque",
     three: "grotesque",

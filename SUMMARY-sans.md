@@ -110,6 +110,13 @@ on top of their own, and at pen 30 were up to 48 units wider than Geist Thin's
 (the r 48, the A 22, the G 30, the 7 26). Each now matches Geist Thin's width
 within about 7 units. The k, which Geist Thin draws a little wider, now is too.
 
+**Grave and acute.** New Sans forms on Geist's measures: steep, cut level
+at both ends, 128 tall and 160 across at the Regular. The plain ones lay
+nearer level. The accented letters now wear them too. `build.ts` (shared)
+draws an accented letter's mark in the face's own form of it whenever the
+letter is drawn with forms at all. Faces that list no form for their marks
+are unchanged.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular
@@ -135,8 +142,6 @@ strokes as white; they now use a filled (nonzero) ruler.
   shaped counters.
 - **#.** The sidebearings are kept just inside the advance. Geist's reach past
   both sides.
-- **Grave and acute.** Geist's are steeper and sit higher. The same marks
-  build the accented letters, so they are left for a pass over the accents.
 - **Backslash at the Black.** It follows the Sans slash, which is about 45
   units narrower than Geist Black's.
 - **Ink widths at the Black.** Pen 172 draws a 172 stem where Geist Black's is

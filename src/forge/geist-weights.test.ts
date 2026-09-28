@@ -518,6 +518,28 @@ describe("the Sans at its Light, against Geist Thin's widths", () => {
   });
 });
 
+describe("the grave and the acute", () => {
+  it("are Geist's steep marks, on their own and over a letter", () => {
+    // Geist's grave: 160 across from 598 up to 726 on the Regular, 234 from
+    // 587 to 747 on the Black. The plain one lay nearer level.
+    for (const [weight, wide, foot, top] of [
+      [87, 160, 598, 726],
+      [172, 234, 587, 747],
+    ]) {
+      for (const name of ["grave", "acute"]) {
+        const ink = box(name, weight);
+        const said = `${name} at ${weight}`;
+        expect(Math.abs(ink.xMax - ink.xMin - wide), said).toBeLessThan(12);
+        expect(Math.abs(ink.yMax - ink.yMin - (top - foot)), said).toBeLessThan(12);
+      }
+      // And the same mark on the à: as tall as it is on its own.
+      const accented = draw("agrave", weight).contours.map((one) => contoursBounds([one]));
+      const mark = accented.reduce((high, one) => (one.yMax > high.yMax ? one : high));
+      expect(Math.abs(mark.yMax - mark.yMin - (top - foot)), `à at ${weight}`).toBeLessThan(12);
+    }
+  });
+});
+
 describe("the s's width", () => {
   it("spreads as Geist's does from the Regular to the Black", () => {
     // Geist's ink widths at its Regular and Black. Pen 130 is halfway between

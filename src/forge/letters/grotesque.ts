@@ -2626,6 +2626,37 @@ export function grotesqueTilde(style: Style): Recipe {
 }
 
 /**
+ * The grave and the acute, as Geist's: steep strokes cut level at both ends,
+ * from 726 down to 598 on the Regular (726 to 610 on the Thin, 747 to 587
+ * on the Black), falling 78 across (76, 72) and about 82 (30, 162) across
+ * where they are cut. The plain ones lay nearer level and sat lower.
+ */
+function accent(style: Style, way: 1 | -1): Recipe {
+  const f = frame(style);
+  const [X, lerp] = squared(f);
+  const k = X(1) - X(0);
+  const cut = lerp(82, 162, 30);
+  const fall = lerp(78, 72, 76);
+  const top = up(f, lerp(726, 747, 726));
+  const foot = up(f, lerp(598, 587, 610));
+  const wide = cut + fall;
+  const x = (u: number) => (way === 1 ? X(u) : X(wide) + X(0) - X(u));
+  const slope = Math.atan2(fall * k, top - foot);
+  return finish(f, [
+    measured(
+      f,
+      straight(at(x(cut / 2), top), at(x(cut / 2 + fall), foot)),
+      cut * k * Math.cos(slope),
+      LEVEL,
+      LEVEL,
+    ),
+  ]);
+}
+
+export const grotesqueGrave = (style: Style): Recipe => accent(style, 1);
+export const grotesqueAcute = (style: Style): Recipe => accent(style, -1);
+
+/**
  * How far the s's spine turns from straight, in radians: see `curvedSpine`.
  * Geist's leaves each bowl this much steeper than a straight tangent would
  * and lies this much flatter through its middle.
