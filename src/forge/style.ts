@@ -1497,7 +1497,12 @@ export const MARKER: Style = {
    * two-storey one that is the alternate, and it is the text faces that should
    * be asking for it.
    */
-  forms: { g: "curled", t: "straight", y: "straight", l: "tailed" },
+  /*
+   * The spurred G. The plain one's upper terminal is cut back as the pen
+   * grows, and at the slider's heaviest it stood off the bowl as a hook and
+   * the letter read as a 6. The spur keeps the bar on the bowl at every weight.
+   */
+  forms: { g: "curled", t: "straight", y: "straight", l: "tailed", G: "spurred" },
   /*
    * And the tool, which is where this face stops being a slanted sans.
    *
@@ -1645,7 +1650,12 @@ export const BRUSH: Style = {
     terminal: { kind: "butt", angle: 0 },
     flare: { spread: 0.14, depth: 1.1, curve: 0.7 },
   },
-  forms: { g: "curled", f: "descending", y: "straight", l: "tailed" },
+  /*
+   * The spurred G. The plain one's upper terminal is cut back as the pen
+   * grows, and at the slider's heaviest it stood off the bowl as a hook and
+   * the letter read as a 6. The spur keeps the bar on the bowl at every weight.
+   */
+  forms: { g: "curled", f: "descending", y: "straight", l: "tailed", G: "spurred" },
   /*
    * The pressure, which is what separates a brush from a slanted pen.
    *
