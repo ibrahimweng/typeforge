@@ -426,6 +426,19 @@ describe("the Serif's diagonals", () => {
   });
 });
 
+describe("the Serif's at sign", () => {
+  it("stops its ring short of the tail with the pen held steeply", () => {
+    for (const weight of [230, 260]) {
+      const style: Style = { ...SERIF, pen: { ...SERIF.pen, weight, angle: -60 } };
+      // Its end, cut square across the pen, reached back over the tail's
+      // turn inside the one outline.
+      for (const contour of draw("at", weight, style).contours) {
+        expect(contoursIntersect([contour]), `@ at ${weight}`).toBe(false);
+      }
+    }
+  });
+});
+
 describe("the Serif at the ends of its contrast", () => {
   it("draws the c's drop without crossing itself at a contrast of 0.9 past a Black", () => {
     for (const weight of [200, 230, 260]) {

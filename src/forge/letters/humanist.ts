@@ -1643,31 +1643,38 @@ export function humanistAt(style: Style): Recipe {
   const tail = (centre.x + R - stem) / 2;
   const turnY = Math.min(bowl.y - bowlH + tail, centre.y - 1);
   const top = bowl.y + bowlH + bowlSide * (1 - f.style.pen.contrast);
-  return finish(
-    f,
-    [
-      lighter(ink(f, ring(f, bowl, bowlW, bowlH)), bowlShare),
-      lighter(
-        ink(
-          f,
-          inPieces(
-            chain(
-              straight(at(stem, top), at(stem, turnY)),
-              turn(at(stem + tail, turnY), tail, 180, 360),
-              straight(at(centre.x + R, turnY), at(centre.x + R, centre.y)),
-              turn(centre, R, 0, 312),
-            ),
-            4,
+  const run = (end: number) =>
+    lighter(
+      ink(
+        f,
+        inPieces(
+          chain(
+            straight(at(stem, top), at(stem, turnY)),
+            turn(at(stem + tail, turnY), tail, 180, 360),
+            straight(at(centre.x + R, turnY), at(centre.x + R, centre.y)),
+            turn(centre, R, 0, end),
           ),
-          BUTT,
-          BUTT,
+          4,
         ),
-        share,
+        BUTT,
+        BUTT,
       ),
-    ],
-    true,
-  );
+      share,
+    );
+  /*
+   * Stopping sooner where the ring's end would reach back over the tail's
+   * turn: cut square across a pen held at -60 past a Black, it did, and the
+   * one outline crossed itself. The points are the same either way.
+   */
+  let drawn = run(AT_END);
+  for (let end = AT_END - 6; end >= AT_END - 36 && contoursIntersect(sweep(drawn)); end -= 6) {
+    drawn = run(end);
+  }
+  return finish(f, [lighter(ink(f, ring(f, bowl, bowlW, bowlH)), bowlShare), drawn], true);
 }
+
+/** Where the at sign's ring stops, in degrees round from its right. */
+const AT_END = 312;
 
 /** Lora's at sign's ink reaches this far from its middle, against the cap height. */
 const AT_RADIUS = 0.51;
