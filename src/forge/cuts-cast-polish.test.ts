@@ -356,7 +356,11 @@ describe("the spur", () => {
         cast: { spur: {} },
         order: "after",
       });
-      for (const letter of "HrA") {
+      // The ends of the arm and leg of a k and the terminals of an a and an
+      // e are cut through acute corners, which leaves more corners than two;
+      // each that was not paired grew a thorn beside the point. (The Black
+      // e's bar end faces its aperture and grows no point uncut, and one cut.)
+      for (const letter of weight === 87 ? "HrAkea" : "HrAka") {
         expect(tips(drawn(letter, both)), `${weight} ${letter}`).toBeLessThanOrEqual(
           tips(drawn(letter, spur)),
         );

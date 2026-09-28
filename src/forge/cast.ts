@@ -1123,6 +1123,15 @@ function spurTool(
        * a good part of the point's length to carry one.
        */
       if (last === first && room < size * 0.45) continue;
+      /*
+       * Nor on a corner the chamfer made that was not read as half of one it
+       * cut. A cut through an acute corner -- the end of the arm of a k, the
+       * lower terminal of an e -- leaves more corners than two, and each
+       * that was not paired grew a thorn of its own beside the point.
+       */
+      if (last === first && chamfered.some((corner) => distance(corner, start) < stem * 0.75)) {
+        continue;
+      }
       const base = Math.min(size * 0.7, room * 0.45);
       /*
        * And never longer than its base can hold up.

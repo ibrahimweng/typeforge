@@ -1661,16 +1661,55 @@ function chamferTool(
       const out = away({ x: leaving.x, y: leaving.y }, { x: arriving.x, y: arriving.y });
       if (!out) continue;
       corners.push(here.point);
+      /*
+       * Measured along the edges themselves rather than along their tangents.
+       * Off a curve, a point a reach along the tangent is not on the outline,
+       * and the cut left a step where it met it: a nick beside the chamfer at
+       * the lower terminal of an e, where the bowl curves into the corner.
+       */
       cut.push(
         poly([
-          { x: here.point.x - arriving.x * reach, y: here.point.y - arriving.y * reach },
+          alongEdge(previous, here, reach, "back"),
           { x: here.point.x + out.x * reach, y: here.point.y + out.y * reach },
-          { x: here.point.x + leaving.x * reach, y: here.point.y + leaving.y * reach },
+          alongEdge(here, next, reach, "forward"),
         ]),
       );
     }
   }
   return cut;
+}
+
+/**
+ * The point on one edge of an outline a distance from one of its ends,
+ * following the curve: back from the end of the edge, or forward from its
+ * start.
+ */
+function alongEdge(from: GlyphNode, to: GlyphNode, by: number, way: "back" | "forward"): Vec2 {
+  const p0 = from.point;
+  const p1 = from.handleOut ?? p0;
+  const p2 = to.handleIn ?? to.point;
+  const p3 = to.point;
+  const STEPS = 32;
+  const at = (t: number): Vec2 => {
+    const u = 1 - t;
+    return {
+      x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+      y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
+    };
+  };
+  let walked = 0;
+  let last = way === "back" ? p3 : p0;
+  for (let step = 1; step <= STEPS; step++) {
+    const point = at(way === "back" ? 1 - step / STEPS : step / STEPS);
+    const run = distance(last, point);
+    if (walked + run >= by) {
+      const share = run > 0 ? (by - walked) / run : 0;
+      return { x: last.x + (point.x - last.x) * share, y: last.y + (point.y - last.y) * share };
+    }
+    walked += run;
+    last = point;
+  }
+  return last;
 }
 
 /**
