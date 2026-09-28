@@ -1744,15 +1744,23 @@ export function grotesqueSix(style: Style): Recipe {
 /** The Sans's six: its bowl as Geist's, lighter at its crown (see `sixBowl`). */
 export function grotesqueSixSided(style: Style): Recipe {
   const f = frame(lighterAcross(style));
-  return finish(f, sixStrokes(f, true), true);
+  // Geist cuts the hood lower at the Black: 520 against 552.
+  const [, now] = squaredNow(f);
+  return finish(f, sixStrokes(f, true, now(552, 520, 552)), true);
 }
 
 /** The six's and the nine's correction: see `figureFit`. */
 const sixFit = (f: Frame): number => figureFit(f, 0, -0.024, 0, -0.053);
+/** The Sans's nine's: Geist's nine stands 6 units wider than its six. */
+const nineFit = (f: Frame): number => figureFit(f, 0.015, -0.009, 0.016, -0.053);
 
-function sixStrokes(f: Frame, sans: boolean): Stroke[] {
-  const X = across(f, 60, 0.025, sixFit(f));
-  const u = large(f, 1) * (1 + 0.025 * thinness(f)) * sixFit(f);
+/**
+ * The six's strokes, its hood cut level at `cut` on Geist's measures (552,
+ * as the plain six's is), or the nine's tail, turned.
+ */
+function sixStrokes(f: Frame, sans: boolean, cut = 552, fit = sixFit(f)): Stroke[] {
+  const X = across(f, 60, 0.025, fit);
+  const u = large(f, 1) * (1 + 0.025 * thinness(f)) * fit;
   const bottom = f.dip(0);
   const top = f.crest(f.cap);
   /*
@@ -1775,10 +1783,12 @@ function sixStrokes(f: Frame, sans: boolean): Stroke[] {
    */
   const hoodY = Math.max(up(f, 260), centre.y);
   const hoodH = held(f, top - hoodY);
-  const out = 25 * u;
+  // Held in at the heavy weights, where cut lower the hood's end reached
+  // past the bowl's side; Geist keeps it inside.
+  const out = 25 * u - (sans ? now(0, 9, 0) : 0);
   const hood = at(centre.x + out, hoodY);
   const hoodW = wide + out;
-  const end = angleAt(f, hood, hoodW, hoodH, Math.max(up(f, 552), hoodY + f.half), false);
+  const end = angleAt(f, hood, hoodW, hoodH, Math.max(up(f, cut), hoodY + f.half), false);
   return [
     ...sixBowl(f, sans, centre, wide, radius, figureCrown(f)),
     ink(
@@ -1859,11 +1869,20 @@ export function grotesqueNineSided(style: Style): Recipe {
 
 function nineOf(style: Style, sans: boolean): Recipe {
   const f = frame(lighterAcross(style));
-  const X = across(f, 60, 0.025, sixFit(f));
+  const [, now] = squaredNow(f);
+  const fit = sans ? nineFit(f) : sixFit(f);
+  const X = across(f, 60, 0.025, fit);
   const about = at(X(313), (f.crest(f.cap) + f.dip(0)) / 2);
   return finish(
     f,
-    sixStrokes(f, sans).map((stroke) => turnedStroke(stroke, about)),
+    /*
+     * Geist's nine is not quite its six turned: its tail is cut lower at the
+     * Thin and the Regular (124 and 140, where the six turned cuts it at
+     * 158) and higher at the Black (180).
+     */
+    sixStrokes(f, sans, sans ? now(570, 530, 586) : 552, fit).map((stroke) =>
+      turnedStroke(stroke, about),
+    ),
     true,
   );
 }

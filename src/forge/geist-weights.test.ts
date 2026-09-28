@@ -1081,3 +1081,23 @@ describe("the three's top terminal", () => {
     expect(filled(contours, 512).length).toBe(2);
   });
 });
+
+describe("the six's and nine's terminals", () => {
+  it("are cut where Geist's are", () => {
+    // Geist Black's six's hood ends at 519, 440 in from its ink's left;
+    // cut at a fixed height it ended at 553. Geist's nine is not its six
+    // turned: its tail ends at 140 at the Regular and 177 at the Black, 80
+    // in, where the turned six's ended at 159 and 158.
+    const six = draw("six", 194).contours;
+    const hood = filled(six, contoursBounds(six).xMin + 440, "x");
+    expect(Math.abs(hood[hood.length - 1][0] - 519)).toBeLessThan(6);
+    for (const [weight, tail] of [
+      [87, 140],
+      [194, 177],
+    ]) {
+      const nine = draw("nine", weight).contours;
+      const column = filled(nine, contoursBounds(nine).xMin + 80, "x");
+      expect(Math.abs(column[0][1] - tail), `9 at ${weight}`).toBeLessThan(6);
+    }
+  });
+});

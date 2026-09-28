@@ -132,6 +132,14 @@ grows, as Geist's is (its end at 545 at the Regular and 508 at the Black,
 where ours stood at 555), and its upper bowl reaches as far left as Geist's
 (it was 14 units short at the Black).
 
+**The 6's and 9's terminals.** Geist cuts its 6's hood lower at the Black
+(519 against 552). Its 9 is not its 6 turned: the tail is cut lower at the
+Thin and the Regular (124 and 140, where the turned 6 cut it at 158) and
+higher at the Black (180). Both are now cut where Geist's are. The 6's hood
+is held inside the bowl's side at the heavy weights, as Geist's is, and the
+9 has its own width fit (Geist's 9 stands 6 units wider than its 6); both are
+within 1 of Geist's width at every weight.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across
