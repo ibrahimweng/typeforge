@@ -290,6 +290,26 @@ describe("the split on a bowl drawn against its stem", () => {
   });
 });
 
+describe("the split on a script", () => {
+  it("leaves the short exit flick of an H and an A on, rather than cutting it loose as a dot", () => {
+    for (const face of ["Formal Script", "Handwriting"]) {
+      const base = BASES.find((one) => one.name === face)!;
+      const forge = forgeOf(face, base.pen.weight, { cuts: { split: {} } });
+      // H: the bar comes off both stems, and nothing else.
+      expect(piecesOf(drawn("H", forge)), `${face} H`).toBe(3);
+      // A: the bar comes off, the flick at the foot stays.
+      expect(piecesOf(drawn("A", forge)), `${face} A`).toBe(2);
+    }
+  });
+
+  it("still takes the short square arms off a Display E", () => {
+    const forge = forgeOf("Display", BASES.find((one) => one.name === "Display")!.pen.weight, {
+      cuts: { split: {} },
+    });
+    expect(piecesOf(drawn("E", forge))).toBe(4);
+  });
+});
+
 describe("the tool's own effects on a cut letter", () => {
   it("leave a slotted Formal Script whole, loop and hairlines and all", () => {
     // The Formal Script ships with the press on. After slots, its clean-up

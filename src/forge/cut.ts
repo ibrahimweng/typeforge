@@ -209,7 +209,7 @@ export function cutInk(
   const straight: Contour[] = [];
   if (cuts.slot.on) straight.push(...slotTool(bounds, cuts.slot, stem, scale));
   if (cuts.tooth.on) straight.push(...toothTool(bounds, cuts.tooth, stem, scale));
-  if (cuts.split.on) straight.push(...splitTool(strokes, cuts.split, stem, cast));
+  if (cuts.split.on) straight.push(...splitTool(strokes, cuts.split, stem, scale.xHeight, cast));
   if (cuts.inline.on) knife.push(...inlineTool(shape, strokes, cuts.inline, stem));
   knife.push(...straight);
   /*
@@ -269,7 +269,7 @@ export function breaksIn(
   if (!cuts?.split.on || strokes.length < 2 || !loaded()) {
     return { knives: [], parted: new Set() };
   }
-  return splitPlan(strokes, cuts.split, Math.max(scale.stem, 1));
+  return splitPlan(strokes, cuts.split, Math.max(scale.stem, 1), scale.xHeight);
 }
 
 /**
@@ -793,6 +793,7 @@ function splitTool(
   strokes: Stroke[],
   split: Cuts["split"],
   stem: number,
+  xHeight: number,
   cast?: CastFirst,
 ): Contour[] {
   /*
@@ -815,7 +816,7 @@ function splitTool(
           pen: { ...stroke.pen, weight: stroke.pen.weight + grown * 2.4 },
         }))
       : strokes;
-  return splitPlan(fat, split, stem).knives;
+  return splitPlan(fat, split, stem, xHeight).knives;
 }
 
 /** The knife the breaks are cut with, and which pairs of strokes it parts. */
@@ -823,8 +824,18 @@ function splitPlan(
   strokes: Stroke[],
   split: Cuts["split"],
   stem: number,
+  xHeight: number,
 ): { knives: Contour[]; parted: Set<string> } {
   const gap = split.size * stem;
+  /*
+   * The least a break may cut free. The exit stroke of a script H or A is a
+   * short flick off the foot of the stem, and a gap at its root left the
+   * rest of it lying beside the letter as a full stop. A loose end shorter
+   * than this stays on if it is longer than a stem or thinner than half of
+   * one: a flick. One shorter than a stem and as thick as the arms of a
+   * Display E is a block, and comes off as one.
+   */
+  const least = xHeight * 0.3;
   if (gap <= 0 || strokes.length < 2) return { knives: [], parted: new Set() };
 
   const near = stem * 1.15;
@@ -1001,6 +1012,19 @@ function splitPlan(
         stem,
         strokes.filter((_, at) => at !== gives && at !== keeps),
       );
+      const freed = placed ? (way > 0 ? lengths[gives] - placed.at : placed.at) - gap / 2 : 0;
+      // Only a loose end: a piece held at its far end too is not cut free.
+      const loose = !nearAnother(samples[gives][way > 0 ? SAMPLES : 0], strokes, gives, stem * 0.5);
+      const tip = samples[gives][way > 0 ? SAMPLES : 0];
+      const root = samples[gives][index];
+      const reach = Math.hypot(tip.x - root.x, tip.y - root.y) || 1;
+      const wide =
+        2 *
+        halfWidth(strokes[gives].pen, {
+          x: -(tip.y - root.y) / reach,
+          y: (tip.x - root.x) / reach,
+        });
+      if (placed && loose && freed < least && (freed > stem || wide < stem * 0.4)) continue;
       if (placed) {
         const meet = samples[keeps][gives === one ? where[1] : where[0]];
         found.push({ ...placed, stroke: gives, keeps, meet });
