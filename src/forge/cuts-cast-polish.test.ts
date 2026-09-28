@@ -323,6 +323,54 @@ describe("the split on a script", () => {
     }
   });
 
+  it("leaves the short curled arm of a Display r on, rather than a wedge beside it", () => {
+    const forge = forgeOf("Display", BASES.find((one) => one.name === "Display")!.pen.weight, {
+      cuts: { split: {} },
+    });
+    expect(piecesOf(drawn("r", forge))).toBe(1);
+  });
+
+  it("still takes a bar off the stem it crosses part way up, however short", () => {
+    for (const face of ["Serif", "Wavy"]) {
+      const forge = forgeOf(face, BASES.find((one) => one.name === face)!.pen.weight, {
+        cuts: { split: {} },
+      });
+      expect(piecesOf(drawn("f", forge)), face).toBe(2);
+    }
+  });
+
+  it("keeps the stem of a hairline Sans a when its bowl comes off", () => {
+    // A sliver cut beside the foot of the arch lost the boolean its way, and
+    // the letter came back as the bowl alone.
+    const forge = forgeOf("Sans", 30, { cuts: { split: {} } });
+    expect(piecesOf(drawn("a", forge))).toBe(2);
+  });
+
+  it("takes the chevron of a Display k off its stem and leaves the stem whole", () => {
+    // The arm and leg are one stroke with its point on the stem. The stem
+    // used to give way to it, and the break took the top off the stem.
+    const weight = BASES.find((one) => one.name === "Display")!.pen.weight;
+    const forge = forgeOf("Display", weight, { cuts: { split: {} } });
+    const solids = unite(drawn("k", forge), "winding").filter((one) => contourArea(one) > 0);
+    const boxes = solids.map((one) => contoursBounds([one]));
+    const stem = boxes.reduce((a, b) => (b.xMin < a.xMin ? b : a));
+    const plain = contoursBounds(drawn("k", forgeOf("Display", weight, {})));
+    // The stem runs the full height of the letter, and no wider than the pen.
+    expect(stem.yMax - stem.yMin).toBeGreaterThan((plain.yMax - plain.yMin) * 0.98);
+    expect(stem.xMax - stem.xMin).toBeLessThan(weight + 0.5);
+    expect(solids.length).toBe(3);
+  });
+
+  it("keeps the descender of a Formal Script y", () => {
+    // A cut beside the stem where the loop leaves it took most of the tail.
+    const base = BASES.find((one) => one.name === "Formal Script")!;
+    const plain = area(drawn("y", forgeOf("Formal Script", base.pen.weight, {})));
+    const cut = area(
+      drawn("y", forgeOf("Formal Script", base.pen.weight, { cuts: { split: {} } })),
+    );
+    expect(cut).toBeGreaterThan(plain * 0.85);
+  });
+
   it("still takes the short square arms off a Display E", () => {
     const forge = forgeOf("Display", BASES.find((one) => one.name === "Display")!.pen.weight, {
       cuts: { split: {} },
