@@ -362,6 +362,27 @@ describe("the split beside an arch", () => {
   });
 });
 
+describe("the split on a Black n", () => {
+  it("cuts no step into the leg where the gap is wider than the counter", () => {
+    // Laid flush on the stem, the gap was wider than the counter under the
+    // arch and bit the top of the leg: its inner edge stepped in where the
+    // band stopped. Followed down the letter it now runs on without a jump.
+    const split = drawn("n", forgeOf("Sans", 260, { cuts: { split: {} } }));
+    const box = contoursBounds(split);
+    let last: number | null = null;
+    for (let at = 0.05; at < 0.95; at += 0.005) {
+      const runs = inkRunsAt(split, box.yMin + (box.yMax - box.yMin) * at);
+      if (runs.length < 2) {
+        last = null;
+        continue;
+      }
+      const edge = runs.at(-1)![0];
+      if (last !== null) expect(Math.abs(edge - last), `at ${at.toFixed(3)}`).toBeLessThan(2.5);
+      last = edge;
+    }
+  });
+});
+
 describe("the split on a script", () => {
   it("leaves the short exit flick of an H and an A on, rather than cutting it loose as a dot", () => {
     for (const face of ["Formal Script", "Handwriting"]) {

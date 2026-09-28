@@ -1707,6 +1707,34 @@ function gapBeside(
               join: "round",
             })
           : [];
+      /*
+       * No wider than the counter the stroke goes on to make. On a Black n
+       * the gap is wider than the counter under the arch, and laid flush on
+       * the stem it bit the top of the leg on the far side, which stepped in
+       * where the band stopped. Measured off the stroke itself further on,
+       * clear of the join, and kept flush on the stem.
+       */
+      let room = Infinity;
+      for (let other = 0; other <= FINE; other++) {
+        if (Math.abs(other * step - at) <= around) continue;
+        const there = nearestOn(wall, path[other]);
+        const out = away(there.point, path[other]);
+        if (!out || out.x * side.x + out.y * side.y <= 0.9) continue;
+        // Out beside it, not in it: an arch can start down inside its stem.
+        if (there.distance <= half) continue;
+        // Only where it runs alongside, as the leg does: the shoulder
+        // coming round to it is the join again.
+        const run = away(path[Math.max(0, other - 1)], path[Math.min(FINE, other + 1)]);
+        if (!run || Math.abs(run.x * there.along.x + run.y * there.along.y) < 0.97) continue;
+        const own = halfWidth(giving.pen, { x: -there.along.y, y: there.along.x });
+        const wide = halfWidth(keeping.pen, { x: -there.along.y, y: there.along.x });
+        room = Math.min(room, there.distance - own - wide);
+      }
+      const narrow = Math.max(gap * 0.6, Math.min(gap, room - clearance)) / 2;
+      if (narrow < g) {
+        centre = { x: centre.x - side.x * (g - narrow), y: centre.y - side.y * (g - narrow) };
+      }
+      const width = Math.min(g, narrow);
       return {
         at,
         local,
@@ -1714,20 +1742,20 @@ function gapBeside(
         ...(column ? { column } : {}),
         band: poly([
           {
-            x: centre.x - side.x * g - along.x * reach,
-            y: centre.y - side.y * g - along.y * reach,
+            x: centre.x - side.x * width - along.x * reach,
+            y: centre.y - side.y * width - along.y * reach,
           },
           {
-            x: centre.x + side.x * g - along.x * reach,
-            y: centre.y + side.y * g - along.y * reach,
+            x: centre.x + side.x * width - along.x * reach,
+            y: centre.y + side.y * width - along.y * reach,
           },
           {
-            x: centre.x + side.x * g + along.x * reach,
-            y: centre.y + side.y * g + along.y * reach,
+            x: centre.x + side.x * width + along.x * reach,
+            y: centre.y + side.y * width + along.y * reach,
           },
           {
-            x: centre.x - side.x * g + along.x * reach,
-            y: centre.y - side.y * g + along.y * reach,
+            x: centre.x - side.x * width + along.x * reach,
+            y: centre.y - side.y * width + along.y * reach,
           },
         ]),
       };
