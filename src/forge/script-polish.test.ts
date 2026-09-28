@@ -375,3 +375,30 @@ describe("a join and the baseline", () => {
     expect(under).toEqual([]);
   }, 300_000);
 });
+
+describe("the written r", () => {
+  /*
+   * Two strokes meeting in a notch: a short up-stroke into a nub, and the
+   * down-stroke from under it to the line. Drawn with a full stem standing on
+   * the line and an arm carried round and down beside it, it was two uprights
+   * and an arch -- a narrow `n` -- and `ro` read `no`.
+   */
+  it("has no stem on the line, and its down-stroke reaches the line", () => {
+    const wrong: string[] = [];
+    for (const name of JOINED) {
+      const own = base(name);
+      if (own.forms?.r !== "written") continue;
+      for (const weight of weightsOf(own)) {
+        const style = heavier(at(own, weight));
+        const x = style.metrics.xHeight;
+        const strokes = recipeOf("r", "written")!(style).strokes;
+        const lowest = (spine: Spine) => Math.min(...alongSpine(spine, 64).map((p) => p.y));
+        const up = lowest(strokes[0].spine);
+        const down = Math.min(...strokes.map((stroke) => lowest(stroke.spine)));
+        if (up < x * 0.15) wrong.push(`${name} @${weight}: up-stroke down to ${up.toFixed(0)}`);
+        if (down > x * 0.2) wrong.push(`${name} @${weight}: floats at ${down.toFixed(0)}`);
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
+});

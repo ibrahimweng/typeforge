@@ -309,6 +309,11 @@ export function joiningWithout<T>(which: Partial<Ends>, run: () => T): T {
   }
 }
 
+/** Whether the letter being drawn is drawn without its lead-in: see `joiningWithout`. */
+export function joiningWithoutEntry(): boolean {
+  return endsWithout?.entry === false;
+}
+
 export function joiningHigh<T>(which: { entry?: boolean; exit?: boolean }, run: () => T): T {
   const was = takingHigh;
   takingHigh = which;

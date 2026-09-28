@@ -1,5 +1,5 @@
 import type { Vec2 } from "@/font/types";
-import { joinWeight, LETTERS, writtenLead } from "../letters";
+import { joiningWithoutEntry, joinWeight, LETTERS, writtenLead } from "../letters";
 import { seamsOf } from "../script";
 import { alongSpine, bowlBetween, bowlPoint, roundCorners, spineEnd, spineStart } from "../shapes";
 import { penReach, reachAlong } from "../sweep";
@@ -732,38 +732,84 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         // with its arm carried down rather than as a narrow `n`.
         const radius = Math.max(shoulderRadius(f, f.x) * 0.6, f.least);
         const crest = Math.max(f.crest(f.x), radius);
-        const landing = stem + Math.max(f.arch * 0.45, radius * 2);
-        const fall = 52;
+        const landing = stem + Math.max(f.arch * 0.4, radius * 2);
+        const fall = 80;
         const falls = (-fall * Math.PI) / 180;
         const climbs = Math.max(Math.atan2(lead.way.y, lead.way.x), 0.2);
-        const turned = at(
-          landing - radius + radius * Math.cos(((90 - fall) * Math.PI) / 180),
-          crest - radius + radius * Math.sin(((90 - fall) * Math.PI) / 180),
-        );
+        /*
+         * The down-stroke starts under the nub, not at its end, so the two
+         * meet in a notch: see below.
+         */
+        const turned = at(stem + radius + (landing - stem - radius) * 0.35, crest);
         // Where the stroke leaves: a weld under the seam, on its heading.
         const leaves = lead.y - lead.weld * Math.sin(climbs);
-        // The valley as round as the room under that allows, its ink kept
-        // off the writing line.
+        // The valley as round as the room under that allows. It sits on the
+        // writing line, as the foot of every other letter does, and the join
+        // climbs the rest of the way to the seam: hung at the seam, with no
+        // stem left to reach down, the `r` floated above its neighbours.
         const lift = 1 - Math.cos(climbs);
         const valley = Math.max(
           Math.min(f.x * 0.22, (leaves - f.half) / Math.max(lift, 1e-6)),
           f.least,
         );
-        const bottom = leaves - valley * lift;
+        const bottom = f.dip(0);
         const starts = bottom + valley * (1 - Math.cos(-falls));
         const run = Math.max((turned.y - starts) / Math.sin(-falls), 1);
         const into = at(turned.x + run * Math.cos(falls), turned.y + run * Math.sin(falls));
         const centre = at(into.x - valley * Math.sin(falls), into.y + valley * Math.cos(falls));
         const toDegrees = (radians: number) => (radians * 180) / Math.PI;
+        // Where a sixty-degree flick off the line meets the shoulder square on.
+        const meets = at(
+          stem + radius + radius * Math.cos((5 * Math.PI) / 6),
+          crest - radius + radius * Math.sin((5 * Math.PI) / 6),
+        );
+        // The flick starts well up off the line, so it is a lead-in and
+        // not a second leg: from the line it read as a `ʌ` before the `o`.
+        const flick = Math.max(meets.y - f.x * 0.2, f.half);
         return {
           ...finish(f, [
-            ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
+            /*
+             * Two strokes that meet in a notch, as a written `r` is: a thin
+             * up-stroke running into a small nub at the waist, and the thick
+             * down-stroke started from under that nub, falling nearly upright
+             * and turning into the lead-out.
+             *
+             * Drawn as one stroke with a full stem it was two uprights and an
+             * arch -- a narrow `n`. With the far side laid down at fifty-two
+             * degrees to avoid that, it read as a `ʌ`: `brown` came out
+             * `bʌown`. And rounded over from the nub into the down-stroke it
+             * was an arch again. The notch is what an `r` is read by: it is
+             * the one place in the letter the pen changes direction sharply.
+             *
+             * The up-stroke is a stub the lead-in lands on, since the lead-in
+             * is the rest of it. At the start of a word there is no lead-in,
+             * and there it is the letter's own: a flick off the line at sixty
+             * degrees, straight into the nub, as a hand starts an `r`. Carried
+             * down to the line as a stem instead, `ro` read `no`.
+             */
             ink(
               f,
               chain(
-                turn(at(stem + radius, crest - radius), radius, 180, 90),
-                straight(at(stem + radius, crest), at(landing - radius, crest)),
-                turn(at(landing - radius, crest - radius), radius, 90, 90 - fall),
+                ...(joiningWithoutEntry()
+                  ? [
+                      straight(
+                        at(meets.x - (meets.y - flick) / Math.tan(Math.PI / 3), flick),
+                        meets,
+                      ),
+                      turn(at(stem + radius, crest - radius), radius, 150, 90),
+                    ]
+                  : [
+                      straight(at(stem, crest - radius - f.x * 0.3), at(stem, crest - radius)),
+                      turn(at(stem + radius, crest - radius), radius, 180, 90),
+                    ]),
+                straight(at(stem + radius, crest), at(landing, crest)),
+              ),
+              BUTT,
+              f.end,
+            ),
+            ink(
+              f,
+              chain(
                 straight(turned, into),
                 turn(centre, valley, toDegrees(falls) - 90, toDegrees(climbs) - 90),
               ),
