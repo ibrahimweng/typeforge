@@ -94,7 +94,7 @@ the closing side.
 **: ;.** The upper dot now sits at Geist Regular's height (506). The old code
 had a mis-measured 0.87 of the x-height there.
 
-**Spacing.** W, X, Y, T, O, Q and the 4, 6, 7 and 9 now stand where Geist
+**Spacing.** W, X, Y, T, O, Q, ! and | and the 4, 6, 7 and 9 now stand where Geist
 1.7.2 sets them, within a few units at the Regular and the Black. The W was 17
 units too close on each side. The T, X, Y and 7 were 12 to 26 too loose, and
 the 6 and 9 were 10 to 20 too loose. The O closed to 25 at the Black, where

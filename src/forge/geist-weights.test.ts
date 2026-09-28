@@ -731,6 +731,7 @@ describe("the Sans's sidebearings", () => {
       six: [50, 40, 40, 30],
       nine: [40, 50, 30, 40],
       four: [30, 50, 20, 40],
+      exclam: [50, 50, 45, 45],
     };
     for (const [name, [left, right, blackLeft, blackRight]] of Object.entries(geist)) {
       for (const [weight, l, r] of [

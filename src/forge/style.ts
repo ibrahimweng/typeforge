@@ -766,6 +766,9 @@ export const SANS: Style = {
       asciitilde: [0.5, 0.5],
       // Geist's stands 55 off either side at the Regular; fitted, 44 and 34.
       dollar: [0.69, 0.69],
+      // Geist stands its ! 50 off either side and its bar 92.
+      exclam: [0.63, 0.63],
+      bar: [1.15, 1.15],
       grave: [0.55, 0.55],
       acute: [0.55, 0.55],
       at: [0.61, 0.61],
