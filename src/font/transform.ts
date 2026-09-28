@@ -729,13 +729,35 @@ function keepHeights(
    * units below its baseline and past its cap height. The middle of what
    * the points on an edge did is taken as the edge's move.
    */
+  /*
+   * Whether the outline runs level at a point, either side of it: the top of
+   * a stem, the bottom of a bowl. The sloped top of a wedge serif passes
+   * near the height too, and counted as on it, it pulled the ascender of
+   * Lora's light b eight units past where it was drawn.
+   */
+  const level = (contour: Contour, index: number): boolean => {
+    const count = contour.nodes.length;
+    const node = contour.nodes[index];
+    const flat = (toward: Vec2 | null | undefined): boolean => {
+      if (!toward) return false;
+      const dx = Math.abs(toward.x - node.point.x);
+      const dy = Math.abs(toward.y - node.point.y);
+      return dx + dy > 1e-6 && dy <= dx * 0.2;
+    };
+    const previous = contour.nodes[(index - 1 + count) % count];
+    const next = contour.nodes[(index + 1) % count];
+    return (
+      flat(node.handleIn ?? (previous.handleOut ? null : previous.point)) ||
+      flat(node.handleOut ?? (next.handleIn ? null : next.point))
+    );
+  };
   const edgeMove = (line: number, upward: boolean): number => {
     const assumed = upward ? weight : -weight;
     if (!matched) return assumed;
     const moves: number[] = [];
     for (const [which, contour] of (before as Contour[]).entries()) {
       for (const [index, node] of contour.nodes.entries()) {
-        if (Math.abs(node.point.y - line) > tolerance) continue;
+        if (Math.abs(node.point.y - line) > tolerance || !level(contour, index)) continue;
         const moved = contours[which].nodes[index].point.y - node.point.y;
         if (upward ? along(moved) > 0.5 : along(moved) < -0.5) moves.push(moved);
       }
@@ -779,7 +801,7 @@ function keepHeights(
     }
     return 1;
   };
-  return contours.map((contour) => ({
+  const squeezed = contours.map((contour) => ({
     closed: contour.closed,
     nodes: contour.nodes.map((node) => {
       const at = node.point;
@@ -794,6 +816,101 @@ function keepHeights(
       };
     }),
   }));
+  if (!matched) return squeezed;
+  /*
+   * And what the pins could not say, because one edge carries parts that
+   * moved differently. The foot of a stem made lighter rises by the weight;
+   * the thin bottom of the bowl beside it keeps a third of itself and rises
+   * less, and brought back by the same amount the bowl of Geist's light b
+   * hung fourteen units below where it was drawn. So every point on an edge
+   * that moved outward says how far it now is from where it was drawn --
+   * the foot nothing, the bowl its fourteen units -- and between them a
+   * smooth field is drawn: each point of the outline, and each handle at
+   * its own place, takes the weighted mean of what the edge points nearby
+   * say, less the further it is from the edge. Moving points one at a time,
+   * a handle carried along with its point, put a belly into the bowl; a
+   * smooth field moves the curve as a whole.
+   */
+  const edges: Array<{ at: Vec2; by: number }> = [];
+  for (const [which, contour] of (before as Contour[]).entries()) {
+    for (const [index, node] of contour.nodes.entries()) {
+      const was = node.point.y;
+      const moved = contours[which].nodes[index].point.y - was;
+      const along = moved * Math.sign(weight);
+      const onEdge =
+        along > 0.5
+          ? (toTop && Math.abs(was - top) <= tolerance) || Math.abs(was - box.yMax) <= tolerance
+          : along < -0.5
+            ? (onBaseline && Math.abs(was) <= tolerance) || Math.abs(was - box.yMin) <= tolerance
+            : false;
+      if (!onEdge) continue;
+      const now = squeezed[which].nodes[index].point;
+      /*
+       * A point on a slope near the edge -- the top of a wedge serif, the
+       * join of the tail of a Q with its bowl -- is only set right where it
+       * was pushed out past the edge: Lora's light b stood eight units
+       * over its ascender from the thin top of its flag. Left inside, it is
+       * where the letter's own shape put it, and corrected there it pulled
+       * the Q's tail.
+       */
+      if (!level(contour, index)) {
+        const up = along > 0;
+        const past = up ? now.y > Math.max(was, box.yMax) : now.y < Math.min(was, box.yMin);
+        if (!past) continue;
+      }
+      // A point the weight carried off the edge -- where the tail of a Q
+      // leaves its bowl -- is no longer on it: a stroke that moved less than
+      // the weight is out by part of the weight, and one that moved more
+      // than the weight was carried along by something else.
+      if (Math.abs(moved) > Math.abs(weight) * 1.1 || Math.abs(was - now.y) > Math.abs(weight))
+        continue;
+      /*
+       * And only drawn back in. A point short of its edge is where the
+       * letter's own strokes put it -- the bottom of a Q's bowl, held up by
+       * the tail it runs into -- and pulled out to the edge it bent the
+       * bowl; a point pushed past the edge is the fault being mended.
+       */
+      const by = was - now.y;
+      if (along > 0 ? by > 0 : by < 0) continue;
+      edges.push({ at: now, by });
+    }
+  }
+  if (!edges.some((edge) => Math.abs(edge.by) > 0.5)) return squeezed;
+  const lines = [...(onBaseline ? [0, box.yMin] : []), ...(toTop ? [top, box.yMax] : [])];
+  const band = typeface.unitsPerEm * 0.1;
+  const soft = (typeface.unitsPerEm * 0.01) ** 2;
+  // Full strength as far from an edge as the corrections themselves reach,
+  // and fading over a band beyond.
+  const slack = Math.max(...edges.map((edge) => Math.abs(edge.by)));
+  const field = (at: Vec2): number => {
+    const off = Math.max(0, Math.min(...lines.map((line) => Math.abs(at.y - line))) - slack);
+    const envelope = Math.max(0, 1 - off / band);
+    if (envelope === 0) return 0;
+    let sum = 0;
+    let total = 0;
+    for (const edge of edges) {
+      const weight = 1 / ((edge.at.x - at.x) ** 2 + (edge.at.y - at.y) ** 2 + soft);
+      sum += edge.by * weight;
+      total += weight;
+    }
+    return total > 0 ? (sum / total) * envelope : 0;
+  };
+  const shift = (at: Vec2 | null): Vec2 | null => (at ? { x: at.x, y: at.y + field(at) } : null);
+  const fielded = squeezed.map((contour) => ({
+    closed: contour.closed,
+    nodes: contour.nodes.map((node) => ({
+      ...node,
+      point: shift(node.point) as Vec2,
+      handleIn: shift(node.handleIn),
+      handleOut: shift(node.handleOut),
+    })),
+  }));
+  // Left squeezed where the field would cross an outline that did not cross.
+  return fielded.map((contour, which) =>
+    contoursIntersect([contour]) && !contoursIntersect([squeezed[which]])
+      ? squeezed[which]
+      : contour,
+  );
 }
 
 /** Shear about the baseline, the transform that makes an oblique. */

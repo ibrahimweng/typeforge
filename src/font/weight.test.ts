@@ -519,6 +519,22 @@ describe("a lighter or bolder cut", () => {
     }
   });
 
+  it("keeps a thin bowl at its overshoot beside a stem on the same baseline", () => {
+    // A b's parts: a stem a hundred thick, and a bowl forty thick that dips
+    // twelve below the baseline. Made lighter the stem's foot rises by the
+    // weight, the bowl's thin bottom by a third of itself.
+    const stem = polygon([
+      [100, 0],
+      [100, 700],
+      [200, 700],
+      [200, 0],
+    ]);
+    const { typeface, glyph } = letter([stem, circle(360, 250, 262, true), circle(360, 250, 222)]);
+    const [, bowl] = at(typeface, glyph, { weight: -40 });
+    expect(contoursBounds([bowl]).yMin).toBeCloseTo(-12, -0.5);
+    expect(contoursBounds([at(typeface, glyph, { weight: -40 })[0]]).yMin).toBeCloseTo(0, 0);
+  });
+
   it("thins a serif without tearing it", () => {
     const { typeface, glyph } = letter([serifI()]);
     const [shape] = at(typeface, glyph, { weight: -40 });
