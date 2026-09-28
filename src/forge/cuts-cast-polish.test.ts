@@ -320,6 +320,36 @@ describe("the press on an uncut letter", () => {
   });
 });
 
+describe("the inline at a terminal", () => {
+  it("ends the groove square, with no jog in its side", () => {
+    // The hold-back took the paper beside a curving terminal as well as past
+    // it, and grown by the inset it bit a step into the groove's side where
+    // the groove ended: one corner more than the groove's square end has.
+    const forge = forgeOf("Sans", 87, { cuts: { inline: {} } });
+    const corners = (letter: string) => {
+      let count = 0;
+      for (const contour of unite(drawn(letter, forge), "winding")) {
+        const points = flattenContour(contour, 16);
+        for (let index = 0; index < points.length; index++) {
+          const a = points[(index - 1 + points.length) % points.length];
+          const b = points[index];
+          const c = points[(index + 1) % points.length];
+          const u = { x: b.x - a.x, y: b.y - a.y };
+          const v = { x: c.x - b.x, y: c.y - b.y };
+          const lu = Math.hypot(u.x, u.y);
+          const lv = Math.hypot(v.x, v.y);
+          if (lu < 0.5 || lv < 0.5) continue;
+          if ((u.x * v.x + u.y * v.y) / (lu * lv) < Math.cos(Math.PI / 6)) count++;
+        }
+      }
+      return count;
+    };
+    expect(corners("a")).toBeLessThanOrEqual(9);
+    expect(corners("e")).toBeLessThanOrEqual(10);
+    expect(corners("s")).toBeLessThanOrEqual(8);
+  });
+});
+
 describe("the inline on a roughened face", () => {
   it("keeps its groove round a Brush o and down a Handwriting H", () => {
     // The roughening's sweep for slits took the groove for one where it

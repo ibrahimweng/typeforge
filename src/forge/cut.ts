@@ -780,7 +780,10 @@ function inlineTool(
       // Far enough either side of the end of the spine to hold a cut up to
       // fifty degrees off square, and no further: past that it found the
       // paper under the arch of an a, and the bowl below it.
-      const tip = subtract([box(-half * 1.2, half * 1.2, half * 0.9)], shape, "winding").filter(
+      // And only across the middle of the stroke, where the groove runs: on
+      // a curving terminal the box also held the paper beside the stroke,
+      // and grown by the inset it bit the groove's side where it ended.
+      const tip = subtract([box(-half * 1.2, half * 1.2, half * 0.5)], shape, "winding").filter(
         (one) => contourArea(one) > 0,
       );
       if (back > 0) {
