@@ -202,3 +202,29 @@ describe("the Serif's e", () => {
     }
   });
 });
+
+describe("the Serif's R", () => {
+  it("puts the leg's toe out past the bowl at every weight, as Lora's is", () => {
+    for (const weight of WEIGHTS) {
+      const b = box("R", weight);
+      const foot = row("R", weight, 4);
+      const toe = foot[foot.length - 1][1];
+      // At an Ultra the bowl widened with the pen and the toe stood 180 units
+      // back under it: a P with a stub under it.
+      expect(b.xMax - toe, `R at ${weight}`).toBeLessThan(Math.max(8, weight * 0.08));
+      // And the leg straight down its slant, not bowed all the way down.
+      const at = (y: number) => {
+        const runs = row("R", weight, y);
+        return runs[runs.length - 1][1];
+      };
+      // Its right edge between the bowl and the turn into the toe.
+      // Lora's falls 0.66 across for every unit down (56 degrees); bowled
+      // out, the construction's ran at 0.9 and more there.
+      if (weight <= 142) {
+        const [high, middle, low] = [220, 180, 140].map(at);
+        expect((low - high) / 80, `R at ${weight}`).toBeLessThan(0.78);
+        expect(Math.abs(middle - high - (low - middle)), `R at ${weight}`).toBeLessThan(4);
+      }
+    }
+  });
+});

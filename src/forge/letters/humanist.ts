@@ -19,7 +19,7 @@ import { blackness, type Style } from "../style";
 import { LETTERS } from "../letters";
 import { bowl, bowlBetween, bowlPoint, spineEnd, spineStart } from "../shapes";
 import { penReach, reachAlong, sweep } from "../sweep";
-import { inkRunsAt } from "@/font/geometry";
+import { contoursBounds, inkRunsAt } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import type { Vec2 } from "@/font/types";
 import type { Spine, Stroke, Terminal } from "../types";
@@ -1151,10 +1151,12 @@ function kay(
     hairlined(ink(f, straight(arm, into), f.end, BUTT), 0.62),
     // Bowed a little and cut level on the line, as Lora's leg flares into
     // its end: on a foot serif, the serif's inside wing stood out as a spur.
-    ink(f, bowed(f, leaves, at(foot.x + f.half * 0.4, foot.y), R_LEG_BOW * 0.8), BUTT, LEVEL),
+    ink(f, bowed(f, leaves, at(foot.x + f.half * 0.4, foot.y), K_LEG_BOW), BUTT, LEVEL),
   ]);
 }
 
+/** How far the K's leg bows off its chord: up and to the right. */
+const K_LEG_BOW = 0.08;
 /** How far out along the arm the leg leaves it, from the stem. */
 const K_LEAVES = 0.3;
 /** How far out the leg's foot stands against the arm's reach. */
@@ -1936,10 +1938,11 @@ function pinned(spine: Spine, pieces: number): Spine {
 }
 
 /**
- * The R whose leg leaves the bowl and falls in a curve, steep at first and
- * flattening into its end on the line, cut level there with no serif, as
- * Lora's does: the construction's straight leg ended on a foot serif whose
- * inside wing stood out to the left as a spur.
+ * The R whose leg leaves the bowl as Lora's does: straight down at its
+ * slant, and in its last few units turning out along the line into a toe
+ * cut upright, with no serif -- where the construction's leg was bowed all
+ * the way down, leaning out further than Lora's, and a serif at its foot
+ * stood its inner wing out to the left as a spur.
  */
 export function humanistCapitalR(style: Style): Recipe {
   const f = frame(style);
@@ -1947,7 +1950,33 @@ export function humanistCapitalR(style: Style): Recipe {
   const [stem, lobe, leg] = recipe.strokes;
   const [run] = leg?.spine.segments ?? [];
   if (!stem || !lobe || run?.kind !== "line") return recipe;
-  const foot = at(run.to.x + f.half * 1.6, run.to.y);
+  const rad = (degrees: number) => (degrees * Math.PI) / 180;
+  // Leaving the bowl's foot a third of a stem further out than the
+  // construction's, where Lora's leaves it.
+  const from = at(run.from.x + f.half * 2 * R_LEAVES, run.from.y);
+  const base = run.to.y;
+  const pen = penReach(leg.pen);
+  // The toe's spine level, its lower edge on the line.
+  const lift = Math.abs(reachAlong(at(0, -1), pen).y);
+  const r = Math.max(f.half * R_KICK, lift * 1.3, f.least);
+  // Turning left, anticlockwise: each point on the turn stands a right angle
+  // clockwise of the way it is travelling.
+  const on = (heading: number) => rad(heading - 90);
+  const toeY = base + lift;
+  const kneeY = toeY + r * (Math.sin(on(-R_SLANT)) - Math.sin(on(0)));
+  const knee = at(from.x + (from.y - kneeY) / Math.tan(rad(R_SLANT)), kneeY);
+  const centre = at(knee.x - r * Math.cos(on(-R_SLANT)), knee.y - r * Math.sin(on(-R_SLANT)));
+  let toe = at(centre.x, toeY);
+  /*
+   * And out as far as puts its toe past the bowl: past a Bold the bowl widens
+   * with the pen, and the leg under it stood back beneath its left half, a
+   * P with a stub under it.
+   */
+  const bowlRight = contoursBounds(sweep(lobe)).xMax;
+  // Lora's toe stands past its bowl a quarter of the leg's height at the
+  // Regular, and at the Bold (whose bowl here is the wider) a little past it.
+  const reach = R_TOE + (R_TOE_BOLD - R_TOE) * Math.min(1, heaviness(f) / 0.44);
+  toe = at(Math.max(toe.x, bowlRight + reach * Math.abs(from.y - base)), toeY);
   return {
     ...recipe,
     strokes: [
@@ -1955,12 +1984,24 @@ export function humanistCapitalR(style: Style): Recipe {
       lobe,
       inherit(leg, {
         ...leg,
-        spine: bowed(f, run.from, foot, R_LEG_BOW),
-        end: LEVEL,
+        spine: chain(
+          straight(from, knee),
+          inPieces(turn(centre, r, -R_SLANT - 90, -90), 2),
+          straight(at(centre.x, toeY), toe),
+        ),
+        end: BUTT,
       }),
     ],
   };
 }
 
-/** How far the R's leg bows off its chord: up and to the right. */
-const R_LEG_BOW = 0.1;
+/** How much further out along the bowl's foot the R's leg leaves it, against the stem. */
+const R_LEAVES = 0.32;
+/** The R's leg's slant, off level: Lora's is 56 degrees. */
+const R_SLANT = 56;
+/** The radius of the turn into the R's toe, against half the pen. */
+const R_KICK = 1.6;
+/** How far the R's toe stands past its bowl at least, against the leg's height. */
+const R_TOE = 0.25;
+/** And at the Bold, where the bowl drawn here is nearly as wide as Lora's toe reaches. */
+const R_TOE_BOLD = 0.04;
