@@ -1211,7 +1211,14 @@ function dress(
     const serifed =
       kind === "letter"
         ? onLine || Math.abs(outward.y) <= 0.35
-        : kind === "figure" && Math.abs(at.y) < 1 && outward.y < -0.9;
+        : kind === "figure" &&
+          ((Math.abs(at.y) < 1 && outward.y < -0.9) ||
+            // And a text serif's beak on a figure's arm lying along a line, its
+            // edge on the line, as Lora's seven, two and five end.
+            (end.kind === "slab" &&
+              end.shape === "wedge" &&
+              Math.abs(outward.y) <= 0.35 &&
+              lines.some((line) => Math.abs(at.y - line) <= halfWidthAcross(stroke, outward) + 1)));
     /*
      * Refused a serif, a straight end is still cut the way it would have been
      * with one: level on the line it stops on, or square across an arm. Cut

@@ -17,13 +17,19 @@
 
 import { blackness, type Style } from "../style";
 import { LETTERS } from "../letters";
-import { bowl, bowlPoint, spineStart } from "../shapes";
+import { bowl, bowlPoint, spineEnd, spineStart } from "../shapes";
 import { penReach, reachAlong, sweep } from "../sweep";
 import { inkRunsAt } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import type { Vec2 } from "@/font/types";
 import type { Spine, Stroke, Terminal } from "../types";
 import {
+  arm,
+  bendWidth,
+  figureWidth,
+  headingAt,
+  heavyFigure,
+  hookFrom,
   at,
   barWeight,
   bowed,
@@ -1417,30 +1423,156 @@ export function humanistCapitalS(style: Style): Recipe {
 }
 
 /**
- * The seven as Lora's: the arm running out to the right and the stem leaving
- * it in one bowed stroke that stands more upright as it falls, ending on the
- * line in a round tail rather than on a foot serif. The construction's
- * straight stem stood on a serif, as an l's does, and read as a letter.
+ * The two as Lora's: the diagonal leaving the bowl as the bowl's own curve
+ * and easing into an S down to the foot -- steeper than its chord where it
+ * leaves the bowl, flatter through the middle and steeper again into the
+ * foot -- where the construction's ran as one straight band.
+ *
+ * Otherwise the construction's two (see `figures.ts`): the bowl carried round
+ * exactly as far as leaves it travelling the way the diagonal sets off, the
+ * diagonal cut level on the line with its left corner on the foot's end, and
+ * the foot from where the diagonal's left edge crosses its top.
  */
-export function humanistSeven(style: Style): Recipe {
+export function humanistTwo(style: Style): Recipe {
   const f = frame(style);
-  const recipe = LETTERS.seven(style);
-  const [only] = recipe.strokes;
-  const [arm, fall] = only?.spine.segments ?? [];
-  if (arm?.kind !== "line" || fall?.kind !== "line") return recipe;
-  // The round cap on a curved end reaches only a few units on past it.
-  const end = at(fall.to.x + f.half * 0.4, f.dip(0) + 5);
+  const width = figureWidth(f);
+  const left = f.edge;
+  const grown = heavyFigure(f) / 2;
+  const drawn = width / 2 - grown;
+  const low = Math.min(drawn, (f.crest(f.cap) - f.dip(0)) * 0.3);
+  const radius = Math.max(drawn + (low - drawn) * Math.min(1, f.gain / (f.x * 0.05)), f.least);
+  const wide = bendWidth(f, radius) + grown;
+  const centre = at(left + radius + grown, f.crest(f.cap) - radius);
+  const pen = penReach(style.pen);
+  // How far each end of the S turns off its chord: see `TWO_SAG`.
+  const turned = 2 * Math.atan(2 * TWO_SAG);
+  const rotate = (v: Vec2, by: number): Vec2 =>
+    at(v.x * Math.cos(by) - v.y * Math.sin(by), v.x * Math.sin(by) + v.y * Math.cos(by));
+  /*
+   * Where on the baseline the run lands so its left corner is on `left`,
+   * reckoned along the way the S arrives there, steeper than its chord.
+   */
+  const toward = (from: Vec2): Vec2 => {
+    let lands = at(left, 0);
+    for (let pass = 0; pass < 3; pass++) {
+      const d = { x: lands.x - from.x, y: lands.y - from.y };
+      const length = Math.hypot(d.x, d.y) || 1;
+      const u = rotate({ x: d.x / length, y: d.y / length }, turned);
+      const shift = reachAlong({ x: -u.y, y: u.x }, pen);
+      lands = at(left + Math.abs(shift.x - (u.x * shift.y) / u.y), 0);
+    }
+    return lands;
+  };
+  // The bowl leaves travelling the way the S sets off: its chord, turned steeper.
+  const miss = (angle: number): number => {
+    const run = bend(f, centre, radius, hookFrom(f), angle, wide);
+    const from = spineEnd(run);
+    const heading = headingAt(run.segments[run.segments.length - 1], "end");
+    const to = toward(from);
+    const aim = rotate(towards(from, to), turned);
+    return Math.abs(Math.atan2(aim.y, aim.x) - Math.atan2(heading.y, heading.x));
+  };
+  let leaves = -22;
+  let best = Infinity;
+  const tryAt = (angle: number) => {
+    const off = miss(angle);
+    if (off < best) {
+      best = off;
+      leaves = angle;
+    }
+  };
+  for (let angle = 5; angle >= -75; angle -= 5) tryAt(angle);
+  const coarse = leaves;
+  for (let angle = coarse + 4; angle >= coarse - 4; angle -= 1) tryAt(angle);
+  const over = bend(f, centre, radius, hookFrom(f), leaves, wide);
+  const joins = spineEnd(over);
+  const lands = toward(joins);
+  const middle = at((joins.x + lands.x) / 2, (joins.y + lands.y) / 2);
+  /*
+   * The S as two arcs bowed opposite ways about its middle, which meet there
+   * on one tangent; begun a little way back up inside the bowl's end so the
+   * two cut ends do not meet edge to edge.
+   */
+  const leaving = rotate(towards(joins, lands), turned);
+  const overlap = at(joins.x - leaving.x * f.half * 0.3, joins.y - leaving.y * f.half * 0.3);
+  const diagonal = chain(
+    straight(overlap, joins),
+    bowed(f, joins, middle, TWO_SAG),
+    bowed(f, middle, lands, -TWO_SAG),
+  );
+  // The way it arrives on the line, for where its edges cross the foot's top.
+  const way = rotate(towards(lands, joins), turned);
+  const footTop = f.sits(0, f.bar) * 2;
+  const edges = (y: number): number[] =>
+    [1, -1].map((side) => {
+      const across = reachAlong({ x: -way.y * side, y: way.x * side }, pen);
+      return lands.x + across.x + ((y - lands.y - across.y) * way.x) / Math.max(way.y, 1e-6);
+    });
+  const heel = Math.min(...edges(footTop));
+  const toe = Math.max(...edges(0));
+  const footFrom = heel < toe ? (heel + toe) / 2 : heel + 2;
   return finish(f, [
-    inherit(only, {
-      ...only,
-      spine: chain(straight(arm.from, arm.to), bowed(f, arm.to, end, SEVEN_BOW)),
-      end: { kind: "round" },
-    }),
+    ink(f, over, f.end, BUTT),
+    ink(f, diagonal, BUTT, { kind: "butt", level: true }),
+    arm(f, footFrom, left + width, f.sits(0, f.bar)),
   ]);
 }
 
-/** How far the seven's stem bows off its chord, and which way: out to the right. */
-const SEVEN_BOW = -0.035;
+/** How far each half of the two's S bows off its chord, against its length. */
+const TWO_SAG = 0.06;
+
+/**
+ * The seven as Lora's: the arm running out to the right from a beak, and the
+ * stem leaving its right end falling straight down, turning into its slant
+ * within a sixth of the height and then bowing a little more upright as it
+ * falls, to end on the line in a round tail rather than on a foot serif.
+ *
+ * The construction's stem left the arm's end at its slant, so the corner was
+ * a point and the stem stood half a stem left of Lora's all the way down; and
+ * drawn in one run with the arm, the arm's end took a nick of a beak where
+ * Lora's hangs a quarter of the cap height.
+ */
+export function humanistSeven(style: Style): Recipe {
+  const f = frame(style);
+  const width = figureWidth(f);
+  const left = f.edge;
+  const armY = f.hangs(f.cap);
+  // The stem's right edge flush with the arm's end.
+  const stemHalf = Math.abs(reachAlong(at(1, 0), penReach(f.style.pen)).x);
+  const right = left + width;
+  const stemX = right - stemHalf;
+  const rad = (degrees: number) => (degrees * Math.PI) / 180;
+  // The turn out of the corner, from straight down into the slant.
+  const bendR = Math.max(f.cap * SEVEN_TURN + f.half, f.half * 1.3);
+  const centre = at(stemX - bendR, armY);
+  const leaves = -SEVEN_SLANT;
+  const turned = at(
+    centre.x + bendR * Math.cos(rad(leaves)),
+    centre.y + bendR * Math.sin(rad(leaves)),
+  );
+  // And on down to the line, the chord a little steeper than the slant the
+  // turn left it on, so the bow brings it more upright as it falls.
+  const bowTurn = 2 * Math.atan(2 * SEVEN_BOW);
+  const chordFromUpright = rad(SEVEN_SLANT) - bowTurn;
+  const floor = f.dip(0) + 5;
+  const end = at(turned.x - (turned.y - floor) * Math.tan(chordFromUpright), floor);
+  return finish(f, [
+    arm(f, right, left, armY),
+    ink(
+      f,
+      chain(inPieces(turn(centre, bendR, 0, leaves), 2), bowed(f, turned, end, -SEVEN_BOW)),
+      BUTT,
+      { kind: "round" },
+    ),
+  ]);
+}
+
+/** How far the seven's stem bows off its chord, below the turn out of the corner. */
+const SEVEN_BOW = 0.012;
+/** How far off upright the seven's stem leaves the turn: Lora's is 22 degrees. */
+const SEVEN_SLANT = 22;
+/** The radius of the seven's turn out of the corner, against the cap height. */
+const SEVEN_TURN = 0.36;
 
 /**
  * The ampersand as Lora draws it: a small loop at the cap height and a large

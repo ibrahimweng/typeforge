@@ -934,6 +934,7 @@ export const SERIF: Style = {
     at: "humanist",
     S: "humanist",
     seven: "humanist",
+    two: "humanist",
     ampersand: "humanist",
     R: "humanist",
   },

@@ -86,3 +86,50 @@ describe("the Serif's t", () => {
     }
   });
 });
+
+describe("the Serif's two and seven", () => {
+  const CAP = SERIF.metrics.capHeight;
+  /** The middle of the one run of ink a row crosses the diagonal in. */
+  const through = (name: string, weight: number, y: number) => {
+    const [run] = row(name, weight, y);
+    return (run[0] + run[1]) / 2;
+  };
+
+  it("runs the two's diagonal in an S, flatter through its middle than out of the bowl", () => {
+    for (const weight of [30, 87, 142]) {
+      const at = [0.5, 0.4, 0.3, 0.2].map((k) => through("two", weight, CAP * k));
+      // Lora's leaves the bowl at 22 degrees steeper than its chord and eases
+      // to its flattest through the middle; the construction's was straight.
+      const upper = at[0] - at[1];
+      const middle = at[1] - at[2];
+      expect(middle, `2 at ${weight}`).toBeGreaterThan(upper * 1.12);
+    }
+  });
+
+  it("stands the two on a foot with Lora's upright serif at its right end", () => {
+    for (const weight of [30, 87, 142, 260]) {
+      // Over the foot's top, at the foot's right end: the serif.
+      const foot = row("two", weight, 4);
+      const runs = row("two", weight, weight * 0.35 + 45);
+      const end = foot[foot.length - 1][1];
+      expect(Math.abs(end - runs[runs.length - 1][1]), `2 at ${weight}`).toBeLessThan(3);
+    }
+  });
+
+  it("drops the seven's stem straight down out of the corner, under a beak at the arm's end", () => {
+    for (const weight of [30, 87, 142, 200, 260]) {
+      const b = box("seven", weight);
+      const wide = b.xMax - b.xMin;
+      // Its right edge a twelfth of the height under the arm still within a
+      // few units of the arm's end, as Lora's is (15 on 419): it slanted off
+      // from the corner.
+      if (weight <= 200) {
+        const under = row("seven", weight, CAP - weight * 0.55 - CAP * 0.08);
+        expect(b.xMax - under[under.length - 1][1], `7 at ${weight}`).toBeLessThan(wide * 0.065);
+      }
+      // And the beak hanging under the arm's left end.
+      const beak = row("seven", weight, CAP - weight * 0.55 - 20)[0];
+      expect(beak[0] - b.xMin, `7 at ${weight}`).toBeLessThan(3);
+    }
+  });
+});
