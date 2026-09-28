@@ -1006,3 +1006,19 @@ describe("the five's flag", () => {
     expect(Math.abs(side[0][1] - 204)).toBeLessThan(6);
   });
 });
+
+describe("the horizontals at the current Black", () => {
+  it("are as heavy as Geist Black's", () => {
+    // Geist Black's 3 has a foot 168 deep and a top 165; its 5's flag is
+    // 157. Lightened across from the UltraBlack on, they stood at 143, 144
+    // and 139.
+    const three = draw("three", 194).contours;
+    const x = contoursBounds(three).xMin + 280;
+    const column = runs(three, x, "x");
+    expect(column[0][1] - column[0][0]).toBeGreaterThan(147);
+    expect(column[column.length - 1][1] - column[column.length - 1][0]).toBeGreaterThan(147);
+    const five = draw("five", 194).contours;
+    const flag = runs(five, contoursBounds(five).xMin + 300, "x");
+    expect(flag[flag.length - 1][1] - flag[flag.length - 1][0]).toBeGreaterThan(145);
+  });
+});

@@ -1729,7 +1729,7 @@ export function grotesqueZero(style: Style): Recipe {
         ring(
           f,
           at(X(336), middle),
-          held(f, 236 * large(f, 0.5) * figureFit(f, 0.02, 0.012, 0.015, -0.08)),
+          held(f, 236 * large(f, 0.5) * figureFit(f, 0.02, 0.012, 0.015, -0.035)),
           held(f, f.crest(f.cap) - middle),
         ),
       ),
@@ -3335,9 +3335,15 @@ function crossAt(first: Spine, second: Spine, leave: number, arrive: number): Sp
  */
 function lighterAcross(style: Style): Style {
   const f = frame(style);
-  const t = heaviness(f) / 0.67 - 1;
+  /*
+   * From the current Black on: Geist's Black is heavier across than its
+   * UltraBlack (its 3's foot 168 against 148), and lightened from 172 the
+   * figures' horizontals stood 15 to 25 units light at the Black. It is as
+   * light as ever by the same weight.
+   */
+  const t = heaviness(f) / 0.67 - nowBlack();
   if (t <= 0) return style;
-  const k = Math.min(1, t / 1.2);
+  const k = Math.min(1, t / (2.2 - nowBlack()));
   const { pen } = f.style;
   const contrast = pen.contrast + (0.56 - pen.contrast) * k * k * (3 - 2 * k);
   return {
