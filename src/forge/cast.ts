@@ -385,9 +385,37 @@ function groundOf(loop: Contour, solid: Contour): Contour[] {
  * once more on a fine grid, which is nothing on the page and makes the
  * meeting point one point. Given back as it came if that fails too.
  */
-export function untangled(shape: Contour[]): Contour[] {
-  if (!shape.some((contour) => contoursIntersect([contour]))) return shape;
-  const once = unite(shape, "winding", "whole");
+export function untangled(shape: Contour[], slant = 0): Contour[] {
+  /*
+   * And as it will stand once leaned. The lean is a shear and cannot cross
+   * an outline that did not cross, but where two edges all but touch it can
+   * tip the test that says so -- a Formal Script n under the breaks came out
+   * of the pressure clean and crossed once it leaned 22 degrees. Such a
+   * letter is untangled leaned, and stood back up.
+   */
+  if (slant) {
+    const lean = Math.tan((slant * Math.PI) / 180);
+    const tilt = (contours: Contour[], by: number) =>
+      contours.map((contour) => ({
+        ...contour,
+        nodes: contour.nodes.map((node) => {
+          const move = (point: Vec2 | null): Vec2 | null =>
+            point && { x: point.x + point.y * by, y: point.y };
+          return {
+            ...node,
+            point: move(node.point) as Vec2,
+            handleIn: move(node.handleIn),
+            handleOut: move(node.handleOut),
+          };
+        }),
+      }));
+    const leaned = tilt(shape, lean);
+    if (leaned.some((contour) => contoursIntersect([contour]))) {
+      return tilt(withoutCrumbs(untangled(leaned)), -lean);
+    }
+  }
+  if (!shape.some((contour) => contoursIntersect([contour]))) return withoutCrumbs(shape);
+  const once = withoutCrumbs(unite(shape, "winding", "whole"));
   if (!once.some((contour) => contoursIntersect([contour]))) return once;
   for (const per of [8, 2, 1]) {
     const again = unite(
@@ -395,9 +423,20 @@ export function untangled(shape: Contour[]): Contour[] {
       "winding",
       "whole",
     );
-    if (!again.some((contour) => contoursIntersect([contour]))) return again;
+    if (!again.some((contour) => contoursIntersect([contour]))) return withoutCrumbs(again);
   }
   return once;
+}
+
+/**
+ * Less the crumbs a union tied off in resolving a loop: a sliver of a few
+ * units, solid or hole, under a thousandth of the letter's ink. The smallest
+ * thing a letter draws on purpose, the counter under a Serif t's flag, is
+ * eight times that.
+ */
+function withoutCrumbs(shape: Contour[]): Contour[] {
+  const ink = shape.reduce((total, contour) => total + Math.max(contourArea(contour), 0), 0);
+  return shape.filter((contour) => Math.abs(contourArea(contour)) >= ink * 0.001);
 }
 
 /** An outline with every point and handle set to the nearest step of `1 / per`. */

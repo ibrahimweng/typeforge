@@ -1178,7 +1178,7 @@ function splitPlan(
       // And only off the end of the stroke it leaves, as an exit stroke
       // leaves the foot of a stem: the bar of an f and the middle arm of an
       // E leave theirs part way up, and come off however short they are.
-      const offTheEnd = ends[gives === one ? 1 : 0] < 0.1;
+      const offTheEnd = ends[gives === one ? 1 : 0] < 0.2;
       /*
        * And turning back on it: the exit of a script H runs down the stem and
        * flicks back up. An arm that turns off the end of a stem at a corner
@@ -1195,7 +1195,10 @@ function splitPlan(
           (Math.hypot(into.x, into.y) * Math.hypot(leaving.x, leaving.y) || 1) <
         -0.2;
       const flick = offTheEnd && turnsBack && (freed > stem || wide < stem * 0.4);
-      if (placed && loose && freed < least && (flick || curl)) {
+      // A flick that turns back up its stroke is a script's exit, and stays
+      // on up to about half the x-height: past three tenths the Roundhand's
+      // and the Formal Script's longer exits and entries came off as dashes.
+      if (placed && loose && ((flick && freed < xHeight * 0.55) || (curl && freed < least))) {
         continue;
       }
       if (placed) {

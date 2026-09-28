@@ -473,6 +473,26 @@ describe("the split on a script", () => {
     expect(cut).toBeGreaterThan(plain * 0.85);
   });
 
+  it("leaves the longer exit and entry strokes of a Roundhand n on", () => {
+    // Past three tenths of the x-height they came off as dashes either side
+    // of the letter; only the arch comes off its stem now.
+    const forge = forgeOf("Roundhand", BASES.find((one) => one.name === "Roundhand")!.pen.weight, {
+      cuts: { split: {} },
+    });
+    expect(piecesOf(drawn("n", forge))).toBe(2);
+  });
+
+  it("leaves a leaning Formal Script n with no loop and no crumb once leaned", () => {
+    const forge = forgeOf("Formal Script", 70, { cuts: { split: {} } });
+    const letter = drawn("n", forge);
+    expect(letter.filter((contour) => contoursIntersect([contour])).length).toBe(0);
+    const ink = area(letter);
+    const crumbs = unite(letter, "winding").filter(
+      (one) => Math.abs(contourArea(one)) < ink * 0.002,
+    );
+    expect(crumbs.length).toBe(0);
+  });
+
   it("still takes the short square arms off a Display E", () => {
     const forge = forgeOf("Display", BASES.find((one) => one.name === "Display")!.pen.weight, {
       cuts: { split: {} },

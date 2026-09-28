@@ -250,6 +250,7 @@ export function effectInk(
   // And no outline left crossing itself, as after the cut and the cast.
   return untangled(
     swept(shape, stem, strokes).map((contour) => unsplintered(contour, stem, hairline)),
+    scale.slant,
   );
 }
 
