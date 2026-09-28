@@ -127,6 +127,17 @@ function refit(f: Frame, regular: number, black: number, thin = regular): number
   return 1 + regular + (black - regular) * t;
 }
 
+/**
+ * A figure's widths, corrected as `refit` corrects a letter's, and by `past`
+ * more for each unit of weight between the UltraBlack and the current Black:
+ * Geist's figures grow less from its UltraBlack to its Black than the
+ * capitals' bowls they are measured on, which left its 2 29 units wide and
+ * its 6 22 at the Black.
+ */
+function figureFit(f: Frame, regular: number, black: number, thin: number, past: number): number {
+  return refit(f, regular, black, thin) + past * Math.max(0, Math.min(heavyT(f), nowBlack()) - 1);
+}
+
 /** How far past the Regular a heavy weight is, as `squared` counts it: nought at and below the Regular. */
 function heavyT(f: Frame): number {
   return thinness(f) > 0 ? 0 : Math.min(Math.max(0, heaviness(f) / 0.67), 2.24);
@@ -842,7 +853,8 @@ export function grotesqueOne(style: Style): Recipe {
    * 243 at the Black; the flag's top at 590, 600 and 571). A smaller turn
    * standing up the stem's side left a Black's flag a slab glued onto it.
    */
-  const stem = f.edge - f.half * 0.1 + lerp(191, 243, 165) * u;
+  // And a little further out from a SemiBold on, as the current Geist's is.
+  const stem = f.edge - f.half * 0.1 + lerp(191, 243, 165) * u + roundGain(f, 3, 8, -5);
   const flag = f.hangs((lerp(600, 571, 590) / 710) * f.cap);
   /*
    * Never so wide that the outside of the turn rises clear of the flag
@@ -886,7 +898,7 @@ export function grotesqueOne(style: Style): Recipe {
  */
 export function grotesqueSeven(style: Style): Recipe {
   const f = frame(style);
-  const X = across(f, 40, -0.068);
+  const X = across(f, 40, -0.068, figureFit(f, 0.0144, -0.0083, 0.016, -0.043));
   const pen = penReach(style.pen);
   const line = f.hangs(f.cap);
   const end = X(545);
@@ -1350,10 +1362,11 @@ export function grotesqueQuestion(style: Style): Recipe {
  */
 
 /** Where Geist's `x` falls on this figure's spine, for a figure whose ink starts at `ink`. */
-function across(f: Frame, ink: number, thin = 0): (x: number) => number {
+function across(f: Frame, ink: number, thin = 0, fit = 1): (x: number) => number {
   // `thin`: how much wider a light weight runs than the Regular's measures
-  // give, where Geist Thin's figure is wider (its 6 and 9 by six per cent).
-  const u = large(f, 1) * (1 + thin * thinness(f));
+  // give, where Geist Thin's figure is wider (its 6 and 9 by six per cent);
+  // `fit`, the figure's own correction (`figureFit`).
+  const u = large(f, 1) * (1 + thin * thinness(f)) * fit;
   return (x) => f.edge + (x - ink - 43) * u;
 }
 
@@ -1394,11 +1407,12 @@ function angleAt(
  */
 export function grotesqueTwo(style: Style): Recipe {
   const f = frame(lighterAcross(style));
-  const X = across(f, 60, -0.04);
+  const fit = figureFit(f, 0.017, -0.042, 0.016, -0.056);
+  const X = across(f, 60, -0.04, fit);
   const top = f.crest(f.cap);
   const cy = up(f, 510);
   const halfH = held(f, top - cy);
-  const halfW = held(f, 195 * large(f, 1) * thinned(f, 0.055));
+  const halfW = held(f, 195 * large(f, 1) * thinned(f, 0.055) * fit);
   const centre = at(X(315), cy);
   const foot = f.sits(0, f.bar);
   /*
@@ -1416,7 +1430,7 @@ export function grotesqueTwo(style: Style): Recipe {
    */
   // As long a reverse turn as the bowl leaves room for.
   let falling: Spine | null = null;
-  for (let reverse = 330 * large(f, 1); !falling && reverse > f.least; reverse *= 0.9) {
+  for (let reverse = 330 * large(f, 1) * fit; !falling && reverse > f.least; reverse *= 0.9) {
     const landing = at(land.x + reverse, land.y);
     /*
      * The bowl's lower right a deeper quarter than its top, left as late as
@@ -1450,8 +1464,9 @@ export function grotesqueTwo(style: Style): Recipe {
  */
 export function grotesqueThree(style: Style): Recipe {
   const f = frame(lighterAcross(style));
-  const X = across(f, 50, 0.024);
-  const u = large(f, 1) * (1 + 0.024 * thinness(f));
+  const fit = figureFit(f, 0.016, -0.012, 0.013, -0.069);
+  const X = across(f, 50, 0.024, fit);
+  const u = large(f, 1) * (1 + 0.024 * thinness(f)) * fit;
   const top = f.crest(f.cap);
   const bottom = f.dip(0);
   const waist = up(f, 378);
@@ -1498,7 +1513,8 @@ export function grotesqueThree(style: Style): Recipe {
  */
 export function grotesqueFour(style: Style): Recipe {
   const f = frame(lighterAcross(style));
-  const X = across(f, 50);
+  const fit = figureFit(f, 0.0134, -0.0023, 0.0085, -0.0586);
+  const X = across(f, 50, 0, fit);
   const [, lerp] = squared(f);
   // Geist Black's bar sits a little higher.
   const stem = X(461);
@@ -1521,7 +1537,7 @@ export function grotesqueFour(style: Style): Recipe {
      * does; measured from the stem's middle, a Black's bar was nearly flush
      * with it and the 4 lost its crossbar.
      */
-    ink(f, straight(at(inkLeft, bar), at(stem + flank + 81 * large(f, 1), bar)), BUTT, f.end),
+    ink(f, straight(at(inkLeft, bar), at(stem + flank + 81 * large(f, 1) * fit, bar)), BUTT, f.end),
   ]);
 }
 
@@ -1532,8 +1548,9 @@ export function grotesqueFour(style: Style): Recipe {
  */
 export function grotesqueFive(style: Style): Recipe {
   const f = frame(lighterAcross(style));
-  const X = across(f, 60, 0.009);
-  const u = large(f, 1) * (1 + 0.009 * thinness(f));
+  const fit = figureFit(f, 0.0144, 0, 0.009, -0.065);
+  const X = across(f, 60, 0.009, fit);
+  const u = large(f, 1) * (1 + 0.009 * thinness(f)) * fit;
   const flag = f.hangs(f.cap);
   const stemTop = at(X(168), f.cap);
   const [, lerp] = squared(f);
@@ -1634,9 +1651,12 @@ export function grotesqueSix(style: Style): Recipe {
   return finish(f, sixStrokes(f), true);
 }
 
+/** The six's and the nine's correction: see `figureFit`. */
+const sixFit = (f: Frame): number => figureFit(f, 0, -0.024, 0, -0.053);
+
 function sixStrokes(f: Frame): Stroke[] {
-  const X = across(f, 60, 0.025);
-  const u = large(f, 1) * (1 + 0.025 * thinness(f));
+  const X = across(f, 60, 0.025, sixFit(f));
+  const u = large(f, 1) * (1 + 0.025 * thinness(f)) * sixFit(f);
   const bottom = f.dip(0);
   const top = f.crest(f.cap);
   const bowlTop = up(f, 484) - f.upright;
@@ -1672,7 +1692,7 @@ function sixStrokes(f: Frame): Stroke[] {
 /** The nine: the six turned over, as Geist's is. */
 export function grotesqueNine(style: Style): Recipe {
   const f = frame(lighterAcross(style));
-  const X = across(f, 60, 0.025);
+  const X = across(f, 60, 0.025, sixFit(f));
   const about = at(X(313), (f.crest(f.cap) + f.dip(0)) / 2);
   return finish(
     f,
@@ -1694,7 +1714,7 @@ export function grotesqueZero(style: Style): Recipe {
         ring(
           f,
           at(X(336), middle),
-          held(f, 236 * large(f, 0.5) * refit(f, 0.02, 0.012, 0.015)),
+          held(f, 236 * large(f, 0.5) * figureFit(f, 0.02, 0.012, 0.015, -0.08)),
           held(f, f.crest(f.cap) - middle),
         ),
       ),
@@ -1709,8 +1729,9 @@ export function grotesqueZero(style: Style): Recipe {
  */
 export function grotesqueEight(style: Style): Recipe {
   const f = frame(lighterAcross(style));
-  const X = across(f, 40, 0.025);
-  const u = large(f, 1) * (1 + 0.025 * thinness(f));
+  const fit = figureFit(f, 0.018, 0.0022, 0.0128, -0.012);
+  const X = across(f, 40, 0.025, fit);
+  const u = large(f, 1) * (1 + 0.025 * thinness(f)) * fit;
   const waist = up(f, 378);
   const upperH = held(f, (f.crest(f.cap) - waist) / 2);
   const lowerH = held(f, (waist - f.dip(0)) / 2);

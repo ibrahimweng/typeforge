@@ -89,6 +89,17 @@ and e now have Geist's sides listed: 0.52 of the unit off a bowl, and the
 stem beside it closing as fast as the n's (a new "stem-left" / "stem-right"
 mark in `metrics.sides`). They are within 3 of Geist's sides at every weight.
 
+**Figures past the UltraBlack.** The figures are measured on the capitals'
+bowls, which kept growing from pen 172 to 194 faster than Geist's figures
+do. At the Black the 2 was 29 units wide, the 6 22, the 3 17 and the 9 15.
+Most were also 6 to 8 narrow at the Regular. Each figure now has its own
+correction (`figureFit`: a `refit` plus a steeper term between 172 and 194),
+and the 1's stem stands a little further out from the SemiBold on. Every
+figure is within 5 of Geist's ink width at every weight. The 0 now stands 50
+off either side at the Regular (it was 54). The 7 is flush on its right as
+Geist's is, and is no longer opened at the Thin, where it stood 10 further
+off each side than Geist Thin's (a new "unopened" mark in `metrics.sides`).
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across
@@ -227,8 +238,6 @@ strokes as white; they now use a filled (nonzero) ruler.
   units narrower than Geist Black's.
 - **m and X at the Light.** They are plain forms, shared with every base. At
   pen 30 the m is about 19 units wider than Geist Thin's and the X 22 narrower.
-- **7 at the Light.** Geist Thin opens its figures by 10 a side, but not its
-  7. The Sans opens all of them, so its Thin 7 stands 10 further off.
 - **Past 194.** Geist has nothing heavier than its Black. At 200–260 the
   letters follow their own rules for keeping counters open, not Geist.
 - **œ.** Not in the review list, and it is still poor past the Black: its o

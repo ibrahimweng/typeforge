@@ -101,11 +101,12 @@ export interface Metrics {
    * They close at a heavy weight only half as fast as a fitted side does (see
    * `fitted` in `build.ts`), unless marked "closes": Geist closes its bar,
    * its stops and its t as fast as its n. "stem-left" and "stem-right" close
-   * just that side as fast: the stem beside a b's or a d's bowl.
+   * just that side as fast: the stem beside a b's or a d's bowl. "unopened"
+   * sides are not opened towards the Thin (`lightHeld.open`).
    */
   sides?: Record<
     string,
-    [number, number] | [number, number, "closes" | "stem-left" | "stem-right"]
+    [number, number] | [number, number, "closes" | "stem-left" | "stem-right" | "unopened"]
   >;
   /**
    * How much counter a heavy weight gives back for the stem it gains, unit
@@ -743,15 +744,16 @@ export const SANS: Style = {
       // Its bars reach further than the Y's arms: set as the Y was.
       yen: [0.11, 0.11],
       Z: [0.19, 0.19],
-      zero: [0.68, 0.68],
+      zero: [0.63, 0.63],
       one: [0.5, 1.38],
       two: [0.75, 0.75],
       three: [0.63, 0.63],
       four: [0.38, 0.63],
       five: [0.75, 0.75],
       six: [0.63, 0.5],
-      // Geist's seven reaches right to its advance; held just inside it.
-      seven: [0.25, 0.1],
+      // Geist's seven reaches right to its advance (held a unit inside it),
+      // and its Thin's stands where its Regular's does, unopened.
+      seven: [0.25, 0.02, "unopened"],
       eight: [0.5, 0.5],
       nine: [0.5, 0.63],
       question: [0.59, 0.59],

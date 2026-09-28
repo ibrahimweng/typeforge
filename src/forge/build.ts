@@ -802,8 +802,9 @@ function fitted(
     // A stem's side, where the entry names one, closes as fast as the n's.
     const unitLeft = set[2] === "closes" || set[2] === "stem-left" ? spacingOf(style) : half;
     const unitRight = set[2] === "closes" || set[2] === "stem-right" ? spacingOf(style) : half;
-    const shift = unitLeft * set[0] + opened - box.xMin;
-    return { shift, advance: box.xMax + shift + unitRight * set[1] + opened };
+    const open = set[2] === "unopened" ? 0 : opened;
+    const shift = unitLeft * set[0] + open - box.xMin;
+    return { shift, advance: box.xMax + shift + unitRight * set[1] + open };
   }
   const top = figure || isCapitalLike(name) ? style.metrics.capHeight : style.metrics.xHeight;
   /*

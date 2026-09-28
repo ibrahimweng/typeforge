@@ -684,6 +684,16 @@ describe("the widths of the letters redrawn to the current Geist", () => {
       b: [435, 471, 512, 552, 572],
       p: [435, 471, 512, 552, 572],
       y: [449, 493, 528, 562, 579],
+      // And the figures, which grew too fast past the UltraBlack: the 2 29
+      // wide at the Black, the 6 22, the 3 17 and the 9 15.
+      one: [181, 234, 282, 330, 354],
+      two: [477, 499, 525, 551, 565],
+      three: [489, 513, 545, 578, 594],
+      four: [500, 535, 571, 606, 624],
+      five: [473, 505, 541, 577, 595],
+      six: [478, 503, 533, 564, 579],
+      seven: [469, 504, 518, 531, 538],
+      nine: [478, 503, 536, 569, 586],
     };
     for (const [name, widths] of Object.entries(geist)) {
       for (const [index, weight] of [30, 87, 130, 172, 194].entries()) {
@@ -938,6 +948,33 @@ describe("the sides of the lowercase bowls", () => {
         const right = glyph.advanceWidth - ink.xMax;
         expect(Math.abs(left - sides[0]), `${name} left at ${weight}`).toBeLessThan(5);
         expect(Math.abs(right - sides[1]), `${name} right at ${weight}`).toBeLessThan(5);
+      }
+    }
+  });
+});
+
+describe("the sides of the zero and the seven", () => {
+  it("stand as far off as Geist's", () => {
+    // Geist's zero stands 50 off either side at the Regular and 40 at the
+    // Black (54 and 46 here before); its seven 20 off its left at every
+    // weight and flush on its right, its Thin's unopened (30 and 18 before).
+    const geist: [number, [number, number], [number, number]][] = [
+      [30, [60, 60], [20, 0]],
+      [87, [50, 50], [20, 0]],
+      [194, [40, 40], [20, 0]],
+    ];
+    for (const [weight, zero, seven] of geist) {
+      for (const [name, sides] of [
+        ["zero", zero],
+        ["seven", seven],
+      ] as const) {
+        const glyph = draw(name, weight);
+        const ink = contoursBounds(glyph.contours);
+        expect(Math.abs(ink.xMin - sides[0]), `${name} left at ${weight}`).toBeLessThan(5);
+        expect(
+          Math.abs(glyph.advanceWidth - ink.xMax - sides[1]),
+          `${name} right at ${weight}`,
+        ).toBeLessThan(5);
       }
     }
   });
