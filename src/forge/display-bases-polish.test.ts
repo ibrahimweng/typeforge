@@ -339,14 +339,18 @@ describe("the at sign of a heavy display face", () => {
   });
 
   it("grows heavier with the face, not lighter, where its pen is held", () => {
-    const style = base("Technical");
-    let last = 0;
-    for (const weight of [78, 118, 160, 200, 260]) {
-      const mark = ink("at", at("Technical", weight));
-      const ring = across(mark, contoursBounds(mark).yMin + 300)[0];
-      const drawn = ring[1] - ring[0];
-      expect(drawn, `${style.name} at ${weight}`).toBeGreaterThan(last);
-      last = drawn;
+    // Measured on a text face as well, whose own share of the ring is larger
+    // and which, held to a lighter pen's share, fell to a hairline past a Bold.
+    for (const face of ["Technical", "Display", "Didone"]) {
+      let last = 0;
+      for (const weight of [78, 118, 160, 200, 260]) {
+        const mark = ink("at", at(face, weight));
+        const box = contoursBounds(mark);
+        const ring = across(mark, (box.yMin + box.yMax) / 2)[0];
+        const drawn = ring[1] - ring[0];
+        expect(drawn, `${face} at ${weight}`).toBeGreaterThan(last);
+        last = drawn;
+      }
     }
   });
 });

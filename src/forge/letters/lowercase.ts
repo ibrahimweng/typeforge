@@ -9,6 +9,7 @@
 import type { Vec2 } from "@/font/types";
 import { spineStart } from "../shapes";
 import { blackness, type Style } from "../style";
+import type { Terminal } from "../types";
 import {
   type Frame,
   roundHalf,
@@ -65,6 +66,9 @@ function barOutside(
     pointAt(degrees).x + stemSide(f) * (1 - 0.14 * light) * Math.cos((degrees * Math.PI) / 180) - 1
   );
 }
+
+/** The contrast from which a y's thick arm turns into its tail: see the y. */
+const HAIRLINE_Y = 0.7;
 
 /** Just past level, where a bowl's loop is walked from: see the e. */
 const SEAM = 0.01;
@@ -653,8 +657,19 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * level along it and stand out as a ledge.
      */
     const lift = f.half * 0.5;
+    /*
+     * On a face whose hairlines are a fraction of its stems -- a didone's --
+     * nothing that thin buries a thick arm's square end: its corner stood out
+     * past the hairline and the two read as an x crossed on the line. There
+     * the thick arm is cut along the hairline instead, so its end lies in it.
+     */
+    const along =
+      f.style.pen.contrast >= HAIRLINE_Y && !f.style.parts.script.on
+        ? (2 * Math.atan(half / f.x) * 180) / Math.PI - 90
+        : 0;
+    const armEnd: Terminal = along ? { kind: "angled", angle: along } : BUTT;
     return finish(f, [
-      ink(f, straight(at(left, f.x), at(middle + (half * lift) / f.x, lift)), f.end, BUTT),
+      ink(f, straight(at(left, f.x), at(middle + (half * lift) / f.x, lift)), f.end, armEnd),
       /*
        * One straight run: down from the x-height, through the apex the left
        * diagonal ends at, and on into the descender at the angle it arrived

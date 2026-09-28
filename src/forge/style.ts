@@ -1765,16 +1765,17 @@ export const DIDONE: Style = {
   /*
    * And the old-style S and s (see `bookSpine` in `letters/humanist.ts`),
    * whose spine is the heaviest stroke in them as a didone's is -- the
-   * construction's put the hairline there -- and the neo-grotesque's G, @, %,
+   * construction's put the hairline there -- and the neo-grotesque's G, %,
    * # and ?, which hold their shape past a Bold where the construction's
-   * came apart.
+   * came apart. Not its @, though: drawn without contrast, the grotesque's
+   * was a monoline ring among hairlines and fat stems, where the plain one,
+   * held to the O's size at a heavy weight, keeps the face's own pen.
    */
   forms: {
     a: "double",
     S: "humanist",
     s: "humanist",
     G: "grotesque",
-    at: "grotesque",
     percent: "grotesque",
     numbersign: "grotesque",
     question: "grotesque",

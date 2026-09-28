@@ -244,3 +244,43 @@ describe("the Geometric's S", () => {
     expect(width("s") / width("o")).toBeLessThan(0.8);
   });
 });
+
+describe("the Didone's hairlines", () => {
+  const style = face("Didone");
+
+  it("cuts the y's thick arm along its hairline, not square across it", () => {
+    /*
+     * Nothing a hairline wide buries a thick arm's square end: its corner
+     * stood out right of the hairline and the two read as an x crossed on the
+     * line. Nothing of the letter stands right of the hairline's own edge.
+     */
+    const edge = (y: number) => runs("y", style, y, "y").at(-1)![1];
+    const [low, high] = [-120, -40];
+    const slope = (edge(high) - edge(low)) / (high - low);
+    for (const y of [0, 20, 40, 50, 60]) {
+      expect(edge(y), `${y}`).toBeLessThan(edge(high) + slope * (y - high) + 3);
+    }
+  });
+
+  it("closes a bracket into one crescent rather than a sheaf of hairlines", () => {
+    for (const name of ["parenleft", "parenright"]) {
+      const { contours } = draw(name, style);
+      const box = contoursBounds(contours);
+      const across = runs(name, style, (box.yMin + box.yMax) / 2, "y");
+      expect(across.length, name).toBe(1);
+    }
+  });
+
+  it("draws its at sign with the face's own contrast", () => {
+    /*
+     * The grotesque's, drawn without contrast, was a monoline ring among
+     * hairlines and fat stems. Across its middle the ring's sides are heavy
+     * and down its middle its crown is a hairline, as the O's are.
+     */
+    const { contours } = draw("at", style);
+    const box = contoursBounds(contours);
+    const side = runs("at", style, (box.yMin + box.yMax) / 2, "y")[0];
+    const crown = runs("at", style, (box.xMin + box.xMax) / 2, "x").at(-1)!;
+    expect((side[1] - side[0]) / (crown[1] - crown[0])).toBeGreaterThan(2.5);
+  });
+});

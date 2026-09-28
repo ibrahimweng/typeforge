@@ -258,7 +258,17 @@ function crescent(f: Frame, side: 1 | -1): Stroke[] {
     );
     return {
       spine: chain(...pieces),
-      pen: { ...pen, weight: index === 0 ? nib : nib * 0.96 },
+      /*
+       * The middle run wide enough to reach the two either side of it, so the
+       * three close into one crescent: on a face whose hairline is a small
+       * share of its stem -- the Didone's -- three hairlines a stem apart left
+       * white between them, and the bracket drew as a sheaf of lines.
+       */
+      pen: {
+        ...pen,
+        weight:
+          index === 0 ? nib : index === 1 ? Math.max(nib * 0.96, apart - nib * 0.7) : nib * 0.96,
+      },
       start: BUTT,
       end: BUTT,
     };
@@ -1423,14 +1433,23 @@ const AT_GROWTH = 1.18;
 
 /** The frame an at sign is drawn in: its own, or one with a lighter pen. */
 function heldAt(f: Frame): Frame {
-  const most = f.capBowlH * (bookish(f) ? 1.08 : 0.94) * AT_GROWTH;
-  if (atSizes(f).outer <= most || f.style.parts.script.on) return f;
+  // A text face's own share is already the larger, from below the line to
+  // the cap height, so it takes no more.
+  const most = bookish(f) ? f.capBowlH * 1.08 : f.capBowlH * 0.94 * AT_GROWTH;
+  /*
+   * What the pen asks of the ring, against this weight's own share: a lighter
+   * pen's bowls are not this one's, and measured with its own share a text
+   * face's never fitted and its at sign fell to a hairline past a Bold.
+   */
+  const asks = (g: Frame): number =>
+    Math.max(g.capBowlH * 0.38, g.half * 2.35) + g.style.pen.weight * AT_ROOM;
+  if (asks(f) <= most || f.style.parts.script.on) return f;
   const lighter = (weight: number): Frame => frame({ ...f.style, pen: { ...f.style.pen, weight } });
   let low = 1;
   let high = f.style.pen.weight;
   for (let pass = 0; pass < 30; pass++) {
     const mid = (low + high) / 2;
-    if (atSizes(lighter(mid)).outer <= most) low = mid;
+    if (asks(lighter(mid)) <= most) low = mid;
     else high = mid;
   }
   // And past there still heavier as the face is, only more slowly, so that
@@ -1439,4 +1458,4 @@ function heldAt(f: Frame): Frame {
 }
 
 /** How much of the weight past where an at sign's ring stops growing it still takes. */
-const AT_PAST = 0.35;
+const AT_PAST = 0.22;
