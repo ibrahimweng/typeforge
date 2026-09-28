@@ -47,6 +47,17 @@ start and end forms.
   pen, and the alternates were drawn without the family's record of decisions.
 - **A straight `y`** had its tail start below its rounded cup at heavy
   weights, so the letter came apart.
+- **The written `r`** was a full stem with its arm carried down beside it at
+  52 degrees. It read as a narrow `n` or as `ʌ` (`brown` came out `bʌown`).
+- **Ticks inside bowls.** A lead-out ran the whole weld past the seam. A bowl
+  with no lead-in of its own (`o`, `a`, `e`) took its square end inside its
+  wall, and the corner stood in the counter after every low join on the
+  Formal Script and the Monoline, and after `v` and `w` on three faces.
+- **The heavy `s`.** Joined faces were held to the text `s`, which grows past
+  its lines rather than close up. At 260 it stood a third of an x-height over
+  the line and hung as far under it, like a black `§`.
+- **The heavy `G` on the Marker and the Brush** read as a 6: the upper
+  terminal was cut back off the bowl.
 
 ## What changed
 
@@ -82,6 +93,12 @@ All in `src/forge/script.ts`, `src/forge/letters.ts` and
   - The `e`'s loop is as wide as the face's bowls, and its rising bar is
     drawn at join weight past the text weight.
   - The straight `y`'s tail starts inside its rounded cup.
+  - The `r` is two strokes meeting in a notch: a short up-stroke into a nub,
+    and a nearly upright down-stroke from under the nub to the line, turning
+    into the lead-out. At the start of a word the up-stroke is a short flick.
+- **Lead-out length** (`run`). A lead-out carries on past the seam by half the
+  weld. The next letter's lead-in still laps over it, and a written letter's
+  own lead-in still meets it over a length of stroke.
 - **Loops** (`loopsOn`, `connected`):
   - The run an eye turns off ends round where it turns. Where the run curls,
     the eye comes home on the run's own end.
@@ -93,7 +110,13 @@ All in `src/forge/script.ts`, `src/forge/letters.ts` and
 - **Shared files (minimal):**
   - `build.ts`: passes `scriptUnit` to `seamsOf`.
   - `letters/common.ts`: `capped()` has an opt-in flag to square a round end
-    only when pulling it back is what crosses the stroke.
+    only when pulling it back is what crosses the stroke. `blackOf()` no
+    longer excludes joined faces, so they get the Black `s` at heavy weights
+    (default weights are untouched). `blackS()` never turns tighter than the
+    nib's own flattest curve for an angled pen of modest contrast; otherwise
+    the Roundhand's `s` folded at 210. Only the Brush among other faces
+    reaches that floor, and its `s` is visibly unchanged.
+  - `style.ts`: the Marker and the Brush use the existing spurred `G`.
   - `typeface.ts`: the joined faces' alternates are drawn with the same book
     as the letters.
   - `letters.ts`: a written letter's drawn form keeps its own book page.
@@ -110,9 +133,15 @@ All in `src/forge/script.ts`, `src/forge/letters.ts` and
 - Default weights look as they did, apart from the fixed flags and nicks at
   loop joints.
 
-Tests: `src/forge/script-polish.test.ts`, eight tests, each written to fail on
+- No ink from one letter's join falls into the counter of the bowl after it
+  (every pair of a joined letter into `a c e o d g q`, at every weight).
+- The joined faces' `s` keeps to the lines the `o` keeps to at 200. At 260 it
+  is within a tenth of an x-height of them, where it used to be up to 46
+  hundredths out.
+
+Tests: `src/forge/script-polish.test.ts`, twelve tests, each written to fail on
 the old code. `npx tsc -b --noEmit`, `npx biome check .` and
-`npx vitest run src/forge src/assemble src/library` (1209 tests) all pass.
+`npx vitest run src/forge src/assemble src/library` (1213 tests) all pass.
 
 ## What remains
 
@@ -123,18 +152,15 @@ the old code. `npx tsc -b --noEmit`, `npx biome check .` and
 - **The high hand-over after `o v w b`** runs level near the top of the
   letters at heavy weights. That is by design, but at 260 it reads a little
   like a rule.
-- **Nib-pen loop tips.** On the Handwriting and the Casual Script the round
-  end of a flat nib is the nib itself, so a small nib-corner mark stays where
-  an eye meets the top of its stem.
-- **`r` into `o`.** The `r`'s weld past the seam pokes slightly into the
-  `o`'s counter at the default weight. The same applies to any letter followed
-  by a written bowl, which has no lead-in stroke to take the weld. Fixing this
-  needs the join to know the next letter, or a lead-in added to written bowls.
-- **The written `r`** is a long diagonal from shoulder to valley. It is the
-  existing design and reads a little like `ʌ`.
-- **The heavy `s`** on the joined faces, and some heavy Marker and Brush
-  letters (`k`, `G`, `Z`, `s`), come from recipes shared with the Sans and
-  the other text faces. They were left to the sessions that own those recipes.
+- **Nib-pen loop tips.** On the Handwriting and the Casual Script the eye's
+  round end stands 2 to 4 units past the corner of the stem's flat top, under
+  1% of the x-height and invisible at text size. The round end stays, because
+  it is what fills the nick at the foot of every loop on the Roundhand.
+- **The heaviest `s`** on a joined face still grows a little past the `o` at
+  260, as the Black `s` does on every face once the pen leaves no room.
+- **The heavy Marker and Brush `k` and `Z`** come from recipes shared with the
+  Sans and the other text faces. They are legible at 260 and were left to the
+  sessions that own those recipes.
 - **Node counts without the exporter's book.** Node counts are equal across
   weights through the export path, which is what a variable font uses. A
   letter drawn at an arbitrary slider weight without the book can still bow a
