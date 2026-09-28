@@ -126,6 +126,36 @@ describe("the Sans at its Black, against Geist Black", () => {
   });
 });
 
+describe("the s from the Bold to past the Black", () => {
+  it("opens both counters as tall as Geist Black's, not slots", () => {
+    // Geist Black's s: crown 115 on a stem of 172, and two round-ended
+    // counters each about a fifth of the x-height tall.
+    for (const weight of [172, 185, 200]) {
+      const { contours } = draw("s", weight);
+      const ink = contoursBounds(contours);
+      const through = runs(contours, ink.xMin + (ink.xMax - ink.xMin) * 0.4, "x");
+      expect(through.length, `s at ${weight}`).toBe(3);
+      expect(through[1][0] - through[0][1], `s lower at ${weight}`).toBeGreaterThan(100);
+      expect(through[2][0] - through[1][1], `s upper at ${weight}`).toBeGreaterThan(85);
+    }
+    const { contours } = draw("s", 172);
+    const ink = contoursBounds(contours);
+    const through = runs(contours, ink.xMin + (ink.xMax - ink.xMin) * 0.5, "x");
+    const crown = through[through.length - 1];
+    expect(crown[1] - crown[0]).toBeLessThan(122);
+  });
+});
+
+describe("the a at the Light", () => {
+  it("springs its spur out of the crotch the bowl makes with the stem", () => {
+    // Geist Thin: under the bowl's join, the bowl's foot and the spur's turn
+    // with nothing between them -- no block of stem standing below the bowl.
+    const { contours } = draw("a", 30);
+    expect(runs(contours, 15, "y").length).toBe(2);
+    expect(runs(contours, 25, "y").length).toBe(3);
+  });
+});
+
 describe("the marks, at the Black and past it", () => {
   it("draws the asterisk with six arms, raised, the same size at every weight", () => {
     for (const weight of [30, 87, 172, 260]) {

@@ -196,9 +196,13 @@ export function grotesqueA(style: Style): Recipe {
      * And the stem's inside carried straight on down to the foot, under the
      * outside of the spur's turn: at a heavy weight that turn is wide and the
      * lighter bowl no longer covers it, and it bit a notch out of the stem at
-     * the bottom of the counter.
+     * the bottom of the counter. Only there, though: at a light weight the
+     * bowl reaches the stem above the turn, and carried on down to the foot
+     * the stem stood out under the bowl as a block with a square corner and a
+     * step onto the spur, where Geist Thin's spur curves straight out of the
+     * crotch the bowl makes with the stem.
      */
-    ink(f, straight(at(stem, archCentre.y), at(stem, foot)), BUTT, BUTT),
+    ink(f, straight(at(stem, archCentre.y), at(stem, foot + spur * (1 - heavy))), BUTT, BUTT),
   ]);
 }
 
@@ -1682,6 +1686,9 @@ export function grotesqueW(style: Style): Recipe {
   ]);
 }
 
+/** How far over the pen a heavy s turns round its counters, in half-pens: see `ess`. */
+const SOFT_COUNTER = 0.5;
+
 /** Geist's s or S, as the numbers it is laid out from. */
 interface Ess {
   /** The height it is drawn to: the x-height or the cap height. */
@@ -1831,7 +1838,31 @@ function ess(f: Frame, e: Ess): Stroke {
     }
   }
   const { upper, lower, upperH, lowerH, upperW, lowerW } = found!;
-  const spineRun = found!.run;
+  /*
+   * And a heavy s turns round its counters, not only round its pen. Held at
+   * just what the pen goes round, the tightest arc of each turn left the
+   * inside of the stroke a point, and from a Bold on both counters were
+   * slots with square ends. Geist Black's counters are round-ended, so once
+   * the letter is laid out each turn is drawn with its tightest arc held
+   * further over the pen -- never so far that a turn is made any larger,
+   * which would move the spine the search has just found.
+   */
+  const soft = f.half * SOFT_COUNTER * Math.min(1, Math.max(0, (t - 0.25) / 0.75));
+  const softer = (frame: Frame, radius: number): Frame => ({
+    ...frame,
+    half: Math.max(frame.half, Math.min(frame.half * 1.06 + soft, radius) / 1.06),
+  });
+  const ga = softer(gc, Math.min(upperH, upperW));
+  const gb = softer(gc, Math.min(lowerH, lowerW));
+  const gi = softer(g, Math.min(inner, upperW, lowerW));
+  // Drawn at every weight, soft or not: each bowl drawn is asked where its
+  // pieces begin (see `begun` in `shapes.ts`), and a weight that drew two
+  // fewer would read the next bowls' answers and come out in other pieces.
+  const softRun = crossTangent(
+    bend(gi, upper, inner, 180, 270, upperW),
+    bend(gi, lower, inner, 90, 0, lowerW),
+  );
+  const spineRun = (soft > 0 ? softRun : null) ?? found!.run;
   /*
    * The ends are cut level, and a level cut has to reach across the stroke:
    * carried too far round, the inside of the turn never comes back up to the
@@ -1877,13 +1908,13 @@ function ess(f: Frame, e: Ess): Stroke {
   const drawn = ink(
     f,
     chain(
-      bend(gc, upper, upperH, head, 180, upperW),
+      bend(ga, upper, upperH, head, 180, upperW),
       /*
        * Past even that -- a pen near half the x-height -- the spine leaves
        * each quarter at a fixed point, in the same pieces.
        */
       spineRun,
-      bend(gc, lower, lowerH, 0, foot, lowerW),
+      bend(gb, lower, lowerH, 0, foot, lowerW),
     ),
     f.end,
     f.end,
@@ -2041,9 +2072,38 @@ function lighterAcross(style: Style): Style {
   };
 }
 
+/**
+ * The style the s is drawn with: lighter across than the other letters from
+ * a Bold on, as well as past the Black. Geist Black's s has crowns and a
+ * spine about two thirds of its stem (115 on 172), where the stems' pen left
+ * them at three quarters; stacked three deep in the x-height, that extra
+ * weight came out of the counters, which closed to slots with square ends.
+ */
+function essAcross(style: Style): Style {
+  const lighter = lighterAcross(style);
+  const f = frame(lighter);
+  const t = heaviness(f) / 0.67;
+  const ramp = Math.min(1, Math.max(0, (t - 0.3) / 0.7));
+  if (ramp <= 0) return lighter;
+  const { pen } = f.style;
+  const own = pen.own ?? pen.contrast;
+  // And on past the Black towards what an Ultra's s is drawn with, sooner
+  // than the other letters, since it stacks the most in its x-height.
+  const on = Math.min(1, Math.max(0, (t - 1) / 0.6));
+  const wanted =
+    own +
+    (ESS_CONTRAST - own) * ramp * ramp * (3 - 2 * ramp) +
+    (0.56 - ESS_CONTRAST) * on * (2 - on);
+  if (wanted <= pen.contrast) return lighter;
+  return { ...f.style, pen: { ...pen, contrast: wanted, own } };
+}
+
+/** How light across the s is drawn at Geist Black: see `essAcross`. */
+const ESS_CONTRAST = 0.34;
+
 /** The s: see `ess`. Measured off Geist Regular and Black. */
 export function grotesqueS(style: Style): Recipe {
-  const f = frame(lighterAcross(style));
+  const f = frame(essAcross(style));
   return {
     ...finish(
       f,
