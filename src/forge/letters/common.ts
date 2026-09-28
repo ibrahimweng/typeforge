@@ -2487,12 +2487,13 @@ function pinned(spine: Spine, pieces: number): Spine {
  * little s a section mark is built from never becomes one.
  *
  * Not a pen held on its side, whose heavy strokes are the level ones and whose
- * s is its own reversed design, nor a joined hand, whose s is written into and
- * out of along the line.
+ * s is its own reversed design. A joined hand's s is included: its joins meet
+ * the s at its two ends whichever s it is, and held to the text s at a heavy
+ * weight it grew a third of an x-height past both its lines.
  */
 function blackOf(frame: Frame, height: number): number {
-  const { pen, parts } = frame.style;
-  if (parts.script.on || Math.abs(Math.abs(pen.angle) - 90) < 30) return 0;
+  const { pen } = frame.style;
+  if (Math.abs(Math.abs(pen.angle) - 90) < 30) return 0;
   const heavy = Math.min(1, heaviness(frame) / 0.8);
   const cramped = (frame.half * 2) / height;
   return heavy * Math.min(1, Math.max(0, (cramped - 0.26) / 0.12));
@@ -2591,9 +2592,21 @@ function blend(a: SShape, b: SShape, t: number): SShape {
 function blackS(frame: Frame, height: number, left: number): SShape {
   const inked = height + frame.over * 2 - frame.upright * 2;
   const width = inked * 0.62 * frame.wide + (1.45 * frame.gain * frame.x) / height;
+  /*
+   * And never tighter than the nib's own flattest curve. A pen with contrast
+   * is an ellipse, and an ellipse turns no tighter than its long reach
+   * squared over its short one: a quarter under a round pen's, the Roundhand
+   * folded both counters of its s at a weight of 210. Only for a pen held at
+   * an angle and of modest contrast: an upright pen is tilted for a Black s
+   * (see `blackPen`) and a broad nib is so thin one way that the rule asks
+   * for turns several pens across, and neither came near a fold here.
+   */
+  const { pen } = frame.style;
+  const contrast = Math.abs(pen.angle) >= 15 ? Math.min(Math.max(pen.contrast, 0), 0.3) : 0;
   const radius = Math.max(
     frame.least,
     frame.half * (1.25 + 0.3 * Math.max(0, heaviness(frame) - 1)),
+    (frame.half / (1 - contrast)) * 1.05,
   );
   const laid = (grow: number) => {
     const top = frame.hangs(height) + frame.over + grow / 2;

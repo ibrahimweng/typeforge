@@ -1297,7 +1297,18 @@ function run(
     if (shorter.body.segments.some((part) => part.kind === "arc")) chosen = shorter;
   }
   const { inner, body } = chosen;
-  const out = at(seam.x + along.x * far, seam.y + along.y * far);
+  /*
+   * The lead-out carries on past the seam by half as far. The next letter's
+   * lead-in lies back over it from the other side, so the two still lap;
+   * what a lead-out's tail reaches on its own is a bowl with no lead-in, and
+   * taken the whole weld its square end stood inside the bowl's wall with a
+   * corner in the counter -- a tick inside every `o` and `a` after a low join
+   * on the Formal Script and the Monoline. Not stopped at the seam either: a
+   * written letter carries its own lead-in and nothing past the seam, and
+   * `ne` then met at a point.
+   */
+  const ahead = end === "out" ? far * 0.5 : far;
+  const out = at(seam.x + along.x * ahead, seam.y + along.y * ahead);
   const back = at(seam.x - along.x * far, seam.y - along.y * far);
   const tail = (from: Vec2, to: Vec2): Spine => ({
     segments: [{ kind: "line", from, to }],

@@ -12,12 +12,12 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { ready, unite } from "@/font/boolean";
 import { contourArea, contoursBounds } from "@/font/geometry";
-import type { Vec2 } from "@/font/types";
+import type { Contour, Vec2 } from "@/font/types";
 import { contoursIntersect } from "@/font/outline";
 import { drawLetter } from "./build";
 import { readyToShape } from "./layers";
 import { joinEnds, joiningHigh, joiningWithout, recipeOf } from "./letters";
-import { seamHeading, seamsOf } from "./script";
+import { HANDS_OVER_HIGH, seamHeading, seamsOf } from "./script";
 import { alongSpine, spineEnd, spineStart } from "./shapes";
 import { sweep } from "./sweep";
 import { BASES, heavier, scriptUnit, type Style } from "./style";
@@ -400,5 +400,98 @@ describe("the written r", () => {
       }
     }
     expect(wrong).toEqual([]);
+  });
+});
+
+describe("a join into a bowl", () => {
+  /*
+   * The lead-out runs on past the seam by half the weld. It used to run the
+   * whole weld, which the next letter's lead-in lies over -- but a bowl with no
+   * lead-in of its own took the square end inside its wall, and its corner stood in the
+   * counter: a tick inside every `o` and `a` after a low join on the Formal
+   * Script and the Monoline, and after `v` and `w` on three faces.
+   */
+  it("leaves the bowl's counter as it was", () => {
+    const holes = (contours: Contour[]) =>
+      unite(contours, "winding")
+        .map((contour) => -contourArea(contour))
+        .filter((area) => area > 0)
+        .reduce((sum, area) => sum + area, 0);
+    const filled: string[] = [];
+    for (const name of JOINED) {
+      const own = base(name);
+      for (const weight of [30, own.pen.weight]) {
+        const style = at(own, weight);
+        for (const [first, second] of [
+          ["n", "o"],
+          ["n", "a"],
+          ["v", "o"],
+          ["w", "a"],
+          ["b", "e"],
+        ]) {
+          const high = HANDS_OVER_HIGH.has(first);
+          const one = joiningHigh({ exit: high }, () =>
+            joiningWithout({ entry: false }, () => drawLetter(first, style, own.forms?.[first])),
+          )!;
+          const two = joiningHigh({ entry: high }, () =>
+            joiningWithout({ exit: false }, () => drawLetter(second, style, own.forms?.[second])),
+          )!;
+          const moved = two.contours.map((contour) => ({
+            ...contour,
+            nodes: contour.nodes.map((node) => ({
+              ...node,
+              point: { x: node.point.x + one.advanceWidth, y: node.point.y },
+              handleIn: node.handleIn && {
+                x: node.handleIn.x + one.advanceWidth,
+                y: node.handleIn.y,
+              },
+              handleOut: node.handleOut && {
+                x: node.handleOut.x + one.advanceWidth,
+                y: node.handleOut.y,
+              },
+            })),
+          }));
+          const lost = holes(one.contours) + holes(moved) - holes([...one.contours, ...moved]);
+          if (lost > style.metrics.xHeight ** 2 * 0.002) {
+            filled.push(`${name} @${weight} ${first}${second}: ${lost.toFixed(0)}`);
+          }
+        }
+      }
+    }
+    expect(filled).toEqual([]);
+  }, 300_000);
+});
+
+describe("the s at a heavy weight", () => {
+  /*
+   * A joined face's s was always the text s, which grows past its lines
+   * rather than close up when the pen leaves it no room. At 260 on an
+   * x-height of 332 that room is 72 units, and the s stood a third of an
+   * x-height over the line and hung under it: a black `§` in the word. It is
+   * the Black s now, as on every other face, which lays its spine flatter
+   * instead and keeps to the lines the `o` beside it keeps to -- within a
+   * tenth of an x-height at 260, where even a flat spine has no room left and
+   * it grows a little, as the Black s does on every face.
+   */
+  it("keeps to the lines the o keeps to", () => {
+    const out: string[] = [];
+    for (const name of JOINED) {
+      const own = base(name);
+      for (const weight of [200, 260]) {
+        const style = at(own, weight);
+        const x = style.metrics.xHeight;
+        const past = (letter: string) => {
+          const drawn = joiningWithout({ entry: false, exit: false }, () =>
+            drawLetter(letter, style, own.forms?.[letter]),
+          )!;
+          const box = contoursBounds(drawn.contours);
+          return Math.max(box.yMax - x, -box.yMin);
+        };
+        const s = past("s");
+        const o = past("o");
+        if (s > o + x * 0.12) out.push(`${name} @${weight}: s ${s.toFixed(0)}, o ${o.toFixed(0)}`);
+      }
+    }
+    expect(out).toEqual([]);
   });
 });
