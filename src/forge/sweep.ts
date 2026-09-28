@@ -1803,7 +1803,7 @@ function cutLoop(nodes: GlyphNode[], from: EdgeAt, to: EdgeAt, at: Vec2): GlyphN
 
 /**
  * Moves each node of a side that a slid corner has passed -- lying further out
- * past the end than the corner -- to just inside the corner, handles and all.
+ * past the end than the corner -- to just inside the corner, as a corner.
  * Only where the side, carrying on from those nodes, crosses back over the cut
  * between `corner` and `across`: a node a hair past the corner whose edge
  * meets the cut at the corner itself is no fold, and is left where it is.
@@ -1822,43 +1822,98 @@ function overtaken(
   const out = { x: outward.x / length, y: outward.y / length };
   const beyondOf = (point: Vec2): number =>
     (point.x - corner.point.x) * out.x + (point.y - corner.point.y) * out.y;
-  // The first node back inside the corner, and the one before it.
+  // How many nodes, counted from the corner, lie past it.
   let passed = 0;
   while (passed < side.length - 1) {
     const index = step === 1 ? passed : side.length - 1 - passed;
     if (beyondOf(side[index].point) <= 0) break;
     passed++;
   }
-  if (passed === 0 || passed >= side.length - 1) return;
-  const lastPassed = side[step === 1 ? passed - 1 : side.length - passed].point;
-  const inside = side[step === 1 ? passed : side.length - 1 - passed].point;
-  if (!crosses(lastPassed, inside, corner.point, across.point)) return;
-  const HAIR = 0.01;
-  for (let count = 0; count < passed; count++) {
-    const index = step === 1 ? count : side.length - 1 - count;
-    const node = side[index];
-    const beyond = beyondOf(node.point);
-    const shift = {
-      x: -out.x * (beyond + HAIR * (count + 1)),
-      y: -out.y * (beyond + HAIR * (count + 1)),
-    };
-    const moved = (p: Vec2 | null): Vec2 | null =>
-      p ? { x: p.x + shift.x, y: p.y + shift.y } : null;
-    const toCorner = { x: corner.point.x - node.point.x, y: corner.point.y - node.point.y };
-    const along = toCorner.x * out.y - toCorner.y * out.x;
-    // Across as well as back: onto the corner's line along the stroke.
-    const sideways = { x: out.y * along, y: -out.x * along };
-    const place = (p: Vec2 | null): Vec2 | null => {
-      const q = moved(p);
-      return q ? { x: q.x + sideways.x, y: q.y + sideways.y } : null;
-    };
-    side[index] = {
-      ...node,
-      point: place(node.point) as Vec2,
-      handleIn: place(node.handleIn),
-      handleOut: place(node.handleOut),
-    };
+  if (passed >= side.length - 1) return;
+  const from = (count: number): number => (step === 1 ? count : side.length - 1 - count);
+  if (passed > 0) {
+    if (
+      !crosses(side[from(passed - 1)].point, side[from(passed)].point, corner.point, across.point)
+    )
+      return;
+    const HAIR = 0.01;
+    for (let count = 0; count < passed; count++) {
+      const index = from(count);
+      const node = side[index];
+      const beyond = beyondOf(node.point);
+      const shift = {
+        x: -out.x * (beyond + HAIR * (count + 1)),
+        y: -out.y * (beyond + HAIR * (count + 1)),
+      };
+      const toCorner = { x: corner.point.x - node.point.x, y: corner.point.y - node.point.y };
+      const along = toCorner.x * out.y - toCorner.y * out.x;
+      // Across as well as back: onto the corner's line along the stroke.
+      const place = (p: Vec2): Vec2 => ({
+        x: p.x + shift.x + out.y * along,
+        y: p.y + shift.y - out.x * along,
+      });
+      // A corner, as the cut's own are: carried with it, its handles loop.
+      side[index] = {
+        ...node,
+        point: place(node.point),
+        handleIn: null,
+        handleOut: null,
+        type: "corner",
+      };
+    }
   }
+  /*
+   * And a curve between the corner and the first node inside it that dips
+   * back out past the cut before it turns up the side: the edge of a tilted
+   * pen can run backwards for a moment as a curve begins, and a handle drawn
+   * along it points out past the cut. Such handles are laid no further out
+   * than their own nodes.
+   */
+  const levelled = (point: Vec2, handle: Vec2 | null): Vec2 | null => {
+    if (!handle) return handle;
+    const further = beyondOf(handle) - Math.min(0, beyondOf(point));
+    return further > 0 ? { x: handle.x - out.x * further, y: handle.y - out.y * further } : handle;
+  };
+  for (let count = 0; count <= passed; count++) {
+    const index = from(count);
+    const near = count === 0 ? corner : side[from(count - 1)];
+    const node = side[index];
+    const leaving = count === 0 ? null : step === 1 ? near.handleOut : near.handleIn;
+    const arriving = step === 1 ? node.handleIn : node.handleOut;
+    if (!dipsPast(near.point, leaving, arriving, node.point, corner.point, across.point)) continue;
+    const arrived = levelled(node.point, arriving);
+    side[index] = step === 1 ? { ...node, handleIn: arrived } : { ...node, handleOut: arrived };
+    if (count > 0) {
+      const left = levelled(near.point, leaving);
+      side[from(count - 1)] =
+        step === 1 ? { ...near, handleOut: left } : { ...near, handleIn: left };
+    }
+  }
+}
+
+/** Whether a curve, flattened, crosses the segment from `c` to `d`. */
+function dipsPast(
+  from: Vec2,
+  leaving: Vec2 | null,
+  arriving: Vec2 | null,
+  to: Vec2,
+  c: Vec2,
+  d: Vec2,
+): boolean {
+  const one = leaving ?? from;
+  const two = arriving ?? to;
+  let before = from;
+  for (let k = 1; k <= 16; k++) {
+    const t = k / 16;
+    const u = 1 - t;
+    const point = {
+      x: u * u * u * from.x + 3 * u * u * t * one.x + 3 * u * t * t * two.x + t * t * t * to.x,
+      y: u * u * u * from.y + 3 * u * u * t * one.y + 3 * u * t * t * two.y + t * t * t * to.y,
+    };
+    if (crosses(before, point, c, d)) return true;
+    before = point;
+  }
+  return false;
 }
 
 /** Whether the segment from `a` to `b` crosses the one from `c` to `d`, strictly. */

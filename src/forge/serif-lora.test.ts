@@ -209,16 +209,26 @@ describe("the Serif's e", () => {
     }
   });
 
-  it("cuts its bowl level under the bar without folding, the pen tilted back", () => {
+  it("cuts its bowl under the bar without folding, the pen tilted either way", () => {
     // The cut's outer corner slid on past the end of the bowl's first sliver
-    // of a piece, and the edge doubled back under the bar's end.
-    for (const [angle, weight] of [
+    // of a piece, and the edge doubled back under the bar's end; or a handle
+    // next to it dipped back out past the cut; or, at 60 at the heaviest, the
+    // bowl began so nearly level that a level cut ran three letters long.
+    for (const [angle, weight, xHeight] of [
       [-10, 230],
       [-10, 260],
       [-20, 200],
       [-20, 230],
+      [-30, 200],
+      [-45, 172],
+      [60, 260],
+      [SERIF.pen.angle, 260, 300],
     ]) {
-      const style = { ...SERIF, pen: { ...SERIF.pen, weight, angle } };
+      const style: Style = {
+        ...SERIF,
+        pen: { ...SERIF.pen, weight, angle },
+        metrics: { ...SERIF.metrics, xHeight: xHeight ?? SERIF.metrics.xHeight },
+      };
       for (const contour of draw("e", weight, style).contours) {
         expect(contoursIntersect([contour]), `e at ${weight}, pen ${angle}`).toBe(false);
       }

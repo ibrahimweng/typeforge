@@ -155,7 +155,10 @@ function eyed(
     const from = spineStart(belt.spine);
     const way = first.endAngle >= first.startAngle ? 1 : -1;
     const dir = at(-Math.sin(first.startAngle) * way, Math.cos(first.startAngle) * way);
-    if (dir.y > 0.2) {
+    // Cut level only where the bowl rises steeply out of the bar: at the
+    // slider's heaviest with the pen at 60 it began nearly level, and its
+    // level cut slid a corner out three times the letter's width.
+    if (dir.y > 0.5) {
       const normal = at(dir.y, -dir.x);
       const out = reachAlong(normal.x >= 0 ? normal : at(-normal.x, -normal.y), penReach(belt.pen));
       const lean = dir.x / dir.y;
