@@ -117,9 +117,11 @@ export function castInk(
   // The smallest counter the letter really has. Not a pinhole the union of
   // its overlapping strokes tied off -- a light Serif g has one of six units
   // where its link meets the bowl -- which would hold every speck to its size.
+  // A small counter the letter does draw, the triangle under a Serif t's
+  // flag, is forty times that and still counts.
   const smallest = Math.min(
     Infinity,
-    ...shape.map((contour) => -contourArea(contour)).filter((area) => area > stem * stem * 0.1),
+    ...shape.map((contour) => -contourArea(contour)).filter((area) => area > stem * stem * 0.02),
   );
 
   const local: Contour[] = [];

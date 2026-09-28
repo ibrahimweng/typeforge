@@ -480,6 +480,15 @@ describe("the weld beside the split", () => {
   });
 });
 
+describe("points and fillets on a Serif t", () => {
+  it("keep the small counter under its flag", () => {
+    for (const cast of ["spur", "weld"]) {
+      const letter = drawn("t", forgeOf("Serif", 87, { cast: { [cast]: {} } }));
+      expect(counters(letter).length, cast).toBe(1);
+    }
+  });
+});
+
 describe("the weld on a Serif g", () => {
   it("leaves no speck beside the link and no pinhole in it", () => {
     for (const weight of [87, 30]) {
