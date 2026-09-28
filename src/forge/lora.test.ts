@@ -298,7 +298,12 @@ describe("the other bases", () => {
   it("keep their serifs' growth, their widths at a Black and their own forms", () => {
     for (const base of BASES) {
       if (base.name === "Serif") continue;
-      expect(base.parts.slab.hold, base.name).toBeUndefined();
+      /*
+       * Save the Wavy, whose serifs a third of an em long are held to a
+       * hairline face's size as its pen grows: grown with it, they met the
+       * next letter's and boxed a z in at the heaviest pen.
+       */
+      if (base.name !== "Wavy") expect(base.parts.slab.hold, base.name).toBeUndefined();
       expect(base.metrics.bold, base.name).toBeUndefined();
       /*
        * Save the S and the s: the old-style S-curve (`bookSpine`) is the one

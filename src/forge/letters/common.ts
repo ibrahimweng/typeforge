@@ -26,7 +26,6 @@ import {
   reversed,
   roundCorners,
   shortened,
-  spineEnd,
   spineStart,
   superQuarter,
   wavy,
@@ -1254,15 +1253,30 @@ export function cutsLevel(f: Frame): boolean {
  * stem's inside edge clean, which is how Geist and every grotesque join them.
  */
 export function joinsLevel(f: Frame): boolean {
+  /*
+   * And every face that is not a joined hand, not only the square-cornered
+   * ones. The stub left the same notch and nub on a face that rounds its
+   * corners or waves its runs -- the Ribbon's and the Technical's M carried
+   * a tab above each stem and their N a blob under its foot, and the Sans's
+   * em and i-with-its-diagonal-reversed a spike at each end -- while a level
+   * cut has no corner at the stem for the rounding to find. A written hand
+   * keeps the stub: its diagonals are one stroke with its stems. And the plain
+   * Sans, whose M the grid lays by its spines (see `kit.ts`).
+   */
   if (cutsLevel(f)) return true;
-  const { wave, script } = f.style.parts;
-  return (
-    !f.style.parts.slab.on &&
-    !script.on &&
-    f.radius < 1 &&
-    f.end.kind === "butt" &&
-    (wave.depth <= 0 || wave.along === "off")
-  );
+  const { wave, script, slab } = f.style.parts;
+  if (script.on) return false;
+  const waved = wave.depth > 0 && wave.along !== "off";
+  return f.radius >= 1 || waved || (!slab.on && f.end.kind === "butt");
+}
+
+/**
+ * The same asked of a letter the grid never lays out -- the Cyrillic i and
+ * em -- which cut level on every face but a joined hand: on the Sans the stub
+ * stood a spike above the cap line at each end of the diagonal.
+ */
+export function joinsLevelAnywhere(f: Frame): boolean {
+  return joinsLevel(f) || !f.style.parts.script.on;
 }
 
 /**
@@ -1487,11 +1501,37 @@ export function junction(f: Frame, arm: Vec2, stem: number, height: number, leg:
   // Far enough past the edge to overlap rather than touch. A quarter of the
   // stem is well inside the ink at every weight and hidden by it.
   const inside = stem + f.half - f.half * 0.5;
-  const asked = at(stem + f.half, height);
+  /*
+   * And aimed further into the stem at a heavy weight, where the vee's two
+   * runs are so thick that meeting the stem at its edge left the two held
+   * together along a line: the Technical's heaviest K and k showed a white
+   * seam down the stem where the vee stood against it.
+   */
+  const asked = at(stem + f.half * (1 - 0.45 * Math.min(1, heaviness(f))), height);
   const meet = corner(f, arm, asked, leg);
   const lands = rounded(f, arm, meet, leg);
   if (lands <= inside) return meet;
   return corner(f, arm, at(asked.x - (lands - inside), height), leg);
+}
+
+/**
+ * The arm and leg of a K or a k.
+ *
+ * One run turned at the stem, as `junction` lays it -- except on a pen held
+ * on its side, whose heavy reach is along the level: the point of that turn
+ * stood out through the thin stem as a spur on the Fairground. There the arm
+ * runs into the stem and stops inside it, and the leg springs from the arm a
+ * third of the way out, as a slab face's K is built.
+ */
+export function kArms(f: Frame, arm: Vec2, stem: number, height: number, leg: Vec2): Stroke[] {
+  if (Math.abs(f.style.pen.angle) <= 45) {
+    const meet = junction(f, arm, stem, height, leg);
+    return [ink(f, chain(straight(arm, meet), straight(meet, leg)), f.end, f.end)];
+  }
+  const into = at(stem, height);
+  const share = 0.36;
+  const springs = at(into.x + (arm.x - into.x) * share, into.y + (arm.y - into.y) * share);
+  return [ink(f, straight(arm, into), f.end, BUTT), ink(f, straight(springs, leg), BUTT, f.end)];
 }
 
 /**
@@ -1642,8 +1682,22 @@ export function markFrame(style: Style): Frame {
   const f = frame(style);
   const room = markRoom(f);
   const most = room * 0.42;
-  if (style.pen.weight <= most) return f;
-  return frame({ ...style, pen: { ...style.pen, weight: most } });
+  /*
+   * And on a display face with contrast, drawn with little of it. An accent
+   * is a short run lying nearly level, which is exactly where an upright pen
+   * is at its thinnest: the fat face's acute, circumflex and macron came out
+   * hairlines over letters two hundred units in the stem, thinner even than
+   * the face's own thin horizontals. A text face keeps its pen, whose marks
+   * are measured off Lora's.
+   */
+  const display = style.family === "display" && style.pen.contrast > 0.2;
+  const pen = {
+    ...style.pen,
+    weight: Math.min(style.pen.weight, most),
+    contrast: display ? style.pen.contrast * 0.3 : style.pen.contrast,
+  };
+  if (pen.weight === style.pen.weight && pen.contrast === style.pen.contrast) return f;
+  return frame({ ...style, pen });
 }
 
 /**
@@ -1887,8 +1941,18 @@ export function tittle(f: Frame, x: number): Stroke {
     return dot(f, at(x, Math.max(top - round, f.x + gap + round)), round);
   }
   const own = ownContrast(f);
+  /*
+   * Never narrower than the stem it dots: at a little over half a stem, as it
+   * was on a face with no contrast, the Technical's and the Wavy's dots were
+   * specks beside their own full stops, where a foundry sizes a dot at the
+   * stem's weight or a little over it.
+   */
   const radius = Math.min(
-    Math.max(f.half * (0.55 + own) + lightBody(f), f.style.metrics.unitsPerEm * 0.04 * own),
+    Math.max(
+      f.half * (0.55 + own) + lightBody(f),
+      f.style.metrics.unitsPerEm * 0.04 * own,
+      f.half * 1.06,
+    ),
     // And no larger than the room over the x-height leaves it.
     Math.max((f.asc - f.x - f.half * 0.6) / 2, f.half * 0.55),
   );
@@ -2085,6 +2149,51 @@ export function trough(frame: Frame, fromX: number, height: number, reach = fram
       straight(at(fromX + radius, floor), at(rising - radius, floor)),
       turn(at(rising - radius, floor + radius), radius, 270, 360),
       straight(at(rising, floor + radius), at(rising, height)),
+    ),
+    frame.end,
+    frame.end,
+  );
+}
+
+/**
+ * A trough whose two sides stop at different heights: each half of an
+ * omega, whose outer arms reach the x-height and whose shared middle stops
+ * well short of it.
+ */
+export function cup(
+  frame: Frame,
+  fromX: number,
+  reach: number,
+  leftTop: number,
+  rightTop: number,
+): Stroke {
+  uses("shoulder");
+  const low = Math.min(leftTop, rightTop);
+  const radius = Math.min(shoulderRadius(frame, low), Math.max(reach, frame.half), low * 0.6);
+  const rising = fromX + reach * 2;
+  const floor = Math.min(frame.sits(0) - frame.over, low - radius);
+  if (frame.superness > 0) {
+    const middle = at((fromX + rising) / 2, floor + radius);
+    return ink(
+      frame,
+      chain(
+        straight(at(fromX, leftTop), at(fromX, floor + radius)),
+        bend(frame, middle, radius, 180, 270, reach),
+        bend(frame, middle, radius, 270, 360, reach),
+        straight(at(rising, floor + radius), at(rising, rightTop)),
+      ),
+      frame.end,
+      frame.end,
+    );
+  }
+  return ink(
+    frame,
+    chain(
+      straight(at(fromX, leftTop), at(fromX, floor + radius)),
+      turn(at(fromX + radius, floor + radius), radius, 180, 270),
+      straight(at(fromX + radius, floor), at(rising - radius, floor)),
+      turn(at(rising - radius, floor + radius), radius, 270, 360),
+      straight(at(rising, floor + radius), at(rising, rightTop)),
     ),
     frame.end,
     frame.end,
@@ -2766,24 +2875,31 @@ export function cyrPosts(f: Frame): [number, number] {
 export function cyrBe(f: Frame, top: number): Stroke[] {
   const wide = cyrWide(f, top);
   const stem = f.edge;
-  const bowl = Math.max(top * 0.29, f.least);
   return [
     ink(f, straight(at(stem, 0), at(stem, top)), f.end, f.end),
-    arm(f, stem, stem + wide * 1.5, f.hangs(top, f.bar)),
-    belly(f, at(stem, bowl), bowl * f.wide, bowl, -90, 90),
+    arm(f, stem, stem + wide * 1.12, f.hangs(top, f.bar)),
+    lobe(f, stem, f.sits(0), softHigh(f, top), wide * 1.2),
   ];
 }
 
+/**
+ * Two bowls on a stem, at any height: the B, and the ve, which is a B the
+ * height of an x.
+ */
+
 export function cyrVe(f: Frame, top: number): Stroke[] {
-  const stem = f.edge;
-  const upper = Math.max(top * 0.26, f.least);
-  const lower = Math.max(top * 0.29, f.least);
-  return [
-    ink(f, straight(at(stem, 0), at(stem, top)), f.end, f.end),
-    belly(f, at(stem, top - upper), upper * f.wide, upper, -90, 90),
-    belly(f, at(stem, lower), lower * f.wide, lower, -90, 90),
-  ];
+  return twoBowls(f, top, cyrWide(f, top) * 1.02);
 }
+
+/**
+ * A roof on a slanted leg and a post, standing on a shelf with two feet
+ * under its ends.
+ *
+ * Each foot hangs straight down from the top of the shelf under the post or
+ * the leg it carries, so the outside of the letter runs in one line from the
+ * roof to the foot. The post, the leg and the shelf each stop inside ink
+ * that is already there.
+ */
 
 export function cyrGe(f: Frame, top: number): Stroke[] {
   const stem = f.edge;
@@ -2793,7 +2909,6 @@ export function cyrGe(f: Frame, top: number): Stroke[] {
   ];
 }
 
-/** A roof on a slanted leg, standing on a shelf with two feet under it. */
 export function cyrDe(f: Frame, top: number): Stroke[] {
   const wide = cyrWide(f, top);
   const left = f.edge;
@@ -2803,28 +2918,29 @@ export function cyrDe(f: Frame, top: number): Stroke[] {
    * black.
    */
   const width = wide * 1.75 + f.half * 1.1 * heaviness(f) + f.gain * 1.2;
-  const shelf = f.sits(0, f.bar);
+  const right = left + width;
   const roof = f.hangs(top, f.bar);
-  const post = left + width - f.half * 1.6 - width * 0.06;
-  const drop = cyrDrop(f, top);
-  // The leg leans in from the shelf's left end to the roof's, and the roof
-  // starts over it, so the two meet in the leg's own ink.
-  const head = left + width * 0.22 + f.half * 0.4;
-  const foot = left + f.half * 1.2;
+  const head = left + width * 0.26 + f.half * 0.4;
+  const foot = left + f.half * 0.35;
   return [
-    ink(f, straight(at(post, shelf), at(post, top)), BUTT, f.end),
-    thin(f, straight(at(head, roof), at(post, roof)), BUTT, BUTT),
-    ink(f, straight(at(head, top), at(foot, shelf)), LEVEL, BUTT),
-    thin(f, straight(at(left, shelf), at(left + width, shelf)), BUTT, BUTT),
-    ink(f, straight(at(left + f.half, shelf), at(left + f.half, -drop)), BUTT, f.end),
-    ink(
-      f,
-      straight(at(left + width - f.half, shelf), at(left + width - f.half, -drop)),
-      BUTT,
-      f.end,
-    ),
+    ink(f, straight(at(right, 0), at(right, top)), BUTT, f.end),
+    thin(f, straight(at(head, roof), at(right, roof)), BUTT, BUTT),
+    ink(f, straight(at(head, top), at(foot, 0)), LEVEL, LEVEL),
+    shelfBar(f, left, right),
+    hangingTail(f, left, top),
+    hangingTail(f, right, top),
   ];
 }
+
+/**
+ * Two arcs bulging right, which is what a ze and a three both are, meeting at
+ * the waist in one short tongue.
+ *
+ * Each arc stops square where it turns level at the waist, and the tongue is
+ * a run of its own along that line: carried on out of each arc, the two ends
+ * came to the waist at slightly different angles and stood out to the left
+ * as a small arrow.
+ */
 
 /**
  * A W or a w: two vees sharing a middle apex.
@@ -2851,11 +2967,14 @@ export function doubleVee(
   const start = at(left, top);
   const end = at(left + half * (share + 2), top);
   /*
-   * A face that rounds its corners keeps the two whole vees: a rounded apex
-   * is drawn back along its bisector, and placed so its ink reaches the line
-   * it stood hundreds of units over it on a script's short inner arms.
+   * A joined hand that rounds its corners keeps the two whole vees: a rounded
+   * apex is drawn back along its bisector, and placed so its ink reaches the
+   * line it stood hundreds of units over it on a script's short inner arms. A
+   * type face that rounds them shares the one apex, as the rest do: laid as
+   * two whole vees, the Technical's and the Ribbon's w had a jagged, stepped
+   * tab where the inner arms crossed.
    */
-  if (f.radius >= 1) {
+  if (f.radius >= 1 && f.style.parts.script.on) {
     const vee = (from: number): Stroke => {
       const a = at(left + half * from, top);
       const b = at(left + half * (from + 2), top);
@@ -2891,51 +3010,20 @@ export function cyrZhe(f: Frame, top: number): Stroke[] {
   return [ink(f, straight(at(middle, 0), at(middle, top)), f.end, f.end), ...arms];
 }
 
-/** Two arcs bulging right, which is what a ze and a three both are. */
 export function cyrZe(f: Frame, top: number): Stroke[] {
-  /*
-   * Each bowl carried on a little way to the left along the waist, so the two
-   * meet in a short tongue, as the three's do: meeting where each turned, the
-   * two cut ends stood at an angle to each other and left a notch like a
-   * less-than sign on the left of the waist, at every weight.
-   */
   const crest = f.crest(top);
   const base = f.dip(0);
   const radius = Math.max((crest - base) / 4, f.least);
-  const wide = bendWidth(f, radius) + f.gain * 0.5;
-  /*
-   * Placed by where the arcs actually reach, not by where the whole bowl would.
-   *
-   * A ze is the right side of a bowl and nothing else, so its leftmost ink is
-   * the end of an arc rather than the side of a circle: measured as a circle it
-   * stood eighty-six units inside its own sidebearing and read as a letter that
-   * had been pushed.
-   */
+  // Never so narrow the counters close: a fat face's small ze was two slits.
+  const wide = Math.max(bendWidth(f, radius) + f.gain * 0.5, stemSide(f) * 1.75);
   const cx = f.edge + wide * 0.643;
-  // Where each bowl comes back to the waist: the same line, unless the pen
-  // will not turn in a quarter of the height and the two overlap there.
-  const upper = spineEnd(bend(f, at(cx, crest - radius), radius, 150, -90, wide));
-  const lower = spineStart(bend(f, at(cx, base + radius), radius, 90, -150, wide));
-  const tongue = radius * 0.3;
+  const waist = (crest + base) / 2;
+  const upperWide = wide * 0.92;
+  const tongue = wide * 0.32;
   return [
-    ink(
-      f,
-      chain(
-        bend(f, at(cx, crest - radius), radius, 150, -90, wide),
-        straight(upper, at(upper.x - tongue, upper.y)),
-      ),
-      f.end,
-      BUTT,
-    ),
-    ink(
-      f,
-      chain(
-        straight(at(lower.x - tongue, lower.y), lower),
-        bend(f, at(cx, base + radius), radius, 90, -150, wide),
-      ),
-      BUTT,
-      f.end,
-    ),
+    ink(f, bend(f, at(cx, crest - radius), radius, 150, -90, upperWide), f.end, BUTT),
+    ink(f, bend(f, at(cx, base + radius), radius, 90, -150, wide), BUTT, f.end),
+    ink(f, straight(at(cx - tongue, waist), at(cx + 1, waist)), BUTT, BUTT),
   ];
 }
 
@@ -2953,7 +3041,7 @@ export function cyrI(f: Frame, top: number): Stroke[] {
    * `joinsLevel`): run up a stub inside the stem and turned there, a heavy
    * one dropped below the baseline and skewed its serifs.
    */
-  if (joinsLevel(f)) {
+  if (joinsLevelAnywhere(f)) {
     let foot = at(left, 0);
     let head = at(right, top);
     for (let pass = 0; pass < 3; pass++) {
@@ -3013,24 +3101,14 @@ export function cyrU(f: Frame, top: number): Stroke[] {
   ];
 }
 
-/** The pe, with a tail hung off the foot of its right stem. */
 export function cyrTse(f: Frame, top: number): Stroke[] {
-  const [, right] = cyrPosts(f);
-  const drop = cyrDrop(f, top);
+  const [left, right] = cyrPosts(f);
+  const tail = tailPast(f, right);
   return [
-    ...cyrPe(f, top),
-    ink(
-      f,
-      straight(at(right + f.half * 1.6, f.sits(0, f.bar)), at(right + f.half * 1.6, -drop)),
-      BUTT,
-      f.end,
-    ),
-    thin(
-      f,
-      straight(at(right - f.half, f.sits(0, f.bar)), at(right + f.half * 1.6, f.sits(0, f.bar))),
-      BUTT,
-      BUTT,
-    ),
+    standing(f, left, top),
+    standing(f, right, top),
+    shelfBar(f, left, tail),
+    hangingTail(f, tail, top),
   ];
 }
 
@@ -3045,39 +3123,28 @@ export function cyrChe(f: Frame, top: number): Stroke[] {
   ];
 }
 
-/** Three stems on one shelf. */
 export function cyrSha(f: Frame, top: number): Stroke[] {
   const gap = f.style.metrics.counterWidth + f.style.pen.weight;
   const left = f.edge;
-  const shelf = f.sits(0, f.bar);
   return [
-    ...[0, 1, 2].map((step) =>
-      ink(f, straight(at(left + gap * step, shelf), at(left + gap * step, top)), BUTT, f.end),
-    ),
-    thin(f, straight(at(left, shelf), at(left + gap * 2, shelf)), BUTT, BUTT),
+    ...[0, 1, 2].map((step) => standing(f, left + gap * step, top)),
+    shelfBar(f, left, left + gap * 2),
   ];
 }
 
-/** The sha with the same tail the tse has. */
 export function cyrShcha(f: Frame, top: number): Stroke[] {
   const gap = f.style.metrics.counterWidth + f.style.pen.weight;
-  const right = f.edge + gap * 2;
-  const drop = cyrDrop(f, top);
-  const shelf = f.sits(0, f.bar);
+  const left = f.edge;
+  const tail = tailPast(f, left + gap * 2);
   return [
-    ...cyrSha(f, top),
-    thin(f, straight(at(right - f.half, shelf), at(right + f.half * 1.6, shelf)), BUTT, BUTT),
-    ink(f, straight(at(right + f.half * 1.6, shelf), at(right + f.half * 1.6, -drop)), BUTT, f.end),
+    ...[0, 1, 2].map((step) => standing(f, left + gap * step, top)),
+    shelfBar(f, left, tail),
+    hangingTail(f, tail, top),
   ];
 }
 
-/** A stem with a bowl on the bottom half of it, standing where it is told. */
 export function cyrSoftAt(f: Frame, top: number, stem: number): Stroke[] {
-  const bowl = Math.max(top * 0.29, f.least);
-  return [
-    ink(f, straight(at(stem, 0), at(stem, top)), f.end, f.end),
-    belly(f, at(stem, bowl), bowl * f.wide, bowl, -90, 90),
-  ];
+  return [ink(f, straight(at(stem, 0), at(stem, top)), f.end, f.end), softBowl(f, top, stem)];
 }
 
 export function cyrSoft(f: Frame, top: number): Stroke[] {
@@ -3139,44 +3206,56 @@ export function cyrTshe(f: Frame, top: number): Stroke[] {
   return cyrTsheAt(f, top, f.edge + cyrWide(f, top) * 0.5, 0);
 }
 
-/** An el and a soft sign, tied together at the waist. */
 export function cyrLje(f: Frame, top: number): Stroke[] {
   const width = cyrWide(f, top) * 1.6;
-  // A counter's worth apart, not a pen's: set at the pen the el's leg and the
-  // soft sign's stem sat close enough to read as one crowded letter.
-  const stem = f.edge + width + f.style.metrics.counterWidth * 0.5 + f.style.pen.weight;
-  const waist = top * f.style.parts.crossbar.height;
-  return [
-    ...cyrEl(f, top),
-    thin(f, straight(at(f.edge + width, waist), at(stem, waist)), BUTT, BUTT),
-    ...cyrSoftAt(f, top, stem),
-  ];
+  /*
+   * A joined hand writes the two apart and ties them with a bar: its el's
+   * stem is a slanted stroke the bowl cannot be hung on without folding.
+   */
+  if (f.style.parts.script.on) {
+    const stem = f.edge + width + f.style.metrics.counterWidth * 0.5 + f.style.pen.weight;
+    const high = softHigh(f, top);
+    return [
+      ...cyrEl(f, top),
+      ink(f, straight(at(f.edge + width, high), at(stem, high)), BUTT, BUTT),
+      ...cyrSoftAt(f, top, stem),
+    ];
+  }
+  return [...cyrEl(f, top), softBowl(f, top, f.edge + width)];
 }
 
-/** A stem and a soft sign, tied together at the waist: the nje. */
+/**
+ * The nje: an H whose right stem carries the soft sign's bowl, the bar
+ * running into the top of the bowl as one stroke.
+ */
+
 export function cyrNje(f: Frame, top: number): Stroke[] {
-  const stem = f.edge + f.style.metrics.counterWidth + f.style.pen.weight;
-  const waist = top * f.style.parts.crossbar.height;
+  const [left, right] = cyrPosts(f);
+  const high = softHigh(f, top);
   return [
-    ink(f, straight(at(f.edge, 0), at(f.edge, top)), f.end, f.end),
-    thin(f, straight(at(f.edge, waist), at(stem, waist)), BUTT, BUTT),
-    ...cyrSoftAt(f, top, stem),
+    ink(f, straight(at(left, 0), at(left, top)), f.end, f.end),
+    ink(f, straight(at(right, 0), at(right, top)), f.end, f.end),
+    ink(f, straight(at(left, high), at(right, high)), BUTT, BUTT),
+    softBowl(f, top, right, high),
   ];
 }
 
-/** The pe with its tail down the middle rather than off the side. */
 export function cyrDzhe(f: Frame, top: number): Stroke[] {
   const [left, right] = cyrPosts(f);
-  const middle = (left + right) / 2;
-  const drop = cyrDrop(f, top);
-  const shelf = f.sits(0, f.bar);
   return [
-    ink(f, straight(at(left, shelf), at(left, top)), BUTT, f.end),
-    ink(f, straight(at(right, shelf), at(right, top)), BUTT, f.end),
-    thin(f, straight(at(left, shelf), at(right, shelf)), BUTT, BUTT),
-    ink(f, straight(at(middle, shelf), at(middle, -drop)), BUTT, f.end),
+    standing(f, left, top),
+    standing(f, right, top),
+    shelfBar(f, left, right),
+    hangingTail(f, (left + right) / 2, top),
   ];
 }
+
+/**
+ * Where the top of a soft sign's bowl runs, in a letter this tall.
+ *
+ * A little over half the letter, as a B's lower bowl is -- and never so low
+ * that the counter under it closes.
+ */
 
 /** The ge with a tick turned up at the end of its arm. */
 export function cyrGheUpturn(f: Frame, top: number): Stroke[] {
@@ -3200,27 +3279,41 @@ export function cyrGheUpturn(f: Frame, top: number): Stroke[] {
   return [
     ink(f, straight(at(stem, 0), at(stem, top)), f.end, f.end),
     thin(f, straight(at(stem, bar), at(stem + reach, bar)), BUTT, BUTT),
-    ink(f, straight(at(stem + reach, bar), at(stem + reach, f.hangs(top, f.bar))), BUTT, f.end),
+    // Begun under the arm, so the tick and the arm share one square corner:
+    // begun on the arm's centre-line, the tick's outer half stood below the
+    // arm's end as a step.
+    ink(
+      f,
+      straight(at(stem + reach, bar - f.upright * f.bar), at(stem + reach, f.hangs(top, f.bar))),
+      BUTT,
+      f.end,
+    ),
   ];
 }
 
-/** The soft sign with a shoulder to its left. */
 export function cyrHard(f: Frame, top: number): Stroke[] {
-  const stem = f.edge + cyrWide(f, top) * 0.5;
-  const bowl = Math.max(top * 0.29, f.least);
+  const stem = f.edge + cyrWide(f, top) * 0.55;
+  const bar = f.hangs(top, f.bar);
   return [
-    ink(f, straight(at(stem, 0), at(stem, top)), f.end, f.end),
-    thin(f, straight(at(f.edge, f.hangs(top, f.bar)), at(stem, f.hangs(top, f.bar))), f.end, BUTT),
-    belly(f, at(stem, bowl), bowl * f.wide, bowl, -90, 90),
+    ...cyrSoftAt(f, top, stem),
+    thin(f, straight(at(f.edge, bar), at(stem, bar)), f.end, BUTT),
   ];
 }
 
-/** The soft sign with a stem set beside it. */
 export function cyrYeru(f: Frame, top: number): Stroke[] {
-  const bowl = Math.max(top * 0.29, f.least);
-  const apart = f.edge + bowl * f.wide + f.style.metrics.counterWidth * 0.55 + f.style.pen.weight;
-  return [...cyrSoft(f, top), ink(f, straight(at(apart, 0), at(apart, top)), f.end, f.end)];
+  const soft = cyrSoft(f, top);
+  const reach = spineRight(soft[1].spine);
+  const apart = reach + stemSide(f) * 2 + f.style.metrics.counterWidth * 0.42;
+  return [...soft, ink(f, straight(at(apart, 0), at(apart, top)), f.end, f.end)];
 }
+
+/**
+ * An el and a soft sign sharing a stem.
+ *
+ * The lje is the el whose right stem carries the soft sign's bowl, which is
+ * how it is written. Drawn as an el, a bar and a second stem, the bar and the
+ * bowl sat at two different heights and the letter had a step at its waist.
+ */
 
 /** A bowl open to the left, with a bar reaching in from the right. */
 export function cyrE(f: Frame, top: number): Stroke[] {
@@ -3293,17 +3386,62 @@ export function cyrYa(f: Frame, top: number): Stroke[] {
   ];
 }
 
-/** Two stems with a vee between them, which is an M at any height. */
-export function cyrEm(f: Frame, top: number): Stroke[] {
-  const half = Math.max(cyrWide(f, top) * 0.66, f.least);
+/**
+ * Two stems with a vee between them, which is an M at any height: the M, and
+ * the em, which is an M the height of an x.
+ */
+export function emAt(f: Frame, top: number, width: number): Stroke[] {
   const left = f.edge;
-  const right = left + half * 2;
-  const dip = corner(f, at(left, top), at(left + half, top * 0.18), at(right, top));
-  return [
+  const middle = left + width / 2;
+  const right = left + width;
+  const dip = top * 0.16;
+  const stems = [
     ink(f, straight(at(left, 0), at(left, top)), f.end, f.end),
     ink(f, straight(at(right, 0), at(right, top)), f.end, f.end),
-    ink(f, chain(straight(at(left, top), dip), straight(dip, at(right, top))), BUTT, BUTT),
   ];
+  if (top < f.cap ? joinsLevelAnywhere(f) : joinsLevel(f)) {
+    // Each diagonal cut level on the top line inside its stem: see `leaving`.
+    let topLeft = at(left, top);
+    let topRight = at(right, top);
+    let vertex = at(middle, dip);
+    for (let pass = 0; pass < 3; pass++) {
+      topLeft = leaving(f, at(left, top), 1, vertex, 1);
+      topRight = leaving(f, at(right, top), -1, vertex, -1);
+      vertex = corner(f, topLeft, at(middle, dip), topRight);
+    }
+    return [
+      ...stems,
+      ink(f, chain(straight(topLeft, vertex), straight(vertex, topRight)), LEVEL, LEVEL),
+    ];
+  }
+  // Run down the stem no further than a short letter has stem to run down.
+  const stubbed = Math.max(f.half * 5, top * 0.3);
+  const into = top < f.cap ? Math.min(stubbed, top * 0.85) : stubbed;
+  const start = at(left, top - into);
+  const end = at(right, top - into);
+  const [topLeft, vertex, topRight] = corners(f, [
+    start,
+    at(left, top),
+    at(middle, dip),
+    at(right, top),
+    end,
+  ]);
+  return [
+    ...stems,
+    ink(
+      f,
+      chain(
+        straight(start, topLeft),
+        straight(topLeft, vertex),
+        straight(vertex, topRight),
+        straight(topRight, end),
+      ),
+    ),
+  ];
+}
+
+export function cyrEm(f: Frame, top: number): Stroke[] {
+  return emAt(f, top, Math.max(cyrWide(f, top) * 1.7, f.half * 7));
 }
 
 /** Two stems with a bar between them, which is an H at any height. */
@@ -3325,6 +3463,98 @@ export function cyrTe(f: Frame, top: number): Stroke[] {
   return [
     ink(f, straight(at(middle, 0), at(middle, top)), f.end, BUTT),
     thin(f, straight(at(middle - half, bar), at(middle + half, bar)), f.end, f.end),
+  ];
+}
+
+export function stemSide(f: Frame): number {
+  return Math.abs(reachAlong(at(1, 0), penReach(f.style.pen)).x);
+}
+
+export function spineRight(spine: Spine): number {
+  let reach = -Infinity;
+  for (const one of spine.segments) {
+    if (one.kind === "line") {
+      reach = Math.max(reach, one.from.x, one.to.x);
+      continue;
+    }
+    for (let step = 0; step <= 24; step++) {
+      const sweepTo = one.endAngle - one.startAngle;
+      const angle = one.startAngle + (sweepTo * step) / 24;
+      reach = Math.max(reach, one.centre.x + one.radius * Math.cos(angle));
+    }
+  }
+  return reach;
+}
+
+/**
+ * A stem standing on the baseline, cut square there because a shelf runs
+ * along its foot: the stems of a sha, a tse, a dzhe.
+ *
+ * Standing on the line, not on the shelf's middle. Stopped at the shelf's
+ * centre-line, as they were, with the shelf itself stopping at the stems'
+ * centre-lines, the outer half of each stem's foot was missing and every one
+ * of these letters had a stepped notch at both bottom corners.
+ */
+
+export function standing(f: Frame, x: number, top: number): Stroke {
+  return ink(f, straight(at(x, 0), at(x, top)), BUTT, f.end);
+}
+
+export function shelfBar(f: Frame, from: number, to: number): Stroke {
+  const y = f.sits(0, f.bar);
+  return thin(f, straight(at(from, y), at(to, y)), BUTT, BUTT);
+}
+
+/**
+ * The tail a tse, a shcha, a dzhe and a de hang below the line.
+ *
+ * Begun at the top of the shelf rather than its middle, so its outside edge
+ * runs straight up into the shelf's end: begun at the middle, with the shelf
+ * stopping at the tail's centre-line, the tail was a separate block with a
+ * step where it met the bar.
+ */
+
+export function hangingTail(f: Frame, x: number, top: number): Stroke {
+  return ink(f, straight(at(x, f.upright * f.bar * 2), at(x, -cyrDrop(f, top))), BUTT, f.plain);
+}
+
+export function tailPast(f: Frame, right: number): number {
+  return right + stemSide(f) * 1.45;
+}
+
+export function softHigh(f: Frame, top: number): number {
+  const low = f.sits(0);
+  return Math.max(top * (top > f.x ? 0.56 : 0.6), low + f.upright * 2 + f.half * 1.1);
+}
+
+/**
+ * The bowl of a soft sign: a B's lower bowl, hung on the stem at `stem`.
+ *
+ * Run level off the stem and round, sitting on the baseline, as the B's is. A
+ * half ellipse as wide as a third of its height, as it was, hung below the
+ * foot of its own stem, closed to a slit at a text weight and went solid at a
+ * heavy one.
+ */
+
+export function softBowl(f: Frame, top: number, stem: number, high = softHigh(f, top)): Stroke {
+  return lobe(f, stem, f.sits(0), high, cyrWide(f, top) * 1.14);
+}
+
+export function twoBowls(f: Frame, top: number, reach: number): Stroke[] {
+  const stem = f.edge;
+  const upper = top * 0.56;
+  // Not on a text serif or a joined hand, whose bowls meet their stem in a
+  // bracket or a loop that a lighter pen opens a pinhole in.
+  const light = bookish(f) || f.style.parts.script.on ? 1 : 1 - 0.14 * heaviness(f);
+  const high = f.hangs(top, light);
+  const base = f.sits(0, light);
+  const cross = Math.min(f.half * 0.2, f.upright * light * 0.45);
+  const upperR = Math.max((high - upper) / 2 + cross, f.least);
+  const lowerR = Math.max((upper - base) / 2 + cross, f.least);
+  return [
+    ink(f, straight(at(stem, 0), at(stem, top)), f.end, f.end),
+    lighter(lobe(f, stem, high - upperR * 2, high, reach * 0.98), light),
+    lighter(lobe(f, stem, base, base + lowerR * 2, reach * 1.14), light),
   ];
 }
 
@@ -3511,7 +3741,17 @@ export function heldReachOut(f: Frame, halfHeight: number, asked: number): numbe
  */
 export function lobe(f: Frame, stem: number, low: number, high: number, asked: number): Stroke {
   const halfHeight = Math.max((high - low) / 2, f.least);
-  const reach = heldReachOut(f, halfHeight, asked);
+  /*
+   * And never so short that the counter is a slit. The stem and the bowl's
+   * far wall each take a stem's side out of the reach, and on a fat face's
+   * own pen -- two hundred units of upright with its horizontals thinned --
+   * what was left of a soft sign's or a ya's bowl was thirty units of paper
+   * and read as solid. A counter a little under half as wide as it is tall is
+   * the least a fat face keeps; nothing lighter comes near it.
+   */
+  const inside = halfHeight * 2 - f.upright * 2;
+  const least = stemSide(f) * 2 + Math.min(inside * 0.55, f.half * 1.5);
+  const reach = Math.max(heldReachOut(f, halfHeight, asked), least);
   const middle = (high + low) / 2;
   const curve = Math.max(Math.min(reach, halfHeight * 1.08 * f.wide), f.least);
   const run = reach - curve;
@@ -3645,7 +3885,10 @@ export function barHalf(f: Frame): number {
  * weight a gap of a few units is no gap, and the two bars fuse into one.
  */
 export function signGap(f: Frame): number {
-  return Math.max(f.style.pen.weight * f.bar * 1.15, f.x * 0.075);
+  // Off the bar's own ink, which on a pen with contrast is far lighter than
+  // the stem: measured off the stem, a fat face's equals stood its two bars
+  // five of their own widths apart.
+  return Math.max(f.upright * 2 * f.bar * 1.15, f.x * 0.075);
 }
 
 /**

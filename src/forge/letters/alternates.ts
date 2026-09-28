@@ -542,30 +542,42 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
          * either side of its apex, drawn with a pen of two hundred and sixty, has
          * its two legs closer together than the pen is wide.
          */
-        const half = Math.max(f.capBowl * 0.86, f.least);
+        // Wider at a heavy weight, as the pointed A is, or the counter closes.
+        const half =
+          Math.max(f.capBowl * 0.86, f.least) + f.half * 0.45 * heaviness(f) + f.gain * 0.7;
         const left = f.edge;
         const middle = left + half;
-        const cut = f.capBowl * 0.34;
-        const bar = f.cap * f.style.parts.crossbar.height * 0.58;
-        // Where the two diagonals would be at the height the top is cut.
+        const cut = f.capBowl * 0.34 + f.gain * 0.4;
         const rise = f.cap;
         /*
-         * And where they are at the bar's height, which is the same question
-         * the default `A` gets wrong the other way round.
-         *
-         * These two do not meet at a point: the top is cut flat, so each
-         * diagonal stops half a cut short of the middle. Reckoned as though
-         * they met, the bar was drawn for a narrower A than this one and both
-         * ends landed inside it, clear of the diagonals -- invisible under a
-         * thick pen and a piece of its own at a pen of 8.
+         * The legs cut level on the cap line and the top laid between them
+         * hanging from it, so the flat top is one edge along the line. Each leg
+         * cut square across itself, with the top bar centred on the line, as it
+         * was, left a tab standing above the cap line in the middle of the top.
          */
+        const slope = Math.hypot(half - cut / 2, rise) / rise;
+        // Half a leg's width along a level line: where its inner edge is.
+        const across = f.half * slope;
+        /*
+         * The bar below where the legs' inner edges meet, by more than a
+         * fixed share of the height: at a Black they meet low, and a bar at
+         * the regular's height closed the counter over it to a sliver.
+         */
+        const meets =
+          across > cut / 2 ? rise * (1 - (across - cut / 2) / Math.max(half - cut / 2, 1)) : rise;
+        const barHalf = f.upright * f.bar;
+        const bar = Math.max(
+          Math.min(f.cap * f.style.parts.crossbar.height * 0.58, (meets - barHalf * 2) * 0.46),
+          barHalf * 2 + f.half * 0.6,
+        );
         const inset = ((half - cut / 2) * bar) / rise;
         const leftFoot = at(left, 0);
         const rightFoot = at(middle + half, 0);
+        const top = f.hangs(rise, f.bar);
         return finish(f, [
-          ink(f, straight(leftFoot, at(middle - cut / 2, rise)), f.end, f.end),
-          ink(f, straight(rightFoot, at(middle + cut / 2, rise)), f.end, f.end),
-          thin(f, straight(at(middle - cut / 2, rise), at(middle + cut / 2, rise))),
+          ink(f, straight(leftFoot, at(middle - cut / 2, rise)), f.end, LEVEL),
+          ink(f, straight(rightFoot, at(middle + cut / 2, rise)), f.end, LEVEL),
+          thin(f, straight(at(middle - cut / 2, top), at(middle + cut / 2, top))),
           thin(f, straight(at(left + inset, bar), at(middle + half - inset, bar))),
         ]);
       },
@@ -814,13 +826,16 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
       hint: "Turned out at the foot, which stops an l reading as a figure one.",
       build: (style) => {
         const f = frame(style);
-        const radius = Math.max(f.arch * 0.42, f.least);
+        // Never turned so tight that the inside of the turn is a notch.
+        const radius = Math.max(f.arch * 0.42, f.least, f.half * 1.5);
         return finish(f, [
           ink(
             f,
             chain(
               straight(at(f.edge, f.asc), at(f.edge, radius)),
               turn(at(f.edge + radius, radius), radius, 180, 270),
+              // A little way on along the line, as the t's foot does.
+              straight(at(f.edge + radius, 0), at(f.edge + radius + f.half * 0.6, 0)),
             ),
             f.end,
             f.end,
@@ -841,7 +856,15 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const stem = tStem(f);
         return finish(f, [
           // Capped at the foot, cut at the top, as the plain t is.
-          ink(f, straight(at(stem, 0), at(stem, f.asc * 0.78)), f.end, f.plain),
+          ink(
+            f,
+            straight(
+              at(stem, 0),
+              at(stem, Math.min(Math.max(f.asc * 0.78, f.x + f.half * 1.5), f.asc)),
+            ),
+            f.end,
+            f.plain,
+          ),
           crossbar(f, stem - reach * 0.7, stem + reach),
         ]);
       },

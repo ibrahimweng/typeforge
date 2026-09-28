@@ -1171,7 +1171,14 @@ export function wavy(
       // Asked of every straight piece, riding or not, so the book and the letter
       // keep in step: see `counted`.
       const mine = Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y);
-      const takes = counted(rides(segment, along) ? mine : null);
+      /*
+       * Not the level run a round bowl carries across its top and its foot,
+       * between two curves: it took a part of a hump and the crown of every
+       * o, b and G had a nick in it. An arm or a
+       * bar -- a run with a straight neighbour or a free end -- still waves.
+       */
+      const between = before?.kind === "arc" && after?.kind === "arc";
+      const takes = counted(rides(segment, along) && !between ? mine : null);
       if (takes === null) return [segment];
       return ripple(
         segment,

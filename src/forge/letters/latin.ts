@@ -16,9 +16,9 @@ import {
   arch,
   archSpine,
   arm,
-  arms,
   at,
   belly,
+  lobe,
   bend,
   borrowing,
   bowed,
@@ -33,6 +33,7 @@ import {
   joinsLevel,
   leaving,
   LEVEL,
+  stemSide,
   ink,
   junction,
   type LetterName,
@@ -142,22 +143,38 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   // Danish, Norwegian, Icelandic or German, which is most of the point of
   // having the accented set at all.
 
-  /** An A and an E sharing a stroke, which is what an ash is. */
+  /**
+   * An A and an E sharing a stroke, which is what an ash is: the A's left leg
+   * climbing to the cap line, the E's stem standing where the A's right leg
+   * would be, the E's top arm run back over both to the head of the leg, and
+   * the A's crossbar carried on through the stem as the E's middle arm.
+   *
+   * The leg is set well clear of the stem, so the triangle between them and
+   * under the top arm is a counter at every weight. Laid with the leg's head
+   * on the stem itself, as it was, there was no counter at all: a Black ash
+   * was a solid wedge and a light one read as a slash beside an E.
+   */
   AE: (style) => {
     const f = frame(style);
-    const apex = f.edge + f.capBowl * 0.62;
-    const stem = apex;
-    const reach = f.capBowl * 1.1;
-    const [, low] = arms(f, f.cap);
+    const left = f.edge;
+    const side = stemSide(f);
+    const head = left + f.capBowl * 0.5 + f.gain * 0.3;
+    const stem = head + Math.max(f.capBowl * 0.8, side + f.half * 2.5);
+    const reach = f.capBowl * 1.02;
+    const middle = middleBar(f, f.cap);
+    // Where the leg's centre-line crosses the middle arm's line.
+    const crossing = left + ((head - left) * middle) / f.cap;
     return finish(f, [
-      // The A's one diagonal, from the foot out to the shared upright.
-      ink(f, straight(at(f.edge, 0), at(apex, f.cap)), f.end, BUTT),
-      ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-      arm(f, stem, stem + reach, f.hangs(f.cap, f.bar)),
-      arm(f, stem, stem + reach * 0.86, middleBar(f, f.cap)),
+      ink(f, straight(at(left, 0), at(head, f.cap)), f.end, LEVEL),
+      ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, BUTT),
+      thin(
+        f,
+        straight(at(head, f.hangs(f.cap, f.bar)), at(stem + reach, f.hangs(f.cap, f.bar))),
+        BUTT,
+        f.end,
+      ),
+      thin(f, straight(at(crossing, middle), at(stem + reach * 0.86, middle)), BUTT, f.end),
       arm(f, stem, stem + reach, f.sits(0, f.bar)),
-      // The crossbar of the A half, which meets the diagonal partway down.
-      thin(f, straight(at(f.edge + f.capBowl * 0.22, low), at(stem, low)), BUTT, BUTT),
     ]);
   },
 
@@ -752,10 +769,16 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   Thorn: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    const radius = Math.max(f.cap * 0.22, f.least);
+    /*
+     * The P's bowl, run level off the stem and round, set down the middle of
+     * the stem: a half ellipse a fifth of the height wide, as it was, went
+     * solid at a fat face's weight.
+     */
+    const low = f.cap * 0.2;
+    const high = f.cap * 0.8;
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-      belly(f, at(stem, f.cap * 0.54), radius * f.wide, radius, -90, 90),
+      lobe(f, stem, low, high, Math.max(f.capBowl * 1.1, ((high - low) / 2) * f.wide)),
     ]);
   },
 

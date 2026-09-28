@@ -25,7 +25,6 @@ import {
   finish,
   frame,
   ink,
-  junction,
   type LetterName,
   lobe,
   openBowl,
@@ -37,10 +36,13 @@ import {
   thin,
   trough,
   turn,
+  twoBowls,
+  inherit,
+  kArms,
+  emAt,
   middleBar,
   bookish,
   heaviness,
-  lighter,
 } from "./common";
 
 export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
@@ -124,55 +126,12 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   B: (style) => {
     const f = frame(style);
-    const stem = f.edge;
-    const upper = f.cap * 0.56;
-    // Measured between where the ink has to reach rather than between the
-    // lines themselves, so the two bowls fill the capital exactly and the
-    // slight extra keeps them overlapping where they meet. On the lines and
-    // not over them: the top and the foot are level runs now, and a flat run
-    // that overshoots is a B standing lower than the H beside it.
     /*
-     * And at a heavy weight the two bowls are drawn a little lighter than the
-     * stem, as a Black's are -- the waist between them is two horizontals
-     * side by side, and at the stem's weight the upper counter closed to a
-     * chink. Still level with the stem's ends on both lines.
+     * Two bowls run level off the stem, the lower reaching further than the
+     * upper, and lighter than the stem at a heavy weight so the waist does not
+     * close: see `twoBowls`, which the Cyrillic ve is drawn with too.
      */
-    // Not on a text serif or a joined hand, whose bowls meet their stem in a
-    // bracket or a loop that a lighter pen opens a pinhole in.
-    const light = bookish(f) || f.style.parts.script.on ? 1 : 1 - 0.14 * heaviness(f);
-    const top = f.hangs(f.cap, light);
-    const base = f.sits(0, light);
-    /*
-     * The two waist runs cross each other by a little, so the bowls hold
-     * together -- but by no more than their own ink is deep. Crossed by a
-     * fifth of the pen, a pen with contrast (the Didone's, a brush's, any
-     * face's at a Black) drew its waist as two hairlines with a slit of paper
-     * between them: a pinhole in every B.
-     */
-    const cross = Math.min(f.half * 0.2, f.upright * light * 0.45);
-    const upperR = Math.max((top - upper) / 2 + cross, f.least);
-    const lowerR = Math.max((upper - base) / 2 + cross, f.least);
-    /*
-     * How far the bowls reach out, which is not the same as how tall they are.
-     *
-     * Tied to their own height they came out barely wider than the stem, since
-     * a B's two bowls are each less than half the height of a D's one. A B is
-     * narrower than a D but nothing like half of it, so the reach is measured
-     * against the round capitals instead and both bowls share it, which is also
-     * what stops the upper one looking like a mistake beside the lower.
-     */
-    /*
-     * And the lower one reaches further than the upper, which is what keeps a
-     * B from looking top-heavy -- 0.44 of the cap height past the stem above
-     * and 0.52 below, on Lora. Both run level from the stem before they turn:
-     * see `lobe`.
-     */
-    const reach = f.capBowl;
-    return finish(f, [
-      ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-      lighter(lobe(f, stem, top - upperR * 2, top, reach * 0.98), light),
-      lighter(lobe(f, stem, base, base + lowerR * 2, reach * 1.14), light),
-    ]);
+    return finish(f, twoBowls(f, f.cap, f.capBowl));
   },
 
   C: (style) => {
@@ -275,12 +234,26 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * step beside it. Hung so its top edge is the bowl's cut, the two are one
      * flush corner.
      */
-    const bowl = openBowl(f, centre, f.capBowl, f.capBowlH, opens, 360, past);
+    // Its lower end runs into the bar and is not a terminal: a ball or a
+    // swelling put on it there crashed into the one on the G's head.
+    const open = openBowl(f, centre, f.capBowl, f.capBowlH, opens, 360, past);
+    const bowl = inherit(open, { ...open, end: BUTT });
     const cut = spineEnd(bowl.spine).y;
-    const hung = centre.y + (cut - f.upright - centre.y) * Math.min(1, f.gain / (f.x * 0.05));
+    /*
+     * And at every weight, not only past the Black: the bowl comes up its
+     * right side and stops square, and a bar straddling the centre stood
+     * above that end as a second, higher block -- the bar in two steps on the
+     * Technical, the Ribbon and the Flared alike.
+     */
+    const hung = cut - f.upright * f.bar;
     return finish(
       f,
-      [bowl, ink(f, straight(at(right, hung), at(right - f.capBowl * 0.55, hung)), BUTT, f.end)],
+      /*
+       * The bar's inner end cut plain: a G's bar is not an arm, and a beak on
+       * it stood up inside the counter as a tick on every slabbed face, and a
+       * ball on it crashed into the ball on the G's head.
+       */
+      [bowl, ink(f, straight(at(right, hung), at(right - f.capBowl * 0.55, hung)), BUTT, BUTT)],
       true,
     );
   },
@@ -334,10 +307,9 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const leg = at(reach, 0);
     // Arm and leg are one run meeting at the stem, so the corner between them
     // is turned rather than left as two square ends.
-    const meet = junction(f, arm, stem, waist, leg);
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-      ink(f, chain(straight(arm, meet), straight(meet, leg)), f.end, f.end),
+      ...kArms(f, arm, stem, waist, leg),
     ]);
   },
 
@@ -353,7 +325,6 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   M: (style) => {
     const f = frame(style);
-    const left = f.edge;
     /*
      * And wide enough that the vee is a vee.
      *
@@ -363,48 +334,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * the run it has to be cut back into.
      */
     const width = Math.max(f.capBowl * 1.7, f.half * 7);
-    const middle = left + width / 2;
-    const right = left + width;
-    const dip = f.cap * 0.16;
-    if (joinsLevel(f)) {
-      // Each diagonal cut level on the cap line inside its stem: see `leaving`.
-      let topLeft = at(left, f.cap);
-      let topRight = at(right, f.cap);
-      let vertex = at(middle, dip);
-      for (let pass = 0; pass < 3; pass++) {
-        topLeft = leaving(f, at(left, f.cap), 1, vertex, 1);
-        topRight = leaving(f, at(right, f.cap), -1, vertex, -1);
-        vertex = corner(f, topLeft, at(middle, dip), topRight);
-      }
-      return finish(f, [
-        ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
-        ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
-        ink(f, chain(straight(topLeft, vertex), straight(vertex, topRight)), LEVEL, LEVEL),
-      ]);
-    }
-    const into = stub(f);
-    const start = at(left, f.cap - into);
-    const end = at(right, f.cap - into);
-    const [topLeft, vertex, topRight] = corners(f, [
-      start,
-      at(left, f.cap),
-      at(middle, dip),
-      at(right, f.cap),
-      end,
-    ]);
-    return finish(f, [
-      ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
-      ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
-      ink(
-        f,
-        chain(
-          straight(start, topLeft),
-          straight(topLeft, vertex),
-          straight(vertex, topRight),
-          straight(topRight, end),
-        ),
-      ),
-    ]);
+    return finish(f, emAt(f, f.cap, width));
   },
 
   N: (style) => {

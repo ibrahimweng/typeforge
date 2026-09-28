@@ -143,6 +143,25 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const overlap = at(joins.x + way.x * f.half * 0.3, joins.y + way.y * f.half * 0.3);
     // The top of the foot's ink: it sits on the line, a bar thick.
     const footTop = f.sits(0, f.bar) * 2;
+    /*
+     * Where the diagonal's left edge really is at a height, off the pen's own
+     * reach across the run: a pen held on its side reaches up as well as
+     * across, and reckoned as a round pen's the foot on the Fairground began
+     * left of the diagonal as a square step.
+     */
+    const edges = (y: number): number[] =>
+      [1, -1].map((side) => {
+        const across = reachAlong({ x: -way.y * side, y: way.x * side }, pen);
+        return lands.x + across.x + ((y - lands.y - across.y) * way.x) / Math.max(way.y, 1e-6);
+      });
+    /*
+     * And no further in than the diagonal's right edge on the baseline, or the
+     * two met only at a point there and a notch of paper came between them.
+     * Between the two, the foot starts inside the diagonal top and bottom.
+     */
+    const heel = Math.min(...edges(footTop));
+    const toe = Math.max(...edges(0));
+    const footFrom = heel < toe ? (heel + toe) / 2 : heel + 2;
     return finish(f, [
       ink(f, over, f.end, BUTT),
       ink(f, straight(overlap, lands), BUTT, {
@@ -156,7 +175,7 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
        * under and left of the foot's end as a barb; started at the corner, the
        * foot's end stood out left of a heavy diagonal as a square step.
        */
-      arm(f, left + footTop * (way.x / Math.max(way.y, 1e-6)) + 2, left + width, f.sits(0, f.bar)),
+      arm(f, footFrom, left + width, f.sits(0, f.bar)),
     ]);
   },
 

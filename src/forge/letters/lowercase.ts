@@ -23,7 +23,6 @@ import {
   finish,
   frame,
   ink,
-  junction,
   type LetterName,
   openBowl,
   type Recipe,
@@ -43,6 +42,8 @@ import {
   blackGap,
   heaviness,
   lighter,
+  stemSide,
+  kArms,
 } from "./common";
 
 export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
@@ -196,7 +197,12 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
               spineStart(belt).x +
                 // The bowl's own pen, which is lighter than the stem's at a
                 // heavy weight: to the stem's reach the bar stood out past it.
-                f.reach(at(1, 0)) * (1 - 0.14 * light) * Math.cos((opens * Math.PI) / 180),
+                // Across an upright, for a pen turned on its side, whose
+                // reach along the level is its heavy one: the bar stood out
+                // past the Fairground's bowl as a block.
+                (Math.abs(f.style.pen.angle) > 45 ? stemSide(f) : f.reach(at(1, 0))) *
+                  (1 - 0.14 * light) *
+                  Math.cos((opens * Math.PI) / 180),
               eye,
             ),
           ),
@@ -353,10 +359,9 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const waist = f.x * 0.42;
     const arm = at(reach, f.x);
     const leg = at(reach, 0);
-    const meet = junction(f, arm, stem, waist, leg);
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
-      ink(f, chain(straight(arm, meet), straight(meet, leg)), f.end, f.end),
+      ...kArms(f, arm, stem, waist, leg),
     ]);
   },
 
@@ -463,9 +468,16 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   t: (style) => {
     const f = frame(style);
-    const radius = Math.max(roundHalf(f) * 0.34, f.least);
+    // Never turned so tight that the inside of the turn is a notch.
+    const radius = Math.max(roundHalf(f) * 0.34, f.least, f.half * 1.5);
     const reach = tReach(f);
     const stem = tStem(f);
+    /*
+     * Standing clear over the bar by more than a sliver: on a face with a tall
+     * x-height or a heavy bar the stem's head came out a few units over the
+     * bar's top and read as a nub stuck on it rather than as the head of a t.
+     */
+    const head = Math.min(Math.max(f.asc * 0.78, f.x + f.half * 1.5), f.asc);
     return finish(f, [
       /*
        * Down the stem and out along the baseline, as one run.
@@ -477,8 +489,12 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
       ink(
         f,
         chain(
-          straight(at(stem, f.asc * 0.78), at(stem, f.dip(0) + radius)),
+          straight(at(stem, head), at(stem, f.dip(0) + radius)),
           turn(at(stem + radius, f.dip(0) + radius), radius, 180, 270),
+          // And a little way on along the line, so the foot ends in a run of
+          // its own rather than on the turn: cut where the turn stopped, the
+          // inside of the turn met the cut in a notch.
+          straight(at(stem + radius, f.dip(0)), at(stem + radius + f.half * 0.6, f.dip(0))),
         ),
         /*
          * Cut off at the top rather than capped. The top of a t is not the end

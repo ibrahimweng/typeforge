@@ -21,6 +21,8 @@ import {
   chain,
   corner,
   corners,
+  crested,
+  cup,
   deg,
   type Frame,
   finish,
@@ -32,6 +34,7 @@ import {
   type LetterName,
   type Recipe,
   ring,
+  stemSide,
   straight,
   thin,
   trough,
@@ -194,13 +197,23 @@ export function lowerLobe(f: Frame, closed: boolean, short = 0): Stroke {
   const lowerH = Math.max((waist - base) / 2, f.least);
   // Off the o's ink rather than its spine, which closes in as the pen grows.
   const o = f.bowl + f.half;
-  const width = Math.max(o * 0.68 + f.gain * 0.3, f.least);
-  const centre = at(stem + o * 1.3 - width + f.gain * 0.6, waist - lowerH);
+  /*
+   * Never so narrow, nor so near the stem, that a fat face's counter is a
+   * slit: at the display weight the eszett's lower bowl had forty units of
+   * paper in it and its foot stopped a hair from the stem, a step rather than
+   * an opening.
+   */
+  const side = stemSide(f);
+  const width = Math.max(o * 0.68 + f.gain * 0.3, f.least, side * 1.7);
+  const centre = at(stem + Math.max(o * 1.3 - width, side * 1.3) + f.gain * 0.6, waist - lowerH);
   const round = bend(f, centre, lowerH, 90, -90, width);
   const foot = spineEnd(round);
   const stop = closed
     ? stem
-    : Math.min(foot.x - f.half * 0.6, stem + Math.max(f.half * 2.4, o * 0.4));
+    : Math.min(
+        foot.x - f.half * 0.3,
+        Math.max(stem + Math.max(f.half * 2.4, o * 0.4), stem + side + f.half * 1.3),
+      );
   return ink(
     f,
     chain(
@@ -491,8 +504,10 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * the right, as Geist's does. Aimed at a point inside the bowl, it cut
      * through the counter.
      */
-    const leaves = bowlPoint(centre, wide, radius, 1 - f.square, f.half, 62, f.curve);
-    const curl = Math.max(wide * 0.36, f.least);
+    const leaves = bowlPoint(centre, wide, radius, 1 - f.square, f.half, 90, f.curve);
+    // Never tighter than the pen turns cleanly: at a fat face's weight a curl
+    // turned on the least radius left a sliver spiking out of its inside.
+    const curl = Math.max(wide * 0.36, f.least * 1.35);
     const knee = at(f.edge + wide * 0.34 + curl, f.x + (f.asc - f.x) * 0.45);
     const heading = Math.atan2(knee.y - leaves.y, knee.x - leaves.x);
     const from = (heading * 180) / Math.PI + 90;
@@ -511,13 +526,32 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
    * pieces is not an epsilon.
    */
   "\u03b5": (style) => {
+    /*
+     * Two arcs bulging left, each stopping square where it turns level at the
+     * waist, and a short tongue run out to the right along that line -- a
+     * three turned round, as the ze is. Joined end to end at the waist, as
+     * they were, the two cut ends met at an angle and left a notch either
+     * side of it at every weight.
+     */
     const f = frame(style);
-    const radius = Math.max(f.x * 0.26, f.least);
-    const wide = bendWidth(f, radius) + f.gain * 0.5 + f.half * 0.15 * heaviness(f);
-    const cx = f.edge + wide;
-    const top = bend(f, at(cx, f.x - radius), radius, 55, 300);
-    const bottom = bend(f, at(cx, radius), radius, 60, 305);
-    return finish(f, [ink(f, top, f.end, BUTT), ink(f, bottom, BUTT, f.end)], true);
+    const crest = f.crest(f.x);
+    const base = f.dip(0);
+    const radius = Math.max((crest - base) / 4, f.least);
+    const wide = Math.max(
+      bendWidth(f, radius) + f.gain * 0.5 + f.half * 0.15 * heaviness(f),
+      stemSide(f) * 1.75,
+    );
+    const cx = f.edge + wide * 0.62;
+    const waist = (crest + base) / 2;
+    return finish(
+      f,
+      [
+        ink(f, bend(f, at(cx, crest - radius), radius, 40, 270, wide * 0.92), f.end, BUTT),
+        ink(f, bend(f, at(cx, base + radius), radius, 90, 320, wide), BUTT, f.end),
+        ink(f, straight(at(cx - 1, waist), at(cx + wide * 0.3, waist)), BUTT, BUTT),
+      ],
+      true,
+    );
   },
 
   /**
@@ -709,7 +743,9 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   "\u03c3": (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
-    const bar = f.hangs(f.x, f.bar);
+    // Level with the top of the bowl's ink, overshoot and all: hung from the
+    // x-height it stood a step below the round top it runs out of.
+    const bar = f.hangs(f.x + f.over, f.bar);
     return finish(
       f,
       [
@@ -795,12 +831,24 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     ]);
   },
 
-  /** Two troughs side by side, which is what an omega is. */
+  /**
+   * Two cups side by side sharing a middle stroke that stops short of the
+   * x-height, which is what an omega is.
+   *
+   * Two whole u's overlapped, as it was, stood the middle up to the x-height
+   * as a doubled stem and closed both counters to slits at a display weight.
+   */
   "\u03c9": (style) => {
     const f = frame(style);
-    const wide = f.arch * 0.82;
+    const top = crested(f, f.x);
+    const middle = Math.max(f.x * 0.62, f.sits(0) + f.half * 3);
+    const reach = Math.max(f.arch * 0.8, stemSide(f) * 1.9);
     const left = f.edge;
-    return finish(f, [trough(f, left, f.x), trough(f, left + wide, f.x)]);
+    return finish(
+      f,
+      [cup(f, left, reach, top, middle), cup(f, left + reach * 2, reach, middle, top)],
+      true,
+    );
   },
 
   /*

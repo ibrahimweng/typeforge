@@ -1381,6 +1381,9 @@ function isCapitalLike(name: string): boolean {
   return one !== null && one.toUpperCase() === one && one.toLowerCase() !== one;
 }
 
+/** Letters drawn under a name the accented tables do not carry. */
+const OTHER_LETTERS: Record<string, number> = { dotlessj: 0x237 };
+
 /**
  * The letter a glyph drawn outright under a name of its own stands for: the
  * H-bar for `Hbar`, the ash for `ae`, the eszett for `germandbls`.
@@ -1392,7 +1395,9 @@ function isCapitalLike(name: string): boolean {
  * took its Ħ for a lowercase letter.
  */
 function characterOf(name: string): string | null {
-  const code = codepointOfAccented(name);
+  // The dotless j is Extended-B's, and not a letter any accent is built on
+  // there: named only here, it was drawn bare beside a serifed j.
+  const code = codepointOfAccented(name) ?? OTHER_LETTERS[name] ?? null;
   if (code === null) return null;
   const one = String.fromCodePoint(code);
   return /^\p{L}$/u.test(one) ? one : null;
@@ -1907,8 +1912,27 @@ function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
      * hundred wide is nothing to see. What it buys is a ball that shrinks down
      * the slider between two weights instead of one that vanishes between them.
      */
-    const buried = blot || room < penReach(stroke.pen).across;
-    const held = buried ? BURIED : room;
+    /*
+     * And where the room runs out, the ball is moved in off the line rather
+     * than shrunk to nothing: shrunk, every terminal near a line -- the tail
+     * of an e, the arm of an r, the head of an a, an f and a t, the hooks of
+     * a j, a y and a J -- lost its ball at every weight, and a face promising
+     * a ball on every open end had them on a third of its letters. Held to
+     * four fifths of its size at the least, it is kept inside the letter's
+     * lines by its centre instead.
+     */
+    // Not a joined hand, whose balls are the pen's own blots and stay where
+    // the room leaves them.
+    const written = style.parts.script.on;
+    const buried = blot || (written && room < penReach(stroke.pen).across);
+    const held = buried ? BURIED : written ? room : Math.max(room, radius * 0.8);
+    const placed = { x: at.x + outward.x * held * drop, y: at.y + outward.y * held * drop };
+    const inside = written
+      ? placed
+      : {
+          x: Math.max(placed.x, band.xMin + held),
+          y: Math.min(Math.max(placed.y, band.yMin + held), band.yMax - held),
+        };
     const middle = buried
       ? /*
          * Set back along the stroke by its own radius, so that the far edge of
@@ -1919,7 +1943,7 @@ function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
          * shape that is meant not to be there.
          */
         { x: at.x - outward.x * held, y: at.y - outward.y * held }
-      : { x: at.x + outward.x * held * drop, y: at.y + outward.y * held * drop };
+      : inside;
     out.push(
       ...sweep({
         spine: {
@@ -2026,8 +2050,25 @@ function flaresFor(stroke: Stroke, style: Style): Contour[] {
     const level = terminal.level === true && Math.abs(outward.y) > 1e-3;
     const facing = level ? { x: 0, y: Math.sign(outward.y) } : outward;
     const inner = level ? levelHalfWidth(stroke, outward) : halfWidthAcross(stroke, outward);
-    const reach = spread * stem;
-    const back = depth * stem;
+    /*
+     * Grown with the pen only up to about the face's own weight: a swelling
+     * is a flourish on the end of a stem, not a slab, and grown with a Black's
+     * pen it met the one on the next stroke and filled the letter in -- the
+     * k, the x, the K and the N went solid from a pen of two hundred.
+     */
+    // Not a joined hand, whose swellings are its pen's pressure and follow it.
+    const written = style.parts.script.on;
+    const grows = written ? stem : Math.min(stem, style.metrics.unitsPerEm * 0.12);
+    const reach = spread * grows;
+    const back = depth * grows;
+    /*
+     * And only on an upright or a level run. On a diagonal cut level the
+     * swelling lay along the line and stood out sideways off the slant as a
+     * square block -- the arm and leg of every k, the heads of a v, a w and a
+     * y -- which is a slab stuck on, not a stroke swelling.
+     */
+    const slanted =
+      !written && straightEnd && Math.abs(outward.y) < 0.97 && Math.abs(outward.y) > 0.26;
     for (const side of [1, -1]) {
       /*
        * A flare never crosses a line the stroke is standing on, which is the
@@ -2043,7 +2084,8 @@ function flaresFor(stroke: Stroke, style: Style): Contour[] {
        * it is the same shape the Psychedelic's ball takes when the room for it
        * runs out, and for the same reason.
        */
-      const refused = !swelling || crossesALine(at, facing, side, inner + reach, inner, style);
+      const refused =
+        !swelling || slanted || crossesALine(at, facing, side, inner + reach, inner, style);
       /*
        * Refused, the swelling reaches nowhere and is a unit deep, which puts
        * all four of its nodes on the stroke's own end inside ink that is
@@ -2061,7 +2103,24 @@ function flaresFor(stroke: Stroke, style: Style): Contour[] {
       const deep = refused ? BURIED : back;
       // Wound with the stroke it swells, or it would cancel the ink it is
       // meant to be adding to and open a hole where the two overlap.
-      const shape = flare(at, facing, side, inner, swells, deep, curve);
+      /*
+       * And a refused one laid back inside the stroke, a little narrower than
+       * it: lying on the stroke's own end, its unit-deep sliver ran along the
+       * cut and past a curved end's corners, and showed as a hairline spike off
+       * every terminal of the Flared c, e and s.
+       */
+      const shape =
+        refused && !written
+          ? flare(
+              { x: at.x - outward.x * inner * 0.5, y: at.y - outward.y * inner * 0.5 },
+              facing,
+              side,
+              inner * 0.6,
+              swells,
+              deep,
+              curve,
+            )
+          : flare(at, facing, side, inner, swells, deep, curve);
       out.push(contourArea(shape) < 0 ? reverseContour(shape) : shape);
     }
   }

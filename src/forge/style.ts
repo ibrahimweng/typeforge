@@ -1211,7 +1211,14 @@ export const DISPLAY: Style = {
   pen: { weight: 205, contrast: 0.55, angle: 0 },
   // The apex cut flat, which its own hint says is what a heavy face does to
   // keep the top of an A from going black.
-  forms: { A: "flat" },
+  forms: {
+    A: "flat",
+    G: "grotesque",
+    S: "grotesque",
+    s: "grotesque",
+    c: "grotesque",
+    e: "grotesque",
+  },
   parts: {
     ...PLAIN.parts,
     shoulder: { spring: 0.66, reach: 1.02, crest: 1 },
@@ -1224,7 +1231,7 @@ export const DISPLAY: Style = {
      * rhythm has inverted.
      */
     bowl: { width: 0.92, squareness: 0.12, aperture: 0.9, superness: 0 },
-    corner: { radius: 0, join: "round" },
+    corner: { radius: 0, join: "miter" },
     terminal: { kind: "butt", angle: 0 },
   },
 };
@@ -1315,7 +1322,7 @@ export const RIBBON: Style = {
   pen: { weight: 150, contrast: 0, angle: 0 },
   // A single bent stroke cannot tell an l from a one, so the l is turned out
   // at the foot -- which is what its alternate exists for.
-  forms: { l: "tailed" },
+  forms: { l: "tailed", two: "grotesque", five: "grotesque", six: "grotesque", nine: "grotesque" },
   parts: {
     ...PLAIN.parts,
     shoulder: { spring: 0.4, reach: 1.05, crest: 1 },
@@ -1475,7 +1482,20 @@ export const WAVY: Style = {
   forms: { seven: "barred", four: "open" },
   parts: {
     ...PLAIN.parts,
-    slab: { ...PLAIN.parts.slab, on: true, projection: 1.55, thickness: 0.52, bracket: 0 },
+    /*
+     * The long serifs held to a hairline face's size as the pen grows: grown with
+     * it, a Black's ran a third of an em out from every stem, met the next
+     * letter's, and closed a z into a box.
+     */
+    slab: {
+      ...PLAIN.parts.slab,
+      on: true,
+      projection: 1.55,
+      thickness: 0.52,
+      bracket: 0,
+      hold: 0.06,
+      past: 0.1,
+    },
     bowl: { width: 1.05, squareness: 0, aperture: 1, superness: 0 },
     wave: { length: 152, depth: 34, along: "flat" },
   },
@@ -3048,8 +3068,10 @@ export function heavierPen(style: Style): Pen {
    * at a Black of a reversed face two of them took all but a sliver of the
    * x-height: the Fairground's e and o were slits. So there the weight goes
    * where a reversed Black puts it -- into the thin verticals, which carry on
-   * growing with the weight asked for -- and the horizontals take only half
-   * of what the weight gains past the face's own.
+   * growing with the weight asked for -- and the horizontals take only a
+   * fifth of what the weight gains past the face's own. At half, an e, a B,
+   * an E and an F at the heaviest pen stacked three horizontals into more
+   * than the x-height and their counters closed to slits.
    */
   if (Math.abs(Math.abs(pen.angle) - 90) < 30) {
     const black = blackness(style);
@@ -3059,7 +3081,7 @@ export function heavierPen(style: Style): Pen {
       ? base.pen.weight * (style.metrics.xHeight / base.metrics.xHeight)
       : pen.weight;
     if (pen.weight <= own) return pen;
-    const weight = own + (pen.weight - own) * 0.5;
+    const weight = own + (pen.weight - own) * 0.2;
     const thin = pen.weight * (1 - pen.contrast);
     return {
       ...pen,

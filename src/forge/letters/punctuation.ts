@@ -57,6 +57,7 @@ import {
   turn,
   turnedDown,
   hookFrom,
+  stemSide,
 } from "./common";
 
 /** The hairline of a text face's marks: the thin of its own pen, with a floor. */
@@ -508,7 +509,10 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
       const gap = Math.max(f.x * 0.11 - Math.max(0, f.half - f.x * 0.087) * 0.8, f.x * 0.04);
       return finish(f, [...quote(f, f.edge), ...quote(f, f.edge + one + gap)]);
     }
-    const gap = f.style.pen.weight * 1.6;
+    // A mark's width and then white of its own, never less than a share of
+    // the x-height: at a hairline weight, set a share of the pen apart, the
+    // two marks read as one split bar.
+    const gap = f.style.pen.weight + Math.max(f.style.pen.weight * 0.6, f.x * 0.09);
     return finish(f, [
       ink(f, straight(at(f.edge, f.cap * 0.72), at(f.edge, f.cap)), f.plain, f.plain),
       ink(f, straight(at(f.edge + gap, f.cap * 0.72), at(f.edge + gap, f.cap)), f.plain, f.plain),
@@ -584,9 +588,11 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     // No larger than a seventh of the sign, and held off the bar by no more
     // than its own daylight: at a Black the dots were the pen's and stood
     // over the cap line and under the baseline.
-    const radius = Math.min(f.half * 0.85, w * 0.14);
+    // And never much smaller than the full stop: at a hairline weight the
+    // pen's own dot was a speck beside the colon.
+    const radius = Math.min(Math.max(f.half * 0.85, stopRadius(f) * 0.8), w * 0.14);
     const reach = Math.min(
-      (f.style.pen.weight * f.bar) / 2 + signGap(f) * 0.85 + radius,
+      f.upright * f.bar + signGap(f) * 0.85 + radius,
       w * 0.5 + radius * 0.4,
       // And the dots between the baseline and the x-height, as the signs are.
       Math.max(y - radius - f.over, radius * 1.6),
@@ -1014,9 +1020,21 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
    */
   percent: (style) => {
     const f = frame(style);
-    const radius = Math.max(f.cap * 0.155, f.half * 2.05);
-    const w = Math.max(f.cap * 0.86 * f.style.metrics.width, radius * 4.3);
+    const radius = Math.max(f.cap * 0.155, f.half * 1.75);
+    /*
+     * And wide enough that the slash passes between the rings with paper on
+     * both sides of it. Held to a share of the rings' size alone, a fat
+     * face's rings were so large beside its slash that the stroke ran into
+     * both of them and the sign read as a knot.
+     */
+    let w = Math.max(f.cap * 0.86 * f.style.metrics.width, radius * 4.3);
+    // The slash's lean is the regular's, and the rings move apart round it.
     const lean = w * 0.62;
+    const length = Math.hypot(lean, f.cap);
+    const clear = (w: number): number =>
+      Math.abs((radius - w / 2) * f.cap - (f.cap / 2 - radius) * lean) / length;
+    const need = radius + f.half * 2 + f.half * 0.5;
+    for (let pass = 0; pass < 60 && clear(w) < need; pass++) w += f.half * 0.2;
     const bar = f.edge + (w - lean) / 2;
     return finish(
       f,
@@ -1062,10 +1080,17 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
      * the same thing.
      */
     const over = bend(f, at(stem, head), hook, 20, 180);
+    const down = spineEnd(over).x;
+    /*
+     * The foot starts no further in than the stem's own left edge, so the two
+     * make one square corner: started at the sidebearing, a stem heavier than
+     * that stood out past the foot's end as a notch.
+     */
+    const heel = Math.min(f.edge, down - stemSide(f));
     return finish(f, [
       ink(f, over, f.end, BUTT),
-      ink(f, straight(spineEnd(over), at(spineEnd(over).x, f.sits(0))), BUTT, BUTT),
-      arm(f, f.edge, f.edge + w, f.sits(0, f.bar)),
+      ink(f, straight(spineEnd(over), at(down, f.sits(0))), BUTT, BUTT),
+      arm(f, heel, f.edge + w, f.sits(0, f.bar)),
       thin(
         f,
         straight(at(f.edge + w * 0.03, f.x * 0.62), at(f.edge + w * 0.72, f.x * 0.62)),
@@ -1244,8 +1269,10 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
      * find the room rather than up past the cap height, as a Black's does.
      */
     const black = Math.min(1, blackness(f.style) / 0.6);
-    const R = Math.max(wantR * fits, f.half * (1.5 + 0.25 * black), f.least);
-    const r = Math.max(wantr * fits, f.half * (1.15 + 0.5 * black), f.least);
+    // And never so tight that a fat face's counters close: at the display
+    // face's own weight the loop's counter was a pinhole and the bowl's a slit.
+    const R = Math.max(wantR * fits, f.half * Math.max(1.5 + 0.25 * black, 1.85), f.least);
+    const r = Math.max(wantr * fits, f.half * Math.max(1.15 + 0.5 * black, 1.5), f.least);
     const bowlAt = at(f.edge + R, f.dip(0) + R);
     const loopY = Math.max(f.crest(C) - r, bowlAt.y + (r + R) * 1.02 * (1 - 0.35 * black));
     const rise = loopY - bowlAt.y;
