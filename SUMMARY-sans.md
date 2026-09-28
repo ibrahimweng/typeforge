@@ -38,6 +38,10 @@ instead of square-ended slots with a notch at the spine. The lower terminal is
 no longer a flat slab. Where the spine lies level and no swell fits, the run
 stays hidden inside the bowl, so every weight and every family master has the
 same points.
+The spine is a gentle S-curve, as Geist's is: two arcs that meet in the middle,
+steeper where they leave the bowls than through the centre. From the Regular
+to the Black, the s and S spread as wide as Geist's, within about 6 units at
+the Bold and the Black (the s was 45 units narrow at the Bold).
 
 **8.** Heavy weights use the same lighter pen plus a slightly wider ring, so
 the upper counter stays an oval past the Black instead of a slot.
@@ -76,11 +80,8 @@ strokes as white; they now use a filled (nonzero) ruler.
 
 ## What still differs from Geist
 
-- **s spine.** Geist's spine is a gentle S-curve; Draw's is a straight tangent
-  between the bowls. At the Black, Geist's counters are also a little taller
-  and more oval than Draw's round-ended ones.
-- **Bold s.** At weight 130, the s is about 25 units narrower than Geist Bold,
-  and its upper terminal is shorter.
+- **s counters at the Black.** Geist's are a little taller and more oval than
+  Draw's round-ended ones, and past the Black Draw's close to slots.
 - **8 at the Black.** Geist's eight is wider with a pinched waist. Draw's is
   two rings touching, and its counters are larger.
 - **@.** It is close at the Regular. At the Black the ring is heavier and

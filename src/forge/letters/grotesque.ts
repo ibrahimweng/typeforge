@@ -1903,7 +1903,7 @@ function ess(given: Frame, e: Ess): Stroke[] {
   const H = (y: number) => (y / e.geist) * e.height;
   const beyond =
     Math.max(0, heaviness(f) - 0.67) * f.x * 0.2 * 0.3 +
-    (e.blackWiden ?? 0) * e.unit * Math.min(1, t);
+    (e.blackWiden ?? 0) * e.unit * Math.min(1, t * 2);
   const X = (x: number) => f.edge + (x - e.left) * e.unit;
   // How far past the Black: nought at it, one at an Ultra.
   const past = Math.min(1, Math.max(0, t - 1) / 0.6);
@@ -2155,6 +2155,7 @@ function ess(given: Frame, e: Ess): Stroke[] {
    * lying all but level, where the bowls are stacked -- no swell on that
    * side: the run stops at the bowl's side, buried in it, in the same pieces.
    */
+  const spineLength = Math.hypot(bent.to.x - bent.from.x, bent.to.y - bent.from.y);
   const swell = (edge: number, y: number, way: 1 | -1, reach: number) => {
     // The spine's turn carried out by as much as the swell's pen is lighter,
     // so the swell's outside comes onto the spine's outside.
@@ -2191,7 +2192,10 @@ function ess(given: Frame, e: Ess): Stroke[] {
       let rel = (onSpine - spine.startAngle) * onward;
       while (rel > Math.PI) rel -= Math.PI * 2;
       while (rel <= -Math.PI) rel += Math.PI * 2;
-      const [least, most] = way === 1 ? [-span * 3, span] : [0, span * 4];
+      // Measured along the spine, not round it: a spine lying nearly level
+      // turns on circles so wide that an angle says nothing.
+      const reachOn = Math.max(span * 3, (spineLength * 0.75 + reach) / spine.radius);
+      const [least, most] = way === 1 ? [-reachOn, span] : [0, span + reachOn];
       const along = rel >= least && rel <= most ? rel * onward : null;
       const round =
         way === 1 ? ((degreesOf(centre, touch) + 360) % 360) - 180 : degreesOf(centre, touch);
@@ -2759,7 +2763,7 @@ export function grotesqueS(style: Style): Recipe {
           foot: [175, 172],
           inner: 0.42,
           innerBlack: 0.5,
-          blackWiden: 15,
+          blackWiden: 25,
           tilted: false,
         }),
       ],
@@ -2783,6 +2787,7 @@ export function grotesqueCapitalS(style: Style): Recipe {
         lower: { x: 326, y: [180, 200], w: 220 },
         head: [505, 465],
         foot: [225, 250],
+        blackWiden: 9,
         inner: 0.42,
       }),
     ],

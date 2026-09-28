@@ -449,3 +449,28 @@ describe("the s's spine", () => {
     }
   });
 });
+
+describe("the s's width", () => {
+  it("spreads as Geist's does from the Regular to the Black", () => {
+    // Geist's ink widths at its Regular, Bold and Black. The s was about 45
+    // units narrow at the Bold and the Black, the S about 20.
+    const geist: Record<string, [number, number][]> = {
+      s: [
+        [87, 432],
+        [130, 496],
+        [172, 539],
+      ],
+      S: [
+        [87, 530],
+        [130, 577],
+        [172, 609],
+      ],
+    };
+    for (const [name, widths] of Object.entries(geist)) {
+      for (const [weight, width] of widths) {
+        const ink = box(name, weight);
+        expect(Math.abs(ink.xMax - ink.xMin - width), `${name} at ${weight}`).toBeLessThan(15);
+      }
+    }
+  });
+});
