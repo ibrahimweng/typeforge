@@ -90,15 +90,13 @@ describe("middle space", () => {
     // Still inside the letter. Scaled plainly it came out 1120 across and
     // swallowed the outside whole, which crosses nothing and is no letter.
     const counter = contoursBounds([resolved[1]]);
-    expect(counter.xMin).toBeGreaterThan(12);
-    expect(counter.xMax).toBeLessThan(1000 - 12);
+    const letter = contoursBounds([resolved[0]]);
+    expect(counter.xMin).toBeGreaterThan(letter.xMin + 12);
+    expect(counter.xMax).toBeLessThan(letter.xMax - 12);
+    // The walls went with it, and kept their weight.
     const walls = across(resolved, 500);
     expect(walls).toHaveLength(2);
-    for (const wall of walls) {
-      expect(wall).toBeLessThan(100);
-      // About as much of the wall as the setting asks for, and no more.
-      expect(wall).toBeGreaterThan(50);
-    }
+    for (const wall of walls) expect(wall).toBeCloseTo(100, 0);
   });
 
   /**
@@ -125,11 +123,23 @@ describe("middle space", () => {
    * than doubling a wall of 100, and the round letters of a font turned bold
    * beside straight ones that had no counter to close.
    */
-  it("thickens a wall by a share of itself when closing", () => {
-    for (const wall of across(resolve(ring(1000, 100), 0.7), 500)) {
-      expect(wall).toBeGreaterThan(110);
-      expect(wall).toBeLessThan(140);
-    }
+  /*
+   * Closing a counter used to thicken every wall round it by what the counter
+   * lost, and at 0.6 the letters with counters set as a bold beside those
+   * without. The walls follow the counter across instead: they keep their
+   * weight, and the letter narrows. Up and down there is nowhere for a wall to
+   * go, and a closing counter keeps its height rather than thicken them.
+   */
+  it("keeps the walls of a closing counter their weight, and narrows the letter", () => {
+    const resolved = resolve(ring(1000, 100), 0.7);
+    const counter = contoursBounds([resolved[1]]);
+    const box = contoursBounds([resolved[0]]);
+    const closed = (800 - (counter.xMax - counter.xMin)) / 2;
+    expect(closed).toBeGreaterThan(20);
+    for (const wall of across(resolved, 500)) expect(wall).toBeCloseTo(100, 0);
+    expect(box.xMax - box.xMin).toBeCloseTo(1000 - closed * 2, 0);
+    expect(box.yMax - box.yMin).toBeCloseTo(1000, 6);
+    expect(counter.yMax - counter.yMin).toBeCloseTo(800, 6);
   });
 
   /**
@@ -177,11 +187,31 @@ describe("middle space", () => {
     expect(box.xMax - box.xMin).toBeGreaterThan(400);
   });
 
-  it("leaves the outside of the letter alone", () => {
+  /*
+   * Regression: the stem of a B leaned at 1.4. Its two bowls were followed
+   * one after the other, and the first moved only the top of the stem, a
+   * single straight line; halfway, it crossed the lower bowl, and the upper
+   * bowl was put back as drawn while the lower one opened.
+   */
+  it("keeps a stem upright that two counters above each other share", () => {
+    const letter = [rect(0, 0, 600, 1000), rect(100, 100, 400, 360), rect(100, 540, 300, 360)];
+    const [outside, below, above] = resolve(letter, 1.4);
+    const stem = outside.nodes.filter((node) => node.point.x < 300).map((node) => node.point.x);
+    expect(Math.max(...stem) - Math.min(...stem)).toBeLessThan(0.5);
+    const lower = contoursBounds([below]);
+    const upper = contoursBounds([above]);
+    expect(upper.xMin).toBeCloseTo(lower.xMin, 0);
+    expect(lower.xMax - lower.xMin).toBeGreaterThan(420);
+    expect(upper.xMax - upper.xMin).toBeGreaterThan(320);
+  });
+
+  it("moves the outside of the letter across with the counter, never up or down", () => {
     const resolved = resolve(ring(1000, 100), 1.4);
     const box = contoursBounds([resolved[0]]);
-    expect(box.xMin).toBe(0);
-    expect(box.xMax).toBe(1000);
+    expect(box.xMin).toBeCloseTo(0, 6);
+    expect(box.xMax).toBeGreaterThan(1000 + 100);
+    expect(box.yMin).toBeCloseTo(0, 6);
+    expect(box.yMax).toBeCloseTo(1000, 6);
   });
 
   it("changes nothing on a letter without a counter", () => {

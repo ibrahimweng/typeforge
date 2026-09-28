@@ -31,6 +31,7 @@
  */
 
 import {
+  splitCubic,
   contourArea,
   contourSegments,
   cubicAt,
@@ -77,6 +78,20 @@ const KEPT_SHARE = 1 / 3;
  * it reads as a crack through the letter rather than as an opening.
  */
 const OPENING = 0.036;
+/**
+ * A ball is told by the chords across it: aimed this far off square to the
+ * outline, a ray across a round blob is shorter than straight across it, and
+ * a ray across any stroke longer.
+ */
+const BALL_ANGLE = (50 * Math.PI) / 180;
+/** How much of the weight a ball gives up, lighter, against a stroke. */
+const BALL_SHARE = 0.5;
+/** The share of the paper between two separate pieces of ink that stays. */
+const GAP_KEPT = 0.45;
+/** How much of its mean width a counter narrower than an opening keeps. */
+const KEPT_OPEN = 0.75;
+/** And how much of it any counter keeps where some white is to be kept. */
+const COUNTER_KEPT = 0.85;
 /**
  * How sharply the allowance takes over from the weight asked for. Sharper
  * taking weight off: eased as gently as adding it, a stroke drawn heavier --
@@ -237,6 +252,50 @@ interface Vertex {
 }
 
 /**
+ * How far apart two closed polylines are: nought where they cross or one is
+ * inside the other.
+ */
+function apart(one: Vec2[], other: Vec2[]): number {
+  if (one.length < 2 || other.length < 2) return 0;
+  const inside = (point: Vec2, polygon: Vec2[]): boolean => {
+    let odd = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const a = polygon[i];
+      const b = polygon[j];
+      if (a.y > point.y !== b.y > point.y) {
+        const x = a.x + ((point.y - a.y) / (b.y - a.y)) * (b.x - a.x);
+        if (x > point.x) odd = !odd;
+      }
+    }
+    return odd;
+  };
+  if (inside(one[0], other) || inside(other[0], one)) return 0;
+  const toSegment = (p: Vec2, a: Vec2, b: Vec2): number => {
+    const d = sub(b, a);
+    const length = d.x * d.x + d.y * d.y;
+    const t =
+      length > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * d.x + (p.y - a.y) * d.y) / length)) : 0;
+    return distance(p, { x: a.x + d.x * t, y: a.y + d.y * t });
+  };
+  let least = Infinity;
+  for (const [from, to] of [
+    [one, other],
+    [other, one],
+  ])
+    for (const p of from)
+      for (let k = 0; k < to.length; k++) {
+        least = Math.min(least, toSegment(p, to[k], to[(k + 1) % to.length]));
+        if (least === 0) return 0;
+      }
+  // Crossing edges come close at some vertex, but not always to nought.
+  for (let i = 0; i < one.length; i++)
+    for (let k = 0; k < other.length; k++)
+      if (segmentsCross(one[i], one[(i + 1) % one.length], other[k], other[(k + 1) % other.length]))
+        return 0;
+  return least;
+}
+
+/**
  * Offset one contour by `amount` -- positive adds weight -- keeping its points.
  */
 export function applyWeight(
@@ -245,6 +304,12 @@ export function applyWeight(
   self: number,
   around: Surroundings,
   shape: Shape = ROUND,
+  /**
+   * The share of any white in front of it that a bolder contour leaves open,
+   * however small the weight makes the rest; nought for no more than the
+   * opening every weight keeps.
+   */
+  whiteKept = 0,
 ): Contour {
   const nodes = contour.nodes;
   const count = nodes.length;
@@ -302,6 +367,8 @@ export function applyWeight(
     seg: number;
     /** Which way it runs. */
     edge: Vec2;
+    /** Whether it is another piece of ink with paper between them. */
+    foreign: boolean;
   }
   const segmentAt = (position: number): number => {
     let found = 0;
@@ -311,7 +378,19 @@ export function applyWeight(
   const walls: Wall[] = [];
   around.obstacles.forEach((polyline, which) => {
     const own = which === self;
-    if (bolder && !own && around.roles[which] === isOuter) return;
+    /*
+     * Another piece of ink is let run into this one where it overlaps it
+     * already -- the parts of a letter built from overlapping strokes -- but
+     * not where there is paper between them. The dot of an i or a j, the
+     * halves of a colon and the tail of a Q drawn apart from its bowl are
+     * separate for a reason: made bolder with no regard for each other, the
+     * dot of Geist's j grew into its stem and the letter read as a J.
+     */
+    const foreign =
+      bolder && !own && around.roles[which] === isOuter
+        ? isOuter && apart(around.obstacles[self] ?? [], polyline) > em * 0.004
+        : false;
+    if (bolder && !own && around.roles[which] === isOuter && !foreign) return;
     let area = 0;
     polyline.forEach((point, k) => {
       const next = polyline[(k + 1) % polyline.length];
@@ -331,6 +410,7 @@ export function applyWeight(
       const edge = length > 1e-9 ? times(sub(next, point), 1 / length) : { x: 0, y: 0 };
       const middle = own ? ((run + length / 2) / (perimeter || 1)) * total : -1;
       walls.push({
+        foreign,
         a: point,
         b: next,
         normal: { x: -edge.y * facingInk, y: edge.x * facingInk },
@@ -436,6 +516,7 @@ export function applyWeight(
   };
   const room = (from: Vec2, heading: Vec2, position: number, seg: number): number => {
     let nearest = Infinity;
+    let nearestForeign = Infinity;
     for (const wall of walls) {
       if (ownCorner(wall, seg)) continue;
       if (bolder && wall.seg >= 0 && notch(seg, wall.seg)) {
@@ -459,16 +540,56 @@ export function applyWeight(
       // facing the same way is the near side, the sample's own outline.
       const facing = wall.normal.x * heading.x + wall.normal.y * heading.y;
       if (facing >= 0) continue;
-      nearest = Math.min(nearest, rayToEdge(from, heading, wall.a, wall.b));
-      if (facing < -0.3) {
-        nearest = Math.min(nearest, 2 * ballTouch(from, heading, wall.a, wall.b));
-      }
+      let hit = rayToEdge(from, heading, wall.a, wall.b);
+      if (facing < -0.3) hit = Math.min(hit, 2 * ballTouch(from, heading, wall.a, wall.b));
+      if (wall.foreign) nearestForeign = Math.min(nearestForeign, hit);
+      else nearest = Math.min(nearest, hit);
     }
+    /*
+     * The paper between two pieces of ink keeps a share of itself, not just
+     * an opening: a dot a crack above its stem reads as part of it. Put as
+     * the distance to an ordinary wall that would leave the same.
+     */
+    if (Number.isFinite(nearestForeign))
+      nearest = Math.min(
+        nearest,
+        nearestForeign - Math.max(0, nearestForeign * GAP_KEPT - em * OPENING),
+      );
     return nearest;
   };
   const hairline = em * HAIRLINE;
+  /*
+   * The white to be left in front of a point: an opening, or where asked, a
+   * share of what is there. On the outside of the letter only -- the gap
+   * between the arms of an s, the white inside an n -- since a share taken
+   * sample by sample puts a nick in a counter wherever the ruler finds a
+   * slightly different wall; a counter keeps its share whole, below.
+   */
+  const leftOpen = (ahead: number): number =>
+    Math.max(em * OPENING, isOuter && Number.isFinite(ahead) ? ahead * whiteKept : 0);
   const allowance = (ahead: number): number =>
-    bolder ? (ahead - em * OPENING) / 2 : (ahead - Math.max(hairline, ahead * KEPT_SHARE)) / 2;
+    bolder ? (ahead - leftOpen(ahead)) / 2 : (ahead - Math.max(hairline, ahead * KEPT_SHARE)) / 2;
+
+  /*
+   * And a dot -- of an i, a j, a period, however it is drawn, round or
+   * square -- is a ball whole: a small piece of ink about as wide as it is
+   * tall, standing clear of the rest. Geist's square dot on the i thinned
+   * with its stem to a speck.
+   */
+  const isDot = (() => {
+    if (bolder || !isOuter) return false;
+    const own = around.obstacles[self] ?? [];
+    if (own.length < 3) return false;
+    const xs = own.map((point) => point.x);
+    const ys = own.map((point) => point.y);
+    const wide = Math.max(...xs) - Math.min(...xs);
+    const tall = Math.max(...ys) - Math.min(...ys);
+    if (!(Math.min(wide, tall) > 0) || Math.max(wide, tall) > em * 0.2) return false;
+    if (Math.max(wide, tall) > Math.min(wide, tall) * 1.6) return false;
+    return around.obstacles.every(
+      (other, which) => which === self || !around.roles[which] || apart(own, other) > 0,
+    );
+  })();
 
   /*
    * 1. Measure: how far each sample may move, along the way it moves.
@@ -478,6 +599,10 @@ export function applyWeight(
     t: number;
     along: number;
     by: number;
+    /** What was asked, what the room allows, and the stroke measured. */
+    want: number;
+    allow: number;
+    across: number;
   }
   const samples: Sample[] = [];
   const lineBy: number[] = new Array(count).fill(0);
@@ -489,6 +614,9 @@ export function applyWeight(
       const direction = move(headingOn(segment, t));
       const size = Math.hypot(direction.x, direction.y);
       let by = wanted * size;
+      let want = by;
+      let allow = Infinity;
+      let across = Infinity;
       // A part of the outline this shape of offset barely moves -- the top of
       // a bowl when only the sides are pushed -- has nothing worth measuring,
       // and a ray skimming along it finds walls that are not in its way.
@@ -499,9 +627,43 @@ export function applyWeight(
           starts[index] + t * lengths[index],
           index,
         );
-        by = softMin(by, allowance(ahead), bolder ? KNEE : LIGHT_KNEE);
+        want = by;
+        allow = allowance(ahead);
+        across = ahead;
+        /*
+         * Lighter, a ball -- the round ends of Lora's a, c, f, r and j, the
+         * dot of an i -- gives up less than the strokes do. Taken down by
+         * the same amount, the ball of Lora's a came out the weight of its
+         * hairline at the lightest setting, a bump where a light cut keeps
+         * a full round end. Where the chords either side of straight across
+         * are those of a circle, only part of the weight comes off.
+         */
+        if (!bolder && segment.kind !== "line" && Number.isFinite(ahead) && ahead > hairline * 3) {
+          const at = pointOn(segment, t);
+          const heading = times(direction, 1 / size);
+          const turned = (angle: number) => ({
+            x: heading.x * Math.cos(angle) - heading.y * Math.sin(angle),
+            y: heading.x * Math.sin(angle) + heading.y * Math.cos(angle),
+          });
+          const position = starts[index] + t * lengths[index];
+          const chord = Math.max(
+            room(at, turned(BALL_ANGLE), position, index),
+            room(at, turned(-BALL_ANGLE), position, index),
+          );
+          if (chord < ahead * Math.cos(BALL_ANGLE) * 1.35) want = by * BALL_SHARE;
+        }
+        if (!bolder && isDot) want = by * BALL_SHARE;
+        by = softMin(want, allow, bolder ? KNEE : LIGHT_KNEE);
       }
-      samples.push({ seg: index, t, along: starts[index] + t * lengths[index], by });
+      samples.push({
+        seg: index,
+        t,
+        along: starts[index] + t * lengths[index],
+        by,
+        want,
+        allow,
+        across,
+      });
       lowest = Math.min(lowest, by);
     }
     if (segment.kind === "line") lineBy[index] = lowest;
@@ -1250,13 +1412,42 @@ export function applyWeight(
       if (nodes[next].handleIn) out[next].handleIn = c2;
     }
     restoreStrokes(out, share);
-    return { closed: true, nodes: out };
+    const plain: Contour = { closed: true, nodes: out };
+    const rounded = roundSwallowed(out, wanted * share);
+    if (!rounded) return plain;
+    const filleted: Contour = { closed: true, nodes: rounded };
+    return contoursIntersect([filleted]) && !contoursIntersect([plain]) ? plain : filleted;
   };
 
   const facingBefore = Math.sign(contourArea(contour));
+  /*
+   * And a counter made smaller is never closed up. The rulers above ask a few
+   * places along each side how far it is to the wall across; a small counter
+   * -- the eye of an e condensed and made bolder -- can be narrower than the
+   * weight everywhere and still have no wall squarely across from any one
+   * sample, and it came out a crumpled speck. So a counter keeps at least an
+   * opening's worth of mean width (twice its area over its length round, which
+   * is the width of a slot and the radius of a circle), or most of what it had
+   * where it had less -- and most of it whatever it had, where white is to be
+   * kept -- and the whole contour backs off evenly to keep it, so the counter
+   * stays the shape it was.
+   */
+  const meanWidth = (trial: Contour): number => {
+    const round = contourSegments(trial).reduce((sum, segment) => sum + segmentLength(segment), 0);
+    return round > 1e-9 ? (2 * Math.abs(contourArea(trial))) / round : 0;
+  };
+  const leastWidth =
+    bolder && !isOuter
+      ? Math.max(
+          Math.min(meanWidth(contour) * KEPT_OPEN, (em * OPENING) / 2),
+          whiteKept > 0 ? meanWidth(contour) * COUNTER_KEPT : 0,
+        )
+      : 0;
   const intact = (trial: Contour): boolean =>
     // Turned inside out is as broken as crossed: ink become a hole.
-    Math.sign(contourArea(trial)) === facingBefore && !contoursIntersect([trial]);
+    Math.sign(contourArea(trial)) === facingBefore &&
+    !contoursIntersect([trial]) &&
+    (leastWidth === 0 || meanWidth(trial) >= leastWidth);
   const full = build(1);
   if (intact(full)) return full;
   // The letter already crossed itself before anything moved -- some fonts ship
@@ -1272,6 +1463,171 @@ export function applyWeight(
     else high = middle;
   }
   return low === 0 ? contour : build(low);
+}
+
+/**
+ * Points the offset swallowed, spread round the corner they left.
+ *
+ * Where a stretch of outline is shorter than the weight -- the inner end of
+ * the aperture of Lora's a, s and 2 made bolder -- the loop cutting leaves
+ * several points on one spot, or a few units apart, and the outline turns a
+ * sharp corner there and runs a short straight stub into the next curve: a
+ * step where the aperture closes. Those points are spare, and a bold is
+ * drawn with the end of the white rounded. So each such run is taken as one
+ * corner: the stretch of outline before it is cut back and the stretch after
+ * it cut forward by a little, and the points of the run are laid along the
+ * circular arc between the two cuts, leaving and arriving the way the
+ * outline does. The same points come out as went in, and a straight piece
+ * stays straight, so a variable font keeps its structure. Null where there
+ * is nothing to round.
+ */
+function roundSwallowed(nodes: GlyphNode[], weight: number): GlyphNode[] | null {
+  const count = nodes.length;
+  if (count < 4 || !(weight > 0)) return null;
+  const out = nodes.map((node) => ({
+    ...node,
+    point: { ...node.point },
+    handleIn: node.handleIn ? { ...node.handleIn } : null,
+    handleOut: node.handleOut ? { ...node.handleOut } : null,
+  }));
+  const at = (index: number) => out[((index % count) + count) % count];
+  const curve = (index: number): [Vec2, Vec2, Vec2, Vec2] => {
+    const a = at(index);
+    const b = at(index + 1);
+    return [a.point, a.handleOut ?? a.point, b.handleIn ?? b.point, b.point];
+  };
+  const length = (index: number): number => {
+    const [p0, p1, p2, p3] = curve(index);
+    let total = 0;
+    let last = p0;
+    for (let i = 1; i <= 12; i++) {
+      const point = cubicAt(p0, p1, p2, p3, i / 12);
+      total += distance(last, point);
+      last = point;
+    }
+    return total;
+  };
+  const lengths = out.map((_, index) => length(index));
+  const tiny = Math.max(1, weight * 0.5);
+  const small = lengths.map((value) => value < tiny);
+  if (small.every(Boolean) || !small.some(Boolean)) return null;
+  // Runs of short pieces, each from the first piece to the last.
+  const runs: Array<{ first: number; last: number }> = [];
+  const start = small.indexOf(false);
+  for (let step = 1; step <= count; step++) {
+    const index = (start + step) % count;
+    if (!small[index]) continue;
+    const previous = runs[runs.length - 1];
+    if (previous && (previous.last + 1) % count === index) previous.last = index;
+    else runs.push({ first: index, last: index });
+  }
+  const used = new Set<number>();
+  let changed = false;
+  for (const { first, last } of runs) {
+    const pieces = ((last - first + count) % count) + 1;
+    // Only a run of curves: a straight piece of the drawing, however short
+    // the weight left it -- the foot of a stem -- stays the straight it was.
+    let straight = false;
+    for (let k = 0; k < pieces; k++)
+      if (!at(first + k).handleOut && !at(first + k + 1).handleIn) straight = true;
+    if (straight) continue;
+    const before = (first - 1 + count) % count;
+    const after = (last + 1) % count;
+    if (used.has(before) || used.has(after)) continue;
+    const [b0, b1, b2, b3] = curve(before);
+    const [a0, a1, a2, a3] = curve(after);
+    const arriving = normalize(sub(b3, distance(b2, b3) > 1e-6 ? b2 : b1));
+    const leaving = normalize(sub(distance(a1, a0) > 1e-6 ? a1 : a2, a0));
+    const turn = Math.acos(
+      Math.max(-1, Math.min(1, arriving.x * leaving.x + arriving.y * leaving.y)),
+    );
+    // Turning less than this is a curve passing through, not a corner.
+    if (!(turn > (20 * Math.PI) / 180) || turn > (170 * Math.PI) / 180) continue;
+    const reach = Math.min(lengths[before] * 0.4, lengths[after] * 0.4, weight * 1.5);
+    if (reach < 1) continue;
+    // Cut the piece before back by the reach, and the piece after forward.
+    const cutAt = (p: [Vec2, Vec2, Vec2, Vec2], total: number, fromEnd: boolean): number => {
+      const goal = fromEnd ? total - reach : reach;
+      let run = 0;
+      let last = p[0];
+      for (let i = 1; i <= 48; i++) {
+        const point = cubicAt(p[0], p[1], p[2], p[3], i / 48);
+        const step = distance(last, point);
+        if (run + step >= goal) return (i - 1 + (step > 0 ? (goal - run) / step : 0)) / 48;
+        run += step;
+        last = point;
+      }
+      return 1;
+    };
+    const tb = cutAt([b0, b1, b2, b3], lengths[before], true);
+    const ta = cutAt([a0, a1, a2, a3], lengths[after], false);
+    const [keepBefore] = splitCubic(b0, b1, b2, b3, tb);
+    const [, keepAfter] = splitCubic(a0, a1, a2, a3, ta);
+    const from = keepBefore[3];
+    const to = keepAfter[0];
+    const chord = distance(from, to);
+    if (chord < 1e-6) continue;
+    // Leaving and arriving the way the outline does where it was cut.
+    const tangent = (a: Vec2, b: Vec2, fallback: Vec2) =>
+      distance(a, b) > 1e-6 ? normalize(sub(b, a)) : fallback;
+    const inward = tangent(
+      distance(keepBefore[2], from) > 1e-6 ? keepBefore[2] : keepBefore[1],
+      from,
+      arriving,
+    );
+    const outward = tangent(
+      to,
+      distance(keepAfter[1], to) > 1e-6 ? keepAfter[1] : keepAfter[2],
+      leaving,
+    );
+    const bend = Math.acos(Math.max(-1, Math.min(1, inward.x * outward.x + inward.y * outward.y)));
+    if (!(bend > 1e-3)) continue;
+    // A circle's arc through the turn: handles four thirds of the tangent of
+    // a quarter of the turn, of its radius.
+    const radius = chord / (2 * Math.sin(bend / 2));
+    const handle = (4 / 3) * Math.tan(bend / 4) * radius;
+    const arc: [Vec2, Vec2, Vec2, Vec2] = [
+      from,
+      { x: from.x + inward.x * handle, y: from.y + inward.y * handle },
+      { x: to.x - outward.x * handle, y: to.y - outward.y * handle },
+      to,
+    ];
+    // Laid out: the node before keeps its place, its handle shortened; the
+    // run's first point at the cut, its last at the other cut, and any
+    // between along the arc.
+    const lineBefore = !at(before).handleOut && !at(before + 1).handleIn;
+    const lineAfter = !at(after).handleOut && !at(after + 1).handleIn;
+    if (!lineBefore) {
+      if (at(before).handleOut) at(before).handleOut = keepBefore[1];
+    }
+    const pieceCurves: Array<[Vec2, Vec2, Vec2, Vec2]> = [];
+    let rest = arc;
+    for (let k = 0; k < pieces; k++) {
+      if (k === pieces - 1) {
+        pieceCurves.push(rest);
+        break;
+      }
+      const [head, tail] = splitCubic(rest[0], rest[1], rest[2], rest[3], 1 / (pieces - k));
+      pieceCurves.push(head);
+      rest = tail;
+    }
+    for (let k = 0; k <= pieces; k++) {
+      const node = at(first + k);
+      node.point = { ...(k < pieces ? pieceCurves[k][0] : to) };
+      if (k === 0) {
+        if (node.handleIn) node.handleIn = lineBefore ? { ...node.point } : { ...keepBefore[2] };
+      } else if (node.handleIn) node.handleIn = { ...pieceCurves[k - 1][2] };
+      if (k < pieces) {
+        if (node.handleOut) node.handleOut = { ...pieceCurves[k][1] };
+      } else if (node.handleOut)
+        node.handleOut = lineAfter ? { ...node.point } : { ...keepAfter[1] };
+    }
+    if (!lineAfter && at(after + 1).handleIn) at(after + 1).handleIn = { ...keepAfter[2] };
+    used.add(before);
+    used.add(after);
+    changed = true;
+  }
+  return changed ? out : null;
 }
 
 /**

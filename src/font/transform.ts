@@ -31,7 +31,7 @@ import { resolveComponents } from "./composite";
 import { classifyContours, contoursIntersect } from "./outline";
 import { shiftCrossbar, shiftShoulders } from "./anatomy";
 import { pixelate } from "./pixel";
-import { addSlabs } from "./slab";
+import { addSlabs, weighSlabs } from "./slab";
 import { applyWeight, SIDEWAYS } from "./embolden";
 import { anyCast, type Cast } from "./cast";
 import { anyCut, type Cuts } from "./cuts";
@@ -177,26 +177,48 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
    * serifs of a light one. Put on first, they thicken with the stems, stretch
    * with the width and lean with the slant, which is what they should do.
    */
+  // The letter and its slabs as they were before the weight, point for point.
+  let unweightedContours: Contour[] | undefined;
+  // The slabs, kept to one side until the letter has its weight.
+  let slabs: Contour[] = [];
+  let slabbedLetter: Contour[] = [];
   if (params.slab > 0) {
-    contours = addSlabs(contours, {
-      projection: params.slab,
-      /*
-       * A slab reaches further across the stroke than back along it; much
-       * thicker and it reads as a box on the end rather than a serif. But
-       * not much thinner than the stems either: a slab serif's slabs are
-       * most of a stem thick, and at half the projection Geist's came out a
-       * third of its stems, hairlines under an H.
-       */
-      thickness: Math.min(
-        params.slab * 1.2,
-        Math.max(params.slab * 0.55, cutScaleOf(typeface).stem * 0.7),
-      ),
-      maxWidth: typeface.unitsPerEm * 0.35,
-      weight: params.weight,
-    });
+    const slabbed = withSlabs(contours, params, typeface, glyph);
+    slabs = slabbed.contours.slice(contours.length);
+    /*
+     * And moved over by what the slabs put past the letter on the left, as
+     * `resolveAdvanceWidth` makes room for what they put past it on either
+     * side. Left inside the advance they took the side bearings: at the
+     * longest slab Geist's H, A, E, n and m ran together along the baseline
+     * and the tops of x, y, z and w made one bar. A slab serif is spaced from
+     * the tips of its serifs.
+     */
+    if (slabbed.left > 0) {
+      const over = (contour: Contour) =>
+        mapContour(contour, (point) => ({ x: point.x + slabbed.left, y: point.y }));
+      contours = contours.map(over);
+      slabs = slabs.map(over);
+    }
+    slabbedLetter = contours;
   }
-  if (params.counterScale !== 1)
+  /*
+   * What the counters' walls, following them, took off or added beside the
+   * letter -- see `followCounters` -- is its side bearings' to keep, as the
+   * weight's is: a narrower o is spaced as an o, not left with gaps round it.
+   */
+  let counterGrowth = { left: 0, right: 0 };
+  if (params.counterScale !== 1) {
+    const unscaled = contoursBounds(contours);
     contours = applyCounterScale(contours, params.counterScale, typeface.unitsPerEm * MIN_STROKE);
+    counterGrowth = sideGrowth(unscaled, contoursBounds(contours), 0);
+    if (counterGrowth.left !== 0) {
+      const over = (contour: Contour) =>
+        mapContour(contour, (point) => ({ x: point.x + counterGrowth.left, y: point.y }));
+      contours = contours.map(over);
+      slabs = slabs.map(over);
+      slabbedLetter = slabbedLetter.map(over);
+    }
+  }
   if (params.weight !== 0) {
     // Whether a contour is ink or a hole decides which way it has to move, and
     // that cannot be read off its winding: DejaVu winds the outer contour of I
@@ -208,22 +230,51 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
       roles: outer,
       unitsPerEm: typeface.unitsPerEm,
     };
+    unweightedContours = [...contours, ...slabs];
+    const unweighted = contoursBounds(unweightedContours);
     contours = contours.map((contour, index) => applyWeight(contour, params.weight, index, around));
+    slabs = weighSlabs(slabs, slabbedLetter, params.weight, typeface.unitsPerEm, contours);
     /*
-     * And the letter moved over by the weight, so it keeps its sidebearings.
+     * And the letter moved over by what the weight added on its left, so it
+     * keeps its side bearings.
      *
      * Adding weight grows a letter outwards on both sides, into the space
      * between it and its neighbours. Left there, every side bearing lost the
      * weight: at the heavy end of Geist the H ran into the a and the f into the
      * o, and a paragraph set in it read as letters pressed together rather
-     * than as a bolder face. The advance grows by twice the weight to match --
-     * see `resolveAdvanceWidth` -- which is how a bold cut is spaced.
+     * than as a bolder face. The advance grows by what was added on both sides
+     * to match -- see `resolveAdvanceWidth` -- which is how a bold cut is
+     * spaced.
+     *
+     * Measured, not taken to be the weight. A stem grows by the weight, but
+     * the level-cut foot of a diagonal runs out on its mitre by more: the
+     * sample font's k at the heaviest reached a tenth of an em past its
+     * advance into the next letter, and x and v into both of theirs.
      */
-    const shift = params.weight;
+    const growth = sideGrowth(unweighted, contoursBounds([...contours, ...slabs]), params.weight);
+    growths.set(glyph, {
+      key: growthKey(glyph, typeface, params),
+      left: growth.left + counterGrowth.left,
+      right: growth.right + counterGrowth.right,
+    });
+    const shift = growth.left;
     contours = contours.map((contour) =>
       mapContour(contour, (point) => ({ x: point.x + shift, y: point.y })),
     );
+    slabs = slabs.map((slab) => mapContour(slab, (point) => ({ x: point.x + shift, y: point.y })));
   }
+  if (params.weight === 0 && params.counterScale !== 1)
+    growths.set(glyph, { key: growthKey(glyph, typeface, params), ...counterGrowth });
+  /*
+   * The slabs are weighted apart from the letter and join it here -- see
+   * `weighSlabs` -- and it is the letter alone that the weight measured.
+   */
+  if (slabs.length) {
+    if (params.weight === 0) slabs = weighSlabs(slabs, slabbedLetter, 0, typeface.unitsPerEm);
+    contours = [...contours, ...slabs];
+  }
+  if (params.weight !== 0)
+    contours = keepHeights(contours, params.weight, glyph, typeface, unweightedContours);
   if (params.cornerRadius > 0) {
     const outer = classifyContours(contours);
     contours = contours.map((contour, index) =>
@@ -273,8 +324,18 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
         roles: outer,
         unitsPerEm: typeface.unitsPerEm,
       };
+      /*
+       * Closing little of the white it faces, though. The same strokes
+       * do not always fit in less room: Lora's e condensed to 0.7 at the
+       * heaviest weight is narrower than two of its stems, and given them
+       * whole, its eye and the bowl of its a closed to specks and every
+       * aperture to a crack. A condensed heavy cut is drawn with thinner stems
+       * for that reason; its counters keep their share of the letter. Where
+       * there is room -- any counter wider than the stems -- this changes
+       * nothing, and the stems come back whole.
+       */
       contours = contours.map((contour, index) =>
-        applyWeight(contour, give, index, around, SIDEWAYS),
+        applyWeight(contour, give, index, around, SIDEWAYS, CONDENSED_WHITE),
       );
       contours = contours.map((contour) =>
         mapContour(contour, (point) => ({ x: point.x + give, y: point.y })),
@@ -308,10 +369,138 @@ export function resolveAdvanceWidth(glyph: Glyph, typeface: Typeface): number {
   const params = effectiveParams(glyph, typeface);
   return Math.max(
     0,
-    (glyph.advanceWidth + params.weight * 2) * params.width +
+    (glyph.advanceWidth + weightRoom(glyph, typeface, params) + slabRoom(glyph, typeface, params)) *
+      params.width +
       params.tracking * 2 +
       widthGive(typeface, params) * 2,
   );
+}
+
+/** The share of the white across a condensed letter that putting its strokes back leaves. */
+const CONDENSED_WHITE = 0.7;
+
+/**
+ * How far the weight moved a letter's ink out on the left and on the right:
+ * the weight itself for a letter with nothing in it, as the space between
+ * words grows with the face.
+ */
+function sideGrowth(
+  before: ReturnType<typeof contoursBounds>,
+  after: ReturnType<typeof contoursBounds>,
+  weight: number,
+): { left: number; right: number } {
+  const finite = [before.xMin, before.xMax, after.xMin, after.xMax].every(Number.isFinite);
+  if (!finite || before.xMax <= before.xMin) return { left: weight, right: weight };
+  return { left: before.xMin - after.xMin, right: after.xMax - before.xMax };
+}
+
+/**
+ * What the weight added beside each letter, kept for setting the line, which
+ * asks for every advance far more often than the outlines change.
+ */
+const growths = new WeakMap<Glyph, { key: string; left: number; right: number }>();
+
+function growthKey(glyph: Glyph, typeface: Typeface, params: GlyphParams): string {
+  const contours = resolveComponents(glyph, typeface);
+  return [
+    JSON.stringify(params),
+    typeface.unitsPerEm,
+    contours.reduce(
+      (sum, contour) =>
+        contour.nodes.reduce((total, node) => total + node.point.x * 3 + node.point.y, sum),
+      contours.length,
+    ),
+  ].join("|");
+}
+
+function weightRoom(glyph: Glyph, typeface: Typeface, params: GlyphParams): number {
+  if (params.weight === 0 && params.counterScale === 1) return 0;
+  const key = growthKey(glyph, typeface, params);
+  let known = growths.get(glyph);
+  if (known?.key !== key) {
+    resolveGlyphContours(glyph, typeface);
+    known = growths.get(glyph);
+  }
+  return known?.key === key ? known.left + known.right : params.weight * 2;
+}
+
+/**
+ * Slabs laid across a letter's stroke ends, and how far they reach past its
+ * ink on the left and on the right.
+ */
+function withSlabs(
+  contours: Contour[],
+  params: GlyphParams,
+  typeface: Typeface,
+  glyph: Glyph,
+): { contours: Contour[]; left: number; right: number } {
+  /*
+   * Letters and figures only. The stroke of an ! or the stem of a ? has the
+   * same flat ends as an I and got the same bars, which no slab serif puts
+   * on its punctuation.
+   */
+  if (!takesSlabs(glyph)) return { contours, left: 0, right: 0 };
+  const slabbed = addSlabs(contours, {
+    // The lowercase and the figures: the 1 of a slab serif has its flag
+    // and its foot, and no bar across its top.
+    flagTops: isLowercase(glyph) || isFigure(glyph),
+    projection: params.slab,
+    /*
+     * A slab reaches further across the stroke than back along it; much
+     * thicker and it reads as a box on the end rather than a serif. But
+     * not much thinner than the stems either: a slab serif's slabs are
+     * most of a stem thick, and at half the projection Geist's came out a
+     * third of its stems, hairlines under an H.
+     */
+    thickness: Math.min(
+      params.slab * 1.2,
+      Math.max(params.slab * 0.55, cutScaleOf(typeface).stem * 0.7),
+    ),
+    maxWidth: typeface.unitsPerEm * 0.35,
+    stem: cutScaleOf(typeface).stem,
+    weight: params.weight,
+  });
+  if (slabbed === contours || contours.length === 0) return { contours, left: 0, right: 0 };
+  const before = contoursBounds(contours);
+  const after = contoursBounds(slabbed);
+  return {
+    contours: slabbed,
+    left: Math.max(0, before.xMin - after.xMin),
+    right: Math.max(0, after.xMax - before.xMax),
+  };
+}
+
+/**
+ * The room a letter's slabs need beside it, both sides together. Asked for
+ * every letter every time the line is set, so kept against the glyph for the
+ * settings and the outline it was worked out for.
+ */
+const slabRooms = new WeakMap<Glyph, { key: string; room: number }>();
+
+function slabRoom(glyph: Glyph, typeface: Typeface, params: GlyphParams): number {
+  if (!(params.slab > 0)) return 0;
+  let contours = resolveComponents(glyph, typeface);
+  const key = [
+    params.slab,
+    params.crossbar,
+    params.shoulder,
+    params.weight,
+    typeface.unitsPerEm,
+    cutScaleOf(typeface).stem,
+    contours.reduce(
+      (sum, contour) =>
+        contour.nodes.reduce((total, node) => total + node.point.x * 3 + node.point.y, sum),
+      contours.length,
+    ),
+  ].join(",");
+  const known = slabRooms.get(glyph);
+  if (known?.key === key) return known.room;
+  contours = contours.map(cloneContour);
+  if (params.crossbar !== 0) contours = shiftCrossbar(contours, params.crossbar);
+  if (params.shoulder !== 0) contours = shiftShoulders(contours, params.shoulder);
+  const { left, right } = withSlabs(contours, params, typeface, glyph);
+  slabRooms.set(glyph, { key, room: left + right });
+  return left + right;
 }
 
 /**
@@ -374,6 +563,24 @@ function isLowercase(glyph: Glyph): boolean {
     return glyph.unicodes.some((code) => lower(String.fromCodePoint(code)));
   const base = glyph.name.split(".")[0];
   return base.length === 1 && lower(base);
+}
+
+/** Whether a glyph is a figure, by what it encodes or else its name. */
+function isFigure(glyph: Glyph): boolean {
+  const figure = (text: string) => /\p{N}/u.test(text);
+  if (glyph.unicodes.length > 0)
+    return glyph.unicodes.some((code) => figure(String.fromCodePoint(code)));
+  const base = glyph.name.split(".")[0];
+  return base.length === 1 && figure(base);
+}
+
+/** Whether a glyph is a letter or a figure, by what it encodes or else its name. */
+function takesSlabs(glyph: Glyph): boolean {
+  const letter = (text: string) => /[\p{L}\p{N}]/u.test(text);
+  if (glyph.unicodes.length > 0)
+    return glyph.unicodes.some((code) => letter(String.fromCodePoint(code)));
+  const base = glyph.name.split(".")[0];
+  return base.length !== 1 || letter(base);
 }
 
 /**
@@ -490,6 +697,245 @@ function applyXHeight(
   );
 }
 
+/**
+ * A letter made lighter or bolder brought back onto its baseline and to its
+ * height.
+ *
+ * The weight moves the outline square to itself all round, so it moved the
+ * bottom of every letter below the baseline and the top above the x-height
+ * or the cap height by the weight: at the heaviest setting a line of Lora
+ * sat sixty units low, its x-height a hundred and twenty taller, and a single
+ * letter given a weight of its own dropped out of the line. A bolder cut is
+ * drawn on the same baseline and to the same heights, its horizontals a
+ * little lighter than its stems for the room. So the band from the moved
+ * bottom to the moved top of the lowercase -- or of the capitals, for any
+ * letter that is not lowercase -- is squeezed back to what it was, and what
+ * lies above it and below it (ascenders, descenders, overshoots past the top)
+ * moves back by the weight as it is. Handles are carried by how the squeeze
+ * bends at their point, so a smooth point stays smooth.
+ */
+function keepHeights(
+  contours: Contour[],
+  weight: number,
+  glyph: Glyph,
+  typeface: Typeface,
+  /** The same contours before the weight, point for point, where known. */
+  before?: Contour[],
+): Contour[] {
+  const metrics = typeface.metrics;
+  const top = isLowercase(glyph) ? metrics?.xHeight : metrics?.capHeight;
+  if (!top || !(top > 0) || top + 2 * weight <= 0) return contours;
+  /*
+   * Only the edges the letter was drawn to. A period stands on the baseline
+   * and a quote hangs from the top, and each goes back to the one it
+   * touches; a hyphen, a bullet or an asterisk is placed by its middle and
+   * touched neither, and squeezed or moved it would leave the middle of the
+   * line: it keeps its place and grows all round.
+   */
+  const drawn = contoursBounds(resolveComponents(glyph, typeface));
+  const near = top * 0.05;
+  const onBaseline = drawn.yMin <= near;
+  const toTop = drawn.yMax >= top - near;
+  if (!onBaseline && !toTop) return contours;
+  const matched =
+    before?.length === contours.length &&
+    before.every((contour, index) => contour.nodes.length === contours[index].nodes.length);
+  const tolerance = typeface.unitsPerEm * 0.02;
+  // A top edge moves up as the letter gets bolder and down as it gets
+  // lighter; a bottom edge the other way.
+  const along = (moved: number) => moved * Math.sign(weight);
+  /*
+   * Where the edges on the baseline and at the height went, as measured,
+   * rather than taken to be the weight. A stem's end moves by the weight; a
+   * serif made lighter keeps a third of itself and moves less, and squeezed
+   * as if it had moved the whole weight, Lora's light H went twenty-eight
+   * units below its baseline and past its cap height. The middle of what
+   * the points on an edge did is taken as the edge's move.
+   */
+  /*
+   * Whether the outline runs level at a point, either side of it: the top of
+   * a stem, the bottom of a bowl. The sloped top of a wedge serif passes
+   * near the height too, and counted as on it, it pulled the ascender of
+   * Lora's light b eight units past where it was drawn.
+   */
+  const level = (contour: Contour, index: number): boolean => {
+    const count = contour.nodes.length;
+    const node = contour.nodes[index];
+    const flat = (toward: Vec2 | null | undefined): boolean => {
+      if (!toward) return false;
+      const dx = Math.abs(toward.x - node.point.x);
+      const dy = Math.abs(toward.y - node.point.y);
+      return dx + dy > 1e-6 && dy <= dx * 0.2;
+    };
+    const previous = contour.nodes[(index - 1 + count) % count];
+    const next = contour.nodes[(index + 1) % count];
+    return (
+      flat(node.handleIn ?? (previous.handleOut ? null : previous.point)) ||
+      flat(node.handleOut ?? (next.handleIn ? null : next.point))
+    );
+  };
+  const edgeMove = (line: number, upward: boolean): number => {
+    const assumed = upward ? weight : -weight;
+    if (!matched) return assumed;
+    const moves: number[] = [];
+    for (const [which, contour] of (before as Contour[]).entries()) {
+      for (const [index, node] of contour.nodes.entries()) {
+        if (Math.abs(node.point.y - line) > tolerance || !level(contour, index)) continue;
+        const moved = contours[which].nodes[index].point.y - node.point.y;
+        if (upward ? along(moved) > 0.5 : along(moved) < -0.5) moves.push(moved);
+      }
+    }
+    if (moves.length === 0) return assumed;
+    moves.sort((a, b) => a - b);
+    return moves[Math.floor(moves.length / 2)];
+  };
+  /*
+   * Pinned at each edge the letter was drawn to -- its own bottom where a
+   * descender takes it below the baseline, the baseline, the x-height or cap
+   * height, and its own top where an ascender takes it above -- each moved
+   * back by what its own points did, and eased in straight lines between.
+   * Pinned only at the x-height, a light b's ascender came back by what the
+   * top of its bowl had moved and stood twenty-four units short.
+   */
+  const box = matched ? contoursBounds(before as Contour[]) : drawn;
+  const pins: Array<{ from: number; to: number }> = [];
+  if (onBaseline && box.yMin < -tolerance)
+    pins.push({ from: box.yMin + edgeMove(box.yMin, false), to: box.yMin });
+  if (onBaseline) pins.push({ from: edgeMove(0, false), to: 0 });
+  if (toTop) pins.push({ from: top + edgeMove(top, true), to: top });
+  if (toTop && box.yMax > top + tolerance)
+    pins.push({ from: box.yMax + edgeMove(box.yMax, true), to: box.yMax });
+  if (pins.some((pin, index) => index > 0 && pin.from <= pins[index - 1].from)) return contours;
+  const map = (y: number): number => {
+    const first = pins[0];
+    const last = pins[pins.length - 1];
+    if (y <= first.from) return y + first.to - first.from;
+    if (y >= last.from) return y + last.to - last.from;
+    for (let index = 1; index < pins.length; index++) {
+      const [a, b] = [pins[index - 1], pins[index]];
+      if (y <= b.from) return a.to + ((y - a.from) * (b.to - a.to)) / (b.from - a.from);
+    }
+    return y;
+  };
+  const slope = (y: number): number => {
+    for (let index = 1; index < pins.length; index++) {
+      const [a, b] = [pins[index - 1], pins[index]];
+      if (y > a.from && y < b.from) return (b.to - a.to) / (b.from - a.from);
+    }
+    return 1;
+  };
+  const squeezed = contours.map((contour) => ({
+    closed: contour.closed,
+    nodes: contour.nodes.map((node) => {
+      const at = node.point;
+      const by = slope(at.y);
+      const carry = (handle: Vec2 | null): Vec2 | null =>
+        handle ? { x: handle.x, y: map(at.y) + (handle.y - at.y) * by } : null;
+      return {
+        point: { x: at.x, y: map(at.y) },
+        handleIn: carry(node.handleIn),
+        handleOut: carry(node.handleOut),
+        type: node.type,
+      };
+    }),
+  }));
+  if (!matched) return squeezed;
+  /*
+   * And what the pins could not say, because one edge carries parts that
+   * moved differently. The foot of a stem made lighter rises by the weight;
+   * the thin bottom of the bowl beside it keeps a third of itself and rises
+   * less, and brought back by the same amount the bowl of Geist's light b
+   * hung fourteen units below where it was drawn. So every point on an edge
+   * that moved outward says how far it now is from where it was drawn --
+   * the foot nothing, the bowl its fourteen units -- and between them a
+   * smooth field is drawn: each point of the outline, and each handle at
+   * its own place, takes the weighted mean of what the edge points nearby
+   * say, less the further it is from the edge. Moving points one at a time,
+   * a handle carried along with its point, put a belly into the bowl; a
+   * smooth field moves the curve as a whole.
+   */
+  const edges: Array<{ at: Vec2; by: number }> = [];
+  for (const [which, contour] of (before as Contour[]).entries()) {
+    for (const [index, node] of contour.nodes.entries()) {
+      const was = node.point.y;
+      const moved = contours[which].nodes[index].point.y - was;
+      const along = moved * Math.sign(weight);
+      const onEdge =
+        along > 0.5
+          ? (toTop && Math.abs(was - top) <= tolerance) || Math.abs(was - box.yMax) <= tolerance
+          : along < -0.5
+            ? (onBaseline && Math.abs(was) <= tolerance) || Math.abs(was - box.yMin) <= tolerance
+            : false;
+      if (!onEdge) continue;
+      const now = squeezed[which].nodes[index].point;
+      /*
+       * A point on a slope near the edge -- the top of a wedge serif, the
+       * join of the tail of a Q with its bowl -- is only set right where it
+       * was pushed out past the edge: Lora's light b stood eight units
+       * over its ascender from the thin top of its flag. Left inside, it is
+       * where the letter's own shape put it, and corrected there it pulled
+       * the Q's tail.
+       */
+      if (!level(contour, index)) {
+        const up = along > 0;
+        const past = up ? now.y > Math.max(was, box.yMax) : now.y < Math.min(was, box.yMin);
+        if (!past) continue;
+      }
+      // A point the weight carried off the edge -- where the tail of a Q
+      // leaves its bowl -- is no longer on it: a stroke that moved less than
+      // the weight is out by part of the weight, and one that moved more
+      // than the weight was carried along by something else.
+      if (Math.abs(moved) > Math.abs(weight) * 1.1 || Math.abs(was - now.y) > Math.abs(weight))
+        continue;
+      /*
+       * And only drawn back in. A point short of its edge is where the
+       * letter's own strokes put it -- the bottom of a Q's bowl, held up by
+       * the tail it runs into -- and pulled out to the edge it bent the
+       * bowl; a point pushed past the edge is the fault being mended.
+       */
+      const by = was - now.y;
+      if (along > 0 ? by > 0 : by < 0) continue;
+      edges.push({ at: now, by });
+    }
+  }
+  if (!edges.some((edge) => Math.abs(edge.by) > 0.5)) return squeezed;
+  const lines = [...(onBaseline ? [0, box.yMin] : []), ...(toTop ? [top, box.yMax] : [])];
+  const band = typeface.unitsPerEm * 0.1;
+  const soft = (typeface.unitsPerEm * 0.01) ** 2;
+  // Full strength as far from an edge as the corrections themselves reach,
+  // and fading over a band beyond.
+  const slack = Math.max(...edges.map((edge) => Math.abs(edge.by)));
+  const field = (at: Vec2): number => {
+    const off = Math.max(0, Math.min(...lines.map((line) => Math.abs(at.y - line))) - slack);
+    const envelope = Math.max(0, 1 - off / band);
+    if (envelope === 0) return 0;
+    let sum = 0;
+    let total = 0;
+    for (const edge of edges) {
+      const weight = 1 / ((edge.at.x - at.x) ** 2 + (edge.at.y - at.y) ** 2 + soft);
+      sum += edge.by * weight;
+      total += weight;
+    }
+    return total > 0 ? (sum / total) * envelope : 0;
+  };
+  const shift = (at: Vec2 | null): Vec2 | null => (at ? { x: at.x, y: at.y + field(at) } : null);
+  const fielded = squeezed.map((contour) => ({
+    closed: contour.closed,
+    nodes: contour.nodes.map((node) => ({
+      ...node,
+      point: shift(node.point) as Vec2,
+      handleIn: shift(node.handleIn),
+      handleOut: shift(node.handleOut),
+    })),
+  }));
+  // Left squeezed where the field would cross an outline that did not cross.
+  return fielded.map((contour, which) =>
+    contoursIntersect([contour]) && !contoursIntersect([squeezed[which]])
+      ? squeezed[which]
+      : contour,
+  );
+}
+
 /** Shear about the baseline, the transform that makes an oblique. */
 function applySlant(contour: Contour, degrees: number): Contour {
   const shear = Math.tan((degrees * Math.PI) / 180);
@@ -558,6 +1004,8 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
   const walls = contours.map((contour) => flattenContour(contour, 8));
   const amount = Math.abs(factor - 1);
   const opening = factor > 1;
+  const follow = COUNTER_FOLLOW;
+  const upright = opening ? COUNTER_UPRIGHT : COUNTER_UPRIGHT_CLOSING;
 
   /*
    * How far a wall of ink may give way to the counter beside it, or grow into
@@ -600,7 +1048,7 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
     return limit - (rest * rest) / (wanted - knee + rest);
   };
 
-  return contours.map((contour, index) => {
+  const scaled = contours.map((contour, index) => {
     if (outer[index]) return contour;
     const segments = contourSegments(contour);
     if (segments.length === 0) return contour;
@@ -640,15 +1088,29 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
      * Each side is asked at every sample on its half of the counter, looking
      * straight out along the axis it moves on, and takes the tightest answer.
      */
-    const sides = { left: 1, right: 1, below: 1, above: 1 };
+    /*
+     * A side whose wall is a straight line of the drawing -- the stem of a b,
+     * the legs of an A -- does not move: the wall cannot follow it without
+     * bending, and moved alone into it the counter made the stem heavier.
+     * The counter changes from its round sides.
+     */
+    const follows = {
+      left: wallBeside(contours, outer, contour, -1) !== "leaning",
+      right: wallBeside(contours, outer, contour, 1) !== "leaning",
+    };
+    const sides = { left: follows.left ? 1 : 0, right: follows.right ? 1 : 0, below: 1, above: 1 };
     for (const at of samples) {
       const dx = at.x - middle.x;
       const dy = at.y - middle.y;
+      // A side whose wall follows it across takes only the rest from it.
       if (dx !== 0) {
-        const wanted = amount * Math.abs(dx);
-        const wall = wallAhead(at, { x: Math.sign(dx), y: 0 });
         const key = dx > 0 ? "right" : "left";
-        sides[key] = Math.min(sides[key], allowed(wanted, wall) / wanted);
+        const share = follows[key] ? 1 - follow : 1;
+        if (share > 0) {
+          const wanted = amount * Math.abs(dx);
+          const wall = wallAhead(at, { x: Math.sign(dx), y: 0 });
+          sides[key] = Math.min(sides[key], allowed(wanted * share, wall) / (wanted * share));
+        }
       }
       if (dy !== 0) {
         const wanted = amount * Math.abs(dy);
@@ -663,7 +1125,7 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
       const dx = point.x - middle.x;
       const dy = point.y - middle.y;
       const across = scaleOf((dx > 0 ? sides.right : sides.left) * by);
-      const up = scaleOf((dy > 0 ? sides.above : sides.below) * by);
+      const up = scaleOf((dy > 0 ? sides.above : sides.below) * by * upright);
       return { x: middle.x + dx * across, y: middle.y + dy * up };
     };
 
@@ -676,7 +1138,10 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
      */
     for (let pass = 0; pass < 2; pass++) {
       for (const at of samples) {
-        const moved = sub(place(at, 1), at);
+        const shifted = sub(place(at, 1), at);
+        // Only what goes into a wall that stays put.
+        const followed = follows[at.x > middle.x ? "right" : "left"];
+        const moved = { x: shifted.x * (followed ? 1 - follow : 1), y: shifted.y };
         const length = Math.hypot(moved.x, moved.y);
         if (length === 0) continue;
         const heading = { x: moved.x / length, y: moved.y / length };
@@ -716,9 +1181,13 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
     const crossedBefore = contours.map((other, which) =>
       which === index ? contoursIntersect([contour]) : contoursIntersect([contour, other]),
     );
+    // Against the walls where they will not follow; those that do are
+    // checked once they have moved, in `followCounters`.
+    const alone = !follows.left && !follows.right;
     const sound = (trial: Contour): boolean =>
       contours.every((other, which) => {
         if (crossedBefore[which]) return true;
+        if (which !== index && !alone) return true;
         return which === index ? !contoursIntersect([trial]) : !contoursIntersect([trial, other]);
       });
 
@@ -733,6 +1202,249 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
     }
     return low === 0 ? contour : build(low);
   });
+  return followCounters(contours, scaled, outer, follow);
+}
+
+/**
+ * What kind of wall stands beyond one side of a counter: a straight line of
+ * the drawing standing upright (a stem, the side of a square o), which can
+ * move if all of that side moves with it; one leaning (the leg of an A, the
+ * diagonal of a 4), which cannot move without bending or parting from the
+ * stroke it meets; or a round one, which can follow its counter and ease
+ * back along its length. A ray from the counter's side, at its middle
+ * height, across the ink says which piece of outline it meets first.
+ */
+type Wall = "upright" | "leaning" | "round";
+function wallBeside(contours: Contour[], outer: boolean[], counter: Contour, side: -1 | 1): Wall {
+  const was = contoursBounds([counter]);
+  const tall = was.yMax - was.yMin;
+  const middle = (was.yMin + was.yMax) / 2;
+  const from = { x: side < 0 ? was.xMin : was.xMax, y: middle };
+  let hit = Infinity;
+  let kind: Wall = "leaning";
+  contours.forEach((other, which) => {
+    if (!outer[which]) return;
+    for (const segment of contourSegments(other)) {
+      const points =
+        segment.kind === "line"
+          ? [segment.from, segment.to]
+          : Array.from({ length: 25 }, (_, k) =>
+              cubicAt(segment.from, segment.c1, segment.c2, segment.to, k / 24),
+            );
+      for (let k = 0; k + 1 < points.length; k++) {
+        const [a, b] = [points[k], points[k + 1]];
+        if ((a.y - middle) * (b.y - middle) > 0 || a.y === b.y) continue;
+        const x = a.x + ((middle - a.y) / (b.y - a.y)) * (b.x - a.x);
+        const ahead = (x - from.x) * side;
+        if (ahead > 0.5 && ahead < hit) {
+          hit = ahead;
+          const long = segment.kind === "line" && distance(segment.from, segment.to) >= tall * 0.5;
+          const upright =
+            Math.abs(segment.to.x - segment.from.x) <=
+            Math.abs(segment.to.y - segment.from.y) * 0.05;
+          kind = !long ? "round" : upright ? "upright" : "leaning";
+        }
+      }
+    }
+  });
+  return Number.isFinite(hit) ? kind : "leaning";
+}
+
+/**
+ * The round walls of a letter moved with its counters, so its strokes keep
+ * their weight.
+ *
+ * Closing a counter moved only the counter, so every wall round it grew by
+ * what the counter lost: at 0.6 the letters with counters -- a, e, g, s, R,
+ * B, b, o, 4, 8 -- set as a bold beside an H, an n and an m that have none,
+ * and opened they set as a light. A type designer closing up the middle of
+ * an o draws a narrower o with the same strokes. So wherever a counter's
+ * side moved across, the wall beyond it moves the same way and keeps its
+ * thickness: a round wall -- the outside of an o, the bowl of a b, d, p, a,
+ * g, B or R -- and an upright one, the stem of a b or an R, which moves
+ * across whole. A leaning wall -- the legs of an A -- stands where it is,
+ * since moving part of it would bend it. Up and down there is nowhere for a
+ * wall to go without changing the letter's height, so there the counter
+ * changes as before.
+ *
+ * Each counter moves the ink beside it, points and handles alike, across its
+ * own width in proportion and beyond each side by all that side moved.
+ */
+function followCounters(
+  before: Contour[],
+  after: Contour[],
+  outer: boolean[],
+  follow: number,
+): Contour[] {
+  const settled = alignSharedWalls(before, after, outer);
+  const maps: Array<{ index: number; shiftAt: (point: Vec2) => number }> = [];
+  before.forEach((contour, index) => {
+    if (outer[index] || contour === settled[index]) return;
+    const was = contoursBounds([contour]);
+    const now = contoursBounds([settled[index]]);
+    const tall = was.yMax - was.yMin;
+    if (!(tall > 0) || !(was.xMax > was.xMin)) return;
+    const leftWall = wallBeside(before, outer, contour, -1);
+    const rightWall = wallBeside(before, outer, contour, 1);
+    const dxLeft = leftWall === "leaning" ? 0 : now.xMin - was.xMin;
+    const dxRight = rightWall === "leaning" ? 0 : now.xMax - was.xMax;
+    if (Math.abs(dxLeft) < 0.5 && Math.abs(dxRight) < 0.5) return;
+    /*
+     * The ink beside a counter moves by the same map the counter did: across
+     * the counter's own width in proportion, as the counter was scaled, and
+     * beyond each side of it by all that side moved -- the walls keep their
+     * thickness, and the letter stays one shape. Moved instead by what the
+     * counter's edge did at each height, a sloping wall kept its thickness
+     * only across and the shoulders of an e bulged; eased away above and
+     * below the counter, the wall of an e bent back out below its eye and
+     * the leg of an R kinked.
+     *
+     * At every height, but eased away towards another counter above or below
+     * -- the two bowls of a B, the loops of an 8 or a g -- which has its own
+     * map, halfway to it.
+     */
+    let above = Infinity;
+    let below = Infinity;
+    before.forEach((other, which) => {
+      if (which === index || outer[which]) return;
+      const them = contoursBounds([other]);
+      const overlap = Math.min(them.xMax, was.xMax) - Math.max(them.xMin, was.xMin);
+      if (overlap <= 0) return;
+      if (them.yMin >= was.yMax) above = Math.min(above, Math.max(1, (them.yMin - was.yMax) / 2));
+      if (them.yMax <= was.yMin) below = Math.min(below, Math.max(1, (was.yMin - them.yMax) / 2));
+    });
+    const ease = (u: number) => u * u * (3 - 2 * u);
+    const hub = Math.min(was.xMax, Math.max(was.xMin, centroid(contour).x));
+    const leftBy = dxLeft * follow;
+    const rightBy = dxRight * follow;
+    const shiftAt = (point: Vec2): number => {
+      const off =
+        point.y < was.yMin
+          ? (was.yMin - point.y) / below
+          : point.y > was.yMax
+            ? (point.y - was.yMax) / above
+            : 0;
+      const eased = off >= 1 ? 0 : 1 - ease(off);
+      if (eased === 0) return 0;
+      const left = point.x < hub;
+      const by = left ? leftBy : rightBy;
+      const reach = Math.max(1e-9, left ? hub - was.xMin : was.xMax - hub);
+      /*
+       * Evenly across the counter, as it was scaled, and all of the side's
+       * movement beyond it -- blended over a short run either side of the
+       * counter's edge rather than meeting at a corner there. The corner
+       * pointed the top and bottom of a closed o like a lemon.
+       */
+      const slope = by / reach;
+      const blend = reach * FOLLOW_BLEND;
+      const out = Math.abs(point.x - hub);
+      if (out <= reach - blend) return slope * out * eased;
+      if (out >= reach + blend) return by * eased;
+      const into = out - (reach - blend);
+      return slope * (reach - blend + into - (into * into) / (4 * blend)) * eased;
+    };
+    maps.push({ index, shiftAt });
+  });
+  const moveBy = (contours: Contour[], chosen: typeof maps): Contour[] =>
+    contours.map((other, which) => {
+      const by = chosen.filter((map) => map.index !== which);
+      if (by.length === 0) return other;
+      const move = (point: Vec2 | null): Vec2 | null =>
+        point
+          ? { x: point.x + by.reduce((sum, map) => sum + map.shiftAt(point), 0), y: point.y }
+          : null;
+      return {
+        closed: other.closed,
+        nodes: other.nodes.map((node) => ({
+          ...node,
+          point: move(node.point) as Vec2,
+          handleIn: move(node.handleIn),
+          handleOut: move(node.handleOut),
+        })),
+      };
+    });
+  // Not where following would cross an outline, or two, that did not cross.
+  const crosses = (moved: Contour[], from: Contour[]): boolean =>
+    moved.some((other, which) => contoursIntersect([other]) && !contoursIntersect([from[which]])) ||
+    (contoursIntersect(moved) && !contoursIntersect(before));
+  /*
+   * All the counters at once, each moving the ink in its own band. One after
+   * another, the two bowls of a B each moved one end of its stem, which is a
+   * single straight line: halfway through, the stem leaned across the lower
+   * bowl, the check below saw it cross, and the upper bowl was put back.
+   */
+  const together = moveBy(settled, maps);
+  if (!crosses(together, settled)) return together;
+  // Failing that, one at a time, and a counter whose walls cannot follow it
+  // stays as it was drawn.
+  let result = settled;
+  for (const map of maps) {
+    const moved = moveBy(result, [map]);
+    if (!crosses(moved, result)) result = moved;
+    else result = result.map((other, which) => (which === map.index ? before[which] : other));
+  }
+  return result;
+}
+
+/**
+ * Counters stacked on one straight wall moved alike along it.
+ *
+ * The two bowls of a B share its stem, and each opened by its own width: the
+ * lower bowl, the wider, pushed the foot of the stem out further than the
+ * upper one pushed its head, and the stem leaned. So where counters one above
+ * another stand on the same upright wall, each moves that side by the least
+ * any of them did, and the others give the difference back across their own
+ * width, as they were scaled.
+ */
+function alignSharedWalls(before: Contour[], after: Contour[], outer: boolean[]): Contour[] {
+  const result = after.map((contour) => contour);
+  const counters = before.flatMap((contour, index) =>
+    outer[index] || contour === after[index] ? [] : [index],
+  );
+  for (const side of [-1, 1] as const) {
+    const upright = counters.filter(
+      (index) => wallBeside(before, outer, before[index], side) === "upright",
+    );
+    const edge = (index: number, contours: Contour[]) => {
+      const box = contoursBounds([contours[index]]);
+      return side < 0 ? box.xMin : box.xMax;
+    };
+    for (const index of upright) {
+      const was = contoursBounds([before[index]]);
+      const own = edge(index, after) - edge(index, before);
+      // Its neighbours on the same wall: over or under it, their edge on this
+      // side within a stroke's hairline of its own.
+      const least = upright
+        .filter((other) => {
+          const them = contoursBounds([before[other]]);
+          const overlap = Math.min(them.xMax, was.xMax) - Math.max(them.xMin, was.xMin);
+          return overlap > 0 && Math.abs(edge(other, before) - edge(index, before)) <= 2;
+        })
+        .map((other) => edge(other, after) - edge(other, before))
+        .reduce((best, next) => (Math.abs(next) < Math.abs(best) ? next : best), own);
+      const back = least - own;
+      if (Math.abs(back) < 0.5) continue;
+      const now = contoursBounds([after[index]]);
+      const hub = Math.min(now.xMax, Math.max(now.xMin, centroid(after[index]).x));
+      const reach = side < 0 ? hub - now.xMin : now.xMax - hub;
+      if (!(reach > 0)) continue;
+      const give = (point: Vec2 | null): Vec2 | null => {
+        if (!point) return null;
+        const share = Math.max(0, Math.min(1, ((point.x - hub) * side) / reach));
+        return { x: point.x + back * share, y: point.y };
+      };
+      result[index] = {
+        closed: after[index].closed,
+        nodes: after[index].nodes.map((node) => ({
+          ...node,
+          point: give(node.point) as Vec2,
+          handleIn: give(node.handleIn),
+          handleOut: give(node.handleOut),
+        })),
+      };
+    }
+  }
+  return result;
 }
 
 /**
@@ -741,6 +1453,32 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
  * 1.25 x 0.3 of itself, and in practice a little less because of the easing.
  */
 const COUNTER_REACH = 1.25;
+/**
+ * How much of a counter's change across its walls take by following it, the
+ * rest by thinning or thickening within the limits above. All of it, either
+ * way: a wider or a narrower o with the strokes of the rest. Walls thinned
+ * alone set the opened round letters as a light, and thickened alone the
+ * closed ones as a bold beside an H, an n and an m that have no counter.
+ */
+const COUNTER_FOLLOW = 1;
+/**
+ * How far either side of a counter's edge the ink beside it blends from
+ * moving as the counter was scaled into moving with the side, as a share of
+ * the counter's half-width. A wall at least this thick keeps its weight
+ * exactly; a longer blend thinned the walls of an opened o.
+ */
+const FOLLOW_BLEND = 0.25;
+/**
+ * How much of the change a counter takes up and down, against across. A
+ * wall can follow its counter across -- see `followCounters` -- but not up
+ * or down without changing the letter's height, so there every unit of
+ * counter is a unit of heavier stroke: taken in full, the bars of e, B and
+ * R and the tops and bottoms of every bowl set as a bold. Opening, a little,
+ * so an opened o is not only wider. Closing, none: even a third of it made
+ * the tops and bottoms of the closed bowls a bold beside the stems.
+ */
+const COUNTER_UPRIGHT = 0.35;
+const COUNTER_UPRIGHT_CLOSING = 0;
 /**
  * Where the easing starts, as a share of that limit; below it the counter is
  * scaled exactly as before. It sits just past the point where the limit and

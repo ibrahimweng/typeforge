@@ -66,6 +66,17 @@ export interface SlabOptions {
    * crack a few units wide was all that parted them.
    */
   weight?: number;
+  /**
+   * Whether the top of an upright stem gets a flag to the left rather than a
+   * bar across: the lowercase of a slab serif.
+   */
+  flagTops?: boolean;
+  /**
+   * The stems of the typeface, when known. A letter made of curves -- an S --
+   * rules thinner than the font's stems, and against its own strokes the tips
+   * of Lora's S beaks passed for ends; see `THINNEST_STEM`.
+   */
+  stem?: number;
 }
 
 /** A stroke end: where it is, how wide, and which way the stroke runs. */
@@ -122,6 +133,21 @@ const THINNEST_END = 0.6;
  * two hundred units tall on an E whose stem is eighty.
  */
 const WIDEST_END = 1.75;
+/**
+ * How thin an end may be against the typeface's stems. The tips of Lora's S
+ * beaks measure 0.6 of its stems, and ruled against the S alone, which is all
+ * curve and thinner than a stem, they passed for the ends of strokes and each
+ * got a slab standing on its beak. The thinnest real ends, Geist's n and r,
+ * are 0.86, so seven tenths sits between them.
+ */
+const THINNEST_STEM = 0.7;
+/**
+ * How much of an end the stroke just behind it has to fill. The top arm of
+ * Lora's 5 is a hairline ending in a beak three times as tall, and the edge
+ * down the beak read as the end of a stroke that wide: a bar stood up on it.
+ * A stroke that ends is about as wide behind its end as at it.
+ */
+const FLARED_END = 0.6;
 
 /**
  * How thick the strokes of a letter are, as a ruler across it would find.
@@ -165,7 +191,7 @@ function strokeOf(contours: Contour[]): number | null {
  * flat end to sit a slab on, and guessing at one would put a bar across the
  * middle of a curve.
  */
-export function findTerminals(contours: Contour[], maxWidth: number): Terminal[] {
+export function findTerminals(contours: Contour[], maxWidth: number, stem?: number): Terminal[] {
   const terminals: Terminal[] = [];
   /*
    * Only the ink's own outlines. A counter is wound against the letter, so the
@@ -194,10 +220,55 @@ export function findTerminals(contours: Contour[], maxWidth: number): Terminal[]
     return insideInk(polylines, { x: base.x, y: base.y + into * reach });
   };
 
+  const standsOnBar = (terminal: Terminal): boolean => {
+    const depth = terminal.width * STUB;
+    const aside = terminal.width * 1.3;
+    const probe = (side: -1 | 1) => ({
+      x: terminal.centre.x + terminal.inward.x * depth + terminal.along.x * side * aside,
+      y: terminal.centre.y + terminal.inward.y * depth + terminal.along.y * side * aside,
+    });
+    return insideInk(polylines, probe(-1)) && insideInk(polylines, probe(1));
+  };
+
+  /*
+   * Whether the stroke a stroke's width back from the end is much narrower
+   * than the end: a beak or a flare, not the end of a stroke. Measured along
+   * the end, through the ink lying across it; a ruler that finds none, where
+   * the stroke has already turned away, says nothing.
+   */
+  const flares = (terminal: Terminal, back: number): boolean => {
+    const probe = {
+      x: terminal.centre.x + terminal.inward.x * back,
+      y: terminal.centre.y + terminal.inward.y * back,
+    };
+    const level = Math.abs(terminal.along.x) > Math.abs(terminal.along.y);
+    const runs = level ? inkRunsAt(contours, probe.y) : inkRunsAt(contours, probe.x, "x");
+    // The run lying across the end, most of it within the end's span.
+    const at = level ? probe.x : probe.y;
+    const half = terminal.width / 2;
+    const overlap = ([low, high]: [number, number]) =>
+      Math.min(high, at + half) - Math.max(low, at - half);
+    const run = runs.reduce<[number, number] | undefined>(
+      (best, next) => (overlap(next) > (best ? overlap(best) : 0) ? next : best),
+      undefined,
+    );
+    return run !== undefined && run[1] - run[0] < terminal.width * FLARED_END;
+  };
+
   for (const [index, contour] of contours.entries()) {
     if (!ink[index]) continue;
     const segments = contourSegments(contour);
     if (segments.length < 3) continue;
+    /*
+     * Nor a dot. The square dot of Geist's i and j has two flat ends with
+     * square sides like any stem, and each got a slab: a cross over the
+     * light i, and at the heaviest a block run into the stem. A dot is no
+     * longer either way than a stroke is wide, near enough.
+     */
+    if (stroke !== null) {
+      const own = contoursBounds([contour]);
+      if (Math.max(own.xMax - own.xMin, own.yMax - own.yMin) <= stroke * DOT) continue;
+    }
     // Winding says which way a convex corner turns for this contour.
     const convexSign = isClockwise(contour) ? -1 : 1;
 
@@ -277,6 +348,13 @@ export function findTerminals(contours: Contour[], maxWidth: number): Terminal[]
        */
       if (Math.abs(terminal.inward.x) > Math.abs(terminal.inward.y) && carriesStem(terminal))
         continue;
+      /*
+       * Nor a stub standing on a bar: the top of a t, which meets its
+       * crossbar a stroke's width or so down. A slab there is a second
+       * crossbar just over the first -- the t read as a struck-through t --
+       * and a slab serif leaves it plain, as Rockwell and Roboto Slab do.
+       */
+      if (standsOnBar(terminal)) continue;
 
       /*
        * About as wide as the strokes of the letter it is on.
@@ -300,6 +378,8 @@ export function findTerminals(contours: Contour[], maxWidth: number): Terminal[]
         (here.length < stroke * THINNEST_END || here.length > stroke * WIDEST_END)
       )
         continue;
+      if (stem !== undefined && here.length < stem * THINNEST_STEM) continue;
+      if (flares(terminal, stem ?? stroke ?? terminal.width)) continue;
 
       terminals.push(terminal);
     }
@@ -307,6 +387,11 @@ export function findTerminals(contours: Contour[], maxWidth: number): Terminal[]
 
   return terminals;
 }
+
+/** How long a piece of ink may be, against the letter's strokes, and be a dot. */
+const DOT = 1.8;
+/** How far down, in widths of the stroke, a stub on a bar meets the bar. */
+const STUB = 1.6;
 
 /**
  * How near the top or bottom of the letter the edge of an arm has to be to
@@ -351,7 +436,7 @@ export function addSlabs(contours: Contour[], options: SlabOptions): Contour[] {
   const growth = Math.max(0, options.weight ?? 0);
   if (projection <= 0 && thickness <= 0) return contours;
 
-  const terminals = findTerminals(contours, maxWidth);
+  const terminals = findTerminals(contours, maxWidth, options.stem);
   if (terminals.length === 0) return contours;
 
   const box = contoursBounds(contours);
@@ -395,6 +480,18 @@ export function addSlabs(contours: Contour[], options: SlabOptions): Contour[] {
 
     let low = -(half + reach(-1));
     let high = half + reach(1);
+
+    /*
+     * The top of a lowercase stem gets a flag, not a bar. A bar across the
+     * top of the ascender of h, b or l, or of the stem of n, i or u, read as
+     * a stroke through it -- h as a barred h -- where a slab serif's
+     * lowercase has its serif to the left only, as Rockwell, Courier and
+     * Roboto Slab do. Diagonals cut off level keep their bars.
+     */
+    if (options.flagTops && inward.y < -0.9 && Math.abs(along.y) < 0.1) {
+      if (along.x > 0) high = half;
+      else low = -half;
+    }
 
     /*
      * An arm gets a beak, not a bar.
@@ -452,4 +549,138 @@ export function addSlabs(contours: Contour[], options: SlabOptions): Contour[] {
 
   if (slabs.length === 0) return contours;
   return [...contours, ...slabs];
+}
+
+/**
+ * The slabs of a letter made lighter or bolder, as the rectangles they are.
+ *
+ * They used to be weighted with the letter, as contours overlapping it, and
+ * each was measured against the strokes it lay across: the ruler across a
+ * slab on a diagonal found the diagonal's own edges a few units off and held
+ * the slab back, so a light k, x or A stood on blocks three times the
+ * weight of its stems, and a heavy one grew notches where the slab and the
+ * stroke under it moved by different amounts. A slab is a bar. It moves as
+ * one: its flush edge goes with the end of the stroke, out by the weight or
+ * in by it, its thickness and its length change by the weight on each side,
+ * and lighter it keeps a third of itself and a hairline, as a stroke does.
+ *
+ * `letter` is the letter the slabs were laid on, before the weight, which
+ * says which edge of each is the flush one: the edge with paper outside it
+ * and ink under the edge across from it. At no weight at all the slabs are
+ * only joined where they end a crack apart.
+ */
+export function weighSlabs(
+  slabs: Contour[],
+  letter: Contour[],
+  weight: number,
+  unitsPerEm: number,
+  /** The letter as the weight left it, where it has been weighted. */
+  weighted?: Contour[],
+): Contour[] {
+  const polylines = letter.map((contour) => flattenContour(contour, 12));
+  const moved = weighted?.map((contour) => flattenContour(contour, 12));
+  const hairline = unitsPerEm * 0.008;
+  const resize = (length: number): number =>
+    weight >= 0 ? length + 2 * weight : Math.max(length + 2 * weight, hairline, length / 3);
+  const bars = slabs.map((slab) => {
+    if (slab.nodes.length !== 4) return null;
+    const q = slab.nodes.map((node) => node.point);
+    const c = {
+      x: (q[0].x + q[1].x + q[2].x + q[3].x) / 4,
+      y: (q[0].y + q[1].y + q[2].y + q[3].y) / 4,
+    };
+    const edges = q.map((point, index) => {
+      const next = q[(index + 1) % 4];
+      const middle = { x: (point.x + next.x) / 2, y: (point.y + next.y) / 2 };
+      const out = unit(c, middle);
+      return { middle, out, far: out.length };
+    });
+    const probe = (index: number) => {
+      const { middle, out } = edges[index];
+      return insideInk(polylines, { x: middle.x + out.x, y: middle.y + out.y });
+    };
+    let flush = -1;
+    for (let index = 0; index < 4 && flush < 0; index++)
+      if (!probe(index) && probe((index + 2) % 4)) flush = index;
+    const axis = edges[flush < 0 ? 0 : flush];
+    const u = { x: axis.out.x, y: axis.out.y };
+    const thickness = resize(axis.far * 2);
+    /*
+     * Flush with the stroke's end where there is one -- where the weight
+     * left it, which is not always by the weight: the top of a j's stem
+     * comes up short of its dot, and a slab moved the whole weight met it.
+     * Else about the middle.
+     */
+    let outer = flush < 0 ? thickness / 2 : axis.far + weight;
+    if (flush >= 0 && moved) {
+      const depth = axis.far * 2 + 2 * Math.abs(weight);
+      const from = {
+        x: axis.middle.x - u.x * depth,
+        y: axis.middle.y - u.y * depth,
+      };
+      if (insideInk(moved, from)) {
+        const out = rayHitDistance(moved, from, u) - depth;
+        if (Number.isFinite(out) && Math.abs(out) <= Math.abs(weight) * 1.5 + 1)
+          outer = axis.far + out;
+      }
+    }
+    const side = resize(edges[flush < 0 ? 1 : (flush + 1) % 4].far * 2) / 2;
+    return {
+      c,
+      u,
+      v: { x: -u.y, y: u.x },
+      outer,
+      inner: outer - thickness,
+      low: -side,
+      high: side,
+    };
+  });
+
+  /*
+   * Two slabs that end a crack apart -- the foot of a k's stem and the foot of
+   * its leg, which sit side by side -- are one slab. Each takes a share of the
+   * white between it and its neighbour, which leaves a gap; where that gap
+   * is narrower than an opening it reads as a flaw, not as two serifs, and a
+   * slab serif joins them.
+   */
+  const crack = unitsPerEm * 0.036;
+  const dot = (a: Vec2, b: Vec2) => a.x * b.x + a.y * b.y;
+  bars.forEach((one, i) => {
+    if (!one) return;
+    bars.forEach((other, j) => {
+      if (!other || j <= i || dot(one.u, other.u) < 0.99) return;
+      const apart = { x: other.c.x - one.c.x, y: other.c.y - one.c.y };
+      // The same band across: the one's flush edge where the other's is.
+      if (Math.abs(dot(apart, one.u) + other.outer - one.outer) > 1) return;
+      const offset = dot(apart, one.v);
+      // How far the one's end is from the other's, along them.
+      const gap = offset > 0 ? offset + other.low - one.high : one.low - (offset + other.high);
+      if (!(gap > 0 && gap < crack)) return;
+      const reach = gap / 2 + 0.5;
+      if (offset > 0) {
+        one.high += reach;
+        other.low -= reach;
+      } else {
+        one.low -= reach;
+        other.high += reach;
+      }
+    });
+  });
+
+  return slabs.map((slab, index) => {
+    const bar = bars[index];
+    if (!bar) return slab;
+    const { c, u, v } = bar;
+    const nodes = slab.nodes.map((node) => {
+      const dx = node.point.x - c.x;
+      const dy = node.point.y - c.y;
+      const across = dx * u.x + dy * u.y > 0 ? bar.outer : bar.inner;
+      const along = dx * v.x + dy * v.y > 0 ? bar.high : bar.low;
+      return {
+        ...node,
+        point: { x: c.x + u.x * across + v.x * along, y: c.y + u.y * across + v.y * along },
+      };
+    });
+    return { ...slab, nodes };
+  });
 }

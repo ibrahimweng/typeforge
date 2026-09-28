@@ -97,10 +97,13 @@ describe("weight", () => {
       ]),
     ]);
     const bounds = contoursBounds(at(typeface, glyph, { weight: 30 }));
-    // Wider and taller by twice the weight: the corners went out on the mitre
-    // rather than seventy per cent of the way along it.
+    // Wider by twice the weight: the corners went out on the mitre rather
+    // than seventy per cent of the way along it.
     expect(bounds.xMax - bounds.xMin).toBeCloseTo(160, 6);
-    expect(bounds.yMax - bounds.yMin).toBeCloseTo(760, 6);
+    // And still standing on the baseline and reaching the cap height, as a
+    // bold is drawn, rather than grown past both by the weight.
+    expect(bounds.yMin).toBeCloseTo(0, 6);
+    expect(bounds.yMax).toBeCloseTo(700, 6);
   });
 
   it("gives a round letter the same weight as a straight one", () => {
@@ -141,9 +144,10 @@ describe("weight", () => {
     ]);
     const [shape] = at(typeface, glyph, { weight: 25 });
     expect(contoursIntersect([shape])).toBe(false);
-    // The inside corner, moved over with the letter: 125 + 25, 125.
+    // The inside corner, moved over with the letter and back up onto the
+    // baseline with it: 125 + 25, 125 + 25.
     expect(shape.nodes[3].point.x).toBeCloseTo(150, 6);
-    expect(shape.nodes[3].point.y).toBeCloseTo(125, 6);
+    expect(shape.nodes[3].point.y).toBeCloseTo(150, 6);
     // And the stem's edge is still upright: its two ends did not move apart.
     expect(shape.nodes[2].point.x).toBeCloseTo(shape.nodes[3].point.x, 6);
   });
@@ -173,6 +177,101 @@ describe("weight", () => {
     const { typeface, glyph } = letter([circle(300, 300, 250, true), circle(300, 300, 200)]);
     const contours = at(typeface, glyph, { weight: -40 });
     for (const contour of contours) expect(contoursIntersect([contour])).toBe(false);
+  });
+
+  it("keeps the dot of an i apart from its stem", () => {
+    // A stem to the x-height and a dot a stem's width above it, both wound
+    // clockwise; the heaviest weight is more than the gap between them.
+    const stem = polygon([
+      [100, 0],
+      [100, 500],
+      [200, 500],
+      [200, 0],
+    ]);
+    const dot = polygon([
+      [100, 600],
+      [100, 700],
+      [200, 700],
+      [200, 600],
+    ]);
+    const { typeface, glyph } = letter([stem, dot]);
+    const [heavyStem, heavyDot] = at(typeface, glyph, { weight: 60 });
+    expect(heavyStem.nodes).toHaveLength(4);
+    expect(heavyDot.nodes).toHaveLength(4);
+    const top = Math.max(...heavyStem.nodes.map((node) => node.point.y));
+    const bottom = Math.min(...heavyDot.nodes.map((node) => node.point.y));
+    // Some of the hundred units of paper between them is still there, less
+    // what bringing the letter back to its height takes off everything...
+    expect(bottom - top).toBeGreaterThan(100 * 0.35);
+    // ...and both still grew, sideways by the whole weight.
+    const wide = (contour: Contour) =>
+      Math.max(...contour.nodes.map((node) => node.point.x)) -
+      Math.min(...contour.nodes.map((node) => node.point.x));
+    expect(wide(heavyStem)).toBeCloseTo(220, 0);
+    expect(wide(heavyDot)).toBeCloseTo(220, 0);
+  });
+
+  it("keeps the dot of an i full when the letter is made lighter", () => {
+    const stem = polygon([
+      [100, 0],
+      [100, 500],
+      [200, 500],
+      [200, 0],
+    ]);
+    const dot = polygon([
+      [100, 600],
+      [100, 700],
+      [200, 700],
+      [200, 600],
+    ]);
+    const { typeface, glyph } = letter([stem, dot]);
+    const [lightStem, lightDot] = at(typeface, glyph, { weight: -40 });
+    const wide = (contour: Contour) =>
+      Math.max(...contour.nodes.map((node) => node.point.x)) -
+      Math.min(...contour.nodes.map((node) => node.point.x));
+    // The stem thins as far as it may; the dot, drawn as wide as the stem,
+    // gives up only part of that, as the dot of a light cut does.
+    expect(wide(lightStem)).toBeLessThan(40);
+    expect(wide(lightDot)).toBeGreaterThan(wide(lightStem) * 1.5);
+    expect(wide(lightDot)).toBeLessThan(100);
+  });
+
+  it("thins a ball less than a stroke, and a ring as a stroke", () => {
+    // A solid disc, too big to be a dot, is a ball: a light cut keeps it
+    // fuller than its strokes. The wall of a ring is a stroke, and thins as
+    // far as any other.
+    const disc = letter([circle(300, 300, 150, true)]);
+    const [lightDisc] = at(disc.typeface, disc.glyph, { weight: -40 });
+    const ring = letter([circle(300, 300, 150, true), circle(300, 300, 100)]);
+    const [outside, inside] = at(ring.typeface, ring.glyph, { weight: -40 });
+    const size = (contour: Contour) =>
+      contoursBounds([contour]).xMax - contoursBounds([contour]).xMin;
+    // Plain offsetting would take the disc to 220.
+    expect(size(lightDisc)).toBeGreaterThan(250);
+    expect(contoursIntersect([lightDisc])).toBe(false);
+    // The ring's wall of fifty goes below twenty, as a stem's would.
+    expect((size(outside) - size(inside)) / 2).toBeLessThan(20);
+  });
+
+  it("keeps the side bearings of a letter whose feet run out on the mitre", () => {
+    // A v: two diagonals cut off level at the top, meeting at a flat foot.
+    const v = polygon([
+      [50, 500],
+      [150, 500],
+      [300, 100],
+      [450, 500],
+      [550, 500],
+      [350, 0],
+      [250, 0],
+    ]);
+    const { typeface, glyph } = letter([v], 600);
+    const heavy = at(typeface, glyph, { weight: 60 });
+    const box = contoursBounds(heavy);
+    const advance = resolveAdvanceWidth(glyph, typeface);
+    // Fifty either side, as drawn: the tips of the arms went out by more than
+    // the weight, and the advance grew by what they took.
+    expect(box.xMin).toBeCloseTo(50, 0);
+    expect(advance - box.xMax).toBeCloseTo(50, 0);
   });
 
   it("widens the letter by the ink it adds and keeps its side bearings", () => {
@@ -357,6 +456,83 @@ describe("a lighter or bolder cut", () => {
         expect(stem).toBeGreaterThanOrEqual(100 / 3 - 0.5);
       } else expect(stem).toBeCloseTo(100 + 2 * weight, 0);
     }
+  });
+
+  it("keeps a serif letter on its baseline and at its height, lighter and bolder", () => {
+    // The serifs are thirty thick: made lighter they keep a third of
+    // themselves and move less than the weight, which the letter's return to
+    // its height has to follow rather than assume.
+    const { typeface, glyph } = letter([serifI()]);
+    for (const weight of [-40, 60]) {
+      const box = contoursBounds(at(typeface, glyph, { weight }));
+      expect(box.yMin, `weight ${weight}`).toBeCloseTo(0, 0);
+      expect(box.yMax, `weight ${weight}`).toBeCloseTo(700, 0);
+    }
+  });
+
+  it("rounds the end of an aperture the weight swallows, rather than leaving a step", () => {
+    // A slot into the side of a letter whose end is three short curves --
+    // shorter than the weight, as at the inner end of the aperture of a.
+    const node = (
+      x: number,
+      y: number,
+      handleIn: [number, number] | null = null,
+      handleOut: [number, number] | null = null,
+    ): GlyphNode => ({
+      point: { x, y },
+      handleIn: handleIn && { x: handleIn[0], y: handleIn[1] },
+      handleOut: handleOut && { x: handleOut[0], y: handleOut[1] },
+      type: handleIn || handleOut ? "smooth" : "corner",
+    });
+    const slot: Contour = {
+      closed: true,
+      nodes: [
+        node(0, 0),
+        node(0, 600),
+        node(600, 600),
+        node(600, 330, null, [450, 330]),
+        node(320, 322, [360, 326], [300, 320]),
+        node(292, 305, [296, 316], [290, 298]),
+        node(300, 286, [292, 290], [310, 282]),
+        node(330, 280, [318, 280], [450, 280]),
+        node(600, 270, [450, 270], null),
+        node(600, 0),
+      ],
+    };
+    const { typeface, glyph } = letter([slot]);
+    const [heavy] = at(typeface, glyph, { weight: 40 });
+    expect(heavy.nodes).toHaveLength(10);
+    expect(contoursIntersect([heavy])).toBe(false);
+    // The points of the end are spread round it, none left on another...
+    for (let index = 3; index <= 8; index++) {
+      const here = heavy.nodes[index].point;
+      const next = heavy.nodes[index + 1].point;
+      expect(Math.hypot(next.x - here.x, next.y - here.y), `after ${index}`).toBeGreaterThan(2);
+    }
+    // ...and the curves through them meet smoothly.
+    for (let index = 4; index <= 7; index++) {
+      const { point, handleIn, handleOut } = heavy.nodes[index];
+      const a = { x: point.x - handleIn!.x, y: point.y - handleIn!.y };
+      const b = { x: handleOut!.x - point.x, y: handleOut!.y - point.y };
+      const cos = (a.x * b.x + a.y * b.y) / (Math.hypot(a.x, a.y) * Math.hypot(b.x, b.y));
+      expect(cos, `at ${index}`).toBeGreaterThan(Math.cos((5 * Math.PI) / 180));
+    }
+  });
+
+  it("keeps a thin bowl at its overshoot beside a stem on the same baseline", () => {
+    // A b's parts: a stem a hundred thick, and a bowl forty thick that dips
+    // twelve below the baseline. Made lighter the stem's foot rises by the
+    // weight, the bowl's thin bottom by a third of itself.
+    const stem = polygon([
+      [100, 0],
+      [100, 700],
+      [200, 700],
+      [200, 0],
+    ]);
+    const { typeface, glyph } = letter([stem, circle(360, 250, 262, true), circle(360, 250, 222)]);
+    const [, bowl] = at(typeface, glyph, { weight: -40 });
+    expect(contoursBounds([bowl]).yMin).toBeCloseTo(-12, -0.5);
+    expect(contoursBounds([at(typeface, glyph, { weight: -40 })[0]]).yMin).toBeCloseTo(0, 0);
   });
 
   it("thins a serif without tearing it", () => {

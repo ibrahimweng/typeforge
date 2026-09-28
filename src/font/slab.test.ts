@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { contoursBounds } from "./geometry";
+import { blankGlyph } from "./library";
 import { addSlabs, findTerminals } from "./slab";
-import type { Contour, Vec2 } from "./types";
+import { resolveAdvanceWidth, resolveGlyphContours } from "./transform";
+import { type Contour, DEFAULT_PARAMS, emptyTypeface, type GlyphParams, type Vec2 } from "./types";
 
 /** Wound clockwise, as a filled outer contour is in a font. */
 function polygon(points: Vec2[]): Contour {
@@ -321,6 +323,30 @@ describe("which ends a slab serif gives a slab", () => {
     expect(findTerminals([serifed], WIDE)).toHaveLength(0);
   });
 
+  it("judges an end against the typeface's stems, not only the letter's own", () => {
+    // Lora's S is all curve and rules thinner than its stems, so the tips of
+    // its beaks passed for stroke ends and each got a slab on its beak.
+    const thin = stem(100, 0, 55, 700);
+    expect(findTerminals([thin], WIDE)).toHaveLength(2);
+    expect(findTerminals([thin], WIDE, 87)).toHaveLength(0);
+  });
+
+  it("leaves a beak alone that flares from a thinner arm", () => {
+    // The top arm of Lora's 5: a hairline ending in a beak nearly twice as
+    // tall, and a bar stood up on the edge down the beak.
+    const arm = polygon([
+      { x: 100, y: 650 },
+      { x: 100, y: 700 },
+      { x: 430, y: 700 },
+      { x: 430, y: 740 },
+      { x: 460, y: 740 },
+      { x: 460, y: 650 },
+    ]);
+    const letter = [stem(0, 0, 90, 600), arm];
+    const ends = findTerminals(letter, WIDE, 90);
+    expect(ends.map((end) => Math.round(end.centre.x))).toEqual([45, 45]);
+  });
+
   it("puts no slab on a slanted end", () => {
     // The tail of Geist's & ends on a cut a few degrees off level, and a slab
     // laid along it stuck out like a stick.
@@ -347,5 +373,134 @@ describe("which ends a slab serif gives a slab", () => {
       expect(Math.abs(terminal.inward.x)).toBeLessThan(1e-9);
       expect(Math.abs(terminal.inward.y)).toBeCloseTo(1, 9);
     }
+  });
+});
+
+describe("slabs on a letter, with the other controls", () => {
+  /*
+   * An I and a V-like letter for the stem to be measured from: the I is a
+   * hundred wide, a hundred units in from its sides, and the diagonal is a
+   * leg cut off level at the baseline.
+   */
+  function letter(contours: Contour[], advance = 300, name = "x", code = 120) {
+    const typeface = emptyTypeface();
+    const I = { ...blankGlyph("I", [73]), contours: [stem(100, 0, 100, 700)], params: {} };
+    const glyph = { ...blankGlyph(name, [code]), advanceWidth: advance, contours, params: {} };
+    typeface.glyphs = [I, glyph];
+    typeface.glyphIndex = new Map([
+      ["I", 0],
+      ["x", 1],
+    ]);
+    return { typeface, glyph };
+  }
+  const at = (
+    { typeface, glyph }: ReturnType<typeof letter>,
+    params: Partial<GlyphParams>,
+  ): { contours: Contour[]; advance: number } => {
+    typeface.params = { ...DEFAULT_PARAMS, ...params };
+    return {
+      contours: resolveGlyphContours(glyph, typeface),
+      advance: resolveAdvanceWidth(glyph, typeface),
+    };
+  };
+
+  it("makes room for the slabs beside the letter rather than taking its side bearings", () => {
+    const one = letter([stem(100, 0, 100, 700)]);
+    const { contours, advance } = at(one, { slab: 80 });
+    const box = contoursBounds(contours);
+    // Past the stem by the slab on each side, and still a hundred in from
+    // either side of the advance.
+    expect(box.xMax - box.xMin).toBeGreaterThan(200);
+    expect(box.xMin).toBeCloseTo(100, 0);
+    expect(advance - box.xMax).toBeCloseTo(100, 0);
+  });
+
+  it("thins a slab on a diagonal with the letter, as it thins one on a stem", () => {
+    // A leg leaning right, cut off level top and bottom.
+    const leg = polygon([
+      { x: 100, y: 0 },
+      { x: 400, y: 700 },
+      { x: 500, y: 700 },
+      { x: 200, y: 0 },
+    ]);
+    const straight = at(letter([stem(100, 0, 100, 700)], 600), { slab: 60, weight: -40 });
+    const slanted = at(letter([leg], 600), { slab: 60, weight: -40 });
+    // The last contours are the slabs; each is its own rectangle.
+    const thick = (contours: Contour[]) => {
+      const box = contoursBounds([contours[contours.length - 1]]);
+      return box.yMax - box.yMin;
+    };
+    expect(thick(slanted.contours)).toBeLessThan(thick(straight.contours) * 1.2);
+    expect(thick(straight.contours)).toBeLessThan(40);
+  });
+
+  it("makes one slab of two that would end a crack apart", () => {
+    // Two stems forty apart: each slab takes its share of the gap and would
+    // leave a crack between them.
+    const one = letter([stem(100, 0, 100, 700), stem(240, 0, 100, 700)], 500);
+    const { contours } = at(one, { slab: 60 });
+    const slabs = contours.slice(2).filter((contour) => contoursBounds([contour]).yMin < 1);
+    expect(slabs).toHaveLength(2);
+    const [left, right] = slabs
+      .map((contour) => contoursBounds([contour]))
+      .sort((a, b) => a.xMin - b.xMin);
+    expect(right.xMin).toBeLessThanOrEqual(left.xMax);
+  });
+
+  it("puts no slab on a dot, nor on punctuation", () => {
+    // An i: a stem and a square dot as wide as it.
+    const i = letter([stem(100, 0, 100, 500), stem(100, 600, 100, 100)], 300, "i", 105);
+    const { contours } = at(i, { slab: 60 });
+    // Two slabs at most -- on the stem -- and none reaching the dot.
+    const slabs = contours.slice(2);
+    expect(slabs.length).toBeGreaterThan(0);
+    for (const slab of slabs) expect(contoursBounds([slab]).yMax).toBeLessThanOrEqual(501);
+    // An ! is a stroke and a dot; a slab serif gives it no slabs.
+    const bang = letter([stem(100, 200, 100, 500), stem(100, 0, 100, 100)], 300, "exclam", 33);
+    expect(at(bang, { slab: 60 }).contours).toHaveLength(2);
+  });
+
+  it("gives the top of a lowercase stem a flag to the left, and a capital a bar", () => {
+    const top = (contours: Contour[]) =>
+      contours
+        .slice(1)
+        .map((contour) => contoursBounds([contour]))
+        .find((box) => box.yMax > 699)!;
+    const l = at(letter([stem(100, 0, 100, 700)], 300, "l", 108), { slab: 60 });
+    const I = at(letter([stem(100, 0, 100, 700)], 300, "I", 73), { slab: 60 });
+    const stemOf = (contours: Contour[]) => contoursBounds([contours[0]]);
+    // The l's flag reaches left of its stem and not right of it...
+    expect(top(l.contours).xMin).toBeLessThan(stemOf(l.contours).xMin - 10);
+    expect(top(l.contours).xMax).toBeCloseTo(stemOf(l.contours).xMax, 0);
+    // ...and the I's bar reaches both ways.
+    expect(top(I.contours).xMax).toBeGreaterThan(stemOf(I.contours).xMax + 10);
+  });
+
+  it("leaves the top of a t plain, a stub on its crossbar", () => {
+    // A stem a hundred wide rising a stem's width and a half past its bar.
+    const t = letter(
+      [
+        polygon([
+          { x: 100, y: 0 },
+          { x: 100, y: 400 },
+          { x: 0, y: 400 },
+          { x: 0, y: 500 },
+          { x: 100, y: 500 },
+          { x: 100, y: 650 },
+          { x: 200, y: 650 },
+          { x: 200, y: 500 },
+          { x: 300, y: 500 },
+          { x: 300, y: 400 },
+          { x: 200, y: 400 },
+          { x: 200, y: 0 },
+        ]),
+      ],
+      400,
+      "t",
+      116,
+    );
+    const { contours } = at(t, { slab: 60 });
+    const tops = contours.slice(1).filter((contour) => contoursBounds([contour]).yMax > 600);
+    expect(tops).toHaveLength(0);
   });
 });
