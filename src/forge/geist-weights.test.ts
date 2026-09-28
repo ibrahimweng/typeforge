@@ -398,3 +398,34 @@ describe("a slanted face", () => {
     }
   });
 });
+
+describe("the Sans on a slant", () => {
+  it("keeps the upright's spacing, letter by letter", () => {
+    // An oblique is spaced as its upright: the r beside the g, the f beside
+    // the o, the E beside the S, the y beside the one and the figures.
+    const slanted: Style = { ...SANS, metrics: { ...SANS.metrics, slant: 12 } };
+    const names = [..."rgfoESy", "one", "two", "three", "four", "seven", "nine"];
+    const moved = names.filter((name) => {
+      const upright = drawLetter(name, SANS, formOf(forge, name))!;
+      const leaned = drawLetter(name, slanted, formOf(forge, name))!;
+      return Math.abs(upright.advanceWidth - leaned.advanceWidth) > 0.5;
+    });
+    expect(moved).toEqual([]);
+  });
+});
+
+describe("the marks as Geist draws them", () => {
+  it("sets the caret narrow and high, the colon's dot and the percent's rings where Geist's are", () => {
+    // Geist Regular: the caret 346 wide from 383 to 673; the colon's upper
+    // dot topped at 506; the percent's rings 308 wide, 352 tall, the lower
+    // one ending 714 from the left of the upper.
+    const caret = contoursBounds(draw("asciicircum", 87).contours);
+    expect(caret.xMax - caret.xMin).toBeCloseTo(346, -1);
+    expect(caret.yMin).toBeCloseTo(383, -1);
+    expect(caret.yMax).toBeCloseTo(673, -1);
+    expect(contoursBounds(draw("colon", 87).contours).yMax).toBeCloseTo(506, -1);
+    const percent = contoursBounds(draw("percent", 87).contours);
+    expect(percent.xMax - percent.xMin).toBeCloseTo(714, -1.3);
+    expect(percent.yMax - percent.yMin).toBeCloseTo(726, -1.3);
+  });
+});

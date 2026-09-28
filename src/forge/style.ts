@@ -719,14 +719,17 @@ export const SANS: Style = {
       semicolon: [1.15, 1.15],
       quotesingle: [0.61, 0.61],
       quotedbl: [0.61, 0.61],
-      parenleft: [0.59, 0.59],
-      parenright: [0.59, 0.59],
+      // Geist's parentheses stand 45 off the side they open from and 15 off
+      // the side they close on.
+      parenleft: [0.56, 0.19],
+      parenright: [0.19, 0.56],
       slash: [0.5, 0.81],
       hyphen: [0.59, 0.59],
       // Geist's reaches past both its sides (-10 and -5); held just inside.
       numbersign: [0.1, 0.1],
       percent: [0.59, 0.59],
       asterisk: [0.59, 0.59],
+      asciicircum: [0.5, 0.5],
       at: [0.61, 0.61],
     },
     /*
@@ -840,6 +843,7 @@ export const SANS: Style = {
     section: "grotesque",
     asterisk: "grotesque",
     at: "grotesque",
+    asciicircum: "grotesque",
     zero: "grotesque",
     two: "grotesque",
     three: "grotesque",

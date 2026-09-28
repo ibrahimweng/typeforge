@@ -273,17 +273,16 @@ function crescent(f: Frame, side: 1 | -1): Stroke[] {
 function upperStop(f: Frame, radius: number): number {
   if (!squareDots(f)) return f.x - radius;
   /*
-   * Its top rises a little as the pen thins and more as it grows: 0.90 of
-   * the x-height at Geist Thin, 0.87 at the Regular, 0.96 at the Black -- a
-   * heavy colon held at the Regular's height set its two dots nearly
-   * touching. Never nearer the full stop than two thirds of a dot, nor above
-   * the x-height.
+   * Its top stands a little under the x-height, and lower as the pen thins:
+   * 0.90 of it at Geist Thin, 0.955 at the Regular (506 of 530) and 0.965
+   * at the Black. Never nearer the full stop than two thirds of a dot, nor
+   * above the x-height.
    */
   const stem = f.half * 2;
   const share =
     stem < 86
-      ? 0.874 + 0.028 * Math.min(1, (86 - stem) / 56)
-      : 0.874 + 0.09 * Math.min(1, (stem - 86) / 86);
+      ? 0.955 - 0.053 * Math.min(1, (86 - stem) / 56)
+      : 0.955 + 0.01 * Math.min(1, (stem - 86) / 86);
   return Math.min(Math.max(f.x * share - radius, radius * 3.7), f.x - radius);
 }
 

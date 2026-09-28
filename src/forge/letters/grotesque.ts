@@ -2232,6 +2232,41 @@ function pointOnBowl(f: Frame, centre: Vec2, halfW: number, halfH: number, degre
 }
 
 /**
+ * The caret, as Geist draws it: two strokes leaning in to a head cut level
+ * on the cap line and feet cut level at 383, narrow and upright, lighter than
+ * the stem at a Black. The plain one was a wide chevron set low, a sign.
+ */
+export function grotesqueCaret(style: Style): Recipe {
+  const f = frame(style);
+  const [X, lerp] = squared(f);
+  const k = X(1) - X(0);
+  const top = up(f, 673);
+  const bottom = up(f, 383);
+  // Geist's measures, from the left of the ink: the feet 82 across on the
+  // Regular (34 on the Thin, 127 on the Black), the head 106 (48, 165) from
+  // 120 in, and the whole 346 (288, 405) wide.
+  const foot = lerp(82, 127, 34) * k;
+  const wide = lerp(346, 405, 288) * k;
+  const headLeft = 120 * k;
+  const headRight = lerp(226, 285, 168) * k;
+  const x0 = X(0);
+  const leftFoot = at(x0 + foot / 2, bottom);
+  const leftHead = at(x0 + headLeft + foot / 2, top);
+  const rightFoot = at(x0 + wide - foot / 2, bottom);
+  const rightHead = at(x0 + headRight - foot / 2, top);
+  // Each stroke as heavy across as its feet are wide, square to its lean.
+  const lean = Math.atan2(leftHead.x - leftFoot.x, top - bottom);
+  const pen = { ...f.style.pen, weight: Math.max(foot * Math.cos(lean), 1), contrast: 0 };
+  return finish(
+    f,
+    [straight(leftFoot, leftHead), straight(rightFoot, rightHead)].map((spine) => {
+      const one = ink(f, spine, LEVEL, LEVEL);
+      return inherit(one, { ...one, pen });
+    }),
+  );
+}
+
+/**
  * The line tangent to two runs of arcs, leaving the first -- travelled
  * anticlockwise -- and arriving on the second, travelled clockwise, so the
  * whole is one smooth reverse curve: the first run up to where the line
@@ -2850,7 +2885,8 @@ export function grotesqueSlash(style: Style): Recipe {
 /** The number sign: two slanted uprights and two bars, a little lighter than the stem. */
 export function grotesqueNumberSign(style: Style): Recipe {
   const f = frame(style);
-  const u = large(f, 1);
+  // Geist Thin's is as wide as its Regular's, where the o is wider.
+  const u = large(f, 1) / (1 + (f.style.metrics.lightHeld?.grow ?? 0) * thinness(f));
   const X = (x: number) => f.edge - f.half + x * u;
   /*
    * Measured off Geist Thin, Regular and Black: the uprights lean less and
@@ -2878,9 +2914,24 @@ export function grotesqueNumberSign(style: Style): Recipe {
     const drawn = ink(f, straight(at(X(x), 0), at(X(x) + slope * f.cap, f.cap)), LEVEL, LEVEL);
     return inherit(drawn, { ...drawn, pen: pen(uprightW) });
   };
+  /*
+   * Each bar cut at its ends along the uprights' lean, as Geist's are: drawn
+   * as a short run up that lean, as tall as the bar is thick and cut level,
+   * with a pen as wide as the bar is long. Cut upright, a light bar's ends
+   * stood out square past the leaning uprights.
+   */
   const bar = (y: number): Stroke => {
-    const drawn = ink(f, straight(at(lean(left, y) - over, y), at(lean(right, y) + over, y)));
-    return inherit(drawn, { ...drawn, pen: pen(barW) });
+    const from = lean(left, y) - over;
+    const to = lean(right, y) + over;
+    const middle = (from + to) / 2;
+    const rise = barW / 2;
+    const drawn = ink(
+      f,
+      straight(at(middle - slope * rise, y - rise), at(middle + slope * rise, y + rise)),
+      LEVEL,
+      LEVEL,
+    );
+    return inherit(drawn, { ...drawn, pen: pen((to - from) / Math.hypot(1, slope)) });
   };
   return finish(f, [
     upright(left),
@@ -2927,15 +2978,17 @@ export function grotesqueAsterisk(style: Style): Recipe {
 /** The percent: two narrow ovals and a long diagonal cut level at both ends. */
 export function grotesquePercent(style: Style): Recipe {
   const f = frame(style);
-  const u = large(f, 1);
+  // Geist Thin's is narrower against its o than the Regular's.
+  const u = large(f, 1) * (1 - 0.06 * thinness(f));
   const X = (x: number) => f.edge - f.half + x * u;
   /*
-   * Measured off Geist Thin, Regular and Black. Its ovals are drawn lighter
-   * than the stem as the pen grows -- Geist Black's are 113 across on a stem
-   * of 172, 84 at their crowns -- and move apart with the slash between them,
-   * so each keeps an open counter well clear of the diagonal. Grown with the
-   * stem's own pen, a Black's ovals swelled into blots that ran into the
-   * slash and an Ultra's was one black mass wider than a W.
+   * Measured off Geist Thin, Regular and Black, from the left of the ink.
+   * Its ovals are tall -- 352 of the cap height at the Regular and the
+   * Black, 320 at the Thin -- and drawn lighter than the stem as the pen
+   * grows (Geist Black's are 122 across on a stem of 172, 86 at their
+   * crowns), and the slash stands up a little as it grows heavier. Past the
+   * Black the ovals move apart with the slash between them, so each keeps an
+   * open counter well clear of the diagonal.
    */
   const [, lerp] = squared(f);
   const t = Math.min(heaviness(f) / 0.67, 2.24);
@@ -2944,32 +2997,36 @@ export function grotesquePercent(style: Style): Recipe {
     light ? lerp(a, b, thin) : a + (b - a) * Math.min(t, 1);
   const stem = f.half * 2;
   const past = Math.max(0, stem - 172 * (f.x / 530));
+  // Past the Black no heavier at the crowns than the Black's, or the rings
+  // stood past both lines and their counters closed to slits.
+  const ringWeight = stem * held3(0.83, 0.71, 1);
+  const crowns = 172 * (f.x / 530) * 0.71 * 0.7;
   const ringPen = {
     ...f.style.pen,
-    weight: stem * held3(0.9, 0.66, 1),
-    contrast: held3(0, 0.26, 0),
+    weight: ringWeight,
+    contrast: past > 0 ? Math.max(0.3, 1 - crowns / ringWeight) : held3(0.14, 0.3, 0.07),
     angle: 0,
   };
-  const halfW = held3(106, 111, 98) * u + past * 0.12;
-  const halfH = up(f, held3(135.5, 131.5, 121));
+  const halfW = held3(118, 112.5, 109) * u + past * 0.35;
+  const halfH = up(f, held3(145, 133, 146));
   const oval = (x: number, y: number): Stroke => {
     const drawn = ink(f, ring({ ...f, half: ringPen.weight / 2 }, at(x, up(f, y)), halfW, halfH));
     return inherit(drawn, { ...drawn, pen: ringPen });
   };
-  const slash = at(X(held3(137.5, 183, 107)) + past * 0.45, 0);
-  const slope = held3(0.7, 0.702, 0.706);
-  const slashPen = { ...f.style.pen, weight: stem * held3(1, 0.81, 1), contrast: 0, angle: 0 };
-  const diagonal = ink(
-    f,
-    straight(slash, at(slash.x + slope * up(f, 726), up(f, 726))),
-    LEVEL,
-    LEVEL,
-  );
+  const slash = at(X(held3(112, 159, 34)) + past * 0.8, 0);
+  const slope = held3(0.69, 0.648, 0.717);
+  const slashPen = {
+    ...f.style.pen,
+    weight: stem * held3(0.76, 0.49, 0.81),
+    contrast: 0,
+    angle: 0,
+  };
+  const diagonal = ink(f, straight(slash, at(slash.x + slope * f.cap, f.cap)), LEVEL, LEVEL);
   return finish(
     f,
     [
-      oval(X(held3(192, 203.5, 163)), held3(537, 537.5, 574)),
-      oval(X(held3(578, 660.5, 549)) + past * 1.1, held3(174, 173.5, 136)),
+      oval(X(held3(154, 174, 124)) + past * 0.35, held3(542, 542, 558)),
+      oval(X(held3(560, 604, 453)) + past * 1.6, held3(168, 168, 152)),
       inherit(diagonal, { ...diagonal, pen: slashPen }),
     ],
     true,

@@ -9,6 +9,7 @@ import {
   grotesqueA,
   grotesqueAt,
   grotesqueC,
+  grotesqueCaret,
   grotesqueE,
   grotesqueHyphen,
   grotesqueNumberSign,
@@ -1510,6 +1511,7 @@ const GROTESQUE: Array<[LetterName, string, (style: Style) => Recipe]> = [
     grotesqueNumberSign,
   ],
   ["percent", "Narrow ovals and a long diagonal cut level.", grotesquePercent],
+  ["asciicircum", "A narrow caret cut level at its head and feet.", grotesqueCaret],
   [
     "section",
     "An s over its own turned copy, the two sharing one ring in the middle.",
