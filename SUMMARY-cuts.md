@@ -89,25 +89,38 @@ After the first pass, every Draw base was reviewed with every cut and cast (see 
 - **Brush slots.** The strip under the lowest slot band on the Brush is the foot below a band set at the font's shared heights, as on every face.
 - **Bowl breaks.** The small bevel at a bowl's break end is the bowl's inner curve meeting the flush cut.
 
+### Third round: the known leftovers
+
+Each leftover from the second round was fixed or checked and documented. Before and after images for this round are the third group in `docs/polish/cuts/`: `sans-black-leftovers`, `roundhand-exits`, `sans-inline-terminals` and `sans-fillets-after-cuts`.
+
+- **Heavy n, m and h at weight 260** (`src/forge/cut.ts`). The gap was wider than the counter under the arch. Laid flush on the stem, it bit the top of the leg, and the leg's inner edge stepped in. The gap is now narrowed to the room the stroke leaves beside the stem, and stays flush on the stem.
+- **Inline terminals** (`src/forge/cut.ts`). The hold-back at a curving terminal took the paper beside the terminal as well as past it, and bit a step into the groove's side. It now takes only the middle of the stroke, so the groove ends square at the tops of a, e and s.
+- **Self-crossings** (`src/forge/cast.ts`, `src/forge/effects.ts`, `src/forge/cut.ts`). Where two points agree to fifteen digits, the boolean library can hand a loop back from a union.
+  - A loop that survives is tried again on a fine grid, then on a whole-unit one.
+  - The effects stage now resolves loops too, and tests the letter as it will stand once leaned. A Formal Script n came out of the pressure clean and crossed once it leaned.
+  - It also tests a few degrees either side of the face's slant. A running hand leans each letter by its own amount after the effects, and the Formal Script y under the inline and fillets crossed at its own lean.
+  - Crumbs under a thousandth of the letter's ink are dropped after untangling. The smallest counter a letter draws on purpose, under a Serif t's flag, is eight times that.
+
+  The one mark left in the review grids, on the Formal Script s with fillets, is the coarse detector's: the exact test finds no crossing.
+- **Serif g with fillets** (`src/forge/cast.ts`). A fillet grown into a corner too tight for it crossed itself, and its reversed lobe cut a slit into the link. A folded fillet is now left out, and that corner stays as drawn.
+- **Script exits** (`src/forge/cut.ts`). A script's exit or entry that leaves the end of its stroke and turns back on it now stays on up to about half the x-height. The Roundhand and Formal Script n, m and h no longer lose their exits as dashes.
+- **Slots at weight 260** (`src/forge/cut.ts`). A band passing just by the crotch under a Black k's leg left the crotch's paper standing into its edge as a small V. Paper that lies wholly in a thin strip along a slot, and is smaller than the strip is deep, is now filled back in. It is never filled where that would join two pieces the cut parted. Only the slots do this, because paper in a break's gap is the gap itself.
+
+- **Fillets after a cut** (`src/forge/cast.ts`, `src/forge/cut.ts`). Found in the final review.
+  - After slots, the corner a band leaves beside a join can be closer to the next piece than a fillet is long. On nearly every face the weld tied a stem back to the bar a slot had cut it from. A fillet that would join two of the letter's pieces is now left out, counted with the fillets already kept, so two that only touch in a gap are caught too.
+  - After the inline, the corner at a join is the groove's. Fillets stood in the groove as stubs, or tied the island to the outer wall. The shape of a hole cannot tell a groove from a counter (a Formal Script e's eye is as thin as a groove), so the cut now hands on where it cut the groove, and the weld keeps out of it.
+  - Fillets on letters without a cut are unchanged.
+
 ## Tests
 
 The new tests are in `src/forge/cuts-cast-polish.test.ts`, `src/forge/cut.test.ts` and `src/font/cutting.test.ts`. Three older tests described the old behaviour and were updated:
 - The inline used to be kept out of opened fonts. Those tests now use the breaks, which are still skeleton-only.
 - A bowl's groove used to stay separate from the stem's. The test now checks instead that no wall pinches.
 
-`npx tsc -b --noEmit`, `npx biome check .` and `npx vitest run src/forge src/font` all pass, with 1760 tests.
+`npx tsc -b --noEmit`, `npx biome check .` and `npx vitest run src/forge src/font` all pass, with 1771 tests.
 
 ## Known leftovers
 
-- **Heavy n, m and h at weight 260.** The gap is about 4 units wider than the counter below it, which leaves a small step on the inside of the leg.
-- **Inline terminals.** The hold-back leaves a jog of about 3 units where the groove meets it. It shows only when zoomed in.
-- **Self-crossings.** A few outlines still report one self-crossing in the sweep:
-  - Formal Script h, m and e with slots or a cast after the breaks,
-  - Serif 260 B, R and p with the saw,
-  - the Display s with chamfer.
-
-  Nothing is visible at any size rendered.
-- **Serif g with fillets.** A small notch remains at the top of the link.
-- **Script breaks.** A thin sliver is left under the foot of the Formal Script E. The Roundhand and Formal Script tails that are longer than the flick limit still come off as dashes.
-- **Slots at weight 260.** A small spike is left on the k's leg.
+- **Formal Script E foot.** The thin sliver under the foot is in the plain drawing, with or without pressure. It is not made by a cut or a cast.
+- **Roundhand u exit.** The u's exit leaves the last stem about a third of the way up, not at its foot. By its geometry it is the same as the middle arm of an E, which has to come off, so it still comes off as a short dash.
 - **Shadow cast first.** With the cast first, a shadow followed by breaks shows the breaks as windows in the shadow. This is what "Cast, then cut" means: the block and its shadow are sliced as one.
