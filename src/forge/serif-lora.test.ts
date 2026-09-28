@@ -155,10 +155,11 @@ describe("the Serif's two and seven", () => {
       // Its right edge a twelfth of the height under the arm still within a
       // few units of the arm's end, as Lora's is (15 on 419): it slanted off
       // from the corner.
-      if (weight <= 200) {
-        const under = row("seven", weight, CAP - weight * 0.55 - CAP * 0.08);
-        expect(b.xMax - under[under.length - 1][1], `7 at ${weight}`).toBeLessThan(wide * 0.065);
-      }
+      // The slider's heaviest a little further, its corner fuller.
+      const under = row("seven", weight, CAP - weight * 0.55 - CAP * 0.08);
+      expect(b.xMax - under[under.length - 1][1], `7 at ${weight}`).toBeLessThan(
+        wide * (weight > 200 ? 0.075 : 0.065),
+      );
       // And the beak hanging under the arm's left end.
       const beak = row("seven", weight, CAP - weight * 0.55 - 20)[0];
       expect(beak[0] - b.xMin, `7 at ${weight}`).toBeLessThan(3);
@@ -264,17 +265,26 @@ describe("the Serif's R", () => {
 
 describe("the Serif's bracket control", () => {
   it("does something along the whole of its range, past the serif's depth", () => {
-    const with_ = (bracket: number): Style => ({
-      ...at(87),
-      parts: { ...SERIF.parts, slab: { ...SERIF.parts.slab, bracket } },
-    });
-    // How much ink the hollow leaves beside the n's stem, a little way up.
-    const ink = (bracket: number) =>
-      row("n", 87, 55, with_(bracket)).reduce((sum, [a, b]) => sum + b - a, 0);
-    const widths = [0.4, 0.5, 0.6, 0.7, 0.8].map(ink);
-    // Held to the serif's depth, everything past 0.4 was the same serif.
-    for (let k = 1; k < widths.length; k++) {
-      expect(widths[k], `bracket ${0.4 + k * 0.1}`).toBeGreaterThan(widths[k - 1] + 1);
+    for (const weight of [30, 87, 142, 200, 260]) {
+      const with_ = (bracket: number): Style => ({
+        ...at(weight),
+        parts: { ...SERIF.parts, slab: { ...SERIF.parts.slab, bracket } },
+      });
+      // How much ink the hollow leaves beside the n's stem, over the rows up
+      // from the line: a Light's bracket sits lower than a Black's.
+      const ink = (bracket: number) =>
+        [5, 10, 15, 20, 30, 40, 55, 70].reduce(
+          (all, y) =>
+            all + row("n", weight, y, with_(bracket)).reduce((sum, [a, b]) => sum + b - a, 0),
+          0,
+        );
+      const widths = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8].map(ink);
+      // Held to the serif's depth, everything past 0.4 was the same serif.
+      for (let k = 1; k < widths.length; k++) {
+        expect(widths[k], `bracket ${0.2 + k * 0.1} at ${weight}`).toBeGreaterThan(
+          widths[k - 1] + 10,
+        );
+      }
     }
   });
 });
@@ -290,8 +300,14 @@ describe("the Serif's spacing", () => {
     };
     expect(side("o", 142)[0]).toBeLessThan(side("o", 87)[0] - 5);
     expect(side("e", 142)[1]).toBeLessThan(side("e", 87)[1] - 4);
-    // And the Regular's where they were.
-    expect(side("o", 87)[0]).toBeCloseTo(41, -1);
+    // And the Regular's where they were, on Lora's.
+    expect(Math.abs(side("o", 87)[0] - 41)).toBeLessThan(1.5);
+    expect(Math.abs(side("e", 87)[0] - 42)).toBeLessThan(1.5);
+    expect(Math.abs(side("e", 87)[1] - 39)).toBeLessThan(1.5);
+    // Held past the Bold, not opened up again.
+    for (const weight of [200, 260]) {
+      expect(side("o", weight)[0], `o at ${weight}`).toBeLessThan(side("o", 87)[0] - 5);
+    }
   });
 });
 
@@ -360,8 +376,22 @@ describe("the Serif at the ends of its contrast", () => {
   it("draws the c's drop without crossing itself at a contrast of 0.9 past a Black", () => {
     for (const weight of [200, 230, 260]) {
       const style: Style = { ...SERIF, pen: { ...SERIF.pen, weight, contrast: 0.9 } };
+      const grid = (p: { x: number; y: number } | null) =>
+        p ? { x: Math.round(p.x), y: Math.round(p.y) } : null;
       for (const contour of draw("c", weight, style).contours) {
         expect(contoursIntersect([contour]), `c at ${weight}`).toBe(false);
+        // And once rounded to whole units, as it is saved: only there did
+        // the crossing show.
+        const rounded = {
+          ...contour,
+          nodes: contour.nodes.map((node) => ({
+            ...node,
+            point: grid(node.point)!,
+            handleIn: grid(node.handleIn),
+            handleOut: grid(node.handleOut),
+          })),
+        };
+        expect(contoursIntersect([rounded]), `c at ${weight}, rounded`).toBe(false);
       }
     }
   });

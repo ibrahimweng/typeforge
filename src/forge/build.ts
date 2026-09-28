@@ -2576,10 +2576,12 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        * they were.
        */
       /*
-       * And whatever the bracket asks for past the serif's own depth carried
-       * on up the stroke, so the whole of the control does something: held
-       * to the depth alone, everything past it on the slider was the same
-       * serif.
+       * And whatever the bracket asks for past the serif's own thickness
+       * carried on up the stroke, so the whole of the control does something:
+       * held to the depth alone, everything past it on the slider was the
+       * same serif. Counted from the thickness, not from the depth a short
+       * serif is cut down to, because every base's own bracket sits between
+       * the two somewhere, and counted from the depth, their defaults moved.
        */
       const asked = terminal.bracket ?? 0;
       const held = Math.min(asked, deep, (tip - from) * 0.8, headCap);
@@ -2924,7 +2926,7 @@ const SERIF_BITE = 0.35;
 
 /**
  * How far up the stem a text serif's hollow climbs for each unit of bracket
- * asked for past the serif's own depth.
+ * asked for past the serif's own thickness.
  */
 const BRACKET_CLIMB = 2;
 

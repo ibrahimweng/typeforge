@@ -1722,8 +1722,11 @@ export function humanistCapitalG(style: Style): Recipe {
 const G_JOINS = 312;
 /** The top of the G's serif, against the cap height: Lora's is at 0.49. */
 const G_TOP = 0.49;
-/** How far the G's serif reaches past its upright each side, against a foot serif's: Lora's is 70 on 87. */
+/** How far the G's serif reaches past its upright each side, against a foot serif's: as far, as Lora's does. */
 const G_WING = 1;
+
+/** The least the question mark's neck turns on, against half the pen. */
+const Q_TURN = 1.3;
 
 /**
  * The question mark as Lora's: the hook carried round and down, and the neck
@@ -1735,9 +1738,6 @@ const G_WING = 1;
  * than leaves the neck room to leave it on a tangent, the neck stopping
  * clear of the dot, and the dot under the neck's foot.
  */
-/** The least the question mark's neck turns on, against half the pen. */
-const Q_TURN = 1.3;
-
 export function humanistQuestion(style: Style): Recipe {
   const f = frame(style);
   const radiusDot = stopRadius(f);
@@ -1838,7 +1838,9 @@ export function humanistTwo(style: Style): Recipe {
     const heading = headingAt(run.segments[run.segments.length - 1], "end");
     const to = toward(from);
     const aim = rotate(towards(from, to), turned);
-    return Math.abs(Math.atan2(aim.y, aim.x) - Math.atan2(heading.y, heading.x));
+    // Wrapped, so headings either side of straight back do not read a turn apart.
+    const apart = Math.atan2(aim.y, aim.x) - Math.atan2(heading.y, heading.x);
+    return Math.abs(Math.atan2(Math.sin(apart), Math.cos(apart)));
   };
   let leaves = -22;
   let best = Infinity;
