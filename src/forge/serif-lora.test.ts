@@ -334,6 +334,37 @@ describe("the Serif's bracket control", () => {
   });
 });
 
+describe("the bracket control on every serifed base", () => {
+  it("changes the serif at every step of the slider, and leaves each base's own drawing alone", () => {
+    for (const name of ["Serif", "Didone", "Slab", "Typewriter"]) {
+      const base = BASES.find((one) => one.name === name)!;
+      for (const weight of [87, 200]) {
+        const drawnAt = (bracket: number) =>
+          JSON.stringify(
+            drawLetter(
+              "n",
+              {
+                ...base,
+                pen: { ...base.pen, weight },
+                parts: { ...base.parts, slab: { ...base.parts.slab, bracket } },
+              },
+              base.forms?.n ?? "",
+            )?.contours,
+          );
+        // A square serif held its fillet to the wing, and every base held a
+        // short serif's between its depth and its thickness: the Didone's n
+        // was the same from 0.55 to 1, the Slab's from 0.55 to 0.7.
+        let before = drawnAt(0);
+        for (let k = 1; k <= 20; k++) {
+          const now = drawnAt(k / 20);
+          expect(now === before, `${name} at ${weight}, bracket ${k / 20}`).toBe(false);
+          before = now;
+        }
+      }
+    }
+  });
+});
+
 describe("the Serif's spacing", () => {
   it("closes up at the Bold as Lora Bold does", () => {
     // Lora Bold sets its o 31 a side against the Regular's 41, and its e

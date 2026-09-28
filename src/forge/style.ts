@@ -548,6 +548,7 @@ export function terminalFor(style: Style): Terminal {
     // light cut's serifs thin with its stems, a black's stop growing with them.
     thickness: slab.thickness * Math.min(stem, serifReach(style)),
     bracket: slab.bracket * Math.min(stem, serifReach(style)),
+    bracketHome: homeBracket(style),
     shape: slab.shape === "wedge" ? "wedge" : "square",
     head: slab.head === "sloped" || slab.head === "flag" ? slab.head : "level",
     curved: plain,
@@ -555,6 +556,16 @@ export function terminalFor(style: Style): Terminal {
 }
 
 const TERMINAL_KINDS: TerminalKind[] = ["butt", "angled", "round", "teardrop", "level"];
+
+/**
+ * The bracket this style's own base draws at this weight, or nothing for a
+ * style that is not one of the bases' or whose base has no serifs.
+ */
+function homeBracket(style: Style): number | undefined {
+  const base = BASES.find((one) => one.name === style.name);
+  if (!base?.parts.slab.on) return undefined;
+  return base.parts.slab.bracket * Math.min(style.pen.weight, serifReach(style));
+}
 
 /**
  * The stem a serif is measured in.

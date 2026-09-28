@@ -44,7 +44,13 @@ The y's rising arm is drawn light on into its tail, with just enough contrast to
 Lora Bold sets its rounds about a quarter tighter than its Regular: an o is 31 units a side against 41. The Serif can now name its Bold spacing (`metrics.bold.spacing`, set to 0.82), reached by the Bold and held past it. The Regular's sidebearings, which already matched Lora's exactly, are unchanged.
 
 ### The Bracket control
-Past about 0.4 the Bracket slider did nothing, because the bracket was clamped to the serif's depth. Whatever the slider asks for past the serif's thickness now carries on: a text serif's hollow climbs further up the stem, and a square serif's fillet turns further along the wing. The carry-on counts from the thickness rather than the depth because every base's default bracket lies between the two, so no base's default drawing moves. The Serif's bracket now changes the n's ink at every step from 0.2 to 0.8, at every weight from 30 to 260.
+Past about 0.4 the Bracket slider did nothing, because the bracket was clamped to the serif's depth. There were two more flat stretches. On a short serif, every value between what the serif could take and its thickness drew the same serif. On a square serif (the Didone, Slab and Typewriter), the fillet stopped growing once it reached the end of the wing, so the Didone's n was the same from 0.55 to 1.
+
+Now every step of the slider changes the serif on all four serifed bases, at every weight:
+- Whatever the bracket asks for past what the serif can take climbs on up the stem. A text serif's hollow climbs, and so does a square serif's fillet. The square fillet is now drawn as a quarter of an ellipse, running along the wing only as far as the wing allows and up the stem as far as it is asked.
+- On a short serif, the stretch that used to be flat is now read around the base's own bracket setting. Below that setting the fillet scales down toward none; above it the rest climbs. At the setting itself the drawing is exactly what it always was. Simply counting the climb from the serif's depth would have moved the Serif's own X by 41 units at 200, and the other bases by 2 to 8.
+
+No base's default drawing moves. I checked every letter on every base at five weights.
 
 ### Drops that crossed themselves
 At contrast 0.9 past a Black, the c's drop crossed its own closing edge. The crossing only showed once the outline was rounded to whole units. A drop that crosses itself is now redrawn: first with its tail leaving the stroke less steeply, then closed back along its own foot, then smaller. A redraw is taken only if it neither crosses itself nor leaves the stroke's band. A drop that did not cross is left exactly as it was.
@@ -85,13 +91,13 @@ I went back over the whole branch looking for errors, fixed each one and checked
   - width 0.8, 1.2 and 1.5
   - x-height 300, 400, 600 and 680
   - slant 12 and -12
-  - bracket 0 and 0.8, serif projection 1.2 and thickness 0.8
+  - bracket 0, 0.8 and 1, serif projection 1.2 and thickness 0.8
   - contrast 0.9 with pen angle 30, and contrast 0 with pen angle -30
   
   The one exception is under "Found but not fixed".
 - Every test in `src/forge/serif-lora.test.ts` fails on the code before the fix it covers.
 - Every other base draws exactly as before at its defaults. I checked this by hashing every letter on every base at five weights, before and after each change to shared code. The humanist alternates chosen on other bases draw as before too, apart from the letters this branch redrew on purpose.
-- `npx tsc -b --noEmit`, `npx biome check .` and `npx vitest run src/forge src/assemble src/library` all pass (1225 tests). The run takes about 3% longer than before the second pass, because of the fold checks on swollen bowls.
+- `npx tsc -b --noEmit`, `npx biome check .` and `npx vitest run src/forge src/assemble src/library` all pass (1226 tests). The run takes about 3% longer than before the second pass, because of the fold checks on swollen bowls.
 
 ## What still differs from Lora
 - **The j's spacing.** Lora's j has a negative left sidebearing (-88), so its tail runs under the letter before it. The engine keeps every letter's ink inside its advance, and a health check and two character-set tests enforce that. So our j's stem stands about 80 units further from the letter before it at the Regular, and about 60 at the Bold.
@@ -105,6 +111,5 @@ I went back over the whole branch looking for errors, fixed each one and checked
 
 ## Found but not fixed
 - **The c, C and G at width 0.6 past the Bold.** Whether the c's top hangs a drop, and whether the C and G keep their lower beak, is decided at each weight from the drawn curve. At this width that decision flips between the Regular and the Bold, so a drawing without a record of those decisions (like my sweep) sees the point count change. An exported family records the decisions once, at its drawn weight, and keeps them at every other weight, so an exported font stays consistent. The same happens with contrast 0.9, pen -45 and width 0.7 together. Changing it means changing the shared rule for every base, so I left it.
-- **The bracket between depth and thickness.** On a short serif, bracket values between the serif's depth and its thickness draw the same serif. Counting from the depth would fix this, but it moves the Didone, Slab and Typewriter defaults.
 - **The e at pen 60, 230 and heavier.** It no longer folds, but its bowl ends in a large wedge out to the right. That wedge is the level cut on a stroke leaning that far.
 - **The s at contrast 0.7 to 0.8 at the heaviest.** It now eases into the Didone's s instead of jumping, but past 0.7 it still leans a little, as the Didone's s at that weight always has.
