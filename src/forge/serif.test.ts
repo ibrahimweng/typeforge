@@ -355,3 +355,38 @@ describe("the controls", () => {
     expect(SLAB.parts.slab.head).toBe("flag");
   });
 });
+
+describe("the Bracket control", () => {
+  /*
+   * The Serif opens with its bracket as deep as its serif, and the bracket
+   * used to be clamped to the depth: everything from there to the top of the
+   * slider drew the same letters, so dragging it did nothing at all.
+   */
+  it("changes the letters over the whole of its range at the Serif's own depth", () => {
+    const spec = PART_SPECS.find((part) => part.name === "slab")!.controls.find(
+      (control) => control.key === "bracket",
+    )!;
+    const steps = [SERIF.parts.slab.bracket, 0.5, 0.6, 0.7, spec.max];
+    for (const weight of [30, 87, 172, 260]) {
+      const drawn = steps.map((bracket) =>
+        ["H", "n", "v"]
+          .map((name) => JSON.stringify(draw(name, at(SERIF, { weight }, { slab: { bracket } }))))
+          .join("|"),
+      );
+      expect(new Set(drawn).size, `weight ${weight}`).toBe(steps.length);
+    }
+  });
+
+  it("stays a clean serif at the top of its range", () => {
+    const spec = PART_SPECS.find((part) => part.name === "slab")!.controls.find(
+      (control) => control.key === "bracket",
+    )!;
+    for (const weight of [30, 87, 260]) {
+      for (const name of ["H", "n", "v", "k"]) {
+        for (const contour of draw(name, at(SERIF, { weight }, { slab: { bracket: spec.max } }))) {
+          expect(contoursIntersect([contour]), `${name} at ${weight}`).toBe(false);
+        }
+      }
+    }
+  });
+});

@@ -12,6 +12,7 @@ import {
   BUTT,
   chain,
   dot,
+  fatFace,
   finish,
   hook,
   ink,
@@ -41,6 +42,18 @@ function chevronBox(f: ReturnType<typeof markFrame>, m: ReturnType<typeof markBo
   return { ...m, top, w, cx: m.cx - m.w + w };
 }
 
+/**
+ * The box an acute or a grave is drawn in: on a fat face no wider than it is
+ * tall, or thereabouts, so the stroke stands at the angle an accent is read by.
+ * A heavy pen takes most of the height a mark has, and laid across the text
+ * width in what is left, the Display's acute was a brick lying nearly flat.
+ */
+function slopeBox(f: ReturnType<typeof markFrame>, m: ReturnType<typeof markBox>) {
+  if (!fatFace(f.style)) return m;
+  const w = Math.min(m.w, Math.max((m.top - m.foot) * 1.3, f.half));
+  return { ...m, w };
+}
+
 export const MARK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   // -------------------------------------------------------------------------
   // The marks
@@ -58,7 +71,7 @@ export const MARK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   grave: (style) => {
     const f = markFrame(style);
-    const m = markBox(f);
+    const m = slopeBox(f, markBox(f));
     return finish(f, [
       ink(f, straight(at(m.cx - m.w, m.top), at(m.cx + m.w, m.foot)), shortEnd(f), shortEnd(f)),
     ]);
@@ -66,7 +79,7 @@ export const MARK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   acute: (style) => {
     const f = markFrame(style);
-    const m = markBox(f);
+    const m = slopeBox(f, markBox(f));
     return finish(f, [
       ink(f, straight(at(m.cx - m.w, m.foot), at(m.cx + m.w, m.top)), shortEnd(f), shortEnd(f)),
     ]);
@@ -222,10 +235,14 @@ export const MARK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   hungarumlaut: (style) => {
     const f = markFrame(style);
     const m = markBox(f);
-    const wide = m.w * 0.44;
+    /*
+     * On a fat face each stroke a little longer than the pen is wide, so the
+     * pair read as two acutes rather than two tilted squares.
+     */
+    const wide = fatFace(f.style) ? Math.max(m.w * 0.44, f.half * 0.8) : m.w * 0.44;
     // Never nearer than a pen and a bit apart, or at a heavy weight the two
     // strokes ran into one notched block.
-    const apart = Math.max(m.w * 0.62, f.half * 1.75);
+    const apart = Math.max(m.w * 0.62, f.half * 1.75, fatFace(f.style) ? wide + f.half * 1.1 : 0);
     return finish(
       f,
       [-1, 1].map((side) =>

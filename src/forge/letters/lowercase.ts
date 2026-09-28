@@ -6,9 +6,11 @@
  * imports it; see it for what a recipe is and how the table is used.
  */
 
+import type { Vec2 } from "@/font/types";
 import { spineStart } from "../shapes";
 import { blackness, type Style } from "../style";
 import {
+  type Frame,
   roundHalf,
   arch,
   arms,
@@ -42,10 +44,30 @@ import {
   blackGap,
   heaviness,
   openVee,
+  kReach,
   lighter,
   stemSide,
   kArms,
 } from "./common";
+
+/**
+ * The outside of an e's bowl at an angle round it, for a pen turned on its
+ * side: its reach across an upright is its light one, and to the level reach
+ * the bar stood out past the Fairground's bowl as a block.
+ */
+function barOutside(
+  f: Frame,
+  degrees: number,
+  pointAt: (degrees: number) => Vec2,
+  light: number,
+): number {
+  return (
+    pointAt(degrees).x + stemSide(f) * (1 - 0.14 * light) * Math.cos((degrees * Math.PI) / 180) - 1
+  );
+}
+
+/** Just past level, where a bowl's loop is walked from: see the e. */
+const SEAM = 0.01;
 
 export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   // --- lowercase ---------------------------------------------------------
@@ -167,7 +189,51 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         : Math.asin(rise)) *
         180) /
       Math.PI;
-    const belt = bend(f, centre, f.bowlH, opens, opens + 300, beltWidth);
+    /*
+     * On a pen turned on its side the bar is as deep as a level stroke, and
+     * the bowl leans in over its height: begun at the bar's middle, the
+     * bowl's cut stood out under the bar's end, and the bar's top corner out
+     * past the bowl. So the bowl begins at the foot of the bar, and the bar
+     * stops where the bowl's outside is at the bar's top.
+     */
+    const onSide = Math.abs(f.style.pen.angle) > 45;
+    const pointAt = (degrees: number): Vec2 =>
+      spineStart(bend(f, centre, f.bowlH, degrees, degrees + 1, beltWidth));
+    const heightAt = (y: number, low: number, high: number): number => {
+      let a = low;
+      let b = high;
+      for (let pass = 0; pass < 40; pass++) {
+        const mid = (a + b) / 2;
+        if (pointAt(mid).y < y) a = mid;
+        else b = mid;
+      }
+      return (a + b) / 2;
+    };
+    /*
+     * And always from under the upright run of a squared bowl's side, even
+     * where the bar's foot is still on it, so the bowl is drawn with the same
+     * pieces at every weight: begun on the run at a light weight and under it
+     * at a heavy one, the e could not follow the weight axis.
+     */
+    const side = bend(f, centre, f.bowlH, -89, 89, beltWidth).segments.find(
+      (s) => s.kind === "line" && Math.abs(s.from.x - s.to.x) < 0.5 && s.from.x > centre.x,
+    );
+    const runFoot =
+      side?.kind === "line" ? heightAt(Math.min(side.from.y, side.to.y) - 2, -89, opens) : opens;
+    const starts = onSide ? Math.min(heightAt(eye - barHalf, -89, opens), runFoot, opens) : opens;
+    /*
+     * The rest of the run as it always was, so the tail keeps its end -- but
+     * on a pen turned on its side begun no lower than level, where the bowl's
+     * run is drawn with the same pieces whichever weight asks: begun a hair
+     * under it, at the Fairground's Bold, the loop was walked from the other
+     * side of its seam and the tail stopped short on the foot, a different
+     * letter from the one either side of it on the weight axis.
+     */
+    const joins = onSide ? Math.max(opens, SEAM) : opens;
+    const round = bend(f, centre, f.bowlH, joins, opens + 300, beltWidth);
+    const belt = onSide
+      ? chain(bend(f, centre, f.bowlH, Math.min(starts, joins - 1), joins, beltWidth), round)
+      : round;
     return finish(
       f,
       [
@@ -199,22 +265,21 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
             // stopped short of it and left a pinhole under its end.
             at(wallAt(f, centre, opens, blackness(f.style) > 0 ? beltWidth : undefined), eye),
             at(
-              spineStart(belt).x +
-                // The bowl's own pen, which is lighter than the stem's at a
-                // heavy weight: to the stem's reach the bar stood out past it.
-                // Across an upright, for a pen turned on its side, whose
-                // reach along the level is its heavy one: the bar stood out
-                // past the Fairground's bowl as a block.
-                (Math.abs(f.style.pen.angle) > 45 ? stemSide(f) : f.reach(at(1, 0))) *
-                  (1 - 0.14 * light) *
-                  Math.cos((opens * Math.PI) / 180),
+              onSide
+                ? barOutside(f, heightAt(eye + barHalf, opens, 89), pointAt, light)
+                : spineStart(belt).x +
+                    f.reach(at(1, 0)) * (1 - 0.14 * light) * Math.cos((opens * Math.PI) / 180),
               eye,
             ),
           ),
           BUTT,
           { kind: "butt", level: true },
         ),
-        lighter(ink(f, belt, BUTT, f.end), 1 - 0.14 * light),
+        // Cut level along the foot of the bar, on a pen turned on its side.
+        lighter(
+          ink(f, belt, onSide ? { kind: "butt", level: true } : BUTT, f.end),
+          1 - 0.14 * light,
+        ),
       ],
       true,
     );
@@ -360,7 +425,8 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   k: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    const reach = stem + f.arch * 1.7 + openVee(f) * 1.5;
+    // Held out from the stem as the K's is: see `kReach`.
+    const reach = stem + Math.max(f.arch * 1.7, kReach(f)) + openVee(f) * 1.5;
     const waist = f.x * 0.42;
     const arm = at(reach, f.x);
     const leg = at(reach, 0);

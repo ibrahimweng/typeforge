@@ -78,18 +78,23 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     // diagonal under it has the length to read as one.
     const drawn = width / 2 - grown;
     const low = Math.min(drawn, (f.crest(f.cap) - f.dip(0)) * 0.3);
-    const radius = Math.max(drawn + (low - drawn) * Math.min(1, f.gain / (f.x * 0.05)), f.least);
+    /*
+     * And held there as well on a face whose regular already lays its
+     * horizontals on heavy, as a pen turned on its side does: at the
+     * Fairground's regular a bowl the whole width round left the diagonal so
+     * shallow that it lay on the foot as one black wedge.
+     */
+    const heavy = Math.max(f.gain / (f.x * 0.05), (f.upright / f.x - 0.105) / 0.02);
+    const radius = Math.max(drawn + (low - drawn) * Math.min(1, Math.max(heavy, 0)), f.least);
     const wide = bendWidth(f, radius) + grown;
     const centre = at(left + radius + grown, f.crest(f.cap) - radius);
     /*
      * Over the top, then a straight run down to the baseline, then out along it.
      *
-     * Three strokes rather than one chain. Chaining works where the runs leave
-     * in the same direction they arrived -- an f's hook, a u's bowl -- because
-     * then the two offsets meet. Here the arc comes down to the right and the
-     * diagonal sets off down to the left, and offsetting round a corner that
-     * sharp sends the inner side through itself. Left as separate strokes they
-     * simply overlap, which the letter is full of anyway.
+     * The bowl and the diagonal one run, and the foot a stroke of its own.
+     * Chaining works where the runs leave in the same direction they arrived,
+     * so the bowl is carried round below until it does (see `miss`); the
+     * foot meets the diagonal at a real corner and simply overlaps it.
      */
     /*
      * The diagonal runs from where the bowl leaves off down to the baseline,
@@ -134,14 +139,16 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     for (let angle = coarse + 4; angle >= coarse - 4; angle -= 1) tryAt(angle);
     const over = bend(f, centre, radius, hookFrom(f), leaves, wide);
     /*
-     * The diagonal begun a little way back up inside the bowl's end: begun on
-     * it, the two cut ends only met edge to edge, and a renderer drew the
-     * seam across the stroke as a hairline of white.
+     * The diagonal carried on out of the bowl as one run: the bowl is taken
+     * round until it leaves travelling the diagonal's way, so the two meet
+     * with no corner between them. Drawn as two strokes, the bowl's end was
+     * cut square to a curve that was still turning and its corners stood
+     * out either side of the diagonal as nicks, and on a pen held on its
+     * side the seam between them showed as a hairline.
      */
     const joins = spineEnd(over);
     const lands = toward(joins);
     const way = towards(lands, joins);
-    const overlap = at(joins.x + way.x * f.half * 0.3, joins.y + way.y * f.half * 0.3);
     // The top of the foot's ink: it sits on the line, a bar thick.
     const footTop = f.sits(0, f.bar) * 2;
     /*
@@ -164,8 +171,7 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const toe = Math.max(...edges(0));
     const footFrom = heel < toe ? (heel + toe) / 2 : heel + 2;
     return finish(f, [
-      ink(f, over, f.end, BUTT),
-      ink(f, straight(overlap, lands), BUTT, {
+      ink(f, chain(over, straight(joins, lands)), f.end, {
         kind: "butt",
         level: true,
       }),
@@ -328,7 +334,16 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const under = f.cap - f.upright * f.bar * 2 - f.half * 0.6 - f.upright;
     const drawn = Math.min(shoulder, width / 2 - grown);
     const held = Math.min(drawn, (under - f.dip(0)) / 2);
-    const radius = Math.max(drawn + (held - drawn) * Math.min(1, f.gain / (f.x * 0.05)), f.least);
+    /*
+     * Eased down to that height as the weight grows, but never past it at any
+     * weight: on a pen held on its side the regular's own horizontals are the
+     * heavy strokes, and a bowl as tall as the regular's rose into the bar and
+     * filled the counter under it.
+     */
+    const radius = Math.max(
+      Math.min(drawn + (held - drawn) * Math.min(1, f.gain / (f.x * 0.05)), held),
+      f.least,
+    );
     const centre = at(left + radius, f.dip(0) + radius);
     const top = centre.y + radius;
     const tight = Math.min(Math.max(radius * 0.6, f.least), radius * 0.98);
@@ -378,8 +393,16 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     // Though never so short that its own counter closes, which on a pen held
     // on its side -- thick across the horizontals -- is the nearer danger.
     const floor = Math.min(round, f.upright + f.half * 0.6);
+    /*
+     * Eased in with the weight, but held to the room at every weight: on a pen
+     * held on its side the regular's own horizontals are the heavy strokes,
+     * and at the Fairground's regular the hood lay on the bowl as one wedge.
+     */
     const radius = Math.max(
-      round + (Math.max(room, floor) - round) * Math.min(1, f.gain / (f.x * 0.05)),
+      Math.min(
+        round + (Math.max(room, floor) - round) * Math.min(1, f.gain / (f.x * 0.05)),
+        Math.max(room, floor),
+      ),
       f.least,
     );
     // Wider rather than taller at a heavy weight: see `heavyFigure`.
@@ -470,8 +493,16 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     // Though never so short that its own counter closes, which on a pen held
     // on its side -- thick across the horizontals -- is the nearer danger.
     const floor = Math.min(round, f.upright + f.half * 0.6);
+    /*
+     * Eased in with the weight, but held to the room at every weight: on a pen
+     * held on its side the regular's own horizontals are the heavy strokes,
+     * and at the Fairground's regular the hood lay on the bowl as one wedge.
+     */
     const radius = Math.max(
-      round + (Math.max(room, floor) - round) * Math.min(1, f.gain / (f.x * 0.05)),
+      Math.min(
+        round + (Math.max(room, floor) - round) * Math.min(1, f.gain / (f.x * 0.05)),
+        Math.max(room, floor),
+      ),
       f.least,
     );
     const wide = bendWidth(f, round) + grown;

@@ -49,6 +49,7 @@ import {
   hasLength,
   reversed,
   shortened,
+  spineLength,
   spinePath,
   waveBookAt,
   wavy,
@@ -1823,7 +1824,17 @@ function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
   const radius = (size * measure) / 2;
   const band = contoursBounds(swept);
   const out: Contour[] = [];
-  for (const [terminal, at, outward, straightEnd] of endsOf(stroke)) {
+  /*
+   * Where the rest of the run lies, for keeping a ball out of it: see `clear`
+   * below.
+   */
+  const total = spineLength(stroke.spine);
+  const samples = alongSpine(stroke.spine, 240).map((point, index) => ({
+    point,
+    along: (total * index) / 240,
+  }));
+  const ends = endsOf(stroke);
+  for (const [which, [terminal, at, outward, straightEnd]] of ends.entries()) {
     if (terminal.open !== true) continue;
     /*
      * A straight run that stops on a line is already finished by the line, and
@@ -1944,14 +1955,60 @@ function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
     // the room leaves them.
     const written = style.parts.script.on;
     const buried = blot || (written && room < penReach(stroke.pen).across);
-    const held = buried ? BURIED : written ? room : Math.max(room, covering * 0.8);
+    /*
+     * And never so big that it runs into the rest of its own stroke. A ball
+     * sized off the pen alone is a stem and three quarters across, and on a
+     * letter whose ends turn back towards its middle -- the s, whose aperture
+     * this face all but shuts -- the disc on each end sat across the spine and
+     * the letter came out as a blob. Held back to leave a little paper between
+     * the two, measured off the spine a ball's width and more away from the
+     * end it closes, which is past its own stroke's turn.
+     */
+    const keep = radius * 1.2 + measure * 0.5;
+    const far = samples.filter(({ along }) => (which === 0 ? along > keep : total - along > keep));
+    const gap = measure * (0.5 + 0.2);
+    const clear = (size: number): boolean => {
+      const centre = { x: at.x + outward.x * size * drop, y: at.y + outward.y * size * drop };
+      return far.every(
+        ({ point }) => Math.hypot(point.x - centre.x, point.y - centre.y) >= size + gap,
+      );
+    };
+    let fits = covering;
+    if (!written && !clear(covering)) {
+      let low = 0;
+      let high = covering;
+      for (let pass = 0; pass < 30; pass++) {
+        const mid = (low + high) / 2;
+        if (clear(mid)) low = mid;
+        else high = mid;
+      }
+      fits = Math.max(low, BURIED);
+    }
+    const held = buried
+      ? BURIED
+      : written
+        ? room
+        : Math.min(
+            Math.max(room, covering * 0.8),
+            Math.max(fits, halfWidthAcross(stroke, outward) * (style.parts.ball.curved ? 1.1 : 1)),
+          );
     const placed = { x: at.x + outward.x * held * drop, y: at.y + outward.y * held * drop };
-    const inside = written
+    const kept = written
       ? placed
       : {
           x: Math.max(placed.x, band.xMin + held),
           y: Math.min(Math.max(placed.y, band.yMin + held), band.yMax - held),
         };
+    /*
+     * And, moved in off a line, slid along it until it still covers both
+     * corners of the cut it closes. Lifted straight up off the descender, the
+     * ball on the hook of a j, an f and a y left the lower corner of the cut
+     * standing out beneath it as a spike.
+     */
+    const inside =
+      written || buried || kept.y === placed.y
+        ? kept
+        : { x: covered(kept, at, stroke, outward, held), y: kept.y };
     const middle = buried
       ? /*
          * Set back along the stroke by its own radius, so that the far edge of
@@ -2407,7 +2464,13 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        * and if that leaves less than a third of the serif, it is not drawn at
        * all: a stub that short reads as a mistake rather than as a serif.
        */
-      const crowded = room < inner + projection / (text ? 5 : 3);
+      /*
+       * And on a face that waves its serifs, most of the wing or none: a wave
+       * needs its length to turn in, and a wing cut short beside a bowl -- the
+       * inside of the Wavy's a, b, d, p and q -- squeezed its wave into a
+       * crumpled hook where the bowl meets the stem.
+       */
+      const crowded = room < inner + projection / (text ? 5 : waving(style) ? 1.25 : 3);
       /*
        * Nor on the inside of a shallow diagonal.
        *
@@ -2506,7 +2569,28 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        * Serif, the Didone, the Slab and the Typewriter all stayed exactly where
        * they were.
        */
-      const bracket = Math.min(terminal.bracket ?? 0, deep, (tip - from) * 0.8, headCap);
+      /*
+       * Held to the depth only while the bracket asks for no more than the
+       * depth does. Past that it grows on in step with the depth, shortened
+       * wings and all, so the Bracket control keeps working over its whole
+       * range: clamped to the depth outright, the Serif's own bracket already
+       * sat at the ceiling and the top half of the slider did nothing.
+       */
+      const asked = terminal.bracket ?? 0;
+      const thick = Math.max(thickness, 1e-9);
+      const bracketCap = refused ? deep : deep * Math.max(1, asked / thick);
+      /*
+       * A square slab's fillet runs as far along the wing as up the stem, so
+       * it stops short of the tip. A wedge's bracket is one hollow from the
+       * tip up the stem and only rises, so once it is asked for more than the
+       * depth it may climb further than the wing is long -- or the top of the
+       * slider stalls against the wing instead of against the depth.
+       */
+      const along =
+        terminal.shape === "wedge" && !refused
+          ? Math.min(0.8 * Math.max(1, asked / thick), WEDGE_CLIMB)
+          : 0.8;
+      const bracket = Math.min(asked, bracketCap, (tip - from) * along, headCap);
       /*
        * A face that undulates undulates here too, and the only way to say that
        * is to draw the bar as a stroke rather than as a shape.
@@ -2545,6 +2629,7 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
               inner,
               refused ? 0 : edgeLean,
               terminal.shape === "wedge",
+              along,
             ),
           ];
       for (const piece of shape) {
@@ -2739,6 +2824,27 @@ function sweptWing(
  * with the old one wherever the old one was right: on a stroke running the
  * pen's wide way, or on any face with no contrast at all.
  */
+/**
+ * Where along its line a ball's centre goes so that the disc covers both
+ * corners of the cut at `at`, as near `centre` as that allows; `centre.x`
+ * itself where no place on the line covers both.
+ */
+function covered(centre: Vec2, at: Vec2, stroke: Stroke, outward: Vec2, radius: number): number {
+  const shift = reachAlong({ x: -outward.y, y: outward.x }, penReach(stroke.pen));
+  let low = -Infinity;
+  let high = Infinity;
+  for (const side of [1, -1]) {
+    const corner = { x: at.x + shift.x * side, y: at.y + shift.y * side };
+    const room = radius * radius - (centre.y - corner.y) ** 2;
+    if (room < 0) return centre.x;
+    const reach = Math.sqrt(room) * 0.98;
+    low = Math.max(low, corner.x - reach);
+    high = Math.min(high, corner.x + reach);
+  }
+  if (low > high) return centre.x;
+  return Math.min(Math.max(centre.x, low), high);
+}
+
 function halfWidthAcross(stroke: Stroke, outward: Vec2): number {
   const shift = reachAlong({ x: -outward.y, y: outward.x }, penReach(stroke.pen));
   return Math.hypot(shift.x, shift.y);
@@ -2844,7 +2950,6 @@ const SERIF_BITE = 0.35;
  * and starts reading as something that tapers.
  */
 const WEDGE_TIP = 0.42;
-
 /**
  * How far out along the inside wing of a diagonal the stroke's edge may run
  * where the serif's hollow meets it, against the wing's length.
@@ -2852,6 +2957,9 @@ const WEDGE_TIP = 0.42;
 const INSIDE_REACH = 0.8;
 /** How far the handles of that hollow reach toward its corner. */
 const INSIDE_PULL = 0.6;
+
+/** How far a wedge serif's bracket may climb the stem, in lengths of its wing. */
+const WEDGE_CLIMB = 1.25;
 
 /**
  * One wing of a serif.
@@ -2881,6 +2989,7 @@ function wing(
   edge = 0,
   lean = 0,
   wedge = false,
+  climb = 0.8,
 ): Contour {
   const across = { x: -outward.y * side, y: outward.x * side };
   const into = { x: -outward.x, y: -outward.y };
@@ -2926,7 +3035,7 @@ function wing(
   const shift = (v: number): number => lean * Math.min(v, cap);
   const edgeAt = (v: number): number => from + shift(v);
   const heldAt = (v: number): number => held + shift(v);
-  let rise = Math.min(bracket, Math.max(0, (tip - edgeAt(deep)) * 0.8));
+  let rise = Math.min(bracket, Math.max(0, (tip - edgeAt(deep)) * climb));
   /*
    * On the inside of a diagonal, no higher up the stroke than the edge is
    * followed, so the hollow arrives along the edge itself. Carried on past

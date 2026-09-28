@@ -44,6 +44,8 @@ import {
   bookish,
   heaviness,
   openVee,
+  flareOut,
+  kReach,
 } from "./common";
 
 export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
@@ -310,7 +312,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const slabbed = f.style.parts.slab.on && f.style.parts.slab.shape !== "wedge";
     const reach =
       stem +
-      f.capBowl * 1.15 +
+      Math.max(f.capBowl * 1.15, kReach(f)) +
       openVee(f) * 1.5 +
       (slabbed ? f.half * 0.7 * Math.min(heaviness(f), 1.5) : 0);
     const waist = f.cap * 0.44;
@@ -353,25 +355,43 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const left = f.edge;
     // And wider at a heavy weight, as the A and the H are, or the diagonal
     // has no room between the stems and the letter reads as an H.
+    /*
+     * And, but on a joined hand, never closer than about four pens, with room on top for the
+     * swellings at the stems' ends: held to its bowls a condensed face's Black
+     * N -- the Flared's -- had its counters shut to slits.
+     */
     const right =
-      left + f.capBowl * 1.35 + f.half * 0.35 * heaviness(f) + f.gain * 0.6 + openVee(f);
+      left +
+      Math.max(
+        f.capBowl * 1.35 + f.half * 0.35 * heaviness(f) + f.gain * 0.6,
+        f.style.parts.script.on ? 0 : f.half * 3.9 + flareOut(f) * 2,
+      ) +
+      openVee(f);
     const stems = [
       ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
       ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
     ];
+    /*
+     * On a flared face the diagonal is set in from each stem by what the stem
+     * swells out at its end, so its outside edge leaves the cap line and the
+     * baseline past the swelling's tip. Set on the stems' spines, the swelling
+     * curved out over the diagonal's edge and left a hooked notch where the
+     * two met, top left and bottom right.
+     */
+    const inset = flareOut(f);
     if (joinsLevel(f)) {
-      let top = at(left, f.cap);
-      let foot = at(right, 0);
+      let top = at(left + inset, f.cap);
+      let foot = at(right - inset, 0);
       for (let pass = 0; pass < 3; pass++) {
-        top = leaving(f, at(left, f.cap), 1, foot, 1);
-        foot = leaving(f, at(right, 0), -1, top, 1);
+        top = leaving(f, at(left + inset, f.cap), 1, foot, 1);
+        foot = leaving(f, at(right - inset, 0), -1, top, 1);
       }
       return finish(f, [...stems, ink(f, straight(top, foot), LEVEL, LEVEL)]);
     }
     const into = stub(f);
-    const start = at(left, f.cap - into);
-    const end = at(right, into);
-    const [top, foot] = corners(f, [start, at(left, f.cap), at(right, 0), end]);
+    const start = at(left + inset, f.cap - into);
+    const end = at(right - inset, into);
+    const [top, foot] = corners(f, [start, at(left + inset, f.cap), at(right - inset, 0), end]);
     return finish(f, [
       ...stems,
       ink(f, chain(straight(start, top), straight(top, foot), straight(foot, end))),

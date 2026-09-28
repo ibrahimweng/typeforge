@@ -1550,7 +1550,13 @@ export function junction(f: Frame, arm: Vec2, stem: number, height: number, leg:
 export function kArms(f: Frame, arm: Vec2, stem: number, height: number, leg: Vec2): Stroke[] {
   if (Math.abs(f.style.pen.angle) <= 45) {
     const meet = junction(f, arm, stem, height, leg);
-    return [ink(f, chain(straight(arm, meet), straight(meet, leg)), f.end, f.end)];
+    /*
+     * Cut level on the lines the arm and the leg stop on, where the face cuts
+     * its ends plain: square to a shallow run, the corner of the cut hung
+     * under the baseline -- twenty units under the Ribbon's heaviest k.
+     */
+    const end: Terminal = f.end.kind === "butt" && !f.end.level ? { ...f.end, level: true } : f.end;
+    return [ink(f, chain(straight(arm, meet), straight(meet, leg)), end, end)];
   }
   const into = at(stem, height);
   const share = 0.36;
@@ -1699,13 +1705,44 @@ export interface MarkBox {
  */
 function markRoom(f: Frame): number {
   const ceiling = f.asc > f.cap + 1 ? f.asc : f.cap + f.style.metrics.unitsPerEm * 0.1;
-  return Math.max(ceiling - f.x, f.style.metrics.unitsPerEm * 0.1);
+  /*
+   * A fat face's accents stand as high over its capitals as a text face's
+   * do and no lower: held under an ascender barely over the cap height, the
+   * Display's had a sixth of an em to be drawn in and came out as thin flat
+   * dashes over letters two hundred units in the stem.
+   */
+  const reach = fatFace(f.style)
+    ? Math.max(ceiling, f.cap + f.style.metrics.unitsPerEm * 0.1)
+    : ceiling;
+  return Math.max(reach - f.x, f.style.metrics.unitsPerEm * 0.1);
+}
+
+/**
+ * A display face drawn with strong contrast of its own -- the fat face, the
+ * Psychedelic -- whose accents are weighted to its stems rather than to a text
+ * face's (see `markFrame`). Asked of the face's own contrast, so the answer is
+ * the same at every weight.
+ */
+export function fatFace(style: Style): boolean {
+  // The face's own contrast, which a mark's frame has already taken most of.
+  // Stressed upright: a pen turned on its side (the Fairground) is its own case.
+  return (
+    style.family === "display" &&
+    (style.pen.own ?? style.pen.contrast) >= 0.5 &&
+    Math.abs(style.pen.angle) < 45
+  );
 }
 
 export function markFrame(style: Style): Frame {
   const f = frame(style);
   const room = markRoom(f);
-  const most = room * 0.42;
+  /*
+   * Weighted to the face: a text face's accent is lighter than its stem, a
+   * fat face's close to it -- Bodoni Poster's acute is a wedge most of a stem
+   * across -- where held to the text proportion the Display's marks were a
+   * third of the stem, hairlines on black letters.
+   */
+  const most = room * (fatFace(style) ? 0.4 : 0.42);
   /*
    * And on a display face with contrast, drawn with little of it. An accent
    * is a short run lying nearly level, which is exactly where an upright pen
@@ -1719,6 +1756,7 @@ export function markFrame(style: Style): Frame {
     ...style.pen,
     weight: Math.min(style.pen.weight, most),
     contrast: display ? style.pen.contrast * 0.3 : style.pen.contrast,
+    ...(display ? { own: style.pen.own ?? style.pen.contrast } : {}),
   };
   if (pen.weight === style.pen.weight && pen.contrast === style.pen.contrast) return f;
   return frame({ ...style, pen });
@@ -1862,6 +1900,33 @@ export function lighter(stroke: Stroke, by: number): Stroke {
  * instead, and that is room, not a thinner stroke. Nothing on any other face,
  * and nothing below a Black's start.
  */
+/**
+ * How far a flared face's stem swells out past its own edge at its ends: see
+ * `flaresFor` in `build.ts`, which grows the swelling with the pen only up to
+ * about a text weight.
+ */
+export function flareOut(f: Frame): number {
+  const { flare, script } = f.style.parts;
+  if (flare.spread <= 0 || flare.depth <= 0) return 0;
+  const grows = script.on
+    ? f.style.pen.weight
+    : Math.min(f.style.pen.weight, f.style.metrics.unitsPerEm * 0.12);
+  return flare.spread * grows;
+}
+
+/**
+ * The least a K's arm and leg reach out from its stem's spine: about two and
+ * a half pens, as a fat face's does at its Black. Held only to its bowls, a
+ * condensed face's Black K -- the Flared's, the Technical's -- closed the white
+ * between the stem and the arm to a notch, and with the stem's own swellings
+ * filled solid.
+ */
+export function kReach(f: Frame): number {
+  // Not a joined hand's, whose K is written into and out of its joins.
+  if (f.style.parts.script.on) return 0;
+  return f.half * 2.6 + flareOut(f);
+}
+
 export function openVee(f: Frame): number {
   if (f.style.family !== "hand") return 0;
   return f.half * 0.9 * Math.min(heaviness(f), 1.5);
@@ -2274,6 +2339,38 @@ export function spine(
     return { stroke: inherit(pen, { ...pen, join: "round" }) };
   }
   /*
+   * And drawn lighter than the stems where three of the pen's level strokes
+   * would not otherwise fit the height, as a Black squared face's s is: its
+   * crowns and spine about two thirds of the stem, as Geist Black's are. At
+   * the stem's own pen the squared s outgrew its line by a quarter of a stem
+   * top and bottom, and the Technical's heaviest read as a stencil cut.
+   */
+  const fits = (height + frame.over * 2) / SQUARED_S_ROOM;
+  if (frame.style.pen.weight > fits && !frame.style.parts.script.on) {
+    const lighter = { ...frame.style, pen: { ...frame.style.pen, weight: fits } };
+    // As wide as the stems' pen would have set it, which is what the o and
+    // the n beside it are.
+    return squaredSpine(frameFor(lighter), height, left, frame.gain + (frame.half - fits / 2));
+  }
+  return squaredSpine(frame, height, left);
+}
+
+/** How many of its pen a squared s needs the height to hold: see `spine`. */
+const SQUARED_S_ROOM = 3.12;
+
+/** A style's frame, where a parameter of that name hides `frame`. */
+function frameFor(style: Style): Frame {
+  return frame(style);
+}
+
+/** A squared s: two bends stacked, the upper turned back into the lower. */
+function squaredSpine(
+  frame: Frame,
+  height: number,
+  left: number,
+  gain = frame.gain,
+): { stroke: Stroke } {
+  /*
    * Four radii from top to bottom, unless the pen will not go round one that
    * small, in which case the s grows rather than closing up. The height asked
    * for is the height of the ink, so the four radii span the pen's own width
@@ -2293,7 +2390,7 @@ export function spine(
    * at the width the regular's has that was a slit: a squared Black s runs
    * its two counters out sideways instead.
    */
-  const wide = bendWidth(frame, radius) + frame.gain * 0.6;
+  const wide = bendWidth(frame, radius) + gain * 0.6;
   const middle = left + wide;
   const upper = at(middle, foot + radius * 3);
   const lower = at(middle, foot + radius);
@@ -2313,6 +2410,9 @@ export function spine(
 
 /** How steeply a grotesque's s falls across the letter, in degrees: see `textS`. */
 const GROTESQUE_FALL = 22;
+
+/** How much wider than its level stroke is deep a side-held pen turns an s: see `textS`. */
+const SIDE_TURN = 1.25;
 
 /**
  * The run of a round s: two bowls wider than they are tall, and a spine that
@@ -2534,7 +2634,17 @@ function textS(frame: Frame, height: number, left: number): SShape {
   const capital = height !== frame.x;
   const share = grotesque ? (capital ? 0.77 : 0.84) : 0.62;
   const width = inked * share * frame.wide + (frame.gain * frame.x) / height;
-  const least = Math.max(frame.half * 1.08, frame.least);
+  /*
+   * And on a pen held on its side, a turn a little wider than the heavy
+   * level stroke is deep, so the counter inside it ends round: at the pen's
+   * own half the Fairground's two counters ran out to hairline points where
+   * the spine met each bowl.
+   */
+  const onSide = Math.abs(Math.abs(frame.style.pen.angle) - 90) < 30;
+  // Never so wide that four of them outgrow the height, which only stood the
+  // spine up and squeezed the letter narrow.
+  const sideTurn = onSide ? Math.min(frame.upright * SIDE_TURN, inked * 0.2) : 0;
+  const least = Math.max(frame.half * 1.08, frame.least, sideTurn);
   /*
    * How far the lower bowl's turn sits right of the upper one's, for a turn of
    * radius r and a spine falling at `slope` across a height h. The spine
@@ -3487,12 +3597,15 @@ export function emAt(f: Frame, top: number, width: number): Stroke[] {
   ];
   if (top < f.cap ? joinsLevelAnywhere(f) : joinsLevel(f)) {
     // Each diagonal cut level on the top line inside its stem: see `leaving`.
-    let topLeft = at(left, top);
-    let topRight = at(right, top);
+    // Set in by a flared stem's swelling, as the N's is, so the swelling's
+    // tip does not curl over the diagonal's edge as a hooked notch.
+    const inset = flareOut(f);
+    let topLeft = at(left + inset, top);
+    let topRight = at(right - inset, top);
     let vertex = at(middle, dip);
     for (let pass = 0; pass < 3; pass++) {
-      topLeft = leaving(f, at(left, top), 1, vertex, 1);
-      topRight = leaving(f, at(right, top), -1, vertex, -1);
+      topLeft = leaving(f, at(left + inset, top), 1, vertex, 1);
+      topRight = leaving(f, at(right - inset, top), -1, vertex, -1);
       vertex = corner(f, topLeft, at(middle, dip), topRight);
     }
     return [

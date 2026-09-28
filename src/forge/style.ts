@@ -1595,12 +1595,14 @@ export const PSYCHEDELIC: Style = {
   ...PLAIN,
   name: "Psychedelic",
   family: "display",
-  blurb: "Heavy, swollen, nearly shut, with a ball on every open end.",
+  blurb: "Heavy, swollen, nearly shut, with a ball on every end that stops in the air.",
   metrics: { ...PLAIN.metrics, xHeight: 560, counterWidth: 300, sidebearing: 40, width: 1.04 },
   pen: { weight: 168, contrast: 0.62, angle: 0 },
   // The warm curled g and the descending f, both of which their own hints
-  // give to a display face.
-  forms: { g: "curled", f: "descending" },
+  // give to a display face -- and the y's tail curled round under the line,
+  // so it ends in the air and takes a ball, as the j and the f beside it do.
+  // Cut straight on the descender it was the one hook here without one.
+  forms: { g: "curled", f: "descending", y: "hooked" },
   parts: {
     ...PLAIN.parts,
     bowl: { width: 1.02, squareness: 0.1, aperture: 0.42, superness: 0 },

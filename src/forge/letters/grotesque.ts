@@ -35,6 +35,7 @@ import { bowlPoint, spineEnd, spineStart } from "../shapes";
 import { penReach, reachAlong } from "../sweep";
 import type { Spine, SpineArc, Stroke } from "../types";
 import {
+  towards,
   arm,
   at,
   bend,
@@ -1372,16 +1373,85 @@ export function grotesqueFive(style: Style): Recipe {
     Math.min(stemFoot.y + f.half * 1.1, centre.y + halfH * 0.55),
     true,
   );
+  /*
+   * The corner being the foot's right-hand one, where the stem's inside edge
+   * stops. A foot cut square to a leaning stem drops that corner below the
+   * middle of the cut, and aimed at the middle the bowl began above it: on the
+   * Ribbon the corner hung into the counter as a stepped notch.
+   */
+  const lean0 = towards(stemFoot, stemTop);
+  const side = reachAlong(at(lean0.y, -lean0.x), reach);
+  const cutLevel = f.end.level || f.end.kind !== "butt";
+  const corner0 = cutLevel
+    ? at(stemFoot.x + side.x - (side.y * lean0.x) / lean0.y, stemFoot.y)
+    : at(stemFoot.x + side.x, stemFoot.y + side.y);
+  const endsAt = angleAt(f, centre, halfW, halfH, up(f, 187), true) - 360;
+  /*
+   * And the stem stopped where its inside edge meets the bowl's, so the
+   * corner of its foot never stands in the counter. On a bowl rounded tight
+   * at its shoulders -- the Ribbon's -- the counter comes round under the
+   * foot, and the stem's corner hung into it as a stepped notch.
+   */
+  const probe = bend(f, centre, halfH, 175, endsAt, halfW);
+  // The turn at the bowl's upper left, where the stem comes down into it.
+  const turning = probe.segments.find((s) => s.kind === "arc");
+  const inCounter = (p: Vec2): boolean => {
+    if (turning?.kind !== "arc") return false;
+    // Only across the turn itself: past its ends the bowl runs on in other pieces.
+    const angle = Math.atan2(p.y - turning.centre.y, p.x - turning.centre.x);
+    const [from, to] = [turning.startAngle, turning.endAngle].sort((a, b) => a - b);
+    const within = [angle, angle + Math.PI * 2, angle - Math.PI * 2].some(
+      (a) => a >= from && a <= to,
+    );
+    if (!within) return false;
+    const d = Math.hypot(p.x - turning.centre.x, p.y - turning.centre.y);
+    const out = reachAlong(towards(turning.centre, p), reach);
+    return d < turning.radius - Math.hypot(out.x, out.y);
+  };
+  let rise = 0;
+  if (inCounter(corner0)) {
+    let a = 0;
+    let b = f.half * 3;
+    for (let pass = 0; pass < 40; pass++) {
+      const mid = (a + b) / 2;
+      if (inCounter(at(corner0.x + lean0.x * mid, corner0.y + lean0.y * mid))) a = mid;
+      else b = mid;
+    }
+    rise = b;
+  }
+  const foot = at(stemFoot.x + lean0.x * rise, stemFoot.y + lean0.y * rise);
+  const target = Math.min(stemFoot.y, corner0.y) + lean0.y * rise;
+  /*
+   * Found off the run as it is drawn -- its first point and the way it sets
+   * off -- rather than off the normal to a plain ellipse, which on a squared
+   * bowl leans away from the run's own and put the inside of the cut higher
+   * than asked.
+   */
+  const startsInside = (degrees: number): Vec2 => {
+    const run = bend(f, centre, halfH, Math.min(degrees, 175), endsAt, halfW);
+    const from = spineStart(run);
+    // The first piece with any length: a squared bowl can open on a run of none.
+    const first =
+      run.segments.find(
+        (s) => s.kind !== "line" || Math.hypot(s.to.x - s.from.x, s.to.y - s.from.y) > 1e-6,
+      ) ?? run.segments[0];
+    const heading = headingAt(first, "start");
+    const inward = reachAlong(at(heading.y, -heading.x), reach);
+    return at(from.x + inward.x, from.y + inward.y);
+  };
+  // Only where the foot was raised into the turn: elsewhere the ellipse's
+  // own measure is what Geist's five was fitted to.
+  const inside = rise > 0 ? startsInside : insideAt;
   // On the left side, higher up it the larger the angle is below 180.
   let low = 100;
   let high = 179;
   for (let pass = 0; pass < 40; pass++) {
     const mid = (low + high) / 2;
-    if (insideAt(mid).y > stemFoot.y) low = mid;
+    if (inside(mid).y > target) low = mid;
     else high = mid;
   }
   let found = (low + high) / 2;
-  if (!(insideAt(found).y >= stemFoot.y - 1 && found < 178)) found = fixed;
+  if (!(inside(found).y >= target - 1 && found < 178)) found = fixed;
   // And never so far round that its outside corner stands out past the
   // stem's left edge, as a light pen's did.
   const outsideAt = (degrees: number): Vec2 => {
@@ -1392,7 +1462,7 @@ export function grotesqueFive(style: Style): Recipe {
   const lean = (stemTop.x - stemFoot.x) / (stemTop.y - stemFoot.y);
   const clear = (degrees: number): boolean => {
     const o = outsideAt(degrees);
-    return o.x >= stemFoot.x - f.half + lean * (o.y - stemFoot.y) - 0.5;
+    return o.x >= foot.x - f.half + lean * (o.y - foot.y) - 0.5;
   };
   if (!clear(found)) {
     let a = 100;
@@ -1409,20 +1479,8 @@ export function grotesqueFive(style: Style): Recipe {
     f,
     [
       ink(f, straight(at(stemTop.x - f.half * 0.2, flag), at(X(518), flag)), BUTT, f.end),
-      ink(f, straight(stemTop, stemFoot), BUTT, f.end),
-      ink(
-        f,
-        bend(
-          f,
-          centre,
-          halfH,
-          Math.min(leaves, 175),
-          angleAt(f, centre, halfW, halfH, up(f, 187), true) - 360,
-          halfW,
-        ),
-        BUTT,
-        f.end,
-      ),
+      ink(f, straight(stemTop, foot), BUTT, f.end),
+      ink(f, bend(f, centre, halfH, Math.min(leaves, 175), endsAt, halfW), BUTT, f.end),
     ],
     true,
   );
