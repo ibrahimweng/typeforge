@@ -17,6 +17,7 @@ import * as React from "react";
 
 import { segment, WIDE_PANEL } from "@/components/controls";
 import { contoursToSvgPath } from "@/font/geometry";
+import { inkFrame, viewBoxOf } from "@/components/ink-frame";
 import { filled, FILL_KINDS } from "@/forge/kit";
 import { drawLetter } from "@/forge/build";
 import { CutPanel } from "@/components/CutPanel";
@@ -723,15 +724,27 @@ function Forms({ letter }: { letter: string }): React.JSX.Element | null {
         );
         return {
           ...form,
+          contours: drawn?.contours ?? [],
           d: drawn ? contoursToSvgPath(drawn.contours) : "",
           width: drawn?.advanceWidth ?? 1,
         };
       }),
     [forms, letter, state.forge, state.revision],
   );
+  const { metrics } = state.forge.style;
+  // One height for every form, taken from all of them, so the tails that tell
+  // the forms of a g or a y apart are shown whole and at the same size.
+  const tall = React.useMemo(
+    () =>
+      inkFrame(
+        metrics,
+        drawings.map((form) => ({ contours: form.contours, x: 0 })),
+        1,
+      ),
+    [drawings, metrics],
+  );
 
   if (forms.length === 0) return null;
-  const { metrics } = state.forge.style;
 
   return (
     <section className="border-b border-border p-3" data-forge-forms={letter}>
@@ -754,7 +767,11 @@ function Forms({ letter }: { letter: string }): React.JSX.Element | null {
             )}
           >
             <svg
-              viewBox={`0 ${-metrics.ascender} ${Math.max(form.width, 1)} ${metrics.ascender - metrics.descender}`}
+              viewBox={viewBoxOf({
+                ...inkFrame(metrics, [{ contours: form.contours, x: 0 }], form.width),
+                y: tall.y,
+                height: tall.height,
+              })}
               className="h-8 w-8"
               aria-hidden
             >

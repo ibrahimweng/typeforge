@@ -130,6 +130,9 @@ function allOf(walking: Generator<void, Trouble[], void>): Trouble[] {
   return step.value;
 }
 
+/** The least a letter may reach past the ascender or descender, in ems. */
+const LINE_SLACK = 0.06;
+
 function* walk(forge: Forge): Generator<void, Trouble[], void> {
   const em = forge.style.metrics.unitsPerEm;
   const closing: Array<{ letter: string; room: number }> = [];
@@ -138,11 +141,21 @@ function* walk(forge: Forge): Generator<void, Trouble[], void> {
   const inPieces: string[] = [];
   const erased: string[] = [];
 
-  const ceiling = forge.style.metrics.ascender + forge.style.pen.weight;
+  /*
+   * How far past a line is still on it: the pen's own width, since a stroke
+   * centred on a line reaches half of it beyond, and never less than a fixed
+   * share of the em. The parentheses, the dollar's bar, the circumflex and the
+   * ogonek all go a set distance past the ascender or descender whatever the
+   * weight -- every text face draws them so -- and a slack that shrank with
+   * the pen warned about them at the lightest weight, where the advice to use
+   * less weight could not be taken.
+   */
+  const slack = Math.max(forge.style.pen.weight, em * LINE_SLACK);
+  const ceiling = forge.style.metrics.ascender + slack;
   // What an accented letter is allowed, which is more: a third again over the
   // capitals is about where a text face keeps its own.
-  const capped = forge.style.metrics.capHeight * 1.4 + forge.style.pen.weight;
-  const floor = forge.style.metrics.descender - forge.style.pen.weight;
+  const capped = forge.style.metrics.capHeight * 1.4 + slack;
+  const floor = forge.style.metrics.descender - slack;
 
   for (const letter of letterNames()) {
     // Offered before the letter rather than after it, so a caller that has run

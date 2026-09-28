@@ -19,6 +19,8 @@ import * as React from "react";
 import { CoachMark } from "@/components/CoachMark";
 import { Reference } from "@/components/Reference";
 import { contoursToSvgPath } from "@/font/geometry";
+import type { Contour } from "@/font/types";
+import { inkFrame, viewBoxOf } from "@/components/ink-frame";
 import { letterNames, skeletonOf } from "@/forge/build";
 import { cellBox, cellKey, PORTS, portAt, rowsOf, unitOf } from "@/forge/kit";
 import { anyEffect } from "@/font/effects";
@@ -594,9 +596,9 @@ function apply(handle: Handle, value: number, phase: Phase): void {
 function setLine(
   forge: Forge,
   text: string,
-): { pieces: Array<{ d: string; x: number }>; width: number } {
+): { pieces: Array<{ d: string; x: number; contours: Contour[] }>; width: number } {
   let x = 0;
-  const pieces: Array<{ d: string; x: number }> = [];
+  const pieces: Array<{ d: string; x: number; contours: Contour[] }> = [];
   for (const character of text) {
     const name = nameOf(character);
     const drawn = name ? draw(name, forge) : null;
@@ -612,7 +614,7 @@ function setLine(
       x += drawn.advanceWidth;
       continue;
     }
-    pieces.push({ d: contoursToSvgPath(drawn.contours), x });
+    pieces.push({ d: contoursToSvgPath(drawn.contours), x, contours: drawn.contours });
     x += drawn.advanceWidth;
   }
   return { pieces, width: x };
@@ -654,6 +656,18 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
     [shown, state.specimen, revision, weights.join()],
   );
   const { metrics } = state.forge.style;
+  // Every weight on the same height, taken from all of them, so the lines stay
+  // at one size and whatever reaches past the ascender or descender -- an
+  // accent, a heavy tail -- is shown rather than cropped.
+  const tall = React.useMemo(
+    () =>
+      inkFrame(
+        metrics,
+        lines.flatMap((one) => one.pieces),
+        1,
+      ),
+    [lines, metrics],
+  );
 
   return (
     <div
@@ -691,7 +705,11 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
                 </span>
               )}
               <svg
-                viewBox={`0 ${-metrics.ascender} ${one.width} ${metrics.ascender - metrics.descender}`}
+                viewBox={viewBoxOf({
+                  ...inkFrame(metrics, one.pieces, one.width),
+                  y: tall.y,
+                  height: tall.height,
+                })}
                 className={cn("w-auto max-w-full", lines.length > 1 ? "h-7" : "h-16")}
                 role="img"
                 aria-label={lines.length > 1 ? `Specimen ${one.name}` : "Specimen"}

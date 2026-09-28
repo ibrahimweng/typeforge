@@ -27,6 +27,33 @@ describe("what has gone wrong", () => {
     }
   });
 
+  it("says nothing about the bases at the lightest weight", () => {
+    /*
+     * The slack past the ascender and descender used to be the pen's width
+     * alone, so at thirty units the parentheses, the dollar, the circumflex and
+     * the ogonek -- which reach a set distance past the lines at every weight --
+     * were reported as overflowing, with advice to use less weight on a pen
+     * already at the minimum.
+     */
+    for (const base of [SANS, SERIF]) {
+      expect(troubles(heavier(startFrom(base), 30)), `${base.name} at 30`).toEqual([]);
+    }
+  });
+
+  it("still notices a letter reaching well past its line", () => {
+    const sans = startFrom(SANS);
+    const short = {
+      ...sans,
+      style: {
+        ...sans.style,
+        pen: { ...sans.style.pen, weight: 30 },
+        metrics: { ...sans.style.metrics, ascender: sans.style.metrics.xHeight + 60 },
+      },
+    };
+    const said = troubles(short).find((one) => one.what === "Reaching past the line");
+    expect(said?.letters.length).toBeGreaterThan(10);
+  });
+
   it("stays quiet on a heavy cut that still works", () => {
     /*
      * A pen of a hundred and seventy-five units on a 520 x-height is as heavy

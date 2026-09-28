@@ -155,3 +155,26 @@ describe("what counts as one thing to undo", () => {
     expect(forgeStore.getSnapshot().forge.style.pen.weight, "one step back, not two").toBe(after);
   });
 });
+
+describe("starting from a base", () => {
+  it("names the font after the base once, and follows the base while the name is its own", () => {
+    forgeStore.setFamilyName("Untitled");
+    forgeStore.startFromBase("Sans");
+    expect(forgeStore.getSnapshot().familyName).toBe("My Sans");
+    forgeStore.startFromBase("Serif");
+    expect(forgeStore.getSnapshot().familyName).toBe("My Serif");
+    forgeStore.setFamilyName("Harbour");
+    forgeStore.startFromBase("Sans");
+    expect(forgeStore.getSnapshot().familyName).toBe("Harbour");
+  });
+
+  it("writes nothing to undo when the base picked is the drawing as it stands", () => {
+    forgeStore.startFromBase("Sans");
+    const before = forgeStore.getSnapshot();
+    forgeStore.startFromBase("Sans");
+    const after = forgeStore.getSnapshot();
+    expect(after.forge).toBe(before.forge);
+    forgeStore.undo();
+    expect(forgeStore.getSnapshot().forge).not.toBe(before.forge);
+  });
+});

@@ -7,7 +7,7 @@ import type * as React from "react";
 
 import type { Mode } from "@/App";
 import { useAssemble } from "@/state/useAssemble";
-import { useDrawing } from "@/state/drawn";
+import { baseAfterName, useDrawing } from "@/state/drawn";
 import { useQuill } from "@/state/useQuill";
 import { store, useAppState, type AppState, type ViewId } from "@/state/useStore";
 import {
@@ -243,7 +243,13 @@ export function TopBar({
 
         {mode === "forge" && (
           <span className="min-w-16 shrink truncate text-2xs text-muted-foreground">
-            {drawn.familyName} <span className="opacity-60">{drawn.base}</span>
+            {drawn.familyName}
+            {baseAfterName(drawn.familyName, drawn.base) && (
+              <>
+                {" "}
+                <span className="opacity-60">{drawn.base}</span>
+              </>
+            )}
           </span>
         )}
         {mode === "assemble" && (
