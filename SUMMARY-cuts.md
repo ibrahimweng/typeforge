@@ -43,17 +43,71 @@ Before and after images are in `docs/polish/cuts/`. Each pair is named `<panel>-
 - The crumb sweep after the cuts treated any piece under a third of a stem wide as a splinter. On a contrast face, every hairline a slot passes through is that thin. The threshold is now held to the letter's own thinnest stroke.
 - A cut or cast result that crosses itself is resolved with one more union. These were small loops from a chamfer or a saw tooth.
 
+### Second round: every Draw base, and the fixes it turned up
+
+After the first pass, every Draw base was reviewed with every cut and cast (see the task list in the session). Each problem found was fixed, or checked and documented. Before and after images for this round are the second group in `docs/polish/cuts/`.
+
+**Breaks** (`src/forge/cut.ts`)
+- **Script exit flicks.** The short flick off the foot of a script H, A or E was cut loose and read as a full stop. It now stays on if it:
+  - leaves the end of the stroke it joins,
+  - turns back up that stroke,
+  - is shorter than three tenths of the x-height,
+  - and is longer than a stem or thinner than two fifths of one.
+
+  Square arms, such as a Display E's, still come off, and so do bars that leave a stem part way up (an f, the middle of an E). Panel: `formal-script-breaks`.
+- **Curled arms.** The curled arm of a Display or Psychedelic r now stays on instead of coming off as a wedge. Panel: `display-breaks`.
+- **Chevrons.** A chevron laid point-first against a stem, like the arm and leg of a Display, Didone or Flared k, now gives way itself, with a gap on each limb. Before, the stem gave way and the break took its top off.
+- **Lips.** The foot of an arch curves out of its stem just below the gap and stood out of the stem's side as a lip a few units deep, on every n, h, m and r. That ink is now cut too. The guards:
+  - It is only cut where the stroke starts buried in its stem, within a gap's width of it.
+  - It is never cut on a leaning face.
+  - It is kept only if it adds no piece, speck or crossing.
+
+  This also removed the horn on the Grotesque m.
+- **Failed cuts.** A cut that removes more ink than its knife covers is retried piece by piece, and a piece that fails on its own is left out. A failed boolean had taken the stem of a hairline Sans a, and the tail of a Formal Script y.
+- **Rim first.** With the rim cast first, an E keeps its arm breaks.
+
+**Saw** (`src/forge/cut.ts`)
+- Each tooth is now set against the letter's own edge at its height, instead of along the letter's bounds. Before, the teeth left prongs round an o and never reached the stems of a serif face.
+- Teeth are left out in three places:
+  - where the edge runs across the comb,
+  - where the ink is too thin for a tooth to leave it whole,
+  - and on inner edges well in from the bounds.
+
+  Panels: `serif-saw`, `sans-black-saw`.
+
+**Effects after the cuts** (`src/forge/effects.ts`)
+- **Inline on rough faces.** The roughening's slit sweep took the inline's groove for a slit where it tapers. The Brush rounds and most of the Handwriting had no inline at all. A hole of groove size that runs down a stroke's spine is now kept. Panel: `brush-inline`.
+- **Press terminals.** The first pass added a rule that skips press rays striking the side of a cut. It also blunted the tapering terminals of uncut Brush and Formal Script letters. A short ray is now believed when the stroke's own outline is that close too, or when it starts on the edge.
+- **Check against the session start.** Uncut script letters were compared with the code at the start of the session. All but five of 208 match exactly, and those five differ by under 1%. The exception is the Handwriting t, whose loop used to fill in and is now open.
+
+**Fillets** (`src/forge/cast.ts`)
+- Fillets and points no longer leave a speck of their own beside the letter, such as by the link of a Serif g.
+- The cast's pinhole floor now ignores the pinholes left where overlapping strokes are united. Panel: `serif-g-fillets`.
+
+**Checked and left as designed**
+- **Rim at weight 260.** The rim keeps about 70% of each counter. The plain counters are already that small, and an outward rim closes the narrow apertures of an e and an a.
+- **Brush slots.** The strip under the lowest slot band on the Brush is the foot below a band set at the font's shared heights, as on every face.
+- **Bowl breaks.** The small bevel at a bowl's break end is the bowl's inner curve meeting the flush cut.
+
 ## Tests
 
 The new tests are in `src/forge/cuts-cast-polish.test.ts`, `src/forge/cut.test.ts` and `src/font/cutting.test.ts`. Three older tests described the old behaviour and were updated:
 - The inline used to be kept out of opened fonts. Those tests now use the breaks, which are still skeleton-only.
 - A bowl's groove used to stay separate from the stem's. The test now checks instead that no wall pinches.
 
-`npx tsc -b --noEmit`, `npx biome check .` and `npx vitest run src/forge src/font` all pass, with 1746 tests.
+`npx tsc -b --noEmit`, `npx biome check .` and `npx vitest run src/forge src/font` all pass, with 1760 tests.
 
 ## Known leftovers
 
-- At weight 260 the gap swallows the whole counter of the m and n arches. This leaves a small notch where the band ends.
-- The terminal hold-back on the inline leaves a jog of about 3 units where the groove meets it. It shows only when zoomed in.
-- A few script letters with complex outlines still report one self-crossing in the sweep: the Display s with chamfer, and the Formal Script s and n with some effects. Nothing is visible at any size I rendered.
-- With the cast first, a shadow followed by breaks shows the breaks as windows in the shadow. This is the documented meaning of "Cast, then cut": the block and its shadow are sliced as one.
+- **Heavy n, m and h at weight 260.** The gap is about 4 units wider than the counter below it, which leaves a small step on the inside of the leg.
+- **Inline terminals.** The hold-back leaves a jog of about 3 units where the groove meets it. It shows only when zoomed in.
+- **Self-crossings.** A few outlines still report one self-crossing in the sweep:
+  - Formal Script h, m and e with slots or a cast after the breaks,
+  - Serif 260 B, R and p with the saw,
+  - the Display s with chamfer.
+
+  Nothing is visible at any size rendered.
+- **Serif g with fillets.** A small notch remains at the top of the link.
+- **Script breaks.** A thin sliver is left under the foot of the Formal Script E. The Roundhand and Formal Script tails that are longer than the flick limit still come off as dashes.
+- **Slots at weight 260.** A small spike is left on the k's leg.
+- **Shadow cast first.** With the cast first, a shadow followed by breaks shows the breaks as windows in the shadow. This is what "Cast, then cut" means: the block and its shadow are sliced as one.
