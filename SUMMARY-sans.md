@@ -140,6 +140,16 @@ is held inside the bowl's side at the heavy weights, as Geist's is, and the
 9 has its own width fit (Geist's 9 stands 6 units wider than its 6); both are
 within 1 of Geist's width at every weight.
 
+**Sides that close as fast as the n.** The listed sides close at a heavy
+weight half as fast as a fitted side, as Geist's figures and diagonals do. But
+Geist closes the sides of its B, K, L, R, U and its a, c, f, j, l and r as
+fast as its n: its B stands 62 off its bowl at the Regular and 43 at the
+Black. Closed half as fast, they stood 8 to 16 units loose at the Black and
+added up to 36 to the advance. They are now marked "closes". The l's side is
+0.3 of the unit, since its foot turns out nearly to its advance as Geist's
+does (it stood 16 units loose at every weight), and the K's arm side is 0.04
+(12 loose). All are within 6 of Geist at the Regular and the Black.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

@@ -695,46 +695,50 @@ export const SANS: Style = {
     accents: { gap: [0.055, 0.066], byFoot: true },
     /* Geist Regular's own sidebearings, over 80 (a capital's over 80 after its 12 of extra). */
     sides: {
-      a: [0.59, 0.24],
+      a: [0.59, 0.24, "closes"],
       // Geist's bowls stand 44 off at the Regular and 32 at the Black: a
       // fitted round side gave back twice that as the bowls narrowed.
       b: [1, 0.52, "stem-left"],
-      c: [0.59, 0.46],
+      c: [0.59, 0.46, "closes"],
       d: [0.52, 1, "stem-right"],
       e: [0.52, 0.52],
       o: [0.52, 0.52],
       p: [1, 0.52, "stem-left"],
       q: [0.52, 1, "stem-right"],
-      f: [0.75, 0.53],
+      f: [0.75, 0.53, "closes"],
       // Its foot reaches back to the letter before (Geist -5); held inside.
-      j: [0.1, 1],
-      k: [1, 0.59],
+      j: [0.1, 1, "closes"],
+      k: [1, 0.59, "stem-left"],
       // Fitted, its arm's side closed to 20 at the Light; Geist Thin's is 50.
-      r: [1, 0.55],
-      l: [1, 0.5],
+      r: [1, 0.55, "closes"],
+      // Its foot turns out nearly to the advance, as Geist's does (24 off).
+      l: [1, 0.3, "closes"],
       v: [0.28, 0.28],
       w: [0.28, 0.28],
       t: [0.69, 0.46, "closes"],
       x: [0.59, 0.59],
       z: [0.71, 0.71],
       A: [0.11, 0.11],
-      B: [1, 0.63],
+      // Geist closes its B, K, L, R, U and its a, c, f, j, l and r as fast
+      // as its n (its B stands 62 off its bowl at the Regular, 43 at the
+      // Black); closed half as fast, they stood 8 to 16 units loose there.
+      B: [1, 0.63, "closes"],
       // Geist's D: 92 off its stem, 41 off its bowl; fitted, the bowl's side
       // closed to 25 at the heavy weights.
       D: [1, 0.36, "closes"],
       C: [0.46, 0.4],
       G: [0.46, 0.53],
       J: [0.69, 0.81, "closes"],
-      K: [1, 0.19],
-      L: [1, 0.44],
-      R: [1, 0.63],
+      K: [1, 0.04, "closes"],
+      L: [1, 0.44, "closes"],
+      R: [1, 0.63, "closes"],
       // Geist stands its T 12 off either side; 15 here, which still leaves
       // the A and T enough white for the kerning to close.
       T: [0.04, 0.04],
       // Set by the measured fit the O closed to 25 at the Black; Geist's is 40.
       O: [0.41, 0.41],
       Q: [0.41, 0.41],
-      U: [0.81, 0.81],
+      U: [0.77, 0.77, "closes"],
       V: [0.11, 0.11],
       W: [0.33, 0.33],
       X: [0.04, 0.04],

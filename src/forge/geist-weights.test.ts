@@ -1101,3 +1101,61 @@ describe("the six's and nine's terminals", () => {
     }
   });
 });
+
+describe("the sides of the letters Geist closes as fast as its n", () => {
+  it("stand as far off as Geist's at the Regular and the Black", () => {
+    // Geist's sides, left and right. Closed half as fast as the n, they
+    // stood 8 to 16 units loose at the Black (the B 51 off its bowl, the U
+    // 63 off either side), and the l's tailed foot stood 16 off.
+    const geist: Record<string, [[number, number], [number, number]]> = {
+      a: [
+        [44, 19],
+        [32, 9],
+      ],
+      c: [
+        [44, 34],
+        [32, 22],
+      ],
+      l: [
+        [80, 24],
+        [56, 14],
+      ],
+      r: [
+        [80, 44],
+        [56, 32],
+      ],
+      B: [
+        [92, 62],
+        [62, 43],
+      ],
+      K: [
+        [92, 15],
+        [62, 10],
+      ],
+      L: [
+        [92, 47],
+        [62, 28],
+      ],
+      R: [
+        [92, 62],
+        [62, 43],
+      ],
+      U: [
+        [77, 77],
+        [47, 47],
+      ],
+    };
+    for (const [name, sides] of Object.entries(geist)) {
+      for (const [index, weight] of [87, 194].entries()) {
+        const glyph = draw(name, weight);
+        const ink = contoursBounds(glyph.contours);
+        const [left, right] = sides[index];
+        expect(Math.abs(ink.xMin - left), `${name} left at ${weight}`).toBeLessThan(7);
+        expect(
+          Math.abs(glyph.advanceWidth - ink.xMax - right),
+          `${name} right at ${weight}`,
+        ).toBeLessThan(7);
+      }
+    }
+  });
+});
