@@ -350,3 +350,21 @@ describe("the at sign of a heavy display face", () => {
     }
   });
 });
+
+describe("the Flared's steep diagonals", () => {
+  it("does not swell the heads of a W's outer strokes as if they stood upright", () => {
+    /*
+     * The outer strokes of a W lean about thirteen degrees, near enough
+     * upright to be swelled as stems: their heads hooked out over the cap line
+     * beside a V whose diagonals were left clean.
+     */
+    const style = at("Flared");
+    for (const name of ["W", "w"]) {
+      const contours = ink(name, style);
+      const box = contoursBounds(contours);
+      const head = across(contours, box.yMax - 4)[0];
+      const below = across(contours, box.yMax - 80)[0];
+      expect(head[1] - head[0], name).toBeLessThan(below[1] - below[0] + 12);
+    }
+  });
+});

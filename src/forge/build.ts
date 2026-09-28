@@ -1800,6 +1800,9 @@ function tear(
  */
 const BURIED = 1;
 
+/** How near upright a straight end has to arrive to swell: see `flaresFor`. */
+const UPRIGHT_FLARE = 0.992;
+
 /**
  * The balls on one stroke: a disc closing off an end that stops in mid-air.
  *
@@ -2205,8 +2208,14 @@ function flaresFor(stroke: Stroke, style: Style): Contour[] {
      * square block -- the arm and leg of every k, the heads of a v, a w and a
      * y -- which is a slab stuck on, not a stroke swelling.
      */
+    /*
+     * Upright meaning within a few degrees of it: the outer strokes of a W
+     * lean about thirteen, and swelled as uprights their heads hooked out
+     * over the cap line and their feet met at the baseline in round blobs,
+     * beside a V whose own diagonals were left clean.
+     */
     const slanted =
-      !written && straightEnd && Math.abs(outward.y) < 0.97 && Math.abs(outward.y) > 0.26;
+      !written && straightEnd && Math.abs(outward.y) < UPRIGHT_FLARE && Math.abs(outward.y) > 0.26;
     for (const side of [1, -1]) {
       /*
        * A flare never crosses a line the stroke is standing on, which is the
