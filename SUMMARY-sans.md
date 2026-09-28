@@ -1,10 +1,22 @@
 # Sans polish: summary
 
 Branch `claude/polish-sans`. The goal was to make Draw mode's Sans match Geist
-letter for letter from Light (pen 30) through Regular (87) and Black (172), and
+letter for letter from Light (pen 30) through Regular (87) and the heavy weights, and
 stay clean up to the slider maximum (260). Each change was checked against the
 Geist npm fonts (Thin, Regular, Black and UltraBlack), with the Geist outline
 laid over the Draw fill at the same scale.
+
+## Reference weights
+
+Draw's pen is the stem, so each pen is compared with the Geist font that has
+that stem: pen 30 with Geist Thin (a stem of 30), 87 with Regular (84), 130
+with SemiBold (128), 172 with **UltraBlack** (172) and 194 with Black (194).
+The Sans was first built on an older Geist whose Black had a 172 stem; the
+current Geist ships that weight as UltraBlack and has added a heavier Black.
+Part of this branch had measured the current Black (194) and aimed it at pen
+172, which made those letters 12 to 34 units too wide there. They now reach the
+current Black at pen 194 (`squaredNow` in `grotesque.ts`) and land on
+UltraBlack at 172. Against UltraBlack, the Sans's n and H at 172 are exact.
 
 ## What changed
 
@@ -39,10 +51,9 @@ no longer a flat slab. Where the spine lies level and no swell fits, the run
 stays hidden inside the bowl, so every weight and every family master has the
 same points.
 The spine is a gentle S-curve, as Geist's is: two arcs that meet in the middle,
-steeper where they leave the bowls than through the centre. From the Regular
-to the Black, the s and S spread as wide as Geist's, within about 6 units (the
-s was 35 units narrow at pen 130, which sits halfway between Geist's Regular
-and Black, and 40 at the Black).
+steeper where they leave the bowls than through the centre. The s and S
+are Geist's width at the SemiBold, UltraBlack and Black, within a few units
+(the s was 22 units narrow at pen 130 and 20 at 172).
 
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
@@ -53,17 +64,16 @@ the letter keeps its height. Past the Black the sides take the lightness back,
 so the counters' ends stay round up to 260.
 
 **@.** The ring is as wide as Geist 1.7.2's at every weight: it was 31 units
-narrow at the Thin, whose ring stands further out than the Regular's, and 45
-at the Black. The tail now runs round to where Geist's ends, found by where
-it is across rather than by a height. It was 119 short at the Black. The ring also reaches Geist's 710 at every
-weight. It stopped 27 short at the Thin, and at the Black it now sits as low as
-Geist's.
+narrow at the Thin, whose ring stands further out than the Regular's, and 24
+at the UltraBlack. The tail now runs round to where Geist's ends, found by where
+it is across rather than by a height. The ring also reaches Geist's 710 at every weight; it stopped 27 short at
+the Thin, and hung 18 short of Geist's foot at 172.
 
 **8.** Heavy weights use the same lighter pen plus a slightly wider ring, so
 the upper counter stays an oval past the Black instead of a slot. The rings
-also swell outward by up to 24 units a side by the Black, to the weight of
-Geist's sides (200 at its Black, heavier than its stem). The eight is now
-Geist's width at 130 and 172. It was 30 and 49 narrow.
+also swell outward by up to 12 units a side, to the weight of Geist's sides
+(heavier than its stems). The eight is now Geist's width at 130, 172 and 194.
+It was 30 units narrow at 130.
 
 **^.** New Sans caret, measured off Geist: narrow and upright, with a level head
 on the cap line and level feet at 383. The plain one was a wide, low chevron.
@@ -129,8 +139,7 @@ tilde, smaller.
 
 **| and &.** The bar now runs from 110 under the line to 750, as Geist's
 and the brackets do; it stood from the descender to the cap line. The
-ampersand's foot and arm reach Geist Black's, so it is 699 across at the
-Black against Geist's 723. It was 678.
+ampersand is 690 across at 172, UltraBlack's width. It was 678.
 
 **$.** New Sans dollar: the S with Geist's bar, light at every weight (74
 across at the Regular, 86 at the Black) and running from 90 under the line
@@ -182,17 +191,12 @@ strokes as white; they now use a filled (nonzero) ruler.
   both sides.
 - **Backslash at the Black.** It follows the Sans slash, which is about 45
   units narrower than Geist Black's.
-- **Ink widths at the Black.** Pen 172 draws a 172 stem where Geist Black's is
-  194, so letters with two stems (H, K, R, B) have 25–40 less ink. Their
-  advances stay within about 20 of Geist's, because the sides make up the
-  difference.
 - **m and X at the Light.** They are plain forms, shared with every base. At
   pen 30 the m is about 19 units wider than Geist Thin's and the X 22 narrower.
 - **7 at the Light.** Geist Thin opens its figures by 10 a side, but not its
   7. The Sans opens all of them, so its Thin 7 stands 10 further off.
-- **Past 172.** Geist has nothing heavier than Black (its UltraBlack keeps a
-  stem of 172). At 200–260 the letters follow their own rules for keeping
-  counters open, not Geist.
+- **Past 194.** Geist has nothing heavier than its Black. At 200–260 the
+  letters follow their own rules for keeping counters open, not Geist.
 - **œ.** Not in the review list, and it is still poor past the Black: its o
   counter closes to a crescent. It uses the plain construction, not the Sans
   letters.
@@ -206,4 +210,4 @@ the branch's starting point, 3050e21. `specimen-*.png` shows "sass eyes Sa8
 %#^()" and "[a]{b} <+=>~_ $@& àéñ WAY7r" at pens 30, 87, 172 and 260.
 `overlay-*.png` shows a s e y 8 S $ @ & [ { < ~ with the Geist outline in red
 over the Draw fill, at the same four weights: Geist Thin at 30, Regular at 87,
-Black at 172 and UltraBlack at 260.
+UltraBlack at 172, and Black (the heaviest Geist) at 260.

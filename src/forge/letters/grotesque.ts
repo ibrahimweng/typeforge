@@ -29,7 +29,7 @@
  */
 
 import type { Vec2 } from "@/font/types";
-import { BASES, type Style, weightAtBlackness } from "../style";
+import { BASES, blackness, type Style, weightAtBlackness } from "../style";
 import { LETTERS } from "../letters";
 import { bowlPoint, spineEnd, spineStart } from "../shapes";
 import { penReach, reachAlong } from "../sweep";
@@ -125,7 +125,7 @@ export function grotesqueA(style: Style): Recipe {
   // A joined hand draws its own a, whose bowl is what the join runs into.
   if (style.parts.script.on) return LETTERS.a(style);
   const f = frame(lighterAcross(style));
-  const [across0, lerp] = squared(f);
+  const [across0, lerp] = squaredNow(f);
   /*
    * Drawn small -- as the ordinal -- it is narrowed with its x-height, as
    * everything else drawn small is: Geist's measures are for an a at the
@@ -821,7 +821,7 @@ export function grotesqueAmpersand(style: Style): Recipe {
   const bowlW = held(f, lerp(193, 204) * u);
   const bowl = at(X(lerp(237, 290)), bowlY);
   // The leg, from its foot up to where it runs tangent into the loop's left.
-  const foot = at(X(lerp(510, 610)), 0);
+  const foot = at(X(lerp(510, 600)), 0);
   const split = -40;
   const entered = tangentFrom(foot, bend(f, loop, loopH, 270, 180, loopW));
   /*
@@ -857,7 +857,7 @@ export function grotesqueAmpersand(style: Style): Recipe {
   }
   // Geist's arm stands lower on its lighter weights: 255 on the Thin.
   const light = Math.min(1, Math.max(0, (87 - f.style.pen.weight) / 57));
-  const armTop = at(X(lerp(496, 609)), H(lerp(318, 335) - 63 * light));
+  const armTop = at(X(lerp(496, 598)), H(lerp(318, 335) - 63 * light));
   return finish(f, [
     /*
      * Two runs, split on the loop's right side, so that neither crosses
@@ -1614,7 +1614,7 @@ function swollenRing(f: Frame, centre: Vec2, halfW: number, halfH: number): Stro
 }
 
 /** How much further out a heavy eight's rings swell, by the Black. */
-const EIGHT_SWELL = 24;
+const EIGHT_SWELL = 12;
 
 /** A point part of the way along a straight run, found by its height. */
 function alongTo(from: Vec2, to: Vec2, y: number): Vec2 {
@@ -1892,6 +1892,11 @@ interface Ess {
   innerBlack?: number;
   /** How much wider each bowl is at Geist Black, in Geist's units (the s). */
   blackWiden?: number;
+  /**
+   * And more past the Black, where a heavier face (the Display) drawn from
+   * these letters needs the room for its counters; nothing up to the Black.
+   */
+  blackPast?: number;
   /** Whether the pen is tilted at a heavy weight to weight the spine (the S). */
   tilted?: boolean;
 }
@@ -1925,8 +1930,10 @@ function ess(given: Frame, e: Ess): Stroke[] {
       crownsGive(t)) /
     2;
   const beyond =
-    Math.max(0, heaviness(f) - 0.67) * f.x * 0.2 * 0.3 +
-    (e.blackWiden ?? 0) * e.unit * Math.min(1, t * 2);
+    // Past the current Geist's Black, a stem of 194 (see `squaredNow`).
+    Math.max(0, heaviness(f) - 0.67 * nowBlack()) * f.x * 0.2 * 0.3 +
+    (e.blackWiden ?? 0) * e.unit * Math.min(1, t * 2) +
+    (e.blackPast ?? 0) * e.unit * Math.min(1, Math.max(0, t - 1) * 2);
   const X = (x: number) => f.edge + (x - e.left) * e.unit;
   // How far past the Black: nought at it, one at an Ultra.
   const past = Math.min(1, Math.max(0, t - 1) / 0.6);
@@ -2371,7 +2378,7 @@ function chevron(
   },
 ): Recipe {
   const f = frame(style);
-  const [X, lerp] = squared(f);
+  const [X, lerp] = squaredNow(f);
   const k = X(1) - X(0);
   const top = up(f, lerp(...m.top));
   const bottom = up(f, lerp(...m.bottom));
@@ -2404,7 +2411,7 @@ function chevron(
  */
 export function grotesqueDieresis(style: Style): Recipe {
   const f = frame(style);
-  const [X, lerp] = squared(f);
+  const [X, lerp] = squaredNow(f);
   const k = X(1) - X(0);
   const across = lerp(88, 180, 34);
   const high = lerp(98, 136, 70);
@@ -2428,7 +2435,7 @@ export function grotesqueDieresis(style: Style): Recipe {
  */
 function grotesqueBracket(style: Style, way: 1 | -1): Recipe {
   const f = frame(style);
-  const [X, lerp] = squared(f);
+  const [X, lerp] = squaredNow(f);
   const wide = lerp(240, 346, 172);
   const x = (u: number) => (way === 1 ? X(u) : X(wide) + X(0) - X(u));
   const stem = x(0) + way * f.half;
@@ -2462,7 +2469,7 @@ export const grotesqueBracketRight = (style: Style): Recipe => grotesqueBracket(
  */
 function grotesqueBrace(style: Style, way: 1 | -1): Recipe {
   const f = frame(style);
-  const [X, lerp] = squared(f);
+  const [X, lerp] = squaredNow(f);
   const wide = lerp(329, 370, 288);
   const middle = lerp(143, 175, 126);
   const x = (u: number) => (way === 1 ? X(u) : X(wide) + X(0) - X(u));
@@ -2537,7 +2544,7 @@ const measured = (f: Frame, spine: Spine, weight: number, start = BUTT, end = BU
  */
 export function grotesquePlus(style: Style): Recipe {
   const f = frame(style);
-  const [X, lerp] = squared(f);
+  const [X, lerp] = squaredNow(f);
   const k = X(1) - X(0);
   const bar = lerp(78, 150, 28);
   const wide = lerp(478, 498, 478) + Math.max(0, bar - 150);
@@ -2559,7 +2566,7 @@ export function grotesquePlus(style: Style): Recipe {
  */
 function angle(style: Style, way: 1 | -1): Recipe {
   const f = frame(style);
-  const [X, lerp] = squared(f);
+  const [X, lerp] = squaredNow(f);
   const k = X(1) - X(0);
   // Past the Black the arms reach further as they grow heavier, or the
   // inside closed to a slit.
@@ -2599,7 +2606,7 @@ export const grotesqueGreater = (style: Style): Recipe => angle(style, -1);
  */
 export function grotesqueEqual(style: Style): Recipe {
   const f = frame(style);
-  const [X, lerp] = squared(f);
+  const [X, lerp] = squaredNow(f);
   const k = X(1) - X(0);
   const wide = lerp(460, 480, 440);
   const bar = lerp(78, 150, 30) * k;
@@ -2618,7 +2625,7 @@ export function grotesqueEqual(style: Style): Recipe {
  */
 export function grotesqueUnderscore(style: Style): Recipe {
   const f = frame(style);
-  const [X, lerp] = squared(f);
+  const [X, lerp] = squaredNow(f);
   const k = X(1) - X(0);
   const wide = lerp(469, 500, 434);
   const bar = lerp(78, 150, 30) * k;
@@ -2674,7 +2681,7 @@ function wave(
   m: { thick: Measure; wide: Measure; low: Measure; high: Measure; crest: Measure },
 ): Recipe {
   const f = frame(style);
-  const [X, lerp] = squared(f);
+  const [X, lerp] = squaredNow(f);
   const k = X(1) - X(0);
   // Past the Black the stroke grows at part of the pen's pace and the wave
   // spreads with the rest, or the hollows closed to spurs.
@@ -2745,7 +2752,7 @@ function wave(
  */
 function accent(style: Style, way: 1 | -1): Recipe {
   const f = frame(style);
-  const [X, lerp] = squared(f);
+  const [X, lerp] = squaredNow(f);
   const k = X(1) - X(0);
   const cut = lerp(82, 162, 30);
   const fall = lerp(78, 72, 76);
@@ -3212,7 +3219,7 @@ export function grotesqueS(style: Style): Recipe {
           foot: [175, 172],
           inner: 0.42,
           innerBlack: 0.5,
-          blackWiden: 25,
+          blackWiden: 11,
           tilted: false,
         }),
       ],
@@ -3238,7 +3245,8 @@ function capitalEss(f: Frame): Stroke[] {
     lower: { x: 326, y: [180, 200], w: 220 },
     head: [505, 465],
     foot: [225, 250],
-    blackWiden: 9,
+    blackWiden: 0,
+    blackPast: 12,
     inner: 0.42,
   });
 }
@@ -3251,7 +3259,7 @@ function capitalEss(f: Frame): Stroke[] {
  */
 export function grotesqueDollar(style: Style): Recipe {
   const f = frame(stackedPen(style, CAPITAL_ESS_GAIN));
-  const [X, lerp] = squared(f);
+  const [X, lerp] = squaredNow(f);
   const strokes = capitalEss(f);
   // Through the middle of the S as it is drawn: halfway across its spines.
   let lo = Infinity;
@@ -3852,7 +3860,8 @@ export function grotesqueAt(style: Style): Recipe {
    * ran into its ring and an Ultra's was a black disc.
    */
   const t = Math.min(heaviness(f) / 0.67, 1);
-  const past = Math.min(1, Math.max(0, heaviness(f) / 0.67 - 1) / 1.24);
+  // Past the current Geist's Black, a stem of 194 (see `squaredNow`).
+  const past = Math.min(1, Math.max(0, heaviness(f) / 0.67 - nowBlack()) / (2.24 - nowBlack()));
   const lerp = (a: number, b: number) => a + (b - a) * t;
   const stemW = f.half * 2;
   const pen = (share: number, contrast: number) => ({
@@ -3876,9 +3885,12 @@ export function grotesqueAt(style: Style): Recipe {
   // And from under the line to 710 at every weight, lower at the Black:
   // Geist's ring stands round 302 on the Thin and 291 on the Black, 816
   // tall on the Thin -- grown upward here, where the tail's end stays put.
-  const outer = at(X(lerp(457, 500) + 3 * light) + grow * 0.3, up(f, lerp(304, 291) + 7 * light));
-  const outerW = held(f, (lerp(370, 400) + 14 * light) * u + grow);
-  const outerH = held(f, up(f, lerp(366, 363) + 22 * light) + grow * 0.3);
+  // The ring and its tail measured off the current Geist, whose Black is a
+  // stem of 194: reached at pen 194, and UltraBlack's at 172 (see `squaredNow`).
+  const [, now] = squaredNow(f);
+  const outer = at(X(now(457, 500) + 3 * light) + grow * 0.3, up(f, now(304, 291) + 7 * light));
+  const outerW = held(f, (now(370, 400) + 14 * light) * u + grow);
+  const outerH = held(f, up(f, now(366, 363) + 22 * light) + grow * 0.3);
   const rf: Frame = { ...f, half: ringPen.weight / 2 };
   /*
    * The stem's turn lands exactly on the ring, at its widest where it runs
@@ -3900,7 +3912,7 @@ export function grotesqueAt(style: Style): Recipe {
    * where the ring came down to 40 under the line, a Black's tail stopped 35
    * short of Geist's.
    */
-  const tailX = X(lerp(623, 700)) + grow * 0.3;
+  const tailX = X(now(623, 700)) + grow * 0.3;
   let [low, high] = [-90, 0];
   for (let step = 0; step < 40; step++) {
     const mid = (low + high) / 2;
@@ -4077,6 +4089,40 @@ function squared(
     (x) => f.edge - f.half + x * k,
     (a, b, thin) => (l > 0 && thin !== undefined ? a + (thin - a) * l : a + (b - a) * t),
   ];
+}
+
+/**
+ * `squared`, for the measures taken off the current Geist, whose Black has a
+ * stem of 194. The rest of the Sans was measured off an older Geist whose
+ * Black had a stem of 172 -- the one the current Geist ships as UltraBlack --
+ * and reaches its Black at pen 172; these reach the current Black at pen
+ * 194, and at pen 172 come out where UltraBlack is, which lies between Geist's
+ * Regular and Black as its stem does.
+ */
+function squaredNow(
+  f: Frame,
+): [(x: number) => number, (a: number, b: number, thin?: number) => number] {
+  const [X] = squared(f);
+  const t = Math.min(heaviness(f) / 0.67, 2.24) / nowBlack();
+  const l = thinness(f);
+  return [X, (a, b, thin) => (l > 0 && thin !== undefined ? a + (thin - a) * l : a + (b - a) * t)];
+}
+
+/** The stem of the current Geist's Black. */
+const NOW_BLACK = 194;
+
+/**
+ * How far past the Sans's own Black that is, as `squared` counts weight:
+ * worked out once on the Sans as it is drawn full size, since a letter drawn
+ * small -- the a of the ordinal -- is drawn from a style whose pen is scaled.
+ */
+let nowBlackCache = 0;
+function nowBlack(): number {
+  if (nowBlackCache > 0) return nowBlackCache;
+  const sans = BASES.find((base) => base.name === "Sans");
+  const black = sans ? blackness({ ...sans, pen: { ...sans.pen, weight: NOW_BLACK } }) / 0.67 : 0;
+  nowBlackCache = black > 1 ? black : 1;
+  return nowBlackCache;
 }
 
 /**
