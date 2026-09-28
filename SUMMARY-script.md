@@ -9,8 +9,7 @@ Screenshots of every face at all four weights are in `docs/polish/script/before`
 (the original code) and `docs/polish/script/after` (this branch). Each sheet
 sets "minimum Handgloves", "the quick brown fox" and the lowercase alphabet with
 the font's own joins, including the high hand-over after `o v w b` and the word
-start and end forms. (The before sheets clip the last line; the rendering
-window was too short. The after sheets show it.)
+start and end forms.
 
 ## What was wrong
 
