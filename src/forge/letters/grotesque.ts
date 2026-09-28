@@ -127,6 +127,11 @@ function refit(f: Frame, regular: number, black: number, thin = regular): number
   return 1 + regular + (black - regular) * t;
 }
 
+/** How far past the Regular a heavy weight is, as `squared` counts it: nought at and below the Regular. */
+function heavyT(f: Frame): number {
+  return thinness(f) > 0 ? 0 : Math.min(Math.max(0, heaviness(f) / 0.67), 2.24);
+}
+
 /** A turn drawn in so many pieces at every weight: see `SpineArc.pieces`. */
 function pinned(spine: Spine, pieces: number): Spine {
   return { ...spine, segments: spine.segments.map((one) => ({ ...one, pieces })) };
@@ -309,8 +314,9 @@ export function grotesqueA(style: Style): Recipe {
 export function grotesqueG(style: Style): Recipe {
   const f = frame(lighterAcross(style));
   const u = small(f, 1);
-  const left = f.edge;
-  const stem = left + 385 * u;
+  // The bowl's left drawn in as the weight grows, to the current Geist's.
+  const left = f.edge + 7 * heavyT(f);
+  const stem = f.edge + 385 * u;
   const top = f.crest(f.x);
   // The bowl stands a little off the baseline: its foot is at 28, not -12.
   const bottom = Math.min(f.dip(0) + (40 / 530) * f.x, top - f.least * 2);
@@ -323,7 +329,7 @@ export function grotesqueG(style: Style): Recipe {
    * flat foot, and stays round at a Black instead of closing to a slab.
    */
   const H = (y: number) => (y / 530) * f.x;
-  const hookX = left + 204 * u;
+  const hookX = f.edge + 204 * u;
   const hookW = held(f, 181 * u);
   const rightY = Math.max(H(40), floor + f.least);
   /*
@@ -1097,8 +1103,10 @@ export function grotesqueJay(style: Style): Recipe {
   const t = Math.min(heaviness(f) / 0.67, 1.5);
   const l = thinness(f);
   const radius = held(f, (100 + 24 * t + 5 * l) * u);
+  // The foot reaching as far as the current Geist's: 12 units further by its
+  // UltraBlack than the older measures.
   const toe = Math.min(
-    stem - f.half - (100 + 24 * t + 20 * l) * u,
+    stem - f.half - (100 + 36 * t + 20 * l) * u,
     stem - radius - 1 - f.half * 0.5 * Math.max(0, heaviness(f) - 0.67),
   );
   return finish(f, [
@@ -1248,7 +1256,10 @@ export function grotesqueF(style: Style): Recipe {
   const wide = held(f, 101 * u + past * 0.6);
   const fall = held(f, (109 / 530) * f.x - f.gain * 0.3);
   const corner = at(stem + wide, top - fall);
-  const end = Math.max(stem + f.half + 141 * u, corner.x + f.half * 0.3);
+  // And further as the weight grows, as the current Geist's does: 12 units
+  // on the bar's left and 14 on the right by its UltraBlack.
+  const more = heavyT(f);
+  const end = Math.max(stem + f.half + 136 * u + 17 * more, corner.x + f.half * 0.3);
   // Geist's bar is as heavy as the hook's crown (Black 125, Regular 76) and
   // hangs a little under the x-height at a Black (top 511).
   const bar = f.hangs(f.x - 19 * u * Math.min(1, heaviness(f) / 0.67));
@@ -1265,7 +1276,10 @@ export function grotesqueF(style: Style): Recipe {
     ),
     thin(
       f,
-      straight(at(stem - f.half - 76 * u, bar), at(stem + f.half + 135 * u, bar)),
+      straight(
+        at(stem - f.half - 76 * u - 12 * more, bar),
+        at(stem + f.half + 130 * u + 17 * more, bar),
+      ),
       f.end,
       f.end,
     ),
@@ -4111,7 +4125,12 @@ export function grotesqueC(style: Style): Recipe {
   const [, t] = smallSpread(f, 0.5);
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
   const H = (y: number) => (y / 530) * f.x;
-  const halfW = held(f, (mixed(f.grownBowl, f.bowl, 0.5) / unstretched(f)) * 0.985);
+  // Widened from the SemiBold on and narrowed a little at the Regular, to
+  // the current Geist's.
+  const halfW = held(
+    f,
+    (mixed(f.grownBowl, f.bowl, 0.5) / unstretched(f)) * 0.985 + roundGain(f, -2.5, 6),
+  );
   const centre = at(f.edge + halfW, f.x / 2);
   const head = angleAt(f, centre, halfW, f.bowlH, H(lerp(352, 325)), false);
   const foot = angleAt(f, centre, halfW, f.bowlH, H(lerp(188, 215)), false);
@@ -4128,7 +4147,9 @@ export function grotesqueE(style: Style): Recipe {
   const [, t] = smallSpread(f);
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
   const H = (y: number) => (y / 530) * f.x;
-  const halfW = held(f, (f.bowl / unstretched(f)) * 0.99);
+  // A little narrower than the o's, more so as the weight grows, to the
+  // current Geist's: 6 units at the Regular and 12 at UltraBlack.
+  const halfW = held(f, (f.bowl / unstretched(f)) * 0.99 - 3 * (1 - thinness(f)) - 3 * heavyT(f));
   const centre = at(f.edge + halfW, f.x / 2);
   // Geist's height, moved with the crossbar control from where the face has it.
   // Past the Black the bar comes down a little, so the eye over it stays open.

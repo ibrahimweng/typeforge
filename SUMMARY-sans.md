@@ -73,6 +73,11 @@ current Geist's width, within 6 units from the Thin to UltraBlack and 9 at
 the Black. The H, M and zero, 9 to 15 narrow at the Regular and SemiBold,
 are within 9 at every weight too.
 
+**f, c, j, e and g.** Against the current Geist the f stood 26 units narrow
+at UltraBlack (its bar and hook reach further as the weight grows), the c 13
+narrow, the j's foot 12 short, the e 12 wide and the g's bowl 7 wide on its
+left. Each now reaches Geist's width within 10 at every weight.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

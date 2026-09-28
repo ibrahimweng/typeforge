@@ -645,7 +645,7 @@ describe("the percent past the old Black", () => {
   });
 });
 
-describe("the round capitals", () => {
+describe("the widths of the letters redrawn to the current Geist", () => {
   it("are Geist's width from the Thin to the Black", () => {
     // Geist's ink widths at its Thin, Regular, SemiBold, UltraBlack and
     // Black. The plain bowls grew past Geist's with the weight: the O 21
@@ -671,6 +671,13 @@ describe("the round capitals", () => {
       H: [484, 529, 559, 588, 603],
       M: [658, 693, 742, 791, 816],
       zero: [528, 563, 591, 619, 633],
+      // And the f, c, j, e and g: the f 26 narrow at UltraBlack, the c 13,
+      // the j 12, the e 12 wide.
+      f: [254, 296, 344, 394, 418],
+      c: [441, 468, 512, 556, 578],
+      j: [152, 187, 243, 299, 327],
+      e: [450, 473, 512, 552, 571],
+      g: [435, 470, 511, 552, 572],
     };
     for (const [name, widths] of Object.entries(geist)) {
       for (const [index, weight] of [30, 87, 130, 172, 194].entries()) {
