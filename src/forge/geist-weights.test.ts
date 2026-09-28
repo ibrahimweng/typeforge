@@ -578,6 +578,21 @@ describe("the accents' places", () => {
   });
 });
 
+describe("the bar and the ampersand", () => {
+  it("are Geist's height and width", () => {
+    // Geist's bar runs from 110 under the line to 750, as its brackets do;
+    // the plain one stood from the descender to the cap line. Geist Black's
+    // ampersand is 723 across; its foot and arm stood 20 short, 678.
+    for (const weight of [30, 87, 172]) {
+      const bar = box("bar", weight);
+      expect(bar.yMin, `bar at ${weight}`).toBeCloseTo(-110, -1);
+      expect(bar.yMax, `bar at ${weight}`).toBeCloseTo(750, -1);
+    }
+    const ampersand = box("ampersand", 172);
+    expect(ampersand.xMax - ampersand.xMin).toBeGreaterThan(690);
+  });
+});
+
 describe("the dollar", () => {
   it("has Geist's long light bar, and Geist's sides", () => {
     // Geist's bar runs from 90 under the line to 800, 74 across at the
@@ -718,8 +733,8 @@ describe("the Sans's marks", () => {
 describe("the Sans's sidebearings", () => {
   it("stand where Geist's do at the Regular and the Black", () => {
     // Geist's left and right sidebearings at the Regular and the Black. The
-    // W stood 17 closer than Geist's, the T, Y, 7 and X 12 to 26 further off,
-    // and the O 15 closer at the Black. Geist's Y reaches 6 past its sides,
+    // W stood 17 closer than Geist's, the ! 6 to 11 closer, the T, Y, 7 and
+    // X 12 to 26 further off, and the O 15 closer at the Black. Geist's Y reaches 6 past its sides,
     // and is held just inside them.
     const geist: Record<string, [number, number, number, number]> = {
       W: [38, 38, 36, 36],
@@ -732,6 +747,7 @@ describe("the Sans's sidebearings", () => {
       nine: [40, 50, 30, 40],
       four: [30, 50, 20, 40],
       exclam: [50, 50, 45, 45],
+      ampersand: [40, 20, 30, 10],
     };
     for (const [name, [left, right, blackLeft, blackRight]] of Object.entries(geist)) {
       for (const [weight, l, r] of [

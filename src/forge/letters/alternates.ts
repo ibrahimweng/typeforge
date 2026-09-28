@@ -15,6 +15,7 @@ import {
   grotesqueBracketRight,
   grotesqueAcute,
   grotesqueBackslash,
+  grotesqueBar,
   grotesqueCaret,
   grotesqueCircumflexAccent,
   grotesqueDieresis,
@@ -1544,6 +1545,7 @@ const GROTESQUE: Array<[LetterName, string, (style: Style) => Recipe]> = [
   ["acute", "Steep, cut level at both ends.", grotesqueAcute],
   ["circumflex", "The caret's shape, a level head over level feet.", grotesqueCircumflexAccent],
   ["dieresis", "Two dots cut square, well apart.", grotesqueDieresis],
+  ["bar", "From under the line to over the ascender, as the brackets run.", grotesqueBar],
   ["dollar", "The S with a light bar straight through it, standing well out.", grotesqueDollar],
   ["tilde", "A wave of two equal arcs, cut level at both ends.", grotesqueTildeAccent],
   [

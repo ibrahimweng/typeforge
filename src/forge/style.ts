@@ -768,6 +768,8 @@ export const SANS: Style = {
       dollar: [0.69, 0.69],
       // Geist stands its ! 50 off either side and its bar 92.
       exclam: [0.63, 0.63],
+      // Geist's ampersand stands 40 off its left and 20 off its right.
+      ampersand: [0.5, 0.25],
       bar: [1.15, 1.15],
       grave: [0.55, 0.55],
       acute: [0.55, 0.55],
@@ -902,6 +904,7 @@ export const SANS: Style = {
     dieresis: "grotesque",
     tilde: "grotesque",
     dollar: "grotesque",
+    bar: "grotesque",
     zero: "grotesque",
     two: "grotesque",
     three: "grotesque",

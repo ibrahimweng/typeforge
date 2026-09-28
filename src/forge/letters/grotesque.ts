@@ -821,7 +821,7 @@ export function grotesqueAmpersand(style: Style): Recipe {
   const bowlW = held(f, lerp(193, 204) * u);
   const bowl = at(X(lerp(237, 290)), bowlY);
   // The leg, from its foot up to where it runs tangent into the loop's left.
-  const foot = at(X(lerp(510, 590)), 0);
+  const foot = at(X(lerp(510, 610)), 0);
   const split = -40;
   const entered = tangentFrom(foot, bend(f, loop, loopH, 270, 180, loopW));
   /*
@@ -857,7 +857,7 @@ export function grotesqueAmpersand(style: Style): Recipe {
   }
   // Geist's arm stands lower on its lighter weights: 255 on the Thin.
   const light = Math.min(1, Math.max(0, (87 - f.style.pen.weight) / 57));
-  const armTop = at(X(lerp(496, 586)), H(lerp(318, 335) - 63 * light));
+  const armTop = at(X(lerp(496, 609)), H(lerp(318, 335) - 63 * light));
   return finish(f, [
     /*
      * Two runs, split on the loop's right side, so that neither crosses
@@ -2507,6 +2507,12 @@ export function grotesqueBackslash(style: Style): Recipe {
   return finish(f, [
     ink(f, straight(at(f.edge, up(f, 750)), at(f.edge + 295.8 * u, up(f, -110))), LEVEL, LEVEL),
   ]);
+}
+
+/** The bar, as Geist's: from 110 under the line to 750, as its brackets run. */
+export function grotesqueBar(style: Style): Recipe {
+  const f = frame(style);
+  return finish(f, [ink(f, straight(at(f.edge, up(f, -110)), at(f.edge, up(f, 750))), BUTT, BUTT)]);
 }
 
 /** A pen as heavy across in every direction, for the marks drawn to a measured weight. */

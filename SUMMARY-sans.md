@@ -94,7 +94,7 @@ the closing side.
 **: ;.** The upper dot now sits at Geist Regular's height (506). The old code
 had a mis-measured 0.87 of the x-height there.
 
-**Spacing.** W, X, Y, T, O, Q, ! and | and the 4, 6, 7 and 9 now stand where Geist
+**Spacing.** W, X, Y, T, O, Q, !, | and & and the 4, 6, 7 and 9 now stand where Geist
 1.7.2 sets them, within a few units at the Regular and the Black. The W was 17
 units too close on each side. The T, X, Y and 7 were 12 to 26 too loose, and
 the 6 and 9 were 10 to 20 too loose. The O closed to 25 at the Black, where
@@ -122,6 +122,11 @@ measures. The circumflex is the caret's shape with a level head over level
 feet (the plain one came to a point). The dieresis dots are cut square,
 larger and further apart. The tilde is the same two-arc wave as the ASCII
 tilde, smaller.
+
+**| and &.** The bar now runs from 110 under the line to 750, as Geist's
+and the brackets do; it stood from the descender to the cap line. The
+ampersand's foot and arm reach Geist Black's, so it is 699 across at the
+Black against Geist's 723. It was 678.
 
 **$.** New Sans dollar: the S with Geist's bar, light at every weight (74
 across at the Regular, 86 at the Black) and running from 90 under the line
