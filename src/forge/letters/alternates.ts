@@ -72,12 +72,14 @@ import {
   grotesqueM,
   grotesqueN,
   grotesqueNine,
+  grotesqueNineSided,
   grotesqueOne,
   grotesqueQuestion,
   grotesqueR,
   grotesqueS,
   grotesqueSeven,
   grotesqueSix,
+  grotesqueSixSided,
   grotesqueSmallR,
   grotesqueT,
   grotesqueSmallU,
@@ -1598,6 +1600,23 @@ for (const [name, hint, build] of GROTESQUE) {
       ? LETTERS[name](style)
       : build(style);
   ALTERNATES[name].push({ id: "grotesque", label: "Grotesque", hint, build: drawn });
+}
+
+/*
+ * The Sans's six and nine, as Geist's: the grotesque ones with a bowl lighter
+ * across its crown than its foot, whose top comes down as the weight grows.
+ */
+const SIDED: Array<[LetterName, string, (style: Style) => Recipe]> = [
+  ["six", "A tall hood over a bowl lighter at its crown than its foot.", grotesqueSixSided],
+  ["nine", "A tall tail under a bowl lighter at its foot than its crown.", grotesqueNineSided],
+];
+for (const [name, hint, build] of SIDED) {
+  if (!ALTERNATES[name]) ALTERNATES[name] = [];
+  const drawn = (style: Style) =>
+    (style.parts.script.on || Math.abs(Math.abs(style.pen.angle) - 90) < 30) && LETTERS[name]
+      ? LETTERS[name](style)
+      : build(style);
+  ALTERNATES[name].push({ id: "sided", label: "Grotesque, sided", hint, build: drawn });
 }
 
 /*

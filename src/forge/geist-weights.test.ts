@@ -1022,3 +1022,24 @@ describe("the horizontals at the current Black", () => {
     expect(flag[flag.length - 1][1] - flag[flag.length - 1][0]).toBeGreaterThan(145);
   });
 });
+
+describe("the six's bowl", () => {
+  it("comes down and lightens at its crown as Geist's does", () => {
+    // 300 in from its ink's left, Geist's six's bowl tops out at 477 at the
+    // Regular and 448 at the Black, its crown there 120 deep, and 112 of
+    // white between it and the hood. On the stem's pen it stood at 484 at
+    // every weight, its crown 152 deep with 65 of white under the hood.
+    for (const [weight, top] of [
+      [87, 477],
+      [194, 448],
+    ]) {
+      const { contours } = draw("six", weight);
+      const column = filled(contours, contoursBounds(contours).xMin + 300, "x");
+      expect(Math.abs(column[1][1] - top), `6 top at ${weight}`).toBeLessThan(6);
+      if (weight === 194) {
+        expect(column[1][1] - column[1][0]).toBeLessThan(130);
+        expect(column[2][0] - column[1][1]).toBeGreaterThan(90);
+      }
+    }
+  });
+});

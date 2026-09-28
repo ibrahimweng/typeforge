@@ -113,6 +113,16 @@ began lightening their horizontals at 172, so at 194 they stood 15 to 25
 units light. That lightening now starts at the current Black and is complete
 by the same weight as before, so 260 is unchanged.
 
+**The 6 and 9 bowls.** Geist's 6 bowl comes down as the weight grows (its
+top at 477 at the Regular and 448 at the Black), and its crown is lighter than
+its foot (120 against 149 at the Black). Ours stood at 484 at every weight
+with a 152 crown, which left the counter under the hood at 65 units against
+Geist's 112. The Sans now draws the bowl as two rings on a pen lighter across,
+sharing the crown, one giving the counter and one the outline and foot. The
+top and crown now match within 3, and the white under the hood is 101. This is
+a new form, "sided", used by the Sans only; the Ribbon and every face that
+picks the grotesque 6 keep the single ring.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

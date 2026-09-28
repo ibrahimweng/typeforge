@@ -1663,18 +1663,32 @@ export function grotesqueFive(style: Style): Recipe {
  */
 export function grotesqueSix(style: Style): Recipe {
   const f = frame(lighterAcross(style));
-  return finish(f, sixStrokes(f), true);
+  return finish(f, sixStrokes(f, false), true);
+}
+
+/** The Sans's six: its bowl as Geist's, lighter at its crown (see `sixBowl`). */
+export function grotesqueSixSided(style: Style): Recipe {
+  const f = frame(lighterAcross(style));
+  return finish(f, sixStrokes(f, true), true);
 }
 
 /** The six's and the nine's correction: see `figureFit`. */
 const sixFit = (f: Frame): number => figureFit(f, 0, -0.024, 0, -0.053);
 
-function sixStrokes(f: Frame): Stroke[] {
+function sixStrokes(f: Frame, sans: boolean): Stroke[] {
   const X = across(f, 60, 0.025, sixFit(f));
   const u = large(f, 1) * (1 + 0.025 * thinness(f)) * sixFit(f);
   const bottom = f.dip(0);
   const top = f.crest(f.cap);
-  const bowlTop = up(f, 484) - f.upright;
+  /*
+   * The Sans's bowl is Geist's: its top comes down as the weight grows (477
+   * at the Regular, 448 at the Black) and its crown is lighter than its
+   * foot (120 against 149 at the Black). Drawn as one ring on the stem's
+   * pen, its crown was 152 at the Black and stood 35 units high, closing the
+   * counter under the hood to half of Geist's.
+   */
+  const [, now] = squaredNow(f);
+  const bowlTop = up(f, sans ? now(477, 448, 472) : 484) - f.upright;
   const radius = held(f, (bowlTop - bottom) / 2);
   const centre = at(X(313), bottom + radius);
   const wide = held(f, 207 * u);
@@ -1691,7 +1705,7 @@ function sixStrokes(f: Frame): Stroke[] {
   const hoodW = wide + out;
   const end = angleAt(f, hood, hoodW, hoodH, Math.max(up(f, 552), hoodY + f.half), false);
   return [
-    ink(f, ring(f, centre, wide, radius)),
+    ...sixBowl(f, sans, centre, wide, radius, now(0.96, 0.81, 1)),
     ink(
       f,
       chain(
@@ -1704,14 +1718,56 @@ function sixStrokes(f: Frame): Stroke[] {
   ];
 }
 
+/**
+ * The six's bowl. The Sans draws it as two rings on a pen lighter across,
+ * `share` of the stem's pen at its crown. Both rings share the top, and the
+ * foot keeps the stem's pen: one ring's counter is the bowl's counter and
+ * the other's outside is the bowl's outside. Other faces draw one ring on
+ * their own pen.
+ */
+function sixBowl(
+  f: Frame,
+  sans: boolean,
+  centre: Vec2,
+  wide: number,
+  radius: number,
+  share: number,
+): Stroke[] {
+  if (!sans) return [ink(f, ring(f, centre, wide, radius))];
+  // Never the whole foot: two rings the same would be drawn as one, and the
+  // six would have fewer points at its Thin than at its Black.
+  const crown = 2 * f.upright * Math.min(0.95, share);
+  const g = sidedFrame(f, 2 * f.half, crown);
+  const outer = centre.y + radius + f.upright;
+  const spineTop = outer - crown / 2;
+  const footIn = centre.y - radius + f.upright - crown / 2;
+  const footOut = centre.y - radius - f.upright + crown / 2;
+  return [footIn, footOut].map((foot) => {
+    const one = ink(
+      g,
+      ring(g, at(centre.x, (spineTop + foot) / 2), wide, held(g, (spineTop - foot) / 2)),
+    );
+    return inherit(one, { ...one, pen: g.style.pen });
+  });
+}
+
 /** The nine: the six turned over, as Geist's is. */
 export function grotesqueNine(style: Style): Recipe {
+  return nineOf(style, false);
+}
+
+/** The Sans's nine: the sided six turned over. */
+export function grotesqueNineSided(style: Style): Recipe {
+  return nineOf(style, true);
+}
+
+function nineOf(style: Style, sans: boolean): Recipe {
   const f = frame(lighterAcross(style));
   const X = across(f, 60, 0.025, sixFit(f));
   const about = at(X(313), (f.crest(f.cap) + f.dip(0)) / 2);
   return finish(
     f,
-    sixStrokes(f).map((stroke) => turnedStroke(stroke, about)),
+    sixStrokes(f, sans).map((stroke) => turnedStroke(stroke, about)),
     true,
   );
 }
