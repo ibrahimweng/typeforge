@@ -386,92 +386,107 @@ export async function toTypeface(forge: Forge, options: ForgeExportOptions): Pro
    * renderer that skipped the feature would join every one of those pairs high
    * to low -- which is the broken font this exists to avoid.
    */
-  const joined = joinsUp(forge);
-  if (joined.length > 0) {
-    const before = glyphs.length;
-    for (const [name, which] of joined) {
-      const drawn = drawnHigh(name, which, forge, options.effects === true);
-      if (!drawn) continue;
-      glyphs.push({
-        name: alternateName(name, which),
-        // No codepoint. These are reached only through the feature, and a
-        // second glyph mapped to the same character is a font that renders
-        // differently depending on which one a tool happens to pick.
-        unicodes: [],
-        advanceWidth: drawn.advanceWidth,
-        contours: drawn.contours,
-        components: [],
-        anchors: [],
-        params: {},
-        dirty: false,
-      });
-    }
-    if (glyphs.length > before) typeface.alternates = joinRules(joined);
-  }
-
   /*
-   * And the two ends of a word, which is the other thing a shaper has to be
-   * told about a joined face.
+   * With the same book as the letters, open again for the second drawings.
    *
-   * The letter as `cmap` maps it reaches out on both sides, because that is
-   * what makes the font right in a renderer that applies nothing. A word set
-   * from those alone begins and ends with a stroke reaching towards a letter
-   * that is not there, so the first letter of one and the last are drawn again
-   * without the half that has nothing to meet.
+   * They are letters of the font like any other and ride the weight axis like
+   * any other, so they have to make the drawn weight's decisions too. Drawn
+   * after the book was put back, each master decided for itself whether a
+   * `g.init` had an eye at its foot, and on the Monoline and the Roundhand
+   * every second drawing of `f`, `g`, `j`, `q`, `t` and `y` came off the axis
+   * while the letters they stand in for rode it.
    */
-  const edges = boundaryEnds(forge);
-  if (edges.length > 0) {
-    const before = glyphs.length;
-    for (const [name, which] of edges) {
-      const drawn = drawnEnds(name, which, forge, options.effects === true);
-      if (!drawn) continue;
-      glyphs.push({
-        name: boundaryName(name, which),
-        unicodes: [],
-        advanceWidth: drawn.advanceWidth,
-        contours: drawn.contours,
-        components: [],
-        anchors: [],
-        params: {},
-        dirty: false,
-      });
+  const hadWavesAgain = openWaveBook(options.waves ?? null);
+  try {
+    const joined = joinsUp(forge);
+    if (joined.length > 0) {
+      const before = glyphs.length;
+      for (const [name, which] of joined) {
+        const drawn = drawnHigh(name, which, forge, options.effects === true);
+        if (!drawn) continue;
+        glyphs.push({
+          name: alternateName(name, which),
+          // No codepoint. These are reached only through the feature, and a
+          // second glyph mapped to the same character is a font that renders
+          // differently depending on which one a tool happens to pick.
+          unicodes: [],
+          advanceWidth: drawn.advanceWidth,
+          contours: drawn.contours,
+          components: [],
+          anchors: [],
+          params: {},
+          dirty: false,
+        });
+      }
+      if (glyphs.length > before) typeface.alternates = joinRules(joined);
     }
+
     /*
-     * After the hand-over rules, and the order is the whole of why it works.
-     * A lookup matches the glyph in front of it, so whichever runs second has
-     * to know the glyphs the first made. These did run first once, and a word
-     * ending `on` then lost its hand-over: the `n` became `n.end` and the pair
-     * rule no longer recognised it, so the `o` joined low and ruled a bar
-     * across itself. Run second, they know the hand-over drawings and swap
-     * each for the one that also has nothing on its open side.
+     * And the two ends of a word, which is the other thing a shaper has to be
+     * told about a joined face.
      *
-     * And the two composed: a letter taken high at one end and left without
-     * the other, for a hand-over at the waist that ends or begins a word.
+     * The letter as `cmap` maps it reaches out on both sides, because that is
+     * what makes the font right in a renderer that applies nothing. A word set
+     * from those alone begins and ends with a stroke reaching towards a letter
+     * that is not there, so the first letter of one and the last are drawn again
+     * without the half that has nothing to meet.
      */
-    const composed: Array<[string, Without]> = [];
-    for (const [name, which] of joined) {
-      const without: Without = which === "entry" ? "end" : "begin";
-      if (!edges.some(([one, side]) => one === name && side === without)) continue;
-      const high = alternateName(name, which);
-      if (!glyphs.some((glyph) => glyph.name === high)) continue;
-      const drawn = drawnHighWithout(name, which, without, forge, options.effects === true);
-      if (!drawn) continue;
-      const alternate = boundaryName(high, without);
-      glyphs.push({
-        name: alternate,
-        unicodes: [],
-        advanceWidth: drawn.advanceWidth,
-        contours: drawn.contours,
-        components: [],
-        anchors: [],
-        params: {},
-        dirty: false,
-      });
-      composed.push([high, without]);
+    const edges = boundaryEnds(forge);
+    if (edges.length > 0) {
+      const before = glyphs.length;
+      for (const [name, which] of edges) {
+        const drawn = drawnEnds(name, which, forge, options.effects === true);
+        if (!drawn) continue;
+        glyphs.push({
+          name: boundaryName(name, which),
+          unicodes: [],
+          advanceWidth: drawn.advanceWidth,
+          contours: drawn.contours,
+          components: [],
+          anchors: [],
+          params: {},
+          dirty: false,
+        });
+      }
+      /*
+       * After the hand-over rules, and the order is the whole of why it works.
+       * A lookup matches the glyph in front of it, so whichever runs second has
+       * to know the glyphs the first made. These did run first once, and a word
+       * ending `on` then lost its hand-over: the `n` became `n.end` and the pair
+       * rule no longer recognised it, so the `o` joined low and ruled a bar
+       * across itself. Run second, they know the hand-over drawings and swap
+       * each for the one that also has nothing on its open side.
+       *
+       * And the two composed: a letter taken high at one end and left without
+       * the other, for a hand-over at the waist that ends or begins a word.
+       */
+      const composed: Array<[string, Without]> = [];
+      for (const [name, which] of joined) {
+        const without: Without = which === "entry" ? "end" : "begin";
+        if (!edges.some(([one, side]) => one === name && side === without)) continue;
+        const high = alternateName(name, which);
+        if (!glyphs.some((glyph) => glyph.name === high)) continue;
+        const drawn = drawnHighWithout(name, which, without, forge, options.effects === true);
+        if (!drawn) continue;
+        const alternate = boundaryName(high, without);
+        glyphs.push({
+          name: alternate,
+          unicodes: [],
+          advanceWidth: drawn.advanceWidth,
+          contours: drawn.contours,
+          components: [],
+          anchors: [],
+          params: {},
+          dirty: false,
+        });
+        composed.push([high, without]);
+      }
+      if (glyphs.length > before) {
+        typeface.alternates = [...typeface.alternates, ...boundaryRules(edges, plain, composed)];
+      }
     }
-    if (glyphs.length > before) {
-      typeface.alternates = [...typeface.alternates, ...boundaryRules(edges, plain, composed)];
-    }
+  } finally {
+    openWaveBook(hadWavesAgain);
   }
 
   typeface.glyphs = glyphs;

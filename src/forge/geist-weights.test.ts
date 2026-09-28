@@ -599,7 +599,10 @@ describe("the Sans's sidebearings", () => {
         const drawn = draw(name, weight);
         const ink = contoursBounds(drawn.contours);
         expect(Math.abs(ink.xMin - l), `${name} left at ${weight}`).toBeLessThan(9);
-        expect(Math.abs(drawn.advanceWidth - ink.xMax - r), `${name} right at ${weight}`).toBeLessThan(9);
+        expect(
+          Math.abs(drawn.advanceWidth - ink.xMax - r),
+          `${name} right at ${weight}`,
+        ).toBeLessThan(9);
       }
     }
   });
@@ -618,7 +621,8 @@ describe("the heavy s's counters", () => {
         const runs = filled(contours, y, "y");
         for (let index = 1; index < runs.length; index++) {
           const width = runs[index][0] - runs[index - 1][1];
-          if (width > widest.width) widest = { width, x: (runs[index][0] + runs[index - 1][1]) / 2, y };
+          if (width > widest.width)
+            widest = { width, x: (runs[index][0] + runs[index - 1][1]) / 2, y };
         }
       }
       const column = filled(contours, widest.x, "x");

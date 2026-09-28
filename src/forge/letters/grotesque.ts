@@ -1961,7 +1961,8 @@ function ess(given: Frame, e: Ess): Stroke[] {
   const H = (y: number) => (y / e.geist) * e.height;
   const lightShare = 0.02 + (SPLIT_SIDES - 0.02) * Math.min(1, Math.max(0, (t - 0.3) / 0.7));
   const lift =
-    (f.style.pen.weight * (1 - Math.min(Math.max(f.style.pen.contrast, 0), 0.95)) *
+    (f.style.pen.weight *
+      (1 - Math.min(Math.max(f.style.pen.contrast, 0), 0.95)) *
       lightShare *
       crownsGive(t)) /
     2;

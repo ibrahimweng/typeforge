@@ -32,6 +32,7 @@
 import { ALTERNATES } from "./letters/alternates";
 import {
   beginLetter,
+  capped,
   BUTT,
   enclosing,
   frame,
@@ -51,7 +52,7 @@ import {
   seamsOf,
   wobbleOf,
 } from "./script";
-import { bowRuns, spineEnd } from "./shapes";
+import { bowRuns, spineEnd, waveBookAt } from "./shapes";
 import { blackness, scriptUnit } from "./style";
 import type { Style } from "./style";
 import type { Spine } from "./types";
@@ -308,6 +309,11 @@ export function joiningWithout<T>(which: Partial<Ends>, run: () => T): T {
   }
 }
 
+/** Whether the letter being drawn is drawn without its lead-in: see `joiningWithout`. */
+export function joiningWithoutEntry(): boolean {
+  return endsWithout?.entry === false;
+}
+
 export function joiningHigh<T>(which: { entry?: boolean; exit?: boolean }, run: () => T): T {
   const was = takingHigh;
   takingHigh = which;
@@ -375,17 +381,22 @@ export function writtenLead(
 ): Lead {
   const script = style.parts.script;
   const f = frame(style);
-  const seams = seamsOf(script, f.x, f.half);
+  const unit = scriptUnit(style);
+  const seams = seamsOf(script, f.x, f.half, unit);
   const asked =
     end === "entry"
       ? takingHigh.entry === true
       : takingHigh.exit === true && HANDS_OVER_HIGH.has(name);
   const high = asked && seams.high > seams.low + 1e-9;
   const lift = script.on ? wobbleOf(name, script, f.x).lift : 0;
-  const unit = scriptUnit(style);
   const reach = script.reach * unit;
   const weld = Math.max(0, script.knit) * unit + Math.max(0, Math.min(1, script.flat)) * reach;
-  const low: Lead = { y: seams.low - lift, way: seamHeading(script, false), weld, high: false };
+  const low: Lead = {
+    y: seams.low - lift,
+    way: seamHeading(script, false, f.x, f.half, unit),
+    weld,
+    high: false,
+  };
   if (!high) return low;
   return { y: seams.high - lift, way: seamHeading(script, true), weld, high, low };
 }
@@ -435,13 +446,21 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * the loops, the spacing, the promise that a boundary form is narrower than
    * the letter it stands in for -- then holds unchanged.
    */
+  /*
+   * On a book page of its own (see `WaveBook`), because it is a different
+   * drawing with different runs: read off the written letter's page, the
+   * drawn letter's bows and ends took the written one's answers, and the
+   * Monoline's `n.begin` and `r.end` had different points at every weight.
+   */
   if (recipe.entered && script.on && endsWithout?.entry === false && LETTERS[name]) {
+    waveBookAt(`${name}~drawn`);
     recipe = LETTERS[name](style);
   }
   // And a letter written to hand on from the end of its last stroke, with
   // nothing to hand on to, is the drawn one and finishes that stroke on the
   // face's own terminal.
   if (recipe.leaves && script.on && endsWithout?.exit === false && LETTERS[name]) {
+    waveBookAt(`${name}~drawn`);
     recipe = LETTERS[name](style);
   }
   /*
@@ -505,6 +524,7 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
     // What the pen is certain to reach, which is what it is at its narrowest.
     narrow: f.half * Math.max(0, 1 - Math.abs(style.pen.contrast)),
     x: f.x,
+    join: f.half * joinWeight(style),
     unit: scriptUnit(style),
     sidebearing: f.edge - f.half,
   };
@@ -539,7 +559,7 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * drawing that a shaper swaps in when the pair actually occurs. `o` and the
    * letter after it are both replaced, so the two that meet always agree.
    */
-  const seams = seamsOf(script, f.x, f.half);
+  const seams = seamsOf(script, f.x, f.half, room.unit);
   const crossing = {
     entry: takingHigh.entry ? seams.high : seams.low,
     exit: takingHigh.exit && HANDS_OVER_HIGH.has(name) ? seams.high : seams.low,
@@ -569,9 +589,29 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * stroke to give, so there it is the stem's.
    */
   const loopWeight = (1 - 0.45 * Math.min(1, Math.abs(style.pen.contrast))) * joinWeight(style);
+  /*
+   * And the run an eye turns off ends round where it turns. A written loop is
+   * one stroke going up, turning over and coming back down, and the turn is
+   * the pen's own round end -- cut square, the run stood up past the eye in a
+   * flag at the top of every looped ascender and in a nick at the foot of
+   * every looped descender. Pulled back by what the round end reaches, as
+   * every round end here is, so the letter still stops on its line.
+   */
+  const turned = recipe.strokes.map((stroke) => {
+    const loop = loops.find((one) => one.on === stroke.spine);
+    if (!loop) return stroke;
+    return capped(f, { ...stroke, [loop.at]: { kind: "round" } }, true);
+  });
   const body = [
-    ...recipe.strokes,
-    ...loops.map((loop) => lighter(ink(f, loop, BUTT, BUTT), loopWeight)),
+    ...turned,
+    /*
+     * Round where the eye comes home to the end of its run. The eye and the run
+     * it turns off meet end to end at an angle, and two square cuts meeting
+     * like that leave a notch on the outside of the turn -- a white nick at the
+     * foot of every looped `g`, `j` and `y` on the Roundhand. The pen's own
+     * end fills it, and inside the run it shows nothing.
+     */
+    ...loops.map((loop) => lighter(ink(f, loop.spine, BUTT, { kind: "round" }), loopWeight)),
   ].map((stroke) => ({
     ...stroke,
     spine: movedSpine(stroke.spine, 0, lift),

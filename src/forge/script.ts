@@ -52,7 +52,15 @@ import { scatterOf } from "@/font/scatter";
 import type { Vec2 } from "@/font/types";
 
 import { wrapAngle } from "./angles";
-import { alongSpine, reversed, spineEnd, spineLength, spineStart } from "./shapes";
+import {
+  alongSpine,
+  decided,
+  endPieces,
+  reversed,
+  spineEnd,
+  spineLength,
+  spineStart,
+} from "./shapes";
 import type { Spine, SpineArc } from "./types";
 
 const at = (x: number, y: number): Vec2 => ({ x, y });
@@ -337,17 +345,81 @@ export const HIGH = 0.76;
  * to the next letter's shoulder, and the only heading both halves can agree on
  * that does that is level.
  */
-export function seamHeading(script: Script, high: boolean): Vec2 {
-  const degrees = high ? 0 : Math.max(-60, Math.min(70, script.tilt));
+/*
+ * And never steeper than the pen leaves room for.
+ *
+ * A lead-out leaves the foot of a stem running along the line and has to be at
+ * the tilt by the time it crosses the seam, and one arc level at one end is at
+ * twice its chord's angle at the other. At a text weight the chord climbs
+ * thirty-odd degrees and the arc makes the tilt with room to spare. At a Black
+ * the foot of the stem is itself most of the way up to the seam: on the
+ * Handwriting at a pen of 200 the chord climbed nine degrees, no arc could
+ * reach fifty-five, and each half fell back to a straight run with a stub at
+ * the tilt hung off its end -- two stubs crossing at every seam in the word,
+ * an X between each pair of letters.
+ *
+ * So the heading is the tilt where the pen allows it and the steepest a single
+ * arc can make where it does not. It is one number for the face at its weight,
+ * which is all the contract asks: every letter reads it from the same four
+ * figures, so every exit and every entry still agree.
+ */
+export function seamHeading(
+  script: Script,
+  high: boolean,
+  x?: number,
+  half?: number,
+  unit?: number,
+): Vec2 {
+  let degrees = high ? 0 : Math.max(-60, Math.min(70, script.tilt));
+  if (!high && degrees > 0 && x !== undefined && half !== undefined && half > 0) {
+    const low = seamsOf(script, x, half, unit).low;
+    const most = (2 * Math.atan2(low - half, runOf(script, half, unit)) * 180) / Math.PI;
+    degrees = Math.min(degrees, Math.max(12, most));
+  }
   const radians = (degrees * Math.PI) / 180;
   return at(Math.cos(radians), Math.sin(radians));
 }
 
-export function seamsOf(script: Script, x: number, half: number): { low: number; high: number } {
-  const low = Math.max(script.height * x, half * 1.25);
+/** How far a lead-out runs sideways from the foot of a stem to the seam. */
+function runOf(script: Script, half: number, unit = half * 2): number {
+  return half + Math.max(0, script.reach) * unit;
+}
+
+/*
+ * The low seam comes up off the line as the pen gets heavier.
+ *
+ * A seam a quarter of a pen over the foot of a stem is a seam the lead-out has
+ * no height to climb to, and the heading above then has to lie down flat to
+ * make it -- a rule drawn through the word, which is the thing `tilt` exists to
+ * prevent. So the seam stands at least as high as an arc from the foot at half
+ * the tilt would reach, and never higher than the middle of the x-height, past
+ * which the lead-in would have no letter left above it to climb into. At every
+ * face's own weight the face's `height` is the higher of the two and nothing
+ * moves; it is at the Bold and past that this takes over.
+ */
+export function seamsOf(
+  script: Script,
+  x: number,
+  half: number,
+  unit?: number,
+): { low: number; high: number } {
+  const tilt = (Math.max(0, Math.min(70, script.tilt)) * Math.PI) / 180;
+  const climb = half + runOf(script, half, unit) * Math.tan(tilt / 2);
+  const floor = Math.max(half * 1.25, Math.min(climb, x * 0.5));
+  const low = Math.max(script.height * x, floor);
   // Where the four that hand over high cross, which the face may name.
   const high = script.highSeam ?? HIGH;
-  return { low, high: Math.max(low, high * x) };
+  /*
+   * And under the top of the letters by more than the pen, or there is nothing
+   * of them there to hand over from. A high lead-out looks for its letter
+   * between the seam and half a pen under the x-height, and at a Black that
+   * half pen came down past the seam: the band was empty, the search fell back
+   * to the nearest thing, and the `b` of `brown` left from its own stem and ran
+   * level across its bowl into the `r`. A band a tenth of a pen tall was no
+   * better -- the skeleton is sampled more coarsely than that, and stepped
+   * straight over the side of the bowl.
+   */
+  return { low, high: Math.max(low, Math.min(high * x, x - half * 1.5)) };
 }
 
 /**
@@ -389,6 +461,8 @@ export interface Room {
   narrow: number;
   /** The x-height. */
   x: number;
+  /** Half the width a join is swept at, which is lighter than the pen; `half` when not given. */
+  join?: number;
   /**
    * What the reach, the weld and the loop are measured in: the pen, held near
    * the pen the face was designed at -- see `scriptUnit`. The pen itself when
@@ -555,7 +629,14 @@ function levelArc(seam: Vec2, target: Vec2, room: Room, along: Vec2 = at(1, 0)):
    * would be that tight there is nothing to turn: the two ends are less than a
    * pen apart, so a straight run between them is the same shape.
    */
-  if (Math.abs(radius) < room.half * 1.2) return line;
+  /*
+   * The join, not the letter: a join is swept lighter than the stems (see
+   * `joinWeight`), and it is the join's own ink that folds. Held to the whole
+   * pen, a Black's joins had nothing left they were allowed to turn through --
+   * every arc came back a straight run, cornered against the heading past the
+   * seam, and the `i` of `nin` stood between two ticks.
+   */
+  if (Math.abs(radius) < (room.join ?? room.half) * 1.2) return line;
   const centre = at(seam.x + normal.x * radius, seam.y + normal.y * radius);
   const startAngle = Math.atan2(seam.y - centre.y, seam.x - centre.x);
   const finish = Math.atan2(target.y - centre.y, target.x - centre.x);
@@ -674,6 +755,7 @@ function attach(
   band: (point: Vec2) => boolean,
   side: "left" | "right",
   near?: (point: Vec2) => number,
+  slack = 0,
 ): Sample {
   const inside = points.filter((one) => band(one.point));
   /*
@@ -696,6 +778,19 @@ function attach(
    * nothing.
    */
   const looking = inside.length > 0 ? inside : near ? nearest(points, near) : points;
+  /*
+   * A written stem is bowed, so its leftmost point is wherever the bow puts
+   * it -- low on the `i`, near the seam -- and a lead-in that lands there has
+   * nothing to climb: at a Black it ran level into the stem and out through
+   * the far side of it. Within `slack` of the leftmost is as good as leftmost,
+   * and of those the highest is where the hand arrives.
+   */
+  if (side === "left" && slack > 0) {
+    const least = looking.reduce((most, one) => Math.min(most, one.point.x), Infinity);
+    return looking
+      .filter((one) => one.point.x <= least + slack)
+      .reduce((best, one) => (one.point.y > best.point.y ? one : best));
+  }
   let best = looking[0];
   for (const one of looking) {
     const point = one.point;
@@ -768,9 +863,9 @@ export function movedSpine(spine: Spine, dx: number, dy: number): Spine {
  * rules out the dot of an `i`, which is above the x-height and is not an
  * ascender, without this having to know what an `i` is.
  */
-function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
+function loopsOn(spines: Spine[], room: Room, script: Script): Loop[] {
   if (script.loop <= 0) return [];
-  const out: Spine[] = [];
+  const out: Loop[] = [];
   /*
    * How wide the eye is, which is the number that decides whether there is one.
    *
@@ -782,7 +877,14 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
    * wide against the *pen*, not against the letter, so that is what it is
    * measured in.
    */
-  const wide = script.loop * room.half * 2;
+  /*
+   * And in the face's own pen at a Light, as the reach and the weld are (see
+   * `scriptUnit`), not in the hairline: measured in a pen of thirty the eyes of
+   * the Casual Script's `l`, `h` and `k` came out a few units across, and
+   * filled in as black teardrops on the tops of their stems. Never narrower
+   * than the pen, so a heavy weight keeps what it had.
+   */
+  const wide = script.loop * Math.max(room.unit ?? 0, room.half * 2);
   if (wide < room.half) return [];
 
   /*
@@ -861,7 +963,7 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
     const deep = Math.min(wide * 2, asked);
     // Radius is half the chord at a semicircle, so this is the same floor the
     // join keeps: no turn tighter than the pen can go round.
-    if (deep < room.half * 2.4) continue;
+    const drawable = deep >= room.half * 2.4;
     /*
      * The eye stops short of the stem's own end by exactly what its ink will
      * reach back over.
@@ -881,7 +983,19 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
      * everything. The number is not a share of anything -- it is the reach
      * itself, and the frame already knows it for whatever pen the face has.
      */
-    const tip = at(end.x, rising ? end.y - room.upright : end.y + room.upright);
+    /*
+     * Except where the run turns into its end rather than running straight at
+     * it. The run is given a round end where the eye comes home (see
+     * `connected`), and a round end is pulled back along a straight run by
+     * what it reaches but not along a curved one -- so on the curled tail of a
+     * `g` the eye came home an upright reach above the tail's own end and the
+     * two round ends stood side by side, a double knob at the foot of the
+     * loop. On a curved end the eye turns round where the run does.
+     */
+    const pieces = endPieces(run);
+    const atStart = Math.hypot(end.x - spineStart(run).x, end.y - spineStart(run).y) < 1e-6;
+    const curls = pieces !== null && (atStart ? pieces.first : pieces.last).kind === "arc";
+    const tip = curls ? end : at(end.x, rising ? end.y - room.upright : end.y + room.upright);
     /*
      * How far the eye reaches back is the pen's business until it stops
      * reaching the letter, and then it is the letter's.
@@ -900,20 +1014,21 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
      * end is standing on the letter. A weight where it already reaches is left
      * exactly as it was.
      */
-    const home = rising
-      ? { much: deep, over: 0 }
-      : /*
-         * Asked with the pen's narrow reach rather than its wide one.
-         *
-         * `standsOn` within half a pen is a fair test for a round pen and an
-         * optimistic one for a nib: a point half a pen from a spine has ink on it
-         * only in the direction the nib is widest. It passed anyway for as long as
-         * the eye was a semicircle, because a semicircle bulges sideways into the
-         * letter and the two met there rather than at the foot. Narrowed to the
-         * reference's shape the bulge is gone, the foot is all there is, and the
-         * Casual Script's descending `f` came apart at four weights.
-         */
-        reaching(spines, end, deep, available, room.narrow, room.x);
+    const home =
+      rising || !drawable
+        ? { much: deep, over: 0 }
+        : /*
+           * Asked with the pen's narrow reach rather than its wide one.
+           *
+           * `standsOn` within half a pen is a fair test for a round pen and an
+           * optimistic one for a nib: a point half a pen from a spine has ink on it
+           * only in the direction the nib is widest. It passed anyway for as long as
+           * the eye was a semicircle, because a semicircle bulges sideways into the
+           * letter and the two met there rather than at the foot. Narrowed to the
+           * reference's shape the bulge is gone, the foot is all there is, and the
+           * Casual Script's descending `f` came apart at four weights.
+           */
+          reaching(spines, end, deep, available, room.narrow, room.x);
     const start = at(end.x + home.over, rising ? tip.y - deep : tip.y + home.much);
     /*
      * An eye on an ascender stands on that ascender or it is not drawn.
@@ -934,7 +1049,7 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
      * letter and well past the end of the run that earned it -- a different
      * question, asked and answered nowhere, and left here as it was.
      */
-    if (rising && !standsOn(run, start, room.half)) continue;
+    let ok = drawable && !(rising && !standsOn(run, start, room.half));
     /*
      * A half is as far as a single arc bows: at a half it is a semicircle, and
      * past that the construction below is asked for a sagitta larger than its
@@ -957,13 +1072,54 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
      * the pen is the part of the eye that is not the stem: the arc's rise, less
      * what the two strokes' own ink takes out of the middle of it.
      */
-    if (deep * shape < room.upright * 1.5) continue;
+    if (deep * shape < room.upright * 1.5) ok = false;
     // Opened as far as it may go and still with no counter in it, it is a
     // blot on the stem rather than an eye, and it is left off.
-    if (deep * shape < room.half * 1.8 + room.x * 0.03) continue;
-    out.push(bowed(start, tip, rising ? shape : -shape));
+    if (deep * shape < room.half * 1.8 + room.x * 0.03) ok = false;
+    /*
+     * And whether there is an eye here at all is the drawn weight's answer,
+     * where a family is being drawn (see `decided`). The tests above are about
+     * the pen, and they move with it: the Monoline's `g`, `j`, `q`, `t`, `y` and
+     * `f` had an eye at every weight but the heaviest, where it was left off --
+     * one stroke fewer, and the letter could not ride the weight axis. Where the
+     * drawn weight had one and this weight cannot draw it, it is drawn along
+     * the run it would have turned off, inside that run's own ink: the same
+     * stroke with the same points, and nothing to see.
+     */
+    if (!decided(ok)) continue;
+    out.push({
+      // In two pieces however far it turns, so a narrow eye, a round one and
+      // the one that is not there are the same points.
+      spine: pinnedTo(
+        ok ? bowed(start, tip, rising ? shape : -shape) : hidden(run, tip, atStart, room),
+        2,
+      ),
+      on: run,
+      at: atStart ? "start" : "end",
+    });
   }
   return out;
+}
+
+/** The same run with every arc of it cut into this many pieces. */
+function pinnedTo(spine: Spine, pieces: number): Spine {
+  return {
+    ...spine,
+    segments: spine.segments.map((segment) =>
+      segment.kind === "arc" ? { ...segment, pieces } : segment,
+    ),
+  };
+}
+
+/** An eye that is not there: a sliver lying along the end of its run, inside the run's ink. */
+function hidden(run: Spine, tip: Vec2, atStart: boolean, room: Room): Spine {
+  const along = alongSpine(run, SAMPLES);
+  const from = atStart ? along : [...along].reverse();
+  const reach = Math.max(room.half, 1);
+  const inside =
+    from.find((point) => Math.hypot(point.x - tip.x, point.y - tip.y) >= reach) ??
+    from[from.length - 1];
+  return bowed(inside, tip, 0.01);
 }
 
 /**
@@ -1053,8 +1209,15 @@ function bowed(from: Vec2, to: Vec2, amount: number): Spine {
  * descender to loop -- a question this cannot see from the spines, which is
  * exactly how every capital built on an upright came to have one.
  */
-export function planLoops(spines: Spine[], room: Room, script: Script, takes = true): Spine[] {
+export function planLoops(spines: Spine[], room: Room, script: Script, takes = true): Loop[] {
   return script.on && takes ? loopsOn(spines, room, script) : [];
+}
+
+/** An eye, the run it turns off, and which end of that run it turns at. */
+export interface Loop {
+  spine: Spine;
+  on: Spine;
+  at: "start" | "end";
 }
 
 /**
@@ -1080,24 +1243,122 @@ function run(
   knit: number,
   end: "in" | "out",
 ): Spine {
-  const body =
-    end === "in"
-      ? biarc(seam, along, hold, holding, room, "from")
-      : biarc(hold, holding, seam, along, room, "to");
   /*
-   * And out past the seam along the heading, so the straight run is a
-   * continuation of the stroke rather than a shelf hung off it. This is the
-   * part both halves share: the run either side of a seam is the same line,
-   * because `along` is the same number on every letter of the face.
+   * Straight on this side of the seam for as far as the other half carries
+   * past it, and only then into the arc.
+   *
+   * Each half reaches over the seam by the weld, straight along the heading,
+   * and lies along the other half there. Along it only if the other half is
+   * itself straight there: both halves bend the same way at the seam -- the
+   * join is a valley -- so an arc that leaves the seam at once had already
+   * curved away from the run laid over it, and the run's square end stood
+   * out under the join. With an angled nib the end is the nib's whole length
+   * across, and on the Formal Script at a Black there was a step under every
+   * join in the word. Straight on both sides, the two runs are the same line
+   * whatever letter is on the other side.
+   *
+   * No further than half-way to where the join takes hold of the letter, so a
+   * letter standing close to its seam keeps its arc.
    */
   const far = level + knit;
+  const toward = (hold.x - seam.x) * along.x + (hold.y - seam.y) * along.y;
+  /*
+   * And no further than leaves the join room to climb without dipping. The
+   * hand has to get from the letter to the start of the straight run by a
+   * run along the line and one turn up, and that needs the run's start to
+   * stand above the letter's end by a turn the pen can make. Taken the whole
+   * weld regardless, the Casual Script's `E` and `Z` dipped under their own
+   * baseline on the way to the seam.
+   */
+  const rise = (end === "in" ? hold.y - seam.y : seam.y - hold.y) - (room.join ?? room.half) * 0.55;
+  const climbs = along.y > 1e-6 ? Math.max(0, rise / along.y) : far;
+  const most = Math.max(0, Math.min(far, (end === "in" ? toward : -toward) * 0.5, climbs));
+  const drawnWith = (own: number) => {
+    const inner =
+      end === "in"
+        ? at(seam.x + along.x * own, seam.y + along.y * own)
+        : at(seam.x - along.x * own, seam.y - along.y * own);
+    const body =
+      end === "in"
+        ? biarc(inner, along, hold, holding, room, "from")
+        : biarc(hold, holding, inner, along, room, "to");
+    return { inner, body };
+  };
+  /*
+   * And shorter, or none, where the turn left over will not draw as a curve.
+   * A short join -- the `u` taken high, whose stem stands close to its seam --
+   * spent its room on the straight run and was left a turn tighter than the
+   * pen, which comes back straight and meets the run at an angle.
+   */
+  let chosen = drawnWith(most);
+  for (const share of [0.5, 0]) {
+    if (chosen.body.segments.every((part) => part.kind === "arc") || most <= 0) break;
+    const shorter = drawnWith(most * share);
+    if (shorter.body.segments.some((part) => part.kind === "arc")) chosen = shorter;
+  }
+  const { inner, body } = chosen;
   const out = at(seam.x + along.x * far, seam.y + along.y * far);
   const back = at(seam.x - along.x * far, seam.y - along.y * far);
   const tail = (from: Vec2, to: Vec2): Spine => ({
     segments: [{ kind: "line", from, to }],
     closed: false,
   });
-  return end === "in" ? chained(tail(back, seam), body) : chained(body, tail(seam, out));
+  return end === "in"
+    ? chained(tail(back, inner), settled(body))
+    : chained(settled(body), tail(inner, out));
+}
+
+/**
+ * The turn of one half of a join, always as two arcs of one piece each.
+ *
+ * What the turn is drawn with depends on the letter and the weight -- two arcs
+ * where a biarc fits, one where it would knot, a straight run and one arc where
+ * it would dip, a straight run alone where the ends are too close to turn -- and
+ * each of those sweeps to a different number of nodes. A variable font joins
+ * its masters point for point, and on the Monoline three letters in four came
+ * off the axis because their joins were drawn one way at the Thin and another
+ * at the Black. So whatever the turn is, it is handed on in the same pieces: a
+ * straight run as an arc too flat to see, one arc as two halves of it, and each
+ * arc pinned to a single piece -- a join never turns as far as a right angle
+ * in one arc, since `MOST_TURN` refuses anything much past it.
+ */
+function settled(turn: Spine): Spine {
+  const arcs = turn.segments.flatMap((segment): SpineArc[] => {
+    if (segment.kind === "arc") return [segment];
+    const length = Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y);
+    return length > 1e-9 ? [flatArc(segment.from, segment.to, length)] : [];
+  });
+  const pinned = (arc: SpineArc): SpineArc => ({ ...arc, pieces: 1 });
+  if (arcs.length === 2) return { segments: arcs.map(pinned), closed: false };
+  if (arcs.length === 1) {
+    const [arc] = arcs;
+    const middle = (arc.startAngle + arc.endAngle) / 2;
+    return {
+      segments: [pinned({ ...arc, endAngle: middle }), pinned({ ...arc, startAngle: middle })],
+      closed: false,
+    };
+  }
+  return turn;
+}
+
+/** A straight run from one point to another, as an arc too flat to tell from it. */
+function flatArc(from: Vec2, to: Vec2, length: number): SpineArc {
+  // Flat enough to be a sagitta of an eight-hundredth of the run, and no
+  // flatter: offset from a centre much further off, the pieces either side stop
+  // meeting to within what `stitch` welds, and keep a node each.
+  const radius = Math.max(length, 1) * 100;
+  const way = at((to.x - from.x) / length, (to.y - from.y) / length);
+  // Centre on the left of the way it travels, so it travels anticlockwise.
+  const back = Math.sqrt(Math.max(0, radius * radius - (length * length) / 4));
+  const centre = at((from.x + to.x) / 2 - way.y * back, (from.y + to.y) / 2 + way.x * back);
+  return {
+    kind: "arc",
+    centre,
+    radius,
+    startAngle: Math.atan2(from.y - centre.y, from.x - centre.x),
+    endAngle: Math.atan2(to.y - centre.y, to.x - centre.x),
+    sweepPositive: true,
+  };
 }
 
 /**
@@ -1189,10 +1450,129 @@ function biarc(
    * folds. Either half like that and the whole biarc goes.
    */
   const bent = (spine: Spine) => spine.segments.every((part) => part.kind === "arc");
+  /*
+   * And never an S where one bend and a straight run will do.
+   *
+   * Where the chord is flatter than half the turn the two headings ask for,
+   * the equal-tangent biarc bends one way and then the other: it dips before
+   * it climbs. A lead-out leaving the foot of a `T` along the line and asked
+   * to be at the seam's heading by the seam went down under the baseline
+   * first, by thirteen units on the Monoline. The hand does not do that -- it
+   * runs along the line and then turns up, flat at the bottom and steepening
+   * towards the top -- and that is a straight run and one arc, tangent at both
+   * ends, whichever of the two ends the straight run belongs to.
+   */
+  const sweep = (spine: Spine) => {
+    const part = spine.segments.find((one) => one.kind === "arc");
+    return part && part.kind === "arc" ? Math.sign(part.endAngle - part.startAngle) : 0;
+  };
+  if (sweep(opening) * sweep(closing) < 0) {
+    /*
+     * The same shape as two arcs rather than a line and an arc: a biarc with a
+     * long first tangent is nearly straight where the run would be and does
+     * its turning at the end, and it is two arcs at every weight -- a line and
+     * an arc at one weight and two arcs at the next is a join with different
+     * points on the two masters.
+     */
+    const reach = Math.sqrt(span);
+    /*
+     * Tried finely from the longest first tangent a biarc can have here -- past
+     * it the second tangent comes out negative -- inward. Near that end the
+     * first arc is all but straight and the second does the turning, which is
+     * the shape wanted, and the window where the two bend the same way and the
+     * second can still be drawn by the pen is narrow: a few units of tangent
+     * on the Monoline at a Bold.
+     */
+    const along = away.x * first.x + away.y * first.y;
+    const longest = along > 1e-9 ? span / (2 * along) : reach;
+    let slight: [Spine, Spine] | null = null;
+    for (let step = 1; step <= 120; step++) {
+      const pair = biarcWith(from, first, to, last, longest * (1 - step / 121), room);
+      if (!pair) continue;
+      const [one, two] = pair;
+      if (!bent(one) || !bent(two)) continue;
+      if (turn(one) > MOST_TURN || turn(two) > MOST_TURN) continue;
+      if (sweep(one) * sweep(two) >= 0) return chained(one, two);
+      // Bent the other way by less than a couple of degrees reads as straight.
+      if (!slight && Math.min(turn(one), turn(two)) < (2 * Math.PI) / 180) slight = pair;
+    }
+    if (slight) return chained(slight[0], slight[1]);
+    const straightened = runThenTurn(from, first, to, last, room);
+    if (straightened) return straightened;
+  }
   if (!bent(opening) || !bent(closing) || turn(opening) > MOST_TURN || turn(closing) > MOST_TURN) {
-    return one();
+    /*
+     * And where the one arc would be tighter than the pen and comes back a
+     * straight line, a straight run and a turn instead, which meets the
+     * heading at both ends: the line met the run past the seam at an angle,
+     * a corner of forty degrees in the Handwriting's `u` taken high.
+     */
+    const single = one();
+    if (bent(single)) return single;
+    return runThenTurn(from, first, to, last, room) ?? single;
   }
   return chained(opening, closing);
+}
+
+/**
+ * The biarc from `from` along `first` to `to` along `last` whose first tangent
+ * is `alpha` long, or null where no such biarc exists.
+ */
+function biarcWith(
+  from: Vec2,
+  first: Vec2,
+  to: Vec2,
+  last: Vec2,
+  alpha: number,
+  room: Room,
+): [Spine, Spine] | null {
+  const v = at(to.x - from.x, to.y - from.y);
+  const dot = (a: Vec2, b: Vec2) => a.x * b.x + a.y * b.y;
+  const under = dot(v, last) - alpha * (dot(first, last) - 1);
+  if (Math.abs(under) < 1e-9) return null;
+  const beta = (dot(v, v) / 2 - alpha * dot(v, first)) / under;
+  if (!(beta > 1e-6)) return null;
+  const q0 = at(from.x + first.x * alpha, from.y + first.y * alpha);
+  const q1 = at(to.x - last.x * beta, to.y - last.y * beta);
+  const share = alpha / (alpha + beta);
+  const joint = at(q0.x + (q1.x - q0.x) * share, q0.y + (q1.y - q0.y) * share);
+  return [
+    levelArc(from, joint, room, first),
+    reversed(levelArc(to, joint, room, at(-last.x, -last.y))),
+  ];
+}
+
+/**
+ * A straight run and one arc from `from` leaving along `first` to `to`
+ * arriving along `last`, tangent at both ends -- or null where the two
+ * headings never meet ahead of the one and behind the other.
+ */
+function runThenTurn(from: Vec2, first: Vec2, to: Vec2, last: Vec2, room: Room): Spine | null {
+  const cross = first.x * last.y - first.y * last.x;
+  if (Math.abs(cross) < 1e-6) return null;
+  // Where the line out of `from` meets the line into `to`.
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const ahead = (dx * last.y - dy * last.x) / cross;
+  const behind = (dy * first.x - dx * first.y) / cross;
+  if (!(ahead > 1e-6) || !(behind > 1e-6)) return null;
+  const meet = at(from.x + first.x * ahead, from.y + first.y * ahead);
+  const line = (a: Vec2, b: Vec2): Spine => ({
+    segments: [{ kind: "line", from: a, to: b }],
+    closed: false,
+  });
+  if (ahead >= behind) {
+    // Straight first, then the turn into `to`.
+    const turnsAt = at(meet.x - first.x * behind, meet.y - first.y * behind);
+    const arc = levelArc(turnsAt, to, room, first);
+    if (!arc.segments.every((part) => part.kind === "arc")) return null;
+    return chained(line(from, turnsAt), arc);
+  }
+  // The turn out of `from` first, then straight into `to`.
+  const turnsAt = at(meet.x + last.x * ahead, meet.y + last.y * ahead);
+  const arc = levelArc(from, turnsAt, room, first);
+  if (!arc.segments.every((part) => part.kind === "arc")) return null;
+  return chained(arc, line(turnsAt, to));
 }
 
 /**
@@ -1261,7 +1641,7 @@ export function planJoin(
   const points = skeleton(spines);
   if (points.length === 0) return null;
 
-  const seams = seamsOf(script, room.x, room.half);
+  const seams = seamsOf(script, room.x, room.half, room.unit);
   const entryAt = crossing?.entry ?? seams.low;
   const exitAt = crossing?.exit ?? seams.low;
   /*
@@ -1356,6 +1736,9 @@ export function planJoin(
     (point) => point.y >= entryAt && point.y <= ceiling,
     "left",
     offBand(entryAt, ceiling),
+    // Not on a written letter, whose leftmost point in the band is its own
+    // lead-in crossing the seam, and is what places it.
+    round || entered ? 0 : room.half * 0.5,
   );
   /*
    * The lead-out searches below its own crossing on an ordinary letter and
@@ -1372,7 +1755,7 @@ export function planJoin(
   const ending = leavesAt
     ? nearest(points, (point) => Math.hypot(point.x - leavesAt.x, point.y - leavesAt.y))[0]
     : null;
-  const leaves = ending
+  const banded = ending
     ? ending
     : exitAt > seams.low
       ? attach(
@@ -1387,6 +1770,46 @@ export function planJoin(
           "right",
           offBand(room.half, exitAt),
         );
+  /*
+   * And not from behind the letter. A letter whose last stroke ends low --
+   * the foot of a `c`, an `e`, the leg of a `k` or an `x` -- has nothing of
+   * its right-hand side in the band once the pen is heavy enough to push the
+   * band up past that foot, and the rightmost thing left in it is the far
+   * wall. At a pen of 260 the `c` and the `e` left from inside their own
+   * bowls and ran their lead-outs straight through their counters. Where the
+   * letter reaches well right of the band below it, the lead-out leaves from
+   * there instead, carrying on the way the stroke was going if it climbs.
+   */
+  /*
+   * Running level or climbing to the right, whichever way the recipe drew the
+   * run: a lead-out carried on along it is lighter than the run itself, so
+   * its ink starts inside the run's before it turns up. Not a falling run, or
+   * an upright one, whose foot is on the line.
+   */
+  const alongOrUp = (way: Vec2) =>
+    Math.abs(way.x) > 0.3 && (way.x < 0 ? -way.y : way.y) > -0.05 * Math.abs(way.x);
+  const under =
+    ending || exitAt > seams.low
+      ? []
+      : points.filter(
+          (one) =>
+            one.point.y < room.half &&
+            one.point.x > banded.point.x + room.half &&
+            /*
+             * High enough that the lead-out's ink stays off the line -- or the
+             * end of a stroke that is already climbing, whose own ink is there
+             * before the lead-out is. A `K` left from the foot of its leg hung
+             * its lead-out under the baseline.
+             */
+            (one.point.y >= (room.join ?? room.half) * 0.85 || alongOrUp(one.way)),
+        );
+  const leaves =
+    under.length > 0
+      ? under.reduce((best, one) => (one.point.x > best.point.x ? one : best))
+      : banded;
+  // Rising to the right, whichever way the recipe happened to draw the run.
+  const rightward = leaves.way.x < 0 ? at(-leaves.way.x, -leaves.way.y) : leaves.way;
+  const onward = under.length > 0 && rightward.y > 0 ? rightward : null;
 
   /*
    * How much room the letter takes, which is not the same question as where the
@@ -1725,7 +2148,7 @@ export function planJoin(
    * the arc to make up the difference by steepening on its way up. At a tilt of
    * nought each half is straight and still joins; opened up, it dips.
    */
-  const climbing = seamHeading(script, false);
+  const climbing = seamHeading(script, false, room.x, room.half, room.unit);
   // A join across the waist runs level; see `seamHeading`.
   const entryWay = entryAt > seams.low + 1e-9 ? seamHeading(script, true) : climbing;
   const exitWay = exitAt > seams.low + 1e-9 ? seamHeading(script, true) : climbing;
@@ -1754,7 +2177,16 @@ export function planJoin(
       : run(at(0, entryAt), entryWay, from, arriving, room, level, knit, "in");
   const exit = !ends.exit
     ? null
-    : run(at(width, exitAt), exitWay, to, ending ? ending.way : at(1, 0), room, level, knit, "out");
+    : run(
+        at(width, exitAt),
+        exitWay,
+        to,
+        ending ? ending.way : (onward ?? at(1, 0)),
+        room,
+        level,
+        knit,
+        "out",
+      );
 
   return { entry, exit, inset, width };
 }

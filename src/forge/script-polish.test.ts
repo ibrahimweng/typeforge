@@ -1,0 +1,404 @@
+/**
+ * The joined faces held together at every weight the slider reaches: the
+ * Light, their own, a pen of 200 and the heaviest the slider goes, 260.
+ *
+ * What these guard is the part of a script that only shows set as a word --
+ * the join between two letters -- and they were written against faults that
+ * showed there and nowhere else: at a Black every join fell back to a straight
+ * run with a stub of the seam's heading hung off it, and the two stubs either
+ * side of a seam crossed as an X between each pair of letters.
+ */
+
+import { beforeAll, describe, expect, it } from "vitest";
+import { ready, unite } from "@/font/boolean";
+import { contourArea, contoursBounds } from "@/font/geometry";
+import type { Vec2 } from "@/font/types";
+import { contoursIntersect } from "@/font/outline";
+import { drawLetter } from "./build";
+import { readyToShape } from "./layers";
+import { joinEnds, joiningHigh, joiningWithout, recipeOf } from "./letters";
+import { seamHeading, seamsOf } from "./script";
+import { alongSpine, spineEnd, spineStart } from "./shapes";
+import { sweep } from "./sweep";
+import { BASES, heavier, scriptUnit, type Style } from "./style";
+import type { Spine } from "./types";
+
+const JOINED = ["Handwriting", "Formal Script", "Casual Script", "Monoline Script", "Roundhand"];
+const base = (name: string): Style => BASES.find((one) => one.name === name)!;
+const at = (style: Style, weight: number): Style => ({ ...style, pen: { ...style.pen, weight } });
+const weightsOf = (style: Style) => [30, style.pen.weight, 200, 260];
+const LOWER = "abcdefghijklmnopqrstuvwxyz".split("");
+
+beforeAll(async () => {
+  await ready();
+  await readyToShape();
+});
+
+/** The heading at each end of every piece of a spine, in degrees. */
+function headings(spine: Spine): Array<{ from: number; to: number }> {
+  return spine.segments.map((segment) => {
+    const points = alongSpine({ segments: [segment], closed: false }, 64);
+    const angle = (a: Vec2, b: Vec2) => (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+    return {
+      from: angle(points[0], points[1]),
+      to: angle(points[points.length - 2], points[points.length - 1]),
+    };
+  });
+}
+
+/** The sharpest turn from one piece of a spine to the next, in degrees. */
+function sharpest(spine: Spine): number {
+  const ends = headings(spine);
+  let most = 0;
+  for (let index = 1; index < ends.length; index++) {
+    const turn = Math.abs(((ends[index].from - ends[index - 1].to + 540) % 360) - 180);
+    most = Math.max(most, turn);
+  }
+  return most;
+}
+
+/** The strokes of a letter that reach out past its origin or its advance: its joins. */
+function joinsOf(name: string, style: Style): Spine[] {
+  const recipe = recipeOf(name as never)!(heavier(style));
+  const width = recipe.width ?? Infinity;
+  return recipe.strokes
+    .map((stroke) => stroke.spine)
+    .filter((spine) => {
+      const xs = alongSpine(spine, 16).map((one) => one.x);
+      return Math.min(...xs) < -1 || Math.max(...xs) > width + 1;
+    });
+}
+
+describe("a join at every weight", () => {
+  /*
+   * A corner in the spine of a join is a stroke that folds over itself when
+   * it is swept, and at a heavy weight it showed as a tick either side of
+   * every seam. The join is one stroke from the letter to the seam and on
+   * past it, and it turns smoothly the whole way.
+   */
+  it("has no corner in it, low or high", () => {
+    const cornered: string[] = [];
+    for (const name of JOINED) {
+      for (const weight of weightsOf(base(name))) {
+        const style = at(base(name), weight);
+        for (const letter of LOWER) {
+          for (const high of [false, true]) {
+            const spines = joiningHigh({ entry: high, exit: high }, () => joinsOf(letter, style));
+            for (const spine of spines) {
+              const turn = sharpest(spine);
+              if (turn > 12)
+                cornered.push(
+                  `${name} ${letter}${high ? "^" : ""} @${weight}: ${turn.toFixed(0)}°`,
+                );
+            }
+          }
+        }
+      }
+    }
+    expect(cornered).toEqual([]);
+  }, 300_000);
+
+  /*
+   * And the seam is somewhere a stem's foot can climb to. At the default
+   * weights nothing moves; at a Black the seam comes up off the line and the
+   * heading lies down to what one arc from the foot can reach, so the hand
+   * still climbs through the seam rather than running level along it.
+   */
+  it("crosses its seam climbing, above the foot of the stem", () => {
+    for (const name of JOINED) {
+      const own = base(name);
+      for (const weight of weightsOf(own)) {
+        const style = heavier(at(own, weight));
+        const half = style.pen.weight / 2;
+        const unit = scriptUnit(style);
+        const { xHeight } = style.metrics;
+        const seams = seamsOf(style.parts.script, xHeight, half, unit);
+        const way = seamHeading(style.parts.script, false, xHeight, half, unit);
+        const degrees = (Math.atan2(way.y, way.x) * 180) / Math.PI;
+        expect([name, weight, degrees >= 12]).toEqual([name, weight, true]);
+        // A stem's foot is half a pen up; the seam stands clear of it.
+        expect([name, weight, seams.low - half > xHeight * 0.1]).toEqual([name, weight, true]);
+        // And the high seam leaves room under the waist to be left from.
+        expect([name, weight, seams.high <= xHeight - half + 1e-6]).toEqual([name, weight, true]);
+        if (weight === own.pen.weight) {
+          expect([name, Math.round(degrees)]).toEqual([name, Math.min(70, own.parts.script.tilt)]);
+        }
+      }
+    }
+  });
+});
+
+describe("every drawing of a joined letter", () => {
+  /*
+   * The second drawings a shaper swaps in -- taken high after an `o`, a `v`,
+   * a `w` or a `b`, and without a lead-in or a lead-out at the ends of a word
+   * -- at every weight the slider reaches. The written `r` set after a `b`
+   * aimed its lead-out at the waist and hooked back across itself, and the
+   * written `n` taken high folded its lead-in into its own apex on four faces.
+   */
+  it("never crosses itself", () => {
+    const crossed: string[] = [];
+    const sides = [{}, { entry: false }, { exit: false }, { entry: false, exit: false }];
+    for (const name of JOINED) {
+      const own = base(name);
+      for (const weight of [30, own.pen.weight, 120, 160, 200, 260]) {
+        const style = at(own, weight);
+        for (const letter of LOWER) {
+          const form = own.forms?.[letter];
+          for (const high of [false, true]) {
+            for (const without of sides) {
+              const drawn = joiningHigh({ entry: high, exit: high }, () =>
+                joiningWithout(without, () => drawLetter(letter, style, form)),
+              );
+              if (!drawn) continue;
+              if (drawn.contours.some((contour) => contoursIntersect([contour]))) {
+                crossed.push(
+                  `${name} ${letter}${high ? "^" : ""} ${JSON.stringify(without)} @${weight}`,
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+    expect(crossed).toEqual([]);
+  }, 600_000);
+});
+
+describe("a lead-out at a heavy weight", () => {
+  /*
+   * It leaves from the right of the letter, not from inside it. At a pen of
+   * 260 the `c` and the `e` left from the far wall of their own bowls, and the
+   * `b` from its stem, and each ran its lead-out straight through its counter.
+   */
+  it("starts at the letter's right, not across its counter", () => {
+    const across: string[] = [];
+    for (const name of JOINED) {
+      const own = base(name);
+      for (const weight of [200, 260]) {
+        const style = at(own, weight);
+        for (const letter of ["b", "c", "e", "k", "o", "v", "w", "x"]) {
+          for (const high of [false, true]) {
+            if (high && !"bovw".includes(letter)) continue;
+            const recipe = joiningHigh({ exit: high }, () =>
+              recipeOf(letter as never, own.forms?.[letter])!(heavier(style)),
+            );
+            const width = recipe.width ?? 0;
+            const body = recipe.strokes
+              .slice(0, -1)
+              .flatMap((stroke) => alongSpine(stroke.spine, 32));
+            const exit = recipe.strokes[recipe.strokes.length - 1].spine;
+            const start = alongSpine(exit, 2)[0];
+            if (start.x > width) continue;
+            // The body's own right edge, around the height the lead-out leaves at.
+            const near = body.filter(
+              (one) => Math.abs(one.y - start.y) < style.metrics.xHeight * 0.35,
+            );
+            const right = Math.max(...near.map((one) => one.x));
+            if (start.x < right - style.pen.weight * 0.75) {
+              across.push(`${name} ${letter}${high ? "^" : ""} @${weight}`);
+            }
+          }
+        }
+      }
+    }
+    expect(across).toEqual([]);
+  });
+});
+
+describe("the written e at a heavy weight", () => {
+  /*
+   * Its loop is as wide as the face's other bowls. Drawn as a circle on the
+   * bowl's height, it stayed narrow while every other bowl widened to keep its
+   * counter, and from a pen of 200 up the eye closed to nothing.
+   */
+  it("keeps an eye open", () => {
+    const shut: string[] = [];
+    for (const name of JOINED) {
+      const own = base(name);
+      if (own.forms?.e !== "written") continue;
+      for (const weight of [200, 260]) {
+        const style = at(own, weight);
+        // Entered, as it is in a word: without its lead-in a written letter is
+        // drawn as the plain one. The eye is then the one closed counter.
+        const drawn = joiningWithout({ exit: false }, () => drawLetter("e", style, "written"))!;
+        const holes = unite(drawn.contours, "winding")
+          .map((contour) => -contourArea(contour))
+          .filter((area) => area > 0);
+        const eye = Math.max(0, ...holes);
+        // A slit of white a tenth of the x-height across at the least.
+        const least = (style.metrics.xHeight * 0.1) ** 2;
+        if (eye < least) shut.push(`${name} @${weight}: ${eye.toFixed(0)}`);
+      }
+    }
+    expect(shut).toEqual([]);
+  });
+});
+
+describe("a looped ascender and descender", () => {
+  /*
+   * The run an eye turns off ends round where it turns: a written loop is one
+   * stroke going up, turning over and coming back down. Cut square, the run
+   * stood up past the eye in a flag at the top of every looped `l` and left a
+   * nick at the foot of every looped `g` on the Roundhand.
+   */
+  it("turns on the pen's round end", () => {
+    const square: string[] = [];
+    for (const name of JOINED) {
+      const own = base(name);
+      if (own.parts.script.loop <= 0) continue;
+      for (const weight of weightsOf(own)) {
+        const style = heavier(at(own, weight));
+        for (const [letter, up] of [
+          ["l", true],
+          ["g", false],
+        ] as const) {
+          const recipe = recipeOf(letter, own.forms?.[letter])!(style);
+          const ends = recipe.strokes.flatMap((stroke) => [
+            { at: spineStart(stroke.spine), cap: stroke.start.kind },
+            { at: spineEnd(stroke.spine), cap: stroke.end.kind },
+          ]);
+          const extreme = ends.reduce((best, one) =>
+            (up ? one.at.y > best.at.y : one.at.y < best.at.y) ? one : best,
+          );
+          // Only where this weight draws an eye at all.
+          const eyes =
+            recipe.strokes.length >
+            recipeOf(letter, own.forms?.[letter])!({
+              ...style,
+              parts: { ...style.parts, script: { ...style.parts.script, loop: 0 } },
+            }).strokes.length;
+          if (eyes && extreme.cap !== "round")
+            square.push(`${name} ${letter} @${weight}: ${extreme.cap}`);
+        }
+      }
+    }
+    expect(square).toEqual([]);
+  });
+});
+
+describe("a looped ascender at a Light", () => {
+  /*
+   * The eye is measured in the face's own pen, as the joins are, and not in
+   * the hairline: at a pen of 30 the eyes of the Casual Script's `l`, `h` and
+   * `k` were a few units across and filled in as teardrops.
+   */
+  it("keeps its eye open", () => {
+    const shut: string[] = [];
+    for (const name of JOINED) {
+      const own = base(name);
+      if (own.parts.script.loop <= 0) continue;
+      const style = at(own, 30);
+      const drawn = drawLetter("l", style, own.forms?.l)!;
+      const eye = Math.max(
+        0,
+        ...unite(drawn.contours, "winding").map((contour) => -contourArea(contour)),
+      );
+      if (eye < (style.metrics.xHeight * 0.12) ** 2) shut.push(`${name}: ${eye.toFixed(0)}`);
+    }
+    expect(shut).toEqual([]);
+  });
+});
+
+describe("a joined face as a variable font", () => {
+  /*
+   * Every letter and every second drawing of it rides the weight axis: the
+   * same points at the Thin, the Light, the Bold and the Black as at the
+   * weight the family was drawn at. Joins used to be drawn one way at one
+   * weight and another at the next, eyes came and went with the pen, and the
+   * second drawings were drawn after the book of the drawn weight's decisions
+   * had been put away -- the Monoline held back 107 glyphs and the Roundhand
+   * 105.
+   */
+  it("holds back no lowercase letter or alternate", async () => {
+    const { deliver } = await import("./deliver");
+    const { setFamily, startFrom } = await import("./document");
+    const held: string[] = [];
+    // The two whose masters came apart; the other three always rode the axis.
+    for (const name of ["Monoline Script", "Roundhand"]) {
+      let forge = startFrom(base(name));
+      const drawn = forge.family!.drawn;
+      forge = setFamily(forge, {
+        drawn,
+        also: [100, 300, 700, 900].filter((weight) => weight !== drawn),
+      });
+      const result = await deliver(forge, { familyName: "T", format: "ttf", variable: true });
+      held.push(
+        ...result.held
+          .filter((glyph) => /^[a-z](\.|$)/.test(glyph))
+          .map((glyph) => `${name} ${glyph}`),
+      );
+    }
+    expect(held).toEqual([]);
+  }, 900_000);
+});
+
+describe("a join and the baseline", () => {
+  /*
+   * A join never hangs further under the line than a round letter's
+   * overshoot, or than the letter it leaves already does. A lead-out that
+   * had to leave along the line and be climbing by the seam dipped first --
+   * the Monoline `T` went thirteen units under its baseline -- and at 260 the
+   * `x` left from the foot of its leg with half its ink below the line.
+   */
+  it("stays off the line", () => {
+    const under: string[] = [];
+    for (const name of JOINED) {
+      const own = base(name);
+      for (const weight of weightsOf(own)) {
+        const style = heavier(at(own, weight));
+        for (const letter of [..."abcdefghijklmnopqrstuvwxyz", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"]) {
+          for (const high of [false, true]) {
+            if (high && !"bovw".includes(letter)) continue;
+            const recipe = joiningHigh({ exit: high }, () =>
+              recipeOf(letter as never, own.forms?.[letter])?.(style),
+            );
+            if (!recipe) continue;
+            // The joins are the last strokes: an exit, and an entry unless the
+            // letter carries its own lead-in or never has one.
+            const ends = joinEnds(letter);
+            const count = (ends.exit ? 1 : 0) + (ends.entry && !recipe.entered ? 1 : 0);
+            if (count === 0 || recipe.strokes.length <= count) continue;
+            const lowest = (strokes: typeof recipe.strokes) =>
+              Math.min(
+                ...strokes.flatMap((one) => sweep(one)).map((c) => contoursBounds([c]).yMin),
+              );
+            const body = lowest(recipe.strokes.slice(0, -count));
+            const joins = lowest(recipe.strokes.slice(-count));
+            const floor = Math.min(-own.metrics.overshoot, body) - 2;
+            if (joins < floor)
+              under.push(`${name} ${letter}${high ? "*" : ""} @${weight}: ${joins.toFixed(0)}`);
+          }
+        }
+      }
+    }
+    expect(under).toEqual([]);
+  }, 300_000);
+});
+
+describe("the written r", () => {
+  /*
+   * Two strokes meeting in a notch: a short up-stroke into a nub, and the
+   * down-stroke from under it to the line. Drawn with a full stem standing on
+   * the line and an arm carried round and down beside it, it was two uprights
+   * and an arch -- a narrow `n` -- and `ro` read `no`.
+   */
+  it("has no stem on the line, and its down-stroke reaches the line", () => {
+    const wrong: string[] = [];
+    for (const name of JOINED) {
+      const own = base(name);
+      if (own.forms?.r !== "written") continue;
+      for (const weight of weightsOf(own)) {
+        const style = heavier(at(own, weight));
+        const x = style.metrics.xHeight;
+        const strokes = recipeOf("r", "written")!(style).strokes;
+        const lowest = (spine: Spine) => Math.min(...alongSpine(spine, 64).map((p) => p.y));
+        const up = lowest(strokes[0].spine);
+        const down = Math.min(...strokes.map((stroke) => lowest(stroke.spine)));
+        if (up < x * 0.15) wrong.push(`${name} @${weight}: up-stroke down to ${up.toFixed(0)}`);
+        if (down > x * 0.2) wrong.push(`${name} @${weight}: floats at ${down.toFixed(0)}`);
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
+});
