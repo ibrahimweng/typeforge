@@ -95,6 +95,33 @@ Lora's S is all curve and measures thinner than its stems, so the tips of its be
 
 Images: `slabs-lora-*`.
 
+### 11. Found by sweeping every glyph
+
+The screenshots show about 28 letters. So I also swept every glyph of the three fonts (602 in all) under 40 settings and combinations, checking for crossed outlines, changed point counts, height drift and ink past the advance. Those checks found:
+
+- **Heavy condensed diagonals:** v, w, x, y, K and M at weight 0.06 with width 0.6 ran up to 0.12 em past their advances. The width control puts back the strokes the condensing took off, and that runs a diagonal's feet out on their mitres. What it adds on each side is now measured, and the letter is spaced by it.
+- **Crossbar lowered:** a lowered bar extends the 4's diagonal down to meet it, and the corner came out 60 units into the side bearing. The crossbar and shoulder controls now space the letter by any ink they put beside it.
+- **Dotless j:** it was taken for a capital, since it has no uppercase form, so its top was held to the cap height and rose past the x-height by twice the weight. Lowercase is now read from the letter's Unicode category. Letters are also no longer pinned at a line their strokes only pass through.
+- **Light u and N:** at −0.04, Lora's u stood 20 units under its x-height and its N 6 over its cap height. Four changes fix this:
+  - An edge's move is now taken from the points nearest its line.
+  - Top and bottom are corrected separately.
+  - A point belongs to the edge it was drawn on.
+  - A light letter's edges may now be corrected outward, and a correction never carries an edge point past where it was drawn.
+
+### 12. Found in closer screenshots
+
+- **Folded inside corners:** at weight 0.06 with width 0.7, the small inside corner where the tail of Geist's j meets its stem folded into a notch, and the y's did the same. Where a piece of outline now runs back the way it came, it is laid flat against the stem.
+- **Stacked counters:** each map eased to nothing halfway across the gap between two stacked counters, so the wall there dented, and the serif on Lora's & arm sheared. The maps now hand over across the whole gap.
+- **Slab flags:** a flag reaches out to the side of its stem, and it was tested for sitting on the letter only at its middle, which misses the stem. Heavy, every lowercase flag grew past its stem's top, and on Geist's i and j it met the dot. The test now runs along the whole edge.
+- **Slab beaks:** the beak on the sample font's f hung below its hook at heavy weights, nearly closing on the crossbar. A slab end flush with the letter's edge now follows that edge.
+- **G spur:** its foot bar reached over the bowl it stands on. A slab no longer reaches out on a side where the stroke is joined to ink.
+
+### 13. Review
+
+A code review of this round's changes found two more, both fixed:
+- The edge clamp could change a stroke's weight inside a letter. It now applies only to points on the edges.
+- A slab end flush with the letter could shrink to a sliver at light weights. It now keeps the same minimum as any other slab.
+
 ## Tests
 
 Every fix has a test that fails on the old code and passes now. They are in:
@@ -106,11 +133,12 @@ Every fix has a test that fails on the old code and passes now. They are in:
 
 Two old expectations in `weight.test.ts` described letters growing past the baseline and cap height; they now expect the letter to keep its heights. The middle-space expectations in `counter.test.ts` and `control.test.ts`, which had walls thickening or thinning by the whole change, now expect walls that keep their weight while the letter narrows or widens. The weight engine keeps each contour's point count, and slabs are still separate contours added to the letter.
 
-These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run` (the whole suite, 2,868 tests).
+These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run` (the whole suite).
 
 ## What is left
 
-- **Middle space at 0.6 in narrow sans letters.** The strokes keep their weight now, but the sample font's closed letters are narrow, and close-set stems read slightly darker to the eye.
+- **Middle space and colour.** Measured as ink per unit of advance, letters with counters at 0.6 come out up to 10% denser than at rest (Lora's b, d, p, q), and at 1.4 up to 10% lighter. That is the white the control removes or adds while the strokes keep their weight. Thinning or thickening the walls to compensate is what squared the round letters earlier.
+- **Lora & at middle 1.4.** The serif on its arm still leans by about 19 units. Its two counters move by different amounts, and any smooth handover between them shears an upright edge standing in the gap.
+- **Rim cast.** This reproduces every time: one small self-loop in the rim on Lora's a, and on the sample font's n and h. Geist is clean. The rim is built in `src/forge/cast.ts`, outside the files this work is scoped to.
 - **Corner radius** adds points by design, since it rounds corners with new curves.
-- **Heavy counters.** At weight 0.06, Geist's B and R counters shrink to slits. This is what that weight means for Geist's proportions, not a fault.
-- **Rim in Geist.** One run of the effects sheet flagged a crossed contour on Geist's a under the rim cast. It did not reproduce on later runs. The cast code is outside the files changed here.
+- **Heavy counters.** At weight 0.06, Geist's B and R counters shrink to slits. That comes from Geist's own proportions at that weight.
