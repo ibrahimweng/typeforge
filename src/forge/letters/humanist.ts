@@ -1411,9 +1411,12 @@ function bookSpine(
    * in an s that leaned like an italic. A didone keeps the old reach, whose
    * counters close before its spine leans.
    */
-  const narrowest = didone > 0 ? 10 : 20;
+  // Eased from the one to the other as the contrast rises, so the slider
+  // does not jump the s at 0.6.
+  const toDidone = Math.min(1, didone);
+  const narrowest = Math.round(20 - 10 * toDidone);
   // And a spine allowed to lie flatter, a Black's, where it has little to fall.
-  const flatter = didone > 0 ? 0 : 8;
+  const flatter = Math.round(8 * (1 - toDidone));
   for (let k = 0; k <= narrowest; k++) {
     const a = (width / 2) * (1 - 0.6 * (k / 20));
     const most = Math.min(a * 2, tall / 2);
@@ -1644,7 +1647,9 @@ function bookS(style: Style, capital: boolean): Recipe {
   // The capital has the cap height to turn in, and is not lightened.
   const heavy = capital ? 0 : Math.min(1, Math.max(0, heaviness(f) - 0.5));
   // A didone's s as it was: see `S_UPRIGHT`.
-  const upright = f.style.pen.contrast > 0.6 ? S_DIDONE_UPRIGHT : S_UPRIGHT;
+  const upright =
+    S_UPRIGHT +
+    (S_DIDONE_UPRIGHT - S_UPRIGHT) * Math.min(1, Math.max(0, f.style.pen.contrast - 0.6) / 0.2);
   return finish(
     f,
     [

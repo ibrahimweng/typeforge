@@ -91,6 +91,22 @@ describe("the Serif's s", () => {
       expect(b.xMax - low[low.length - 1][1], `s at ${weight}`).toBeLessThan(wide * 0.05);
     }
   });
+
+  it("changes a little at a time as the contrast rises into a didone's", () => {
+    for (const weight of [200, 260]) {
+      const widths: number[] = [];
+      for (let k = 0; k <= 12; k++) {
+        const contrast = 0.56 + k * 0.02;
+        const style: Style = { ...SERIF, pen: { ...SERIF.pen, weight, contrast } };
+        const b = contoursBounds(draw("s", weight, style).contours);
+        widths.push(b.xMax - b.xMin);
+      }
+      // Just past 0.6 the s at the slider's heaviest jumped 131 units wider.
+      for (let k = 1; k < widths.length; k++) {
+        expect(Math.abs(widths[k] - widths[k - 1]), `s at ${weight}, step ${k}`).toBeLessThan(40);
+      }
+    }
+  });
 });
 
 describe("the Serif's t", () => {
