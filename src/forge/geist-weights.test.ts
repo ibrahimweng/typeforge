@@ -32,19 +32,25 @@ const runs = (contours: Contour[], value: number, along: "x" | "y") =>
  * strokes overlap, and a ruler that pairs up every edge it meets reads the
  * ink two strokes share as white.
  */
-const filled = (contours: Contour[], y: number): Array<[number, number]> => {
+const filled = (
+  contours: Contour[],
+  value: number,
+  along: "x" | "y" = "y",
+): Array<[number, number]> => {
   const box = contoursBounds(contours);
   const signs = contours.map((contour) => Math.sign(contourArea(contour)));
+  const [low, high] = along === "y" ? [box.xMin, box.xMax] : [box.yMin, box.yMax];
   const out: Array<[number, number]> = [];
   let from: number | null = null;
-  for (let x = Math.floor(box.xMin) - 1; x <= Math.ceil(box.xMax) + 1; x += 0.5) {
+  for (let step = Math.floor(low) - 1; step <= Math.ceil(high) + 1; step += 0.5) {
+    const point = along === "y" ? { x: step, y: value } : { x: value, y: step };
     let winding = 0;
     contours.forEach((contour, index) => {
-      if (contourContainsPoint(contour, { x, y })) winding += signs[index];
+      if (contourContainsPoint(contour, point)) winding += signs[index];
     });
-    if (winding !== 0 && from === null) from = x;
+    if (winding !== 0 && from === null) from = step;
     if (winding === 0 && from !== null) {
-      out.push([from, x]);
+      out.push([from, step]);
       from = null;
     }
   }
@@ -97,7 +103,7 @@ describe("the Sans at its Black, against Geist Black", () => {
       const ink = contoursBounds(contours);
       // Upright through the lower aperture and the upper counter: the foot,
       // the spine and the crown, apart.
-      const through = runs(contours, ink.xMin + (ink.xMax - ink.xMin) * 0.4, "x");
+      const through = filled(contours, ink.xMin + (ink.xMax - ink.xMin) * 0.4, "x");
       expect(through.length, `s at ${weight}`).toBeGreaterThanOrEqual(3);
       for (let index = 1; index < through.length; index++) {
         expect(through[index][0] - through[index - 1][1], `s at ${weight}`).toBeGreaterThan(12);
@@ -105,7 +111,7 @@ describe("the Sans at its Black, against Geist Black", () => {
       // And level across the lower aperture, just under the top of the foot's
       // cut: the foot, and well clear of it the lower bowl's right side. Shut,
       // the cut ran into the spine and the line crossed one run of ink.
-      const across = runs(contours, 150, "y");
+      const across = filled(contours, 150);
       expect(across.length, `s at ${weight}`).toBe(2);
       expect(across[1][0] - across[0][1], `s at ${weight}`).toBeGreaterThan(80);
     }
@@ -157,16 +163,49 @@ describe("the s from the Bold to past the Black", () => {
     for (const weight of [172, 185, 200]) {
       const { contours } = draw("s", weight);
       const ink = contoursBounds(contours);
-      const through = runs(contours, ink.xMin + (ink.xMax - ink.xMin) * 0.4, "x");
+      const through = filled(contours, ink.xMin + (ink.xMax - ink.xMin) * 0.4, "x");
       expect(through.length, `s at ${weight}`).toBe(3);
       expect(through[1][0] - through[0][1], `s lower at ${weight}`).toBeGreaterThan(100);
       expect(through[2][0] - through[1][1], `s upper at ${weight}`).toBeGreaterThan(85);
     }
     const { contours } = draw("s", 172);
     const ink = contoursBounds(contours);
-    const through = runs(contours, ink.xMin + (ink.xMax - ink.xMin) * 0.5, "x");
+    const through = filled(contours, ink.xMin + (ink.xMax - ink.xMin) * 0.5, "x");
     const crown = through[through.length - 1];
     expect(crown[1] - crown[0]).toBeLessThan(122);
+  });
+});
+
+describe("the s's counters from the Black on", () => {
+  it("ends each counter round, not as a slot cut square", () => {
+    // Geist Black's counters are round-ended: four units in from the end of
+    // each, a counter is well under half its height in the middle. With the
+    // stem's pen round every turn they were slots, near full height there.
+    for (const weight of [172, 200, 260]) {
+      const { contours } = draw("s", weight);
+      const box = contoursBounds(contours);
+      const middle = (box.xMin + box.xMax) / 2;
+      const down = filled(contours, middle, "x");
+      expect(down.length, `s at ${weight}`).toBe(3);
+      for (const [index, upper] of [
+        [1, false],
+        [2, true],
+      ] as const) {
+        const y = (down[index - 1][1] + down[index][0]) / 2;
+        const across = filled(contours, y);
+        const at = across.findIndex(
+          (run, one) => one > 0 && across[one - 1][1] <= middle && run[0] >= middle,
+        );
+        const [start, end] = [across[at - 1][1], across[at][0]];
+        const tall = (x: number) => {
+          const runs = filled(contours, x, "x");
+          const gap = runs.findIndex((run, one) => one > 0 && runs[one - 1][1] <= y && run[0] >= y);
+          return runs[gap][0] - runs[gap - 1][1];
+        };
+        const ratio = tall(upper ? start + 4 : end - 4) / tall((start + end) / 2);
+        expect(ratio, `s ${upper ? "upper" : "lower"} at ${weight}`).toBeLessThan(0.5);
+      }
+    }
   });
 });
 

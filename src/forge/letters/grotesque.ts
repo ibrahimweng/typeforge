@@ -1867,7 +1867,7 @@ interface Ess {
  * weight. Past Geist Black the bowls widen with the pen, or two stacked
  * counters close from the sides.
  */
-function ess(given: Frame, e: Ess): Stroke {
+function ess(given: Frame, e: Ess): Stroke[] {
   /*
    * On a face whose bowls are circles, drawn as ellipses: an S's bowls are
    * wider than they are tall, and a circle's quarter in a box like that is a
@@ -2085,9 +2085,127 @@ function ess(given: Frame, e: Ess): Stroke {
     e.tilted !== false && Math.abs(drawn.pen.angle) < 15
       ? 12 * Math.min(1, heaviness(f)) * (1 - past)
       : 0;
-  return tilt > 0
-    ? inherit(drawn, { ...drawn, pen: { ...drawn.pen, angle: drawn.pen.angle + tilt } })
-    : drawn;
+  const tilted = tilt > 0 ? { ...drawn.pen, angle: drawn.pen.angle + tilt } : drawn.pen;
+  /*
+   * And from a Bold on, heavier on the outside of its turns than on the
+   * inside, as Geist's is: drawn with a pen lighter across, and each side
+   * carried out again by a run that leaves the letter's outline at a crown,
+   * swells past the bowl to the weight Geist's sides have, and comes back
+   * onto it where the spine leaves. The inside of every turn is then the
+   * lighter pen's, round enough to leave the counters round-ended, where a
+   * pen this wide across makes slots with square ends of any turn the
+   * x-height has room for, and a notch where each meets the spine.
+   */
+  const share = 0.02 + (SPLIT_SIDES - 0.02) * Math.min(1, Math.max(0, (t - 0.3) / 0.7));
+  const along = tilted.weight * (1 - Math.min(Math.max(tilted.contrast, 0), 0.95));
+  const lighter = tilted.weight * (1 - share);
+  const pen = { ...tilted, weight: lighter, contrast: Math.max(0, 1 - along / lighter) };
+  const out = (tilted.weight - lighter) * SIDE_OUT + 0.01;
+  const leaving = spineRun.segments.findIndex((one) => one.kind === "line");
+  const line = spineRun.segments[leaving];
+  const from = line.kind === "line" ? line.from : upper;
+  const to = line.kind === "line" ? line.to : lower;
+  /*
+   * A circle upright at `side`, its centre on the side `way` of it, that
+   * runs on to leave tangent to the spine: where, and round what. Where no
+   * such circle meets the spine between its ends, through the spine's end
+   * `end` instead.
+   */
+  const run = at(to.x - from.x, to.y - from.y);
+  const length = Math.hypot(run.x, run.y) || 1;
+  const d = at(run.x / length, run.y / length);
+  const n = at(-d.y, d.x);
+  const degreesOf = (centre: Vec2, point: Vec2) =>
+    (Math.atan2(point.y - centre.y, point.x - centre.x) * 180) / Math.PI;
+  // How far round from upright at the side a swell turns before it leaves.
+  const turned = (centre: Vec2, point: Vec2, way: 1 | -1) =>
+    way === 1 ? ((degreesOf(centre, point) + 360) % 360) - 180 : degreesOf(centre, point);
+  const swell = (edge: number, y: number, way: 1 | -1, reach: number) => {
+    const side = at(edge - way * out, y);
+    const off = (side.x - from.x) * n.x + (side.y - from.y) * n.y;
+    for (const sign of [1, -1]) {
+      const radius = off / (sign - way * n.x);
+      if (!(radius > f.half * 0.5 && radius < reach * 3)) continue;
+      const centre = at(side.x + way * radius, side.y);
+      const along = (centre.x - from.x) * d.x + (centre.y - from.y) * d.y;
+      if (along < -length * 0.5 || along > length * 1.5) continue;
+      const touch = at(from.x + d.x * along, from.y + d.y * along);
+      const round = turned(centre, touch, way);
+      if (!(round > 10 && round < 120)) continue;
+      const lead = alongLine(touch, way === 1 ? to : from, f.half * 0.6);
+      return { centre, radius, touch, out, lead };
+    }
+    /*
+     * Where no circle leaves onto the spine as it should -- a spine lying
+     * all but level, where the bowls are stacked -- no swell on that side:
+     * the run stops at the bowl's side, buried in it, in the same pieces.
+     */
+    const centre = at(edge + way * f.half, y);
+    const touch = pointOn(centre, f.half, way === 1 ? 181 : 1);
+    // On down along the circle's own heading there, so the two meet smooth.
+    const down = at(Math.sin(Math.PI / 180), -Math.cos(Math.PI / 180));
+    const lead = at(touch.x + way * down.x * f.half * 0.6, touch.y + way * down.y * f.half * 0.6);
+    return { centre, radius: f.half, touch, out: 0, lead };
+  };
+  const left = swell(upper.x - upperW, upper.y, 1, upperW);
+  const right = swell(lower.x + lowerW, lower.y, -1, lowerW);
+  const headY = pointOnBowl(ga, upper, upperW, upperH, head).y;
+  const footY = pointOnBowl(gb, lower, lowerW, lowerH, foot).y;
+  const sides = [
+    ink(
+      f,
+      chain(
+        bend(
+          ga,
+          upper,
+          upperH,
+          angleAt(ga, upper, upperW + left.out, upperH, headY, false),
+          180,
+          upperW + left.out,
+        ),
+        turn(left.centre, left.radius, 180, (degreesOf(left.centre, left.touch) + 360) % 360),
+        // On a little way down the spine, under the spine's own ink, so the
+        // run's end is buried there rather than standing out as a step.
+        straight(left.touch, left.lead),
+      ),
+      f.end,
+      BUTT,
+    ),
+    ink(
+      f,
+      chain(
+        straight(right.lead, right.touch),
+        turn(right.centre, right.radius, degreesOf(right.centre, right.touch), 0),
+        bend(
+          gb,
+          lower,
+          lowerH,
+          0,
+          angleAt(gb, lower, lowerW + right.out, lowerH, footY, true) - 360,
+          lowerW + right.out,
+        ),
+      ),
+      BUTT,
+      f.end,
+    ),
+  ];
+  return [drawn, ...sides].map((one) => inherit(one, { ...one, pen }));
+}
+
+/** How much lighter across a heavy s is drawn inside its turns: see `ess`. */
+const SPLIT_SIDES = 0.26;
+/** How far out its sides are carried again, against what the pen gave up. */
+const SIDE_OUT = 0.5;
+
+/** A point `by` along the line from `from` towards `to`. */
+function alongLine(from: Vec2, to: Vec2, by: number): Vec2 {
+  const length = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+  return at(from.x + ((to.x - from.x) * by) / length, from.y + ((to.y - from.y) * by) / length);
+}
+
+/** A point on a bowl as drawn, at an angle. */
+function pointOnBowl(f: Frame, centre: Vec2, halfW: number, halfH: number, degrees: number): Vec2 {
+  return bowlPoint(centre, halfW, halfH, 1 - f.square, f.half, degrees, f.curve);
 }
 
 /**
@@ -2268,7 +2386,7 @@ export function grotesqueS(style: Style): Recipe {
     ...finish(
       f,
       [
-        ess(f, {
+        ...ess(f, {
           height: f.x,
           geist: 530,
           unit: small(f),
@@ -2294,7 +2412,7 @@ export function grotesqueCapitalS(style: Style): Recipe {
   return finish(
     f,
     [
-      ess(f, {
+      ...ess(f, {
         height: f.cap,
         geist: 710,
         unit: large(f, 1),
