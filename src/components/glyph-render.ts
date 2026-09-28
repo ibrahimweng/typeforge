@@ -9,7 +9,7 @@
 
 import * as React from "react";
 
-import { contoursToPath2D } from "@/font/geometry";
+import { contoursBounds, contoursToPath2D } from "@/font/geometry";
 import { resolveGlyphContours } from "@/font/transform";
 import type { Glyph, Typeface } from "@/font/types";
 
@@ -144,7 +144,31 @@ export interface DrawGlyphOptions {
   fill?: string;
   /** Centre the glyph on its own outline rather than on the origin. */
   centreOnOutline?: boolean;
+  /**
+   * The widest the outline may be drawn, in canvas pixels; wider, it is drawn
+   * smaller. A grid cell is sized for the em, and a letter widened by the
+   * width control -- Lora's m and w at 1.25 -- ran out of it and was cut off.
+   */
+  maxWidth?: number;
   offsetX?: number;
+}
+
+/**
+ * The view that centres an outline spanning `xMin`..`xMax` where the view's
+ * origin was, and shrinks it about the baseline to fit `maxWidth` pixels.
+ */
+export function placeOutline(
+  view: GlyphView,
+  xMin: number,
+  xMax: number,
+  options: { centre?: boolean; maxWidth?: number },
+): GlyphView {
+  let scale = view.scale;
+  const span = xMax - xMin;
+  if (options.maxWidth !== undefined && span * scale > options.maxWidth && span > 0)
+    scale = options.maxWidth / span;
+  const originX = options.centre ? view.originX - ((xMin + xMax) / 2) * scale : view.originX;
+  return { scale, originX, originY: view.originY };
 }
 
 /** Fill a glyph's resolved outline. */
@@ -158,10 +182,20 @@ export function drawGlyph(
   const contours = resolveGlyphContours(glyph, typeface);
   if (contours.length === 0) return;
 
+  let placed = view;
+  if (options.centreOnOutline || options.maxWidth !== undefined) {
+    const box = contoursBounds(contours);
+    if (Number.isFinite(box.xMin) && Number.isFinite(box.xMax))
+      placed = placeOutline(view, box.xMin, box.xMax, {
+        centre: options.centreOnOutline,
+        maxWidth: options.maxWidth,
+      });
+  }
+
   context.save();
   applyView(context, {
-    ...view,
-    originX: view.originX + (options.offsetX ?? 0) * view.scale,
+    ...placed,
+    originX: placed.originX + (options.offsetX ?? 0) * placed.scale,
   });
   context.fillStyle = options.fill ?? readToken("--glyph-fill", "#eeeeee");
   // Non-zero winding is what font rasterisers use: it makes counters fall out

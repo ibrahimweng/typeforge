@@ -12,6 +12,7 @@
 
 import {
   centroid,
+  contoursBounds,
   contourArea,
   contourSegments,
   cubicAt,
@@ -19,6 +20,7 @@ import {
   cubicDerivativeAt,
   distance,
   flattenContour,
+  inkRunsAt,
   lerp,
   normalize,
   rayHitDistance,
@@ -178,9 +180,17 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
   if (params.slab > 0) {
     contours = addSlabs(contours, {
       projection: params.slab,
-      // A slab reaches further across the stroke than back along it; much
-      // thicker and it reads as a box on the end rather than a serif.
-      thickness: params.slab * 0.55,
+      /*
+       * A slab reaches further across the stroke than back along it; much
+       * thicker and it reads as a box on the end rather than a serif. But
+       * not much thinner than the stems either: a slab serif's slabs are
+       * most of a stem thick, and at half the projection Geist's came out a
+       * third of its stems, hairlines under an H.
+       */
+      thickness: Math.min(
+        params.slab * 1.2,
+        Math.max(params.slab * 0.55, cutScaleOf(typeface).stem * 0.7),
+      ),
       maxWidth: typeface.unitsPerEm * 0.35,
       weight: params.weight,
     });
@@ -240,7 +250,7 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
     contours = shapedInk(contours, [], cutScaleOf(typeface), cuts, cast, "nesting").contours;
   }
   if (params.xHeightScale !== 1)
-    contours = contours.map((contour) => applyVerticalScale(contour, params.xHeightScale));
+    contours = applyXHeight(contours, params.xHeightScale, glyph, typeface);
   if (params.width !== 1) {
     contours = contours.map((contour) => applyHorizontalScale(contour, params.width));
     /*
@@ -355,6 +365,129 @@ function applyVerticalScale(contour: Contour, factor: number): Contour {
     x: point.x,
     y: point.y > 0 ? point.y * factor : point.y,
   }));
+}
+
+/** Whether a glyph is a lowercase letter, by what it encodes or else its name. */
+function isLowercase(glyph: Glyph): boolean {
+  const lower = (text: string) => text !== text.toUpperCase() && text === text.toLowerCase();
+  if (glyph.unicodes.length > 0)
+    return glyph.unicodes.some((code) => lower(String.fromCodePoint(code)));
+  const base = glyph.name.split(".")[0];
+  return base.length === 1 && lower(base);
+}
+
+/**
+ * Raise or lower the x-height.
+ *
+ * A plain vertical scale of everything above the baseline was the first
+ * version of this, which is not an x-height change: the capitals and the
+ * ascenders grew with it, and every horizontal stroke -- the top and bottom of
+ * an o, the spine of an s, the arms of an E -- thickened or thinned with the
+ * scale while the stems stayed as they were. What a designer changing the
+ * x-height does is move the top of the lowercase: so on a lowercase letter the
+ * band at the x-height, where the tops of its bowls and arches run, moves up
+ * or down as it is; the band on the baseline stays; the stretch between them
+ * takes the change; and above the x-height, an ascender gives it back, so the
+ * top of a b or an l stays where it was. Capitals, figures and the rest keep
+ * their height. A glyph with nothing to say what it is -- a probe with no
+ * name, a font with no x-height -- is scaled as before.
+ */
+function applyXHeight(
+  contours: Contour[],
+  factor: number,
+  glyph: Glyph,
+  typeface: Typeface,
+): Contour[] {
+  const xHeight = typeface.metrics?.xHeight ?? 0;
+  const named = glyph.unicodes.length > 0 || glyph.name.length > 0;
+  if (!(xHeight > 0) || !named || glyph.name === "probe")
+    return contours.map((contour) => applyVerticalScale(contour, factor));
+  if (!isLowercase(glyph)) return contours;
+  const em = typeface.unitsPerEm;
+  const band = em * 0.08;
+  let shift = (factor - 1) * xHeight;
+  const low = Math.min(band, xHeight * 0.3);
+  const high = xHeight - band;
+  const over = xHeight + em * 0.03;
+  // The letter's own top, where an ascender ends, stays where it is.
+  const top = Math.max(contoursBounds(contours).yMax, over + band);
+  if (high <= low) return contours;
+  // Eased in and out, so a bowl passing from one band into the stretch bends
+  // evenly rather than turning a corner where they meet.
+  const ease = (u: number) => u * u * (3 - 2 * u);
+  /*
+   * And the stretch put where the letter is white across, not where a stroke
+   * runs across it. Spread evenly, it stretched the bar of an e and the spine
+   * of an s with everything else, and they thickened at 1.25 and thinned at
+   * 0.8. Each height takes a share of the change by how little of the
+   * letter's width is ink there: the sides of the bowl take it, the bar
+   * rides up with them.
+   */
+  const box = contoursBounds(contours);
+  const wide = Math.max(1, box.xMax - box.xMin);
+  const steps = 64;
+  const give: number[] = [];
+  for (let k = 0; k <= steps; k++) {
+    const y = low + ((high - low) * k) / steps;
+    const ink = inkRunsAt(contours, y).reduce((sum, [from, to]) => sum + (to - from), 0);
+    const open = Math.max(0, 1 - ink / wide);
+    // Eased in at both ends, so the stretch comes in smoothly from the
+    // bands, and even between: peaked in the middle, it squeezed the sides
+    // of a bowl to points.
+    const u = k / steps;
+    // Leaning on the open heights, not all on them: a bowl's sides are
+    // open across its middle, and given all of it the o came to points.
+    give.push((0.35 + 0.65 * open) * ease(Math.min(1, 4 * u, 4 * (1 - u))));
+  }
+  // A little blur, so a thin stroke does not become a step.
+  const soft = give.map((_, k) => {
+    let sum = 0;
+    let weight = 0;
+    for (let j = -3; j <= 3; j++) {
+      const at = k + j;
+      if (at < 0 || at > steps) continue;
+      const w = 4 - Math.abs(j);
+      sum += give[at] * w;
+      weight += w;
+    }
+    return sum / weight;
+  });
+  const running = [0];
+  for (let k = 1; k <= steps; k++) running.push(running[k - 1] + (soft[k - 1] + soft[k]) / 2);
+  const whole = running[steps];
+  // How much of the stretch falls below a height, nought to one.
+  const share = (y: number): number => {
+    if (!(whole > 0)) return ease((y - low) / (high - low));
+    const at = ((y - low) / (high - low)) * steps;
+    const k = Math.min(steps - 1, Math.max(0, Math.floor(at)));
+    const f = at - k;
+    return (running[k] + (running[k + 1] - running[k]) * f) / whole;
+  };
+  const steepest = ((Math.max(...soft) / (whole > 0 ? whole : 1)) * steps) / (high - low);
+  /*
+   * Held short of folding the outline back: where the stretch is steepest,
+   * and on an ascender, which gives the change back over its own length.
+   */
+  shift = Math.sign(shift) * Math.min(Math.abs(shift), 0.9 / Math.max(steepest, 1e-9));
+  /*
+   * An ascender gives the change back over its own length, at most by half:
+   * squeezed further, the hook of an f was flattened. Past that the top of
+   * the ascender moves by the rest.
+   */
+  const rise = Math.sign(shift) * Math.max(0, Math.abs(shift) - (top - over) * 0.5);
+  const map = (y: number): number => {
+    if (y <= low) return y;
+    if (y < high) return y + shift * share(y);
+    if (y <= over) return y + shift;
+    // An ascender above: nothing runs across it, so it gives the change
+    // back evenly.
+    if (y < top) return y + shift + ((rise - shift) * (y - over)) / (top - over);
+    return y + rise;
+  };
+  // Squeezed further than this, the easing would fold the outline back.
+  return contours.map((contour) =>
+    mapContour(contour, (point) => ({ x: point.x, y: map(point.y) })),
+  );
 }
 
 /** Shear about the baseline, the transform that makes an oblique. */
@@ -684,10 +817,44 @@ function roundCorners(contour: Contour, radius: number, isOuter: boolean): Conto
   // Which way round the ink is, so a corner can be told to be an outside one.
   const winding = Math.sign(contourArea(settled)) * (isOuter ? 1 : -1);
 
+  const directions = nodes.map((_, index) => ({
+    arriving: segmentDirection(segments[(index - 1 + count) % count], 1),
+    leaving: segmentDirection(segments[index], 0),
+  }));
+  const isOutside = directions.map(({ arriving, leaving }) => {
+    const turn = arriving.x * leaving.y - arriving.y * leaving.x;
+    return turn * winding > 0;
+  });
+  const dot = (a: Vec2, b: Vec2) => a.x * b.x + a.y * b.y;
+  /*
+   * The inside of an elbow -- where the arm of an E turns down its stem --
+   * is rounded to go round with the outside of it, less the stroke between
+   * them, so the stroke keeps its thickness all the way round. Eased by only
+   * a share of the radius like a junction, a large radius on a light letter
+   * left the outside of every elbow a crescent far heavier than the stroke.
+   */
+  const elbow = (index: number): number | null => {
+    const { arriving, leaving } = directions[index];
+    const here = nodes[index].point;
+    const half = Math.sin(Math.acos(Math.max(-1, Math.min(1, -dot(arriving, leaving)))) / 2);
+    let best: number | null = null;
+    nodes.forEach((other, at) => {
+      if (at === index || !isOutside[at]) return;
+      const them = directions[at];
+      if (dot(arriving, them.leaving) > -0.95 || dot(leaving, them.arriving) > -0.95) return;
+      const v = sub(other.point, here);
+      if (dot(v, arriving) <= 0 || dot(v, leaving) >= 0) return;
+      const stroke = Math.hypot(v.x, v.y) * half;
+      if (stroke >= radius) return;
+      const r = radius - stroke;
+      if (best === null || r < best) best = r;
+    });
+    return best;
+  };
+
   // How far each corner is cut back; nought where there is no corner.
   const cut = nodes.map((_, index) => {
-    const arriving = segmentDirection(segments[(index - 1 + count) % count], 1);
-    const leaving = segmentDirection(segments[index], 0);
+    const { arriving, leaving } = directions[index];
     if (!(arriving.x || arriving.y) || !(leaving.x || leaving.y)) return 0;
     const cos = arriving.x * leaving.x + arriving.y * leaving.y;
     // Turning by less than this is a point on a curve drawn slightly off, not
@@ -699,10 +866,9 @@ function roundCorners(contour: Contour, radius: number, isOuter: boolean): Conto
      * whole radius the H grew webs under its bar and the counter of an A went
      * round: a rounded face rounds what sticks out and only eases what goes in.
      */
-    const turn = arriving.x * leaving.y - arriving.y * leaving.x;
-    const outside = turn * winding > 0;
+    const outside = isOutside[index];
     const r = Math.min(
-      outside ? radius : radius * INSIDE_SHARE,
+      outside ? radius : Math.max(radius * INSIDE_SHARE, elbow(index) ?? 0),
       lengths[(index - 1 + count) % count] * 0.49,
       lengths[index] * 0.49,
     );

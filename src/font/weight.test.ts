@@ -395,3 +395,73 @@ describe("the advance a font is written with", () => {
     }
   });
 });
+
+describe("an even colour across the alphabet", () => {
+  /*
+   * Ink gained or lost per unit of outline: a stroke moved square by the
+   * weight gains the weight times its length, whatever way it runs. Diagonal
+   * letters used to be held still -- the notch between two strokes of a W
+   * read as an opening about to close, and the corner of a V as a mitre too
+   * long -- so a bolder W, M, N or z kept the weight it was drawn at while the
+   * H beside it went to Black, and a lighter one stayed Regular in a Thin line.
+   */
+  async function sample(): Promise<Typeface> {
+    const bytes = new Uint8Array(readFileSync("src/assets/typeforge-sample.ttf"));
+    return (await importFont(bytes, "sample.ttf")).typeface;
+  }
+  const ink = (contours: Contour[]) =>
+    contours.reduce((sum, contour) => {
+      const points = flattenContour(contour, 16);
+      let area = 0;
+      points.forEach((point, k) => {
+        const next = points[(k + 1) % points.length];
+        area += point.x * next.y - next.x * point.y;
+      });
+      return sum + area / 2;
+    }, 0);
+  const perimeter = (contours: Contour[]) =>
+    contours.reduce((sum, contour) => {
+      const points = flattenContour(contour, 16);
+      return (
+        sum +
+        points.reduce(
+          (length, point, k) =>
+            length +
+            Math.hypot(
+              points[(k + 1) % points.length].x - point.x,
+              points[(k + 1) % points.length].y - point.y,
+            ),
+          0,
+        )
+      );
+    }, 0);
+  const gained = (typeface: Typeface, char: string, weight: number) => {
+    const glyph = typeface.glyphs.find((one) => one.unicodes.includes(char.codePointAt(0) ?? 0));
+    if (!glyph) throw new Error(char);
+    const before = resolveGlyphContours(glyph, typeface);
+    const after = resolveGlyphContours(
+      { ...glyph, params: { weight: weight * typeface.unitsPerEm } },
+      typeface,
+    );
+    return Math.abs(ink(after) - ink(before)) / perimeter(before);
+  };
+
+  it("makes the diagonal letters as much bolder as the straight ones", async () => {
+    const typeface = await sample();
+    const reference = gained(typeface, "H", 0.06);
+    for (const char of "MNWwzvkA") {
+      const ratio = gained(typeface, char, 0.06) / reference;
+      expect(ratio, char).toBeGreaterThan(0.8);
+    }
+  });
+
+  it("makes the diagonal letters as much lighter as the straight ones", async () => {
+    const typeface = await sample();
+    const reference = gained(typeface, "H", -0.04);
+    for (const char of "MNWvxkK") {
+      const ratio = gained(typeface, char, -0.04) / reference;
+      expect(ratio, char).toBeGreaterThan(0.8);
+      expect(ratio, char).toBeLessThan(1.25);
+    }
+  });
+});

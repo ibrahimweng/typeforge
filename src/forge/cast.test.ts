@@ -16,7 +16,12 @@
  * the geometry rather than in the design.
  */
 
+import { readFileSync } from "node:fs";
+
 import { beforeAll, describe, expect, it } from "vitest";
+
+import { importFont } from "@/font/parse";
+import { cutScaleOf } from "@/font/transform";
 
 import { readyToShape } from "./layers";
 import { subtract, unite } from "@/font/boolean";
@@ -760,6 +765,35 @@ describe("a point and a chamfer on the same corner", () => {
     for (const letter of "nmr") {
       const was = ink(unite(draw(letter, plainForge)!.contours, "winding"));
       expect(ink(draw(letter, forge)!.contours), letter).toBeGreaterThan(was * 0.9);
+    }
+  });
+});
+
+describe("a rim after a cut that cannot reach an imported letter", () => {
+  /*
+   * Inline follows a letter's strokes, and a letter from a font file has
+   * none, so the cut hands its ink back untouched -- still the raw contours,
+   * wound however the font wound them. The rim after it was told to read them
+   * as wound by a boolean, and on a letter wound the other way round it went
+   * missing: every letter without a counter came out bare beside the rimmed
+   * ones.
+   */
+  it("rims it exactly as the rim alone does", async () => {
+    const bytes = new Uint8Array(readFileSync("src/assets/typeforge-sample.ttf"));
+    const { typeface } = await importFont(bytes, "sample.ttf");
+    const rim = cast((one) => {
+      one.outline.on = true;
+    });
+    const cuts: Cuts = noCuts();
+    cuts.inline.on = true;
+    const scale = cutScaleOf(typeface);
+    for (const char of "HEna") {
+      const glyph = typeface.glyphs.find((one) => one.unicodes.includes(char.codePointAt(0) ?? 0));
+      const raw = glyph!.contours;
+      const alone = shapedInk(raw, [], scale, undefined, rim, "nesting").contours;
+      const after = shapedInk(raw, [], scale, cuts, { ...rim, order: "after" }, "nesting");
+      expect(ink(after.contours), char).toBeCloseTo(ink(alone), 0);
+      expect(ink(alone), char).toBeGreaterThan(ink(raw) * 1.05);
     }
   });
 });

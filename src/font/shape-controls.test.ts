@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { contoursBounds } from "./geometry";
+import { contoursBounds, flattenContour } from "./geometry";
 import { blankGlyph } from "./library";
 import { contoursIntersect } from "./outline";
 import { resolveAdvanceWidth, resolveGlyphContours } from "./transform";
@@ -184,5 +184,34 @@ describe("corner radius", () => {
         }
       }
     }
+  });
+});
+
+describe("a rounded elbow", () => {
+  it("keeps the stroke as thick round the corner as along it", () => {
+    // An L forty thick, rounded by a hundred and fifty. The outside of the
+    // elbow went round in a wide arc while the inside was only eased, and
+    // the corner came out a crescent far heavier than the stroke.
+    const L = polygon([
+      [0, 0],
+      [600, 0],
+      [600, 40],
+      [40, 40],
+      [40, 800],
+      [0, 800],
+    ]);
+    const { typeface, glyph } = font([L]);
+    const [rounded] = at(typeface, glyph, { cornerRadius: 150 });
+    const centre = { x: 150, y: 150 };
+    const distances: number[] = [];
+    for (const point of flattenContour(rounded, 64)) {
+      const angle = Math.atan2(point.y - centre.y, point.x - centre.x);
+      if (Math.abs(angle + (3 * Math.PI) / 4) < 0.08)
+        distances.push(Math.hypot(point.x - centre.x, point.y - centre.y));
+    }
+    expect(distances.length).toBeGreaterThan(1);
+    const thickness = Math.max(...distances) - Math.min(...distances);
+    expect(thickness).toBeGreaterThan(30);
+    expect(thickness).toBeLessThan(50);
   });
 });

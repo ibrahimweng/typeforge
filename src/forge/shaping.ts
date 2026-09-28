@@ -58,6 +58,18 @@ export function shaped(
   if (!casting) return carved;
   return {
     ...carved,
-    contours: castInk(carved.contours, strokes, scale, cast!, cutting ? "winding" : roles),
+    /*
+     * Only if the cut actually ran. Inline and breaks follow a letter's
+     * strokes, and a letter brought in from a font has none, so they hand its
+     * ink back as it came -- read as wound, the rim lost every letter without
+     * a counter and doubled on the rest.
+     */
+    contours: castInk(
+      carved.contours,
+      strokes,
+      scale,
+      cast!,
+      carved.contours === ink ? roles : "winding",
+    ),
   };
 }

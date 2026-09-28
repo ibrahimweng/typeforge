@@ -77,8 +77,15 @@ const KEPT_SHARE = 1 / 3;
  * it reads as a crack through the letter rather than as an opening.
  */
 const OPENING = 0.036;
-/** How sharply the allowance takes over from the weight asked for. */
+/**
+ * How sharply the allowance takes over from the weight asked for. Sharper
+ * taking weight off: eased as gently as adding it, a stroke drawn heavier --
+ * the diagonals of a W or an M beside the stems of an H -- stopped well short
+ * of its own floor while the stems reached theirs, and a Thin came out with
+ * its diagonals twice the weight of its stems.
+ */
 const KNEE = 6;
+const LIGHT_KNEE = 12;
 /**
  * The furthest a corner may run out, as a multiple of the weight: a serif's tip
  * made bolder, and -- much less -- the crotch where an arch leaves its stem
@@ -88,6 +95,11 @@ const KNEE = 6;
  */
 const MITRE_LIMIT = 3;
 const CROTCH_LIMIT = 1.5;
+/**
+ * How far a straight side may lean, across its length, to meet a corner held
+ * in short of where its offset would put it.
+ */
+const LEAN = 0.12;
 /** Samples per curve for measuring, and for the trace. */
 const MEASURE = 12;
 const TRACE = 16;
@@ -98,10 +110,10 @@ const STEP = 0.01;
 const BACK_OFF_STEPS = 6;
 
 /** The smaller of two amounts, with the corner between them rounded off. */
-function softMin(wanted: number, allowed: number): number {
+function softMin(wanted: number, allowed: number, knee = KNEE): number {
   if (!Number.isFinite(allowed)) return wanted;
   if (allowed <= 0 || wanted <= 0) return 0;
-  return (wanted * allowed) / (wanted ** KNEE + allowed ** KNEE) ** (1 / KNEE);
+  return (wanted * allowed) / (wanted ** knee + allowed ** knee) ** (1 / knee);
 }
 
 function add(a: Vec2, b: Vec2): Vec2 {
@@ -286,7 +298,16 @@ export function applyWeight(
     normal: Vec2;
     /** Round its own outline, for a wall of this contour; else -1. */
     middle: number;
+    /** The segment of this contour it was flattened from; else -1. */
+    seg: number;
+    /** Which way it runs. */
+    edge: Vec2;
   }
+  const segmentAt = (position: number): number => {
+    let found = 0;
+    for (let index = 0; index < count; index++) if (starts[index] <= position) found = index;
+    return found;
+  };
   const walls: Wall[] = [];
   around.obstacles.forEach((polyline, which) => {
     const own = which === self;
@@ -308,11 +329,14 @@ export function applyWeight(
       const next = polyline[(k + 1) % polyline.length];
       const length = distance(point, next);
       const edge = length > 1e-9 ? times(sub(next, point), 1 / length) : { x: 0, y: 0 };
+      const middle = own ? ((run + length / 2) / (perimeter || 1)) * total : -1;
       walls.push({
         a: point,
         b: next,
         normal: { x: -edge.y * facingInk, y: edge.x * facingInk },
-        middle: own ? ((run + length / 2) / (perimeter || 1)) * total : -1,
+        middle,
+        seg: own ? segmentAt(middle) : -1,
+        edge,
       });
       run += length;
     });
@@ -323,9 +347,103 @@ export function applyWeight(
    * of a letter is that far from any one point of it.
    */
   const horizon = bolder ? em * OPENING + wanted * 7 : wanted * 10 + em * HAIRLINE;
-  const room = (from: Vec2, heading: Vec2, position: number): number => {
+  const turnAt = (index: number): number => {
+    const a = headingOn(segments[(index - 1 + count) % count], 1);
+    const b = headingOn(segments[index], 0);
+    return a.x * b.x + a.y * b.y;
+  };
+  // Smooth: one direction through the point, which the result keeps.
+  const smoothJoin = nodes.map((_, index) => turnAt(index) > 0.995);
+  /*
+   * Flowing: a turn too slight to be a corner of the letter. Fonts converted
+   * from quadratic outlines are full of these -- the leg of Lora's R is a
+   * dozen pieces meeting a few degrees apart -- and treating each as a corner
+   * gave every piece its own amount, which stepped the edge at every point.
+   */
+  const flowing = nodes.map((_, index) => turnAt(index) > 0.9);
+  /*
+   * The side across an inside corner is that corner closing, not a wall in
+   * the way: the notch between two strokes of a W fills from its point as the
+   * letter gets bolder, and the end of a stroke comes in square as it gets
+   * lighter. Read as the far side of an opening, it held the whole of both
+   * straight sides still -- a W, M, N or z made bolder kept the weight it was
+   * drawn at while an H beside it went to Black. Only the part of the
+   * neighbouring side that runs on as it leaves the corner counts as that;
+   * a curve that turns right round further on is somewhere else again.
+   */
+  const insideAt = nodes.map((_, index) => {
+    if (flowing[index]) return false;
+    const previous = (index - 1 + count) % count;
+    const arriving = move(headingOn(segments[previous], 1));
+    const leaving = headingOn(segments[index], 0);
+    return arriving.x * leaving.x + arriving.y * leaving.y > 0.05;
+  });
+  const ownCorner = (wall: Wall, seg: number): boolean => {
+    if (wall.seg < 0) return false;
+    const next = (seg + 1) % count;
+    const previous = (seg - 1 + count) % count;
+    let along: Vec2;
+    if (wall.seg === next && insideAt[next]) along = headingOn(segments[next], 0);
+    else if (wall.seg === previous && insideAt[seg]) along = headingOn(segments[previous], 1);
+    else return false;
+    return wall.edge.x * along.x + wall.edge.y * along.y > 0.82;
+  };
+  /*
+   * And the same for a notch drawn with a rounded point, as a font converted
+   * from quadratics draws the crotch of Lora's M: two walls joined by a run
+   * of outline that only ever turns into the white between them, however
+   * many pieces it is in, are the sides of one notch, which a bolder letter
+   * fills from its point.
+   */
+  // How far the outline turns away from the white it faces at a join, and
+  // along a segment: nothing where it only turns into it.
+  const outAt = (a: Vec2, b: Vec2): number => {
+    const pushed = move(a);
+    if (pushed.x * b.x + pushed.y * b.y >= -1e-3) return 0;
+    return Math.acos(Math.max(-1, Math.min(1, a.x * b.x + a.y * b.y)));
+  };
+  const nodeOut = nodes.map((_, index) =>
+    outAt(headingOn(segments[(index - 1 + count) % count], 1), headingOn(segments[index], 0)),
+  );
+  const segmentOut = segments.map((segment) => {
+    if (segment.kind === "line") return 0;
+    let out = 0;
+    for (let k = 0; k < 8; k++)
+      out += outAt(headingOn(segment, k / 8), headingOn(segment, (k + 1) / 8));
+    return out;
+  });
+  // A few degrees of wobble in a converted outline, and no more.
+  const WOBBLE = 0.3;
+  const NOTCH_PIECES = 10;
+  const notch = (from: number, to: number): boolean => {
+    if (from === to) return false;
+    const walk = (step: 1 | -1): boolean => {
+      let at = from;
+      let out = 0;
+      for (let pieces = 0; pieces < NOTCH_PIECES; pieces++) {
+        const next = (at + step + count) % count;
+        // The join crossed going from `at` to `next`.
+        out += nodeOut[step > 0 ? next : at];
+        if (out > WOBBLE) return false;
+        if (next === to) return true;
+        out += segmentOut[next];
+        if (out > WOBBLE) return false;
+        at = next;
+      }
+      return false;
+    };
+    return walk(1) || walk(-1);
+  };
+  const room = (from: Vec2, heading: Vec2, position: number, seg: number): number => {
     let nearest = Infinity;
     for (const wall of walls) {
+      if (ownCorner(wall, seg)) continue;
+      if (bolder && wall.seg >= 0 && notch(seg, wall.seg)) {
+        // Unless the two walls stand square across from each other, which
+        // is a counter or a gap, however it is reached.
+        const across = wall.normal.x * heading.x + wall.normal.y * heading.y;
+        if (across > -0.975) continue;
+      }
       if (
         Math.min(wall.a.x, wall.b.x) - from.x > horizon ||
         from.x - Math.max(wall.a.x, wall.b.x) > horizon ||
@@ -379,8 +497,9 @@ export function applyWeight(
           pointOn(segment, t),
           times(direction, 1 / size),
           starts[index] + t * lengths[index],
+          index,
         );
-        by = softMin(by, allowance(ahead));
+        by = softMin(by, allowance(ahead), bolder ? KNEE : LIGHT_KNEE);
       }
       samples.push({ seg: index, t, along: starts[index] + t * lengths[index], by });
       lowest = Math.min(lowest, by);
@@ -402,20 +521,6 @@ export function applyWeight(
    * different strokes. Easing across it carried a serif's hairline allowance
    * up the stem it stands under, and the foot of the stem bent in.
    */
-  const turnAt = (index: number): number => {
-    const a = headingOn(segments[(index - 1 + count) % count], 1);
-    const b = headingOn(segments[index], 0);
-    return a.x * b.x + a.y * b.y;
-  };
-  // Smooth: one direction through the point, which the result keeps.
-  const smoothJoin = nodes.map((_, index) => turnAt(index) > 0.995);
-  /*
-   * Flowing: a turn too slight to be a corner of the letter. Fonts converted
-   * from quadratic outlines are full of these -- the leg of Lora's R is a
-   * dozen pieces meeting a few degrees apart -- and treating each as a corner
-   * gave every piece its own amount, which stepped the edge at every point.
-   */
-  const flowing = nodes.map((_, index) => turnAt(index) > 0.9);
   const run = new Array<number>(count).fill(0);
   const firstCorner = flowing.indexOf(false);
   if (firstCorner >= 0) {
@@ -439,7 +544,14 @@ export function applyWeight(
   const lineCap = new Array<number>(count).fill(Infinity);
   // How far each corner was found to have room to go, where that was asked.
   const reachAt = new Array<number>(count).fill(0);
+  // Where a corner between two straights is held in by itself, and how.
+  const holds: Array<Hold | null> = new Array(count).fill(null);
   const caps: Array<{ node: number; seg: number; cap: number }> = [];
+  const movedBy = (seg: number): number => {
+    if (segments[seg].kind === "line") return lineBy[seg];
+    const own = samples.filter((sample) => sample.seg === seg);
+    return own.length ? own.reduce((sum, sample) => sum + sample.by, 0) / own.length : wanted;
+  };
   nodes.forEach((node, index) => {
     if (flowing[index]) return;
     const previous = (index - 1 + count) % count;
@@ -477,17 +589,94 @@ export function applyWeight(
     // slant.
     const heading = times(full, 1 / out);
     let ahead = Infinity;
+    let farWall: Wall | null = null;
     for (const wall of walls) {
       const facing = wall.normal.x * heading.x + wall.normal.y * heading.y;
       if (facing >= 0) continue;
       if (distance(wall.a, node.point) < 1 || distance(wall.b, node.point) < 1) continue;
-      ahead = Math.min(ahead, rayToEdge(node.point, heading, wall.a, wall.b));
+      let reach = rayToEdge(node.point, heading, wall.a, wall.b);
       if (facing < -0.7)
-        ahead = Math.min(ahead, 2 * ballTouch(node.point, heading, wall.a, wall.b));
+        reach = Math.min(reach, 2 * ballTouch(node.point, heading, wall.a, wall.b));
+      if (reach < ahead) {
+        ahead = reach;
+        farWall = wall;
+      }
     }
-    const limit = Math.min(mitreReach, Math.max(0, allowance(ahead)));
+    // How far the side it runs towards comes in to meet it, as measured.
+    const farBy = farWall && farWall.seg >= 0 ? movedBy(farWall.seg) : wanted;
+    /*
+     * Between two straights -- the notch of a W, the point of a V -- a light
+     * cut's corner runs as far as the stroke ahead of it has room for, less
+     * what that stroke's own far side comes in by: a W thinned has its middle
+     * point rise nearly to the top, as a Thin is drawn. The crotch limit is for
+     * an arch leaving its stem, which is a curve.
+     */
+    const straights = lineA && lineB;
+    const limit =
+      straights && !bolder
+        ? Math.max(0, allowance(ahead), ahead - farBy - 2 * hairline)
+        : Math.min(mitreReach, Math.max(0, allowance(ahead)));
     reachAt[index] = limit;
     if (out <= limit) return;
+    /*
+     * And rather than hold both straights back for the whole of their length
+     * -- which left every diagonal of a W or M at the weight it was drawn
+     * while the H beside it went to Black or Thin -- the corner alone is held
+     * in, and the straights lean to meet it, where that leans them only a
+     * little over their length.
+     */
+    if (straights) {
+      const fullPoint = add(node.point, full);
+      let hold: Hold = { side: 0, amount: limit };
+      let held = add(node.point, times(full, limit / out));
+      const side = bolder ? 0 : uprightSide(tA, tB);
+      if (side !== 0) {
+        /*
+         * Slid along the upright side's own moved line, as far as there is
+         * ink ahead of it along that line -- less what the far side comes in
+         * by -- and no further than halfway to another corner running along
+         * the same line towards it: the arm and the leg of a k, meeting the
+         * stem a little apart, come together on it rather than cross.
+         */
+        const start = side > 0 ? add(node.point, times(mA, dA)) : add(node.point, times(mB, dB));
+        const along = side > 0 ? tA : times(tB, -1);
+        const reach = distance(start, fullPoint);
+        let travel = Infinity;
+        let far: Wall | null = null;
+        for (const wall of walls) {
+          if (wall.normal.x * along.x + wall.normal.y * along.y >= 0) continue;
+          const hit = rayToEdge(start, along, wall.a, wall.b);
+          if (hit < travel) {
+            travel = hit;
+            far = wall;
+          }
+        }
+        travel -= (far && far.seg >= 0 ? movedBy(far.seg) : wanted) + 2 * hairline;
+        const line = side > 0 ? previous : index;
+        nodes.forEach((other, at) => {
+          if (at === index || flowing[at] || insideAt[at]) return;
+          const beside = [(at - 1 + count) % count, at].filter(
+            (seg) => seg !== line && segments[seg].kind === "line",
+          );
+          const offset = sub(other.point, node.point);
+          if (Math.abs(cross(offset, along)) > 1) return;
+          const ahead = offset.x * along.x + offset.y * along.y;
+          if (ahead <= 0 || beside.length === 0) return;
+          travel = Math.min(travel, (ahead - 2 * hairline) / 2);
+        });
+        travel = Math.max(0, travel);
+        if (travel >= reach) return;
+        hold = { side, amount: travel };
+        held = add(start, times(along, travel));
+      }
+      const off = sub(held, fullPoint);
+      const leanA = Math.abs(cross(off, tA)) / Math.max(lengths[previous], 1e-9);
+      const leanB = Math.abs(cross(off, tB)) / Math.max(lengths[index], 1e-9);
+      if (leanA <= LEAN && leanB <= LEAN) {
+        holds[index] = hold;
+        return;
+      }
+    }
     // The curves give way first; straight sides only if that is not enough.
     const fits = (share: number, lines: number) =>
       reachOf(corner(dA * (lineA ? lines : share), dB * (lineB ? lines : share))) <= limit;
@@ -639,6 +828,129 @@ export function applyWeight(
     return last[1];
   };
 
+  /*
+   * A straight leaned to meet a held corner makes its stroke a wedge unless
+   * the other side of that stroke leans with it. The arm and the leg of a
+   * DejaVu k thinned hard no longer reach the stem where they did -- moved
+   * square, they come apart from it -- so their inner ends are brought
+   * together on the stem, which leans both edges they start from; turning
+   * the far edges of the arm and the leg the same way keeps each an even
+   * stroke, now meeting the stem at one point, which is how a Thin k is
+   * drawn. Likewise the diagonal of a thin M, turned to meet its stem at
+   * the top rather than thickening into it.
+   */
+  const leaned: Array<{ seg: number; held: number }> = [];
+  holds.forEach((hold, index) => {
+    if (!hold) return;
+    const previous = (index - 1 + count) % count;
+    if (hold.side >= 0) leaned.push({ seg: index, held: index });
+    if (hold.side <= 0) leaned.push({ seg: previous, held: index });
+  });
+  const lineDirection = (seg: number) => headingOn(segments[seg], 0);
+  const partners = leaned.map(({ seg, held }) => {
+    const t = lineDirection(seg);
+    const from = segments[seg].from;
+    const reach = lengths[seg];
+    let best = -1;
+    let bestGap = Infinity;
+    segments.forEach((other, index) => {
+      if (index === seg || other.kind !== "line") return;
+      const u = lineDirection(index);
+      if (t.x * u.x + t.y * u.y > -0.97) return;
+      const gap = Math.abs(cross(sub(other.from, from), t));
+      if (gap > em * 0.3 || gap < 1) return;
+      // Beside it for at least half of the shorter of the two.
+      const a = (other.from.x - from.x) * t.x + (other.from.y - from.y) * t.y;
+      const b = (other.to.x - from.x) * t.x + (other.to.y - from.y) * t.y;
+      const overlap = Math.min(reach, Math.max(a, b)) - Math.max(0, Math.min(a, b));
+      if (overlap < 0.5 * Math.min(reach, lengths[index])) return;
+      if (gap < bestGap) {
+        bestGap = gap;
+        best = index;
+      }
+    });
+    if (best < 0) return null;
+    const heldPoint = nodes[held].point;
+    const start = best;
+    const end = (best + 1) % count;
+    const near =
+      distance(nodes[start].point, heldPoint) < distance(nodes[end].point, heldPoint) ? start : end;
+    // A partner held in at the end beside this one leans already.
+    if (leaned.some((one) => one.seg === best && one.held === near)) return null;
+    return { seg, partner: best, near, far: near === start ? end : start };
+  });
+  const restoreStrokes = (out: GlyphNode[], share: number) => {
+    const wantedLines = new Map<number, Array<{ through: Vec2; direction: Vec2 }>>();
+    partners.forEach((pair) => {
+      if (!pair) return;
+      const a = out[pair.seg].point;
+      const b = out[(pair.seg + 1) % count].point;
+      let direction = normalize(sub(b, a));
+      /*
+       * Both sides of the stroke held in, at opposite ends -- the diagonal of
+       * an M, held at the stem at the top and at the point at the bottom.
+       * Then neither side's lean is the one to follow: the two turn together,
+       * each about its held end, to the one direction that leaves the stroke
+       * between them as thick as the rest of the letter's strokes became.
+       */
+      const mutual = partners.find((other) => other && other.seg === pair.partner);
+      if (mutual && mutual.partner === pair.seg) {
+        const t = lineDirection(pair.seg);
+        const segment = segments[pair.seg];
+        const across = cross(sub(segments[pair.partner].from, segment.from), t);
+        const thick = Math.max(
+          hairline,
+          Math.abs(across) - (lineBy[pair.seg] + lineBy[pair.partner]) * share,
+        );
+        const heldHere = leaned.find((one) => one.seg === pair.seg)?.held ?? pair.seg;
+        const v = sub(out[pair.far].point, out[heldHere].point);
+        const span = Math.hypot(v.x, v.y);
+        if (span > thick) {
+          const alpha = Math.atan2(v.y, v.x);
+          const turn = Math.asin((Math.sign(across) * thick) / span);
+          const options = [alpha + turn, alpha + Math.PI - turn].map((phi) => ({
+            x: Math.cos(phi),
+            y: Math.sin(phi),
+          }));
+          const best = options.reduce((one, other) =>
+            one.x * t.x + one.y * t.y >= other.x * t.x + other.y * t.y ? one : other,
+          );
+          if (best.x * t.x + best.y * t.y > 0.9) direction = best;
+        }
+      }
+      const list = wantedLines.get(pair.near) ?? [];
+      list.push({ through: { ...out[pair.far].point }, direction });
+      wantedLines.set(pair.near, list);
+    });
+    const meet = (p: Vec2, d: Vec2, q: Vec2, e: Vec2): Vec2 | null => {
+      const det = cross(d, e);
+      if (Math.abs(det) < 1e-6) return null;
+      const s = cross(sub(q, p), e) / det;
+      return add(p, times(d, s));
+    };
+    const moves = new Map<number, Vec2>();
+    wantedLines.forEach((lines, index) => {
+      const previous = (index - 1 + count) % count;
+      if (segments[previous].kind !== "line" || segments[index].kind !== "line") return;
+      let point: Vec2 | null = null;
+      if (lines.length >= 2) {
+        point = meet(lines[0].through, lines[0].direction, lines[1].through, lines[1].direction);
+      } else {
+        // Slid along its other side, which keeps its direction.
+        const partnerSeg = partners.find((pair) => pair && pair.near === index)?.partner;
+        const otherSeg = partnerSeg === previous ? index : previous;
+        const otherEnd = otherSeg === index ? (index + 1) % count : otherSeg;
+        const along = normalize(sub(out[otherEnd].point, out[index].point));
+        point = meet(lines[0].through, lines[0].direction, out[index].point, along);
+      }
+      if (!point || distance(point, out[index].point) > 3 * wanted) return;
+      moves.set(index, point);
+    });
+    moves.forEach((point, index) => {
+      out[index].point = point;
+    });
+  };
+
   const build = (share: number): Contour => {
     const offsetAt = (index: number, t: number): Vec2 => {
       const segment = segments[index];
@@ -690,6 +1002,22 @@ export function applyWeight(
         const node = nodes[index].point;
         let corner = add(arriving.point, times(tA, s));
         const out = distance(node, corner);
+        const hold = holds[index];
+        if (hold) {
+          if (hold.side === 0) {
+            if (out > hold.amount * share)
+              corner = add(node, times(sub(corner, node), (hold.amount * share) / out));
+          } else {
+            const start = hold.side > 0 ? arriving.point : leaving.point;
+            const reach = distance(start, corner);
+            const travel = hold.amount * share;
+            if (reach > travel)
+              corner = add(start, times(sub(corner, start), travel / Math.max(reach, 1e-9)));
+          }
+          trace.push({ point: corner, nodes: [index], seg: index, t: 0, along: starts[index] });
+          trace.push(...piece);
+          continue;
+        }
         // Or as far as it was found to have room for, which the amounts
         // either side were already held to: a narrow crotch whose corner was
         // clamped here, short of where its sides meet, leaned the stem.
@@ -921,6 +1249,7 @@ export function applyWeight(
       if (nodes[index].handleOut) out[index].handleOut = c1;
       if (nodes[next].handleIn) out[next].handleIn = c2;
     }
+    restoreStrokes(out, share);
     return { closed: true, nodes: out };
   };
 
@@ -1076,6 +1405,30 @@ function cutLoops(trace: Vertex[], total: number, window: number, limit: number)
     if (!removed) break;
   }
   return vertices;
+}
+
+/**
+ * How a corner between two straights is held in short of where its moved
+ * sides meet: straight in towards its point (`side` 0, `amount` how far from
+ * it), or slid along one side's moved line (1 the side arriving, -1 the one
+ * leaving; `amount` how far along it), so that side stays parallel to itself
+ * and only the other leans to meet it.
+ */
+interface Hold {
+  side: -1 | 0 | 1;
+  amount: number;
+}
+
+/**
+ * Which of two sides meeting at a corner stands nearer upright or level: the
+ * one to keep parallel, since a stem or a bar that tapers shows where a
+ * diagonal a shade heavier at its join does not. Nought when they are alike.
+ */
+function uprightSide(tA: Vec2, tB: Vec2): -1 | 0 | 1 {
+  const upright = (t: Vec2) => Math.max(Math.abs(t.x), Math.abs(t.y));
+  const lean = upright(tA) - upright(tB);
+  if (Math.abs(lean) < 0.03) return 0;
+  return lean > 0 ? 1 : -1;
 }
 
 /** Whether two traced pieces cross anywhere. */

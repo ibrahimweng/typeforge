@@ -298,3 +298,54 @@ describe("slabs on arms", () => {
     for (const box of fromLeft) expect(box.xMin).toBeCloseTo(-60, 6);
   });
 });
+
+describe("which ends a slab serif gives a slab", () => {
+  it("leaves the tips of a serif alone even when they are nearly a stem thick", () => {
+    // Lora's M: its serif tips measure well over half its thin stems, so the
+    // thinness test alone let them through, and a slab stood beside each tip
+    // as a hollow bracket. A serif tip has the stem it carries right behind it.
+    const serifed = polygon([
+      { x: 0, y: 0 },
+      { x: 0, y: 70 },
+      { x: 100, y: 70 },
+      { x: 100, y: 930 },
+      { x: 0, y: 930 },
+      { x: 0, y: 1000 },
+      { x: 300, y: 1000 },
+      { x: 300, y: 930 },
+      { x: 200, y: 930 },
+      { x: 200, y: 70 },
+      { x: 300, y: 70 },
+      { x: 300, y: 0 },
+    ]);
+    expect(findTerminals([serifed], WIDE)).toHaveLength(0);
+  });
+
+  it("puts no slab on a slanted end", () => {
+    // The tail of Geist's & ends on a cut a few degrees off level, and a slab
+    // laid along it stuck out like a stick.
+    const turn = (8 * Math.PI) / 180;
+    const at = (x: number, y: number) => ({
+      x: x * Math.cos(turn) - y * Math.sin(turn),
+      y: x * Math.sin(turn) + y * Math.cos(turn),
+    });
+    const tilted = polygon([at(0, 0), at(100, 0), at(100, 1000), at(0, 1000)]);
+    expect(findTerminals([tilted], WIDE)).toHaveLength(0);
+  });
+
+  it("gives a diagonal cut off level a slab, square to the letter", () => {
+    // The arm and leg of a k, the feet of an A, the tops of v and y.
+    const diagonal = polygon([
+      { x: 0, y: 0 },
+      { x: 120, y: 0 },
+      { x: 420, y: 700 },
+      { x: 300, y: 700 },
+    ]);
+    const terminals = findTerminals([diagonal], WIDE);
+    expect(terminals).toHaveLength(2);
+    for (const terminal of terminals) {
+      expect(Math.abs(terminal.inward.x)).toBeLessThan(1e-9);
+      expect(Math.abs(terminal.inward.y)).toBeCloseTo(1, 9);
+    }
+  });
+});

@@ -96,6 +96,10 @@ function chord(segment: Segment): { x: number; y: number; length: number } {
 
 /** How square two directions are: zero when perpendicular. */
 const PERPENDICULAR_TOLERANCE = 0.26; // about 15 degrees
+/** How far from level or upright an end may lie: about three degrees. */
+const SQUARE_END = 0.05;
+/** How far a diagonal may lean from square to a level end it is cut off by. */
+const SLANTED_SIDES = 0.8;
 /** How opposed the two sides of a stroke have to be. */
 const OPPOSITE_TOLERANCE = -0.9;
 /** How much longer than its stroke an end may measure and still count. */
@@ -174,6 +178,21 @@ export function findTerminals(contours: Contour[], maxWidth: number): Terminal[]
    */
   const ink = contours.length > 1 ? classifyContours(contours) : contours.map(() => true);
   const stroke = strokeOf(contours);
+  const box = contoursBounds(contours);
+  const polylines = contours.map((contour) => flattenContour(contour, 8));
+  const carriesStem = (terminal: Terminal): boolean => {
+    const back = terminal.width * 2;
+    const reach = terminal.width * 1.2;
+    const base = {
+      x: terminal.centre.x + terminal.inward.x * back,
+      y: terminal.centre.y + terminal.inward.y * back,
+    };
+    // Which side of the arm is the inside of the letter: away from the edge
+    // of the letter it is flush with.
+    const middle = (box.yMin + box.yMax) / 2;
+    const into = terminal.centre.y > middle ? -1 : 1;
+    return insideInk(polylines, { x: base.x, y: base.y + into * reach });
+  };
 
   for (const [index, contour] of contours.entries()) {
     if (!ink[index]) continue;
@@ -206,17 +225,58 @@ export function findTerminals(contours: Contour[], maxWidth: number): Terminal[]
       // the boundary it decided whether a slab existed. Raising t's crossbar
       // left 168 units of stem above it, just under the 185 the stem is wide,
       // and the slab on the ascender vanished while the others stayed.
-      if (here.length > Math.max(previous.length, next.length) * END_SLACK) continue;
+      const longer = Math.max(previous.length, next.length);
 
-      // Both sides square to the end, and running opposite each other.
-      if (Math.abs(here.x * previous.x + here.y * previous.y) > PERPENDICULAR_TOLERANCE) continue;
-      if (Math.abs(here.x * next.x + here.y * next.y) > PERPENDICULAR_TOLERANCE) continue;
+      /*
+       * Only a level or upright end. A slab stands square to the letter; laid
+       * along the slanted cut at the end of the tail of an &, it stuck out
+       * sideways like a stick.
+       */
+      if (Math.min(Math.abs(here.x), Math.abs(here.y)) > SQUARE_END) continue;
+      /*
+       * Both sides square to the end, and running opposite each other -- or,
+       * for a level end, the two sides of a diagonal cut off level: the arm
+       * and the leg of a k, the feet of A, the tops of v and y, which a slab
+       * serif gives a slab like any stem.
+       */
+      const level = Math.abs(here.y) <= SQUARE_END;
+      const square = level ? SLANTED_SIDES : PERPENDICULAR_TOLERANCE;
+      if (Math.abs(here.x * previous.x + here.y * previous.y) > square) continue;
+      if (Math.abs(here.x * next.x + here.y * next.y) > square) continue;
       if (previous.x * next.x + previous.y * next.y > OPPOSITE_TOLERANCE) continue;
 
       // Convex, so this is the end of a stroke rather than a notch cut into one.
       const turnIn = previous.x * here.y - previous.y * here.x;
       const turnOut = here.x * next.y - here.y * next.x;
       if (Math.sign(turnIn) !== convexSign || Math.sign(turnOut) !== convexSign) continue;
+
+      // The stroke runs back the way the neighbouring edges point.
+      const inward = {
+        x: (previous.x * -1 + next.x) / 2,
+        y: (previous.y * -1 + next.y) / 2,
+      };
+      const inwardLength = Math.hypot(inward.x, inward.y);
+      if (inwardLength === 0) continue;
+      // Square across the end, whichever way the stroke leans behind it, so
+      // the slab is a rectangle rather than leaning with a diagonal.
+      const facing = inward.x * -here.y + inward.y * here.x > 0 ? 1 : -1;
+      const terminal: Terminal = {
+        centre: { x: (segment.from.x + segment.to.x) / 2, y: (segment.from.y + segment.to.y) / 2 },
+        along: { x: here.x, y: here.y },
+        inward: { x: -here.y * facing, y: here.x * facing },
+        width: here.length,
+        clockwise: convexSign === -1,
+      };
+
+      if (here.length > longer * END_SLACK) continue;
+      /*
+       * And not the tip of a serif. An arm lying on its side has white on its
+       * inner side a little way back from its end -- between the arms of an
+       * E. The foot or head of a serif has the stem it carries standing
+       * there instead.
+       */
+      if (Math.abs(terminal.inward.x) > Math.abs(terminal.inward.y) && carriesStem(terminal))
+        continue;
 
       /*
        * About as wide as the strokes of the letter it is on.
@@ -241,21 +301,7 @@ export function findTerminals(contours: Contour[], maxWidth: number): Terminal[]
       )
         continue;
 
-      // The stroke runs back the way the neighbouring edges point.
-      const inward = {
-        x: (previous.x * -1 + next.x) / 2,
-        y: (previous.y * -1 + next.y) / 2,
-      };
-      const inwardLength = Math.hypot(inward.x, inward.y);
-      if (inwardLength === 0) continue;
-
-      terminals.push({
-        centre: { x: (segment.from.x + segment.to.x) / 2, y: (segment.from.y + segment.to.y) / 2 },
-        along: { x: here.x, y: here.y },
-        inward: { x: inward.x / inwardLength, y: inward.y / inwardLength },
-        width: here.length,
-        clockwise: convexSign === -1,
-      });
+      terminals.push(terminal);
     }
   }
 

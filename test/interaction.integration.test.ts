@@ -94,14 +94,11 @@ suite("controls used together", { timeout: FONT_SUITE_TIMEOUT }, () => {
   });
 
   /**
-   * A bar whose ends meet curves moves too, by stretching the short curves that
-   * join it to the bowl. An exact slide is often unavailable: e's bar ends at
-   * (305,516) on a curve running down to (420,227), so there is no point on it
-   * at any greater height. On e only the bar's own points move either way --
-   * bar one: its bar ends on the right on a straight stub 90 units tall under
-   * the curve of the bowl, and a raise of 100 cannot slide along that stub
-   * without passing its far end and folding the outline back on itself, so the
-   * stub is carried up with the bar.
+   * A bar whose ends meet curves moves too. On e the eye is spread round the
+   * moved bar, between the top of the eye and the inside bottom of the bowl:
+   * moving only the bar's own points, as this did first, bent the bowl either
+   * side of it to meet them -- a blob on one side, a pointed eye, a bar
+   * sticking out past the bowl -- and the letter changed weight.
    *
    * B, P and R are different. Their bar is a waist, the flat of a bowl flowing
    * into its curve, and stretching only the joins bent the bowls into S-waves,
@@ -124,8 +121,14 @@ suite("controls used together", { timeout: FONT_SUITE_TIMEOUT }, () => {
           }),
         );
         if (name === "e") {
-          // The bar's two edges and nothing else, bar the stub at its end.
-          expect(moved, `e moved too much at ${shift}`).toHaveLength(shift > 0 ? 5 : 4);
+          // The eye is spread round the moved bar, so its points move; what
+          // must not is anything above the eye or below the bowl's inside.
+          const eye = contoursBounds(before);
+          const middle = (barBefore.top + barBefore.bottom) / 2;
+          for (const node of moved)
+            expect(Math.abs(node.point.y - middle), `e moved too much at ${shift}`).toBeLessThan(
+              (eye.yMax - eye.yMin) / 2,
+            );
         }
         expect(after.map((contour) => contour.nodes.length)).toEqual(
           before.map((contour) => contour.nodes.length),

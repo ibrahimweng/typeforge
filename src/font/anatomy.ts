@@ -826,6 +826,105 @@ function warpWaist(
   }));
 }
 
+/**
+ * Move a bar held by a bowl by spreading the letter above and below it.
+ *
+ * As `warpWaist`, but eased: the bar and what lies level with it move by the
+ * whole amount, and the movement dies away smoothly towards the eye's top and
+ * the bowl's bottom, so a curve passing the bar's height -- the outside of
+ * the bowl -- bends evenly rather than turning a corner there, as the straight
+ * spread of a waist made it do.
+ */
+function warpEye(
+  contours: Contour[],
+  bar: Crossbar,
+  eye: { above: number; below: number },
+  shift: number,
+): Contour[] | null {
+  const { above, below } = eye;
+  const up = above - bar.top;
+  const down = bar.bottom - below;
+  /*
+   * The spread squeezes the eye at most to half its height where it squeezes
+   * hardest. Further, and the curves of a bowl drawn in many short pieces --
+   * Lora's, DejaVu's -- came out lumpy, each piece squashed by a different
+   * amount; so the move stops there instead.
+   */
+  if (Math.abs(shift) * 1.5 > up * 0.5 || Math.abs(shift) * 1.5 > down * 0.5) return null;
+  const ease = (u: number) => u * u * (3 - 2 * u);
+  const map = (y: number): number => {
+    if (y >= above || y <= below) return y;
+    if (y > bar.top) return y + shift * ease((above - y) / up);
+    if (y < bar.bottom) return y + shift * ease((y - below) / down);
+    return y + shift;
+  };
+  const at = (point: Vec2 | null): Vec2 | null => (point ? { x: point.x, y: map(point.y) } : null);
+  return contours.map((contour) => ({
+    closed: contour.closed,
+    nodes: contour.nodes.map((node) => ({
+      ...node,
+      point: { x: node.point.x, y: map(node.point.y) },
+      handleIn: at(node.handleIn),
+      handleOut: at(node.handleOut),
+    })),
+  }));
+}
+
+/** Whether any end of the bar is attached to a curve: a bowl round it. */
+function heldByBowl(contours: Contour[], plan: BarPlan): boolean {
+  return plan.pieces.some((piece) =>
+    piece.ends.some((end) => {
+      if (end.kind !== "attached") return false;
+      const contour = contours[end.contour];
+      const segments = contourSegments(contour);
+      const attachment = step(contour, segments, end.chain[end.chain.length - 1], end.walk);
+      return attachment?.segment.kind === "cubic";
+    }),
+  );
+}
+
+/**
+ * Where the eye round a bar ends, above and below: straight up from the
+ * middle of the bar to the ink over the eye, and straight down to the inside
+ * of the bowl under it. Looked for rather than read off the points, which a
+ * font converted from quadratics has all round its bowls.
+ */
+function eyeReach(contours: Contour[], band: Crossbar): { above: number; below: number } | null {
+  const bounds = contoursBounds(contours);
+  const height = bounds.yMax - bounds.yMin;
+  const stepY = Math.max(1, height * 0.004);
+  // The middle of the bar across, where it is widest: its ink at mid-height.
+  const middleY = (band.top + band.bottom) / 2;
+  let left = Infinity;
+  let right = -Infinity;
+  for (let x = bounds.xMin; x <= bounds.xMax; x += stepY) {
+    if (inkAt(contours, x, middleY)) {
+      left = Math.min(left, x);
+      right = Math.max(right, x);
+    }
+  }
+  if (!Number.isFinite(left)) return null;
+  const x = (left + right) / 2;
+  let above = Number.NaN;
+  for (let y = band.top + stepY; y < bounds.yMax; y += stepY) {
+    if (inkAt(contours, x, y)) {
+      above = y;
+      break;
+    }
+  }
+  let below = Number.NaN;
+  for (let y = band.bottom - stepY; y > bounds.yMin; y -= stepY) {
+    if (inkAt(contours, x, y)) {
+      below = y;
+      break;
+    }
+  }
+  if (Number.isNaN(above) || Number.isNaN(below)) return null;
+  // White straight above the bar and below it, or it is not an eye.
+  if (above - band.top < height * 0.05 || band.bottom - below < height * 0.05) return null;
+  return { above, below };
+}
+
 function applyEdits(contours: Contour[], edits: Map<string, NodeEdit>): Contour[] {
   return contours.map((contour, ci) => {
     // A contour nothing touched is handed back as it was.
@@ -867,6 +966,20 @@ export function shiftCrossbar(contours: Contour[], shift: number): Contour[] {
   const { waist } = plan;
   if (waist)
     return asFarAsClean(contours, shift, (amount) => warpWaist(contours, plan, waist, amount));
+  /*
+   * A bar held by a bowl -- the eye of an e -- is moved the same way. Sliding
+   * its ends round the bowl alone left the rest of the bowl where it was, so
+   * the curves either side had to bend to meet them: lowered, Geist's e
+   * became a pointed shield with its bar sticking out past the bowl; raised,
+   * the left of the bowl swelled into a blob. Spreading the letter between
+   * the top of the eye and the bottom of the bowl's inside keeps every stroke
+   * as thick as it was and the bowl a smooth round, only with the bar
+   * higher or lower in it.
+   */
+  if (heldByBowl(contours, plan)) {
+    const eye = eyeReach(contours, plan);
+    if (eye) return asFarAsClean(contours, shift, (amount) => warpEye(contours, plan, eye, amount));
+  }
 
   return asFarAsClean(contours, shift, (amount) => {
     const edits = new Map<string, NodeEdit>();

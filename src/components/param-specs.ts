@@ -72,7 +72,7 @@ export const PARAMS: ParamSpec[] = [
   {
     key: "xHeightScale",
     label: "x-height",
-    hint: "Scales everything above the baseline. Descenders stay put.",
+    hint: "Raises or lowers the top of the lowercase. Capitals, ascenders, descenders and stroke thickness stay put.",
     min: 0.8,
     max: 1.25,
     step: 0.005,

@@ -12,7 +12,7 @@ import { readFileSync } from "node:fs";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { findCrossbar, findShoulders, shiftCrossbar, shiftShoulders } from "./anatomy";
-import { contourSegments, cubicAt } from "./geometry";
+import { contourSegments, cubicAt, inkRunsAt } from "./geometry";
 import { contoursIntersect } from "./outline";
 import { importFont } from "./parse";
 import { resolveGlyphContours } from "./transform";
@@ -117,6 +117,46 @@ describe("the crossbar on the sample font", () => {
     }
   });
 
+  it("moves the bar of an e and keeps its bowl the weight it was", () => {
+    /*
+     * Sliding the bar's ends round the bowl alone bent the curves either side
+     * to meet them: the bowl swelled into a blob on one side and the eye came
+     * to a point, and the letter changed weight. Moved by spreading the eye,
+     * the bar moves and the ink stays what it was.
+     */
+    const before = outline("e");
+    const area = (contours: Contour[]) =>
+      Math.abs(
+        contours.reduce((sum, contour) => {
+          let twice = 0;
+          for (const segment of contourSegments(contour))
+            for (let i = 0; i < 16; i++) {
+              const at = (t: number) =>
+                segment.kind === "line"
+                  ? {
+                      x: segment.from.x + (segment.to.x - segment.from.x) * t,
+                      y: segment.from.y + (segment.to.y - segment.from.y) * t,
+                    }
+                  : cubicAt(segment.from, segment.c1, segment.c2, segment.to, t);
+              const a = at(i / 16);
+              const b = at((i + 1) / 16);
+              twice += a.x * b.y - b.x * a.y;
+            }
+          return sum + twice / 2;
+        }, 0),
+      );
+    const bar = findCrossbar(before)!;
+    for (const shift of [-164, 164]) {
+      const after = shiftCrossbar(before, shift);
+      expect(contoursIntersect(after), `${shift}`).toBe(false);
+      const moved = findCrossbar(after)!.bottom - bar.bottom;
+      expect(Math.sign(moved), `${shift}`).toBe(Math.sign(shift));
+      expect(Math.abs(moved), `${shift}`).toBeGreaterThan(Math.abs(shift) * 0.4);
+      expect(area(after) / area(before), `${shift}`).toBeGreaterThan(0.95);
+      expect(area(after) / area(before), `${shift}`).toBeLessThan(1.05);
+    }
+  });
+
   it("never leaves a letter crossing itself", () => {
     const em = typeface.unitsPerEm;
     for (const letter of LETTERS) {
@@ -163,6 +203,50 @@ describe("the shoulder on the sample font", () => {
           `${letter} ${amount}`,
         ).toBe(false);
       }
+    }
+  });
+});
+
+describe("the x-height on the sample font", () => {
+  const at = (letter: string, xHeightScale: number): Contour[] => {
+    const glyph = typeface.glyphs.find((one) => one.unicodes.includes(letter.codePointAt(0) ?? 0))!;
+    return resolveGlyphContours({ ...glyph, params: { xHeightScale } }, typeface);
+  };
+  /*
+   * It was a plain vertical scale of everything above the baseline: capitals
+   * and ascenders grew with it, and the top and bottom of an o thickened with
+   * the scale while its sides kept their width.
+   */
+  it("moves the top of the lowercase and nothing else", () => {
+    const xHeight = typeface.metrics.xHeight;
+    for (const factor of [0.8, 1.25]) {
+      expect(inkExtent(at("H", factor)).yMax, `H ${factor}`).toBeCloseTo(
+        inkExtent(outline("H")).yMax,
+        3,
+      );
+      // An ascender keeps most of its height: squeezed
+      // hard, the hook of an f gives some of the change back.
+      expect(
+        Math.abs(inkExtent(at("b", factor)).yMax - inkExtent(outline("b")).yMax),
+        `b ${factor}`,
+      ).toBeLessThan(Math.abs(factor - 1) * xHeight * 0.4);
+      const o = inkExtent(at("o", factor));
+      expect(o.yMax - inkExtent(outline("o")).yMax, `o ${factor}`).toBeCloseTo(
+        (factor - 1) * xHeight,
+        0,
+      );
+    }
+  });
+
+  it("keeps the top and bottom of an o as thick as they were", () => {
+    const middle = (inkExtent(outline("o")).xMin + inkExtent(outline("o")).xMax) / 2;
+    const [bottom, top] = inkRunsAt(outline("o"), middle, "x").map(([from, to]) => to - from);
+    for (const factor of [0.8, 1.25]) {
+      const runs = inkRunsAt(at("o", factor), middle, "x").map(([from, to]) => to - from);
+      expect(runs[0] / bottom, `bottom ${factor}`).toBeGreaterThan(0.93);
+      expect(runs[0] / bottom, `bottom ${factor}`).toBeLessThan(1.07);
+      expect(runs[runs.length - 1] / top, `top ${factor}`).toBeGreaterThan(0.93);
+      expect(runs[runs.length - 1] / top, `top ${factor}`).toBeLessThan(1.07);
     }
   });
 });
