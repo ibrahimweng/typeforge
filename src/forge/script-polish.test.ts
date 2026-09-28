@@ -275,3 +275,26 @@ describe("a looped ascender and descender", () => {
     expect(square).toEqual([]);
   });
 });
+
+describe("a looped ascender at a Light", () => {
+  /*
+   * The eye is measured in the face's own pen, as the joins are, and not in
+   * the hairline: at a pen of 30 the eyes of the Casual Script's `l`, `h` and
+   * `k` were a few units across and filled in as teardrops.
+   */
+  it("keeps its eye open", () => {
+    const shut: string[] = [];
+    for (const name of JOINED) {
+      const own = base(name);
+      if (own.parts.script.loop <= 0) continue;
+      const style = at(own, 30);
+      const drawn = drawLetter("l", style, own.forms?.l)!;
+      const eye = Math.max(
+        0,
+        ...unite(drawn.contours, "winding").map((contour) => -contourArea(contour)),
+      );
+      if (eye < (style.metrics.xHeight * 0.12) ** 2) shut.push(`${name}: ${eye.toFixed(0)}`);
+    }
+    expect(shut).toEqual([]);
+  });
+});

@@ -869,7 +869,14 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Loop[] {
    * wide against the *pen*, not against the letter, so that is what it is
    * measured in.
    */
-  const wide = script.loop * room.half * 2;
+  /*
+   * And in the face's own pen at a Light, as the reach and the weld are (see
+   * `scriptUnit`), not in the hairline: measured in a pen of thirty the eyes of
+   * the Casual Script's `l`, `h` and `k` came out a few units across, and
+   * filled in as black teardrops on the tops of their stems. Never narrower
+   * than the pen, so a heavy weight keeps what it had.
+   */
+  const wide = script.loop * Math.max(room.unit ?? 0, room.half * 2);
   if (wide < room.half) return [];
 
   /*
