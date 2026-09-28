@@ -52,7 +52,7 @@ import {
   seamsOf,
   wobbleOf,
 } from "./script";
-import { bowRuns, spineEnd } from "./shapes";
+import { bowRuns, spineEnd, waveBookAt } from "./shapes";
 import { blackness, scriptUnit } from "./style";
 import type { Style } from "./style";
 import type { Spine } from "./types";
@@ -424,13 +424,21 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * the loops, the spacing, the promise that a boundary form is narrower than
    * the letter it stands in for -- then holds unchanged.
    */
+  /*
+   * On a book page of its own (see `WaveBook`), because it is a different
+   * drawing with different runs: read off the written letter's page, the
+   * drawn letter's bows and ends took the written one's answers, and the
+   * Monoline's `n.begin` and `r.end` had different points at every weight.
+   */
   if (recipe.entered && script.on && endsWithout?.entry === false && LETTERS[name]) {
+    waveBookAt(`${name}~drawn`);
     recipe = LETTERS[name](style);
   }
   // And a letter written to hand on from the end of its last stroke, with
   // nothing to hand on to, is the drawn one and finishes that stroke on the
   // face's own terminal.
   if (recipe.leaves && script.on && endsWithout?.exit === false && LETTERS[name]) {
+    waveBookAt(`${name}~drawn`);
     recipe = LETTERS[name](style);
   }
   /*

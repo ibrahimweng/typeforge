@@ -298,3 +298,36 @@ describe("a looped ascender at a Light", () => {
     expect(shut).toEqual([]);
   });
 });
+
+describe("a joined face as a variable font", () => {
+  /*
+   * Every letter and every second drawing of it rides the weight axis: the
+   * same points at the Thin, the Light, the Bold and the Black as at the
+   * weight the family was drawn at. Joins used to be drawn one way at one
+   * weight and another at the next, eyes came and went with the pen, and the
+   * second drawings were drawn after the book of the drawn weight's decisions
+   * had been put away -- the Monoline held back 107 glyphs and the Roundhand
+   * 105.
+   */
+  it("holds back no lowercase letter or alternate", async () => {
+    const { deliver } = await import("./deliver");
+    const { setFamily, startFrom } = await import("./document");
+    const held: string[] = [];
+    // The two whose masters came apart; the other three always rode the axis.
+    for (const name of ["Monoline Script", "Roundhand"]) {
+      let forge = startFrom(base(name));
+      const drawn = forge.family!.drawn;
+      forge = setFamily(forge, {
+        drawn,
+        also: [100, 300, 700, 900].filter((weight) => weight !== drawn),
+      });
+      const result = await deliver(forge, { familyName: "T", format: "ttf", variable: true });
+      held.push(
+        ...result.held
+          .filter((glyph) => /^[a-z](\.|$)/.test(glyph))
+          .map((glyph) => `${name} ${glyph}`),
+      );
+    }
+    expect(held).toEqual([]);
+  }, 900_000);
+});
