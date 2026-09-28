@@ -186,6 +186,59 @@ describe("the Psychedelic's balls", () => {
   });
 });
 
+describe("the Psychedelic's balls, round the letter", () => {
+  it("cuts a level arm square rather than hanging a ball on it", () => {
+    /*
+     * A ball on the middle arm of an E and an F, beside top and bottom arms
+     * cut square, hung in the counter as a blot. Down through the end of the
+     * middle arm, the ink is an arm's depth, not a ball's.
+     */
+    for (const weight of [168, 260]) {
+      const style = at("Psychedelic", weight);
+      for (const name of ["E", "F"]) {
+        const contours = ink(name, style);
+        const bounds = contoursBounds(contours);
+        const x = bounds.xMin + (bounds.xMax - bounds.xMin) * 0.74;
+        const column = down(contours, x).filter(
+          ([from, to]) => to > bounds.yMin + weight && from < bounds.yMax - weight,
+        );
+        expect(column.length, `${name} at ${weight}`).toBe(1);
+        expect(column[0][1] - column[0][0], `${name} at ${weight}`).toBeLessThan(weight * 1.1);
+      }
+    }
+  });
+
+  it("keeps a six's and a nine's balls off their bowls at the Black", () => {
+    /*
+     * The hood of the six came down on its bowl and the tail of the nine up
+     * into its, each ball filling the counter beside it. Straight through the
+     * ball there is the ball, paper, and the bowl.
+     */
+    const style = at("Psychedelic", 260);
+    for (const [name, share, count] of [
+      ["six", 0.74, 2],
+      ["nine", 0.34, 3],
+    ] as const) {
+      const contours = ink(name, style);
+      const bounds = contoursBounds(contours);
+      // Through the ball: the hood's end on the six, the tail's on the nine.
+      const runs = down(contours, bounds.xMin + (bounds.xMax - bounds.xMin) * share);
+      expect(runs.length, name).toBe(count);
+      expect(widestGap(runs), name).toBeGreaterThan(20);
+    }
+  });
+
+  it("keeps white between a c's two balls at the Black", () => {
+    const style = at("Psychedelic", 260);
+    const contours = ink("c", style);
+    const bounds = contoursBounds(contours);
+    // Each ball pushed in off the line its bowl reaches, the two all but met.
+    const runs = down(contours, bounds.xMin + (bounds.xMax - bounds.xMin) * 0.9);
+    expect(runs.length).toBe(2);
+    expect(widestGap(runs)).toBeGreaterThan(50);
+  });
+});
+
 describe("the Wavy's serifs beside a bowl", () => {
   it("draws the wing on the bowl side of a stem whole or not at all", () => {
     /*

@@ -370,6 +370,11 @@ export interface Parts {
     drop: number;
     /** Only on curved ends: a straight end in mid-air is left cut. */
     curved?: boolean;
+    /**
+     * Whether a straight end in mid-air takes one too; on unless said. Unlike
+     * `curved` it leaves the balls sized by the pen.
+     */
+    straight?: boolean;
   };
   /**
    * The flare: a stroke that widens as it arrives at its own end.
@@ -1607,7 +1612,12 @@ export const PSYCHEDELIC: Style = {
     ...PLAIN.parts,
     bowl: { width: 1.02, squareness: 0.1, aperture: 0.42, superness: 0 },
     shoulder: { spring: 0.72, reach: 1, crest: 1 },
-    ball: { size: 1.75, drop: 0.4 },
+    /*
+     * Balls on the curves only. On the level arms of an E and an F, the bar of
+     * a four and the flag of an exclamation, cut square either side of the
+     * arms beside them, a disc read as a blot hung in the counter.
+     */
+    ball: { size: 1.75, drop: 0.4, straight: false },
   },
 };
 

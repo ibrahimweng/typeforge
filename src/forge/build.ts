@@ -12,6 +12,7 @@ import {
   contourArea,
   contourContainsPoint,
   contoursBounds,
+  flattenContour,
   inkRunsAt,
   reverseContour,
 } from "@/font/geometry";
@@ -951,7 +952,7 @@ function inkOf(stroke: Stroke, style: Style, others: Contour[] = []): Contour[] 
   return [
     ...swept,
     ...beaksFor(stroke),
-    ...ballsFor(stroke, style, swept),
+    ...ballsFor(stroke, style, swept, others),
     ...flaresFor(stroke, style),
     ...teardropsFor(stroke, swept),
     ...serifsFor(stroke, style, others),
@@ -1813,7 +1814,12 @@ const BURIED = 1;
  * also hang past the line, which is the one thing every letter here is now
  * careful not to do.
  */
-function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
+function ballsFor(
+  stroke: Stroke,
+  style: Style,
+  swept: Contour[],
+  others: Contour[] = [],
+): Contour[] {
   const { size, drop } = style.parts.ball;
   if (size <= 0 || stroke.spine.closed || swept.length === 0) return [];
   /*
@@ -1834,6 +1840,8 @@ function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
     along: (total * index) / 240,
   }));
   const ends = endsOf(stroke);
+  // The outlines of the letter's other strokes, for keeping a ball off them.
+  const beside = others.flatMap((contour) => flattenContour(contour, 8));
   for (const [which, [terminal, at, outward, straightEnd]] of ends.entries()) {
     if (terminal.open !== true) continue;
     /*
@@ -1868,7 +1876,10 @@ function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
      * the bar of a sigma and the top of a be are cut, not blotted.
      */
     const blot =
-      straightEnd && (style.parts.ball.curved === true || onALine(stroke, at, outward, style));
+      straightEnd &&
+      (style.parts.ball.curved === true ||
+        style.parts.ball.straight === false ||
+        onALine(stroke, at, outward, style));
     if (!decided(!blot)) continue;
     /*
      * And held inside the ink the stroke already made.
@@ -1967,10 +1978,50 @@ function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
     const keep = radius * 1.2 + measure * 0.5;
     const far = samples.filter(({ along }) => (which === 0 ? along > keep : total - along > keep));
     const gap = measure * (0.5 + 0.2);
+    /*
+     * Nor into the letter's other strokes, nor into the ball on this stroke's
+     * other end, with a little paper between. The hood of a six came down on
+     * its bowl and the tail of a nine up into its, and a c's two balls met
+     * across its aperture: at the Psychedelic's Black each was one black blob.
+     * The other ball is taken at the size this one is being tried at, which
+     * is what it is where the two ends face each other.
+     */
+    const paper = measure * 0.2;
+    const twinOf = which === 0 ? ends.at(-1) : ends[0];
+    const twin = ends.length > 1 && twinOf?.[0].open === true ? twinOf : undefined;
+    /*
+     * Where a ball of a size goes: dropped past the end, then held inside the
+     * lines the letter's ink reaches, as it is below. The two balls of one
+     * stroke are tried against each other there, not where they would be
+     * before that hold: a c's two, each pushed in off the lines its bowl
+     * reaches, met in the aperture.
+     */
+    const centreOf = (end: Vec2, out: Vec2, size: number): Vec2 => {
+      const x = end.x + out.x * size * drop;
+      const y = end.y + out.y * size * drop;
+      if (written) return { x, y };
+      return {
+        x: Math.max(x, band.xMin + size),
+        y: Math.min(Math.max(y, band.yMin + size), band.yMax - size),
+      };
+    };
     const clear = (size: number): boolean => {
+      const held = centreOf(at, outward, size);
+      if (twin) {
+        const other = centreOf(twin[1], twin[2], size);
+        if (Math.hypot(other.x - held.x, other.y - held.y) < size * 2 + paper) return false;
+      }
+      /*
+       * Against its own stroke where it is dropped: a ball held in off a line
+       * is slid along it clear of its stroke as well (see `covered`), which
+       * the hold alone does not say -- tried held, the hooks of a j, an f and
+       * a y lost theirs.
+       */
       const centre = { x: at.x + outward.x * size * drop, y: at.y + outward.y * size * drop };
-      return far.every(
-        ({ point }) => Math.hypot(point.x - centre.x, point.y - centre.y) >= size + gap,
+      return (
+        far.every(
+          ({ point }) => Math.hypot(point.x - centre.x, point.y - centre.y) >= size + gap,
+        ) && beside.every((point) => Math.hypot(point.x - held.x, point.y - held.y) >= size + paper)
       );
     };
     let fits = covering;
@@ -1992,7 +2043,18 @@ function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
             Math.max(room, covering * 0.8),
             Math.max(fits, halfWidthAcross(stroke, outward) * (style.parts.ball.curved ? 1.1 : 1)),
           );
-    const placed = { x: at.x + outward.x * held * drop, y: at.y + outward.y * held * drop };
+    /*
+     * And where even the least ball is more than there is room for, set back
+     * towards the end it closes by the share it could not have, so it rounds
+     * the end off rather than standing out past it into what it was kept
+     * from: dropped its full way, a c's two stood out across its aperture
+     * and met.
+     */
+    const reach = !written && held > 0 ? Math.min(1, fits / held) : 1;
+    const placed = {
+      x: at.x + outward.x * held * drop * reach,
+      y: at.y + outward.y * held * drop * reach,
+    };
     const kept = written
       ? placed
       : {
