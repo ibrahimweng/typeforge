@@ -273,8 +273,18 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
         roles: outer,
         unitsPerEm: typeface.unitsPerEm,
       };
+      /*
+       * Closing little of the white it faces, though. The same strokes
+       * do not always fit in less room: Lora's e condensed to 0.7 at the
+       * heaviest weight is narrower than two of its stems, and given them
+       * whole, its eye and the bowl of its a closed to specks and every
+       * aperture to a crack. A condensed heavy cut is drawn with thinner stems
+       * for that reason; its counters keep their share of the letter. Where
+       * there is room -- any counter wider than the stems -- this changes
+       * nothing, and the stems come back whole.
+       */
       contours = contours.map((contour, index) =>
-        applyWeight(contour, give, index, around, SIDEWAYS),
+        applyWeight(contour, give, index, around, SIDEWAYS, CONDENSED_WHITE),
       );
       contours = contours.map((contour) =>
         mapContour(contour, (point) => ({ x: point.x + give, y: point.y })),
@@ -313,6 +323,9 @@ export function resolveAdvanceWidth(glyph: Glyph, typeface: Typeface): number {
       widthGive(typeface, params) * 2,
   );
 }
+
+/** The share of the white across a condensed letter that putting its strokes back leaves. */
+const CONDENSED_WHITE = 0.7;
 
 /**
  * How far each side of a stroke is pushed back out after the width scaling:

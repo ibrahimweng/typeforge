@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { contoursBounds, flattenContour } from "./geometry";
+import { contourArea, contoursBounds, flattenContour } from "./geometry";
 import { blankGlyph } from "./library";
 import { contoursIntersect } from "./outline";
 import { resolveAdvanceWidth, resolveGlyphContours } from "./transform";
@@ -98,6 +98,32 @@ function runsAt(contours: Contour[], y: number): number[] {
   return runs;
 }
 
+/** An ellipse as four smooth cubics, anticlockwise unless asked. */
+function ellipse(cx: number, cy: number, rx: number, ry: number, clockwise = false): Contour {
+  const kx = rx * 0.5523;
+  const ky = ry * 0.5523;
+  const at = (x: number, y: number, inX: number, inY: number, outX: number, outY: number) => ({
+    point: { x: cx + x, y: cy + y },
+    handleIn: { x: cx + inX, y: cy + inY },
+    handleOut: { x: cx + outX, y: cy + outY },
+    type: "smooth" as const,
+  });
+  const nodes = [
+    at(rx, 0, rx, -ky, rx, ky),
+    at(0, ry, kx, ry, -kx, ry),
+    at(-rx, 0, -rx, ky, -rx, -ky),
+    at(0, -ry, -kx, -ry, kx, -ry),
+  ];
+  if (!clockwise) return { closed: true, nodes };
+  return {
+    closed: true,
+    nodes: nodes
+      .slice()
+      .reverse()
+      .map((node) => ({ ...node, handleIn: node.handleOut, handleOut: node.handleIn })),
+  };
+}
+
 describe("width", () => {
   it("keeps a condensed letter's stems as thick as they were", () => {
     const { typeface, glyph } = font([H]);
@@ -106,6 +132,34 @@ describe("width", () => {
     // And the bar across them keeps its thickness too.
     const bar = contoursBounds(narrow);
     expect(bar.yMax - bar.yMin).toBeCloseTo(700, 6);
+  });
+
+  it("keeps a heavy letter's counter open when it is condensed", () => {
+    /*
+     * At the heaviest weight and seven tenths of the width, Lora's e is
+     * narrower than two of its stems. Putting the stems back whole closed its
+     * eye and the bowl of its a to a speck; the counter keeps most of the room
+     * it had instead, and the stems give.
+     */
+    const outer = ellipse(300, 300, 220, 300);
+    const inner = ellipse(300, 300, 100, 190, true);
+    const { typeface, glyph } = font([outer, inner]);
+    const heavy = at(typeface, glyph, { weight: 60 });
+    const both = at(typeface, glyph, { weight: 60, width: 0.7 });
+    expect(both).toHaveLength(2);
+    expect(both.map((c) => c.nodes.length)).toEqual([4, 4]);
+    expect(contoursIntersect(both)).toBe(false);
+    const hole = (contours: Contour[]) =>
+      Math.min(...contours.map((c) => Math.abs(contourArea(c))));
+    // Condensed, the counter has seven tenths of the room it had; it keeps
+    // most of that, rather than being closed by the stems it is given back.
+    expect(hole(both)).toBeGreaterThan(hole(heavy) * 0.7 * 0.7);
+    // And the stems still come back heavier than the scaling alone left them.
+    const wall = (contours: Contour[]) => {
+      const [a, b] = contours.map((c) => contoursBounds([c]));
+      return Math.abs(b.xMin - a.xMin);
+    };
+    expect(wall(both)).toBeGreaterThan(wall(heavy) * 0.7 + 5);
   });
 
   it("keeps a widened letter's stems from turning into slabs", () => {

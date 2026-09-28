@@ -77,6 +77,10 @@ const KEPT_SHARE = 1 / 3;
  * it reads as a crack through the letter rather than as an opening.
  */
 const OPENING = 0.036;
+/** How much of its mean width a counter narrower than an opening keeps. */
+const KEPT_OPEN = 0.75;
+/** And how much of it any counter keeps where some white is to be kept. */
+const COUNTER_KEPT = 0.85;
 /**
  * How sharply the allowance takes over from the weight asked for. Sharper
  * taking weight off: eased as gently as adding it, a stroke drawn heavier --
@@ -245,6 +249,12 @@ export function applyWeight(
   self: number,
   around: Surroundings,
   shape: Shape = ROUND,
+  /**
+   * The share of any white in front of it that a bolder contour leaves open,
+   * however small the weight makes the rest; nought for no more than the
+   * opening every weight keeps.
+   */
+  whiteKept = 0,
 ): Contour {
   const nodes = contour.nodes;
   const count = nodes.length;
@@ -467,8 +477,17 @@ export function applyWeight(
     return nearest;
   };
   const hairline = em * HAIRLINE;
+  /*
+   * The white to be left in front of a point: an opening, or where asked, a
+   * share of what is there. On the outside of the letter only -- the gap
+   * between the arms of an s, the white inside an n -- since a share taken
+   * sample by sample puts a nick in a counter wherever the ruler finds a
+   * slightly different wall; a counter keeps its share whole, below.
+   */
+  const leftOpen = (ahead: number): number =>
+    Math.max(em * OPENING, isOuter && Number.isFinite(ahead) ? ahead * whiteKept : 0);
   const allowance = (ahead: number): number =>
-    bolder ? (ahead - em * OPENING) / 2 : (ahead - Math.max(hairline, ahead * KEPT_SHARE)) / 2;
+    bolder ? (ahead - leftOpen(ahead)) / 2 : (ahead - Math.max(hairline, ahead * KEPT_SHARE)) / 2;
 
   /*
    * 1. Measure: how far each sample may move, along the way it moves.
@@ -1254,9 +1273,34 @@ export function applyWeight(
   };
 
   const facingBefore = Math.sign(contourArea(contour));
+  /*
+   * And a counter made smaller is never closed up. The rulers above ask a few
+   * places along each side how far it is to the wall across; a small counter
+   * -- the eye of an e condensed and made bolder -- can be narrower than the
+   * weight everywhere and still have no wall squarely across from any one
+   * sample, and it came out a crumpled speck. So a counter keeps at least an
+   * opening's worth of mean width (twice its area over its length round, which
+   * is the width of a slot and the radius of a circle), or most of what it had
+   * where it had less -- and most of it whatever it had, where white is to be
+   * kept -- and the whole contour backs off evenly to keep it, so the counter
+   * stays the shape it was.
+   */
+  const meanWidth = (trial: Contour): number => {
+    const round = contourSegments(trial).reduce((sum, segment) => sum + segmentLength(segment), 0);
+    return round > 1e-9 ? (2 * Math.abs(contourArea(trial))) / round : 0;
+  };
+  const leastWidth =
+    bolder && !isOuter
+      ? Math.max(
+          Math.min(meanWidth(contour) * KEPT_OPEN, (em * OPENING) / 2),
+          whiteKept > 0 ? meanWidth(contour) * COUNTER_KEPT : 0,
+        )
+      : 0;
   const intact = (trial: Contour): boolean =>
     // Turned inside out is as broken as crossed: ink become a hole.
-    Math.sign(contourArea(trial)) === facingBefore && !contoursIntersect([trial]);
+    Math.sign(contourArea(trial)) === facingBefore &&
+    !contoursIntersect([trial]) &&
+    (leastWidth === 0 || meanWidth(trial) >= leastWidth);
   const full = build(1);
   if (intact(full)) return full;
   // The letter already crossed itself before anything moved -- some fonts ship
