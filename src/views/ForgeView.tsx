@@ -47,6 +47,7 @@ import { forgeStore, useForge, type Phase } from "@/state/useForge";
 import { useLibrary } from "@/state/useLibrary";
 import { cn } from "@/cn";
 import { followPointer } from "@/components/follow-pointer";
+import { letterLabel } from "./letter-label";
 import { useNativeWheel, zoomAbout } from "./wheel";
 
 export function ForgeView(): React.JSX.Element {
@@ -1160,9 +1161,12 @@ function Warnings({ revision }: { revision: number }): React.JSX.Element | null 
                 key={letter}
                 type="button"
                 onClick={() => forgeStore.select(letter)}
+                title={letter}
+                aria-label={`Show ${letter}`}
+                data-forge-warning-letter={letter}
                 className="rounded bg-card px-1 text-2xs text-foreground transition-opacity hover:opacity-70"
               >
-                {letter}
+                {letterLabel(letter)}
               </button>
             ))}
             {trouble.letters.length > 14 && (

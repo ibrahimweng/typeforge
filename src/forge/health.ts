@@ -215,7 +215,7 @@ function* walk(forge: Forge): Generator<void, Trouble[], void> {
     if (high || low) overflowing.push(letter);
     over ||= high;
     under ||= low;
-    if (bounds.xMin < em * 0.005) touching.push(letter);
+    if (leftEdge(drawn.contours, forge, bounds) < em * 0.005) touching.push(letter);
   }
 
   const found: Trouble[] = [];
@@ -269,6 +269,44 @@ function* walk(forge: Forge): Generator<void, Trouble[], void> {
     });
   }
   return found;
+}
+
+/**
+ * Where a letter starts, measured as its neighbour would meet it.
+ *
+ * An upright letter starts at its leftmost ink. A slanted one is leant about
+ * the middle of the lowercase, so its feet swing left of the origin -- the
+ * bottom serif of a b, the tail of a p -- exactly as in any italic, and the
+ * letter before it leans the same way, so the two never meet. Measured on the
+ * outline stood back upright, which is where a collision would show; measured
+ * as it was, twelve degrees of slant reported two hundred letters of a serif
+ * as touching the one before.
+ *
+ * An accent standing wholly above the ascender is left out of it once the
+ * letter leans: nothing in an ordinary neighbour reaches that high to be met,
+ * and where an accent sits on a leaning letter is the letter's business, not
+ * the spacing's.
+ */
+function leftEdge(contours: Contour[], forge: Forge, bounds = contoursBounds(contours)): number {
+  const { slant, xHeight, ascender } = forge.style.metrics;
+  if (!slant) return bounds.xMin;
+  const among = contours.filter((contour) => contoursBounds([contour]).yMin < ascender);
+  const lean = Math.tan((slant * Math.PI) / 180);
+  const pivot = xHeight / 2;
+  const back = (point: { x: number; y: number }) => ({
+    x: point.x - (point.y - pivot) * lean,
+    y: point.y,
+  });
+  const upright = (among.length > 0 ? among : contours).map((contour) => ({
+    ...contour,
+    nodes: contour.nodes.map((node) => ({
+      ...node,
+      point: back(node.point),
+      handleIn: node.handleIn ? back(node.handleIn) : null,
+      handleOut: node.handleOut ? back(node.handleOut) : null,
+    })),
+  }));
+  return contoursBounds(upright).xMin;
 }
 
 /**

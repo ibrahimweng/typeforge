@@ -9,6 +9,7 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { builtFrom } from "./build";
 import { readyToShape } from "./layers";
 import { noCuts, type Cuts } from "./cut";
 import { startFrom, type Forge } from "./document";
@@ -56,6 +57,37 @@ describe("what has gone wrong", () => {
     // is up; and never the weight, which was already at the minimum here.
     expect(said?.fix).toBe("A taller ascender gives them room.");
     expect(said?.fix).not.toMatch(/weight/i);
+  });
+
+  it("measures a slanted letter as its neighbour meets it", () => {
+    /*
+     * Leant about the waist, the feet of a letter swing left of the origin, as
+     * in any italic, and the letter before leans with it. Twelve degrees used
+     * to report most of the alphabet as touching the letter before it.
+     */
+    const slanted = (
+      forge: Forge,
+      slant: number,
+      sidebearing = forge.style.metrics.sidebearing,
+    ) => ({
+      ...forge,
+      style: { ...forge.style, metrics: { ...forge.style.metrics, slant, sidebearing } },
+    });
+    for (const base of [SANS, SERIF]) {
+      const said = troubles(slanted(startFrom(base), 12)).find(
+        (one) => one.what === "Touching the letter before it",
+      );
+      // Letters built from an accent are left to the letters: an accent that
+      // does not lean with its letter can meet a tall neighbour, and that is
+      // worth saying.
+      const plain = (said?.letters ?? []).filter((letter) => !builtFrom(letter));
+      expect(plain, `${base.name} at 12 degrees`).toEqual([]);
+    }
+    // With no spacing at all it is still said, slant or none.
+    const tight = troubles(slanted(startFrom(SANS), 12, 0)).find(
+      (one) => one.what === "Touching the letter before it",
+    );
+    expect(tight?.letters.length).toBeGreaterThan(10);
   });
 
   it("names the descender when it is the line being crossed", () => {
