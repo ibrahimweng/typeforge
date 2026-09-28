@@ -32,6 +32,7 @@
 import { ALTERNATES } from "./letters/alternates";
 import {
   beginLetter,
+  capped,
   BUTT,
   enclosing,
   frame,
@@ -558,9 +559,29 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * stroke to give, so there it is the stem's.
    */
   const loopWeight = (1 - 0.45 * Math.min(1, Math.abs(style.pen.contrast))) * joinWeight(style);
+  /*
+   * And the run an eye turns off ends round where it turns. A written loop is
+   * one stroke going up, turning over and coming back down, and the turn is
+   * the pen's own round end -- cut square, the run stood up past the eye in a
+   * flag at the top of every looped ascender and in a nick at the foot of
+   * every looped descender. Pulled back by what the round end reaches, as
+   * every round end here is, so the letter still stops on its line.
+   */
+  const turned = recipe.strokes.map((stroke) => {
+    const loop = loops.find((one) => one.on === stroke.spine);
+    if (!loop) return stroke;
+    return capped(f, { ...stroke, [loop.at]: { kind: "round" } }, true);
+  });
   const body = [
-    ...recipe.strokes,
-    ...loops.map((loop) => lighter(ink(f, loop, BUTT, BUTT), loopWeight)),
+    ...turned,
+    /*
+     * Round where the eye comes home to the end of its run. The eye and the run
+     * it turns off meet end to end at an angle, and two square cuts meeting
+     * like that leave a notch on the outside of the turn -- a white nick at the
+     * foot of every looped `g`, `j` and `y` on the Roundhand. The pen's own
+     * end fills it, and inside the run it shows nothing.
+     */
+    ...loops.map((loop) => lighter(ink(f, loop.spine, BUTT, { kind: "round" }), loopWeight)),
   ].map((stroke) => ({
     ...stroke,
     spine: movedSpine(stroke.spine, 0, lift),

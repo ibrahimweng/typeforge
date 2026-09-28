@@ -52,7 +52,7 @@ import { scatterOf } from "@/font/scatter";
 import type { Vec2 } from "@/font/types";
 
 import { wrapAngle } from "./angles";
-import { alongSpine, reversed, spineEnd, spineLength, spineStart } from "./shapes";
+import { alongSpine, endPieces, reversed, spineEnd, spineLength, spineStart } from "./shapes";
 import type { Spine, SpineArc } from "./types";
 
 const at = (x: number, y: number): Vec2 => ({ x, y });
@@ -855,9 +855,9 @@ export function movedSpine(spine: Spine, dx: number, dy: number): Spine {
  * rules out the dot of an `i`, which is above the x-height and is not an
  * ascender, without this having to know what an `i` is.
  */
-function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
+function loopsOn(spines: Spine[], room: Room, script: Script): Loop[] {
   if (script.loop <= 0) return [];
-  const out: Spine[] = [];
+  const out: Loop[] = [];
   /*
    * How wide the eye is, which is the number that decides whether there is one.
    *
@@ -968,7 +968,19 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
      * everything. The number is not a share of anything -- it is the reach
      * itself, and the frame already knows it for whatever pen the face has.
      */
-    const tip = at(end.x, rising ? end.y - room.upright : end.y + room.upright);
+    /*
+     * Except where the run turns into its end rather than running straight at
+     * it. The run is given a round end where the eye comes home (see
+     * `connected`), and a round end is pulled back along a straight run by
+     * what it reaches but not along a curved one -- so on the curled tail of a
+     * `g` the eye came home an upright reach above the tail's own end and the
+     * two round ends stood side by side, a double knob at the foot of the
+     * loop. On a curved end the eye turns round where the run does.
+     */
+    const pieces = endPieces(run);
+    const atStart = Math.hypot(end.x - spineStart(run).x, end.y - spineStart(run).y) < 1e-6;
+    const curls = pieces !== null && (atStart ? pieces.first : pieces.last).kind === "arc";
+    const tip = curls ? end : at(end.x, rising ? end.y - room.upright : end.y + room.upright);
     /*
      * How far the eye reaches back is the pen's business until it stops
      * reaching the letter, and then it is the letter's.
@@ -1048,7 +1060,11 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
     // Opened as far as it may go and still with no counter in it, it is a
     // blot on the stem rather than an eye, and it is left off.
     if (deep * shape < room.half * 1.8 + room.x * 0.03) continue;
-    out.push(bowed(start, tip, rising ? shape : -shape));
+    out.push({
+      spine: bowed(start, tip, rising ? shape : -shape),
+      on: run,
+      at: atStart ? "start" : "end",
+    });
   }
   return out;
 }
@@ -1140,8 +1156,15 @@ function bowed(from: Vec2, to: Vec2, amount: number): Spine {
  * descender to loop -- a question this cannot see from the spines, which is
  * exactly how every capital built on an upright came to have one.
  */
-export function planLoops(spines: Spine[], room: Room, script: Script, takes = true): Spine[] {
+export function planLoops(spines: Spine[], room: Room, script: Script, takes = true): Loop[] {
   return script.on && takes ? loopsOn(spines, room, script) : [];
+}
+
+/** An eye, the run it turns off, and which end of that run it turns at. */
+export interface Loop {
+  spine: Spine;
+  on: Spine;
+  at: "start" | "end";
 }
 
 /**

@@ -18,7 +18,7 @@ import { drawLetter } from "./build";
 import { readyToShape } from "./layers";
 import { joiningHigh, joiningWithout, recipeOf } from "./letters";
 import { seamHeading, seamsOf } from "./script";
-import { alongSpine } from "./shapes";
+import { alongSpine, spineEnd, spineStart } from "./shapes";
 import { BASES, heavier, scriptUnit, type Style } from "./style";
 import type { Spine } from "./types";
 
@@ -231,5 +231,47 @@ describe("the written e at a heavy weight", () => {
       }
     }
     expect(shut).toEqual([]);
+  });
+});
+
+describe("a looped ascender and descender", () => {
+  /*
+   * The run an eye turns off ends round where it turns: a written loop is one
+   * stroke going up, turning over and coming back down. Cut square, the run
+   * stood up past the eye in a flag at the top of every looped `l` and left a
+   * nick at the foot of every looped `g` on the Roundhand.
+   */
+  it("turns on the pen's round end", () => {
+    const square: string[] = [];
+    for (const name of JOINED) {
+      const own = base(name);
+      if (own.parts.script.loop <= 0) continue;
+      for (const weight of weightsOf(own)) {
+        const style = heavier(at(own, weight));
+        for (const [letter, up] of [
+          ["l", true],
+          ["g", false],
+        ] as const) {
+          const recipe = recipeOf(letter, own.forms?.[letter])!(style);
+          const ends = recipe.strokes.flatMap((stroke) => [
+            { at: spineStart(stroke.spine), cap: stroke.start.kind },
+            { at: spineEnd(stroke.spine), cap: stroke.end.kind },
+          ]);
+          const extreme = ends.reduce((best, one) =>
+            (up ? one.at.y > best.at.y : one.at.y < best.at.y) ? one : best,
+          );
+          // Only where this weight draws an eye at all.
+          const eyes =
+            recipe.strokes.length >
+            recipeOf(letter, own.forms?.[letter])!({
+              ...style,
+              parts: { ...style.parts, script: { ...style.parts.script, loop: 0 } },
+            }).strokes.length;
+          if (eyes && extreme.cap !== "round")
+            square.push(`${name} ${letter} @${weight}: ${extreme.cap}`);
+        }
+      }
+    }
+    expect(square).toEqual([]);
   });
 });

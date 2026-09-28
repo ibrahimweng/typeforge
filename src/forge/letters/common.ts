@@ -996,7 +996,7 @@ export function finish(frame: Frame, strokes: Stroke[], round = false): Recipe {
  * the face is drawn with. Taken off a curve as well, the hook of an f lost the
  * top of its own arc and came up short of the ascender the l beside it reached.
  */
-export function capped(frame: Frame, stroke: Stroke): Stroke {
+export function capped(frame: Frame, stroke: Stroke, onlyNewCrossings = false): Stroke {
   const segments = stroke.spine.segments;
   if (stroke.spine.closed || segments.length === 0) return stroke;
   /*
@@ -1127,7 +1127,13 @@ export function capped(frame: Frame, stroke: Stroke): Stroke {
    * crosses itself; cut square where they were drawn to stop, they are clear.
    * Only where the letter has run out of room for a round end at all.
    */
-  if (sweep(pulled).some((contour) => contoursIntersect([contour]))) {
+  /*
+   * `onlyNewCrossings` asks whether pulling back is what crossed it: a run whose
+   * sweep already folds somewhere else -- the tight foot of a written `l` --
+   * is not made any worse by a round end at its top.
+   */
+  const crosses = (one: Stroke) => sweep(one).some((contour) => contoursIntersect([contour]));
+  if (crosses(pulled) && !(onlyNewCrossings && crosses(stroke))) {
     const square = (terminal: Terminal): Terminal =>
       terminal.kind === "round" ? { ...terminal, kind: "butt" } : terminal;
     return inherit(stroke, { ...stroke, start: square(start), end: square(end) });
