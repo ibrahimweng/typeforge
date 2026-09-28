@@ -1159,3 +1159,22 @@ describe("the sides of the letters Geist closes as fast as its n", () => {
     }
   });
 });
+
+describe("the hyphen, the quotes, the asterisk and the at sign at the Black", () => {
+  it("are as deep, as wide and as light as Geist's", () => {
+    // Geist Black's hyphen is 152 deep (132 here before), its quote 140
+    // across (123), its asterisk 352 (374), and its at sign's ring 110
+    // across its side (148) in an at sign 920 wide (938).
+    const hyphen = box("hyphen", 194);
+    expect(Math.abs(hyphen.yMax - hyphen.yMin - 152)).toBeLessThan(5);
+    const quote = box("quotesingle", 194);
+    expect(Math.abs(quote.xMax - quote.xMin - 140)).toBeLessThan(5);
+    const star = box("asterisk", 194);
+    expect(Math.abs(star.xMax - star.xMin - 352)).toBeLessThan(6);
+    const at = draw("at", 194).contours;
+    const ink = contoursBounds(at);
+    expect(Math.abs(ink.xMax - ink.xMin - 920)).toBeLessThan(8);
+    const side = filled(at, 320)[0];
+    expect(Math.abs(side[1] - side[0] - 110)).toBeLessThan(8);
+  });
+});

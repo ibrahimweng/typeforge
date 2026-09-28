@@ -150,6 +150,19 @@ added up to 36 to the advance. They are now marked "closes". The l's side is
 does (it stood 16 units loose at every weight), and the K's arm side is 0.04
 (12 loose). All are within 6 of Geist at the Regular and the Black.
 
+**Hyphen, quotes, asterisk and @ at the heavy weights.** Geist's hyphen
+deepens to 0.78 of the stem at the Black (152); on the stem's pen ours stopped
+growing past 172 and stood 20 shallow. It is now drawn on a pen as deep as
+Geist's. The quotes lighten against the stem as Geist's do (1.27 of it at the
+Thin, 0.72 at the Black), where a straight-line lightening left them 17 light
+at the Black and 9 heavy at the SemiBold; Geist Thin's also stop 20 units
+higher. The asterisk no longer widens at the Thin, and grows past the current
+Black rather than from 172 (it stood 13 and 22 wide). Its diagonal arms are a
+little longer than its level one, as Geist's are, so it is as tall as Geist's
+(it stood 14 short). The @'s ring is as light as Geist 1.7.2's (its sides 110
+on a stem of 194, where ours were 148), carried out to Geist's width, and the
+a's hook runs flush into it. All are within 5 of Geist.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across
