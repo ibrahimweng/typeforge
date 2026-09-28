@@ -429,3 +429,23 @@ describe("the marks as Geist draws them", () => {
     expect(percent.yMax - percent.yMin).toBeCloseTo(726, -1.3);
   });
 });
+
+describe("the s's spine", () => {
+  it("curves as Geist's does, steeper where it leaves the bowls than through its middle", () => {
+    // Measured down the middle of the spine at 35, 45, 55 and 65 per cent
+    // across the letter: straight, it fell as far through the middle tenth
+    // as through the tenths beside it.
+    for (const name of ["s", "S"]) {
+      for (const weight of [30, 87, 130, 172]) {
+        const { contours } = draw(name, weight);
+        const box = contoursBounds(contours);
+        const middle = (share: number) => {
+          const runs = filled(contours, box.xMin + (box.xMax - box.xMin) * share, "x");
+          return (runs[1][0] + runs[1][1]) / 2;
+        };
+        const [a, b, c] = [0.35, 0.45, 0.55].map(middle);
+        expect(b - c, `${name} at ${weight}`).toBeLessThan(a - b - 1.5);
+      }
+    }
+  });
+});

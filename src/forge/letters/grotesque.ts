@@ -2045,7 +2045,8 @@ function ess(given: Frame, e: Ess): Stroke[] {
   // pieces begin (see `begun` in `shapes.ts`), and a weight that drew two
   // fewer would read the next bowls' answers and come out in other pieces.
   const softRun = crossTangent(innerOf(gi, upper, upperW, 1), innerOf(gi, lower, lowerW, -1));
-  const spineRun = (soft > 0 ? softRun : null) ?? found!.run;
+  const bent = curvedSpine((soft > 0 ? softRun : null) ?? found!.run, SPINE_BEND);
+  const spineRun = bent.run;
   /*
    * The ends are cut level, and a level cut has to reach across the stroke:
    * carried too far round, the inside of the turn never comes back up to the
@@ -2124,107 +2125,155 @@ function ess(given: Frame, e: Ess): Stroke[] {
   const lighter = tilted.weight * (1 - share);
   const pen = { ...tilted, weight: lighter, contrast: Math.max(0, 1 - along / lighter) };
   const out = (tilted.weight - lighter) * SIDE_OUT + 0.01;
-  const leaving = spineRun.segments.findIndex((one) => one.kind === "line");
-  const line = spineRun.segments[leaving];
-  const from = line.kind === "line" ? line.from : upper;
-  const to = line.kind === "line" ? line.to : lower;
   /*
-   * A circle upright at `side`, its centre on the side `way` of it, that
-   * runs on to leave tangent to the spine: where, and round what. Where no
-   * such circle meets the spine between its ends, through the spine's end
-   * `end` instead.
+   * The swells drawn with half that pen, their spines carried out by the
+   * difference, so each swell's outside is where it was and its inside lies
+   * buried in the letter's own ink: at the full pen the inside of a swell
+   * turning onto the spine stood into the counter as a corner.
    */
-  const run = at(to.x - from.x, to.y - from.y);
-  const length = Math.hypot(run.x, run.y) || 1;
-  const d = at(run.x / length, run.y / length);
-  const n = at(-d.y, d.x);
+  // Only as far as the swells swell: below a Bold they lie on the bowl itself.
+  const swellPen = { ...pen, weight: pen.weight * (1 - 0.5 * (share / SPLIT_SIDES)) };
+  const inset = (pen.weight - swellPen.weight) / 2;
+  /*
+   * And by what the two pens reach square off the spine, which lies nearer
+   * level than upright: with contrast, less than across a side.
+   */
+  const normal = at(-bent.heading.y, bent.heading.x);
+  const reachOf = (one: Stroke["pen"]) => {
+    const offset = reachAlong(normal, penReach(one));
+    return Math.hypot(offset.x, offset.y);
+  };
+  const across = reachOf(pen) - reachOf(swellPen);
   const degreesOf = (centre: Vec2, point: Vec2) =>
     (Math.atan2(point.y - centre.y, point.x - centre.x) * 180) / Math.PI;
-  // How far round from upright at the side a swell turns before it leaves.
-  const turned = (centre: Vec2, point: Vec2, way: 1 | -1) =>
-    way === 1 ? ((degreesOf(centre, point) + 360) % 360) - 180 : degreesOf(centre, point);
+  /*
+   * A circle upright at the bowl's side, carried out, that runs round to
+   * touch the spine's first turn (`way` 1, on the left) or its last (-1, on
+   * the right) from inside, so the swell comes back onto the spine on its
+   * own curve; and the run then follows the spine a little way, under its
+   * ink. Where no such circle touches the spine where it should -- a spine
+   * lying all but level, where the bowls are stacked -- no swell on that
+   * side: the run stops at the bowl's side, buried in it, in the same pieces.
+   */
   const swell = (edge: number, y: number, way: 1 | -1, reach: number) => {
-    const side = at(edge - way * out, y);
-    const off = (side.x - from.x) * n.x + (side.y - from.y) * n.y;
-    for (const sign of [1, -1]) {
-      const radius = off / (sign - way * n.x);
-      if (!(radius > f.half * 0.5 && radius < reach * 3)) continue;
+    // The spine's turn carried out by as much as the swell's pen is lighter,
+    // so the swell's outside comes onto the spine's outside.
+    const turning = way === 1 ? bent.first : bent.last;
+    const spine = { ...turning, radius: turning.radius + across };
+    const side = at(edge - way * (out + inset), y);
+    const dx = side.x - spine.centre.x;
+    const dy = side.y - spine.centre.y;
+    const radius = (spine.radius ** 2 - dx * dx - dy * dy) / (2 * (way * dx + spine.radius));
+    if (radius > f.half * 0.5 && radius < reach * 3) {
       const centre = at(side.x + way * radius, side.y);
-      const along = (centre.x - from.x) * d.x + (centre.y - from.y) * d.y;
-      if (along < -length * 0.5 || along > length * 1.5) continue;
-      const touch = at(from.x + d.x * along, from.y + d.y * along);
-      const round = turned(centre, touch, way);
-      if (!(round > 10 && round < 120)) continue;
-      const lead = alongLine(touch, way === 1 ? to : from, f.half * 0.6);
-      return { centre, radius, touch, out, lead };
+      const apart = at(centre.x - spine.centre.x, centre.y - spine.centre.y);
+      const distance = Math.hypot(apart.x, apart.y) || 1;
+      const touch = [1, -1]
+        .map((sign) =>
+          at(
+            spine.centre.x + (sign * spine.radius * apart.x) / distance,
+            spine.centre.y + (sign * spine.radius * apart.y) / distance,
+          ),
+        )
+        .sort(
+          (one, other) =>
+            Math.abs(Math.hypot(one.x - centre.x, one.y - centre.y) - radius) -
+            Math.abs(Math.hypot(other.x - centre.x, other.y - centre.y) - radius),
+        )[0];
+      const onSpine = Math.atan2(touch.y - spine.centre.y, touch.x - spine.centre.x);
+      /*
+       * On the spine's turn, or on that circle carried a little way beyond
+       * it, where the spine is still leaving or already reaching the bowl:
+       * the swell may close onto the spine's line outside its curve.
+       */
+      const onward = spine.endAngle >= spine.startAngle ? 1 : -1;
+      const span = Math.abs(spine.endAngle - spine.startAngle);
+      let rel = (onSpine - spine.startAngle) * onward;
+      while (rel > Math.PI) rel -= Math.PI * 2;
+      while (rel <= -Math.PI) rel += Math.PI * 2;
+      const [least, most] = way === 1 ? [-span * 3, span] : [0, span * 4];
+      const along = rel >= least && rel <= most ? rel * onward : null;
+      const round =
+        way === 1 ? ((degreesOf(centre, touch) + 360) % 360) - 180 : degreesOf(centre, touch);
+      if (along !== null && round > 10 && round < 120) {
+        const step = Math.min((f.half * 0.6) / spine.radius, 0.3);
+        const at0 = spine.startAngle + along;
+        const deg = (angle: number) => (angle * 180) / Math.PI;
+        const lead =
+          way === 1
+            ? turn(spine.centre, spine.radius, deg(at0), deg(at0 + onward * step))
+            : turn(spine.centre, spine.radius, deg(at0 - onward * step), deg(at0));
+        return { centre, radius, touch, out, lead };
+      }
     }
-    /*
-     * Where no circle leaves onto the spine as it should -- a spine lying
-     * all but level, where the bowls are stacked -- no swell on that side:
-     * the run stops at the bowl's side, buried in it, in the same pieces.
-     */
-    const centre = at(edge + way * f.half, y);
+    const centre = at(edge - way * inset + way * f.half, y);
     const touch = pointOn(centre, f.half, way === 1 ? 181 : 1);
-    // On down along the circle's own heading there, so the two meet smooth.
-    const down = at(Math.sin(Math.PI / 180), -Math.cos(Math.PI / 180));
-    const lead = at(touch.x + way * down.x * f.half * 0.6, touch.y + way * down.y * f.half * 0.6);
+    const lead = way === 1 ? turn(centre, f.half, 181, 182) : turn(centre, f.half, 2, 1);
     return { centre, radius: f.half, touch, out: 0, lead };
   };
   const left = swell(upper.x - upperW, upper.y, 1, upperW);
   const right = swell(lower.x + lowerW, lower.y, -1, lowerW);
   const headY = pointOnBowl(ga, upper, upperW, upperH, head).y;
   const footY = pointOnBowl(gb, lower, lowerW, lowerH, foot).y;
-  const sides = [
+  /*
+   * Each side in two runs meeting upright at the bowl's side: round the
+   * bowl with the lighter pen, and the swell onto the spine with half of
+   * it, their outsides one line where they meet.
+   */
+  const round = [
     ink(
       f,
-      chain(
-        bend(
-          ga,
-          upper,
-          upperH,
-          angleAt(ga, upper, upperW + left.out, upperH, headY, false),
-          180,
-          upperW + left.out,
-        ),
-        turn(left.centre, left.radius, 180, (degreesOf(left.centre, left.touch) + 360) % 360),
-        // On a little way down the spine, under the spine's own ink, so the
-        // run's end is buried there rather than standing out as a step.
-        straight(left.touch, left.lead),
+      bend(
+        ga,
+        upper,
+        upperH,
+        angleAt(ga, upper, upperW + left.out, upperH, headY, false),
+        180,
+        upperW + left.out,
       ),
       f.end,
       BUTT,
     ),
     ink(
       f,
-      chain(
-        straight(right.lead, right.touch),
-        turn(right.centre, right.radius, degreesOf(right.centre, right.touch), 0),
-        bend(
-          gb,
-          lower,
-          lowerH,
-          0,
-          angleAt(gb, lower, lowerW + right.out, lowerH, footY, true) - 360,
-          lowerW + right.out,
-        ),
+      bend(
+        gb,
+        lower,
+        lowerH,
+        0,
+        angleAt(gb, lower, lowerW + right.out, lowerH, footY, true) - 360,
+        lowerW + right.out,
       ),
       BUTT,
       f.end,
     ),
   ];
-  return [drawn, ...sides].map((one) => inherit(one, { ...one, pen }));
+  const swells = [
+    ink(
+      f,
+      chain(
+        turn(left.centre, left.radius, 180, (degreesOf(left.centre, left.touch) + 360) % 360),
+        // On a little way down the spine, under the spine's own ink, so the
+        // run's end is buried there rather than standing out as a step.
+        left.lead,
+      ),
+    ),
+    ink(
+      f,
+      chain(right.lead, turn(right.centre, right.radius, degreesOf(right.centre, right.touch), 0)),
+    ),
+  ];
+  return [
+    inherit(drawn, { ...drawn, pen }),
+    ...round.map((one) => inherit(one, { ...one, pen })),
+    ...swells.map((one) => inherit(one, { ...one, pen: swellPen })),
+  ];
 }
 
 /** How much lighter across a heavy s is drawn inside its turns: see `ess`. */
 const SPLIT_SIDES = 0.26;
 /** How far out its sides are carried again, against what the pen gave up. */
 const SIDE_OUT = 0.5;
-
-/** A point `by` along the line from `from` towards `to`. */
-function alongLine(from: Vec2, to: Vec2, by: number): Vec2 {
-  const length = Math.hypot(to.x - from.x, to.y - from.y) || 1;
-  return at(from.x + ((to.x - from.x) * by) / length, from.y + ((to.y - from.y) * by) / length);
-}
 
 /** A point on a bowl as drawn, at an angle. */
 function pointOnBowl(f: Frame, centre: Vec2, halfW: number, halfH: number, degrees: number): Vec2 {
@@ -2264,6 +2313,261 @@ export function grotesqueCaret(style: Style): Recipe {
       return inherit(one, { ...one, pen });
     }),
   );
+}
+
+/**
+ * How far the s's spine turns from straight, in radians: see `curvedSpine`.
+ * Geist's leaves each bowl this much steeper than a straight tangent would
+ * and lies this much flatter through its middle.
+ */
+const SPINE_BEND = 0.2;
+
+/**
+ * A spine found as a straight tangent between two bowls, drawn instead as
+ * Geist draws it: leaving each bowl a little sooner, steeper, and turning
+ * through its middle in two arcs -- the way the bowl it leaves was turning,
+ * then back the other way into the next -- that meet halfway, so it is one
+ * smooth reverse curve, flatter in the middle than at its ends. Drawn
+ * straight, the spine met each bowl at a visible change of curve and read
+ * as a bar laid between two hooks.
+ *
+ * The same pieces as the straight run: the line becomes two arcs, and the
+ * turns it leaves and arrives on are shortened, never lengthened.
+ */
+function curvedSpine(run: Spine, bend: number): Bent {
+  const segments = [...run.segments];
+  const line = segments.findIndex((one) => one.kind === "line");
+  const straight = segments[line];
+  const unbent = (): Bent => {
+    const a = straight?.kind === "line" ? straight.from : at(0, 0);
+    const b = straight?.kind === "line" ? straight.to : at(0, -1);
+    const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const heading = at((b.x - a.x) / length, (b.y - a.y) / length);
+    // A straight spine, as turns so wide they are straight to within a hair.
+    const far = 1e5;
+    const flat = (point: Vec2, reach: number): SpineArc => {
+      const centre = at(point.x - heading.y * far, point.y + heading.x * far);
+      const angle = Math.atan2(point.y - centre.y, point.x - centre.x);
+      return {
+        kind: "arc",
+        centre,
+        radius: far,
+        startAngle: angle - reach / far,
+        endAngle: angle + reach / far,
+        sweepPositive: true,
+      };
+    };
+    const middle = at((a.x + b.x) / 2, (a.y + b.y) / 2);
+    /*
+     * Still two turns through the middle, as the curve has, each so wide it
+     * is straight to within a hair: the same points, and curves where the
+     * curve has curves, so a master drawn straight lines up with one drawn
+     * bent.
+     */
+    const span = (start: Vec2, end: Vec2): SpineArc => {
+      // A turn twenty times the spine's length: straight to within a unit.
+      const wide = Math.max(length, 1) * 20;
+      const centre = at(
+        (start.x + end.x) / 2 - heading.y * wide,
+        (start.y + end.y) / 2 + heading.x * wide,
+      );
+      const startAngle = Math.atan2(start.y - centre.y, start.x - centre.x);
+      let sweep = Math.atan2(end.y - centre.y, end.x - centre.x) - startAngle;
+      while (sweep > Math.PI) sweep -= Math.PI * 2;
+      while (sweep <= -Math.PI) sweep += Math.PI * 2;
+      return {
+        kind: "arc",
+        centre,
+        radius: Math.hypot(start.x - centre.x, start.y - centre.y),
+        startAngle,
+        endAngle: startAngle + sweep,
+        sweepPositive: sweep > 0,
+        pieces: 1,
+      };
+    };
+    const halved: Spine =
+      straight?.kind === "line"
+        ? {
+            closed: false,
+            segments: segments.flatMap((one, index): Spine["segments"] =>
+              index === line ? [span(a, middle), span(middle, b)] : [one],
+            ),
+          }
+        : run;
+    return {
+      run: halved,
+      from: a,
+      to: b,
+      heading,
+      first: flat(middle, length),
+      last: flat(middle, length),
+    };
+  };
+  if (line < 1 || line >= segments.length - 1) return unbent();
+  // The last turn before the line that goes anywhere, and the first after.
+  let before = line - 1;
+  while (before > 0 && !turnsAtAll(segments[before])) before--;
+  let after = line + 1;
+  while (after < segments.length - 1 && !turnsAtAll(segments[after])) after++;
+  const leaving = segments[before];
+  const arriving = segments[after];
+  if (leaving.kind !== "arc" || arriving.kind !== "arc") return unbent();
+  /*
+   * Back along the turns it leaves and arrives on by the same angle, as far
+   * as they have to give: through as many of their pieces as it takes, the
+   * pieces it passes left standing on the point it now leaves from.
+   */
+  const sweep = (one: Spine["segments"][number]) =>
+    one.kind === "arc" ? Math.abs(one.endAngle - one.startAngle) : 0;
+  const give = (from: number, step: -1 | 1) => {
+    let total = 0;
+    for (let index = from; index >= 0 && index < segments.length; index += step) {
+      if (segments[index].kind !== "arc") break;
+      total += sweep(segments[index]);
+    }
+    return total;
+  };
+  /*
+   * And less the more nearly level the spine lies: a heavy s stacks its
+   * bowls and lays its spine almost flat between them, as Geist Black's is,
+   * and bent as much as a Regular's it came out a wave.
+   */
+  const chord = straight.kind === "line" ? straight : null;
+  const fall = chord
+    ? Math.atan2(chord.from.y - chord.to.y, Math.abs(chord.to.x - chord.from.x) || 1e-9)
+    : 0;
+  const by = Math.min(
+    // Never quite straight, so a spine lying level is drawn in the same way.
+    Math.max(bend * Math.min(1, Math.max(0, fall / 0.6)), 0.01),
+    give(before, -1) * 0.6,
+    give(after, 1) * 0.6,
+  );
+  const changed = new Map<number, Spine["segments"][number]>();
+  const standOn = (one: SpineArc, point: Vec2): SpineArc => ({
+    ...one,
+    centre: at(
+      point.x - one.radius * Math.cos(one.startAngle),
+      point.y - one.radius * Math.sin(one.startAngle),
+    ),
+    endAngle: one.startAngle,
+  });
+  // Walks `by` along the run from `start` in `step`, cutting the piece it stops in.
+  const walk = (start: number, step: -1 | 1): { point: Vec2; angle: number } => {
+    let left = by;
+    let index = start;
+    for (;;) {
+      const one = segments[index] as SpineArc;
+      const span = sweep(one);
+      const next = index + step;
+      if (left <= span || next < 0 || next >= segments.length || segments[next].kind !== "arc") {
+        const sign = one.endAngle >= one.startAngle ? 1 : -1;
+        const cut = Math.min(left, span);
+        const angle = step < 0 ? one.endAngle - sign * cut : one.startAngle + sign * cut;
+        changed.set(index, step < 0 ? { ...one, endAngle: angle } : { ...one, startAngle: angle });
+        const point = pointOn(one.centre, one.radius, (angle * 180) / Math.PI);
+        // Everything it walked past, stood on that point.
+        for (let passed = index - step; passed !== start - step; passed -= step) {
+          const was = segments[passed];
+          if (was.kind === "arc") changed.set(passed, standOn(was, point));
+        }
+        return { point, angle };
+      }
+      left -= span;
+      index = next;
+    }
+  };
+  const leftAt = walk(before, -1);
+  const rightAt = walk(after, 1);
+  // And the stood pieces between the turn and the line, on the new ends.
+  for (let index = before + 1; index < line; index++) {
+    const was = segments[index];
+    if (was.kind === "arc") changed.set(index, standOn(was, leftAt.point));
+  }
+  for (let index = line + 1; index < after; index++) {
+    const was = segments[index];
+    if (was.kind === "arc") changed.set(index, standOn(was, rightAt.point));
+  }
+  const leaveAt = leftAt.angle;
+  const from = leftAt.point;
+  const to = rightAt.point;
+  // The heading where it leaves, on the piece it now leaves from.
+  const leavingNow = [...changed.entries()]
+    .filter(([index]) => index <= before)
+    .map(([, one]) => one)
+    .find((one) => one.kind === "arc" && Math.abs(one.endAngle - one.startAngle) > 1e-9) as
+    | SpineArc
+    | undefined;
+  void leaving;
+  void arriving;
+  // Its heading where it leaves, which is where it arrives too.
+  const on = leavingNow ?? leaving;
+  const way = on.endAngle >= on.startAngle ? 1 : -1;
+  const heading = at(-Math.sin(leaveAt) * way, Math.cos(leaveAt) * way);
+  const middle = at((from.x + to.x) / 2, (from.y + to.y) / 2);
+  const arc = (start: Vec2, end: Vec2, tangent: Vec2): SpineArc | null => {
+    const chord = at(end.x - start.x, end.y - start.y);
+    const length = Math.hypot(chord.x, chord.y);
+    const cross = tangent.x * chord.y - tangent.y * chord.x;
+    if (length < 1e-6 || Math.abs(cross) < 1e-6 * length) return null;
+    // The centre on the side the chord turns to, square off the tangent.
+    const side = Math.sign(cross);
+    const radius = (length * length) / (2 * Math.abs(cross));
+    const centre = at(start.x - tangent.y * side * radius, start.y + tangent.x * side * radius);
+    const a0 = Math.atan2(start.y - centre.y, start.x - centre.x);
+    let a1 = Math.atan2(end.y - centre.y, end.x - centre.x);
+    if (side > 0) while (a1 < a0) a1 += Math.PI * 2;
+    else while (a1 > a0) a1 -= Math.PI * 2;
+    return {
+      kind: "arc",
+      centre,
+      radius,
+      startAngle: a0,
+      endAngle: a1,
+      sweepPositive: side > 0,
+      pieces: 1,
+    };
+  };
+  const first = arc(from, middle, heading);
+  if (!first) return unbent();
+  const turned = first.endAngle - first.startAngle;
+  const midHeading = at(
+    heading.x * Math.cos(turned) - heading.y * Math.sin(turned),
+    heading.x * Math.sin(turned) + heading.y * Math.cos(turned),
+  );
+  const second = arc(middle, to, midHeading);
+  if (!second) return unbent();
+  return {
+    from,
+    to,
+    heading,
+    first,
+    last: second,
+    run: {
+      closed: false,
+      segments: segments.flatMap((one, index): Spine["segments"] => {
+        if (index === line) return [first, second];
+        return [changed.get(index) ?? one];
+      }),
+    },
+  };
+}
+
+/** A spine drawn by `curvedSpine`: where it leaves and arrives, and its heading at both. */
+interface Bent {
+  run: Spine;
+  from: Vec2;
+  to: Vec2;
+  heading: Vec2;
+  /** The spine's first turn and its last, which a swell touches. */
+  first: SpineArc;
+  last: SpineArc;
+}
+
+/** Whether a piece of a run goes anywhere. */
+function turnsAtAll(one: Spine["segments"][number]): boolean {
+  return one.kind === "arc"
+    ? Math.abs(one.endAngle - one.startAngle) > 1e-9
+    : Math.hypot(one.to.x - one.from.x, one.to.y - one.from.y) > 1e-9;
 }
 
 /**
