@@ -290,6 +290,27 @@ describe("the split on a bowl drawn against its stem", () => {
   });
 });
 
+describe("the split beside an arch", () => {
+  it("leaves the stem no wider than the pen, with no lip below the gap", () => {
+    // The foot of the arch curves out of the stem just below the gap, and
+    // stood out of its side there as a lip a few units deep.
+    for (const [face, weight] of [
+      ["Sans", 87],
+      ["Sans", 200],
+      ["Display", 205],
+    ] as const) {
+      const forge = forgeOf(face, weight, { cuts: { split: {} } });
+      for (const letter of "nhm") {
+        const solids = unite(drawn(letter, forge), "winding").filter((one) => contourArea(one) > 0);
+        const stem = solids
+          .map((one) => contoursBounds([one]))
+          .reduce((a, b) => (b.xMin < a.xMin ? b : a));
+        expect(stem.xMax - stem.xMin, `${face} ${weight} ${letter}`).toBeLessThan(weight + 0.5);
+      }
+    }
+  });
+});
+
 describe("the split on a script", () => {
   it("leaves the short exit flick of an H and an A on, rather than cutting it loose as a dot", () => {
     for (const face of ["Formal Script", "Handwriting"]) {

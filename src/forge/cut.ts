@@ -831,8 +831,8 @@ function splitPlan(
    * The least a break may cut free. The exit stroke of a script H or A is a
    * short flick off the foot of the stem, and a gap at its root left the
    * rest of it lying beside the letter as a full stop. A loose end shorter
-   * than this stays on if it is longer than a stem or thinner than half of
-   * one: a flick. One shorter than a stem and as thick as the arms of a
+   * than this stays on if it is longer than a stem or thinner than two
+   * fifths of one: a flick. One shorter than a stem and as thick as the arms of a
    * Display E is a block, and comes off as one.
    */
   const least = xHeight * 0.3;
@@ -1154,6 +1154,19 @@ function splitPlan(
     const others = inkBut(stroke);
     return facingOut(others.length === 0 ? bands : subtract(bands, others, "winding"));
   });
+  /*
+   * And the stroke's own ink between the join and the gap, past the edge of
+   * the stroke that stays. Cut on its own rather than with the bands: a
+   * boolean that fails on it hands back nothing, and must not take the band
+   * down with it.
+   */
+  for (const one of kept) {
+    // Not a bowl's: the side it lays along its stem goes with the bridge.
+    if (!one.root || one.root.length === 0 || strokes[one.stroke].spine.closed) continue;
+    const others = inkBut(one.stroke);
+    const lip = facingOut(subtract(unite(one.root, "winding"), others, "winding"));
+    knives.push(...lip);
+  }
   for (const bridge of bridges) {
     const others = inkBut(bridge.stroke);
     if (others.length > 0) knives.push(...facingOut(subtract(bridge.ink, others, "winding")));
@@ -1293,6 +1306,12 @@ interface Gap {
    * top by a band meant for the foot of it.
    */
   local: Contour[];
+  /**
+   * The stroke from where it met the other one up to the gap. Its ink past
+   * the other stroke's edge is what stood under the break as a lip: the foot
+   * of an arch curves out of its stem a little below where the gap is laid.
+   */
+  root?: Contour[];
 }
 
 /**
@@ -1330,7 +1349,13 @@ function gapBeside(
   // The rest of the letter, for asking whether what is left past the gap is
   // held by another stroke.
   others: Stroke[] = [],
-): { at: number; band: Contour; local: Contour[]; column?: Contour[] } | null {
+): {
+  at: number;
+  band: Contour;
+  local: Contour[];
+  column?: Contour[];
+  root?: Contour[];
+} | null {
   const FINE = 192;
   const path = alongSpine(giving.spine, FINE);
   const wall = alongSpine(keeping.spine, FINE);
@@ -1462,9 +1487,30 @@ function gapBeside(
               ]),
             ]
           : undefined;
+      // From the end of the stroke when that end lies inside the other one:
+      // the foot of an arch starts down in its stem, below where it came
+      // closest to the stem's spine.
+      const tail = way > 0 ? 0 : FINE;
+      const from0 = buried(path[tail], [keeping], -1) ? tail : start;
+      const joint = spineBetween(
+        giving.spine,
+        Math.min(from0 * step, at),
+        Math.max(from0 * step, at),
+      );
+      const root =
+        joint.segments.length > 0
+          ? sweep({
+              spine: joint,
+              pen: { ...giving.pen, weight: giving.pen.weight * 1.2 + 2 },
+              start: { kind: "butt" },
+              end: { kind: "butt" },
+              join: "round",
+            })
+          : [];
       return {
         at,
         local,
+        root,
         ...(column ? { column } : {}),
         band: poly([
           {
