@@ -612,9 +612,14 @@ function applyVerticalScale(contour: Contour, factor: number): Contour {
   }));
 }
 
-/** Whether a glyph is a lowercase letter, by what it encodes or else its name. */
+/**
+ * Whether a glyph is a lowercase letter, by what it encodes or else its name.
+ * By the letter's category rather than by having a capital: the dotless j
+ * has none, was taken for a capital, and at the heaviest weight its top was
+ * held to the cap height and rose past the x-height by twice the weight.
+ */
 function isLowercase(glyph: Glyph): boolean {
-  const lower = (text: string) => text !== text.toUpperCase() && text === text.toLowerCase();
+  const lower = (text: string) => /\p{Ll}/u.test(text);
   if (glyph.unicodes.length > 0)
     return glyph.unicodes.some((code) => lower(String.fromCodePoint(code)));
   const base = glyph.name.split(".")[0];
@@ -854,13 +859,26 @@ function keepHeights(
    * top of its bowl had moved and stood twenty-four units short.
    */
   const box = matched ? contoursBounds(before as Contour[]) : drawn;
+  /*
+   * Not at a line the letter only passes through. The stem of a dotless j
+   * crosses the baseline with no point on it, and pinned there as if it
+   * stood on it, the stem above was squeezed and the tail below moved whole.
+   */
+  const reference = matched ? (before as Contour[]) : contours;
+  const touches = (line: number): boolean =>
+    Math.abs(box.yMin - line) <= tolerance ||
+    Math.abs(box.yMax - line) <= tolerance ||
+    reference.some((contour) =>
+      contour.nodes.some((node) => Math.abs(node.point.y - line) <= tolerance),
+    );
   const pins: Array<{ from: number; to: number }> = [];
   if (onBaseline && box.yMin < -tolerance)
     pins.push({ from: box.yMin + edgeMove(box.yMin, false), to: box.yMin });
-  if (onBaseline) pins.push({ from: edgeMove(0, false), to: 0 });
-  if (toTop) pins.push({ from: top + edgeMove(top, true), to: top });
+  if (onBaseline && touches(0)) pins.push({ from: edgeMove(0, false), to: 0 });
+  if (toTop && touches(top)) pins.push({ from: top + edgeMove(top, true), to: top });
   if (toTop && box.yMax > top + tolerance)
     pins.push({ from: box.yMax + edgeMove(box.yMax, true), to: box.yMax });
+  if (pins.length === 0) return contours;
   if (pins.some((pin, index) => index > 0 && pin.from <= pins[index - 1].from)) return contours;
   const map = (y: number): number => {
     const first = pins[0];

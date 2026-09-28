@@ -274,6 +274,29 @@ describe("weight", () => {
     expect(advance - box.xMax).toBeCloseTo(50, 0);
   });
 
+  it("keeps a dotless j to its x-height and its tail where it was drawn", () => {
+    // A stem from the x-height down past the baseline into a flat tail, with
+    // no point on the baseline. The dotless j has no capital, was taken for
+    // one, and at the heaviest weight rose twice the weight past its x-height.
+    const { typeface, glyph } = letter(
+      [
+        polygon([
+          [0, -150],
+          [0, -80],
+          [100, -80],
+          [100, 500],
+          [180, 500],
+          [180, -150],
+        ]),
+      ],
+      260,
+    );
+    glyph.unicodes = [0x237];
+    const heavy = contoursBounds(at(typeface, glyph, { weight: 60 }));
+    expect(heavy.yMax).toBeCloseTo(500, 0);
+    expect(heavy.yMin).toBeCloseTo(-150, 0);
+  });
+
   it("keeps those side bearings when the heavy letter is also condensed", () => {
     // Putting back the strokes the condensing took runs the arms out on the
     // mitre again, and the advance grew by the give alone: Geist's v and w
