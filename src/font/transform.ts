@@ -177,6 +177,8 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
    * serifs of a light one. Put on first, they thicken with the stems, stretch
    * with the width and lean with the slant, which is what they should do.
    */
+  // The letter and its slabs as they were before the weight, point for point.
+  let unweightedContours: Contour[] | undefined;
   // The slabs, kept to one side until the letter has its weight.
   let slabs: Contour[] = [];
   let slabbedLetter: Contour[] = [];
@@ -212,7 +214,8 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
       roles: outer,
       unitsPerEm: typeface.unitsPerEm,
     };
-    const unweighted = contoursBounds([...contours, ...slabs]);
+    unweightedContours = [...contours, ...slabs];
+    const unweighted = contoursBounds(unweightedContours);
     contours = contours.map((contour, index) => applyWeight(contour, params.weight, index, around));
     slabs = weighSlabs(slabs, slabbedLetter, params.weight, typeface.unitsPerEm, contours);
     /*
@@ -248,7 +251,8 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
     if (params.weight === 0) slabs = weighSlabs(slabs, slabbedLetter, 0, typeface.unitsPerEm);
     contours = [...contours, ...slabs];
   }
-  if (params.weight !== 0) contours = keepHeights(contours, params.weight, glyph, typeface);
+  if (params.weight !== 0)
+    contours = keepHeights(contours, params.weight, glyph, typeface, unweightedContours);
   if (params.cornerRadius > 0) {
     const outer = classifyContours(contours);
     contours = contours.map((contour, index) =>
@@ -692,6 +696,8 @@ function keepHeights(
   weight: number,
   glyph: Glyph,
   typeface: Typeface,
+  /** The same contours before the weight, point for point, where known. */
+  before?: Contour[],
 ): Contour[] {
   const metrics = typeface.metrics;
   const top = isLowercase(glyph) ? metrics?.xHeight : metrics?.capHeight;
@@ -708,17 +714,71 @@ function keepHeights(
   const onBaseline = drawn.yMin <= near;
   const toTop = drawn.yMax >= top - near;
   if (!onBaseline && !toTop) return contours;
-  const low = -weight;
-  const high = top + weight;
-  const squeeze = onBaseline && toTop ? top / (high - low) : 1;
-  const map = (y: number): number => {
-    if (!toTop) return y + weight;
-    if (!onBaseline) return y - weight;
-    if (y <= low) return y + weight;
-    if (y >= high) return y - weight;
-    return (y - low) * squeeze;
+  const matched =
+    before?.length === contours.length &&
+    before.every((contour, index) => contour.nodes.length === contours[index].nodes.length);
+  const tolerance = typeface.unitsPerEm * 0.02;
+  // A top edge moves up as the letter gets bolder and down as it gets
+  // lighter; a bottom edge the other way.
+  const along = (moved: number) => moved * Math.sign(weight);
+  /*
+   * Where the edges on the baseline and at the height went, as measured,
+   * rather than taken to be the weight. A stem's end moves by the weight; a
+   * serif made lighter keeps a third of itself and moves less, and squeezed
+   * as if it had moved the whole weight, Lora's light H went twenty-eight
+   * units below its baseline and past its cap height. The middle of what
+   * the points on an edge did is taken as the edge's move.
+   */
+  const edgeMove = (line: number, upward: boolean): number => {
+    const assumed = upward ? weight : -weight;
+    if (!matched) return assumed;
+    const moves: number[] = [];
+    for (const [which, contour] of (before as Contour[]).entries()) {
+      for (const [index, node] of contour.nodes.entries()) {
+        if (Math.abs(node.point.y - line) > tolerance) continue;
+        const moved = contours[which].nodes[index].point.y - node.point.y;
+        if (upward ? along(moved) > 0.5 : along(moved) < -0.5) moves.push(moved);
+      }
+    }
+    if (moves.length === 0) return assumed;
+    moves.sort((a, b) => a - b);
+    return moves[Math.floor(moves.length / 2)];
   };
-  const slope = (y: number): number => (y < low || y > high ? 1 : squeeze);
+  /*
+   * Pinned at each edge the letter was drawn to -- its own bottom where a
+   * descender takes it below the baseline, the baseline, the x-height or cap
+   * height, and its own top where an ascender takes it above -- each moved
+   * back by what its own points did, and eased in straight lines between.
+   * Pinned only at the x-height, a light b's ascender came back by what the
+   * top of its bowl had moved and stood twenty-four units short.
+   */
+  const box = matched ? contoursBounds(before as Contour[]) : drawn;
+  const pins: Array<{ from: number; to: number }> = [];
+  if (onBaseline && box.yMin < -tolerance)
+    pins.push({ from: box.yMin + edgeMove(box.yMin, false), to: box.yMin });
+  if (onBaseline) pins.push({ from: edgeMove(0, false), to: 0 });
+  if (toTop) pins.push({ from: top + edgeMove(top, true), to: top });
+  if (toTop && box.yMax > top + tolerance)
+    pins.push({ from: box.yMax + edgeMove(box.yMax, true), to: box.yMax });
+  if (pins.some((pin, index) => index > 0 && pin.from <= pins[index - 1].from)) return contours;
+  const map = (y: number): number => {
+    const first = pins[0];
+    const last = pins[pins.length - 1];
+    if (y <= first.from) return y + first.to - first.from;
+    if (y >= last.from) return y + last.to - last.from;
+    for (let index = 1; index < pins.length; index++) {
+      const [a, b] = [pins[index - 1], pins[index]];
+      if (y <= b.from) return a.to + ((y - a.from) * (b.to - a.to)) / (b.from - a.from);
+    }
+    return y;
+  };
+  const slope = (y: number): number => {
+    for (let index = 1; index < pins.length; index++) {
+      const [a, b] = [pins[index - 1], pins[index]];
+      if (y > a.from && y < b.from) return (b.to - a.to) / (b.from - a.from);
+    }
+    return 1;
+  };
   return contours.map((contour) => ({
     closed: contour.closed,
     nodes: contour.nodes.map((node) => {

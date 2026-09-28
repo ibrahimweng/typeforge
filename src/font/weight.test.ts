@@ -458,6 +458,18 @@ describe("a lighter or bolder cut", () => {
     }
   });
 
+  it("keeps a serif letter on its baseline and at its height, lighter and bolder", () => {
+    // The serifs are thirty thick: made lighter they keep a third of
+    // themselves and move less than the weight, which the letter's return to
+    // its height has to follow rather than assume.
+    const { typeface, glyph } = letter([serifI()]);
+    for (const weight of [-40, 60]) {
+      const box = contoursBounds(at(typeface, glyph, { weight }));
+      expect(box.yMin, `weight ${weight}`).toBeCloseTo(0, 0);
+      expect(box.yMax, `weight ${weight}`).toBeCloseTo(700, 0);
+    }
+  });
+
   it("thins a serif without tearing it", () => {
     const { typeface, glyph } = letter([serifI()]);
     const [shape] = at(typeface, glyph, { weight: -40 });
