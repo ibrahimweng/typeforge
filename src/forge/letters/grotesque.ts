@@ -100,6 +100,20 @@ const thinned = (f: Frame, share: number): number => 1 - share * thinness(f);
 /** A turn, never tighter than the pen will go round. */
 const held = (f: Frame, radius: number): number => Math.max(radius, f.least);
 
+/**
+ * How much further out the right of a round capital stands than its older
+ * measures put it: `regular` units at the Regular, `heavy` from a SemiBold
+ * on, `thin` at the Thin. Measured off the current Geist, whose B, C, G, P
+ * and R stand about 7 units wider at the Regular than the measures they were
+ * drawn from, and 20 from the SemiBold to the Black.
+ */
+function roundGain(f: Frame, regular: number, heavy: number, thin = 0): number {
+  const light = thinness(f);
+  if (light > 0) return regular + (thin - regular) * light;
+  const t = Math.max(0, heaviness(f) / 0.67);
+  return regular + (heavy - regular) * Math.min(1, t / 0.41);
+}
+
 /** A turn drawn in so many pieces at every weight: see `SpineArc.pieces`. */
 function pinned(spine: Spine, pieces: number): Spine {
   return { ...spine, segments: spine.segments.map((one) => ({ ...one, pieces })) };
@@ -428,12 +442,13 @@ export function grotesqueCapitalG(style: Style): Recipe {
   const X = (x: number) => f.edge - f.half + x * u;
   const middle = (f.crest(f.cap) + f.dip(0)) / 2;
   const halfH = held(f, f.crest(f.cap) - middle);
-  const halfW = held(f, lerp(273, 253) * u);
+  const gain = roundGain(f, 0, 11);
+  const halfW = held(f, lerp(273, 253) * u + gain);
   const centre = at(f.edge + halfW, middle);
   const head = angleAt(f, centre, halfW, halfH, up(f, lerp(500, 470)), false);
   // The upright stands inside the ring's own right side, and the ring's
   // lower right is drawn in to run into it.
-  const upright = Math.max(X(lerp(563, 578)), centre.x + f.least);
+  const upright = Math.max(X(lerp(563, 578)) + gain * 2, centre.x + f.least);
   const drawnIn = upright - centre.x;
   const bar = up(f, 318);
   // Carried up into the bar, so its square end lies inside it: stopped
@@ -611,14 +626,20 @@ export function grotesqueCapitalB(style: Style): Recipe {
   const waist = up(f, lerp(360, 380));
   return finish(f, [
     ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-    ink(f, lobeRun(f, stem, f.hangs(f.cap), waist, X(lerp(409, 392)), 150 * u)),
+    ink(
+      f,
+      lobeRun(f, stem, f.hangs(f.cap), waist, X(lerp(409, 392)) + roundGain(f, 7, 21), 150 * u),
+    ),
     /*
      * Its top half a unit under the upper's foot: drawn on exactly the same
      * line, the two bars' edges coincided and a union of the letter -- which
      * is how its counters are counted, and how it is exported -- lost the
      * lower counter at some weights.
      */
-    ink(f, lobeRun(f, stem, waist - 0.5, f.sits(0), X(lerp(439, 423)), 160 * u)),
+    ink(
+      f,
+      lobeRun(f, stem, waist - 0.5, f.sits(0), X(lerp(439, 423)) + roundGain(f, 8, 23), 160 * u),
+    ),
   ]);
 }
 
@@ -632,7 +653,14 @@ export function grotesqueCapitalP(style: Style): Recipe {
     ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
     ink(
       f,
-      lobeRun(f, stem, f.hangs(f.cap), up(f, lerp(330, 305)), stem + lerp(419, 401) * u, 160 * u),
+      lobeRun(
+        f,
+        stem,
+        f.hangs(f.cap),
+        up(f, lerp(330, 305)),
+        stem + lerp(419, 401) * u + roundGain(f, 7, 20, 12),
+        160 * u,
+      ),
     ),
   ]);
 }
@@ -651,11 +679,12 @@ export function grotesqueR(style: Style): Recipe {
   const top = f.hangs(f.cap);
   const waist = up(f, lerp(343, 330));
   const lobeHalf = held(f, (top - waist) / 2);
-  const right = X(lerp(423, 411));
+  const gain = roundGain(f, 8, 22, 2);
+  const right = X(lerp(423, 411)) + gain;
   const lobeWide = held(f, Math.min(160 * u, right - stem - f.half));
   const lobe = at(right - lobeWide, waist + lobeHalf);
   // The leg: out of the waist, round a turn, and down to its foot.
-  const foot = at(X(lerp(430.5, 415)), 0);
+  const foot = at(X(lerp(430.5, 415)) + gain, 0);
   const radius = held(f, Math.min(150 * u, (waist - f.half) * 0.7));
   // Its turn set so the leg comes down leaning a little out, as Geist's does.
   const centre = at(foot.x - radius - 0.09 * (waist - radius), waist - radius);
@@ -3707,7 +3736,7 @@ export function grotesqueCapitalC(style: Style): Recipe {
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
   const middle = (f.crest(f.cap) + f.dip(0)) / 2;
   const halfH = held(f, f.crest(f.cap) - middle);
-  const halfW = held(f, lerp(273, 253) * u);
+  const halfW = held(f, lerp(273, 253) * u + roundGain(f, 4, 10.5));
   const centre = at(f.edge + halfW, middle);
   const head = angleAt(f, centre, halfW, halfH, up(f, lerp(500, 455)), false);
   const foot = angleAt(f, centre, halfW, halfH, up(f, lerp(225, 265)), false);

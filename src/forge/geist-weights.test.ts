@@ -645,7 +645,7 @@ describe("the percent past the old Black", () => {
   });
 });
 
-describe("the O and the D", () => {
+describe("the round capitals", () => {
   it("are Geist's width from the Thin to the Black", () => {
     // Geist's ink widths at its Thin, Regular, SemiBold, UltraBlack and
     // Black. The plain bowls grew past Geist's with the weight: the O 21
@@ -653,6 +653,12 @@ describe("the O and the D", () => {
     const geist: Record<string, number[]> = {
       O: [614, 649, 677, 706, 720],
       D: [530, 561, 589, 618, 632],
+      // And the B, C, P and R, which stood about 20 units narrow from the
+      // SemiBold to the Black.
+      B: [487, 526, 561, 596, 613],
+      C: [581, 618, 643, 668, 680],
+      P: [477, 506, 540, 574, 591],
+      R: [479, 518, 554, 591, 609],
     };
     for (const [name, widths] of Object.entries(geist)) {
       for (const [index, weight] of [30, 87, 130, 172, 194].entries()) {

@@ -61,6 +61,11 @@ the Q takes the new O. The plain bowls grew past Geist's with the weight: the
 O 21 units too wide at UltraBlack and 33 at the Black, the D 34 and 66. Now
 all three are within 7 at every weight, and the D is set at Geist's sides.
 
+**B, C, G, P and R.** Their older measures stood them about 7 units narrow
+at the Regular and 20 from the SemiBold to the Black against the current
+Geist. Their right sides now stand out by that (the G's spur with its ring),
+and all five are within 8 of Geist's width at every weight.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across
