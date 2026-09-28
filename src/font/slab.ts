@@ -71,6 +71,12 @@ export interface SlabOptions {
    * bar across: the lowercase of a slab serif.
    */
   flagTops?: boolean;
+  /**
+   * The stems of the typeface, when known. A letter made of curves -- an S --
+   * rules thinner than the font's stems, and against its own strokes the tips
+   * of Lora's S beaks passed for ends; see `THINNEST_STEM`.
+   */
+  stem?: number;
 }
 
 /** A stroke end: where it is, how wide, and which way the stroke runs. */
@@ -127,6 +133,21 @@ const THINNEST_END = 0.6;
  * two hundred units tall on an E whose stem is eighty.
  */
 const WIDEST_END = 1.75;
+/**
+ * How thin an end may be against the typeface's stems. The tips of Lora's S
+ * beaks measure 0.6 of its stems, and ruled against the S alone, which is all
+ * curve and thinner than a stem, they passed for the ends of strokes and each
+ * got a slab standing on its beak. The thinnest real ends, Geist's n and r,
+ * are 0.86, so seven tenths sits between them.
+ */
+const THINNEST_STEM = 0.7;
+/**
+ * How much of an end the stroke just behind it has to fill. The top arm of
+ * Lora's 5 is a hairline ending in a beak three times as tall, and the edge
+ * down the beak read as the end of a stroke that wide: a bar stood up on it.
+ * A stroke that ends is about as wide behind its end as at it.
+ */
+const FLARED_END = 0.6;
 
 /**
  * How thick the strokes of a letter are, as a ruler across it would find.
@@ -170,7 +191,11 @@ function strokeOf(contours: Contour[]): number | null {
  * flat end to sit a slab on, and guessing at one would put a bar across the
  * middle of a curve.
  */
-export function findTerminals(contours: Contour[], maxWidth: number): Terminal[] {
+export function findTerminals(
+  contours: Contour[],
+  maxWidth: number,
+  stem?: number,
+): Terminal[] {
   const terminals: Terminal[] = [];
   /*
    * Only the ink's own outlines. A counter is wound against the letter, so the
@@ -207,6 +232,31 @@ export function findTerminals(contours: Contour[], maxWidth: number): Terminal[]
       y: terminal.centre.y + terminal.inward.y * depth + terminal.along.y * side * aside,
     });
     return insideInk(polylines, probe(-1)) && insideInk(polylines, probe(1));
+  };
+
+  /*
+   * Whether the stroke a stroke's width back from the end is much narrower
+   * than the end: a beak or a flare, not the end of a stroke. Measured along
+   * the end, through the ink lying across it; a ruler that finds none, where
+   * the stroke has already turned away, says nothing.
+   */
+  const flares = (terminal: Terminal, back: number): boolean => {
+    const probe = {
+      x: terminal.centre.x + terminal.inward.x * back,
+      y: terminal.centre.y + terminal.inward.y * back,
+    };
+    const level = Math.abs(terminal.along.x) > Math.abs(terminal.along.y);
+    const runs = level ? inkRunsAt(contours, probe.y) : inkRunsAt(contours, probe.x, "x");
+    // The run lying across the end, most of it within the end's span.
+    const at = level ? probe.x : probe.y;
+    const half = terminal.width / 2;
+    const overlap = ([low, high]: [number, number]) =>
+      Math.min(high, at + half) - Math.max(low, at - half);
+    const run = runs.reduce<[number, number] | undefined>(
+      (best, next) => (overlap(next) > (best ? overlap(best) : 0) ? next : best),
+      undefined,
+    );
+    return run !== undefined && run[1] - run[0] < terminal.width * FLARED_END;
   };
 
   for (const [index, contour] of contours.entries()) {
@@ -332,6 +382,8 @@ export function findTerminals(contours: Contour[], maxWidth: number): Terminal[]
         (here.length < stroke * THINNEST_END || here.length > stroke * WIDEST_END)
       )
         continue;
+      if (stem !== undefined && here.length < stem * THINNEST_STEM) continue;
+      if (flares(terminal, stem ?? stroke ?? terminal.width)) continue;
 
       terminals.push(terminal);
     }
@@ -388,7 +440,7 @@ export function addSlabs(contours: Contour[], options: SlabOptions): Contour[] {
   const growth = Math.max(0, options.weight ?? 0);
   if (projection <= 0 && thickness <= 0) return contours;
 
-  const terminals = findTerminals(contours, maxWidth);
+  const terminals = findTerminals(contours, maxWidth, options.stem);
   if (terminals.length === 0) return contours;
 
   const box = contoursBounds(contours);

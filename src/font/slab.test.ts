@@ -323,6 +323,30 @@ describe("which ends a slab serif gives a slab", () => {
     expect(findTerminals([serifed], WIDE)).toHaveLength(0);
   });
 
+  it("judges an end against the typeface's stems, not only the letter's own", () => {
+    // Lora's S is all curve and rules thinner than its stems, so the tips of
+    // its beaks passed for stroke ends and each got a slab on its beak.
+    const thin = stem(100, 0, 55, 700);
+    expect(findTerminals([thin], WIDE)).toHaveLength(2);
+    expect(findTerminals([thin], WIDE, 87)).toHaveLength(0);
+  });
+
+  it("leaves a beak alone that flares from a thinner arm", () => {
+    // The top arm of Lora's 5: a hairline ending in a beak nearly twice as
+    // tall, and a bar stood up on the edge down the beak.
+    const arm = polygon([
+      { x: 100, y: 650 },
+      { x: 100, y: 700 },
+      { x: 430, y: 700 },
+      { x: 430, y: 740 },
+      { x: 460, y: 740 },
+      { x: 460, y: 650 },
+    ]);
+    const letter = [stem(0, 0, 90, 600), arm];
+    const ends = findTerminals(letter, WIDE, 90);
+    expect(ends.map((end) => Math.round(end.centre.x))).toEqual([45, 45]);
+  });
+
   it("puts no slab on a slanted end", () => {
     // The tail of Geist's & ends on a cut a few degrees off level, and a slab
     // laid along it stuck out like a stick.

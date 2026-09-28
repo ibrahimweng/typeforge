@@ -457,6 +457,7 @@ function withSlabs(
       Math.max(params.slab * 0.55, cutScaleOf(typeface).stem * 0.7),
     ),
     maxWidth: typeface.unitsPerEm * 0.35,
+    stem: cutScaleOf(typeface).stem,
     weight: params.weight,
   });
   if (slabbed === contours || contours.length === 0) return { contours, left: 0, right: 0 };
