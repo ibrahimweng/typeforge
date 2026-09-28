@@ -28,7 +28,7 @@ import type { Roles } from "@/font/boolean";
 import { anyCast, type Cast } from "@/font/cast";
 import { anyCut, type Cuts } from "@/font/cuts";
 import { castInk } from "./cast";
-import { cutInk, type CutScale, type Cutting } from "./cut";
+import { breaksIn, cutInk, type CutScale, type Cutting } from "./cut";
 import type { Stroke } from "./types";
 
 export function shaped(
@@ -49,8 +49,10 @@ export function shaped(
    * of the two is told to read the roles the caller asked for -- which in the
    * imported half is `nesting`, because nothing there has promised anything.
    */
+  // Where the split opens a join, the weld leaves it open, in either order.
+  const breaks = cutting && casting && cast!.weld.on ? breaksIn(strokes, scale, cuts) : undefined;
   if (casting && cast!.order === "before") {
-    const shadowed = castInk(ink, strokes, scale, cast!, roles);
+    const shadowed = castInk(ink, strokes, scale, cast!, roles, breaks);
     return cutting ? cutInk(shadowed, strokes, scale, cuts!, "winding") : { contours: shadowed };
   }
 
@@ -70,6 +72,8 @@ export function shaped(
       scale,
       cast!,
       carved.contours === ink ? roles : "winding",
+      breaks,
+      carved.chamfered,
     ),
   };
 }

@@ -20,11 +20,14 @@
  * outline makes while that happens, resolved once (`swept`).
  */
 
-import { filled, loaded, subtract, unite, type Roles } from "@/font/boolean";
+import { filled, intersect, loaded, subtract, unite, type Roles } from "@/font/boolean";
 import {
   contourArea,
   contourContainsPoint,
   contoursBounds,
+  flattenContour,
+  type Bounds,
+  rayHitDistance,
   reverseContour,
   splitCubic,
 } from "@/font/geometry";
@@ -98,6 +101,13 @@ export function castInk(
   scale: CutScale,
   cast: Cast,
   roles: Roles = "winding",
+  /*
+   * Where the breaks are cut, when they are. A weld does not fill a join the
+   * split has taken apart: see `weldTool`.
+   */
+  breaks?: Breaks,
+  // Where a chamfer has just cut corners off: see `spurTool`.
+  chamfered: Vec2[] = [],
 ): Contour[] {
   if (!reachesCast(cast, strokes) || ink.length === 0 || !loaded()) return ink;
 
@@ -109,8 +119,8 @@ export function castInk(
   );
 
   const local: Contour[] = [];
-  if (cast.spur.on) local.push(...spurTool(shape, cast.spur, stem));
-  if (cast.weld.on) local.push(...weldTool(strokes, cast.weld, stem, shape));
+  if (cast.spur.on) local.push(...spurTool(shape, cast.spur, stem, chamfered));
+  if (cast.weld.on) local.push(...weldTool(strokes, cast.weld, stem, shape, breaks));
   if (local.length > 0) shape = unite([...shape, ...local], "winding", "whole");
 
   if (cast.extrude.on) shape = extruded(shape, cast.extrude, stem);
@@ -130,11 +140,12 @@ export function castInk(
  * and at text size each is a fault in the print.
  *
  * So a hole smaller than a tenth of a stem square goes -- and never one as
- * large as half the smallest counter the letter went in with, so a small eye
- * the letter really has is never taken for one.
+ * large as a sixth or so of the smallest counter the letter went in with, so
+ * a small eye the letter really has, grown in by the rim, is never taken for
+ * one.
  */
 function withoutSpecks(shape: Contour[], stem: number, smallest: number): Contour[] {
-  const floor = Math.min(stem * stem * 0.1, smallest * 0.5);
+  const floor = Math.min(stem * stem * 0.1, smallest * 0.15);
   return shape.filter((contour) => {
     const area = contourArea(contour);
     return area >= 0 || -area >= floor;
@@ -267,9 +278,25 @@ function swept(shape: Contour[], convolve: (contour: Contour) => Contour): Conto
     ]);
     return subtract([reverseContour(counter)], filled([frame, loop]), "winding");
   });
-  let swept = kept.length > 0 ? subtract(ground, kept, "winding") : ground;
-  if (islands.length > 0) swept = unite([...swept, ...sweep(islands)], "winding", "whole");
-  return tidied(swept);
+  let result = kept.length > 0 ? subtract(ground, kept, "winding") : ground;
+  /*
+   * An island is laid back on with its own counters in it.
+   *
+   * The groove of an inline round the bowl of an o is a counter, and the
+   * inner wall of the bowl stands inside it as an island with the o's real
+   * counter inside that. Laid back on as a solid alone, the island came back
+   * filled -- counter and all -- and a rim grown after an inline turned every
+   * o into a black disc. So the island is grown the way the whole letter is,
+   * nested counters and all, which is the same question one level down.
+   */
+  if (islands.length > 0) {
+    const inner = counters.filter((counter) =>
+      islands.some((island) => contourContainsPoint(island, counter.nodes[0].point)),
+    );
+    const again = inner.length > 0 ? swept([...islands, ...inner], convolve) : sweep(islands);
+    result = unite([...result, ...again], "winding", "whole");
+  }
+  return tidied(result);
 }
 
 /**
@@ -561,17 +588,48 @@ function offLine(from: Vec2, point: Vec2, to: Vec2): number {
  * as fine hair, and one `m` came out as nothing at all. A Sans with breaks,
  * the rim and points took eight seconds over a Black `R`.
  *
- * This grows the counters closed as well as the outside out, which is what
- * growing a shape does and is worth knowing before turning it up: on a light
- * face a rim of half a stem will fill the eye of an e.
+ * This grows the counters in as well as the outside out, which is what
+ * growing a shape does -- but never more than half shut, however far the rim
+ * reaches, so a heavy face keeps the eye of its e.
  */
 function outlined(shape: Contour[], width: number): Contour[] {
   if (width <= 0) return shape;
-  const corners = Array.from({ length: SIDES }, (_, index) => {
-    const angle = ((index + 0.5) / SIDES) * Math.PI * 2;
-    return { x: Math.cos(angle) * width, y: Math.sin(angle) * width };
+  const figure = (reach: number): Vec2[] =>
+    Array.from({ length: SIDES }, (_, index) => {
+      const angle = ((index + 0.5) / SIDES) * Math.PI * 2;
+      return { x: Math.cos(angle) * reach, y: Math.sin(angle) * reach };
+    });
+  const corners = figure(width);
+  /*
+   * A counter is never grown shut.
+   *
+   * The rim grows the outside of the letter and closes its counters by the
+   * same amount, and on a heavy face the counters are small: the default rim
+   * on a Black Sans shut the eye of the e, the bowl of the a and both of the
+   * s's, and left three blots beside an o that still had its hole. So each
+   * counter is grown in by at most three tenths of how deep it is -- twice its area
+   * over its length round, which is the radius of a round one and half the
+   * width of a slot -- and the outside keeps the rim that was asked for.
+   */
+  return swept(shape, (contour) => {
+    const area = contourArea(contour);
+    if (area >= 0) return convolvedRound(contour, corners);
+    const deep = (2 * -area) / Math.max(lengthRound(contour), 1e-9);
+    const reach = Math.min(width, deep * 0.3);
+    return reach >= width
+      ? convolvedRound(contour, corners)
+      : convolvedRound(contour, figure(reach));
   });
-  return swept(shape, (contour) => convolvedRound(contour, corners));
+}
+
+/** How long an outline is, all the way round. */
+function lengthRound(contour: Contour): number {
+  const path = flattenContour(contour, 12);
+  let total = 0;
+  for (let index = 0; index < path.length; index++) {
+    total += distance(path[index], path[(index + 1) % path.length]);
+  }
+  return total;
 }
 
 /** How many sides the figure a rim is grown by has. */
@@ -789,7 +847,12 @@ function headingOf(edge: Edge, where: "start" | "end" | "middle"): Vec2 | null {
  * the corner itself, so what is added is a wedge with a width to it instead of
  * a hair standing on a single point.
  */
-function spurTool(shape: Contour[], spur: Cast["spur"], stem: number): Contour[] {
+function spurTool(
+  shape: Contour[],
+  spur: Cast["spur"],
+  stem: number,
+  chamfered: Vec2[] = [],
+): Contour[] {
   const size = spur.size * stem;
   if (size <= 0) return [];
 
@@ -798,22 +861,85 @@ function spurTool(shape: Contour[], spur: Cast["spur"], stem: number): Contour[]
   /** Above this it is going back the way it came. */
   const REVERSED = (165 * Math.PI) / 180;
 
+  const outline = shape.map((contour) => flattenContour(contour, 16));
   const added: Contour[] = [];
   for (const contour of shape) {
     const nodes = contour.nodes;
-    if (nodes.length < 3) continue;
+    const count = nodes.length;
+    if (count < 3) continue;
 
-    for (let index = 0; index < nodes.length; index++) {
-      const previous = nodes[(index - 1 + nodes.length) % nodes.length];
-      const here = nodes[index];
-      const next = nodes[(index + 1) % nodes.length];
-
-      // Handles say which way the outline is really going: a node between two
-      // curves is not a corner however far apart its neighbours sit.
+    /*
+     * Every corner first: where it is, which way the outline arrives and
+     * leaves, and how far it turns. Handles say which way the outline is
+     * really going: a node between two curves is not a corner however far
+     * apart its neighbours sit.
+     */
+    const corners = nodes.map((here, index) => {
+      const previous = nodes[(index - 1 + count) % count];
+      const next = nodes[(index + 1) % count];
       const arriving = away(here.handleIn ?? previous.point, here.point);
       const leaving = away(here.point, here.handleOut ?? next.point);
-      if (!arriving || !leaving) continue;
+      const turn = arriving && leaving ? angleBetween(arriving, leaving) : 0;
+      return { here, previous, next, arriving, leaving, turn };
+    });
+    const straight = (from: GlyphNode, to: GlyphNode) =>
+      from.handleOut === null && to.handleIn === null;
 
+    const used = new Set<number>();
+    for (let index = 0; index < count; index++) {
+      if (used.has(index)) continue;
+      const first = corners[index];
+      if (!first.arriving || !first.leaving || first.turn <= 0) continue;
+
+      /*
+       * A corner that has been cut off is still one corner.
+       *
+       * A chamfer turns every corner into two, a short flat between them,
+       * and a point grown out of each of the two gave every terminal a crown
+       * of spikes and the crotch of a k a cluster of thorns. Where a convex
+       * corner is followed, across a flat shorter than the point is long, by
+       * another turning the same way, the two are read as the one corner they
+       * were cut from: the point stands on the flat, out along the line the
+       * corner would have had, and the flat is its base.
+       */
+      let last = first;
+      let lastIndex = index;
+      if (chamfered.length > 0 && Math.abs(first.turn) < SHARP * 2.4) {
+        // Along the flat, past any points on it that do not turn, to the
+        // next corner -- if it comes soon enough.
+        let walked = 0;
+        let at = index;
+        for (let step = 1; step < count; step++) {
+          const onward = (index + step) % count;
+          const previousNode = corners[at].here;
+          const candidate = corners[onward];
+          if (!straight(previousNode, candidate.here)) break;
+          walked += distance(previousNode.point, candidate.here.point);
+          if (walked >= stem * 2) break;
+          if (Math.abs(candidate.turn) < (5 * Math.PI) / 180) {
+            at = onward;
+            continue;
+          }
+          // Only a pair the chamfer made: the two lines they leave along
+          // cross where a corner was cut off.
+          const was =
+            candidate.arriving && candidate.leaving
+              ? meeting(first.here.point, first.arriving, candidate.here.point, candidate.leaving)
+              : null;
+          if (
+            was &&
+            candidate.turn > 0 &&
+            candidate.turn < SHARP * 2.4 &&
+            chamfered.some((corner) => distance(corner, was) < Math.max(1, stem * 0.02))
+          ) {
+            last = candidate;
+            lastIndex = onward;
+          }
+          break;
+        }
+      }
+      const arriving = first.arriving;
+      const leaving = last.leaving as Vec2;
       const turn = angleBetween(arriving, leaving);
       if (Math.abs(turn) < SHARP) continue;
       /*
@@ -829,21 +955,36 @@ function spurTool(shape: Contour[], spur: Cast["spur"], stem: number): Contour[]
        * contour this is. The shape has come out of a union, so its outlines
        * run with the ink on their left -- anticlockwise round the outside,
        * clockwise round a counter -- and a turn to the left has the ink inside
-       * it on both.
-       *
-       * This used to flip the test for a counter, on the reading that a
-       * counter runs the other way and so turns the other way. It does run
-       * the other way, and that already puts the ink on its left; flipping it
-       * again picked out exactly the corners it meant to leave alone -- the
-       * corners of the counters themselves, where the ink is on the outside of
-       * the turn. Every square counter got a spike at each of its corners, aimed
-       * into the stem and the bar around it, and the union of those with the letter came back folded over itself at the B's and the b's.
+       * it on both. (It used to flip the test for a counter, and every square
+       * counter got a spike at each of its corners, aimed into the stem.)
        */
       if (turn <= 0) continue;
+      if (last !== first) {
+        for (let step = index; step !== lastIndex; step = (step + 1) % count) used.add(step);
+        used.add(lastIndex);
+      }
+
+      // The corner the point grows from: the one there was before any cut.
+      const start = first.here.point;
+      const finish = last.here.point;
+      const apex =
+        last === first
+          ? start
+          : (meeting(start, arriving, finish, leaving) ?? midway(start, finish));
 
       // Never more of the edge than there is edge to take, or the base of one
       // spike reaches the next corner and the two run together.
-      const room = Math.min(distance(here.point, previous.point), distance(here.point, next.point));
+      const room = Math.min(
+        distance(start, first.previous.point),
+        distance(finish, last.next.point),
+      );
+      /*
+       * Nor on a step: the notch where the shoulder of a Sans r leaves the
+       * top of its stem is a corner a few units across, and a point stood on
+       * it read as a nick in the shoulder. A corner has to have edges at least
+       * a good part of the point's length to carry one.
+       */
+      if (last === first && room < size * 0.45) continue;
       const base = Math.min(size * 0.7, room * 0.45);
       /*
        * And never longer than its base can hold up.
@@ -856,24 +997,93 @@ function spurTool(shape: Contour[], spur: Cast["spur"], stem: number): Contour[]
        * little over twice its base, a point on a short edge is a short point,
        * and one too small to see is not drawn.
        */
-      const reach = Math.min(size, base * 2.4);
-      if (reach < size * 0.2) continue;
+      let reach = Math.min(
+        size,
+        // A corner the chamfer cut stands on the whole of the flat it left.
+        Math.max(base * 2.4, last === first ? 0 : distance(start, finish) * 1.5),
+      );
 
       // Out of the corner is against the turn, along `arriving - leaving`.
       // The other sign points into the letter and buries the spike.
       const out = away({ x: leaving.x, y: leaving.y }, { x: arriving.x, y: arriving.y });
       if (!out) continue;
+      /*
+       * And never into the letter's own space.
+       *
+       * A corner can be convex and still face another part of the letter
+       * across a gap: the end of the tail of an e faces its crossbar across
+       * the aperture, the top of an r's stem sits under its shoulder, the
+       * inner corners of a k's arm and leg face the crotch. A point grown
+       * there ran across the gap and left a hairline of paper between itself
+       * and the stroke it nearly touched. So the point is held about its own
+       * length short of any ink it is aimed at, and where that leaves too
+       * little of it, it is not grown.
+       */
+      const clear = size * 0.9;
+      for (const spread of [0, 0.35, -0.35, 0.7, -0.7]) {
+        const cos = Math.cos(spread);
+        const sin = Math.sin(spread);
+        const way = { x: out.x * cos - out.y * sin, y: out.x * sin + out.y * cos };
+        const hit = rayHitDistance(outline, { x: apex.x + way.x, y: apex.y + way.y }, way);
+        if (Number.isFinite(hit)) reach = Math.min(reach, (hit + 1) * Math.cos(spread) - clear);
+      }
+      if (reach < size * 0.35) continue;
       added.push(
         poly([
-          { x: here.point.x - arriving.x * base, y: here.point.y - arriving.y * base },
-          { x: here.point.x + out.x * reach, y: here.point.y + out.y * reach },
-          { x: here.point.x + leaving.x * base, y: here.point.y + leaving.y * base },
+          { x: start.x - arriving.x * base, y: start.y - arriving.y * base },
+          ...(last === first ? [] : [start]),
+          { x: apex.x + out.x * reach, y: apex.y + out.y * reach },
+          ...(last === first ? [] : [finish]),
+          { x: finish.x + leaving.x * base, y: finish.y + leaving.y * base },
         ]),
       );
     }
   }
-  return added;
+  /*
+   * And two points that run into each other are neither drawn. Two corners
+   * close together on a heavy letter -- the end of the bar of an e and the
+   * tail beneath it -- each grew a point across the gap between them, and the
+   * two crossed as a star.
+   */
+  const boxes = added.map((one) => contoursBounds([one]));
+  const polygons = added.map((one) => one.nodes.map((node) => node.point));
+  return added.filter((_, index) =>
+    added.every(
+      (__, other) =>
+        other === index ||
+        !overlapping(boxes[index], boxes[other]) ||
+        !polygonsCross(polygons[index], polygons[other]),
+    ),
+  );
 }
+
+const overlapping = (a: Bounds, b: Bounds): boolean =>
+  a.xMin < b.xMax && b.xMin < a.xMax && a.yMin < b.yMax && b.yMin < a.yMax;
+
+/** Whether two simple polygons share any ground: an edge of each crossing. */
+function polygonsCross(one: Vec2[], other: Vec2[]): boolean {
+  const side = (p: Vec2, q: Vec2, r: Vec2) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  for (let i = 0; i < one.length; i++) {
+    const a = one[i];
+    const b = one[(i + 1) % one.length];
+    for (let j = 0; j < other.length; j++) {
+      const c = other[j];
+      const d = other[(j + 1) % other.length];
+      if (side(a, b, c) * side(a, b, d) < 0 && side(c, d, a) * side(c, d, b) < 0) return true;
+    }
+  }
+  return false;
+}
+
+/** Where two lines cross, each given by a point and a direction. */
+function meeting(a: Vec2, u: Vec2, b: Vec2, v: Vec2): Vec2 | null {
+  const cross = u.x * v.y - u.y * v.x;
+  if (Math.abs(cross) < 1e-9) return null;
+  const t = ((b.x - a.x) * v.y - (b.y - a.y) * v.x) / cross;
+  return { x: a.x + u.x * t, y: a.y + u.y * t };
+}
+
+const midway = (a: Vec2, b: Vec2): Vec2 => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
 /**
  * Ink piled into the corner wherever two strokes run into each other.
@@ -903,6 +1113,7 @@ function weldTool(
   weld: Cast["weld"],
   stem: number,
   shape: Contour[] = [],
+  breaks?: Breaks,
 ): Contour[] {
   const size = weld.size * stem;
   if (size <= 0 || strokes.length < 2) return [];
@@ -916,6 +1127,13 @@ function weldTool(
       ? undefined
       : (point: Vec2): boolean =>
           shape.filter((contour) => contourContainsPoint(contour, point)).length % 2 === 1;
+
+  // How far from a point inside the ink its edge lies, looking one way.
+  const outline = shape.map((contour) => flattenContour(contour, 16));
+  const edge =
+    shape.length === 0
+      ? undefined
+      : (point: Vec2, way: Vec2): number => rayHitDistance(outline, point, way);
 
   // Every stroke but the two meeting, as somewhere an arm can run into.
   const thirds = (one: number, other: number): Array<{ line: Vec2[]; stroke: Stroke }> =>
@@ -942,6 +1160,22 @@ function weldTool(
         }
       }
       if (closest >= near || where === null) continue;
+      /*
+       * Nor a join the split has opened. The two find the same joins, and
+       * with both on a fillet was still grown where the split had just cut:
+       * whichever went second, it stood beside the gap as a round hook or a
+       * notched sliver -- either side of the crossbar gap of an A, on the
+       * stem where the arm of a k came off. The break wins, since it is the
+       * one that changes what the letter is.
+       */
+      if (breaks?.parted.has(`${one}:${other}`)) continue;
+      /*
+       * Nor a vertex: two strokes meeting tip to tip at a sharp angle, the apex
+       * of a Serif A where the thin leg runs up past the thick one. There is
+       * no corner between them to fill, only the point they make, and a
+       * fillet laid there stood off the apex as a flag.
+       */
+      if (isVertex(samples[one], samples[other], at)) continue;
       const arms = [
         ...armsOf(strokes[one], samples[one], at[0], where, strokes[other], 0, thirds(one, other)),
         ...armsOf(
@@ -960,12 +1194,57 @@ function weldTool(
         // Only the corners between the two strokes. A stroke that bends at the
         // join has a corner of its own there, and it is not a join.
         if (from.stroke === to.stroke) continue;
-        const fillet = filletBetween(where, from, to, size, ink);
-        if (fillet) added.push(fillet);
+        const fillet = filletBetween(where, from, to, size, ink, edge);
+        if (fillet && !(breaks && acrossBreak(fillet, breaks.knives))) added.push(fillet);
       }
     }
   }
   return added;
+}
+
+/** Where the split cuts, and which pairs of strokes it parts (`pairKey`). */
+export interface Breaks {
+  knives: Contour[];
+  parted: Set<string>;
+}
+
+/**
+ * Whether a fillet reaches into a gap the split has cut, even at a join the
+ * split left whole: where the arm and leg of a k come away from the stem
+ * together, the fillet between them stood out into the gap as a wedge.
+ */
+function acrossBreak(fillet: Contour, knives: Contour[]): boolean {
+  if (knives.length === 0) return false;
+  const box = contoursBounds([fillet]);
+  const near = knives.filter((knife) => {
+    const other = contoursBounds([knife]);
+    return (
+      other.xMin < box.xMax &&
+      other.xMax > box.xMin &&
+      other.yMin < box.yMax &&
+      other.yMax > box.yMin
+    );
+  });
+  if (near.length === 0) return false;
+  const shared = intersect([fillet], near, "winding");
+  const area = shared.reduce((total, one) => total + Math.abs(contourArea(one)), 0);
+  return area > Math.abs(contourArea(fillet)) * 0.02;
+}
+
+/** Whether two sampled spines meet tip to tip at a sharp angle. */
+function isVertex(one: Vec2[], other: Vec2[], at: [number, number]): boolean {
+  const tip = (line: Vec2[], index: number): Vec2 | null => {
+    const last = line.length - 1;
+    const near = Math.ceil(last * 0.1);
+    if (index > near && index < last - near) return null;
+    const end = index <= near ? 0 : last;
+    const step = near + 2;
+    return away(line[end], line[end === 0 ? Math.min(last, step) : Math.max(0, last - step)]);
+  };
+  const a = tip(one, at[0]);
+  const b = tip(other, at[1]);
+  if (!a || !b) return false;
+  return a.x * b.x + a.y * b.y > Math.cos((70 * Math.PI) / 180);
 }
 
 /** One stroke leaving a join: which way, how wide, and how far it runs. */
@@ -1107,6 +1386,7 @@ function filletBetween(
   to: Arm,
   radius: number,
   ink?: (point: Vec2) => boolean,
+  edge?: (from: Vec2, way: Vec2) => number,
 ): Contour | null {
   let opening = to.angle - from.angle;
   if (opening <= 0) opening += Math.PI * 2;
@@ -1118,17 +1398,47 @@ function filletBetween(
   const u2 = to.direction;
   const n1 = { x: -u1.y, y: u1.x };
   const n2 = { x: u2.y, y: -u2.x };
-  // Where the two inner edges cross, as a distance along each arm.
   const sin = Math.sin(opening);
   const cos = Math.cos(opening);
-  const cornerAlong1 = (to.half + from.half * cos) / sin;
-  const cornerAlong2 = (from.half + to.half * cos) / sin;
   const reachFromCorner = 1 / Math.tan(opening / 2);
+  /*
+   * How far each edge really stands from the line the arm leaves along,
+   * measured off the ink where the arc will touch it.
+   *
+   * The pen says how wide a stroke is swept, and a face drawn to match
+   * another is not always as wide as its pen where two strokes meet: the
+   * crossbar of a Sans A and the foot of the bowl of its R are drawn thinner
+   * than the stem. A fillet built against the pen's width touched a line a few
+   * units inside the paper, and where it met the real edge it left a step --
+   * a notch under each end of the arc. Read off the letter, the arc lands on
+   * the edge it is meant to meet.
+   */
+  let half1 = from.half;
+  let half2 = to.half;
+  if (edge) {
+    for (let pass = 0; pass < 2; pass++) {
+      const along1 = (half2 + half1 * cos) / sin + radius * reachFromCorner;
+      const along2 = (half1 + half2 * cos) / sin + radius * reachFromCorner;
+      const one = edge({ x: join.x + u1.x * along1, y: join.y + u1.y * along1 }, n1);
+      const two = edge({ x: join.x + u2.x * along2, y: join.y + u2.y * along2 }, n2);
+      if (one > from.half * 0.5 && one < from.half * 1.3) half1 = one;
+      if (two > to.half * 0.5 && two < to.half * 1.3) half2 = two;
+    }
+  }
+  // Where the two inner edges cross, as a distance along each arm.
+  const cornerAlong1 = (half2 + half1 * cos) / sin;
+  const cornerAlong2 = (half1 + half2 * cos) / sin;
   const room = Math.min(
     straightFor(join, from, n1) - cornerAlong1,
     straightFor(join, to, n2) - cornerAlong2,
   );
-  let r = Math.min(radius, room / reachFromCorner);
+  /*
+   * And never more than a little under half the room, so the fillets at the
+   * two ends of a short stroke do not meet in its middle: the crossbar of a
+   * Serif A welded at a stem's radius turned the counter above it into a
+   * round hole.
+   */
+  let r = Math.min(radius, (room * 0.45) / reachFromCorner);
   /*
    * Held to where both edges really are.
    *
@@ -1151,7 +1461,7 @@ function filletBetween(
         x: join.x + u.x * (along + reach) + n.x * half * 0.6,
         y: join.y + u.y * (along + reach) + n.y * half * 0.6,
       });
-      if (ink(lean(u1, n1, from.half, cornerAlong1)) && ink(lean(u2, n2, to.half, cornerAlong2))) {
+      if (ink(lean(u1, n1, half1, cornerAlong1)) && ink(lean(u2, n2, half2, cornerAlong2))) {
         found = true;
         break;
       }
@@ -1159,7 +1469,12 @@ function filletBetween(
     }
     if (!found) return null;
   }
-  if (!(r > 0.5)) return null;
+  /*
+   * A fillet cut down to a sliver of what was asked for is not one: an arc a
+   * few units round, in a corner that turns away from it, printed as a nick
+   * -- at the waist of a Serif B, where the arm of a k meets its leg.
+   */
+  if (!(r > 0.5) || r < radius * 0.25) return null;
 
   const along1 = cornerAlong1 + r * reachFromCorner;
   const along2 = cornerAlong2 + r * reachFromCorner;
@@ -1167,10 +1482,10 @@ function filletBetween(
     x: join.x + u.x * along + n.x * half * off,
     y: join.y + u.y * along + n.y * half * off,
   });
-  const spine1 = on(u1, n1, from.half, along1, 0);
-  const touch1 = on(u1, n1, from.half, along1, 1);
-  const touch2 = on(u2, n2, to.half, along2, 1);
-  const spine2 = on(u2, n2, to.half, along2, 0);
+  const spine1 = on(u1, n1, half1, along1, 0);
+  const touch1 = on(u1, n1, half1, along1, 1);
+  const touch2 = on(u2, n2, half2, along2, 1);
+  const spine2 = on(u2, n2, half2, along2, 0);
   // The arc turns through what the corner does not, and a quarter of that
   // sets how far its handles reach.
   const pull = (4 / 3) * Math.tan((Math.PI - opening) / 4) * r;
