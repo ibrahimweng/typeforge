@@ -884,9 +884,12 @@ function splitPlan(
    * The least a break may cut free. The exit stroke of a script H or A is a
    * short flick off the foot of the stem, and a gap at its root left the
    * rest of it lying beside the letter as a full stop. A loose end shorter
-   * than this stays on if it is longer than a stem or thinner than two
-   * fifths of one: a flick. One shorter than a stem and as thick as the arms of a
-   * Display E is a block, and comes off as one.
+   * than this stays on if it is longer than a stem, thinner than two fifths
+   * of one, or drawn round: a flick. One shorter than a stem, as thick as the
+   * arms of a Display E and as straight is a block, and comes off as one.
+   * Round counts on its own because a script's lead-out now stops half its
+   * weld past the seam, and the Formal Script's broad-nib flick came out a
+   * few units shorter than its stem and as thick as a block.
    */
   const least = xHeight * 0.3;
   if (gap <= 0 || strokes.length < 2) return { knives: [], parted: new Set() };
@@ -1077,7 +1080,8 @@ function splitPlan(
           x: -(tip.y - root.y) / reach,
           y: (tip.x - root.x) / reach,
         });
-      if (placed && loose && freed < least && (freed > stem || wide < stem * 0.4)) continue;
+      const flick = freed > stem || wide < stem * 0.4 || arcsIn(strokes[gives]) > 0;
+      if (placed && loose && freed < least && flick) continue;
       if (placed) {
         const meet = samples[keeps][gives === one ? where[1] : where[0]];
         found.push({ ...placed, stroke: gives, keeps, meet });

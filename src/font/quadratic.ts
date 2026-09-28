@@ -278,15 +278,17 @@ function snapRoundedControls(points: GlyfPoint[]): GlyfPoint[] {
     if (!before.onCurve || !after.onCurve) continue;
 
     for (const axis of ["x", "y"] as const) {
-      // A control sitting on the far side of an endpoint from the other
-      // endpoint means the curve turns just inside, rather than on the point.
-      const pastBefore = (control[axis] - before[axis]) * (after[axis] - before[axis]) < 0;
-      const pastAfter = (control[axis] - after[axis]) * (before[axis] - after[axis]) < 0;
+      // A control outside the span of its two endpoints means the curve turns
+      // just inside, rather than on a point. That includes two ends rounded
+      // level with each other and the control a unit to one side: the turn
+      // then falls halfway along, which is no point at all.
+      const low = Math.min(before[axis], after[axis]);
+      const high = Math.max(before[axis], after[axis]);
 
-      if (pastBefore && Math.abs(control[axis] - before[axis]) <= MAX_SNAP_UNITS) {
-        control[axis] = before[axis];
-      } else if (pastAfter && Math.abs(control[axis] - after[axis]) <= MAX_SNAP_UNITS) {
-        control[axis] = after[axis];
+      if (control[axis] < low && low - control[axis] <= MAX_SNAP_UNITS) {
+        control[axis] = low;
+      } else if (control[axis] > high && control[axis] - high <= MAX_SNAP_UNITS) {
+        control[axis] = high;
       }
     }
   }
