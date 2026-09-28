@@ -764,6 +764,8 @@ export const SANS: Style = {
       equal: [0.5, 0.5],
       underscore: [0.55, 0.55],
       asciitilde: [0.5, 0.5],
+      // Geist's stands 55 off either side at the Regular; fitted, 44 and 34.
+      dollar: [0.69, 0.69],
       grave: [0.55, 0.55],
       acute: [0.55, 0.55],
       at: [0.61, 0.61],
@@ -896,6 +898,7 @@ export const SANS: Style = {
     circumflex: "grotesque",
     dieresis: "grotesque",
     tilde: "grotesque",
+    dollar: "grotesque",
     zero: "grotesque",
     two: "grotesque",
     three: "grotesque",

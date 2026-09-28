@@ -578,6 +578,25 @@ describe("the accents' places", () => {
   });
 });
 
+describe("the dollar", () => {
+  it("has Geist's long light bar, and Geist's sides", () => {
+    // Geist's bar runs from 90 under the line to 800, 74 across at the
+    // Regular; its ink stands 55 off either side. The plain bar stood out 53
+    // (to 763) and was nearly the stem's weight, and the fitting set the
+    // dollar at 44 and 34. Held a few units inside what the health check
+    // allows past the ascender.
+    const drawn = draw("dollar", 87);
+    const ink = contoursBounds(drawn.contours);
+    expect(ink.yMin).toBeCloseTo(-90, -1);
+    expect(ink.yMax).toBeGreaterThan(790);
+    const bar = filled(drawn.contours, 770, "y");
+    expect(bar.length).toBe(1);
+    expect(bar[0][1] - bar[0][0]).toBeCloseTo(74, -1);
+    expect(ink.xMin).toBeCloseTo(55, -1);
+    expect(drawn.advanceWidth - ink.xMax).toBeCloseTo(55, -1);
+  });
+});
+
 describe("the s's width", () => {
   it("spreads as Geist's does from the Regular to the Black", () => {
     // Geist's ink widths at its Regular and Black. Pen 130 is halfway between

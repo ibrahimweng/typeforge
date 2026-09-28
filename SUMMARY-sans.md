@@ -123,6 +123,12 @@ feet (the plain one came to a point). The dieresis dots are cut square,
 larger and further apart. The tilde is the same two-arc wave as the ASCII
 tilde, smaller.
 
+**$.** New Sans dollar: the S with Geist's bar, light at every weight (74
+across at the Regular, 86 at the Black) and running from 90 under the line
+to 800, held a few units inside the health check's allowance. The plain bar
+stood out only 53 and was nearly the stem's weight. The dollar also stands
+at Geist's 55 off either side; the fitting had set it at 44 and 34.
+
 **Accent places (shared files, off for other faces).** Geist stands its
 accents 55 units over a lowercase letter and 66 over a capital. The shared
 gap was 28 and 13. It also sets a steep grave or acute with its foot over the

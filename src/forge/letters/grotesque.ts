@@ -3212,24 +3212,64 @@ export function grotesqueS(style: Style): Recipe {
 /** The S: see `ess`. */
 export function grotesqueCapitalS(style: Style): Recipe {
   const f = frame(stackedPen(style, CAPITAL_ESS_GAIN));
-  return finish(
-    f,
-    [
-      ...ess(f, {
-        height: f.cap,
-        geist: 710,
-        unit: large(f, 1),
-        left: 118,
-        upper: { x: 322, y: [540, 510], w: 204 },
-        lower: { x: 326, y: [180, 200], w: 220 },
-        head: [505, 465],
-        foot: [225, 250],
-        blackWiden: 9,
-        inner: 0.42,
-      }),
-    ],
-    true,
+  return finish(f, capitalEss(f), true);
+}
+
+/** The S's strokes, for the S and for the dollar. */
+function capitalEss(f: Frame): Stroke[] {
+  return ess(f, {
+    height: f.cap,
+    geist: 710,
+    unit: large(f, 1),
+    left: 118,
+    upper: { x: 322, y: [540, 510], w: 204 },
+    lower: { x: 326, y: [180, 200], w: 220 },
+    head: [505, 465],
+    foot: [225, 250],
+    blackWiden: 9,
+    inner: 0.42,
+  });
+}
+
+/**
+ * The dollar, as Geist's: the S, and a bar straight through it from 90 under
+ * the line to 800, a light one at every weight -- 74 across on the Regular,
+ * 30 on the Thin, 86 on the Black. The plain dollar's bar stood out only a
+ * little past the S, and was nearly as heavy as its stem.
+ */
+export function grotesqueDollar(style: Style): Recipe {
+  const f = frame(stackedPen(style, CAPITAL_ESS_GAIN));
+  const [X, lerp] = squared(f);
+  const strokes = capitalEss(f);
+  // Through the middle of the S as it is drawn: halfway across its spines.
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const stroke of strokes) {
+    for (const one of stroke.spine.segments) {
+      const xs =
+        one.kind === "line"
+          ? [one.from.x, one.to.x]
+          : [one.startAngle, (one.startAngle + one.endAngle) / 2, one.endAngle].map(
+              (angle) => one.centre.x + one.radius * Math.cos(angle),
+            );
+      lo = Math.min(lo, ...xs);
+      hi = Math.max(hi, ...xs);
+    }
+  }
+  const centre = (lo + hi) / 2;
+  // Held inside what the health check lets a letter reach past its lines:
+  // at a Light that is a little short of Geist's 800.
+  const { metrics, pen } = f.style;
+  const top = Math.min(
+    up(f, 800),
+    metrics.ascender + Math.max(pen.weight, metrics.unitsPerEm * 0.06) - 3,
   );
+  const bar = measured(
+    f,
+    straight(at(centre, up(f, -90)), at(centre, top)),
+    lerp(74, 86, 30) * (X(1) - X(0)),
+  );
+  return finish(f, [...strokes, bar], true);
 }
 
 /**
