@@ -152,7 +152,7 @@ export function castInk(
   // No outline left crossing itself: see the same step in `cutInk`.
   // And swept again after it, which can tie off a pinhole of its own.
   return done.some((contour) => contoursIntersect([contour]))
-    ? withoutSpecks(unite(done, "winding", "whole"), stem, smallest)
+    ? withoutSpecks(untangled(done), stem, smallest)
     : done;
 }
 
@@ -362,6 +362,32 @@ function groundOf(loop: Contour, solid: Contour): Contour[] {
     if (area >= least) return ground;
   }
   return [solid];
+}
+
+/**
+ * A letter with no outline crossing itself.
+ *
+ * One union resolves nearly every loop a cut or a cast ties -- but not all:
+ * where two edges meet at a point that agrees to fifteen digits and not to
+ * sixteen, the boolean library can hand back the same loop of a unit or so it
+ * was given, on the foot of a heavy Serif B under the saw or the join of a
+ * Formal Script h under a shadow. So a loop that survives the union is tried
+ * once more on a fine grid, which is nothing on the page and makes the
+ * meeting point one point. Given back as it came if that fails too.
+ */
+export function untangled(shape: Contour[]): Contour[] {
+  if (!shape.some((contour) => contoursIntersect([contour]))) return shape;
+  const once = unite(shape, "winding", "whole");
+  if (!once.some((contour) => contoursIntersect([contour]))) return once;
+  for (const per of [8, 2, 1]) {
+    const again = unite(
+      once.map((contour) => onGrid(contour, per)),
+      "winding",
+      "whole",
+    );
+    if (!again.some((contour) => contoursIntersect([contour]))) return again;
+  }
+  return once;
 }
 
 /** An outline with every point and handle set to the nearest step of `1 / per`. */

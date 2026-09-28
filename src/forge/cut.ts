@@ -36,7 +36,7 @@ import {
 import { contoursIntersect } from "@/font/outline";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { alongSpine, spineLength } from "./shapes";
-import { eroded, outlined } from "./cast";
+import { eroded, outlined, untangled } from "./cast";
 import { penReach, sweep } from "./sweep";
 import type { Style } from "./style";
 import type { Spine, SpineSegment, Stroke } from "./types";
@@ -269,9 +269,8 @@ export function cutInk(
    * leave a loop of a unit or two tied in it -- nothing on the page, and a
    * fault in the file; one more union resolves it.
    */
-  if (shape.some((contour) => contoursIntersect([contour])))
-    shape = unite(shape, "winding", "whole");
-  shape = shape.map(withoutHairs);
+  // After the hairs are taken off, since dropping one can fold what is left.
+  shape = untangled(shape.map(withoutHairs));
 
   return {
     contours: shape,

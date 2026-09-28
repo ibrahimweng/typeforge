@@ -19,6 +19,7 @@ import {
   flattenContour,
   inkRunsAt,
 } from "@/font/geometry";
+import { contoursIntersect } from "@/font/outline";
 import type { Contour, Vec2 } from "@/font/types";
 import {
   draw,
@@ -574,6 +575,26 @@ describe("slots", () => {
         // across it.
         expect(breadthOf(contour), letter).toBeGreaterThan(weight * 0.3);
       }
+    }
+  });
+});
+
+describe("every outline", () => {
+  it("comes out of a cut, a cast and the pressure with no loop tied in it", () => {
+    // A loop of a unit or so that one union handed back as it was given: the
+    // foot of a heavy Serif B under the saw, a Formal Script h under slots.
+    const cases: Array<[string, number, string, Row]> = [
+      ["Serif", 260, "B", { cuts: { tooth: { edge: "both" } } }],
+      ["Serif", 260, "p", { cuts: { tooth: { edge: "both" } } }],
+      ["Formal Script", 70, "h", { cuts: { slot: { count: 3, angle: 15 } } }],
+      ["Formal Script", 70, "m", { cuts: { split: {} }, cast: { extrude: {} }, order: "after" }],
+      ["Display", 205, "s", { cuts: { chamfer: {} } }],
+    ];
+    for (const [face, weight, letter, row] of cases) {
+      const crossed = drawn(letter, forgeOf(face, weight, row)).filter((contour) =>
+        contoursIntersect([contour]),
+      );
+      expect(crossed.length, `${face} ${weight} ${letter}`).toBe(0);
     }
   });
 });

@@ -35,6 +35,7 @@ import {
   type PoolWhere,
   type RoughReach,
 } from "@/font/effects";
+import { untangled } from "./cast";
 import type { CutScale } from "./cut";
 import { alongSpine, spineLength } from "./shapes";
 import { penReach, reachAlong, sweep } from "./sweep";
@@ -245,9 +246,11 @@ export function effectInk(
       (stroke) => stroke.pen.weight * (1 - Math.min(Math.max(stroke.pen.contrast, 0), 0.95)),
     ),
   );
-  return canCarve
-    ? swept(shape, stem, strokes).map((contour) => unsplintered(contour, stem, hairline))
-    : shape;
+  if (!canCarve) return shape;
+  // And no outline left crossing itself, as after the cut and the cast.
+  return untangled(
+    swept(shape, stem, strokes).map((contour) => unsplintered(contour, stem, hairline)),
+  );
 }
 
 /**
