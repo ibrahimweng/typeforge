@@ -781,3 +781,33 @@ describe("the motif", () => {
     }
   });
 });
+
+/** Points where an outline turns inwards by more than thirty degrees. */
+function inwardTurns(contours: Contour[]): number {
+  let count = 0;
+  for (const contour of unite(contours, "winding")) {
+    const points = flattenContour(contour, 2);
+    const wound = Math.sign(contourArea(contour));
+    for (let index = 0; index < points.length; index++) {
+      const a = points[(index - 1 + points.length) % points.length];
+      const b = points[index];
+      const c = points[(index + 1) % points.length];
+      const u = { x: b.x - a.x, y: b.y - a.y };
+      const v = { x: c.x - b.x, y: c.y - b.y };
+      const turn = Math.atan2(u.x * v.y - u.y * v.x, u.x * v.x + u.y * v.y) * wound;
+      if (turn < -Math.PI / 6) count++;
+    }
+  }
+  return count;
+}
+
+describe("slots through a crotch", () => {
+  it("leave no notch of paper standing into the band's edge", () => {
+    // Under the leg of a Black k, where it leaves the stem, the band's edge
+    // passed just by the crotch and left its paper as a V a few units across.
+    // Every piece of the slotted k is otherwise convex.
+    const slotted = drawn("k", forgeOf("Sans", 260, { cuts: { slot: { count: 3, angle: 15 } } }));
+    expect(inwardTurns(slotted)).toBe(0);
+    expect(piecesOf(slotted)).toBe(3);
+  });
+});

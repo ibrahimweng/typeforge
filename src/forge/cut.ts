@@ -211,7 +211,8 @@ export function cutInk(
   // The straight knives, whose edges can shave a sliver off a stroke they
   // cross at a slant: see `withoutSlivers`.
   const straight: Contour[] = [];
-  if (cuts.slot.on) straight.push(...slotTool(bounds, cuts.slot, stem, scale));
+  const slots = cuts.slot.on ? slotTool(bounds, cuts.slot, stem, scale) : [];
+  straight.push(...slots);
   if (cuts.tooth.on) straight.push(...toothTool(bounds, cuts.tooth, stem, scale, shape));
   const breaks = cuts.split.on
     ? splitTool(strokes, cuts.split, stem, scale.xHeight, cast)
@@ -253,6 +254,7 @@ export function cutInk(
     }
   }
   shape = withoutSlivers(shape, straight, Math.min(stem * 0.07, hairlineOf(strokes, stem) * 0.3));
+  shape = withoutNotches(shape, slots, stem * 0.2);
 
   const chamfered: Vec2[] = [];
   if (cuts.chamfer.on) shape = take(shape, chamferTool(shape, cuts.chamfer, stem, chamfered));
@@ -349,6 +351,37 @@ function hairlineOf(strokes: Stroke[], stem: number): number {
       (stroke) => stroke.pen.weight * (1 - Math.min(Math.max(stroke.pen.contrast, 0), 0.95)),
     ),
   );
+}
+
+/**
+ * The letter with the notches of paper a straight knife left filled back in.
+ *
+ * Where a band's edge passes just by the crotch of a join -- under the leg of
+ * a Black k, where it leaves the stem -- the paper of the crotch stands into
+ * the edge of the band as a small V, a spike of white a few units across. It
+ * is found as paper lying wholly within a thin strip along the knife: a
+ * counter or the paper round the letter runs on out of the strip, a notch
+ * closes inside it, and is no bigger than the strip is deep -- the paper of a
+ * counter beside a band can lie wholly in the strip too, but as a long run.
+ * Only the slots: the breaks' gaps are cut by more than their own knives, and
+ * the paper those leave is a gap, not a notch.
+ */
+function withoutNotches(shape: Contour[], knife: Contour[], depth: number): Contour[] {
+  if (knife.length === 0 || depth < 1) return shape;
+  const cutters = unite(knife, "winding");
+  const strip = subtract(outlined(cutters, depth), cutters, "winding");
+  const paper = subtract(strip, shape, "winding").filter((one) => contourArea(one) > 0);
+  if (paper.length === 0) return shape;
+  const inner = outlined(cutters, depth * 0.9);
+  const notches = paper.filter(
+    (one) =>
+      contourArea(one) < depth * depth &&
+      subtract([one], inner, "winding").every((rest) => Math.abs(contourArea(rest)) < 1),
+  );
+  if (notches.length === 0) return shape;
+  // Filling a notch never joins what the cut parted.
+  const filled = unite([...shape, ...notches], "winding", "whole");
+  return pieces(filled) < pieces(shape) ? shape : filled;
 }
 
 /**
