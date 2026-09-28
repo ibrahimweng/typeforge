@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { deriveParams, isControlGlyph, readControls, type ControlReadings } from "./control";
+import { contoursBounds } from "./geometry";
 import { measureGlyph } from "./measure";
 import { resolveGlyphContours } from "./transform";
 import { DEFAULT_PARAMS, type Contour, type Glyph, type Typeface, type Vec2 } from "./types";
@@ -234,7 +235,7 @@ describe("opening a counter", () => {
    * size relative to it. On a ring of 0..800 with a counter of 200..600, asking
    * for 1.5 gave an outer of -200..1000 and a counter of 100..700.
    */
-  it("moves the counter and leaves the outside of the letter where it was", () => {
+  it("opens the counter, the walls following it across and keeping their weight", () => {
     const ring = [rect(0, 0, 800, 800), rect(200, 200, 400, 400)];
     const target = glyph("o", ring);
     const family = typeface([target]);
@@ -244,9 +245,16 @@ describe("opening a counter", () => {
     const outer = measureGlyph([resolved[0]], 1000)!;
     const counter = measureGlyph([resolved[1]], 1000)!;
 
-    expect(outer.inkLeft).toBeCloseTo(0, 6);
-    expect(outer.inkRight).toBeCloseTo(800, 6);
+    // The counter opened to 600 across, and the walls either side of it are
+    // still 200: the letter is wider, not its strokes lighter, and not the
+    // whole letter scaled -- the counter is a bigger share of it than it was.
     expect(counter.inkRight - counter.inkLeft).toBeCloseTo(600, 6);
+    expect(counter.inkLeft - outer.inkLeft).toBeCloseTo(200, 6);
+    expect(outer.inkRight - counter.inkRight).toBeCloseTo(200, 6);
+    // Its side bearing kept, and its height.
+    expect(outer.inkLeft).toBeCloseTo(0, 6);
+    const box = contoursBounds([resolved[0]]);
+    expect(box.yMax - box.yMin).toBeCloseTo(800, 6);
   });
 
   it("closes a counter as well as opening one", () => {
@@ -256,8 +264,11 @@ describe("opening a counter", () => {
     family.params = { ...DEFAULT_PARAMS, counterScale: 0.5 };
 
     const resolved = resolveGlyphContours(target, family);
-    expect(measureGlyph([resolved[0]], 1000)!.inkRight).toBeCloseTo(800, 6);
+    const outer = measureGlyph([resolved[0]], 1000)!;
     const counter = measureGlyph([resolved[1]], 1000)!;
+    // Closed by 100 each side, and the walls follow it half the way: they
+    // are 250 across now, and the letter 700 wide.
     expect(counter.inkRight - counter.inkLeft).toBeCloseTo(200, 6);
+    expect(outer.inkRight - outer.inkLeft).toBeCloseTo(700, 6);
   });
 });

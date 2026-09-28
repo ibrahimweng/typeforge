@@ -201,8 +201,24 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
     }
     slabbedLetter = contours;
   }
-  if (params.counterScale !== 1)
+  /*
+   * What the counters' walls, following them, took off or added beside the
+   * letter -- see `followCounters` -- is its side bearings' to keep, as the
+   * weight's is: a narrower o is spaced as an o, not left with gaps round it.
+   */
+  let counterGrowth = { left: 0, right: 0 };
+  if (params.counterScale !== 1) {
+    const unscaled = contoursBounds(contours);
     contours = applyCounterScale(contours, params.counterScale, typeface.unitsPerEm * MIN_STROKE);
+    counterGrowth = sideGrowth(unscaled, contoursBounds(contours), 0);
+    if (counterGrowth.left !== 0) {
+      const over = (contour: Contour) =>
+        mapContour(contour, (point) => ({ x: point.x + counterGrowth.left, y: point.y }));
+      contours = contours.map(over);
+      slabs = slabs.map(over);
+      slabbedLetter = slabbedLetter.map(over);
+    }
+  }
   if (params.weight !== 0) {
     // Whether a contour is ink or a hole decides which way it has to move, and
     // that cannot be read off its winding: DejaVu winds the outer contour of I
@@ -236,13 +252,19 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
      * advance into the next letter, and x and v into both of theirs.
      */
     const growth = sideGrowth(unweighted, contoursBounds([...contours, ...slabs]), params.weight);
-    growths.set(glyph, { key: growthKey(glyph, typeface, params), ...growth });
+    growths.set(glyph, {
+      key: growthKey(glyph, typeface, params),
+      left: growth.left + counterGrowth.left,
+      right: growth.right + counterGrowth.right,
+    });
     const shift = growth.left;
     contours = contours.map((contour) =>
       mapContour(contour, (point) => ({ x: point.x + shift, y: point.y })),
     );
     slabs = slabs.map((slab) => mapContour(slab, (point) => ({ x: point.x + shift, y: point.y })));
   }
+  if (params.weight === 0 && params.counterScale !== 1)
+    growths.set(glyph, { key: growthKey(glyph, typeface, params), ...counterGrowth });
   /*
    * The slabs are weighted apart from the letter and join it here -- see
    * `weighSlabs` -- and it is the letter alone that the weight measured.
@@ -392,7 +414,7 @@ function growthKey(glyph: Glyph, typeface: Typeface, params: GlyphParams): strin
 }
 
 function weightRoom(glyph: Glyph, typeface: Typeface, params: GlyphParams): number {
-  if (params.weight === 0) return 0;
+  if (params.weight === 0 && params.counterScale === 1) return 0;
   const key = growthKey(glyph, typeface, params);
   let known = growths.get(glyph);
   if (known?.key !== key) {
@@ -981,6 +1003,7 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
   const walls = contours.map((contour) => flattenContour(contour, 8));
   const amount = Math.abs(factor - 1);
   const opening = factor > 1;
+  const follow = opening ? FOLLOW_OPENING : FOLLOW_CLOSING;
 
   /*
    * How far a wall of ink may give way to the counter beside it, or grow into
@@ -1023,7 +1046,7 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
     return limit - (rest * rest) / (wanted - knee + rest);
   };
 
-  return contours.map((contour, index) => {
+  const scaled = contours.map((contour, index) => {
     if (outer[index]) return contour;
     const segments = contourSegments(contour);
     if (segments.length === 0) return contour;
@@ -1063,15 +1086,29 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
      * Each side is asked at every sample on its half of the counter, looking
      * straight out along the axis it moves on, and takes the tightest answer.
      */
-    const sides = { left: 1, right: 1, below: 1, above: 1 };
+    /*
+     * A side whose wall is a straight line of the drawing -- the stem of a b,
+     * the legs of an A -- does not move: the wall cannot follow it without
+     * bending, and moved alone into it the counter made the stem heavier.
+     * The counter changes from its round sides.
+     */
+    const follows = {
+      left: wallBeside(contours, outer, contour, -1) !== "leaning",
+      right: wallBeside(contours, outer, contour, 1) !== "leaning",
+    };
+    const sides = { left: follows.left ? 1 : 0, right: follows.right ? 1 : 0, below: 1, above: 1 };
     for (const at of samples) {
       const dx = at.x - middle.x;
       const dy = at.y - middle.y;
+      // A side whose wall follows it across takes only the rest from it.
       if (dx !== 0) {
-        const wanted = amount * Math.abs(dx);
-        const wall = wallAhead(at, { x: Math.sign(dx), y: 0 });
         const key = dx > 0 ? "right" : "left";
-        sides[key] = Math.min(sides[key], allowed(wanted, wall) / wanted);
+        const share = follows[key] ? 1 - follow : 1;
+        if (share > 0) {
+          const wanted = amount * Math.abs(dx);
+          const wall = wallAhead(at, { x: Math.sign(dx), y: 0 });
+          sides[key] = Math.min(sides[key], allowed(wanted * share, wall) / (wanted * share));
+        }
       }
       if (dy !== 0) {
         const wanted = amount * Math.abs(dy);
@@ -1086,7 +1123,7 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
       const dx = point.x - middle.x;
       const dy = point.y - middle.y;
       const across = scaleOf((dx > 0 ? sides.right : sides.left) * by);
-      const up = scaleOf((dy > 0 ? sides.above : sides.below) * by);
+      const up = scaleOf((dy > 0 ? sides.above : sides.below) * by * COUNTER_UPRIGHT);
       return { x: middle.x + dx * across, y: middle.y + dy * up };
     };
 
@@ -1099,7 +1136,10 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
      */
     for (let pass = 0; pass < 2; pass++) {
       for (const at of samples) {
-        const moved = sub(place(at, 1), at);
+        const shifted = sub(place(at, 1), at);
+        // Only what goes into a wall that stays put.
+        const followed = follows[at.x > middle.x ? "right" : "left"];
+        const moved = { x: shifted.x * (followed ? 1 - follow : 1), y: shifted.y };
         const length = Math.hypot(moved.x, moved.y);
         if (length === 0) continue;
         const heading = { x: moved.x / length, y: moved.y / length };
@@ -1139,9 +1179,13 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
     const crossedBefore = contours.map((other, which) =>
       which === index ? contoursIntersect([contour]) : contoursIntersect([contour, other]),
     );
+    // Against the walls where they will not follow; those that do are
+    // checked once they have moved, in `followCounters`.
+    const alone = !follows.left && !follows.right;
     const sound = (trial: Contour): boolean =>
       contours.every((other, which) => {
         if (crossedBefore[which]) return true;
+        if (which !== index && !alone) return true;
         return which === index ? !contoursIntersect([trial]) : !contoursIntersect([trial, other]);
       });
 
@@ -1156,6 +1200,162 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
     }
     return low === 0 ? contour : build(low);
   });
+  return followCounters(contours, scaled, outer, follow);
+}
+
+/**
+ * What kind of wall stands beyond one side of a counter: a straight line of
+ * the drawing standing upright (a stem, the side of a square o), which can
+ * move if all of that side moves with it; one leaning (the leg of an A, the
+ * diagonal of a 4), which cannot move without bending or parting from the
+ * stroke it meets; or a round one, which can follow its counter and ease
+ * back along its length. A ray from the counter's side, at its middle
+ * height, across the ink says which piece of outline it meets first.
+ */
+type Wall = "upright" | "leaning" | "round";
+function wallBeside(contours: Contour[], outer: boolean[], counter: Contour, side: -1 | 1): Wall {
+  const was = contoursBounds([counter]);
+  const tall = was.yMax - was.yMin;
+  const middle = (was.yMin + was.yMax) / 2;
+  const from = { x: side < 0 ? was.xMin : was.xMax, y: middle };
+  let hit = Infinity;
+  let kind: Wall = "leaning";
+  contours.forEach((other, which) => {
+    if (!outer[which]) return;
+    for (const segment of contourSegments(other)) {
+      const points =
+        segment.kind === "line"
+          ? [segment.from, segment.to]
+          : Array.from({ length: 25 }, (_, k) =>
+              cubicAt(segment.from, segment.c1, segment.c2, segment.to, k / 24),
+            );
+      for (let k = 0; k + 1 < points.length; k++) {
+        const [a, b] = [points[k], points[k + 1]];
+        if ((a.y - middle) * (b.y - middle) > 0 || a.y === b.y) continue;
+        const x = a.x + ((middle - a.y) / (b.y - a.y)) * (b.x - a.x);
+        const ahead = (x - from.x) * side;
+        if (ahead > 0.5 && ahead < hit) {
+          hit = ahead;
+          const long = segment.kind === "line" && distance(segment.from, segment.to) >= tall * 0.5;
+          const upright =
+            Math.abs(segment.to.x - segment.from.x) <=
+            Math.abs(segment.to.y - segment.from.y) * 0.05;
+          kind = !long ? "round" : upright ? "upright" : "leaning";
+        }
+      }
+    }
+  });
+  return Number.isFinite(hit) ? kind : "leaning";
+}
+
+/**
+ * The round walls of a letter moved with its counters, so its strokes keep
+ * their weight.
+ *
+ * Closing a counter moved only the counter, so every wall round it grew by
+ * what the counter lost: at 0.6 the letters with counters -- a, e, g, s, R,
+ * B, b, o, 4, 8 -- set as a bold beside an H, an n and an m that have none,
+ * and opened they set as a light. A type designer closing up the middle of
+ * an o draws a narrower o with the same strokes. So wherever a counter's
+ * side moved across, a round wall beyond it moves the same way -- the
+ * outside of an o, the bowl of a b, d, p, a, g, B or R -- and the strokes
+ * keep their thickness. A straight wall -- the stem of a b, of an R, the
+ * legs of an A -- stands where it is, since moving part of it would bend it.
+ * Up and down there is nowhere for a wall to go without changing the
+ * letter's height, so there the counter changes as before.
+ *
+ * Each counter moves the ink beside it, points and handles alike, by its
+ * side's movement in the band of heights it spans, eased away above and
+ * below it, and between its two sides in proportion across it.
+ */
+function followCounters(
+  before: Contour[],
+  after: Contour[],
+  outer: boolean[],
+  follow: number,
+): Contour[] {
+  let result = after.map((contour) => contour);
+  before.forEach((contour, index) => {
+    if (outer[index] || contour === after[index]) return;
+    const was = contoursBounds([contour]);
+    const now = contoursBounds([after[index]]);
+    const tall = was.yMax - was.yMin;
+    if (!(tall > 0) || !(was.xMax > was.xMin)) return;
+    const leftWall = wallBeside(before, outer, contour, -1);
+    const rightWall = wallBeside(before, outer, contour, 1);
+    const dxLeft = leftWall === "leaning" ? 0 : now.xMin - was.xMin;
+    const dxRight = rightWall === "leaning" ? 0 : now.xMax - was.xMax;
+    if (Math.abs(dxLeft) < 0.5 && Math.abs(dxRight) < 0.5) return;
+    /*
+     * The ink beside a counter moves by the same map the counter did: across
+     * the counter's own width in proportion, as the counter was scaled, and
+     * beyond each side of it by all that side moved -- the walls keep their
+     * thickness, and the letter stays one shape. Moved instead by what the
+     * counter's edge did at each height, a sloping wall kept its thickness
+     * only across and the shoulders of an e bulged; eased away above and
+     * below the counter, the wall of an e bent back out below its eye and
+     * the leg of an R kinked.
+     *
+     * At every height, but eased away towards another counter above or below
+     * -- the two bowls of a B, the loops of an 8 or a g -- which has its own
+     * map, halfway to it.
+     */
+    let above = Infinity;
+    let below = Infinity;
+    before.forEach((other, which) => {
+      if (which === index || outer[which]) return;
+      const them = contoursBounds([other]);
+      const overlap = Math.min(them.xMax, was.xMax) - Math.max(them.xMin, was.xMin);
+      if (overlap <= 0) return;
+      if (them.yMin >= was.yMax) above = Math.min(above, Math.max(1, (them.yMin - was.yMax) / 2));
+      if (them.yMax <= was.yMin) below = Math.min(below, Math.max(1, (was.yMin - them.yMax) / 2));
+    });
+    const ease = (u: number) => u * u * (3 - 2 * u);
+    const hub = Math.min(was.xMax, Math.max(was.xMin, centroid(contour).x));
+    const leftBy = dxLeft * follow;
+    const rightBy = dxRight * follow;
+    const shiftAt = (point: Vec2): number => {
+      const off =
+        point.y < was.yMin
+          ? (was.yMin - point.y) / below
+          : point.y > was.yMax
+            ? (point.y - was.yMax) / above
+            : 0;
+      const eased = off >= 1 ? 0 : 1 - ease(off);
+      if (eased === 0) return 0;
+      if (point.x <= was.xMin) return leftBy * eased;
+      if (point.x >= was.xMax) return rightBy * eased;
+      // As the counter was scaled, about its centre on each side of it.
+      if (point.x <= hub)
+        return ((leftBy * (hub - point.x)) / Math.max(1e-9, hub - was.xMin)) * eased;
+      return ((rightBy * (point.x - hub)) / Math.max(1e-9, was.xMax - hub)) * eased;
+    };
+    const move = (point: Vec2 | null): Vec2 | null =>
+      point ? { x: point.x + shiftAt(point), y: point.y } : null;
+    const moved = result.map((other, which) =>
+      which === index
+        ? other
+        : {
+            closed: other.closed,
+            nodes: other.nodes.map((node) => ({
+              ...node,
+              point: move(node.point) as Vec2,
+              handleIn: move(node.handleIn),
+              handleOut: move(node.handleOut),
+            })),
+          },
+    );
+    // Not where following would cross an outline, or two, that did not
+    // cross: then the counter stays as it was drawn.
+    const crossed =
+      moved.some(
+        (other, which) => contoursIntersect([other]) && !contoursIntersect([result[which]]),
+      ) ||
+      (contoursIntersect(moved) && !contoursIntersect(before));
+    if (!crossed) result = moved;
+    else result = result.map((other, which) => (which === index ? contour : other));
+  });
+  return result;
 }
 
 /**
@@ -1164,6 +1364,25 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
  * 1.25 x 0.3 of itself, and in practice a little less because of the easing.
  */
 const COUNTER_REACH = 1.25;
+/**
+ * How much of a counter's change across its walls take by following it, the
+ * rest by thinning or thickening within the limits above. Opening, all of it:
+ * a wider o with the strokes of the rest, where the walls thinned alone set
+ * the round letters as a light. Closing, half: a counter squeezed narrow and
+ * left tall, with walls of their whole weight round it, made a rounded box
+ * of an o, and closed by its walls alone it set as a bold. Some darkening
+ * closing is the control's own: there is less white inside the letter.
+ */
+const FOLLOW_OPENING = 1;
+const FOLLOW_CLOSING = 0.5;
+/**
+ * How much of the change a counter takes up and down, against across. A
+ * wall can follow its counter across -- see `followCounters` -- but not up
+ * or down without changing the letter's height, so there every unit of
+ * counter is a unit of heavier stroke: taken in full, the bars of e, B and
+ * R and the tops and bottoms of every bowl set as a bold.
+ */
+const COUNTER_UPRIGHT = 0.35;
 /**
  * Where the easing starts, as a share of that limit; below it the counter is
  * scaled exactly as before. It sits just past the point where the limit and
