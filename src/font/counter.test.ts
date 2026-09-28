@@ -126,18 +126,20 @@ describe("middle space", () => {
   /*
    * Closing a counter used to thicken every wall round it by what the counter
    * lost, and at 0.6 the letters with counters set as a bold beside those
-   * without. The walls follow the counter half the way across instead: they
-   * thicken by half as much, and the letter narrows by the rest.
+   * without. The walls follow the counter across instead: they keep their
+   * weight, and the letter narrows. Up and down there is nowhere for a wall to
+   * go, and a closing counter keeps its height rather than thicken them.
    */
-  it("thickens a wall by half what its counter closes, and narrows the letter", () => {
+  it("keeps the walls of a closing counter their weight, and narrows the letter", () => {
     const resolved = resolve(ring(1000, 100), 0.7);
     const counter = contoursBounds([resolved[1]]);
     const box = contoursBounds([resolved[0]]);
     const closed = (800 - (counter.xMax - counter.xMin)) / 2;
     expect(closed).toBeGreaterThan(20);
-    for (const wall of across(resolved, 500)) expect(wall).toBeCloseTo(100 + closed / 2, 0);
-    expect(box.xMax - box.xMin).toBeCloseTo(1000 - closed, 0);
+    for (const wall of across(resolved, 500)) expect(wall).toBeCloseTo(100, 0);
+    expect(box.xMax - box.xMin).toBeCloseTo(1000 - closed * 2, 0);
     expect(box.yMax - box.yMin).toBeCloseTo(1000, 6);
+    expect(counter.yMax - counter.yMin).toBeCloseTo(800, 6);
   });
 
   /**

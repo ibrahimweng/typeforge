@@ -266,9 +266,10 @@ describe("opening a counter", () => {
     const resolved = resolveGlyphContours(target, family);
     const outer = measureGlyph([resolved[0]], 1000)!;
     const counter = measureGlyph([resolved[1]], 1000)!;
-    // Closed by 100 each side, and the walls follow it half the way: they
-    // are 250 across now, and the letter 700 wide.
+    // Closed by 100 each side, and the walls follow it across: they are
+    // still 200, and the letter 600 wide.
     expect(counter.inkRight - counter.inkLeft).toBeCloseTo(200, 6);
-    expect(outer.inkRight - outer.inkLeft).toBeCloseTo(700, 6);
+    expect(counter.inkLeft - outer.inkLeft).toBeCloseTo(200, 6);
+    expect(outer.inkRight - outer.inkLeft).toBeCloseTo(600, 6);
   });
 });

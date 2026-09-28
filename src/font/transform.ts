@@ -1004,7 +1004,8 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
   const walls = contours.map((contour) => flattenContour(contour, 8));
   const amount = Math.abs(factor - 1);
   const opening = factor > 1;
-  const follow = opening ? FOLLOW_OPENING : FOLLOW_CLOSING;
+  const follow = COUNTER_FOLLOW;
+  const upright = opening ? COUNTER_UPRIGHT : COUNTER_UPRIGHT_CLOSING;
 
   /*
    * How far a wall of ink may give way to the counter beside it, or grow into
@@ -1124,7 +1125,7 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
       const dx = point.x - middle.x;
       const dy = point.y - middle.y;
       const across = scaleOf((dx > 0 ? sides.right : sides.left) * by);
-      const up = scaleOf((dy > 0 ? sides.above : sides.below) * by * COUNTER_UPRIGHT);
+      const up = scaleOf((dy > 0 ? sides.above : sides.below) * by * upright);
       return { x: middle.x + dx * across, y: middle.y + dy * up };
     };
 
@@ -1325,12 +1326,22 @@ function followCounters(
             : 0;
       const eased = off >= 1 ? 0 : 1 - ease(off);
       if (eased === 0) return 0;
-      if (point.x <= was.xMin) return leftBy * eased;
-      if (point.x >= was.xMax) return rightBy * eased;
-      // As the counter was scaled, about its centre on each side of it.
-      if (point.x <= hub)
-        return ((leftBy * (hub - point.x)) / Math.max(1e-9, hub - was.xMin)) * eased;
-      return ((rightBy * (point.x - hub)) / Math.max(1e-9, was.xMax - hub)) * eased;
+      const left = point.x < hub;
+      const by = left ? leftBy : rightBy;
+      const reach = Math.max(1e-9, left ? hub - was.xMin : was.xMax - hub);
+      /*
+       * Evenly across the counter, as it was scaled, and all of the side's
+       * movement beyond it -- blended over a short run either side of the
+       * counter's edge rather than meeting at a corner there. The corner
+       * pointed the top and bottom of a closed o like a lemon.
+       */
+      const slope = by / reach;
+      const blend = reach * FOLLOW_BLEND;
+      const out = Math.abs(point.x - hub);
+      if (out <= reach - blend) return slope * out * eased;
+      if (out >= reach + blend) return by * eased;
+      const into = out - (reach - blend);
+      return slope * (reach - blend + into - (into * into) / (4 * blend)) * eased;
     };
     maps.push({ index, shiftAt });
   });
@@ -1444,23 +1455,30 @@ function alignSharedWalls(before: Contour[], after: Contour[], outer: boolean[])
 const COUNTER_REACH = 1.25;
 /**
  * How much of a counter's change across its walls take by following it, the
- * rest by thinning or thickening within the limits above. Opening, all of it:
- * a wider o with the strokes of the rest, where the walls thinned alone set
- * the round letters as a light. Closing, half: a counter squeezed narrow and
- * left tall, with walls of their whole weight round it, made a rounded box
- * of an o, and closed by its walls alone it set as a bold. Some darkening
- * closing is the control's own: there is less white inside the letter.
+ * rest by thinning or thickening within the limits above. All of it, either
+ * way: a wider or a narrower o with the strokes of the rest. Walls thinned
+ * alone set the opened round letters as a light, and thickened alone the
+ * closed ones as a bold beside an H, an n and an m that have no counter.
  */
-const FOLLOW_OPENING = 1;
-const FOLLOW_CLOSING = 0.5;
+const COUNTER_FOLLOW = 1;
+/**
+ * How far either side of a counter's edge the ink beside it blends from
+ * moving as the counter was scaled into moving with the side, as a share of
+ * the counter's half-width. A wall at least this thick keeps its weight
+ * exactly; a longer blend thinned the walls of an opened o.
+ */
+const FOLLOW_BLEND = 0.25;
 /**
  * How much of the change a counter takes up and down, against across. A
  * wall can follow its counter across -- see `followCounters` -- but not up
  * or down without changing the letter's height, so there every unit of
  * counter is a unit of heavier stroke: taken in full, the bars of e, B and
- * R and the tops and bottoms of every bowl set as a bold.
+ * R and the tops and bottoms of every bowl set as a bold. Opening, a little,
+ * so an opened o is not only wider. Closing, none: even a third of it made
+ * the tops and bottoms of the closed bowls a bold beside the stems.
  */
 const COUNTER_UPRIGHT = 0.35;
+const COUNTER_UPRIGHT_CLOSING = 0;
 /**
  * Where the easing starts, as a share of that limit; below it the counter is
  * scaled exactly as before. It sits just past the point where the limit and
