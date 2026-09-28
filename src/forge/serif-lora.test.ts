@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import { contoursBounds, flattenContour } from "@/font/geometry";
+import { contoursIntersect } from "@/font/outline";
 import { drawLetter } from "./build";
 import { formOf, startFrom } from "./document";
 import { SERIF, type Style } from "./style";
@@ -326,5 +327,16 @@ describe("the Serif's diagonals", () => {
     const [diagonal] = widths("z", 87, 250);
     // Thinned with the vees it would be 49; Lora's is 91.
     expect(diagonal).toBeGreaterThan(70);
+  });
+});
+
+describe("the Serif at the ends of its contrast", () => {
+  it("draws the c's drop without crossing itself at a contrast of 0.9 past a Black", () => {
+    for (const weight of [200, 230, 260]) {
+      const style: Style = { ...SERIF, pen: { ...SERIF.pen, weight, contrast: 0.9 } };
+      for (const contour of draw("c", weight, style).contours) {
+        expect(contoursIntersect([contour]), `c at ${weight}`).toBe(false);
+      }
+    }
   });
 });

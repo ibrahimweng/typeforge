@@ -1537,6 +1537,51 @@ function teardropsFor(stroke: Stroke, swept: Contour[]): Contour[] {
       shape = tear(stroke, spine, at, u, n, outer, radius, bend);
     }
     if (!within(shape, band)) shape = tear(stroke, spine, at, u, n, outer, least, bend);
+    /*
+     * And never one that crosses itself: on a hairline of a very high
+     * contrast, the neck the drop leaves the stroke by is so narrow that the
+     * curve out of it rose over the drop's own closing edge -- the Serif's c
+     * at a contrast of 0.9 past a Black. Drawn again until it does not; a
+     * drop that already did not is left as it was.
+     */
+    const kept = radius;
+    // Asked of the drop as it will be stored, on the unit grid: a crossing
+    // too slight to see in the drawing is still one once rounded.
+    const folds = (drop: Contour) =>
+      contoursIntersect([
+        {
+          ...drop,
+          nodes: drop.nodes.map((one) => ({
+            ...one,
+            point: { x: Math.round(one.point.x), y: Math.round(one.point.y) },
+            handleIn: one.handleIn && {
+              x: Math.round(one.handleIn.x),
+              y: Math.round(one.handleIn.y),
+            },
+            handleOut: one.handleOut && {
+              x: Math.round(one.handleOut.x),
+              y: Math.round(one.handleOut.y),
+            },
+          })),
+        },
+      ]) || contoursIntersect([drop]);
+    const again: Array<[number, boolean]> = [
+      // The tail left the stroke less steeply, then closed back onto its own
+      // foot, whose edge it cannot then rise over.
+      [0.2, false],
+      [0.1, false],
+      [0, false],
+      [0.3, true],
+      [0, true],
+    ];
+    for (const [pull, close] of again) {
+      if (!folds(shape)) break;
+      shape = tear(stroke, spine, at, u, n, outer, kept, bend, pull, close);
+    }
+    // And failing both, taken smaller.
+    for (let tries = 1; tries <= 6 && folds(shape); tries++) {
+      shape = tear(stroke, spine, at, u, n, outer, Math.max(least, kept * 0.9 ** tries), bend);
+    }
     out.push(contourArea(shape) < 0 ? reverseContour(shape) : shape);
   }
   return out;
@@ -1735,6 +1780,11 @@ function tear(
   outer: Vec2,
   radius: number,
   bend: number,
+  // How far the tail's curve leaves the stroke along it, against its span.
+  pull = 0.3,
+  // Whether the drop closes back onto the tail's own foot rather than onto
+  // the spine: see `teardropsFor`.
+  close = false,
 ): Contour {
   const k = 0.5523 * radius;
   const add = (p: Vec2, d: Vec2, by: number): Vec2 => ({ x: p.x + d.x * by, y: p.y + d.y * by });
@@ -1780,6 +1830,9 @@ function tear(
     behind = centre;
   }
   const span = Math.hypot(top.x - meets.x, top.y - meets.y);
+  // Closed back along the edge to the drop's corner, a hair from the tail's
+  // foot, so the closing edge leaves the foot away from the tail.
+  if (close) behind = add(meets, { x: corner.x - meets.x, y: corner.y - meets.y }, 0.01);
   return {
     nodes: [
       { point: corner, handleIn: null, handleOut: add(corner, u, k), type: "corner" },
@@ -1792,7 +1845,7 @@ function tear(
       },
       {
         point: meets,
-        handleIn: add(meets, back.heading, span * 0.3),
+        handleIn: add(meets, back.heading, span * pull),
         handleOut: null,
         type: "corner",
       },
