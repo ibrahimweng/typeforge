@@ -12,6 +12,7 @@ import {
 import { contoursIntersect } from "@/font/outline";
 import type { Contour, Vec2 } from "@/font/types";
 import { drawLetter } from "./build";
+import { eroded } from "./cast";
 import { editCast, editCut, editPen, proof, startFrom } from "./document";
 import { noEffects } from "./effects";
 import { anyCut, noCuts, piecesOf, type Cuts, type MotifShape } from "./cut";
@@ -742,31 +743,34 @@ describe("where strokes meet", () => {
     }
   });
 
-  it("keeps a stem's groove whole where a bowl or an arch runs into it", () => {
+  it("keeps both walls of a groove whole where a bowl or an arch runs into its stem", () => {
     /*
-     * A bowl meets its stem along the stem's own line, so its groove slid
-     * into the stem's at a tangent and ran out in hair-thin points either
-     * side of the join, with the wall between groove and counter thinned to
-     * nothing. The bowl's groove now stops at the stem's edge, so the stem's
-     * groove is a hole of its own beside the bowl's.
+     * A bowl meets its stem along the stem's own line. Swept one stroke at a
+     * time, its groove slid into the stem's at a tangent and the wall between
+     * groove and counter thinned to a hair beside the join -- or, kept out of
+     * the stem, stopped in a stub, and the Sans a's stem, drawn twice, had its
+     * groove cut into three by bars of ink. The groove is the letter shrunk
+     * by a wall now, so a wall can be no thinner anywhere than it is down a
+     * straight stem: shrunk by a little under half of one, every piece of the
+     * cut letter is still there and still one piece, and no groove has run
+     * into the counter beside it.
      */
     const cuts = cutWith((one) => {
       one.inline.on = true;
     });
-    for (const name of ["Geometric", "Sans", "Serif", "Slab"]) {
-      for (const letter of "abdgpqn") {
-        const holes = drawn(letter, face(name), cuts).contours.filter(
-          (contour) => contourArea(contour) < 0,
-        );
-        /*
-         * On a contrast face the groove runs only down the thick of a stroke
-         * (see the inline in `cut.ts`), so a bowl's groove comes in two
-         * pieces, one down each thick side, and never as fewer.
-         */
-        const expected = letter === "n" ? 2 : 3;
-        if (name === "Serif")
-          expect(holes.length, `${name} ${letter}`).toBeGreaterThanOrEqual(expected);
-        else expect(holes.length, `${name} ${letter}`).toBe(expected);
+    for (const name of ["Geometric", "Sans", "Slab"]) {
+      const style = face(name);
+      const wall = (style.pen.weight * (1 - cuts.inline.width)) / 2;
+      for (const letter of "abdgpqnmhR") {
+        const cut = unite(drawn(letter, style, cuts).contours, "winding", "whole");
+        const solids = (contours: Contour[]) =>
+          contours.filter((contour) => contourArea(contour) > 0).length;
+        const holes = (contours: Contour[]) =>
+          contours.filter((contour) => contourArea(contour) < 0).length;
+        const shrunk = eroded(cut, wall * 0.4);
+        expect(solids(shrunk), `${name} ${letter}`).toBe(solids(cut));
+        // And no groove run into a counter through a wall worn to nothing.
+        expect(holes(shrunk), `${name} ${letter}`).toBe(holes(cut));
       }
     }
   });

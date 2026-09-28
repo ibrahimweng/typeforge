@@ -12,7 +12,13 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { unite } from "@/font/boolean";
-import { contourArea, contoursBounds, flattenContour, inkRunsAt } from "@/font/geometry";
+import {
+  contourArea,
+  contourContainsPoint,
+  contoursBounds,
+  flattenContour,
+  inkRunsAt,
+} from "@/font/geometry";
 import type { Contour, Vec2 } from "@/font/types";
 import { editCast, editCut, proof, setCastOrder, startFrom, type Forge } from "./document";
 import { readyToShape } from "./layers";
@@ -86,10 +92,44 @@ describe("the inline on a contrast face", () => {
 
   it("still grooves every stroke of a face without contrast", () => {
     const forge = forgeOf("Sans", 87, { cuts: { inline: {} } });
-    // A stem and three arms, each with its own groove.
-    expect(counters(drawn("E", forge)).length).toBeGreaterThanOrEqual(4);
+    const plain = unite(drawn("E", forgeOf("Sans", 87, {})), "winding");
+    const cut = unite(drawn("E", forge), "winding");
+    // Down a line through the three arms: each is one run of ink uncut, and
+    // two walls either side of a groove cut.
+    const box = contoursBounds(plain);
+    const x = box.xMin + (box.xMax - box.xMin) * 0.6;
+    const arms = runsDown(plain, x, box);
+    expect(arms.length).toBe(3);
+    for (const [from, to] of arms) {
+      expect(inkAt(cut, { x, y: (from + to) / 2 }), `arm at ${Math.round(from)}`).toBe(false);
+      expect(runsDown(cut, x, { ...box, yMin: from - 1, yMax: to + 1 }).length).toBe(2);
+    }
   });
 });
+
+/** Whether a point is ink: inside an odd number of the fused outlines. */
+function inkAt(contours: Contour[], point: Vec2): boolean {
+  return contours.filter((contour) => contourContainsPoint(contour, point)).length % 2 === 1;
+}
+
+/** The runs of ink down a vertical line, a unit at a time. */
+function runsDown(
+  contours: Contour[],
+  x: number,
+  box: { yMin: number; yMax: number },
+): Array<[number, number]> {
+  const runs: Array<[number, number]> = [];
+  let start: number | null = null;
+  for (let y = box.yMin - 2; y <= box.yMax + 2; y += 1) {
+    const here = inkAt(contours, { x, y });
+    if (here && start === null) start = y;
+    if (!here && start !== null) {
+      runs.push([start, y - 1]);
+      start = null;
+    }
+  }
+  return runs;
+}
 
 describe("the split", () => {
   it("takes the bowl off the stem of a b, d, p and q and leaves the stem whole", () => {
@@ -137,6 +177,42 @@ describe("the split", () => {
     // And the Serif a keeps its shoulder on its stem: the bowl comes away,
     // nothing is left standing over it.
     expect(piecesOf(drawn("a", serif))).toBe(2);
+  });
+});
+
+describe("the split where a stroke is drawn over another", () => {
+  it("leaves the stem of a Sans a solid, with no hairline down it", () => {
+    // Its stem is laid twice -- on its own and as the foot of the arch -- and
+    // the break used to cut between the two copies.
+    const forge = forgeOf("Sans", 87, { cuts: { split: {} } });
+    const plain = drawn("a", forgeOf("Sans", 87, {}));
+    const cut = drawn("a", forge);
+    const [left, right] = inkRunsAt(plain, 330)
+      .filter(([from, to]) => to - from > 10)
+      .at(-1)!;
+    const middle = (left + right) / 2;
+    for (const y of [120, 330, 420, 480]) {
+      const stem = inkRunsAt(cut, y).find(([from, to]) => from <= middle && to >= middle);
+      expect(stem, `at ${y}`).toBeDefined();
+      expect(stem![1] - stem![0], `at ${y}`).toBeGreaterThan((right - left) * 0.95);
+    }
+  });
+
+  it("parts the second arch of an m beside the middle stem, not across the shoulder", () => {
+    const forge = forgeOf("Sans", 87, { cuts: { split: {} } });
+    const plain = drawn("m", forgeOf("Sans", 87, {}));
+    const cut = drawn("m", forge);
+    const [left, edge] = inkRunsAt(plain, 150)[1];
+    const gap = 87 * 0.45;
+    for (const y of [400, 450, 500]) {
+      const runs = inkRunsAt(cut, y);
+      // The first arch's shoulder stops inside the stem's column, and the
+      // second arch starts a gap clear of the stem's side.
+      const shoulder = runs.find(([from, to]) => from < left + 5 && to > left + 5);
+      const next = runs.find(([from]) => from > left + 5);
+      expect(shoulder && shoulder[1], `at ${y}`).toBeLessThan(edge + 1);
+      expect(next && next[0], `at ${y}`).toBeGreaterThan(edge + gap * 0.8);
+    }
   });
 });
 
