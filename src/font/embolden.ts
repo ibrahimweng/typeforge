@@ -77,6 +77,14 @@ const KEPT_SHARE = 1 / 3;
  * it reads as a crack through the letter rather than as an opening.
  */
 const OPENING = 0.036;
+/**
+ * A ball is told by the chords across it: aimed this far off square to the
+ * outline, a ray across a round blob is shorter than straight across it, and
+ * a ray across any stroke longer.
+ */
+const BALL_ANGLE = (50 * Math.PI) / 180;
+/** How much of the weight a ball gives up, lighter, against a stroke. */
+const BALL_SHARE = 0.5;
 /** The share of the paper between two separate pieces of ink that stays. */
 const GAP_KEPT = 0.45;
 /** How much of its mean width a counter narrower than an opening keeps. */
@@ -562,6 +570,27 @@ export function applyWeight(
     bolder ? (ahead - leftOpen(ahead)) / 2 : (ahead - Math.max(hairline, ahead * KEPT_SHARE)) / 2;
 
   /*
+   * And a dot -- of an i, a j, a period, however it is drawn, round or
+   * square -- is a ball whole: a small piece of ink about as wide as it is
+   * tall, standing clear of the rest. Geist's square dot on the i thinned
+   * with its stem to a speck.
+   */
+  const isDot = (() => {
+    if (bolder || !isOuter) return false;
+    const own = around.obstacles[self] ?? [];
+    if (own.length < 3) return false;
+    const xs = own.map((point) => point.x);
+    const ys = own.map((point) => point.y);
+    const wide = Math.max(...xs) - Math.min(...xs);
+    const tall = Math.max(...ys) - Math.min(...ys);
+    if (!(Math.min(wide, tall) > 0) || Math.max(wide, tall) > em * 0.2) return false;
+    if (Math.max(wide, tall) > Math.min(wide, tall) * 1.6) return false;
+    return around.obstacles.every(
+      (other, which) => which === self || !around.roles[which] || apart(own, other) > 0,
+    );
+  })();
+
+  /*
    * 1. Measure: how far each sample may move, along the way it moves.
    */
   interface Sample {
@@ -569,6 +598,10 @@ export function applyWeight(
     t: number;
     along: number;
     by: number;
+    /** What was asked, what the room allows, and the stroke measured. */
+    want: number;
+    allow: number;
+    across: number;
   }
   const samples: Sample[] = [];
   const lineBy: number[] = new Array(count).fill(0);
@@ -580,6 +613,9 @@ export function applyWeight(
       const direction = move(headingOn(segment, t));
       const size = Math.hypot(direction.x, direction.y);
       let by = wanted * size;
+      let want = by;
+      let allow = Infinity;
+      let across = Infinity;
       // A part of the outline this shape of offset barely moves -- the top of
       // a bowl when only the sides are pushed -- has nothing worth measuring,
       // and a ray skimming along it finds walls that are not in its way.
@@ -590,9 +626,43 @@ export function applyWeight(
           starts[index] + t * lengths[index],
           index,
         );
-        by = softMin(by, allowance(ahead), bolder ? KNEE : LIGHT_KNEE);
+        want = by;
+        allow = allowance(ahead);
+        across = ahead;
+        /*
+         * Lighter, a ball -- the round ends of Lora's a, c, f, r and j, the
+         * dot of an i -- gives up less than the strokes do. Taken down by
+         * the same amount, the ball of Lora's a came out the weight of its
+         * hairline at the lightest setting, a bump where a light cut keeps
+         * a full round end. Where the chords either side of straight across
+         * are those of a circle, only part of the weight comes off.
+         */
+        if (!bolder && segment.kind !== "line" && Number.isFinite(ahead) && ahead > hairline * 3) {
+          const at = pointOn(segment, t);
+          const heading = times(direction, 1 / size);
+          const turned = (angle: number) => ({
+            x: heading.x * Math.cos(angle) - heading.y * Math.sin(angle),
+            y: heading.x * Math.sin(angle) + heading.y * Math.cos(angle),
+          });
+          const position = starts[index] + t * lengths[index];
+          const chord = Math.max(
+            room(at, turned(BALL_ANGLE), position, index),
+            room(at, turned(-BALL_ANGLE), position, index),
+          );
+          if (chord < ahead * Math.cos(BALL_ANGLE) * 1.35) want = by * BALL_SHARE;
+        }
+        if (!bolder && isDot) want = by * BALL_SHARE;
+        by = softMin(want, allow, bolder ? KNEE : LIGHT_KNEE);
       }
-      samples.push({ seg: index, t, along: starts[index] + t * lengths[index], by });
+      samples.push({
+        seg: index,
+        t,
+        along: starts[index] + t * lengths[index],
+        by,
+        want,
+        allow,
+        across,
+      });
       lowest = Math.min(lowest, by);
     }
     if (segment.kind === "line") lineBy[index] = lowest;

@@ -97,10 +97,13 @@ describe("weight", () => {
       ]),
     ]);
     const bounds = contoursBounds(at(typeface, glyph, { weight: 30 }));
-    // Wider and taller by twice the weight: the corners went out on the mitre
-    // rather than seventy per cent of the way along it.
+    // Wider by twice the weight: the corners went out on the mitre rather
+    // than seventy per cent of the way along it.
     expect(bounds.xMax - bounds.xMin).toBeCloseTo(160, 6);
-    expect(bounds.yMax - bounds.yMin).toBeCloseTo(760, 6);
+    // And still standing on the baseline and reaching the cap height, as a
+    // bold is drawn, rather than grown past both by the weight.
+    expect(bounds.yMin).toBeCloseTo(0, 6);
+    expect(bounds.yMax).toBeCloseTo(700, 6);
   });
 
   it("gives a round letter the same weight as a straight one", () => {
@@ -141,9 +144,10 @@ describe("weight", () => {
     ]);
     const [shape] = at(typeface, glyph, { weight: 25 });
     expect(contoursIntersect([shape])).toBe(false);
-    // The inside corner, moved over with the letter: 125 + 25, 125.
+    // The inside corner, moved over with the letter and back up onto the
+    // baseline with it: 125 + 25, 125 + 25.
     expect(shape.nodes[3].point.x).toBeCloseTo(150, 6);
-    expect(shape.nodes[3].point.y).toBeCloseTo(125, 6);
+    expect(shape.nodes[3].point.y).toBeCloseTo(150, 6);
     // And the stem's edge is still upright: its two ends did not move apart.
     expect(shape.nodes[2].point.x).toBeCloseTo(shape.nodes[3].point.x, 6);
   });
@@ -196,14 +200,57 @@ describe("weight", () => {
     expect(heavyDot.nodes).toHaveLength(4);
     const top = Math.max(...heavyStem.nodes.map((node) => node.point.y));
     const bottom = Math.min(...heavyDot.nodes.map((node) => node.point.y));
-    // Some of the hundred units of paper between them is still there...
-    expect(bottom - top).toBeGreaterThan(100 * 0.4);
+    // Some of the hundred units of paper between them is still there, less
+    // what bringing the letter back to its height takes off everything...
+    expect(bottom - top).toBeGreaterThan(100 * 0.35);
     // ...and both still grew, sideways by the whole weight.
     const wide = (contour: Contour) =>
       Math.max(...contour.nodes.map((node) => node.point.x)) -
       Math.min(...contour.nodes.map((node) => node.point.x));
     expect(wide(heavyStem)).toBeCloseTo(220, 0);
     expect(wide(heavyDot)).toBeCloseTo(220, 0);
+  });
+
+  it("keeps the dot of an i full when the letter is made lighter", () => {
+    const stem = polygon([
+      [100, 0],
+      [100, 500],
+      [200, 500],
+      [200, 0],
+    ]);
+    const dot = polygon([
+      [100, 600],
+      [100, 700],
+      [200, 700],
+      [200, 600],
+    ]);
+    const { typeface, glyph } = letter([stem, dot]);
+    const [lightStem, lightDot] = at(typeface, glyph, { weight: -40 });
+    const wide = (contour: Contour) =>
+      Math.max(...contour.nodes.map((node) => node.point.x)) -
+      Math.min(...contour.nodes.map((node) => node.point.x));
+    // The stem thins as far as it may; the dot, drawn as wide as the stem,
+    // gives up only part of that, as the dot of a light cut does.
+    expect(wide(lightStem)).toBeLessThan(40);
+    expect(wide(lightDot)).toBeGreaterThan(wide(lightStem) * 1.5);
+    expect(wide(lightDot)).toBeLessThan(100);
+  });
+
+  it("thins a ball less than a stroke, and a ring as a stroke", () => {
+    // A solid disc, too big to be a dot, is a ball: a light cut keeps it
+    // fuller than its strokes. The wall of a ring is a stroke, and thins as
+    // far as any other.
+    const disc = letter([circle(300, 300, 150, true)]);
+    const [lightDisc] = at(disc.typeface, disc.glyph, { weight: -40 });
+    const ring = letter([circle(300, 300, 150, true), circle(300, 300, 100)]);
+    const [outside, inside] = at(ring.typeface, ring.glyph, { weight: -40 });
+    const size = (contour: Contour) =>
+      contoursBounds([contour]).xMax - contoursBounds([contour]).xMin;
+    // Plain offsetting would take the disc to 220.
+    expect(size(lightDisc)).toBeGreaterThan(250);
+    expect(contoursIntersect([lightDisc])).toBe(false);
+    // The ring's wall of fifty goes below twenty, as a stem's would.
+    expect((size(outside) - size(inside)) / 2).toBeLessThan(20);
   });
 
   it("widens the letter by the ink it adds and keeps its side bearings", () => {

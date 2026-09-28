@@ -239,6 +239,7 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
     if (params.weight === 0) slabs = weighSlabs(slabs, slabbedLetter, 0, typeface.unitsPerEm);
     contours = [...contours, ...slabs];
   }
+  if (params.weight !== 0) contours = keepHeights(contours, params.weight, glyph, typeface);
   if (params.cornerRadius > 0) {
     const outer = classifyContours(contours);
     contours = contours.map((contour, index) =>
@@ -584,6 +585,72 @@ function applyXHeight(
   return contours.map((contour) =>
     mapContour(contour, (point) => ({ x: point.x, y: map(point.y) })),
   );
+}
+
+/**
+ * A letter made lighter or bolder brought back onto its baseline and to its
+ * height.
+ *
+ * The weight moves the outline square to itself all round, so it moved the
+ * bottom of every letter below the baseline and the top above the x-height
+ * or the cap height by the weight: at the heaviest setting a line of Lora
+ * sat sixty units low, its x-height a hundred and twenty taller, and a single
+ * letter given a weight of its own dropped out of the line. A bolder cut is
+ * drawn on the same baseline and to the same heights, its horizontals a
+ * little lighter than its stems for the room. So the band from the moved
+ * bottom to the moved top of the lowercase -- or of the capitals, for any
+ * letter that is not lowercase -- is squeezed back to what it was, and what
+ * lies above it and below it (ascenders, descenders, overshoots past the top)
+ * moves back by the weight as it is. Handles are carried by how the squeeze
+ * bends at their point, so a smooth point stays smooth.
+ */
+function keepHeights(
+  contours: Contour[],
+  weight: number,
+  glyph: Glyph,
+  typeface: Typeface,
+): Contour[] {
+  const metrics = typeface.metrics;
+  const top = isLowercase(glyph) ? metrics?.xHeight : metrics?.capHeight;
+  if (!top || !(top > 0) || top + 2 * weight <= 0) return contours;
+  /*
+   * Only the edges the letter was drawn to. A period stands on the baseline
+   * and a quote hangs from the top, and each goes back to the one it
+   * touches; a hyphen, a bullet or an asterisk is placed by its middle and
+   * touched neither, and squeezed or moved it would leave the middle of the
+   * line: it keeps its place and grows all round.
+   */
+  const drawn = contoursBounds(resolveComponents(glyph, typeface));
+  const near = top * 0.05;
+  const onBaseline = drawn.yMin <= near;
+  const toTop = drawn.yMax >= top - near;
+  if (!onBaseline && !toTop) return contours;
+  const low = -weight;
+  const high = top + weight;
+  const squeeze = onBaseline && toTop ? top / (high - low) : 1;
+  const map = (y: number): number => {
+    if (!toTop) return y + weight;
+    if (!onBaseline) return y - weight;
+    if (y <= low) return y + weight;
+    if (y >= high) return y - weight;
+    return (y - low) * squeeze;
+  };
+  const slope = (y: number): number => (y < low || y > high ? 1 : squeeze);
+  return contours.map((contour) => ({
+    closed: contour.closed,
+    nodes: contour.nodes.map((node) => {
+      const at = node.point;
+      const by = slope(at.y);
+      const carry = (handle: Vec2 | null): Vec2 | null =>
+        handle ? { x: handle.x, y: map(at.y) + (handle.y - at.y) * by } : null;
+      return {
+        point: { x: at.x, y: map(at.y) },
+        handleIn: carry(node.handleIn),
+        handleOut: carry(node.handleOut),
+        type: node.type,
+      };
+    }),
+  }));
 }
 
 /** Shear about the baseline, the transform that makes an oblique. */
