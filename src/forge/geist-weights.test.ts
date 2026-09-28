@@ -526,3 +526,50 @@ describe("the brackets and braces", () => {
     }
   });
 });
+
+describe("the Sans's marks", () => {
+  it("are Geist's size and stand where Geist's do", () => {
+    // Geist's ink boxes at the Regular and the Black: left, bottom, right
+    // and top. The plain plus was a third smaller, the underscore less than
+    // half as long, the tilde wider and hung low, the less-than taller.
+    const geist: Record<string, [number, number, number, number][]> = {
+      plus: [
+        [40, 56, 518, 534],
+        [40, 32, 538, 530],
+      ],
+      less: [
+        [40, 32, 494, 546],
+        [40, 16, 504, 572],
+      ],
+      equal: [
+        [40, 157, 500, 441],
+        [40, 90, 520, 487],
+      ],
+      underscore: [
+        [44, -78, 513, 0],
+        [32, -150, 532, 0],
+      ],
+      asciitilde: [
+        [40, 236, 483, 430],
+        [40, 242, 483, 424],
+      ],
+    };
+    for (const [name, [regular, black]] of Object.entries(geist)) {
+      for (const [weight, [left, bottom, right, top]] of [
+        [87, regular],
+        [172, black],
+      ] as const) {
+        const ink = box(name, weight);
+        const said = `${name} at ${weight}`;
+        expect(Math.abs(ink.xMax - ink.xMin - (right - left)), said).toBeLessThan(15);
+        expect(Math.abs(ink.yMin - bottom), said).toBeLessThan(15);
+        expect(Math.abs(ink.yMax - top), said).toBeLessThan(15);
+      }
+    }
+    // And the backslash is the slash turned round.
+    const slash = box("slash", 87);
+    const backslash = box("backslash", 87);
+    expect(backslash.xMax - backslash.xMin).toBeCloseTo(slash.xMax - slash.xMin, 0);
+    expect(backslash.yMin).toBeCloseTo(slash.yMin, 0);
+  });
+});

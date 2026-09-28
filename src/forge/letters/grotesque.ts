@@ -33,7 +33,7 @@ import { BASES, type Style, weightAtBlackness } from "../style";
 import { LETTERS } from "../letters";
 import { bowlPoint, spineEnd, spineStart } from "../shapes";
 import { penReach, reachAlong } from "../sweep";
-import type { Spine, SpineArc, Stroke } from "../types";
+import type { Spine, SpineArc, Stroke, Terminal } from "../types";
 import {
   arm,
   at,
@@ -2399,6 +2399,193 @@ function grotesqueBrace(style: Style, way: 1 | -1): Recipe {
 
 export const grotesqueBraceLeft = (style: Style): Recipe => grotesqueBrace(style, 1);
 export const grotesqueBraceRight = (style: Style): Recipe => grotesqueBrace(style, -1);
+
+/** The backslash: the Sans's slash turned the other way, as Geist's is. */
+export function grotesqueBackslash(style: Style): Recipe {
+  const f = frame(style);
+  const u = large(f);
+  return finish(f, [
+    ink(f, straight(at(f.edge, up(f, 750)), at(f.edge + 295.8 * u, up(f, -110))), LEVEL, LEVEL),
+  ]);
+}
+
+/** A pen as heavy across in every direction, for the marks drawn to a measured weight. */
+const even = (f: Frame, weight: number) => ({
+  ...f.style.pen,
+  weight: Math.max(weight, 1),
+  contrast: 0,
+  angle: 0,
+});
+
+/** A stroke drawn with its own pen rather than the letter's. */
+const measured = (f: Frame, spine: Spine, weight: number, start = BUTT, end = BUTT): Stroke => {
+  const one = ink(f, spine, start, end);
+  return inherit(one, { ...one, pen: even(f, weight) });
+};
+
+/**
+ * The plus, as Geist's: as tall as it is wide -- 478 on the Thin and the
+ * Regular, 498 on the Black -- centred at 295 (285, 281), each bar 78 (28,
+ * 150) thick. The plain one was a third smaller and hung low. Past the
+ * Black it grows as fast as its bars grow heavier, or the arms were stubs.
+ */
+export function grotesquePlus(style: Style): Recipe {
+  const f = frame(style);
+  const [X, lerp] = squared(f);
+  const k = X(1) - X(0);
+  const bar = lerp(78, 150, 28);
+  const wide = lerp(478, 498, 478) + Math.max(0, bar - 150);
+  const y = up(f, lerp(295, 281, 285));
+  const reach = (wide / 2) * k;
+  return finish(f, [
+    measured(f, straight(at(X(0), y), at(X(wide), y)), bar * k),
+    measured(f, straight(at(X(wide / 2), y - reach), at(X(wide / 2), y + reach)), bar * k),
+  ]);
+}
+
+/**
+ * The less-than and greater-than, as Geist's: two arms meeting in a short
+ * upright flat at the point, each cut upright at its end. From the point,
+ * the ends stand 454 across on the Regular (444 on the Thin, 464 on the
+ * Black), 215 (222, 198) above and below its middle at 289 (292, 294), the
+ * arms 84 (30, 160) deep where they are cut, and the flat 106 (34, 180)
+ * tall. The plain ones were steeper and taller, and came to a sharp point.
+ */
+function angle(style: Style, way: 1 | -1): Recipe {
+  const f = frame(style);
+  const [X, lerp] = squared(f);
+  const k = X(1) - X(0);
+  // Past the Black the arms reach further as they grow heavier, or the
+  // inside closed to a slit.
+  const grown = Math.max(0, lerp(84, 160, 30) - 160);
+  const wide = lerp(454, 464, 444) + grown;
+  const x = (u: number) => (way === 1 ? X(u) : X(wide) + X(0) - X(u));
+  const middle = up(f, lerp(289, 294, 292));
+  const spread = (lerp(215, 198, 222) + grown * 0.5) * k;
+  const deep = lerp(84, 160, 30) * k;
+  // Where the arms' spines reach the point: apart by as much as the flat is
+  // taller than one arm is deep, or together where it is not.
+  const apart = Math.max((lerp(106, 180, 34) * k - deep) / 2, 0.5);
+  const slope = Math.atan2(spread - apart, wide * k);
+  const cut: Terminal = { kind: "butt", aligned: true };
+  return finish(
+    f,
+    ([1, -1] as const).map((side) =>
+      measured(
+        f,
+        straight(at(x(wide), middle + side * spread), at(x(0), middle + side * apart)),
+        deep * Math.cos(slope),
+        cut,
+        cut,
+      ),
+    ),
+  );
+}
+
+export const grotesqueLess = (style: Style): Recipe => angle(style, 1);
+export const grotesqueGreater = (style: Style): Recipe => angle(style, -1);
+
+/**
+ * The equals sign, as Geist's: two bars 460 long on the Regular (440 on the
+ * Thin, 480 on the Black), centred at 402 and 196 (392 and 186, 412 and
+ * 165), each 78 (30, 150) thick. The plain one was shorter and its bars
+ * closer together.
+ */
+export function grotesqueEqual(style: Style): Recipe {
+  const f = frame(style);
+  const [X, lerp] = squared(f);
+  const k = X(1) - X(0);
+  const wide = lerp(460, 480, 440);
+  const bar = lerp(78, 150, 30) * k;
+  return finish(
+    f,
+    [lerp(402, 412, 392), lerp(196, 165, 186)].map((y) =>
+      measured(f, straight(at(X(0), up(f, y)), at(X(wide), up(f, y))), bar),
+    ),
+  );
+}
+
+/**
+ * The underscore, as Geist's: a bar hanging from the line, 469 long on the
+ * Regular (434 on the Thin, 500 on the Black) and 78 (30, 150) deep. The
+ * plain one was less than half as long.
+ */
+export function grotesqueUnderscore(style: Style): Recipe {
+  const f = frame(style);
+  const [X, lerp] = squared(f);
+  const k = X(1) - X(0);
+  const wide = lerp(469, 500, 434);
+  const bar = lerp(78, 150, 30) * k;
+  return finish(f, [measured(f, straight(at(X(0), -bar / 2), at(X(wide), -bar / 2)), bar)]);
+}
+
+/**
+ * The tilde, as Geist's: a wave of two equal arcs, one over and one under,
+ * cut level at both ends -- the left end low, at 246 on the Regular (268 on
+ * the Thin, 245 on the Black), the right end high, at 420 (398, 421) -- its
+ * crest reaching 430 (404, 424) and its trough 236 (263, 242), 443 (402,
+ * 443) across and 79 (32, 126) thick. The plain one was wider and hung low.
+ * Past the Black the wave grows taller and wider as fast as it grows
+ * heavier, or its hollows filled in.
+ */
+export function grotesqueTilde(style: Style): Recipe {
+  const f = frame(style);
+  const [X, lerp] = squared(f);
+  const k = X(1) - X(0);
+  const thick = lerp(79, 126, 32);
+  const grown = Math.max(0, thick - 126) * 1.2;
+  const wide = lerp(443, 443, 402) + grown * 2;
+  const half = thick / 2;
+  const low = lerp(246, 245, 268) - grown;
+  const high = lerp(420, 421, 398) + grown;
+  const crest = lerp(430, 424, 404) + grown - half;
+  const middle = { x: wide / 2, y: (low + high) / 2 };
+  // From the middle, where the two arcs meet, to the left end, and how far
+  // the crest's spine stands over the middle.
+  const reach = { x: middle.x - half, y: middle.y - low };
+  const rise = Math.max(crest - middle.y, 1);
+  // The radius at which the crest's circle passes through the left end.
+  const miss = (radius: number) => {
+    const across = Math.sqrt(Math.max(2 * rise * radius - rise * rise, 0));
+    return (across - reach.x) ** 2 + (reach.y + rise - radius) ** 2 - radius * radius;
+  };
+  let [least, most] = [rise / 2 + 0.01, Math.max(reach.x, reach.y) * 4];
+  for (let step = 0; step < 60; step++) {
+    const radius = (least + most) / 2;
+    if (miss(radius) > 0) least = radius;
+    else most = radius;
+  }
+  const radius = (least + most) / 2;
+  const across = Math.sqrt(Math.max(2 * rise * radius - rise * rise, 0));
+  const lift = rise - radius;
+  const point = (u: number, v: number) => at(X(u), up(f, v));
+  const over = point(middle.x - across, middle.y + lift);
+  const under = point(middle.x + across, middle.y - lift);
+  const r = radius * k;
+  const degrees = (from: Vec2, to: Vec2) =>
+    (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI;
+  const left = point(half, low);
+  const right = point(wide - half, high);
+  const meet = degrees(over, under);
+  const start = degrees(over, left);
+  const end = degrees(under, right);
+  const wave = chain(
+    turn(over, r, start < meet ? start + 360 : start, meet),
+    turn(under, r, meet + 180, end < meet + 180 ? end + 360 : end),
+  );
+  return finish(f, [
+    measured(
+      f,
+      // In three pieces an arc at every weight: the sweep passes half a turn
+      // at some weights and not at others, and a family's weights have to be
+      // drawn in the same points.
+      { ...wave, segments: wave.segments.map((one) => ({ ...one, pieces: 3 })) },
+      thick * k,
+      LEVEL,
+      LEVEL,
+    ),
+  ]);
+}
 
 /**
  * How far the s's spine turns from straight, in radians: see `curvedSpine`.

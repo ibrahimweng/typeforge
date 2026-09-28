@@ -58,6 +58,20 @@ counters stay open at 260.
 **#.** The bar ends are cut along the lean of the uprights, as Geist's are.
 Light weights no longer spread wider than Geist Thin.
 
+**[ ] { }.** New Sans brackets and braces, measured off Geist. The brackets
+are 240 wide at the Regular and 346 at the Black, from 750 down to -110. The
+plain bracket's arms were a fixed share of an arch, so from the Black on the
+stem swallowed them and the bracket set as a solid bar. The braces have round
+turns into a short level nose, where the plain brace came to a sharp beak.
+
+**\ + < > = _ ~.** New Sans forms, on Geist's measures at the Thin, Regular
+and Black. The backslash is the Sans slash turned round. The plus is as tall
+as it is wide (it was a third smaller and hung low). The less-than and
+greater-than have shallow arms, cut upright, meeting in a short flat. The
+equals bars are longer and further apart. The underscore is twice as long.
+The tilde is two equal arcs cut level. Past the Black the plus, the angles and
+the tilde grow as they get heavier, so they stay open at 260.
+
 **( ).** The sidebearings now match Geist's: 45 on the opening side and 15 on
 the closing side.
 
@@ -89,6 +103,10 @@ strokes as white; they now use a filled (nonzero) ruler.
   narrower on the right, and at the Light the tail is shorter than Geist's.
 - **#.** The sidebearings are kept just inside the advance. Geist's reach past
   both sides.
+- **Grave and acute.** Geist's are steeper and sit higher. The same marks
+  build the accented letters, so they are left for a pass over the accents.
+- **Backslash at the Black.** It follows the Sans slash, which is about 45
+  units narrower than Geist Black's.
 - **Past 172.** Geist has nothing heavier than Black (its UltraBlack keeps a
   stem of 172). At 200–260 the letters follow their own rules for keeping
   counters open, not Geist.
