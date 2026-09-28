@@ -63,21 +63,54 @@ The ink's actual growth on each side is now measured, and the shift and the adva
 
 Images: `sidebearings-sample-*`.
 
+### 7. Steps at aperture tips
+
+At the heaviest weight, Lora's a, s and 2 had steps of about 10 units where the weight swallowed the end of an aperture: a run of short curve pieces left behind as the stroke closed up.
+
+Such a run is now laid along one round curve, joined smoothly to the outline either side of it, with the same number of points. Runs with a straight piece in them are left alone, so a stem foot stays straight. If the rounded run would make the outline cross itself, the run is left as it was.
+
+Images: `apertures-lora-*`.
+
+### 8. Edges that share a baseline
+
+Each edge used to move back by one amount. Where a thin bowl bottom and a stem foot share the baseline, as in a light b, the bowl's overshoot ended up about 14 units deeper than drawn.
+
+Moving the pins now tells only where the outline runs level. After the pins, a smooth correction brings back whatever is still off the edge. It only ever moves points inward, and it fades out within a tenth of an em of the edge. A contour it would make cross itself is left as the pins placed it. In all three fonts, every letter's extents now stay within 2 units of the drawing at −0.04 and 0.06.
+
+### 9. Middle space
+
+Closing or opening a counter used to thin or thicken the walls round it by the whole change. At 0.6 the letters with counters set as a bold beside H, n and m, and at 1.4 as a light.
+
+- **Walls follow the counter across.** The ink beside a counter now moves with it, so a closed o is a narrower o with the strokes of the rest, and an opened one a wider o. Round walls and upright stems both follow. Leaning walls, such as the legs of an A, stay where they are.
+- **No vertical change when closing.** A closing counter keeps its height, since top and bottom walls can't follow without changing the letter's height.
+- **No corner in the map.** The shift blends into the wall's movement over a short run either side of the counter's edge. With a corner there, a closed o came out pointed top and bottom.
+- **Stacked counters move together.** The two bowls of a B move their shared stem alike, and together. Moved one after the other, the stem leaned.
+- **Spacing.** The side bearings follow the measured change in the ink.
+
+Images: `middle-geist-*`, `middle-lora-*`.
+
+### 10. Slabs on beaks
+
+Lora's S is all curve and measures thinner than its stems, so the tips of its beaks passed for stroke ends, and each got a bar. The top of Lora's 5 flares from a hairline arm into a beak, and a bar stood on that too. Stroke ends are now also measured against the font's stems, and an end much wider than the stroke just behind it counts as a beak, not an end.
+
+Images: `slabs-lora-*`.
+
 ## Tests
 
 Every fix has a test that fails on the old code and passes now. They are in:
 - `src/font/shape-controls.test.ts`
 - `src/font/weight.test.ts`
 - `src/font/slab.test.ts`
+- `src/font/counter.test.ts`
+- `src/font/control.test.ts`
 
-Two old expectations in `weight.test.ts` described letters growing past the baseline and cap height; they now expect the letter to keep its heights. The weight engine keeps each contour's point count, and slabs are still separate contours added to the letter.
+Two old expectations in `weight.test.ts` described letters growing past the baseline and cap height; they now expect the letter to keep its heights. The middle-space expectations in `counter.test.ts` and `control.test.ts`, which had walls thickening or thinning by the whole change, now expect walls that keep their weight while the letter narrows or widens. The weight engine keeps each contour's point count, and slabs are still separate contours added to the letter.
 
-These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run` (the whole suite, 2,863 tests).
+These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run` (the whole suite, 2,868 tests).
 
 ## What is left
 
-- **Middle space at 0.6.** The control closes counters by thickening their walls. So at the far end, letters with counters are darker than letters without them. The code documents this as the limit of a control that moves only counters. Fixing it would change what the control does.
-- **Small steps at aperture tips.** At the heaviest weight, Lora's a, s and 2 have steps of about 10 units, roughly 1% of the em, where the aperture closes. I tried smoothing them, but it turned the steps into small nibs, so I left them as they are.
-- **Shared baseline edges.** Where a thin bowl bottom and a stem foot share an edge, as in a light b, the bowl's overshoot can end up about 14 units deeper than drawn. Correcting single points put lumps into the curves, so each edge moves by one amount.
+- **Middle space at 0.6 in narrow sans letters.** The strokes keep their weight now, but the sample font's closed letters are narrow, and close-set stems read slightly darker to the eye.
 - **Corner radius** adds points by design, since it rounds corners with new curves.
-- **Rim in Geist.** One run of the effects sheet flagged a crossed contour on Geist's a under the rim cast. It did not reproduce on four later runs. The cast code is outside the files changed here.
+- **Heavy counters.** At weight 0.06, Geist's B and R counters shrink to slits. This is what that weight means for Geist's proportions, not a fault.
+- **Rim in Geist.** One run of the effects sheet flagged a crossed contour on Geist's a under the rim cast. It did not reproduce on later runs. The cast code is outside the files changed here.
