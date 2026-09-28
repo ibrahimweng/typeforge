@@ -1676,7 +1676,12 @@ export function grotesqueZero(style: Style): Recipe {
     [
       ink(
         f,
-        ring(f, at(X(336), middle), held(f, 236 * large(f, 0.5)), held(f, f.crest(f.cap) - middle)),
+        ring(
+          f,
+          at(X(336), middle),
+          held(f, 236 * large(f, 0.5) * refit(f, 0.02, 0.012, 0.015)),
+          held(f, f.crest(f.cap) - middle),
+        ),
       ),
     ],
     true,
@@ -1789,7 +1794,8 @@ export function grotesqueK(style: Style): Recipe {
  */
 export function grotesqueM(style: Style): Recipe {
   const f = frame(style);
-  const [u, t] = spread(f, 0.5);
+  const [wide, t] = spread(f, 0.5);
+  const u = wide * refit(f, 0.017, 0.006, 0);
   const X = (x: number) => f.edge + x * u;
   const right = X(606 + 11 * t);
   const middle = (f.edge + right) / 2;
@@ -4325,7 +4331,7 @@ export function grotesqueCapitalH(style: Style): Recipe {
   const f = frame(style);
   const [X, lerp] = squared(f);
   const left = f.edge;
-  const right = Math.max(X(lerp(520, 588, 484)) - f.half, left + f.half * 2 + f.least);
+  const right = Math.max(X(lerp(529, 588, 484)) - f.half, left + f.half * 2 + f.least);
   const bar = barAt(f, 357);
   return finish(f, [
     ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),

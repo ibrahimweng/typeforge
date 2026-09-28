@@ -70,7 +70,8 @@ and all five are within 8 of Geist's width at every weight.
 capitals stood 2 per cent narrow at the Regular and grew 2 per cent too wide
 by the Black; the K and N stood narrow throughout. Each is now drawn to the
 current Geist's width, within 6 units from the Thin to UltraBlack and 9 at
-the Black.
+the Black. The H, M and zero, 9 to 15 narrow at the Regular and SemiBold,
+are within 9 at every weight too.
 
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's

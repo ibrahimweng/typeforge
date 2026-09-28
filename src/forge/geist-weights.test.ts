@@ -667,6 +667,10 @@ describe("the round capitals", () => {
       Y: [545, 588, 627, 665, 684],
       K: [499, 533, 579, 626, 649],
       N: [519, 559, 588, 617, 631],
+      // And the H, M and zero, 9 to 15 narrow at the Regular and SemiBold.
+      H: [484, 529, 559, 588, 603],
+      M: [658, 693, 742, 791, 816],
+      zero: [528, 563, 591, 619, 633],
     };
     for (const [name, widths] of Object.entries(geist)) {
       for (const [index, weight] of [30, 87, 130, 172, 194].entries()) {
