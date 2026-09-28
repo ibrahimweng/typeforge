@@ -1596,10 +1596,9 @@ function swollenRing(f: Frame, centre: Vec2, halfW: number, halfH: number): Stro
   const lighter = pen.weight * (1 - share);
   const light = { ...pen, weight: lighter, contrast: Math.max(0, 1 - along / lighter) };
   const out = (pen.weight - lighter) / 2;
-  return [
-    ink(f, ring(f, centre, halfW, halfH)),
-    ink(f, ring(f, centre, halfW + out, halfH)),
-  ].map((one) => inherit(one, { ...one, pen: light }));
+  return [ink(f, ring(f, centre, halfW, halfH)), ink(f, ring(f, centre, halfW + out, halfH))].map(
+    (one) => inherit(one, { ...one, pen: light }),
+  );
 }
 
 /** A point part of the way along a straight run, found by its height. */
