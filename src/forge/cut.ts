@@ -814,11 +814,15 @@ function splitPlan(
        * is laid once on its own and again as the foot of the arch that runs
        * down into it, and read as two strokes meeting, the break cut between
        * the two copies: a white hairline the height of the stem, down the
-       * middle of it. One stroke lying wholly inside another is not a join.
+       * middle of it. One stroke lying wholly inside another is not a join,
+       * and nor are two whose straight runs lie along one line for most of a
+       * stem: on the Black the copy runs on below the foot of the arch, and
+       * the break cut the arch off where it came down onto it.
        */
       if (
         within(samples[other], samples[one], stem) ||
-        within(samples[one], samples[other], stem)
+        within(samples[one], samples[other], stem) ||
+        sharesARun(strokes[one], strokes[other], stem)
       ) {
         continue;
       }
@@ -962,6 +966,50 @@ function splitPlan(
       if (placed) {
         const meet = samples[keeps][gives === one ? where[1] : where[0]];
         found.push({ ...placed, stroke: gives, keeps, meet });
+      }
+      /*
+       * And at its other end, where that runs into the same stroke too.
+       *
+       * A pair of strokes was parted once, where they came closest, and the
+       * bowl of an R, a B, a D and an a runs out of its stem and back into
+       * it: one end was broken and the other left joined, and which one
+       * depended on the weight. The Black R kept its bowl on at the top and
+       * lost it at the foot, and a stencil takes a bowl off its stem at both.
+       */
+      const far = way > 0 ? SAMPLES : 0;
+      // Only off a stem: the bar of an e runs into its bowl at both ends too,
+      // and parted at both it floated in the eye.
+      if (Math.abs(far - index) > SAMPLES / 2 && isStem(strokes[keeps], strokes[gives], stem)) {
+        /*
+         * Runs into it, rather than comes near it: the flat top of a Black
+         * r's arm starts in the stem and stops a stem short of it, and was
+         * broken off as a crumb.
+         */
+        const tip = samples[gives][far];
+        const wall = nearestOn(samples[keeps], tip);
+        const touches =
+          wall.distance <
+          halfWidth(strokes[keeps].pen, { x: -wall.along.y, y: wall.along.x }) + stem * 0.25;
+        const other = touches
+          ? gapBeside(
+              strokes[gives],
+              strokes[keeps],
+              far / SAMPLES,
+              -way,
+              gap,
+              stem,
+              strokes.filter((_, at) => at !== gives && at !== keeps),
+            )
+          : null;
+        if (other) {
+          const nearest = samples[keeps].reduce((best, point) =>
+            Math.hypot(point.x - tip.x, point.y - tip.y) <
+            Math.hypot(best.x - tip.x, best.y - tip.y)
+              ? point
+              : best,
+          );
+          found.push({ ...other, stroke: gives, keeps, meet: nearest });
+        }
       }
     }
   }
@@ -1225,7 +1273,7 @@ function gapBeside(
   const path = alongSpine(giving.spine, FINE);
   const wall = alongSpine(keeping.spine, FINE);
   if (path.length < 3 || wall.length < 2) return null;
-  const walls = [wall, ...straightOn(keeping.spine, stem * 2.5, stem * 2)];
+  const walls = [wall, ...straightOn(keeping.spine, stem * 2.5, stem * 1.2)];
   const total = spineLength(giving.spine);
   const step = total / FINE;
   const spare = gap * 0.75;
@@ -1449,6 +1497,30 @@ function straightOn(spine: Spine, by: number, least: number): Vec2[][] {
     }
   });
   return lines;
+}
+
+/**
+ * Whether two strokes have a straight run in common: two lines lying along
+ * one another, the same way or opposite, for a good part of a stem.
+ */
+function sharesARun(one: Stroke, other: Stroke, stem: number): boolean {
+  const lines = (stroke: Stroke) =>
+    stroke.spine.segments.filter(
+      (segment): segment is SpineSegment & { kind: "line" } => segment.kind === "line",
+    );
+  const off = (point: Vec2, from: Vec2, way: Vec2): number =>
+    Math.abs((point.x - from.x) * way.y - (point.y - from.y) * way.x);
+  for (const a of lines(one)) {
+    const way = away(a.from, a.to);
+    if (!way) continue;
+    for (const b of lines(other)) {
+      if (off(b.from, a.from, way) > stem * 0.05 || off(b.to, a.from, way) > stem * 0.05) continue;
+      const along = (point: Vec2) => (point.x - a.from.x) * way.x + (point.y - a.from.y) * way.y;
+      const [b0, b1] = [along(b.from), along(b.to)].sort((x, y) => x - y);
+      if (Math.min(distance(a.from, a.to), b1) - Math.max(0, b0) >= stem * 0.4) return true;
+    }
+  }
+  return false;
 }
 
 /** Whether every point of one sampled spine lies on another, near enough. */

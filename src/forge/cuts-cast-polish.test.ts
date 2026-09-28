@@ -261,6 +261,23 @@ describe("the split through a rim thrown first", () => {
   });
 });
 
+describe("the split on a bowl drawn against its stem", () => {
+  it("takes the bowl off at both joins, at every weight", () => {
+    // The bowl of a D, P, B and R runs out of the stem and back into it. One
+    // of the two joins was broken and the other left, and which depended on
+    // the weight: the Black R kept its bowl on at the top.
+    for (const weight of [87, 200]) {
+      const forge = forgeOf("Sans", weight, { cuts: { split: {} } });
+      for (const letter of weight === 200 ? "DPBR" : "DPB") {
+        expect(piecesOf(drawn(letter, forge)), `${weight} ${letter}`).toBe(2);
+      }
+      // And a bar that runs into a bowl at both ends is still parted at one:
+      // the bar of an e does not float in its eye.
+      expect(piecesOf(drawn("e", forge)), `${weight} e`).toBe(1);
+    }
+  });
+});
+
 describe("the weld beside the split", () => {
   it("grows no fillet across a gap the split has opened", () => {
     for (const order of ["after", "before"] as const) {
