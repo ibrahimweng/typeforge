@@ -150,10 +150,13 @@ strokes as white; they now use a filled (nonzero) ruler.
 
 - **s counters at the Black.** Close to Geist's size and shape now; Geist's
   upper counter still runs a little more into the terminal, as a teardrop.
-- **8 at the Black.** Now as wide as Geist's, but Geist's waist is pinched
-  in a deep notch either side, where Draw's two superelliptic rings meet
-  almost upright. Oval rings did not pinch it either, and they left lemon-
-  shaped counters.
+- **8's waist.** Now as wide as Geist's, with the same waist and counters,
+  but Geist's waist is notched 135 units in either side at the Regular (150 at
+  the Black). Draw's two stacked rings are notched 90 (75). Geist's strokes
+  cross in an X there. Rounder rings deepened the notch only to 109 and left
+  lemon-shaped counters. Pulling the rings apart matched the notch but made the
+  waist half as thick again. Matching it needs the eight rebuilt as crossing
+  strokes.
 - **#.** The sidebearings are kept just inside the advance. Geist's reach past
   both sides.
 - **Backslash at the Black.** It follows the Sans slash, which is about 45
