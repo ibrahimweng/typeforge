@@ -78,6 +78,17 @@ at UltraBlack (its bar and hook reach further as the weight grows), the c 13
 narrow, the j's foot 12 short, the e 12 wide and the g's bowl 7 wide on its
 left. Each now reaches Geist's width within 10 at every weight.
 
+**Lowercase bowls and the y at the Black.** The o, b, d, p and q reached their
+UltraBlack widths and kept growing, 14 to 16 units wide at the Black; the y
+grew 22 wide because its extra width started at 172. The bowls now give up
+width until the Black (`HEAVY_GIVE_LOWER` in `common.ts`, which only the Sans
+uses), and the y's growth starts at 194. All of them are now within 4 of
+Geist at every weight. The fitted round sides then gave back too much as the
+bowls narrowed (26 units against Geist's 34 at UltraBlack). The o, b, d, p, q
+and e now have Geist's sides listed: 0.52 of the unit off a bowl, and the
+stem beside it closing as fast as the n's (a new "stem-left" / "stem-right"
+mark in `metrics.sides`). They are within 3 of Geist's sides at every weight.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

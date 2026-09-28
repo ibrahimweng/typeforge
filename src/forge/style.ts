@@ -100,9 +100,13 @@ export interface Metrics {
    *
    * They close at a heavy weight only half as fast as a fitted side does (see
    * `fitted` in `build.ts`), unless marked "closes": Geist closes its bar,
-   * its stops and its t as fast as its n.
+   * its stops and its t as fast as its n. "stem-left" and "stem-right" close
+   * just that side as fast: the stem beside a b's or a d's bowl.
    */
-  sides?: Record<string, [number, number] | [number, number, "closes"]>;
+  sides?: Record<
+    string,
+    [number, number] | [number, number, "closes" | "stem-left" | "stem-right"]
+  >;
   /**
    * How much counter a heavy weight gives back for the stem it gains, unit
    * for unit, past the text weight (see `blackness`). Left out, a heavier pen keeps the
@@ -691,7 +695,15 @@ export const SANS: Style = {
     /* Geist Regular's own sidebearings, over 80 (a capital's over 80 after its 12 of extra). */
     sides: {
       a: [0.59, 0.24],
+      // Geist's bowls stand 44 off at the Regular and 32 at the Black: a
+      // fitted round side gave back twice that as the bowls narrowed.
+      b: [1, 0.52, "stem-left"],
       c: [0.59, 0.46],
+      d: [0.52, 1, "stem-right"],
+      e: [0.52, 0.52],
+      o: [0.52, 0.52],
+      p: [1, 0.52, "stem-left"],
+      q: [0.52, 1, "stem-right"],
       f: [0.75, 0.53],
       // Its foot reaches back to the letter before (Geist -5); held inside.
       j: [0.1, 1],

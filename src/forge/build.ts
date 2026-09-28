@@ -798,12 +798,12 @@ function fitted(
      * give back twenty.
      */
     const plain = style.metrics.sidebearing;
-    const unit =
-      plain > 0 && set[2] !== "closes"
-        ? plain * Math.sqrt(spacingOf(style) / plain)
-        : spacingOf(style);
-    const shift = unit * set[0] + opened - box.xMin;
-    return { shift, advance: box.xMax + shift + unit * set[1] + opened };
+    const half = plain > 0 ? plain * Math.sqrt(spacingOf(style) / plain) : spacingOf(style);
+    // A stem's side, where the entry names one, closes as fast as the n's.
+    const unitLeft = set[2] === "closes" || set[2] === "stem-left" ? spacingOf(style) : half;
+    const unitRight = set[2] === "closes" || set[2] === "stem-right" ? spacingOf(style) : half;
+    const shift = unitLeft * set[0] + opened - box.xMin;
+    return { shift, advance: box.xMax + shift + unitRight * set[1] + opened };
   }
   const top = figure || isCapitalLike(name) ? style.metrics.capHeight : style.metrics.xHeight;
   /*

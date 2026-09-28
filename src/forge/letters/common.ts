@@ -627,6 +627,13 @@ export const OVAL_CURVE = OVAL / 10;
 
 /** How much narrower down the middle a held bowl is at the Black: see `frame`. */
 const HEAVY_GIVE = 0.03;
+/**
+ * And a lowercase one, which gives a little more, and on to the current
+ * Geist's Black, a stem of 194 (1.31 of the older Black's measure): Geist's
+ * o is 565 across at its UltraBlack and 584 at its Black.
+ */
+const HEAVY_GIVE_LOWER = 0.045;
+const HEAVY_GIVE_REACH = 1.31;
 
 export function frame(drawn: Style): Frame {
   // The style as a letter is drawn at this weight: see `blackness`.
@@ -678,10 +685,13 @@ export function frame(drawn: Style): Frame {
     ? Math.abs(reachAlong(at(0, 1), penReach({ ...pen, weight: held.from })).y)
     : upright;
   const heavyKeep = heavierHeld ? 1 - HEAVY_GIVE * Math.min(1, blackness(style) / 0.67) : 1;
+  const lowerKeep = heavierHeld
+    ? 1 - HEAVY_GIVE_LOWER * Math.min(HEAVY_GIVE_REACH, blackness(style) / 0.67)
+    : 1;
   const bowlAcross = lighter
     ? Math.max(metrics.xHeight / 2 + metrics.overshoot - lightUpright, least) * lightGrow
     : heavierHeld
-      ? Math.max(bowlH, (metrics.xHeight / 2 + metrics.overshoot - heldUpright) * heavyKeep)
+      ? Math.max(bowlH, (metrics.xHeight / 2 + metrics.overshoot - heldUpright) * lowerKeep)
       : bowlH;
   const archWeight = lighter ? held.from : pen.weight;
   // In stem widths, and that is the whole of it: see `ASIDE`.

@@ -315,7 +315,7 @@ export function grotesqueG(style: Style): Recipe {
   const f = frame(lighterAcross(style));
   const u = small(f, 1);
   // The bowl's left drawn in as the weight grows, to the current Geist's.
-  const left = f.edge + 7 * heavyT(f);
+  const left = f.edge + 4 * heavyT(f);
   const stem = f.edge + 385 * u;
   const top = f.crest(f.x);
   // The bowl stands a little off the baseline: its foot is at 28, not -12.
@@ -385,7 +385,8 @@ export function grotesqueY(style: Style): Recipe {
   // widens by what the pen gains instead, so the vee keeps its shape.
   const lerp = (a: number, b: number, thin: number) =>
     lerpOn(a, a + (b - a) * Math.min(1, heaviness(f) / 0.67), thin);
-  const grow = Math.max(0, f.style.pen.weight - weightAtBlackness(f.style, 0.67));
+  // Past the current Geist's Black, a stem of 194 (see `squaredNow`).
+  const grow = Math.max(0, f.style.pen.weight - weightAtBlackness(f.style, 0.67 * nowBlack()));
   const k = X(1) - X(0);
   const H = (y: number) => (y / 530) * f.x;
   const top = f.x;
@@ -4129,7 +4130,7 @@ export function grotesqueC(style: Style): Recipe {
   // the current Geist's.
   const halfW = held(
     f,
-    (mixed(f.grownBowl, f.bowl, 0.5) / unstretched(f)) * 0.985 + roundGain(f, -2.5, 6),
+    (mixed(f.grownBowl, f.bowl, 0.5) / unstretched(f)) * 0.985 + roundGain(f, -2.5, 8.5),
   );
   const centre = at(f.edge + halfW, f.x / 2);
   const head = angleAt(f, centre, halfW, f.bowlH, H(lerp(352, 325)), false);
@@ -4147,9 +4148,8 @@ export function grotesqueE(style: Style): Recipe {
   const [, t] = smallSpread(f);
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
   const H = (y: number) => (y / 530) * f.x;
-  // A little narrower than the o's, more so as the weight grows, to the
-  // current Geist's: 6 units at the Regular and 12 at UltraBlack.
-  const halfW = held(f, (f.bowl / unstretched(f)) * 0.99 - 3 * (1 - thinness(f)) - 3 * heavyT(f));
+  // A little narrower than the o's, to the current Geist's: 6 units.
+  const halfW = held(f, (f.bowl / unstretched(f)) * 0.99 - 3 * (1 - thinness(f)));
   const centre = at(f.edge + halfW, f.x / 2);
   // Geist's height, moved with the crossbar control from where the face has it.
   // Past the Black the bar comes down a little, so the eye over it stays open.

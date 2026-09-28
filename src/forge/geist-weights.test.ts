@@ -678,6 +678,12 @@ describe("the widths of the letters redrawn to the current Geist", () => {
       j: [152, 187, 243, 299, 327],
       e: [450, 473, 512, 552, 571],
       g: [435, 470, 511, 552, 572],
+      // And the lowercase bowls and the y, which grew to their UltraBlack
+      // widths too soon: the o, b and p 14 wide at the Black, the y 22.
+      o: [450, 485, 525, 565, 584],
+      b: [435, 471, 512, 552, 572],
+      p: [435, 471, 512, 552, 572],
+      y: [449, 493, 528, 562, 579],
     };
     for (const [name, widths] of Object.entries(geist)) {
       for (const [index, weight] of [30, 87, 130, 172, 194].entries()) {
@@ -904,6 +910,35 @@ describe("the heavy s's counters", () => {
       const above = column.find(([from]) => from >= widest.y)!;
       const high = above[0] - below[1];
       expect(widest.width / high, name).toBeLessThan(1.9);
+    }
+  });
+});
+
+describe("the sides of the lowercase bowls", () => {
+  it("stand as far off as Geist's from the Thin to the Black", () => {
+    // Geist's o stands 44 off either side at the Regular and 32 at the
+    // Black; its b 80 off the stem and 44 off the bowl. Fitted, the bowls
+    // closed to 26 and 20 at the heavy weights.
+    const geist: [number, number[], number[]][] = [
+      [30, [50, 50], [85, 50]],
+      [87, [44, 44], [80, 44]],
+      [130, [39, 39], [70, 39]],
+      [172, [34, 34], [61, 34]],
+      [194, [32, 32], [56, 32]],
+    ];
+    for (const [weight, o, b] of geist) {
+      for (const [name, sides] of [
+        ["o", o],
+        ["b", b],
+        ["d", [b[1], b[0]]],
+      ] as const) {
+        const glyph = draw(name, weight);
+        const ink = contoursBounds(glyph.contours);
+        const left = ink.xMin;
+        const right = glyph.advanceWidth - ink.xMax;
+        expect(Math.abs(left - sides[0]), `${name} left at ${weight}`).toBeLessThan(5);
+        expect(Math.abs(right - sides[1]), `${name} right at ${weight}`).toBeLessThan(5);
+      }
     }
   });
 });
