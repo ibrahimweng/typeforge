@@ -1128,7 +1128,22 @@ function splitPlan(
       // leaves the foot of a stem: the bar of an f and the middle arm of an
       // E leave theirs part way up, and come off however short they are.
       const offTheEnd = ends[gives === one ? 1 : 0] < 0.1;
-      const flick = offTheEnd && (freed > stem || wide < stem * 0.4);
+      /*
+       * And turning back on it: the exit of a script H runs down the stem and
+       * flicks back up. An arm that turns off the end of a stem at a corner
+       * is the top of an E, and comes off -- with a rim thrown first the arms
+       * are fatter, the gap sits further out, and the E came back whole.
+       */
+      const line = samples[keeps];
+      const k = gives === one ? where[1] : where[0];
+      const inward = k < SAMPLES / 2 ? 1 : -1;
+      const into = { x: line[k].x - line[k + inward].x, y: line[k].y - line[k + inward].y };
+      const leaving = { x: tip.x - root.x, y: tip.y - root.y };
+      const turnsBack =
+        (into.x * leaving.x + into.y * leaving.y) /
+          (Math.hypot(into.x, into.y) * Math.hypot(leaving.x, leaving.y) || 1) <
+        -0.2;
+      const flick = offTheEnd && turnsBack && (freed > stem || wide < stem * 0.4);
       if (placed && loose && freed < least && (flick || curl)) {
         continue;
       }

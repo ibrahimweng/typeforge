@@ -114,23 +114,45 @@ export function castInk(
 
   let shape = unite(ink, roles, "whole");
   const stem = Math.max(scale.stem, 1);
+  // The smallest counter the letter really has. Not a pinhole the union of
+  // its overlapping strokes tied off -- a light Serif g has one of six units
+  // where its link meets the bowl -- which would hold every speck to its size.
   const smallest = Math.min(
     Infinity,
-    ...shape.map((contour) => -contourArea(contour)).filter((area) => area > 0),
+    ...shape.map((contour) => -contourArea(contour)).filter((area) => area > stem * stem * 0.1),
   );
 
   const local: Contour[] = [];
   if (cast.spur.on) local.push(...spurTool(shape, cast.spur, stem, chamfered));
   if (cast.weld.on) local.push(...weldTool(strokes, cast.weld, stem, shape, breaks));
-  if (local.length > 0) shape = unite([...shape, ...local], "winding", "whole");
+  if (local.length > 0) {
+    /*
+     * Nothing a fillet or a point adds stands on its own. One grown at a join
+     * the letter's own strokes only nearly make -- where the link of a Serif
+     * g leaves its bowl -- came away beside it as a speck of ink. Never as
+     * large as the smallest piece the letter went in with, so the dot of an
+     * i is never taken for one.
+     */
+    const least = Math.min(
+      stem * stem * 0.1,
+      ...shape
+        .map((contour) => contourArea(contour))
+        .filter((area) => area > 0)
+        .map((area) => area * 0.5),
+    );
+    shape = unite([...shape, ...local], "winding", "whole").filter(
+      (contour) => contourArea(contour) <= 0 || contourArea(contour) >= least,
+    );
+  }
 
   if (cast.extrude.on) shape = extruded(shape, cast.extrude, stem);
   if (cast.outline.on) shape = outlined(shape, cast.outline.width * stem);
 
   const done = withoutSpecks(shape, stem, smallest);
   // No outline left crossing itself: see the same step in `cutInk`.
+  // And swept again after it, which can tie off a pinhole of its own.
   return done.some((contour) => contoursIntersect([contour]))
-    ? unite(done, "winding", "whole")
+    ? withoutSpecks(unite(done, "winding", "whole"), stem, smallest)
     : done;
 }
 

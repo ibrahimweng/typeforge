@@ -290,6 +290,27 @@ describe("the split on a bowl drawn against its stem", () => {
   });
 });
 
+describe("the inline on a roughened face", () => {
+  it("keeps its groove round a Brush o and down a Handwriting H", () => {
+    // The roughening's sweep for slits took the groove for one where it
+    // tapers, and the rounds of the Brush and most of the Handwriting came
+    // back with no inline at all.
+    for (const [face, letter] of [
+      ["Brush", "o"],
+      ["Brush", "a"],
+      ["Handwriting", "H"],
+      ["Handwriting", "o"],
+    ] as const) {
+      const weight = BASES.find((one) => one.name === face)!.pen.weight;
+      // Measured as ink taken: a groove that runs out through a terminal is
+      // a notch rather than a counter.
+      const plain = area(drawn(letter, forgeOf(face, weight, {})));
+      const grooved = area(drawn(letter, forgeOf(face, weight, { cuts: { inline: {} } })));
+      expect(grooved, `${face} ${letter}`).toBeLessThan(plain * 0.9);
+    }
+  });
+});
+
 describe("the split beside an arch", () => {
   it("leaves the stem no wider than the pen, with no lip below the gap", () => {
     // The foot of the arch curves out of the stem just below the gap, and
@@ -404,6 +425,18 @@ describe("the weld beside the split", () => {
       const after = area(drawn("A", both));
       expect(Math.abs(after - before) / before, order).toBeLessThan(0.002);
       expect(piecesOf(drawn("A", both)), order).toBe(piecesOf(drawn("A", split)));
+    }
+  });
+});
+
+describe("the weld on a Serif g", () => {
+  it("leaves no speck beside the link and no pinhole in it", () => {
+    for (const weight of [87, 30]) {
+      const letter = drawn("g", forgeOf("Serif", weight, { cast: { weld: {} } }));
+      const areas = unite(letter, "winding").map(contourArea);
+      expect(areas.filter((one) => one > 0).length, `${weight} pieces`).toBe(1);
+      const specks = areas.filter((one) => Math.abs(one) < weight * weight * 0.1);
+      expect(specks, `${weight} specks`).toEqual([]);
     }
   });
 });

@@ -246,7 +246,7 @@ export function effectInk(
     ),
   );
   return canCarve
-    ? swept(shape, stem).map((contour) => unsplintered(contour, stem, hairline))
+    ? swept(shape, stem, strokes).map((contour) => unsplintered(contour, stem, hairline))
     : shape;
 }
 
@@ -676,7 +676,7 @@ function skipTool(strokes: Stroke[], skip: Effects["skip"], stem: number): Conto
  * Only the outer contours are looked at, so a counter this size is left alone:
  * filling a hole is as wrong as leaving an island.
  */
-function swept(shape: Contour[], stem: number): Contour[] {
+function swept(shape: Contour[], stem: number, strokes: Stroke[] = []): Contour[] {
   if (shape.length < 2) return shape;
   const areas = shape.map((contour) => contourArea(contour));
   let widest = 0;
@@ -690,7 +690,11 @@ function swept(shape: Contour[], stem: number): Contour[] {
   const kept = shape.filter(
     (contour, at) =>
       !(Math.sign(areas[at]) === solid && Math.abs(areas[at]) < least) &&
-      !(Math.sign(areas[at]) !== solid && slit(contour, Math.abs(areas[at]), stem)),
+      !(
+        Math.sign(areas[at]) !== solid &&
+        slit(contour, Math.abs(areas[at]), stem) &&
+        !(Math.abs(areas[at]) >= stem * stem * 0.08 && downTheMiddle(contour, strokes, stem))
+      ),
   );
   return kept.length > 0 ? kept : shape;
 }
@@ -707,6 +711,49 @@ function swept(shape: Contour[], stem: number): Contour[] {
  * its area over its perimeter, a slit is a fifth of a stem across or less,
  * and nothing a letter means to leave open is both that thin and that small.
  */
+/**
+ * Whether a hole runs down the middle of a stroke, as the inline's groove
+ * does, rather than between two, as a slit does.
+ *
+ * The two can be the same width: an inline tapers where its stroke thins,
+ * and round a Brush o or down a Handwriting stem it was as thin as the slits
+ * the Casual Script's joins leave, and was swept away with them. A slit lies
+ * where two strokes' edges meet, half a pen from either spine; a groove lies
+ * on one, so nearly all of its outline is within a sixth of a stem of it:
+ * the Casual Script's slits have half of theirs that near, or less. A speck
+ * of a hole is never a groove, wherever it lies.
+ */
+function downTheMiddle(contour: Contour, strokes: Stroke[], stem: number): boolean {
+  if (strokes.length === 0) return false;
+  const lines = strokes.map((stroke) => alongSpine(stroke.spine, 64));
+  const points = flattenContour(contour);
+  if (points.length === 0) return false;
+  const step = Math.max(1, Math.floor(points.length / 24));
+  let near = 0;
+  let count = 0;
+  for (let at = 0; at < points.length; at += step) {
+    count++;
+    const point = points[at];
+    if (lines.some((line) => nearLine(line, point, stem * 0.16))) near++;
+  }
+  return near >= count * 0.85;
+}
+
+/** Whether a point is within some distance of a sampled line. */
+function nearLine(line: Vec2[], point: Vec2, within: number): boolean {
+  for (let at = 0; at + 1 < line.length; at++) {
+    const a = line[at];
+    const b = line[at + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const span = dx * dx + dy * dy;
+    const t =
+      span > 0 ? Math.min(Math.max(((point.x - a.x) * dx + (point.y - a.y) * dy) / span, 0), 1) : 0;
+    if (Math.hypot(a.x + dx * t - point.x, a.y + dy * t - point.y) < within) return true;
+  }
+  return false;
+}
+
 function slit(contour: Contour, area: number, stem: number): boolean {
   if (area >= stem * stem) return false;
   const points = flattenContour(contour);
@@ -744,6 +791,9 @@ function pressWedges(
   const wedges: Contour[] = [];
 
   for (const stroke of strokes) {
+    // The stroke's own outline, uncut, for telling its flank from the side of
+    // a cut: see `flankAt`.
+    const own = sweep(stroke).map((contour) => flattenContour(contour, RAY_STEPS));
     if (stroke.spine.closed) continue;
     const reach = Math.max(stroke.pen.weight, stem) * 0.5;
     const walked = alongSpine(
@@ -772,7 +822,9 @@ function pressWedges(
     for (const side of [1, -1] as const) {
       const flank: Array<{ inner: Vec2; outer: Vec2 } | null> = [];
       for (let at = 0; at < walked.length; at++) {
-        flank.push(flankAt(walked, at, side, press.amount, press.at, opens, edges, half, stroke));
+        flank.push(
+          flankAt(walked, at, side, press.amount, press.at, opens, edges, half, stroke, own),
+        );
       }
       /*
        * One band per unbroken run of flank, and not one quad per pair of
@@ -863,6 +915,7 @@ function flankAt(
   edges: Vec2[][],
   half: number,
   stroke: Stroke,
+  own: Vec2[][] = [],
 ): { inner: Vec2; outer: Vec2 } | null {
   const before = walked[Math.max(0, at - 1)];
   const after = walked[Math.min(walked.length - 1, at + 1)];
@@ -887,7 +940,16 @@ function flankAt(
    * between that sample and the next, and a slotted Formal Script g lost
    * three fifths of its ink to the press.
    */
-  if (hit < pen * SHORT) return null;
+  if (hit < pen * SHORT) {
+    // Unless the stroke itself is that thin there, as a contrast face's is
+    // towards a terminal: then the ray found its flank. Measured against the
+    // pen alone, every tapering end went unthinned.
+    const itself = own.length > 0 ? rayHitDistance(own, here, normal) : Number.POSITIVE_INFINITY;
+    // And not a ray that starts on the edge itself, where the spine runs on
+    // past the ink of a brush's terminal: the wedge cut from there is what
+    // tapers the tip, and has always been.
+    if (hit > 0.5 && !(hit >= itself * 0.8)) return null;
+  }
 
   const u = at / (walked.length - 1);
   /*
