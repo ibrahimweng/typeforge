@@ -87,8 +87,10 @@ and Black. The backslash is the Sans slash turned round. The plus is as tall
 as it is wide (it was a third smaller and hung low). The less-than and
 greater-than have shallow arms, cut upright, meeting in a short flat. The
 equals bars are longer and further apart. The underscore is twice as long.
-The tilde is two equal arcs cut level. Past the Black the plus, the angles and
-the tilde grow as they get heavier, so they stay open at 260.
+The tilde is two equal arcs cut level. Past the Black the plus and the angles
+grow as they get heavier, and the tilde spreads more than it thickens, so all
+of them stay open at 260 and the tilde keeps round turns without a wedge at
+its end.
 
 **( ).** The sidebearings now match Geist's: 45 on the opening side and 15 on
 the closing side.
@@ -199,8 +201,9 @@ strokes as white; they now use a filled (nonzero) ruler.
 
 ## Pictures
 
-`docs/polish/sans/` has before and after images. `specimen-*.png` shows
-"sass eyes Sa8 %#^()" at pens 30, 87, 172 and 260. `overlay-*.png` shows
-a s e y S 8 % # ^ with the Geist outline in red over the Draw fill, at the
-same four weights: Geist Thin at 30, Regular at 87, Black at 172 and
-UltraBlack at 260.
+`docs/polish/sans/` has before and after images. The before images are from
+the branch's starting point, 3050e21. `specimen-*.png` shows "sass eyes Sa8
+%#^()" and "[a]{b} <+=>~_ $@& àéñ WAY7r" at pens 30, 87, 172 and 260.
+`overlay-*.png` shows a s e y 8 S $ @ & [ { < ~ with the Geist outline in red
+over the Draw fill, at the same four weights: Geist Thin at 30, Regular at 87,
+Black at 172 and UltraBlack at 260.

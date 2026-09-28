@@ -2666,8 +2666,8 @@ type Measure = [number, number, number];
 /**
  * A wave of two equal arcs, one over and one under, cut level at both ends,
  * from a low left end to a high right one, on Geist's measures. Past the
- * Black it grows taller and wider as fast as it grows heavier, or its
- * hollows filled in.
+ * Black it grows taller and wider rather than heavier, or its hollows
+ * pinched to spurs.
  */
 function wave(
   style: Style,
@@ -2676,12 +2676,18 @@ function wave(
   const f = frame(style);
   const [X, lerp] = squared(f);
   const k = X(1) - X(0);
-  const thick = lerp(...m.thick);
-  const grown = Math.max(0, thick - m.thick[1]) * 1.2;
+  // Past the Black the stroke grows at part of the pen's pace and the wave
+  // spreads with the rest, or the hollows closed to spurs.
+  const pace = 0.4;
+  const drawn = lerp(...m.thick);
+  const thick = drawn > m.thick[1] ? m.thick[1] + (drawn - m.thick[1]) * pace : drawn;
+  const grown = Math.max(0, drawn - m.thick[1]) * 0.8;
   const wide = lerp(...m.wide) + grown * 2;
   const half = thick / 2;
-  const low = lerp(...m.low) - grown;
-  const high = lerp(...m.high) + grown;
+  // The ends held near their Black heights, so the stroke still arrives
+  // at each upright, and a level cut across it leaves no wedge.
+  const low = lerp(...m.low) - grown * 0.3;
+  const high = lerp(...m.high) + grown * 0.3;
   const crest = lerp(...m.crest) + grown - half;
   const middle = { x: wide / 2, y: (low + high) / 2 };
   // From the middle, where the two arcs meet, to the left end, and how far

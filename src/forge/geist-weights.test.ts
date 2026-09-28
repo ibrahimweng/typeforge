@@ -597,6 +597,22 @@ describe("the bar and the ampersand", () => {
   });
 });
 
+describe("the tilde past the Black", () => {
+  it("stays a wave, its lowest ink a round turn rather than a wedged end", () => {
+    // Grown heavier as fast as the pen past the Black, its left end came
+    // down past the turn above it and was cut level into a wedge 160 to 260
+    // units long, the lowest thing in the mark.
+    for (const weight of [200, 230, 260]) {
+      const { contours } = draw("asciitilde", weight);
+      const ink = contoursBounds(contours);
+      const bottom = runs(contours, ink.yMin + 2, "y");
+      expect(bottom[0][1] - bottom[0][0], `~ at ${weight}`).toBeLessThan(
+        (ink.xMax - ink.xMin) * 0.2,
+      );
+    }
+  });
+});
+
 describe("the dollar", () => {
   it("has Geist's long light bar, and Geist's sides", () => {
     // Geist's bar runs from 90 under the line to 800, 74 across at the
