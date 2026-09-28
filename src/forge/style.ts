@@ -2010,6 +2010,7 @@ export const HANDWRITING: Style = {
     y: "straight",
     f: "descending",
     n: "written",
+    r: "written",
     o: "written",
     a: "written",
     e: "written",
@@ -2339,14 +2340,21 @@ export const FORMAL_SCRIPT: Style = {
   // eye is the join layer's to draw, so a tail that curls round as well draws
   // it twice. Plain, this face set its `y` at 1.44 to 1.68 of its own `o`
   // against the reference's 1.06.
+  /*
+   * The written `a`, as on the other three joined faces. It was the two-storey
+   * one, which a pointed-pen hand does not write: pressed into this face's
+   * narrow oval and its hairline horizontals, the head lost its join to the
+   * bowl and the letter read as a `∂` with a hook floating over it.
+   */
   forms: {
     k: "standing",
-    a: "double",
+    a: "written",
     l: "tailed",
     y: "straight",
     f: "descending",
     one: "footed",
     n: "written",
+    r: "written",
     o: "written",
     e: "written",
   },
@@ -2546,6 +2554,7 @@ export const CASUAL_SCRIPT: Style = {
     f: "descending",
     l: "tailed",
     n: "written",
+    r: "written",
     o: "written",
     a: "written",
     e: "written",
@@ -2741,6 +2750,7 @@ export const MONOLINE_SCRIPT: Style = {
     seven: "barred",
     four: "open",
     n: "written",
+    r: "written",
     o: "written",
     a: "written",
     e: "written",
@@ -2944,7 +2954,17 @@ export const ROUNDHAND: Style = {
    * other, which is the one thing a face meant to travel cannot afford.
    */
   pen: { weight: 74, contrast: 0.24, angle: 28 },
-  forms: { k: "standing", l: "tailed", g: "curled", t: "straight", f: "descending" },
+  forms: {
+    k: "standing",
+    l: "tailed",
+    // The plain `g`, whose descender the join layer loops as it does the
+    // other four faces'. The curled one ended its curl in a ball jammed
+    // into the left of its own bowl.
+    t: "straight",
+    f: "descending",
+    // Hands on from its arm; see the written `r`.
+    r: "written",
+  },
   parts: {
     ...PLAIN.parts,
     // Square, for the reason set out on the Handwriting above.
@@ -2958,7 +2978,23 @@ export const ROUNDHAND: Style = {
       height: 0.33,
       reach: 1.7,
       flat: 0.12,
-      loop: 1.4,
+      /*
+       * Climbing, as on the other four, and for the reason set out on the
+       * Handwriting. This face was the one left level, and it showed: every
+       * join in a word lay at the same height as every other, so `gloves` and
+       * `brown` came out threaded on a rule struck through the `v`, the `w`,
+       * the `e` and the `s`.
+       */
+      tilt: 50,
+      // Welded rather than tacked, as on the other four; see `knit`.
+      knit: 0.4,
+      /*
+       * An eye with a counter in it. At 1.4 stems and a semicircle, the loops
+       * on the `l`, the `t` and the `b` closed to blobs at this face's own
+       * weight; this is the other four's shape at this face's size.
+       */
+      loop: 2.4,
+      eye: 0.32,
       /*
        * Two tenths, which reads as a hand and not as a fault.
        *
@@ -3043,6 +3079,35 @@ export function blackness(style: Style): number {
   const span = Math.max(TEXT_STEM + BLACK_SPAN - from, BLACK_SPAN / 4);
   return Math.min(Math.max((pen.weight / metrics.xHeight - from) / span, 0), 1.5);
 }
+
+/**
+ * What a joined face measures its joins in, which is its pen -- held near the
+ * pen the face was designed at.
+ *
+ * The reach, the weld and the loop are set in stem widths so they hold as the
+ * weight moves a little, and that is right near the face's own weight and wrong
+ * far from it. At a Light the stem is a third of what it was, the letters
+ * closed up to a third of their spacing, and a lead-in had no room left to
+ * climb to the top of its stem except by running up beside it: the
+ * Roundhand's `minimum` came out as a row of looped `p`s. At a Black the stem
+ * is three times what it was and so was every join, until the words were
+ * letters threaded on a bar as heavy as their stems. A hand writing larger or
+ * smaller spaces its letters by the size of the writing, not by the width of
+ * the pen, so the pen is held within a band either side of the face's own.
+ */
+export function scriptUnit(style: Style): number {
+  const { pen, metrics } = style;
+  if (metrics.xHeight <= 0) return pen.weight;
+  const base = BASES.find((one) => one.name === style.name);
+  if (!base || base.metrics.xHeight <= 0) return pen.weight;
+  const own = base.pen.weight / base.metrics.xHeight;
+  const stem = pen.weight / metrics.xHeight;
+  return metrics.xHeight * Math.min(Math.max(stem, own * SCRIPT_LEAST), own * SCRIPT_MOST);
+}
+
+/** How far a joined face's measure may fall below its own pen, and rise above. */
+const SCRIPT_LEAST = 0.8;
+const SCRIPT_MOST = 1.3;
 
 /** A text stem against its x-height, a little over the Sans's own. */
 const TEXT_STEM = 0.19;

@@ -82,6 +82,15 @@ export interface Recipe {
    * kept, honoured by the letter rather than by a stroke laid against it.
    */
   entered?: boolean;
+  /**
+   * Whether the lead-out leaves from the end of the letter's last stroke,
+   * running on the way that stroke was going, rather than from its foot.
+   *
+   * A written `r` hands on from the end of its arm. Left from the foot of its
+   * stem like every other letter, the lead-out ran along the writing line
+   * under the arm to reach the advance past it, and `rn` read as `Lcn`.
+   */
+  leaves?: boolean;
 }
 
 export type LetterName = string;
@@ -1827,6 +1836,22 @@ export function lighter(stroke: Stroke, by: number): Stroke {
  * is drawn; every other face from its own weight, by `blackness` -- the same
  * letters close up the same way on a grotesque or a slab at their Black.
  */
+/**
+ * How much further apart a hand-drawn face sets the arms of its diagonal
+ * letters at a heavy weight, either side.
+ *
+ * A brush or a marker draws a diagonal with the pen's whole width, and at a
+ * Black two of them meeting in a vee close the crotch between them from the
+ * point all the way up: the Brush's `v` and `V` came out as solid wedges and
+ * its `w`, `x` and `K` as blots. A heavy brush face opens its diagonals
+ * instead, and that is room, not a thinner stroke. Nothing on any other face,
+ * and nothing below a Black's start.
+ */
+export function openVee(f: Frame): number {
+  if (f.style.family !== "hand") return 0;
+  return f.half * 0.9 * Math.min(heaviness(f), 1.5);
+}
+
 export function heaviness(f: Frame): number {
   if (!bookish(f) || f.style.parts.slab.shape !== "wedge") return blackness(f.style);
   return Math.min(Math.max((f.style.pen.weight - 96) / 104, 0), 1.5);
@@ -1882,8 +1907,13 @@ export function stopRadius(f: Frame): number {
     const across = regular + 0.81 * Math.max(0, stem - 86);
     return Math.min(across / 2, f.x * 0.2);
   }
-  // A joined hand keeps the pen's own dot: its comma is run into the join.
-  if (f.style.parts.script.on) return f.half * 0.95;
+  /*
+   * A joined hand keeps the pen's own dot: its comma is run into the join. But
+   * a light one keeps a body over its pen, as every light face does: at a pen
+   * of thirty the Roundhand's full stops were specks a stem across and a
+   * sentence lost its ends.
+   */
+  if (f.style.parts.script.on) return Math.min(f.half * 0.95 + lightBody(f) * 1.4, f.x * 0.2);
   // Lora's full stop is 117 across on a stem of 87.
   /*
    * And past the Regular growing at half the rate the stem does: Lora Bold's
@@ -1949,15 +1979,25 @@ export function tittle(f: Frame, x: number): Stroke {
    */
   const radius = Math.min(
     Math.max(
-      f.half * (0.55 + own) + lightBody(f),
+      f.half * (0.55 + own) + lightBody(f) * (f.style.parts.script.on ? 1.4 : 1),
       f.style.metrics.unitsPerEm * 0.04 * own,
       f.half * 1.06,
     ),
     // And no larger than the room over the x-height leaves it.
     Math.max((f.asc - f.x - f.half * 0.6) / 2, f.half * 0.55),
   );
+  /*
+   * And always clear of the stem, by more than the stem's own round cap
+   * stands over the x-height. The floor was measured from the x-height, and a
+   * round-ended stem reaches half a pen past it: at a heavy weight, where the
+   * dot is pushed down onto that floor, a Marker's `i` and `j` wore their dots
+   * fused on as a keyhole. Past the room under the ascender the dot goes up
+   * rather than down: a dot over the line is a dot, and one on the stem is not.
+   */
+  const cap = f.style.parts.terminal.kind === "round" ? f.half : 0;
+  const clear = f.x + cap + Math.max(f.half * 0.7, f.x * 0.06) + radius;
   const y = Math.min(f.x + f.half * 1.5 + radius, f.asc + f.over - radius);
-  return dot(f, at(x, Math.max(y, f.x + f.half * 0.6 + radius)), radius);
+  return dot(f, at(x, Math.max(y, clear)), radius);
 }
 
 /**

@@ -325,6 +325,24 @@ export const HIGH = 0.76;
  * line it can be pivoted on without opening the joins. So this is the one place
  * that answers, and the pen is passed in because the floor is measured in it.
  */
+/**
+ * The heading a join crosses its seam on, as a unit vector.
+ *
+ * Every letter's exit arrives on it and every letter's entry leaves on it, so
+ * it is one number for the face -- the `tilt` -- at the low seam. At the high
+ * seam it is level. The four that hand over high finish at the top of
+ * themselves, above that seam, and a join made to arrive there climbing has to
+ * dip under it first: the `v` came down off its own arm and climbed back
+ * through it, and `vn` read `v4n`. A hand leaving the top of an `o` runs across
+ * to the next letter's shoulder, and the only heading both halves can agree on
+ * that does that is level.
+ */
+export function seamHeading(script: Script, high: boolean): Vec2 {
+  const degrees = high ? 0 : Math.max(-60, Math.min(70, script.tilt));
+  const radians = (degrees * Math.PI) / 180;
+  return at(Math.cos(radians), Math.sin(radians));
+}
+
 export function seamsOf(script: Script, x: number, half: number): { low: number; high: number } {
   const low = Math.max(script.height * x, half * 1.25);
   // Where the four that hand over high cross, which the face may name.
@@ -371,6 +389,12 @@ export interface Room {
   narrow: number;
   /** The x-height. */
   x: number;
+  /**
+   * What the reach, the weld and the loop are measured in: the pen, held near
+   * the pen the face was designed at -- see `scriptUnit`. The pen itself when
+   * not given.
+   */
+  unit?: number;
   /**
    * The face's own sidebearing, for whichever side of the letter has no join
    * reaching out of it.
@@ -919,7 +943,14 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
      * is drawn for that height -- a half being the semicircle this used to be
      * whatever the face wanted.
      */
-    const shape = Math.max(0, Math.min(0.5, script.eye));
+    /*
+     * And never so narrow that no counter is left inside it. The share holds
+     * the shape of a long eye; a short one -- a descender's, which is no longer
+     * than its descender -- bowed by the same share came out narrower than the
+     * pen, and the `y` and the `q` hung a black drop off the line.
+     */
+    const open = room.half * 1.5 + room.x * 0.08;
+    const shape = Math.max(0, Math.min(0.5, Math.max(script.eye, open / Math.max(deep, 1e-6))));
     /*
      * And an eye narrower than the pen drawing it is a blob rather than an eye,
      * which is the same thing `wide` guards at the other end. What has to clear
@@ -927,6 +958,9 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Spine[] {
      * what the two strokes' own ink takes out of the middle of it.
      */
     if (deep * shape < room.upright * 1.5) continue;
+    // Opened as far as it may go and still with no counter in it, it is a
+    // blot on the stem rather than an eye, and it is left off.
+    if (deep * shape < room.half * 1.8 + room.x * 0.03) continue;
     out.push(bowed(start, tip, rising ? shape : -shape));
   }
   return out;
@@ -1212,6 +1246,7 @@ export function planJoin(
   waist: number | null = null,
   air = 0,
   entered = false,
+  leavesAt: Vec2 | null = null,
 ): Join | null {
   /*
    * A letter with neither end still comes through here, and only the strokes
@@ -1269,7 +1304,7 @@ export function planJoin(
    * says how much less: its `o` sets at 1.10 with its bowl 1.16 wide, an
    * advance narrower than the letter, so the next letter laps onto the bowl.
    */
-  const reach = script.reach * room.half * 2;
+  const reach = script.reach * (room.unit ?? room.half * 2);
   /*
    * The bands stop half a pen inside the letter's own lines rather than on
    * them.
@@ -1329,8 +1364,17 @@ export function planJoin(
    * and an `o` from the top of its bowl, and a band that looked in one
    * direction only would find the wrong end of one of them.
    */
-  const leaves =
-    exitAt > seams.low
+  /*
+   * A letter that hands on from the end of its last stroke says where that is,
+   * and the lead-out leaves from there on the way the stroke was going: see
+   * `Recipe.leaves`.
+   */
+  const ending = leavesAt
+    ? nearest(points, (point) => Math.hypot(point.x - leavesAt.x, point.y - leavesAt.y))[0]
+    : null;
+  const leaves = ending
+    ? ending
+    : exitAt > seams.low
       ? attach(
           points,
           (point) => point.y >= exitAt && point.y <= room.x - room.half,
@@ -1621,7 +1665,17 @@ export function planJoin(
           0,
           points.reduce((most, one) => Math.max(most, one.point.x), -Infinity) - rightmost,
         );
-  const width = asked + Math.max(0, hangs - room.x * HANGS_OVER);
+  /*
+   * And a letter that hands on from the end of its own stroke, climbing, is
+   * spaced by that stroke: the advance is where the stroke, carried straight
+   * on, crosses the seam -- the same contract a written lead-in keeps at the
+   * other end.
+   */
+  const carried =
+    ending && ending.way.y > 1e-6 && ending.point.y < exitAt && ending.way.x > 0
+      ? ending.point.x + inset + ((exitAt - ending.point.y) * ending.way.x) / ending.way.y
+      : null;
+  const width = carried ?? asked + Math.max(0, hangs - room.x * HANGS_OVER);
 
   /*
    * A straight run at each end before the turn, so the two halves have
@@ -1637,7 +1691,7 @@ export function planJoin(
    * rather than touch. Both ends are cut square, so meeting at a point is
    * meeting over no area -- see `knit`. The advance is not moved by it.
    */
-  const knit = Math.max(0, script.knit) * room.half * 2;
+  const knit = Math.max(0, script.knit) * (room.unit ?? room.half * 2);
   /*
    * Each half is one arc, bent the same way: flat at the bottom and steepening
    * towards the top.
@@ -1671,9 +1725,10 @@ export function planJoin(
    * the arc to make up the difference by steepening on its way up. At a tilt of
    * nought each half is straight and still joins; opened up, it dips.
    */
-  const climbing = unit(
-    at(1, Math.tan((Math.max(-60, Math.min(70, script.tilt)) * Math.PI) / 180)),
-  );
+  const climbing = seamHeading(script, false);
+  // A join across the waist runs level; see `seamHeading`.
+  const entryWay = entryAt > seams.low + 1e-9 ? seamHeading(script, true) : climbing;
+  const exitWay = exitAt > seams.low + 1e-9 ? seamHeading(script, true) : climbing;
   /*
    * The lead-in arrives along the letter's own stroke, pointing away from the
    * seam -- up the first stem of an `n`, so the two meet at the apex the way an
@@ -1696,10 +1751,10 @@ export function planJoin(
   const entry =
     !ends.entry || entered
       ? null
-      : run(at(0, entryAt), climbing, from, arriving, room, level, knit, "in");
+      : run(at(0, entryAt), entryWay, from, arriving, room, level, knit, "in");
   const exit = !ends.exit
     ? null
-    : run(at(width, exitAt), climbing, to, at(1, 0), room, level, knit, "out");
+    : run(at(width, exitAt), exitWay, to, ending ? ending.way : at(1, 0), room, level, knit, "out");
 
   return { entry, exit, inset, width };
 }

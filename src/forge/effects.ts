@@ -226,7 +226,49 @@ export function effectInk(
    * Brush's `e`, `f`, `k`, `u`, `v` and `w` kept theirs, because the wander
    * comes afterwards and makes its own.
    */
-  return canCarve ? swept(shape, stem) : shape;
+  return canCarve ? swept(shape, stem).map((contour) => unsplintered(contour, stem)) : shape;
+}
+
+/**
+ * The outline with its splinters taken off.
+ *
+ * The press cuts its wedges along a flank it has measured, and where the cut
+ * runs a unit off the edge it leaves a strip of ink a unit wide standing
+ * along it -- or a crack of paper as wide running into it; the roughening
+ * then drags each into a whisker. On the Brush they stood off the top of the
+ * `c`, along the arms of the `x` and the `k`, and beside the serifs of the
+ * `V`: debris finer than any bristle leaves. So wherever the outline comes
+ * back within a sliver of where it was after running a good way out, the run
+ * out and back is dropped. Nothing a letter means to draw is that thin: a
+ * hairline at the Brush's contrast is a third of a stem, and this is an eighth.
+ */
+function unsplintered(contour: Contour, stem: number): Contour {
+  const thin = stem * 0.12;
+  let nodes = contour.nodes;
+  if (!contour.closed || nodes.length < 8) return contour;
+  for (let pass = 0; pass < 4; pass++) {
+    const count = nodes.length;
+    const drop = new Set<number>();
+    for (let start = 0; start < count; start++) {
+      if (drop.has(start)) continue;
+      let along = 0;
+      for (let step = 1; step <= 12 && step < count - 2; step++) {
+        const a = nodes[(start + step - 1) % count].point;
+        const b = nodes[(start + step) % count].point;
+        along += Math.hypot(b.x - a.x, b.y - a.y);
+        if (step < 2) continue;
+        const from = nodes[start].point;
+        const gap = Math.hypot(b.x - from.x, b.y - from.y);
+        if (gap < thin && along > thin * 2.5) {
+          for (let inner = 1; inner < step; inner++) drop.add((start + inner) % count);
+          break;
+        }
+      }
+    }
+    if (drop.size === 0 || count - drop.size < 4) break;
+    nodes = nodes.filter((_, index) => !drop.has(index));
+  }
+  return nodes === contour.nodes ? contour : { ...contour, nodes };
 }
 
 /** How many points the finished letter is made of, for the proofing panel. */
@@ -421,8 +463,14 @@ function poolTool(strokes: Stroke[], pool: Effects["pool"], stem: number): Conto
   if (pool.where !== "ends" && strokes.length > 1) {
     const near = stem * 1.15;
     const walked = strokes.map((stroke) => alongSpine(stroke.spine, SAMPLES));
+    // A dot -- a mark no longer than it is wide -- joins nothing.
+    const mark = walked.map(
+      (points, at) => runLength(points) < Math.max(strokes[at].pen.weight, stem),
+    );
     for (let one = 0; one < walked.length; one++) {
+      if (mark[one]) continue;
       for (let other = one + 1; other < walked.length; other++) {
+        if (mark[other]) continue;
         let closest = Infinity;
         let where: Vec2 | null = null;
         for (const a of walked[one]) {
@@ -444,6 +492,13 @@ function poolTool(strokes: Stroke[], pool: Effects["pool"], stem: number): Conto
       if (stroke.spine.closed) continue;
       const walked = alongSpine(stroke.spine, SAMPLES);
       if (walked.length < 2) continue;
+      /*
+       * Not on a dot: a mark no longer than it is wide pooled at both of its
+       * ends came out as two blots stacked in a figure of eight, and pooled as
+       * a join with the stem under it, the pool bridged the gap and the
+       * Marker's `i` wore its dot as a keyhole at a heavy weight.
+       */
+      if (runLength(walked) < Math.max(stroke.pen.weight, stem)) continue;
       if (stroke.start.open === true) added.push(disc(walked[0], size * 0.5));
       if (stroke.end.open === true) added.push(disc(walked[walked.length - 1], size * 0.5));
     }
@@ -577,9 +632,34 @@ function swept(shape: Contour[], stem: number): Contour[] {
   const solid = Math.sign(areas[widest]);
   const least = stem * stem * 0.125;
   const kept = shape.filter(
-    (_, at) => !(Math.sign(areas[at]) === solid && Math.abs(areas[at]) < least),
+    (contour, at) =>
+      !(Math.sign(areas[at]) === solid && Math.abs(areas[at]) < least) &&
+      !(Math.sign(areas[at]) !== solid && slit(contour, Math.abs(areas[at]), stem)),
   );
   return kept.length > 0 ? kept : shape;
+}
+
+/**
+ * Whether a hole is a slit in the ink rather than a counter.
+ *
+ * Where two strokes of a joined letter run into each other nearly side by
+ * side -- a lead-in into the flank of a bowl, a loop down onto its stem --
+ * their edges part by a unit or two before they meet, and the union keeps the
+ * sliver between them as a hole. Roughened, it opens into a white knife-cut
+ * through a solid stroke: the Casual Script's `m`, `u`, `d`, `g` and `l` all
+ * had them. A counter is never that thin: measured by its mean width, twice
+ * its area over its perimeter, a slit is a fifth of a stem across or less,
+ * and nothing a letter means to leave open is both that thin and that small.
+ */
+function slit(contour: Contour, area: number, stem: number): boolean {
+  if (area >= stem * stem) return false;
+  const points = flattenContour(contour);
+  let perimeter = 0;
+  for (let at = 0; at < points.length; at++) {
+    const next = points[(at + 1) % points.length];
+    perimeter += Math.hypot(next.x - points[at].x, next.y - points[at].y);
+  }
+  return perimeter > 0 && (2 * area) / perimeter < stem * 0.2;
 }
 
 function pressWedges(

@@ -1,10 +1,10 @@
 import type { Vec2 } from "@/font/types";
-import { LETTERS } from "../letters";
+import { joinWeight, LETTERS, writtenLead } from "../letters";
 import { seamsOf } from "../script";
 import { bowlBetween, bowlPoint, roundCorners, spineEnd, spineStart } from "../shapes";
 import { penReach, reachAlong } from "../sweep";
 import type { Style } from "../style";
-import type { Spine } from "../types";
+import type { Spine, Stroke } from "../types";
 import {
   grotesqueA,
   grotesqueAt,
@@ -136,6 +136,7 @@ import {
   eyeOf,
   heaviness,
   lighter,
+  shoulderRadius,
 } from "./common";
 
 // ---------------------------------------------------------------------------
@@ -210,7 +211,24 @@ export interface Alternate {
 const UPSTROKE = 76;
 const FIRST_LEG = 90;
 
-function entering(apex: Vec2, radius: number): Spine {
+/** Where a written lead-in crosses the seam, and how it leaves it. */
+type Lead = { y: number; way: Vec2; weld: number; high: boolean; low?: Lead };
+
+/**
+ * The up-stroke, from the seam to the top of the first stem and back down.
+ *
+ * It starts on the seam, on the heading the letter before arrives on, and runs
+ * straight for the weld either side of it, so the lead-out of that letter lies
+ * along it. Then it bends up into the letter's own up-stroke and turns over the
+ * apex. It used to be struck from the writing line instead, and everything
+ * below the seam then stood inside the letter before: `in` crossed as an X.
+ */
+function entering(
+  apex: Vec2,
+  radius: number,
+  lead: Lead,
+  least: number,
+): { lead: Spine; body: Spine } {
   const up = (UPSTROKE * Math.PI) / 180;
   const down = (FIRST_LEG * Math.PI) / 180;
   const centre = at(apex.x, apex.y - radius);
@@ -218,25 +236,119 @@ function entering(apex: Vec2, radius: number): Spine {
     at(centre.x + radius * Math.cos(angle), centre.y + radius * Math.sin(angle));
   const start = on(Math.PI / 2 + up);
   const end = on(Math.PI / 2 - down);
-  return chain(
-    straight(at(start.x - start.y / Math.tan(up), 0), start),
-    turn(centre, radius, 90 + UPSTROKE, 90 - FIRST_LEG),
-    straight(end, at(end.x + end.y / Math.tan(down), 0)),
+  const leg = straight(end, at(end.x + end.y / Math.tan(down), 0));
+  const over = turn(centre, radius, 90 + UPSTROKE, 90 - FIRST_LEG);
+  // Never steeper than the up-stroke: `seamHeading` holds the tilt to seventy.
+  let heading = Math.min(Math.atan2(lead.way.y, lead.way.x), up - 0.05);
+  /*
+   * And no bend tighter than the pen goes round. At a Black the seam is pushed
+   * up and the apex turn down, and the room between them will not take the
+   * whole turn from the seam's heading to the up-stroke's at a radius the pen
+   * can draw -- so the lead-in leaves the seam that much steeper instead, and
+   * meets the lead-out before it at a slight angle rather than folding.
+   */
+  const roomAt = (leaving: number) =>
+    Math.max(start.y - (lead.y + lead.weld * Math.max(Math.sin(leaving), 0)), 1);
+  const fits = (leaving: number) =>
+    (roomAt(leaving) * 0.9) / Math.max(Math.cos(leaving) - Math.cos(up), 1e-6) >= least;
+  // Not taken high, where the run in is level along the waist and the bend
+  // is buried in the apex it turns up into; it keeps its one advance instead.
+  for (let step = 0; step < 40 && !lead.high && !fits(heading); step++) {
+    heading = Math.min(heading + (up - 0.05 - heading) * 0.25, up - 0.05);
+  }
+  const way = at(Math.cos(heading), Math.sin(heading));
+  const rising = Math.cos(heading) - Math.cos(up);
+  /*
+   * Where the straight run past the seam stops and the bend into the
+   * up-stroke begins, as a height: the seam and the weld above it -- or, where
+   * even the steepest heading leaves no room above the seam at all, low enough
+   * that the bend fits, so the lead-in crosses the seam already climbing on
+   * the up-stroke's own line.
+   */
+  const leaves = lead.high
+    ? lead.y
+    : Math.min(lead.y + lead.weld * Math.max(way.y, 0), start.y - (least * rising) / 0.9);
+  const room = Math.max(start.y - leaves, 1);
+  /*
+   * The bend, as large as the height allows and no larger than half an
+   * x-height's worth: its rise is r (cos heading - cos up). The same four
+   * pieces at every weight, so the letter interpolates.
+   */
+  const rise = rising;
+  const most = (room * 0.9) / Math.max(rise, 1e-6);
+  let bendRadius = lead.high
+    ? Math.min(apex.y * 0.5, most)
+    : Math.max(Math.min(apex.y * 0.5, most), Math.min(least, most));
+  /*
+   * Taken high, the lead-in starts as far out from its stem as the plain
+   * letter's does, so the two drawings keep one advance: how far out a
+   * lead-in runs is `(start.y - leaves) / tan(up) + r (sin up - sin heading
+   * - rise / tan up)` past the weld, which is a straight line in the radius.
+   */
+  /*
+   * How far back from the bend the lead-in starts: a weld, which puts its
+   * start on the seam. The letter before carries its own weld in along the
+   * same line, and the two overlap by that much -- reaching back past the
+   * seam as well only laid more of this stroke inside the letter before.
+   */
+  let back = lead.weld;
+  if (lead.high && lead.low) {
+    const plain = entering(apex, radius, lead.low, least);
+    const target = start.x - spineStart(plain.lead).x;
+    const fixed = (start.y - leaves) / Math.tan(up);
+    const per = Math.sin(up) - Math.sin(heading) - rise / Math.tan(up);
+    if (per > 1e-6) {
+      bendRadius = Math.min(bendRadius, Math.max((target - fixed - lead.weld) / per, radius));
+    }
+    back = Math.max(target - fixed - bendRadius * per, 0);
+  }
+  // The bend ends on the up-stroke's line, a rise above where it starts.
+  const meets = leaves + bendRadius * rise;
+  const joins = at(start.x - (start.y - meets) / Math.tan(up), meets);
+  const middle = at(joins.x - bendRadius * Math.sin(up), joins.y + bendRadius * Math.cos(up));
+  const begins = at(
+    middle.x + bendRadius * Math.sin(heading),
+    middle.y - bendRadius * Math.cos(heading),
   );
+  const from = at(begins.x - way.x * back, begins.y - way.y * back);
+  return {
+    lead: chain(
+      straight(from, begins),
+      turn(middle, bendRadius, (heading * 180) / Math.PI - 90, (up * 180) / Math.PI - 90),
+    ),
+    body: chain(straight(joins, start), over, leg),
+  };
 }
 
 /**
- * The short rise a written round letter is entered with.
+ * A written letter's own lead-in, drawn as a join is.
  *
- * A stem is entered with a whole up-stroke, because the hand has to climb to
- * the top of it; a bowl is entered a fifth of the way up its own left flank,
- * because that is where the stroke that draws it begins. The reference's `o`
- * shows the difference plainly: its ink starts at -0.03 of an x-height and its
- * bowl at 0.00, so what hangs outside the letter is a flick and not a stroke.
+ * Square at the seam end, which is buried in the lead-out of the letter
+ * before, and as heavy as that lead-out is. There is no such thing on the
+ * written `o` and `a`: a bowl is entered on its own left flank, which is where
+ * the stroke that draws it begins, and the lead-out of the letter before runs
+ * into it. They carried a flick struck up from the writing line to that flank
+ * once, and it stood in the letter before and cut across its foot.
  */
-function flick(f: Frame, to: Vec2): Spine {
+/**
+ * The flick a written bowl is entered with on a face that does not join.
+ *
+ * With nothing before it to run in, the letter carries the start of the
+ * stroke itself: a short rise from the writing line to a fifth of the way up
+ * its own left flank, where a hand starts an `o`. On a joined face the lead-out
+ * of the letter before is that stroke, and there is no flick.
+ */
+function unjoinedFlick(f: Frame, centre: Vec2): Stroke[] {
+  if (f.style.parts.script.on) return [];
   const up = (UPSTROKE * Math.PI) / 180;
-  return bowed(f, at(to.x - to.y / Math.tan(up), 0), to, 0.1);
+  const meets = f.x * 0.32;
+  const across = f.bowl * Math.sqrt(Math.max(0, 1 - ((meets - centre.y) / f.bowlH) ** 2));
+  const to = at(centre.x - across, meets);
+  return [ink(f, bowed(f, at(to.x - to.y / Math.tan(up), 0), to, 0.1), f.end, BUTT)];
+}
+
+function leadIn(f: Frame, spine: Spine) {
+  return [lighter(ink(f, spine, BUTT, BUTT), joinWeight(f.style))];
 }
 
 /**
@@ -353,18 +465,10 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
          * slides it until its own flank crosses the seam on the origin, which
          * is the same thing.
          */
-        // Where the flick meets the bowl: a fifth of the way up the left
-        // flank, which is where a hand starts an `o` and where this one hands
-        // over to the letter before it.
-        const meets = f.x * 0.32;
-        const across = f.bowl * Math.sqrt(Math.max(0, 1 - ((meets - centre.y) / f.bowlH) ** 2));
         return {
           ...finish(
             f,
-            [
-              ink(f, flick(f, at(centre.x - across, meets)), f.end, BUTT),
-              ink(f, ring(f, centre, f.bowl, f.bowlH)),
-            ],
+            [...unjoinedFlick(f, centre), ink(f, ring(f, centre, f.bowl, f.bowlH))],
             true,
           ),
           entered: true,
@@ -433,11 +537,9 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         // The same stem the plain `a` stands, air and all: what changes here is
         // where the letter is put, not how it is drawn. See the written `o`.
         const stem = centre.x + f.bowl + f.aside;
-        const meets = f.x * 0.32;
-        const across = f.bowl * Math.sqrt(Math.max(0, 1 - ((meets - centre.y) / f.bowlH) ** 2));
         return {
           ...finish(f, [
-            ink(f, flick(f, at(centre.x - across, meets)), f.end, BUTT),
+            ...unjoinedFlick(f, centre),
             ink(f, ring(f, centre, f.bowl, f.bowlH)),
             ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
           ]),
@@ -515,11 +617,87 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         // own apex: a wide turn there is an arch, and an `n` with two of those
         // is an `m` with a leg missing.
         const radius = Math.max(f.x * 0.045, f.least);
-        const spine = entering(at(f.edge, f.crown), radius);
-        const stands = spineEnd(spine);
+        const { lead, body } = entering(
+          at(f.edge, f.crown),
+          radius,
+          writtenLead("n", style),
+          // The tightest the lead-in's own pen goes round.
+          f.half * joinWeight(style) * 1.15,
+        );
+        const stands = spineEnd(body);
         return {
-          ...finish(f, [ink(f, spine, f.end, BUTT), arch(f, stands.x, f.x)]),
+          ...finish(f, [...leadIn(f, lead), ink(f, body, BUTT, BUTT), arch(f, stands.x, f.x)]),
           entered: true,
+        };
+      },
+    },
+  ],
+
+  r: [
+    {
+      id: "written",
+      label: "Written",
+      hint: "Hands on from the end of its arm, the way a joined hand writes it, rather than from the foot of its stem.",
+      build: (style) => {
+        const f = frame(style);
+        const stem = f.edge;
+        /*
+         * A joined hand's `r`: up the stem, over a small shoulder, down the far
+         * side on a slant and round a valley into the lead-out, which is the
+         * last part of this stroke rather than a stroke run out of the stem.
+         *
+         * The drawn `r` left from the foot of its stem like every other letter,
+         * and its lead-out then ran along the writing line under the arm to
+         * reach an advance past the end of it: `rn` read as `Lcn`. Left from
+         * the end of the arm instead, it had most of an x-height to fall and a
+         * turn from falling to climbing too tight for the pen, and it knotted.
+         * So the valley is drawn here, where it can be given the room.
+         */
+        const lead = writtenLead("r", style);
+        // A tighter shoulder than the `n`'s, so the letter reads as an `r`
+        // with its arm carried down rather than as a narrow `n`.
+        const radius = Math.max(shoulderRadius(f, f.x) * 0.6, f.least);
+        const crest = Math.max(f.crest(f.x), radius);
+        const landing = stem + Math.max(f.arch * 0.45, radius * 2);
+        const fall = 52;
+        const falls = (-fall * Math.PI) / 180;
+        const climbs = Math.max(Math.atan2(lead.way.y, lead.way.x), 0.2);
+        const turned = at(
+          landing - radius + radius * Math.cos(((90 - fall) * Math.PI) / 180),
+          crest - radius + radius * Math.sin(((90 - fall) * Math.PI) / 180),
+        );
+        // Where the stroke leaves: a weld under the seam, on its heading.
+        const leaves = lead.y - lead.weld * Math.sin(climbs);
+        // The valley as round as the room under that allows, its ink kept
+        // off the writing line.
+        const lift = 1 - Math.cos(climbs);
+        const valley = Math.max(
+          Math.min(f.x * 0.22, (leaves - f.half) / Math.max(lift, 1e-6)),
+          f.least,
+        );
+        const bottom = leaves - valley * lift;
+        const starts = bottom + valley * (1 - Math.cos(-falls));
+        const run = Math.max((turned.y - starts) / Math.sin(-falls), 1);
+        const into = at(turned.x + run * Math.cos(falls), turned.y + run * Math.sin(falls));
+        const centre = at(into.x - valley * Math.sin(falls), into.y + valley * Math.cos(falls));
+        const toDegrees = (radians: number) => (radians * 180) / Math.PI;
+        return {
+          ...finish(f, [
+            ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
+            ink(
+              f,
+              chain(
+                turn(at(stem + radius, crest - radius), radius, 180, 90),
+                straight(at(stem + radius, crest), at(landing - radius, crest)),
+                turn(at(landing - radius, crest - radius), radius, 90, 90 - fall),
+                straight(turned, into),
+                turn(centre, valley, toDegrees(falls) - 90, toDegrees(climbs) - 90),
+              ),
+              BUTT,
+              BUTT,
+            ),
+          ]),
+          leaves: true,
         };
       },
     },

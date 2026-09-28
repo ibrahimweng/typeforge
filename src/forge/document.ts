@@ -839,8 +839,13 @@ export function unshaped(forge: Forge): Forge {
  * letter, because an alternate that missed the font's own slots would show as
  * one solid letter in the middle of a word full of cut ones.
  */
-export function drawnHigh(letter: string, which: "entry" | "exit", forge: Forge): Drawn | null {
-  return remembered(highs, forge, `${letter}.${which}`, () =>
+export function drawnHigh(
+  letter: string,
+  which: "entry" | "exit",
+  forge: Forge,
+  effects = false,
+): Drawn | null {
+  return remembered(highs, forge, `${letter}.${which}${effects ? ".fx" : ""}`, () =>
     joiningHigh({ [which]: true }, () =>
       drawLetter(
         letter,
@@ -849,6 +854,7 @@ export function drawnHigh(letter: string, which: "entry" | "exit", forge: Forge)
         cutsFor(letter, forge),
         forge.kit,
         castFor(letter, forge),
+        effects ? effectsOf(forge) : undefined,
       ),
     ),
   );
@@ -873,8 +879,13 @@ const WITHOUT: Record<Without, Partial<Ends>> = {
   alone: { entry: false, exit: false },
 };
 
-export function drawnEnds(letter: string, which: Without, forge: Forge): Drawn | null {
-  return remembered(edges, forge, `${letter}.${which}`, () =>
+export function drawnEnds(
+  letter: string,
+  which: Without,
+  forge: Forge,
+  effects = false,
+): Drawn | null {
+  return remembered(edges, forge, `${letter}.${which}${effects ? ".fx" : ""}`, () =>
     joiningWithout(WITHOUT[which], () =>
       drawLetter(
         letter,
@@ -883,6 +894,41 @@ export function drawnEnds(letter: string, which: Without, forge: Forge): Drawn |
         cutsFor(letter, forge),
         forge.kit,
         castFor(letter, forge),
+        effects ? effectsOf(forge) : undefined,
+      ),
+    ),
+  );
+}
+
+/**
+ * A letter taken high on one side and with nothing on the other.
+ *
+ * The two kinds of second drawing have to compose. A word ending `on` needs its
+ * `n` to arrive at the waist *and* to have no lead-out into the space after
+ * it; given only one of the two, the shaper chose the word end and dropped the
+ * hand-over, and the `o` then left from low down its own flank as a rule struck
+ * through the join. So the pair gets a drawing of its own: `n.init.end`, and
+ * `o.medi.begin` for the `o` that starts a word.
+ */
+export function drawnHighWithout(
+  letter: string,
+  which: "entry" | "exit",
+  without: Without,
+  forge: Forge,
+  effects = false,
+): Drawn | null {
+  return remembered(edges, forge, `${letter}.${which}.${without}${effects ? ".fx" : ""}`, () =>
+    joiningHigh({ [which]: true }, () =>
+      joiningWithout(WITHOUT[without], () =>
+        drawLetter(
+          letter,
+          styleFor(letter, forge),
+          formOf(forge, letter),
+          cutsFor(letter, forge),
+          forge.kit,
+          castFor(letter, forge),
+          effects ? effectsOf(forge) : undefined,
+        ),
       ),
     ),
   );

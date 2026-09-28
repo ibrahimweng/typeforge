@@ -43,6 +43,7 @@ import {
   middleBar,
   bookish,
   heaviness,
+  openVee,
 } from "./common";
 
 export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
@@ -301,7 +302,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   K: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    const reach = stem + f.capBowl * 1.15;
+    const reach = stem + f.capBowl * 1.15 + openVee(f) * 1.5;
     const waist = f.cap * 0.44;
     const arm = at(reach, f.cap);
     const leg = at(reach, 0);
@@ -342,7 +343,8 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const left = f.edge;
     // And wider at a heavy weight, as the A and the H are, or the diagonal
     // has no room between the stems and the letter reads as an H.
-    const right = left + f.capBowl * 1.35 + f.half * 0.35 * heaviness(f) + f.gain * 0.6;
+    const right =
+      left + f.capBowl * 1.35 + f.half * 0.35 * heaviness(f) + f.gain * 0.6 + openVee(f);
     const stems = [
       ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
       ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
@@ -475,7 +477,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   V: (style) => {
     const f = frame(style);
-    const half = f.capBowl * 0.9;
+    const half = f.capBowl * 0.9 + openVee(f);
     const left = f.edge;
     const middle = left + half;
     const top = at(left, f.cap);
@@ -488,7 +490,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     // And wider at a heavy weight, as the A is, or its four counters close to
     // slits and a Black W is a black wedge.
-    const half = f.capBowl * 0.66 + f.half * 0.15 * heaviness(f) + f.gain * 0.3;
+    const half = f.capBowl * 0.66 + f.half * 0.15 * heaviness(f) + f.gain * 0.3 + openVee(f) * 0.8;
     const left = f.edge;
     const top = f.cap;
     /*
@@ -510,7 +512,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   X: (style) => {
     const f = frame(style);
-    const width = f.capBowl * 1.55;
+    const width = f.capBowl * 1.55 + openVee(f) * 2;
     const left = f.edge;
     return finish(f, [
       ink(f, straight(at(left, f.cap), at(left + width, 0)), f.end, f.end),
@@ -520,7 +522,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   Y: (style) => {
     const f = frame(style);
-    const half = f.capBowl * 0.82;
+    const half = f.capBowl * 0.82 + openVee(f);
     const left = f.edge;
     const middle = left + half;
     const junction = f.cap * 0.46;

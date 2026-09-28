@@ -41,6 +41,7 @@ import {
   bookish,
   blackGap,
   heaviness,
+  openVee,
   lighter,
   stemSide,
   kArms,
@@ -355,7 +356,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   k: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    const reach = stem + f.arch * 1.7;
+    const reach = stem + f.arch * 1.7 + openVee(f) * 1.5;
     const waist = f.x * 0.42;
     const arm = at(reach, f.x);
     const leg = at(reach, 0);
@@ -517,7 +518,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   v: (style) => {
     const f = frame(style);
-    const half = f.arch * 0.92;
+    const half = f.arch * 0.92 + openVee(f);
     const left = f.edge;
     const middle = left + half;
     const top = at(left, f.x);
@@ -536,7 +537,10 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * bowls are small against its pen the arch is the wider of the two.
      */
     const half =
-      Math.max(roundHalf(f) * 0.57, f.arch * 0.68) + f.half * 0.1 * heaviness(f) + f.gain * 0.2;
+      Math.max(roundHalf(f) * 0.57, f.arch * 0.68) +
+      f.half * 0.1 * heaviness(f) +
+      f.gain * 0.2 +
+      openVee(f) * 0.8;
     const left = f.edge;
     const top = f.x;
     /*
@@ -558,7 +562,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   x: (style) => {
     const f = frame(style);
-    const width = f.arch * 1.7;
+    const width = f.arch * 1.7 + openVee(f) * 2;
     const left = f.edge;
     return finish(f, [
       ink(f, straight(at(left, f.x), at(left + width, 0)), f.end, f.end),
@@ -568,7 +572,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   y: (style) => {
     const f = frame(style);
-    const half = f.arch * 0.92;
+    const half = f.arch * 0.92 + openVee(f);
     const left = f.edge;
     const middle = left + half;
     /*

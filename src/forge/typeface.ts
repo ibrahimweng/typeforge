@@ -23,7 +23,16 @@ import { DEFAULT_PARAMS, emptyTypeface, type Glyph, type Typeface } from "@/font
 import { builtFrom, letterNames } from "./build";
 import { openWaveBook, type WaveBook } from "./shapes";
 import { kernsFor } from "./kern";
-import { anythingCut, draw, drawnEnds, drawnHigh, proof, type Forge } from "./document";
+import {
+  anythingCut,
+  draw,
+  drawnEnds,
+  drawnHigh,
+  drawnHighWithout,
+  proof,
+  type Forge,
+  type Without,
+} from "./document";
 import {
   alternateName,
   boundaryEnds,
@@ -381,7 +390,7 @@ export async function toTypeface(forge: Forge, options: ForgeExportOptions): Pro
   if (joined.length > 0) {
     const before = glyphs.length;
     for (const [name, which] of joined) {
-      const drawn = drawnHigh(name, which, forge);
+      const drawn = drawnHigh(name, which, forge, options.effects === true);
       if (!drawn) continue;
       glyphs.push({
         name: alternateName(name, which),
@@ -414,7 +423,7 @@ export async function toTypeface(forge: Forge, options: ForgeExportOptions): Pro
   if (edges.length > 0) {
     const before = glyphs.length;
     for (const [name, which] of edges) {
-      const drawn = drawnEnds(name, which, forge);
+      const drawn = drawnEnds(name, which, forge, options.effects === true);
       if (!drawn) continue;
       glyphs.push({
         name: boundaryName(name, which),
@@ -428,17 +437,40 @@ export async function toTypeface(forge: Forge, options: ForgeExportOptions): Pro
       });
     }
     /*
-     * Ahead of the hand-over rules, and the order is the whole of why it
-     * works. A lookup matches the letter `cmap` maps, so once a letter has
-     * been swapped no later lookup recognises it -- and of the two, the one
-     * that has to win is this. Run second, a word ending `on` would already
-     * be `o.medi n.init` and the `n` would keep a lead-out into the space,
-     * which no reordering can take back. Run first, that pair simply does not
-     * get the hand-over at the waist and joins at the baseline instead, which
-     * is what the letters do anyway with no feature applied at all.
+     * After the hand-over rules, and the order is the whole of why it works.
+     * A lookup matches the glyph in front of it, so whichever runs second has
+     * to know the glyphs the first made. These did run first once, and a word
+     * ending `on` then lost its hand-over: the `n` became `n.end` and the pair
+     * rule no longer recognised it, so the `o` joined low and ruled a bar
+     * across itself. Run second, they know the hand-over drawings and swap
+     * each for the one that also has nothing on its open side.
+     *
+     * And the two composed: a letter taken high at one end and left without
+     * the other, for a hand-over at the waist that ends or begins a word.
      */
+    const composed: Array<[string, Without]> = [];
+    for (const [name, which] of joined) {
+      const without: Without = which === "entry" ? "end" : "begin";
+      if (!edges.some(([one, side]) => one === name && side === without)) continue;
+      const high = alternateName(name, which);
+      if (!glyphs.some((glyph) => glyph.name === high)) continue;
+      const drawn = drawnHighWithout(name, which, without, forge, options.effects === true);
+      if (!drawn) continue;
+      const alternate = boundaryName(high, without);
+      glyphs.push({
+        name: alternate,
+        unicodes: [],
+        advanceWidth: drawn.advanceWidth,
+        contours: drawn.contours,
+        components: [],
+        anchors: [],
+        params: {},
+        dirty: false,
+      });
+      composed.push([high, without]);
+    }
     if (glyphs.length > before) {
-      typeface.alternates = [...boundaryRules(edges, plain), ...typeface.alternates];
+      typeface.alternates = [...typeface.alternates, ...boundaryRules(edges, plain, composed)];
     }
   }
 

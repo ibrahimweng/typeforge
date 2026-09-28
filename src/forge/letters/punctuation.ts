@@ -1210,11 +1210,23 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
       inner + f.style.pen.weight * 1.55,
     );
     const centre = at(f.edge + outer, f.cap * (bookish(f) ? 0.4 : 0.46));
-    const stem = centre.x + bendWidth(f, inner);
+    /*
+     * Round on a joined face, whatever its bowls are. Its `o` is a narrow oval,
+     * and the ring bent to that width stood as a tall hoop round a little `a`
+     * that is a circle -- the two collided on the right, and the a's stem, set
+     * in by the oval's width, stood inside its own bowl.
+     */
+    const round = f.style.parts.script.on;
+    const stem = centre.x + (round ? inner : bendWidth(f, inner));
     return finish(
       f,
       [
-        ink(f, bend(f, centre, outer, -38, 252), shortEnd(f), shortEnd(f)),
+        ink(
+          f,
+          round ? bend(f, centre, outer, -38, 252, outer) : bend(f, centre, outer, -38, 252),
+          shortEnd(f),
+          shortEnd(f),
+        ),
         ink(f, ring(f, centre, inner, inner)),
         ink(
           f,
