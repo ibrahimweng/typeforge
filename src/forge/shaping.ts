@@ -53,7 +53,12 @@ export function shaped(
   const breaks = cutting && casting && cast!.weld.on ? breaksIn(strokes, scale, cuts) : undefined;
   if (casting && cast!.order === "before") {
     const shadowed = castInk(ink, strokes, scale, cast!, roles, breaks);
-    return cutting ? cutInk(shadowed, strokes, scale, cuts!, "winding") : { contours: shadowed };
+    if (!cutting) return { contours: shadowed };
+    // How far a rim grew the letter, for the breaks, which are found on the
+    // skeleton and have to be told the letter is no longer the one it drew.
+    return cutInk(shadowed, strokes, scale, cuts!, "winding", {
+      grown: cast!.outline.on ? cast!.outline.width * Math.max(scale.stem, 1) : 0,
+    });
   }
 
   const carved = cutting ? cutInk(ink, strokes, scale, cuts!, roles) : { contours: ink };
@@ -61,7 +66,7 @@ export function shaped(
   return {
     ...carved,
     /*
-     * Only if the cut actually ran. Inline and breaks follow a letter's
+     * Only if the cut actually ran. The breaks follow a letter's
      * strokes, and a letter brought in from a font has none, so they hand its
      * ink back as it came -- read as wound, the rim lost every letter without
      * a counter and doubled on the rest.

@@ -31,6 +31,7 @@ import {
   reverseContour,
   splitCubic,
 } from "@/font/geometry";
+import { contoursIntersect } from "@/font/outline";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import type { CutScale } from "./cut";
 import { alongSpine } from "./shapes";
@@ -126,7 +127,11 @@ export function castInk(
   if (cast.extrude.on) shape = extruded(shape, cast.extrude, stem);
   if (cast.outline.on) shape = outlined(shape, cast.outline.width * stem);
 
-  return withoutSpecks(shape, stem, smallest);
+  const done = withoutSpecks(shape, stem, smallest);
+  // No outline left crossing itself: see the same step in `cutInk`.
+  return done.some((contour) => contoursIntersect([contour]))
+    ? unite(done, "winding", "whole")
+    : done;
 }
 
 /**
@@ -238,7 +243,13 @@ function sweptAlong(shape: Contour[], dx: number, dy: number): Contour[] {
  * be made the same way: each solid's loop resolved on its own, each counter's
  * paper worked out on its own and taken back out, islands laid back on.
  */
-function swept(shape: Contour[], convolve: (contour: Contour) => Contour): Contour[] {
+function swept(
+  shape: Contour[],
+  convolve: (contour: Contour) => Contour,
+  // How far the figure reaches from a counter's edge, where it is a figure
+  // grown round rather than a line thrown: what `shrunk` checks an answer by.
+  reachOf?: (contour: Contour) => number,
+): Contour[] {
   const solids = shape.filter((contour) => contour.nodes.length >= 2 && contourArea(contour) >= 0);
   const counters = shape.filter((contour) => contour.nodes.length >= 2 && contourArea(contour) < 0);
   if (solids.length === 0) return shape;
@@ -276,7 +287,15 @@ function swept(shape: Contour[], convolve: (contour: Contour) => Contour): Conto
       { x: box.xMax + 10, y: box.yMax + 10 },
       { x: box.xMin - 10, y: box.yMax + 10 },
     ]);
-    return subtract([reverseContour(counter)], filled([frame, loop]), "winding");
+    /*
+     * Checked, where there is a reach to check it by. The groove of an inline
+     * round the eye of an e is a counter with the eye's wall standing in it,
+     * and paper lost the loop round it: what survived came back as eight
+     * square units, and the rim filled the groove in solid.
+     */
+    const paper = reverseContour(counter);
+    const checked = reachOf ? shrunk(paper, loop, frame, reachOf(counter)) : null;
+    return checked ?? subtract([paper], filled([frame, loop]), "winding");
   });
   let result = kept.length > 0 ? subtract(ground, kept, "winding") : ground;
   /*
@@ -293,7 +312,8 @@ function swept(shape: Contour[], convolve: (contour: Contour) => Contour): Conto
     const inner = counters.filter((counter) =>
       islands.some((island) => contourContainsPoint(island, counter.nodes[0].point)),
     );
-    const again = inner.length > 0 ? swept([...islands, ...inner], convolve) : sweep(islands);
+    const again =
+      inner.length > 0 ? swept([...islands, ...inner], convolve, reachOf) : sweep(islands);
     result = unite([...result, ...again], "winding", "whole");
   }
   return tidied(result);
@@ -592,7 +612,7 @@ function offLine(from: Vec2, point: Vec2, to: Vec2): number {
  * growing a shape does -- but never more than half shut, however far the rim
  * reaches, so a heavy face keeps the eye of its e.
  */
-function outlined(shape: Contour[], width: number): Contour[] {
+export function outlined(shape: Contour[], width: number): Contour[] {
   if (width <= 0) return shape;
   const figure = (reach: number): Vec2[] =>
     Array.from({ length: SIDES }, (_, index) => {
@@ -611,15 +631,138 @@ function outlined(shape: Contour[], width: number): Contour[] {
    * over its length round, which is the radius of a round one and half the
    * width of a slot -- and the outside keeps the rim that was asked for.
    */
-  return swept(shape, (contour) => {
-    const area = contourArea(contour);
-    if (area >= 0) return convolvedRound(contour, corners);
-    const deep = (2 * -area) / Math.max(lengthRound(contour), 1e-9);
-    const reach = Math.min(width, deep * 0.3);
-    return reach >= width
-      ? convolvedRound(contour, corners)
-      : convolvedRound(contour, figure(reach));
+  /*
+   * Measured by the paper that is really there. A counter can hold ink of
+   * its own -- the inner wall an inline leaves round the counter of an o
+   * stands in the groove as an island -- and read as a disc, the groove was
+   * as deep as the whole bowl, so it was grown shut from the outside while
+   * the island grew into it from the inside: every letter with a counter
+   * came back from an inline and a rim as a solid blob. So the depth is the
+   * paper between the counter's edge and the islands in it, and the islands
+   * grow into it no further than the counter's own edge does.
+   */
+  const solids = shape.filter((contour) => contour.nodes.length >= 2 && contourArea(contour) >= 0);
+  const reaches = new Map<Contour, number>();
+  for (const hole of shape) {
+    const area = contourArea(hole);
+    if (hole.nodes.length < 2 || area >= 0) continue;
+    const islands = solids.filter((solid) => contourContainsPoint(hole, solid.nodes[0].point));
+    const paper = -area - islands.reduce((sum, one) => sum + contourArea(one), 0);
+    const around = lengthRound(hole) + islands.reduce((sum, one) => sum + lengthRound(one), 0);
+    const reach = Math.min(width, (Math.max(paper, 0) * 2 * 0.3) / Math.max(around, 1e-9));
+    reaches.set(hole, reach);
+    for (const island of islands)
+      reaches.set(island, Math.min(reaches.get(island) ?? width, reach));
+  }
+  return swept(
+    shape,
+    (contour) => {
+      const reach = reaches.get(contour) ?? width;
+      return reach >= width
+        ? convolvedRound(contour, corners)
+        : convolvedRound(contour, figure(reach));
+    },
+    (contour) => reaches.get(contour) ?? width,
+  );
+}
+
+/**
+ * The letter shrunk inwards all round: every point of ink further than
+ * `reach` from the paper.
+ *
+ * The rim's exact construction turned the other way. A solid shrinks to the
+ * paper that survives inside the loop its outline makes as the figure is
+ * dragged round it backwards -- which is how the rim already works out what
+ * is left of a counter -- and each counter it holds grows out into the ink by
+ * the same figure and is taken back out. A solid standing in a counter, and
+ * the counters in that, are the same question one level down.
+ *
+ * For the inline, whose groove is exactly this: the ground a wall's thickness
+ * in from every edge, so the walls are the same thickness everywhere --
+ * beside a join, round a counter, past a bowl running into its stem -- where
+ * a groove swept down each stroke on its own thinned them to a pinch.
+ */
+export function eroded(shape: Contour[], reach: number): Contour[] {
+  if (reach <= 0) return shape;
+  const figure = (phase: number): Vec2[] =>
+    Array.from({ length: SIDES }, (_, index) => {
+      const angle = ((index + phase) / SIDES) * Math.PI * 2;
+      return { x: Math.cos(angle) * reach, y: Math.sin(angle) * reach };
+    });
+  const corners = figure(0.5);
+  const usable = shape.filter((contour) => contour.nodes.length >= 2);
+  const solids = usable.filter((contour) => contourArea(contour) >= 0);
+  const holes = usable.filter((contour) => contourArea(contour) < 0);
+  const inside = (inner: Contour, outer: Contour): boolean =>
+    inner !== outer && contourContainsPoint(outer, inner.nodes[0].point);
+  // How deep each contour is nested, read off how many others hold it.
+  const depth = new Map(usable.map((one) => [one, usable.filter((o) => inside(one, o)).length]));
+
+  const pieces = solids.flatMap((solid) => {
+    /*
+     * Tried with the figure turned a little, where paper cannot resolve the
+     * loop at any grid: turning it moves every crossing, and a quarter of one
+     * of its twenty-four sides is nothing anybody could see.
+     */
+    let left: Contour[] | null = null;
+    for (const phase of [0.5, 0.25, 0.75]) {
+      const loop = convolvedRound(reverseContour(solid), figure(phase));
+      const box = contoursBounds([loop, solid]);
+      const frame = poly([
+        { x: box.xMin - 10, y: box.yMin - 10 },
+        { x: box.xMax + 10, y: box.yMin - 10 },
+        { x: box.xMax + 10, y: box.yMax + 10 },
+        { x: box.xMin - 10, y: box.yMax + 10 },
+      ]);
+      left = shrunk(solid, loop, frame, reach);
+      if (left) break;
+    }
+    if (!left) return [solid];
+    if (left.length === 0) return [];
+    // Only the counters this solid holds directly: one inside an island in
+    // it belongs to the island.
+    const own = holes.filter(
+      (hole) => inside(hole, solid) && depth.get(hole) === (depth.get(solid) ?? 0) + 1,
+    );
+    if (own.length === 0) return left;
+    const grown = own.flatMap((hole) => {
+      const paper = reverseContour(hole);
+      return groundOf(convolvedRound(paper, corners), paper);
+    });
+    return subtract(left, grown, "winding");
   });
+  return pieces.length <= 1 ? pieces : unite(pieces, "winding", "whole");
+}
+
+/**
+ * What is left of a solid inside the loop its outline makes as a figure is
+ * dragged round it backwards, checked against what shrinking a shape can do.
+ *
+ * Shrinking takes away at most a strip the reach wide along the outline, so
+ * what is left is never less than the area less the outline's length times
+ * the reach, and never more than the area. Paper can lose track of a loop
+ * that crosses itself at two places a hair apart, and a Sans e came back with
+ * nothing left of it at all; the same loop set to a thousandth, a hundredth or
+ * a tenth of a unit resolves, as `groundOf` found for the rim.
+ */
+function shrunk(solid: Contour, loop: Contour, frame: Contour, reach: number): Contour[] | null {
+  const area = contourArea(solid);
+  const least = area - lengthRound(solid) * reach * 1.02;
+  for (const grid of [0, 1000, 100, 10]) {
+    const fill = filled([frame, grid === 0 ? loop : onGrid(loop, grid)]);
+    const left = facingOut(subtract([solid], fill, "winding"));
+    const kept = left.reduce((total, one) => total + contourArea(one), 0);
+    if (kept <= area * 1.0001 && kept >= least) return left;
+  }
+  // Nothing left is a right answer when the shape was thinner than twice the
+  // reach everywhere, which the bound cannot tell from a lost loop.
+  return least > 0 ? null : [];
+}
+
+/** Contours wound so the ink comes out positive. */
+function facingOut(contours: Contour[]): Contour[] {
+  const total = contours.reduce((sum, one) => sum + contourArea(one), 0);
+  return total < 0 ? contours.map(reverseContour) : contours;
 }
 
 /** How long an outline is, all the way round. */
@@ -985,6 +1128,15 @@ function spurTool(
        * a good part of the point's length to carry one.
        */
       if (last === first && room < size * 0.45) continue;
+      /*
+       * Nor on a corner the chamfer made that was not read as half of one it
+       * cut. A cut through an acute corner -- the end of the arm of a k, the
+       * lower terminal of an e -- leaves more corners than two, and each
+       * that was not paired grew a thorn of its own beside the point.
+       */
+      if (last === first && chamfered.some((corner) => distance(corner, start) < stem * 0.75)) {
+        continue;
+      }
       const base = Math.min(size * 0.7, room * 0.45);
       /*
        * And never longer than its base can hold up.

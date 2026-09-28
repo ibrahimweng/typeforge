@@ -286,16 +286,20 @@ describe("cutting a letter that came in from outside", () => {
     expect(draw("a", slotted(outside))!.advanceWidth).toBe(draw("a", outside)!.advanceWidth);
   });
 
-  it("cannot reach it with the two made out of the skeleton", () => {
+  it("cannot reach it with the breaks, which are made out of the skeleton", () => {
     const outside = taken("a");
     const before = path("a", outside);
-    for (const name of ["inline", "split"] as const) {
-      const after = editCut(outside, name, { on: true });
-      // Nothing happens to the drawing, and nothing goes wrong either.
-      expect(path("a", after), name).toBe(before);
-      // While the letters that do have a skeleton are cut as usual.
-      expect(path("n", after), name).not.toBe(path("n", outside));
-    }
+    const after = editCut(outside, "split", { on: true });
+    // Nothing happens to the drawing, and nothing goes wrong either.
+    expect(path("a", after)).toBe(before);
+    // While the letters that do have a skeleton are cut as usual.
+    expect(path("n", after)).not.toBe(path("n", outside));
+  });
+
+  it("grooves it with the inline, which needs no skeleton", () => {
+    const outside = taken("a");
+    const after = editCut(outside, "inline", { on: true });
+    expect(path("a", after)).not.toBe(path("a", outside));
   });
 
   it("counts its pieces in the warnings like any other letter", () => {

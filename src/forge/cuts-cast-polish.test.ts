@@ -12,9 +12,15 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { unite } from "@/font/boolean";
-import { contourArea, contoursBounds, flattenContour, inkRunsAt } from "@/font/geometry";
+import {
+  contourArea,
+  contourContainsPoint,
+  contoursBounds,
+  flattenContour,
+  inkRunsAt,
+} from "@/font/geometry";
 import type { Contour, Vec2 } from "@/font/types";
-import { editCast, editCut, proof, setCastOrder, startFrom, type Forge } from "./document";
+import { draw, editCast, editCut, proof, setCastOrder, startFrom, type Forge } from "./document";
 import { readyToShape } from "./layers";
 import { piecesOf } from "./cut";
 import { BASES } from "./style";
@@ -75,6 +81,31 @@ describe("inline with a rim thrown after it", () => {
   });
 });
 
+describe("a rim grown round an inline", () => {
+  it("keeps every groove open, round an island of ink as round a counter", () => {
+    /*
+     * The groove round the counter of an o, an e or a B leaves the counter's
+     * wall standing in it as an island. The rim read the groove as deep as
+     * the whole bowl, grew it shut from outside while the island grew into it
+     * from inside, and the letters came back as solid blobs; and paper lost
+     * the loop round the groove of an e, which filled it just the same.
+     */
+    for (const weight of [87, 30]) {
+      const cut = forgeOf("Sans", weight, { cuts: { inline: {} } });
+      const rimmed = forgeOf("Sans", weight, {
+        cuts: { inline: {} },
+        cast: { outline: {} },
+        order: "after",
+      });
+      for (const letter of "oeabgRB") {
+        expect(counters(drawn(letter, rimmed)).length, `${weight} ${letter}`).toBe(
+          counters(drawn(letter, cut)).length,
+        );
+      }
+    }
+  });
+});
+
 describe("the inline on a contrast face", () => {
   it("runs down the thick strokes and leaves the hairlines alone", () => {
     for (const weight of [87, 200]) {
@@ -86,8 +117,54 @@ describe("the inline on a contrast face", () => {
 
   it("still grooves every stroke of a face without contrast", () => {
     const forge = forgeOf("Sans", 87, { cuts: { inline: {} } });
-    // A stem and three arms, each with its own groove.
-    expect(counters(drawn("E", forge)).length).toBeGreaterThanOrEqual(4);
+    const plain = unite(drawn("E", forgeOf("Sans", 87, {})), "winding");
+    const cut = unite(drawn("E", forge), "winding");
+    // Down a line through the three arms: each is one run of ink uncut, and
+    // two walls either side of a groove cut.
+    const box = contoursBounds(plain);
+    const x = box.xMin + (box.xMax - box.xMin) * 0.6;
+    const arms = runsDown(plain, x, box);
+    expect(arms.length).toBe(3);
+    for (const [from, to] of arms) {
+      expect(inkAt(cut, { x, y: (from + to) / 2 }), `arm at ${Math.round(from)}`).toBe(false);
+      expect(runsDown(cut, x, { ...box, yMin: from - 1, yMax: to + 1 }).length).toBe(2);
+    }
+  });
+});
+
+/** Whether a point is ink: inside an odd number of the fused outlines. */
+function inkAt(contours: Contour[], point: Vec2): boolean {
+  return contours.filter((contour) => contourContainsPoint(contour, point)).length % 2 === 1;
+}
+
+/** The runs of ink down a vertical line, a unit at a time. */
+function runsDown(
+  contours: Contour[],
+  x: number,
+  box: { yMin: number; yMax: number },
+): Array<[number, number]> {
+  const runs: Array<[number, number]> = [];
+  let start: number | null = null;
+  for (let y = box.yMin - 2; y <= box.yMax + 2; y += 1) {
+    const here = inkAt(contours, { x, y });
+    if (here && start === null) start = y;
+    if (!here && start !== null) {
+      runs.push([start, y - 1]);
+      start = null;
+    }
+  }
+  return runs;
+}
+
+describe("the inline on a heavy face", () => {
+  it("grooves every stem of a Black m down to its foot", () => {
+    // A mask swept down each stroke crossed itself on the tight arches and
+    // cut the grooves of the first two stems off half way down.
+    const forge = forgeOf("Sans", 260, { cuts: { inline: {} } });
+    const cut = drawn("m", forge);
+    for (const y of [120, 250, 380]) {
+      expect(inkRunsAt(cut, y).length, `at ${y}`).toBe(6);
+    }
   });
 });
 
@@ -137,6 +214,134 @@ describe("the split", () => {
     // And the Serif a keeps its shoulder on its stem: the bowl comes away,
     // nothing is left standing over it.
     expect(piecesOf(drawn("a", serif))).toBe(2);
+  });
+});
+
+describe("the split where a stroke is drawn over another", () => {
+  it("leaves the stem of a Sans a solid, with no hairline down it", () => {
+    // Its stem is laid twice -- on its own and as the foot of the arch -- and
+    // the break used to cut between the two copies.
+    const forge = forgeOf("Sans", 87, { cuts: { split: {} } });
+    const plain = drawn("a", forgeOf("Sans", 87, {}));
+    const cut = drawn("a", forge);
+    const [left, right] = inkRunsAt(plain, 330)
+      .filter(([from, to]) => to - from > 10)
+      .at(-1)!;
+    const middle = (left + right) / 2;
+    for (const y of [120, 330, 420, 480]) {
+      const stem = inkRunsAt(cut, y).find(([from, to]) => from <= middle && to >= middle);
+      expect(stem, `at ${y}`).toBeDefined();
+      expect(stem![1] - stem![0], `at ${y}`).toBeGreaterThan((right - left) * 0.95);
+    }
+  });
+
+  it("parts the second arch of an m beside the middle stem, not across the shoulder", () => {
+    const forge = forgeOf("Sans", 87, { cuts: { split: {} } });
+    const plain = drawn("m", forgeOf("Sans", 87, {}));
+    const cut = drawn("m", forge);
+    const [left, edge] = inkRunsAt(plain, 150)[1];
+    const gap = 87 * 0.45;
+    for (const y of [400, 450, 500]) {
+      const runs = inkRunsAt(cut, y);
+      // The first arch's shoulder stops inside the stem's column, and the
+      // second arch starts a gap clear of the stem's side.
+      const shoulder = runs.find(([from, to]) => from < left + 5 && to > left + 5);
+      const next = runs.find(([from]) => from > left + 5);
+      expect(shoulder?.[1], `at ${y}`).toBeLessThan(edge + 1);
+      expect(next?.[0], `at ${y}`).toBeGreaterThan(edge + gap * 0.8);
+    }
+  });
+});
+
+describe("the split through a rim thrown first", () => {
+  it("cuts through the rim, leaving no hairline across the gap", () => {
+    // The rim grown first stood across every gap as a hairline, holding the
+    // crossbar of an A and the arm of a k on by a thread.
+    for (const weight of [87, 200]) {
+      const split = forgeOf("Sans", weight, { cuts: { split: {} } });
+      const both = forgeOf("Sans", weight, {
+        cuts: { split: {} },
+        cast: { outline: {} },
+        order: "before",
+      });
+      for (const letter of "AHk") {
+        expect(piecesOf(drawn(letter, both)), `${weight} ${letter}`).toBe(
+          piecesOf(drawn(letter, split)),
+        );
+      }
+    }
+  });
+});
+
+describe("the split on a bowl drawn against its stem", () => {
+  it("takes the bowl off at both joins, at every weight", () => {
+    // The bowl of a D, P, B and R runs out of the stem and back into it. One
+    // of the two joins was broken and the other left, and which depended on
+    // the weight: the Black R kept its bowl on at the top.
+    for (const weight of [87, 200]) {
+      const forge = forgeOf("Sans", weight, { cuts: { split: {} } });
+      for (const letter of weight === 200 ? "DPBR" : "DPB") {
+        expect(piecesOf(drawn(letter, forge)), `${weight} ${letter}`).toBe(2);
+      }
+      // And a bar that runs into a bowl at both ends is still parted at one:
+      // the bar of an e does not float in its eye.
+      expect(piecesOf(drawn("e", forge)), `${weight} e`).toBe(1);
+    }
+  });
+});
+
+describe("the split beside an arch", () => {
+  it("leaves the stem no wider than the pen, with no lip below the gap", () => {
+    // The foot of the arch curves out of the stem just below the gap, and
+    // stood out of its side there as a lip a few units deep.
+    for (const [face, weight] of [
+      ["Sans", 87],
+      ["Sans", 200],
+      ["Display", 205],
+    ] as const) {
+      const forge = forgeOf(face, weight, { cuts: { split: {} } });
+      for (const letter of "nhm") {
+        const solids = unite(drawn(letter, forge), "winding").filter((one) => contourArea(one) > 0);
+        const stem = solids
+          .map((one) => contoursBounds([one]))
+          .reduce((a, b) => (b.xMin < a.xMin ? b : a));
+        expect(stem.xMax - stem.xMin, `${face} ${weight} ${letter}`).toBeLessThan(weight + 0.5);
+      }
+    }
+  });
+});
+
+describe("the split on a script", () => {
+  it("leaves the short exit flick of an H and an A on, rather than cutting it loose as a dot", () => {
+    for (const face of ["Formal Script", "Handwriting"]) {
+      const base = BASES.find((one) => one.name === face)!;
+      const forge = forgeOf(face, base.pen.weight, { cuts: { split: {} } });
+      // H: the bar comes off both stems, and nothing else.
+      expect(piecesOf(drawn("H", forge)), `${face} H`).toBe(3);
+      // A: the bar comes off, the flick at the foot stays.
+      expect(piecesOf(drawn("A", forge)), `${face} A`).toBe(2);
+    }
+  });
+
+  it("still takes the short square arms off a Display E", () => {
+    const forge = forgeOf("Display", BASES.find((one) => one.name === "Display")!.pen.weight, {
+      cuts: { split: {} },
+    });
+    expect(piecesOf(drawn("E", forge))).toBe(4);
+  });
+});
+
+describe("the tool's own effects on a cut letter", () => {
+  it("leave a slotted Formal Script whole, loop and hairlines and all", () => {
+    // The Formal Script ships with the press on. After slots, its clean-up
+    // took a loop that came back near itself for a splinter and dropped the
+    // tail of the g with it: three fifths of the letter gone.
+    let forge = startFrom(BASES.find((base) => base.name === "Formal Script")!);
+    forge = editCut(forge, "slot", { on: true, count: 3, angle: 15 });
+    for (const letter of "msg") {
+      const cut = area(draw(letter, forge)!.contours);
+      expect(area(drawn(letter, forge)) / cut, letter).toBeGreaterThan(0.9);
+    }
   });
 });
 
@@ -218,7 +423,11 @@ describe("the spur", () => {
         cast: { spur: {} },
         order: "after",
       });
-      for (const letter of "HrA") {
+      // The ends of the arm and leg of a k and the terminals of an a and an
+      // e are cut through acute corners, which leaves more corners than two;
+      // each that was not paired grew a thorn beside the point. (The Black
+      // e's bar end faces its aperture and grows no point uncut, and one cut.)
+      for (const letter of weight === 87 ? "HrAkea" : "HrAka") {
         expect(tips(drawn(letter, both)), `${weight} ${letter}`).toBeLessThanOrEqual(
           tips(drawn(letter, spur)),
         );
@@ -255,6 +464,31 @@ describe("slots", () => {
         // across it.
         expect(breadthOf(contour), letter).toBeGreaterThan(weight * 0.3);
       }
+    }
+  });
+});
+
+describe("slanted slots", () => {
+  it("leave no needle of ink where a band crosses an edge at a shallow angle", () => {
+    // A band laid across the top of an r's arm or an A's crossbar at fifteen
+    // degrees shaved a wedge off it that tapered to nothing.
+    const forge = forgeOf("Sans", 87, { cuts: { slot: { count: 3, angle: 15 } } });
+    for (const letter of "Arsea") {
+      let needles = 0;
+      for (const contour of drawn(letter, forge)) {
+        const points = flattenContour(contour, 4);
+        for (let index = 0; index < points.length; index++) {
+          const a = points[(index - 1 + points.length) % points.length];
+          const b = points[index];
+          const c = points[(index + 1) % points.length];
+          // A needle: sharper than thirty degrees, both of its sides longer
+          // than a quarter of a stem. A slot through the slanted cut of a
+          // terminal leaves a sharp corner as short as the cut, which is not.
+          const long = (p: Vec2) => Math.hypot(p.x - b.x, p.y - b.y) > 87 * 0.25;
+          if (angle(a, b, c) > (150 * Math.PI) / 180 && long(a) && long(c)) needles++;
+        }
+      }
+      expect(needles, letter).toBe(0);
     }
   });
 });

@@ -165,16 +165,19 @@ export type CutName = keyof Cuts;
 export const CUT_NAMES: CutName[] = ["slot", "tooth", "inline", "motif", "split", "chamfer"];
 
 /**
- * The two cuts made out of the skeleton rather than out of the outline.
+ * The cut made out of the skeleton rather than out of the outline.
  *
- * A groove is the spine swept again; a break is where two spines meet. Both
- * need to know how the letter was built, so neither can reach a letter that
- * arrived as an outline from somewhere else.
+ * A break is where two spines meet, so it needs to know how the letter was
+ * built and cannot reach a letter that arrived as an outline from somewhere
+ * else. The groove used to be the spine swept again and could not either; it
+ * is the letter shrunk by a wall now, which any outline can be, so an opened
+ * font takes an inline as well -- one that runs down its thick strokes and
+ * leaves its hairlines, as the drawn ones do.
  *
  * Named here rather than in the panel that mentions it, because it is a fact
  * about the operation and not about how it is described. The panel reads this.
  */
-export const FROM_SKELETON = new Set<CutName>(["inline", "split"]);
+export const FROM_SKELETON = new Set<CutName>(["split"]);
 
 /**
  * Whether two descriptions say the same thing about one operation.
