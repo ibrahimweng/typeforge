@@ -675,7 +675,7 @@ export const SANS: Style = {
     wordSpace: [250 / 530, 221 / 530],
     /* Geist Regular's own sidebearings, over 80 (a capital's over 80 after its 12 of extra). */
     sides: {
-      a: [0.59, 0.44],
+      a: [0.59, 0.24],
       c: [0.59, 0.46],
       f: [0.75, 0.53],
       // Its foot reaches back to the letter before (Geist -5); held inside.

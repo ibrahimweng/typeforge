@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { contourArea, contoursBounds, inkRunsAt } from "@/font/geometry";
+import { contourArea, contourContainsPoint, contoursBounds, inkRunsAt } from "@/font/geometry";
 import type { Contour } from "@/font/types";
 import { drawLetter } from "./build";
 import { formOf, startFrom } from "./document";
@@ -26,6 +26,30 @@ const box = (name: string, weight: number) => contoursBounds(draw(name, weight).
 /** The ink along a line, as runs; `along` "y" is a level line at `value`, "x" an upright one. */
 const runs = (contours: Contour[], value: number, along: "x" | "y") =>
   inkRunsAt(contours, value, along, 48);
+
+/**
+ * Where a level line at `y` passes through ink, as it is filled: the letter's
+ * strokes overlap, and a ruler that pairs up every edge it meets reads the
+ * ink two strokes share as white.
+ */
+const filled = (contours: Contour[], y: number): Array<[number, number]> => {
+  const box = contoursBounds(contours);
+  const signs = contours.map((contour) => Math.sign(contourArea(contour)));
+  const out: Array<[number, number]> = [];
+  let from: number | null = null;
+  for (let x = Math.floor(box.xMin) - 1; x <= Math.ceil(box.xMax) + 1; x += 0.5) {
+    let winding = 0;
+    contours.forEach((contour, index) => {
+      if (contourContainsPoint(contour, { x, y })) winding += signs[index];
+    });
+    if (winding !== 0 && from === null) from = x;
+    if (winding === 0 && from !== null) {
+      out.push([from, x]);
+      from = null;
+    }
+  }
+  return out;
+};
 
 describe("the Sans at its Light, against Geist Thin", () => {
   it("keeps its straight letters as wide as its round ones", () => {
@@ -151,8 +175,66 @@ describe("the a at the Light", () => {
     // Geist Thin: under the bowl's join, the bowl's foot and the spur's turn
     // with nothing between them -- no block of stem standing below the bowl.
     const { contours } = draw("a", 30);
-    expect(runs(contours, 15, "y").length).toBe(2);
-    expect(runs(contours, 25, "y").length).toBe(3);
+    expect(filled(contours, 15).length).toBe(2);
+    expect(filled(contours, 25).length).toBe(3);
+  });
+});
+
+describe("the a from the Regular past the Black, as Geist draws it", () => {
+  it("notches the bowl's foot where it comes up into the stem's round foot", () => {
+    // Geist: the bowl's outside meets the stem's foot at 82 on the Regular
+    // and 83 on the Black, in a V, and the bowl thins into the stem.
+    for (const weight of [87, 130, 172, 200, 260]) {
+      const { contours } = draw("a", weight);
+      expect(filled(contours, 50).length, `a at ${weight}`).toBe(2);
+    }
+  });
+
+  it("keeps the bowl's counter a round teardrop as tall as Geist Black's", () => {
+    // Geist Black: the counter 120 tall where it meets the stem, and 146
+    // across; drawn with the stem's pen the bowl crushed it to a slot.
+    const { contours } = draw("a", 172);
+    const across = filled(contours, 160);
+    expect(across.length).toBe(2);
+    expect(across[1][0] - across[0][1]).toBeGreaterThan(110);
+    const higher = filled(contours, 200);
+    expect(higher.length).toBe(2);
+    expect(higher[1][0] - higher[0][1]).toBeGreaterThan(90);
+  });
+
+  it("stands as wide as Geist Black's and sets its spur close", () => {
+    // Geist Black's a: 582 of ink, 9 to spare on the right; the Regular's 19.
+    const black = draw("a", 172);
+    const box = contoursBounds(black.contours);
+    expect(box.xMax - box.xMin).toBeCloseTo(582, -1.5);
+    expect(black.advanceWidth - box.xMax).toBeLessThan(25);
+    const regular = draw("a", 87);
+    expect(regular.advanceWidth - contoursBounds(regular.contours).xMax).toBeCloseTo(19, -1);
+  });
+});
+
+describe("the y and the e at the Black, as Geist draws them", () => {
+  it("closes the y's vee high over the line and runs its tail flat into the foot", () => {
+    // Geist Black: the arms' inside edges meet at 220, the left arm is cut
+    // level at 38, and the foot runs flat under the line for 168 units.
+    const { contours } = draw("y", 172);
+    expect(filled(contours, 150).length).toBe(1);
+    expect(filled(contours, 250).length).toBe(2);
+    const foot = filled(contours, -145);
+    expect(foot[0][1] - foot[0][0]).toBeGreaterThan(150);
+  });
+
+  it("drops the e's right side straight into the end of its bar", () => {
+    // Geist's e is upright on the right from its bar up into the bowl: the
+    // bar's end neither stands out past the bowl nor is stepped under it.
+    for (const weight of [30, 87, 172, 260]) {
+      const { contours } = draw("e", weight);
+      const right = contoursBounds(contours).xMax;
+      let top = 250;
+      while (filled(contours, top).length < 2 && top < 450) top += 1;
+      const above = filled(contours, top + 40);
+      expect(right - above[above.length - 1][1], `e at ${weight}`).toBeLessThan(6);
+    }
   });
 });
 

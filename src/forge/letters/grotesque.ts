@@ -29,7 +29,7 @@
  */
 
 import type { Vec2 } from "@/font/types";
-import { type Style, weightAtBlackness } from "../style";
+import { BASES, type Style, weightAtBlackness } from "../style";
 import { LETTERS } from "../letters";
 import { bowlPoint, spineEnd, spineStart } from "../shapes";
 import { penReach, reachAlong } from "../sweep";
@@ -99,122 +99,170 @@ function pinned(spine: Spine, pieces: number): Spine {
 }
 
 /**
- * The two-storey a: a flat-topped bowl hung off the stem, an arch over it from
- * a terminal cut level, and the stem turning out along the baseline into a
- * short spur.
+ * The two-storey a, as Geist draws it: an arch from a terminal cut level on
+ * the left, over a flat crest and down into the stem, which turns out at its
+ * foot on a wide round into a short spur; and a bowl hung off the stem.
  *
- * The bowl is a whole ring whose right side runs down the middle of the stem,
- * so where it meets the stem at its top and its foot the ink thins by itself
- * -- the notch every grotesque cuts there -- and nothing has to be drawn to
- * make it.
+ * Every measure is Geist's own, at the Thin, the Regular and the Black, from
+ * the left of the ink. The bowl leaves the stem on a straight diagonal onto
+ * its round left side and comes back round its foot into the stem's inside,
+ * so its counter is a teardrop whose right side is the stem, as Geist's is.
+ * Geist Black's bowl is heavier down its left side than the stem (199 on a
+ * stem of 194) and lighter along its foot (122): it is drawn with a pen of
+ * its own, and its last quarter, which runs up into the stem, with one as
+ * heavy along the foot and only a stem wide, so the counter meets the stem
+ * edge on a tangent and the bowl's outside comes up into the stem's round
+ * foot in the notch Geist cuts there.
  */
 export function grotesqueA(style: Style): Recipe {
   // A joined hand draws its own a, whose bowl is what the join runs into.
   if (style.parts.script.on) return LETTERS.a(style);
   const f = frame(lighterAcross(style));
-  const u = small(f);
-  const left = f.edge;
-  const stem = left + 353 * u;
-  const crest = f.crest(f.x);
+  const [across0, lerp] = squared(f);
+  /*
+   * Drawn small -- as the ordinal -- it is narrowed with its x-height, as
+   * everything else drawn small is: Geist's measures are for an a at the
+   * face's own size.
+   */
+  const base = BASES.find((one) => one.name === style.name);
+  const size = base ? f.x / base.metrics.xHeight : 1;
+  const X = (x: number) => across0(0) + (across0(x) - across0(0)) * size;
+  const k = X(1) - X(0);
+  const H = (y: number) => (y / 530) * f.x;
+  const { pen } = f.style;
+  const t = Math.min(heaviness(f) / 0.67, 2.24);
+  // How far past the Black: where the bowl stops getting heavier than the stem.
+  const past = Math.min(1, Math.max(0, t - 1));
+
+  // The stem, and its foot turning out into the spur.
+  const stem = X(lerp(397, 437, 389));
   const foot = f.sits(0);
-  const bottom = f.dip(0);
-  /*
-   * At a heavy weight the bowl is drawn with a lighter pen than the stem and
-   * the arch, as a Black's is: two counters stacked in one x-height leave the
-   * bowl's the smaller, and at the stem's weight it closed to a slit.
-   */
-  const heavy = Math.min(1, heaviness(f));
-  const bowlPen = { ...f.style.pen, weight: f.style.pen.weight * (1 - 0.22 * heavy) };
-  const bowlLeast = (bowlPen.weight / 2) * 1.06;
-  /*
-   * Past the Black its turns are held to what its own pen goes round, not
-   * the stem's (see \`holds\` in \`shapes.ts\`), or an Ultra's bowl was drawn
-   * taller than asked and hung below the line.
-   */
-  const past = Math.min(1, Math.max(0, (heaviness(f) - 0.67) / 0.3));
-  const bf: Frame = { ...f, half: f.half - (f.half - bowlPen.weight / 2) * past };
-  // The arch: from a terminal on its left, over a flat crest into the stem.
-  const room = crest - bottom;
-  // Its terminal cut level at 0.7 of the x-height at every weight, as
-  // Geist's is (370 at the Thin, the Regular and the Black alike).
-  const archHalf = held(f, Math.min(crest - (370 / 530) * f.x, room * 0.3));
-  const archCentre = at((left + 9 * u + stem) / 2, crest - archHalf);
-  const archWide = (stem - left - 9 * u) / 2;
-  // The bowl: its top well under the arch's terminal, its foot on the line.
-  const top = Math.min(
-    bottom + (244 / 530) * f.x,
-    Math.max(archCentre.y - f.half * 1.3 - f.upright, bottom + room * 0.44),
+  const crest = f.crest(f.x);
+  // Its turn no taller than leaves the arch its own round above it.
+  const spur = held(
+    f,
+    Math.min(Math.max(lerp(72, 126, 60) * k, f.half + 12 * k), crest - 2 * f.least - foot),
   );
-  const bowlHalf = Math.max((top - bottom) / 2, bowlLeast);
-  // Carried down by what its lighter pen leaves short of the line, so its foot overshoots as an o's does.
-  const drop = (f.upright - (bowlPen.weight * (1 - bowlPen.contrast)) / 2) * past;
-  const bowlCentre = at((left + stem) / 2, bottom + bowlHalf - drop);
-  const spur = held(f, 50 * u);
-  // Geist Thin's spur runs 71 past the stem's middle, the Regular's 97.
-  const reach = Math.max(stem + spur + f.half * 0.7, stem + (96 - 25 * thinness(f)) * u);
+  const reach = Math.max(X(lerp(488, 582, 460)), stem + spur + f.half * 0.2);
+
+  // The arch: its terminal cut level at 0.7 of the x-height, as Geist's is,
+  // its crest left of the middle, and its right side coming upright low, at
+  // 324 on every weight.
+  // Never nearer the stem than its turn will go round.
+  const crestX = Math.min(X(lerp(229, 277, 214)), stem - f.least);
+  const tip = Math.min(X(9) + f.half, crestX - f.least);
+  const cutY = Math.min(H(lerp(370, 362, 371)), crest - f.least);
+  // And never below where the stem starts to turn out into its spur.
+  const rightY = Math.max(Math.min(H(324), cutY), foot + spur + 1);
+  const leftArch = at(crestX, cutY);
+  const rightArch = at(crestX, rightY);
+
+  // The bowl's pen: Geist's is 1.01 of the stem across at the Regular and
+  // 1.16 at the Black, 0.84 and 0.61 of that along its foot.
+  const across = pen.weight * (lerp(1.01, 1.157, 1.07) - (0.147 + 0.43) * past);
+  const contrast = Math.max(pen.own ?? pen.contrast, lerp(0.16, 0.39, 0.06) - 0.23 * past);
+  const bowlPen = { ...pen, weight: across, contrast };
+  const along = across * (1 - contrast);
   /*
-   * The bowl leaves the stem well up and runs down across the letter in a
-   * straight line onto its round left side, as Geist's does -- a bowl whose
-   * top rises to the stem rather than lying level -- then round the foot and
-   * back into the stem.
+   * The last quarter's: as heavy as the bowl along its foot, and narrowing
+   * as it turns up into the stem, to a third of that where it runs upright
+   * -- a pen held on its side. Geist's bowl thins so into the stem: its
+   * counter comes up onto the stem's edge on a tangent, and its outside
+   * meets the stem's round foot low down, in a notch.
    */
-  const bowlWide = (stem - left) / 2;
-  // Geist's bowl leaves the stem at 0.55 of the x-height down its middle
-  // (291 on the Regular, 285 on the Black, 301 on the Thin).
-  const t = Math.min(1, heaviness(f) / 0.67);
-  const joinY = Math.min(((291 - 6 * t + 10 * thinness(f)) / 530) * f.x, (top + archCentre.y) / 2);
-  const quarter = bend(bf, bowlCentre, bowlHalf, 90, 180, bowlWide);
-  // Where a heavy pen has brought the arch down onto the bowl, the bowl
-  // leaves the stem a little higher, so the line still has a tangent to run on.
-  let from = at(stem, joinY);
-  let onto = tangentFrom(from, quarter, 1);
-  for (let pass = 1; pass <= 12 && !onto; pass++) {
-    from = at(stem, joinY + pass * f.half * 0.25);
-    onto = tangentFrom(from, quarter, 1);
-  }
-  const bowlRun = chain(
-    straight(from, onto ? spineStart(onto.run) : spineStart(quarter)),
-    onto ? onto.run : quarter,
-    bend(bf, bowlCentre, bowlHalf, 180, 270, bowlWide),
-    bend(bf, bowlCentre, bowlHalf, 270, 360, bowlWide),
+  const taper = Math.max(
+    along * (lerp(0.35, 0.37, 0.5) + 0.5 * past),
+    Math.min(along, f.half * 0.5),
   );
-  const bowl = ink(f, bowlRun);
+  const lastPen = { ...pen, weight: along, contrast: 1 - taper / along, angle: pen.angle + 90 };
+  // Their turns held to what their own pens go round: see `holds` in `shapes.ts`.
+  const penned = (weight: number, one: Style["pen"]): Frame => ({
+    ...f,
+    half: weight / 2,
+    least: (weight / 2) * 1.06,
+    style: { ...f.style, pen: one },
+    // Oval rather than superelliptic: the heavy pen round a squarish turn
+    // cut its counter's corners square.
+    curve: 0,
+    superness: 0,
+  });
+  // Held by the lesser of its reaches: see `holds` in `shapes.ts`.
+  const bf = penned(along, bowlPen);
+  const lf = penned(taper, lastPen);
+
+  const left = X(0) + across / 2;
+  const bottom = -f.over + along / 2;
+  const middle = Math.max(X(lerp(183, 240, 171)), left + f.least);
+  const right = stem - f.half + taper / 2;
+  /*
+   * The bowl leaves the stem at 0.56 of the x-height, and its counter meets
+   * the stem low on its left and high on its right, as Geist's does: round
+   * the left at 140 and upright into the stem at 218. Past the Black, where
+   * Geist has nothing more to say, the bowl's top is set where it shares
+   * what the pens leave of the x-height between the two counters as the
+   * Black does, and the counter's sides keep their share of the bowl.
+   */
+  const lip = f.upright;
+  const room = crest - lip - 2 * along + f.over;
+  const onward = Math.min(1, Math.max(0, (t - 1) * 2));
+  const shared = (geist: number, share: number): number => geist + (share - geist) * onward;
+  const joinY = shared(H(lerp(300, 296, 304)), crest - lip - along / 2 - room * 0.38);
+  const leftY = Math.max(
+    shared(H(lerp(140, 160, 132)), bottom + (joinY - bottom) * 0.5),
+    bottom + across * 0.53 + across * 0.02 * onward,
+  );
+  const rightY2 = Math.max(
+    shared(H(lerp(218, 212, 204)), bottom + (joinY - bottom) * 0.66),
+    bottom + along * 0.53,
+    leftY,
+  );
+  const leftC = at(middle, leftY);
+  const rightC = at(middle, rightY2);
+  /*
+   * Its upper quarter a little flatter than its lower, so the diagonal comes
+   * onto the round low, as Geist's does. Past the Black never so flat that
+   * the pen's reach across is more than its round, which cut the counter's
+   * corner square, and no wider than it is tall: a long flat top carried the
+   * bowl up under the arch's terminal until the two ran together.
+   */
+  const topH = Math.max(
+    Math.min((leftY - bottom) * 0.85, joinY - leftY - (leftY - bottom) * 0.35 * onward),
+    across * 0.53 + across * 0.03 * onward,
+  );
+  const topW = middle - left - Math.max(0, middle - left - topH) * onward;
+  const quarter = bend(bf, at(left + topW, leftY), topH, 90, 180, topW);
+  /*
+   * Out of the stem on a straight line down onto the bowl's round left
+   * side; where the pen has brought the bowl's top up to where it leaves the
+   * stem, all but level onto the round's crown -- still found as a tangent,
+   * so the run is in the same pieces at every weight.
+   */
+  const crown = spineStart(quarter);
+  const from = at(stem, Math.max(joinY, crown.y + 1));
+  const onto = tangentFrom(from, quarter, 1);
+  const bowl = ink(
+    bf,
+    chain(
+      straight(from, onto ? spineStart(onto.run) : spineStart(quarter)),
+      onto ? onto.run : quarter,
+      bend(bf, leftC, leftY - bottom, 180, 270, middle - left),
+    ),
+  );
+  const last = ink(lf, bend(lf, rightC, rightY2 - bottom, 270, 360, right - middle));
   return finish(f, [
     inherit(bowl, { ...bowl, pen: bowlPen }),
+    inherit(last, { ...last, pen: lastPen }),
     ink(
       f,
       chain(
-        bend(f, archCentre, archHalf, 180, 90, archWide),
-        bend(f, archCentre, archHalf, 90, 0, archWide),
-        straight(at(stem, archCentre.y), at(stem, foot + spur)),
+        bend(f, leftArch, crest - cutY, 180, 90, crestX - tip),
+        bend(f, rightArch, crest - rightY, 90, 0, stem - crestX),
+        straight(at(stem, rightY), at(stem, foot + spur)),
         pinned(turn(at(stem + spur, foot + spur), spur, 180, 270), 1),
         straight(at(stem + spur, foot), at(reach, foot)),
       ),
       f.end,
       f.end,
-    ),
-    /*
-     * And the stem's inside carried straight on down to the foot, under the
-     * outside of the spur's turn: at a heavy weight that turn is wide and the
-     * lighter bowl no longer covers it, and it bit a notch out of the stem at
-     * the bottom of the counter. Only there, though: at a light weight the
-     * bowl reaches the stem above the turn, and carried on down to the foot
-     * the stem stood out under the bowl as a block with a square corner and a
-     * step onto the spur, where Geist Thin's spur curves straight out of the
-     * crotch the bowl makes with the stem.
-     */
-    /*
-     * And at a heavy weight carried down to the line itself, not to where
-     * the pen's centre stands on it: cut there, the stem stopped a pen's
-     * depth above the line, and between the bowl's foot rising into it and
-     * the spur leaving it the outside of the letter had a sharp V cut up
-     * into it.
-     */
-    ink(
-      f,
-      straight(at(stem, archCentre.y), at(stem, foot + spur * (1 - heavy) - foot * t)),
-      BUTT,
-      BUTT,
     ),
   ]);
 }
@@ -280,64 +328,72 @@ export function grotesqueG(style: Style): Recipe {
 }
 
 /**
- * The y: a vee whose right arm carries straight on under the line and turns
- * out into a short flat foot, cut upright.
+ * The y, as Geist draws it: a left arm falling to a level cut just over the
+ * line, and a right arm running straight on past it under the line, where
+ * it turns on a short round into a flat foot cut upright.
+ *
+ * Every measure is Geist's own, from the left of the ink, at the Thin, the
+ * Regular and the Black: the arms lean less as the pen grows (Geist Black's
+ * right arm falls 0.32 across for every unit down, the Thin's 0.37), so the
+ * vee closes high over the line at a Black rather than deep in its crotch,
+ * and the tail keeps a straight run into its foot.
  */
 export function grotesqueY(style: Style): Recipe {
   const f = frame(style);
-  const u = small(f, 0.7);
-  const left = f.edge;
-  // Geist's arms meet at 229 across a letter 494 wide: the vee is even.
-  const leftTop = at(left + 23 * u, f.x);
-  const rightTop = at(left + 425 * u, f.x);
-  const apex = at(left + 212 * u, f.half * 0.2);
-  const heading = {
-    x: apex.x - rightTop.x,
-    y: apex.y - rightTop.y,
-  };
-  const length = Math.hypot(heading.x, heading.y);
-  const dir = { x: heading.x / length, y: heading.y / length };
+  const [X, lerpOn] = squared(f);
+  // Geist's measures run no further than its Black: past it, the letter
+  // widens by what the pen gains instead, so the vee keeps its shape.
+  const lerp = (a: number, b: number, thin: number) =>
+    lerpOn(a, a + (b - a) * Math.min(1, heaviness(f) / 0.67), thin);
+  const grow = Math.max(0, f.style.pen.weight - weightAtBlackness(f.style, 0.67));
+  const k = X(1) - X(0);
+  const H = (y: number) => (y / 530) * f.x;
+  const top = f.x;
+  // The left arm: from the x-height down to a level cut just over the line,
+  // where it runs into the right one.
+  const leftTop = at(X(lerp(46, 97, 16)) + grow / 2, top);
+  const cut = H(lerp(10, 38, 10));
+  const leftFoot0 = at(X(lerp(240, 282, 225)) + grow / 2, cut);
+  // The right arm, straight down to where it turns into the foot.
+  const rightTop = at(X(lerp(447, 482, 433)) + grow * 1.5, top);
+  const lean = lerp(0.351, 0.316, 0.374);
+  const dir = { x: -lean / Math.hypot(lean, 1), y: -1 / Math.hypot(lean, 1) };
   const floor = f.sits(f.desc);
-  // A Black turns wider under its arm (Geist Black's is 150 outside against
-  // the Regular's 125), or the inside of the turn was a notch over a stub.
-  const radius = held(f, (58 + 90 * Math.min(heaviness(f) / 0.67, 1.5)) * u);
-  // Where the arm turns: the knee, whose turn lands its foot on the floor.
-  // Turning right, from the arm's heading round to due left.
+  const radius = held(f, lerp(70, 95, 50) * k);
+  // Turning right, from the arm's heading round to due left: the centre lies
+  // to the right of the way the arm travels, a radius above the foot.
+  const side = { x: -dir.y, y: dir.x };
   const centreY = floor + radius;
-  const normal = { x: -dir.y, y: dir.x };
-  // The centre lies to the right of the arm's direction of travel.
-  const side = { x: dir.y, y: -dir.x };
-  const kneeY = centreY - radius * side.y;
-  const along = (kneeY - rightTop.y) / dir.y;
-  const knee = at(rightTop.x + dir.x * along, kneeY);
-  const centre = at(knee.x + radius * side.x, centreY);
-  void normal;
+  const kneeY = centreY + radius * side.y;
+  const knee = at(rightTop.x + (dir.x * (kneeY - top)) / dir.y, kneeY);
+  const centre = at(knee.x - radius * side.x, centreY);
   const from = (Math.atan2(knee.y - centre.y, knee.x - centre.x) * 180) / Math.PI;
-  // Standing out past the arm by a share of the pen, or at an Ultra the foot
-  // was a ledge a few units wide under the turn.
-  // Geist's toe stands 92 in from the ink at the Regular and the Black alike.
-  const toe = Math.min(
-    left + (70 - 25 * Math.min(heaviness(f) / 0.67, 1)) * u,
-    centre.x - 1 - f.half * 0.5 * Math.max(0, heaviness(f) - 0.67),
-  );
+  // The foot reaches back under the letter to an upright cut, Geist's 81 in
+  // from the ink at the Regular and 95 at the Black; never shorter than a
+  // little past its turn.
+  const toe = Math.min(X(lerp(81, 95, 64)) + grow / 2, centre.x - f.half * 0.3);
   /*
-   * Past the Black the left arm stops inside the right one, where the two
-   * spines cross. A heavy pen's square end past the crossing
-   * stood out beside the right arm as a step.
+   * The left arm's cut stops inside the right arm: its corner a share of the
+   * pen short of the right arm's far edge, or it stood out past it as a nick,
+   * and far enough over the near one that the two arms are one piece of ink
+   * on a face drawn to other proportions than Geist's.
    */
-  let end = at(apex.x + dir.x * -f.half * 0.4, apex.y + dir.y * -f.half * 0.4);
-  const lx = apex.x - leftTop.x;
-  const ly = apex.y - leftTop.y;
-  const det = lx * dir.y - ly * dir.x;
-  if (Math.abs(det) > 1e-9) {
-    const s = ((rightTop.x - leftTop.x) * dir.y - (rightTop.y - leftTop.y) * dir.x) / det;
-    const cross = at(leftTop.x + lx * s, leftTop.y + ly * s);
-    const k = Math.min(1, Math.max(0, (heaviness(f) - 0.67) / 0.3));
-    if (cross.y > end.y && s > 0 && s < 1)
-      end = at(end.x + (cross.x - end.x) * k, end.y + (cross.y - end.y) * k);
-  }
+  const across = (lean2: number) => f.half * Math.hypot(1, lean2);
+  const leftLean = (leftFoot0.x - leftTop.x) / (top - cut);
+  const rightAtCut = rightTop.x + (dir.x * (cut - top)) / dir.y;
+  const leftFoot = at(
+    Math.max(
+      Math.min(leftFoot0.x, rightAtCut + across(lean) - across(leftLean) - f.half * 0.35),
+      rightAtCut - across(lean) - across(leftLean) + f.half * 0.8,
+      // Nor standing out past the right arm's inside as more than Geist's
+      // step there (29 at the Regular, 49 at the Black): past the Black a
+      // wider pen made it a ledge.
+      rightAtCut - across(lean) + across(leftLean) - lerp(29, 49, 16) * k * 1.2,
+    ),
+    cut,
+  );
   return finish(f, [
-    ink(f, straight(leftTop, end), f.end, BUTT),
+    ink(f, straight(leftTop, leftFoot), f.end, LEVEL),
     ink(
       f,
       chain(
@@ -2931,42 +2987,49 @@ export function grotesqueE(style: Style): Recipe {
   const pen = drawnBar.pen;
   const thick = pen.weight * (1 - pen.contrast) * light;
   /*
-   * The ring leaves the bar at the bar's top edge, and the bar runs out to
-   * the ring's outside corner there: the ring's end cut then lies along the
-   * bar's top, and the bar's right end drops square from the ring's outside.
-   * Left from the bar's middle, the ring's curve came in above a bar lighter
-   * than itself and the bar's end stood past it as a small square step.
+   * The ring leaves the bar at the bar's top edge, running upright there,
+   * and the bar runs out square under it to the ring's outside, so the right
+   * side drops straight from the ring's round into the bar's end, as Geist's
+   * does. The ring's upper half is drawn round a centre on the bar's top for
+   * that, its lower half round the bowl's own, with the left side carried
+   * straight between the two. Left leaving the bar partway round the bowl's
+   * one curve, the ring came in above the bar's end and the bar stood out
+   * past it as a square step.
    */
-  const onRing = (degrees: number): Vec2 =>
-    bowlPoint(centre, halfW, f.bowlH, 1 - f.square, f.half, degrees, f.curve);
-  // The pen's reach out of the ring's outside at an angle on it.
-  const outwardAt = (degrees: number): Vec2 => {
-    const here = onRing(degrees);
-    const ahead = onRing(degrees + 0.5);
-    const length = Math.hypot(ahead.x - here.x, ahead.y - here.y) || 1;
-    // The ring runs anticlockwise from here, so its outside is on the right.
-    return reachAlong(
-      at((ahead.y - here.y) / length, -(ahead.x - here.x) / length),
-      penReach(f.style.pen),
-    );
-  };
-  // Its outside corner on the bar's top edge: the end cut is square to the
-  // ring, so the spine stops as far under that edge as the corner rises.
   const top = bar + thick / 2 - 0.5;
-  let start = angleAt(f, centre, halfW, f.bowlH, top, false);
-  for (let pass = 0; pass < 4; pass++) {
-    start = angleAt(f, centre, halfW, f.bowlH, top - outwardAt(start).y, false);
-  }
-  const here = onRing(start);
-  const outward = outwardAt(start);
-  const across = thin(
-    f,
-    straight(at(f.edge, bar), at(Math.max(here.x + outward.x, f.edge + f.half), bar)),
+  const crown = centre.y + f.bowlH;
+  const upper = at(centre.x, Math.min(top, crown - f.least));
+  const lower = at(centre.x, Math.min(centre.y, upper.y));
+  const base = centre.y - f.bowlH;
+  const side = reachAlong(at(1, 0), penReach(f.style.pen)).x;
+  // The right half no wider than the bowl's one curve is at the bar's top,
+  // which is as wide as Geist's e reaches there.
+  const onTop = bowlPoint(
+    centre,
+    halfW,
+    f.bowlH,
+    1 - f.square,
+    f.half,
+    angleAt(f, centre, halfW, f.bowlH, Math.min(top, crown - 1), false),
+    f.curve,
   );
+  const rightW = held(f, Math.min(halfW, onTop.x - centre.x));
+  const across = thin(f, straight(at(f.edge, bar), at(centre.x + rightW + side, bar)));
   return finish(
     f,
     [
-      ink(f, bend(f, centre, f.bowlH, start, 360 + foot, halfW), BUTT, f.end),
+      ink(
+        f,
+        chain(
+          bend(f, upper, crown - upper.y, 0, 90, rightW),
+          bend(f, upper, crown - upper.y, 90, 180, halfW),
+          straight(at(centre.x - halfW, upper.y), at(centre.x - halfW, lower.y)),
+          bend(f, lower, lower.y - base, 180, 270, halfW),
+          bend(f, lower, lower.y - base, 270, 360 + foot, halfW),
+        ),
+        BUTT,
+        f.end,
+      ),
       inherit(across, { ...across, pen: { ...pen, contrast: 1 - thick / pen.weight } }),
     ],
     true,
