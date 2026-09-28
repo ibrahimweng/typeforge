@@ -186,6 +186,8 @@ strokes as white; they now use a filled (nonzero) ruler.
   difference.
 - **m and X at the Light.** They are plain forms, shared with every base. At
   pen 30 the m is about 19 units wider than Geist Thin's and the X 22 narrower.
+- **7 at the Light.** Geist Thin opens its figures by 10 a side, but not its
+  7. The Sans opens all of them, so its Thin 7 stands 10 further off.
 - **Past 172.** Geist has nothing heavier than Black (its UltraBlack keeps a
   stem of 172). At 200–260 the letters follow their own rules for keeping
   counters open, not Geist.
