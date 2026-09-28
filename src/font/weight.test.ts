@@ -274,6 +274,28 @@ describe("weight", () => {
     expect(advance - box.xMax).toBeCloseTo(50, 0);
   });
 
+  it("keeps those side bearings when the heavy letter is also condensed", () => {
+    // Putting back the strokes the condensing took runs the arms out on the
+    // mitre again, and the advance grew by the give alone: Geist's v and w
+    // at the heaviest, condensed to 0.6, ran into the letters beside them.
+    const v = polygon([
+      [50, 500],
+      [150, 500],
+      [300, 100],
+      [450, 500],
+      [550, 500],
+      [350, 0],
+      [250, 0],
+    ]);
+    const { typeface, glyph } = letter([v], 600);
+    const narrow = at(typeface, glyph, { weight: 60, width: 0.6 });
+    const box = contoursBounds(narrow);
+    const advance = resolveAdvanceWidth(glyph, typeface);
+    // The fifty either side, condensed with the letter.
+    expect(box.xMin).toBeCloseTo(30, 0);
+    expect(advance - box.xMax).toBeCloseTo(30, 0);
+  });
+
   it("widens the letter by the ink it adds and keeps its side bearings", () => {
     const { typeface, glyph } = letter(
       [

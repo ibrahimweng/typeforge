@@ -334,11 +334,22 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
        * there is room -- any counter wider than the stems -- this changes
        * nothing, and the stems come back whole.
        */
+      const scaled = contoursBounds(contours);
       contours = contours.map((contour, index) =>
         applyWeight(contour, give, index, around, SIDEWAYS, CONDENSED_WHITE),
       );
+      /*
+       * Moved over by what the strokes put back added on the left, and the
+       * advance grows by both sides -- measured, as for the weight. A stem
+       * grows by the give, but the level-cut feet of a diagonal run out on
+       * their mitres by more: Geist's v and w at the heaviest weight
+       * condensed to 0.6 reached a tenth of an em past their advances on
+       * both sides, into the letters beside them.
+       */
+      const growth = sideGrowth(scaled, contoursBounds(contours), give);
+      gives.set(glyph, { key: growthKey(glyph, typeface, params), ...growth });
       contours = contours.map((contour) =>
-        mapContour(contour, (point) => ({ x: point.x + give, y: point.y })),
+        mapContour(contour, (point) => ({ x: point.x + growth.left, y: point.y })),
       );
     }
   }
@@ -372,7 +383,7 @@ export function resolveAdvanceWidth(glyph: Glyph, typeface: Typeface): number {
     (glyph.advanceWidth + weightRoom(glyph, typeface, params) + slabRoom(glyph, typeface, params)) *
       params.width +
       params.tracking * 2 +
-      widthGive(typeface, params) * 2,
+      widthRoom(glyph, typeface, params),
   );
 }
 
@@ -411,6 +422,21 @@ function growthKey(glyph: Glyph, typeface: Typeface, params: GlyphParams): strin
       contours.length,
     ),
   ].join("|");
+}
+
+/** And what putting back the strokes a change of width took added, likewise. */
+const gives = new WeakMap<Glyph, { key: string; left: number; right: number }>();
+
+function widthRoom(glyph: Glyph, typeface: Typeface, params: GlyphParams): number {
+  const give = widthGive(typeface, params);
+  if (Math.abs(give) <= 0.5) return 0;
+  const key = growthKey(glyph, typeface, params);
+  let known = gives.get(glyph);
+  if (known?.key !== key) {
+    resolveGlyphContours(glyph, typeface);
+    known = gives.get(glyph);
+  }
+  return known?.key === key ? known.left + known.right : give * 2;
 }
 
 function weightRoom(glyph: Glyph, typeface: Typeface, params: GlyphParams): number {
