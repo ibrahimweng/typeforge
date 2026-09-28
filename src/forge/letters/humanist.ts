@@ -1592,6 +1592,71 @@ const G_TOP = 0.49;
 const G_WING = 1;
 
 /**
+ * The question mark as Lora's: the hook carried round and down, and the neck
+ * leaving it down to the left and bending back to stand upright over the dot
+ * -- one S from the hook's end to the neck's foot, where the construction's
+ * neck was a straight slant ending in mid-air at an angle.
+ *
+ * Otherwise the construction's (see `punctuation.ts`): the hook no bigger
+ * than leaves the neck room to leave it on a tangent, the neck stopping
+ * clear of the dot, and the dot under the neck's foot.
+ */
+/** The least the question mark's neck turns on, against half the pen. */
+const Q_TURN = 1.3;
+
+export function humanistQuestion(style: Style): Recipe {
+  const f = frame(style);
+  const radiusDot = stopRadius(f);
+  const neck = Math.max(f.cap * 0.3, radiusDot * 2 + f.half * 0.9);
+  const crest = f.crest(f.cap);
+  const radius = Math.max(Math.min(figureWidth(f) * 0.42, (crest - neck) / 2.2), f.least);
+  const centre = at(f.edge + radius, crest - radius);
+  let foot = at(centre.x, Math.min(neck, centre.y - radius * 1.15));
+  /*
+   * The neck as a second circle touching the hook's from outside, turned the
+   * other way, whose lowest-left point is the neck's foot, travelling
+   * straight down: the circle through the foot with its centre level with it
+   * and its edge on the hook's. Where the two touch, the hook hands over.
+   */
+  const b = centre.y - foot.y;
+  let r = (b * b - radius * radius) / (2 * radius);
+  /*
+   * No tighter than the pen turns cleanly: past a Bold the hook sits so low
+   * over the dot that the neck's circle came down to the pen's own half, and
+   * held there it no longer touched the hook -- a notch at the hand-over.
+   * Held wider, the foot moves out to the right until the two touch again.
+   */
+  const least = Math.max(f.least, f.half * Q_TURN);
+  if (r < least) {
+    r = least;
+    const reach = Math.sqrt(Math.max(0, (radius + r) ** 2 - b * b));
+    foot = at(centre.x - (r - reach), foot.y);
+  }
+  const other = at(foot.x + r, foot.y);
+  const apart = Math.hypot(other.x - centre.x, other.y - centre.y);
+  const touch = at(
+    centre.x + ((other.x - centre.x) * radius) / apart,
+    centre.y + ((other.y - centre.y) * radius) / apart,
+  );
+  const degrees = (from: Vec2, to: Vec2) =>
+    (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI;
+  const leaves = degrees(centre, touch);
+  const turned = turn(centre, radius, hookFrom(f), leaves);
+  const hook = {
+    ...turned,
+    segments: turned.segments.map((segment) =>
+      segment.kind === "arc" ? { ...segment, pieces: 3 } : segment,
+    ),
+  };
+  let enters = degrees(other, touch);
+  if (enters < 0) enters += 360;
+  return finish(f, [
+    ink(f, chain(hook, inPieces(turn(other, r, enters, 180), 2)), f.end, f.end),
+    dot(f, at(foot.x, radiusDot), radiusDot),
+  ]);
+}
+
+/**
  * The two as Lora's: the diagonal leaving the bowl as the bowl's own curve
  * and easing into an S down to the foot -- steeper than its chord where it
  * leaves the bowl, flatter through the middle and steeper again into the

@@ -13,8 +13,14 @@ import { SERIF, type Style } from "./style";
 
 const forge = startFrom(SERIF);
 const at = (weight: number): Style => ({ ...SERIF, pen: { ...SERIF.pen, weight } });
-const draw = (name: string, weight: number, style: Style = at(weight)) =>
-  drawLetter(name, style, formOf(forge, name))!;
+const drawn = new Map<string, ReturnType<typeof drawLetter>>();
+/** Drawn once for each letter and weight: the scans below ask again and again. */
+const draw = (name: string, weight: number, style?: Style) => {
+  if (style) return drawLetter(name, style, formOf(forge, name))!;
+  const key = `${name} ${weight}`;
+  if (!drawn.has(key)) drawn.set(key, drawLetter(name, at(weight), formOf(forge, name)));
+  return drawn.get(key)!;
+};
 const box = (name: string, weight: number) => contoursBounds(draw(name, weight).contours);
 /**
  * The ink along a row, as the union the strokes are filled as: overlapping
@@ -259,5 +265,26 @@ describe("the Serif's spacing", () => {
     expect(side("e", 142)[1]).toBeLessThan(side("e", 87)[1] - 4);
     // And the Regular's where they were.
     expect(side("o", 87)[0]).toBeCloseTo(41, -1);
+  });
+});
+
+describe("the Serif's question mark", () => {
+  it("stands its neck upright over the dot, the hook handing over in an S", () => {
+    for (const weight of WEIGHTS) {
+      // Up from the line: the dot, the paper over it, then the neck's foot.
+      let y = 0;
+      while (y < 500 && row("question", weight, y).length > 0) y += 2;
+      while (y < 500 && row("question", weight, y).length === 0) y += 2;
+      const middle = (at: number) => {
+        const [run] = row("question", weight, at);
+        return (run[0] + run[1]) / 2;
+      };
+      // Upright over its last stretch, as Lora's is: the construction's
+      // neck came down at a slant and stopped in mid-air at an angle.
+      expect(
+        Math.abs(middle(y + 12) - middle(y + 12 + Math.min(weight * 0.35, 40))),
+        `? at ${weight}`,
+      ).toBeLessThan(2 + weight * 0.04);
+    }
   });
 });
