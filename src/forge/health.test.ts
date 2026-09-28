@@ -243,3 +243,19 @@ describe("what a cut did", () => {
     expect(gone!.letters.length).toBeGreaterThan(0);
   });
 });
+
+describe("a Light Sans", () => {
+  beforeAll(async () => {
+    await readyToShape();
+  });
+
+  it("says nothing of the marks Geist carries a little past its lines", () => {
+    // Geist Thin's parentheses and slash reach 750 and -110, its dollar 800,
+    // its cedilla and ogonek -204: as far as the Regular's. Allowed a pen's
+    // width past the lines, a Light of 30 reported ten of them.
+    const start = startFrom(SANS);
+    const forge: Forge = { ...start, style: { ...start.style, pen: { ...SANS.pen, weight: 30 } } };
+    const past = troubles(forge).find((one) => one.what === "Reaching past the line");
+    expect(past?.letters ?? []).toEqual([]);
+  });
+});

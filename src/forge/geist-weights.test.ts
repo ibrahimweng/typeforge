@@ -10,7 +10,13 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { contourArea, contoursBounds, inkRunsAt } from "@/font/geometry";
+import {
+  contourArea,
+  contourContainsPoint,
+  contoursBounds,
+  crossesItself,
+  inkRunsAt,
+} from "@/font/geometry";
 import type { Contour } from "@/font/types";
 import { drawLetter } from "./build";
 import { formOf, startFrom } from "./document";
@@ -26,6 +32,36 @@ const box = (name: string, weight: number) => contoursBounds(draw(name, weight).
 /** The ink along a line, as runs; `along` "y" is a level line at `value`, "x" an upright one. */
 const runs = (contours: Contour[], value: number, along: "x" | "y") =>
   inkRunsAt(contours, value, along, 48);
+
+/**
+ * Where a level line at `y` passes through ink, as it is filled: the letter's
+ * strokes overlap, and a ruler that pairs up every edge it meets reads the
+ * ink two strokes share as white.
+ */
+const filled = (
+  contours: Contour[],
+  value: number,
+  along: "x" | "y" = "y",
+): Array<[number, number]> => {
+  const box = contoursBounds(contours);
+  const signs = contours.map((contour) => Math.sign(contourArea(contour)));
+  const [low, high] = along === "y" ? [box.xMin, box.xMax] : [box.yMin, box.yMax];
+  const out: Array<[number, number]> = [];
+  let from: number | null = null;
+  for (let step = Math.floor(low) - 1; step <= Math.ceil(high) + 1; step += 0.5) {
+    const point = along === "y" ? { x: step, y: value } : { x: value, y: step };
+    let winding = 0;
+    contours.forEach((contour, index) => {
+      if (contourContainsPoint(contour, point)) winding += signs[index];
+    });
+    if (winding !== 0 && from === null) from = step;
+    if (winding === 0 && from !== null) {
+      out.push([from, step]);
+      from = null;
+    }
+  }
+  return out;
+};
 
 describe("the Sans at its Light, against Geist Thin", () => {
   it("keeps its straight letters as wide as its round ones", () => {
@@ -73,7 +109,7 @@ describe("the Sans at its Black, against Geist Black", () => {
       const ink = contoursBounds(contours);
       // Upright through the lower aperture and the upper counter: the foot,
       // the spine and the crown, apart.
-      const through = runs(contours, ink.xMin + (ink.xMax - ink.xMin) * 0.4, "x");
+      const through = filled(contours, ink.xMin + (ink.xMax - ink.xMin) * 0.4, "x");
       expect(through.length, `s at ${weight}`).toBeGreaterThanOrEqual(3);
       for (let index = 1; index < through.length; index++) {
         expect(through[index][0] - through[index - 1][1], `s at ${weight}`).toBeGreaterThan(12);
@@ -81,7 +117,7 @@ describe("the Sans at its Black, against Geist Black", () => {
       // And level across the lower aperture, just under the top of the foot's
       // cut: the foot, and well clear of it the lower bowl's right side. Shut,
       // the cut ran into the spine and the line crossed one run of ink.
-      const across = runs(contours, 150, "y");
+      const across = filled(contours, 150);
       expect(across.length, `s at ${weight}`).toBe(2);
       expect(across[1][0] - across[0][1], `s at ${weight}`).toBeGreaterThan(80);
     }
@@ -133,16 +169,73 @@ describe("the s from the Bold to past the Black", () => {
     for (const weight of [172, 185, 200]) {
       const { contours } = draw("s", weight);
       const ink = contoursBounds(contours);
-      const through = runs(contours, ink.xMin + (ink.xMax - ink.xMin) * 0.4, "x");
+      const through = filled(contours, ink.xMin + (ink.xMax - ink.xMin) * 0.4, "x");
       expect(through.length, `s at ${weight}`).toBe(3);
       expect(through[1][0] - through[0][1], `s lower at ${weight}`).toBeGreaterThan(100);
       expect(through[2][0] - through[1][1], `s upper at ${weight}`).toBeGreaterThan(85);
     }
     const { contours } = draw("s", 172);
     const ink = contoursBounds(contours);
-    const through = runs(contours, ink.xMin + (ink.xMax - ink.xMin) * 0.5, "x");
+    const through = filled(contours, ink.xMin + (ink.xMax - ink.xMin) * 0.5, "x");
     const crown = through[through.length - 1];
     expect(crown[1] - crown[0]).toBeLessThan(122);
+  });
+});
+
+describe("the s's counters from the Black on", () => {
+  it("ends each counter round, not as a slot cut square", () => {
+    // Geist Black's counters are round-ended: four units in from the end of
+    // each, a counter is well under half its height in the middle. With the
+    // stem's pen round every turn they were slots, near full height there.
+    for (const weight of [172, 200, 260]) {
+      const { contours } = draw("s", weight);
+      const box = contoursBounds(contours);
+      const middle = (box.xMin + box.xMax) / 2;
+      const down = filled(contours, middle, "x");
+      expect(down.length, `s at ${weight}`).toBe(3);
+      for (const [index, upper] of [
+        [1, false],
+        [2, true],
+      ] as const) {
+        const y = (down[index - 1][1] + down[index][0]) / 2;
+        const across = filled(contours, y);
+        const at = across.findIndex(
+          (run, one) => one > 0 && across[one - 1][1] <= middle && run[0] >= middle,
+        );
+        const [start, end] = [across[at - 1][1], across[at][0]];
+        const tall = (x: number) => {
+          const runs = filled(contours, x, "x");
+          const gap = runs.findIndex((run, one) => one > 0 && runs[one - 1][1] <= y && run[0] >= y);
+          return runs[gap][0] - runs[gap - 1][1];
+        };
+        const ratio = tall(upper ? start + 4 : end - 4) / tall((start + end) / 2);
+        expect(ratio, `s ${upper ? "upper" : "lower"} at ${weight}`).toBeLessThan(0.5);
+      }
+    }
+  });
+});
+
+describe("the eight past the Black", () => {
+  it("keeps its upper counter an oval, not a slot with square ends", () => {
+    for (const weight of [200, 260]) {
+      const { contours } = draw("eight", weight);
+      const box = contoursBounds(contours);
+      const middle = (box.xMin + box.xMax) / 2;
+      const down = filled(contours, middle, "x");
+      // The foot, the waist and the head: the upper counter under the head.
+      const y = (down[down.length - 2][1] + down[down.length - 1][0]) / 2;
+      const across = filled(contours, y);
+      const at = across.findIndex(
+        (run, one) => one > 0 && across[one - 1][1] <= middle && run[0] >= middle,
+      );
+      const [start, end] = [across[at - 1][1], across[at][0]];
+      const tall = (x: number) => {
+        const runs = filled(contours, x, "x");
+        const gap = runs.findIndex((run, one) => one > 0 && runs[one - 1][1] <= y && run[0] >= y);
+        return runs[gap][0] - runs[gap - 1][1];
+      };
+      expect(tall(start + 5) / tall((start + end) / 2), `eight at ${weight}`).toBeLessThan(0.75);
+    }
   });
 });
 
@@ -151,8 +244,66 @@ describe("the a at the Light", () => {
     // Geist Thin: under the bowl's join, the bowl's foot and the spur's turn
     // with nothing between them -- no block of stem standing below the bowl.
     const { contours } = draw("a", 30);
-    expect(runs(contours, 15, "y").length).toBe(2);
-    expect(runs(contours, 25, "y").length).toBe(3);
+    expect(filled(contours, 15).length).toBe(2);
+    expect(filled(contours, 25).length).toBe(3);
+  });
+});
+
+describe("the a from the Regular past the Black, as Geist draws it", () => {
+  it("notches the bowl's foot where it comes up into the stem's round foot", () => {
+    // Geist: the bowl's outside meets the stem's foot at 82 on the Regular
+    // and 83 on the Black, in a V, and the bowl thins into the stem.
+    for (const weight of [87, 130, 172, 200, 260]) {
+      const { contours } = draw("a", weight);
+      expect(filled(contours, 50).length, `a at ${weight}`).toBe(2);
+    }
+  });
+
+  it("keeps the bowl's counter a round teardrop as tall as Geist Black's", () => {
+    // Geist Black: the counter 120 tall where it meets the stem, and 146
+    // across; drawn with the stem's pen the bowl crushed it to a slot.
+    const { contours } = draw("a", 172);
+    const across = filled(contours, 160);
+    expect(across.length).toBe(2);
+    expect(across[1][0] - across[0][1]).toBeGreaterThan(110);
+    const higher = filled(contours, 200);
+    expect(higher.length).toBe(2);
+    expect(higher[1][0] - higher[0][1]).toBeGreaterThan(90);
+  });
+
+  it("stands as wide as Geist Black's and sets its spur close", () => {
+    // Geist Black's a: 582 of ink, 9 to spare on the right; the Regular's 19.
+    const black = draw("a", 172);
+    const box = contoursBounds(black.contours);
+    expect(box.xMax - box.xMin).toBeCloseTo(582, -1.5);
+    expect(black.advanceWidth - box.xMax).toBeLessThan(25);
+    const regular = draw("a", 87);
+    expect(regular.advanceWidth - contoursBounds(regular.contours).xMax).toBeCloseTo(19, -1);
+  });
+});
+
+describe("the y and the e at the Black, as Geist draws them", () => {
+  it("closes the y's vee high over the line and runs its tail flat into the foot", () => {
+    // Geist Black: the arms' inside edges meet at 220, the left arm is cut
+    // level at 38, and the foot runs flat under the line for 168 units.
+    const { contours } = draw("y", 172);
+    expect(filled(contours, 150).length).toBe(1);
+    expect(filled(contours, 250).length).toBe(2);
+    const foot = filled(contours, -145);
+    expect(foot[0][1] - foot[0][0]).toBeGreaterThan(150);
+  });
+
+  it("drops the e's right side straight into the end of its bar", () => {
+    // Geist's e is upright on the right from its bar up into the bowl: the
+    // bar's end neither stands out past the bowl nor is stepped under it.
+    for (const weight of [30, 87, 172, 260]) {
+      const { contours } = draw("e", weight);
+      const right = contoursBounds(contours).xMax;
+      let top = 250;
+      while (filled(contours, top).length < 2 && top < 450) top += 1;
+      const above = filled(contours, top + 40);
+      expect(right - above[above.length - 1][1], `e at ${weight}`).toBeLessThan(6);
+    }
   });
 });
 
@@ -250,6 +401,231 @@ describe("a slanted face", () => {
         const leant = drawLetter(name, slanted, formOf(form, name))!.advanceWidth;
         expect(Math.abs(leant - plain), `${base.name} ${name}`).toBeLessThan(1);
       }
+    }
+  });
+});
+
+describe("the Sans on a slant", () => {
+  it("keeps the upright's spacing, letter by letter", () => {
+    // An oblique is spaced as its upright: the r beside the g, the f beside
+    // the o, the E beside the S, the y beside the one and the figures.
+    const slanted: Style = { ...SANS, metrics: { ...SANS.metrics, slant: 12 } };
+    const names = [..."rgfoESy", "one", "two", "three", "four", "seven", "nine"];
+    const moved = names.filter((name) => {
+      const upright = drawLetter(name, SANS, formOf(forge, name))!;
+      const leaned = drawLetter(name, slanted, formOf(forge, name))!;
+      return Math.abs(upright.advanceWidth - leaned.advanceWidth) > 0.5;
+    });
+    expect(moved).toEqual([]);
+  });
+});
+
+describe("the marks as Geist draws them", () => {
+  it("sets the caret narrow and high, the colon's dot and the percent's rings where Geist's are", () => {
+    // Geist Regular: the caret 346 wide from 383 to 673; the colon's upper
+    // dot topped at 506; the percent's rings 308 wide, 352 tall, the lower
+    // one ending 714 from the left of the upper.
+    const caret = contoursBounds(draw("asciicircum", 87).contours);
+    expect(caret.xMax - caret.xMin).toBeCloseTo(346, -1);
+    expect(caret.yMin).toBeCloseTo(383, -1);
+    expect(caret.yMax).toBeCloseTo(673, -1);
+    expect(contoursBounds(draw("colon", 87).contours).yMax).toBeCloseTo(506, -1);
+    const percent = contoursBounds(draw("percent", 87).contours);
+    expect(percent.xMax - percent.xMin).toBeCloseTo(714, -1.3);
+    expect(percent.yMax - percent.yMin).toBeCloseTo(726, -1.3);
+  });
+});
+
+describe("the s's spine", () => {
+  it("curves as Geist's does, steeper where it leaves the bowls than through its middle", () => {
+    // Measured down the middle of the spine at 35, 45, 55 and 65 per cent
+    // across the letter: straight, it fell as far through the middle tenth
+    // as through the tenths beside it.
+    for (const name of ["s", "S"]) {
+      for (const weight of [30, 87, 130, 172]) {
+        const { contours } = draw(name, weight);
+        const box = contoursBounds(contours);
+        const middle = (share: number) => {
+          const runs = filled(contours, box.xMin + (box.xMax - box.xMin) * share, "x");
+          return (runs[1][0] + runs[1][1]) / 2;
+        };
+        const [a, b, c] = [0.35, 0.45, 0.55].map(middle);
+        expect(b - c, `${name} at ${weight}`).toBeLessThan(a - b - 1.5);
+      }
+    }
+  });
+});
+
+describe("the s's width", () => {
+  it("spreads as Geist's does from the Regular to the Black", () => {
+    // Geist's ink widths at its Regular and Black. Pen 130 is halfway between
+    // the two, so its width is too. The s was about 35 units narrow at 130
+    // and 40 at the Black, the S about 20.
+    const geist: Record<string, [number, number]> = { s: [432, 539], S: [530, 609] };
+    for (const [name, [regular, black]] of Object.entries(geist)) {
+      for (const weight of [87, 130, 172]) {
+        const width = regular + ((black - regular) * (weight - 87)) / (172 - 87);
+        const ink = box(name, weight);
+        expect(Math.abs(ink.xMax - ink.xMin - width), `${name} at ${weight}`).toBeLessThan(15);
+      }
+    }
+  });
+});
+
+describe("the rebuilt letters", () => {
+  it("never cross themselves once rounded to whole units, as a font stores them", () => {
+    const whole = (point: { x: number; y: number }) => ({
+      x: Math.round(point.x),
+      y: Math.round(point.y),
+    });
+    for (const name of ["a", "e", "s", "S", "dollar", "eight", "y"]) {
+      for (const weight of [30, 87, 130, 172, 215, 260]) {
+        draw(name, weight).contours.forEach((contour, index) => {
+          const stored = {
+            ...contour,
+            nodes: contour.nodes.map((node) => ({
+              ...node,
+              point: whole(node.point),
+              handleIn: node.handleIn && whole(node.handleIn),
+              handleOut: node.handleOut && whole(node.handleOut),
+            })),
+          };
+          expect(crossesItself(stored), `${name} at ${weight}, contour ${index}`).toBe(false);
+        });
+      }
+    }
+  });
+});
+
+describe("the brackets and braces", () => {
+  it("are as wide as Geist's and stay open past the Black", () => {
+    // Geist's ink widths at the Regular and the Black. The plain bracket was
+    // 110 units narrow at the Regular and set solid from the Black on.
+    const geist: Record<string, [number, number]> = {
+      bracketleft: [240, 346],
+      bracketright: [240, 346],
+      braceleft: [329, 370],
+      braceright: [329, 370],
+    };
+    for (const [name, [regular, black]] of Object.entries(geist)) {
+      for (const [weight, width] of [
+        [87, regular],
+        [172, black],
+      ]) {
+        const ink = box(name, weight);
+        expect(Math.abs(ink.xMax - ink.xMin - width), `${name} at ${weight}`).toBeLessThan(15);
+      }
+      for (const weight of [172, 260]) {
+        const { contours } = draw(name, weight);
+        const ink = contoursBounds(contours);
+        // Through the middle of the upper half, the stem alone is ink.
+        const y = ink.yMax - (ink.yMax - ink.yMin) * 0.25;
+        const across = filled(contours, y, "y").reduce((sum, [from, to]) => sum + to - from, 0);
+        expect(across, `${name} at ${weight}`).toBeLessThan((ink.xMax - ink.xMin) * 0.75);
+      }
+    }
+  });
+});
+
+describe("the Sans's marks", () => {
+  it("are Geist's size and stand where Geist's do", () => {
+    // Geist's ink boxes at the Regular and the Black: left, bottom, right
+    // and top. The plain plus was a third smaller, the underscore less than
+    // half as long, the tilde wider and hung low, the less-than taller.
+    const geist: Record<string, [number, number, number, number][]> = {
+      plus: [
+        [40, 56, 518, 534],
+        [40, 32, 538, 530],
+      ],
+      less: [
+        [40, 32, 494, 546],
+        [40, 16, 504, 572],
+      ],
+      equal: [
+        [40, 157, 500, 441],
+        [40, 90, 520, 487],
+      ],
+      underscore: [
+        [44, -78, 513, 0],
+        [32, -150, 532, 0],
+      ],
+      asciitilde: [
+        [40, 236, 483, 430],
+        [40, 242, 483, 424],
+      ],
+    };
+    for (const [name, [regular, black]] of Object.entries(geist)) {
+      for (const [weight, [left, bottom, right, top]] of [
+        [87, regular],
+        [172, black],
+      ] as const) {
+        const ink = box(name, weight);
+        const said = `${name} at ${weight}`;
+        expect(Math.abs(ink.xMax - ink.xMin - (right - left)), said).toBeLessThan(15);
+        expect(Math.abs(ink.yMin - bottom), said).toBeLessThan(15);
+        expect(Math.abs(ink.yMax - top), said).toBeLessThan(15);
+      }
+    }
+    // And the backslash is the slash turned round.
+    const slash = box("slash", 87);
+    const backslash = box("backslash", 87);
+    expect(backslash.xMax - backslash.xMin).toBeCloseTo(slash.xMax - slash.xMin, 0);
+    expect(backslash.yMin).toBeCloseTo(slash.yMin, 0);
+  });
+});
+
+describe("the Sans's sidebearings", () => {
+  it("stand where Geist's do at the Regular and the Black", () => {
+    // Geist's left and right sidebearings at the Regular and the Black. The
+    // W stood 17 closer than Geist's, the T, Y, 7 and X 12 to 26 further off,
+    // and the O 15 closer at the Black. Geist's Y reaches 6 past its sides,
+    // and is held just inside them.
+    const geist: Record<string, [number, number, number, number]> = {
+      W: [38, 38, 36, 36],
+      T: [15, 15, 12, 12],
+      Y: [0, 0, 0, 0],
+      X: [15, 15, 10, 10],
+      O: [45, 45, 40, 40],
+      seven: [20, 8, 20, 7],
+      six: [50, 40, 40, 30],
+      nine: [40, 50, 30, 40],
+      four: [30, 50, 20, 40],
+    };
+    for (const [name, [left, right, blackLeft, blackRight]] of Object.entries(geist)) {
+      for (const [weight, l, r] of [
+        [87, left, right],
+        [172, blackLeft, blackRight],
+      ]) {
+        const drawn = draw(name, weight);
+        const ink = contoursBounds(drawn.contours);
+        expect(Math.abs(ink.xMin - l), `${name} left at ${weight}`).toBeLessThan(9);
+        expect(Math.abs(drawn.advanceWidth - ink.xMax - r), `${name} right at ${weight}`).toBeLessThan(9);
+      }
+    }
+  });
+});
+
+describe("the heavy s's counters", () => {
+  it("are narrow and tall, as Geist Black's are, not low slots", () => {
+    // Geist Black's upper counter is 92 across and 70 high. Lightened in its
+    // sides alone, the s's was 150 across and 60 high.
+    for (const name of ["s", "S"]) {
+      const { contours } = draw(name, 172);
+      const ink = contoursBounds(contours);
+      // The widest white between two runs of ink, in the upper half.
+      let widest = { width: 0, x: 0, y: 0 };
+      for (let y = ink.yMin + (ink.yMax - ink.yMin) * 0.55; y < ink.yMax; y += 4) {
+        const runs = filled(contours, y, "y");
+        for (let index = 1; index < runs.length; index++) {
+          const width = runs[index][0] - runs[index - 1][1];
+          if (width > widest.width) widest = { width, x: (runs[index][0] + runs[index - 1][1]) / 2, y };
+        }
+      }
+      const column = filled(contours, widest.x, "x");
+      const below = column.filter(([, to]) => to <= widest.y).at(-1)!;
+      const above = column.find(([from]) => from >= widest.y)!;
+      const high = above[0] - below[1];
+      expect(widest.width / high, name).toBeLessThan(1.9);
     }
   });
 });

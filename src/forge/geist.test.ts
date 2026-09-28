@@ -255,10 +255,10 @@ describe("figures and spacing as Geist sets them", () => {
   });
 
   it("sets the letters the fitting would set too close where Geist opens them", () => {
-    // Geist: x and k 47 on the open side, T and Z 25 and 27, B and R 62.
+    // Geist: x and k 47 on the open side, T and Z 12 and 28, B and R 62.
     expect(sides("x")[0]).toBeCloseTo(47, -1);
     expect(sides("k")[1]).toBeCloseTo(47, -1);
-    expect(sides("T")[0]).toBeCloseTo(25, -1);
+    expect(sides("T")[0]).toBeCloseTo(12, -1);
     expect(sides("R")[1]).toBeCloseTo(62, -1);
   });
 
