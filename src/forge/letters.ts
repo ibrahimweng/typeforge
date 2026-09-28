@@ -362,13 +362,18 @@ export function joinWeight(style: Style): number {
 export function writtenLead(name: string, style: Style): Lead {
   const script = style.parts.script;
   const f = frame(style);
-  const seams = seamsOf(script, f.x, f.half);
+  const unit = scriptUnit(style);
+  const seams = seamsOf(script, f.x, f.half, unit);
   const high = takingHigh.entry === true && seams.high > seams.low + 1e-9;
   const lift = script.on ? wobbleOf(name, script, f.x).lift : 0;
-  const unit = scriptUnit(style);
   const reach = script.reach * unit;
   const weld = Math.max(0, script.knit) * unit + Math.max(0, Math.min(1, script.flat)) * reach;
-  const low: Lead = { y: seams.low - lift, way: seamHeading(script, false), weld, high: false };
+  const low: Lead = {
+    y: seams.low - lift,
+    way: seamHeading(script, false, f.x, f.half, unit),
+    weld,
+    high: false,
+  };
   if (!high) return low;
   return { y: seams.high - lift, way: seamHeading(script, true), weld, high, low };
 }
@@ -488,6 +493,7 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
     // What the pen is certain to reach, which is what it is at its narrowest.
     narrow: f.half * Math.max(0, 1 - Math.abs(style.pen.contrast)),
     x: f.x,
+    join: f.half * joinWeight(style),
     unit: scriptUnit(style),
     sidebearing: f.edge - f.half,
   };
@@ -522,7 +528,7 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * drawing that a shaper swaps in when the pair actually occurs. `o` and the
    * letter after it are both replaced, so the two that meet always agree.
    */
-  const seams = seamsOf(script, f.x, f.half);
+  const seams = seamsOf(script, f.x, f.half, room.unit);
   const crossing = {
     entry: takingHigh.entry ? seams.high : seams.low,
     exit: takingHigh.exit && HANDS_OVER_HIGH.has(name) ? seams.high : seams.low,

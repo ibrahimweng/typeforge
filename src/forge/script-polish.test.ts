@@ -1,0 +1,125 @@
+/**
+ * The joined faces held together at every weight the slider reaches: the
+ * Light, their own, a pen of 200 and the heaviest the slider goes, 260.
+ *
+ * What these guard is the part of a script that only shows set as a word --
+ * the join between two letters -- and they were written against faults that
+ * showed there and nowhere else: at a Black every join fell back to a straight
+ * run with a stub of the seam's heading hung off it, and the two stubs either
+ * side of a seam crossed as an X between each pair of letters.
+ */
+
+import { beforeAll, describe, expect, it } from "vitest";
+import { ready } from "@/font/boolean";
+import type { Vec2 } from "@/font/types";
+import { readyToShape } from "./layers";
+import { joiningHigh, recipeOf } from "./letters";
+import { seamHeading, seamsOf } from "./script";
+import { alongSpine } from "./shapes";
+import { BASES, heavier, scriptUnit, type Style } from "./style";
+import type { Spine } from "./types";
+
+const JOINED = ["Handwriting", "Formal Script", "Casual Script", "Monoline Script", "Roundhand"];
+const base = (name: string): Style => BASES.find((one) => one.name === name)!;
+const at = (style: Style, weight: number): Style => ({ ...style, pen: { ...style.pen, weight } });
+const weightsOf = (style: Style) => [30, style.pen.weight, 200, 260];
+const LOWER = "abcdefghijklmnopqrstuvwxyz".split("");
+
+beforeAll(async () => {
+  await ready();
+  await readyToShape();
+});
+
+/** The heading at each end of every piece of a spine, in degrees. */
+function headings(spine: Spine): Array<{ from: number; to: number }> {
+  return spine.segments.map((segment) => {
+    const points = alongSpine({ segments: [segment], closed: false }, 64);
+    const angle = (a: Vec2, b: Vec2) => (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+    return {
+      from: angle(points[0], points[1]),
+      to: angle(points[points.length - 2], points[points.length - 1]),
+    };
+  });
+}
+
+/** The sharpest turn from one piece of a spine to the next, in degrees. */
+function sharpest(spine: Spine): number {
+  const ends = headings(spine);
+  let most = 0;
+  for (let index = 1; index < ends.length; index++) {
+    const turn = Math.abs(((ends[index].from - ends[index - 1].to + 540) % 360) - 180);
+    most = Math.max(most, turn);
+  }
+  return most;
+}
+
+/** The strokes of a letter that reach out past its origin or its advance: its joins. */
+function joinsOf(name: string, style: Style): Spine[] {
+  const recipe = recipeOf(name as never)!(heavier(style));
+  const width = recipe.width ?? Infinity;
+  return recipe.strokes
+    .map((stroke) => stroke.spine)
+    .filter((spine) => {
+      const xs = alongSpine(spine, 16).map((one) => one.x);
+      return Math.min(...xs) < -1 || Math.max(...xs) > width + 1;
+    });
+}
+
+describe("a join at every weight", () => {
+  /*
+   * A corner in the spine of a join is a stroke that folds over itself when
+   * it is swept, and at a heavy weight it showed as a tick either side of
+   * every seam. The join is one stroke from the letter to the seam and on
+   * past it, and it turns smoothly the whole way.
+   */
+  it("has no corner in it, low or high", () => {
+    const cornered: string[] = [];
+    for (const name of JOINED) {
+      for (const weight of weightsOf(base(name))) {
+        const style = at(base(name), weight);
+        for (const letter of LOWER) {
+          for (const high of [false, true]) {
+            const spines = joiningHigh({ entry: high, exit: high }, () => joinsOf(letter, style));
+            for (const spine of spines) {
+              const turn = sharpest(spine);
+              if (turn > 12)
+                cornered.push(
+                  `${name} ${letter}${high ? "^" : ""} @${weight}: ${turn.toFixed(0)}°`,
+                );
+            }
+          }
+        }
+      }
+    }
+    expect(cornered).toEqual([]);
+  }, 300_000);
+
+  /*
+   * And the seam is somewhere a stem's foot can climb to. At the default
+   * weights nothing moves; at a Black the seam comes up off the line and the
+   * heading lies down to what one arc from the foot can reach, so the hand
+   * still climbs through the seam rather than running level along it.
+   */
+  it("crosses its seam climbing, above the foot of the stem", () => {
+    for (const name of JOINED) {
+      const own = base(name);
+      for (const weight of weightsOf(own)) {
+        const style = heavier(at(own, weight));
+        const half = style.pen.weight / 2;
+        const unit = scriptUnit(style);
+        const { xHeight } = style.metrics;
+        const seams = seamsOf(style.parts.script, xHeight, half, unit);
+        const way = seamHeading(style.parts.script, false, xHeight, half, unit);
+        const degrees = (Math.atan2(way.y, way.x) * 180) / Math.PI;
+        expect([name, weight, degrees >= 12]).toEqual([name, weight, true]);
+        // A stem's foot is half a pen up; the seam stands clear of it.
+        expect([name, weight, seams.low - half > xHeight * 0.1]).toEqual([name, weight, true]);
+        // And the high seam leaves room under the waist to be left from.
+        expect([name, weight, seams.high <= xHeight - half + 1e-6]).toEqual([name, weight, true]);
+        if (weight === own.pen.weight) {
+          expect([name, Math.round(degrees)]).toEqual([name, Math.min(70, own.parts.script.tilt)]);
+        }
+      }
+    }
+  });
+});

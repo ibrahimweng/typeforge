@@ -1,9 +1,9 @@
 import type { Vec2 } from "@/font/types";
 import { joinWeight, LETTERS, writtenLead } from "../letters";
 import { seamsOf } from "../script";
-import { bowlBetween, bowlPoint, roundCorners, spineEnd, spineStart } from "../shapes";
+import { alongSpine, bowlBetween, bowlPoint, roundCorners, spineEnd, spineStart } from "../shapes";
 import { penReach, reachAlong } from "../sweep";
-import type { Style } from "../style";
+import { scriptUnit, type Style } from "../style";
 import type { Spine, Stroke } from "../types";
 import {
   grotesqueA,
@@ -230,28 +230,51 @@ function entering(
   lead: Lead,
   least: number,
 ): { lead: Spine; body: Spine } {
-  const up = (UPSTROKE * Math.PI) / 180;
   const down = (FIRST_LEG * Math.PI) / 180;
   const centre = at(apex.x, apex.y - radius);
   const on = (angle: number): Vec2 =>
     at(centre.x + radius * Math.cos(angle), centre.y + radius * Math.sin(angle));
+  const asked = Math.atan2(lead.way.y, lead.way.x);
+  const roomFor = (up: number, leaving: number, from: Lead = lead) =>
+    Math.max(on(Math.PI / 2 + up).y - (from.y + from.weld * Math.max(Math.sin(leaving), 0)), 1);
+  const fitsAt = (up: number, leaving: number, from: Lead = lead) =>
+    (roomFor(up, leaving, from) * 0.9) / Math.max(Math.cos(leaving) - Math.cos(up), 1e-6) >= least;
+  /*
+   * The up-stroke leans over before the lead-in stands up.
+   *
+   * At a Black the apex turn is as wide as the pen and takes most of the
+   * x-height with it, and the bend from the seam's heading up to a
+   * seventy-six-degree up-stroke no longer fits under it. Stood up to fit, the
+   * lead-in left the seam at seventy-three where the lead-out before it
+   * arrived at twenty-seven, and the lead-out's weld stuck out past the
+   * up-stroke as a flag. An up-stroke laid a little further over starts lower
+   * round the apex and asks less of the bend, and the join stays one stroke.
+   */
+  /*
+   * Asked of the low lead-in even where this one is taken high, so the two
+   * drawings of the letter share an up-stroke and so an advance.
+   */
+  const probe = lead.high && lead.low ? lead.low : lead;
+  const probing = Math.atan2(probe.way.y, probe.way.x);
+  let upDegrees = UPSTROKE;
+  const tried = () => (upDegrees * Math.PI) / 180;
+  while (upDegrees > 46 && !fitsAt(tried(), Math.min(probing, tried() - 0.05), probe)) {
+    upDegrees -= 2;
+  }
+  const up = (upDegrees * Math.PI) / 180;
   const start = on(Math.PI / 2 + up);
   const end = on(Math.PI / 2 - down);
   const leg = straight(end, at(end.x + end.y / Math.tan(down), 0));
-  const over = turn(centre, radius, 90 + UPSTROKE, 90 - FIRST_LEG);
+  const over = turn(centre, radius, 90 + upDegrees, 90 - FIRST_LEG);
   // Never steeper than the up-stroke: `seamHeading` holds the tilt to seventy.
-  let heading = Math.min(Math.atan2(lead.way.y, lead.way.x), up - 0.05);
+  let heading = Math.min(asked, up - 0.05);
   /*
-   * And no bend tighter than the pen goes round. At a Black the seam is pushed
-   * up and the apex turn down, and the room between them will not take the
-   * whole turn from the seam's heading to the up-stroke's at a radius the pen
-   * can draw -- so the lead-in leaves the seam that much steeper instead, and
-   * meets the lead-out before it at a slight angle rather than folding.
+   * And no bend tighter than the pen goes round. Where even the leaning
+   * up-stroke leaves no room, the lead-in leaves the seam that much steeper
+   * instead, and meets the lead-out before it at a slight angle rather than
+   * folding.
    */
-  const roomAt = (leaving: number) =>
-    Math.max(start.y - (lead.y + lead.weld * Math.max(Math.sin(leaving), 0)), 1);
-  const fits = (leaving: number) =>
-    (roomAt(leaving) * 0.9) / Math.max(Math.cos(leaving) - Math.cos(up), 1e-6) >= least;
+  const fits = (leaving: number) => fitsAt(up, leaving);
   // Not taken high, where the run in is level along the waist and the bend
   // is buried in the apex it turns up into; it keeps its one advance instead.
   for (let step = 0; step < 40 && !lead.high && !fits(heading); step++) {
@@ -510,7 +533,7 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
          */
         const start = at(
           centre.x - f.bowl - f.half,
-          seamsOf(f.style.parts.script, f.x, f.half).low,
+          seamsOf(f.style.parts.script, f.x, f.half, scriptUnit(f.style)).low,
         );
         return {
           ...finish(
@@ -1127,8 +1150,19 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const top = at(left, f.x);
         const other = at(middle + half, f.x);
         const point = corner(f, top, at(middle, 0), other);
+        const vee = chain(straight(top, point), straight(point, other));
+        /*
+         * And never below the vee's own rounded bottom. At a heavy weight the
+         * corner is rounded wider than `corner` can push the vertex to make up
+         * for, the bottom of the vee stands well off the line, and half a pen
+         * up is then under the ink: the Casual Script's `y` at a pen of 210 was
+         * a cup with its tail floating a gap beneath it.
+         */
+        const bottom = Math.min(
+          ...alongSpine(roundCorners(vee, f.radius, f.half), 32).map((one) => one.y),
+        );
         return finish(f, [
-          ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end),
+          ink(f, vee, f.end, f.end),
           /*
            * The tail leaves the vee's apex, which is not where `corner` put the
            * vee's vertex.
@@ -1147,7 +1181,7 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
            * radius -- the two arms are barely a pen apart by then -- and the cut
            * is square and buried, so none of it shows.
            */
-          ink(f, straight(at(middle, f.half), at(middle, f.desc)), BUTT, f.end),
+          ink(f, straight(at(middle, Math.max(f.half, bottom)), at(middle, f.desc)), BUTT, f.end),
         ]);
       },
     },

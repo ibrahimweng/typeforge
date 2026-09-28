@@ -63,6 +63,7 @@ import {
   type Style,
   serifReach,
   spacingOf,
+  scriptUnit,
 } from "./style";
 import type { Spine, Stroke, Terminal } from "./types";
 
@@ -300,7 +301,7 @@ export function makeLetter(
   const script = style.parts.script;
   // Only the letters of the running hand lean extra; see the lift in `connected`.
   const tilt = joinEnds(name).entry ? wobbleOf(name, script, style.metrics.xHeight).lean : 0;
-  const seam = seamsOf(script, style.metrics.xHeight, style.pen.weight / 2).low;
+  const seam = seamsOf(script, style.metrics.xHeight, style.pen.weight / 2, scriptUnit(style)).low;
   const wobbled = (contours: Contour[]): Contour[] =>
     tilt === 0 ? contours : sheared(contours, Math.tan((tilt * Math.PI) / 180), seam);
 

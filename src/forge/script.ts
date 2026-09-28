@@ -337,17 +337,79 @@ export const HIGH = 0.76;
  * to the next letter's shoulder, and the only heading both halves can agree on
  * that does that is level.
  */
-export function seamHeading(script: Script, high: boolean): Vec2 {
-  const degrees = high ? 0 : Math.max(-60, Math.min(70, script.tilt));
+/*
+ * And never steeper than the pen leaves room for.
+ *
+ * A lead-out leaves the foot of a stem running along the line and has to be at
+ * the tilt by the time it crosses the seam, and one arc level at one end is at
+ * twice its chord's angle at the other. At a text weight the chord climbs
+ * thirty-odd degrees and the arc makes the tilt with room to spare. At a Black
+ * the foot of the stem is itself most of the way up to the seam: on the
+ * Handwriting at a pen of 200 the chord climbed nine degrees, no arc could
+ * reach fifty-five, and each half fell back to a straight run with a stub at
+ * the tilt hung off its end -- two stubs crossing at every seam in the word,
+ * an X between each pair of letters.
+ *
+ * So the heading is the tilt where the pen allows it and the steepest a single
+ * arc can make where it does not. It is one number for the face at its weight,
+ * which is all the contract asks: every letter reads it from the same four
+ * figures, so every exit and every entry still agree.
+ */
+export function seamHeading(
+  script: Script,
+  high: boolean,
+  x?: number,
+  half?: number,
+  unit?: number,
+): Vec2 {
+  let degrees = high ? 0 : Math.max(-60, Math.min(70, script.tilt));
+  if (!high && degrees > 0 && x !== undefined && half !== undefined && half > 0) {
+    const low = seamsOf(script, x, half, unit).low;
+    const most = (2 * Math.atan2(low - half, runOf(script, half, unit)) * 180) / Math.PI;
+    degrees = Math.min(degrees, Math.max(12, most));
+  }
   const radians = (degrees * Math.PI) / 180;
   return at(Math.cos(radians), Math.sin(radians));
 }
 
-export function seamsOf(script: Script, x: number, half: number): { low: number; high: number } {
-  const low = Math.max(script.height * x, half * 1.25);
+/** How far a lead-out runs sideways from the foot of a stem to the seam. */
+function runOf(script: Script, half: number, unit = half * 2): number {
+  return half + Math.max(0, script.reach) * unit;
+}
+
+/*
+ * The low seam comes up off the line as the pen gets heavier.
+ *
+ * A seam a quarter of a pen over the foot of a stem is a seam the lead-out has
+ * no height to climb to, and the heading above then has to lie down flat to
+ * make it -- a rule drawn through the word, which is the thing `tilt` exists to
+ * prevent. So the seam stands at least as high as an arc from the foot at half
+ * the tilt would reach, and never higher than the middle of the x-height, past
+ * which the lead-in would have no letter left above it to climb into. At every
+ * face's own weight the face's `height` is the higher of the two and nothing
+ * moves; it is at the Bold and past that this takes over.
+ */
+export function seamsOf(
+  script: Script,
+  x: number,
+  half: number,
+  unit?: number,
+): { low: number; high: number } {
+  const tilt = (Math.max(0, Math.min(70, script.tilt)) * Math.PI) / 180;
+  const climb = half + runOf(script, half, unit) * Math.tan(tilt / 2);
+  const floor = Math.max(half * 1.25, Math.min(climb, x * 0.5));
+  const low = Math.max(script.height * x, floor);
   // Where the four that hand over high cross, which the face may name.
   const high = script.highSeam ?? HIGH;
-  return { low, high: Math.max(low, high * x) };
+  /*
+   * And under the top of the letters by more than the pen, or there is nothing
+   * of them there to hand over from. A high lead-out looks for its letter
+   * between the seam and half a pen under the x-height, and at a Black that
+   * half pen came down past the seam: the band was empty, the search fell back
+   * to the nearest thing, and the `b` of `brown` left from its own stem and ran
+   * level across its bowl into the `r`.
+   */
+  return { low, high: Math.max(low, Math.min(high * x, x - half * 1.1)) };
 }
 
 /**
@@ -389,6 +451,8 @@ export interface Room {
   narrow: number;
   /** The x-height. */
   x: number;
+  /** Half the width a join is swept at, which is lighter than the pen; `half` when not given. */
+  join?: number;
   /**
    * What the reach, the weld and the loop are measured in: the pen, held near
    * the pen the face was designed at -- see `scriptUnit`. The pen itself when
@@ -555,7 +619,14 @@ function levelArc(seam: Vec2, target: Vec2, room: Room, along: Vec2 = at(1, 0)):
    * would be that tight there is nothing to turn: the two ends are less than a
    * pen apart, so a straight run between them is the same shape.
    */
-  if (Math.abs(radius) < room.half * 1.2) return line;
+  /*
+   * The join, not the letter: a join is swept lighter than the stems (see
+   * `joinWeight`), and it is the join's own ink that folds. Held to the whole
+   * pen, a Black's joins had nothing left they were allowed to turn through --
+   * every arc came back a straight run, cornered against the heading past the
+   * seam, and the `i` of `nin` stood between two ticks.
+   */
+  if (Math.abs(radius) < (room.join ?? room.half) * 1.2) return line;
   const centre = at(seam.x + normal.x * radius, seam.y + normal.y * radius);
   const startAngle = Math.atan2(seam.y - centre.y, seam.x - centre.x);
   const finish = Math.atan2(target.y - centre.y, target.x - centre.x);
@@ -674,6 +745,7 @@ function attach(
   band: (point: Vec2) => boolean,
   side: "left" | "right",
   near?: (point: Vec2) => number,
+  slack = 0,
 ): Sample {
   const inside = points.filter((one) => band(one.point));
   /*
@@ -696,6 +768,19 @@ function attach(
    * nothing.
    */
   const looking = inside.length > 0 ? inside : near ? nearest(points, near) : points;
+  /*
+   * A written stem is bowed, so its leftmost point is wherever the bow puts
+   * it -- low on the `i`, near the seam -- and a lead-in that lands there has
+   * nothing to climb: at a Black it ran level into the stem and out through
+   * the far side of it. Within `slack` of the leftmost is as good as leftmost,
+   * and of those the highest is where the hand arrives.
+   */
+  if (side === "left" && slack > 0) {
+    const least = looking.reduce((most, one) => Math.min(most, one.point.x), Infinity);
+    return looking
+      .filter((one) => one.point.x <= least + slack)
+      .reduce((best, one) => (one.point.y > best.point.y ? one : best));
+  }
   let best = looking[0];
   for (const one of looking) {
     const point = one.point;
@@ -1261,7 +1346,7 @@ export function planJoin(
   const points = skeleton(spines);
   if (points.length === 0) return null;
 
-  const seams = seamsOf(script, room.x, room.half);
+  const seams = seamsOf(script, room.x, room.half, room.unit);
   const entryAt = crossing?.entry ?? seams.low;
   const exitAt = crossing?.exit ?? seams.low;
   /*
@@ -1356,6 +1441,9 @@ export function planJoin(
     (point) => point.y >= entryAt && point.y <= ceiling,
     "left",
     offBand(entryAt, ceiling),
+    // Not on a written letter, whose leftmost point in the band is its own
+    // lead-in crossing the seam, and is what places it.
+    round || entered ? 0 : room.half * 0.5,
   );
   /*
    * The lead-out searches below its own crossing on an ordinary letter and
@@ -1725,7 +1813,7 @@ export function planJoin(
    * the arc to make up the difference by steepening on its way up. At a tilt of
    * nought each half is straight and still joins; opened up, it dips.
    */
-  const climbing = seamHeading(script, false);
+  const climbing = seamHeading(script, false, room.x, room.half, room.unit);
   // A join across the waist runs level; see `seamHeading`.
   const entryWay = entryAt > seams.low + 1e-9 ? seamHeading(script, true) : climbing;
   const exitWay = exitAt > seams.low + 1e-9 ? seamHeading(script, true) : climbing;
