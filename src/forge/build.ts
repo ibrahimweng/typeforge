@@ -28,7 +28,14 @@ import {
   joinEnds,
   reachesEither,
 } from "./letters";
-import { accentsFor, gapFor, hangsBelow, isCapital, type Parts } from "./accents";
+import {
+  accentsFor,
+  codepointOfAccented,
+  gapFor,
+  hangsBelow,
+  isCapital,
+  type Parts,
+} from "./accents";
 import { reachesCast, type Cast } from "./cast";
 import { effectInk, reachesEffects, type Effects } from "./effects";
 import { reaches, scaleOf, type Cuts } from "./cut";
@@ -470,10 +477,12 @@ function marked(
     const over = contoursBounds(mark.contours);
     const below = hangsBelow(markName);
 
-    const move = {
-      x: (under.xMin + under.xMax) / 2 - (over.xMin + over.xMax) / 2,
-      y: below ? under.yMin - over.yMax - gap : under.yMax - over.yMin + gap,
-    };
+    const move = parts.beside
+      ? besideTop(contours, mark.contours, style, isCapital(parts.base), gap)
+      : {
+          x: (under.xMin + under.xMax) / 2 - (over.xMin + over.xMax) / 2,
+          y: below ? under.yMin - over.yMax - gap : under.yMax - over.yMin + gap,
+        };
     const shifted = shoved(mark.contours, move);
     contours.push(...shifted);
     runs.push(
@@ -551,6 +560,33 @@ function marked(
     contours: placed,
     runs: spaced,
   };
+}
+
+/**
+ * Where a mark set beside a letter goes (`Parts.beside`): its top on the
+ * ascender -- the cap height on a capital -- and clear of the right of the
+ * letter's ink at its very top, which is the stem's edge on a d, an l and an
+ * L and the top of the stem on a t, over its bar.
+ */
+function besideTop(
+  letter: Contour[],
+  mark: Contour[],
+  style: Style,
+  capital: boolean,
+  gap: number,
+): Vec2 {
+  const under = contoursBounds(letter);
+  const over = contoursBounds(mark);
+  const band = style.metrics.unitsPerEm * 0.04;
+  let right = -Infinity;
+  for (const contour of letter) {
+    for (const node of contour.nodes) {
+      if (node.point.y >= under.yMax - band) right = Math.max(right, node.point.x);
+    }
+  }
+  if (!Number.isFinite(right)) right = under.xMax;
+  const top = Math.max(under.yMax, capital ? style.metrics.capHeight : style.metrics.ascender);
+  return { x: right + gap * 1.4 - over.xMin, y: top - over.yMax };
 }
 
 function shoved(contours: Contour[], by: Vec2): Contour[] {
@@ -933,11 +969,13 @@ function inkOf(stroke: Stroke, style: Style, others: Contour[] = []): Contour[] 
  * themselves: whether it is a capital, which never takes a teardrop, and
  * whether it is a lowercase letter, whose stems take a sloped head.
  */
-function inkAll(strokes: Stroke[], style: Style, name = ""): Contour[][] {
+function inkAll(given: Stroke[], style: Style, name = ""): Contour[][] {
+  const strokes = style.metrics.risingHairline ? given.map(risen) : given;
   const capital = isCapitalLike(name);
   const small = !capital && !FIGURES.includes(name);
   const figure = FIGURES.includes(name);
-  const lettered = name === "" || figure || /^\p{L}$/u.test(decidedBy(name));
+  const lettered =
+    name === "" || figure || /^\p{L}$/u.test(decidedBy(name)) || characterOf(name) !== null;
   // The S is the one capital whose foot comes back round to the left and
   // wears a beak there; the J's hook, which does the same, keeps a plain end.
   /*
@@ -976,6 +1014,40 @@ function inkAll(strokes: Stroke[], style: Style, name = ""): Contour[][] {
       swept.flatMap((one, other) => (other === index ? [] : one)),
     ),
   );
+}
+
+/**
+ * A straight run rising to the right drawn as a hairline, on a face that asks
+ * for it (`metrics.risingHairline`): the thin of the face's own pen, laid
+ * round, so it is a hairline at whatever slant it runs.
+ */
+function risen(stroke: Stroke): Stroke {
+  const { segments } = stroke.spine;
+  if (stroke.spine.closed || segments.length === 0) return stroke;
+  if (segments.some((one) => one.kind !== "line")) return stroke;
+  const from = segments[0].kind === "line" ? segments[0].from : null;
+  const last = segments[segments.length - 1];
+  const to = last.kind === "line" ? last.to : null;
+  if (!from || !to) return stroke;
+  // One direction all the way: a vee's two arms are one run and keep the pen.
+  const heading = Math.atan2(to.y - from.y, to.x - from.x);
+  const straightOn = segments.every(
+    (one) =>
+      one.kind === "line" &&
+      (Math.hypot(one.to.x - one.from.x, one.to.y - one.from.y) < 1e-6 ||
+        Math.abs(Math.sin(Math.atan2(one.to.y - one.from.y, one.to.x - one.from.x) - heading)) <
+          1e-3),
+  );
+  if (!straightOn) return stroke;
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const rising =
+    dx * dy > 0 && Math.abs(dy) > Math.abs(dx) * 0.4 && Math.abs(dx) > Math.abs(dy) * 0.15;
+  if (!rising) return stroke;
+  const own = Math.min(Math.max(stroke.pen.own ?? stroke.pen.contrast, 0), 0.95);
+  const thin = Math.max(stroke.pen.weight * (1 - own) * 1.25, 1);
+  if (thin >= stroke.pen.weight) return stroke;
+  return { ...stroke, pen: { ...stroke.pen, weight: thin, contrast: 0 } };
 }
 
 /**
@@ -1175,6 +1247,21 @@ function dress(
       return { ...end, level: true, sink: headSlope(style) * 2 * inner };
     }
     /*
+     * And under a flag head, the same top with the serif's right wing left off:
+     * Rockwell's, Courier's and every slab's l, i, h, k and n. Laid both ways
+     * there, the Slab's l and I were the same letter.
+     */
+    if (
+      end.kind === "slab" &&
+      end.head === "flag" &&
+      !end.bare &&
+      small &&
+      outward.y > 0 &&
+      [metrics.xHeight, metrics.ascender].some((line) => Math.abs(at.y - line) < 1)
+    ) {
+      return { ...end, level: true, flag: true };
+    }
+    /*
      * An upright standing on a line is cut along the line. Square to the stroke
      * is the same thing on a pen held straight, but a pen held at an angle
      * leans its cut with it, and a serifed stem then stood on one corner a few
@@ -1290,7 +1377,25 @@ function rounded(stroke: Stroke, straight: { start: boolean; end: boolean }): St
 /** A capital in any script: a letter that is its own upper case and has a lower one. */
 function isCapitalLike(name: string): boolean {
   if (isCapital(name)) return true;
-  return [...name].length === 1 && name.toUpperCase() === name && name.toLowerCase() !== name;
+  const one = [...name].length === 1 ? name : characterOf(name);
+  return one !== null && one.toUpperCase() === one && one.toLowerCase() !== one;
+}
+
+/**
+ * The letter a glyph drawn outright under a name of its own stands for: the
+ * H-bar for `Hbar`, the ash for `ae`, the eszett for `germandbls`.
+ *
+ * Asked by the two decisions a letter's name makes for its strokes -- whether
+ * it wears serifs, and whether it is a capital -- which read a single
+ * character. Named, the Latin letters with no decomposition were neither:
+ * a Slab set a bare Ħ beside a serifed H, a bare Æ beside a serifed E, and
+ * took its Ħ for a lowercase letter.
+ */
+function characterOf(name: string): string | null {
+  const code = codepointOfAccented(name);
+  if (code === null) return null;
+  const one = String.fromCodePoint(code);
+  return /^\p{L}$/u.test(one) ? one : null;
 }
 
 /**
@@ -2108,6 +2213,13 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
      * both ways, about half that each way.
      */
     const arm = winged && terminal.shape === "wedge" && Math.abs(outward.y) < 1e-3;
+    /*
+     * And a slab's beak on the end of an arm reaches off the arm's own
+     * edge, not the stem's: measured from the stem, a Black's grew with the
+     * stem and hung the F's middle beak down onto its foot and the Z's into
+     * its own diagonal. Rockwell's stay the length of a serif.
+     */
+    if (!arm && winged && Math.abs(outward.y) < 1e-3) full = Math.min(full, inner + projection);
     if (arm) {
       const { unitsPerEm, capHeight } = style.metrics;
       const edge = [1, -1].some((side) => crossesALine(at, outward, side, full, inner, style));
@@ -2169,7 +2281,9 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        */
       const text = terminal.shape === "wedge";
       const paper = text ? Math.min(reference, style.metrics.xHeight * 0.14) : reference;
-      let room = winged ? roomBeside(at, facing, side, inner, full, thickness, paper, others) : full;
+      let room = winged
+        ? roomBeside(at, facing, side, inner, full, thickness, paper, others)
+        : full;
       /*
        * And never into the other end of its own stroke. The two arms of a v,
        * a V and each vee of a W are one run, so the strokes beside it do not
@@ -2227,7 +2341,7 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        * And under a sloped head, only the flag on the left: the top of a
        * lowercase stem is where the pen came in, and it came in from the left.
        */
-      const behind = shear > 0 && side < 0;
+      const behind = (shear > 0 || terminal.flag === true) && side < 0;
       const refused =
         !winged ||
         terminal.bare === true ||

@@ -8,10 +8,9 @@
 
 import { bowlPoint, spineEnd } from "../shapes";
 import { blackness, type Style } from "../style";
-import type { Stroke } from "../types";
 import {
   barWeight,
-  cutsLevel,
+  joinsLevel,
   leaving,
   arm,
   arms,
@@ -20,6 +19,7 @@ import {
   LEVEL,
   chain,
   corner,
+  doubleVee,
   corners,
   dips,
   finish,
@@ -366,7 +366,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const middle = left + width / 2;
     const right = left + width;
     const dip = f.cap * 0.16;
-    if (cutsLevel(f)) {
+    if (joinsLevel(f)) {
       // Each diagonal cut level on the cap line inside its stem: see `leaving`.
       let topLeft = at(left, f.cap);
       let topRight = at(right, f.cap);
@@ -410,12 +410,14 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   N: (style) => {
     const f = frame(style);
     const left = f.edge;
-    const right = left + f.capBowl * 1.35;
+    // And wider at a heavy weight, as the A and the H are, or the diagonal
+    // has no room between the stems and the letter reads as an H.
+    const right = left + f.capBowl * 1.35 + f.half * 0.35 * heaviness(f) + f.gain * 0.6;
     const stems = [
       ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
       ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
     ];
-    if (cutsLevel(f)) {
+    if (joinsLevel(f)) {
       let top = at(left, f.cap);
       let foot = at(right, 0);
       for (let pass = 0; pass < 3; pass++) {
@@ -554,7 +556,9 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   W: (style) => {
     const f = frame(style);
-    const half = f.capBowl * 0.66;
+    // And wider at a heavy weight, as the A is, or its four counters close to
+    // slits and a Black W is a black wedge.
+    const half = f.capBowl * 0.66 + f.half * 0.15 * heaviness(f) + f.gain * 0.3;
     const left = f.edge;
     const top = f.cap;
     /*
@@ -571,13 +575,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      *
      * Two vees is what a w is anyway, and each of them lands the way a v does.
      */
-    const vee = (from: number): Stroke => {
-      const start = at(left + half * from, top);
-      const end = at(left + half * (from + 2), top);
-      const point = corner(f, start, at(left + half * (from + 1), 0), end);
-      return ink(f, chain(straight(start, point), straight(point, end)), f.end, f.end);
-    };
-    return finish(f, [vee(0), vee(1.72)]);
+    return finish(f, doubleVee(f, left, half, top));
   },
 
   X: (style) => {

@@ -247,6 +247,11 @@ export const PART_SPECS: PartSpec[] = [
         options: [
           { value: "level", label: "Level", hint: "A bar both ways, laid along the line." },
           { value: "sloped", label: "Sloped", hint: "One flag, sloping down to the left." },
+          {
+            value: "flag",
+            label: "Flag",
+            hint: "One level flag to the left, as a slab's l has, so it never reads as an I.",
+          },
         ],
       },
     ],

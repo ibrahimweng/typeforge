@@ -105,13 +105,15 @@ import {
   roundHalf,
   arch,
   at,
-  belly,
-  heldReachOut,
+  lobe,
   bend,
   bowed,
   BUTT,
   chain,
   corner,
+  joinsLevel,
+  leaving,
+  LEVEL,
   crossbar,
   figureWidth,
   finish,
@@ -314,6 +316,21 @@ function doubleG(f: Frame): Recipe {
   };
 }
 
+/**
+ * How wide an elliptical turn `height` tall can be drawn by this pen without
+ * its inside folding: the width asked for, held between the two limits a pen
+ * with contrast sets. Where the run lies level, the pen is thin across it and
+ * the turn has to be flatter than the pen's own long side is round; where it
+ * stands upright, the turn has to be rounder than the pen's short side.
+ */
+function fitTurn(pen: { weight: number; contrast: number }, height: number, asked: number): number {
+  const across = pen.weight / 2;
+  const thin = Math.max(across * (1 - Math.max(0, Math.min(pen.contrast, 0.95))), 1e-6);
+  const least = Math.sqrt((height * across * across) / thin) * 1.03;
+  const most = (height * height * across) / (thin * thin) / 1.03;
+  return Math.max(Math.min(asked, most), Math.min(least, most), 1);
+}
+
 export const ALTERNATES: Record<LetterName, Alternate[]> = {
   o: [
     {
@@ -435,35 +452,54 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
       hint: "A bowl with an arched top over it, which is what most text faces use.",
       build: (style) => {
         const f = frame(style);
-        const bowlHeight = Math.max(f.x * 0.31, f.least);
         /*
-         * At a black weight the bowl is lighter than the stem and wider, and
-         * the stem stands off it by the difference, so the counter is the
-         * bowl's own and not what the stem leaves of it: drawn at the stem's
-         * weight in the regular's room, it closed to a slit.
+         * A stem arching over into the head, and a bowl run off the stem
+         * below it -- each joined to the stem, as every two-storey a is.
+         *
+         * A ring laid beside a stem with a hook of a circle over it, as it
+         * was, stood the bowl nearly as tall as the x-height under a thin
+         * head, so the letter read as a d-less delta; and at a black weight
+         * the hook shrank to a flag hung over the bowl with a notch where the
+         * two met.
          */
         const heavy = heaviness(f);
+        const crest = f.crest(f.x);
+        const base = f.dip(0);
+        // The bowl takes half the height, the head the rest.
+        const waist = base + (crest - base) * (0.5 + 0.03 * Math.min(1, heavy));
+        const stem = f.edge + (f.bowl + f.half) * 1.72 - f.half + f.gain * 0.6;
+        const across = Math.max((stem - f.edge) / 2, f.least);
+        /*
+         * At a black weight the bowl is lighter than the stem, so its counter
+         * is the bowl's own and not what the stem leaves of it.
+         */
         const bowlPen = { ...f.style.pen, weight: f.style.pen.weight * (1 - 0.2 * heavy) };
-        const bowlWidth = Math.max(bowlHeight * f.wide + f.half * 0.35 * heavy, f.least);
-        const centre = at(f.edge + bowlWidth, bowlHeight);
-        const stem = centre.x + bowlWidth + (f.style.pen.weight - bowlPen.weight) / 2;
-        // How far over the top reaches before it turns down, held so it can
-        // never ask the pen to turn tighter than it goes round.
-        const over = Math.max(Math.min(bowlWidth, f.x - bowlHeight * 2), f.least);
-        return finish(f, [
-          { ...ink(f, ring(f, centre, bowlWidth, bowlHeight)), pen: bowlPen },
-          // Stem and arch as one run, so the turn at the top is a turn rather
-          // than two square ends meeting.
-          ink(
-            f,
-            chain(
-              straight(at(stem, 0), at(stem, f.x - over)),
-              turn(at(stem - over, f.x - over), over, 0, 135),
-            ),
-            f.end,
-            f.end,
-          ),
-        ]);
+        // Never a turn tighter than its own pen goes round (see `least`), so
+        // at an Ultra the bowl pushes the waist up rather than folding.
+        const bowlH = Math.max((waist - base) / 2, bowlPen.weight * 0.53, f.least * 0.8);
+        const headH = Math.max((crest - Math.max(waist, base + bowlH * 2)) * 0.96, f.least);
+        /*
+         * Each turn no wider than it is tall, and what the letter is wider
+         * than that run level between them: an elliptical turn much wider
+         * than tall turns tighter than the pen at its end, and folded there
+         * at a heavy weight.
+         */
+        const turnW = fitTurn(f.style.pen, headH, Math.min(headH, across * 0.96));
+        const right = at(stem - turnW, crest - headH);
+        const left = at(Math.min(f.edge + across * 0.04 + turnW, right.x), crest - headH);
+        const shoulder = bend(f, right, headH, 0, 90, turnW);
+        const hook = bend(f, left, headH, 90, 150, turnW);
+        const head = chain(shoulder, straight(spineEnd(shoulder), spineStart(hook)), hook);
+        const bowlW = fitTurn(bowlPen, bowlH, Math.min(across * 1.04, bowlH * f.wide * 1.3));
+        const round = bend(f, at(f.edge + bowlW, base + bowlH), bowlH, 90, 270, bowlW);
+        // Level into the stem from where the turn really starts and stops.
+        const bowl = chain(
+          straight(at(stem, spineStart(round).y), spineStart(round)),
+          round,
+          straight(spineEnd(round), at(stem, spineEnd(round).y)),
+        );
+        const headRun = ink(f, chain(straight(at(stem, 0), spineStart(head)), head), f.end, f.end);
+        return finish(f, [{ ...ink(f, bowl, BUTT, BUTT), pen: bowlPen }, headRun]);
       },
     },
   ],
@@ -555,6 +591,23 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const width = Math.max(f.capBowl * 1.7, f.half * 7);
         const middle = left + width / 2;
         const right = left + width;
+        // Each diagonal cut level on the cap line inside its stem, as the
+        // plain M's are: see `joinsLevel`.
+        if (joinsLevel(f)) {
+          let topLeft = at(left, f.cap);
+          let topRight = at(right, f.cap);
+          let vertex = at(middle, 0);
+          for (let pass = 0; pass < 3; pass++) {
+            topLeft = leaving(f, at(left, f.cap), 1, vertex, 1);
+            topRight = leaving(f, at(right, f.cap), -1, vertex, -1);
+            vertex = corner(f, topLeft, at(middle, 0), topRight);
+          }
+          return finish(f, [
+            ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
+            ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
+            ink(f, chain(straight(topLeft, vertex), straight(vertex, topRight)), LEVEL, LEVEL),
+          ]);
+        }
         const into = stub(f);
         const start = at(left, f.cap - into);
         const end = at(right, f.cap - into);
@@ -586,38 +639,24 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const stem = f.edge;
         const radius = Math.max(f.cap * 0.27, f.least);
         /*
-         * The bowl's top lies along the cap line, as the stem's end does:
-         * centred a radius under the line itself, its ink stood half a pen
-         * over the stem and left a step at the corner.
+         * The plain R's bowl -- as wide as the P's and the B's, with the same
+         * flat top and waist -- and only the leg swung. Drawn on a half circle
+         * a radius wide instead, the bowl came out two fifths as wide as the
+         * P's beside it: a narrow D stuck to the stem over a long leg, which
+         * read as a k or a small capital.
          */
-        const top = f.hangs(f.cap);
-        const junction = top - radius * 2;
-        const legRadius = Math.max(junction * 0.62, f.least);
+        const junction = f.hangs(f.cap) - radius * 2;
+        const bowl = Math.max(f.capBowl * 1.08, radius * f.wide);
+        // Sprung from the bowl's underside, further out at a heavy weight so
+        // there is a crotch between the leg and the stem.
+        const springs = at(stem + bowl * 0.42 + f.gain * 0.6, junction);
+        const foot = at(stem + bowl * 1.1, 0);
         return finish(f, [
           ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-          // Wider at a heavy weight, or the bowl's counter is a chink.
-          belly(
-            f,
-            at(stem, top - radius),
-            heldReachOut(f, radius, radius * f.wide),
-            radius,
-            -90,
-            90,
-          ),
+          lobe(f, stem, junction, f.hangs(f.cap), bowl),
           // One arc from the junction to the foot, bowed out to the right.
-          // Sprung further along the bowl at a heavy weight, so there is a crotch
-          // between the leg and the stem rather than a wedge of solid ink.
-          ink(
-            f,
-            bowed(
-              f,
-              at(stem + f.gain * 1.3, junction),
-              at(stem + legRadius * 1.5 + f.gain * 1.3, 0),
-              0.14,
-            ),
-            BUTT,
-            f.end,
-          ),
+          // Less bowed at a heavy weight, where a full bow closed the lower counter.
+          ink(f, bowed(f, springs, foot, 0.1 * (1 - 0.6 * Math.min(1, heaviness(f)))), BUTT, f.end),
         ]);
       },
     },

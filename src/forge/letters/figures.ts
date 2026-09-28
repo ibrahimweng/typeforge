@@ -141,14 +141,22 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const lands = toward(joins);
     const way = towards(lands, joins);
     const overlap = at(joins.x + way.x * f.half * 0.3, joins.y + way.y * f.half * 0.3);
+    // The top of the foot's ink: it sits on the line, a bar thick.
+    const footTop = f.sits(0, f.bar) * 2;
     return finish(f, [
       ink(f, over, f.end, BUTT),
       ink(f, straight(overlap, lands), BUTT, {
         kind: "butt",
         level: true,
       }),
-      // Started inside the diagonal's foot, so its own cut end is buried.
-      arm(f, left + f.half, left + width, f.sits(0, f.bar)),
+      /*
+       * From where the diagonal's left edge crosses the top of the foot, so
+       * the two meet with no step: the letter's corner is the diagonal's own,
+       * on the baseline. Started half a pen in, the diagonal's corner came out
+       * under and left of the foot's end as a barb; started at the corner, the
+       * foot's end stood out left of a heavy diagonal as a square step.
+       */
+      arm(f, left + footTop * (way.x / Math.max(way.y, 1e-6)) + 2, left + width, f.sits(0, f.bar)),
     ]);
   },
 

@@ -26,6 +26,7 @@ import {
   reversed,
   roundCorners,
   shortened,
+  spineEnd,
   spineStart,
   superQuarter,
   wavy,
@@ -1240,6 +1241,31 @@ export function cutsLevel(f: Frame): boolean {
 }
 
 /**
+ * Whether an N's or an M's diagonals meet their stems with a level cut on the
+ * line (`leaving`) rather than a stub run up the stem and a corner: every face
+ * that cuts level (`cutsLevel`), and the plain sans faces with square corners
+ * and square ends too.
+ *
+ * The stub was carried up inside the stem and turned there, and its corner
+ * never lay on the stem's own edge: at a Light the stem stepped where the
+ * diagonal left it, and at a Black the corner stood out of the stem's inside
+ * as a notch and the diagonal came to a wedge between two stems -- an H with
+ * a bump. Cut level, the diagonal's top is the stem's top and it leaves the
+ * stem's inside edge clean, which is how Geist and every grotesque join them.
+ */
+export function joinsLevel(f: Frame): boolean {
+  if (cutsLevel(f)) return true;
+  const { wave, script } = f.style.parts;
+  return (
+    !f.style.parts.slab.on &&
+    !script.on &&
+    f.radius < 1 &&
+    f.end.kind === "butt" &&
+    (wave.depth <= 0 || wave.along === "off")
+  );
+}
+
+/**
  * Skeleton vertices for a run that should reach a given set of points.
  *
  * A skeleton says where the middle of a stroke runs, and at a sharp corner the
@@ -1764,6 +1790,26 @@ export function squareDots(f: Frame): boolean {
   return f.style.parts.terminal.kind === "level";
 }
 
+/**
+ * The contrast a face is drawn with, rather than what a heavy weight adds to
+ * it (`heavierPen`): a dot sized off the pen's contrast grew with the weight
+ * on a face that has none of its own, and a Black Slab's i carried a dot a
+ * stem and a half across.
+ */
+function ownContrast(f: Frame): number {
+  const { pen } = f.style;
+  return Math.min(Math.max(pen.own ?? pen.contrast, 0), 0.95);
+}
+
+/**
+ * What a light weight's dot keeps over its pen: Geist Thin's full stop is 59
+ * units across on a stem of 30, not the stem's own speck -- a body of about
+ * six hundredths of the x-height, given up by a text weight.
+ */
+function lightBody(f: Frame): number {
+  return f.x * 0.028 * Math.max(0, 1 - (f.half * 2) / 86);
+}
+
 export function stopRadius(f: Frame): number {
   // A square full stop reads as the same weight as a round one a little
   // larger: Geist's is 109 units on a stem of 87.
@@ -1795,16 +1841,18 @@ export function stopRadius(f: Frame): number {
     const regular = f.x * 0.087;
     return Math.min(f.half * 1.345, regular * 1.345 + Math.max(0, f.half - regular) * 0.5);
   }
-  const { contrast } = f.style.pen;
-  const c = Math.min(Math.max(contrast, 0), 0.95);
-  const radius = Math.max(f.half * (0.95 + 0.6 * c), f.style.metrics.unitsPerEm * 0.045 * c);
+  const c = ownContrast(f);
+  const radius = Math.max(
+    f.half * (0.95 + 0.6 * c) + lightBody(f),
+    f.style.metrics.unitsPerEm * 0.045 * c,
+  );
   /*
    * But never so big that a colon's two dots meet. A heavy face with contrast
    * grew its full stop past a fifth of the x-height, and at Black the colon
-   * and the semicolon came out as one blot. A face without contrast never
-   * gets there: its dot is under a stem, and it is left as it was.
+   * and the semicolon came out as one blot -- and so, past a Black, did a face
+   * with none: its stop was the pen's own, and the pen had outgrown the room.
    */
-  return Math.min(radius, Math.max(f.x * 0.2, f.half));
+  return Math.min(radius, f.x * 0.2);
 }
 
 /**
@@ -1814,8 +1862,6 @@ export function stopRadius(f: Frame): number {
  * otherwise carry it past the ascender.
  */
 export function tittle(f: Frame, x: number): Stroke {
-  const { contrast } = f.style.pen;
-  const c = Math.min(Math.max(contrast, 0), 0.95);
   if (squareDots(f)) {
     // Square, a little wider than the stem, its top level with the ascender --
     // at every weight, as Geist's is, the Thin's as high as the Black's.
@@ -1840,7 +1886,12 @@ export function tittle(f: Frame, x: number): Stroke {
     const top = f.asc - Math.max(0, 0.31 * f.half * 2 - (f.style.pen.weight - 87) * 0.5);
     return dot(f, at(x, Math.max(top - round, f.x + gap + round)), round);
   }
-  const radius = Math.max(f.half * (0.55 + c), f.style.metrics.unitsPerEm * 0.04 * c);
+  const own = ownContrast(f);
+  const radius = Math.min(
+    Math.max(f.half * (0.55 + own) + lightBody(f), f.style.metrics.unitsPerEm * 0.04 * own),
+    // And no larger than the room over the x-height leaves it.
+    Math.max((f.asc - f.x - f.half * 0.6) / 2, f.half * 0.55),
+  );
   const y = Math.min(f.x + f.half * 1.5 + radius, f.asc + f.over - radius);
   return dot(f, at(x, Math.max(y, f.x + f.half * 0.6 + radius)), radius);
 }
@@ -2555,8 +2606,15 @@ export function opening(
  * other bar in the font.
  */
 export function slash(f: Frame, stem: number, height: number): Stroke {
-  const reach = Math.max(f.half * 2.1, f.least);
-  const rise = reach * 0.85;
+  /*
+   * Sized off the letter rather than the pen: two pens either side was a nub
+   * no wider than the stem at a Light, and the Ł read as an L. Geist Thin's
+   * slash reaches about four tenths of an o either side of its stem and rises
+   * at half its length; the pen adds only what keeps it clear of a Black's
+   * stem.
+   */
+  const reach = Math.max(roundHalf(f) * 0.4 + f.half * 0.6, f.half * 1.6, f.least);
+  const rise = reach * 0.5;
   return thin(
     f,
     straight(at(stem - reach, height - rise), at(stem + reach, height + rise)),
@@ -2739,15 +2797,24 @@ export function cyrGe(f: Frame, top: number): Stroke[] {
 export function cyrDe(f: Frame, top: number): Stroke[] {
   const wide = cyrWide(f, top);
   const left = f.edge;
-  const width = wide * 1.75;
+  /*
+   * Wider at a heavy weight, as the N is: held to the regular's width, a
+   * Black's slanted leg ran into the post and the counter between them went
+   * black.
+   */
+  const width = wide * 1.75 + f.half * 1.1 * heaviness(f) + f.gain * 1.2;
   const shelf = f.sits(0, f.bar);
   const roof = f.hangs(top, f.bar);
-  const post = left + width * 0.82;
+  const post = left + width - f.half * 1.6 - width * 0.06;
   const drop = cyrDrop(f, top);
+  // The leg leans in from the shelf's left end to the roof's, and the roof
+  // starts over it, so the two meet in the leg's own ink.
+  const head = left + width * 0.22 + f.half * 0.4;
+  const foot = left + f.half * 1.2;
   return [
     ink(f, straight(at(post, shelf), at(post, top)), BUTT, f.end),
-    thin(f, straight(at(left + width * 0.26, roof), at(post, roof)), f.end, BUTT),
-    ink(f, straight(at(left + width * 0.26, roof), at(left + width * 0.12, shelf)), BUTT, BUTT),
+    thin(f, straight(at(head, roof), at(post, roof)), BUTT, BUTT),
+    ink(f, straight(at(head, top), at(foot, shelf)), LEVEL, BUTT),
     thin(f, straight(at(left, shelf), at(left + width, shelf)), BUTT, BUTT),
     ink(f, straight(at(left + f.half, shelf), at(left + f.half, -drop)), BUTT, f.end),
     ink(
@@ -2756,6 +2823,55 @@ export function cyrDe(f: Frame, top: number): Stroke[] {
       BUTT,
       f.end,
     ),
+  ];
+}
+
+/**
+ * A W or a w: two vees sharing a middle apex.
+ *
+ * Laid as the two overlapping vees they always were -- the second begun
+ * `share` halves along -- but with the inner arms stopped where they meet
+ * rather than carried past each other to the top line. Carried on, they
+ * crossed below the apex and stood up above it as a little X at a Light and a
+ * notched pair of cut ends at a Black, where Geist and Futura end the middle
+ * apex in one clean point.
+ *
+ * So each vee runs from its outer top down into its foot and up its inner arm
+ * to the one apex, where both arms are cut level on the same line: they
+ * overlap there into one flat top, as Geist's middle apex is. The feet are
+ * placed as a v's are, each where its ink lands on the baseline.
+ */
+export function doubleVee(
+  f: Frame,
+  left: number,
+  half: number,
+  top: number,
+  share = 1.72,
+): Stroke[] {
+  const start = at(left, top);
+  const end = at(left + half * (share + 2), top);
+  /*
+   * A face that rounds its corners keeps the two whole vees: a rounded apex
+   * is drawn back along its bisector, and placed so its ink reaches the line
+   * it stood hundreds of units over it on a script's short inner arms.
+   */
+  if (f.radius >= 1) {
+    const vee = (from: number): Stroke => {
+      const a = at(left + half * from, top);
+      const b = at(left + half * (from + 2), top);
+      const point = corner(f, a, at(left + half * (from + 1), 0), b);
+      return ink(f, chain(straight(a, point), straight(point, b)), f.end, f.end);
+    };
+    return [vee(0), vee(share)];
+  }
+  // Brought down a little at a heavy weight, as Geist Black's is, so the
+  // notch between the inner arms stays open.
+  const peak = at(left + half * (1 + share / 2), top * (1 - 0.18 * Math.min(1, heaviness(f))));
+  const one = corner(f, start, at(left + half, 0), peak);
+  const two = corner(f, peak, at(left + half * (share + 1), 0), end);
+  return [
+    ink(f, chain(straight(start, one), straight(one, peak)), f.end, LEVEL),
+    ink(f, chain(straight(peak, two), straight(two, end)), LEVEL, f.end),
   ];
 }
 
@@ -2777,7 +2893,16 @@ export function cyrZhe(f: Frame, top: number): Stroke[] {
 
 /** Two arcs bulging right, which is what a ze and a three both are. */
 export function cyrZe(f: Frame, top: number): Stroke[] {
-  const radius = Math.max(top * 0.27, f.least);
+  /*
+   * Each bowl carried on a little way to the left along the waist, so the two
+   * meet in a short tongue, as the three's do: meeting where each turned, the
+   * two cut ends stood at an angle to each other and left a notch like a
+   * less-than sign on the left of the waist, at every weight.
+   */
+  const crest = f.crest(top);
+  const base = f.dip(0);
+  const radius = Math.max((crest - base) / 4, f.least);
+  const wide = bendWidth(f, radius) + f.gain * 0.5;
   /*
    * Placed by where the arcs actually reach, not by where the whole bowl would.
    *
@@ -2786,23 +2911,63 @@ export function cyrZe(f: Frame, top: number): Stroke[] {
    * stood eighty-six units inside its own sidebearing and read as a letter that
    * had been pushed.
    */
-  const cx = f.edge + bendWidth(f, radius) * 0.643;
+  const cx = f.edge + wide * 0.643;
+  // Where each bowl comes back to the waist: the same line, unless the pen
+  // will not turn in a quarter of the height and the two overlap there.
+  const upper = spineEnd(bend(f, at(cx, crest - radius), radius, 150, -90, wide));
+  const lower = spineStart(bend(f, at(cx, base + radius), radius, 90, -150, wide));
+  const tongue = radius * 0.3;
   return [
-    ink(f, bend(f, at(cx, top - radius), radius, -130, 105), f.end, BUTT),
-    ink(f, bend(f, at(cx, radius), radius, -105, 130), BUTT, f.end),
+    ink(
+      f,
+      chain(
+        bend(f, at(cx, crest - radius), radius, 150, -90, wide),
+        straight(upper, at(upper.x - tongue, upper.y)),
+      ),
+      f.end,
+      BUTT,
+    ),
+    ink(
+      f,
+      chain(
+        straight(at(lower.x - tongue, lower.y), lower),
+        bend(f, at(cx, base + radius), radius, 90, -150, wide),
+      ),
+      BUTT,
+      f.end,
+    ),
   ];
 }
 
 /** The N with its diagonal the other way round. */
 export function cyrI(f: Frame, top: number): Stroke[] {
-  const [left, right] = cyrPosts(f);
+  const [left, posts] = cyrPosts(f);
+  // Wider at a heavy weight, as the N is, so the diagonal keeps its room.
+  const right = posts + f.half * 0.35 * heaviness(f) + f.gain * 0.6;
+  const stems = [
+    ink(f, straight(at(left, 0), at(left, top)), f.end, f.end),
+    ink(f, straight(at(right, 0), at(right, top)), f.end, f.end),
+  ];
+  /*
+   * The diagonal cut level on the line inside each stem, as the N's is (see
+   * `joinsLevel`): run up a stub inside the stem and turned there, a heavy
+   * one dropped below the baseline and skewed its serifs.
+   */
+  if (joinsLevel(f)) {
+    let foot = at(left, 0);
+    let head = at(right, top);
+    for (let pass = 0; pass < 3; pass++) {
+      foot = leaving(f, at(left, 0), 1, head, -1);
+      head = leaving(f, at(right, top), -1, foot, -1);
+    }
+    return [...stems, ink(f, straight(foot, head), LEVEL, LEVEL)];
+  }
   const into = stub(f);
   const start = at(left, into);
   const end = at(right, top - into);
   const [foot, head] = corners(f, [start, at(left, 0), at(right, top), end]);
   return [
-    ink(f, straight(at(left, 0), at(left, top)), f.end, f.end),
-    ink(f, straight(at(right, 0), at(right, top)), f.end, f.end),
+    ...stems,
     ink(f, chain(straight(start, foot), straight(foot, head), straight(head, end))),
   ];
 }
@@ -3027,9 +3192,14 @@ export function cyrGheUpturn(f: Frame, top: number): Stroke[] {
    * and is exactly the fault the whole alphabet was measured for once already.
    */
   const bar = f.hangs(top, f.bar) - tick;
+  /*
+   * The arm runs into the tick and stops there, and the tick is the upturn's
+   * only finish: an arm with a beak of its own under a tick with a serif of
+   * its own stacked the two into one lump.
+   */
   return [
     ink(f, straight(at(stem, 0), at(stem, top)), f.end, f.end),
-    arm(f, stem, stem + reach, bar),
+    thin(f, straight(at(stem, bar), at(stem + reach, bar)), BUTT, BUTT),
     ink(f, straight(at(stem + reach, bar), at(stem + reach, f.hangs(top, f.bar))), BUTT, f.end),
   ];
 }
@@ -3084,14 +3254,42 @@ export function cyrYu(f: Frame, top: number): Stroke[] {
 
 /** The R the other way round: a bowl on the right and a leg under it. */
 export function cyrYa(f: Frame, top: number): Stroke[] {
-  const wide = cyrWide(f, top);
-  const right = f.edge + wide * 1.4;
-  const bowl = Math.max(top * 0.28, f.least);
-  const waist = f.sits(top - bowl * 2, f.bar);
+  /*
+   * The R's own bowl, turned round: as wide as the R's, run level off the
+   * stem and round, and widening at a heavy weight as the R's does. A half
+   * ellipse a third of the height wide, as it was, closed to a slit at a
+   * text weight and went solid at a Black.
+   */
+  const radius = Math.max(top * 0.27, f.least);
+  const bowl = Math.max(cyrWide(f, top) * 1.08, radius * f.wide);
+  const high = f.hangs(top);
+  const junction = high - radius * 2;
+  const probe = lobe(f, 0, junction, high, bowl);
+  let reach = 0;
+  for (const one of probe.spine.segments) {
+    const xs = one.kind === "line" ? [one.from.x, one.to.x] : [one.centre.x + one.radius];
+    reach = Math.max(reach, ...xs);
+  }
+  const right = f.edge + reach;
+  const mirrored = (spine: Spine): Spine => ({
+    ...spine,
+    segments: spine.segments.map((one) =>
+      one.kind === "line"
+        ? { ...one, from: at(right - one.from.x, one.from.y), to: at(right - one.to.x, one.to.y) }
+        : {
+            ...one,
+            centre: at(right - one.centre.x, one.centre.y),
+            startAngle: Math.PI - one.startAngle,
+            endAngle: Math.PI - one.endAngle,
+            sweepPositive: !one.sweepPositive,
+          },
+    ),
+  });
+  const springs = at(right - bowl * 0.4, junction);
   return [
     ink(f, straight(at(right, 0), at(right, top)), f.end, f.end),
-    belly(f, at(right, top - bowl), bowl * f.wide, bowl, 90, 270),
-    ink(f, straight(at(right, waist), at(f.edge, 0)), BUTT, f.end),
+    { ...probe, spine: mirrored(probe.spine) },
+    ink(f, straight(springs, at(f.edge, 0)), BUTT, f.end),
   ];
 }
 

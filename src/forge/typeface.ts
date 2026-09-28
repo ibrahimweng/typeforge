@@ -170,6 +170,12 @@ const MARK_CODEPOINTS: Record<string, number> = {
   hungarumlaut: 0x02dd,
   commaaccent: 0x0326,
   commaturnedabove: 0x0312,
+  /*
+   * The caron a ď, an ľ, a ť and an Ľ carry beside their stems, which is an
+   * apostrophe in all but name: the modifier letter apostrophe is the
+   * character that draws it on its own.
+   */
+  apostrophemod: 0x02bc,
   // Dotless forms, which an accented i is built on and which text can use.
   dotlessi: 0x0131,
   dotlessj: 0x0237,

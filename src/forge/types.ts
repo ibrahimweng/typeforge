@@ -115,9 +115,11 @@ export type SerifShape = "square" | "wedge";
 /**
  * How the serif at the top of a lowercase stem sits: laid level and reaching
  * both ways, as a slab does, or as one flag sloping down to the left, which is
- * what a pen leaves where it enters the stroke.
+ * what a pen leaves where it enters the stroke -- or, `flag`, as one level
+ * flag to the left, which is how a slab and a typewriter face tell an l from
+ * an I.
  */
-export type SerifHead = "level" | "sloped";
+export type SerifHead = "level" | "sloped" | "flag";
 
 export interface Terminal {
   kind: TerminalKind;
@@ -191,6 +193,11 @@ export interface Terminal {
    * Only read on a level cut.
    */
   sink?: number;
+  /**
+   * On a level cut: a serif with its left wing only, the head of a lowercase
+   * stem on a face whose heads are flags (`SerifHead` "flag").
+   */
+  flag?: boolean;
   /**
    * For `teardrop`: the drop, settled when the end is dressed -- its radius,
    * the radius of the curve it finishes, and which side of the stroke that

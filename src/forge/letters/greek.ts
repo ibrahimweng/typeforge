@@ -7,9 +7,9 @@
  */
 
 import type { Vec2 } from "@/font/types";
-import { spineEnd, spineStart } from "../shapes";
+import { bowlPoint, spineEnd, spineStart } from "../shapes";
 import type { Style } from "../style";
-import type { Stroke } from "../types";
+import type { Spine, Stroke } from "../types";
 import {
   archSpine,
   arm,
@@ -21,20 +21,197 @@ import {
   chain,
   corner,
   corners,
+  deg,
+  type Frame,
   finish,
   frame,
+  headingAt,
+  heaviness,
+  LEVEL,
   ink,
   type LetterName,
-  openBowl,
   type Recipe,
   ring,
   straight,
-  tailBelow,
   thin,
   trough,
   turn,
   middleBar,
 } from "./common";
+
+/**
+ * The beta of a joined hand: a stem with two bowls hung off it, as a pen
+ * writes one, kept apart so the hand's own unsteadiness moves each piece
+ * whole.
+ */
+function writtenBeta(f: Frame): Recipe {
+  const stem = f.edge;
+  const upper = Math.max(f.x * 0.26, f.least);
+  const lower = Math.max(f.x * 0.3, f.least);
+  return finish(
+    f,
+    [
+      ink(f, straight(at(stem, f.desc), at(stem, f.asc)), f.end, f.end),
+      belly(f, at(stem, f.x - upper), upper * f.wide, upper, -90, 90),
+      belly(f, at(stem, lower), lower * f.wide, lower, -90, 90),
+    ],
+    true,
+  );
+}
+
+/** A run whose arcs are drawn in so many pieces at every weight: see `SpineArc.pieces`. */
+function inPieces(spine: Spine, pieces: number): Spine {
+  return {
+    ...spine,
+    segments: spine.segments.map((one) => (one.kind === "arc" ? { ...one, pieces } : one)),
+  };
+}
+
+/**
+ * From a run arriving level along the foot of a letter, heading right: a turn
+ * down into the descender, and a hook back to the left at the bottom -- the
+ * swash the zeta, the xi and the final sigma all end in.
+ *
+ * The two turns take what room there is between the foot and the descender
+ * and never less than the pen goes round; the same three pieces at every
+ * weight.
+ */
+function swash(f: Frame, from: Vec2): Spine {
+  const floor = f.dip(f.desc);
+  const room = Math.max(from.y - floor, f.least * 2 + 1);
+  const upper = Math.max(f.least, Math.min(room * 0.46, f.bowl * 0.5));
+  const lower = Math.max(f.least, Math.min(room - upper - 1, f.bowl * 0.42));
+  const side = from.x + upper;
+  const low = Math.min(from.y - upper - 1, floor + lower);
+  return chain(
+    inPieces(turn(at(from.x, from.y - upper), upper, 90, 0), 1),
+    straight(at(side, from.y - upper), at(side, low)),
+    inPieces(turn(at(side - lower, low), lower, 0, -115), 2),
+  );
+}
+
+/**
+ * A bar from `start` to `end`, a diagonal from its right end down to the
+ * left that turns round into a foot along the baseline, and the swash: the
+ * zeta. The bar and the diagonal are one run with a corner; the curve, the
+ * foot and the swash are a second, begun a little way back up the diagonal
+ * so the two overlap rather than meet edge to edge.
+ */
+function swept(f: Frame, start: Vec2, end: Vec2, left: number, tailX: number): Stroke[] {
+  const base = f.dip(0);
+  const bottom = Math.max(f.x * 0.26, f.least);
+  const aim = at(left + f.half * 0.2, f.x * 0.34);
+  let fold = end;
+  let meet = aim;
+  let centre = aim;
+  const tangent = () => {
+    const length = Math.hypot(aim.x - fold.x, aim.y - fold.y) || 1;
+    const u = at((aim.x - fold.x) / length, (aim.y - fold.y) / length);
+    // The circle the diagonal turns round: on its left, tangent to it and
+    // to the foot's line.
+    const normal = at(-u.y, u.x);
+    const along = (base + bottom - bottom * normal.y - fold.y) / u.y;
+    meet = at(fold.x + u.x * along, fold.y + u.y * along);
+    centre = at(meet.x + normal.x * bottom, meet.y + normal.y * bottom);
+  };
+  for (let pass = 0; pass < 3; pass++) {
+    tangent();
+    [fold] = corners(f, [start, end, meet]);
+  }
+  // And laid once more off where the corner came to rest, so the diagonal
+  // runs into the turn on its tangent at every weight.
+  tangent();
+  const from = (Math.atan2(meet.y - centre.y, meet.x - centre.x) * 180) / Math.PI;
+  const length = Math.hypot(meet.x - fold.x, meet.y - fold.y) || 1;
+  const back = at(
+    meet.x - ((meet.x - fold.x) / length) * f.half,
+    meet.y - ((meet.y - fold.y) / length) * f.half,
+  );
+  const foot = at(centre.x, base);
+  const run = Math.max(tailX, foot.x + 1);
+  return [
+    ink(f, chain(straight(start, fold), straight(fold, meet)), f.end, BUTT),
+    ink(
+      f,
+      chain(
+        straight(back, meet),
+        inPieces(turn(centre, bottom, from < 0 ? from + 360 : from, 270), 2),
+        straight(foot, at(run, base)),
+        swash(f, at(run, base)),
+      ),
+      BUTT,
+      f.end,
+    ),
+  ];
+}
+
+/** Where a beta's and an eszett's bowls meet, and where the upper one tops out. */
+function upright(f: Frame): { top: number; waist: number; base: number } {
+  const top = f.crest(f.asc);
+  const base = f.dip(0);
+  return { top, base, waist: base + (top - base) * 0.52 };
+}
+
+/**
+ * A stem from `foot` that arches over into an upper bowl and comes down its
+ * right side into the waist, and on in to the stem: the beta's and the
+ * eszett's first run. The lower bowl (`lowerLobe`) hangs from the waist.
+ */
+export function stemArchedInto(
+  f: Frame,
+  foot: number,
+  halfWidth: number,
+  /** How far short of the stem the waist stops, as a share of the bowl: an eszett's tongue. */
+  short = 0,
+): Stroke[] {
+  const stem = f.edge;
+  const { top, waist } = upright(f);
+  const upperH = Math.max((top - waist) / 2, f.least);
+  const width = Math.max(halfWidth, f.least);
+  const centre = at(stem + width, top - upperH);
+  const over = bend(f, centre, upperH, 180, -90, width);
+  const end = spineEnd(over);
+  /*
+   * The stem a stroke of its own, carried a hair into the arch so the two
+   * overlap rather than meet edge to edge: drawn as one run from the foot to
+   * the waist, the run came back into the stem it began on, and a stroke that
+   * runs over itself folds.
+   */
+  const rise = spineStart(over);
+  return [
+    ink(f, straight(at(stem, foot), at(rise.x, rise.y + 2)), f.end, BUTT),
+    ink(f, chain(over, straight(end, at(stem + width * short, end.y))), BUTT, BUTT),
+  ];
+}
+
+/**
+ * The lower bowl of a beta, closed back onto the stem at the foot, or an
+ * eszett's, left open at the bottom left.
+ */
+export function lowerLobe(f: Frame, closed: boolean, short = 0): Stroke {
+  const stem = f.edge;
+  const { waist, base } = upright(f);
+  const lowerH = Math.max((waist - base) / 2, f.least);
+  // Off the o's ink rather than its spine, which closes in as the pen grows.
+  const o = f.bowl + f.half;
+  const width = Math.max(o * 0.68 + f.gain * 0.3, f.least);
+  const centre = at(stem + o * 1.3 - width + f.gain * 0.6, waist - lowerH);
+  const round = bend(f, centre, lowerH, 90, -90, width);
+  const foot = spineEnd(round);
+  const stop = closed
+    ? stem
+    : Math.min(foot.x - f.half * 0.6, stem + Math.max(f.half * 2.4, o * 0.4));
+  return ink(
+    f,
+    chain(
+      straight(at(Math.min(stem + short, spineStart(round).x - 1), waist), spineStart(round)),
+      round,
+      straight(foot, at(stop, foot.y)),
+    ),
+    BUTT,
+    closed ? BUTT : f.end,
+  );
+}
 
 export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   // --- Greek capitals ----------------------------------------------------
@@ -255,21 +432,20 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     );
   },
 
-  /** A stem from the descender to the ascender with two bowls hung off it. */
+  /**
+   * A stem from the descender that arches over into the upper bowl, and a
+   * larger bowl below it: one run from the foot of the stem over the top and
+   * down into the waist, and the lower bowl off the stem as a B's is.
+   *
+   * Two bumps hung on a straight stem, as it was, read as a barred I with a 3
+   * on it: the stem has to turn over into the first bowl, as every beta's does.
+   */
   "\u03b2": (style) => {
     const f = frame(style);
-    const stem = f.edge;
-    // Both bowls inside the x-height, the lower a little larger than the upper,
-    // with only the stem reaching the ascender above and the descender below.
-    const upper = Math.max(f.x * 0.26, f.least);
-    const lower = Math.max(f.x * 0.3, f.least);
+    if (f.style.parts.script.on) return writtenBeta(f);
     return finish(
       f,
-      [
-        ink(f, straight(at(stem, f.desc), at(stem, f.asc)), f.end, f.end),
-        belly(f, at(stem, f.x - upper), upper * f.wide, upper, -90, 90),
-        belly(f, at(stem, lower), lower * f.wide, lower, -90, 90),
-      ],
+      [...stemArchedInto(f, f.dip(f.desc), f.bowl * 0.74), lowerLobe(f, true)],
       true,
     );
   },
@@ -297,7 +473,7 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   "\u03b4": (style) => {
     const f = frame(style);
     const radius = Math.max(f.x * 0.37, f.least);
-    const wide = bendWidth(f, radius);
+    const wide = bendWidth(f, radius) + f.gain * 0.5 + f.half * 0.15 * heaviness(f);
     const centre = at(f.edge + wide, radius);
     /*
      * The curl laid over the bowl rather than run into it.
@@ -309,13 +485,21 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * every squareness there is. Two strokes that overlap cannot do that, and
      * where they overlap is inside the ink of both.
      */
-    const tip = at(f.edge + wide * 0.2, f.x * 1.26);
-    const into = at(centre.x + wide * 0.66, centre.y + radius * 0.58);
-    return finish(
-      f,
-      [ink(f, ring(f, centre, wide, radius)), ink(f, straight(tip, into), f.end, BUTT)],
-      true,
-    );
+    /*
+     * The neck leaves the bowl on its own top, on the stroke rather than
+     * inside it, and rises back to the left into a curl that turns over to
+     * the right, as Geist's does. Aimed at a point inside the bowl, it cut
+     * through the counter.
+     */
+    const leaves = bowlPoint(centre, wide, radius, 1 - f.square, f.half, 62, f.curve);
+    const curl = Math.max(wide * 0.36, f.least);
+    const knee = at(f.edge + wide * 0.34 + curl, f.x + (f.asc - f.x) * 0.45);
+    const heading = Math.atan2(knee.y - leaves.y, knee.x - leaves.x);
+    const from = (heading * 180) / Math.PI + 90;
+    const hub = at(knee.x - curl * Math.cos(deg(from)), knee.y - curl * Math.sin(deg(from)));
+    // In two pieces at every weight, however far round the curl turns.
+    const neck = chain(straight(leaves, knee), inPieces(turn(hub, curl, from, 20), 2));
+    return finish(f, [ink(f, ring(f, centre, wide, radius)), ink(f, neck, BUTT, f.end)], true);
   },
 
   /*
@@ -329,34 +513,28 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   "\u03b5": (style) => {
     const f = frame(style);
     const radius = Math.max(f.x * 0.26, f.least);
-    const wide = bendWidth(f, radius);
+    const wide = bendWidth(f, radius) + f.gain * 0.5 + f.half * 0.15 * heaviness(f);
     const cx = f.edge + wide;
     const top = bend(f, at(cx, f.x - radius), radius, 55, 300);
     const bottom = bend(f, at(cx, radius), radius, 60, 305);
     return finish(f, [ink(f, top, f.end, BUTT), ink(f, bottom, BUTT, f.end)], true);
   },
 
-  /** A bar, a diagonal back under it, and a tail into the descender. */
+  /**
+   * A bar at the ascender, a diagonal back under it that curves round into
+   * the foot, and the foot run on down into the descender and hooked back.
+   *
+   * A 7 standing on a block, as it was: the diagonal met a straight tail
+   * dropped from its heel. The curve at the bottom left and the swash below
+   * the line are what make the letter.
+   */
   "\u03b6": (style) => {
     const f = frame(style);
     const left = f.edge;
-    const reach = f.arch * 1.25;
-    const top = f.hangs(f.x, f.bar);
-    const heel = at(left + reach * 0.32, f.sits(0, f.bar));
-    const [fold] = corners(f, [at(left, top), at(left + reach, top), heel]);
-    /*
-     * The tail is its own stroke, not the end of the run above it.
-     *
-     * Chained on, the diagonal arrives at the baseline going down and left and
-     * the hook sets off going down and right, and on a shallow descender with a
-     * hairline pen the turn between them closes far enough to double the stroke
-     * back through itself. Two strokes that overlap cannot do that, and where
-     * they overlap is inside the ink of both.
-     */
-    return finish(f, [
-      ink(f, chain(straight(at(left, top), fold), straight(fold, heel)), f.end, BUTT),
-      tailBelow(f, heel.x, f.x * 0.34),
-    ]);
+    const reach = f.arch * 1.25 + f.gain * 0.3;
+    const top = f.hangs(f.asc, f.bar);
+    const start = at(left + reach * 0.08, top);
+    return finish(f, swept(f, start, at(left + reach, top), left, left + reach * 0.78));
   },
 
   /** An n whose right leg carries straight on below the line. */
@@ -398,7 +576,13 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const left = f.edge;
     const peak = at(left + half * 0.72, f.asc);
     const foot = at(left + half * 2, 0);
-    const branch = at(left + half * 0.34, f.x * 0.46);
+    /*
+     * The short leg leaves the long one partway down, from a point on the
+     * long one's own spine so the two are one piece. Started beside it, as it
+     * was, it floated as a parallelogram of its own.
+     */
+    const share = (peak.y - f.x * 0.6) / (peak.y - foot.y);
+    const branch = at(peak.x + (foot.x - peak.x) * share, peak.y + (foot.y - peak.y) * share);
     return finish(f, [
       ink(f, straight(peak, foot), f.end, f.end),
       ink(f, straight(branch, at(left, 0)), BUTT, f.end),
@@ -426,31 +610,60 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     return finish(f, [ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end)]);
   },
 
-  /** The zeta with a curl over the top of it. */
+  /**
+   * A bar at the ascender, a small bowl under it and a larger one below
+   * that, both bulging left and meeting in a tongue at the waist, and the
+   * foot run on down into the descender and hooked back, as the zeta's is.
+   *
+   * Laid as five loose strokes -- a curl, a stem, a bar, a diagonal and a
+   * tail -- it read as fragments rather than a letter.
+   */
   "\u03be": (style) => {
     const f = frame(style);
     const left = f.edge;
-    const reach = f.arch * 1.25;
-    const cap = Math.max(f.arch * 0.3, f.least);
-    const bar = f.x * 0.56;
-    const heel = at(left + reach * 0.34, f.sits(0, f.bar));
-    /*
-     * Five strokes and not one chain.
-     *
-     * A xi is a curl, a bar and a tail, and every join between them is close to
-     * a doubling-back: the bar runs right and the diagonal under it runs down
-     * and left at sixty degrees, which at a display weight is past what a mitre
-     * can be carried to. Chained, it folded. Laid over each other they cannot,
-     * and each overlap is well inside the ink of both.
-     */
-    const curl = bend(f, at(left + bendWidth(f, cap) * 1.2, f.crest(f.asc) - cap), cap, -25, 195);
-    return finish(f, [
-      ink(f, curl, f.end, BUTT),
-      ink(f, straight(spineEnd(curl), at(left + reach * 0.26, bar)), BUTT, BUTT),
-      thin(f, straight(at(left + reach * 0.16, bar), at(left + reach * 0.94, bar)), BUTT, f.end),
-      ink(f, straight(at(left + reach * 0.9, bar), heel), BUTT, BUTT),
-      tailBelow(f, heel.x, f.x * 0.34),
-    ]);
+    const top = f.hangs(f.asc);
+    const base = f.dip(0);
+    const waist = f.x * 0.6;
+    const upperH = Math.max((top - waist) / 2, f.least);
+    const lowerH = Math.max((waist - base) / 2, f.least);
+    const upperW = Math.max(f.bowl * 0.62, f.least);
+    const lowerW = Math.max(f.bowl * 0.8 + f.gain * 0.3, f.least);
+    const upper = at(left + upperW, top - upperH);
+    const lower = at(left + lowerW, waist - lowerH);
+    const first = bend(f, upper, upperH, 90, 270, upperW);
+    const second = bend(f, lower, lowerH, 90, 270, lowerW);
+    // Out past where both bowls leave the waist, or the lower one's run
+    // would double back on itself.
+    const tongue = Math.max(upper.x + upperW * 0.55, spineStart(second).x + f.half * 0.6);
+    const foot = spineEnd(second);
+    const tailX = left + lowerW * 1.55;
+    return finish(
+      f,
+      [
+        ink(
+          f,
+          chain(
+            straight(at(upper.x + upperW * 0.9, top), spineStart(first)),
+            first,
+            straight(spineEnd(first), at(tongue, spineEnd(first).y)),
+          ),
+          f.end,
+          BUTT,
+        ),
+        ink(
+          f,
+          chain(
+            straight(at(tongue, spineStart(second).y), spineStart(second)),
+            second,
+            straight(foot, at(tailX, foot.y)),
+            swash(f, at(tailX, foot.y)),
+          ),
+          BUTT,
+          f.end,
+        ),
+      ],
+      true,
+    );
   },
 
   /** Two legs under one bar, and the bar reaches past both of them. */
@@ -467,16 +680,29 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     ]);
   },
 
-  /** A c with its tail run on down into the descender. */
+  /**
+   * A c whose foot runs on to the right and down into the descender, hooked
+   * back under itself: one run, so the tail grows out of the bowl. A straight
+   * tail dropped from the bowl's end, as it was, ended in a block.
+   */
   "\u03c2": (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
-    // Open at the top right rather than at the side, because the tail leaves
-    // from the bottom right and the two cannot be the same corner.
-    const loop = openBowl(f, centre, f.bowl, f.bowlH, 60, 335);
-    const from = spineEnd(loop.spine);
-    // The tail is its own stroke, for the reason the zeta's is.
-    return finish(f, [loop, tailBelow(f, from.x, from.y + f.bowlH * 0.3)], true);
+    const loop = bend(f, centre, f.bowlH, 58, 270, f.bowl);
+    const foot = spineEnd(loop);
+    const tailX = centre.x + f.bowl * 0.42;
+    return finish(
+      f,
+      [
+        ink(
+          f,
+          chain(loop, straight(foot, at(tailX, foot.y)), swash(f, at(tailX, foot.y))),
+          f.end,
+          f.end,
+        ),
+      ],
+      true,
+    );
   },
 
   /** A bowl with a bar running off the top of it to the right. */
@@ -591,19 +817,80 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
    */
   "\u03a9": (style) => {
     const f = frame(style);
-    const radius = Math.max(f.capBowlH * 0.84, f.least);
-    const wide = bendWidth(f, radius);
+    const radius = Math.max(f.capBowlH * 0.8, f.least);
+    // Wider at a heavy weight, so the legs keep their lean and the feet
+    // their gap.
+    const wide = bendWidth(f, radius) + f.gain * 0.5 + f.half * 0.15 * heaviness(f);
     const centre = at(f.edge + wide, f.cap - radius);
-    const loop = bend(f, centre, radius, -30, 210);
-    const toe = wide * 0.62;
-    const foot = (from: Vec2, way: number): Stroke => {
-      const tip = at(from.x + way * toe, f.sits(0, f.bar));
-      const knee = corner(f, from, at(from.x, tip.y), tip);
-      return ink(f, chain(straight(from, knee), straight(knee, tip)), BUTT, f.end);
+    /*
+     * One run: up the right leg, round the bowl, and down the left, each leg
+     * carrying on the way the bowl was going when it let go, inward, to a
+     * level cut on the baseline -- and a foot laid out along the line from
+     * each. The legs and the bowl as separate strokes, as they were, met in
+     * white seams and bent outward at odd angles.
+     */
+    const line = f.sits(0, f.bar);
+    // Each leg stands on the baseline itself, and its foot lies along it.
+    const legTo = (end: Vec2, heading: Vec2): Vec2 => {
+      const down = Math.max(end.y, 0);
+      return at(end.x + (heading.x / Math.max(-heading.y, 1e-6)) * down, 0);
     };
+    /*
+     * The legs carry on the way the bowl was going when it let go -- inward --
+     * but never so far in that the feet close on each other: a heavy omega's
+     * legs met in the middle. Each is its own stroke, begun back inside the
+     * bowl's end so the two overlap rather than meet edge to edge; chained on,
+     * the join between them came and went with the weight, and a variable font
+     * cannot follow a letter whose points do.
+     */
+    /*
+     * In two runs meeting at the bowl's right-hand side, so neither crosses
+     * the seam a bowl's pieces are counted from: one that does is begun on
+     * whichever piece its start falls in, which moved with the weight, and
+     * the heavy masters came back with pieces the light ones had not got.
+     */
+    const loop = chain(
+      bend(f, centre, radius, -22, 0, wide),
+      bend(f, centre, radius, 0, 202, wide),
+    );
+    const leftTop = spineEnd(loop);
+    // The last piece that goes anywhere: a bowl carries pieces of no length.
+    const moving = loop.segments.filter((one) =>
+      one.kind === "arc"
+        ? Math.abs(one.endAngle - one.startAngle) > 1e-9
+        : Math.hypot(one.to.x - one.from.x, one.to.y - one.from.y) > 1e-6,
+    );
+    const last = headingAt(moving[moving.length - 1], "end");
+    const natural = Math.max(last.x / Math.max(-last.y, 1e-6), 0);
+    const most = Math.max(0, (centre.x - f.half * 1.7 - leftTop.x) / Math.max(leftTop.y, 1e-6));
+    const lean = Math.min(natural, most);
+    const leftFoot = legTo(leftTop, at(lean, -1));
+    const rightFoot = at(centre.x * 2 - leftFoot.x, leftFoot.y);
+    /*
+     * The bowl carried on a little past its end along its own tangent, and
+     * each leg begun where the bowl ended, so the two overlap: begun further
+     * back up the curve, a straight leg stood out of it as a spur, and begun
+     * edge to edge it left a slit of white where a heavy leg leans less than
+     * the bowl.
+     */
+    // Shorter where the leg is held straighter than the bowl, where the lap
+    // runs on inward of it.
+    const lap = f.half * (natural > most + 1e-6 ? 0.3 : 0.6);
+    const leftLap = at(leftTop.x + last.x * lap, leftTop.y + last.y * lap);
+    const rightLap = at(centre.x * 2 - leftLap.x, leftLap.y);
+    const rightTop = at(centre.x * 2 - leftTop.x, leftTop.y);
+    const leftFrom = leftTop;
+    const rightFrom = rightTop;
+    const toe = Math.max(wide * 0.62, f.half * 2.4);
     return finish(
       f,
-      [ink(f, loop, BUTT, BUTT), foot(spineStart(loop), 1), foot(spineEnd(loop), -1)],
+      [
+        ink(f, chain(straight(rightLap, rightTop), loop, straight(leftTop, leftLap)), BUTT, BUTT),
+        ink(f, straight(rightFoot, rightFrom), LEVEL, BUTT),
+        ink(f, straight(leftFrom, leftFoot), BUTT, LEVEL),
+        arm(f, rightFoot.x, rightFoot.x + toe, line),
+        thin(f, straight(at(leftFoot.x, line), at(leftFoot.x - toe, line)), BUTT, f.end),
+      ],
       true,
     );
   },

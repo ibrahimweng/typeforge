@@ -6,9 +6,12 @@
  * imports it; see it for what a recipe is and how the table is used.
  */
 
-import { LETTERS } from "../letters";
+import { LETTERS, recipeOf } from "../letters";
+import { movedSpine } from "../script";
 import { spineEnd, spineStart } from "../shapes";
 import type { Style } from "../style";
+import type { Stroke } from "../types";
+import { lowerLobe, stemArchedInto } from "./greek";
 import {
   arch,
   archSpine,
@@ -17,6 +20,8 @@ import {
   at,
   belly,
   bend,
+  borrowing,
+  bowed,
   BUTT,
   chain,
   corners,
@@ -24,10 +29,15 @@ import {
   dot,
   finish,
   frame,
+  heaviness,
+  joinsLevel,
+  leaving,
+  LEVEL,
   ink,
   junction,
   type LetterName,
   openBowl,
+  outOf,
   type Recipe,
   ring,
   slash,
@@ -38,10 +48,88 @@ import {
   tStem,
   turn,
   eyeOf,
+  roundHalf,
+  tReach,
   wallAt,
   middleBar,
   tittle,
 } from "./common";
+
+/**
+ * How far a bar struck through a stem reaches to the left of it and to the
+ * right, as shares of half an o (`roundHalf`) and the pen's half on top.
+ *
+ * Off the letter, not the pen: sized in half-pens, as they were, the bars of
+ * a đ, an ħ and an Ħ were ticks twenty units long at a Light, and the letter
+ * read as a d, an h and an H with a speck on the stem. Geist Thin's reach a
+ * good share of the letter across and stay readable at every weight.
+ */
+function barAcross(f: ReturnType<typeof frame>, left: number, right: number): [number, number] {
+  const o = roundHalf(f);
+  return [o * left + f.half * (left > 0.3 ? 0.4 : 1), o * right + f.half * (right > 0.3 ? 0.4 : 1)];
+}
+
+/**
+ * The height of the bar across an ascender: a little over halfway from the
+ * x-height to the ascender -- or, on a slab face, to the underside of the
+ * serif on top of it, which a bar laid by the ascender alone ran into.
+ */
+function ascenderBar(f: ReturnType<typeof frame>): number {
+  const { slab } = f.style.parts;
+  const top = f.asc - (slab.on ? slab.thickness * f.half * 2 : 0);
+  return f.x + (top - f.x) * 0.55;
+}
+
+/**
+ * The ash drawn from its own pieces: two bowls side by side, the first open
+ * at the top. Kept for the joined hands, whose a and e are written into and
+ * out of and do not stack.
+ */
+function drawnAsh(f: ReturnType<typeof frame>): Recipe {
+  // Two bowls side by side in the room one and a bit would take, so the pair
+  // reads as one letter rather than as an a that has run into an e.
+  const bowl = Math.max(f.bowl * 0.68, f.least);
+  const first = at(f.edge + bowl, f.x / 2);
+  const second = at(first.x + bowl * 2, f.x / 2);
+  const eye = eyeOf(f, second);
+  const rise = Math.max(-0.85, Math.min(0.85, (eye - second.y) / f.bowlH));
+  const opens = (Math.asin(rise) * 180) / Math.PI;
+  const belt = bend(f, second, f.bowlH, opens, opens + 300);
+  return finish(
+    f,
+    [
+      openBowl(f, first, bowl, f.bowlH, -80, 150),
+      thin(f, straight(at(wallAt(f, second, opens), eye), spineStart(belt))),
+      ink(f, belt, BUTT, f.end),
+    ],
+    true,
+  );
+}
+
+/**
+ * The eszett of a joined hand: a tall stroke with a bowl over it and a
+ * second one below, left open at its foot, each piece whole so the hand's
+ * unsteadiness moves it as one.
+ */
+function writtenEszett(f: ReturnType<typeof frame>): Recipe {
+  const stem = f.edge;
+  const top = f.crest(f.asc);
+  const base = f.dip(0);
+  const waist = base + (top - base) * 0.44;
+  const upperR = Math.max((top - waist) / 2 + f.half * 0.2, f.least);
+  const lowerR = Math.max((waist - base) / 2 + f.half * 0.2, f.least);
+  const reach = Math.max(f.bowl * 0.86, f.least);
+  return finish(f, [
+    ink(f, straight(at(stem, 0), at(stem, top - upperR)), f.end, BUTT),
+    belly(f, at(stem, top - upperR), reach, upperR, -90, 90),
+    belly(f, at(stem, base + lowerR), reach, lowerR, -35, 90),
+  ]);
+}
+
+/** A letter of this font, drawn at another style in the form asked for. */
+function borrowedAs(name: string, style: Style, form: string | undefined): Stroke[] {
+  return recipeOf(name, form)!(style).strokes;
+}
 
 export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   // -------------------------------------------------------------------------
@@ -73,34 +161,41 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     ]);
   },
 
-  ae: (style) => {
-    const f = frame(style);
-    // Two bowls side by side in the room one and a bit would take, so the pair
-    // reads as one letter rather than as an a that has run into an e.
-    const bowl = Math.max(f.bowl * 0.68, f.least);
-    const first = at(f.edge + bowl, f.x / 2);
-    const second = at(first.x + bowl * 2, f.x / 2);
-
-    // The e half, drawn the way the e itself is: the eye at whatever height the
-    // crossbar says, and the bowl opened from where the circle reaches it.
-    const eye = eyeOf(f, second);
-    const rise = Math.max(-0.85, Math.min(0.85, (eye - second.y) / f.bowlH));
-    const opens = (Math.asin(rise) * 180) / Math.PI;
-    const belt = bend(f, second, f.bowlH, opens, opens + 300);
-
-    return finish(
-      f,
-      [
-        // Open at the top, where the a half runs into the e half. Closed, the
-        // two read as an o and an e rather than as one letter.
-        openBowl(f, first, bowl, f.bowlH, -80, 150),
-        // From the middle of the wall, not its inside edge: see `wallAt`.
-        thin(f, straight(at(wallAt(f, second, opens), eye), spineStart(belt))),
-        ink(f, belt, BUTT, f.end),
-      ],
-      true,
-    );
-  },
+  /**
+   * The a this font draws, in whichever form it draws it, with the e set so
+   * its left side lies on the a's stem: an ash is an a and an e sharing a
+   * stroke.
+   *
+   * Drawn from its own pieces, as it was, the a half had no stem and no bowl
+   * -- a reversed hook glued to an e, which read as an open o and an e -- and
+   * at a heavy weight it came down to a sliver.
+   */
+  ae: outOf("a", (f) => {
+    if (f.style.parts.script.on) return drawnAsh(f);
+    // Read before the e is drawn, which says it is drawing a letter of its own.
+    const form = borrowing;
+    const narrow = {
+      ...f.style,
+      metrics: { ...f.style.metrics, width: f.style.metrics.width * 0.84 },
+    };
+    const e = borrowedAs("e", narrow, undefined);
+    const a = borrowedAs("a", narrow, form);
+    // The a's stem: the rightmost upright in it.
+    let stem = -Infinity;
+    for (const stroke of a) {
+      for (const one of stroke.spine.segments) {
+        if (one.kind === "line" && Math.abs(one.from.x - one.to.x) < 1e-6) {
+          stem = Math.max(stem, one.from.x);
+        }
+      }
+    }
+    if (!Number.isFinite(stem)) return drawnAsh(f);
+    const shift = stem - f.edge;
+    return {
+      strokes: [...a, ...e.map((one) => ({ ...one, spine: movedSpine(one.spine, shift, 0) }))],
+      round: true,
+    };
+  }),
 
   /** An O with a stroke through it, which is a letter in its own right. */
   Oslash: (style) => {
@@ -187,16 +282,13 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
     const stem = centre.x + f.bowl + f.aside;
-    const bar = f.x + (f.asc - f.x) * 0.55;
+    const bar = ascenderBar(f);
+    // Out over the bowl, as far as the letter reaches rather than the pen: see `barAcross`.
+    const [left, right] = barAcross(f, 0.62, 0.22);
     return finish(f, [
       ink(f, ring(f, centre, f.bowl, f.bowlH)),
       ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
-      thin(
-        f,
-        straight(at(stem - f.half * 2.2, bar), at(stem + f.half * 2.2, bar)),
-        f.plain,
-        f.plain,
-      ),
+      thin(f, straight(at(stem - left, bar), at(stem + right, bar)), f.plain, f.plain),
     ]);
   },
 
@@ -208,33 +300,27 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const bar = f.cap * f.style.parts.crossbar.height;
     // Across both stems and out past the left of them, which is what tells an
     // H-bar from an H at a glance.
-    const high = f.cap - (f.cap - bar) * 0.35;
+    // Halfway between the crossbar and the cap line, as Geist's is: any
+    // higher and a slab face's head serifs sat on it.
+    const high = bar + (f.cap - bar) * 0.55;
+    const [out] = barAcross(f, 0.2, 0);
     return finish(f, [
       ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
       ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
       thin(f, straight(at(left, bar), at(right, bar)), BUTT, BUTT),
-      thin(
-        f,
-        straight(at(left - f.half * 2, high), at(right + f.half * 2, high)),
-        f.plain,
-        f.plain,
-      ),
+      thin(f, straight(at(left - out, high), at(right + out, high)), f.plain, f.plain),
     ]);
   },
 
   hbar: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    const bar = f.x + (f.asc - f.x) * 0.55;
+    const bar = ascenderBar(f);
+    const [left, right] = barAcross(f, 0.22, 0.62);
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
       arch(f, stem, f.x),
-      thin(
-        f,
-        straight(at(stem - f.half * 2.2, bar), at(stem + f.half * 2.2, bar)),
-        f.plain,
-        f.plain,
-      ),
+      thin(f, straight(at(stem - left, bar), at(stem + right, bar)), f.plain, f.plain),
     ]);
   },
 
@@ -432,13 +518,10 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   Eng: (style) => {
     const f = frame(style);
     const left = f.edge;
-    const right = left + f.capBowl * 1.35;
+    // As wide as the N, heavy weights and all.
+    const right = left + f.capBowl * 1.35 + f.half * 0.35 * heaviness(f) + f.gain * 0.6;
     const radius = Math.max(f.capBowl * 0.5, f.least);
-    const into = stub(f);
-    const start = at(left, f.cap - into);
-    const end = at(right, into);
-    const [top, foot] = corners(f, [start, at(left, f.cap), at(right, 0), end]);
-    return finish(f, [
+    const stems = [
       ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
       ink(
         f,
@@ -449,6 +532,23 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         f.end,
         f.end,
       ),
+    ];
+    // The N's diagonal, cut level where the N's is: see `joinsLevel`.
+    if (joinsLevel(f)) {
+      let top = at(left, f.cap);
+      let foot = at(right, 0);
+      for (let pass = 0; pass < 3; pass++) {
+        top = leaving(f, at(left, f.cap), 1, foot, 1);
+        foot = leaving(f, at(right, 0), -1, top, 1);
+      }
+      return finish(f, [...stems, ink(f, straight(top, foot), LEVEL, LEVEL)]);
+    }
+    const into = stub(f);
+    const start = at(left, f.cap - into);
+    const end = at(right, into);
+    const [top, foot] = corners(f, [start, at(left, f.cap), at(right, 0), end]);
+    return finish(f, [
+      ...stems,
       ink(f, chain(straight(start, top), straight(top, foot), straight(foot, end))),
     ]);
   },
@@ -488,6 +588,8 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const half = f.capBowl * 0.95;
     const middle = f.edge + half;
     const bar = f.cap * 0.42;
+    // Seven tenths of the arm's own reach, as Geist's is.
+    const across = Math.max(half * 0.62 + f.half * 0.4, f.half * 2);
     return finish(f, [
       ink(f, straight(at(middle, 0), at(middle, f.cap)), f.end, BUTT),
       thin(
@@ -499,12 +601,7 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         f.end,
         f.end,
       ),
-      thin(
-        f,
-        straight(at(middle - f.half * 2.4, bar), at(middle + f.half * 2.4, bar)),
-        f.plain,
-        f.plain,
-      ),
+      thin(f, straight(at(middle - across, bar), at(middle + across, bar)), f.plain, f.plain),
     ]);
   },
 
@@ -518,15 +615,12 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   tbar: (style) => {
     const f = frame(style);
     const stem = tStem(f);
-    const height = f.x * 0.38;
+    const height = f.x * 0.4;
+    // As long as the t's own bar, which is what Geist's is.
+    const reach = tReach(f);
     return struck(
       LETTERS.t(style),
-      thin(
-        f,
-        straight(at(stem - f.half * 2.2, height), at(stem + f.half * 2.2, height)),
-        f.plain,
-        f.plain,
-      ),
+      thin(f, straight(at(stem - reach * 0.7, height), at(stem + reach, height)), f.plain, f.plain),
     );
   },
 
@@ -603,7 +697,10 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         belly(f, at(stem, f.cap / 2), radius * f.wide, radius, -90, 90),
         thin(
           f,
-          straight(at(stem - f.half * 1.6, bar), at(stem + f.half * 2.2, bar)),
+          straight(
+            at(stem - (f.capBowl * 0.36 + f.half * 0.6), bar),
+            at(stem + f.capBowl * 0.5 + f.half * 0.5, bar),
+          ),
           f.plain,
           BUTT,
         ),
@@ -620,18 +717,23 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     // Up and to the left, off the bowl's right shoulder.
     const from = at(centre.x + f.bowl * 0.8, f.x * 0.62);
     const to = at(centre.x - f.bowl * 0.35, top);
-    // The bar lies across that stroke rather than flat, which is what tells an
-    // eth from a d with something above it.
+    /*
+     * The bar lies nearly level across that stroke, rising a little to the
+     * right as Geist's does, and reaches as far as the letter rather than the
+     * pen. Laid square across the stroke instead, the two made an X over the
+     * bowl -- a long diagonal at a Light, with a tick through it.
+     */
     const along = { x: to.x - from.x, y: to.y - from.y };
-    const length = Math.max(Math.hypot(along.x, along.y), 1);
-    const across = { x: -along.y / length, y: along.x / length };
-    const middle = at(from.x + along.x * 0.5, from.y + along.y * 0.5);
-    const reach = Math.max(f.bowl * 0.46, f.half * 1.4);
+    const middle = at(from.x + along.x * 0.55, from.y + along.y * 0.55);
+    const reach = Math.max(roundHalf(f) * 0.42 + f.half * 0.4, f.half * 1.6);
+    const across = { x: Math.cos(deg(14)), y: Math.sin(deg(14)) };
     return finish(
       f,
       [
         ink(f, ring(f, centre, f.bowl, f.bowlH)),
-        ink(f, straight(from, to), BUTT, f.plain),
+        // Bowed out to the right, as Geist's rises: a straight one read as the
+        // long stroke of an X.
+        ink(f, bowed(f, from, to, -0.14), BUTT, f.plain),
         thin(
           f,
           straight(
@@ -676,18 +778,16 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
    */
   germandbls: (style) => {
     const f = frame(style);
-    const stem = f.edge;
-    const top = f.crest(f.asc);
-    const base = f.dip(0);
-    const waist = base + (top - base) * 0.44;
-    const upperR = Math.max((top - waist) / 2 + f.half * 0.2, f.least);
-    const lowerR = Math.max((waist - base) / 2 + f.half * 0.2, f.least);
-    const reach = Math.max(f.bowl * 0.86, f.least);
+    if (f.style.parts.script.on) return writtenEszett(f);
+    /*
+     * One stroke up from the baseline, over the top into the upper bowl and
+     * down into the waist, and the larger lower bowl off the waist, left open
+     * at its foot: Geist's eszett. A short stem and a loose 3 beside it, as it
+     * was, is not the letter.
+     */
     return finish(f, [
-      ink(f, straight(at(stem, 0), at(stem, top - upperR)), f.end, BUTT),
-      belly(f, at(stem, top - upperR), reach, upperR, -90, 90),
-      // Opened at the bottom left rather than closed back onto the stem.
-      belly(f, at(stem, base + lowerR), reach, lowerR, -35, 90),
+      ...stemArchedInto(f, 0, (f.bowl + f.half) * 0.56, 0.45),
+      lowerLobe(f, false, (f.bowl + f.half) * 0.56 * 0.45),
     ]);
   },
 };

@@ -38,14 +38,14 @@ import {
   type LetterName,
   ordinal,
   outOf,
+  shovedStroke,
+  spine,
   pointOn,
   type Recipe,
   ring,
   shortEnd,
-  shovedStroke,
   signGap,
   signWidth,
-  spine,
   spread,
   squareDots,
   stopRadius,
@@ -314,6 +314,18 @@ function squareComma(f: Frame, radius: number): Stroke[] {
   ];
 }
 
+/**
+ * The pen the bar through a dollar or a cent is drawn with: the face's own up
+ * to a text stem, and past it only a fifth of what the stem gains. At the
+ * stem's own weight a Black's bar was a slab laid over the letter, closing
+ * both its counters.
+ */
+function barPen(f: Frame): Stroke["pen"] {
+  const { weight } = f.style.pen;
+  const text = f.x * 0.19;
+  return { ...f.style.pen, weight: weight <= text ? weight : text + (weight - text) * 0.2 };
+}
+
 export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   // --- punctuation -------------------------------------------------------
 
@@ -569,8 +581,16 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     const f = frame(style);
     const w = signWidth(f);
     const y = axis(f);
-    const radius = f.half * 0.85;
-    const reach = (f.style.pen.weight * f.bar) / 2 + signGap(f) * 0.85 + radius;
+    // No larger than a seventh of the sign, and held off the bar by no more
+    // than its own daylight: at a Black the dots were the pen's and stood
+    // over the cap line and under the baseline.
+    const radius = Math.min(f.half * 0.85, w * 0.14);
+    const reach = Math.min(
+      (f.style.pen.weight * f.bar) / 2 + signGap(f) * 0.85 + radius,
+      w * 0.5 + radius * 0.4,
+      // And the dots between the baseline and the x-height, as the signs are.
+      Math.max(y - radius - f.over, radius * 1.6),
+    );
     return finish(f, [
       thin(f, straight(at(f.edge, y), at(f.edge + w, y)), f.plain, f.plain),
       dot(f, at(f.edge + w / 2, y + reach), radius),
@@ -590,14 +610,19 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     const f = frame(style);
     const w = signWidth(f);
     const bar = f.style.pen.weight * f.bar;
-    const under = axis(f) - signWidth(f) * 0.5 - bar * 1.15;
+    /*
+     * The rule never under the baseline: at a Black the gap under the plus
+     * grew with the bars and put it there. The plus stands shorter instead.
+     */
+    const under = Math.max(axis(f) - signWidth(f) * 0.5 - bar * 1.15, bar * 0.5);
     const y = axis(f) + bar * 0.35;
     const half = w / 2;
+    const rise = Math.max(Math.min(half * 0.86, y - under - bar * 1.3), bar * 0.6);
     return finish(f, [
       thin(f, straight(at(f.edge, y), at(f.edge + w, y)), f.plain, f.plain),
       thin(
         f,
-        straight(at(f.edge + half, y - half * 0.86), at(f.edge + half, y + half * 0.86)),
+        straight(at(f.edge + half, y - rise), at(f.edge + half, y + half * 0.86)),
         shortEnd(f),
         shortEnd(f),
       ),
@@ -805,26 +830,53 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
   cent: outOf("c", (f, c) => {
     const centre = f.edge + f.bowl;
     const over = f.x * 0.22;
-    return joined(
+    const bar = ink(
       f,
-      c(),
-      [ink(f, straight(at(centre, -over), at(centre, f.x + over)), shortEnd(f), shortEnd(f))],
-      true,
+      straight(at(centre, -over), at(centre, f.x + over)),
+      shortEnd(f),
+      shortEnd(f),
     );
+    // No heavier than the dollar's bar, for the dollar's reason: see `barPen`.
+    return joined(f, c(), [{ ...bar, pen: barPen(f) }], true);
   }),
 
   dollar: outOf("S", (f, s) => {
-    // Where the s runs, worked out the way the s works it out, so the bar goes
-    // through the middle of the letter rather than near it.
+    const letter = s();
+    // Through the middle of the S as it is drawn, in whichever form: halfway
+    // across the run of its spine.
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const stroke of letter) {
+      for (const one of stroke.spine.segments) {
+        const xs =
+          one.kind === "line"
+            ? [one.from.x, one.to.x]
+            : [one.startAngle, (one.startAngle + one.endAngle) / 2, one.endAngle].map(
+                (angle) => one.centre.x + one.radius * Math.cos(angle),
+              );
+        lo = Math.min(lo, ...xs);
+        hi = Math.max(hi, ...xs);
+      }
+    }
     const radius = Math.max((f.cap + f.over * 2 - f.upright * 2) / 4, f.least);
-    const centre = f.edge + bendWidth(f, radius);
+    const centre = Number.isFinite(lo) ? (lo + hi) / 2 : f.edge + bendWidth(f, radius);
     // How far the bar stands out past the letter, kept modest: a wavy face
     // adds its own swing on top and the two together reached over the line.
     const over = f.cap * 0.075;
     return joined(
       f,
-      s(),
-      [ink(f, straight(at(centre, -over), at(centre, f.cap + over)), shortEnd(f), shortEnd(f))],
+      letter,
+      [
+        {
+          ...ink(
+            f,
+            straight(at(centre, -over), at(centre, f.cap + over)),
+            shortEnd(f),
+            shortEnd(f),
+          ),
+          pen: barPen(f),
+        },
+      ],
       true,
     );
   }),
@@ -915,17 +967,30 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     // asked this arc for a radius narrower than its own pen.
     const radius = Math.max((signWidth(f) * 1.06) / 4, barHalf(f) * 1.12);
     const y = axis(f);
-    return finish(f, [
-      thin(
-        f,
-        chain(
-          turn(at(f.edge + radius, y), radius, 180, 0),
-          turn(at(f.edge + radius * 3, y), radius, 180, 360),
-        ),
-        shortEnd(f),
-        shortEnd(f),
+    const wave = thin(
+      f,
+      chain(
+        turn(at(f.edge + radius, y), radius, 180, 0),
+        turn(at(f.edge + radius * 3, y), radius, 180, 360),
       ),
-    ]);
+      shortEnd(f),
+      shortEnd(f),
+    );
+    /*
+     * With no more contrast than a turn this tight can take. A pen thin
+     * across a level run is round along its long side, and at a heavy weight
+     * the contrast it takes on made that round tighter than the crest of each
+     * hump: the inside of each folded, and the wave was pinched at both.
+     */
+    /*
+     * And no heavier than leaves each hump a round inside two fifths of it
+     * across: at a Black the pen was nearly the hump's own width, and its
+     * inside closed to a slit.
+     */
+    const weight = Math.min(wave.pen.weight, radius * 1.2);
+    const most = Math.max(0, 1 - weight / 2 / (radius * 0.97));
+    const pen = { ...wave.pen, weight, contrast: Math.min(wave.pen.contrast, most) };
+    return finish(f, [{ ...wave, pen }]);
   },
 
   /** Five spokes from one middle, which is what keeps it from reading as a star. */
@@ -1042,7 +1107,15 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
    * squares and waves with the rest of the font rather than beside it.
    */
   section: (style) => {
-    const f = frame(style);
+    /*
+     * And never a pen heavier than three tenths of the s it draws: each s is
+     * six tenths of a capital, and at a Black's full pen the two turned to
+     * blobs with a hairline spine each and the mark could not be read.
+     */
+    const room = style.metrics.capHeight * 0.62 * 0.3;
+    const held =
+      style.pen.weight > room ? { ...style, pen: { ...style.pen, weight: room } } : style;
+    const f = frame(held);
     const height = f.cap * 0.62;
     const step = height * 0.53;
     // The text s at every weight: a Black's is wider than a section mark

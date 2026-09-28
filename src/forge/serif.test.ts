@@ -18,7 +18,7 @@ import type { Contour, Vec2 } from "@/font/types";
 import { drawLetter } from "./build";
 import { PART_SPECS } from "./parts";
 import { openWaveBook, waveBookAt, type WaveBook } from "./shapes";
-import { SERIF, SLAB, serifReach, type Style } from "./style";
+import { SERIF, SLAB, serifReach, TYPEWRITER, type Style } from "./style";
 
 function at(
   base: Style,
@@ -188,10 +188,45 @@ describe("the head of a lowercase stem", () => {
         }
       }
     }
-    const level = at(SLAB);
+    // A level head reaches both ways, as a slab's did before its flag.
+    const level = at({
+      ...SLAB,
+      parts: { ...SLAB.parts, slab: { ...SLAB.parts.slab, head: "level" } },
+    });
     const contours = draw("i", level);
     const [, right] = stemOf(contours, level.metrics.xHeight * 0.3);
     expect(inked(contours, { x: right + 6, y: level.metrics.xHeight - 4 })).toBe(true);
+  });
+
+  /*
+   * The Slab's and the Typewriter's own heads are flags: one level wing to the
+   * left, as Rockwell's and Courier's l, i, h and k have, so the l is not the
+   * I. With a level bar both ways, as they were, the Slab's l and I were the
+   * same letter a little taller.
+   */
+  it("is one level flag to the left on the Slab and the Typewriter, so the l is not an I", () => {
+    for (const base of [SLAB, TYPEWRITER]) {
+      for (const weight of [30, base.pen.weight, 200, 260]) {
+        const style = at(base, { weight });
+        for (const name of ["l", "i", "h", "k"]) {
+          const contours = draw(name, style);
+          const top = name === "i" ? style.metrics.xHeight : style.metrics.ascender;
+          const [left, right] = stemOf(contours, style.metrics.xHeight * 0.3);
+          expect(
+            inked(contours, { x: right + 6, y: top - 3 }),
+            `${base.name} ${name} at ${weight}: nothing right of the head`,
+          ).toBe(false);
+          expect(
+            inked(contours, { x: left - 6, y: top - 3 }),
+            `${base.name} ${name} at ${weight}: a flag to the left`,
+          ).toBe(true);
+        }
+        // And the I keeps its serif both ways.
+        const capital = draw("I", style);
+        const [, right] = stemOf(capital, style.metrics.capHeight * 0.5);
+        expect(inked(capital, { x: right + 6, y: style.metrics.capHeight - 3 })).toBe(true);
+      }
+    }
   });
 });
 
@@ -305,7 +340,7 @@ describe("the controls", () => {
     const options = (key: string) =>
       slab.controls.find((control) => control.key === key)?.options?.map((one) => one.value);
     expect(options("shape")).toEqual(["square", "wedge"]);
-    expect(options("head")).toEqual(["level", "sloped"]);
+    expect(options("head")).toEqual(["level", "sloped", "flag"]);
     const terminal = PART_SPECS.find((spec) => spec.name === "terminal")!;
     expect(
       terminal.controls.find((control) => control.key === "kind")?.options?.map((one) => one.value),
@@ -317,6 +352,6 @@ describe("the controls", () => {
     expect(SERIF.parts.slab.head).toBe("sloped");
     expect(SERIF.parts.terminal.kind).toBe("teardrop");
     expect(SLAB.parts.slab.shape).toBe("square");
-    expect(SLAB.parts.slab.head).toBe("level");
+    expect(SLAB.parts.slab.head).toBe("flag");
   });
 });

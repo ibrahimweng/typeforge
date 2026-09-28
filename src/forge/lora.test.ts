@@ -300,7 +300,14 @@ describe("the other bases", () => {
       if (base.name === "Serif") continue;
       expect(base.parts.slab.hold, base.name).toBeUndefined();
       expect(base.metrics.bold, base.name).toBeUndefined();
-      for (const form of Object.values(base.forms ?? {})) {
+      /*
+       * Save the S and the s: the old-style S-curve (`bookSpine`) is the one
+       * construction here whose spine stays the heaviest stroke at a Black,
+       * and the Geometric, the Didone, the Slab and the Typewriter draw it on
+       * their own pens. The construction's own S came apart past a Bold.
+       */
+      for (const [letter, form] of Object.entries(base.forms ?? {})) {
+        if (letter === "S" || letter === "s") continue;
         expect(form, base.name).not.toBe("humanist");
       }
     }

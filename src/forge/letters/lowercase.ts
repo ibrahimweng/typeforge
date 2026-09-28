@@ -8,7 +8,6 @@
 
 import { spineStart } from "../shapes";
 import { blackness, type Style } from "../style";
-import type { Stroke } from "../types";
 import {
   roundHalf,
   arch,
@@ -18,6 +17,7 @@ import {
   BUTT,
   chain,
   corner,
+  doubleVee,
   corners,
   crossbar,
   finish,
@@ -519,7 +519,8 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * width of Lora's. Never narrower than it was, though: on a face whose
      * bowls are small against its pen the arch is the wider of the two.
      */
-    const half = Math.max(roundHalf(f) * 0.57, f.arch * 0.68);
+    const half =
+      Math.max(roundHalf(f) * 0.57, f.arch * 0.68) + f.half * 0.1 * heaviness(f) + f.gain * 0.2;
     const left = f.edge;
     const top = f.x;
     /*
@@ -536,13 +537,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      *
      * Two vees is what a w is anyway, and each of them lands the way a v does.
      */
-    const vee = (from: number): Stroke => {
-      const start = at(left + half * from, top);
-      const end = at(left + half * (from + 2), top);
-      const point = corner(f, start, at(left + half * (from + 1), 0), end);
-      return ink(f, chain(straight(start, point), straight(point, end)), f.end, f.end);
-    };
-    return finish(f, [vee(0), vee(1.72)]);
+    return finish(f, doubleVee(f, left, half, top));
   },
 
   x: (style) => {

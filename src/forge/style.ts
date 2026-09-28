@@ -143,6 +143,13 @@ export interface Metrics {
    * is taken as it is. Never saved.
    */
   lighterAcross?: boolean;
+  /**
+   * Whether a straight stroke rising to the right is drawn as a hairline, as
+   * a didone's are: the right arm of a v, a y and an x, the left leg of an A.
+   * An upright pen gives both diagonals of a vee the same weight, and a
+   * didone set that way had a y whose tail was as heavy as its stem.
+   */
+  risingHairline?: boolean;
   /** The bowls' superness the face was drawn with, once `heavier` has rounded them. Never saved. */
   drawnSuperness?: number;
   /**
@@ -510,7 +517,7 @@ export function terminalFor(style: Style): Terminal {
     thickness: slab.thickness * Math.min(stem, serifReach(style)),
     bracket: slab.bracket * Math.min(stem, serifReach(style)),
     shape: slab.shape === "wedge" ? "wedge" : "square",
-    head: slab.head === "sloped" ? "sloped" : "level",
+    head: slab.head === "sloped" || slab.head === "flag" ? slab.head : "level",
     curved: plain,
   };
 }
@@ -1241,17 +1248,54 @@ export const GEOMETRIC: Style = {
   name: "Geometric",
   family: "sans",
   blurb: "Circles and points, one thickness throughout.",
-  metrics: { ...PLAIN.metrics, xHeight: 500, counterWidth: 380, sidebearing: 58 },
+  /*
+   * A heavy weight gives its counters back for the stem it gains, as Futura
+   * Extra Bold does: its o stays nearly a circle and closes from the inside.
+   * Left to widen the letters instead, as every face does by default, a Black
+   * Geometric ran its bowls out into flat-topped stadiums and read as an
+   * extended face.
+   */
+  metrics: {
+    ...PLAIN.metrics,
+    xHeight: 500,
+    counterWidth: 380,
+    sidebearing: 58,
+    heavyCounter: 1.1,
+  },
   pen: { weight: 86, contrast: 0, angle: 0 },
   /*
-   * The three letters a geometric face argues about, and every one of these
+   * The letters a geometric face argues about, and every one of these
    * alternates names it in its own hint: the tail hung under the bowl rather
-   * than crossing its wall, a G with nothing turned back into it, and the M's
-   * vertex carried to the baseline to square the letter off. The a stays as it
+   * than crossing its wall, and the M's vertex carried to the baseline to
+   * square the letter off. (The G with nothing turned back into it read as a
+   * C with a chopped end past a Bold, and gave way to the grotesque's below.) The a stays as it
    * is -- single storey is already what is drawn here, and it is the text faces
    * that wanted the other one.
    */
-  forms: { Q: "under", G: "bare", M: "deep" },
+  /*
+   * And the neo-grotesque's own S and s, G, t, g, r, e, c, @, %, # and ? (see
+   * `letters/grotesque.ts`), drawn to hold their shape to a Black and past
+   * it. The construction's own came apart past a Bold: an S whose spine was a
+   * hairline between two blobs, a t notched where its foot turned, a g
+   * spurred where its tail left the stem, a percent whose rings ran into its
+   * slash, and a G that was a C with a chopped end.
+   */
+  forms: {
+    Q: "under",
+    G: "grotesque",
+    M: "deep",
+    S: "grotesque",
+    s: "grotesque",
+    at: "grotesque",
+    percent: "grotesque",
+    numbersign: "grotesque",
+    question: "grotesque",
+    t: "grotesque",
+    g: "grotesque",
+    r: "grotesque",
+    e: "grotesque",
+    c: "grotesque",
+  },
   parts: {
     ...PLAIN.parts,
     shoulder: { spring: 0.55, reach: 1, crest: 1 },
@@ -1570,7 +1614,32 @@ export const GROTESQUE: Style = {
    * default. So every face here had the geometric one, which is most of why a
    * Serif and a Geometric read as the same drawings with the pen changed.
    */
-  forms: { a: "double", R: "curved" },
+  /*
+   * And the neo-grotesque's own S and s, G, t, g, r, e, c, @, %, # and ? (see
+   * `letters/grotesque.ts`), drawn to hold their shape to a Black and past
+   * it. The construction's own came apart past a Bold: an S whose spine was a
+   * hairline between two blobs, a t notched where its foot turned, a g
+   * spurred where its tail left the stem, a percent whose rings ran into its
+   * slash, and a G that was a C with a chopped end.
+   */
+  forms: {
+    a: "grotesque",
+    R: "curved",
+    S: "grotesque",
+    s: "grotesque",
+    G: "grotesque",
+    at: "grotesque",
+    percent: "grotesque",
+    numbersign: "grotesque",
+    question: "grotesque",
+    t: "grotesque",
+    g: "grotesque",
+    r: "grotesque",
+    f: "grotesque",
+    j: "grotesque",
+    e: "grotesque",
+    c: "grotesque",
+  },
   parts: {
     ...PLAIN.parts,
     bowl: { width: 0.97, squareness: 0.14, aperture: 0.62, superness: 0 },
@@ -1592,7 +1661,7 @@ export const DIDONE: Style = {
   name: "Didone",
   family: "serif",
   blurb: "Contrast at its limit and serifs left as unbracketed hairlines.",
-  metrics: { ...PLAIN.metrics, xHeight: 500, width: 0.98 },
+  metrics: { ...PLAIN.metrics, xHeight: 500, width: 0.98, risingHairline: true },
   pen: { weight: 118, contrast: 0.8, angle: 0 },
   /*
    * The two-storey a, which is what most text faces use and what none of them
@@ -1603,7 +1672,23 @@ export const DIDONE: Style = {
    * default. So every face here had the geometric one, which is most of why a
    * Serif and a Geometric read as the same drawings with the pen changed.
    */
-  forms: { a: "double" },
+  /*
+   * And the old-style S and s (see `bookSpine` in `letters/humanist.ts`),
+   * whose spine is the heaviest stroke in them as a didone's is -- the
+   * construction's put the hairline there -- and the neo-grotesque's G, @, %,
+   * # and ?, which hold their shape past a Bold where the construction's
+   * came apart.
+   */
+  forms: {
+    a: "double",
+    S: "humanist",
+    s: "humanist",
+    G: "grotesque",
+    at: "grotesque",
+    percent: "grotesque",
+    numbersign: "grotesque",
+    question: "grotesque",
+  },
   parts: {
     ...PLAIN.parts,
     /*
@@ -1615,7 +1700,14 @@ export const DIDONE: Style = {
      * the bowl -- bisected, and the projection is innocent. Two hundredths of a
      * bracket is a hairline by any reading, and a Q in two pieces is not a Q.
      */
-    slab: { ...PLAIN.parts.slab, on: true, projection: 0.58, thickness: 0.13, bracket: 0.02 },
+    slab: {
+      ...PLAIN.parts.slab,
+      on: true,
+      projection: 0.58,
+      thickness: 0.13,
+      bracket: 0.02,
+      head: "flag",
+    },
     /*
      * No balls, and this is the thing this face was most supposed to get.
      *
@@ -1659,10 +1751,39 @@ export const SLAB: Style = {
    * default. So every face here had the geometric one, which is most of why a
    * Serif and a Geometric read as the same drawings with the pen changed.
    */
-  forms: { a: "double" },
+  /*
+   * And the neo-grotesque's own S and s, G, t, g, r, e, c, @, %, # and ? (see
+   * `letters/grotesque.ts`), drawn to hold their shape to a Black and past
+   * it. The construction's own came apart past a Bold: an S whose spine was a
+   * hairline between two blobs, a t notched where its foot turned, a g
+   * spurred where its tail left the stem, a percent whose rings ran into its
+   * slash, and a G that was a C with a chopped end.
+   */
+  forms: {
+    a: "double",
+    S: "grotesque",
+    s: "grotesque",
+    G: "grotesque",
+    at: "grotesque",
+    percent: "grotesque",
+    numbersign: "grotesque",
+    question: "grotesque",
+    t: "grotesque",
+    g: "grotesque",
+    r: "grotesque",
+    e: "grotesque",
+    c: "grotesque",
+  },
   parts: {
     ...PLAIN.parts,
-    slab: { ...PLAIN.parts.slab, on: true, projection: 0.6, thickness: 0.74, bracket: 0.04 },
+    slab: {
+      ...PLAIN.parts.slab,
+      on: true,
+      projection: 0.6,
+      thickness: 0.74,
+      bracket: 0.04,
+      head: "flag",
+    },
     bowl: { width: 1, squareness: 0.08, aperture: 0.78, superness: 0 },
     shoulder: { spring: 0.66, reach: 1, crest: 1 },
   },
@@ -1694,10 +1815,40 @@ export const TYPEWRITER: Style = {
    */
   // And a one with a foot on it: a monospaced face gives every letter the same
   // advance, so a bare one sits in a column of white with nothing to fill it.
-  forms: { a: "double", one: "footed" },
+  /*
+   * And the neo-grotesque's own S and s, G, t, g, r, e, c, @, %, # and ? (see
+   * `letters/grotesque.ts`), drawn to hold their shape to a Black and past
+   * it. The construction's own came apart past a Bold: an S whose spine was a
+   * hairline between two blobs, a t notched where its foot turned, a g
+   * spurred where its tail left the stem, a percent whose rings ran into its
+   * slash, and a G that was a C with a chopped end.
+   */
+  forms: {
+    a: "double",
+    one: "footed",
+    S: "grotesque",
+    s: "grotesque",
+    G: "grotesque",
+    at: "grotesque",
+    percent: "grotesque",
+    numbersign: "grotesque",
+    question: "grotesque",
+    t: "grotesque",
+    g: "grotesque",
+    r: "grotesque",
+    e: "grotesque",
+    c: "grotesque",
+  },
   parts: {
     ...SLAB.parts,
-    slab: { ...PLAIN.parts.slab, on: true, projection: 0.72, thickness: 0.5, bracket: 0.06 },
+    slab: {
+      ...PLAIN.parts.slab,
+      on: true,
+      projection: 0.72,
+      thickness: 0.5,
+      bracket: 0.06,
+      head: "flag",
+    },
   },
 };
 
