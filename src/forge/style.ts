@@ -933,7 +933,7 @@ export const SANS: Style = {
     two: "grotesque",
     three: "grotesque",
     four: "grotesque",
-    five: "grotesque",
+    five: "sided",
     six: "sided",
     seven: "grotesque",
     eight: "grotesque",

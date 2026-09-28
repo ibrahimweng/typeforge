@@ -1547,6 +1547,18 @@ export function grotesqueFour(style: Style): Recipe {
  * left.
  */
 export function grotesqueFive(style: Style): Recipe {
+  return fiveOf(style, false);
+}
+
+/**
+ * The Sans's five: its bowl as Geist's, lighter at its crown than at its
+ * foot (see `sidedPair`), and its top coming down as the weight grows.
+ */
+export function grotesqueFiveSided(style: Style): Recipe {
+  return fiveOf(style, true);
+}
+
+function fiveOf(style: Style, sans: boolean): Recipe {
   const f = frame(lighterAcross(style));
   const fit = figureFit(f, 0.0144, 0, 0.009, -0.065);
   const X = across(f, 60, 0.009, fit);
@@ -1557,7 +1569,9 @@ export function grotesqueFive(style: Style): Recipe {
   // Geist Black cuts its stem's foot a little lower (289 against 310).
   const stemFoot = at(X(120), up(f, lerp(310, 289)));
   const bottom = f.dip(0);
-  const crown = up(f, 473) - f.upright;
+  // Geist's bowl tops out at 472 at the Regular and 452 at the Black.
+  const [, now] = squaredNow(f);
+  const crown = up(f, sans ? now(472, 452, 471) : 473) - f.upright;
   const halfH = held(f, (crown - bottom) / 2);
   const centre = at(X(311), bottom + halfH);
   const halfW = held(f, 211 * u);
@@ -1631,30 +1645,42 @@ export function grotesqueFive(style: Style): Recipe {
     [
       ink(f, straight(at(stemTop.x - f.half * 0.2, flag), at(flagEnd, flag)), BUTT, f.end),
       ink(f, straight(stemTop, stemFoot), BUTT, f.end),
-      ink(
-        f,
-        bend(
-          f,
-          centre,
-          halfH,
-          Math.min(leaves, 175),
-          // Cut higher as the weight grows: 205 at Geist's Black.
-          angleAt(
-            f,
-            centre,
-            halfW,
-            halfH,
-            up(f, 187 + (18 * Math.min(heavyT(f), nowBlack())) / nowBlack()),
-            true,
-          ) - 360,
-          halfW,
-        ),
-        BUTT,
-        f.end,
-      ),
+      ...fiveBowl(f, sans, centre, halfW, halfH, Math.min(leaves, 175)),
     ],
     true,
   );
+}
+
+/** The five's bowl, from the stem round to its terminal: one, or a sided pair. */
+function fiveBowl(
+  f: Frame,
+  sans: boolean,
+  centre: Vec2,
+  halfW: number,
+  halfH: number,
+  leaves: number,
+): Stroke[] {
+  // Cut higher as the weight grows: 205 at Geist's Black.
+  const cut = up(f, 187 + (18 * Math.min(heavyT(f), nowBlack())) / nowBlack());
+  if (!sans)
+    return [
+      ink(
+        f,
+        bend(f, centre, halfH, leaves, angleAt(f, centre, halfW, halfH, cut, true) - 360, halfW),
+        BUTT,
+        f.end,
+      ),
+    ];
+  const { g, bowls } = sidedPair(f, centre, halfH, figureCrown(f));
+  return bowls.map(([middle, half]) => {
+    const one = ink(
+      g,
+      bend(g, middle, half, leaves, angleAt(g, middle, halfW, half, cut, true) - 360, halfW),
+      BUTT,
+      f.end,
+    );
+    return inherit(one, { ...one, pen: g.style.pen });
+  });
 }
 
 /**
@@ -1705,7 +1731,7 @@ function sixStrokes(f: Frame, sans: boolean): Stroke[] {
   const hoodW = wide + out;
   const end = angleAt(f, hood, hoodW, hoodH, Math.max(up(f, 552), hoodY + f.half), false);
   return [
-    ...sixBowl(f, sans, centre, wide, radius, now(0.96, 0.81, 1)),
+    ...sixBowl(f, sans, centre, wide, radius, figureCrown(f)),
     ink(
       f,
       chain(
@@ -1734,22 +1760,43 @@ function sixBowl(
   share: number,
 ): Stroke[] {
   if (!sans) return [ink(f, ring(f, centre, wide, radius))];
-  // Never the whole foot: two rings the same would be drawn as one, and the
-  // six would have fewer points at its Thin than at its Black.
-  const crown = 2 * f.upright * Math.min(0.95, share);
-  const g = sidedFrame(f, 2 * f.half, crown);
-  const outer = centre.y + radius + f.upright;
-  const spineTop = outer - crown / 2;
-  const footIn = centre.y - radius + f.upright - crown / 2;
-  const footOut = centre.y - radius - f.upright + crown / 2;
-  return [footIn, footOut].map((foot) => {
-    const one = ink(
-      g,
-      ring(g, at(centre.x, (spineTop + foot) / 2), wide, held(g, (spineTop - foot) / 2)),
-    );
+  const { g, bowls } = sidedPair(f, centre, radius, share);
+  return bowls.map(([middle, half]) => {
+    const one = ink(g, ring(g, middle, wide, half));
     return inherit(one, { ...one, pen: g.style.pen });
   });
 }
+
+/**
+ * A bowl lighter at its crown than at its foot, as Geist's figures' are:
+ * two bowls on a pen `share` of the stem's across, sharing the crown drawn
+ * on the stem's pen round `centre` and `radius`. One's inside is the bowl's
+ * inside and the other's outside its outside, so the foot keeps the stem's
+ * pen. Never the whole share: two bowls the same would be drawn as one, and
+ * the figure would have fewer points at its Thin than at its Black.
+ */
+function sidedPair(
+  f: Frame,
+  centre: Vec2,
+  radius: number,
+  share: number,
+): { g: Frame; bowls: Array<[Vec2, number]> } {
+  const crown = 2 * f.upright * Math.min(0.95, share);
+  const g = sidedFrame(f, 2 * f.half, crown);
+  const spineTop = centre.y + radius + f.upright - crown / 2;
+  const footIn = centre.y - radius + f.upright - crown / 2;
+  const footOut = centre.y - radius - f.upright + crown / 2;
+  return {
+    g,
+    bowls: [footIn, footOut].map((foot) => [
+      at(centre.x, (spineTop + foot) / 2),
+      held(g, (spineTop - foot) / 2),
+    ]),
+  };
+}
+
+/** How much of the stem's pen a figure's bowl has across its crown, as Geist's. */
+const figureCrown = (f: Frame): number => roundGain(f, 0.95, 0.79, 0.95);
 
 /** The nine: the six turned over, as Geist's is. */
 export function grotesqueNine(style: Style): Recipe {

@@ -991,7 +991,7 @@ describe("the five's flag", () => {
     ]) {
       const { contours } = draw("five", weight);
       const ink = contoursBounds(contours);
-      const top = runs(contours, 702, "y");
+      const top = filled(contours, 702, "y");
       const end = top[top.length - 1][1] - ink.xMin;
       expect(Math.abs(end - reach), `5 at ${weight}`).toBeLessThan(8);
     }
@@ -1002,7 +1002,7 @@ describe("the five's flag", () => {
     // here it stopped at 187.
     const { contours } = draw("five", 194);
     const ink = contoursBounds(contours);
-    const side = runs(contours, ink.xMin + 60, "x");
+    const side = filled(contours, ink.xMin + 60, "x");
     expect(Math.abs(side[0][1] - 204)).toBeLessThan(6);
   });
 });
@@ -1018,7 +1018,7 @@ describe("the horizontals at the current Black", () => {
     expect(column[0][1] - column[0][0]).toBeGreaterThan(147);
     expect(column[column.length - 1][1] - column[column.length - 1][0]).toBeGreaterThan(147);
     const five = draw("five", 194).contours;
-    const flag = runs(five, contoursBounds(five).xMin + 300, "x");
+    const flag = filled(five, contoursBounds(five).xMin + 300, "x");
     expect(flag[flag.length - 1][1] - flag[flag.length - 1][0]).toBeGreaterThan(145);
   });
 });
@@ -1041,5 +1041,16 @@ describe("the six's bowl", () => {
         expect(column[2][0] - column[1][1]).toBeGreaterThan(90);
       }
     }
+  });
+});
+
+describe("the five's bowl", () => {
+  it("comes down and lightens at its crown as Geist's does", () => {
+    // 300 in from its ink's left Geist's five's bowl tops out at 452 at the
+    // Black, its crown 118 deep; on the stem's pen it stood at 471 and 153.
+    const { contours } = draw("five", 194);
+    const column = filled(contours, contoursBounds(contours).xMin + 300, "x");
+    expect(Math.abs(column[1][1] - 452)).toBeLessThan(6);
+    expect(Math.abs(column[1][1] - column[1][0] - 118)).toBeLessThan(10);
   });
 });

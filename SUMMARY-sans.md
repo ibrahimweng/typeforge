@@ -121,7 +121,9 @@ Geist's 112. The Sans now draws the bowl as two rings on a pen lighter across,
 sharing the crown, one giving the counter and one the outline and foot. The
 top and crown now match within 3, and the white under the hood is 101. This is
 a new form, "sided", used by the Sans only; the Ribbon and every face that
-picks the grotesque 6 keep the single ring.
+picks the grotesque 6 keep the single ring. The 5's bowl is drawn the same
+way: its crown was 153 at the Black against Geist's 118, and 20 too high.
+Both now match within 6 at every weight.
 
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
