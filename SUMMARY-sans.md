@@ -53,7 +53,10 @@ the letter keeps its height. Past the Black the sides take the lightness back,
 so the counters' ends stay round up to 260.
 
 **8.** Heavy weights use the same lighter pen plus a slightly wider ring, so
-the upper counter stays an oval past the Black instead of a slot.
+the upper counter stays an oval past the Black instead of a slot. The rings
+also swell outward by up to 24 units a side by the Black, to the weight of
+Geist's sides (200 at its Black, heavier than its stem). The eight is now
+Geist's width at 130 and 172. It was 30 and 49 narrow.
 
 **^.** New Sans caret, measured off Geist: narrow and upright, with a level head
 on the cap line and level feet at 383. The plain one was a wide, low chevron.
@@ -115,8 +118,10 @@ strokes as white; they now use a filled (nonzero) ruler.
 
 - **s counters at the Black.** Close to Geist's size and shape now; Geist's
   upper counter still runs a little more into the terminal, as a teardrop.
-- **8 at the Black.** Geist's eight is wider with a pinched waist. Draw's is
-  two rings touching, and its counters are larger.
+- **8 at the Black.** Now as wide as Geist's, but Geist's waist is pinched
+  in a deep notch either side, where Draw's two superelliptic rings meet
+  almost upright. Oval rings did not pinch it either, and they left lemon-
+  shaped counters.
 - **@.** It is close at the Regular. At the Black the ring is heavier and
   narrower on the right, and at the Light the tail is shorter than Geist's.
 - **#.** The sidebearings are kept just inside the advance. Geist's reach past

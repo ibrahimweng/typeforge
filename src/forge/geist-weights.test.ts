@@ -456,6 +456,22 @@ describe("the s's spine", () => {
   });
 });
 
+describe("the eight's width", () => {
+  it("is as wide as Geist's from the Regular to the Black", () => {
+    // Geist's ink widths: 524 at the Regular and 644 at the Black, so 585
+    // halfway. With the pen's weight alone round its sides, the eight was 30
+    // units narrow at 130 and 49 at the Black.
+    for (const [weight, width] of [
+      [87, 524],
+      [130, 585],
+      [172, 644],
+    ]) {
+      const ink = box("eight", weight);
+      expect(Math.abs(ink.xMax - ink.xMin - width), `eight at ${weight}`).toBeLessThan(15);
+    }
+  });
+});
+
 describe("the s's width", () => {
   it("spreads as Geist's does from the Regular to the Black", () => {
     // Geist's ink widths at its Regular and Black. Pen 130 is halfway between

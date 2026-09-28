@@ -1595,11 +1595,17 @@ function swollenRing(f: Frame, centre: Vec2, halfW: number, halfH: number): Stro
   const along = pen.weight * (1 - Math.min(Math.max(pen.contrast, 0), 0.95));
   const lighter = pen.weight * (1 - share);
   const light = { ...pen, weight: lighter, contrast: Math.max(0, 1 - along / lighter) };
-  const out = (pen.weight - lighter) / 2;
+  // And carried out further again as the pen grows, to the weight Geist's
+  // sides have: 200 at its Black, heavier than its stem, where the pen alone
+  // left the eight 49 units narrow with counters 30 too wide a side.
+  const out = (pen.weight - lighter) / 2 + EIGHT_SWELL * Math.min(1, Math.max(0, t));
   return [ink(f, ring(f, centre, halfW, halfH)), ink(f, ring(f, centre, halfW + out, halfH))].map(
     (one) => inherit(one, { ...one, pen: light }),
   );
 }
+
+/** How much further out a heavy eight's rings swell, by the Black. */
+const EIGHT_SWELL = 24;
 
 /** A point part of the way along a straight run, found by its height. */
 function alongTo(from: Vec2, to: Vec2, y: number): Vec2 {
