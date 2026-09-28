@@ -537,11 +537,24 @@ function inlineTool(
   const width = Math.min(Math.max(inline.width, 0), 0.85) * stem;
   if (width <= 0) return [];
   const wall = (stem - width) / 2;
+  /*
+   * Only where there is room for it, and the shrinking says where that is: a
+   * stroke thinner than two walls has nothing left once they are taken, so a
+   * contrast face's hairlines -- the arms of a Serif E, the crossbar of its e
+   * -- keep no groove, and the groove fades out where a stroke thins, as an
+   * engraved inline does: Castellar, Goudy's hand-tooled faces.
+   *
+   * It used to be held to the strokes a skeleton called thick as well, by a
+   * mask swept down each of them. Nothing the shrinking allows needed that,
+   * and on a heavy face it took grooves away that had room: the bowl of a
+   * Black a is drawn with a lighter pen and lost the groove down one side,
+   * and a stretch of arch swept on its own crossed itself and cut the groove
+   * off at a slant at the foot of the m.
+   */
   const core = eroded(shape, wall);
   if (core.length === 0 || strokes.length === 0) return core;
   const back = inline.inset * stem;
 
-  const mask: Contour[] = [];
   const breakouts: Contour[] = [];
   const terminals: Contour[] = [];
   strokes.forEach((stroke, index) => {
@@ -550,43 +563,13 @@ function inlineTool(
      * Held back only from a terminal: an end with no other stroke near it.
      * An end that stops at a corner -- the top of the stem of an E, under its
      * arm -- is closed by the wall the shrinking leaves, which runs round the
-     * corner with the groove. Held back there too, the arm's groove carried
-     * on over the place the stem's had stopped short of, and stepped.
+     * corner with the groove.
      */
     const free = ends.map(
       (end) => end !== null && !nearAnother(end.at, strokes, index, stem * 0.5),
     );
-    /*
-     * Only down the thick of the stroke.
-     *
-     * A contrast face's hairlines have no room for a groove: cut down the
-     * arms of a Serif E and the crossbar of its e, the walls either side of
-     * the groove came out a few units thick. An engraved inline -- Castellar,
-     * Goudy's hand-tooled faces -- runs in the thick strokes and fades out
-     * where a stroke thins, and leaves the hairlines alone.
-     */
-    const runs = thickRuns(stroke.spine, stroke.pen, stem);
-    const reach = Math.max(stroke.pen.weight, stem) * 1.6 + 2;
-    for (const spine of runs) {
-      mask.push(
-        ...sweep({
-          spine,
-          pen: { weight: reach, contrast: 0, angle: 0 },
-          start: { kind: "butt" },
-          end: { kind: "butt" },
-          join: "round",
-        }),
-      );
-    }
     ends.forEach((end, at) => {
       if (!end || !free[at]) return;
-      /*
-       * The terminal as it was drawn: the ink past a line just short of the
-       * end of the spine. Measured from the end of the spine instead, the
-       * groove stopped square to the stroke, and a stroke cut level at an
-       * angle to itself -- the top of a Sans a, the ends of an s and an e --
-       * had the groove running out through the lower corner of the cut.
-       */
       /*
        * The paper past the terminal as it was drawn, within the stroke's own
        * width, grown by the inset. Measured from the end of the spine, the
@@ -637,7 +620,9 @@ function inlineTool(
         }
         return;
       }
-      if (runs.length !== 1 || runs[0] !== stroke.spine) return;
+      // Broken out only through a stroke thick enough to have a groove to
+      // break out with.
+      if (half * 2 < stem) return;
       const inward = wall + stem * 0.3;
       breakouts.push(
         ...sweep({
@@ -658,14 +643,7 @@ function inlineTool(
       );
     });
   });
-  if (mask.length === 0) return breakouts;
   const held = terminals.length > 0 ? subtract(core, terminals, "winding") : core;
-  /*
-   * The mask fused before it is used. Its pieces overlap wherever two strokes
-   * meet, and handed over loose the intersection lost ground under the
-   * overlaps: the arch of a Sans a came back with no groove in it at all.
-   */
-  const grooves = intersect(held, unite(mask, "winding"), "winding");
   /*
    * Less the slivers. Where a contrast face's stroke thins towards a
    * terminal, the shrinking leaves a last few units of groove standing
@@ -674,7 +652,7 @@ function inlineTool(
    */
   const least = width * width;
   return [
-    ...grooves.filter((one) => contourArea(one) <= 0 || contourArea(one) >= least),
+    ...held.filter((one) => contourArea(one) <= 0 || contourArea(one) >= least),
     ...breakouts,
   ];
 }
@@ -693,67 +671,6 @@ function endsOf(spine: Spine): [{ at: Vec2; out: Vec2 } | null, { at: Vec2; out:
     { at: head.at, out: { x: -head.away.x, y: -head.away.y } },
     { at: tail.at, out: tail.away },
   ];
-}
-
-/** How thick a stroke has to be, as a share of the stem, to carry a groove. */
-const THICK = 0.72;
-
-/**
- * The stretches of a spine where its stroke is thick enough for a groove, or
- * the spine itself when that is all of it.
- *
- * The thickness is the pen's reach across the way the spine is heading, read
- * at even steps along it. A ring's stretch that runs through the place the
- * ring starts is kept as one stretch rather than two meeting there, so the
- * groove has no seam in it.
- */
-function thickRuns(spine: Spine, pen: Stroke["pen"], stem: number): Spine[] {
-  const STEPS = 96;
-  const path = alongSpine(spine, STEPS);
-  const total = spineLength(spine);
-  if (path.length < 3 || total <= 0) return [];
-  const need = stem * THICK;
-  const thick = path.map((_, index) => {
-    const heading = away(path[Math.max(0, index - 1)], path[Math.min(STEPS, index + 1)]);
-    if (!heading) return true;
-    return halfWidth(pen, { x: -heading.y, y: heading.x }) * 2 >= need;
-  });
-  if (thick.every(Boolean)) return [spine];
-  const step = total / STEPS;
-  const runs: Array<[number, number]> = [];
-  let start = -1;
-  for (let index = 0; index <= STEPS; index++) {
-    if (thick[index] && start < 0) start = index;
-    if ((!thick[index] || index === STEPS) && start >= 0) {
-      const end = thick[index] ? index : index - 1;
-      runs.push([start * step, end * step]);
-      start = -1;
-    }
-  }
-  if (
-    spine.closed &&
-    runs.length > 1 &&
-    runs[0][0] === 0 &&
-    runs[runs.length - 1][1] >= total - 1e-6
-  ) {
-    const [, head] = runs.shift()!;
-    const tail = runs.pop()!;
-    runs.push([tail[0], total + head]);
-  }
-  return runs
-    .filter(([from, to]) => to - from > stem * 0.5)
-    .map(([from, to]) =>
-      to <= total
-        ? spineBetween(spine, from, to)
-        : {
-            segments: [
-              ...spineBetween(spine, from, total).segments,
-              ...spineBetween(spine, 0, to - total).segments,
-            ],
-            closed: false,
-          },
-    )
-    .filter((one) => one.segments.length > 0);
 }
 
 /**

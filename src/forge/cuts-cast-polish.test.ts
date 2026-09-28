@@ -156,6 +156,18 @@ function runsDown(
   return runs;
 }
 
+describe("the inline on a heavy face", () => {
+  it("grooves every stem of a Black m down to its foot", () => {
+    // A mask swept down each stroke crossed itself on the tight arches and
+    // cut the grooves of the first two stems off half way down.
+    const forge = forgeOf("Sans", 260, { cuts: { inline: {} } });
+    const cut = drawn("m", forge);
+    for (const y of [120, 250, 380]) {
+      expect(inkRunsAt(cut, y).length, `at ${y}`).toBe(6);
+    }
+  });
+});
+
 describe("the split", () => {
   it("takes the bowl off the stem of a b, d, p and q and leaves the stem whole", () => {
     for (const [face, weight] of [
