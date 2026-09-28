@@ -43,6 +43,31 @@ function row(name: string, weight: number, y: number, style?: Style): Array<[num
   }
   return runs;
 }
+/** The same, down a column. */
+function column(name: string, weight: number, x: number, style?: Style): Array<[number, number]> {
+  const drawn = draw(name, weight, style);
+  const crossings: Array<[number, number]> = [];
+  for (const contour of drawn.contours) {
+    const points = flattenContour(contour, 24).map((p) => ({ x: p.y, y: -p.x }));
+    for (let k = 0; k < points.length; k++) {
+      const a = points[k];
+      const b = points[(k + 1) % points.length];
+      if (a.y <= -x === b.y <= -x) continue;
+      crossings.push([a.x + ((-x - a.y) / (b.y - a.y)) * (b.x - a.x), b.y > a.y ? 1 : -1]);
+    }
+  }
+  crossings.sort((p, q) => p[0] - q[0]);
+  const runs: Array<[number, number]> = [];
+  let winding = 0;
+  let from = 0;
+  for (const [y, turn] of crossings) {
+    const was = winding;
+    winding += turn;
+    if (was === 0 && winding !== 0) from = y;
+    if (was !== 0 && winding === 0) runs.push([from, y]);
+  }
+  return runs;
+}
 const WEIGHTS = [30, 87, 142, 200, 260];
 
 describe("the Serif's s", () => {
@@ -130,6 +155,50 @@ describe("the Serif's two and seven", () => {
       // And the beak hanging under the arm's left end.
       const beak = row("seven", weight, CAP - weight * 0.55 - 20)[0];
       expect(beak[0] - b.xMin, `7 at ${weight}`).toBeLessThan(3);
+    }
+  });
+});
+
+describe("the Serif's G", () => {
+  const CAP = SERIF.metrics.capHeight;
+  it("stands its upright where Lora's does, under a serif reaching both ways", () => {
+    for (const weight of [30, 87, 142, 200, 260]) {
+      const b = box("G", weight);
+      const upright = row("G", weight, CAP * 0.3);
+      const [from, to] = upright[upright.length - 1];
+      // Lora's upright's right edge is 0.9 of the way across (668 of 740).
+      expect((to - b.xMin) / (b.xMax - b.xMin), `G at ${weight}`).toBeGreaterThan(0.86);
+      // Its serif reaching past it each side: the spur's head was a plain cut.
+      let reaches = 0;
+      for (let y = CAP * 0.62; y > CAP * 0.35; y -= 2) {
+        const runs = row("G", weight, y);
+        const [left, right] = runs[runs.length - 1];
+        if (left > b.xMin + (b.xMax - b.xMin) / 2) {
+          reaches = Math.max(reaches, Math.min(from - left, right - to));
+        }
+      }
+      expect(reaches, `G at ${weight}`).toBeGreaterThan(20);
+    }
+  });
+});
+
+describe("the Serif's e", () => {
+  it("keeps its aperture open between the tail and the bar past a Black", () => {
+    for (const weight of [200, 230, 260]) {
+      const b = box("e", weight);
+      const across = (k: number) => b.xMin + (b.xMax - b.xMin) * k;
+      // The bar's underside, where only the bar and the bowl over it stand.
+      const barFoot = column("e", weight, across(0.9))[0][0];
+      // And the highest the tail comes under it, across the aperture.
+      let tail = -Infinity;
+      for (let k = 0.45; k <= 0.9; k += 0.025) {
+        for (const [, top] of column("e", weight, across(k))) {
+          if (top < barFoot - 0.5) tail = Math.max(tail, top);
+        }
+      }
+      // At an Ultra the tail ran up to within a few units of the bar, and
+      // its end was sliced off against it.
+      expect(barFoot - tail, `e at ${weight}`).toBeGreaterThan(weight * 0.08);
     }
   });
 });

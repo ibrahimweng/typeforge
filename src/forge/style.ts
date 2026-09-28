@@ -905,7 +905,7 @@ export const SERIF: Style = {
   forms: {
     a: "humanist",
     g: "humanist",
-    G: "spurred",
+    G: "humanist",
     Q: "humanist",
     y: "hooked",
     // Lora's own: see `letters/humanist.ts`.

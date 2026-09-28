@@ -17,7 +17,7 @@
 
 import { blackness, type Style } from "../style";
 import { LETTERS } from "../letters";
-import { bowl, bowlPoint, spineEnd, spineStart } from "../shapes";
+import { bowl, bowlBetween, bowlPoint, spineEnd, spineStart } from "../shapes";
 import { penReach, reachAlong, sweep } from "../sweep";
 import { inkRunsAt } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
@@ -65,7 +65,15 @@ import {
   tReach,
   tStem,
   uses,
+  bookish,
 } from "./common";
+
+/** How much further round the e's tail runs than the construction's, in degrees. */
+const E_TAIL = 5;
+/** And how much shorter at the heaviest, so its aperture stays open. */
+const E_SHORT = 8;
+/** And how many degrees further round its bowl starts at the heaviest, lifting its bar. */
+const E_LIFT = 14;
 
 /** Where Lora's e has its bar, against where its H has its: 0.62 of the x-height to 0.51. */
 const EYE = 0.62 / 0.52;
@@ -94,7 +102,22 @@ export function humanistE(style: Style): Recipe {
     height += (wanted - drawn.bar) / style.metrics.xHeight;
     drawn = eyed(style, height);
   }
+  /*
+   * Past a Black, the bar lifted off the tail: held a stem and a half deep,
+   * the eye pushed the bar down until the tail's end ran up under it and the
+   * aperture was a chink, the tail's end sliced off against the bar. Begun a
+   * little further round, the bowl hangs its bar higher and shares the
+   * height between the two.
+   */
+  const f = frame(style);
+  const past = textSerif(f) ? Math.min(1, Math.max(0, (heaviness(f) - 1) / 0.5)) : 0;
+  if (past > 0) drawn = eyed(style, height, E_LIFT * past);
   return drawn.recipe;
+}
+
+/** Whether a face is a text serif's -- wedge serifs on a pen with contrast. */
+function textSerif(f: ReturnType<typeof frame>): boolean {
+  return bookish(f) && f.style.parts.slab.shape === "wedge";
 }
 
 /**
@@ -108,14 +131,20 @@ export function humanistE(style: Style): Recipe {
  * leaning in over it -- a notch above a flat-ended bar that stood proud of
  * the bowl -- and stopped inside the bowl its lower half stood out as a step.
  */
-function eyed(style: Style, height: number): { recipe: Recipe; bar: number; asked: number } {
+function eyed(
+  style: Style,
+  height: number,
+  lift = 0,
+): { recipe: Recipe; bar: number; asked: number } {
   const raised = {
     ...style,
     parts: { ...style.parts, crossbar: { ...style.parts.crossbar, height } },
   };
   const drawn = swollen(raised, LETTERS.e(raised));
-  const [across, belt, ...rest] = drawn.strokes;
-  if (!belt || belt.spine.closed) return { recipe: drawn, bar: 0, asked: 0 };
+  const [across, given, ...rest] = drawn.strokes;
+  if (!given || given.spine.closed) return { recipe: drawn, bar: 0, asked: 0 };
+  const belt =
+    lift > 0 ? inherit(given, { ...given, spine: startedLater(given.spine, lift) }) : given;
   const [run] = across.spine.segments;
   const [first] = belt.spine.segments;
   let drawnBar = across;
@@ -157,14 +186,84 @@ function eyed(style: Style, height: number): { recipe: Recipe; bar: number; aske
   const { terminal } = style.parts;
   const foot: Terminal =
     terminal.kind === "angled" ? { kind: "angled", angle: terminal.angle } : BUTT;
+  /*
+   * And the tail carried on round, as far as Lora's reaches -- out under the
+   * side of the bowl and up to a fifth of the x-height -- to a Bold; back to
+   * the construction's by a Black; and short of it past a Black, where the
+   * heavy pen carried the tail up into the bar's underside and the aperture
+   * closed, the tail's end sliced off against the bar.
+   */
+  const f = frame(style);
+  // A text serif's: on a sans drawing this e, past a Black was left as it was.
+  const heavy = textSerif(f) ? heaviness(f) : Math.min(1, heaviness(f));
+  const more =
+    heavy <= 1
+      ? E_TAIL * Math.min(1, Math.max(0, 1 - (heavy - 0.44) / 0.56))
+      : -E_SHORT * Math.min(1, (heavy - 1) / 0.5);
+  /*
+   * On the last piece that turns: a bend ends on pieces of no length, kept so
+   * every weight has the same points, and those are moved to the new end.
+   */
+  const segments = [...belt.spine.segments];
+  let turns = segments.length - 1;
+  while (turns >= 0) {
+    const one = segments[turns];
+    if (one.kind === "arc" && Math.abs(one.endAngle - one.startAngle) > 1e-6) break;
+    turns--;
+  }
+  const lastTurn = segments[turns];
+  if (lastTurn?.kind === "arc" && more !== 0) {
+    const way = lastTurn.sweepPositive ? 1 : -1;
+    const span = Math.abs(lastTurn.endAngle - lastTurn.startAngle);
+    const by = Math.max((more * Math.PI) / 180, -span * 0.8);
+    // Carried on in the first of the pieces of no length, or cut back on the
+    // piece itself: either way the same points at every weight.
+    let end = lastTurn.endAngle + way * by;
+    if (more > 0 && turns + 1 < segments.length) {
+      segments[turns + 1] = { ...lastTurn, startAngle: lastTurn.endAngle, endAngle: end };
+      turns++;
+    } else if (more < 0) {
+      segments[turns] = { ...lastTurn, endAngle: end };
+    } else {
+      end = lastTurn.endAngle;
+    }
+    for (let k = turns + 1; k < segments.length; k++) {
+      segments[k] = { ...lastTurn, startAngle: end, endAngle: end };
+    }
+  }
+  const tail = { ...belt.spine, segments };
   return {
     recipe: {
       ...drawn,
-      strokes: [drawnBar, inherit(belt, { ...belt, start: bowlStart, end: foot }), ...rest],
+      strokes: [
+        drawnBar,
+        inherit(belt, { ...belt, spine: tail, start: bowlStart, end: foot }),
+        ...rest,
+      ],
     },
     bar: barY,
     asked: askedY,
   };
+}
+
+/**
+ * A bend begun `degrees` further round its first piece that turns, the
+ * pieces of no length before it moved onto its new start so every weight has
+ * the same points.
+ */
+function startedLater(spine: Spine, degrees: number): Spine {
+  const segments = [...spine.segments];
+  const first = segments.findIndex(
+    (one) => one.kind === "arc" && Math.abs(one.endAngle - one.startAngle) > 1e-6,
+  );
+  const turn = segments[first];
+  if (turn?.kind !== "arc") return spine;
+  const way = turn.sweepPositive ? 1 : -1;
+  const span = Math.abs(turn.endAngle - turn.startAngle);
+  const startAngle = turn.startAngle + way * Math.min((degrees * Math.PI) / 180, span * 0.8);
+  segments[first] = { ...turn, startAngle };
+  for (let k = 0; k < first; k++) segments[k] = { ...turn, startAngle, endAngle: startAngle };
+  return { ...spine, segments };
 }
 
 /**
@@ -1421,6 +1520,74 @@ export function humanistCapitalS(style: Style): Recipe {
     strokes: recipe.strokes.map((stroke) => hairlined(stroke, swell)),
   };
 }
+
+/**
+ * The G as Lora's: the bowl carried round into a short upright on the right
+ * that stands to half the cap height under a serif reaching both ways, as a
+ * foot does upside down.
+ *
+ * The spurred G it is drawn from (`alternates.ts`) stood its upright on the
+ * bowl at 302 degrees, half a stem left of Lora's, and left its top a plain
+ * cut: an upright stopping in mid-air wears no serif.
+ */
+export function humanistCapitalG(style: Style): Recipe {
+  const f = frame(style);
+  const centre = at(f.edge + f.capBowl, f.cap / 2);
+  const roundness = 1 - f.square;
+  const clear = (((f.half * 2.4) / f.capBowlH) * 180) / Math.PI;
+  const opens = Math.max(32, clear);
+  const joins = G_JOINS;
+  const foot = bowlPoint(centre, f.capBowl, f.capBowlH, roundness, f.half, joins, f.curve);
+  const bowl = bowlBetween(centre, f.capBowl, f.capBowlH, roundness, f.half, opens, joins, f.curve);
+  const end = spineEnd(bowl);
+  const heading =
+    [...bowl.segments]
+      .reverse()
+      .map((segment) => headingAt(segment, "end"))
+      .find((way) => Math.hypot(way.x, way.y) > 0.5) ?? at(1, 0);
+  const pen = penReach(f.style.pen);
+  const reach = reachAlong(at(-heading.y, heading.x), pen);
+  const outer = heading.x * reach.y - heading.y * reach.x < 0 ? reach : at(-reach.x, -reach.y);
+  const corner = at(end.x + outer.x, end.y + outer.y);
+  const carry = heading.x > 0.05 ? (2 * outer.x) / heading.x : 0;
+  const upright = f.square < 0.01 && carry > 0;
+  const cut = upright ? (Math.atan(carry / (2 * pen.across)) * 180) / Math.PI : 0;
+  const side = Math.abs(reachAlong(at(1, 0), pen).x);
+  const stand = upright ? at(corner.x - side, corner.y + 1) : foot;
+  /*
+   * The serif: a hairline laid across the upright's head, its top where
+   * Lora's is, reaching out each side as far as a foot serif reaches past a
+   * stem -- and held off the bowl's inside on the left, so a heavy weight's
+   * does not run into the counter's wall.
+   */
+  const slab = f.end.kind === "slab" ? f.end : null;
+  const drawnThin = thin(f, straight(at(0, 0), at(1, 0)), BUTT, BUTT);
+  const thinDeep = Math.abs(reachAlong(at(0, 1), penReach(drawnThin.pen)).y);
+  // As deep as the face's own serifs, no deeper than its hairline.
+  const serif = slab ? lighter(drawnThin, Math.min(1, slab.thickness! / 2 / thinDeep)) : drawnThin;
+  const deep = Math.abs(reachAlong(at(0, 1), penReach(serif.pen)).y);
+  const top = Math.max(f.cap * G_TOP - deep, foot.y + f.half * 2);
+  const wing = slab ? slab.projection! * G_WING : f.half * 0.6;
+  return finish(
+    f,
+    [
+      ink(f, bowl, f.end, upright ? { kind: "angled", angle: cut } : BUTT),
+      ink(f, straight(stand, at(stand.x, top)), BUTT, LEVEL),
+      inherit(serif, {
+        ...serif,
+        spine: straight(at(stand.x - side - wing, top), at(stand.x + side + wing, top)),
+      }),
+    ],
+    true,
+  );
+}
+
+/** Where on its bowl the G's upright stands, in degrees round from the right. */
+const G_JOINS = 312;
+/** The top of the G's serif, against the cap height: Lora's is at 0.49. */
+const G_TOP = 0.49;
+/** How far the G's serif reaches past its upright each side, against a foot serif's: Lora's is 70 on 87. */
+const G_WING = 1;
 
 /**
  * The two as Lora's: the diagonal leaving the bowl as the bowl's own curve
