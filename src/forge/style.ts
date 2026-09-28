@@ -1931,6 +1931,14 @@ export const TYPEWRITER: Style = {
   forms: {
     a: "double",
     one: "footed",
+    // And the narrow letters' serifs run out to fill the column, as
+    // Courier's are: see `COLUMN` in `letters/alternates.ts`.
+    i: "typewriter",
+    dotlessi: "typewriter",
+    j: "typewriter",
+    dotlessj: "typewriter",
+    l: "typewriter",
+    I: "typewriter",
     S: "grotesque",
     s: "grotesque",
     G: "grotesque",

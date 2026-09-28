@@ -284,3 +284,18 @@ describe("the Didone's hairlines", () => {
     expect((side[1] - side[0]) / (crown[1] - crown[0])).toBeGreaterThan(2.5);
   });
 });
+
+describe("the Typewriter's narrow letters", () => {
+  it("run their serifs out to fill the column, as Courier's do", () => {
+    /*
+     * With a text face's serifs the i, the l and the I stood as bare sticks
+     * in a column made for an m, and a word set in them read as gapped.
+     */
+    const style = face("Typewriter");
+    for (const name of ["i", "l", "I", "dotlessi"]) {
+      const drawn = draw(name, style);
+      const box = contoursBounds(drawn.contours);
+      expect((box.xMax - box.xMin) / drawn.advanceWidth, name).toBeGreaterThan(0.5);
+    }
+  });
+});

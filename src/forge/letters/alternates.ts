@@ -1593,6 +1593,39 @@ for (const [name, hint, build] of NARROWED) {
 }
 
 /*
+ * A typewriter's narrow letters, whose serifs run out to fill the column:
+ * Courier's i and l stand on a foot most of the cell wide under a long flag,
+ * and its I is two long bars. Drawn with a text face's serifs, the letters
+ * a monospaced face gives most room to stood as bare sticks in a column of
+ * white, and a word set in it read as gapped.
+ */
+const COLUMN: Array<[LetterName, string]> = [
+  ["i", "A long flag and a foot most of the column wide, as a typewriter's i."],
+  ["dotlessi", "A long flag and a foot most of the column wide, as a typewriter's i."],
+  ["j", "A long flag at the head, as a typewriter's j."],
+  ["dotlessj", "A long flag at the head, as a typewriter's j."],
+  ["l", "A long flag and a foot most of the column wide, as a typewriter's l."],
+  ["I", "Two bars most of the column wide, as a typewriter's I."],
+];
+for (const [name, hint] of COLUMN) {
+  if (!ALTERNATES[name]) ALTERNATES[name] = [];
+  const build = (style: Style) =>
+    LETTERS[name]({
+      ...style,
+      parts: {
+        ...style.parts,
+        // Serifed wherever it is offered: a typewriter's i is its serifs.
+        slab: {
+          ...style.parts.slab,
+          on: true,
+          projection: style.parts.slab.projection * COLUMN_SERIF,
+        },
+      },
+    });
+  ALTERNATES[name].push({ id: "typewriter", label: "Typewriter", hint, build });
+}
+
+/*
  * The old-style text face's own letters, offered on every face and drawn by
  * default on the Serif: see `humanist.ts`.
  */
@@ -1654,3 +1687,6 @@ const GEOMETRIC_S = 1.3;
 
 /** The blackness by which a geometric face's S has come back to the grotesque's width. */
 const GEOMETRIC_S_BLACK = 1;
+
+/** How much further a typewriter's narrow letters run their serifs out: see `COLUMN`. */
+const COLUMN_SERIF = 4;
