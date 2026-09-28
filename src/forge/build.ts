@@ -2806,6 +2806,14 @@ const SERIF_BITE = 0.35;
 const WEDGE_TIP = 0.42;
 
 /**
+ * How far out along the inside wing of a diagonal the stroke's edge may run
+ * where the serif's hollow meets it, against the wing's length.
+ */
+const INSIDE_REACH = 0.8;
+/** How far the handles of that hollow reach toward its corner. */
+const INSIDE_PULL = 0.6;
+
+/**
  * One wing of a serif.
  *
  * Worked out in the stroke's own frame -- `across` runs along the end of the
@@ -2874,11 +2882,22 @@ function wing(
    * top of the wing already, and a wing that kept following it would fold
    * back over its own tip.
    */
-  const cap = lean > 0 ? (0.5 * (tip - from)) / lean : Infinity;
+  let cap = lean > 0 ? (0.5 * (tip - from)) / lean : Infinity;
   const shift = (v: number): number => lean * Math.min(v, cap);
   const edgeAt = (v: number): number => from + shift(v);
   const heldAt = (v: number): number => held + shift(v);
   let rise = Math.min(bracket, Math.max(0, (tip - edgeAt(deep)) * 0.8));
+  /*
+   * On the inside of a diagonal, no higher up the stroke than the edge is
+   * followed, so the hollow arrives along the edge itself. Carried on past
+   * that and arriving upright, it bowed out over the edge and came back into
+   * it at a corner: a knob either side of a w's middle and inside a V.
+   */
+  if (lean > 0 && wedge) {
+    const most = (INSIDE_REACH * (tip - from)) / lean;
+    rise = Math.min(rise, Math.max(0, most - deep));
+    if (deep <= most) cap = Infinity;
+  }
   /*
    * And where it runs away from the wing -- the outside of a shallow arm, as
    * on a k -- the wing is made shallower rather than followed all the way: an
@@ -2916,6 +2935,34 @@ function wing(
     const top = { u: tip, v: tipDeep };
     const du = top.u - meetU;
     const dv = reachUp - top.v;
+    if (lean > 0 && cap === Infinity) {
+      /*
+       * On the inside of a diagonal the edge runs out toward the tip, and a
+       * hollow leaving the tip level and arriving along that edge turns more
+       * than a right angle: drawn with the upright's handles it swung in to
+       * the edge well above where it met it and out again, and the wing was
+       * a knob on a neck. So both handles aim at the corner the wing's
+       * underside and the stroke's edge would make, and the hollow lies
+       * inside that corner as a fillet does.
+       */
+      const corner = { u: from + lean * tipDeep, v: tipDeep };
+      const toward = (u: number, v: number, share: number) =>
+        place(u + (corner.u - u) * share, v + (corner.v - v) * share);
+      nodes.push({
+        point: place(top.u, top.v),
+        handleIn: null,
+        handleOut: toward(top.u, top.v, INSIDE_PULL),
+        type: "corner",
+      });
+      nodes.push({
+        point: place(meetU, reachUp),
+        handleIn: toward(meetU, reachUp, INSIDE_PULL),
+        handleOut: null,
+        type: "corner",
+      });
+      nodes.push(node(place(heldAt(reachUp), reachUp)));
+      return { nodes, closed: true };
+    }
     nodes.push({
       point: place(top.u, top.v),
       handleIn: null,

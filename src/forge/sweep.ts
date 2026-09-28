@@ -356,8 +356,9 @@ function reverseOffset(segment: OffsetSegment): OffsetSegment {
  * Stitch a run of offset segments into nodes, dropping the duplicate point
  * where one ends and the next begins and keeping whichever handles exist.
  */
-function stitch(segments: OffsetSegment[]): GlyphNode[] {
+function stitch(segments: OffsetSegment[], reach?: PenReach): GlyphNode[] {
   const nodes: GlyphNode[] = [];
+  let before: OffsetSegment | null = null;
   for (const segment of segments) {
     const piece = offsetNodes(segment);
     if (nodes.length > 0) {
@@ -372,14 +373,136 @@ function stitch(segments: OffsetSegment[]): GlyphNode[] {
       if (together < 1e-6) {
         previous.handleOut = joining.handleOut;
         previous.type = previous.handleIn && joining.handleOut ? "smooth" : previous.type;
+        if (moving(before) && moving(segment)) alignAt(previous, before, segment, reach);
         nodes.push(...piece.slice(1));
+        before = segment;
         continue;
       }
       // A genuine corner between two runs: both points stay.
     }
     nodes.push(...piece);
+    before = segment;
   }
   return nodes;
+}
+
+/**
+ * Whether an offset piece travels: not a corner's stall, a wedge of no size,
+ * nor a straight run of no length.
+ */
+function moving(segment: OffsetSegment | null): segment is OffsetSegment {
+  if (!segment) return false;
+  if (segment.kind === "line") {
+    return Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y) > 1e-6;
+  }
+  return (
+    Math.abs(segment.to - segment.from) > 1e-9 &&
+    (Math.abs(segment.rx) > 1e-9 || Math.abs(segment.ry) > 1e-9)
+  );
+}
+
+/** The unit direction an offset piece leaves its start or arrives at its end. */
+function offsetHeading(segment: OffsetSegment, atEnd: boolean): Vec2 | null {
+  let d: Vec2;
+  if (segment.kind === "line") {
+    d = { x: segment.to.x - segment.from.x, y: segment.to.y - segment.from.y };
+  } else {
+    const slope = ellipseSlope(segment, atEnd ? segment.to : segment.from);
+    const way = segment.to >= segment.from ? 1 : -1;
+    d = { x: slope.x * way, y: slope.y * way };
+  }
+  const length = Math.hypot(d.x, d.y);
+  return length > 1e-9 ? { x: d.x / length, y: d.y / length } : null;
+}
+
+/**
+ * The most two pieces of one side may disagree about their direction where
+ * they meet and still be one smooth run: see `alignAt`.
+ */
+const SMOOTH_UP_TO = (30 * Math.PI) / 180;
+
+/** How round an ellipse offset must stay, its lesser radius against its greater, to be smoothed. */
+const ROUND_ENOUGH = 0.3;
+
+/**
+ * Where two offset pieces meet on a run the spine takes without a corner,
+ * one direction on both sides of the node.
+ *
+ * The offset of an arc drawn with contrast is an ellipse about the arc's own
+ * centre, and it meets the next piece on the right spot but not in the right
+ * direction: the ellipse's slope there leans off the spine's by more the
+ * tighter the arc turns against the pen, and a straight run's offset keeps the
+ * spine's exactly. Anywhere the join is not level or upright the two differ --
+ * by six degrees down the outside of an s where its bowl gives on to the
+ * spine, and by nineteen round the inside -- and the outline turned a corner
+ * there that nothing in the letter asked for: a spine drawn as a straight band
+ * with a facet at each end, the same at the join of a 2's bowl and its
+ * diagonal, and at every change of radius round a Serif oval.
+ *
+ * A pen's true edge runs parallel to the spine, so the node is turned to the
+ * straight piece's direction where one of the two is straight, and to the
+ * middle of the two where both are curves. Only the handles turn: the points
+ * stay, the pieces stay, and so do the nodes at every weight.
+ */
+function alignAt(
+  node: GlyphNode,
+  before: OffsetSegment,
+  after: OffsetSegment,
+  reach?: PenReach,
+): void {
+  if (!reach) return;
+  // Never on an offset that has nearly closed on its own centre, or turned
+  // through it: the inside of a turn as tight as the pen. Its slope there is
+  // the fold's, and turning a handle into it drew a loop.
+  for (const one of [before, after]) {
+    if (one.kind !== "ellipse") continue;
+    const least = Math.min(Math.abs(one.rx), Math.abs(one.ry));
+    const most = Math.max(Math.abs(one.rx), Math.abs(one.ry));
+    if (one.rx * one.ry <= 0 || least < most * ROUND_ENOUGH) return;
+  }
+  const arriving = offsetHeading(before, true);
+  const leaving = offsetHeading(after, false);
+  if (!arriving || !leaving) return;
+  const cross = arriving.x * leaving.y - arriving.y * leaving.x;
+  const along = arriving.x * leaving.x + arriving.y * leaving.y;
+  if (along <= 0 || Math.abs(Math.atan2(cross, along)) > SMOOTH_UP_TO) return;
+  if (Math.abs(cross) < 1e-9) return;
+  let way: Vec2;
+  if (before.kind === "line" && after.kind === "line") return;
+  if (before.kind === "line") way = arriving;
+  else if (after.kind === "line") way = leaving;
+  else {
+    const sum = { x: arriving.x + leaving.x, y: arriving.y + leaving.y };
+    const length = Math.hypot(sum.x, sum.y);
+    way = { x: sum.x / length, y: sum.y / length };
+  }
+  const point = node.point;
+  /*
+   * Turned no further than moves the piece a fifth of the pen's narrow
+   * reach: a handle turned moves the curve behind it by at most four ninths
+   * of how far its tip moved, and on a hairline a long handle turned its
+   * whole way carried the curve across the other side of the stroke.
+   */
+  const room = reach.along * 0.2;
+  const turned = (handle: Vec2, sign: number): Vec2 => {
+    const d = { x: (handle.x - point.x) * sign, y: (handle.y - point.y) * sign };
+    const length = Math.hypot(d.x, d.y);
+    if (length < 1e-9) return handle;
+    const now = Math.atan2(d.y, d.x);
+    let by = Math.atan2(way.y, way.x) - now;
+    while (by > Math.PI) by -= Math.PI * 2;
+    while (by < -Math.PI) by += Math.PI * 2;
+    const most = 2 * Math.asin(Math.min(1, room / ((8 / 9) * length)));
+    by = Math.max(-most, Math.min(most, by));
+    const angle = now + by;
+    return {
+      x: point.x + Math.cos(angle) * length * sign,
+      y: point.y + Math.sin(angle) * length * sign,
+    };
+  };
+  if (node.handleIn) node.handleIn = turned(node.handleIn, -1);
+  if (node.handleOut) node.handleOut = turned(node.handleOut, 1);
+  if (node.handleIn && node.handleOut) node.type = "smooth";
 }
 
 // ---------------------------------------------------------------------------
@@ -1364,8 +1487,8 @@ export function sweep(stroke: Stroke): Contour[] {
      * on a radius of 250 the hole came out 999 units across, larger than the
      * letter containing it.
      */
-    const one: Contour = { nodes: closeRing(stitch(left)), closed: true };
-    const other: Contour = { nodes: closeRing(stitch(right)), closed: true };
+    const one: Contour = { nodes: closeRing(stitch(left, reach)), closed: true };
+    const other: Contour = { nodes: closeRing(stitch(right, reach)), closed: true };
     const [outside, inside] =
       Math.abs(contourArea(one)) >= Math.abs(contourArea(other)) ? [one, other] : [other, one];
     return [facing(outside, 1), facing(inside, -1)];
@@ -1423,8 +1546,8 @@ export function sweep(stroke: Stroke): Contour[] {
    * weight is a fold whose size is a fraction of a slide that is itself a
    * fraction of the pen.
    */
-  let leftNodes = stitch(left);
-  let rightNodes = stitch([...right].reverse().map(reverseOffset));
+  let leftNodes = stitch(left, reach);
+  let rightNodes = stitch([...right].reverse().map(reverseOffset), reach);
   const levelStart = slides(stroke.start, startStraight);
   const levelEnd = slides(stroke.end, endStraight);
   // Counted against what the sides started with, not against what is left of

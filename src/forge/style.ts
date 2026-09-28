@@ -176,6 +176,17 @@ export interface Metrics {
      * construction's own widening keeps open. Left out, all of it.
      */
     kept?: number;
+    /**
+     * Each letter's width at the heaviest weight (a blackness of 1.5) against
+     * what the rest of this would give it, reached along the weight from the
+     * Bold. The construction widens a letter by the stems it has to fit and
+     * the counters between them, so past a Bold an H, a D and an M ran on
+     * wide while the letters with no counter to hold open -- the C, the E,
+     * the T, the Z -- stood still or narrowed, and the colour of a heavy
+     * word came and went letter by letter. Written down as the widths a
+     * Black face keeps, against its own H and o. Left out, one.
+     */
+    past?: Record<string, number>;
   };
   /** The counter the face was drawn with, once `heavier` has narrowed it. */
   drawnCounter?: number;
@@ -1007,6 +1018,25 @@ export const SERIF: Style = {
         eight: 0.833,
         nine: 0.894,
         question: 0.787,
+      },
+      // Past the Bold: the open letters widening with the stems, as a
+      // Black's do (C/O 0.9, E/H 0.75, T/H 0.87, z/x 0.83 at a pen of 260).
+      past: {
+        C: 1.2,
+        G: 1.3,
+        E: 1.39,
+        F: 1.39,
+        L: 1.44,
+        T: 1.49,
+        Z: 1.41,
+        z: 1.45,
+        J: 1.43,
+        N: 1.3,
+        W: 1.33,
+        w: 0.75,
+        s: 1.54,
+        five: 1.19,
+        seven: 1.27,
       },
     },
     // LORA-BOLD-END
@@ -3261,6 +3291,10 @@ export function proportioned(style: Style, name: string): Style {
         (1 - (bold.kept ?? 1)) * Math.min(1, (black - bold.at) / Math.max(1 - bold.at, 1e-6));
       const target = 1 + (own - 1) * 0.5;
       factor = own * heavy + (target - own * heavy) * eased;
+      const past = bold.past?.[name];
+      if (past !== undefined) {
+        factor *= 1 + (past - 1) * Math.min(1, (black - bold.at) / Math.max(1.5 - bold.at, 1e-6));
+      }
     }
   }
   if (factor === 1 || !(factor > 0)) return style;

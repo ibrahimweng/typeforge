@@ -11,6 +11,7 @@ import { spineEnd } from "../shapes";
 import type { Style } from "../style";
 import { penReach, reachAlong } from "../sweep";
 import {
+  drops,
   arm,
   at,
   bend,
@@ -400,7 +401,9 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         ink(
           f,
           chain(
-            bend(f, at(centre.x, hood), radius, 60, 180, wide),
+            // Stopped further round on a face that hangs a drop there, so the
+            // drop hangs at the top right, not down into the counter.
+            bend(f, at(centre.x, hood), radius, drops(f) ? SIX_DROP : 60, 180, wide),
             straight(at(centre.x - wide, hood), at(centre.x - wide, centre.y)),
           ),
           f.end,
@@ -484,7 +487,9 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
           f,
           chain(
             straight(at(centre.x + wide, centre.y), at(centre.x + wide, foot)),
-            bend(f, at(centre.x, foot), radius, 0, -120, wide),
+            // And carried further round where it ends in a drop, which then
+            // sits up off the line clear of the bowl, as Lora's does.
+            bend(f, at(centre.x, foot), radius, 0, drops(f) ? NINE_DROP : -120, wide),
           ),
           BUTT,
           f.end,
@@ -494,3 +499,7 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     );
   },
 };
+
+/** Where a six's hood starts, and a nine's tail stops, on a face whose figures end in drops. */
+const SIX_DROP = 35;
+const NINE_DROP = -145;

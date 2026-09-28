@@ -204,7 +204,7 @@ const T_TOP = 640 / 755;
  */
 export function humanistT(style: Style): Recipe {
   const f = frame(style);
-  const radius = Math.max(roundHalf(f) * 0.34, f.least, f.half * 1.25);
+  const radius = Math.max(roundHalf(f) * 0.34, f.least, f.half * 1.5);
   const reach = tReach(f);
   const stem = tStem(f);
   /*
@@ -359,7 +359,7 @@ const TAIL_BOW = 0.14;
 export function humanistCapitalM(style: Style): Recipe {
   const f = frame(style);
   const left = f.edge;
-  const width = Math.max(f.capBowl * 1.7, f.half * 7);
+  const width = Math.max(f.capBowl * 1.7, f.half * 6.3);
   const right = left + width;
   const middle = left + width * 0.49;
   /*
@@ -513,7 +513,12 @@ export function humanistG(style: Style): Recipe {
   const upperH = Math.max(f.x * 0.33, f.upright + f.half * 0.45, f.least);
   const upperW = Math.max(upperH * f.wide * 1.0, f.least);
   const upper = at(left + loopHalf * 0.12 + upperW, f.crest(f.x) - upperH);
-  const bottom = f.dip(f.desc) - f.half * 0.45 * heavy;
+  // On the descender at every weight, as Lora Bold's is: let down under it by
+  // a heavy pen, a Black's loop hung a stem below the p and the y.
+  // Lighter at a heavy weight (see below), so let down by what that takes off
+  // its foot, to stand on the line as the stem's pen would.
+  const loopShare = Math.max(0.5, 0.86 - 0.3 * heavy);
+  const bottom = f.dip(f.desc) - f.upright * (1 - loopShare);
   const underBowl = upper.y - upperH - f.upright * 2 - Math.max(f.half * 1.2, f.x * 0.06);
   const loopLeast = f.upright + Math.max(f.half * 0.45, f.x * 0.035);
   const top = Math.max(Math.min(f.x * 0.02, underBowl), bottom + loopLeast * 2);
@@ -530,7 +535,20 @@ export function humanistG(style: Style): Recipe {
       f,
       [
         lighter(ink(f, ring(f, upper, upperW, upperH)), 1 - 0.12 * heavy),
-        lighter(ink(f, ring(f, loop, loopHalf, loopH)), 0.86 - 0.14 * heavy),
+        /*
+         * Lighter still at a heavy weight, as Lora Bold's loop is -- sides of
+         * a hundred on a stem of 142 -- and laid out for the pen it is drawn
+         * with: laid out for the stem's, its ends were turned no rounder than
+         * the stem's pen needs, and inside the lighter one the counter came to
+         * a corner at each end.
+         */
+        (() => {
+          const drawn = lighter(ink(f, ring(f, loop, loopHalf, loopH)), loopShare);
+          return inherit(drawn, {
+            ...drawn,
+            spine: bowl(loop, loopHalf, loopH, roundness, drawn.pen.weight / 2, f.curve),
+          });
+        })(),
         lighter(
           // In two pieces at every weight, however little a heavy one turns.
           ink(
@@ -565,7 +583,7 @@ export function humanistJ(style: Style): Recipe {
    * inside of the turn folded to a spike hanging between the drop and the
    * stem.
    */
-  const radius = Math.max(f.arch * 0.5, f.least, f.half * 1.2);
+  const radius = Math.max(f.arch * 0.5, f.least, f.half * 1.5);
   const stem = f.edge + radius * 1.35;
   const turnAt = f.dip(f.desc) + radius;
   return finish(f, [
@@ -1015,7 +1033,7 @@ function bookSpine(
       y: r.side * sin(rad(30)) + r.middle * (sin(rad(30 + second)) - sin(rad(30))),
     };
     const fall = tall / 2 - b - off.y;
-    const run = fall / Math.tan(rad(60 - second));
+    const run = fall / Math.tan(rad(60 - second - S_BEND / 2));
     return { r, fall, second, a, b, across: 2 * (off.x + run) };
   };
   /*
@@ -1034,13 +1052,13 @@ function bookSpine(
     const most = Math.min(a * 2, tall / 2);
     for (let i = 0; i <= 40; i++) {
       const b = most - (most - a / 2) * (i / 40);
-      for (let degrees = 0; degrees <= 30; degrees += 1) {
+      for (let degrees = 0; degrees <= 30 - S_BEND / 2; degrees += 1) {
         const tried = laid(a, b, degrees);
         if (!(tried.r.side > 0 && tried.r.crown > 0)) continue;
         const cost =
           ((tried.across - 2 * a) / a) ** 2 * 40 +
           (a / b - 1.3) ** 2 +
-          ((30 - degrees) / 30) ** 2 * 0.5 +
+          ((30 - degrees - S_BEND) / 30) ** 2 * 0.5 +
           (k / 10) ** 2 * 3 +
           (Math.max(0, roundest - tried.r.side) / roundest) ** 2 * 200 +
           (Math.max(0, tall * 0.05 - tried.fall) / tall) ** 2 * 400;
@@ -1078,9 +1096,10 @@ function bookSpine(
   // The spine, down to where the lower bowl takes it, point for point the
   // upper bowl's leaving turned about the letter's middle.
   const middle = at(left + shape.across / 2, (top + bottom) / 2);
-  const arrives = at(middle.x * 2 - point.x, middle.y * 2 - point.y);
-  pieces.push(straight(point, arrives));
-  point = arrives;
+  const chord = Math.hypot(middle.x - point.x, middle.y - point.y);
+  const spineRadius = chord / (2 * sin(rad(S_BEND / 2)));
+  arc(spineRadius, S_BEND);
+  arc(spineRadius, -S_BEND);
   arc(r.middle, -second);
   arc(r.side, -30);
   arc(r.side, -30);
@@ -1134,6 +1153,18 @@ export function humanistS(style: Style): Recipe {
   };
 }
 
+/**
+ * How many degrees the s's spine turns each side of its middle: it leaves
+ * one bowl steeper than it crosses the letter and flattens into the middle,
+ * then steepens again into the other, one S-curve with no straight in it.
+ */
+const S_BEND = 24;
+
+/** How much lighter the lowercase s is drawn at a Black than its stem, along its level runs. */
+const S_LIGHTER = 0.2;
+/** And how much lighter across its uprights. */
+const S_UPRIGHT = 0.5;
+
 /** Lora's s spine against the stem the construction's pen gives it. */
 const S_SPINE = 1.25;
 
@@ -1175,7 +1206,12 @@ export function humanistAt(style: Style): Recipe {
   const centre = at(f.edge + R, f.cap * AT_MIDDLE);
   const stem = centre.x + inside * 0.25;
   const bowlW = inside * across - bowlSide;
-  const bowlH = inside * 0.74 - bowlSide * (1 - f.style.pen.contrast);
+  /*
+   * No more than so much taller than it is wide: past twice, an oval is drawn
+   * with flat sides (see `ovalCorner`), and a heavy weight's a in the ring
+   * was a slot with straight walls.
+   */
+  const bowlH = Math.min(inside * 0.74 - bowlSide * (1 - f.style.pen.contrast), bowlW * AT_TALL);
   const bowl = at(stem - bowlW, centre.y + inside * 0.08);
   const tail = (centre.x + R - stem) / 2;
   const turnY = Math.min(bowl.y - bowlH + tail, centre.y - 1);
@@ -1208,6 +1244,8 @@ export function humanistAt(style: Style): Recipe {
 
 /** Lora's at sign's ink reaches this far from its middle, against the cap height. */
 const AT_RADIUS = 0.51;
+/** How much taller than wide the at sign's small a may be. */
+const AT_TALL = 1.75;
 /** And its middle stands this high, against the cap height. */
 const AT_MIDDLE = 0.39;
 
@@ -1235,9 +1273,23 @@ function bookS(style: Style, capital: boolean): Recipe {
   return finish(
     f,
     [
-      lighter(
-        ink(f, bookSpine(f, height, f.edge, width, f.half * (1 - 0.45 * heavy)), f.end, f.end),
-        1 - 0.45 * heavy,
+      /*
+       * Lighter across its uprights than along its level runs past a Bold:
+       * lightened evenly, the s of an Ultra was a hairline beside its o,
+       * and on the stem's pen the insides of its turns folded to nibs in
+       * the counters where the bowls stand upright.
+       */
+      hairlined(
+        lighter(
+          ink(
+            f,
+            bookSpine(f, height, f.edge, width, f.half * (1 - S_UPRIGHT * heavy)),
+            f.end,
+            f.end,
+          ),
+          1 - S_LIGHTER * heavy,
+        ),
+        (1 - S_UPRIGHT * heavy) / (1 - S_LIGHTER * heavy),
       ),
     ],
     true,
@@ -1294,8 +1346,19 @@ const SEVEN_BOW = -0.035;
 export function humanistAmpersand(style: Style): Recipe {
   const f = frame(style);
   const C = f.cap;
-  const R = Math.max(C * 0.235, f.half * 1.4);
-  const r = Math.max(C * 0.12, f.half * 1.3);
+  /*
+   * The bowl and the loop drawn lighter past a Bold, as a Black's small
+   * counters are, so they can stay their own size: on the stem's pen they had
+   * to grow with it, and at an Ultra the two were more than the cap height
+   * one over the other and the loop was pushed out to the right, a second
+   * blot beside the first.
+   */
+  const share = 1 - AMP_LIGHTER * Math.min(1, Math.max(0, heaviness(f) - 0.5));
+  // And a little smaller past the Bold, so the two still stand one over the
+  // other at an Ultra rather than the loop being pushed out beside the bowl.
+  const past = Math.min(1, Math.max(0, (heaviness(f) - 0.45) / 1.05));
+  const R = Math.max(C * (AMP_BOWL - 0.04 * past), f.half * share * 1.4);
+  const r = Math.max(C * (AMP_LOOP - 0.01 * past), f.half * share * 1.3);
   const bowlAt = at(f.edge + R, f.dip(0) + R);
   /*
    * The loop over the bowl, and where a heavy pen leaves the two no room
@@ -1304,7 +1367,7 @@ export function humanistAmpersand(style: Style): Recipe {
    */
   const rise = f.crest(C) - r - bowlAt.y;
   const clear = (r + R) * 1.02;
-  const over = Math.max(C * 0.02, Math.sqrt(Math.max(0, clear * clear - rise * rise)));
+  const over = Math.max(C * 0.05, Math.sqrt(Math.max(0, clear * clear - rise * rise)));
   const loopAt = at(bowlAt.x + over, f.crest(C) - r);
   // The run that crosses from the bowl's upper left to the loop's lower
   // right: the tangent common to both, between them.
@@ -1322,12 +1385,29 @@ export function humanistAmpersand(style: Style): Recipe {
   // The arm, standing on the bowl's right a little up from its middle.
   const armFrom = pointOn(bowlAt, R, ARM_LEAVES);
   const head = Math.max(f.hangs(C * 0.5), armFrom.y + f.half);
-  const lean = Math.tan((ARM_LEAVES * Math.PI) / 180);
-  const armTop = at(armFrom.x - (head - armFrom.y) * lean, head);
-  // The diagonal, off the loop's lower left and down into its foot.
-  const leaves = 220;
+  const armTop = at(armFrom.x + R * ARM_OUT, head);
+  /*
+   * The diagonal, laid through the bowl's lower right, where the arm leaves
+   * it, and up at DIAGONAL degrees until it meets the loop: so the bowl's
+   * counter is closed along its upper right by the diagonal and the arm
+   * stands outside it, as Lora's does. Laid off the loop's lower left at a
+   * fixed slope, the diagonal passed the bowl by and the arm stood up inside
+   * the counter as a stick.
+   */
+  const up = at(-Math.cos((DIAGONAL * Math.PI) / 180), Math.sin((DIAGONAL * Math.PI) / 180));
+  const toLoop = at(armFrom.x - loopAt.x, armFrom.y - loopAt.y);
+  const b = toLoop.x * up.x + toLoop.y * up.y;
+  const c = toLoop.x * toLoop.x + toLoop.y * toLoop.y - r * r;
+  const hits = b * b - c;
+  const t = hits > 0 ? -b - Math.sqrt(hits) : -1;
+  const met = t > 0 ? at(armFrom.x + up.x * t, armFrom.y + up.y * t) : pointOn(loopAt, r, 220);
+  const at360 = (degrees(Math.atan2(met.y - loopAt.y, met.x - loopAt.x)) + 360) % 360;
+  const leaves = at360 > 180 && at360 < 330 ? at360 : 220;
   const from = pointOn(loopAt, r, leaves);
-  const slope = Math.tan((50 * Math.PI) / 180);
+  const slope =
+    armFrom.x - from.x > 1 && from.y > armFrom.y
+      ? (from.y - armFrom.y) / (armFrom.x - from.x)
+      : Math.tan((DIAGONAL * Math.PI) / 180);
   const foot = Math.max(C * 0.12, f.half * 1.6);
   const line = f.sits(0);
   const kneeY = line + foot * (1 - Math.sin((40 * Math.PI) / 180));
@@ -1336,40 +1416,110 @@ export function humanistAmpersand(style: Style): Recipe {
   const heel = at(turnAt.x, line);
   const reach = f.half + (f.end.projection ?? f.half * 0.6);
   return finish(f, [
-    ink(
-      f,
-      chain(pinned(turn(bowlAt, R, ARM_LEAVES, bowlTo), 4), straight(onBowl, onLoop)),
-      BUTT,
-      BUTT,
+    lighter(
+      ink(
+        f,
+        chain(pinned(turn(bowlAt, R, ARM_LEAVES, bowlTo), 4), straight(onBowl, onLoop)),
+        BUTT,
+        BUTT,
+      ),
+      share,
     ),
-    // The arm on its own, run on a little way down into the bowl: at a heavy
-    // weight the run up to the loop crosses over it.
-    ink(
-      f,
-      chain(straight(armTop, armFrom), pinned(turn(bowlAt, R, ARM_LEAVES, ARM_LEAVES - 12), 1)),
-      BUTT,
-      BUTT,
+    // The arm on its own, run on a little way down into the bowl, and as
+    // light as the bowl it leaves: on the stem's pen its foot stood out into
+    // the bowl's counter as a nib.
+    lighter(
+      ink(
+        f,
+        chain(
+          pinned(arriving(armTop, armFrom, ARM_LEAVES - 90), 1),
+          pinned(turn(bowlAt, R, ARM_LEAVES, ARM_LEAVES - 12), 1),
+        ),
+        BUTT,
+        BUTT,
+      ),
+      share,
     ),
     // The loop on its own, taken on from a little back along the run into
     // it: in one run with it, the loop's end came round across the run.
-    ink(f, pinned(turn(loopAt, r, loopFrom - 10, leaves + 360), 4), BUTT, BUTT),
+    lighter(ink(f, pinned(turn(loopAt, r, loopFrom - 10, leaves + 360), 4), BUTT, BUTT), share),
+    // The diagonal as light as the loop it leaves, or its full pen stood out
+    // of the loop's edge as a step.
+    lighter(
+      ink(
+        f,
+        chain(
+          pinned(turn(loopAt, r, leaves - 12, leaves), 1),
+          straight(from, knee),
+          pinned(turn(turnAt, foot, 220, 270), 1),
+          straight(heel, at(heel.x + Math.min(f.half * 1.2, C * 0.07), line)),
+        ),
+        BUTT,
+        BUTT,
+      ),
+      share,
+    ),
+    // Reaching back less far at a Black, over a counter that has closed up
+    // under it: carried its full length, its end stood into the bowl's.
     ink(
       f,
-      chain(
-        pinned(turn(loopAt, r, leaves - 12, leaves), 1),
-        straight(from, knee),
-        pinned(turn(turnAt, foot, 220, 270), 1),
-        straight(heel, at(heel.x + Math.min(f.half * 1.2, C * 0.07), line)),
+      straight(
+        at(armTop.x - reach * (1 - 1.5 * (1 - share)), head),
+        at(armTop.x + reach * 1.1, head),
       ),
       BUTT,
       BUTT,
     ),
-    ink(f, straight(at(armTop.x - reach, head), at(armTop.x + reach * 1.1, head)), BUTT, BUTT),
   ]);
 }
 
 /** Where the ampersand's arm leaves its bowl, in degrees round from the right. */
-const ARM_LEAVES = 8;
+const ARM_LEAVES = -10;
+/** The ampersand's bowl and loop, their radii against the cap height, as Lora's. */
+const AMP_BOWL = 0.26;
+const AMP_LOOP = 0.19;
+/** How much lighter the bowl and the loop are drawn at a Black. */
+const AMP_LIGHTER = 0.3;
+/** How steeply the ampersand's diagonal falls, in degrees. */
+const DIAGONAL = 45;
+/** How far right of where it leaves the bowl the arm's head stands, against the bowl's radius. */
+const ARM_OUT = 0.1;
+
+/**
+ * The circular arc from `from` to `to` that arrives at `to` travelling at
+ * `heading` degrees: so a stroke carried on from there by a turn goes on
+ * without a corner. Straight where no arc will do.
+ */
+function arriving(from: Vec2, to: Vec2, heading: number): Spine {
+  const way = at(Math.cos((heading * Math.PI) / 180), Math.sin((heading * Math.PI) / 180));
+  const left = at(-way.y, way.x);
+  const back = at(from.x - to.x, from.y - to.y);
+  const across = back.x * left.x + back.y * left.y;
+  if (Math.abs(across) < 1e-6) return straight(from, to);
+  // Signed: the centre stands to the left of the way it arrives where positive.
+  const radius = (back.x * back.x + back.y * back.y) / (2 * across);
+  const centre = at(to.x + left.x * radius, to.y + left.y * radius);
+  const startAngle = Math.atan2(from.y - centre.y, from.x - centre.x);
+  const endAngle = Math.atan2(to.y - centre.y, to.x - centre.x);
+  // Turning left (anticlockwise) about a centre on the left.
+  const positive = radius > 0;
+  let end = endAngle;
+  if (positive) while (end < startAngle) end += Math.PI * 2;
+  else while (end > startAngle) end -= Math.PI * 2;
+  return {
+    segments: [
+      {
+        kind: "arc",
+        centre,
+        radius: Math.abs(radius),
+        startAngle,
+        endAngle: end,
+        sweepPositive: positive,
+      },
+    ],
+    closed: false,
+  };
+}
 
 /** A turn drawn in so many pieces at every weight. */
 function pinned(spine: Spine, pieces: number): Spine {

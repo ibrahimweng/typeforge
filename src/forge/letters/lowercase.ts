@@ -155,7 +155,11 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * a bowl changed there moved where a break laid along the bar falls, so
      * that it sliced the bowl. Past it the eye closes without the help.
      */
-    const light = bookish(f) ? heavy : Math.max(0, heavy - 1.1) * 2;
+    /*
+     * And no wider than a Black's: carried on past it, an Ultra's e stood
+     * wider than its o, a slab of ink with a slot in it.
+     */
+    const light = bookish(f) ? Math.min(heavy, 0.9) : Math.max(0, heavy - 1.1) * 2;
     const beltWidth = f.bowl + f.half * 0.3 * light;
     const opens =
       ((oval

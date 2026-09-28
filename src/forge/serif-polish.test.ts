@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { contoursBounds, inkRunsAt } from "@/font/geometry";
 import { drawLetter } from "./build";
 import { formOf, startFrom } from "./document";
+import { humanistS } from "./letters/humanist";
 import { SERIF, type Style } from "./style";
 
 const forge = startFrom(SERIF);
@@ -164,6 +165,74 @@ describe("the Serif's figures and marks", () => {
         return runs[runs.length - 1][1] - runs[0][0];
       };
       expect(extent(4), `7 at ${weight}`).toBeLessThan(extent(CAP * 0.3) * 1.2);
+    }
+  });
+});
+
+describe("the Serif past a close look at every weight, round two", () => {
+  const ink = (name: string, weight: number) => {
+    const b = box(name, weight);
+    return b.xMax - b.xMin;
+  };
+
+  it("draws the s's spine as a curve, with no straight run between the bowls", () => {
+    for (const weight of [87, 142, 260]) {
+      const drawn = humanistS(at(weight));
+      const lines = drawn.strokes.flatMap((stroke) =>
+        stroke.spine.segments.filter(
+          (one) =>
+            one.kind === "line" &&
+            Math.abs(one.to.y - one.from.y) > 1 &&
+            Math.abs(one.to.x - one.from.x) > 1,
+        ),
+      );
+      // The runs along the top and the foot are level; a slanting straight
+      // run is the old spine laid across as a band.
+      expect(lines, `s at ${weight}`).toEqual([]);
+    }
+  });
+
+  it("keeps the ampersand near Lora's width and its own at a Black", () => {
+    // Lora's is 667 across at the Regular and 652 at the Bold.
+    expect(ink("ampersand", 87)).toBeGreaterThan(667 * 0.85);
+    expect(ink("ampersand", 87)).toBeLessThan(667 * 1.08);
+    expect(ink("ampersand", 142)).toBeLessThan(652 * 1.12);
+    // At an Ultra no wider than the H: the loop was pushed out beside the
+    // bowl, and the mark ran 1200 across.
+    expect(ink("ampersand", 260)).toBeLessThan(ink("H", 260) * 0.8);
+    // The loop over the bowl, not beside it.
+    const middle = (y: number) => {
+      const runs = row("ampersand", 260, y);
+      return (runs[0][0] + runs[runs.length - 1][1]) / 2;
+    };
+    expect(Math.abs(middle(CAP * 0.87) - middle(CAP * 0.17))).toBeLessThan(60);
+    expect(box("ampersand", 260).yMax).toBeLessThan(CAP + 20);
+  });
+
+  it("widens the open capitals past the Bold as the others widen", () => {
+    for (const name of ["C", "E", "T", "Z", "z"]) {
+      const widths = [142, 200, 260].map((weight) => ink(name, weight));
+      expect(widths[1], `${name} at 200`).toBeGreaterThan(widths[0]);
+      expect(widths[2], `${name} at 260`).toBeGreaterThan(widths[1]);
+    }
+    // And the M no more than Lora's M/H of 1.25 and a little over.
+    expect(ink("M", 260) / ink("H", 260)).toBeLessThan(1.33);
+  });
+
+  it("holds the g's loop on the descender at a Black", () => {
+    for (const weight of [200, 260]) {
+      expect(box("g", weight).yMin, `g at ${weight}`).toBeGreaterThan(-275);
+    }
+  });
+
+  it("turns the j's tail no tighter than keeps a counter between its drop and its stem", () => {
+    for (const weight of [142, 200, 260]) {
+      // Across the tail a stem's height over its foot: the drop, paper, then
+      // the stem -- the counter was a hairline wedge between them.
+      const runs = row("j", weight, SERIF.metrics.descender + weight * 0.9);
+      expect(runs.length, `j at ${weight}`).toBeGreaterThanOrEqual(2);
+      const gap = runs[1][0] - runs[0][1];
+      expect(gap, `j at ${weight}`).toBeGreaterThan(weight * 0.45);
     }
   });
 });

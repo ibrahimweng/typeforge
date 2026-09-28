@@ -346,3 +346,34 @@ describe("a wave", () => {
     }
   });
 });
+
+describe("a long oval", () => {
+  /*
+   * Three even turns a quarter fit a round oval closely and a long one badly:
+   * twice as wide as it was tall, the g's loop came out a lens with points at
+   * its ends, and wider still a stadium with flat runs along the top.
+   */
+  it("stays near the ellipse its box holds, however long it is", () => {
+    for (const [w, h] of [
+      [200, 90],
+      [200, 60],
+      [100, 190],
+      [100, 250],
+      [130, 100],
+    ]) {
+      const spine = bowl({ x: 0, y: 0 }, w, h, 1, 5, 1e-4);
+      let worst = 0;
+      for (const one of spine.segments) {
+        expect(one.kind, `${w} by ${h}`).toBe("arc");
+        if (one.kind !== "arc") continue;
+        for (let step = 0; step <= 8; step++) {
+          const angle = one.startAngle + ((one.endAngle - one.startAngle) * step) / 8;
+          const x = one.centre.x + one.radius * Math.cos(angle);
+          const y = one.centre.y + one.radius * Math.sin(angle);
+          worst = Math.max(worst, Math.abs(Math.hypot(x / w, y / h) - 1));
+        }
+      }
+      expect(worst, `${w} by ${h}`).toBeLessThan(0.02);
+    }
+  });
+});

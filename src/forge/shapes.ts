@@ -839,11 +839,9 @@ function superSegments(
    * of thirty degrees each whose radii run evenly from one end to the other.
    */
   if (whole && superness <= OVAL) {
-    const oval = ovalCorner(cornerW, cornerH);
+    const oval = ovalCorner(cornerW, cornerH, pen);
     if (oval && Math.min(oval.side, oval.tight, oval.crown) >= pen * 0.999) {
-      ({ tight, side, crown } = oval);
-      sideTurn = Math.PI / 6;
-      crownTurn = Math.PI / 6;
+      ({ tight, side, crown, sideTurn, crownTurn } = oval);
     }
   }
   const right = centre.x + halfWidth;
@@ -931,23 +929,105 @@ function superSegments(
  */
 export const OVAL = 1e-3;
 
+/** How uneven an oval's three even turns may be before they are split otherwise: see `ovalCorner`. */
+const EVEN_ENOUGH = 0.01;
+
 /**
- * The three radii of an oval's quarter in a `w` by `h` box, each arc turning
- * thirty degrees and the middle one's radius halfway between the other two:
- * leaving the side upright and arriving on the crown level are then two
- * linear conditions on the side's radius and the crown's. Null where the box
- * is too long for that to keep every radius positive.
+ * The three radii of an oval's quarter in a `w` by `h` box, and the turns of
+ * the arcs at its side and its crown: thirty degrees each where that fits the
+ * ellipse closely, and otherwise split to fit it, the middle one's radius
+ * halfway between the other two. Leaving the side upright and arriving on the
+ * crown level are then two linear conditions on the side's radius and the
+ * crown's. Null where no split keeps every radius positive.
  */
-function ovalCorner(w: number, h: number): { side: number; tight: number; crown: number } | null {
-  const s = 0.5;
-  const c = Math.sqrt(3) / 2;
-  const p = 1 - c + (c - s) / 2;
-  const q = s + (c - s) / 2;
-  const determinant = p * p - q * q;
-  const side = (w * p - h * q) / determinant;
-  const crown = (h * p - w * q) / determinant;
-  if (!(side > 0 && crown > 0)) return null;
-  return { side, tight: (side + crown) / 2, crown };
+function ovalCorner(
+  w: number,
+  h: number,
+  pen = 0,
+): { side: number; tight: number; crown: number; sideTurn: number; crownTurn: number } | null {
+  /*
+   * The side's arc turning `a` and the crown's `b`, the middle one the rest:
+   * leaving upright and arriving level are then
+   *   side (1 - A) + crown A = w,  side B + crown (1 - B) = h,
+   * with A = (cos a + sin b) / 2 and B = (sin a + cos b) / 2.
+   */
+  const solve = (a: number, b: number) => {
+    const A = (Math.cos(a) + Math.sin(b)) / 2;
+    const B = (Math.sin(a) + Math.cos(b)) / 2;
+    const det = 1 - A - B;
+    if (Math.abs(det) < 1e-9) return null;
+    const side = (w * (1 - B) - A * h) / det;
+    const crown = ((1 - A) * h - B * w) / det;
+    if (!(side > 0 && crown > 0)) return null;
+    return { side, tight: (side + crown) / 2, crown, sideTurn: a, crownTurn: b };
+  };
+  /*
+   * How far a split strays from the ellipse in its box: three even turns
+   * fit a round oval closely, and a long one badly -- an end arc several
+   * times tighter than the next reads as a point there.
+   */
+  const uneven = (one: {
+    side: number;
+    tight: number;
+    crown: number;
+    sideTurn: number;
+    crownTurn: number;
+  }): number => {
+    // How far the three arcs stray from the ellipse the box holds, at worst.
+    const first = { x: w - one.side, y: 0 };
+    const middle = {
+      x: first.x + (one.side - one.tight) * Math.cos(one.sideTurn),
+      y: first.y + (one.side - one.tight) * Math.sin(one.sideTurn),
+    };
+    const lastAt = Math.PI / 2 - one.crownTurn;
+    const last = {
+      x: middle.x + (one.tight - one.crown) * Math.cos(lastAt),
+      y: middle.y + (one.tight - one.crown) * Math.sin(lastAt),
+    };
+    let worst = 0;
+    const arcs: Array<[{ x: number; y: number }, number, number, number]> = [
+      [first, one.side, 0, one.sideTurn],
+      [middle, one.tight, one.sideTurn, lastAt],
+      [last, one.crown, lastAt, Math.PI / 2],
+    ];
+    for (const [centre, radius, from, to] of arcs) {
+      for (let step = 1; step < 4; step++) {
+        const angle = from + ((to - from) * step) / 4;
+        const x = centre.x + radius * Math.cos(angle);
+        const y = centre.y + radius * Math.sin(angle);
+        worst = Math.max(worst, Math.abs(Math.hypot(x / w, y / h) - 1));
+      }
+    }
+    return worst;
+  };
+  const third = Math.PI / 6;
+  const even = solve(third, third);
+  if (even && Math.min(even.side, even.crown) >= pen * 0.999 && uneven(even) <= EVEN_ENOUGH) {
+    return even;
+  }
+  /*
+   * Too long a box for three even turns -- the loop of a g, twice and more as
+   * wide as it is tall -- takes the tight arc round further at the ends and
+   * the flat one further along the long side, as an ellipse does, rather than
+   * giving up for a rounded rectangle whose straight runs read as a stadium.
+   * The split that strays least from the ellipse its box holds, among those
+   * that keep every arc rounder than the pen.
+   */
+  let best: ReturnType<typeof solve> = null;
+  let cost = Infinity;
+  const degree = Math.PI / 180;
+  for (let a = 4; a <= 80; a++) {
+    for (let b = 4; a + b <= 86; b++) {
+      const tried = solve(a * degree, b * degree);
+      if (!tried || Math.min(tried.side, tried.crown) < pen * 0.999) continue;
+      const off = uneven(tried);
+      if (off < cost) {
+        cost = off;
+        best = tried;
+      }
+    }
+  }
+  return best ?? (even && Math.min(even.side, even.crown) >= pen * 0.999 ? even : null);
 }
 
 /**
