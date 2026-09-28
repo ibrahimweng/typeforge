@@ -228,7 +228,16 @@ describe("the split where a stroke is drawn over another", () => {
       .filter(([from, to]) => to - from > 10)
       .at(-1)!;
     const middle = (left + right) / 2;
-    for (const y of [120, 330, 420, 480]) {
+    /*
+     * Up the stem as far as the stem goes. The a rebuilt on Geist's measures
+     * brings its arch down into the stem on a round shoulder, so at 480 the
+     * ink has already turned away left of the stem's middle, cut or not.
+     */
+    const heights = [120, 330, 420, 480].filter((y) =>
+      inkRunsAt(plain, y).some(([from, to]) => from <= middle && to >= middle),
+    );
+    expect(heights.length).toBeGreaterThanOrEqual(3);
+    for (const y of heights) {
       const stem = inkRunsAt(cut, y).find(([from, to]) => from <= middle && to >= middle);
       expect(stem, `at ${y}`).toBeDefined();
       expect(stem![1] - stem![0], `at ${y}`).toBeGreaterThan((right - left) * 0.95);

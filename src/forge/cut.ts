@@ -225,7 +225,18 @@ export function cutInk(
    */
   if (knife.length > 1) knife.splice(0, knife.length, ...unite(knife, "winding"));
   shape = take(shape, knife);
-  shape = withoutSlivers(shape, straight, Math.min(stem * 0.07, hairlineOf(strokes, stem) * 0.3));
+  /*
+   * Only on a letter drawn here. The sweep is told how thin the letter means
+   * to be by its strokes, and a letter out of a font has none to tell it: its
+   * hairline is anybody's guess, and the sweep could take the one it has for
+   * a sliver. And it is the dearest thing a cut does, three booleans round a
+   * figure of two dozen sides: asked of every glyph of a font somebody opened
+   * -- six thousand in the sample -- it made writing slots into it ten times
+   * slower, and the file never came back inside two minutes.
+   */
+  if (strokes.length > 0) {
+    shape = withoutSlivers(shape, straight, Math.min(stem * 0.07, hairlineOf(strokes, stem) * 0.3));
+  }
 
   const chamfered: Vec2[] = [];
   if (cuts.chamfer.on) shape = take(shape, chamferTool(shape, cuts.chamfer, stem, chamfered));
@@ -314,13 +325,31 @@ function withoutHairs(contour: Contour): Contour {
   return nodes === contour.nodes ? contour : { ...contour, nodes };
 }
 
-/** The width of the thinnest stroke a letter draws, or the stem without strokes. */
+/**
+ * The width of the thinnest stroke a letter draws, or the stem without strokes.
+ *
+ * Only of the strokes that show their own width. A stroke laid inside the ink
+ * of the others, its centre-line under their ink all along, only thickens
+ * them: the heavy Sans s swells its sides with half its pen, carried out so
+ * the swell's inside is buried in the bowl, and read as the letter's hairline
+ * that half pen let a slot's splinter half a hairline thick stand as a piece.
+ */
 function hairlineOf(strokes: Stroke[], stem: number): number {
+  const samples = strokes.map((stroke) => alongSpine(stroke.spine, SAMPLES));
+  const buried = (index: number): boolean =>
+    strokes.length > 1 &&
+    samples[index].every((point) =>
+      strokes.some((other, at) => {
+        if (at === index || samples[at].length < 2) return false;
+        const nearest = nearestOn(samples[at], point);
+        return nearest.distance < halfWidth(other.pen, { x: -nearest.along.y, y: nearest.along.x });
+      }),
+    );
   return Math.min(
     stem,
-    ...strokes.map(
-      (stroke) => stroke.pen.weight * (1 - Math.min(Math.max(stroke.pen.contrast, 0), 0.95)),
-    ),
+    ...strokes
+      .filter((_, index) => !buried(index))
+      .map((stroke) => stroke.pen.weight * (1 - Math.min(Math.max(stroke.pen.contrast, 0), 0.95))),
   );
 }
 
