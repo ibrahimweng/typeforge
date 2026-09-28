@@ -66,6 +66,12 @@ at the Regular and 20 from the SemiBold to the Black against the current
 Geist. Their right sides now stand out by that (the G's spur with its ring),
 and all five are within 8 of Geist's width at every weight.
 
+**A, V, W, Y, K and N.** Measured off an older Geist, the diagonal
+capitals stood 2 per cent narrow at the Regular and grew 2 per cent too wide
+by the Black; the K and N stood narrow throughout. Each is now drawn to the
+current Geist's width, within 6 units from the Thin to UltraBlack and 9 at
+the Black.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

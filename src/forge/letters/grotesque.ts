@@ -114,6 +114,19 @@ function roundGain(f: Frame, regular: number, heavy: number, thin = 0): number {
   return regular + (heavy - regular) * Math.min(1, t / 0.41);
 }
 
+/**
+ * How much wider (a share) a letter measured off an older Geist is drawn to
+ * stand where the current Geist's does: `regular` at the Regular, `black` at
+ * the Sans's own Black (UltraBlack, a stem of 172), running on the same way
+ * past it, and `thin` at the Thin.
+ */
+function refit(f: Frame, regular: number, black: number, thin = regular): number {
+  const light = thinness(f);
+  if (light > 0) return 1 + regular + (thin - regular) * light;
+  const t = Math.min(Math.max(0, heaviness(f) / 0.67), 2.24);
+  return 1 + regular + (black - regular) * t;
+}
+
 /** A turn drawn in so many pieces at every weight: see `SpineArc.pieces`. */
 function pinned(spine: Spine, pieces: number): Spine {
   return { ...spine, segments: spine.segments.map((one) => ({ ...one, pieces })) };
@@ -1756,7 +1769,7 @@ export function grotesqueCapitalK(style: Style): Recipe {
   const f = frame(style);
   return finish(f, [
     ink(f, straight(at(f.edge, 0), at(f.edge, f.cap)), f.end, f.end),
-    ...kay(f, large(f, 1), f.cap, 136, [234, 550, 710], [397, 572, 710]),
+    ...kay(f, large(f, 1) * refit(f, 0.015, 0.03), f.cap, 136, [234, 550, 710], [397, 572, 710]),
   ]);
 }
 
@@ -1916,7 +1929,8 @@ export function grotesqueQuoteDouble(style: Style): Recipe {
  */
 export function grotesqueW(style: Style): Recipe {
   const f = frame(style);
-  const [u, t] = spread(f, 1);
+  const [wide, t] = spread(f, 1);
+  const u = wide * refit(f, 0.022, -0.03, 0);
   const X = (x: number) => f.edge + x * u;
   const apex = 386.5 + 6.5 * t;
   const outer = 179 + 4.4 * t;
@@ -3588,7 +3602,8 @@ export function grotesqueV(style: Style): Recipe {
 
 export function grotesqueCapitalV(style: Style): Recipe {
   const f = frame(style);
-  const [u, t] = spread(f, 1);
+  const [wide, t] = spread(f, 1);
+  const u = wide * refit(f, 0.02, -0.031);
   return finish(
     f,
     vee(
@@ -3613,7 +3628,7 @@ export function grotesqueCapitalV(style: Style): Recipe {
 export function grotesqueCapitalA(style: Style): Recipe {
   const f = frame(style);
   const [wide, t] = spread(f, 1);
-  const u = wide * thinned(f, 0.04);
+  const u = wide * thinned(f, 0.04) * refit(f, 0.018, -0.03, 0);
   const legs = vee(
     f,
     u,
@@ -3687,7 +3702,8 @@ export function grotesqueSmallW(style: Style): Recipe {
  */
 export function grotesqueCapitalY(style: Style): Recipe {
   const f = frame(style);
-  const [u, t] = spread(f, 1);
+  const [wide, t] = spread(f, 1);
+  const u = wide * refit(f, 0.019, -0.027, 0.011);
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
   const X = (x: number) => f.edge + (x - lerp(43, 86)) * u;
   const stem = X(lerp(295, 332.5));
@@ -3707,7 +3723,8 @@ export function grotesqueCapitalY(style: Style): Recipe {
  */
 export function grotesqueN(style: Style): Recipe {
   const f = frame(style);
-  const [u, t] = spread(f, 0.5);
+  const [wide, t] = spread(f, 0.5);
+  const u = wide * refit(f, 0.022, 0.003, 0.007);
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
   const right = f.edge + lerp(467, 443) * u;
   return finish(f, [

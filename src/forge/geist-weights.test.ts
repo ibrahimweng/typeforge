@@ -659,6 +659,14 @@ describe("the round capitals", () => {
       C: [581, 618, 643, 668, 680],
       P: [477, 506, 540, 574, 591],
       R: [479, 518, 554, 591, 609],
+      // And the diagonal capitals, which stood 2 per cent narrow at the
+      // Regular and grew 2 per cent too wide by the Black.
+      A: [564, 628, 671, 714, 735],
+      V: [594, 627, 671, 715, 736],
+      W: [830, 869, 917, 965, 989],
+      Y: [545, 588, 627, 665, 684],
+      K: [499, 533, 579, 626, 649],
+      N: [519, 559, 588, 617, 631],
     };
     for (const [name, widths] of Object.entries(geist)) {
       for (const [index, weight] of [30, 87, 130, 172, 194].entries()) {
