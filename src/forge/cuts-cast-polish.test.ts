@@ -81,6 +81,31 @@ describe("inline with a rim thrown after it", () => {
   });
 });
 
+describe("a rim grown round an inline", () => {
+  it("keeps every groove open, round an island of ink as round a counter", () => {
+    /*
+     * The groove round the counter of an o, an e or a B leaves the counter's
+     * wall standing in it as an island. The rim read the groove as deep as
+     * the whole bowl, grew it shut from outside while the island grew into it
+     * from inside, and the letters came back as solid blobs; and paper lost
+     * the loop round the groove of an e, which filled it just the same.
+     */
+    for (const weight of [87, 30]) {
+      const cut = forgeOf("Sans", weight, { cuts: { inline: {} } });
+      const rimmed = forgeOf("Sans", weight, {
+        cuts: { inline: {} },
+        cast: { outline: {} },
+        order: "after",
+      });
+      for (const letter of "oeabgRB") {
+        expect(counters(drawn(letter, rimmed)).length, `${weight} ${letter}`).toBe(
+          counters(drawn(letter, cut)).length,
+        );
+      }
+    }
+  });
+});
+
 describe("the inline on a contrast face", () => {
   it("runs down the thick strokes and leaves the hairlines alone", () => {
     for (const weight of [87, 200]) {
@@ -210,8 +235,28 @@ describe("the split where a stroke is drawn over another", () => {
       // second arch starts a gap clear of the stem's side.
       const shoulder = runs.find(([from, to]) => from < left + 5 && to > left + 5);
       const next = runs.find(([from]) => from > left + 5);
-      expect(shoulder && shoulder[1], `at ${y}`).toBeLessThan(edge + 1);
-      expect(next && next[0], `at ${y}`).toBeGreaterThan(edge + gap * 0.8);
+      expect(shoulder?.[1], `at ${y}`).toBeLessThan(edge + 1);
+      expect(next?.[0], `at ${y}`).toBeGreaterThan(edge + gap * 0.8);
+    }
+  });
+});
+
+describe("the split through a rim thrown first", () => {
+  it("cuts through the rim, leaving no hairline across the gap", () => {
+    // The rim grown first stood across every gap as a hairline, holding the
+    // crossbar of an A and the arm of a k on by a thread.
+    for (const weight of [87, 200]) {
+      const split = forgeOf("Sans", weight, { cuts: { split: {} } });
+      const both = forgeOf("Sans", weight, {
+        cuts: { split: {} },
+        cast: { outline: {} },
+        order: "before",
+      });
+      for (const letter of "AHk") {
+        expect(piecesOf(drawn(letter, both)), `${weight} ${letter}`).toBe(
+          piecesOf(drawn(letter, split)),
+        );
+      }
     }
   });
 });

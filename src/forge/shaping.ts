@@ -53,7 +53,12 @@ export function shaped(
   const breaks = cutting && casting && cast!.weld.on ? breaksIn(strokes, scale, cuts) : undefined;
   if (casting && cast!.order === "before") {
     const shadowed = castInk(ink, strokes, scale, cast!, roles, breaks);
-    return cutting ? cutInk(shadowed, strokes, scale, cuts!, "winding") : { contours: shadowed };
+    if (!cutting) return { contours: shadowed };
+    // How far a rim grew the letter, for the breaks, which are found on the
+    // skeleton and have to be told the letter is no longer the one it drew.
+    return cutInk(shadowed, strokes, scale, cuts!, "winding", {
+      grown: cast!.outline.on ? cast!.outline.width * Math.max(scale.stem, 1) : 0,
+    });
   }
 
   const carved = cutting ? cutInk(ink, strokes, scale, cuts!, roles) : { contours: ink };

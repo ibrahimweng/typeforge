@@ -169,6 +169,8 @@ export function cutInk(
   scale: CutScale,
   cuts: Cuts,
   roles: Roles = "winding",
+  // What the cast did to the letter first, when it went first: see `Cast`.
+  cast?: CastFirst,
 ): Cutting {
   if (!reaches(cuts, strokes) || ink.length === 0 || !loaded()) return { contours: ink };
 
@@ -204,7 +206,7 @@ export function cutInk(
   if (cuts.inline.on) knife.push(...inlineTool(shape, strokes, cuts.inline, stem));
   if (cuts.slot.on) knife.push(...slotTool(bounds, cuts.slot, stem, scale));
   if (cuts.tooth.on) knife.push(...toothTool(bounds, cuts.tooth, stem, scale));
-  if (cuts.split.on) knife.push(...splitTool(strokes, cuts.split, stem));
+  if (cuts.split.on) knife.push(...splitTool(strokes, cuts.split, stem, cast));
   /*
    * Fused here rather than left to the subtraction, when there is more than
    * one piece.
@@ -741,8 +743,41 @@ function runsAlongside(stroke: Stroke, other: Stroke): boolean {
  * rather than solved: the answer only has to be near the join, because what is
  * put there is a band wider than the stroke.
  */
-function splitTool(strokes: Stroke[], split: Cuts["split"], stem: number): Contour[] {
-  return splitPlan(strokes, split, stem).knives;
+/**
+ * What a cast thrown before the cuts has done to the letter they are cutting:
+ * how far a rim grew it all round.
+ */
+export interface CastFirst {
+  grown: number;
+}
+
+function splitTool(
+  strokes: Stroke[],
+  split: Cuts["split"],
+  stem: number,
+  cast?: CastFirst,
+): Contour[] {
+  /*
+   * Cut through what the cast put on, when it went first.
+   *
+   * The breaks are found on the skeleton and sized to the strokes as they
+   * were drawn, and a rim grown first stood across every gap as a hairline
+   * -- over the crossbar of an A, the arm of a k -- where the knife stopped
+   * at the stroke's own edge and the rim did not. Planned on strokes as fat
+   * as the rim made them, each gap lies flush against the rimmed side of the
+   * stroke that stays and runs through the rim of the one that leaves. A
+   * shadow is left as it is: the block and its shadow are one thing sliced,
+   * which is what putting the cast first asks for.
+   */
+  const grown = cast?.grown ?? 0;
+  const fat =
+    grown > 0
+      ? strokes.map((stroke) => ({
+          ...stroke,
+          pen: { ...stroke.pen, weight: stroke.pen.weight + grown * 2.4 },
+        }))
+      : strokes;
+  return splitPlan(fat, split, stem).knives;
 }
 
 /** The knife the breaks are cut with, and which pairs of strokes it parts. */

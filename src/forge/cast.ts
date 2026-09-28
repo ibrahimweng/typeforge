@@ -238,7 +238,13 @@ function sweptAlong(shape: Contour[], dx: number, dy: number): Contour[] {
  * be made the same way: each solid's loop resolved on its own, each counter's
  * paper worked out on its own and taken back out, islands laid back on.
  */
-function swept(shape: Contour[], convolve: (contour: Contour) => Contour): Contour[] {
+function swept(
+  shape: Contour[],
+  convolve: (contour: Contour) => Contour,
+  // How far the figure reaches from a counter's edge, where it is a figure
+  // grown round rather than a line thrown: what `shrunk` checks an answer by.
+  reachOf?: (contour: Contour) => number,
+): Contour[] {
   const solids = shape.filter((contour) => contour.nodes.length >= 2 && contourArea(contour) >= 0);
   const counters = shape.filter((contour) => contour.nodes.length >= 2 && contourArea(contour) < 0);
   if (solids.length === 0) return shape;
@@ -276,7 +282,15 @@ function swept(shape: Contour[], convolve: (contour: Contour) => Contour): Conto
       { x: box.xMax + 10, y: box.yMax + 10 },
       { x: box.xMin - 10, y: box.yMax + 10 },
     ]);
-    return subtract([reverseContour(counter)], filled([frame, loop]), "winding");
+    /*
+     * Checked, where there is a reach to check it by. The groove of an inline
+     * round the eye of an e is a counter with the eye's wall standing in it,
+     * and paper lost the loop round it: what survived came back as eight
+     * square units, and the rim filled the groove in solid.
+     */
+    const paper = reverseContour(counter);
+    const checked = reachOf ? shrunk(paper, loop, frame, reachOf(counter)) : null;
+    return checked ?? subtract([paper], filled([frame, loop]), "winding");
   });
   let result = kept.length > 0 ? subtract(ground, kept, "winding") : ground;
   /*
@@ -293,7 +307,8 @@ function swept(shape: Contour[], convolve: (contour: Contour) => Contour): Conto
     const inner = counters.filter((counter) =>
       islands.some((island) => contourContainsPoint(island, counter.nodes[0].point)),
     );
-    const again = inner.length > 0 ? swept([...islands, ...inner], convolve) : sweep(islands);
+    const again =
+      inner.length > 0 ? swept([...islands, ...inner], convolve, reachOf) : sweep(islands);
     result = unite([...result, ...again], "winding", "whole");
   }
   return tidied(result);
@@ -611,15 +626,39 @@ export function outlined(shape: Contour[], width: number): Contour[] {
    * over its length round, which is the radius of a round one and half the
    * width of a slot -- and the outside keeps the rim that was asked for.
    */
-  return swept(shape, (contour) => {
-    const area = contourArea(contour);
-    if (area >= 0) return convolvedRound(contour, corners);
-    const deep = (2 * -area) / Math.max(lengthRound(contour), 1e-9);
-    const reach = Math.min(width, deep * 0.3);
-    return reach >= width
-      ? convolvedRound(contour, corners)
-      : convolvedRound(contour, figure(reach));
-  });
+  /*
+   * Measured by the paper that is really there. A counter can hold ink of
+   * its own -- the inner wall an inline leaves round the counter of an o
+   * stands in the groove as an island -- and read as a disc, the groove was
+   * as deep as the whole bowl, so it was grown shut from the outside while
+   * the island grew into it from the inside: every letter with a counter
+   * came back from an inline and a rim as a solid blob. So the depth is the
+   * paper between the counter's edge and the islands in it, and the islands
+   * grow into it no further than the counter's own edge does.
+   */
+  const solids = shape.filter((contour) => contour.nodes.length >= 2 && contourArea(contour) >= 0);
+  const reaches = new Map<Contour, number>();
+  for (const hole of shape) {
+    const area = contourArea(hole);
+    if (hole.nodes.length < 2 || area >= 0) continue;
+    const islands = solids.filter((solid) => contourContainsPoint(hole, solid.nodes[0].point));
+    const paper = -area - islands.reduce((sum, one) => sum + contourArea(one), 0);
+    const around = lengthRound(hole) + islands.reduce((sum, one) => sum + lengthRound(one), 0);
+    const reach = Math.min(width, (Math.max(paper, 0) * 2 * 0.3) / Math.max(around, 1e-9));
+    reaches.set(hole, reach);
+    for (const island of islands)
+      reaches.set(island, Math.min(reaches.get(island) ?? width, reach));
+  }
+  return swept(
+    shape,
+    (contour) => {
+      const reach = reaches.get(contour) ?? width;
+      return reach >= width
+        ? convolvedRound(contour, corners)
+        : convolvedRound(contour, figure(reach));
+    },
+    (contour) => reaches.get(contour) ?? width,
+  );
 }
 
 /**
