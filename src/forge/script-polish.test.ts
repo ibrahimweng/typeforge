@@ -11,14 +11,15 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 import { ready, unite } from "@/font/boolean";
-import { contourArea } from "@/font/geometry";
+import { contourArea, contoursBounds } from "@/font/geometry";
 import type { Vec2 } from "@/font/types";
 import { contoursIntersect } from "@/font/outline";
 import { drawLetter } from "./build";
 import { readyToShape } from "./layers";
-import { joiningHigh, joiningWithout, recipeOf } from "./letters";
+import { joinEnds, joiningHigh, joiningWithout, recipeOf } from "./letters";
 import { seamHeading, seamsOf } from "./script";
 import { alongSpine, spineEnd, spineStart } from "./shapes";
+import { sweep } from "./sweep";
 import { BASES, heavier, scriptUnit, type Style } from "./style";
 import type { Spine } from "./types";
 
@@ -330,4 +331,47 @@ describe("a joined face as a variable font", () => {
     }
     expect(held).toEqual([]);
   }, 900_000);
+});
+
+describe("a join and the baseline", () => {
+  /*
+   * A join never hangs further under the line than a round letter's
+   * overshoot, or than the letter it leaves already does. A lead-out that
+   * had to leave along the line and be climbing by the seam dipped first --
+   * the Monoline `T` went thirteen units under its baseline -- and at 260 the
+   * `x` left from the foot of its leg with half its ink below the line.
+   */
+  it("stays off the line", () => {
+    const under: string[] = [];
+    for (const name of JOINED) {
+      const own = base(name);
+      for (const weight of weightsOf(own)) {
+        const style = heavier(at(own, weight));
+        for (const letter of [..."abcdefghijklmnopqrstuvwxyz", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"]) {
+          for (const high of [false, true]) {
+            if (high && !"bovw".includes(letter)) continue;
+            const recipe = joiningHigh({ exit: high }, () =>
+              recipeOf(letter as never, own.forms?.[letter])?.(style),
+            );
+            if (!recipe) continue;
+            // The joins are the last strokes: an exit, and an entry unless the
+            // letter carries its own lead-in or never has one.
+            const ends = joinEnds(letter);
+            const count = (ends.exit ? 1 : 0) + (ends.entry && !recipe.entered ? 1 : 0);
+            if (count === 0 || recipe.strokes.length <= count) continue;
+            const lowest = (strokes: typeof recipe.strokes) =>
+              Math.min(
+                ...strokes.flatMap((one) => sweep(one)).map((c) => contoursBounds([c]).yMin),
+              );
+            const body = lowest(recipe.strokes.slice(0, -count));
+            const joins = lowest(recipe.strokes.slice(-count));
+            const floor = Math.min(-own.metrics.overshoot, body) - 2;
+            if (joins < floor)
+              under.push(`${name} ${letter}${high ? "*" : ""} @${weight}: ${joins.toFixed(0)}`);
+          }
+        }
+      }
+    }
+    expect(under).toEqual([]);
+  }, 300_000);
 });
