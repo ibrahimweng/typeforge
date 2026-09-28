@@ -175,6 +175,37 @@ describe("weight", () => {
     for (const contour of contours) expect(contoursIntersect([contour])).toBe(false);
   });
 
+  it("keeps the dot of an i apart from its stem", () => {
+    // A stem to the x-height and a dot a stem's width above it, both wound
+    // clockwise; the heaviest weight is more than the gap between them.
+    const stem = polygon([
+      [100, 0],
+      [100, 500],
+      [200, 500],
+      [200, 0],
+    ]);
+    const dot = polygon([
+      [100, 600],
+      [100, 700],
+      [200, 700],
+      [200, 600],
+    ]);
+    const { typeface, glyph } = letter([stem, dot]);
+    const [heavyStem, heavyDot] = at(typeface, glyph, { weight: 60 });
+    expect(heavyStem.nodes).toHaveLength(4);
+    expect(heavyDot.nodes).toHaveLength(4);
+    const top = Math.max(...heavyStem.nodes.map((node) => node.point.y));
+    const bottom = Math.min(...heavyDot.nodes.map((node) => node.point.y));
+    // Some of the hundred units of paper between them is still there...
+    expect(bottom - top).toBeGreaterThan(100 * 0.4);
+    // ...and both still grew, sideways by the whole weight.
+    const wide = (contour: Contour) =>
+      Math.max(...contour.nodes.map((node) => node.point.x)) -
+      Math.min(...contour.nodes.map((node) => node.point.x));
+    expect(wide(heavyStem)).toBeCloseTo(220, 0);
+    expect(wide(heavyDot)).toBeCloseTo(220, 0);
+  });
+
   it("widens the letter by the ink it adds and keeps its side bearings", () => {
     const { typeface, glyph } = letter(
       [

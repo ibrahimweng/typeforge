@@ -77,6 +77,8 @@ const KEPT_SHARE = 1 / 3;
  * it reads as a crack through the letter rather than as an opening.
  */
 const OPENING = 0.036;
+/** The share of the paper between two separate pieces of ink that stays. */
+const GAP_KEPT = 0.45;
 /** How much of its mean width a counter narrower than an opening keeps. */
 const KEPT_OPEN = 0.75;
 /** And how much of it any counter keeps where some white is to be kept. */
@@ -241,6 +243,50 @@ interface Vertex {
 }
 
 /**
+ * How far apart two closed polylines are: nought where they cross or one is
+ * inside the other.
+ */
+function apart(one: Vec2[], other: Vec2[]): number {
+  if (one.length < 2 || other.length < 2) return 0;
+  const inside = (point: Vec2, polygon: Vec2[]): boolean => {
+    let odd = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const a = polygon[i];
+      const b = polygon[j];
+      if (a.y > point.y !== b.y > point.y) {
+        const x = a.x + ((point.y - a.y) / (b.y - a.y)) * (b.x - a.x);
+        if (x > point.x) odd = !odd;
+      }
+    }
+    return odd;
+  };
+  if (inside(one[0], other) || inside(other[0], one)) return 0;
+  const toSegment = (p: Vec2, a: Vec2, b: Vec2): number => {
+    const d = sub(b, a);
+    const length = d.x * d.x + d.y * d.y;
+    const t =
+      length > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * d.x + (p.y - a.y) * d.y) / length)) : 0;
+    return distance(p, { x: a.x + d.x * t, y: a.y + d.y * t });
+  };
+  let least = Infinity;
+  for (const [from, to] of [
+    [one, other],
+    [other, one],
+  ])
+    for (const p of from)
+      for (let k = 0; k < to.length; k++) {
+        least = Math.min(least, toSegment(p, to[k], to[(k + 1) % to.length]));
+        if (least === 0) return 0;
+      }
+  // Crossing edges come close at some vertex, but not always to nought.
+  for (let i = 0; i < one.length; i++)
+    for (let k = 0; k < other.length; k++)
+      if (segmentsCross(one[i], one[(i + 1) % one.length], other[k], other[(k + 1) % other.length]))
+        return 0;
+  return least;
+}
+
+/**
  * Offset one contour by `amount` -- positive adds weight -- keeping its points.
  */
 export function applyWeight(
@@ -312,6 +358,8 @@ export function applyWeight(
     seg: number;
     /** Which way it runs. */
     edge: Vec2;
+    /** Whether it is another piece of ink with paper between them. */
+    foreign: boolean;
   }
   const segmentAt = (position: number): number => {
     let found = 0;
@@ -321,7 +369,19 @@ export function applyWeight(
   const walls: Wall[] = [];
   around.obstacles.forEach((polyline, which) => {
     const own = which === self;
-    if (bolder && !own && around.roles[which] === isOuter) return;
+    /*
+     * Another piece of ink is let run into this one where it overlaps it
+     * already -- the parts of a letter built from overlapping strokes -- but
+     * not where there is paper between them. The dot of an i or a j, the
+     * halves of a colon and the tail of a Q drawn apart from its bowl are
+     * separate for a reason: made bolder with no regard for each other, the
+     * dot of Geist's j grew into its stem and the letter read as a J.
+     */
+    const foreign =
+      bolder && !own && around.roles[which] === isOuter
+        ? isOuter && apart(around.obstacles[self] ?? [], polyline) > em * 0.004
+        : false;
+    if (bolder && !own && around.roles[which] === isOuter && !foreign) return;
     let area = 0;
     polyline.forEach((point, k) => {
       const next = polyline[(k + 1) % polyline.length];
@@ -341,6 +401,7 @@ export function applyWeight(
       const edge = length > 1e-9 ? times(sub(next, point), 1 / length) : { x: 0, y: 0 };
       const middle = own ? ((run + length / 2) / (perimeter || 1)) * total : -1;
       walls.push({
+        foreign,
         a: point,
         b: next,
         normal: { x: -edge.y * facingInk, y: edge.x * facingInk },
@@ -446,6 +507,7 @@ export function applyWeight(
   };
   const room = (from: Vec2, heading: Vec2, position: number, seg: number): number => {
     let nearest = Infinity;
+    let nearestForeign = Infinity;
     for (const wall of walls) {
       if (ownCorner(wall, seg)) continue;
       if (bolder && wall.seg >= 0 && notch(seg, wall.seg)) {
@@ -469,11 +531,21 @@ export function applyWeight(
       // facing the same way is the near side, the sample's own outline.
       const facing = wall.normal.x * heading.x + wall.normal.y * heading.y;
       if (facing >= 0) continue;
-      nearest = Math.min(nearest, rayToEdge(from, heading, wall.a, wall.b));
-      if (facing < -0.3) {
-        nearest = Math.min(nearest, 2 * ballTouch(from, heading, wall.a, wall.b));
-      }
+      let hit = rayToEdge(from, heading, wall.a, wall.b);
+      if (facing < -0.3) hit = Math.min(hit, 2 * ballTouch(from, heading, wall.a, wall.b));
+      if (wall.foreign) nearestForeign = Math.min(nearestForeign, hit);
+      else nearest = Math.min(nearest, hit);
     }
+    /*
+     * The paper between two pieces of ink keeps a share of itself, not just
+     * an opening: a dot a crack above its stem reads as part of it. Put as
+     * the distance to an ordinary wall that would leave the same.
+     */
+    if (Number.isFinite(nearestForeign))
+      nearest = Math.min(
+        nearest,
+        nearestForeign - Math.max(0, nearestForeign * GAP_KEPT - em * OPENING),
+      );
     return nearest;
   };
   const hairline = em * HAIRLINE;
