@@ -261,6 +261,18 @@ function entering(
   while (upDegrees > 46 && !fitsAt(tried(), Math.min(probing, tried() - 0.05), probe)) {
     upDegrees -= 2;
   }
+  /*
+   * Taken high, the lead-in runs level along the waist and bends up into the
+   * up-stroke -- and at the waist there may be no room under the apex for
+   * that bend. On the Monoline at a pen of 160 the waist stood above where
+   * the up-stroke starts, the bend came out a unit across, and the `n` after
+   * an `o` folded over itself. A flatter up-stroke starts higher round the
+   * apex and needs less of a bend, and at the flattest the lead-in simply runs
+   * on into the top of the arch, which is what a hand does after an `o`.
+   */
+  if (lead.high) {
+    while (upDegrees > 8 && !fitsAt(tried(), 0)) upDegrees -= 2;
+  }
   const up = (upDegrees * Math.PI) / 180;
   const start = on(Math.PI / 2 + up);
   const end = on(Math.PI / 2 - down);
@@ -691,7 +703,15 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
          * turn from falling to climbing too tight for the pen, and it knotted.
          * So the valley is drawn here, where it can be given the room.
          */
-        const lead = writtenLead("r", style);
+        /*
+         * The lead-out's seam, which is the low one whatever this drawing is
+         * entered at: an `r` hands over low. Asked plainly, the drawing set
+         * after a `b`, an `o`, a `v` or a `w` got the high seam here, aimed its
+         * valley at the waist and then hooked back down across itself to the
+         * seam it actually leaves at -- `brown` had a knot in its `r`.
+         */
+        const asked = writtenLead("r", style);
+        const lead = asked.low ?? asked;
         // A tighter shoulder than the `n`'s, so the letter reads as an `r`
         // with its arm carried down rather than as a narrow `n`.
         const radius = Math.max(shoulderRadius(f, f.x) * 0.6, f.least);

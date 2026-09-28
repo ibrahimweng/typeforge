@@ -12,8 +12,10 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { ready } from "@/font/boolean";
 import type { Vec2 } from "@/font/types";
+import { contoursIntersect } from "@/font/outline";
+import { drawLetter } from "./build";
 import { readyToShape } from "./layers";
-import { joiningHigh, recipeOf } from "./letters";
+import { joiningHigh, joiningWithout, recipeOf } from "./letters";
 import { seamHeading, seamsOf } from "./script";
 import { alongSpine } from "./shapes";
 import { BASES, heavier, scriptUnit, type Style } from "./style";
@@ -122,4 +124,41 @@ describe("a join at every weight", () => {
       }
     }
   });
+});
+
+describe("every drawing of a joined letter", () => {
+  /*
+   * The second drawings a shaper swaps in -- taken high after an `o`, a `v`,
+   * a `w` or a `b`, and without a lead-in or a lead-out at the ends of a word
+   * -- at every weight the slider reaches. The written `r` set after a `b`
+   * aimed its lead-out at the waist and hooked back across itself, and the
+   * written `n` taken high folded its lead-in into its own apex on four faces.
+   */
+  it("never crosses itself", () => {
+    const crossed: string[] = [];
+    const sides = [{}, { entry: false }, { exit: false }, { entry: false, exit: false }];
+    for (const name of JOINED) {
+      const own = base(name);
+      for (const weight of [30, own.pen.weight, 120, 160, 200, 260]) {
+        const style = at(own, weight);
+        for (const letter of LOWER) {
+          const form = own.forms?.[letter];
+          for (const high of [false, true]) {
+            for (const without of sides) {
+              const drawn = joiningHigh({ entry: high, exit: high }, () =>
+                joiningWithout(without, () => drawLetter(letter, style, form)),
+              );
+              if (!drawn) continue;
+              if (drawn.contours.some((contour) => contoursIntersect([contour]))) {
+                crossed.push(
+                  `${name} ${letter}${high ? "^" : ""} ${JSON.stringify(without)} @${weight}`,
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+    expect(crossed).toEqual([]);
+  }, 600_000);
 });
