@@ -223,7 +223,18 @@ export function cutInk(
 
   const chamfered: Vec2[] = [];
   if (cuts.chamfer.on) shape = take(shape, chamferTool(shape, cuts.chamfer, stem, chamfered));
-  shape = withoutCrumbs(shape, stem, smallest);
+  /*
+   * How thin the letter's own thinnest stroke is, where it was drawn here:
+   * a splinter is thinner than anything the letter means to draw, and on a
+   * contrast face that is a good deal less than a share of the stem.
+   */
+  const hairline = Math.min(
+    stem,
+    ...strokes.map(
+      (stroke) => stroke.pen.weight * (1 - Math.min(Math.max(stroke.pen.contrast, 0), 0.95)),
+    ),
+  );
+  shape = withoutCrumbs(shape, stem, smallest, hairline);
 
   return {
     contours: shape,
@@ -279,7 +290,12 @@ export function piecesOf(ink: Contour[]): number {
  * letter went in with, so the dot of an i, the full stop and a heavy face's
  * tittle are never mistaken for a chip.
  */
-function withoutCrumbs(shape: Contour[], stem: number, smallest: number): Contour[] {
+function withoutCrumbs(
+  shape: Contour[],
+  stem: number,
+  smallest: number,
+  hairline = stem,
+): Contour[] {
   const floor = Math.min(stem * stem * 0.2, smallest * 0.5);
   const areas = shape.map((contour) => contourArea(contour));
   /*
@@ -289,11 +305,16 @@ function withoutCrumbs(shape: Contour[], stem: number, smallest: number): Contou
    * pass as a piece. A piece narrower all through than a hairline is a
    * splinter, not part of the letter -- measured across the narrowest way it
    * lies, so a hairline cut short is still a piece. Never the whole letter,
-   * which a hairline face may be.
+   * which a hairline face may be. And never as thick as the letter's own
+   * hairline: on a Formal Script a hairline is well under a third of a stem,
+   * and every slot through one was taken for a splinter -- the m, the s and
+   * the g lost most of their strokes.
    */
   const solids = areas.filter((area) => area > 0).length;
   const thin = (contour: Contour, area: number): boolean =>
-    solids >= 2 && area < stem * stem * 1.5 && breadth(flattenContour(contour, 12)) < stem * 0.35;
+    solids >= 2 &&
+    area < stem * stem * 1.5 &&
+    breadth(flattenContour(contour, 12)) < Math.min(stem * 0.35, hairline * 0.6);
   const crumbs = shape.filter(
     (contour, index) => areas[index] > 0 && (areas[index] < floor || thin(contour, areas[index])),
   );
@@ -635,7 +656,18 @@ function inlineTool(
    * meet, and handed over loose the intersection lost ground under the
    * overlaps: the arch of a Sans a came back with no groove in it at all.
    */
-  return [...intersect(held, unite(mask, "winding"), "winding"), ...breakouts];
+  const grooves = intersect(held, unite(mask, "winding"), "winding");
+  /*
+   * Less the slivers. Where a contrast face's stroke thins towards a
+   * terminal, the shrinking leaves a last few units of groove standing
+   * apart from the rest -- a white fleck beside the ends of a Serif e and
+   * s. A groove shorter than it is wide is not a groove.
+   */
+  const least = width * width;
+  return [
+    ...grooves.filter((one) => contourArea(one) <= 0 || contourArea(one) >= least),
+    ...breakouts,
+  ];
 }
 
 /**

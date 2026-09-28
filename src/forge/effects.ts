@@ -128,6 +128,12 @@ const MOST_OF_A_STROKE = 0.9;
 const ESCAPED = 1.6;
 
 /**
+ * How much nearer than its own half-width a stroke's flank may be before the
+ * ray that found it has to be taken for having struck a cut instead.
+ */
+const SHORT = 0.55;
+
+/**
  * How wide the pen really is across one direction, which is not half its
  * weight on any face that has contrast.
  *
@@ -198,7 +204,7 @@ export function effectInk(
   let shape = canCarve ? unite(ink, roles, "whole") : ink;
   if (canCarve && effects.press.on && strokes.length > 0) {
     const wedges = pressWedges(shape, strokes, effects.press, stem);
-    if (wedges.length > 0) shape = subtract(shape, wedges, "winding");
+    if (wedges.length > 0) shape = takenAway(shape, wedges);
   }
   if (canCarve && effects.pool.on && strokes.length > 0) {
     const pools = poolTool(strokes, effects.pool, stem);
@@ -206,7 +212,7 @@ export function effectInk(
   }
   if (canCarve && effects.skip.on && strokes.length > 0) {
     const gaps = skipTool(strokes, effects.skip, stem);
-    if (gaps.length > 0) shape = subtract(shape, gaps, "winding");
+    if (gaps.length > 0) shape = takenAway(shape, gaps);
   }
   if (effects.rough.on) {
     shape = roughened(shape, effects.rough, stem, effects.budget);
@@ -226,7 +232,41 @@ export function effectInk(
    * Brush's `e`, `f`, `k`, `u`, `v` and `w` kept theirs, because the wander
    * comes afterwards and makes its own.
    */
-  return canCarve ? swept(shape, stem).map((contour) => unsplintered(contour, stem)) : shape;
+  /*
+   * A splinter is thinner than anything the letter means to draw, and on a
+   * contrast face that is less than a share of the stem: the hairlines of a
+   * Formal Script are under an eighth of one, and every hairline end a slot
+   * had left was taken for a splinter -- a slotted g lost three fifths of its
+   * ink, the loop of its tail and most of its stroke with it.
+   */
+  const hairline = Math.min(
+    stem,
+    ...strokes.map(
+      (stroke) => stroke.pen.weight * (1 - Math.min(Math.max(stroke.pen.contrast, 0), 0.95)),
+    ),
+  );
+  return canCarve
+    ? swept(shape, stem).map((contour) => unsplintered(contour, stem, hairline))
+    : shape;
+}
+
+/**
+ * A shape with a tool taken out of it, checked against the one thing a
+ * subtraction cannot do: take away more ink than the tool covers.
+ *
+ * Paper can lose track of a shape the cuts have already been through: on a
+ * Formal Script g with slots through it, the press took away the stroke round
+ * the lower loop and left its counter filled, three fifths of the letter gone
+ * to a tool a tenth its size. Where that happens the letter is left as the
+ * cuts made it -- unthinned is a letter, and that was not.
+ */
+function takenAway(shape: Contour[], tool: Contour[]): Contour[] {
+  const result = subtract(shape, tool, "winding");
+  const inkOf = (contours: Contour[]) =>
+    contours.reduce((total, contour) => total + contourArea(contour), 0);
+  const lost = inkOf(shape) - inkOf(result);
+  const most = inkOf(unite(tool, "winding"));
+  return lost <= most * 1.02 + 1 && lost >= -1 ? result : shape;
 }
 
 /**
@@ -242,8 +282,8 @@ export function effectInk(
  * out and back is dropped. Nothing a letter means to draw is that thin: a
  * hairline at the Brush's contrast is a third of a stem, and this is an eighth.
  */
-function unsplintered(contour: Contour, stem: number): Contour {
-  const thin = stem * 0.12;
+function unsplintered(contour: Contour, stem: number, hairline = stem): Contour {
+  const thin = Math.min(stem * 0.12, hairline * 0.5);
   let nodes = contour.nodes;
   if (!contour.closed || nodes.length < 8) return contour;
   for (let pass = 0; pass < 4; pass++) {
@@ -259,7 +299,7 @@ function unsplintered(contour: Contour, stem: number): Contour {
         if (step < 2) continue;
         const from = nodes[start].point;
         const gap = Math.hypot(b.x - from.x, b.y - from.y);
-        if (gap < thin && along > thin * 2.5) {
+        if (gap < thin && along > thin * 2.5 && enclosed(nodes, start, step) < thin * along) {
           for (let inner = 1; inner < step; inner++) drop.add((start + inner) % count);
           break;
         }
@@ -269,6 +309,22 @@ function unsplintered(contour: Contour, stem: number): Contour {
     nodes = nodes.filter((_, index) => !drop.has(index));
   }
   return nodes === contour.nodes ? contour : { ...contour, nodes };
+}
+
+/**
+ * The area the outline encloses between one point and another a few steps on,
+ * closed straight back: small for a splinter, which runs out and back along
+ * itself, and not for a loop that happens to come back near where it left --
+ * the tail of a Formal Script g, which went with the splinters.
+ */
+function enclosed(nodes: GlyphNode[], start: number, steps: number): number {
+  let twice = 0;
+  for (let step = 0; step <= steps; step++) {
+    const a = nodes[(start + step) % nodes.length].point;
+    const b = nodes[(start + ((step + 1) % (steps + 1))) % nodes.length].point;
+    twice += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(twice) / 2;
 }
 
 /** How many points the finished letter is made of, for the proofing panel. */
@@ -822,6 +878,16 @@ function flankAt(
   // the face's nominal stem: see `penHalfAcross`.
   const pen = penHalfAcross(stroke, normal);
   if (!Number.isFinite(hit) || hit > Math.max(pen, half * 0.25) * ESCAPED) return null;
+  /*
+   * Nor where the edge is far nearer than the pen could have put it. That is
+   * not a flank: it is the side of a cut. A slot or a groove taken out of the
+   * letter first leaves edges running across the stroke, and a ray from the
+   * spine beside one -- or from inside it, where the spine is paper -- came
+   * back with a few units; the band built along it swung across the stroke
+   * between that sample and the next, and a slotted Formal Script g lost
+   * three fifths of its ink to the press.
+   */
+  if (hit < pen * SHORT) return null;
 
   const u = at / (walked.length - 1);
   /*

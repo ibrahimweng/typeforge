@@ -20,7 +20,7 @@ import {
   inkRunsAt,
 } from "@/font/geometry";
 import type { Contour, Vec2 } from "@/font/types";
-import { editCast, editCut, proof, setCastOrder, startFrom, type Forge } from "./document";
+import { draw, editCast, editCut, proof, setCastOrder, startFrom, type Forge } from "./document";
 import { readyToShape } from "./layers";
 import { piecesOf } from "./cut";
 import { BASES } from "./style";
@@ -274,6 +274,20 @@ describe("the split on a bowl drawn against its stem", () => {
       // And a bar that runs into a bowl at both ends is still parted at one:
       // the bar of an e does not float in its eye.
       expect(piecesOf(drawn("e", forge)), `${weight} e`).toBe(1);
+    }
+  });
+});
+
+describe("the tool's own effects on a cut letter", () => {
+  it("leave a slotted Formal Script whole, loop and hairlines and all", () => {
+    // The Formal Script ships with the press on. After slots, its clean-up
+    // took a loop that came back near itself for a splinter and dropped the
+    // tail of the g with it: three fifths of the letter gone.
+    let forge = startFrom(BASES.find((base) => base.name === "Formal Script")!);
+    forge = editCut(forge, "slot", { on: true, count: 3, angle: 15 });
+    for (const letter of "msg") {
+      const cut = area(draw(letter, forge)!.contours);
+      expect(area(drawn(letter, forge)) / cut, letter).toBeGreaterThan(0.9);
     }
   });
 });
