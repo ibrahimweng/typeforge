@@ -1068,3 +1068,16 @@ describe("the three's waist", () => {
     expect(column[0][1] - column[0][0]).toBeGreaterThan(152);
   });
 });
+
+describe("the three's top terminal", () => {
+  it("comes down and out as far as Geist's at the Black", () => {
+    // Geist Black's terminal reaches down to 510 and out to 9 from its
+    // ink's left at 530; cut at a fixed height it stopped above 550, 23 in.
+    const { contours } = draw("three", 194);
+    const left = contoursBounds(contours).xMin;
+    const at530 = filled(contours, 530);
+    expect(at530.length).toBe(2);
+    expect(Math.abs(at530[0][0] - left - 9)).toBeLessThan(6);
+    expect(filled(contours, 512).length).toBe(2);
+  });
+});

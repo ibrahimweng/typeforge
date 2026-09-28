@@ -127,7 +127,10 @@ Both now match within 6 at every weight. The 3 is drawn in pairs too: its
 waist was 149 at the Black against Geist's 132, centred 15 units high, and
 its top and foot 8 to 10 light. Each bowl is now a pair on a pen as light as
 the waist, sharing it, so the top and foot keep Geist's weight. Every band
-matches within 4 at every weight.
+matches within 4 at every weight. Its top terminal is cut lower as the weight
+grows, as Geist's is (its end at 545 at the Regular and 508 at the Black,
+where ours stood at 555), and its upper bowl reaches as far left as Geist's
+(it was 14 units short at the Black).
 
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
@@ -263,6 +266,13 @@ strokes as white; they now use a filled (nonzero) ruler.
   strokes.
 - **#.** The sidebearings are kept just inside the advance. Geist's reach past
   both sides.
+- **The 3's notch.** Geist's bowls meet on the right in a sharp corner, 123
+  units in from the bowl's right at the Regular, its upper bowl thinning into
+  it. Draw's bowls are strokes on one pen, meeting the waist on a tangent, so
+  the notch stands 35 units out at the Regular and 60 at the Black. Rounder
+  quarters, quarters drawn round a centre further in, and taller bowls cut
+  at the waist did not deepen it; it needs a stroke that tapers into a
+  corner.
 - **Backslash at the Black.** It follows the Sans slash, which is about 45
   units narrower than Geist Black's.
 - **m and X at the Light.** They are plain forms, shared with every base. At

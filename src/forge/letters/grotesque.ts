@@ -1487,15 +1487,32 @@ function threeOf(style: Style, sans: boolean): Recipe {
   const waist = up(f, sans ? now(378, 363, 382) : 378);
   const upperH = held(f, (top - waist) / 2);
   const lowerH = held(f, (waist - bottom) / 2);
-  const upper = at(X(307), waist + upperH);
+  // Geist's upper bowl reaches further left as the weight grows (6 units at
+  // the Regular, 15 at the Black) and 5 further right at the Black.
+  const upper = at(X(307) - (sans ? now(3, 5, 0) : 0), waist + upperH);
   const lower = at(X(308), waist - lowerH);
-  const upperW = held(f, 188 * u);
+  const upperW = held(f, 188 * u + (sans ? now(3, 10, 0) : 0));
   const lowerW = held(f, 213 * u);
+  /*
+   * Geist cuts its top terminal lower as the weight grows: its end comes
+   * down to 545 at the Regular and 508 at the Black, where cut at a fixed
+   * height it stood at 555.
+   */
+  const drop = sans
+    ? roundGain(f, 17, 35, 0) + (15 * Math.max(0, Math.min(heavyT(f), nowBlack()) - 0.41)) / 0.9
+    : 0;
   const upperBowl = (g: Frame, centre: Vec2, halfH: number): Stroke =>
     ink(
       g,
       chain(
-        bend(g, centre, halfH, angleAt(g, centre, upperW, halfH, up(f, 560), true), -90, upperW),
+        bend(
+          g,
+          centre,
+          halfH,
+          angleAt(g, centre, upperW, halfH, up(f, 560 - drop), true),
+          -90,
+          upperW,
+        ),
         straight(at(centre.x, waist), at(X(247), waist)),
       ),
       f.end,
