@@ -1056,20 +1056,31 @@ function bookSpine(
   const slope = 30 - S_BEND - (30 - S_BEND) * Math.min(1, didone);
   let shape = laid(width / 2, width / 2.6, 30);
   let best = Infinity;
-  for (let k = 0; k <= 10; k++) {
-    // Narrower than asked, where that is what keeps the bowls round.
-    const a = (width / 2) * (1 - 0.3 * (k / 10));
+  /*
+   * Narrower than asked, where that is what keeps the bowls round -- and on a
+   * text face as far again, where that is what keeps the spine running
+   * forward: past a Black the widened s asked for bowls too flat for a spine
+   * with so little fall to cross them, and the search took a spine that
+   * crossed half of them, the lower bowl standing back under the upper one
+   * in an s that leaned like an italic. A didone keeps the old reach, whose
+   * counters close before its spine leans.
+   */
+  const narrowest = didone > 0 ? 10 : 20;
+  // And a spine allowed to lie flatter, a Black's, where it has little to fall.
+  const flatter = didone > 0 ? 0 : 8;
+  for (let k = 0; k <= narrowest; k++) {
+    const a = (width / 2) * (1 - 0.6 * (k / 20));
     const most = Math.min(a * 2, tall / 2);
     for (let i = 0; i <= 40; i++) {
       const b = most - (most - a / 2) * (i / 40);
-      for (let degrees = 0; degrees <= 30 - S_BEND / 2; degrees += 1) {
+      for (let degrees = 0; degrees <= 30 - S_BEND / 2 + flatter; degrees += 1) {
         const tried = laid(a, b, degrees);
         if (!(tried.r.side > 0 && tried.r.crown > 0)) continue;
         const cost =
           ((tried.across - 2 * a) / a) ** 2 * 40 +
           (a / b - 1.3) ** 2 +
           ((slope - degrees) / 30) ** 2 * 0.5 +
-          (k / 10) ** 2 * 3 +
+          (k / 20) ** 2 * 12 +
           (Math.max(0, roundest - tried.r.side) / roundest) ** 2 * 200 +
           (Math.max(0, tall * 0.05 - tried.fall) / tall) ** 2 * 400;
         if (cost < best) {
@@ -1172,8 +1183,14 @@ const S_BEND = 24;
 
 /** How much lighter the lowercase s is drawn at a Black than its stem, along its level runs. */
 const S_LIGHTER = 0.2;
-/** And how much lighter across its uprights. */
-const S_UPRIGHT = 0.5;
+/**
+ * And how much lighter across its uprights: no more than keeps the counters
+ * open now the spine runs forward (see `bookSpine`) -- at a half, the Black's
+ * s was a hairline letter between an o and an e.
+ */
+const S_UPRIGHT = 0.35;
+/** A didone's, whose bowls turn on a pen five times as wide as it is deep. */
+const S_DIDONE_UPRIGHT = 0.5;
 
 /** Lora's s spine against the stem the construction's pen gives it. */
 const S_SPINE = 1.25;
@@ -1280,6 +1297,8 @@ function bookS(style: Style, capital: boolean): Recipe {
   // Past the Bold only: Lora's Bold s is as heavy as its n.
   // The capital has the cap height to turn in, and is not lightened.
   const heavy = capital ? 0 : Math.min(1, Math.max(0, heaviness(f) - 0.5));
+  // A didone's s as it was: see `S_UPRIGHT`.
+  const upright = f.style.pen.contrast > 0.6 ? S_DIDONE_UPRIGHT : S_UPRIGHT;
   return finish(
     f,
     [
@@ -1291,15 +1310,10 @@ function bookS(style: Style, capital: boolean): Recipe {
        */
       hairlined(
         lighter(
-          ink(
-            f,
-            bookSpine(f, height, f.edge, width, f.half * (1 - S_UPRIGHT * heavy)),
-            f.end,
-            f.end,
-          ),
+          ink(f, bookSpine(f, height, f.edge, width, f.half * (1 - upright * heavy)), f.end, f.end),
           1 - S_LIGHTER * heavy,
         ),
-        (1 - S_UPRIGHT * heavy) / (1 - S_LIGHTER * heavy),
+        (1 - upright * heavy) / (1 - S_LIGHTER * heavy),
       ),
     ],
     true,
