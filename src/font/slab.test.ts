@@ -476,6 +476,65 @@ describe("slabs on a letter, with the other controls", () => {
     expect(top(I.contours).xMax).toBeGreaterThan(stemOf(I.contours).xMax + 10);
   });
 
+  /*
+   * Regression: the flag on the i and j of Geist, reaching out to the left
+   * of the stem, was read at its middle, beside the stem, as standing on
+   * nothing. At the heaviest weight it grew the whole weight up past the
+   * top of the stem and met the dot.
+   */
+  it("keeps the flag on a dotted stem level with the stem, clear of the dot", () => {
+    const i = letter([stem(80, 0, 84, 530), stem(78, 613, 88, 98)], 244, "i", 0x69);
+    const heavy = at(i, { weight: 60 }).contours;
+    const slabbed = at(i, { weight: 60, slab: 100 }).contours;
+    const dot = (contours: Contour[]) => contoursBounds([contours[1]]).yMin;
+    const flag = slabbed.slice(2).find((slab) => contoursBounds([slab]).yMin > 100)!;
+    expect(contoursBounds([flag]).yMax).toBeCloseTo(contoursBounds([slabbed[0]]).yMax, 0);
+    expect(dot(slabbed) - contoursBounds([flag]).yMax).toBeCloseTo(
+      dot(heavy) - contoursBounds([heavy[0]]).yMax,
+      0,
+    );
+  });
+
+  /*
+   * Regression: the beak on the end of the sample font's f hangs from the
+   * hook level with its underside. Made heavier, the underside grew less
+   * than the weight, for the white under it, and the beak grown the whole
+   * weight hung below it, nearly closing on the crossbar.
+   */
+  it("ends a beak level with the underside of the arm it hangs from", () => {
+    // A stem with an arm off its top to the right, and a bar as long close
+    // under it: the weight leaves the beak no room to reach down.
+    const f = letter(
+      [
+        polygon([
+          { x: 100, y: 0 },
+          { x: 100, y: 1000 },
+          { x: 500, y: 1000 },
+          { x: 500, y: 900 },
+          { x: 200, y: 900 },
+          { x: 200, y: 800 },
+          { x: 500, y: 800 },
+          { x: 500, y: 700 },
+          { x: 200, y: 700 },
+          { x: 200, y: 0 },
+        ]),
+      ],
+      600,
+      "F",
+      0x46,
+    );
+    const { contours } = at(f, { weight: 40, slab: 100 });
+    const arm = contours[0].nodes
+      .map((node) => node.point)
+      .filter((point) => point.x > 300 && point.y > 800);
+    const underside = Math.min(...arm.map((point) => point.y));
+    const beak = contours
+      .slice(1)
+      .map((slab) => contoursBounds([slab]))
+      .find((box) => box.yMin > 800 && box.xMax > 400)!;
+    expect(beak.yMin).toBeCloseTo(underside, 0);
+  });
+
   it("leaves the top of a t plain, a stub on its crossbar", () => {
     // A stem a hundred wide rising a stem's width and a half past its bar.
     const t = letter(

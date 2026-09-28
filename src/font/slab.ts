@@ -593,15 +593,25 @@ export function weighSlabs(
       const next = q[(index + 1) % 4];
       const middle = { x: (point.x + next.x) / 2, y: (point.y + next.y) / 2 };
       const out = unit(c, middle);
-      return { middle, out, far: out.length };
+      return { middle, out, far: out.length, from: point, to: next };
     });
-    const probe = (index: number) => {
-      const { middle, out } = edges[index];
-      return insideInk(polylines, { x: middle.x + out.x, y: middle.y + out.y });
-    };
+    /*
+     * Along the whole edge, not only at its middle. A flag reaches out to one
+     * side of the stem it stands on, and its middle is beside the stem: read
+     * there, the flag on the i and j of Geist stood on nothing, grew the whole
+     * weight up past the stem's top, and closed the white under the dot.
+     */
+    const inked = (index: number) =>
+      [0.1, 0.3, 0.5, 0.7, 0.9].map((t) => {
+        const { from, to, out } = edges[index];
+        return insideInk(polylines, {
+          x: from.x + (to.x - from.x) * t + out.x,
+          y: from.y + (to.y - from.y) * t + out.y,
+        });
+      });
     let flush = -1;
     for (let index = 0; index < 4 && flush < 0; index++)
-      if (!probe(index) && probe((index + 2) % 4)) flush = index;
+      if (!inked(index).some(Boolean) && inked((index + 2) % 4).some(Boolean)) flush = index;
     const axis = edges[flush < 0 ? 0 : flush];
     const u = { x: axis.out.x, y: axis.out.y };
     const thickness = resize(axis.far * 2);
@@ -624,15 +634,37 @@ export function weighSlabs(
           outer = axis.far + out;
       }
     }
-    const side = resize(edges[flush < 0 ? 1 : (flush + 1) % 4].far * 2) / 2;
+    const along = edges[flush < 0 ? 1 : (flush + 1) % 4].far;
+    const side = resize(along * 2) / 2;
+    const v = { x: -u.y, y: u.x };
+    /*
+     * And an end that finishes flush with the letter's own edge -- the lower
+     * end of a beak, level with the underside of the arm it hangs from --
+     * finishes where the weight left that edge. The underside of the hook of
+     * the sample font's f grew less than the weight, for the white under it,
+     * and the beak grown the whole weight hung below it, nearly closing on
+     * the crossbar.
+     */
+    const end = (sign: -1 | 1): number => {
+      if (!moved) return side;
+      const at = { x: c.x + v.x * sign * along, y: c.y + v.y * sign * along };
+      const step = (by: number) => ({ x: at.x + v.x * sign * by, y: at.y + v.y * sign * by });
+      if (insideInk(polylines, step(1)) || !insideInk(polylines, step(-1))) return side;
+      const depth = Math.min(along, Math.abs(weight) * 2 + 2);
+      const from = step(-depth);
+      if (!insideInk(moved, from)) return side;
+      const out = rayHitDistance(moved, from, { x: v.x * sign, y: v.y * sign }) - depth;
+      if (!Number.isFinite(out) || Math.abs(out) > Math.abs(weight) * 1.5 + 1) return side;
+      return along + out;
+    };
     return {
       c,
       u,
-      v: { x: -u.y, y: u.x },
+      v,
       outer,
       inner: outer - thickness,
-      low: -side,
-      high: side,
+      low: -end(-1),
+      high: end(1),
     };
   });
 
