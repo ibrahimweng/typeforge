@@ -578,6 +578,24 @@ describe("slots", () => {
   });
 });
 
+describe("the saw", () => {
+  it("cuts its teeth into a Serif stem, not only into the serifs' tips", () => {
+    // Laid along the letter's bounds, the comb reached no further than the
+    // serifs and the stems between them were never sawn.
+    const plain = drawn("H", forgeOf("Serif", 87, {}));
+    const sawn = drawn("H", forgeOf("Serif", 87, { cuts: { tooth: { edge: "both" } } }));
+    const box = contoursBounds(plain);
+    let bitten = 0;
+    for (let at = 0.3; at <= 0.7; at += 0.02) {
+      const y = box.yMin + (box.yMax - box.yMin) * at;
+      const was = inkRunsAt(plain, y)[0][0];
+      const now = inkRunsAt(sawn, y)[0][0];
+      if (now > was + 87 * 0.1) bitten++;
+    }
+    expect(bitten).toBeGreaterThan(3);
+  });
+});
+
 describe("slanted slots", () => {
   it("leave no needle of ink where a band crosses an edge at a shallow angle", () => {
     // A band laid across the top of an r's arm or an A's crossbar at fifteen

@@ -28,6 +28,7 @@ import {
   contourContainsPoint,
   contoursBounds,
   flattenContour,
+  inkRunsAt,
   rayHitDistance,
   reverseContour,
   type Bounds,
@@ -211,7 +212,7 @@ export function cutInk(
   // cross at a slant: see `withoutSlivers`.
   const straight: Contour[] = [];
   if (cuts.slot.on) straight.push(...slotTool(bounds, cuts.slot, stem, scale));
-  if (cuts.tooth.on) straight.push(...toothTool(bounds, cuts.tooth, stem, scale));
+  if (cuts.tooth.on) straight.push(...toothTool(bounds, cuts.tooth, stem, scale, shape));
   const breaks = cuts.split.on
     ? splitTool(strokes, cuts.split, stem, scale.xHeight, cast)
     : { knives: [], lips: [] };
@@ -576,7 +577,13 @@ function slotTool(bounds: Bounds, slot: Cuts["slot"], stem: number, scale: CutSc
  * between them is a point. That is what makes the edge read as a saw rather
  * than as a row of holes.
  */
-function toothTool(bounds: Bounds, tooth: Cuts["tooth"], stem: number, scale: CutScale): Contour[] {
+function toothTool(
+  bounds: Bounds,
+  tooth: Cuts["tooth"],
+  stem: number,
+  scale: CutScale,
+  shape: Contour[] = [],
+): Contour[] {
   const pitch = Math.max(tooth.pitch * scale.xHeight, stem * 0.1);
   const depth = tooth.depth * stem;
   if (depth <= 0) return [];
@@ -609,20 +616,62 @@ function toothTool(bounds: Bounds, tooth: Cuts["tooth"], stem: number, scale: Cu
     const outside = edge - inward * depth;
     const apex = edge + inward * depth;
 
+    /*
+     * Where the letter's own edge is at a height, on this side. The comb
+     * used to be laid along the letter's bounds, and only what reached them
+     * was cut: round an o the teeth bit into the curve above and below its
+     * widest point and left a thin prong of ink between each two, and on a
+     * serif face they nicked the serifs' tips and never reached the stem.
+     * Each tooth is set against the edge where it falls instead.
+     */
+    // And how thick the ink is there, from that edge in: a tooth that bites
+    // half way through a hairline cuts it in two.
+    const edgeAt = (at: number): { edge: number; thick: number } | null => {
+      const runs = inkRunsAt(shape, at, upright ? "y" : "x");
+      if (runs.length === 0) return null;
+      const run = runs.reduce((best, one) =>
+        inward > 0 ? (one[0] < best[0] ? one : best) : one[1] > best[1] ? one : best,
+      );
+      return { edge: inward > 0 ? run[0] : run[1], thick: run[1] - run[0] };
+    };
     for (let index = 0; index < teeth; index++) {
       const start = from + step * index;
       const middle = start + step / 2;
+      let base = outside;
+      let tip = apex;
+      if (shape.length > 0) {
+        const measured = [start + step * 0.1, middle, start + step * 0.9]
+          .map(edgeAt)
+          .filter((one) => one !== null);
+        if (measured.length === 0) continue;
+        if (measured.some((one) => one.thick < depth * 2)) continue;
+        const found = measured.map((one) => one.edge);
+        // The outermost of them, so the tooth starts clear of the ink.
+        const outer = inward > 0 ? Math.min(...found) : Math.max(...found);
+        const inner = inward > 0 ? Math.max(...found) : Math.min(...found);
+        // Not where the edge runs across the comb rather than along it: the
+        // top and bottom of a round, where a tooth would cut into a cap.
+        if (Math.abs(inner - outer) > step * 0.3) continue;
+        // And only the outside of the letter: an edge a stem or so in from
+        // its bounds, as a serif face's stem is behind its serifs. Further in
+        // it is some inner stroke -- the ascender of a b, whose far side the
+        // other comb was already sawing -- and teeth from both sides pinched
+        // it to a thread.
+        if (Math.abs(outer - edge) > stem * 1.2) continue;
+        base = outer - inward * depth;
+        tip = outer + inward * depth;
+      }
       cut.push(
         upright
           ? poly([
-              { x: outside, y: start },
-              { x: apex, y: middle },
-              { x: outside, y: start + step },
+              { x: base, y: start },
+              { x: tip, y: middle },
+              { x: base, y: start + step },
             ])
           : poly([
-              { x: start, y: outside },
-              { x: middle, y: apex },
-              { x: start + step, y: outside },
+              { x: start, y: base },
+              { x: middle, y: tip },
+              { x: start + step, y: base },
             ]),
       );
     }
