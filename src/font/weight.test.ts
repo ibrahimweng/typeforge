@@ -470,6 +470,55 @@ describe("a lighter or bolder cut", () => {
     }
   });
 
+  it("rounds the end of an aperture the weight swallows, rather than leaving a step", () => {
+    // A slot into the side of a letter whose end is three short curves --
+    // shorter than the weight, as at the inner end of the aperture of a.
+    const node = (
+      x: number,
+      y: number,
+      handleIn: [number, number] | null = null,
+      handleOut: [number, number] | null = null,
+    ): GlyphNode => ({
+      point: { x, y },
+      handleIn: handleIn && { x: handleIn[0], y: handleIn[1] },
+      handleOut: handleOut && { x: handleOut[0], y: handleOut[1] },
+      type: handleIn || handleOut ? "smooth" : "corner",
+    });
+    const slot: Contour = {
+      closed: true,
+      nodes: [
+        node(0, 0),
+        node(0, 600),
+        node(600, 600),
+        node(600, 330, null, [450, 330]),
+        node(320, 322, [360, 326], [300, 320]),
+        node(292, 305, [296, 316], [290, 298]),
+        node(300, 286, [292, 290], [310, 282]),
+        node(330, 280, [318, 280], [450, 280]),
+        node(600, 270, [450, 270], null),
+        node(600, 0),
+      ],
+    };
+    const { typeface, glyph } = letter([slot]);
+    const [heavy] = at(typeface, glyph, { weight: 40 });
+    expect(heavy.nodes).toHaveLength(10);
+    expect(contoursIntersect([heavy])).toBe(false);
+    // The points of the end are spread round it, none left on another...
+    for (let index = 3; index <= 8; index++) {
+      const here = heavy.nodes[index].point;
+      const next = heavy.nodes[index + 1].point;
+      expect(Math.hypot(next.x - here.x, next.y - here.y), `after ${index}`).toBeGreaterThan(2);
+    }
+    // ...and the curves through them meet smoothly.
+    for (let index = 4; index <= 7; index++) {
+      const { point, handleIn, handleOut } = heavy.nodes[index];
+      const a = { x: point.x - handleIn!.x, y: point.y - handleIn!.y };
+      const b = { x: handleOut!.x - point.x, y: handleOut!.y - point.y };
+      const cos = (a.x * b.x + a.y * b.y) / (Math.hypot(a.x, a.y) * Math.hypot(b.x, b.y));
+      expect(cos, `at ${index}`).toBeGreaterThan(Math.cos((5 * Math.PI) / 180));
+    }
+  });
+
   it("thins a serif without tearing it", () => {
     const { typeface, glyph } = letter([serifI()]);
     const [shape] = at(typeface, glyph, { weight: -40 });

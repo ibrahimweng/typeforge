@@ -31,6 +31,7 @@
  */
 
 import {
+  splitCubic,
   contourArea,
   contourSegments,
   cubicAt,
@@ -1411,7 +1412,11 @@ export function applyWeight(
       if (nodes[next].handleIn) out[next].handleIn = c2;
     }
     restoreStrokes(out, share);
-    return { closed: true, nodes: out };
+    const plain: Contour = { closed: true, nodes: out };
+    const rounded = roundSwallowed(out, wanted * share);
+    if (!rounded) return plain;
+    const filleted: Contour = { closed: true, nodes: rounded };
+    return contoursIntersect([filleted]) && !contoursIntersect([plain]) ? plain : filleted;
   };
 
   const facingBefore = Math.sign(contourArea(contour));
@@ -1458,6 +1463,171 @@ export function applyWeight(
     else high = middle;
   }
   return low === 0 ? contour : build(low);
+}
+
+/**
+ * Points the offset swallowed, spread round the corner they left.
+ *
+ * Where a stretch of outline is shorter than the weight -- the inner end of
+ * the aperture of Lora's a, s and 2 made bolder -- the loop cutting leaves
+ * several points on one spot, or a few units apart, and the outline turns a
+ * sharp corner there and runs a short straight stub into the next curve: a
+ * step where the aperture closes. Those points are spare, and a bold is
+ * drawn with the end of the white rounded. So each such run is taken as one
+ * corner: the stretch of outline before it is cut back and the stretch after
+ * it cut forward by a little, and the points of the run are laid along the
+ * circular arc between the two cuts, leaving and arriving the way the
+ * outline does. The same points come out as went in, and a straight piece
+ * stays straight, so a variable font keeps its structure. Null where there
+ * is nothing to round.
+ */
+function roundSwallowed(nodes: GlyphNode[], weight: number): GlyphNode[] | null {
+  const count = nodes.length;
+  if (count < 4 || !(weight > 0)) return null;
+  const out = nodes.map((node) => ({
+    ...node,
+    point: { ...node.point },
+    handleIn: node.handleIn ? { ...node.handleIn } : null,
+    handleOut: node.handleOut ? { ...node.handleOut } : null,
+  }));
+  const at = (index: number) => out[((index % count) + count) % count];
+  const curve = (index: number): [Vec2, Vec2, Vec2, Vec2] => {
+    const a = at(index);
+    const b = at(index + 1);
+    return [a.point, a.handleOut ?? a.point, b.handleIn ?? b.point, b.point];
+  };
+  const length = (index: number): number => {
+    const [p0, p1, p2, p3] = curve(index);
+    let total = 0;
+    let last = p0;
+    for (let i = 1; i <= 12; i++) {
+      const point = cubicAt(p0, p1, p2, p3, i / 12);
+      total += distance(last, point);
+      last = point;
+    }
+    return total;
+  };
+  const lengths = out.map((_, index) => length(index));
+  const tiny = Math.max(1, weight * 0.5);
+  const small = lengths.map((value) => value < tiny);
+  if (small.every(Boolean) || !small.some(Boolean)) return null;
+  // Runs of short pieces, each from the first piece to the last.
+  const runs: Array<{ first: number; last: number }> = [];
+  const start = small.indexOf(false);
+  for (let step = 1; step <= count; step++) {
+    const index = (start + step) % count;
+    if (!small[index]) continue;
+    const previous = runs[runs.length - 1];
+    if (previous && (previous.last + 1) % count === index) previous.last = index;
+    else runs.push({ first: index, last: index });
+  }
+  const used = new Set<number>();
+  let changed = false;
+  for (const { first, last } of runs) {
+    const pieces = ((last - first + count) % count) + 1;
+    // Only a run of curves: a straight piece of the drawing, however short
+    // the weight left it -- the foot of a stem -- stays the straight it was.
+    let straight = false;
+    for (let k = 0; k < pieces; k++)
+      if (!at(first + k).handleOut && !at(first + k + 1).handleIn) straight = true;
+    if (straight) continue;
+    const before = (first - 1 + count) % count;
+    const after = (last + 1) % count;
+    if (used.has(before) || used.has(after)) continue;
+    const [b0, b1, b2, b3] = curve(before);
+    const [a0, a1, a2, a3] = curve(after);
+    const arriving = normalize(sub(b3, distance(b2, b3) > 1e-6 ? b2 : b1));
+    const leaving = normalize(sub(distance(a1, a0) > 1e-6 ? a1 : a2, a0));
+    const turn = Math.acos(
+      Math.max(-1, Math.min(1, arriving.x * leaving.x + arriving.y * leaving.y)),
+    );
+    // Turning less than this is a curve passing through, not a corner.
+    if (!(turn > (20 * Math.PI) / 180) || turn > (170 * Math.PI) / 180) continue;
+    const reach = Math.min(lengths[before] * 0.4, lengths[after] * 0.4, weight * 1.5);
+    if (reach < 1) continue;
+    // Cut the piece before back by the reach, and the piece after forward.
+    const cutAt = (p: [Vec2, Vec2, Vec2, Vec2], total: number, fromEnd: boolean): number => {
+      const goal = fromEnd ? total - reach : reach;
+      let run = 0;
+      let last = p[0];
+      for (let i = 1; i <= 48; i++) {
+        const point = cubicAt(p[0], p[1], p[2], p[3], i / 48);
+        const step = distance(last, point);
+        if (run + step >= goal) return (i - 1 + (step > 0 ? (goal - run) / step : 0)) / 48;
+        run += step;
+        last = point;
+      }
+      return 1;
+    };
+    const tb = cutAt([b0, b1, b2, b3], lengths[before], true);
+    const ta = cutAt([a0, a1, a2, a3], lengths[after], false);
+    const [keepBefore] = splitCubic(b0, b1, b2, b3, tb);
+    const [, keepAfter] = splitCubic(a0, a1, a2, a3, ta);
+    const from = keepBefore[3];
+    const to = keepAfter[0];
+    const chord = distance(from, to);
+    if (chord < 1e-6) continue;
+    // Leaving and arriving the way the outline does where it was cut.
+    const tangent = (a: Vec2, b: Vec2, fallback: Vec2) =>
+      distance(a, b) > 1e-6 ? normalize(sub(b, a)) : fallback;
+    const inward = tangent(
+      distance(keepBefore[2], from) > 1e-6 ? keepBefore[2] : keepBefore[1],
+      from,
+      arriving,
+    );
+    const outward = tangent(
+      to,
+      distance(keepAfter[1], to) > 1e-6 ? keepAfter[1] : keepAfter[2],
+      leaving,
+    );
+    const bend = Math.acos(Math.max(-1, Math.min(1, inward.x * outward.x + inward.y * outward.y)));
+    if (!(bend > 1e-3)) continue;
+    // A circle's arc through the turn: handles four thirds of the tangent of
+    // a quarter of the turn, of its radius.
+    const radius = chord / (2 * Math.sin(bend / 2));
+    const handle = (4 / 3) * Math.tan(bend / 4) * radius;
+    const arc: [Vec2, Vec2, Vec2, Vec2] = [
+      from,
+      { x: from.x + inward.x * handle, y: from.y + inward.y * handle },
+      { x: to.x - outward.x * handle, y: to.y - outward.y * handle },
+      to,
+    ];
+    // Laid out: the node before keeps its place, its handle shortened; the
+    // run's first point at the cut, its last at the other cut, and any
+    // between along the arc.
+    const lineBefore = !at(before).handleOut && !at(before + 1).handleIn;
+    const lineAfter = !at(after).handleOut && !at(after + 1).handleIn;
+    if (!lineBefore) {
+      if (at(before).handleOut) at(before).handleOut = keepBefore[1];
+    }
+    const pieceCurves: Array<[Vec2, Vec2, Vec2, Vec2]> = [];
+    let rest = arc;
+    for (let k = 0; k < pieces; k++) {
+      if (k === pieces - 1) {
+        pieceCurves.push(rest);
+        break;
+      }
+      const [head, tail] = splitCubic(rest[0], rest[1], rest[2], rest[3], 1 / (pieces - k));
+      pieceCurves.push(head);
+      rest = tail;
+    }
+    for (let k = 0; k <= pieces; k++) {
+      const node = at(first + k);
+      node.point = { ...(k < pieces ? pieceCurves[k][0] : to) };
+      if (k === 0) {
+        if (node.handleIn) node.handleIn = lineBefore ? { ...node.point } : { ...keepBefore[2] };
+      } else if (node.handleIn) node.handleIn = { ...pieceCurves[k - 1][2] };
+      if (k < pieces) {
+        if (node.handleOut) node.handleOut = { ...pieceCurves[k][1] };
+      } else if (node.handleOut)
+        node.handleOut = lineAfter ? { ...node.point } : { ...keepAfter[1] };
+    }
+    if (!lineAfter && at(after + 1).handleIn) at(after + 1).handleIn = { ...keepAfter[2] };
+    used.add(before);
+    used.add(after);
+    changed = true;
+  }
+  return changed ? out : null;
 }
 
 /**
