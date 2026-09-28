@@ -121,12 +121,19 @@ export interface Metrics {
    * the bowls (their insides grow taller) and narrows the arches (the counter
    * is kept), which is how every other face here thins.
    */
-  lightHeld?: { from: number; grow: number };
+  lightHeld?: { from: number; grow: number; open?: number };
   /**
    * The word space as shares of the x-height, at the face's own pen and at
    * its Black (see `blackness`), held past it. Left out, it follows the arch.
    */
   wordSpace?: [number, number];
+  /**
+   * Where the accents stand: `gap`, how far over a lowercase letter and over
+   * a capital, as shares of the em; and `byFoot`, whether a grave or an
+   * acute is set with its foot over the middle of the letter rather than its
+   * whole width, as a steep one is. Left out, see `gapFor`.
+   */
+  accents?: { gap: [number, number]; byFoot?: boolean };
   /**
    * The most contrast a heavy weight takes on: see `heavierPen`. Left out,
    * the horizontals go on thinning to the pen's limit, which on a face with
@@ -687,10 +694,14 @@ export const SANS: Style = {
     heavyCounter: 1.3,
     heavyContrast: 0.42,
     capitalContrast: 0.61,
-    // Geist Thin's o and n are both a little wider down the stroke than the Regular's.
-    lightHeld: { from: 87, grow: 0.085 },
+    // Geist Thin's o and n are both a little wider down the stroke than the
+    // Regular's, and set 5 units further apart on either side (its figures 10).
+    lightHeld: { from: 87, grow: 0.085, open: 5 },
     // Geist's word space: 250 at the Thin and the Regular, 221 at the Black.
     wordSpace: [250 / 530, 221 / 530],
+    // Geist stands its accents 55 over a lowercase letter and 66 over a
+    // capital, and sets its steep grave and acute by their feet.
+    accents: { gap: [0.055, 0.066], byFoot: true },
     /* Geist Regular's own sidebearings, over 80 (a capital's over 80 after its 12 of extra). */
     sides: {
       a: [0.59, 0.24],
@@ -699,6 +710,8 @@ export const SANS: Style = {
       // Its foot reaches back to the letter before (Geist -5); held inside.
       j: [0.1, 1],
       k: [1, 0.59],
+      // Fitted, its arm's side closed to 20 at the Light; Geist Thin's is 50.
+      r: [1, 0.55],
       l: [1, 0.5],
       v: [0.28, 0.28],
       w: [0.28, 0.28],
@@ -770,6 +783,15 @@ export const SANS: Style = {
       equal: [0.5, 0.5],
       underscore: [0.55, 0.55],
       asciitilde: [0.5, 0.5],
+      // Geist's stands 55 off either side at the Regular; fitted, 44 and 34.
+      dollar: [0.69, 0.69],
+      // Geist stands its ! 50 off either side and its bar 92.
+      exclam: [0.63, 0.63],
+      // Geist's ampersand stands 40 off its left and 20 off its right.
+      ampersand: [0.5, 0.25],
+      bar: [1.15, 1.15],
+      grave: [0.55, 0.55],
+      acute: [0.55, 0.55],
       at: [0.61, 0.61],
     },
     /*
@@ -895,6 +917,13 @@ export const SANS: Style = {
     equal: "grotesque",
     underscore: "grotesque",
     asciitilde: "grotesque",
+    grave: "grotesque",
+    acute: "grotesque",
+    circumflex: "grotesque",
+    dieresis: "grotesque",
+    tilde: "grotesque",
+    dollar: "grotesque",
+    bar: "grotesque",
     zero: "grotesque",
     two: "grotesque",
     three: "grotesque",

@@ -456,6 +456,185 @@ describe("the s's spine", () => {
   });
 });
 
+describe("the eight's width", () => {
+  it("is as wide as Geist's from the Regular to the Black", () => {
+    // Geist's ink widths: 524 at the Regular and 644 at the Black, so 585
+    // halfway. With the pen's weight alone round its sides, the eight was 30
+    // units narrow at 130 and 49 at the Black.
+    for (const [weight, width] of [
+      [87, 524],
+      [130, 585],
+      [172, 644],
+    ]) {
+      const ink = box("eight", weight);
+      expect(Math.abs(ink.xMax - ink.xMin - width), `eight at ${weight}`).toBeLessThan(15);
+    }
+  });
+});
+
+describe("the at sign", () => {
+  it("is as wide as Geist's, and its tail runs as far round", () => {
+    // Geist's ink: 826 across at the Thin, 816 at the Regular, 920 at the
+    // Black, and 40 under the line its tail reaches 578, 580 and 662 in from
+    // the left. The ring was 31 narrow at the Thin and 45 at the Black, and
+    // the tail 119 short at the Black.
+    for (const [weight, width, tail] of [
+      [30, 826, 578],
+      [87, 816, 580],
+      [172, 920, 662],
+    ]) {
+      const { contours } = draw("at", weight);
+      const ink = contoursBounds(contours);
+      expect(Math.abs(ink.xMax - ink.xMin - width), `@ at ${weight}`).toBeLessThan(15);
+      // Up to 710 at every weight, as Geist's is: the ring stopped 27 short
+      // of it on the Thin, and the Black's hung 22 short of Geist's -128.
+      expect(Math.abs(ink.yMax - 710), `@ top at ${weight}`).toBeLessThan(8);
+      expect(ink.yMin, `@ foot at ${weight}`).toBeLessThan(-85);
+      const under = filled(contours, -40, "y");
+      const end = under[under.length - 1][1] - ink.xMin;
+      expect(Math.abs(end - tail), `tail at ${weight}`).toBeLessThan(15);
+    }
+  });
+});
+
+describe("the Sans at its Light, against Geist Thin's widths", () => {
+  it("does not widen the letters Geist Thin keeps narrow", () => {
+    // Geist Thin's ink widths. The face widens its light letters as Geist
+    // Thin's o and n are widened, and the r's arm, the A, the v, the w, the G
+    // and the figures took that on top of their own: the r 48 units wide, the
+    // A 22, the G 30, the 7 26.
+    const thin: Record<string, number> = {
+      r: 208,
+      A: 564,
+      v: 434,
+      w: 729,
+      W: 830,
+      G: 570,
+      two: 477,
+      seven: 469,
+      eight: 500,
+      k: 436,
+    };
+    for (const [name, width] of Object.entries(thin)) {
+      const ink = box(name, 30);
+      expect(Math.abs(ink.xMax - ink.xMin - width), name).toBeLessThan(12);
+    }
+  });
+});
+
+describe("the grave and the acute", () => {
+  it("are Geist's steep marks, on their own and over a letter", () => {
+    // Geist's grave: 160 across from 598 up to 726 on the Regular, 234 from
+    // 587 to 747 on the Black. The plain one lay nearer level.
+    for (const [weight, wide, foot, top] of [
+      [87, 160, 598, 726],
+      [172, 234, 587, 747],
+    ]) {
+      for (const name of ["grave", "acute"]) {
+        const ink = box(name, weight);
+        const said = `${name} at ${weight}`;
+        expect(Math.abs(ink.xMax - ink.xMin - wide), said).toBeLessThan(12);
+        expect(Math.abs(ink.yMax - ink.yMin - (top - foot)), said).toBeLessThan(12);
+      }
+      // And the same mark on the à: as tall as it is on its own.
+      for (const [name, geist] of [
+        ["circumflex", weight === 87 ? [274, 133] : [378, 166]],
+        ["dieresis", weight === 87 ? [262, 98] : [422, 136]],
+        ["tilde", weight === 87 ? [315, 127] : [361, 165]],
+      ] as const) {
+        // Geist's accents across and high. The plain circumflex came to a
+        // point, the dots were smaller and closer, the tilde a round swash.
+        const ink = box(name, weight);
+        const said = `${name} at ${weight}`;
+        expect(Math.abs(ink.xMax - ink.xMin - geist[0]), said).toBeLessThan(15);
+        expect(Math.abs(ink.yMax - ink.yMin - geist[1]), said).toBeLessThan(15);
+      }
+      const accented = draw("agrave", weight).contours.map((one) => contoursBounds([one]));
+      const mark = accented.reduce((high, one) => (one.yMax > high.yMax ? one : high));
+      expect(Math.abs(mark.yMax - mark.yMin - (top - foot)), `à at ${weight}`).toBeLessThan(12);
+    }
+  });
+});
+
+describe("the accents' places", () => {
+  it("stand as far off their letters as Geist's, the steep ones by their feet", () => {
+    // Geist: 55 over a lowercase letter, 66 over a capital, with the foot of
+    // a grave or an acute over the letter's middle. The accents stood 28 and
+    // 13 off, centred by their whole width, half their lean to one side.
+    for (const [name, base, gap] of [
+      ["agrave", "a", 55],
+      ["eacute", "e", 55],
+      ["Agrave", "A", 66],
+      ["Eacute", "E", 66],
+    ] as const) {
+      const letter = contoursBounds(draw(base, 87).contours);
+      const pieces = draw(name, 87).contours.map((one) => ({ one, at: contoursBounds([one]) }));
+      const mark = pieces.reduce((high, piece) => (piece.at.yMax > high.at.yMax ? piece : high));
+      expect(Math.abs(mark.at.yMin - letter.yMax - gap), `${name} gap`).toBeLessThan(6);
+      const foot = filled([mark.one], mark.at.yMin + 1, "y");
+      const footMiddle = (foot[0][0] + foot[foot.length - 1][1]) / 2;
+      const accented = contoursBounds(
+        pieces.filter((piece) => piece !== mark).map((piece) => piece.one),
+      );
+      const middle = (accented.xMin + accented.xMax) / 2;
+      expect(Math.abs(footMiddle - middle), `${name} foot`).toBeLessThan(10);
+    }
+  });
+});
+
+describe("the bar and the ampersand", () => {
+  it("are Geist's height and width", () => {
+    // Geist's bar runs from 110 under the line to 750, as its brackets do;
+    // the plain one stood from the descender to the cap line. Geist Black's
+    // ampersand is 723 across; its foot and arm stood 20 short, 678.
+    for (const weight of [30, 87, 172]) {
+      const bar = box("bar", weight);
+      expect(bar.yMin, `bar at ${weight}`).toBeCloseTo(-110, -1);
+      expect(bar.yMax, `bar at ${weight}`).toBeCloseTo(750, -1);
+    }
+    const ampersand = box("ampersand", 172);
+    expect(ampersand.xMax - ampersand.xMin).toBeGreaterThan(690);
+  });
+});
+
+describe("the dollar", () => {
+  it("has Geist's long light bar, and Geist's sides", () => {
+    // Geist's bar runs from 90 under the line to 800, 74 across at the
+    // Regular; its ink stands 55 off either side. The plain bar stood out 53
+    // (to 763) and was nearly the stem's weight, and the fitting set the
+    // dollar at 44 and 34. Held a few units inside what the health check
+    // allows past the ascender.
+    const drawn = draw("dollar", 87);
+    const ink = contoursBounds(drawn.contours);
+    expect(ink.yMin).toBeCloseTo(-90, -1);
+    expect(ink.yMax).toBeGreaterThan(790);
+    const bar = filled(drawn.contours, 770, "y");
+    expect(bar.length).toBe(1);
+    expect(bar[0][1] - bar[0][0]).toBeCloseTo(74, -1);
+    expect(ink.xMin).toBeCloseTo(55, -1);
+    expect(drawn.advanceWidth - ink.xMax).toBeCloseTo(55, -1);
+  });
+});
+
+describe("the Sans's spacing at its Light", () => {
+  it("opens as Geist Thin's does", () => {
+    // Geist Thin sets its letters about 5 units further off either side than
+    // its Regular, and its figures 10: n 85, H 96, the two 70 and the eight
+    // 50. The Sans kept the Regular's spacing all the way down.
+    for (const [name, side] of [
+      ["n", 85],
+      ["H", 96],
+      ["two", 70],
+      ["eight", 50],
+    ] as const) {
+      const drawn = draw(name, 30);
+      const ink = contoursBounds(drawn.contours);
+      expect(Math.abs(ink.xMin - side), `${name} left`).toBeLessThan(4);
+      expect(Math.abs(drawn.advanceWidth - ink.xMax - side), `${name} right`).toBeLessThan(4);
+    }
+  });
+});
+
 describe("the s's width", () => {
   it("spreads as Geist's does from the Regular to the Black", () => {
     // Geist's ink widths at its Regular and Black. Pen 130 is halfway between
@@ -577,8 +756,8 @@ describe("the Sans's marks", () => {
 describe("the Sans's sidebearings", () => {
   it("stand where Geist's do at the Regular and the Black", () => {
     // Geist's left and right sidebearings at the Regular and the Black. The
-    // W stood 17 closer than Geist's, the T, Y, 7 and X 12 to 26 further off,
-    // and the O 15 closer at the Black. Geist's Y reaches 6 past its sides,
+    // W stood 17 closer than Geist's, the ! 6 to 11 closer, the T, Y, 7 and
+    // X 12 to 26 further off, and the O 15 closer at the Black. Geist's Y reaches 6 past its sides,
     // and is held just inside them.
     const geist: Record<string, [number, number, number, number]> = {
       W: [38, 38, 36, 36],
@@ -590,6 +769,8 @@ describe("the Sans's sidebearings", () => {
       six: [50, 40, 40, 30],
       nine: [40, 50, 30, 40],
       four: [30, 50, 20, 40],
+      exclam: [50, 50, 45, 45],
+      ampersand: [40, 20, 30, 10],
     };
     for (const [name, [left, right, blackLeft, blackRight]] of Object.entries(geist)) {
       for (const [weight, l, r] of [

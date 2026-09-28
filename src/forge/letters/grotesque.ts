@@ -91,6 +91,13 @@ const large = (f: Frame, share = 0): number =>
 /** Where the Sans sets its crossbar control: a bar drawn at Geist's height sits here. */
 const SANS_CROSSBAR = 0.52;
 
+/**
+ * Narrower towards the Thin by this share: the face widens its light letters
+ * as Geist Thin's o and n are widened (`metrics.lightHeld`), and Geist Thin's
+ * diagonals, its G and its figures do not widen with them.
+ */
+const thinned = (f: Frame, share: number): number => 1 - share * thinness(f);
+
 /** A turn, never tighter than the pen will go round. */
 const held = (f: Frame, radius: number): number => Math.max(radius, f.least);
 
@@ -416,7 +423,8 @@ export function grotesqueY(style: Style): Recipe {
  */
 export function grotesqueCapitalG(style: Style): Recipe {
   const f = frame(style);
-  const [u, t] = spread(f);
+  const [wide, t] = spread(f);
+  const u = wide * thinned(f, 0.049);
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
   const X = (x: number) => f.edge - f.half + x * u;
   const middle = (f.crest(f.cap) + f.dip(0)) / 2;
@@ -755,7 +763,7 @@ export function grotesqueOne(style: Style): Recipe {
  */
 export function grotesqueSeven(style: Style): Recipe {
   const f = frame(style);
-  const X = across(f, 40);
+  const X = across(f, 40, -0.068);
   const pen = penReach(style.pen);
   const line = f.hangs(f.cap);
   const end = X(545);
@@ -814,7 +822,7 @@ export function grotesqueAmpersand(style: Style): Recipe {
   const bowlW = held(f, lerp(193, 204) * u);
   const bowl = at(X(lerp(237, 290)), bowlY);
   // The leg, from its foot up to where it runs tangent into the loop's left.
-  const foot = at(X(lerp(510, 590)), 0);
+  const foot = at(X(lerp(510, 610)), 0);
   const split = -40;
   const entered = tangentFrom(foot, bend(f, loop, loopH, 270, 180, loopW));
   /*
@@ -850,7 +858,7 @@ export function grotesqueAmpersand(style: Style): Recipe {
   }
   // Geist's arm stands lower on its lighter weights: 255 on the Thin.
   const light = Math.min(1, Math.max(0, (87 - f.style.pen.weight) / 57));
-  const armTop = at(X(lerp(496, 586)), H(lerp(318, 335) - 63 * light));
+  const armTop = at(X(lerp(496, 609)), H(lerp(318, 335) - 63 * light));
   return finish(f, [
     /*
      * Two runs, split on the loop's right side, so that neither crosses
@@ -1071,7 +1079,8 @@ export function grotesqueSmallR(style: Style): Recipe {
   void wide;
   void fall;
   const corner = at(from + across2, top - down);
-  const end = Math.max(X(lerp(256, 344)), corner.x + f.half * 0.3);
+  // 208 across on the Thin, where the arm is short.
+  const end = Math.max(X(lerp(256, 344, 209)), corner.x + f.half * 0.3);
   // Its turns held to what its own pen goes round: see `holds` in `shapes.ts`.
   const af: Frame = { ...f, half: narrow / 2, style: { ...f.style, pen: armPen } };
   const arm = ink(
@@ -1254,11 +1263,11 @@ function angleAt(
  */
 export function grotesqueTwo(style: Style): Recipe {
   const f = frame(lighterAcross(style));
-  const X = across(f, 60, 0.015);
+  const X = across(f, 60, -0.04);
   const top = f.crest(f.cap);
   const cy = up(f, 510);
   const halfH = held(f, top - cy);
-  const halfW = held(f, 195 * large(f, 1));
+  const halfW = held(f, 195 * large(f, 1) * thinned(f, 0.055));
   const centre = at(X(315), cy);
   const foot = f.sits(0, f.bar);
   /*
@@ -1310,8 +1319,8 @@ export function grotesqueTwo(style: Style): Recipe {
  */
 export function grotesqueThree(style: Style): Recipe {
   const f = frame(lighterAcross(style));
-  const X = across(f, 50, 0.06);
-  const u = large(f, 1) * (1 + 0.06 * thinness(f));
+  const X = across(f, 50, 0.024);
+  const u = large(f, 1) * (1 + 0.024 * thinness(f));
   const top = f.crest(f.cap);
   const bottom = f.dip(0);
   const waist = up(f, 378);
@@ -1392,8 +1401,8 @@ export function grotesqueFour(style: Style): Recipe {
  */
 export function grotesqueFive(style: Style): Recipe {
   const f = frame(lighterAcross(style));
-  const X = across(f, 60, 0.045);
-  const u = large(f, 1) * (1 + 0.045 * thinness(f));
+  const X = across(f, 60, 0.009);
+  const u = large(f, 1) * (1 + 0.009 * thinness(f));
   const flag = f.hangs(f.cap);
   const stemTop = at(X(168), f.cap);
   const [, lerp] = squared(f);
@@ -1552,8 +1561,8 @@ export function grotesqueSix(style: Style): Recipe {
 }
 
 function sixStrokes(f: Frame): Stroke[] {
-  const X = across(f, 60, 0.065);
-  const u = large(f, 1) * (1 + 0.065 * thinness(f));
+  const X = across(f, 60, 0.025);
+  const u = large(f, 1) * (1 + 0.025 * thinness(f));
   const bottom = f.dip(0);
   const top = f.crest(f.cap);
   const bowlTop = up(f, 484) - f.upright;
@@ -1589,7 +1598,7 @@ function sixStrokes(f: Frame): Stroke[] {
 /** The nine: the six turned over, as Geist's is. */
 export function grotesqueNine(style: Style): Recipe {
   const f = frame(lighterAcross(style));
-  const X = across(f, 60, 0.065);
+  const X = across(f, 60, 0.025);
   const about = at(X(313), (f.crest(f.cap) + f.dip(0)) / 2);
   return finish(
     f,
@@ -1621,8 +1630,8 @@ export function grotesqueZero(style: Style): Recipe {
  */
 export function grotesqueEight(style: Style): Recipe {
   const f = frame(lighterAcross(style));
-  const X = across(f, 40, 0.065);
-  const u = large(f, 1) * (1 + 0.065 * thinness(f));
+  const X = across(f, 40, 0.025);
+  const u = large(f, 1) * (1 + 0.025 * thinness(f));
   const waist = up(f, 378);
   const upperH = held(f, (f.crest(f.cap) - waist) / 2);
   const lowerH = held(f, (waist - f.dip(0)) / 2);
@@ -1653,11 +1662,17 @@ function swollenRing(f: Frame, centre: Vec2, halfW: number, halfH: number): Stro
   const along = pen.weight * (1 - Math.min(Math.max(pen.contrast, 0), 0.95));
   const lighter = pen.weight * (1 - share);
   const light = { ...pen, weight: lighter, contrast: Math.max(0, 1 - along / lighter) };
-  const out = (pen.weight - lighter) / 2;
+  // And carried out further again as the pen grows, to the weight Geist's
+  // sides have: 200 at its Black, heavier than its stem, where the pen alone
+  // left the eight 49 units narrow with counters 30 too wide a side.
+  const out = (pen.weight - lighter) / 2 + EIGHT_SWELL * Math.min(1, Math.max(0, t));
   return [ink(f, ring(f, centre, halfW, halfH)), ink(f, ring(f, centre, halfW + out, halfH))].map(
     (one) => inherit(one, { ...one, pen: light }),
   );
 }
+
+/** How much further out a heavy eight's rings swell, by the Black. */
+const EIGHT_SWELL = 24;
 
 /** A point part of the way along a straight run, found by its height. */
 function alongTo(from: Vec2, to: Vec2, y: number): Vec2 {
@@ -1703,7 +1718,8 @@ export function grotesqueK(style: Style): Recipe {
   const f = frame(style);
   return finish(f, [
     ink(f, straight(at(f.edge, 0), at(f.edge, f.asc)), f.end, f.end),
-    ...kay(f, small(f, 1), f.x, 123, [133, 476, 530], [305, 491, 530]),
+    // A little wider towards the Thin, as Geist Thin's k is.
+    ...kay(f, small(f, 1) * thinned(f, -0.035), f.x, 123, [133, 476, 530], [305, 491, 530]),
   ]);
 }
 
@@ -2383,18 +2399,57 @@ function pointOnBowl(f: Frame, centre: Vec2, halfW: number, halfH: number, degre
  * the stem at a Black. The plain one was a wide chevron set low, a sign.
  */
 export function grotesqueCaret(style: Style): Recipe {
-  const f = frame(style);
-  const [X, lerp] = squared(f);
-  const k = X(1) - X(0);
-  const top = up(f, 673);
-  const bottom = up(f, 383);
   // Geist's measures, from the left of the ink: the feet 82 across on the
   // Regular (34 on the Thin, 127 on the Black), the head 106 (48, 165) from
   // 120 in, and the whole 346 (288, 405) wide.
-  const foot = lerp(82, 127, 34) * k;
-  const wide = lerp(346, 405, 288) * k;
-  const headLeft = 120 * k;
-  const headRight = lerp(226, 285, 168) * k;
+  return chevron(style, {
+    foot: [82, 127, 34],
+    wide: [346, 405, 288],
+    headLeft: [120, 120, 120],
+    headRight: [226, 285, 168],
+    bottom: [383, 383, 383],
+    top: [673, 673, 673],
+  });
+}
+
+/**
+ * The circumflex accent, as Geist's: the caret's shape, lower and wider --
+ * the feet 70 across on the Regular (28 on the Thin, 128 on the Black), the
+ * whole 274 (198, 378), the head from 90 to 184 (88 to 110, 100 to 278),
+ * from 598 (610, 587) up to 731 (734, 753). The plain one came to a point.
+ */
+export function grotesqueCircumflexAccent(style: Style): Recipe {
+  return chevron(style, {
+    foot: [70, 128, 28],
+    wide: [274, 378, 198],
+    headLeft: [90, 100, 88],
+    headRight: [184, 278, 110],
+    bottom: [598, 587, 610],
+    top: [731, 753, 734],
+  });
+}
+
+/** Two strokes leaning in to a level head, cut level at their feet too. */
+function chevron(
+  style: Style,
+  m: {
+    foot: Measure;
+    wide: Measure;
+    headLeft: Measure;
+    headRight: Measure;
+    bottom: Measure;
+    top: Measure;
+  },
+): Recipe {
+  const f = frame(style);
+  const [X, lerp] = squared(f);
+  const k = X(1) - X(0);
+  const top = up(f, lerp(...m.top));
+  const bottom = up(f, lerp(...m.bottom));
+  const foot = lerp(...m.foot) * k;
+  const wide = lerp(...m.wide) * k;
+  const headLeft = lerp(...m.headLeft) * k;
+  const headRight = lerp(...m.headRight) * k;
   const x0 = X(0);
   const leftFoot = at(x0 + foot / 2, bottom);
   const leftHead = at(x0 + headLeft + foot / 2, top);
@@ -2410,6 +2465,29 @@ export function grotesqueCaret(style: Style): Recipe {
       return inherit(one, { ...one, pen });
     }),
   );
+}
+
+/**
+ * The dieresis, as Geist's: two dots cut square, 88 across and 98 high on
+ * the Regular (34 by 70 on the Thin, 180 by 136 on the Black), 86 (94, 62)
+ * apart, their feet at 613 (628, 594). The plain ones were smaller and
+ * closer.
+ */
+export function grotesqueDieresis(style: Style): Recipe {
+  const f = frame(style);
+  const [X, lerp] = squared(f);
+  const k = X(1) - X(0);
+  const across = lerp(88, 180, 34);
+  const high = lerp(98, 136, 70);
+  const apart = lerp(86, 62, 94);
+  const foot = up(f, lerp(613, 594, 628));
+  const dot = (left: number): Stroke =>
+    measured(
+      f,
+      straight(at(X(left + across / 2), foot), at(X(left + across / 2), foot + high * k)),
+      across * k,
+    );
+  return finish(f, [dot(0), dot(across + apart)]);
 }
 
 /**
@@ -2500,6 +2578,12 @@ export function grotesqueBackslash(style: Style): Recipe {
   return finish(f, [
     ink(f, straight(at(f.edge, up(f, 750)), at(f.edge + 295.8 * u, up(f, -110))), LEVEL, LEVEL),
   ]);
+}
+
+/** The bar, as Geist's: from 110 under the line to 750, as its brackets run. */
+export function grotesqueBar(style: Style): Recipe {
+  const f = frame(style);
+  return finish(f, [ink(f, straight(at(f.edge, up(f, -110)), at(f.edge, up(f, 750))), BUTT, BUTT)]);
 }
 
 /** A pen as heavy across in every direction, for the marks drawn to a measured weight. */
@@ -2622,16 +2706,54 @@ export function grotesqueUnderscore(style: Style): Recipe {
  * heavier, or its hollows filled in.
  */
 export function grotesqueTilde(style: Style): Recipe {
+  return wave(style, {
+    thick: [79, 126, 32],
+    wide: [443, 443, 402],
+    low: [246, 245, 268],
+    high: [420, 421, 398],
+    crest: [430, 424, 404],
+  });
+}
+
+/**
+ * The tilde accent, as Geist's: the same wave, smaller -- 315 across on the
+ * Regular (264 on the Thin, 361 on the Black) and 54 (26, 90) thick, from
+ * 603 (625, 589) at its left end to 730 (723, 754) at its right, its crest
+ * at 720 (714, 748). The plain one was a heavier, rounder swash.
+ */
+export function grotesqueTildeAccent(style: Style): Recipe {
+  return wave(style, {
+    thick: [54, 90, 26],
+    wide: [315, 361, 264],
+    low: [603, 589, 625],
+    high: [730, 754, 723],
+    crest: [720, 748, 714],
+  });
+}
+
+/** Geist's measures at its Regular, Black and Thin. */
+type Measure = [number, number, number];
+
+/**
+ * A wave of two equal arcs, one over and one under, cut level at both ends,
+ * from a low left end to a high right one, on Geist's measures. Past the
+ * Black it grows taller and wider as fast as it grows heavier, or its
+ * hollows filled in.
+ */
+function wave(
+  style: Style,
+  m: { thick: Measure; wide: Measure; low: Measure; high: Measure; crest: Measure },
+): Recipe {
   const f = frame(style);
   const [X, lerp] = squared(f);
   const k = X(1) - X(0);
-  const thick = lerp(79, 126, 32);
-  const grown = Math.max(0, thick - 126) * 1.2;
-  const wide = lerp(443, 443, 402) + grown * 2;
+  const thick = lerp(...m.thick);
+  const grown = Math.max(0, thick - m.thick[1]) * 1.2;
+  const wide = lerp(...m.wide) + grown * 2;
   const half = thick / 2;
-  const low = lerp(246, 245, 268) - grown;
-  const high = lerp(420, 421, 398) + grown;
-  const crest = lerp(430, 424, 404) + grown - half;
+  const low = lerp(...m.low) - grown;
+  const high = lerp(...m.high) + grown;
+  const crest = lerp(...m.crest) + grown - half;
   const middle = { x: wide / 2, y: (low + high) / 2 };
   // From the middle, where the two arcs meet, to the left end, and how far
   // the crest's spine stands over the middle.
@@ -2679,6 +2801,37 @@ export function grotesqueTilde(style: Style): Recipe {
     ),
   ]);
 }
+
+/**
+ * The grave and the acute, as Geist's: steep strokes cut level at both ends,
+ * from 726 down to 598 on the Regular (726 to 610 on the Thin, 747 to 587
+ * on the Black), falling 78 across (76, 72) and about 82 (30, 162) across
+ * where they are cut. The plain ones lay nearer level and sat lower.
+ */
+function accent(style: Style, way: 1 | -1): Recipe {
+  const f = frame(style);
+  const [X, lerp] = squared(f);
+  const k = X(1) - X(0);
+  const cut = lerp(82, 162, 30);
+  const fall = lerp(78, 72, 76);
+  const top = up(f, lerp(726, 747, 726));
+  const foot = up(f, lerp(598, 587, 610));
+  const wide = cut + fall;
+  const x = (u: number) => (way === 1 ? X(u) : X(wide) + X(0) - X(u));
+  const slope = Math.atan2(fall * k, top - foot);
+  return finish(f, [
+    measured(
+      f,
+      straight(at(x(cut / 2), top), at(x(cut / 2 + fall), foot)),
+      cut * k * Math.cos(slope),
+      LEVEL,
+      LEVEL,
+    ),
+  ]);
+}
+
+export const grotesqueGrave = (style: Style): Recipe => accent(style, 1);
+export const grotesqueAcute = (style: Style): Recipe => accent(style, -1);
 
 /**
  * How far the s's spine turns from straight, in radians: see `curvedSpine`.
@@ -3136,24 +3289,64 @@ export function grotesqueS(style: Style): Recipe {
 /** The S: see `ess`. */
 export function grotesqueCapitalS(style: Style): Recipe {
   const f = frame(stackedPen(style, CAPITAL_ESS_GAIN));
-  return finish(
-    f,
-    [
-      ...ess(f, {
-        height: f.cap,
-        geist: 710,
-        unit: large(f, 1),
-        left: 118,
-        upper: { x: 322, y: [540, 510], w: 204 },
-        lower: { x: 326, y: [180, 200], w: 220 },
-        head: [505, 465],
-        foot: [225, 250],
-        blackWiden: 9,
-        inner: 0.42,
-      }),
-    ],
-    true,
+  return finish(f, capitalEss(f), true);
+}
+
+/** The S's strokes, for the S and for the dollar. */
+function capitalEss(f: Frame): Stroke[] {
+  return ess(f, {
+    height: f.cap,
+    geist: 710,
+    unit: large(f, 1),
+    left: 118,
+    upper: { x: 322, y: [540, 510], w: 204 },
+    lower: { x: 326, y: [180, 200], w: 220 },
+    head: [505, 465],
+    foot: [225, 250],
+    blackWiden: 9,
+    inner: 0.42,
+  });
+}
+
+/**
+ * The dollar, as Geist's: the S, and a bar straight through it from 90 under
+ * the line to 800, a light one at every weight -- 74 across on the Regular,
+ * 30 on the Thin, 86 on the Black. The plain dollar's bar stood out only a
+ * little past the S, and was nearly as heavy as its stem.
+ */
+export function grotesqueDollar(style: Style): Recipe {
+  const f = frame(stackedPen(style, CAPITAL_ESS_GAIN));
+  const [X, lerp] = squared(f);
+  const strokes = capitalEss(f);
+  // Through the middle of the S as it is drawn: halfway across its spines.
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const stroke of strokes) {
+    for (const one of stroke.spine.segments) {
+      const xs =
+        one.kind === "line"
+          ? [one.from.x, one.to.x]
+          : [one.startAngle, (one.startAngle + one.endAngle) / 2, one.endAngle].map(
+              (angle) => one.centre.x + one.radius * Math.cos(angle),
+            );
+      lo = Math.min(lo, ...xs);
+      hi = Math.max(hi, ...xs);
+    }
+  }
+  const centre = (lo + hi) / 2;
+  // Held inside what the health check lets a letter reach past its lines:
+  // at a Light that is a little short of Geist's 800.
+  const { metrics, pen } = f.style;
+  const top = Math.min(
+    up(f, 800),
+    metrics.ascender + Math.max(pen.weight, metrics.unitsPerEm * 0.06) - 3,
   );
+  const bar = measured(
+    f,
+    straight(at(centre, up(f, -90)), at(centre, top)),
+    lerp(74, 86, 30) * (X(1) - X(0)),
+  );
+  return finish(f, [...strokes, bar], true);
 }
 
 /**
@@ -3324,7 +3517,8 @@ function smallSpread(f: Frame, share = 0): [number, number] {
 
 export function grotesqueV(style: Style): Recipe {
   const f = frame(style);
-  const [u, t] = smallSpread(f, 0.5);
+  const [wide, t] = smallSpread(f, 0.5);
+  const u = wide * thinned(f, 0.048);
   return finish(
     f,
     vee(
@@ -3371,7 +3565,8 @@ export function grotesqueCapitalV(style: Style): Recipe {
 /** The A: a vee turned over, flat at its head, and a bar low across it. */
 export function grotesqueCapitalA(style: Style): Recipe {
   const f = frame(style);
-  const [u, t] = spread(f, 1);
+  const [wide, t] = spread(f, 1);
+  const u = wide * thinned(f, 0.04);
   const legs = vee(
     f,
     u,
@@ -3407,7 +3602,8 @@ export function grotesqueCapitalA(style: Style): Recipe {
 /** The w: two vees side by side, the middle apex reaching the x-height. */
 export function grotesqueSmallW(style: Style): Recipe {
   const f = frame(style);
-  const [u, t] = smallSpread(f, 0.35);
+  const [wide, t] = smallSpread(f, 0.35);
+  const u = wide * thinned(f, 0.034);
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
   const X = (x: number) => f.edge + (x - lerp(43, 86)) * u;
   const outer = lerp(45.7, 87.5);
@@ -3738,9 +3934,16 @@ export function grotesqueAt(style: Style): Recipe {
   const drawnWith = (stroke: Stroke, with_: Stroke["pen"]): Stroke =>
     inherit(stroke, { ...stroke, pen: with_ });
   const grow = past * stemW * 0.35;
-  const outer = at(X(lerp(457, 488)) + grow * 0.3, up(f, lerp(304, 300)));
-  const outerW = held(f, lerp(370, 380) * u + grow);
-  const outerH = held(f, up(f, lerp(366, 350)) + grow * 0.3);
+  // And wider again towards the Thin, whose ring stands 398 out from its
+  // middle against the Regular's 372: half of that is already in the face's
+  // own widening of its light letters.
+  const light = thinness(f);
+  // And from under the line to 710 at every weight, lower at the Black:
+  // Geist's ring stands round 302 on the Thin and 291 on the Black, 816
+  // tall on the Thin -- grown upward here, where the tail's end stays put.
+  const outer = at(X(lerp(457, 500) + 3 * light) + grow * 0.3, up(f, lerp(304, 291) + 7 * light));
+  const outerW = held(f, (lerp(370, 400) + 14 * light) * u + grow);
+  const outerH = held(f, up(f, lerp(366, 363) + 22 * light) + grow * 0.3);
   const rf: Frame = { ...f, half: ringPen.weight / 2 };
   /*
    * The stem's turn lands exactly on the ring, at its widest where it runs
@@ -3756,7 +3959,21 @@ export function grotesqueAt(style: Style): Recipe {
     (stemPen.weight / 2) * 1.2,
   );
   const stem = landing.x - hook * 2;
-  const ends = angleAt(rf, outer, outerW, outerH, up(f, -40), false);
+  /*
+   * The tail runs round under the ring to where Geist's ends: its middle 623
+   * in on the Regular and 700 on the Black, a little under the line. Cut
+   * where the ring came down to 40 under the line, a Black's tail stopped 35
+   * short of Geist's.
+   */
+  const tailX = X(lerp(623, 700)) + grow * 0.3;
+  let [low, high] = [-90, 0];
+  for (let step = 0; step < 40; step++) {
+    const mid = (low + high) / 2;
+    const point = bowlPoint(outer, outerW, outerH, 1 - f.square, rf.half, mid, f.curve);
+    if (point.x < tailX) low = mid;
+    else high = mid;
+  }
+  const ends = (low + high) / 2;
   const bf: Frame = { ...f, half: bowlPen.weight / 2 };
   return finish(
     f,

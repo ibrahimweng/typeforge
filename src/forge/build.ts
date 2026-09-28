@@ -466,13 +466,26 @@ function marked(
 
   const em = style.metrics.unitsPerEm;
   const gap = gapFor(em, isCapital(parts.base));
+  // The face's own gap is for the marks over a letter: a cedilla or an
+  // ogonek hangs from the foot as close as ever.
+  const above = gapFor(em, isCapital(parts.base), style.metrics.accents?.gap);
   const runs = [...base.runs];
   const contours = [...base.contours];
 
   for (const markName of parts.marks) {
     // The mark gets the tool's marks too, or an accented letter comes out with
-    // a roughened body under a machined accent.
-    const mark = makeLetter(markName, style, undefined, undefined, undefined, undefined, effects);
+    // a roughened body under a machined accent; and, where the letter is
+    // drawn in the face's forms, the face's own form of the mark, or the
+    // Sans's à wore the plain sans's grave over Geist's a.
+    const mark = makeLetter(
+      markName,
+      style,
+      form === undefined ? undefined : style.forms?.[markName],
+      undefined,
+      undefined,
+      undefined,
+      effects,
+    );
     if (!mark || mark.contours.length === 0) return null;
 
     // Measured against everything placed so far, so a second mark stacks on
@@ -481,11 +494,21 @@ function marked(
     const over = contoursBounds(mark.contours);
     const below = hangsBelow(markName);
 
+    // A steep grave or acute set by its foot, where the face asks for that:
+    // centred by its whole width, it stood half its lean off the letter.
+    const byFoot =
+      style.metrics.accents?.byFoot && (markName === "grave" || markName === "acute")
+        ? inkRunsAt(mark.contours, over.yMin + 1, "y")
+        : [];
+    const middle =
+      byFoot.length > 0
+        ? (byFoot[0][0] + byFoot[byFoot.length - 1][1]) / 2
+        : (over.xMin + over.xMax) / 2;
     const move = parts.beside
       ? besideTop(contours, mark.contours, style, isCapital(parts.base), gap)
       : {
-          x: (under.xMin + under.xMax) / 2 - (over.xMin + over.xMax) / 2,
-          y: below ? under.yMin - over.yMax - gap : under.yMax - over.yMin + gap,
+          x: (under.xMin + under.xMax) / 2 - middle,
+          y: below ? under.yMin - over.yMax - gap : under.yMax - over.yMin + above,
         };
     const shifted = shoved(mark.contours, move);
     contours.push(...shifted);
@@ -760,6 +783,15 @@ function fitted(
     const advance = figureInk(style) + spacingOf(style) * FIGURE_SIDES * 2;
     return { shift: (advance - box.xMax - box.xMin) / 2, advance };
   }
+  // Opened towards the Thin by the face's own measure (`metrics.lightHeld`),
+  // twice that for a figure, as Geist Thin is set.
+  const light = style.metrics.lightHeld;
+  const opened =
+    light?.open && light.from > 30
+      ? light.open *
+        Math.min(1, Math.max(0, (light.from - style.pen.weight) / (light.from - 30))) *
+        (figure ? 2 : 1)
+      : 0;
   // The sides the eye sets, where the face lists them: see `metrics.sides`.
   const set = style.metrics.sides?.[name] ?? style.metrics.sides?.[decidedBy(name)];
   if (set) {
@@ -771,8 +803,8 @@ function fitted(
      */
     const plain = style.metrics.sidebearing;
     const unit = plain > 0 ? plain * Math.sqrt(spacingOf(style) / plain) : spacingOf(style);
-    const shift = unit * set[0] - box.xMin;
-    return { shift, advance: box.xMax + shift + unit * set[1] };
+    const shift = unit * set[0] + opened - box.xMin;
+    return { shift, advance: box.xMax + shift + unit * set[1] + opened };
   }
   const top = figure || isCapitalLike(name) ? style.metrics.capHeight : style.metrics.xHeight;
   /*
@@ -835,8 +867,8 @@ function fitted(
   // neighbour would be a kerning pair, not a spacing.
   left = Math.min(left, spacing * (leftJumps ? FIT_ARM : 0.75));
   right = Math.min(right, spacing * (rightJumps ? FIT_ARM : 0.75));
-  const shift = spacing - left - inkLeft;
-  return { shift, advance: inkRight + shift + spacing - right };
+  const shift = spacing - left - inkLeft + opened;
+  return { shift, advance: inkRight + shift + spacing - right + opened };
 }
 
 /**

@@ -396,8 +396,12 @@ export function hangsBelow(markName: string): boolean {
   return false;
 }
 
-/** How far above the letter a mark should stand, in font units. */
-export function gapFor(unitsPerEm: number, capital: boolean): number {
+/**
+ * How far above the letter a mark should stand, in font units: the face's
+ * own where it gives one (`metrics.accents`).
+ */
+export function gapFor(unitsPerEm: number, capital: boolean, own?: [number, number]): number {
+  if (own) return unitsPerEm * own[capital ? 1 : 0];
   return unitsPerEm * GAP * (capital ? CAPITAL_SHARE : 1);
 }
 
