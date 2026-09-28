@@ -1014,7 +1014,7 @@ describe("the horizontals at the current Black", () => {
     // and 139.
     const three = draw("three", 194).contours;
     const x = contoursBounds(three).xMin + 280;
-    const column = runs(three, x, "x");
+    const column = filled(three, x, "x");
     expect(column[0][1] - column[0][0]).toBeGreaterThan(147);
     expect(column[column.length - 1][1] - column[column.length - 1][0]).toBeGreaterThan(147);
     const five = draw("five", 194).contours;
@@ -1052,5 +1052,19 @@ describe("the five's bowl", () => {
     const column = filled(contours, contoursBounds(contours).xMin + 300, "x");
     expect(Math.abs(column[1][1] - 452)).toBeLessThan(6);
     expect(Math.abs(column[1][1] - column[1][0] - 118)).toBeLessThan(10);
+  });
+});
+
+describe("the three's waist", () => {
+  it("is as light and as low as Geist's", () => {
+    // 300 in from its ink's left Geist Black's three's waist runs from 297
+    // to 429 and its foot is 161 deep; on the stem's pen the waist ran from
+    // 304 to 453, 149 deep, over a foot of 151.
+    const { contours } = draw("three", 194);
+    const column = filled(contours, contoursBounds(contours).xMin + 300, "x");
+    expect(column.length).toBe(3);
+    expect(Math.abs(column[1][0] - 297)).toBeLessThan(6);
+    expect(Math.abs(column[1][1] - 429)).toBeLessThan(6);
+    expect(column[0][1] - column[0][0]).toBeGreaterThan(152);
   });
 });

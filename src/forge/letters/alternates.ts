@@ -81,6 +81,7 @@ import {
   grotesqueSix,
   grotesqueFiveSided,
   grotesqueSixSided,
+  grotesqueThreeSided,
   grotesqueSmallR,
   grotesqueT,
   grotesqueSmallU,
@@ -1604,11 +1605,12 @@ for (const [name, hint, build] of GROTESQUE) {
 }
 
 /*
- * The Sans's five, six and nine, as Geist's: the grotesque ones with a bowl
- * lighter across its crown than its foot, whose top comes down as the weight
- * grows.
+ * The Sans's three, five, six and nine, as Geist's: the grotesque ones with
+ * their bowls lighter across where they meet or under a hood than at their
+ * outsides, coming down as the weight grows.
  */
 const SIDED: Array<[LetterName, string, (style: Style) => Recipe]> = [
+  ["three", "Two bowls meeting at a waist lighter than their top and foot.", grotesqueThreeSided],
   [
     "five",
     "A short leaning stem and a bowl lighter at its crown than its foot.",

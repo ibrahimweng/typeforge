@@ -931,7 +931,7 @@ export const SANS: Style = {
     bar: "grotesque",
     zero: "grotesque",
     two: "grotesque",
-    three: "grotesque",
+    three: "sided",
     four: "grotesque",
     five: "sided",
     six: "sided",

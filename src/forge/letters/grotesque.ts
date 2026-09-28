@@ -1463,47 +1463,79 @@ export function grotesqueTwo(style: Style): Recipe {
  * square on the left, and both ends cut level.
  */
 export function grotesqueThree(style: Style): Recipe {
+  return threeOf(style, false);
+}
+
+/**
+ * The Sans's three, as Geist's: its waist lighter than its top and foot (132
+ * against 159 and 161 at the Black) and coming down as the weight grows (378
+ * at the Regular, 363 at the Black). On the stem's pen the waist was 149 at
+ * the Black, and the counters under it the shorter for it.
+ */
+export function grotesqueThreeSided(style: Style): Recipe {
+  return threeOf(style, true);
+}
+
+function threeOf(style: Style, sans: boolean): Recipe {
   const f = frame(lighterAcross(style));
   const fit = figureFit(f, 0.016, -0.012, 0.013, -0.069);
   const X = across(f, 50, 0.024, fit);
   const u = large(f, 1) * (1 + 0.024 * thinness(f)) * fit;
   const top = f.crest(f.cap);
   const bottom = f.dip(0);
-  const waist = up(f, 378);
+  const [, now] = squaredNow(f);
+  const waist = up(f, sans ? now(378, 363, 382) : 378);
   const upperH = held(f, (top - waist) / 2);
   const lowerH = held(f, (waist - bottom) / 2);
   const upper = at(X(307), waist + upperH);
   const lower = at(X(308), waist - lowerH);
   const upperW = held(f, 188 * u);
   const lowerW = held(f, 213 * u);
-  return finish(
-    f,
-    [
-      ink(
-        f,
-        chain(
-          bend(f, upper, upperH, angleAt(f, upper, upperW, upperH, up(f, 560), true), -90, upperW),
-          straight(at(upper.x, waist), at(X(247), waist)),
-        ),
-        f.end,
-        BUTT,
+  const upperBowl = (g: Frame, centre: Vec2, halfH: number): Stroke =>
+    ink(
+      g,
+      chain(
+        bend(g, centre, halfH, angleAt(g, centre, upperW, halfH, up(f, 560), true), -90, upperW),
+        straight(at(centre.x, waist), at(X(247), waist)),
       ),
-      ink(
-        f,
-        bend(
-          f,
-          lower,
-          lowerH,
-          90,
-          angleAt(f, lower, lowerW, lowerH, up(f, 188), true) - 360,
-          lowerW,
-        ),
-        BUTT,
-        f.end,
-      ),
-    ],
-    true,
-  );
+      f.end,
+      BUTT,
+    );
+  const lowerBowl = (g: Frame, centre: Vec2, halfH: number): Stroke =>
+    ink(
+      g,
+      bend(g, centre, halfH, 90, angleAt(g, centre, lowerW, halfH, up(f, 188), true) - 360, lowerW),
+      BUTT,
+      f.end,
+    );
+  if (!sans) return finish(f, [upperBowl(f, upper, upperH), lowerBowl(f, lower, lowerH)], true);
+  /*
+   * Each bowl a pair on a pen as light across as the waist, sharing the
+   * waist: one reaching the bowl's outside and one its inside, so the top
+   * and the foot keep their weight. The waist never as heavy as the top and
+   * foot, or a pair would be one bowl drawn twice and be drawn as one.
+   */
+  const band = 2 * f.upright;
+  const light = band * roundGain(f, 0.97, 0.87, 0.97);
+  // Geist's top and foot: 1.02 of the stem's crown at the Regular, 0.94 at
+  // the SemiBold, as heavy again at the UltraBlack and 1.03 at the Black.
+  const outside =
+    band *
+    (roundGain(f, 1.02, 0.94, 1.05) + 0.1 * Math.max(0, Math.min(heavyT(f), nowBlack()) - 0.41));
+  const g = sidedFrame(f, 2 * f.half, light);
+  const topOut = top + f.upright;
+  const footOut = bottom - f.upright;
+  const sided = (one: Stroke): Stroke => inherit(one, { ...one, pen: g.style.pen });
+  const strokes: Stroke[] = [];
+  for (const spine of [topOut - light / 2, topOut - outside + light / 2]) {
+    const halfH = held(g, (spine - waist) / 2);
+    strokes.push(sided(upperBowl(g, at(upper.x, waist + halfH), halfH)));
+  }
+  for (const spine of [footOut + light / 2, footOut + outside - light / 2]) {
+    const halfH = held(g, (waist - spine) / 2);
+    strokes.push(sided(lowerBowl(g, at(lower.x, waist - halfH), halfH)));
+  }
+  return finish(f, strokes, true);
 }
 
 /**

@@ -123,7 +123,11 @@ top and crown now match within 3, and the white under the hood is 101. This is
 a new form, "sided", used by the Sans only; the Ribbon and every face that
 picks the grotesque 6 keep the single ring. The 5's bowl is drawn the same
 way: its crown was 153 at the Black against Geist's 118, and 20 too high.
-Both now match within 6 at every weight.
+Both now match within 6 at every weight. The 3 is drawn in pairs too: its
+waist was 149 at the Black against Geist's 132, centred 15 units high, and
+its top and foot 8 to 10 light. Each bowl is now a pair on a pen as light as
+the waist, sharing it, so the top and foot keep Geist's weight. Every band
+matches within 4 at every weight.
 
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
