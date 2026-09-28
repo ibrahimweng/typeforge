@@ -138,11 +138,20 @@ function* walk(forge: Forge): Generator<void, Trouble[], void> {
   const inPieces: string[] = [];
   const erased: string[] = [];
 
-  const ceiling = forge.style.metrics.ascender + forge.style.pen.weight;
+  /*
+   * How far past its lines a letter may reach before it is said to: a pen's
+   * width, and never less than six hundredths of the em. At a hairline a pen's
+   * width is nothing, and the marks every face carries a little past its
+   * lines -- the parentheses, the slash and the dollar over the capitals, the
+   * cedilla and the ogonek under the descender, which Geist Thin carries as
+   * far as its Regular does -- were reported on a Light Sans alone.
+   */
+  const give = Math.max(forge.style.pen.weight, em * 0.06);
+  const ceiling = forge.style.metrics.ascender + give;
   // What an accented letter is allowed, which is more: a third again over the
   // capitals is about where a text face keeps its own.
-  const capped = forge.style.metrics.capHeight * 1.4 + forge.style.pen.weight;
-  const floor = forge.style.metrics.descender - forge.style.pen.weight;
+  const capped = forge.style.metrics.capHeight * 1.4 + give;
+  const floor = forge.style.metrics.descender - give;
 
   for (const letter of letterNames()) {
     // Offered before the letter rather than after it, so a caller that has run
