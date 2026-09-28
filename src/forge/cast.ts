@@ -96,6 +96,16 @@ export function reachesCast(cast: Cast | undefined, strokes: Stroke[]): boolean 
  * that already has them. The rim goes last of all, so that it runs round the
  * shadow too rather than round a letter the shadow then buries.
  */
+/**
+ * Where the inline cut its groove, for the contours the cut handed on.
+ *
+ * Kept against the very list the cut returns, which is what the cast is given
+ * when it goes second, since the shape of a hole cannot tell a groove from a
+ * counter: the narrow eye of a Formal Script e is as thin as a groove, and the
+ * counter of a Serif A lies as close to the paper all round.
+ */
+export const groovesOf = new WeakMap<Contour[], Contour[]>();
+
 export function castInk(
   ink: Contour[],
   strokes: Stroke[],
@@ -126,7 +136,9 @@ export function castInk(
 
   const local: Contour[] = [];
   if (cast.spur.on) local.push(...spurTool(shape, cast.spur, stem, chamfered));
-  if (cast.weld.on) local.push(...weldTool(strokes, cast.weld, stem, shape, breaks));
+  if (cast.weld.on) {
+    local.push(...weldTool(strokes, cast.weld, stem, shape, breaks, groovesOf.get(ink)));
+  }
   if (local.length > 0) {
     /*
      * Nothing a fillet or a point adds stands on its own. One grown at a join
@@ -1370,6 +1382,7 @@ function weldTool(
   stem: number,
   shape: Contour[] = [],
   breaks?: Breaks,
+  grooves: Contour[] = [],
 ): Contour[] {
   const size = weld.size * stem;
   if (size <= 0 || strokes.length < 2) return [];
@@ -1405,7 +1418,6 @@ function weldTool(
    * two fillets from either side of a band that only touched tied it too.
    * Counted on the letter as it stands with the fillets kept so far.
    */
-  const solids = shape.filter((contour) => contourArea(contour) > 0);
   let kept = shape;
   let count = pieces(shape);
   const ties = (fillet: Contour): boolean => {
@@ -1418,20 +1430,10 @@ function weldTool(
     return false;
   };
   /*
-   * Nor into a groove: a hole with an island standing in it, as the inline
-   * leaves. At a join the letter's corner is now the groove's, and a fillet
-   * grown there stood in the groove as a stub on its outer wall.
+   * Nor into an inline's groove. At a join the letter's corner is now the
+   * groove's, and a fillet grown there stood in the groove as a stub on its
+   * outer wall, or tied the island to it.
    */
-  const grooves = shape
-    .filter((hole) => contourArea(hole) < 0)
-    .filter((hole) =>
-      solids.some(
-        (solid) =>
-          contourArea(solid) < -contourArea(hole) &&
-          contourContainsPoint(hole, solid.nodes[0].point),
-      ),
-    )
-    .map(reverseContour);
   const inGroove = (fillet: Contour): boolean =>
     grooves.length > 0 &&
     intersect([fillet], grooves, "winding").reduce((total, one) => total + contourArea(one), 0) > 1;

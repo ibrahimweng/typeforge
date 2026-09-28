@@ -36,7 +36,7 @@ import {
 import { contoursIntersect } from "@/font/outline";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { alongSpine, spineLength } from "./shapes";
-import { eroded, outlined, untangled } from "./cast";
+import { eroded, groovesOf, outlined, untangled } from "./cast";
 import { penReach, sweep } from "./sweep";
 import type { Style } from "./style";
 import type { Spine, SpineSegment, Stroke } from "./types";
@@ -218,7 +218,8 @@ export function cutInk(
     ? splitTool(strokes, cuts.split, stem, scale.xHeight, cast)
     : { knives: [], lips: [] };
   straight.push(...breaks.knives);
-  if (cuts.inline.on) knife.push(...inlineTool(shape, strokes, cuts.inline, stem));
+  const groove = cuts.inline.on ? inlineTool(shape, strokes, cuts.inline, stem) : [];
+  knife.push(...groove);
   knife.push(...straight);
   /*
    * Fused here rather than left to the subtraction, when there is more than
@@ -273,6 +274,7 @@ export function cutInk(
    */
   // After the hairs are taken off, since dropping one can fold what is left.
   shape = untangled(shape.map(withoutHairs));
+  if (groove.length > 0) groovesOf.set(shape, groove);
 
   return {
     contours: shape,

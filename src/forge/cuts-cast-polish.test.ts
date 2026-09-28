@@ -836,7 +836,7 @@ describe("fillets after a cut", () => {
   it("grow nothing into an inline's groove", () => {
     // The corner at a join is the groove's once the inline has run, and the
     // fillets stood in it as stubs, or tied the island to the outer wall.
-    for (const letter of "AR") {
+    for (const letter of "ARHk") {
       const grooved = drawn(letter, forgeOf("Sans", 87, { cuts: { inline: {} } }));
       const welded = drawn(
         letter,
