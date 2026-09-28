@@ -105,6 +105,11 @@ test("the title names the base once", async ({ page }) => {
   const bar = page.getByText("My Serif", { exact: false }).first();
   await expect(bar).toBeVisible();
   await expect(page.getByText(/My Serif\s+Serif/)).toHaveCount(0);
+  // And the status bar says what is open here, not "Nothing open", and names
+  // no tool from a rail this page does not have.
+  const status = page.locator("[data-status-bar]");
+  await expect(status.locator("[data-status-document]")).toHaveText("My Serif — drawn from Serif");
+  await expect(status.locator("[data-status-tool]")).toHaveCount(0);
 });
 
 test("a part's controls go quiet when the part has no use for them", async ({ page }) => {
