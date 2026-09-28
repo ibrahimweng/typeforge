@@ -444,6 +444,23 @@ describe("the Serif's j", () => {
   });
 });
 
+describe("the Serif's zero", () => {
+  it("keeps its counter from pinching when set narrow", () => {
+    for (const weight of [110, 120, 130]) {
+      const style: Style = {
+        ...SERIF,
+        pen: { ...SERIF.pen, weight },
+        metrics: { ...SERIF.metrics, width: 0.6 },
+      };
+      // Its sides swollen on so short a radius, the inside folded to a point
+      // at the top and the bottom.
+      for (const contour of draw("zero", weight, style).contours) {
+        expect(contoursIntersect([contour]), `0 at ${weight}`).toBe(false);
+      }
+    }
+  });
+});
+
 describe("the Serif's at sign", () => {
   it("stops its ring short of the tail with the pen held steeply", () => {
     for (const weight of [230, 260]) {

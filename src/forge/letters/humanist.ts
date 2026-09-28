@@ -618,9 +618,22 @@ function swollen(style: Style, recipe: Recipe): Recipe {
    * across on a stem of 142, where its Regular's are 102 on 87.
    */
   const swell = 1 + (SWELL - 1) * Math.max(0, 1 - (blackness(style) / 0.47) * 0.8);
+  /*
+   * And never so far that the counter folds: a zero set narrow, its ring
+   * tall on a short radius, pinched its inside to a point at the top and the
+   * bottom at a Semibold. Eased back toward the pen's own there; the points
+   * are the same either way.
+   */
+  const swelled = (stroke: Stroke): Stroke => {
+    let drawn = hairlined(stroke, swell);
+    for (let k = 1; k <= 4 && contoursIntersect(sweep(drawn)); k++) {
+      drawn = hairlined(stroke, swell - ((swell - 1) * k) / 4);
+    }
+    return drawn;
+  };
   return {
     ...recipe,
-    strokes: recipe.strokes.map((stroke) => (isBowl(stroke) ? hairlined(stroke, swell) : stroke)),
+    strokes: recipe.strokes.map((stroke) => (isBowl(stroke) ? swelled(stroke) : stroke)),
   };
 }
 
