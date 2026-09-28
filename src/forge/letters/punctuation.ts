@@ -1242,12 +1242,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     return finish(
       f,
       [
-        ink(
-          f,
-          bend(f, centre, outer, -38, 252, wide),
-          shortEnd(f),
-          shortEnd(f),
-        ),
+        ink(f, bend(f, centre, outer, -38, 252, wide), shortEnd(f), shortEnd(f)),
         ink(f, ring(f, centre, inner, inner)),
         ink(
           f,
@@ -1430,8 +1425,7 @@ const AT_GROWTH = 1.18;
 function heldAt(f: Frame): Frame {
   const most = f.capBowlH * (bookish(f) ? 1.08 : 0.94) * AT_GROWTH;
   if (atSizes(f).outer <= most || f.style.parts.script.on) return f;
-  const lighter = (weight: number): Frame =>
-    frame({ ...f.style, pen: { ...f.style.pen, weight } });
+  const lighter = (weight: number): Frame => frame({ ...f.style, pen: { ...f.style.pen, weight } });
   let low = 1;
   let high = f.style.pen.weight;
   for (let pass = 0; pass < 30; pass++) {
