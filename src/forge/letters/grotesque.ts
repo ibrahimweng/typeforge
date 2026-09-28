@@ -481,7 +481,7 @@ export function grotesqueCapitalQ(style: Style): Recipe {
   const [u, t] = spread(f);
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
   const X = (x: number) => f.edge - f.half + x * u;
-  const ring = LETTERS.O(style).strokes;
+  const ring = [capitalRing(f)];
   return finish(
     f,
     [
@@ -499,6 +499,81 @@ export function grotesqueCapitalQ(style: Style): Recipe {
     ],
     true,
   );
+}
+
+/**
+ * A frame drawing with a pen as heavy as Geist's sides and as light as its
+ * crowns: Geist's round capitals are heavier at their sides than their stem
+ * and lighter across their crowns -- the O 179 at its sides on UltraBlack's
+ * stem of 172, 142 at its crowns.
+ */
+function sidedFrame(f: Frame, side: number, crown: number): Frame {
+  const pen = { ...f.style.pen, weight: side, contrast: Math.max(0, 1 - crown / side), angle: 0 };
+  return { ...f, half: side / 2, least: (side / 2) * 1.06, style: { ...f.style, pen } };
+}
+
+/**
+ * The O, as Geist's: 649 across on the Regular (614 on the Thin, 720 on
+ * the Black), its sides 90 (34, 201) and its crowns 84 (32, 157), from 16
+ * under the line to 16 over the cap line. The plain O's bowl grew with the
+ * weight past Geist's, 21 units too wide at UltraBlack and 33 at the Black.
+ */
+export function grotesqueCapitalO(style: Style): Recipe {
+  const f = frame(style);
+  return finish(f, [capitalRing(f)], true);
+}
+
+/** The O's ring, for the O and the Q. */
+function capitalRing(f: Frame): Stroke {
+  const [X, lerp] = squaredNow(f);
+  const k = X(1) - X(0);
+  const wide = lerp(649, 720, 614) * k;
+  const side = lerp(90, 201, 34) * k;
+  const crown = lerp(84, 157, 32) * k;
+  const over = f.style.metrics.overshoot;
+  const top = f.cap + over - crown / 2;
+  const bottom = -over + crown / 2;
+  const g = sidedFrame(f, side, crown);
+  const one = ink(
+    g,
+    ring(
+      g,
+      at(X(0) + wide / 2, (top + bottom) / 2),
+      held(g, (wide - side) / 2),
+      held(g, (top - bottom) / 2),
+    ),
+  );
+  return inherit(one, { ...one, pen: g.style.pen });
+}
+
+/**
+ * The D, as Geist's: a stem, and a bowl flat along the lines and round at
+ * the right, as heavy at its side as the O's and 89 at its crowns on the
+ * Regular (32 on the Thin, 170 on the Black), 561 across (530, 632). The
+ * plain D's bowl grew past Geist's with the weight, 34 units too wide at
+ * UltraBlack and 66 at the Black.
+ */
+export function grotesqueCapitalD(style: Style): Recipe {
+  const f = frame(style);
+  const [X, lerp] = squaredNow(f);
+  const k = X(1) - X(0);
+  const wide = lerp(561, 632, 530) * k;
+  const side = lerp(90, 201, 34) * k;
+  const crown = lerp(89, 170, 32) * k;
+  const g = sidedFrame(f, side, crown);
+  const top = f.cap - crown / 2;
+  const bottom = crown / 2;
+  const right = X(wide) - side / 2;
+  const bowl = ink(
+    g,
+    lobeRun(g, f.edge, top, bottom, right, ((top - bottom) / 2) * 1.05),
+    BUTT,
+    BUTT,
+  );
+  return finish(f, [
+    ink(f, straight(at(f.edge, 0), at(f.edge, f.cap)), f.end, f.end),
+    inherit(bowl, { ...bowl, pen: g.style.pen }),
+  ]);
 }
 
 /**

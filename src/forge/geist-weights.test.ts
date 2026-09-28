@@ -645,6 +645,26 @@ describe("the percent past the old Black", () => {
   });
 });
 
+describe("the O and the D", () => {
+  it("are Geist's width from the Thin to the Black", () => {
+    // Geist's ink widths at its Thin, Regular, SemiBold, UltraBlack and
+    // Black. The plain bowls grew past Geist's with the weight: the O 21
+    // units too wide at UltraBlack and 33 at the Black, the D 34 and 66.
+    const geist: Record<string, number[]> = {
+      O: [614, 649, 677, 706, 720],
+      D: [530, 561, 589, 618, 632],
+    };
+    for (const [name, widths] of Object.entries(geist)) {
+      for (const [index, weight] of [30, 87, 130, 172, 194].entries()) {
+        const ink = box(name, weight);
+        expect(Math.abs(ink.xMax - ink.xMin - widths[index]), `${name} at ${weight}`).toBeLessThan(
+          10,
+        );
+      }
+    }
+  });
+});
+
 describe("the dollar", () => {
   it("has Geist's long light bar, and Geist's sides", () => {
     // Geist's bar runs from 90 under the line to 800, 74 across at the

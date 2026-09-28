@@ -55,6 +55,12 @@ steeper where they leave the bowls than through the centre. The s and S
 are Geist's width at the SemiBold, UltraBlack and Black, within a few units
 (the s was 22 units narrow at pen 130 and 20 at 172).
 
+**O, D and Q.** New Sans O and D on Geist's measures, each drawn with a pen
+as heavy as Geist's sides (heavier than its stem) and as light as its crowns;
+the Q takes the new O. The plain bowls grew past Geist's with the weight: the
+O 21 units too wide at UltraBlack and 33 at the Black, the D 34 and 66. Now
+all three are within 7 at every weight, and the D is set at Geist's sides.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

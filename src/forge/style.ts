@@ -706,6 +706,9 @@ export const SANS: Style = {
       z: [0.71, 0.71],
       A: [0.11, 0.11],
       B: [1, 0.63],
+      // Geist's D: 92 off its stem, 41 off its bowl; fitted, the bowl's side
+      // closed to 25 at the heavy weights.
+      D: [1, 0.36, "closes"],
       C: [0.46, 0.4],
       G: [0.46, 0.53],
       J: [0.69, 0.81, "closes"],
@@ -873,6 +876,8 @@ export const SANS: Style = {
     C: "grotesque",
     P: "grotesque",
     Q: "grotesque",
+    O: "grotesque",
+    D: "grotesque",
     V: "grotesque",
     Y: "grotesque",
     s: "grotesque",
