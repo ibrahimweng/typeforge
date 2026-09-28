@@ -78,6 +78,16 @@ the closing side.
 **: ;.** The upper dot now sits at Geist Regular's height (506). The old code
 had a mis-measured 0.87 of the x-height there.
 
+**Spacing.** W, X, Y, T, O, Q and the 4, 6, 7 and 9 now stand where Geist
+1.7.2 sets them, within a few units at the Regular and the Black. The W was 17
+units too close on each side. The T, X, Y and 7 were 12 to 26 too loose, and
+the 6 and 9 were 10 to 20 too loose. The O closed to 25 at the Black, where
+Geist's stays at 40. Three are held a little off Geist so the shared checks
+still pass: the Y sits 6–9 inside its advance (Geist reaches 6 past it), the T
+at 15 (Geist 12) so the A–T kern still closes, and the 7 at 8 (Geist 0).
+`geist.test.ts` had Geist's T at 25; every other number in that test matches
+the current Geist, whose T is 12, so the line is corrected.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular
@@ -107,6 +117,10 @@ strokes as white; they now use a filled (nonzero) ruler.
   build the accented letters, so they are left for a pass over the accents.
 - **Backslash at the Black.** It follows the Sans slash, which is about 45
   units narrower than Geist Black's.
+- **Ink widths at the Black.** Pen 172 draws a 172 stem where Geist Black's is
+  194, so letters with two stems (H, K, R, B) have 25–40 less ink. Their
+  advances stay within about 20 of Geist's, because the sides make up the
+  difference.
 - **Past 172.** Geist has nothing heavier than Black (its UltraBlack keeps a
   stem of 172). At 200–260 the letters follow their own rules for keeping
   counters open, not Geist.

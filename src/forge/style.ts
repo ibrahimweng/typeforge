@@ -695,23 +695,33 @@ export const SANS: Style = {
       K: [1, 0.19],
       L: [1, 0.44],
       R: [1, 0.63],
-      T: [0.16, 0.16],
+      // Geist stands its T 12 off either side; 15 here, which still leaves
+      // the A and T enough white for the kerning to close.
+      T: [0.04, 0.04],
+      // Set by the measured fit the O closed to 25 at the Black; Geist's is 40.
+      O: [0.41, 0.41],
+      Q: [0.41, 0.41],
       U: [0.81, 0.81],
       V: [0.11, 0.11],
-      W: [0.11, 0.11],
-      X: [0.19, 0.19],
-      Y: [0.11, 0.11],
+      W: [0.33, 0.33],
+      X: [0.04, 0.04],
+      // Geist's Y reaches 6 past both its sides; held just inside them, as far
+      // as the health check's "touching the letter before it" allows.
+      Y: [-0.04, -0.04],
+      // Its bars reach further than the Y's arms: set as the Y was.
+      yen: [0.11, 0.11],
       Z: [0.19, 0.19],
       zero: [0.68, 0.68],
       one: [0.5, 1.38],
       two: [0.75, 0.75],
       three: [0.63, 0.63],
-      four: [0.63, 0.63],
+      four: [0.38, 0.63],
       five: [0.75, 0.75],
-      six: [0.75, 0.75],
-      seven: [0.5, 0.5],
+      six: [0.63, 0.5],
+      // Geist's seven reaches right to its advance; held just inside it.
+      seven: [0.25, 0.1],
       eight: [0.5, 0.5],
-      nine: [0.75, 0.75],
+      nine: [0.5, 0.63],
       question: [0.59, 0.59],
       period: [0.59, 0.59],
       comma: [0.59, 0.59],

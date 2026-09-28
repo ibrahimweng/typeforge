@@ -573,3 +573,34 @@ describe("the Sans's marks", () => {
     expect(backslash.yMin).toBeCloseTo(slash.yMin, 0);
   });
 });
+
+describe("the Sans's sidebearings", () => {
+  it("stand where Geist's do at the Regular and the Black", () => {
+    // Geist's left and right sidebearings at the Regular and the Black. The
+    // W stood 17 closer than Geist's, the T, Y, 7 and X 12 to 26 further off,
+    // and the O 15 closer at the Black. Geist's Y reaches 6 past its sides,
+    // and is held just inside them.
+    const geist: Record<string, [number, number, number, number]> = {
+      W: [38, 38, 36, 36],
+      T: [15, 15, 12, 12],
+      Y: [0, 0, 0, 0],
+      X: [15, 15, 10, 10],
+      O: [45, 45, 40, 40],
+      seven: [20, 8, 20, 7],
+      six: [50, 40, 40, 30],
+      nine: [40, 50, 30, 40],
+      four: [30, 50, 20, 40],
+    };
+    for (const [name, [left, right, blackLeft, blackRight]] of Object.entries(geist)) {
+      for (const [weight, l, r] of [
+        [87, left, right],
+        [172, blackLeft, blackRight],
+      ]) {
+        const drawn = draw(name, weight);
+        const ink = contoursBounds(drawn.contours);
+        expect(Math.abs(ink.xMin - l), `${name} left at ${weight}`).toBeLessThan(9);
+        expect(Math.abs(drawn.advanceWidth - ink.xMax - r), `${name} right at ${weight}`).toBeLessThan(9);
+      }
+    }
+  });
+});
