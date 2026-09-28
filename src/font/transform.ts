@@ -838,16 +838,27 @@ function keepHeights(
   const edgeMove = (line: number, upward: boolean): number => {
     const assumed = upward ? weight : -weight;
     if (!matched) return assumed;
-    const moves: number[] = [];
+    const found: Array<{ at: number; moved: number }> = [];
     for (const [which, contour] of (before as Contour[]).entries()) {
       for (const [index, node] of contour.nodes.entries()) {
         if (Math.abs(node.point.y - line) > tolerance || !level(contour, index)) continue;
         const moved = contours[which].nodes[index].point.y - node.point.y;
-        if (upward ? along(moved) > 0.5 : along(moved) < -0.5) moves.push(moved);
+        if (upward ? along(moved) > 0.5 : along(moved) < -0.5)
+          found.push({ at: node.point.y, moved });
       }
     }
-    if (moves.length === 0) return assumed;
-    moves.sort((a, b) => a - b);
+    if (found.length === 0) return assumed;
+    /*
+     * The edge is what lies nearest the line. The flat tips of the flag
+     * serifs on Lora's u lie seventeen units under its x-height and its
+     * stems' tops ten over; the middle of them all was the tips', which made
+     * lighter hardly move, and the u stood twenty units short.
+     */
+    const nearest = Math.min(...found.map((point) => Math.abs(point.at - line)));
+    const moves = found
+      .filter((point) => Math.abs(point.at - line) <= nearest + 2)
+      .map((point) => point.moved)
+      .sort((a, b) => a - b);
     return moves[Math.floor(moves.length / 2)];
   };
   /*
@@ -928,19 +939,25 @@ function keepHeights(
    * a handle carried along with its point, put a belly into the bowl; a
    * smooth field moves the curve as a whole.
    */
-  const edges: Array<{ at: Vec2; by: number }> = [];
+  const edges: Array<{ at: Vec2; by: number; up: boolean }> = [];
   for (const [which, contour] of (before as Contour[]).entries()) {
     for (const [index, node] of contour.nodes.entries()) {
       const was = node.point.y;
       const moved = contours[which].nodes[index].point.y - was;
       const along = moved * Math.sign(weight);
-      const onEdge =
-        along > 0.5
-          ? (toTop && Math.abs(was - top) <= tolerance) || Math.abs(was - box.yMax) <= tolerance
-          : along < -0.5
-            ? (onBaseline && Math.abs(was) <= tolerance) || Math.abs(was - box.yMin) <= tolerance
-            : false;
-      if (!onEdge) continue;
+      /*
+       * Which edge a point is on, by where it was drawn rather than which way
+       * it went. Made lighter, the sharp corner where the diagonal of Lora's
+       * N meets its serif went up, not down, and read by its movement as a
+       * point on the baseline, it was never brought back: the N stood six
+       * units over its cap height.
+       */
+      const atTop =
+        (toTop && Math.abs(was - top) <= tolerance) || Math.abs(was - box.yMax) <= tolerance;
+      const atBottom =
+        (onBaseline && Math.abs(was) <= tolerance) || Math.abs(was - box.yMin) <= tolerance;
+      if ((!atTop && !atBottom) || Math.abs(moved) <= 0.5) continue;
+      const up = atTop && (!atBottom || along > 0);
       const now = squeezed[which].nodes[index].point;
       /*
        * A point on a slope near the edge -- the top of a wedge serif, the
@@ -951,7 +968,6 @@ function keepHeights(
        * the Q's tail.
        */
       if (!level(contour, index)) {
-        const up = along > 0;
         const past = up ? now.y > Math.max(was, box.yMax) : now.y < Math.min(was, box.yMin);
         if (!past) continue;
       }
@@ -968,39 +984,77 @@ function keepHeights(
        * bowl; a point pushed past the edge is the fault being mended.
        */
       const by = was - now.y;
-      if (along > 0 ? by > 0 : by < 0) continue;
-      edges.push({ at: now, by });
+      // Made lighter, every edge moves in, and short of its line is the fault
+      // itself: the tops of Lora's light u stood eighteen units under them.
+      if (weight > 0 && (up ? by > 0 : by < 0)) continue;
+      edges.push({ at: now, by, up });
     }
   }
   if (!edges.some((edge) => Math.abs(edge.by) > 0.5)) return squeezed;
-  const lines = [...(onBaseline ? [0, box.yMin] : []), ...(toTop ? [top, box.yMax] : [])];
   const band = typeface.unitsPerEm * 0.1;
   const soft = (typeface.unitsPerEm * 0.01) ** 2;
-  // Full strength as far from an edge as the corrections themselves reach,
-  // and fading over a band beyond.
-  const slack = Math.max(...edges.map((edge) => Math.abs(edge.by)));
+  /*
+   * The top and the bottom each on their own, and each fading away from its
+   * own edges. One field over both carried the correction of the feet of
+   * Lora's light N, twenty-eight units, up to the corner at its top with
+   * nothing there to say otherwise, and lifted it six units past its cap
+   * height.
+   */
+  const groups = [true, false].map((up) => ({
+    edges: edges.filter((edge) => edge.up === up),
+    lines: up ? [...(toTop ? [top] : []), box.yMax] : [...(onBaseline ? [0] : []), box.yMin],
+  }));
   const field = (at: Vec2): number => {
-    const off = Math.max(0, Math.min(...lines.map((line) => Math.abs(at.y - line))) - slack);
-    const envelope = Math.max(0, 1 - off / band);
-    if (envelope === 0) return 0;
-    let sum = 0;
     let total = 0;
-    for (const edge of edges) {
-      const weight = 1 / ((edge.at.x - at.x) ** 2 + (edge.at.y - at.y) ** 2 + soft);
-      sum += edge.by * weight;
-      total += weight;
+    for (const group of groups) {
+      if (group.edges.length === 0) continue;
+      // Full strength as far from an edge as the corrections themselves
+      // reach, and fading over a band beyond.
+      const slack = Math.max(...group.edges.map((edge) => Math.abs(edge.by)));
+      const off = Math.max(
+        0,
+        Math.min(...group.lines.map((line) => Math.abs(at.y - line))) - slack,
+      );
+      const envelope = Math.max(0, 1 - off / band);
+      if (envelope === 0) continue;
+      let sum = 0;
+      let weights = 0;
+      for (const edge of group.edges) {
+        const weight = 1 / ((edge.at.x - at.x) ** 2 + (edge.at.y - at.y) ** 2 + soft);
+        sum += edge.by * weight;
+        weights += weight;
+      }
+      if (weights > 0) total += (sum / weights) * envelope;
     }
-    return total > 0 ? (sum / total) * envelope : 0;
+    return total;
   };
-  const shift = (at: Vec2 | null): Vec2 | null => (at ? { x: at.x, y: at.y + field(at) } : null);
-  const fielded = squeezed.map((contour) => ({
+  /*
+   * Never past where a point was drawn. Lifted with the level edges beside
+   * it, the small spur at the top of Lora's light q, which had moved less
+   * than they had, went twelve units past where it was drawn.
+   */
+  const shift = (at: Vec2 | null, drawnAt: Vec2 | null | undefined): Vec2 | null => {
+    if (!at) return null;
+    const by = field(at);
+    let y = at.y + by;
+    if (drawnAt) {
+      if (by > 0) y = Math.min(y, Math.max(at.y, drawnAt.y));
+      else if (by < 0) y = Math.max(y, Math.min(at.y, drawnAt.y));
+    }
+    return { x: at.x, y };
+  };
+  const drawnContours = before as Contour[];
+  const fielded = squeezed.map((contour, which) => ({
     closed: contour.closed,
-    nodes: contour.nodes.map((node) => ({
-      ...node,
-      point: shift(node.point) as Vec2,
-      handleIn: shift(node.handleIn),
-      handleOut: shift(node.handleOut),
-    })),
+    nodes: contour.nodes.map((node, index) => {
+      const drawnNode = drawnContours[which].nodes[index];
+      return {
+        ...node,
+        point: shift(node.point, drawnNode.point) as Vec2,
+        handleIn: shift(node.handleIn, drawnNode.handleIn),
+        handleOut: shift(node.handleOut, drawnNode.handleOut),
+      };
+    }),
   }));
   // Left squeezed where the field would cross an outline that did not cross.
   return fielded.map((contour, which) =>

@@ -686,3 +686,138 @@ describe("an even colour across the alphabet", () => {
     }
   });
 });
+
+/** A point with its handles, as a font file gives it. */
+type Node6 = [number, number, number | null, number | null, number | null, number | null];
+
+function drawn(contours: Node6[][]): Contour[] {
+  return contours.map((nodes) => ({
+    closed: true,
+    nodes: nodes.map(([x, y, ix, iy, ox, oy]) => ({
+      point: { x, y },
+      handleIn: ix === null || iy === null ? null : { x: ix, y: iy },
+      handleOut: ox === null || oy === null ? null : { x: ox, y: oy },
+      type: ix !== null && ox !== null ? ("smooth" as const) : ("corner" as const),
+    })),
+  }));
+}
+
+/** Lora's N, as drawn: [x, y, in x, in y, out x, out y] per point. */
+const LORA_N: Node6[][] = [
+  [
+    [650, -16, null, null, null, null],
+    [602, -16, null, null, null, null],
+    [203, 520, null, null, 197, 528],
+    [185.5, 543.5, 191.17, 535.83, 179.83, 551.17],
+    [168, 567, 174, 559, null, null],
+    [167, 567, null, null, null, null],
+    [170, 139, null, null, 170, 122.33],
+    [170, 89, 170, 105.67, 170, 72.33],
+    [168, 40, 169.33, 56, 180, 40.67],
+    [204, 42, 192, 41.33, 216, 42.67],
+    [240, 44, 228, 43.33, null, null],
+    [240, 0, null, null, null, null],
+    [57, 0, null, null, null, null],
+    [57, 33, null, null, 77.67, 33],
+    [101.5, 46.5, 92.5, 37.5, 110.5, 55.5],
+    [119, 78.5, 116.33, 66.17, 121.67, 90.83],
+    [123, 112, 123, 102, null, null],
+    [124, 593, null, null, 124, 604.33],
+    [124, 627, 124, 615.67, 124, 638.33],
+    [124, 660, 124, 649.33, 113.33, 659.33],
+    [91, 658, 102.33, 658.67, 79.67, 657.33],
+    [57, 656, 68.33, 656.67, null, null],
+    [57, 700, null, null, null, null],
+    [176, 700, null, null, null, null],
+    [551, 198, null, null, 559.67, 186.67],
+    [576.5, 164, 568.17, 175.33, 584.83, 152.67],
+    [602, 130, 593.33, 141.33, null, null],
+    [603, 130, null, null, null, null],
+    [604, 588, null, null, 604, 601.33],
+    [605, 626.5, 604.33, 614.17, 605.67, 638.83],
+    [607, 660, 606.33, 650, 595, 659.33],
+    [571, 658, 583, 658.67, 559, 657.33],
+    [535, 656, 547, 656.67, null, null],
+    [535, 700, null, null, null, null],
+    [719, 700, null, null, null, null],
+    [719, 667, null, null, 694.33, 666.33],
+    [668, 650, 677.33, 660.67, 658.67, 639.33],
+    [653, 607, 653.67, 625, 652.33, 589],
+    [652, 544, 652, 568, null, null],
+  ],
+];
+
+/** Lora's u, as drawn: [x, y, in x, in y, out x, out y] per point. */
+const LORA_u: Node6[][] = [
+  [
+    [255, -16, 284.33, -16, 219, -16],
+    [164.5, 4, 188.83, -9.33, 140.17, 17.33],
+    [109.5, 72, 121.83, 40, 97.17, 104],
+    [91, 202, 91, 147.33, null, null],
+    [91, 380, null, null, 91, 390.67],
+    [91.5, 412, 91.17, 401.33, 91.83, 422.67],
+    [95, 445, 93, 433.67, 83.67, 444.33],
+    [60.5, 443.5, 72.17, 443.83, 48.83, 443.17],
+    [26, 442, 37.33, 442.67, null, null],
+    [26, 483, null, null, null, null],
+    [57, 483, null, null, 85.67, 483],
+    [119.5, 491.5, 106.5, 485.83, 132.5, 497.17],
+    [150, 510, 142.67, 503.33, null, null],
+    [179, 510, null, null, null, null],
+    [179, 205, null, null, 179, 147.67],
+    [203.5, 76.5, 187.17, 104.83, 219.83, 48.17],
+    [287, 35, 247.67, 34.33, 312.33, 35.67],
+    [359.5, 58.5, 336.5, 43.5, 382.5, 73.5],
+    [415, 112, 401, 91.33, null, null],
+    [415, 369, null, null, 415, 385],
+    [416, 410.5, 415.33, 398.83, 416.67, 422.17],
+    [420, 445, 418, 433.67, 408, 444.33],
+    [384, 443.5, 396, 443.83, 372, 443.17],
+    [348, 442, 360, 442.67, null, null],
+    [348, 483, null, null, null, null],
+    [379, 483, null, null, 407.67, 483],
+    [441.5, 491.5, 428.5, 485.83, 454.5, 497.17],
+    [472, 510, 464.67, 503.33, null, null],
+    [501, 510, null, null, null, null],
+    [500, 132, null, null, 500, 121.33],
+    [499, 87, 499.67, 106.33, 498.33, 67.67],
+    [496, 38, 497.33, 51.33, 508, 38.67],
+    [532, 40, 520, 39.33, 544, 40.67],
+    [568, 42, 556, 41.33, null, null],
+    [568, 0, null, null, null, null],
+    [425, 0, null, null, 423, 11.33],
+    [420.5, 32, 421.5, 22, 419.5, 42],
+    [418, 60, 418.67, 51.33, 397.33, 39.33],
+    [343, 6.5, 372.33, 21.5, 313.67, -8.5],
+  ],
+];
+
+describe("heights, on letters from a real font", () => {
+  /*
+   * Regression: made lighter, Lora's u stood twenty units under its x-height.
+   * The top of each stem is ten over it and the flat tip of each flag serif
+   * seventeen under, and the edge's move was taken as the middle of them
+   * all: the tips', which hardly move.
+   */
+  it("keeps a light u to the tops of its stems", () => {
+    const { typeface, glyph } = letter(drawn(LORA_u), 597);
+    glyph.unicodes = [0x75];
+    const light = contoursBounds(at(typeface, glyph, { weight: -40 }));
+    expect(light.yMax).toBeGreaterThan(508);
+    expect(light.yMax).toBeLessThan(512);
+    expect(light.yMin).toBeCloseTo(-16, 0);
+  });
+
+  /*
+   * Regression: made lighter, Lora's N stood six units over its cap height.
+   * The correction that set its feet back on the baseline was carried up to
+   * the corner at its top, which nothing near it said otherwise about.
+   */
+  it("keeps a light N to its cap height and its baseline", () => {
+    const { typeface, glyph } = letter(drawn(LORA_N), 762);
+    glyph.unicodes = [0x4e];
+    const light = contoursBounds(at(typeface, glyph, { weight: -40 }));
+    expect(light.yMax).toBeCloseTo(700, 0);
+    expect(light.yMin).toBeCloseTo(-16, 0);
+  });
+});
