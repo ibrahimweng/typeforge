@@ -493,6 +493,31 @@ describe("the at sign", () => {
   });
 });
 
+describe("the Sans at its Light, against Geist Thin's widths", () => {
+  it("does not widen the letters Geist Thin keeps narrow", () => {
+    // Geist Thin's ink widths. The face widens its light letters as Geist
+    // Thin's o and n are widened, and the r's arm, the A, the v, the w, the G
+    // and the figures took that on top of their own: the r 48 units wide, the
+    // A 22, the G 30, the 7 26.
+    const thin: Record<string, number> = {
+      r: 208,
+      A: 564,
+      v: 434,
+      w: 729,
+      W: 830,
+      G: 570,
+      two: 477,
+      seven: 469,
+      eight: 500,
+      k: 436,
+    };
+    for (const [name, width] of Object.entries(thin)) {
+      const ink = box(name, 30);
+      expect(Math.abs(ink.xMax - ink.xMin - width), name).toBeLessThan(12);
+    }
+  });
+});
+
 describe("the s's width", () => {
   it("spreads as Geist's does from the Regular to the Black", () => {
     // Geist's ink widths at its Regular and Black. Pen 130 is halfway between

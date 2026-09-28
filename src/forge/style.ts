@@ -681,6 +681,8 @@ export const SANS: Style = {
       // Its foot reaches back to the letter before (Geist -5); held inside.
       j: [0.1, 1],
       k: [1, 0.59],
+      // Fitted, its arm's side closed to 20 at the Light; Geist Thin's is 50.
+      r: [1, 0.55],
       l: [1, 0.5],
       v: [0.28, 0.28],
       w: [0.28, 0.28],

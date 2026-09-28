@@ -90,6 +90,13 @@ const large = (f: Frame, share = 0): number =>
 /** Where the Sans sets its crossbar control: a bar drawn at Geist's height sits here. */
 const SANS_CROSSBAR = 0.52;
 
+/**
+ * Narrower towards the Thin by this share: the face widens its light letters
+ * as Geist Thin's o and n are widened (`metrics.lightHeld`), and Geist Thin's
+ * diagonals, its G and its figures do not widen with them.
+ */
+const thinned = (f: Frame, share: number): number => 1 - share * thinness(f);
+
 /** A turn, never tighter than the pen will go round. */
 const held = (f: Frame, radius: number): number => Math.max(radius, f.least);
 
@@ -415,7 +422,8 @@ export function grotesqueY(style: Style): Recipe {
  */
 export function grotesqueCapitalG(style: Style): Recipe {
   const f = frame(style);
-  const [u, t] = spread(f);
+  const [wide, t] = spread(f);
+  const u = wide * thinned(f, 0.049);
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
   const X = (x: number) => f.edge - f.half + x * u;
   const middle = (f.crest(f.cap) + f.dip(0)) / 2;
@@ -754,7 +762,7 @@ export function grotesqueOne(style: Style): Recipe {
  */
 export function grotesqueSeven(style: Style): Recipe {
   const f = frame(style);
-  const X = across(f, 40);
+  const X = across(f, 40, -0.068);
   const pen = penReach(style.pen);
   const line = f.hangs(f.cap);
   const end = X(545);
@@ -1070,7 +1078,8 @@ export function grotesqueSmallR(style: Style): Recipe {
   void wide;
   void fall;
   const corner = at(from + across2, top - down);
-  const end = Math.max(X(lerp(256, 344)), corner.x + f.half * 0.3);
+  // 208 across on the Thin, where the arm is short.
+  const end = Math.max(X(lerp(256, 344, 209)), corner.x + f.half * 0.3);
   // Its turns held to what its own pen goes round: see `holds` in `shapes.ts`.
   const af: Frame = { ...f, half: narrow / 2, style: { ...f.style, pen: armPen } };
   const arm = ink(
@@ -1253,11 +1262,11 @@ function angleAt(
  */
 export function grotesqueTwo(style: Style): Recipe {
   const f = frame(lighterAcross(style));
-  const X = across(f, 60, 0.015);
+  const X = across(f, 60, -0.04);
   const top = f.crest(f.cap);
   const cy = up(f, 510);
   const halfH = held(f, top - cy);
-  const halfW = held(f, 195 * large(f, 1));
+  const halfW = held(f, 195 * large(f, 1) * thinned(f, 0.055));
   const centre = at(X(315), cy);
   const foot = f.sits(0, f.bar);
   /*
@@ -1309,8 +1318,8 @@ export function grotesqueTwo(style: Style): Recipe {
  */
 export function grotesqueThree(style: Style): Recipe {
   const f = frame(lighterAcross(style));
-  const X = across(f, 50, 0.06);
-  const u = large(f, 1) * (1 + 0.06 * thinness(f));
+  const X = across(f, 50, 0.024);
+  const u = large(f, 1) * (1 + 0.024 * thinness(f));
   const top = f.crest(f.cap);
   const bottom = f.dip(0);
   const waist = up(f, 378);
@@ -1391,8 +1400,8 @@ export function grotesqueFour(style: Style): Recipe {
  */
 export function grotesqueFive(style: Style): Recipe {
   const f = frame(lighterAcross(style));
-  const X = across(f, 60, 0.045);
-  const u = large(f, 1) * (1 + 0.045 * thinness(f));
+  const X = across(f, 60, 0.009);
+  const u = large(f, 1) * (1 + 0.009 * thinness(f));
   const flag = f.hangs(f.cap);
   const stemTop = at(X(168), f.cap);
   const [, lerp] = squared(f);
@@ -1494,8 +1503,8 @@ export function grotesqueSix(style: Style): Recipe {
 }
 
 function sixStrokes(f: Frame): Stroke[] {
-  const X = across(f, 60, 0.065);
-  const u = large(f, 1) * (1 + 0.065 * thinness(f));
+  const X = across(f, 60, 0.025);
+  const u = large(f, 1) * (1 + 0.025 * thinness(f));
   const bottom = f.dip(0);
   const top = f.crest(f.cap);
   const bowlTop = up(f, 484) - f.upright;
@@ -1531,7 +1540,7 @@ function sixStrokes(f: Frame): Stroke[] {
 /** The nine: the six turned over, as Geist's is. */
 export function grotesqueNine(style: Style): Recipe {
   const f = frame(lighterAcross(style));
-  const X = across(f, 60, 0.065);
+  const X = across(f, 60, 0.025);
   const about = at(X(313), (f.crest(f.cap) + f.dip(0)) / 2);
   return finish(
     f,
@@ -1563,8 +1572,8 @@ export function grotesqueZero(style: Style): Recipe {
  */
 export function grotesqueEight(style: Style): Recipe {
   const f = frame(lighterAcross(style));
-  const X = across(f, 40, 0.065);
-  const u = large(f, 1) * (1 + 0.065 * thinness(f));
+  const X = across(f, 40, 0.025);
+  const u = large(f, 1) * (1 + 0.025 * thinness(f));
   const waist = up(f, 378);
   const upperH = held(f, (f.crest(f.cap) - waist) / 2);
   const lowerH = held(f, (waist - f.dip(0)) / 2);
@@ -1651,7 +1660,8 @@ export function grotesqueK(style: Style): Recipe {
   const f = frame(style);
   return finish(f, [
     ink(f, straight(at(f.edge, 0), at(f.edge, f.asc)), f.end, f.end),
-    ...kay(f, small(f, 1), f.x, 123, [133, 476, 530], [305, 491, 530]),
+    // A little wider towards the Thin, as Geist Thin's k is.
+    ...kay(f, small(f, 1) * thinned(f, -0.035), f.x, 123, [133, 476, 530], [305, 491, 530]),
   ]);
 }
 
@@ -3259,7 +3269,8 @@ function smallSpread(f: Frame, share = 0): [number, number] {
 
 export function grotesqueV(style: Style): Recipe {
   const f = frame(style);
-  const [u, t] = smallSpread(f, 0.5);
+  const [wide, t] = smallSpread(f, 0.5);
+  const u = wide * thinned(f, 0.048);
   return finish(
     f,
     vee(
@@ -3306,7 +3317,8 @@ export function grotesqueCapitalV(style: Style): Recipe {
 /** The A: a vee turned over, flat at its head, and a bar low across it. */
 export function grotesqueCapitalA(style: Style): Recipe {
   const f = frame(style);
-  const [u, t] = spread(f, 1);
+  const [wide, t] = spread(f, 1);
+  const u = wide * thinned(f, 0.04);
   const legs = vee(
     f,
     u,
@@ -3342,7 +3354,8 @@ export function grotesqueCapitalA(style: Style): Recipe {
 /** The w: two vees side by side, the middle apex reaching the x-height. */
 export function grotesqueSmallW(style: Style): Recipe {
   const f = frame(style);
-  const [u, t] = smallSpread(f, 0.35);
+  const [wide, t] = smallSpread(f, 0.35);
+  const u = wide * thinned(f, 0.034);
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
   const X = (x: number) => f.edge + (x - lerp(43, 86)) * u;
   const outer = lerp(45.7, 87.5);

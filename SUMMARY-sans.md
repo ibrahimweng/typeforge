@@ -104,6 +104,12 @@ at 15 (Geist 12) so the A–T kern still closes, and the 7 at 8 (Geist 0).
 `geist.test.ts` had Geist's T at 25; every other number in that test matches
 the current Geist, whose T is 12, so the line is corrected.
 
+**Light widths.** The face widens its light letters as Geist Thin's o and n
+are widened. The r's arm, the A, v, w and G, and the figures took that widening
+on top of their own, and at pen 30 were up to 48 units wider than Geist Thin's
+(the r 48, the A 22, the G 30, the 7 26). Each now matches Geist Thin's width
+within about 7 units. The k, which Geist Thin draws a little wider, now is too.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular
@@ -137,6 +143,8 @@ strokes as white; they now use a filled (nonzero) ruler.
   194, so letters with two stems (H, K, R, B) have 25–40 less ink. Their
   advances stay within about 20 of Geist's, because the sides make up the
   difference.
+- **m and X at the Light.** They are plain forms, shared with every base. At
+  pen 30 the m is about 19 units wider than Geist Thin's and the X 22 narrower.
 - **Past 172.** Geist has nothing heavier than Black (its UltraBlack keeps a
   stem of 172). At 200–260 the letters follow their own rules for keeping
   counters open, not Geist.
