@@ -979,3 +979,30 @@ describe("the sides of the zero and the seven", () => {
     }
   });
 });
+
+describe("the five's flag", () => {
+  it("reaches as far as Geist's from the Thin to the Black", () => {
+    // Geist's flag ends 428 units from the ink's left at the Thin, 457 at
+    // the Regular and 546 at the Black: here it stood at 454, 458 and 494.
+    for (const [weight, reach] of [
+      [30, 428],
+      [87, 457],
+      [194, 546],
+    ]) {
+      const { contours } = draw("five", weight);
+      const ink = contoursBounds(contours);
+      const top = runs(contours, 702, "y");
+      const end = top[top.length - 1][1] - ink.xMin;
+      expect(Math.abs(end - reach), `5 at ${weight}`).toBeLessThan(8);
+    }
+  });
+
+  it("cuts its terminal as high as Geist's at the Black", () => {
+    // Geist Black's terminal reaches 204 up at 60 in from its ink's left;
+    // here it stopped at 187.
+    const { contours } = draw("five", 194);
+    const ink = contoursBounds(contours);
+    const side = runs(contours, ink.xMin + 60, "x");
+    expect(Math.abs(side[0][1] - 204)).toBeLessThan(6);
+  });
+});

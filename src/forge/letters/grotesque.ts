@@ -1619,10 +1619,17 @@ export function grotesqueFive(style: Style): Recipe {
     found = a;
   }
   const leaves = found;
+  /*
+   * Geist's flag reaches further with the weight than the bowl under it
+   * does: 428 units from the ink's left at the Thin, 457 at the Regular and
+   * 546 at the Black, where on the figure's own measures it stood 26 long
+   * at the Thin and 52 short at the Black.
+   */
+  const flagEnd = X(518) + 36 * Math.min(heavyT(f), nowBlack()) + roundGain(f, -1, 6, -26);
   return finish(
     f,
     [
-      ink(f, straight(at(stemTop.x - f.half * 0.2, flag), at(X(518), flag)), BUTT, f.end),
+      ink(f, straight(at(stemTop.x - f.half * 0.2, flag), at(flagEnd, flag)), BUTT, f.end),
       ink(f, straight(stemTop, stemFoot), BUTT, f.end),
       ink(
         f,
@@ -1631,7 +1638,15 @@ export function grotesqueFive(style: Style): Recipe {
           centre,
           halfH,
           Math.min(leaves, 175),
-          angleAt(f, centre, halfW, halfH, up(f, 187), true) - 360,
+          // Cut higher as the weight grows: 205 at Geist's Black.
+          angleAt(
+            f,
+            centre,
+            halfW,
+            halfH,
+            up(f, 187 + (18 * Math.min(heavyT(f), nowBlack())) / nowBlack()),
+            true,
+          ) - 360,
           halfW,
         ),
         BUTT,

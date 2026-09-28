@@ -100,6 +100,12 @@ off either side at the Regular (it was 54). The 7 is flush on its right as
 Geist's is, and is no longer opened at the Thin, where it stood 10 further
 off each side than Geist Thin's (a new "unopened" mark in `metrics.sides`).
 
+**The 5's flag and terminal.** Geist's flag reaches further with the weight
+than the bowl under it: 428 units from the ink's left at the Thin, 457 at the
+Regular and 546 at the Black. Ours stood at 454, 458 and 494, and now matches
+within 2. Its terminal is cut higher at the heavy weights (at 205 at the
+Black, against 187), as Geist's is.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across
