@@ -716,7 +716,7 @@ export function humanistG(style: Style): Recipe {
   const loopH = Math.max((top - bottom) / 2, f.least);
   const loop = at(left + loopHalf, bottom + loopH);
   const roundness = 1 - f.square;
-  const leaves = bowlPoint(upper, upperW, upperH, roundness, f.half, 250 - 25 * heavy, f.curve);
+  const leaves = bowlPoint(upper, upperW, upperH, roundness, f.half, 260 - 25 * heavy, f.curve);
   const lands = bowlPoint(loop, loopHalf, loopH, roundness, f.half, 140, f.curve);
   // The ear, out of the bowl's top right, up over the x-height and down into its drop.
   const from = bowlPoint(upper, upperW, upperH, roundness, f.half, 22, f.curve);
@@ -744,7 +744,7 @@ export function humanistG(style: Style): Recipe {
           // In two pieces at every weight, however little a heavy one turns.
           ink(
             f,
-            inPieces(bowed(f, leaves, lands, Math.max(LINK_BOW - 0.12 * heavy, 0.06)), 2),
+            inPieces(bowed(f, leaves, lands, -Math.max(LINK_BOW - 0.12 * heavy, 0.06)), 2),
             BUTT,
             BUTT,
           ),
@@ -759,7 +759,7 @@ export function humanistG(style: Style): Recipe {
 }
 
 /** How far the g's link swings out to the left of its chord. */
-const LINK_BOW = 0.35;
+const LINK_BOW = 0.3;
 /** How far the g's ear arches over its chord. */
 const EAR_BOW = 0.45;
 

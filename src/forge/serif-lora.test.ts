@@ -288,3 +288,16 @@ describe("the Serif's question mark", () => {
     }
   });
 });
+
+describe("the Serif's g", () => {
+  it("swings its link out to the left under the bowl, as Lora's does", () => {
+    for (const weight of [30, 87, 142]) {
+      const b = box("g", weight);
+      // Just over the line, where the link runs between the bowl and the
+      // loop: Lora's stands at 0.04 of the letter's width from its left, and
+      // the construction's bowed out the other way, to 0.37.
+      const [link] = row("g", weight, 60);
+      expect((link[0] - b.xMin) / (b.xMax - b.xMin), `g at ${weight}`).toBeLessThan(0.25);
+    }
+  });
+});
