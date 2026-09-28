@@ -31,7 +31,7 @@ import { resolveComponents } from "./composite";
 import { classifyContours, contoursIntersect } from "./outline";
 import { shiftCrossbar, shiftShoulders } from "./anatomy";
 import { pixelate } from "./pixel";
-import { addSlabs } from "./slab";
+import { addSlabs, weighSlabs } from "./slab";
 import { applyWeight, SIDEWAYS } from "./embolden";
 import { anyCast, type Cast } from "./cast";
 import { anyCut, type Cuts } from "./cuts";
@@ -177,23 +177,27 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
    * serifs of a light one. Put on first, they thicken with the stems, stretch
    * with the width and lean with the slant, which is what they should do.
    */
+  // The slabs, kept to one side until the letter has its weight.
+  let slabs: Contour[] = [];
+  let slabbedLetter: Contour[] = [];
   if (params.slab > 0) {
-    contours = addSlabs(contours, {
-      projection: params.slab,
-      /*
-       * A slab reaches further across the stroke than back along it; much
-       * thicker and it reads as a box on the end rather than a serif. But
-       * not much thinner than the stems either: a slab serif's slabs are
-       * most of a stem thick, and at half the projection Geist's came out a
-       * third of its stems, hairlines under an H.
-       */
-      thickness: Math.min(
-        params.slab * 1.2,
-        Math.max(params.slab * 0.55, cutScaleOf(typeface).stem * 0.7),
-      ),
-      maxWidth: typeface.unitsPerEm * 0.35,
-      weight: params.weight,
-    });
+    const slabbed = withSlabs(contours, params, typeface);
+    slabs = slabbed.contours.slice(contours.length);
+    /*
+     * And moved over by what the slabs put past the letter on the left, as
+     * `resolveAdvanceWidth` makes room for what they put past it on either
+     * side. Left inside the advance they took the side bearings: at the
+     * longest slab Geist's H, A, E, n and m ran together along the baseline
+     * and the tops of x, y, z and w made one bar. A slab serif is spaced from
+     * the tips of its serifs.
+     */
+    if (slabbed.left > 0) {
+      const over = (contour: Contour) =>
+        mapContour(contour, (point) => ({ x: point.x + slabbed.left, y: point.y }));
+      contours = contours.map(over);
+      slabs = slabs.map(over);
+    }
+    slabbedLetter = contours;
   }
   if (params.counterScale !== 1)
     contours = applyCounterScale(contours, params.counterScale, typeface.unitsPerEm * MIN_STROKE);
@@ -223,6 +227,17 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
     contours = contours.map((contour) =>
       mapContour(contour, (point) => ({ x: point.x + shift, y: point.y })),
     );
+    slabs = weighSlabs(slabs, slabbedLetter, params.weight, typeface.unitsPerEm).map((slab) =>
+      mapContour(slab, (point) => ({ x: point.x + shift, y: point.y })),
+    );
+  }
+  /*
+   * The slabs are weighted apart from the letter and join it here -- see
+   * `weighSlabs` -- and it is the letter alone that the weight measured.
+   */
+  if (slabs.length) {
+    if (params.weight === 0) slabs = weighSlabs(slabs, slabbedLetter, 0, typeface.unitsPerEm);
+    contours = [...contours, ...slabs];
   }
   if (params.cornerRadius > 0) {
     const outer = classifyContours(contours);
@@ -318,7 +333,7 @@ export function resolveAdvanceWidth(glyph: Glyph, typeface: Typeface): number {
   const params = effectiveParams(glyph, typeface);
   return Math.max(
     0,
-    (glyph.advanceWidth + params.weight * 2) * params.width +
+    (glyph.advanceWidth + params.weight * 2 + slabRoom(glyph, typeface, params)) * params.width +
       params.tracking * 2 +
       widthGive(typeface, params) * 2,
   );
@@ -326,6 +341,74 @@ export function resolveAdvanceWidth(glyph: Glyph, typeface: Typeface): number {
 
 /** The share of the white across a condensed letter that putting its strokes back leaves. */
 const CONDENSED_WHITE = 0.7;
+
+/**
+ * Slabs laid across a letter's stroke ends, and how far they reach past its
+ * ink on the left and on the right.
+ */
+function withSlabs(
+  contours: Contour[],
+  params: GlyphParams,
+  typeface: Typeface,
+): { contours: Contour[]; left: number; right: number } {
+  const slabbed = addSlabs(contours, {
+    projection: params.slab,
+    /*
+     * A slab reaches further across the stroke than back along it; much
+     * thicker and it reads as a box on the end rather than a serif. But
+     * not much thinner than the stems either: a slab serif's slabs are
+     * most of a stem thick, and at half the projection Geist's came out a
+     * third of its stems, hairlines under an H.
+     */
+    thickness: Math.min(
+      params.slab * 1.2,
+      Math.max(params.slab * 0.55, cutScaleOf(typeface).stem * 0.7),
+    ),
+    maxWidth: typeface.unitsPerEm * 0.35,
+    weight: params.weight,
+  });
+  if (slabbed === contours || contours.length === 0) return { contours, left: 0, right: 0 };
+  const before = contoursBounds(contours);
+  const after = contoursBounds(slabbed);
+  return {
+    contours: slabbed,
+    left: Math.max(0, before.xMin - after.xMin),
+    right: Math.max(0, after.xMax - before.xMax),
+  };
+}
+
+/**
+ * The room a letter's slabs need beside it, both sides together. Asked for
+ * every letter every time the line is set, so kept against the glyph for the
+ * settings and the outline it was worked out for.
+ */
+const slabRooms = new WeakMap<Glyph, { key: string; room: number }>();
+
+function slabRoom(glyph: Glyph, typeface: Typeface, params: GlyphParams): number {
+  if (!(params.slab > 0)) return 0;
+  let contours = resolveComponents(glyph, typeface);
+  const key = [
+    params.slab,
+    params.crossbar,
+    params.shoulder,
+    params.weight,
+    typeface.unitsPerEm,
+    cutScaleOf(typeface).stem,
+    contours.reduce(
+      (sum, contour) =>
+        contour.nodes.reduce((total, node) => total + node.point.x * 3 + node.point.y, sum),
+      contours.length,
+    ),
+  ].join(",");
+  const known = slabRooms.get(glyph);
+  if (known?.key === key) return known.room;
+  contours = contours.map(cloneContour);
+  if (params.crossbar !== 0) contours = shiftCrossbar(contours, params.crossbar);
+  if (params.shoulder !== 0) contours = shiftShoulders(contours, params.shoulder);
+  const { left, right } = withSlabs(contours, params, typeface);
+  slabRooms.set(glyph, { key, room: left + right });
+  return left + right;
+}
 
 /**
  * How far each side of a stroke is pushed back out after the width scaling:

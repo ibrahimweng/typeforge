@@ -453,3 +453,117 @@ export function addSlabs(contours: Contour[], options: SlabOptions): Contour[] {
   if (slabs.length === 0) return contours;
   return [...contours, ...slabs];
 }
+
+/**
+ * The slabs of a letter made lighter or bolder, as the rectangles they are.
+ *
+ * They used to be weighted with the letter, as contours overlapping it, and
+ * each was measured against the strokes it lay across: the ruler across a
+ * slab on a diagonal found the diagonal's own edges a few units off and held
+ * the slab back, so a light k, x or A stood on blocks three times the
+ * weight of its stems, and a heavy one grew notches where the slab and the
+ * stroke under it moved by different amounts. A slab is a bar. It moves as
+ * one: its flush edge goes with the end of the stroke, out by the weight or
+ * in by it, its thickness and its length change by the weight on each side,
+ * and lighter it keeps a third of itself and a hairline, as a stroke does.
+ *
+ * `letter` is the letter the slabs were laid on, before the weight, which
+ * says which edge of each is the flush one: the edge with paper outside it
+ * and ink under the edge across from it. At no weight at all the slabs are
+ * only joined where they end a crack apart.
+ */
+export function weighSlabs(
+  slabs: Contour[],
+  letter: Contour[],
+  weight: number,
+  unitsPerEm: number,
+): Contour[] {
+  const polylines = letter.map((contour) => flattenContour(contour, 12));
+  const hairline = unitsPerEm * 0.008;
+  const resize = (length: number): number =>
+    weight >= 0 ? length + 2 * weight : Math.max(length + 2 * weight, hairline, length / 3);
+  const bars = slabs.map((slab) => {
+    if (slab.nodes.length !== 4) return null;
+    const q = slab.nodes.map((node) => node.point);
+    const c = {
+      x: (q[0].x + q[1].x + q[2].x + q[3].x) / 4,
+      y: (q[0].y + q[1].y + q[2].y + q[3].y) / 4,
+    };
+    const edges = q.map((point, index) => {
+      const next = q[(index + 1) % 4];
+      const middle = { x: (point.x + next.x) / 2, y: (point.y + next.y) / 2 };
+      const out = unit(c, middle);
+      return { middle, out, far: out.length };
+    });
+    const probe = (index: number) => {
+      const { middle, out } = edges[index];
+      return insideInk(polylines, { x: middle.x + out.x, y: middle.y + out.y });
+    };
+    let flush = -1;
+    for (let index = 0; index < 4 && flush < 0; index++)
+      if (!probe(index) && probe((index + 2) % 4)) flush = index;
+    const axis = edges[flush < 0 ? 0 : flush];
+    const u = { x: axis.out.x, y: axis.out.y };
+    const thickness = resize(axis.far * 2);
+    // Flush with the stroke's end where there is one; else about the middle.
+    const outer = flush < 0 ? thickness / 2 : axis.far + weight;
+    const side = resize(edges[flush < 0 ? 1 : (flush + 1) % 4].far * 2) / 2;
+    return {
+      c,
+      u,
+      v: { x: -u.y, y: u.x },
+      outer,
+      inner: outer - thickness,
+      low: -side,
+      high: side,
+    };
+  });
+
+  /*
+   * Two slabs that end a crack apart -- the foot of a k's stem and the foot of
+   * its leg, which sit side by side -- are one slab. Each takes a share of the
+   * white between it and its neighbour, which leaves a gap; where that gap
+   * is narrower than an opening it reads as a flaw, not as two serifs, and a
+   * slab serif joins them.
+   */
+  const crack = unitsPerEm * 0.036;
+  const dot = (a: Vec2, b: Vec2) => a.x * b.x + a.y * b.y;
+  bars.forEach((one, i) => {
+    if (!one) return;
+    bars.forEach((other, j) => {
+      if (!other || j <= i || dot(one.u, other.u) < 0.99) return;
+      const apart = { x: other.c.x - one.c.x, y: other.c.y - one.c.y };
+      // The same band across: the one's flush edge where the other's is.
+      if (Math.abs(dot(apart, one.u) + other.outer - one.outer) > 1) return;
+      const offset = dot(apart, one.v);
+      // How far the one's end is from the other's, along them.
+      const gap = offset > 0 ? offset + other.low - one.high : one.low - (offset + other.high);
+      if (!(gap > 0 && gap < crack)) return;
+      const reach = gap / 2 + 0.5;
+      if (offset > 0) {
+        one.high += reach;
+        other.low -= reach;
+      } else {
+        one.low -= reach;
+        other.high += reach;
+      }
+    });
+  });
+
+  return slabs.map((slab, index) => {
+    const bar = bars[index];
+    if (!bar) return slab;
+    const { c, u, v } = bar;
+    const nodes = slab.nodes.map((node) => {
+      const dx = node.point.x - c.x;
+      const dy = node.point.y - c.y;
+      const across = dx * u.x + dy * u.y > 0 ? bar.outer : bar.inner;
+      const along = dx * v.x + dy * v.y > 0 ? bar.high : bar.low;
+      return {
+        ...node,
+        point: { x: c.x + u.x * across + v.x * along, y: c.y + u.y * across + v.y * along },
+      };
+    });
+    return { ...slab, nodes };
+  });
+}

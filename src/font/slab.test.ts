@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { contoursBounds } from "./geometry";
+import { blankGlyph } from "./library";
 import { addSlabs, findTerminals } from "./slab";
-import type { Contour, Vec2 } from "./types";
+import { resolveAdvanceWidth, resolveGlyphContours } from "./transform";
+import { type Contour, DEFAULT_PARAMS, emptyTypeface, type GlyphParams, type Vec2 } from "./types";
 
 /** Wound clockwise, as a filled outer contour is in a font. */
 function polygon(points: Vec2[]): Contour {
@@ -347,5 +349,77 @@ describe("which ends a slab serif gives a slab", () => {
       expect(Math.abs(terminal.inward.x)).toBeLessThan(1e-9);
       expect(Math.abs(terminal.inward.y)).toBeCloseTo(1, 9);
     }
+  });
+});
+
+describe("slabs on a letter, with the other controls", () => {
+  /*
+   * An I and a V-like letter for the stem to be measured from: the I is a
+   * hundred wide, a hundred units in from its sides, and the diagonal is a
+   * leg cut off level at the baseline.
+   */
+  function letter(contours: Contour[], advance = 300) {
+    const typeface = emptyTypeface();
+    const I = { ...blankGlyph("I", [73]), contours: [stem(100, 0, 100, 700)], params: {} };
+    const glyph = { ...blankGlyph("x", [120]), advanceWidth: advance, contours, params: {} };
+    typeface.glyphs = [I, glyph];
+    typeface.glyphIndex = new Map([
+      ["I", 0],
+      ["x", 1],
+    ]);
+    return { typeface, glyph };
+  }
+  const at = (
+    { typeface, glyph }: ReturnType<typeof letter>,
+    params: Partial<GlyphParams>,
+  ): { contours: Contour[]; advance: number } => {
+    typeface.params = { ...DEFAULT_PARAMS, ...params };
+    return {
+      contours: resolveGlyphContours(glyph, typeface),
+      advance: resolveAdvanceWidth(glyph, typeface),
+    };
+  };
+
+  it("makes room for the slabs beside the letter rather than taking its side bearings", () => {
+    const one = letter([stem(100, 0, 100, 700)]);
+    const { contours, advance } = at(one, { slab: 80 });
+    const box = contoursBounds(contours);
+    // Past the stem by the slab on each side, and still a hundred in from
+    // either side of the advance.
+    expect(box.xMax - box.xMin).toBeGreaterThan(200);
+    expect(box.xMin).toBeCloseTo(100, 0);
+    expect(advance - box.xMax).toBeCloseTo(100, 0);
+  });
+
+  it("thins a slab on a diagonal with the letter, as it thins one on a stem", () => {
+    // A leg leaning right, cut off level top and bottom.
+    const leg = polygon([
+      { x: 100, y: 0 },
+      { x: 400, y: 700 },
+      { x: 500, y: 700 },
+      { x: 200, y: 0 },
+    ]);
+    const straight = at(letter([stem(100, 0, 100, 700)], 600), { slab: 60, weight: -40 });
+    const slanted = at(letter([leg], 600), { slab: 60, weight: -40 });
+    // The last contours are the slabs; each is its own rectangle.
+    const thick = (contours: Contour[]) => {
+      const box = contoursBounds([contours[contours.length - 1]]);
+      return box.yMax - box.yMin;
+    };
+    expect(thick(slanted.contours)).toBeLessThan(thick(straight.contours) * 1.2);
+    expect(thick(straight.contours)).toBeLessThan(40);
+  });
+
+  it("makes one slab of two that would end a crack apart", () => {
+    // Two stems forty apart: each slab takes its share of the gap and would
+    // leave a crack between them.
+    const one = letter([stem(100, 0, 100, 700), stem(240, 0, 100, 700)], 500);
+    const { contours } = at(one, { slab: 60 });
+    const slabs = contours.slice(2).filter((contour) => contoursBounds([contour]).yMin < 1);
+    expect(slabs).toHaveLength(2);
+    const [left, right] = slabs
+      .map((contour) => contoursBounds([contour]))
+      .sort((a, b) => a.xMin - b.xMin);
+    expect(right.xMin).toBeLessThanOrEqual(left.xMax);
   });
 });
