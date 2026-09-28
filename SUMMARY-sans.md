@@ -52,6 +52,11 @@ weight in the spine. The bowls are carried out by what the crowns give up, so
 the letter keeps its height. Past the Black the sides take the lightness back,
 so the counters' ends stay round up to 260.
 
+**@.** The ring is as wide as Geist 1.7.2's at every weight: it was 31 units
+narrow at the Thin, whose ring stands further out than the Regular's, and 45
+at the Black. The tail now runs round to where Geist's ends, found by where
+it is across rather than by a height. It was 119 short at the Black.
+
 **8.** Heavy weights use the same lighter pen plus a slightly wider ring, so
 the upper counter stays an oval past the Black instead of a slot. The rings
 also swell outward by up to 24 units a side by the Black, to the weight of
@@ -122,8 +127,6 @@ strokes as white; they now use a filled (nonzero) ruler.
   in a deep notch either side, where Draw's two superelliptic rings meet
   almost upright. Oval rings did not pinch it either, and they left lemon-
   shaped counters.
-- **@.** It is close at the Regular. At the Black the ring is heavier and
-  narrower on the right, and at the Light the tail is shorter than Geist's.
 - **#.** The sidebearings are kept just inside the advance. Geist's reach past
   both sides.
 - **Grave and acute.** Geist's are steeper and sit higher. The same marks

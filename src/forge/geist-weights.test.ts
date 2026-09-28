@@ -472,6 +472,27 @@ describe("the eight's width", () => {
   });
 });
 
+describe("the at sign", () => {
+  it("is as wide as Geist's, and its tail runs as far round", () => {
+    // Geist's ink: 826 across at the Thin, 816 at the Regular, 920 at the
+    // Black, and 40 under the line its tail reaches 578, 580 and 662 in from
+    // the left. The ring was 31 narrow at the Thin and 45 at the Black, and
+    // the tail 119 short at the Black.
+    for (const [weight, width, tail] of [
+      [30, 826, 578],
+      [87, 816, 580],
+      [172, 920, 662],
+    ]) {
+      const { contours } = draw("at", weight);
+      const ink = contoursBounds(contours);
+      expect(Math.abs(ink.xMax - ink.xMin - width), `@ at ${weight}`).toBeLessThan(15);
+      const under = filled(contours, -40, "y");
+      const end = under[under.length - 1][1] - ink.xMin;
+      expect(Math.abs(end - tail), `tail at ${weight}`).toBeLessThan(15);
+    }
+  });
+});
+
 describe("the s's width", () => {
   it("spreads as Geist's does from the Regular to the Black", () => {
     // Geist's ink widths at its Regular and Black. Pen 130 is halfway between

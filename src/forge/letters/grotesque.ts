@@ -3672,8 +3672,12 @@ export function grotesqueAt(style: Style): Recipe {
   const drawnWith = (stroke: Stroke, with_: Stroke["pen"]): Stroke =>
     inherit(stroke, { ...stroke, pen: with_ });
   const grow = past * stemW * 0.35;
-  const outer = at(X(lerp(457, 488)) + grow * 0.3, up(f, lerp(304, 300)));
-  const outerW = held(f, lerp(370, 380) * u + grow);
+  // And wider again towards the Thin, whose ring stands 398 out from its
+  // middle against the Regular's 372: half of that is already in the face's
+  // own widening of its light letters.
+  const light = thinness(f);
+  const outer = at(X(lerp(457, 500) + 3 * light) + grow * 0.3, up(f, lerp(304, 300)));
+  const outerW = held(f, (lerp(370, 400) + 14 * light) * u + grow);
   const outerH = held(f, up(f, lerp(366, 350)) + grow * 0.3);
   const rf: Frame = { ...f, half: ringPen.weight / 2 };
   /*
@@ -3690,7 +3694,21 @@ export function grotesqueAt(style: Style): Recipe {
     (stemPen.weight / 2) * 1.2,
   );
   const stem = landing.x - hook * 2;
-  const ends = angleAt(rf, outer, outerW, outerH, up(f, -40), false);
+  /*
+   * The tail runs round under the ring to where Geist's ends: its middle 623
+   * in on the Regular and 700 on the Black, a little under the line. Cut
+   * where the ring came down to 40 under the line, a Black's tail stopped 35
+   * short of Geist's.
+   */
+  const tailX = X(lerp(623, 700)) + grow * 0.3;
+  let [low, high] = [-90, 0];
+  for (let step = 0; step < 40; step++) {
+    const mid = (low + high) / 2;
+    const point = bowlPoint(outer, outerW, outerH, 1 - f.square, rf.half, mid, f.curve);
+    if (point.x < tailX) low = mid;
+    else high = mid;
+  }
+  const ends = (low + high) / 2;
   const bf: Frame = { ...f, half: bowlPen.weight / 2 };
   return finish(
     f,
