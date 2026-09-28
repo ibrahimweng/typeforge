@@ -117,6 +117,12 @@ draws an accented letter's mark in the face's own form of it whenever the
 letter is drawn with forms at all. Faces that list no form for their marks
 are unchanged.
 
+**Circumflex, dieresis and tilde accents.** New Sans forms on Geist's
+measures. The circumflex is the caret's shape with a level head over level
+feet (the plain one came to a point). The dieresis dots are cut square,
+larger and further apart. The tilde is the same two-arc wave as the ASCII
+tilde, smaller.
+
 **Accent places (shared files, off for other faces).** Geist stands its
 accents 55 units over a lowercase letter and 66 over a capital. The shared
 gap was 28 and 13. It also sets a steep grave or acute with its foot over the
@@ -158,9 +164,6 @@ strokes as white; they now use a filled (nonzero) ruler.
   difference.
 - **m and X at the Light.** They are plain forms, shared with every base. At
   pen 30 the m is about 19 units wider than Geist Thin's and the X 22 narrower.
-- **Circumflex, dieresis and tilde accents.** They now stand at Geist's
-  height. Geist's dieresis dots are larger and further apart, its circumflex
-  lighter, and its tilde flatter.
 - **Past 172.** Geist has nothing heavier than Black (its UltraBlack keeps a
   stem of 172). At 200–260 the letters follow their own rules for keeping
   counters open, not Geist.

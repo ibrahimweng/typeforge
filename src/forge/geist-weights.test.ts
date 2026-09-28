@@ -533,6 +533,18 @@ describe("the grave and the acute", () => {
         expect(Math.abs(ink.yMax - ink.yMin - (top - foot)), said).toBeLessThan(12);
       }
       // And the same mark on the à: as tall as it is on its own.
+      for (const [name, geist] of [
+        ["circumflex", weight === 87 ? [274, 133] : [378, 166]],
+        ["dieresis", weight === 87 ? [262, 98] : [422, 136]],
+        ["tilde", weight === 87 ? [315, 127] : [361, 165]],
+      ] as const) {
+        // Geist's accents across and high. The plain circumflex came to a
+        // point, the dots were smaller and closer, the tilde a round swash.
+        const ink = box(name, weight);
+        const said = `${name} at ${weight}`;
+        expect(Math.abs(ink.xMax - ink.xMin - geist[0]), said).toBeLessThan(15);
+        expect(Math.abs(ink.yMax - ink.yMin - geist[1]), said).toBeLessThan(15);
+      }
       const accented = draw("agrave", weight).contours.map((one) => contoursBounds([one]));
       const mark = accented.reduce((high, one) => (one.yMax > high.yMax ? one : high));
       expect(Math.abs(mark.yMax - mark.yMin - (top - foot)), `à at ${weight}`).toBeLessThan(12);

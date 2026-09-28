@@ -2328,18 +2328,57 @@ function pointOnBowl(f: Frame, centre: Vec2, halfW: number, halfH: number, degre
  * the stem at a Black. The plain one was a wide chevron set low, a sign.
  */
 export function grotesqueCaret(style: Style): Recipe {
-  const f = frame(style);
-  const [X, lerp] = squared(f);
-  const k = X(1) - X(0);
-  const top = up(f, 673);
-  const bottom = up(f, 383);
   // Geist's measures, from the left of the ink: the feet 82 across on the
   // Regular (34 on the Thin, 127 on the Black), the head 106 (48, 165) from
   // 120 in, and the whole 346 (288, 405) wide.
-  const foot = lerp(82, 127, 34) * k;
-  const wide = lerp(346, 405, 288) * k;
-  const headLeft = 120 * k;
-  const headRight = lerp(226, 285, 168) * k;
+  return chevron(style, {
+    foot: [82, 127, 34],
+    wide: [346, 405, 288],
+    headLeft: [120, 120, 120],
+    headRight: [226, 285, 168],
+    bottom: [383, 383, 383],
+    top: [673, 673, 673],
+  });
+}
+
+/**
+ * The circumflex accent, as Geist's: the caret's shape, lower and wider --
+ * the feet 70 across on the Regular (28 on the Thin, 128 on the Black), the
+ * whole 274 (198, 378), the head from 90 to 184 (88 to 110, 100 to 278),
+ * from 598 (610, 587) up to 731 (734, 753). The plain one came to a point.
+ */
+export function grotesqueCircumflexAccent(style: Style): Recipe {
+  return chevron(style, {
+    foot: [70, 128, 28],
+    wide: [274, 378, 198],
+    headLeft: [90, 100, 88],
+    headRight: [184, 278, 110],
+    bottom: [598, 587, 610],
+    top: [731, 753, 734],
+  });
+}
+
+/** Two strokes leaning in to a level head, cut level at their feet too. */
+function chevron(
+  style: Style,
+  m: {
+    foot: Measure;
+    wide: Measure;
+    headLeft: Measure;
+    headRight: Measure;
+    bottom: Measure;
+    top: Measure;
+  },
+): Recipe {
+  const f = frame(style);
+  const [X, lerp] = squared(f);
+  const k = X(1) - X(0);
+  const top = up(f, lerp(...m.top));
+  const bottom = up(f, lerp(...m.bottom));
+  const foot = lerp(...m.foot) * k;
+  const wide = lerp(...m.wide) * k;
+  const headLeft = lerp(...m.headLeft) * k;
+  const headRight = lerp(...m.headRight) * k;
   const x0 = X(0);
   const leftFoot = at(x0 + foot / 2, bottom);
   const leftHead = at(x0 + headLeft + foot / 2, top);
@@ -2355,6 +2394,29 @@ export function grotesqueCaret(style: Style): Recipe {
       return inherit(one, { ...one, pen });
     }),
   );
+}
+
+/**
+ * The dieresis, as Geist's: two dots cut square, 88 across and 98 high on
+ * the Regular (34 by 70 on the Thin, 180 by 136 on the Black), 86 (94, 62)
+ * apart, their feet at 613 (628, 594). The plain ones were smaller and
+ * closer.
+ */
+export function grotesqueDieresis(style: Style): Recipe {
+  const f = frame(style);
+  const [X, lerp] = squared(f);
+  const k = X(1) - X(0);
+  const across = lerp(88, 180, 34);
+  const high = lerp(98, 136, 70);
+  const apart = lerp(86, 62, 94);
+  const foot = up(f, lerp(613, 594, 628));
+  const dot = (left: number): Stroke =>
+    measured(
+      f,
+      straight(at(X(left + across / 2), foot), at(X(left + across / 2), foot + high * k)),
+      across * k,
+    );
+  return finish(f, [dot(0), dot(across + apart)]);
 }
 
 /**
@@ -2567,16 +2629,54 @@ export function grotesqueUnderscore(style: Style): Recipe {
  * heavier, or its hollows filled in.
  */
 export function grotesqueTilde(style: Style): Recipe {
+  return wave(style, {
+    thick: [79, 126, 32],
+    wide: [443, 443, 402],
+    low: [246, 245, 268],
+    high: [420, 421, 398],
+    crest: [430, 424, 404],
+  });
+}
+
+/**
+ * The tilde accent, as Geist's: the same wave, smaller -- 315 across on the
+ * Regular (264 on the Thin, 361 on the Black) and 54 (26, 90) thick, from
+ * 603 (625, 589) at its left end to 730 (723, 754) at its right, its crest
+ * at 720 (714, 748). The plain one was a heavier, rounder swash.
+ */
+export function grotesqueTildeAccent(style: Style): Recipe {
+  return wave(style, {
+    thick: [54, 90, 26],
+    wide: [315, 361, 264],
+    low: [603, 589, 625],
+    high: [730, 754, 723],
+    crest: [720, 748, 714],
+  });
+}
+
+/** Geist's measures at its Regular, Black and Thin. */
+type Measure = [number, number, number];
+
+/**
+ * A wave of two equal arcs, one over and one under, cut level at both ends,
+ * from a low left end to a high right one, on Geist's measures. Past the
+ * Black it grows taller and wider as fast as it grows heavier, or its
+ * hollows filled in.
+ */
+function wave(
+  style: Style,
+  m: { thick: Measure; wide: Measure; low: Measure; high: Measure; crest: Measure },
+): Recipe {
   const f = frame(style);
   const [X, lerp] = squared(f);
   const k = X(1) - X(0);
-  const thick = lerp(79, 126, 32);
-  const grown = Math.max(0, thick - 126) * 1.2;
-  const wide = lerp(443, 443, 402) + grown * 2;
+  const thick = lerp(...m.thick);
+  const grown = Math.max(0, thick - m.thick[1]) * 1.2;
+  const wide = lerp(...m.wide) + grown * 2;
   const half = thick / 2;
-  const low = lerp(246, 245, 268) - grown;
-  const high = lerp(420, 421, 398) + grown;
-  const crest = lerp(430, 424, 404) + grown - half;
+  const low = lerp(...m.low) - grown;
+  const high = lerp(...m.high) + grown;
+  const crest = lerp(...m.crest) + grown - half;
   const middle = { x: wide / 2, y: (low + high) / 2 };
   // From the middle, where the two arcs meet, to the left end, and how far
   // the crest's spine stands over the middle.
