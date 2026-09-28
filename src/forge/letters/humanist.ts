@@ -1128,6 +1128,137 @@ export function humanistCapitalW(style: Style): Recipe {
 }
 
 /**
+ * The vees drawn in one run -- the construction's v, V and Y, the M's
+ * middle, the w's and W's two -- taken apart into one stroke a piece on a
+ * text serif whose rising strokes are hairlines (see `inkAll` in
+ * `build.ts`), so each rising piece can be drawn light as Lora's are: its
+ * v's rising arm is 52 units across against the falling arm's 91, where the
+ * one run drew both on the same pen.
+ *
+ * Each piece keeps the one run's points: at every corner the two outer edges
+ * still meet where they met, on the line the vee stands on or hangs from, so
+ * each spine is laid again to put its outer edge through its corners at its
+ * own weight, and each end is cut along its neighbour's outer edge, the two
+ * meeting in the same mitred point. Cut level on the line instead, a flat
+ * narrower than the heavy arm left that arm's inside corner standing out
+ * past the light one, and past a Black the foot of the v was an X.
+ *
+ * And a rising arm run on into a tail, as the hooked y's is, drawn light.
+ */
+export function splitVees(given: Stroke[]): Stroke[] {
+  return given.flatMap((stroke) => {
+    const segments = stroke.spine.segments;
+    const own = Math.min(Math.max(stroke.pen.own ?? stroke.pen.contrast, 0), 0.95);
+    const thinWeight = stroke.pen.weight * (1 - own) * 1.25;
+    if (thinWeight >= stroke.pen.weight) return [stroke];
+    const thinPen = { ...stroke.pen, weight: thinWeight, contrast: 0, own: 0 };
+    const rises = (from: Vec2, to: Vec2) => (to.x - from.x) * (to.y - from.y) > 0;
+    const [first, ...rest] = segments;
+    // The y's arm and tail.
+    if (
+      first?.kind === "line" &&
+      rest.length > 0 &&
+      rest.every((one) => one.kind === "arc") &&
+      rises(first.from, first.to)
+    ) {
+      return [inherit(stroke, { ...stroke, pen: thinPen })];
+    }
+    if (stroke.spine.closed || segments.length < 2) return [stroke];
+    if (!segments.every((one) => one.kind === "line")) return [stroke];
+    const points = [
+      segments[0].kind === "line" ? segments[0].from : at(0, 0),
+      ...segments.map((one) => (one.kind === "line" ? one.to : at(0, 0))),
+    ];
+    const n = segments.length;
+    const dirs = segments.map((_, i) => towards(points[i], points[i + 1]));
+    // Steep pieces only, and at least one of them rising: not an arm and a
+    // bar, as the 4's diagonal and foot are.
+    if (dirs.some((d) => Math.abs(d.y) < 0.37)) return [stroke];
+    if (!segments.some((_, i) => rises(points[i], points[i + 1]))) return [stroke];
+    const pens = segments.map((_, i) => (rises(points[i], points[i + 1]) ? thinPen : stroke.pen));
+    const leftOf = (d: Vec2) => at(-d.y, d.x);
+    const cross = (u: Vec2, v: Vec2) => u.x * v.y - u.y * v.x;
+    // Which side of the run is outside each corner: the right of the way it
+    // travels where it turns left, and the other way about.
+    const outside = (k: number) => (cross(dirs[k - 1], dirs[k]) > 0 ? -1 : 1);
+    // A piece's edge on one side, as the sweep draws it.
+    const edge = (pen: Stroke["pen"], d: Vec2, side: number) => {
+      const r = reachAlong(leftOf(d), penReach(pen));
+      return at(r.x * side, r.y * side);
+    };
+    const meet = (p: Vec2, u: Vec2, q: Vec2, v: Vec2) => {
+      const t = cross(at(q.x - p.x, q.y - p.y), v) / cross(u, v);
+      return at(p.x + u.x * t, p.y + u.y * t);
+    };
+    // Where the one run's outer edges met at each corner.
+    const tips: Vec2[] = [];
+    for (let k = 1; k < n; k++) {
+      const side = outside(k);
+      const a = edge(stroke.pen, dirs[k - 1], side);
+      const b = edge(stroke.pen, dirs[k], side);
+      tips[k] = meet(
+        at(points[k].x + a.x, points[k].y + a.y),
+        dirs[k - 1],
+        at(points[k].x + b.x, points[k].y + b.y),
+        dirs[k],
+      );
+    }
+    // Each spine laid again so its outer edge runs through its corners' tips
+    // at its own weight; the run's two ends stay where they were.
+    const lines = segments.map((_, i) => {
+      let d = dirs[i];
+      let from = points[i];
+      for (let pass = 0; pass < 4; pass++) {
+        const start =
+          i === 0
+            ? points[0]
+            : (() => {
+                const e = edge(pens[i], d, outside(i));
+                return at(tips[i].x - e.x, tips[i].y - e.y);
+              })();
+        const end =
+          i === n - 1
+            ? points[n]
+            : (() => {
+                const e = edge(pens[i], d, outside(i + 1));
+                return at(tips[i + 1].x - e.x, tips[i + 1].y - e.y);
+              })();
+        d = towards(start, end);
+        from = start;
+      }
+      return { from, d };
+    });
+    // Each end cut along its neighbour's outer edge.
+    const outerLine = (i: number, side: number) => {
+      const e = edge(pens[i], lines[i].d, side);
+      return { p: at(lines[i].from.x + e.x, lines[i].from.y + e.y), u: lines[i].d };
+    };
+    const cutAt = (i: number, k: number, outward: Vec2) => {
+      const other = k === i ? i - 1 : i + 1;
+      const along = outerLine(other, outside(k));
+      const point = meet(lines[i].from, lines[i].d, along.p, along.u);
+      const shift = reachAlong(leftOf(outward), penReach(pens[i]));
+      const slide = -cross(shift, along.u) / cross(outward, along.u);
+      const angle = (Math.atan(slide / penReach(pens[i]).across) * 180) / Math.PI;
+      return { point, terminal: { kind: "angled", angle } as Terminal };
+    };
+    return segments.map((_, i) => {
+      const d = lines[i].d;
+      const start =
+        i === 0 ? { point: points[0], terminal: stroke.start } : cutAt(i, i, at(-d.x, -d.y));
+      const end = i === n - 1 ? { point: points[n], terminal: stroke.end } : cutAt(i, i + 1, d);
+      return inherit(stroke, {
+        ...stroke,
+        pen: pens[i],
+        spine: straight(start.point, end.point),
+        start: start.terminal,
+        end: end.terminal,
+      });
+    });
+  });
+}
+
+/**
  * The K and the k as a broad nib draws them: a hairline arm running down
  * from its serif into the stem, and a full leg leaving the arm a third of
  * the way out from the stem and running down to its own serif, as Lora's

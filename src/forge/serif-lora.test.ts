@@ -301,3 +301,30 @@ describe("the Serif's g", () => {
     }
   });
 });
+
+describe("the Serif's diagonals", () => {
+  const widths = (name: string, weight: number, y: number) =>
+    row(name, weight, y).map(([from, to]) => to - from);
+
+  it("draws the rising arms of the vees as hairlines, as Lora's are", () => {
+    for (const weight of [87, 142]) {
+      // Lora's v is 91 across its falling arm and 52 across its rising one;
+      // on a pen held nearly level the construction's were 90 and 82.
+      const [falling, rising] = widths("v", weight, 350);
+      expect(rising / falling, `v at ${weight}`).toBeLessThan(0.7);
+      const y = widths("y", weight, 350);
+      expect(y[1] / y[0], `y at ${weight}`).toBeLessThan(0.7);
+    }
+    // And the w's two rising arms (Lora's 41 and 45 against 87 and 84).
+    const w = widths("w", 87, 300);
+    expect(w).toHaveLength(4);
+    expect(w[1] / w[0]).toBeLessThan(0.7);
+    expect(w[3] / w[2]).toBeLessThan(0.7);
+  });
+
+  it("keeps the z's diagonal heavy, as Lora's is", () => {
+    const [diagonal] = widths("z", 87, 250);
+    // Thinned with the vees it would be 49; Lora's is 91.
+    expect(diagonal).toBeGreaterThan(70);
+  });
+});

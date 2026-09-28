@@ -156,6 +156,13 @@ export interface Metrics {
    * didone set that way had a y whose tail was as heavy as its stem.
    */
   risingHairline?: boolean;
+  /**
+   * The letters left as drawn on a face whose rising strokes are hairlines:
+   * a text face's z, Z and slash carry their weight on the rising diagonal,
+   * and a letter that draws its own hairline -- the Serif's A -- is not
+   * thinned again.
+   */
+  risingOwn?: string[];
   /** The bowls' superness the face was drawn with, once `heavier` has rounded them. Never saved. */
   drawnSuperness?: number;
   /**
@@ -969,6 +976,17 @@ export const SERIF: Style = {
     overshoot: 16,
     sidebearing: 34,
     capitalSpacing: 1.4,
+    /*
+     * The rising strokes of the vees and the x drawn as hairlines, as Lora's
+     * are -- the right arm of its v is 52 units across against the left's 91
+     * -- where a pen held nearly level gave both arms of a v the same weight
+     * and the v, w and y stood dark in a line of text. But not the z's and
+     * the Z's diagonals, which Lora draws heavy, nor the A, which draws its
+     * own: thinned again, its hairline leg stood apart from the other at
+     * the apex past a Black.
+     */
+    risingHairline: true,
+    risingOwn: ["z", "Z", "slash", "A"],
     // Lora's word space, 263 at the Regular and the Bold, a little more past it.
     wordSpace: [263 / 500, 280 / 500],
     // LORA-BOLD-BEGIN (fitted to Lora Bold at a pen of 142)

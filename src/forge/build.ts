@@ -38,6 +38,7 @@ import {
 } from "./accents";
 import { reachesCast, type Cast } from "./cast";
 import { effectInk, reachesEffects, type Effects } from "./effects";
+import { splitVees } from "./letters/humanist";
 import { reaches, scaleOf, type Cuts } from "./cut";
 import { shapedInk } from "./layers";
 import { assemble, hasTiles, type Kit } from "./kit";
@@ -970,7 +971,15 @@ function inkOf(stroke: Stroke, style: Style, others: Contour[] = []): Contour[] 
  * whether it is a lowercase letter, whose stems take a sloped head.
  */
 function inkAll(given: Stroke[], style: Style, name = ""): Contour[][] {
-  const strokes = style.metrics.risingHairline ? given.map(risen) : given;
+  const thinned =
+    style.metrics.risingHairline && !style.metrics.risingOwn?.includes(decidedBy(name));
+  // A text serif's vees drawn in one run are taken apart first, so their
+  // rising arms can be thinned too: see `splitVees`.
+  const strokes = thinned
+    ? (style.parts.slab.on && style.parts.slab.shape === "wedge" ? splitVees(given) : given).map(
+        risen,
+      )
+    : given;
   const capital = isCapitalLike(name);
   const small = !capital && !FIGURES.includes(name);
   const figure = FIGURES.includes(name);
