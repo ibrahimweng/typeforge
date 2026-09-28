@@ -169,8 +169,10 @@ test("cuts a font it did not draw, and lets one letter keep out of it", async ({
   // Bands taken out of the letter leave less of it lit than there was.
   await expect.poll(inkInCell, { timeout: 20_000 }).toBeLessThan(whole * 0.97);
 
-  // The two made out of a skeleton say so rather than doing nothing quietly.
-  await panel.locator('[data-cut-switch="inline"]').click();
+  // The breaks are made out of a skeleton, and say so rather than doing
+  // nothing quietly. (The inline is the letter shrunk by a wall now, so an
+  // opened font takes it and it has nothing to say here.)
+  await panel.locator('[data-cut-switch="split"]').click();
   await expect(panel).toContainText("made out of the skeleton");
 
   expect(errors).toEqual([]);

@@ -626,21 +626,28 @@ test("draws the symbols and writes them into the font", async ({ page }) => {
       await face.load();
       document.fonts.add(face);
       const context = document.createElement("canvas").getContext("2d")!;
-      context.font = "100px Symbols";
-      const width = (text: string) => context.measureText(text).width;
-      return {
-        // A character the font has no glyph for, to measure the others against.
-        blank: width("\uFFFF"),
-        symbols: "&@£½¿~§¶#%*+<=>[]{}|©®°±²µ·»¼×÷"
-          .split("")
-          .map((one) => [one, width(one)] as const),
+      /*
+       * Measured twice, with a different font behind it each time. A character
+       * the font has is drawn from the font both times and comes out the same
+       * width; one it lacks falls through to whatever is behind it, and a
+       * monospace and a serif do not agree. Measuring against the font's own
+       * .notdef instead cannot tell a missing character from a drawn one that
+       * happens to be as wide as the box -- which the Geist pound sign is, to
+       * within a unit.
+       */
+      const width = (text: string, behind: string) => {
+        context.font = `100px Symbols, ${behind}`;
+        return context.measureText(text).width;
       };
+      return "&@£½¿~§¶#%*+<=>[]{}|©®°±²µ·»¼×÷"
+        .split("")
+        .map((one) => [one, width(one, "monospace"), width(one, "serif")] as const);
     },
     [...bytes],
   );
 
-  const missing = measured.symbols
-    .filter(([, width]) => width === 0 || Math.abs(width - measured.blank) < 0.5)
+  const missing = measured
+    .filter(([, mono, serif]) => mono === 0 || mono !== serif)
     .map(([character]) => character);
   expect(missing.join(" "), "the font went out without these").toBe("");
   expect(errors).toEqual([]);

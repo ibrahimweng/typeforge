@@ -254,9 +254,36 @@ interface Vertex {
 /**
  * How far apart two closed polylines are: nought where they cross or one is
  * inside the other.
+ *
+ * Every caller only asks whether that is more than some amount, `enough`, so
+ * two polylines whose boxes already stand further apart than that are
+ * answered by the gap between the boxes, which is never more than the true
+ * distance. Most pairs of pieces in a letter are that far apart, and working
+ * out exactly how far, point against edge, was a fifth of the time a variable
+ * export of an opened font spent.
  */
-function apart(one: Vec2[], other: Vec2[]): number {
+function apart(one: Vec2[], other: Vec2[], enough: number): number {
   if (one.length < 2 || other.length < 2) return 0;
+  const boxOf = (points: Vec2[]) => {
+    let xMin = Infinity;
+    let yMin = Infinity;
+    let xMax = -Infinity;
+    let yMax = -Infinity;
+    for (const point of points) {
+      if (point.x < xMin) xMin = point.x;
+      if (point.x > xMax) xMax = point.x;
+      if (point.y < yMin) yMin = point.y;
+      if (point.y > yMax) yMax = point.y;
+    }
+    return { xMin, yMin, xMax, yMax };
+  };
+  const a = boxOf(one);
+  const b = boxOf(other);
+  const gap = Math.hypot(
+    Math.max(0, a.xMin - b.xMax, b.xMin - a.xMax),
+    Math.max(0, a.yMin - b.yMax, b.yMin - a.yMax),
+  );
+  if (gap > enough) return gap;
   const inside = (point: Vec2, polygon: Vec2[]): boolean => {
     let odd = false;
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
@@ -369,6 +396,11 @@ export function applyWeight(
     edge: Vec2;
     /** Whether it is another piece of ink with paper between them. */
     foreign: boolean;
+    /** The box round it, for ruling it out before measuring to it. */
+    xMin: number;
+    xMax: number;
+    yMin: number;
+    yMax: number;
   }
   const segmentAt = (position: number): number => {
     let found = 0;
@@ -388,7 +420,7 @@ export function applyWeight(
      */
     const foreign =
       bolder && !own && around.roles[which] === isOuter
-        ? isOuter && apart(around.obstacles[self] ?? [], polyline) > em * 0.004
+        ? isOuter && apart(around.obstacles[self] ?? [], polyline, em * 0.004) > em * 0.004
         : false;
     if (bolder && !own && around.roles[which] === isOuter && !foreign) return;
     let area = 0;
@@ -417,6 +449,10 @@ export function applyWeight(
         middle,
         seg: own ? segmentAt(middle) : -1,
         edge,
+        xMin: Math.min(point.x, next.x),
+        xMax: Math.max(point.x, next.x),
+        yMin: Math.min(point.y, next.y),
+        yMax: Math.max(point.y, next.y),
       });
       run += length;
     });
@@ -427,6 +463,38 @@ export function applyWeight(
    * of a letter is that far from any one point of it.
    */
   const horizon = bolder ? em * OPENING + wanted * 7 : wanted * 10 + em * HAIRLINE;
+  /*
+   * The walls filed by where they are, so a sample asks about the ones near
+   * it first and stops once the rest are further off than what it has found.
+   * Asking every wall of the letter at every sample was most of the time a
+   * variable export of an opened font took -- three masters of six thousand
+   * glyphs -- and the answer does not depend on the order they are asked in.
+   */
+  const cell = Math.max(em * 0.02, horizon / 6);
+  let gridX = Infinity;
+  let gridY = Infinity;
+  let gridRight = -Infinity;
+  let gridTop = -Infinity;
+  for (const wall of walls) {
+    gridX = Math.min(gridX, wall.xMin);
+    gridY = Math.min(gridY, wall.yMin);
+    gridRight = Math.max(gridRight, wall.xMax);
+    gridTop = Math.max(gridTop, wall.yMax);
+  }
+  const columns = walls.length > 0 ? Math.floor((gridRight - gridX) / cell) + 1 : 0;
+  const rows = walls.length > 0 ? Math.floor((gridTop - gridY) / cell) + 1 : 0;
+  const filed: number[][] = Array.from({ length: columns * rows }, () => []);
+  walls.forEach((wall, index) => {
+    const left = Math.floor((wall.xMin - gridX) / cell);
+    const right = Math.floor((wall.xMax - gridX) / cell);
+    const bottom = Math.floor((wall.yMin - gridY) / cell);
+    const top = Math.floor((wall.yMax - gridY) / cell);
+    for (let row = bottom; row <= top; row++)
+      for (let column = left; column <= right; column++) filed[row * columns + column].push(index);
+  });
+  const anyForeign = walls.some((wall) => wall.foreign);
+  const asked = new Int32Array(walls.length);
+  let asking = 0;
   const turnAt = (index: number): number => {
     const a = headingOn(segments[(index - 1 + count) % count], 1);
     const b = headingOn(segments[index], 0);
@@ -517,33 +585,68 @@ export function applyWeight(
   const room = (from: Vec2, heading: Vec2, position: number, seg: number): number => {
     let nearest = Infinity;
     let nearestForeign = Infinity;
-    for (const wall of walls) {
-      if (ownCorner(wall, seg)) continue;
-      if (bolder && wall.seg >= 0 && notch(seg, wall.seg)) {
-        // Unless the two walls stand square across from each other, which
-        // is a counter or a gap, however it is reached.
-        const across = wall.normal.x * heading.x + wall.normal.y * heading.y;
-        if (across > -0.975) continue;
+    asking++;
+    // The cell the sample is in, which may be outside the grid altogether.
+    const column = Math.floor((from.x - gridX) / cell);
+    const row = Math.floor((from.y - gridY) / cell);
+    const reach =
+      walls.length === 0
+        ? -1
+        : Math.max(
+            Math.abs(column),
+            Math.abs(columns - 1 - column),
+            Math.abs(row),
+            Math.abs(rows - 1 - row),
+          );
+    for (let ring = 0; ring <= reach; ring++) {
+      // Every wall filed only this far out is at least this far off.
+      const off = (ring - 1) * cell;
+      if (off > horizon) break;
+      if (off >= nearest && (!anyForeign || off >= nearestForeign)) break;
+      for (let r = row - ring; r <= row + ring; r++) {
+        if (r < 0 || r >= rows) continue;
+        const edge = r === row - ring || r === row + ring;
+        for (let c = column - ring; c <= column + ring; c += edge ? 1 : ring * 2 || 1) {
+          if (c < 0 || c >= columns) continue;
+          for (const index of filed[r * columns + c]) {
+            if (asked[index] === asking) continue;
+            asked[index] = asking;
+            const wall = walls[index];
+            /*
+             * The cheap questions first. Whatever this wall stops -- a ray, or a
+             * circle through the sample -- it stops at a point on the wall, so no
+             * nearer than the wall's box is; a wall whose box is already further
+             * off than the nearest wall found cannot be nearer, and the answer is
+             * the same without measuring to it.
+             */
+            const offX = Math.max(0, wall.xMin - from.x, from.x - wall.xMax);
+            const offY = Math.max(0, wall.yMin - from.y, from.y - wall.yMax);
+            if (offX > horizon || offY > horizon) continue;
+            const least = wall.foreign ? nearestForeign : nearest;
+            if (offX >= least || offY >= least || offX * offX + offY * offY >= least * least)
+              continue;
+            // Only a wall that faces back can be the far side of the stroke: one
+            // facing the same way is the near side, the sample's own outline.
+            const facing = wall.normal.x * heading.x + wall.normal.y * heading.y;
+            if (facing >= 0) continue;
+            if (bolder && wall.middle >= 0) {
+              const apart = Math.abs(wall.middle - position) % total;
+              if (Math.min(apart, total - apart) < window) continue;
+            }
+            if (ownCorner(wall, seg)) continue;
+            if (bolder && wall.seg >= 0 && notch(seg, wall.seg)) {
+              // Unless the two walls stand square across from each other, which
+              // is a counter or a gap, however it is reached.
+              const across = wall.normal.x * heading.x + wall.normal.y * heading.y;
+              if (across > -0.975) continue;
+            }
+            let hit = rayToEdge(from, heading, wall.a, wall.b);
+            if (facing < -0.3) hit = Math.min(hit, 2 * ballTouch(from, heading, wall.a, wall.b));
+            if (wall.foreign) nearestForeign = Math.min(nearestForeign, hit);
+            else nearest = Math.min(nearest, hit);
+          }
+        }
       }
-      if (
-        Math.min(wall.a.x, wall.b.x) - from.x > horizon ||
-        from.x - Math.max(wall.a.x, wall.b.x) > horizon ||
-        Math.min(wall.a.y, wall.b.y) - from.y > horizon ||
-        from.y - Math.max(wall.a.y, wall.b.y) > horizon
-      )
-        continue;
-      if (bolder && wall.middle >= 0) {
-        const apart = Math.abs(wall.middle - position) % total;
-        if (Math.min(apart, total - apart) < window) continue;
-      }
-      // Only a wall that faces back can be the far side of the stroke: one
-      // facing the same way is the near side, the sample's own outline.
-      const facing = wall.normal.x * heading.x + wall.normal.y * heading.y;
-      if (facing >= 0) continue;
-      let hit = rayToEdge(from, heading, wall.a, wall.b);
-      if (facing < -0.3) hit = Math.min(hit, 2 * ballTouch(from, heading, wall.a, wall.b));
-      if (wall.foreign) nearestForeign = Math.min(nearestForeign, hit);
-      else nearest = Math.min(nearest, hit);
     }
     /*
      * The paper between two pieces of ink keeps a share of itself, not just
@@ -587,7 +690,7 @@ export function applyWeight(
     if (!(Math.min(wide, tall) > 0) || Math.max(wide, tall) > em * 0.2) return false;
     if (Math.max(wide, tall) > Math.min(wide, tall) * 1.6) return false;
     return around.obstacles.every(
-      (other, which) => which === self || !around.roles[which] || apart(own, other) > 0,
+      (other, which) => which === self || !around.roles[which] || apart(own, other, 0) > 0,
     );
   })();
 

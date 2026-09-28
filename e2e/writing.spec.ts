@@ -141,6 +141,14 @@ test("Trace says what it is holding, as the other three modes do", async ({ page
 
 test("a font that was opened can be shipped as one file that varies", async ({ page }) => {
   /*
+   * Room for the download the test already waits two minutes for. A varying
+   * file is every one of DejaVu's six thousand glyphs weighted three times
+   * over, and the weighting of an opened font now keeps apertures, dots and
+   * separate pieces of ink as it goes: under a loaded run of the whole suite
+   * the build alone came to most of the default ninety seconds.
+   */
+  test.setTimeout(180_000);
+  /*
    * The `fvar`/`gvar`/`STAT` writer has been here since the forge learned to
    * put a family in one file, and it takes masters as whole typefaces -- so
    * nothing about it was ever particular to a drawn-from-nothing face. Only the

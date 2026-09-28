@@ -1818,8 +1818,10 @@ function tapered(
         straight(at(x + dir * shift, top), at(x + dir * shift, knee)),
         straight(at(x + dir * shift, knee), at(x, foot)),
       ),
-      f.end,
-      f.end,
+      // Plain rather than the face's own end: these are marks, and a serif
+      // face leaves its quotes and its exclamation mark bare.
+      f.plain,
+      f.plain,
     );
     return inherit(drawn, { ...drawn, pen });
   };

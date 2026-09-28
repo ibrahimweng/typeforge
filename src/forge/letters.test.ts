@@ -1060,3 +1060,20 @@ describe("a serif goes on the outside of a shallow diagonal", () => {
     expect(loose).toEqual([]);
   });
 });
+
+describe("the fuse keeps a counter two strokes close between them", () => {
+  /*
+   * The eye of an ash is no stroke's own: it is the e's bowl shut by its bar.
+   * On the Typewriter the e's left side lies on the a's stem and the a's bowl
+   * runs flush against the same edge, three edges on one line, and the fuse
+   * handed back the eye filled in -- a union that was neither swollen nor
+   * wrong at any point inside a stroke, so nothing asked about it.
+   */
+  it("fuses the Typewriter ash with both its counters open", async () => {
+    const { ready } = await import("@/font/boolean");
+    await ready();
+    const typewriter = STARTING_POINTS.find((style) => style.name === "Typewriter")!;
+    const fused = unite(drawLetter("ae", typewriter)!.contours, "winding");
+    expect(fused.filter((contour) => contourArea(contour) < 0)).toHaveLength(2);
+  });
+});

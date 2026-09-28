@@ -58,13 +58,24 @@ test("double-clicking the arch of an n opens the shoulder", async ({ page }) => 
   // The outside of the curve, where the arch leaves the stem.
   await pressSpot(page, 110, 447);
 
-  // A handle on the edge that was pressed.
-  await expect(page.locator('[data-forge-probed="part:shoulder:spring"]')).toBeVisible();
+  /*
+   * A handle on the edge that was pressed: one of the shoulder's two. Which
+   * one is the drawing's to say -- the Sans arch is Geist's superellipse now,
+   * and the outside of it this high is moved most by how high the arch rises
+   * rather than by where it springs, as the unit test of the probe allows.
+   */
+  const probed = page.locator(
+    '[data-forge-probed="part:shoulder:spring"], [data-forge-probed="part:shoulder:crest"]',
+  );
+  await expect(probed).toBeVisible();
+  const id = (await probed.getAttribute("data-forge-probed"))!;
   // Said in the words the panel uses, with how far a pull would carry.
-  await expect(page.locator("[data-forge-found]")).toContainText("Springing");
+  await expect(page.locator("[data-forge-found]")).toContainText(
+    id === "part:shoulder:spring" ? "Springing" : "Arch height",
+  );
   await expect(page.locator("[data-forge-found]")).toContainText("reaches");
   // And the panel is on that control, marked and scrolled to.
-  const row = page.locator('[data-forge-control="part:shoulder:spring"]');
+  const row = page.locator(`[data-forge-control="${id}"]`);
   await expect(row).toBeInViewport();
   await expect(row).toHaveClass(/ring-1/);
 });
@@ -271,9 +282,15 @@ test("says which letters a setting has closed up", async ({ page }) => {
   await expect(warnings).toBeVisible();
   await expect(warnings.getByText("Counters closing up")).toBeVisible();
 
-  // And the letters it names are a way of getting to them.
-  await warnings.getByRole("button", { name: "eight" }).click();
-  await expect(page.locator("[data-forge-stage]")).toHaveAttribute("data-forge-stage", "eight");
+  // And the letters it names are a way of getting to them. Whichever it names
+  // first: which letters close up is the drawing's business, and the Sans
+  // eight, drawn as Geist's now, keeps both its counters open here -- it is
+  // the percent that closes.
+  const named = warnings.locator("[data-forge-warning-letter]").first();
+  const letter = await named.getAttribute("data-forge-warning-letter");
+  expect(letter).toBeTruthy();
+  await named.click();
+  await expect(page.locator("[data-forge-stage]")).toHaveAttribute("data-forge-stage", letter!);
 });
 
 /**
