@@ -16,6 +16,7 @@ import {
   contourArea,
   contourContainsPoint,
   contoursBounds,
+  crossesItself,
   flattenContour,
   inkRunsAt,
 } from "@/font/geometry";
@@ -809,5 +810,52 @@ describe("slots through a crotch", () => {
     const slotted = drawn("k", forgeOf("Sans", 260, { cuts: { slot: { count: 3, angle: 15 } } }));
     expect(inwardTurns(slotted)).toBe(0);
     expect(piecesOf(slotted)).toBe(3);
+  });
+});
+
+describe("fillets after a cut", () => {
+  it("never tie two pieces together", () => {
+    // Across a slot, the corner a band leaves beside a join was closer to
+    // the next piece than a fillet is long: on nearly every face the weld
+    // tied a stem back to the bar a slot had cut it from.
+    for (const [face, weight] of [
+      ["Sans", 87],
+      ["Sans", 260],
+      ["Display", 0],
+    ] as const) {
+      const at = weight || BASES.find((base) => base.name === face)!.pen.weight;
+      const slot = { slot: { count: 3, angle: 15 } };
+      for (const letter of "HkA") {
+        const cut = piecesOf(drawn(letter, forgeOf(face, at, { cuts: slot })));
+        const welded = drawn(letter, forgeOf(face, at, { cuts: slot, cast: { weld: {} } }));
+        expect(piecesOf(welded), `${face} ${weight} ${letter}`).toBe(cut);
+      }
+    }
+  });
+
+  it("grow nothing into an inline's groove", () => {
+    // The corner at a join is the groove's once the inline has run, and the
+    // fillets stood in it as stubs, or tied the island to the outer wall.
+    for (const letter of "AR") {
+      const grooved = drawn(letter, forgeOf("Sans", 87, { cuts: { inline: {} } }));
+      const welded = drawn(
+        letter,
+        forgeOf("Sans", 87, { cuts: { inline: {} }, cast: { weld: {} } }),
+      );
+      expect(piecesOf(welded), letter).toBe(piecesOf(grooved));
+      expect(area(welded), letter).toBeCloseTo(area(grooved), 0);
+    }
+  });
+});
+
+describe("an unsteady hand's own lean", () => {
+  it("ties no loop where the letter leans further than the face", () => {
+    // The running hand leans each letter a few degrees further or back than
+    // the face, after the pressure has been untangled at the face's slant:
+    // the y under the inline and fillets came out crossed at its own lean.
+    const weight = BASES.find((base) => base.name === "Formal Script")!.pen.weight;
+    const forge = forgeOf("Formal Script", weight, { cuts: { inline: {} }, cast: { weld: {} } });
+    const y = drawn("y", forge);
+    expect(y.filter((contour) => crossesItself(contour)).length).toBe(0);
   });
 });

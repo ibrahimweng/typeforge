@@ -20,7 +20,7 @@
  * outline makes while that happens, resolved once (`swept`).
  */
 
-import { filled, intersect, loaded, subtract, unite, type Roles } from "@/font/boolean";
+import { filled, intersect, loaded, pieces, subtract, unite, type Roles } from "@/font/boolean";
 import {
   contourArea,
   contourContainsPoint,
@@ -394,7 +394,6 @@ export function untangled(shape: Contour[], slant = 0): Contour[] {
    * letter is untangled leaned, and stood back up.
    */
   if (slant) {
-    const lean = Math.tan((slant * Math.PI) / 180);
     const tilt = (contours: Contour[], by: number) =>
       contours.map((contour) => ({
         ...contour,
@@ -409,9 +408,17 @@ export function untangled(shape: Contour[], slant = 0): Contour[] {
           };
         }),
       }));
-    const leaned = tilt(shape, lean);
-    if (leaned.some((contour) => contoursIntersect([contour]))) {
-      return tilt(withoutCrumbs(untangled(leaned)), -lean);
+    /*
+     * And a few degrees either way: a letter of an unsteady hand leans a
+     * little further over or back than the face, by its own amount, and the
+     * y of a Formal Script under the inline and fillets crossed at one of them.
+     */
+    for (const by of [0, 1, -1, 2, -2, 3, -3, 4, -4]) {
+      const at = Math.tan(((slant + by) * Math.PI) / 180);
+      const leaned = tilt(shape, at);
+      if (leaned.some((contour) => contoursIntersect([contour]))) {
+        return tilt(withoutCrumbs(untangled(leaned)), -at);
+      }
     }
   }
   if (!shape.some((contour) => contoursIntersect([contour]))) return withoutCrumbs(shape);
@@ -1390,6 +1397,45 @@ function weldTool(
       .map((stroke, index) => ({ line: samples[index], stroke, index }))
       .filter(({ index }) => index !== one && index !== other);
 
+  /*
+   * Nor one that ties two of the letter's pieces together. A fillet fills the
+   * corner of one piece. After slots, the corner a band leaves beside a join
+   * can be closer to the next piece than a fillet is long: on nearly every
+   * face the weld tied a stem back to the bar a slot had cut it from, and
+   * two fillets from either side of a band that only touched tied it too.
+   * Counted on the letter as it stands with the fillets kept so far.
+   */
+  const solids = shape.filter((contour) => contourArea(contour) > 0);
+  let kept = shape;
+  let count = pieces(shape);
+  const ties = (fillet: Contour): boolean => {
+    if (count < 2) return false;
+    const next = unite([...kept, fillet], "winding", "whole");
+    const now = pieces(next);
+    if (now < count) return true;
+    kept = next;
+    count = now;
+    return false;
+  };
+  /*
+   * Nor into a groove: a hole with an island standing in it, as the inline
+   * leaves. At a join the letter's corner is now the groove's, and a fillet
+   * grown there stood in the groove as a stub on its outer wall.
+   */
+  const grooves = shape
+    .filter((hole) => contourArea(hole) < 0)
+    .filter((hole) =>
+      solids.some(
+        (solid) =>
+          contourArea(solid) < -contourArea(hole) &&
+          contourContainsPoint(hole, solid.nodes[0].point),
+      ),
+    )
+    .map(reverseContour);
+  const inGroove = (fillet: Contour): boolean =>
+    grooves.length > 0 &&
+    intersect([fillet], grooves, "winding").reduce((total, one) => total + contourArea(one), 0) > 1;
+
   const added: Contour[] = [];
   for (let one = 0; one < samples.length; one++) {
     for (let other = one + 1; other < samples.length; other++) {
@@ -1444,7 +1490,15 @@ function weldTool(
         // join has a corner of its own there, and it is not a join.
         if (from.stroke === to.stroke) continue;
         const fillet = filletBetween(where, from, to, size, ink, edge);
-        if (fillet && !(breaks && acrossBreak(fillet, breaks.knives))) added.push(fillet);
+        if (
+          !fillet ||
+          (breaks && acrossBreak(fillet, breaks.knives)) ||
+          inGroove(fillet) ||
+          ties(fillet)
+        ) {
+          continue;
+        }
+        added.push(fillet);
       }
     }
   }
