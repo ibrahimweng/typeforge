@@ -18,6 +18,7 @@ import * as React from "react";
 import { segment, WIDE_PANEL } from "@/components/controls";
 import { contoursToSvgPath } from "@/font/geometry";
 import { inkFrame, viewBoxOf } from "@/components/ink-frame";
+import { idleReason } from "@/components/part-idle";
 import { filled, FILL_KINDS } from "@/forge/kit";
 import { drawLetter } from "@/forge/build";
 import { CutPanel } from "@/components/CutPanel";
@@ -999,15 +1000,24 @@ function Part({ part, mine }: { part: PartName; mine: boolean }): React.JSX.Elem
       <p className="pt-1 text-2xs leading-snug text-muted-foreground">{spec.hint}</p>
 
       <div className="pt-2">
-        {spec.controls.map((control) => (
-          <Control
-            key={control.key}
-            id={`part:${part}:${control.key}`}
-            control={control}
-            values={values}
-            onChange={(patch, phase) => forgeStore.changePart(part, patch as never, phase)}
-          />
-        ))}
+        {spec.controls.map((control) => {
+          // Dimmed, and out of the tab order, when the part as it is set has no
+          // use for it; the line under it says what would bring it back.
+          const why = idleReason(part, control.key, values);
+          return (
+            <div key={control.key} data-forge-idle={why ? "yes" : undefined}>
+              <div className={cn(why && "opacity-40")} inert={why ? true : undefined}>
+                <Control
+                  id={`part:${part}:${control.key}`}
+                  control={control}
+                  values={values}
+                  onChange={(patch, phase) => forgeStore.changePart(part, patch as never, phase)}
+                />
+              </div>
+              {why && <p className="pb-1 text-2xs text-muted-foreground">{why}</p>}
+            </div>
+          );
+        })}
       </div>
     </section>
   );

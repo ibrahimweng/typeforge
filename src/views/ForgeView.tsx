@@ -212,9 +212,18 @@ function Stage({
 
   if (!drawn) return <div className="flex-1" />;
 
-  const top = metrics.ascender + 60;
-  const bottom = metrics.descender - 60;
-  const width = Math.max(drawn.advanceWidth, 1) + metrics.unitsPerEm * 0.12;
+  /*
+   * The ascender and descender with room to spare, grown to take in any ink
+   * that goes further -- a shadow thrown down past the descender, the ring of
+   * an Å -- which used to run off the stage and be cut away.
+   */
+  const ink = inkFrame(metrics, [{ contours: drawn.contours, x: 0 }], drawn.advanceWidth);
+  const top = Math.max(metrics.ascender + 60, -ink.y);
+  const bottom = Math.min(metrics.descender - 60, -(ink.y + ink.height));
+  const pad = metrics.unitsPerEm * 0.06;
+  const leftmost = Math.min(-pad, ink.x - pad / 2);
+  const width =
+    Math.max(Math.max(drawn.advanceWidth, 1) + pad, ink.x + ink.width + pad / 2) - leftmost;
   const height = top - bottom;
   const unit = metrics.unitsPerEm / 260 / view.zoom;
 
@@ -345,7 +354,7 @@ function Stage({
     });
   };
 
-  const left = -metrics.unitsPerEm * 0.06 + view.x;
+  const left = leftmost + view.x;
   const viewBox = `${left} ${-top + view.y} ${width / view.zoom} ${height / view.zoom}`;
 
   return (
@@ -1269,6 +1278,13 @@ interface Cell {
   name: string;
   d: string;
   width: number;
+  /**
+   * The box the cell shows, grown past the ascender and descender for ink
+   * that goes there. It used to be those two lines exactly, and the accents
+   * of the capitals, the overshoot of an O on a face whose capitals stand at
+   * the ascender, and every shadow were cut off in the strip.
+   */
+  frame: string;
   held: boolean;
   shaped: boolean;
   outside: boolean;
@@ -1279,10 +1295,14 @@ function cellOf(name: string, near: ReadonlySet<string>, forge: Forge): Cell {
   // box the right size, which is what it had while it was off screen anyway,
   // and it fills in before it arrives.
   const drawn = near.has(name) ? draw(name, forge) : null;
+  const width = drawn?.advanceWidth ?? 0;
   return {
     name,
     d: drawn ? contoursToSvgPath(drawn.contours) : "",
-    width: drawn?.advanceWidth ?? 0,
+    width,
+    frame: viewBoxOf(
+      inkFrame(forge.style.metrics, drawn ? [{ contours: drawn.contours, x: 0 }] : [], width),
+    ),
     held: isException(forge, name),
     shaped: Boolean(formOf(forge, name)),
     outside: isImported(forge, name),
@@ -1392,8 +1412,6 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
     });
   }, [ripe, settled, plain]);
 
-  const { metrics } = state.forge.style;
-
   return (
     <div className="toolcraft-scrollbar min-h-0 flex-[2] overflow-y-auto p-3">
       <div className="flex flex-wrap gap-1.5">
@@ -1417,11 +1435,7 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
               "relative flex size-14 items-center justify-center rounded-md border",
             )}
           >
-            <svg
-              viewBox={`0 ${-metrics.ascender} ${Math.max(cell.width, 1)} ${metrics.ascender - metrics.descender}`}
-              className="h-9 w-9"
-              aria-hidden
-            >
+            <svg viewBox={cell.frame} className="h-9 w-9" aria-hidden>
               <g transform="scale(1,-1)">
                 <path d={cell.d} fill="var(--foreground)" fillRule="nonzero" />
               </g>
