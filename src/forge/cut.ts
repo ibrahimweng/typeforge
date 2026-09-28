@@ -289,8 +289,21 @@ function withoutCrumbs(shape: Contour[], stem: number, smallest: number): Contou
    * which a hairline face may be.
    */
   const solids = areas.filter((area) => area > 0).length;
-  const thin = (contour: Contour, area: number): boolean =>
-    solids >= 2 && area < stem * stem * 1.5 && breadth(flattenContour(contour, 12)) < stem * 0.35;
+  /*
+   * Tapering, which is what makes it a sliver rather than an end. A band laid
+   * square across a stem leaves the stem's own end above it: a slab as long
+   * as the stem is wide and square at both ends, filling the box it lies in.
+   * Taken for a splinter because a light band set left it a quarter of a stem
+   * tall, it went with the rest, and a drawn I cut by two bands came back in
+   * two pieces with its head gone. A shaving off a curve fills two thirds of
+   * its box or less, and the wedges this was written for none past nine
+   * tenths.
+   */
+  const thin = (contour: Contour, area: number): boolean => {
+    if (solids < 2 || area >= stem * stem * 1.5) return false;
+    const { breadth: across, length } = lie(flattenContour(contour, 12));
+    return across < stem * 0.35 && area < across * length * TAPERS;
+  };
   const crumbs = shape.filter(
     (contour, index) => areas[index] > 0 && (areas[index] < floor || thin(contour, areas[index])),
   );
@@ -304,29 +317,42 @@ function withoutCrumbs(shape: Contour[], stem: number, smallest: number): Contou
   });
 }
 
+/** How much of the box it lies in a sliver fills at most: see `withoutCrumbs`. */
+const TAPERS = 0.95;
+
 /**
- * How wide a shape is the narrowest way across: the least distance between
- * two parallel lines that hold it, taken over its convex hull's edges.
+ * How wide a shape is the narrowest way across -- the least distance between
+ * two parallel lines that hold it, taken over its convex hull's edges -- and
+ * how long it runs the other way, square to that.
  */
-function breadth(points: Vec2[]): number {
+function lie(points: Vec2[]): { breadth: number; length: number } {
   const hull = convexHull(points);
-  if (hull.length < 3) return 0;
+  if (hull.length < 3) return { breadth: 0, length: 0 };
   let least = Infinity;
+  let length = 0;
   for (let index = 0; index < hull.length; index++) {
     const a = hull[index];
     const b = hull[(index + 1) % hull.length];
     const run = distance(a, b);
     if (run < 1e-9) continue;
     let most = 0;
+    let low = Infinity;
+    let high = -Infinity;
     for (const point of hull) {
       most = Math.max(
         most,
         Math.abs((b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x)) / run,
       );
+      const along = ((b.x - a.x) * (point.x - a.x) + (b.y - a.y) * (point.y - a.y)) / run;
+      low = Math.min(low, along);
+      high = Math.max(high, along);
     }
-    least = Math.min(least, most);
+    if (most < least) {
+      least = most;
+      length = high - low;
+    }
   }
-  return least;
+  return { breadth: least, length };
 }
 
 /** The convex hull of some points, anticlockwise (Andrew's monotone chain). */

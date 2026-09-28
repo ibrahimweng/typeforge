@@ -2070,7 +2070,20 @@ function ess(given: Frame, e: Ess): Stroke {
   const drawn = ink(
     f,
     chain(
-      bend(ga, upper, upperH, head, 180, upperW),
+      /*
+       * The head in two runs, parted where the bowl's loop begins: level with
+       * the bowl's widest point on the right. A Regular's head is cut just
+       * under it, on the lower half of the right side, and a Bold's and a
+       * Black's lower still, round in the corner below; drawn as one run,
+       * that run crossed the loop's seam and began on a different piece at
+       * the two weights. A varying font begins every master on the drawn
+       * weight's piece (`begun` in `shapes.ts`), so the Black gave up the
+       * piece it began on -- the end of its head, two per cent of its ink.
+       * Parted there, neither run crosses the seam at any weight, and the
+       * one above it is drawn with no length where the head is cut higher.
+       */
+      bend(ga, upper, upperH, head, Math.max(head, 0), upperW),
+      bend(ga, upper, upperH, Math.max(head, 0), 180, upperW),
       /*
        * Past even that -- a pen near half the x-height -- the spine leaves
        * each quarter at a fixed point, in the same pieces.

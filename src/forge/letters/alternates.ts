@@ -668,7 +668,7 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
          * turn from falling to climbing too tight for the pen, and it knotted.
          * So the valley is drawn here, where it can be given the room.
          */
-        const lead = writtenLead("r", style);
+        const lead = writtenLead("r", style, "exit");
         // A tighter shoulder than the `n`'s, so the letter reads as an `r`
         // with its arm carried down rather than as a narrow `n`.
         const radius = Math.max(shoulderRadius(f, f.x) * 0.6, f.least);

@@ -359,11 +359,28 @@ export function joinWeight(style: Style): number {
  * In the recipe's coordinates: `connected` lifts a letter off its line before
  * the join is planned, so the seam the recipe has to hit is that much lower.
  */
-export function writtenLead(name: string, style: Style): Lead {
+export function writtenLead(
+  name: string,
+  style: Style,
+  /*
+   * Which end of the letter the stroke is at. A written `r` hands on from the
+   * end of its arm through a valley, and that is its lead-out: struck off the
+   * entry's seam, the `r` that arrives high after an `o` fell only to the
+   * waist, and came out 125 units narrower than the `r` it stands in for --
+   * so the letter after it started where the `r` had not finished. The exit
+   * is taken high only by the letters that hand over high, as `connected`
+   * plans the join itself.
+   */
+  end: "entry" | "exit" = "entry",
+): Lead {
   const script = style.parts.script;
   const f = frame(style);
   const seams = seamsOf(script, f.x, f.half);
-  const high = takingHigh.entry === true && seams.high > seams.low + 1e-9;
+  const asked =
+    end === "entry"
+      ? takingHigh.entry === true
+      : takingHigh.exit === true && HANDS_OVER_HIGH.has(name);
+  const high = asked && seams.high > seams.low + 1e-9;
   const lift = script.on ? wobbleOf(name, script, f.x).lift : 0;
   const unit = scriptUnit(style);
   const reach = script.reach * unit;
