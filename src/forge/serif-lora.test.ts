@@ -228,3 +228,20 @@ describe("the Serif's R", () => {
     }
   });
 });
+
+describe("the Serif's bracket control", () => {
+  it("does something along the whole of its range, past the serif's depth", () => {
+    const with_ = (bracket: number): Style => ({
+      ...at(87),
+      parts: { ...SERIF.parts, slab: { ...SERIF.parts.slab, bracket } },
+    });
+    // How much ink the hollow leaves beside the n's stem, a little way up.
+    const ink = (bracket: number) =>
+      row("n", 87, 55, with_(bracket)).reduce((sum, [a, b]) => sum + b - a, 0);
+    const widths = [0.4, 0.5, 0.6, 0.7, 0.8].map(ink);
+    // Held to the serif's depth, everything past 0.4 was the same serif.
+    for (let k = 1; k < widths.length; k++) {
+      expect(widths[k], `bracket ${0.4 + k * 0.1}`).toBeGreaterThan(widths[k - 1] + 1);
+    }
+  });
+});

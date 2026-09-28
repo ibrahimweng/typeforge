@@ -2513,7 +2513,21 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        * Serif, the Didone, the Slab and the Typewriter all stayed exactly where
        * they were.
        */
-      const bracket = Math.min(terminal.bracket ?? 0, deep, (tip - from) * 0.8, headCap);
+      /*
+       * And whatever the bracket asks for past the serif's own depth carried
+       * on up the stroke, so the whole of the control does something: held
+       * to the depth alone, everything past it on the slider was the same
+       * serif.
+       */
+      const asked = terminal.bracket ?? 0;
+      const held = Math.min(asked, deep, (tip - from) * 0.8, headCap);
+      const past = Math.max(0, asked - (terminal.thickness ?? asked));
+      // A text serif's hollow runs from its tip to wherever it meets the
+      // stem, so it can climb as far as it likes; a square serif's fillet
+      // turns along the wing too, and stops short of its tip.
+      const wedge = terminal.shape === "wedge";
+      const bracket = held + (wedge ? 0 : Math.max(0, Math.min(past, (tip - from) * 0.8 - held)));
+      const climb = wedge && !refused ? Math.min(past * BRACKET_CLIMB, headCap) : 0;
       /*
        * A face that undulates undulates here too, and the only way to say that
        * is to draw the bar as a stroke rather than as a shape.
@@ -2552,6 +2566,7 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
               inner,
               refused ? 0 : edgeLean,
               terminal.shape === "wedge",
+              climb,
             ),
           ];
       for (const piece of shape) {
@@ -2846,6 +2861,12 @@ const node = (point: Vec2): GlyphNode => ({
 const SERIF_BITE = 0.35;
 
 /**
+ * How far up the stem a text serif's hollow climbs for each unit of bracket
+ * asked for past the serif's own depth.
+ */
+const BRACKET_CLIMB = 2;
+
+/**
  * How deep a wedge serif is at its tip, against its depth where it meets the
  * stem. A little under half, which is where a text serif stops reading as a bar
  * and starts reading as something that tapers.
@@ -2888,6 +2909,7 @@ function wing(
   edge = 0,
   lean = 0,
   wedge = false,
+  climb = 0,
 ): Contour {
   const across = { x: -outward.y * side, y: outward.x * side };
   const into = { x: -outward.x, y: -outward.y };
@@ -2933,7 +2955,9 @@ function wing(
   const shift = (v: number): number => lean * Math.min(v, cap);
   const edgeAt = (v: number): number => from + shift(v);
   const heldAt = (v: number): number => held + shift(v);
-  let rise = Math.min(bracket, Math.max(0, (tip - edgeAt(deep)) * 0.8));
+  // And on a text serif, whatever the bracket asked for past the serif's
+  // depth, climbing on up the stroke: see `BRACKET_CLIMB`.
+  let rise = Math.min(bracket, Math.max(0, (tip - edgeAt(deep)) * 0.8)) + (wedge ? climb : 0);
   /*
    * On the inside of a diagonal, no higher up the stroke than the edge is
    * followed, so the hollow arrives along the edge itself. Carried on past
