@@ -1163,12 +1163,17 @@ export function hairlineWeight(pen: Stroke["pen"]): number {
 }
 
 export function splitVees(given: Stroke[]): Stroke[] {
-  return given.flatMap((stroke) => {
+  // The y's arms drawn as hairlines, for the full arm meeting one to be cut to.
+  const hairlines: Stroke[] = [];
+  const split = given.flatMap((stroke) => {
     const segments = stroke.spine.segments;
     const thinWeight = hairlineWeight(stroke.pen);
     if (thinWeight >= stroke.pen.weight) return [stroke];
     const thinPen = { ...stroke.pen, weight: thinWeight, contrast: 0, own: 0 };
     const rises = risesSteeply;
+    // Taken apart wherever an arm rises at all, so the points do not change
+    // with the weight; drawn light only where it rises as a hairline does.
+    const risesAtAll = (from: Vec2, to: Vec2) => (to.x - from.x) * (to.y - from.y) > 0;
     const [first, ...rest] = segments;
     // The y's arm and tail.
     if (
@@ -1177,7 +1182,18 @@ export function splitVees(given: Stroke[]): Stroke[] {
       rest.every((one) => one.kind === "arc") &&
       rises(first.from, first.to)
     ) {
-      return [inherit(stroke, { ...stroke, pen: thinPen })];
+      // With as much contrast as keeps the tail's bottom, running level, as
+      // deep as the full pen's: on a pen with none it came down fourteen
+      // units under the descender at the heaviest, and on the full pen's
+      // own it stood twenty-six over it.
+      const level = stroke.pen.weight * (1 - stroke.pen.contrast);
+      const contrast = Math.min(stroke.pen.contrast, Math.max(0, 1 - level / thinWeight));
+      const hairline = inherit(stroke, {
+        ...stroke,
+        pen: { ...stroke.pen, weight: thinWeight, contrast, own: 0 },
+      });
+      hairlines.push(hairline);
+      return [hairline];
     }
     if (stroke.spine.closed || segments.length < 2) return [stroke];
     if (!segments.every((one) => one.kind === "line")) return [stroke];
@@ -1190,7 +1206,7 @@ export function splitVees(given: Stroke[]): Stroke[] {
     // Steep pieces only, and at least one of them rising: not an arm and a
     // bar, as the 4's diagonal and foot are.
     if (dirs.some((d) => Math.abs(d.y) < 0.37)) return [stroke];
-    if (!segments.some((_, i) => rises(points[i], points[i + 1]))) return [stroke];
+    if (!segments.some((_, i) => risesAtAll(points[i], points[i + 1]))) return [stroke];
     const pens = segments.map((_, i) => (rises(points[i], points[i + 1]) ? thinPen : stroke.pen));
     const leftOf = (d: Vec2) => at(-d.y, d.x);
     const cross = (u: Vec2, v: Vec2) => u.x * v.y - u.y * v.x;
@@ -1276,6 +1292,43 @@ export function splitVees(given: Stroke[]): Stroke[] {
       });
     });
   });
+  return hairlines.length === 0 ? split : split.map((stroke) => metHairline(stroke, hairlines));
+}
+
+/**
+ * A full straight arm ending on a hairline, its end cut along the hairline's
+ * spine: the y's falling arm, which ended square on the rising arm's spine
+ * and, that arm thinned, stood its corners out past it -- a spur under the
+ * crotch that grew with the weight. Along the spine, not the far edge: the
+ * two meet at so shallow an angle that a cut along the far edge ran on past
+ * where the hairline turns into the tail.
+ */
+function metHairline(stroke: Stroke, hairlines: Stroke[]): Stroke {
+  const [only, ...more] = stroke.spine.segments;
+  if (more.length > 0 || only?.kind !== "line" || hairlines.includes(stroke)) return stroke;
+  const cross = (u: Vec2, v: Vec2) => u.x * v.y - u.y * v.x;
+  const u = towards(only.from, only.to);
+  for (const hairline of hairlines) {
+    const [first] = hairline.spine.segments;
+    if (first?.kind !== "line") continue;
+    const v = towards(first.from, first.to);
+    const facing = cross(u, v);
+    if (Math.abs(facing) < 1e-6) continue;
+    // Its end on the hairline's spine, within the hairline's straight run.
+    const off = at(only.to.x - first.from.x, only.to.y - first.from.y);
+    const along = off.x * v.x + off.y * v.y;
+    const length = Math.hypot(first.to.x - first.from.x, first.to.y - first.from.y);
+    if (Math.abs(cross(v, off)) > 1 || along < 0 || along > length) continue;
+    const pen = penReach(stroke.pen);
+    const shift = reachAlong(at(-u.y, u.x), pen);
+    const slide = -cross(shift, v) / facing;
+    const angle = (Math.atan(slide / pen.across) * 180) / Math.PI;
+    return inherit(stroke, {
+      ...stroke,
+      end: { kind: "angled", angle },
+    });
+  }
+  return stroke;
 }
 
 /**
@@ -2199,7 +2252,9 @@ export function humanistCapitalR(style: Style): Recipe {
   // Lora's toe stands past its bowl a quarter of the leg's height at the
   // Regular, and at the Bold (whose bowl here is the wider) a little past it.
   const reach = R_TOE + (R_TOE_BOLD - R_TOE) * Math.min(1, heaviness(f) / 0.44);
-  toe = at(Math.max(toe.x, bowlRight + reach * Math.abs(from.y - base)), toeY);
+  // And never none: on a narrow R the bowl ends short of the turn, and the
+  // leg stopped at the foot of its turn with no toe at all.
+  toe = at(Math.max(toe.x + r * 0.5, bowlRight + reach * Math.abs(from.y - base)), toeY);
   return {
     ...recipe,
     strokes: [

@@ -394,6 +394,31 @@ describe("the Serif's diagonals", () => {
     expect(w[3] / w[2]).toBeLessThan(0.7);
   });
 
+  it("ends the y's full arm inside its hairline, and its tail on the descender", () => {
+    for (const weight of [87, 142, 200, 260]) {
+      // Down the right side from the crotch: the hairline's edge, leaning
+      // steadily left. The full arm's square end stood out past it in a spur.
+      let before = Infinity;
+      for (let y = 150; y >= -60; y -= 10) {
+        const runs = row("y", weight, y);
+        const right = runs[runs.length - 1][1];
+        expect(right, `y at ${weight}, row ${y}`).toBeLessThan(before + 1);
+        before = right;
+      }
+      // And the tail's foot on the line it was built to, as the full pen's
+      // was: on a hairline pen with no contrast it hung fourteen units under.
+      const b = box("y", weight);
+      expect(Math.abs(b.yMin - -271), `y at ${weight}`).toBeLessThan(3);
+    }
+  });
+
+  it("keeps the one's head flat on the cap line", () => {
+    for (const weight of [200, 230, 260]) {
+      // Its flag thinned as a hairline, the flag's end stood seven units over.
+      expect(box("one", weight).yMax, `1 at ${weight}`).toBeLessThan(SERIF.metrics.capHeight + 0.5);
+    }
+  });
+
   it("keeps the z's diagonal heavy, as Lora's is", () => {
     const [diagonal] = widths("z", 87, 250);
     // Thinned with the vees it would be 49; Lora's is 91.

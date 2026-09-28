@@ -983,10 +983,11 @@ export const SERIF: Style = {
      * and the v, w and y stood dark in a line of text. But not the z's and
      * the Z's diagonals, which Lora draws heavy, nor the A, which draws its
      * own: thinned again, its hairline leg stood apart from the other at
-     * the apex past a Black.
+     * the apex past a Black. Nor the one's flag, whose thinned end stood
+     * seven units over the stem's head at the heaviest.
      */
     risingHairline: true,
-    risingOwn: ["z", "Z", "slash", "A"],
+    risingOwn: ["z", "Z", "slash", "A", "one"],
     // Lora's word space, 263 at the Regular and the Bold, a little more past it.
     wordSpace: [263 / 500, 280 / 500],
     // LORA-BOLD-BEGIN (fitted to Lora Bold at a pen of 142)
