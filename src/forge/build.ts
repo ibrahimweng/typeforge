@@ -1536,13 +1536,17 @@ function teardropsFor(stroke: Stroke, swept: Contour[]): Contour[] {
       radius = Math.max(least, radius * 0.82);
       shape = tear(stroke, spine, at, u, n, outer, radius, bend);
     }
-    if (!within(shape, band)) shape = tear(stroke, spine, at, u, n, outer, least, bend);
+    if (!within(shape, band)) {
+      radius = least;
+      shape = tear(stroke, spine, at, u, n, outer, least, bend);
+    }
     /*
      * And never one that crosses itself: on a hairline of a very high
      * contrast, the neck the drop leaves the stroke by is so narrow that the
      * curve out of it rose over the drop's own closing edge -- the Serif's c
-     * at a contrast of 0.9 past a Black. Drawn again until it does not; a
-     * drop that already did not is left as it was.
+     * at a contrast of 0.9 past a Black. Drawn again until it does not, and
+     * only taken again where it does not and still keeps to the stroke's
+     * band; a drop that already did not is left as it was.
      */
     const kept = radius;
     // Asked of the drop as it will be stored, on the unit grid: a crossing
@@ -1574,13 +1578,26 @@ function teardropsFor(stroke: Stroke, swept: Contour[]): Contour[] {
       [0.3, true],
       [0, true],
     ];
-    for (const [pull, close] of again) {
-      if (!folds(shape)) break;
-      shape = tear(stroke, spine, at, u, n, outer, kept, bend, pull, close);
-    }
-    // And failing both, taken smaller.
-    for (let tries = 1; tries <= 6 && folds(shape); tries++) {
-      shape = tear(stroke, spine, at, u, n, outer, Math.max(least, kept * 0.9 ** tries), bend);
+    const clean = (drop: Contour) => !folds(drop) && within(drop, band);
+    if (folds(shape)) {
+      const tries = [
+        ...again.map(
+          ([pull, close]) =>
+            () =>
+              tear(stroke, spine, at, u, n, outer, kept, bend, pull, close),
+        ),
+        // And failing both, taken smaller.
+        ...[1, 2, 3, 4, 5, 6].map(
+          (k) => () => tear(stroke, spine, at, u, n, outer, Math.max(least, kept * 0.9 ** k), bend),
+        ),
+      ];
+      for (const attempt of tries) {
+        const next = attempt();
+        if (clean(next)) {
+          shape = next;
+          break;
+        }
+      }
     }
     out.push(contourArea(shape) < 0 ? reverseContour(shape) : shape);
   }
