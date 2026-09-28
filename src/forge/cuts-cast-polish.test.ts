@@ -427,6 +427,31 @@ describe("slots", () => {
   });
 });
 
+describe("slanted slots", () => {
+  it("leave no needle of ink where a band crosses an edge at a shallow angle", () => {
+    // A band laid across the top of an r's arm or an A's crossbar at fifteen
+    // degrees shaved a wedge off it that tapered to nothing.
+    const forge = forgeOf("Sans", 87, { cuts: { slot: { count: 3, angle: 15 } } });
+    for (const letter of "Arsea") {
+      let needles = 0;
+      for (const contour of drawn(letter, forge)) {
+        const points = flattenContour(contour, 4);
+        for (let index = 0; index < points.length; index++) {
+          const a = points[(index - 1 + points.length) % points.length];
+          const b = points[index];
+          const c = points[(index + 1) % points.length];
+          // A needle: sharper than thirty degrees, both of its sides longer
+          // than a quarter of a stem. A slot through the slanted cut of a
+          // terminal leaves a sharp corner as short as the cut, which is not.
+          const long = (p: Vec2) => Math.hypot(p.x - b.x, p.y - b.y) > 87 * 0.25;
+          if (angle(a, b, c) > (150 * Math.PI) / 180 && long(a) && long(c)) needles++;
+        }
+      }
+      expect(needles, letter).toBe(0);
+    }
+  });
+});
+
 /** How wide a contour is the narrowest way across its convex hull. */
 function breadthOf(contour: Contour): number {
   const sorted = [...flattenContour(contour, 12)].sort((a, b) => a.x - b.x || a.y - b.y);

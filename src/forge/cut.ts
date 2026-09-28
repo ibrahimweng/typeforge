@@ -204,10 +204,14 @@ export function cutInk(
    */
   const bounds = contoursBounds(shape);
   const knife: Contour[] = [];
+  // The straight knives, whose edges can shave a sliver off a stroke they
+  // cross at a slant: see `withoutSlivers`.
+  const straight: Contour[] = [];
+  if (cuts.slot.on) straight.push(...slotTool(bounds, cuts.slot, stem, scale));
+  if (cuts.tooth.on) straight.push(...toothTool(bounds, cuts.tooth, stem, scale));
+  if (cuts.split.on) straight.push(...splitTool(strokes, cuts.split, stem, cast));
   if (cuts.inline.on) knife.push(...inlineTool(shape, strokes, cuts.inline, stem));
-  if (cuts.slot.on) knife.push(...slotTool(bounds, cuts.slot, stem, scale));
-  if (cuts.tooth.on) knife.push(...toothTool(bounds, cuts.tooth, stem, scale));
-  if (cuts.split.on) knife.push(...splitTool(strokes, cuts.split, stem, cast));
+  knife.push(...straight);
   /*
    * Fused here rather than left to the subtraction, when there is more than
    * one piece.
@@ -221,6 +225,7 @@ export function cutInk(
    */
   if (knife.length > 1) knife.splice(0, knife.length, ...unite(knife, "winding"));
   shape = take(shape, knife);
+  shape = withoutSlivers(shape, straight, Math.min(stem * 0.07, hairlineOf(strokes, stem) * 0.3));
 
   const chamfered: Vec2[] = [];
   if (cuts.chamfer.on) shape = take(shape, chamferTool(shape, cuts.chamfer, stem, chamfered));
@@ -229,12 +234,7 @@ export function cutInk(
    * a splinter is thinner than anything the letter means to draw, and on a
    * contrast face that is a good deal less than a share of the stem.
    */
-  const hairline = Math.min(
-    stem,
-    ...strokes.map(
-      (stroke) => stroke.pen.weight * (1 - Math.min(Math.max(stroke.pen.contrast, 0), 0.95)),
-    ),
-  );
+  const hairline = hairlineOf(strokes, stem);
   shape = withoutCrumbs(shape, stem, smallest, hairline);
   /*
    * And no outline left crossing itself. A chamfer laid across the corner
@@ -244,6 +244,7 @@ export function cutInk(
    */
   if (shape.some((contour) => contoursIntersect([contour])))
     shape = unite(shape, "winding", "whole");
+  shape = shape.map(withoutHairs);
 
   return {
     contours: shape,
@@ -282,6 +283,85 @@ export function piecesOf(ink: Contour[]): number {
   if (ink.length === 0) return 0;
   if (!loaded()) return pieces(ink);
   return pieces(unite(ink, "winding", "whole"));
+}
+
+/**
+ * An outline without the hairs of no width a boolean can leave on it: a
+ * straight run out from a point and straight back along itself, as the top
+ * of an e's bar came back from a slanted slot. Nothing on the page and a
+ * fault in the file, and the next boolean handed one can answer nonsense.
+ * The point the run turns back at goes, until no run doubles back.
+ */
+function withoutHairs(contour: Contour): Contour {
+  let nodes = contour.nodes;
+  for (let pass = 0; pass < 8 && nodes.length > 3; pass++) {
+    const count = nodes.length;
+    const drop = new Set<number>();
+    for (let index = 0; index < count; index++) {
+      const before = nodes[(index - 1 + count) % count];
+      const here = nodes[index];
+      const after = nodes[(index + 1) % count];
+      if (before.handleOut || here.handleIn || here.handleOut || after.handleIn) continue;
+      const a = away(before.point, here.point);
+      const b = away(here.point, after.point);
+      if (!a || !b) continue;
+      // Straight back: the two runs point opposite ways along one line.
+      if (a.x * b.x + a.y * b.y < -0.9999) drop.add(index);
+    }
+    if (drop.size === 0 || count - drop.size < 3) break;
+    nodes = nodes.filter((_, index) => !drop.has(index));
+  }
+  return nodes === contour.nodes ? contour : { ...contour, nodes };
+}
+
+/** The width of the thinnest stroke a letter draws, or the stem without strokes. */
+function hairlineOf(strokes: Stroke[], stem: number): number {
+  return Math.min(
+    stem,
+    ...strokes.map(
+      (stroke) => stroke.pen.weight * (1 - Math.min(Math.max(stroke.pen.contrast, 0), 0.95)),
+    ),
+  );
+}
+
+/**
+ * The letter less the slivers a knife shaved off it: ink thinner than twice
+ * `reach` standing where a knife passed.
+ *
+ * A band laid across a stroke at a shallow angle leaves a wedge along the
+ * stroke's edge that tapers to nothing -- the top of the crossbar of an A
+ * under a slanted slot, the top of the arm of an r, the bar of an e -- a
+ * whisker of ink that is part of a piece, so no sweep for crumbs finds it.
+ * The letter is opened -- shrunk by the reach and grown back -- and what does
+ * not come back is thinner than twice the reach. Of that, only what lies
+ * against a knife goes, and only what is more than the rounding of a corner:
+ * the rest of the letter is left exactly as it was.
+ */
+function withoutSlivers(shape: Contour[], knife: Contour[], reach: number): Contour[] {
+  if (knife.length === 0 || reach < 1) return shape;
+  const opened = outlined(eroded(shape, reach), reach);
+  const residue = subtract(shape, opened, "winding").filter(
+    (one) => contourArea(one) > reach * reach * 2,
+  );
+  if (residue.length === 0) return shape;
+  const boxes = knife.map((one) => contoursBounds([one]));
+  const near = residue.filter((one) => {
+    const box = contoursBounds([one]);
+    return boxes.some(
+      (other) =>
+        other.xMin - reach * 2 < box.xMax &&
+        other.xMax + reach * 2 > box.xMin &&
+        other.yMin - reach * 2 < box.yMax &&
+        other.yMax + reach * 2 > box.yMin,
+    );
+  });
+  if (near.length === 0) return shape;
+  const trimmed = subtract(shape, near, "winding");
+  // Never more than slivers: a letter that lost a fifth of itself was opened
+  // wrongly, and is handed back as the knife left it.
+  const inkOf = (contours: Contour[]) =>
+    contours.reduce((total, contour) => total + contourArea(contour), 0);
+  return inkOf(trimmed) > inkOf(shape) * 0.97 ? trimmed : shape;
 }
 
 /**
