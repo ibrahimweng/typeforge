@@ -160,8 +160,25 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
   // The named parts move first, while the letter is still as it was drawn.
   // Weight and width then apply to the adjusted shape rather than the other
   // way round, which is the order a designer works in.
+  const drawn = contoursBounds(contours);
   if (params.crossbar !== 0) contours = shiftCrossbar(contours, params.crossbar);
   if (params.shoulder !== 0) contours = shiftShoulders(contours, params.shoulder);
+  /*
+   * And spaced by any ink they put beside the letter. Lowering the bar of
+   * Geist's 4 runs its diagonal on down to meet it, and the corner came out
+   * sixty units into the side bearing. Only what they put out: a part
+   * moved in leaves the letter its drawn spacing.
+   */
+  let partsGrowth = { left: 0, right: 0 };
+  if (params.crossbar !== 0 || params.shoulder !== 0) {
+    const moved = sideGrowth(drawn, contoursBounds(contours), 0);
+    partsGrowth = { left: Math.max(0, moved.left), right: Math.max(0, moved.right) };
+    if (partsGrowth.left > 0) {
+      contours = contours.map((contour) =>
+        mapContour(contour, (point) => ({ x: point.x + partsGrowth.left, y: point.y })),
+      );
+    }
+  }
   /*
    * Slabs go on while the letter is still as drawn, and are then carried
    * through everything else with it.
@@ -206,14 +223,18 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
    * letter -- see `followCounters` -- is its side bearings' to keep, as the
    * weight's is: a narrower o is spaced as an o, not left with gaps round it.
    */
-  let counterGrowth = { left: 0, right: 0 };
+  let counterGrowth = { ...partsGrowth };
   if (params.counterScale !== 1) {
     const unscaled = contoursBounds(contours);
     contours = applyCounterScale(contours, params.counterScale, typeface.unitsPerEm * MIN_STROKE);
-    counterGrowth = sideGrowth(unscaled, contoursBounds(contours), 0);
-    if (counterGrowth.left !== 0) {
+    const followed = sideGrowth(unscaled, contoursBounds(contours), 0);
+    counterGrowth = {
+      left: counterGrowth.left + followed.left,
+      right: counterGrowth.right + followed.right,
+    };
+    if (followed.left !== 0) {
       const over = (contour: Contour) =>
-        mapContour(contour, (point) => ({ x: point.x + counterGrowth.left, y: point.y }));
+        mapContour(contour, (point) => ({ x: point.x + followed.left, y: point.y }));
       contours = contours.map(over);
       slabs = slabs.map(over);
       slabbedLetter = slabbedLetter.map(over);
@@ -263,7 +284,10 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
     );
     slabs = slabs.map((slab) => mapContour(slab, (point) => ({ x: point.x + shift, y: point.y })));
   }
-  if (params.weight === 0 && params.counterScale !== 1)
+  if (
+    params.weight === 0 &&
+    (params.counterScale !== 1 || params.crossbar !== 0 || params.shoulder !== 0)
+  )
     growths.set(glyph, { key: growthKey(glyph, typeface, params), ...counterGrowth });
   /*
    * The slabs are weighted apart from the letter and join it here -- see
@@ -440,7 +464,13 @@ function widthRoom(glyph: Glyph, typeface: Typeface, params: GlyphParams): numbe
 }
 
 function weightRoom(glyph: Glyph, typeface: Typeface, params: GlyphParams): number {
-  if (params.weight === 0 && params.counterScale === 1) return 0;
+  if (
+    params.weight === 0 &&
+    params.counterScale === 1 &&
+    params.crossbar === 0 &&
+    params.shoulder === 0
+  )
+    return 0;
   const key = growthKey(glyph, typeface, params);
   let known = growths.get(glyph);
   if (known?.key !== key) {

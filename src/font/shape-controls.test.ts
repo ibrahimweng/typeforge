@@ -269,3 +269,39 @@ describe("a rounded elbow", () => {
     expect(thickness).toBeLessThan(50);
   });
 });
+
+describe("crossbar", () => {
+  /*
+   * Regression: lowering the bar of Geist's 4 runs its diagonal on down to
+   * meet it, and the corner came out sixty units into the side bearing,
+   * where the next letter is.
+   */
+  it("spaces a letter by the ink a moved bar puts beside it", () => {
+    const four = [
+      polygon([
+        [477, 0],
+        [391, 0],
+        [391, 154],
+        [30, 154],
+        [30, 232],
+        [385, 710],
+        [477, 710],
+        [477, 238],
+        [565, 238],
+        [565, 154],
+        [477, 154],
+      ]),
+      polygon([
+        [391, 578],
+        [134, 238],
+        [391, 238],
+      ]),
+    ];
+    const { typeface, glyph } = font(four);
+    glyph.advanceWidth = 615;
+    const lowered = contoursBounds(at(typeface, glyph, { crossbar: -80 }));
+    const advance = resolveAdvanceWidth(glyph, typeface);
+    expect(lowered.xMin).toBeCloseTo(30, 0);
+    expect(advance - lowered.xMax).toBeCloseTo(50, 0);
+  });
+});
