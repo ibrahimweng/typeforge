@@ -181,7 +181,7 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
   let slabs: Contour[] = [];
   let slabbedLetter: Contour[] = [];
   if (params.slab > 0) {
-    const slabbed = withSlabs(contours, params, typeface);
+    const slabbed = withSlabs(contours, params, typeface, glyph);
     slabs = slabbed.contours.slice(contours.length);
     /*
      * And moved over by what the slabs put past the letter on the left, as
@@ -224,12 +224,11 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
      * see `resolveAdvanceWidth` -- which is how a bold cut is spaced.
      */
     const shift = params.weight;
+    slabs = weighSlabs(slabs, slabbedLetter, params.weight, typeface.unitsPerEm, contours);
     contours = contours.map((contour) =>
       mapContour(contour, (point) => ({ x: point.x + shift, y: point.y })),
     );
-    slabs = weighSlabs(slabs, slabbedLetter, params.weight, typeface.unitsPerEm).map((slab) =>
-      mapContour(slab, (point) => ({ x: point.x + shift, y: point.y })),
-    );
+    slabs = slabs.map((slab) => mapContour(slab, (point) => ({ x: point.x + shift, y: point.y })));
   }
   /*
    * The slabs are weighted apart from the letter and join it here -- see
@@ -351,8 +350,18 @@ function withSlabs(
   contours: Contour[],
   params: GlyphParams,
   typeface: Typeface,
+  glyph: Glyph,
 ): { contours: Contour[]; left: number; right: number } {
+  /*
+   * Letters and figures only. The stroke of an ! or the stem of a ? has the
+   * same flat ends as an I and got the same bars, which no slab serif puts
+   * on its punctuation.
+   */
+  if (!takesSlabs(glyph)) return { contours, left: 0, right: 0 };
   const slabbed = addSlabs(contours, {
+    // The lowercase and the figures: the 1 of a slab serif has its flag
+    // and its foot, and no bar across its top.
+    flagTops: isLowercase(glyph) || isFigure(glyph),
     projection: params.slab,
     /*
      * A slab reaches further across the stroke than back along it; much
@@ -406,7 +415,7 @@ function slabRoom(glyph: Glyph, typeface: Typeface, params: GlyphParams): number
   contours = contours.map(cloneContour);
   if (params.crossbar !== 0) contours = shiftCrossbar(contours, params.crossbar);
   if (params.shoulder !== 0) contours = shiftShoulders(contours, params.shoulder);
-  const { left, right } = withSlabs(contours, params, typeface);
+  const { left, right } = withSlabs(contours, params, typeface, glyph);
   slabRooms.set(glyph, { key, room: left + right });
   return left + right;
 }
@@ -471,6 +480,24 @@ function isLowercase(glyph: Glyph): boolean {
     return glyph.unicodes.some((code) => lower(String.fromCodePoint(code)));
   const base = glyph.name.split(".")[0];
   return base.length === 1 && lower(base);
+}
+
+/** Whether a glyph is a figure, by what it encodes or else its name. */
+function isFigure(glyph: Glyph): boolean {
+  const figure = (text: string) => /\p{N}/u.test(text);
+  if (glyph.unicodes.length > 0)
+    return glyph.unicodes.some((code) => figure(String.fromCodePoint(code)));
+  const base = glyph.name.split(".")[0];
+  return base.length === 1 && figure(base);
+}
+
+/** Whether a glyph is a letter or a figure, by what it encodes or else its name. */
+function takesSlabs(glyph: Glyph): boolean {
+  const letter = (text: string) => /[\p{L}\p{N}]/u.test(text);
+  if (glyph.unicodes.length > 0)
+    return glyph.unicodes.some((code) => letter(String.fromCodePoint(code)));
+  const base = glyph.name.split(".")[0];
+  return base.length !== 1 || letter(base);
 }
 
 /**

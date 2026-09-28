@@ -358,10 +358,10 @@ describe("slabs on a letter, with the other controls", () => {
    * hundred wide, a hundred units in from its sides, and the diagonal is a
    * leg cut off level at the baseline.
    */
-  function letter(contours: Contour[], advance = 300) {
+  function letter(contours: Contour[], advance = 300, name = "x", code = 120) {
     const typeface = emptyTypeface();
     const I = { ...blankGlyph("I", [73]), contours: [stem(100, 0, 100, 700)], params: {} };
-    const glyph = { ...blankGlyph("x", [120]), advanceWidth: advance, contours, params: {} };
+    const glyph = { ...blankGlyph(name, [code]), advanceWidth: advance, contours, params: {} };
     typeface.glyphs = [I, glyph];
     typeface.glyphIndex = new Map([
       ["I", 0],
@@ -421,5 +421,62 @@ describe("slabs on a letter, with the other controls", () => {
       .map((contour) => contoursBounds([contour]))
       .sort((a, b) => a.xMin - b.xMin);
     expect(right.xMin).toBeLessThanOrEqual(left.xMax);
+  });
+
+  it("puts no slab on a dot, nor on punctuation", () => {
+    // An i: a stem and a square dot as wide as it.
+    const i = letter([stem(100, 0, 100, 500), stem(100, 600, 100, 100)], 300, "i", 105);
+    const { contours } = at(i, { slab: 60 });
+    // Two slabs at most -- on the stem -- and none reaching the dot.
+    const slabs = contours.slice(2);
+    expect(slabs.length).toBeGreaterThan(0);
+    for (const slab of slabs) expect(contoursBounds([slab]).yMax).toBeLessThanOrEqual(501);
+    // An ! is a stroke and a dot; a slab serif gives it no slabs.
+    const bang = letter([stem(100, 200, 100, 500), stem(100, 0, 100, 100)], 300, "exclam", 33);
+    expect(at(bang, { slab: 60 }).contours).toHaveLength(2);
+  });
+
+  it("gives the top of a lowercase stem a flag to the left, and a capital a bar", () => {
+    const top = (contours: Contour[]) =>
+      contours
+        .slice(1)
+        .map((contour) => contoursBounds([contour]))
+        .find((box) => box.yMax > 699)!;
+    const l = at(letter([stem(100, 0, 100, 700)], 300, "l", 108), { slab: 60 });
+    const I = at(letter([stem(100, 0, 100, 700)], 300, "I", 73), { slab: 60 });
+    const stemOf = (contours: Contour[]) => contoursBounds([contours[0]]);
+    // The l's flag reaches left of its stem and not right of it...
+    expect(top(l.contours).xMin).toBeLessThan(stemOf(l.contours).xMin - 10);
+    expect(top(l.contours).xMax).toBeCloseTo(stemOf(l.contours).xMax, 0);
+    // ...and the I's bar reaches both ways.
+    expect(top(I.contours).xMax).toBeGreaterThan(stemOf(I.contours).xMax + 10);
+  });
+
+  it("leaves the top of a t plain, a stub on its crossbar", () => {
+    // A stem a hundred wide rising a stem's width and a half past its bar.
+    const t = letter(
+      [
+        polygon([
+          { x: 100, y: 0 },
+          { x: 100, y: 400 },
+          { x: 0, y: 400 },
+          { x: 0, y: 500 },
+          { x: 100, y: 500 },
+          { x: 100, y: 650 },
+          { x: 200, y: 650 },
+          { x: 200, y: 500 },
+          { x: 300, y: 500 },
+          { x: 300, y: 400 },
+          { x: 200, y: 400 },
+          { x: 200, y: 0 },
+        ]),
+      ],
+      400,
+      "t",
+      116,
+    );
+    const { contours } = at(t, { slab: 60 });
+    const tops = contours.slice(1).filter((contour) => contoursBounds([contour]).yMax > 600);
+    expect(tops).toHaveLength(0);
   });
 });

@@ -66,6 +66,11 @@ export interface SlabOptions {
    * crack a few units wide was all that parted them.
    */
   weight?: number;
+  /**
+   * Whether the top of an upright stem gets a flag to the left rather than a
+   * bar across: the lowercase of a slab serif.
+   */
+  flagTops?: boolean;
 }
 
 /** A stroke end: where it is, how wide, and which way the stroke runs. */
@@ -194,10 +199,30 @@ export function findTerminals(contours: Contour[], maxWidth: number): Terminal[]
     return insideInk(polylines, { x: base.x, y: base.y + into * reach });
   };
 
+  const standsOnBar = (terminal: Terminal): boolean => {
+    const depth = terminal.width * STUB;
+    const aside = terminal.width * 1.3;
+    const probe = (side: -1 | 1) => ({
+      x: terminal.centre.x + terminal.inward.x * depth + terminal.along.x * side * aside,
+      y: terminal.centre.y + terminal.inward.y * depth + terminal.along.y * side * aside,
+    });
+    return insideInk(polylines, probe(-1)) && insideInk(polylines, probe(1));
+  };
+
   for (const [index, contour] of contours.entries()) {
     if (!ink[index]) continue;
     const segments = contourSegments(contour);
     if (segments.length < 3) continue;
+    /*
+     * Nor a dot. The square dot of Geist's i and j has two flat ends with
+     * square sides like any stem, and each got a slab: a cross over the
+     * light i, and at the heaviest a block run into the stem. A dot is no
+     * longer either way than a stroke is wide, near enough.
+     */
+    if (stroke !== null) {
+      const own = contoursBounds([contour]);
+      if (Math.max(own.xMax - own.xMin, own.yMax - own.yMin) <= stroke * DOT) continue;
+    }
     // Winding says which way a convex corner turns for this contour.
     const convexSign = isClockwise(contour) ? -1 : 1;
 
@@ -277,6 +302,13 @@ export function findTerminals(contours: Contour[], maxWidth: number): Terminal[]
        */
       if (Math.abs(terminal.inward.x) > Math.abs(terminal.inward.y) && carriesStem(terminal))
         continue;
+      /*
+       * Nor a stub standing on a bar: the top of a t, which meets its
+       * crossbar a stroke's width or so down. A slab there is a second
+       * crossbar just over the first -- the t read as a struck-through t --
+       * and a slab serif leaves it plain, as Rockwell and Roboto Slab do.
+       */
+      if (standsOnBar(terminal)) continue;
 
       /*
        * About as wide as the strokes of the letter it is on.
@@ -307,6 +339,11 @@ export function findTerminals(contours: Contour[], maxWidth: number): Terminal[]
 
   return terminals;
 }
+
+/** How long a piece of ink may be, against the letter's strokes, and be a dot. */
+const DOT = 1.8;
+/** How far down, in widths of the stroke, a stub on a bar meets the bar. */
+const STUB = 1.6;
 
 /**
  * How near the top or bottom of the letter the edge of an arm has to be to
@@ -397,6 +434,18 @@ export function addSlabs(contours: Contour[], options: SlabOptions): Contour[] {
     let high = half + reach(1);
 
     /*
+     * The top of a lowercase stem gets a flag, not a bar. A bar across the
+     * top of the ascender of h, b or l, or of the stem of n, i or u, read as
+     * a stroke through it -- h as a barred h -- where a slab serif's
+     * lowercase has its serif to the left only, as Rockwell, Courier and
+     * Roboto Slab do. Diagonals cut off level keep their bars.
+     */
+    if (options.flagTops && inward.y < -0.9 && Math.abs(along.y) < 0.1) {
+      if (along.x > 0) high = half;
+      else low = -half;
+    }
+
+    /*
      * An arm gets a beak, not a bar.
      *
      * The slab reaches across the stroke on both sides, which on a stem is a
@@ -477,8 +526,11 @@ export function weighSlabs(
   letter: Contour[],
   weight: number,
   unitsPerEm: number,
+  /** The letter as the weight left it, where it has been weighted. */
+  weighted?: Contour[],
 ): Contour[] {
   const polylines = letter.map((contour) => flattenContour(contour, 12));
+  const moved = weighted?.map((contour) => flattenContour(contour, 12));
   const hairline = unitsPerEm * 0.008;
   const resize = (length: number): number =>
     weight >= 0 ? length + 2 * weight : Math.max(length + 2 * weight, hairline, length / 3);
@@ -505,8 +557,25 @@ export function weighSlabs(
     const axis = edges[flush < 0 ? 0 : flush];
     const u = { x: axis.out.x, y: axis.out.y };
     const thickness = resize(axis.far * 2);
-    // Flush with the stroke's end where there is one; else about the middle.
-    const outer = flush < 0 ? thickness / 2 : axis.far + weight;
+    /*
+     * Flush with the stroke's end where there is one -- where the weight
+     * left it, which is not always by the weight: the top of a j's stem
+     * comes up short of its dot, and a slab moved the whole weight met it.
+     * Else about the middle.
+     */
+    let outer = flush < 0 ? thickness / 2 : axis.far + weight;
+    if (flush >= 0 && moved) {
+      const depth = axis.far * 2 + 2 * Math.abs(weight);
+      const from = {
+        x: axis.middle.x - u.x * depth,
+        y: axis.middle.y - u.y * depth,
+      };
+      if (insideInk(moved, from)) {
+        const out = rayHitDistance(moved, from, u) - depth;
+        if (Number.isFinite(out) && Math.abs(out) <= Math.abs(weight) * 1.5 + 1)
+          outer = axis.far + out;
+      }
+    }
     const side = resize(edges[flush < 0 ? 1 : (flush + 1) % 4].far * 2) / 2;
     return {
       c,
