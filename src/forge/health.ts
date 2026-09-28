@@ -130,19 +130,34 @@ function allOf(walking: Generator<void, Trouble[], void>): Trouble[] {
   return step.value;
 }
 
+/** The least a letter may reach past the ascender or descender, in ems. */
+const LINE_SLACK = 0.06;
+
 function* walk(forge: Forge): Generator<void, Trouble[], void> {
   const em = forge.style.metrics.unitsPerEm;
   const closing: Array<{ letter: string; room: number }> = [];
   const overflowing: string[] = [];
+  let over = false;
+  let under = false;
   const touching: string[] = [];
   const inPieces: string[] = [];
   const erased: string[] = [];
 
-  const ceiling = forge.style.metrics.ascender + forge.style.pen.weight;
+  /*
+   * How far past a line is still on it: the pen's own width, since a stroke
+   * centred on a line reaches half of it beyond, and never less than a fixed
+   * share of the em. The parentheses, the dollar's bar, the circumflex and the
+   * ogonek all go a set distance past the ascender or descender whatever the
+   * weight -- every text face draws them so -- and a slack that shrank with
+   * the pen warned about them at the lightest weight, where the advice to use
+   * less weight could not be taken.
+   */
+  const slack = Math.max(forge.style.pen.weight, em * LINE_SLACK);
+  const ceiling = forge.style.metrics.ascender + slack;
   // What an accented letter is allowed, which is more: a third again over the
   // capitals is about where a text face keeps its own.
-  const capped = forge.style.metrics.capHeight * 1.4 + forge.style.pen.weight;
-  const floor = forge.style.metrics.descender - forge.style.pen.weight;
+  const capped = forge.style.metrics.capHeight * 1.4 + slack;
+  const floor = forge.style.metrics.descender - slack;
 
   for (const letter of letterNames()) {
     // Offered before the letter rather than after it, so a caller that has run
@@ -195,8 +210,12 @@ function* walk(forge: Forge): Generator<void, Trouble[], void> {
      * fastest way to teach somebody to stop reading the warnings.
      */
     const roof = builtFrom(letter) ? capped : ceiling;
-    if (bounds.yMax > roof || bounds.yMin < floor) overflowing.push(letter);
-    if (bounds.xMin < em * 0.005) touching.push(letter);
+    const high = bounds.yMax > roof;
+    const low = bounds.yMin < floor;
+    if (high || low) overflowing.push(letter);
+    over ||= high;
+    under ||= low;
+    if (leftEdge(drawn.contours, forge, bounds) < em * 0.005) touching.push(letter);
   }
 
   const found: Trouble[] = [];
@@ -239,7 +258,7 @@ function* walk(forge: Forge): Generator<void, Trouble[], void> {
     found.push({
       what: "Reaching past the line",
       letters: overflowing,
-      fix: "A shorter ascender or descender, or less weight.",
+      fix: roomFor(over, under),
     });
   }
   if (touching.length > 0) {
@@ -250,6 +269,60 @@ function* walk(forge: Forge): Generator<void, Trouble[], void> {
     });
   }
   return found;
+}
+
+/**
+ * Where a letter starts, measured as its neighbour would meet it.
+ *
+ * An upright letter starts at its leftmost ink. A slanted one is leant about
+ * the middle of the lowercase, so its feet swing left of the origin -- the
+ * bottom serif of a b, the tail of a p -- exactly as in any italic, and the
+ * letter before it leans the same way, so the two never meet. Measured on the
+ * outline stood back upright, which is where a collision would show; measured
+ * as it was, twelve degrees of slant reported two hundred letters of a serif
+ * as touching the one before.
+ *
+ * An accent standing wholly above the ascender is left out of it once the
+ * letter leans: nothing in an ordinary neighbour reaches that high to be met,
+ * and where an accent sits on a leaning letter is the letter's business, not
+ * the spacing's.
+ */
+function leftEdge(contours: Contour[], forge: Forge, bounds = contoursBounds(contours)): number {
+  const { slant, xHeight, ascender } = forge.style.metrics;
+  if (!slant) return bounds.xMin;
+  const among = contours.filter((contour) => contoursBounds([contour]).yMin < ascender);
+  const lean = Math.tan((slant * Math.PI) / 180);
+  const pivot = xHeight / 2;
+  const back = (point: { x: number; y: number }) => ({
+    x: point.x - (point.y - pivot) * lean,
+    y: point.y,
+  });
+  const upright = (among.length > 0 ? among : contours).map((contour) => ({
+    ...contour,
+    nodes: contour.nodes.map((node) => ({
+      ...node,
+      point: back(node.point),
+      handleIn: node.handleIn ? back(node.handleIn) : null,
+      handleOut: node.handleOut ? back(node.handleOut) : null,
+    })),
+  }));
+  return contoursBounds(upright).xMin;
+}
+
+/**
+ * What makes room for a letter that reaches past the line: the line moved out
+ * of its way, named for the side it crosses.
+ *
+ * Not the weight. The slack above allows the pen its own width, so a lighter
+ * pen takes away as much room as it gives back; and the letters that do reach
+ * past -- a parenthesis, an ogonek, a cedilla -- go the same distance whatever
+ * the weight. The advice used to end "or less weight", and said it at the
+ * lightest weight there is.
+ */
+export function roomFor(over: boolean, under: boolean): string {
+  if (over && under) return "A taller ascender and a deeper descender give them room.";
+  if (under) return "A deeper descender gives them room.";
+  return "A taller ascender gives them room.";
 }
 
 /**

@@ -19,6 +19,8 @@ import * as React from "react";
 import { CoachMark } from "@/components/CoachMark";
 import { Reference } from "@/components/Reference";
 import { contoursToSvgPath } from "@/font/geometry";
+import type { Contour } from "@/font/types";
+import { inkFrame, viewBoxOf } from "@/components/ink-frame";
 import { letterNames, skeletonOf } from "@/forge/build";
 import { cellBox, cellKey, PORTS, portAt, rowsOf, unitOf } from "@/forge/kit";
 import { anyEffect } from "@/font/effects";
@@ -45,6 +47,7 @@ import { forgeStore, useForge, type Phase } from "@/state/useForge";
 import { useLibrary } from "@/state/useLibrary";
 import { cn } from "@/cn";
 import { followPointer } from "@/components/follow-pointer";
+import { letterLabel } from "./letter-label";
 import { useNativeWheel, zoomAbout } from "./wheel";
 
 export function ForgeView(): React.JSX.Element {
@@ -209,9 +212,18 @@ function Stage({
 
   if (!drawn) return <div className="flex-1" />;
 
-  const top = metrics.ascender + 60;
-  const bottom = metrics.descender - 60;
-  const width = Math.max(drawn.advanceWidth, 1) + metrics.unitsPerEm * 0.12;
+  /*
+   * The ascender and descender with room to spare, grown to take in any ink
+   * that goes further -- a shadow thrown down past the descender, the ring of
+   * an Å -- which used to run off the stage and be cut away.
+   */
+  const ink = inkFrame(metrics, [{ contours: drawn.contours, x: 0 }], drawn.advanceWidth);
+  const top = Math.max(metrics.ascender + 60, -ink.y);
+  const bottom = Math.min(metrics.descender - 60, -(ink.y + ink.height));
+  const pad = metrics.unitsPerEm * 0.06;
+  const leftmost = Math.min(-pad, ink.x - pad / 2);
+  const width =
+    Math.max(Math.max(drawn.advanceWidth, 1) + pad, ink.x + ink.width + pad / 2) - leftmost;
   const height = top - bottom;
   const unit = metrics.unitsPerEm / 260 / view.zoom;
 
@@ -342,7 +354,7 @@ function Stage({
     });
   };
 
-  const left = -metrics.unitsPerEm * 0.06 + view.x;
+  const left = leftmost + view.x;
   const viewBox = `${left} ${-top + view.y} ${width / view.zoom} ${height / view.zoom}`;
 
   return (
@@ -594,9 +606,9 @@ function apply(handle: Handle, value: number, phase: Phase): void {
 function setLine(
   forge: Forge,
   text: string,
-): { pieces: Array<{ d: string; x: number }>; width: number } {
+): { pieces: Array<{ d: string; x: number; contours: Contour[] }>; width: number } {
   let x = 0;
-  const pieces: Array<{ d: string; x: number }> = [];
+  const pieces: Array<{ d: string; x: number; contours: Contour[] }> = [];
   for (const character of text) {
     const name = nameOf(character);
     const drawn = name ? draw(name, forge) : null;
@@ -612,7 +624,7 @@ function setLine(
       x += drawn.advanceWidth;
       continue;
     }
-    pieces.push({ d: contoursToSvgPath(drawn.contours), x });
+    pieces.push({ d: contoursToSvgPath(drawn.contours), x, contours: drawn.contours });
     x += drawn.advanceWidth;
   }
   return { pieces, width: x };
@@ -654,6 +666,18 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
     [shown, state.specimen, revision, weights.join()],
   );
   const { metrics } = state.forge.style;
+  // Every weight on the same height, taken from all of them, so the lines stay
+  // at one size and whatever reaches past the ascender or descender -- an
+  // accent, a heavy tail -- is shown rather than cropped.
+  const tall = React.useMemo(
+    () =>
+      inkFrame(
+        metrics,
+        lines.flatMap((one) => one.pieces),
+        1,
+      ),
+    [lines, metrics],
+  );
 
   return (
     <div
@@ -691,7 +715,11 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
                 </span>
               )}
               <svg
-                viewBox={`0 ${-metrics.ascender} ${one.width} ${metrics.ascender - metrics.descender}`}
+                viewBox={viewBoxOf({
+                  ...inkFrame(metrics, one.pieces, one.width),
+                  y: tall.y,
+                  height: tall.height,
+                })}
                 className={cn("w-auto max-w-full", lines.length > 1 ? "h-7" : "h-16")}
                 role="img"
                 aria-label={lines.length > 1 ? `Specimen ${one.name}` : "Specimen"}
@@ -1142,9 +1170,12 @@ function Warnings({ revision }: { revision: number }): React.JSX.Element | null 
                 key={letter}
                 type="button"
                 onClick={() => forgeStore.select(letter)}
+                title={letter}
+                aria-label={`Show ${letter}`}
+                data-forge-warning-letter={letter}
                 className="rounded bg-card px-1 text-2xs text-foreground transition-opacity hover:opacity-70"
               >
-                {letter}
+                {letterLabel(letter)}
               </button>
             ))}
             {trouble.letters.length > 14 && (
@@ -1247,6 +1278,13 @@ interface Cell {
   name: string;
   d: string;
   width: number;
+  /**
+   * The box the cell shows, grown past the ascender and descender for ink
+   * that goes there. It used to be those two lines exactly, and the accents
+   * of the capitals, the overshoot of an O on a face whose capitals stand at
+   * the ascender, and every shadow were cut off in the strip.
+   */
+  frame: string;
   held: boolean;
   shaped: boolean;
   outside: boolean;
@@ -1257,10 +1295,14 @@ function cellOf(name: string, near: ReadonlySet<string>, forge: Forge): Cell {
   // box the right size, which is what it had while it was off screen anyway,
   // and it fills in before it arrives.
   const drawn = near.has(name) ? draw(name, forge) : null;
+  const width = drawn?.advanceWidth ?? 0;
   return {
     name,
     d: drawn ? contoursToSvgPath(drawn.contours) : "",
-    width: drawn?.advanceWidth ?? 0,
+    width,
+    frame: viewBoxOf(
+      inkFrame(forge.style.metrics, drawn ? [{ contours: drawn.contours, x: 0 }] : [], width),
+    ),
     held: isException(forge, name),
     shaped: Boolean(formOf(forge, name)),
     outside: isImported(forge, name),
@@ -1370,8 +1412,6 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
     });
   }, [ripe, settled, plain]);
 
-  const { metrics } = state.forge.style;
-
   return (
     <div className="toolcraft-scrollbar min-h-0 flex-[2] overflow-y-auto p-3">
       <div className="flex flex-wrap gap-1.5">
@@ -1395,11 +1435,7 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
               "relative flex size-14 items-center justify-center rounded-md border",
             )}
           >
-            <svg
-              viewBox={`0 ${-metrics.ascender} ${Math.max(cell.width, 1)} ${metrics.ascender - metrics.descender}`}
-              className="h-9 w-9"
-              aria-hidden
-            >
+            <svg viewBox={cell.frame} className="h-9 w-9" aria-hidden>
               <g transform="scale(1,-1)">
                 <path d={cell.d} fill="var(--foreground)" fillRule="nonzero" />
               </g>

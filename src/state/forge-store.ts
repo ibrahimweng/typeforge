@@ -461,10 +461,16 @@ class ForgeStore {
   startFromBase(name: string): void {
     const base = baseNamed(name);
     if (!base) return;
-    this.commit(startFrom(base));
-    this.set({
-      familyName: this.state.familyName === "Untitled" ? `My ${name}` : this.state.familyName,
-    });
+    const fresh = startFrom(base);
+    // Picking the base the drawing already is, untouched, changes nothing and
+    // is not written down as something to undo.
+    if (JSON.stringify(fresh) !== JSON.stringify(this.state.forge)) this.commit(fresh);
+    // A name the tool gave follows the base; a name somebody typed stays.
+    const { familyName } = this.state;
+    const given =
+      familyName === "Untitled" ||
+      (familyName.startsWith("My ") && baseNamed(familyName.slice(3)) !== undefined);
+    this.set({ familyName: given ? `My ${name}` : familyName });
   }
 
   /**

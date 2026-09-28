@@ -9,6 +9,7 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { builtFrom } from "./build";
 import { readyToShape } from "./layers";
 import { noCuts, type Cuts } from "./cut";
 import { startFrom, type Forge } from "./document";
@@ -25,6 +26,83 @@ describe("what has gone wrong", () => {
     for (const base of [SANS, SERIF, DISPLAY]) {
       expect(troubles(startFrom(base)), `${base.name} was warned about`).toEqual([]);
     }
+  });
+
+  it("says nothing about the bases at the lightest weight", () => {
+    /*
+     * The slack past the ascender and descender used to be the pen's width
+     * alone, so at thirty units the parentheses, the dollar, the circumflex and
+     * the ogonek -- which reach a set distance past the lines at every weight --
+     * were reported as overflowing, with advice to use less weight on a pen
+     * already at the minimum.
+     */
+    for (const base of [SANS, SERIF]) {
+      expect(troubles(heavier(startFrom(base), 30)), `${base.name} at 30`).toEqual([]);
+    }
+  });
+
+  it("still notices a letter reaching well past its line", () => {
+    const sans = startFrom(SANS);
+    const short = {
+      ...sans,
+      style: {
+        ...sans.style,
+        pen: { ...sans.style.pen, weight: 30 },
+        metrics: { ...sans.style.metrics, ascender: sans.style.metrics.xHeight + 60 },
+      },
+    };
+    const said = troubles(short).find((one) => one.what === "Reaching past the line");
+    expect(said?.letters.length).toBeGreaterThan(10);
+    // The capitals stand over an ascender pulled down to them, so the way out
+    // is up; and never the weight, which was already at the minimum here.
+    expect(said?.fix).toBe("A taller ascender gives them room.");
+    expect(said?.fix).not.toMatch(/weight/i);
+  });
+
+  it("measures a slanted letter as its neighbour meets it", () => {
+    /*
+     * Leant about the waist, the feet of a letter swing left of the origin, as
+     * in any italic, and the letter before leans with it. Twelve degrees used
+     * to report most of the alphabet as touching the letter before it.
+     */
+    const slanted = (
+      forge: Forge,
+      slant: number,
+      sidebearing = forge.style.metrics.sidebearing,
+    ) => ({
+      ...forge,
+      style: { ...forge.style, metrics: { ...forge.style.metrics, slant, sidebearing } },
+    });
+    for (const base of [SANS, SERIF]) {
+      const said = troubles(slanted(startFrom(base), 12)).find(
+        (one) => one.what === "Touching the letter before it",
+      );
+      // Letters built from an accent are left to the letters: an accent that
+      // does not lean with its letter can meet a tall neighbour, and that is
+      // worth saying.
+      const plain = (said?.letters ?? []).filter((letter) => !builtFrom(letter));
+      expect(plain, `${base.name} at 12 degrees`).toEqual([]);
+    }
+    // With no spacing at all it is still said, slant or none.
+    const tight = troubles(slanted(startFrom(SANS), 12, 0)).find(
+      (one) => one.what === "Touching the letter before it",
+    );
+    expect(tight?.letters.length).toBeGreaterThan(10);
+  });
+
+  it("names the descender when it is the line being crossed", () => {
+    const sans = startFrom(SANS);
+    const shallow = {
+      ...sans,
+      style: {
+        ...sans.style,
+        pen: { ...sans.style.pen, weight: 30 },
+        metrics: { ...sans.style.metrics, descender: -40 },
+      },
+    };
+    const said = troubles(shallow).find((one) => one.what === "Reaching past the line");
+    expect(said?.letters).toContain("comma");
+    expect(said?.fix).toBe("A deeper descender gives them room.");
   });
 
   it("stays quiet on a heavy cut that still works", () => {

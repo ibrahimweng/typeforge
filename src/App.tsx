@@ -1468,7 +1468,7 @@ export function App(): React.JSX.Element {
         The strip along the bottom: the zoom, what is open, and what is in
         hand. In the shell rather than in a view, so it does not come and go.
       */}
-      <StatusBar />
+      <StatusBar mode={mode} />
 
       {/*
         A second input, and it has to be a second one.
