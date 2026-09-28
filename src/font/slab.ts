@@ -470,11 +470,20 @@ export function addSlabs(contours: Contour[], options: SlabOptions): Contour[] {
     const reach = (side: -1 | 1): number => {
       const heading = { x: along.x * side, y: along.y * side };
       let room = Infinity;
+      let asked = 0;
       for (const share of GAP_DEPTHS) {
         const start = at(side * (half + 0.5), thickness * share);
         if (insideInk(polylines, start)) continue;
+        asked++;
         room = Math.min(room, rayHitDistance(polylines, start, heading));
       }
+      /*
+       * Ink all the way up that side: the stroke is joined to something
+       * there, and a slab reaching out over it is a step in the join. The
+       * spur of Geist's G stands on the bottom of its bowl, and the foot laid
+       * across it jutted out of the bowl.
+       */
+      if (asked === 0) return 0;
       return Math.max(0, Math.min(projection, room * SHARE_OF_GAP - growth));
     };
 

@@ -347,6 +347,24 @@ describe("which ends a slab serif gives a slab", () => {
     expect(ends.map((end) => Math.round(end.centre.x))).toEqual([45, 45]);
   });
 
+  /*
+   * Regression: the spur of Geist's G stands on the bottom of its bowl, and
+   * the foot laid across it reached out over the bowl on that side and
+   * jutted out of it.
+   */
+  it("reaches out only on the side of a stroke end that is not joined to ink", () => {
+    const spur = stem(300, 0, 100, 400);
+    const bowl = stem(0, 0, 300, 100);
+    const slabs = addSlabs([spur, bowl], { projection: 80, thickness: 60, maxWidth: WIDE }).slice(
+      2,
+    );
+    const foot = slabs
+      .map((slab) => contoursBounds([slab]))
+      .find((box) => box.yMin < 1 && box.xMin > 200)!;
+    expect(foot.xMin).toBeCloseTo(300, 0);
+    expect(foot.xMax).toBeCloseTo(480, 0);
+  });
+
   it("puts no slab on a slanted end", () => {
     // The tail of Geist's & ends on a cut a few degrees off level, and a slab
     // laid along it stuck out like a stick.
