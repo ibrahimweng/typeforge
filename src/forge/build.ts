@@ -462,6 +462,9 @@ function marked(
 
   const em = style.metrics.unitsPerEm;
   const gap = gapFor(em, isCapital(parts.base));
+  // The face's own gap is for the marks over a letter: a cedilla or an
+  // ogonek hangs from the foot as close as ever.
+  const above = gapFor(em, isCapital(parts.base), style.metrics.accents?.gap);
   const runs = [...base.runs];
   const contours = [...base.contours];
 
@@ -487,11 +490,21 @@ function marked(
     const over = contoursBounds(mark.contours);
     const below = hangsBelow(markName);
 
+    // A steep grave or acute set by its foot, where the face asks for that:
+    // centred by its whole width, it stood half its lean off the letter.
+    const byFoot =
+      style.metrics.accents?.byFoot && (markName === "grave" || markName === "acute")
+        ? inkRunsAt(mark.contours, over.yMin + 1, "y")
+        : [];
+    const middle =
+      byFoot.length > 0
+        ? (byFoot[0][0] + byFoot[byFoot.length - 1][1]) / 2
+        : (over.xMin + over.xMax) / 2;
     const move = parts.beside
       ? besideTop(contours, mark.contours, style, isCapital(parts.base), gap)
       : {
-          x: (under.xMin + under.xMax) / 2 - (over.xMin + over.xMax) / 2,
-          y: below ? under.yMin - over.yMax - gap : under.yMax - over.yMin + gap,
+          x: (under.xMin + under.xMax) / 2 - middle,
+          y: below ? under.yMin - over.yMax - gap : under.yMax - over.yMin + above,
         };
     const shifted = shoved(mark.contours, move);
     contours.push(...shifted);

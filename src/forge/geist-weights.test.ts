@@ -540,6 +540,32 @@ describe("the grave and the acute", () => {
   });
 });
 
+describe("the accents' places", () => {
+  it("stand as far off their letters as Geist's, the steep ones by their feet", () => {
+    // Geist: 55 over a lowercase letter, 66 over a capital, with the foot of
+    // a grave or an acute over the letter's middle. The accents stood 28 and
+    // 13 off, centred by their whole width, half their lean to one side.
+    for (const [name, base, gap] of [
+      ["agrave", "a", 55],
+      ["eacute", "e", 55],
+      ["Agrave", "A", 66],
+      ["Eacute", "E", 66],
+    ] as const) {
+      const letter = contoursBounds(draw(base, 87).contours);
+      const pieces = draw(name, 87).contours.map((one) => ({ one, at: contoursBounds([one]) }));
+      const mark = pieces.reduce((high, piece) => (piece.at.yMax > high.at.yMax ? piece : high));
+      expect(Math.abs(mark.at.yMin - letter.yMax - gap), `${name} gap`).toBeLessThan(6);
+      const foot = filled([mark.one], mark.at.yMin + 1, "y");
+      const footMiddle = (foot[0][0] + foot[foot.length - 1][1]) / 2;
+      const accented = contoursBounds(
+        pieces.filter((piece) => piece !== mark).map((piece) => piece.one),
+      );
+      const middle = (accented.xMin + accented.xMax) / 2;
+      expect(Math.abs(footMiddle - middle), `${name} foot`).toBeLessThan(10);
+    }
+  });
+});
+
 describe("the s's width", () => {
   it("spreads as Geist's does from the Regular to the Black", () => {
     // Geist's ink widths at its Regular and Black. Pen 130 is halfway between

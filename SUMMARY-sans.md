@@ -117,6 +117,14 @@ draws an accented letter's mark in the face's own form of it whenever the
 letter is drawn with forms at all. Faces that list no form for their marks
 are unchanged.
 
+**Accent places (shared files, off for other faces).** Geist stands its
+accents 55 units over a lowercase letter and 66 over a capital. The shared
+gap was 28 and 13. It also sets a steep grave or acute with its foot over the
+letter's middle, where centring the whole mark put it half its lean to one
+side. The Sans asks for both through a new, optional `metrics.accents`, which
+`gapFor` and `build.ts` read. The marks that hang below, such as the cedilla
+and ogonek, keep the shared gap. Faces that do not set it are unchanged.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular
@@ -150,6 +158,9 @@ strokes as white; they now use a filled (nonzero) ruler.
   difference.
 - **m and X at the Light.** They are plain forms, shared with every base. At
   pen 30 the m is about 19 units wider than Geist Thin's and the X 22 narrower.
+- **Circumflex, dieresis and tilde accents.** They now stand at Geist's
+  height. Geist's dieresis dots are larger and further apart, its circumflex
+  lighter, and its tilde flatter.
 - **Past 172.** Geist has nothing heavier than Black (its UltraBlack keeps a
   stem of 172). At 200–260 the letters follow their own rules for keeping
   counters open, not Geist.

@@ -128,6 +128,13 @@ export interface Metrics {
    */
   wordSpace?: [number, number];
   /**
+   * Where the accents stand: `gap`, how far over a lowercase letter and over
+   * a capital, as shares of the em; and `byFoot`, whether a grave or an
+   * acute is set with its foot over the middle of the letter rather than its
+   * whole width, as a steep one is. Left out, see `gapFor`.
+   */
+  accents?: { gap: [number, number]; byFoot?: boolean };
+  /**
    * The most contrast a heavy weight takes on: see `heavierPen`. Left out,
    * the horizontals go on thinning to the pen's limit, which on a face with
    * little contrast of its own reads as a fat face rather than as an Ultra.
@@ -673,6 +680,9 @@ export const SANS: Style = {
     lightHeld: { from: 87, grow: 0.085 },
     // Geist's word space: 250 at the Thin and the Regular, 221 at the Black.
     wordSpace: [250 / 530, 221 / 530],
+    // Geist stands its accents 55 over a lowercase letter and 66 over a
+    // capital, and sets its steep grave and acute by their feet.
+    accents: { gap: [0.055, 0.066], byFoot: true },
     /* Geist Regular's own sidebearings, over 80 (a capital's over 80 after its 12 of extra). */
     sides: {
       a: [0.59, 0.24],
