@@ -1258,16 +1258,16 @@ function wallBeside(contours: Contour[], outer: boolean[], counter: Contour, sid
  * B, b, o, 4, 8 -- set as a bold beside an H, an n and an m that have none,
  * and opened they set as a light. A type designer closing up the middle of
  * an o draws a narrower o with the same strokes. So wherever a counter's
- * side moved across, a round wall beyond it moves the same way -- the
- * outside of an o, the bowl of a b, d, p, a, g, B or R -- and the strokes
- * keep their thickness. A straight wall -- the stem of a b, of an R, the
- * legs of an A -- stands where it is, since moving part of it would bend it.
- * Up and down there is nowhere for a wall to go without changing the
- * letter's height, so there the counter changes as before.
+ * side moved across, the wall beyond it moves the same way and keeps its
+ * thickness: a round wall -- the outside of an o, the bowl of a b, d, p, a,
+ * g, B or R -- and an upright one, the stem of a b or an R, which moves
+ * across whole. A leaning wall -- the legs of an A -- stands where it is,
+ * since moving part of it would bend it. Up and down there is nowhere for a
+ * wall to go without changing the letter's height, so there the counter
+ * changes as before.
  *
- * Each counter moves the ink beside it, points and handles alike, by its
- * side's movement in the band of heights it spans, eased away above and
- * below it, and between its two sides in proportion across it.
+ * Each counter moves the ink beside it, points and handles alike, across its
+ * own width in proportion and beyond each side by all that side moved.
  */
 function followCounters(
   before: Contour[],
@@ -1275,11 +1275,12 @@ function followCounters(
   outer: boolean[],
   follow: number,
 ): Contour[] {
-  let result = after.map((contour) => contour);
+  const settled = alignSharedWalls(before, after, outer);
+  const maps: Array<{ index: number; shiftAt: (point: Vec2) => number }> = [];
   before.forEach((contour, index) => {
-    if (outer[index] || contour === after[index]) return;
+    if (outer[index] || contour === settled[index]) return;
     const was = contoursBounds([contour]);
-    const now = contoursBounds([after[index]]);
+    const now = contoursBounds([settled[index]]);
     const tall = was.yMax - was.yMin;
     if (!(tall > 0) || !(was.xMax > was.xMin)) return;
     const leftWall = wallBeside(before, outer, contour, -1);
@@ -1331,31 +1332,107 @@ function followCounters(
         return ((leftBy * (hub - point.x)) / Math.max(1e-9, hub - was.xMin)) * eased;
       return ((rightBy * (point.x - hub)) / Math.max(1e-9, was.xMax - hub)) * eased;
     };
-    const move = (point: Vec2 | null): Vec2 | null =>
-      point ? { x: point.x + shiftAt(point), y: point.y } : null;
-    const moved = result.map((other, which) =>
-      which === index
-        ? other
-        : {
-            closed: other.closed,
-            nodes: other.nodes.map((node) => ({
-              ...node,
-              point: move(node.point) as Vec2,
-              handleIn: move(node.handleIn),
-              handleOut: move(node.handleOut),
-            })),
-          },
-    );
-    // Not where following would cross an outline, or two, that did not
-    // cross: then the counter stays as it was drawn.
-    const crossed =
-      moved.some(
-        (other, which) => contoursIntersect([other]) && !contoursIntersect([result[which]]),
-      ) ||
-      (contoursIntersect(moved) && !contoursIntersect(before));
-    if (!crossed) result = moved;
-    else result = result.map((other, which) => (which === index ? contour : other));
+    maps.push({ index, shiftAt });
   });
+  const moveBy = (contours: Contour[], chosen: typeof maps): Contour[] =>
+    contours.map((other, which) => {
+      const by = chosen.filter((map) => map.index !== which);
+      if (by.length === 0) return other;
+      const move = (point: Vec2 | null): Vec2 | null =>
+        point
+          ? { x: point.x + by.reduce((sum, map) => sum + map.shiftAt(point), 0), y: point.y }
+          : null;
+      return {
+        closed: other.closed,
+        nodes: other.nodes.map((node) => ({
+          ...node,
+          point: move(node.point) as Vec2,
+          handleIn: move(node.handleIn),
+          handleOut: move(node.handleOut),
+        })),
+      };
+    });
+  // Not where following would cross an outline, or two, that did not cross.
+  const crosses = (moved: Contour[], from: Contour[]): boolean =>
+    moved.some((other, which) => contoursIntersect([other]) && !contoursIntersect([from[which]])) ||
+    (contoursIntersect(moved) && !contoursIntersect(before));
+  /*
+   * All the counters at once, each moving the ink in its own band. One after
+   * another, the two bowls of a B each moved one end of its stem, which is a
+   * single straight line: halfway through, the stem leaned across the lower
+   * bowl, the check below saw it cross, and the upper bowl was put back.
+   */
+  const together = moveBy(settled, maps);
+  if (!crosses(together, settled)) return together;
+  // Failing that, one at a time, and a counter whose walls cannot follow it
+  // stays as it was drawn.
+  let result = settled;
+  for (const map of maps) {
+    const moved = moveBy(result, [map]);
+    if (!crosses(moved, result)) result = moved;
+    else result = result.map((other, which) => (which === map.index ? before[which] : other));
+  }
+  return result;
+}
+
+/**
+ * Counters stacked on one straight wall moved alike along it.
+ *
+ * The two bowls of a B share its stem, and each opened by its own width: the
+ * lower bowl, the wider, pushed the foot of the stem out further than the
+ * upper one pushed its head, and the stem leaned. So where counters one above
+ * another stand on the same upright wall, each moves that side by the least
+ * any of them did, and the others give the difference back across their own
+ * width, as they were scaled.
+ */
+function alignSharedWalls(before: Contour[], after: Contour[], outer: boolean[]): Contour[] {
+  const result = after.map((contour) => contour);
+  const counters = before.flatMap((contour, index) =>
+    outer[index] || contour === after[index] ? [] : [index],
+  );
+  for (const side of [-1, 1] as const) {
+    const upright = counters.filter(
+      (index) => wallBeside(before, outer, before[index], side) === "upright",
+    );
+    const edge = (index: number, contours: Contour[]) => {
+      const box = contoursBounds([contours[index]]);
+      return side < 0 ? box.xMin : box.xMax;
+    };
+    for (const index of upright) {
+      const was = contoursBounds([before[index]]);
+      const own = edge(index, after) - edge(index, before);
+      // Its neighbours on the same wall: over or under it, their edge on this
+      // side within a stroke's hairline of its own.
+      const least = upright
+        .filter((other) => {
+          const them = contoursBounds([before[other]]);
+          const overlap = Math.min(them.xMax, was.xMax) - Math.max(them.xMin, was.xMin);
+          return overlap > 0 && Math.abs(edge(other, before) - edge(index, before)) <= 2;
+        })
+        .map((other) => edge(other, after) - edge(other, before))
+        .reduce((best, next) => (Math.abs(next) < Math.abs(best) ? next : best), own);
+      const back = least - own;
+      if (Math.abs(back) < 0.5) continue;
+      const now = contoursBounds([after[index]]);
+      const hub = Math.min(now.xMax, Math.max(now.xMin, centroid(after[index]).x));
+      const reach = side < 0 ? hub - now.xMin : now.xMax - hub;
+      if (!(reach > 0)) continue;
+      const give = (point: Vec2 | null): Vec2 | null => {
+        if (!point) return null;
+        const share = Math.max(0, Math.min(1, ((point.x - hub) * side) / reach));
+        return { x: point.x + back * share, y: point.y };
+      };
+      result[index] = {
+        closed: after[index].closed,
+        nodes: after[index].nodes.map((node) => ({
+          ...node,
+          point: give(node.point) as Vec2,
+          handleIn: give(node.handleIn),
+          handleOut: give(node.handleOut),
+        })),
+      };
+    }
+  }
   return result;
 }
 

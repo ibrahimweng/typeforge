@@ -185,6 +185,24 @@ describe("middle space", () => {
     expect(box.xMax - box.xMin).toBeGreaterThan(400);
   });
 
+  /*
+   * Regression: the stem of a B leaned at 1.4. Its two bowls were followed
+   * one after the other, and the first moved only the top of the stem, a
+   * single straight line; halfway, it crossed the lower bowl, and the upper
+   * bowl was put back as drawn while the lower one opened.
+   */
+  it("keeps a stem upright that two counters above each other share", () => {
+    const letter = [rect(0, 0, 600, 1000), rect(100, 100, 400, 360), rect(100, 540, 300, 360)];
+    const [outside, below, above] = resolve(letter, 1.4);
+    const stem = outside.nodes.filter((node) => node.point.x < 300).map((node) => node.point.x);
+    expect(Math.max(...stem) - Math.min(...stem)).toBeLessThan(0.5);
+    const lower = contoursBounds([below]);
+    const upper = contoursBounds([above]);
+    expect(upper.xMin).toBeCloseTo(lower.xMin, 0);
+    expect(lower.xMax - lower.xMin).toBeGreaterThan(420);
+    expect(upper.xMax - upper.xMin).toBeGreaterThan(320);
+  });
+
   it("moves the outside of the letter across with the counter, never up or down", () => {
     const resolved = resolve(ring(1000, 100), 1.4);
     const box = contoursBounds([resolved[0]]);
