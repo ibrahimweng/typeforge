@@ -20,7 +20,16 @@ import {
   inkRunsAt,
 } from "@/font/geometry";
 import type { Contour, Vec2 } from "@/font/types";
-import { draw, editCast, editCut, proof, setCastOrder, startFrom, type Forge } from "./document";
+import {
+  draw,
+  editCast,
+  editCut,
+  editEffect,
+  proof,
+  setCastOrder,
+  startFrom,
+  type Forge,
+} from "./document";
 import { readyToShape } from "./layers";
 import { piecesOf } from "./cut";
 import { BASES } from "./style";
@@ -286,6 +295,26 @@ describe("the split on a bowl drawn against its stem", () => {
       // And a bar that runs into a bowl at both ends is still parted at one:
       // the bar of an e does not float in its eye.
       expect(piecesOf(drawn("e", forge)), `${weight} e`).toBe(1);
+    }
+  });
+});
+
+describe("the press on an uncut letter", () => {
+  it("still thins the tapering terminals of a Brush c and s and a Formal Script S", () => {
+    // The rule that stops the press measuring a cut's side for a flank also
+    // took every terminal of a contrast face for one, and left them blunt.
+    for (const [face, letter] of [
+      ["Brush", "c"],
+      ["Brush", "s"],
+      ["Brush", "C"],
+      ["Formal Script", "S"],
+      ["Formal Script", "z"],
+    ] as const) {
+      const pressed = startFrom(BASES.find((one) => one.name === face)!);
+      const plain = editEffect(pressed, "press", { on: false });
+      expect(area(drawn(letter, pressed)), `${face} ${letter}`).toBeLessThan(
+        area(drawn(letter, plain)) * 0.97,
+      );
     }
   });
 });
