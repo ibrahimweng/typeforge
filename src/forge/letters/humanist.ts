@@ -18,7 +18,9 @@
 import { blackness, type Style } from "../style";
 import { LETTERS } from "../letters";
 import { bowl, bowlPoint, spineStart } from "../shapes";
-import { penReach, reachAlong } from "../sweep";
+import { penReach, reachAlong, sweep } from "../sweep";
+import { inkRunsAt } from "@/font/geometry";
+import { contoursIntersect } from "@/font/outline";
 import type { Vec2 } from "@/font/types";
 import type { Spine, Stroke, Terminal } from "../types";
 import {
@@ -195,18 +197,30 @@ export function humanistU(style: Style): Recipe {
   ]);
 }
 
+/** How far the t's flag sags in toward the stem, against its length. */
+const T_FLAG_SAG = 0.12;
+
 /** Lora's t stands this far up the ascender. */
 const T_TOP = 640 / 755;
 
 /**
- * The t standing well over the x-height, its stem cut off under a wedge that
- * rises from the left end of the bar to the stem's head, as Lora's does.
+ * The t standing well over the x-height under a flag, as Lora's does: the bar
+ * reaching out past the stem on the left, and from its end a flag rising in
+ * a concave sweep to the head, which is only the right part of the stem --
+ * four tenths of it across at the Regular and half at the Bold, the stem's
+ * left corner carved away under the flag.
  */
 export function humanistT(style: Style): Recipe {
   const f = frame(style);
   const radius = Math.max(roundHalf(f) * 0.34, f.least, f.half * 1.5);
   const reach = tReach(f);
-  const stem = tStem(f);
+  const stemHalf = Math.abs(reachAlong(at(1, 0), penReach(f.style.pen)).x);
+  /*
+   * The bar reaching past the stem on the left by half a stem at least, as
+   * Lora's Bold does: held to the construction's reach alone it came in with
+   * the heavier stem, and past a Black the flag had nowhere to stand.
+   */
+  const stem = Math.max(tStem(f), f.edge + stemHalf * (1 + 2 * T_OVERHANG));
   /*
    * As tall at every weight as Lora's, less the little a heavy stem's own
    * ink adds: grown by two half-pens over the x-height, a Black t stood over
@@ -214,32 +228,97 @@ export function humanistT(style: Style): Recipe {
    */
   const top = Math.max(f.asc * T_TOP + Math.max(0, f.half - 43.5) * 0.3, f.x + f.half);
   const bar = f.hangs(f.x, f.bar);
-  const barLeft = stem - reach * 0.7;
+  const barLeft = stem - Math.max(reach * 0.7, stemHalf * (1 + 2 * T_OVERHANG));
+  const stemLeft = stem - stemHalf;
+  const stemRight = stem + stemHalf;
+  // The flag's pen, and how far across it reaches from its spine along a row.
+  const flagOf = (share: number) =>
+    lighter(ink(f, straight(at(barLeft, bar), at(stem, top)), LEVEL, LEVEL), share);
   /*
-   * The wedge laid from the bar's left end up to the stem's head, and cut
-   * level with the stem at the top and with the bar at its foot, so the
-   * head is one flat and the wedge's foot lies inside the bar: cut square
-   * across themselves, the two ends stood out of the head in steps and the
-   * wedge's foot out of the bar.
+   * The arc leaves the bar flatter than its chord and reaches the head
+   * steeper, each by the angle its sag turns it through, and a pen crosses a
+   * row wider the flatter it runs: measured along the chord alone, the foot
+   * stood out past the bar's end past a Black.
    */
-  const light = lighter(ink(f, straight(at(barLeft, bar), at(stem, top)), LEVEL, LEVEL), 0.75);
-  const chordOf = (from: Vec2, to: Vec2) => {
-    const d = towards(from, to);
-    const side = reachAlong(at(-d.y, d.x), penReach(light.pen));
+  /*
+   * And no deeper than keeps the arc's radius clear of the pen: on a short
+   * flag under a heavy monoline pen, a sans drawing this t, the sag bent the
+   * arc tighter than the pen and its inner edge folded.
+   */
+  let sag = T_FLAG_SAG;
+  let turned = 2 * Math.atan(2 * sag);
+  const chordOf = (pen: Stroke, from: Vec2, to: Vec2, by: number) => {
+    const c = towards(from, to);
+    const d = at(c.x * Math.cos(by) - c.y * Math.sin(by), c.x * Math.sin(by) + c.y * Math.cos(by));
+    const side = reachAlong(at(-d.y, d.x), penReach(pen.pen));
     return Math.abs(side.x - (side.y / d.y) * d.x);
   };
-  // Its head's left corner on the stem's left edge, and its foot's on the
-  // bar's left end.
-  const stemHalf = Math.abs(reachAlong(at(1, 0), penReach(f.style.pen)).x);
-  let wedgeTop = at(stem, top);
-  let foot = at(barLeft, bar);
+  /*
+   * Drawn at the weight that makes its head the share of the stem Lora's
+   * is, its right corner on the stem's right edge and its foot on the bar's
+   * left end, each found again as the other moves.
+   */
+  let pen = flagOf(0.75);
+  let wedgeTop = at(stemRight, top);
+  const crossed = crossbar(f, barLeft, stem + reach);
+  const barTop = bar + Math.abs(reachAlong(at(0, 1), penReach(crossed.pen)).y);
+  // Its foot cut halfway up the bar, so it sweeps out to meet the bar's end.
+  const footY = bar + (barTop - bar) * T_FOOT_RISE;
+  let foot = at(barLeft, footY);
   for (let pass = 0; pass < 6; pass++) {
-    const chord = chordOf(foot, wedgeTop);
-    wedgeTop = at(stem - stemHalf + chord, top);
-    foot = at(barLeft + chord + f.half * 0.15, bar);
+    const chord = chordOf(pen, foot, wedgeTop, turned);
+    pen = lighter(pen, Math.min(1.2, (T_HEAD * stemHalf) / chord));
+    wedgeTop = at(stemRight - chordOf(pen, foot, wedgeTop, turned), top);
+    foot = at(barLeft + chordOf(pen, foot, wedgeTop, -turned) + f.half * 0.15, footY);
+    const length = Math.hypot(wedgeTop.x - foot.x, wedgeTop.y - foot.y);
+    sag = Math.min(T_FLAG_SAG, length / (8 * 1.4 * (pen.pen.weight / 2)));
+    turned = 2 * Math.atan(2 * sag);
   }
-  const pen = light;
-  const wedge = inherit(pen, { ...pen, spine: straight(foot, wedgeTop) });
+  /*
+   * Bowed less, down to all but straight, where the bow folds the flag's
+   * level ends over themselves: a short, shallow flag on a face with a taller
+   * x-height, where each cut slides its corner past the first piece.
+   */
+  const flagWith = (bow: number) =>
+    inherit(pen, { ...pen, spine: inPieces(bowed(f, foot, wedgeTop, -bow), 3) });
+  let wedge = flagWith(sag);
+  for (let bow = sag / 2; bow > 1e-3 && contoursIntersect(sweep(wedge)); bow /= 2) {
+    wedge = flagWith(bow);
+  }
+  if (contoursIntersect(sweep(wedge))) wedge = flagWith(1e-4);
+  /*
+   * The stem's head cut to slope down to the left, from its right corner to
+   * where its left edge goes in under the flag: as deep as the cut can go
+   * while it stays inside the flag's inner edge all the way up, since the
+   * flag is concave and a cut carried past it opened a sliver of paper
+   * between the two.
+   */
+  const flagInk = sweep(wedge);
+  const width = stemRight - stemLeft;
+  const innerAt = (y: number) => {
+    const runs = inkRunsAt(flagInk, y, "y", 16);
+    return runs.length > 0 ? Math.max(...runs.map((run) => run[1])) : -Infinity;
+  };
+  const covers = (y: number) =>
+    inkRunsAt(flagInk, y, "y", 16).some(([from, to]) => from <= stemLeft + 0.5 && to >= stemLeft);
+  let sink = 0;
+  let fallback = 0;
+  for (let depth = top - barTop; depth > 0; depth -= (top - barTop) / 48) {
+    let inside = true;
+    for (let k = 1; k < 16 && inside; k++) {
+      const y = top - (depth * k) / 16;
+      const cut = stemRight - (width * k) / 16;
+      inside = cut <= innerAt(y) + 0.5;
+    }
+    if (!inside) continue;
+    fallback ||= depth;
+    // And the cut's low corner in under the flag, not standing out past it.
+    if (covers(top - depth)) {
+      sink = depth;
+      break;
+    }
+  }
+  sink ||= fallback;
   return finish(f, [
     ink(
       f,
@@ -248,13 +327,20 @@ export function humanistT(style: Style): Recipe {
         // Round the foot and on up into the tail, as Lora's is.
         inPieces(turn(at(stem + radius, f.dip(0) + radius), radius, 180, 305), 2),
       ),
-      LEVEL,
+      { ...LEVEL, sink },
       f.end,
     ),
     wedge,
-    crossbar(f, barLeft, stem + reach),
+    crossed,
   ]);
 }
+
+/** Lora's t head against its stem: 0.41 at the Regular, 0.53 at the Bold. */
+const T_HEAD = 0.47;
+/** How far up the bar the t's flag stands, from the bar's middle to its top. */
+const T_FOOT_RISE = 0.5;
+/** How far the t's bar reaches past its stem on the left, at least, against the stem. */
+const T_OVERHANG = 0.45;
 
 /**
  * The U whose right side is a hairline: the left stem comes down heavy and
