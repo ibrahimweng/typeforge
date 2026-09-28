@@ -227,3 +227,20 @@ describe("the diagonals' spacing", () => {
     expect(widths.size).toBe(1);
   });
 });
+
+describe("the Geometric's S", () => {
+  it("stands narrow beside its round O, as Futura's does", () => {
+    /*
+     * The grotesque's S measured off a circle ran four fifths as wide as the
+     * O, its spine lying nearly flat: a squat disc of an S among letters built
+     * on circles. Futura's is about three fifths of its O.
+     */
+    const style = face("Geometric");
+    const width = (name: string) => {
+      const box = contoursBounds(draw(name, style).contours);
+      return box.xMax - box.xMin;
+    };
+    expect(width("S") / width("O")).toBeLessThan(0.7);
+    expect(width("s") / width("o")).toBeLessThan(0.8);
+  });
+});

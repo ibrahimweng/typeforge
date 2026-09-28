@@ -3,7 +3,7 @@ import { joinWeight, LETTERS, writtenLead } from "../letters";
 import { seamsOf } from "../script";
 import { bowlBetween, bowlPoint, roundCorners, spineEnd, spineStart } from "../shapes";
 import { penReach, reachAlong } from "../sweep";
-import type { Style } from "../style";
+import { blackness, type Style } from "../style";
 import type { Spine, Stroke } from "../types";
 import {
   grotesqueA,
@@ -1559,6 +1559,40 @@ for (const [name, hint, build] of GROTESQUE) {
 }
 
 /*
+ * A geometric face's S and s: the grotesque's, held to the narrow share of a
+ * round O that Futura's takes. Measured off a circle, the grotesque's own ran
+ * out four fifths as wide as the O and its spine lay nearly flat, a squat
+ * disc-like S among letters built on circles; Futura's S is three fifths of
+ * its O, the spine falling steeply between two small round bowls.
+ */
+const NARROWED: Array<[LetterName, string, (style: Style) => Recipe]> = [
+  ["s", "The grotesque's s held narrow beside a round o, the spine falling steeply.", grotesqueS],
+  [
+    "S",
+    "The grotesque's S held narrow beside a round O, the spine falling steeply.",
+    grotesqueCapitalS,
+  ],
+];
+for (const [name, hint, build] of NARROWED) {
+  if (!ALTERNATES[name]) ALTERNATES[name] = [];
+  const drawn = (style: Style) =>
+    (style.parts.script.on || Math.abs(Math.abs(style.pen.angle) - 90) < 30) && LETTERS[name]
+      ? LETTERS[name](style)
+      : build({
+          ...style,
+          metrics: {
+            ...style.metrics,
+            // Less so as the weight grows: a Black's S needs the room for
+            // its counters, as Futura Extra Bold's is wider for it.
+            stretch:
+              (style.metrics.stretch ?? 1) *
+              (1 + (GEOMETRIC_S - 1) * Math.max(0, 1 - blackness(style) / GEOMETRIC_S_BLACK)),
+          },
+        });
+  ALTERNATES[name].push({ id: "geometric", label: "Geometric", hint, build: drawn });
+}
+
+/*
  * The old-style text face's own letters, offered on every face and drawn by
  * default on the Serif: see `humanist.ts`.
  */
@@ -1614,3 +1648,9 @@ for (const [name, hint, build] of HUMANIST) {
       : build(style);
   ALTERNATES[name].push({ id: "humanist", label: "Humanist", hint, build: drawn });
 }
+
+/** How much narrower than the grotesque's a geometric face's S is drawn. */
+const GEOMETRIC_S = 1.3;
+
+/** The blackness by which a geometric face's S has come back to the grotesque's width. */
+const GEOMETRIC_S_BLACK = 1;

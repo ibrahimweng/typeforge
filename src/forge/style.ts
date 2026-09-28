@@ -1350,8 +1350,10 @@ export const GEOMETRIC: Style = {
     Q: "under",
     G: "grotesque",
     M: "deep",
-    S: "grotesque",
-    s: "grotesque",
+    // The grotesque's S and s held narrow, as Futura's are: see `NARROWED`
+    // in `letters/alternates.ts`.
+    S: "geometric",
+    s: "geometric",
     at: "grotesque",
     percent: "grotesque",
     section: "grotesque",
