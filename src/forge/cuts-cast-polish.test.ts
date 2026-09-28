@@ -510,6 +510,25 @@ describe("the weld beside the split", () => {
   });
 });
 
+describe("fillets", () => {
+  it("never take ink away", () => {
+    // A fillet folded over on itself cancelled the ink under it, and cut a
+    // slit into the link of a Serif g where it was meant to fill a corner.
+    // Faces with no pressure: that thins the letter after the cast, and
+    // thins a welded one a little differently.
+    for (const face of ["Serif", "Sans", "Didone", "Geometric"]) {
+      const weight = BASES.find((one) => one.name === face)!.pen.weight;
+      const plain = forgeOf(face, weight, {});
+      const welded = forgeOf(face, weight, { cast: { weld: {} } });
+      for (const letter of "gakRBy") {
+        expect(area(drawn(letter, welded)), `${face} ${letter}`).toBeGreaterThanOrEqual(
+          area(drawn(letter, plain)) - 1,
+        );
+      }
+    }
+  });
+});
+
 describe("points and fillets on a Serif t", () => {
   it("keep the small counter under its flag", () => {
     for (const cast of ["spur", "weld"]) {

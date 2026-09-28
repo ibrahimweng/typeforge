@@ -142,7 +142,15 @@ export function castInk(
         .filter((area) => area > 0)
         .map((area) => area * 0.5),
     );
-    shape = unite([...shape, ...local], "winding", "whole").filter(
+    // Not one folded over on itself. A fillet grown into a corner too tight
+    // for it crosses itself, and the lobe wound the other way cancelled the
+    // ink it lay on: it cut a slit into the link of a Serif g where it was
+    // meant to fill the corner beside it. Fused alone it filled that as a
+    // jagged tooth instead, and the corner is better left as it was drawn.
+    const added = local
+      .filter((one) => !contoursIntersect([one]))
+      .map((one) => (contourArea(one) < 0 ? reverseContour(one) : one));
+    shape = unite([...shape, ...added], "winding", "whole").filter(
       (contour) => contourArea(contour) <= 0 || contourArea(contour) >= least,
     );
   }
