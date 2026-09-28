@@ -2355,8 +2355,11 @@ export function spine(
   return squaredSpine(frame, height, left);
 }
 
+/** The least half-width of a squared s, in half-pens: see `squaredSpine`. */
+const SQUARED_S_WIDE = 2.1;
+
 /** How many of its pen a squared s needs the height to hold: see `spine`. */
-const SQUARED_S_ROOM = 3.12;
+const SQUARED_S_ROOM = 3.8;
 
 /** A style's frame, where a parameter of that name hides `frame`. */
 function frameFor(style: Style): Frame {
@@ -2390,7 +2393,13 @@ function squaredSpine(
    * at the width the regular's has that was a slit: a squared Black s runs
    * its two counters out sideways instead.
    */
-  const wide = bendWidth(frame, radius) + gain * 0.6;
+  /*
+   * And never so narrow that its counters are less than a stem across: at the
+   * Ribbon's regular, a pen heavy for its x-height and not yet heavy enough to
+   * be drawn lighter (see `spine`), the two counters were notches and the s
+   * read as a stack of blocks beside an o half as wide again.
+   */
+  const wide = Math.max(bendWidth(frame, radius) + gain * 0.6, frame.half * SQUARED_S_WIDE);
   const middle = left + wide;
   const upper = at(middle, foot + radius * 3);
   const lower = at(middle, foot + radius);

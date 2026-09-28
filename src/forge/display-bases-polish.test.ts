@@ -290,3 +290,29 @@ describe("a fat face's accents", () => {
     expect((acute.yMax - acute.yMin) / (acute.xMax - acute.xMin)).toBeGreaterThan(0.55);
   });
 });
+
+describe("a squared s at a heavy regular", () => {
+  it("runs the Ribbon's s counters out sideways rather than closing them", () => {
+    /*
+     * Three level strokes of the Ribbon's pen all but fill its x-height, and
+     * the s -- at the width of a bend, not of its o -- came out as a stack of
+     * blocks with two notches for counters.
+     */
+    for (const weight of [150, 200]) {
+      const style = at("Ribbon", weight);
+      for (const name of ["s", "S"]) {
+        const contours = ink(name, style);
+        const runs = down(contours, middleOf(contours));
+        expect(runs.length, `${name} at ${weight}`).toBe(3);
+        // And each counter run out sideways a stem and more: the s as wide
+        // as its o near enough, not a stack of blocks half as wide again.
+        if (name === "S") continue;
+        const o = contoursBounds(ink("o", style));
+        const own = contoursBounds(contours);
+        expect((own.xMax - own.xMin) / (o.xMax - o.xMin), `${name} at ${weight}`).toBeGreaterThan(
+          0.72,
+        );
+      }
+    }
+  });
+});
