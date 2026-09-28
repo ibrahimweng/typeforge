@@ -199,10 +199,10 @@ function eyed(
   const f = frame(style);
   // A text serif's: on a sans drawing this e, past a Black was left as it was.
   const heavy = textSerif(f) ? heaviness(f) : Math.min(1, heaviness(f));
-  const more =
-    heavy <= 1
-      ? E_TAIL * Math.min(1, Math.max(0, 1 - (heavy - 0.44) / 0.56))
-      : -E_SHORT * Math.min(1, (heavy - 1) / 0.5);
+  // Lora's reach is a text serif's: another face choosing this e keeps the
+  // construction's tail to a Black.
+  const reaches = textSerif(f) ? E_TAIL * Math.min(1, Math.max(0, 1 - (heavy - 0.44) / 0.56)) : 0;
+  const more = heavy <= 1 ? reaches : -E_SHORT * Math.min(1, (heavy - 1) / 0.5);
   /*
    * On the last piece that turns: a bend ends on pieces of no length, kept so
    * every weight has the same points, and those are moved to the new end.
@@ -221,14 +221,12 @@ function eyed(
     const by = Math.max((more * Math.PI) / 180, -span * 0.8);
     // Carried on in the first of the pieces of no length, or cut back on the
     // piece itself: either way the same points at every weight.
-    let end = lastTurn.endAngle + way * by;
+    const end = lastTurn.endAngle + way * by;
     if (more > 0 && turns + 1 < segments.length) {
       segments[turns + 1] = { ...lastTurn, startAngle: lastTurn.endAngle, endAngle: end };
       turns++;
-    } else if (more < 0) {
-      segments[turns] = { ...lastTurn, endAngle: end };
     } else {
-      end = lastTurn.endAngle;
+      segments[turns] = { ...lastTurn, endAngle: end };
     }
     for (let k = turns + 1; k < segments.length; k++) {
       segments[k] = { ...lastTurn, startAngle: end, endAngle: end };

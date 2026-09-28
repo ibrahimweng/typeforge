@@ -10,7 +10,8 @@ import { contoursBounds, flattenContour } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import { drawLetter } from "./build";
 import { formOf, startFrom } from "./document";
-import { SERIF, type Style } from "./style";
+import { humanistE } from "./letters/humanist";
+import { BASES, SERIF, type Style } from "./style";
 
 const forge = startFrom(SERIF);
 const at = (weight: number): Style => ({ ...SERIF, pen: { ...SERIF.pen, weight } });
@@ -224,6 +225,18 @@ describe("the Serif's e", () => {
       // its end was sliced off against it.
       expect(barFoot - tail, `e at ${weight}`).toBeGreaterThan(weight * 0.08);
     }
+  });
+
+  it("leaves Lora's longer tail to the Serif: another face choosing this e keeps its own", () => {
+    const sans = BASES.find((base) => base.name === "Sans")!;
+    const belt = humanistE({ ...sans, pen: { ...sans.pen, weight: 87 } }).strokes[1];
+    const turning = belt.spine.segments.filter(
+      (one) => one.kind === "arc" && Math.abs(one.endAngle - one.startAngle) > 1e-6,
+    );
+    const last = turning[turning.length - 1];
+    // Where the Sans's humanist e ended its tail before Lora's reach was
+    // added to it: it had been carried five degrees further round too.
+    expect(last.kind === "arc" && last.endAngle).toBeCloseTo(5.6173, 3);
   });
 
   it("cuts its bowl under the bar without folding, the pen tilted either way", () => {
