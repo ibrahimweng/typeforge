@@ -137,6 +137,8 @@ function* walk(forge: Forge): Generator<void, Trouble[], void> {
   const em = forge.style.metrics.unitsPerEm;
   const closing: Array<{ letter: string; room: number }> = [];
   const overflowing: string[] = [];
+  let over = false;
+  let under = false;
   const touching: string[] = [];
   const inPieces: string[] = [];
   const erased: string[] = [];
@@ -208,7 +210,11 @@ function* walk(forge: Forge): Generator<void, Trouble[], void> {
      * fastest way to teach somebody to stop reading the warnings.
      */
     const roof = builtFrom(letter) ? capped : ceiling;
-    if (bounds.yMax > roof || bounds.yMin < floor) overflowing.push(letter);
+    const high = bounds.yMax > roof;
+    const low = bounds.yMin < floor;
+    if (high || low) overflowing.push(letter);
+    over ||= high;
+    under ||= low;
     if (bounds.xMin < em * 0.005) touching.push(letter);
   }
 
@@ -252,7 +258,7 @@ function* walk(forge: Forge): Generator<void, Trouble[], void> {
     found.push({
       what: "Reaching past the line",
       letters: overflowing,
-      fix: "A shorter ascender or descender, or less weight.",
+      fix: roomFor(over, under),
     });
   }
   if (touching.length > 0) {
@@ -263,6 +269,22 @@ function* walk(forge: Forge): Generator<void, Trouble[], void> {
     });
   }
   return found;
+}
+
+/**
+ * What makes room for a letter that reaches past the line: the line moved out
+ * of its way, named for the side it crosses.
+ *
+ * Not the weight. The slack above allows the pen its own width, so a lighter
+ * pen takes away as much room as it gives back; and the letters that do reach
+ * past -- a parenthesis, an ogonek, a cedilla -- go the same distance whatever
+ * the weight. The advice used to end "or less weight", and said it at the
+ * lightest weight there is.
+ */
+export function roomFor(over: boolean, under: boolean): string {
+  if (over && under) return "A taller ascender and a deeper descender give them room.";
+  if (under) return "A deeper descender gives them room.";
+  return "A taller ascender gives them room.";
 }
 
 /**

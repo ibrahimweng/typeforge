@@ -52,6 +52,25 @@ describe("what has gone wrong", () => {
     };
     const said = troubles(short).find((one) => one.what === "Reaching past the line");
     expect(said?.letters.length).toBeGreaterThan(10);
+    // The capitals stand over an ascender pulled down to them, so the way out
+    // is up; and never the weight, which was already at the minimum here.
+    expect(said?.fix).toBe("A taller ascender gives them room.");
+    expect(said?.fix).not.toMatch(/weight/i);
+  });
+
+  it("names the descender when it is the line being crossed", () => {
+    const sans = startFrom(SANS);
+    const shallow = {
+      ...sans,
+      style: {
+        ...sans.style,
+        pen: { ...sans.style.pen, weight: 30 },
+        metrics: { ...sans.style.metrics, descender: -40 },
+      },
+    };
+    const said = troubles(shallow).find((one) => one.what === "Reaching past the line");
+    expect(said?.letters).toContain("comma");
+    expect(said?.fix).toBe("A deeper descender gives them room.");
   });
 
   it("stays quiet on a heavy cut that still works", () => {
