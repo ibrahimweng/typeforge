@@ -1148,14 +1148,29 @@ export function humanistCapitalW(style: Style): Recipe {
  *
  * And a rising arm run on into a tail, as the hooked y's is, drawn light.
  */
+/**
+ * Whether a straight run rises to the right steeply enough to be drawn as a
+ * hairline: not so flat it reads as a bar, not so steep it reads as a stem.
+ */
+export function risesSteeply(from: Vec2, to: Vec2): boolean {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  return dx * dy > 0 && Math.abs(dy) > Math.abs(dx) * 0.4 && Math.abs(dx) > Math.abs(dy) * 0.15;
+}
+
+/** The weight a rising stroke is drawn at as a hairline: a pen's thin stroke, and never nothing. */
+export function hairlineWeight(pen: Stroke["pen"]): number {
+  const own = Math.min(Math.max(pen.own ?? pen.contrast, 0), 0.95);
+  return Math.max(pen.weight * (1 - own) * 1.25, 1);
+}
+
 export function splitVees(given: Stroke[]): Stroke[] {
   return given.flatMap((stroke) => {
     const segments = stroke.spine.segments;
-    const own = Math.min(Math.max(stroke.pen.own ?? stroke.pen.contrast, 0), 0.95);
-    const thinWeight = stroke.pen.weight * (1 - own) * 1.25;
+    const thinWeight = hairlineWeight(stroke.pen);
     if (thinWeight >= stroke.pen.weight) return [stroke];
     const thinPen = { ...stroke.pen, weight: thinWeight, contrast: 0, own: 0 };
-    const rises = (from: Vec2, to: Vec2) => (to.x - from.x) * (to.y - from.y) > 0;
+    const rises = risesSteeply;
     const [first, ...rest] = segments;
     // The y's arm and tail.
     if (
@@ -1189,8 +1204,11 @@ export function splitVees(given: Stroke[]): Stroke[] {
       const r = reachAlong(leftOf(d), penReach(pen));
       return at(r.x * side, r.y * side);
     };
+    // Two lines' crossing; where they run parallel, where the first starts.
     const meet = (p: Vec2, u: Vec2, q: Vec2, v: Vec2) => {
-      const t = cross(at(q.x - p.x, q.y - p.y), v) / cross(u, v);
+      const across = cross(u, v);
+      if (Math.abs(across) < 1e-9) return p;
+      const t = cross(at(q.x - p.x, q.y - p.y), v) / across;
       return at(p.x + u.x * t, p.y + u.y * t);
     };
     // Where the one run's outer edges met at each corner.
@@ -1241,7 +1259,8 @@ export function splitVees(given: Stroke[]): Stroke[] {
       const along = outerLine(other, outside(k));
       const point = meet(lines[i].from, lines[i].d, along.p, along.u);
       const shift = reachAlong(leftOf(outward), penReach(pens[i]));
-      const slide = -cross(shift, along.u) / cross(outward, along.u);
+      const facing = cross(outward, along.u);
+      const slide = Math.abs(facing) < 1e-9 ? 0 : -cross(shift, along.u) / facing;
       const angle = (Math.atan(slide / penReach(pens[i]).across) * 180) / Math.PI;
       return { point, terminal: { kind: "angled", angle } as Terminal };
     };

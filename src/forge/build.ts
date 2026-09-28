@@ -38,7 +38,7 @@ import {
 } from "./accents";
 import { reachesCast, type Cast } from "./cast";
 import { effectInk, reachesEffects, type Effects } from "./effects";
-import { splitVees } from "./letters/humanist";
+import { hairlineWeight, risesSteeply, splitVees } from "./letters/humanist";
 import { reaches, scaleOf, type Cuts } from "./cut";
 import { shapedInk } from "./layers";
 import { assemble, hasTiles, type Kit } from "./kit";
@@ -1048,13 +1048,8 @@ function risen(stroke: Stroke): Stroke {
           1e-3),
   );
   if (!straightOn) return stroke;
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const rising =
-    dx * dy > 0 && Math.abs(dy) > Math.abs(dx) * 0.4 && Math.abs(dx) > Math.abs(dy) * 0.15;
-  if (!rising) return stroke;
-  const own = Math.min(Math.max(stroke.pen.own ?? stroke.pen.contrast, 0), 0.95);
-  const thin = Math.max(stroke.pen.weight * (1 - own) * 1.25, 1);
+  if (!risesSteeply(from, to)) return stroke;
+  const thin = hairlineWeight(stroke.pen);
   if (thin >= stroke.pen.weight) return stroke;
   return { ...stroke, pen: { ...stroke.pen, weight: thin, contrast: 0 } };
 }
