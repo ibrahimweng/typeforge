@@ -779,6 +779,15 @@ function fitted(
     const advance = figureInk(style) + spacingOf(style) * FIGURE_SIDES * 2;
     return { shift: (advance - box.xMax - box.xMin) / 2, advance };
   }
+  // Opened towards the Thin by the face's own measure (`metrics.lightHeld`),
+  // twice that for a figure, as Geist Thin is set.
+  const light = style.metrics.lightHeld;
+  const opened =
+    light?.open && light.from > 30
+      ? light.open *
+        Math.min(1, Math.max(0, (light.from - style.pen.weight) / (light.from - 30))) *
+        (figure ? 2 : 1)
+      : 0;
   // The sides the eye sets, where the face lists them: see `metrics.sides`.
   const set = style.metrics.sides?.[name] ?? style.metrics.sides?.[decidedBy(name)];
   if (set) {
@@ -790,8 +799,8 @@ function fitted(
      */
     const plain = style.metrics.sidebearing;
     const unit = plain > 0 ? plain * Math.sqrt(spacingOf(style) / plain) : spacingOf(style);
-    const shift = unit * set[0] - box.xMin;
-    return { shift, advance: box.xMax + shift + unit * set[1] };
+    const shift = unit * set[0] + opened - box.xMin;
+    return { shift, advance: box.xMax + shift + unit * set[1] + opened };
   }
   const top = figure || isCapitalLike(name) ? style.metrics.capHeight : style.metrics.xHeight;
   /*
@@ -854,8 +863,8 @@ function fitted(
   // neighbour would be a kerning pair, not a spacing.
   left = Math.min(left, spacing * (leftJumps ? FIT_ARM : 0.75));
   right = Math.min(right, spacing * (rightJumps ? FIT_ARM : 0.75));
-  const shift = spacing - left - inkLeft;
-  return { shift, advance: inkRight + shift + spacing - right };
+  const shift = spacing - left - inkLeft + opened;
+  return { shift, advance: inkRight + shift + spacing - right + opened };
 }
 
 /**

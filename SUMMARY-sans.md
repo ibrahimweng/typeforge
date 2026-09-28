@@ -144,6 +144,12 @@ side. The Sans asks for both through a new, optional `metrics.accents`, which
 `gapFor` and `build.ts` read. The marks that hang below, such as the cedilla
 and ogonek, keep the shared gap. Faces that do not set it are unchanged.
 
+**Spacing at the Light (shared file, Sans only).** Geist Thin sets its
+letters about 5 units further off either side than its Regular, and its
+figures 10. The Sans kept the Regular's spacing all the way down. It now
+opens by `metrics.lightHeld.open` as it thins, applied where `build.ts` fits
+a letter's sides. Only the Sans sets `lightHeld`, so no other face changes.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular

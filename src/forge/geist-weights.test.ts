@@ -616,6 +616,25 @@ describe("the dollar", () => {
   });
 });
 
+describe("the Sans's spacing at its Light", () => {
+  it("opens as Geist Thin's does", () => {
+    // Geist Thin sets its letters about 5 units further off either side than
+    // its Regular, and its figures 10: n 85, H 96, the two 70 and the eight
+    // 50. The Sans kept the Regular's spacing all the way down.
+    for (const [name, side] of [
+      ["n", 85],
+      ["H", 96],
+      ["two", 70],
+      ["eight", 50],
+    ] as const) {
+      const drawn = draw(name, 30);
+      const ink = contoursBounds(drawn.contours);
+      expect(Math.abs(ink.xMin - side), `${name} left`).toBeLessThan(4);
+      expect(Math.abs(drawn.advanceWidth - ink.xMax - side), `${name} right`).toBeLessThan(4);
+    }
+  });
+});
+
 describe("the s's width", () => {
   it("spreads as Geist's does from the Regular to the Black", () => {
     // Geist's ink widths at its Regular and Black. Pen 130 is halfway between

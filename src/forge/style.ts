@@ -121,7 +121,7 @@ export interface Metrics {
    * the bowls (their insides grow taller) and narrows the arches (the counter
    * is kept), which is how every other face here thins.
    */
-  lightHeld?: { from: number; grow: number };
+  lightHeld?: { from: number; grow: number; open?: number };
   /**
    * The word space as shares of the x-height, at the face's own pen and at
    * its Black (see `blackness`), held past it. Left out, it follows the arch.
@@ -676,8 +676,9 @@ export const SANS: Style = {
     heavyCounter: 1.3,
     heavyContrast: 0.42,
     capitalContrast: 0.61,
-    // Geist Thin's o and n are both a little wider down the stroke than the Regular's.
-    lightHeld: { from: 87, grow: 0.085 },
+    // Geist Thin's o and n are both a little wider down the stroke than the
+    // Regular's, and set 5 units further apart on either side (its figures 10).
+    lightHeld: { from: 87, grow: 0.085, open: 5 },
     // Geist's word space: 250 at the Thin and the Regular, 221 at the Black.
     wordSpace: [250 / 530, 221 / 530],
     // Geist stands its accents 55 over a lowercase letter and 66 over a
