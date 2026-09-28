@@ -253,6 +253,27 @@ describe("weight", () => {
     expect((size(outside) - size(inside)) / 2).toBeLessThan(20);
   });
 
+  it("keeps the side bearings of a letter whose feet run out on the mitre", () => {
+    // A v: two diagonals cut off level at the top, meeting at a flat foot.
+    const v = polygon([
+      [50, 500],
+      [150, 500],
+      [300, 100],
+      [450, 500],
+      [550, 500],
+      [350, 0],
+      [250, 0],
+    ]);
+    const { typeface, glyph } = letter([v], 600);
+    const heavy = at(typeface, glyph, { weight: 60 });
+    const box = contoursBounds(heavy);
+    const advance = resolveAdvanceWidth(glyph, typeface);
+    // Fifty either side, as drawn: the tips of the arms went out by more than
+    // the weight, and the advance grew by what they took.
+    expect(box.xMin).toBeCloseTo(50, 0);
+    expect(advance - box.xMax).toBeCloseTo(50, 0);
+  });
+
   it("widens the letter by the ink it adds and keeps its side bearings", () => {
     const { typeface, glyph } = letter(
       [

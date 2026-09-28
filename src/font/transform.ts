@@ -212,19 +212,29 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
       roles: outer,
       unitsPerEm: typeface.unitsPerEm,
     };
+    const unweighted = contoursBounds([...contours, ...slabs]);
     contours = contours.map((contour, index) => applyWeight(contour, params.weight, index, around));
+    slabs = weighSlabs(slabs, slabbedLetter, params.weight, typeface.unitsPerEm, contours);
     /*
-     * And the letter moved over by the weight, so it keeps its sidebearings.
+     * And the letter moved over by what the weight added on its left, so it
+     * keeps its side bearings.
      *
      * Adding weight grows a letter outwards on both sides, into the space
      * between it and its neighbours. Left there, every side bearing lost the
      * weight: at the heavy end of Geist the H ran into the a and the f into the
      * o, and a paragraph set in it read as letters pressed together rather
-     * than as a bolder face. The advance grows by twice the weight to match --
-     * see `resolveAdvanceWidth` -- which is how a bold cut is spaced.
+     * than as a bolder face. The advance grows by what was added on both sides
+     * to match -- see `resolveAdvanceWidth` -- which is how a bold cut is
+     * spaced.
+     *
+     * Measured, not taken to be the weight. A stem grows by the weight, but
+     * the level-cut foot of a diagonal runs out on its mitre by more: the
+     * sample font's k at the heaviest reached a tenth of an em past its
+     * advance into the next letter, and x and v into both of theirs.
      */
-    const shift = params.weight;
-    slabs = weighSlabs(slabs, slabbedLetter, params.weight, typeface.unitsPerEm, contours);
+    const growth = sideGrowth(unweighted, contoursBounds([...contours, ...slabs]), params.weight);
+    growths.set(glyph, { key: growthKey(glyph, typeface, params), ...growth });
+    const shift = growth.left;
     contours = contours.map((contour) =>
       mapContour(contour, (point) => ({ x: point.x + shift, y: point.y })),
     );
@@ -333,7 +343,8 @@ export function resolveAdvanceWidth(glyph: Glyph, typeface: Typeface): number {
   const params = effectiveParams(glyph, typeface);
   return Math.max(
     0,
-    (glyph.advanceWidth + params.weight * 2 + slabRoom(glyph, typeface, params)) * params.width +
+    (glyph.advanceWidth + weightRoom(glyph, typeface, params) + slabRoom(glyph, typeface, params)) *
+      params.width +
       params.tracking * 2 +
       widthGive(typeface, params) * 2,
   );
@@ -341,6 +352,51 @@ export function resolveAdvanceWidth(glyph: Glyph, typeface: Typeface): number {
 
 /** The share of the white across a condensed letter that putting its strokes back leaves. */
 const CONDENSED_WHITE = 0.7;
+
+/**
+ * How far the weight moved a letter's ink out on the left and on the right:
+ * the weight itself for a letter with nothing in it, as the space between
+ * words grows with the face.
+ */
+function sideGrowth(
+  before: ReturnType<typeof contoursBounds>,
+  after: ReturnType<typeof contoursBounds>,
+  weight: number,
+): { left: number; right: number } {
+  const finite = [before.xMin, before.xMax, after.xMin, after.xMax].every(Number.isFinite);
+  if (!finite || before.xMax <= before.xMin) return { left: weight, right: weight };
+  return { left: before.xMin - after.xMin, right: after.xMax - before.xMax };
+}
+
+/**
+ * What the weight added beside each letter, kept for setting the line, which
+ * asks for every advance far more often than the outlines change.
+ */
+const growths = new WeakMap<Glyph, { key: string; left: number; right: number }>();
+
+function growthKey(glyph: Glyph, typeface: Typeface, params: GlyphParams): string {
+  const contours = resolveComponents(glyph, typeface);
+  return [
+    JSON.stringify(params),
+    typeface.unitsPerEm,
+    contours.reduce(
+      (sum, contour) =>
+        contour.nodes.reduce((total, node) => total + node.point.x * 3 + node.point.y, sum),
+      contours.length,
+    ),
+  ].join("|");
+}
+
+function weightRoom(glyph: Glyph, typeface: Typeface, params: GlyphParams): number {
+  if (params.weight === 0) return 0;
+  const key = growthKey(glyph, typeface, params);
+  let known = growths.get(glyph);
+  if (known?.key !== key) {
+    resolveGlyphContours(glyph, typeface);
+    known = growths.get(glyph);
+  }
+  return known?.key === key ? known.left + known.right : params.weight * 2;
+}
 
 /**
  * Slabs laid across a letter's stroke ends, and how far they reach past its
