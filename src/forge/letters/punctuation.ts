@@ -1202,7 +1202,15 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
    * weight as the ring around it, which is what keeps the mark even in colour.
    */
   at: (style) => {
-    const f = frame(style);
+    /*
+     * And drawn with a lighter pen where its own would grow the ring past
+     * about the height of the capitals' bowls: grown round a small a whose
+     * counter has to stay open, a Black's ring came out half as tall again as
+     * the O beside it, hanging a stem below the line, and on a condensed
+     * face the a inside it ran into the ring. A heavy face's at is lighter
+     * than its letters, as Geist Black's is.
+     */
+    const f = heldAt(frame(style));
     /*
      * The inner bowl is sized first and the ring is grown to hold it.
      *
@@ -1211,13 +1219,18 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
      * dimple. The bowl is the part that has to stay open, so it is the part
      * that sets the size, and the mark gets larger rather than filling in.
      */
-    const inner = Math.max(f.capBowlH * 0.38, f.half * 2.35);
-    // A text face's is larger, from below the line to the cap height, as Lora's is.
-    const outer = Math.max(
-      f.capBowlH * (bookish(f) ? 1.08 : 0.94),
-      inner + f.style.pen.weight * 1.55,
-    );
-    const centre = at(f.edge + outer, f.cap * (bookish(f) ? 0.4 : 0.46));
+    const { inner, outer } = atSizes(f);
+    /*
+     * And the ring never narrower than it has to be to clear the a inside it,
+     * which is round whatever the face's bowls are: bent to a condensed face's
+     * width, the Technical's and the Flared's ring ran into the a's stem.
+     */
+    const wide = f.style.parts.script.on
+      ? outer
+      : Math.max(bendWidth(f, outer), inner + f.style.pen.weight * AT_ROOM);
+    // Moved over by as much as it was widened, so it starts where it did.
+    const widened = f.style.parts.script.on ? 0 : wide - bendWidth(f, outer);
+    const centre = at(f.edge + outer + widened, f.cap * (bookish(f) ? 0.4 : 0.46));
     /*
      * Round on a joined face, whatever its bowls are. Its `o` is a narrow oval,
      * and the ring bent to that width stood as a tall hoop round a little `a`
@@ -1231,7 +1244,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
       [
         ink(
           f,
-          round ? bend(f, centre, outer, -38, 252, outer) : bend(f, centre, outer, -38, 252),
+          bend(f, centre, outer, -38, 252, wide),
           shortEnd(f),
           shortEnd(f),
         ),
@@ -1395,3 +1408,41 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
   guillemotleft: (style) => chevrons(frame(style), -1),
   guillemotright: (style) => chevrons(frame(style), 1),
 };
+
+/** The at sign's inner bowl and ring, as radii: see `at`. */
+function atSizes(f: Frame): { inner: number; outer: number } {
+  const inner = Math.max(f.capBowlH * 0.38, f.half * 2.35);
+  // A text face's is larger, from below the line to the cap height, as Lora's is.
+  const outer = Math.max(
+    f.capBowlH * (bookish(f) ? 1.08 : 0.94),
+    inner + f.style.pen.weight * AT_ROOM,
+  );
+  return { inner, outer };
+}
+
+/** How far out from the inner bowl an at sign's ring runs, in pens. */
+const AT_ROOM = 1.55;
+
+/** How far past its own share an at sign's ring may grow for its pen: see `at`. */
+const AT_GROWTH = 1.18;
+
+/** The frame an at sign is drawn in: its own, or one with a lighter pen. */
+function heldAt(f: Frame): Frame {
+  const most = f.capBowlH * (bookish(f) ? 1.08 : 0.94) * AT_GROWTH;
+  if (atSizes(f).outer <= most || f.style.parts.script.on) return f;
+  const lighter = (weight: number): Frame =>
+    frame({ ...f.style, pen: { ...f.style.pen, weight } });
+  let low = 1;
+  let high = f.style.pen.weight;
+  for (let pass = 0; pass < 30; pass++) {
+    const mid = (low + high) / 2;
+    if (atSizes(lighter(mid)).outer <= most) low = mid;
+    else high = mid;
+  }
+  // And past there still heavier as the face is, only more slowly, so that
+  // the mark never comes out lighter at a Black than at the Bold before it.
+  return lighter(low + (f.style.pen.weight - low) * AT_PAST);
+}
+
+/** How much of the weight past where an at sign's ring stops growing it still takes. */
+const AT_PAST = 0.35;

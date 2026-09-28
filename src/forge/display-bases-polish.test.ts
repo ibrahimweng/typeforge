@@ -316,3 +316,37 @@ describe("a squared s at a heavy regular", () => {
     }
   });
 });
+
+describe("the at sign of a heavy display face", () => {
+  it("stays about the size of the O and keeps the a inside clear of the ring", () => {
+    /*
+     * Grown round a small a whose counter has to stay open, a Black's ring
+     * came out half as tall again as the O and hung a stem below the line,
+     * and on a condensed face the a ran into the ring on the right.
+     */
+    for (const face of ["Display", "Technical", "Flared"]) {
+      const style = at(face, 260);
+      const mark = ink("at", style);
+      const box = contoursBounds(mark);
+      const o = contoursBounds(ink("O", style));
+      expect((box.yMax - box.yMin) / (o.yMax - o.yMin), face).toBeLessThan(1.45);
+      // Across the middle of the a: ring, bowl, bowl and stem, ring.
+      const rows = [0.45, 0.5, 0.55].map((share) =>
+        across(mark, box.yMin + (box.yMax - box.yMin) * share),
+      );
+      expect(Math.max(...rows.map((row) => row.length)), face).toBeGreaterThanOrEqual(4);
+    }
+  });
+
+  it("grows heavier with the face, not lighter, where its pen is held", () => {
+    const style = base("Technical");
+    let last = 0;
+    for (const weight of [78, 118, 160, 200, 260]) {
+      const mark = ink("at", at("Technical", weight));
+      const ring = across(mark, contoursBounds(mark).yMin + 300)[0];
+      const drawn = ring[1] - ring[0];
+      expect(drawn, `${style.name} at ${weight}`).toBeGreaterThan(last);
+      last = drawn;
+    }
+  });
+});
