@@ -129,15 +129,29 @@ export function castInk(
   // where its link meets the bowl -- which would hold every speck to its size.
   // A small counter the letter does draw, the triangle under a Serif t's
   // flag, is forty times that and still counts.
+  //
+  // Nor an inline's groove, which is paper the cut took rather than a counter:
+  // counted, it held the floor so low that what the rim left of the groove's
+  // ends beside the terminals of a Serif s stayed as ragged pockets.
+  const grooves = groovesOf.get(ink) ?? [];
+  const grooved = (hole: Contour): boolean =>
+    grooves.length > 0 &&
+    intersect([reverseContour(hole)], grooves, "winding").reduce(
+      (total, one) => total + contourArea(one),
+      0,
+    ) >
+      -contourArea(hole) * 0.5;
   const smallest = Math.min(
     Infinity,
-    ...shape.map((contour) => -contourArea(contour)).filter((area) => area > stem * stem * 0.02),
+    ...shape
+      .filter((contour) => -contourArea(contour) > stem * stem * 0.02 && !grooved(contour))
+      .map((contour) => -contourArea(contour)),
   );
 
   const local: Contour[] = [];
   if (cast.spur.on) local.push(...spurTool(shape, cast.spur, stem, chamfered));
   if (cast.weld.on) {
-    local.push(...weldTool(strokes, cast.weld, stem, shape, breaks, groovesOf.get(ink)));
+    local.push(...weldTool(strokes, cast.weld, stem, shape, breaks, grooves));
   }
   if (local.length > 0) {
     /*

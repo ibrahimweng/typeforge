@@ -859,3 +859,24 @@ describe("an unsteady hand's own lean", () => {
     expect(y.filter((contour) => crossesItself(contour)).length).toBe(0);
   });
 });
+
+describe("a rim after the inline", () => {
+  it("leaves no pocket of the groove by a terminal", () => {
+    // Counted as the letter's smallest counter, the groove held the pinhole
+    // floor so low that what the rim left of its ends by the terminals of an
+    // s stayed as ragged pockets.
+    for (const [face, weight, letter] of [
+      ["Serif", 87, "s"],
+      ["Sans", 260, "s"],
+      ["Serif", 260, "e"],
+    ] as const) {
+      const forge = forgeOf(face, weight, { cuts: { inline: {} }, cast: { outline: {} } });
+      const holes = unite(drawn(letter, forge), "winding")
+        .map((contour) => -contourArea(contour))
+        .filter((hole) => hole > 0);
+      for (const hole of holes) {
+        expect(hole, `${face} ${weight} ${letter}`).toBeGreaterThan(weight * weight * 0.08);
+      }
+    }
+  });
+});

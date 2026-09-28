@@ -101,7 +101,9 @@ Each leftover from the second round was fixed or checked and documented. Before 
   - It also tests a few degrees either side of the face's slant. A running hand leans each letter by its own amount after the effects, and the Formal Script y under the inline and fillets crossed at its own lean.
   - Crumbs under a thousandth of the letter's ink are dropped after untangling. The smallest counter a letter draws on purpose, under a Serif t's flag, is eight times that.
 
-  The one mark left in the review grids, on the Formal Script s with fillets, is the coarse detector's: the exact test finds no crossing.
+  In the final grids, two cases are still flagged:
+  - the Formal Script s with fillets, which is the coarse detector's false alarm (the exact test finds no crossing);
+  - three folds with the shadow cast before the breaks (see the known leftovers).
 - **Serif g with fillets** (`src/forge/cast.ts`). A fillet grown into a corner too tight for it crossed itself, and its reversed lobe cut a slit into the link. A folded fillet is now left out, and that corner stays as drawn.
 - **Script exits** (`src/forge/cut.ts`). A script's exit or entry that leaves the end of its stroke and turns back on it now stays on up to about half the x-height. The Roundhand and Formal Script n, m and h no longer lose their exits as dashes.
 - **Slots at weight 260** (`src/forge/cut.ts`). A band passing just by the crotch under a Black k's leg left the crotch's paper standing into its edge as a small V. Paper that lies wholly in a thin strip along a slot, and is smaller than the strip is deep, is now filled back in. It is never filled where that would join two pieces the cut parted. Only the slots do this, because paper in a break's gap is the gap itself.
@@ -110,6 +112,7 @@ Each leftover from the second round was fixed or checked and documented. Before 
   - After slots, the corner a band leaves beside a join can be closer to the next piece than a fillet is long. On nearly every face the weld tied a stem back to the bar a slot had cut it from. A fillet that would join two of the letter's pieces is now left out, counted with the fillets already kept, so two that only touch in a gap are caught too.
   - After the inline, the corner at a join is the groove's. Fillets stood in the groove as stubs, or tied the island to the outer wall. The shape of a hole cannot tell a groove from a counter (a Formal Script e's eye is as thin as a groove), so the cut now hands on where it cut the groove, and the weld keeps out of it.
   - Fillets on letters without a cut are unchanged.
+- **Rim after the inline** (`src/forge/cast.ts`). Found in the final review. The groove counted as the letter's smallest counter, which held the pinhole floor so low that what the rim left of the groove's ends by a terminal stayed as ragged pockets. This showed on the s, e and g of several faces. The groove no longer counts as a counter.
 
 ## Tests
 
@@ -117,10 +120,11 @@ The new tests are in `src/forge/cuts-cast-polish.test.ts`, `src/forge/cut.test.t
 - The inline used to be kept out of opened fonts. Those tests now use the breaks, which are still skeleton-only.
 - A bowl's groove used to stay separate from the stem's. The test now checks instead that no wall pinches.
 
-`npx tsc -b --noEmit`, `npx biome check .` and `npx vitest run src/forge src/font` all pass, with 1771 tests.
+`npx tsc -b --noEmit`, `npx biome check .` and `npx vitest run src/forge src/font` all pass, with 1772 tests.
 
 ## Known leftovers
 
 - **Formal Script E foot.** The thin sliver under the foot is in the plain drawing, with or without pressure. It is not made by a cut or a cast.
 - **Roundhand u exit.** The u's exit leaves the last stem about a third of the way up, not at its foot. By its geometry it is the same as the middle arm of an E, which has to come off, so it still comes off as a short dash.
+- **Folds with the shadow first.** With the shadow cast before the breaks, the heavy Sans and Serif d (weight 260) and the Wavy g each fold the outline back over itself along a near-tangent run. The fold has no width and does not show, but it is a fault in the file. Union, grid snapping and a wider knife all fail to remove it. A coarser grid does, but only by moving thousands of units of ink, so it is not used.
 - **Shadow cast first.** With the cast first, a shadow followed by breaks shows the breaks as windows in the shadow. This is what "Cast, then cut" means: the block and its shadow are sliced as one.
