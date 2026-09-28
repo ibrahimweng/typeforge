@@ -461,3 +461,37 @@ describe("a join into a bowl", () => {
     expect(filled).toEqual([]);
   }, 300_000);
 });
+
+describe("the s at a heavy weight", () => {
+  /*
+   * A joined face's s was always the text s, which grows past its lines
+   * rather than close up when the pen leaves it no room. At 260 on an
+   * x-height of 332 that room is 72 units, and the s stood a third of an
+   * x-height over the line and hung under it: a black `§` in the word. It is
+   * the Black s now, as on every other face, which lays its spine flatter
+   * instead and keeps to the lines the `o` beside it keeps to -- within a
+   * tenth of an x-height at 260, where even a flat spine has no room left and
+   * it grows a little, as the Black s does on every face.
+   */
+  it("keeps to the lines the o keeps to", () => {
+    const out: string[] = [];
+    for (const name of JOINED) {
+      const own = base(name);
+      for (const weight of [200, 260]) {
+        const style = at(own, weight);
+        const x = style.metrics.xHeight;
+        const past = (letter: string) => {
+          const drawn = joiningWithout({ entry: false, exit: false }, () =>
+            drawLetter(letter, style, own.forms?.[letter]),
+          )!;
+          const box = contoursBounds(drawn.contours);
+          return Math.max(box.yMax - x, -box.yMin);
+        };
+        const s = past("s");
+        const o = past("o");
+        if (s > o + x * 0.12) out.push(`${name} @${weight}: s ${s.toFixed(0)}, o ${o.toFixed(0)}`);
+      }
+    }
+    expect(out).toEqual([]);
+  });
+});
