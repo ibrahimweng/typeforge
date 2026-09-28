@@ -778,12 +778,20 @@ export function humanistJ(style: Style): Recipe {
   const radius = Math.max(f.arch * 0.5, f.least, f.half * 1.5);
   const stem = f.edge + radius * 1.35;
   const turnAt = f.dip(f.desc) + radius;
+  /*
+   * Round as far as keeps the tail's end well under the line, where a drop
+   * hangs: with the turn widened for a heavy pen held at 30, the end rose
+   * over it, the drop was refused and the serif laid across the curve came
+   * out as two slivers.
+   */
+  const under = (f.desc * J_UNDER - turnAt) / radius;
+  const end = under < -0.5 ? -180 + (Math.asin(Math.min(1, -under)) * 180) / Math.PI : -150;
   return finish(f, [
     ink(
       f,
       chain(
         straight(at(stem, f.x), at(stem, turnAt)),
-        turn(at(stem - radius, turnAt), radius, 0, -150),
+        turn(at(stem - radius, turnAt), radius, 0, end),
       ),
       f.end,
       f.end,
@@ -791,6 +799,9 @@ export function humanistJ(style: Style): Recipe {
     tittle(f, stem),
   ]);
 }
+
+/** How far under the line the j's tail ends at least, against the descender. */
+const J_UNDER = 0.45;
 
 /**
  * The five with a heavy flag and a hairline stem, as a broad nib held level

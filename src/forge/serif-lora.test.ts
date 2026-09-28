@@ -426,6 +426,24 @@ describe("the Serif's diagonals", () => {
   });
 });
 
+describe("the Serif's j", () => {
+  it("hangs its tail's drop at every weight, the pen held either way", () => {
+    for (const angle of [-45, 30, 45]) {
+      const nodes = (weight: number) =>
+        draw("j", weight, { ...SERIF, pen: { ...SERIF.pen, weight, angle } }).contours.reduce(
+          (all, contour) => all + contour.nodes.length,
+          0,
+        );
+      // Past a Black the tail's end rose over the line a drop hangs under,
+      // and the serif laid across the curve instead came out as two slivers.
+      const regular = nodes(87);
+      for (const weight of [200, 230, 260]) {
+        expect(nodes(weight), `j at ${weight}, pen ${angle}`).toBe(regular);
+      }
+    }
+  });
+});
+
 describe("the Serif's at sign", () => {
   it("stops its ring short of the tail with the pen held steeply", () => {
     for (const weight of [230, 260]) {
