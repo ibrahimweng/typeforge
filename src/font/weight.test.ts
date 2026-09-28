@@ -297,6 +297,33 @@ describe("weight", () => {
     expect(heavy.yMin).toBeCloseTo(-150, 0);
   });
 
+  it("lays a small inside corner flat against the stem rather than folding it", () => {
+    // The corner where the tail of Geist's j meets its stem: putting back the
+    // stroke the condensing took moved the stem past the little chamfer, and
+    // the corner folded into a notch in the stem.
+    const { typeface, glyph } = letter(
+      [
+        polygon([
+          [0, -150],
+          [0, -80],
+          [60, -80],
+          [90, -70],
+          [100, -40],
+          [100, 500],
+          [180, 500],
+          [180, -150],
+        ]),
+      ],
+      260,
+    );
+    glyph.unicodes = [0x237];
+    const [narrow] = at(typeface, glyph, { weight: 60, width: 0.7 });
+    // From the top of the tail round the corner and up the stem, the outline
+    // never turns back across.
+    const xs = narrow.nodes.slice(2, 6).map((node) => node.point.x);
+    for (let k = 1; k < xs.length; k++) expect(xs[k]).toBeGreaterThanOrEqual(xs[k - 1] - 0.5);
+  });
+
   it("keeps those side bearings when the heavy letter is also condensed", () => {
     // Putting back the strokes the condensing took runs the arms out on the
     // mitre again, and the advance grew by the give alone: Geist's v and w

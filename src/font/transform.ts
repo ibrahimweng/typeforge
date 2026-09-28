@@ -359,8 +359,13 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
        * nothing, and the stems come back whole.
        */
       const scaled = contoursBounds(contours);
+      const narrow = contours;
       contours = contours.map((contour, index) =>
-        applyWeight(contour, give, index, around, SIDEWAYS, CONDENSED_WHITE),
+        unfold(
+          narrow[index],
+          applyWeight(contour, give, index, around, SIDEWAYS, CONDENSED_WHITE),
+          params.slant,
+        ),
       );
       /*
        * Moved over by what the strokes put back added on the left, and the
@@ -409,6 +414,83 @@ export function resolveAdvanceWidth(glyph: Glyph, typeface: Typeface): number {
       params.tracking * 2 +
       widthRoom(glyph, typeface, params),
   );
+}
+
+/**
+ * A small inside corner the strokes put back folded, laid back along them.
+ *
+ * Putting the strokes back moves each point by how much it faces sideways,
+ * so round an inside corner the stem moves the whole give and a little
+ * fillet joining it to a bar only part of it, or none at its level end.
+ * Where the fillet is narrower than the give, the stem went past it: the
+ * corner where the tail of Geist's j meets its stem, and of its y, folded
+ * into a notch at the heaviest weight condensed. Wherever a piece of
+ * outline now runs the other way across from how it was drawn, the end
+ * that moved less is taken the rest of the way, with its handles, until
+ * none does: the fillet lies flat against the stem, as the corner of a
+ * condensed heavy cut is drawn.
+ */
+function unfold(drawn: Contour, moved: Contour, slant: number): Contour {
+  const count = moved.nodes.length;
+  if (drawn.nodes.length !== count || count < 3) return moved;
+  const nodes = moved.nodes.map((node) => ({ ...node }));
+  const shift = (at: number) => nodes[at].point.x - drawn.nodes[at].point.x;
+  const ring = (at: number) => (at + count) % count;
+  // Drawn as one point: a corner the weight swallowed, or where the tail of
+  // a y meets its diagonal.
+  const coincident = (a: number, b: number) =>
+    Math.abs(drawn.nodes[a].point.x - drawn.nodes[b].point.x) < 0.5 &&
+    Math.abs(drawn.nodes[a].point.y - drawn.nodes[b].point.y) < 0.5;
+  const clustered = (at: number) => coincident(at, ring(at - 1)) || coincident(at, ring(at + 1));
+  const take = (at: number, by: number) => {
+    const along = (point: Vec2 | null): Vec2 | null =>
+      point ? { x: point.x + by, y: point.y } : null;
+    const node = nodes[at];
+    nodes[at] = {
+      ...node,
+      point: along(node.point) as Vec2,
+      handleIn: along(node.handleIn),
+      handleOut: along(node.handleOut),
+    };
+  };
+  for (let pass = 0; pass < count; pass++) {
+    let changed = false;
+    for (let index = 0; index < count; index++) {
+      const next = ring(index + 1);
+      const was = drawn.nodes[next].point.x - drawn.nodes[index].point.x;
+      const now = nodes[next].point.x - nodes[index].point.x;
+      if (Math.abs(now) < 0.5) continue;
+      const [here, there] = [shift(index), shift(next)];
+      const lagging = Math.abs(here) < Math.abs(there) ? index : next;
+      const reversed = Math.abs(was) >= 0.5 && Math.sign(was) !== Math.sign(now);
+      // Pulled apart, or an upright edge leaned over by a swallowed corner
+      // at one end that did not move with it.
+      const parted = coincident(index, next) || (Math.abs(was) < 0.5 && clustered(lagging));
+      if (!reversed && !parted) continue;
+      // Back to running the way it was drawn, by a unit: laid exactly in
+      // line, a rounded corner's handles touched the outline beside them.
+      const target = reversed ? Math.sign(was) * Math.min(Math.abs(was), 1) : 0;
+      const gap = now - target;
+      if (here * there < 0) {
+        // Moved towards each other, past: both go to the middle.
+        take(index, gap / 2);
+        take(next, -gap / 2);
+      } else {
+        take(lagging, lagging === index ? gap : -gap);
+      }
+      changed = true;
+    }
+    if (!changed) break;
+  }
+  const result = { closed: moved.closed, nodes };
+  /*
+   * Not where it would cross itself, now or once the letter is slanted. On
+   * the crotch of Lora's x it laid three points of a curve on one upright
+   * line, which crosses nothing standing up and crossed itself leaning.
+   */
+  const crosses = (contour: Contour) =>
+    [0, slant, 15, -15].some((degrees) => contoursIntersect([applySlant(contour, degrees)]));
+  return crosses(result) && !crosses(moved) ? moved : result;
 }
 
 /** The share of the white across a condensed letter that putting its strokes back leaves. */
