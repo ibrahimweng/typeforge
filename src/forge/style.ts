@@ -97,8 +97,12 @@ export interface Metrics {
    * its B and R at 62 where their round sides would give back as much as a D.
    * Those letters are listed here, measured off Geist, and the rest are
    * fitted.
+   *
+   * They close at a heavy weight only half as fast as a fitted side does (see
+   * `fitted` in `build.ts`), unless marked "closes": Geist closes its bar,
+   * its stops and its t as fast as its n.
    */
-  sides?: Record<string, [number, number]>;
+  sides?: Record<string, [number, number] | [number, number, "closes"]>;
   /**
    * How much counter a heavy weight gives back for the stem it gains, unit
    * for unit, past the text weight (see `blackness`). Left out, a heavier pen keeps the
@@ -697,14 +701,14 @@ export const SANS: Style = {
       l: [1, 0.5],
       v: [0.28, 0.28],
       w: [0.28, 0.28],
-      t: [0.69, 0.46],
+      t: [0.69, 0.46, "closes"],
       x: [0.59, 0.59],
       z: [0.71, 0.71],
       A: [0.11, 0.11],
       B: [1, 0.63],
       C: [0.46, 0.4],
       G: [0.46, 0.53],
-      J: [0.69, 0.81],
+      J: [0.69, 0.81, "closes"],
       K: [1, 0.19],
       L: [1, 0.44],
       R: [1, 0.63],
@@ -736,10 +740,10 @@ export const SANS: Style = {
       eight: [0.5, 0.5],
       nine: [0.5, 0.63],
       question: [0.59, 0.59],
-      period: [0.59, 0.59],
-      comma: [0.59, 0.59],
-      colon: [1.15, 1.15],
-      semicolon: [1.15, 1.15],
+      period: [0.59, 0.59, "closes"],
+      comma: [0.59, 0.59, "closes"],
+      colon: [1.15, 1.15, "closes"],
+      semicolon: [1.15, 1.15, "closes"],
       quotesingle: [0.61, 0.61],
       quotedbl: [0.61, 0.61],
       // Geist's parentheses stand 45 off the side they open from and 15 off
@@ -771,7 +775,7 @@ export const SANS: Style = {
       exclam: [0.63, 0.63],
       // Geist's ampersand stands 40 off its left and 20 off its right.
       ampersand: [0.5, 0.25],
-      bar: [1.15, 1.15],
+      bar: [1.15, 1.15, "closes"],
       grave: [0.55, 0.55],
       acute: [0.55, 0.55],
       at: [0.61, 0.61],

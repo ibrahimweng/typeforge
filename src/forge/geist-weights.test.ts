@@ -618,6 +618,24 @@ describe("the tilde past the Black", () => {
   });
 });
 
+describe("the stops and the bar at the heavy weights", () => {
+  it("close their spacing as fast as Geist's do", () => {
+    // Geist UltraBlack (a stem of 172) stands its bar and colon 68 off a
+    // side and its full stop 34, closing them as fast as its n. Closed only
+    // half as fast, they stood 81 and 42 off.
+    for (const [name, side] of [
+      ["bar", 68],
+      ["colon", 68],
+      ["period", 34],
+    ] as const) {
+      const drawn = draw(name, 172);
+      const ink = contoursBounds(drawn.contours);
+      expect(Math.abs(ink.xMin - side), `${name} left`).toBeLessThan(6);
+      expect(Math.abs(drawn.advanceWidth - ink.xMax - side), `${name} right`).toBeLessThan(6);
+    }
+  });
+});
+
 describe("the dollar", () => {
   it("has Geist's long light bar, and Geist's sides", () => {
     // Geist's bar runs from 90 under the line to 800, 74 across at the

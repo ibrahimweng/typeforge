@@ -798,7 +798,10 @@ function fitted(
      * give back twenty.
      */
     const plain = style.metrics.sidebearing;
-    const unit = plain > 0 ? plain * Math.sqrt(spacingOf(style) / plain) : spacingOf(style);
+    const unit =
+      plain > 0 && set[2] !== "closes"
+        ? plain * Math.sqrt(spacingOf(style) / plain)
+        : spacingOf(style);
     const shift = unit * set[0] + opened - box.xMin;
     return { shift, advance: box.xMax + shift + unit * set[1] + opened };
   }
