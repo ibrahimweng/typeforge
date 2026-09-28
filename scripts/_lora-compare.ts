@@ -46,6 +46,8 @@ const GLYPH: Record<string, string> = {
   "!": "exclam",
   ".": "period",
   ",": "comma",
+  ":": "colon",
+  ";": "semicolon",
 };
 let maxX = 0;
 const emL = typeface.unitsPerEm;
