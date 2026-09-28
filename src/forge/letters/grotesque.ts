@@ -29,7 +29,7 @@
  */
 
 import type { Vec2 } from "@/font/types";
-import type { Style } from "../style";
+import { type Style, weightAtBlackness } from "../style";
 import { LETTERS } from "../letters";
 import { bowlPoint, spineEnd, spineStart } from "../shapes";
 import { penReach, reachAlong } from "../sweep";
@@ -46,6 +46,7 @@ import {
   finish,
   type Frame,
   frame,
+  OVAL_CURVE,
   heaviness,
   inherit,
   ink,
@@ -202,7 +203,19 @@ export function grotesqueA(style: Style): Recipe {
      * step onto the spur, where Geist Thin's spur curves straight out of the
      * crotch the bowl makes with the stem.
      */
-    ink(f, straight(at(stem, archCentre.y), at(stem, foot + spur * (1 - heavy))), BUTT, BUTT),
+    /*
+     * And at a heavy weight carried down to the line itself, not to where
+     * the pen's centre stands on it: cut there, the stem stopped a pen's
+     * depth above the line, and between the bowl's foot rising into it and
+     * the spur leaving it the outside of the letter had a sharp V cut up
+     * into it.
+     */
+    ink(
+      f,
+      straight(at(stem, archCentre.y), at(stem, foot + spur * (1 - heavy) - foot * t)),
+      BUTT,
+      BUTT,
+    ),
   ]);
 }
 
@@ -373,8 +386,26 @@ export function grotesqueCapitalG(style: Style): Recipe {
       BUTT,
     ),
     ink(f, straight(at(X(lerp(322, 344)), bar), at(upright, bar)), BUTT, BUTT),
-    ink(f, straight(at(upright, bar + f.upright), at(upright, 0)), BUTT, f.end),
+    /*
+     * On a slab face the upright stands on the line bare: a slab on its foot
+     * stepped out past the upright as the upright stepped out past the bar,
+     * and at a Black the bar, the upright and the foot read as a staircase of
+     * blocks beside the bowl -- a C with something stood next to it. A
+     * Rockwell G has its spur, and no foot on it.
+     */
+    ink(
+      f,
+      straight(at(upright, bar + f.upright), at(upright, 0)),
+      BUTT,
+      heavySlab(f) ? BUTT : f.end,
+    ),
   ]);
+}
+
+/** Whether this face's serifs are slabs as heavy as a stem's end, as an Egyptian's are. */
+function heavySlab(f: Frame): boolean {
+  const { slab } = f.style.parts;
+  return slab.on && slab.shape !== "wedge" && slab.thickness >= 0.4;
 }
 
 /**
@@ -995,7 +1026,24 @@ export function grotesqueSmallR(style: Style): Recipe {
     BUTT,
     f.end,
   );
-  return finish(f, [ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end), arm]);
+  /*
+   * And at a heavy weight the arm's top carried level back over its turn to
+   * where it leaves the stem: the turn's outside rises off the stem's corner,
+   * and past the Black the dip between the two -- a notch on top of the
+   * letter where Geist Black has one clean shoulder -- was plain. Nothing of
+   * it up to the Black, where that dip is Geist's own shoulder.
+   */
+  const lift = Math.min(1, Math.max(0, (heaviness(f) / 0.67 - 1) / 0.5));
+  const cover = inherit(arm, {
+    ...ink(
+      af,
+      straight(at(corner.x - 1 - (corner.x - from) * lift, top), at(corner.x, top)),
+      BUTT,
+      BUTT,
+    ),
+    pen: armPen,
+  });
+  return finish(f, [ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end), arm, cover]);
 }
 
 /**
@@ -1686,6 +1734,40 @@ export function grotesqueW(style: Style): Recipe {
   ]);
 }
 
+/** How much of the way in the quarters the spine leaves stop short past the Black: see `ess`. */
+const INNER_REACH = 0.4;
+
+/** How much narrower an Ultra's bowls are drawn, in half-pens: see `ess`. */
+const ESS_NARROW = 0.3;
+
+/** How much of the stem an s gains past the Black it keeps: see `stackedPen`. */
+const SMALL_ESS_GAIN = 0.3;
+
+/** The same for the S, which has a cap height of room to turn in. */
+const CAPITAL_ESS_GAIN = 0.5;
+
+/**
+ * The pen an s or an S is drawn with: the face's own up to a little past the
+ * Black, and past that only a share of what the stem gains.
+ *
+ * An S stacks three horizontals and two counters in its height and turns
+ * round each counter twice; every one of those turns has to be at least as
+ * round as the pen is wide, or its inside folds over (see `ess`). At an
+ * Ultra's pen that is more room than the letter has, and what came out was
+ * a flat bar of a spine between two slots with hooked ends. So past the
+ * Black the s and the S go on getting heavier, but more slowly than the
+ * stems, as a Black's S is drawn a little lighter than its O in any case.
+ */
+export function stackedPen(style: Style, gain: number): Style {
+  const from = weightAtBlackness(style, ESS_HELD_FROM);
+  const { weight } = style.pen;
+  if (!(weight > from)) return style;
+  return { ...style, pen: { ...style.pen, weight: from + (weight - from) * gain } };
+}
+
+/** The blackness past which the s and the S gain weight more slowly: see `stackedPen`. */
+const ESS_HELD_FROM = 0.87;
+
 /** How far over the pen a heavy s turns round its counters, in half-pens: see `ess`. */
 const SOFT_COUNTER = 0.5;
 
@@ -1729,7 +1811,14 @@ interface Ess {
  * weight. Past Geist Black the bowls widen with the pen, or two stacked
  * counters close from the sides.
  */
-function ess(f: Frame, e: Ess): Stroke {
+function ess(given: Frame, e: Ess): Stroke {
+  /*
+   * On a face whose bowls are circles, drawn as ellipses: an S's bowls are
+   * wider than they are tall, and a circle's quarter in a box like that is a
+   * quarter circle stood on a straight run -- a stadium, with a flat bar
+   * across the top and bottom of the letter and its turns all at its ends.
+   */
+  const f: Frame = given.curve > 0 ? given : { ...given, curve: OVAL_CURVE, square: 0 };
   const t = heaviness(f) / 0.67;
   const lerp = (pair: [number, number]) => pair[0] + (pair[1] - pair[0]) * Math.min(t, 1.5);
   const H = (y: number) => (y / e.geist) * e.height;
@@ -1737,25 +1826,46 @@ function ess(f: Frame, e: Ess): Stroke {
     Math.max(0, heaviness(f) - 0.67) * f.x * 0.2 * 0.3 +
     (e.blackWiden ?? 0) * e.unit * Math.min(1, t);
   const X = (x: number) => f.edge + (x - e.left) * e.unit;
-  /*
-   * How shallow a turn the pen will go round across the letter. A round pen
-   * needs its own half-width, which is `held`; past Geist Black the s is
-   * drawn with a pen much lighter across than along (`lighterAcross`), and
-   * what a turn lying on its side needs is that lighter measure. Held at the
-   * round pen's, an Ultra's s had no room between its lines for two bowls
-   * and a spine, and grew past both.
-   */
+  // How far past the Black: nought at it, one at an Ultra.
   const past = Math.min(1, Math.max(0, t - 1) / 0.6);
-  const lighter = (share: number) =>
-    f.least + (Math.min(f.least, f.upright * share) - f.least) * past;
   /*
-   * Two measures: the quarters the spine leaves are held rounder, since the
-   * counter lies inside their turn and a turn much tighter than the pen
-   * leaves the pen's own round standing into it; the crowns, whose inside
-   * is the flat of the pen, can turn tighter.
+   * And past the Black the quarters the spine leaves are drawn narrower than
+   * their bowls, reaching only part of the way in towards the middle, so the
+   * spine leaves each of them sooner and falls further across the letter.
+   * Left the whole width of the bowl, a pen already as round as a turn can
+   * go laid them one on top of the other, and the spine between them came
+   * out a flat bar: a thin level parallelogram across a Black S.
    */
-  const least = lighter(2.0);
-  const crownLeast = lighter(1.7);
+  const reachIn = 1 - INNER_REACH * past;
+  // And the bowls a little narrower, which steepens the spine the same way.
+  // The capital only: the s is already as narrow as its counters allow.
+  const narrower = e.height > f.x * 1.1 ? past * f.half * ESS_NARROW : 0;
+  /*
+   * The quarter the spine leaves, under the upper bowl (`way` 1) or over the
+   * lower (-1): its outer end where the bowl's is, its inner end short of
+   * the middle.
+   */
+  const innerOf = (frame: Frame, centre: Vec2, width: number, way: 1 | -1): Spine => {
+    // Never narrower than the pen goes round (see `holds` in `shapes.ts`),
+    // or the quarter is widened about its centre and no longer starts where
+    // the bowl's side ends.
+    const short = Math.min(width, Math.max(width * reachIn, frame.half * 1.06));
+    const shift = (width - short) * way;
+    return way === 1
+      ? bend(frame, at(centre.x - shift, centre.y), inner, 180, 270, short)
+      : bend(frame, at(centre.x - shift, centre.y), inner, 90, 0, short);
+  };
+  /*
+   * Every turn held at least as round as the pen is wide across -- not the
+   * lighter measure up and down, which is what a turn lying on its side
+   * would seem to need. The sweep offsets an arc by the pen's two reaches
+   * (`offsetSegment` in `sweep.ts`), and an arc tighter than the reach
+   * across turns its inside out: past the Black every counter of the s and
+   * the S ended in a hook or a notch, and the counters read as I-beams. A
+   * heavy s is drawn with a lighter pen instead (`stackedPen`), so the turns fit.
+   */
+  const least = f.least;
+  const crownLeast = f.least;
   const heldAcross = (radius: number): number => Math.max(radius, crownLeast);
   // The bowls are drawn to those measures too: see `holds` in `shapes.ts`.
   const g: Frame = { ...f, half: least / 1.06 };
@@ -1806,14 +1916,11 @@ function ess(f: Frame, e: Ess): Stroke {
         (e.innerBlack === undefined
           ? e.inner * (1 - 0.25 * Math.min(1.5, heaviness(f)))
           : e.inner + (e.innerBlack - e.inner) * Math.min(1, t));
-    const upperW = held(f, e.upper.w * e.unit + beyond + widen);
-    const lowerW = held(f, e.lower.w * e.unit + beyond + widen);
-    const upper = at(X(e.upper.x) + beyond, upperY);
-    const lower = at(X(e.lower.x) + beyond, lowerY);
-    const run = crossTangent(
-      bend(g, upper, inner, 180, 270, upperW),
-      bend(g, lower, inner, 90, 0, lowerW),
-    );
+    const upperW = held(f, e.upper.w * e.unit + beyond + widen - narrower);
+    const lowerW = held(f, e.lower.w * e.unit + beyond + widen - narrower);
+    const upper = at(X(e.upper.x) + beyond - narrower, upperY);
+    const lower = at(X(e.lower.x) + beyond - narrower, lowerY);
+    const run = crossTangent(innerOf(g, upper, upperW, 1), innerOf(g, lower, lowerW, -1));
     if (found) continue;
     if (run) {
       const upperH = heldAcross(top - upperY);
@@ -1858,10 +1965,7 @@ function ess(f: Frame, e: Ess): Stroke {
   // Drawn at every weight, soft or not: each bowl drawn is asked where its
   // pieces begin (see `begun` in `shapes.ts`), and a weight that drew two
   // fewer would read the next bowls' answers and come out in other pieces.
-  const softRun = crossTangent(
-    bend(gi, upper, inner, 180, 270, upperW),
-    bend(gi, lower, inner, 90, 0, lowerW),
-  );
+  const softRun = crossTangent(innerOf(gi, upper, upperW, 1), innerOf(gi, lower, lowerW, -1));
   const spineRun = (soft > 0 ? softRun : null) ?? found!.run;
   /*
    * The ends are cut level, and a level cut has to reach across the stroke:
@@ -2079,7 +2183,7 @@ function lighterAcross(style: Style): Style {
  * them at three quarters; stacked three deep in the x-height, that extra
  * weight came out of the counters, which closed to slots with square ends.
  */
-function essAcross(style: Style): Style {
+export function essAcross(style: Style): Style {
   const lighter = lighterAcross(style);
   const f = frame(lighter);
   const t = heaviness(f) / 0.67;
@@ -2103,7 +2207,7 @@ const ESS_CONTRAST = 0.34;
 
 /** The s: see `ess`. Measured off Geist Regular and Black. */
 export function grotesqueS(style: Style): Recipe {
-  const f = frame(essAcross(style));
+  const f = frame(essAcross(stackedPen(style, SMALL_ESS_GAIN)));
   return {
     ...finish(
       f,
@@ -2130,7 +2234,7 @@ export function grotesqueS(style: Style): Recipe {
 
 /** The S: see `ess`. */
 export function grotesqueCapitalS(style: Style): Recipe {
-  const f = frame(style);
+  const f = frame(stackedPen(style, CAPITAL_ESS_GAIN));
   return finish(
     f,
     [
@@ -2149,6 +2253,66 @@ export function grotesqueCapitalS(style: Style): Recipe {
     true,
   );
 }
+
+/**
+ * The section mark as Geist draws it: an s whose lower bowl is a whole ring,
+ * and the same s turned half round about the ring's centre, so the two share
+ * the ring -- each running round the half of it the other leaves open -- and
+ * their spines fall onto it from either side rather than crossing inside it.
+ *
+ * Built from two copies of one s offset by half, as it was, the lower bowl of
+ * the upper and the upper bowl of the lower were two different ovals, and
+ * their two spines crossed inside the middle: a knot of blobs from a Bold on,
+ * and never a clean ring even at a Regular.
+ */
+export function grotesqueSection(style: Style): Recipe {
+  /*
+   * Never a pen heavier than a stacked mark can turn round (see `stackedPen`),
+   * and never heavier than a quarter of each half's height: five strokes
+   * stand one over another down the middle of it, where a letter has three,
+   * and drawn lighter across as the s is (`essAcross`).
+   */
+  const room = style.metrics.capHeight * SECTION_HALF * 0.24;
+  const eased = stackedPen(style, SMALL_ESS_GAIN);
+  const held = eased.pen.weight > room ? { ...eased, pen: { ...eased.pen, weight: room } } : eased;
+  const f = frame(essAcross(held));
+  const g: Frame = f.curve > 0 ? f : { ...f, curve: OVAL_CURVE, square: 0 };
+  const top = f.crest(f.cap) - f.upright;
+  const bottom = f.cap * (1 - SECTION_HALF * 1.53) + f.desc * 0.06 + f.upright;
+  const span = top - bottom;
+  const middle = at(f.edge + f.half + span * 0.3, (top + bottom) / 2);
+  /*
+   * Each half as wide as the ring; the hooks a little taller than the ring,
+   * and the quarter each spine leaves its hook on short and shallow, so the
+   * spine falls steeply onto the ring rather than lying along it.
+   */
+  const w = Math.max(span * 0.3, f.least * 1.5);
+  const ringH = Math.max(span * 0.13, f.least);
+  const hookH = Math.max(span * 0.18, f.least);
+  const hook = at(middle.x, top - hookH);
+  const inner = Math.max(hookH * 0.4, f.least);
+  const iw = Math.max(w * 0.8, f.least);
+  const innerQ = bend(g, at(hook.x - w + iw, hook.y), inner, 180, 270, iw);
+  const ringQ = bend(g, middle, ringH, 90, 0, w);
+  const run = crossTangent(innerQ, ringQ);
+  const head = angleAt(g, hook, w, hookH, hook.y - hookH * 0.1, false);
+  const upper = ink(
+    f,
+    chain(
+      bend(g, hook, hookH, head, 180, w),
+      run ?? crossAt(innerQ, ringQ, 250, 70),
+      // On round the ring's right and its foot, past its lowest point to
+      // where the other half has already been.
+      bend(g, middle, ringH, 0, -150, w),
+    ),
+    f.end,
+    BUTT,
+  );
+  return finish(f, [upper, turnedStroke(upper, middle)], true);
+}
+
+/** How tall each half of a section mark is, against the cap height. */
+const SECTION_HALF = 0.62;
 
 /**
  * The z and the Z: two bars at the stem's weight, and a diagonal whose edges

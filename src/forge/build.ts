@@ -1815,7 +1815,12 @@ const BURIED = 1;
 function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
   const { size, drop } = style.parts.ball;
   if (size <= 0 || stroke.spine.closed || swept.length === 0) return [];
-  const radius = (size * style.pen.weight) / 2;
+  /*
+   * A didone's balls (`ball.curved`) grow as its serifs do, not as its stems
+   * do: a disc the size of a Black's stem hung on every end was a blot.
+   */
+  const measure = style.parts.ball.curved ? serifReach(style) : style.pen.weight;
+  const radius = (size * measure) / 2;
   const band = contoursBounds(swept);
   const out: Contour[] = [];
   for (const [terminal, at, outward, straightEnd] of endsOf(stroke)) {
@@ -1846,7 +1851,13 @@ function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
      * is the arrangement the waves and the bowls already have, and is why the
      * drawn weight comes back byte for byte what it was.
      */
-    const blot = straightEnd && onALine(stroke, at, outward, style);
+    /*
+     * And a face that balls only its curves (`ball.curved`, a didone's) takes
+     * a straight end in mid-air as it takes one on a line: the flag of a one,
+     * the bar of a sigma and the top of a be are cut, not blotted.
+     */
+    const blot =
+      straightEnd && (style.parts.ball.curved === true || onALine(stroke, at, outward, style));
     if (!decided(!blot)) continue;
     /*
      * And held inside the ink the stroke already made.
@@ -1885,8 +1896,16 @@ function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
       const lean = 1 - outward.x * drop;
       return lean > 1e-6 ? (at.x - limit) / lean : Infinity;
     };
+    /*
+     * And never smaller than the end it closes, on a face that sizes its balls
+     * by its serifs: a Black's S ends on the thick of its turn, and a disc
+     * narrower than that left the cut's corners standing out beside it.
+     */
+    const covering = style.parts.ball.curved
+      ? Math.max(radius, halfWidthAcross(stroke, outward) * 1.1)
+      : radius;
     const room = Math.min(
-      radius,
+      covering,
       spare(band.yMax),
       spare(-band.yMin + 2 * at.y),
       spareLeft(band.xMin),
@@ -1925,7 +1944,7 @@ function ballsFor(stroke: Stroke, style: Style, swept: Contour[]): Contour[] {
     // the room leaves them.
     const written = style.parts.script.on;
     const buried = blot || (written && room < penReach(stroke.pen).across);
-    const held = buried ? BURIED : written ? room : Math.max(room, radius * 0.8);
+    const held = buried ? BURIED : written ? room : Math.max(room, covering * 0.8);
     const placed = { x: at.x + outward.x * held * drop, y: at.y + outward.y * held * drop };
     const inside = written
       ? placed
@@ -2186,6 +2205,9 @@ function flare(
   };
 }
 
+/** The longest a slab's serif on an arm reaches, against the em: see `serifsFor`. */
+const ARM_SERIF_HOLD = 0.1;
+
 /**
  * The serifs on one stroke.
  *
@@ -2278,7 +2300,19 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
      * stem and hung the F's middle beak down onto its foot and the Z's into
      * its own diagonal. Rockwell's stay the length of a serif.
      */
-    if (!arm && winged && Math.abs(outward.y) < 1e-3) full = Math.min(full, inner + projection);
+    if (!arm && winged && Math.abs(outward.y) < 1e-3) {
+      /*
+       * And no further than a Black's slab reaches, however heavy the stem:
+       * the serif on an arm hangs into a counter, not off a foot into the
+       * paper under the letter. Grown with the stem as the feet do, a
+       * Black's hung the F's middle beak down within a hair of its foot and
+       * stood the Z's into its own diagonal; Rockwell's Extra Bold keeps them
+       * the length of its Regular's.
+       */
+      const reach = serifReach(style);
+      const held = projection * Math.min(1, (style.metrics.unitsPerEm * ARM_SERIF_HOLD) / reach);
+      full = Math.min(full, inner + held);
+    }
     if (arm) {
       const { unitsPerEm, capHeight } = style.metrics;
       const edge = [1, -1].some((side) => crossesALine(at, outward, side, full, inner, style));
@@ -2418,11 +2452,17 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        * the line the end points, which on a curve leaves the stroke -- see
        * below -- and square across the run there.
        */
+      /*
+       * Back up the stroke itself, not straight back from the line it stops
+       * on: on a shallow diagonal -- the leg of a k -- a point straight up
+       * from the end is out beside the stroke, and the sliver stood there as
+       * a stray hairline to the right of the leg.
+       */
       const buried = straightEnd
         ? {
             point: {
-              x: at.x - facing.x * (3 + inner * 0.6),
-              y: at.y - facing.y * (3 + inner * 0.6),
+              x: at.x - outward.x * (3 + inner * 0.6),
+              y: at.y - outward.y * (3 + inner * 0.6),
             },
             heading: facing,
           }
@@ -2906,7 +2946,7 @@ function wing(
    * A serif on a stroke meeting its line that shallowly is a thin one anyway.
    */
   if (lean < 0) {
-    const most = (0.6 * (tip - from)) / -lean;
+    const most = ((wedge ? 0.6 : 1.2) * (tip - from)) / -lean;
     const share = Math.min(1, most / Math.max(deep + rise, 1e-9));
     deep *= share;
     tipDeep *= share;

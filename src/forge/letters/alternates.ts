@@ -17,6 +17,7 @@ import {
   grotesqueQuoteSingle,
   grotesqueParenRight,
   grotesquePercent,
+  grotesqueSection,
   grotesqueSlash,
   grotesqueCapitalA,
   grotesqueCapitalB,
@@ -593,7 +594,21 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const hook = bend(f, left, headH, 90, 150, turnW);
         const head = chain(shoulder, straight(spineEnd(shoulder), spineStart(hook)), hook);
         const bowlW = fitTurn(bowlPen, bowlH, Math.min(across * 1.04, bowlH * f.wide * 1.3));
-        const round = bend(f, at(f.edge + bowlW, base + bowlH), bowlH, 90, 270, bowlW);
+        /*
+         * The bowl's foot on the line the stem stands on, not in the
+         * overshoot under it: it runs level into the foot of the stem, and
+         * carried below the line it ended past the stem's edge in a square
+         * step under the foot serif beside it -- ten units deep at a Black.
+         */
+        const sits = Math.abs(reachAlong(at(0, 1), penReach(bowlPen)).y);
+        /*
+         * Turned as round as its own lighter pen needs and no rounder: held
+         * to the stem's (see `holds`), a Black's bowl stood nearly two thirds
+         * of the x-height and squeezed the head's counter to a slit.
+         */
+        const fb: Frame = { ...f, half: bowlPen.weight / 2, least: (bowlPen.weight / 2) * 1.06 };
+        const drawnH = Math.max(bowlH, fb.least);
+        const round = bend(fb, at(f.edge + bowlW, sits + drawnH), bowlH, 90, 270, bowlW);
         // Level into the stem from where the turn really starts and stops.
         const bowl = chain(
           straight(at(stem, spineStart(round).y), spineStart(round)),
@@ -1495,6 +1510,11 @@ const GROTESQUE: Array<[LetterName, string, (style: Style) => Recipe]> = [
     grotesqueNumberSign,
   ],
   ["percent", "Narrow ovals and a long diagonal cut level.", grotesquePercent],
+  [
+    "section",
+    "An s over its own turned copy, the two sharing one ring in the middle.",
+    grotesqueSection,
+  ],
   ["asterisk", "Six arms, one bar level and two crossing it, hung high.", grotesqueAsterisk],
   ["at", "A single-storey a whose stem runs on into a wide ring round it.", grotesqueAt],
   ["zero", "A tall superelliptic ring, as a neo-grotesque's is.", grotesqueZero],

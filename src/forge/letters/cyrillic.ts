@@ -7,6 +7,7 @@
  */
 
 import type { Style } from "../style";
+import { essAcross, stackedPen } from "./grotesque";
 import {
   at,
   turn,
@@ -73,7 +74,11 @@ export const CYRILLIC_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   "\u0411": (style) => finish(frame(style), cyrBe(frame(style), frame(style).cap)),
   "\u0414": (style) => finish(frame(style), cyrDe(frame(style), frame(style).cap)),
   "\u0416": (style) => finish(frame(style), cyrZhe(frame(style), frame(style).cap)),
-  "\u0417": (style) => finish(frame(style), cyrZe(frame(style), frame(style).cap), true),
+  // Held lighter past the Black, as the S is: two bowls stacked in the height.
+  "\u0417": (style) => {
+    const f = frame(essAcross(stackedPen(style, 0.5)));
+    return finish(f, cyrZe(f, f.cap), true);
+  },
   "\u0418": (style) => finish(frame(style), cyrI(frame(style), frame(style).cap)),
   "\u041b": (style) => finish(frame(style), cyrEl(frame(style), frame(style).cap)),
   "\u0423": (style) => finish(frame(style), cyrU(frame(style), frame(style).cap)),
@@ -126,7 +131,10 @@ export const CYRILLIC_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   "\u0433": (style) => finish(frame(style), cyrGe(frame(style), frame(style).x)),
   "\u0434": (style) => finish(frame(style), cyrDe(frame(style), frame(style).x)),
   "\u0436": (style) => finish(frame(style), cyrZhe(frame(style), frame(style).x)),
-  "\u0437": (style) => finish(frame(style), cyrZe(frame(style), frame(style).x), true),
+  "\u0437": (style) => {
+    const f = frame(essAcross(stackedPen(style, 0.4)));
+    return finish(f, cyrZe(f, f.x), true);
+  },
   "\u0438": (style) => finish(frame(style), cyrI(frame(style), frame(style).x)),
   "\u043b": (style) => finish(frame(style), cyrEl(frame(style), frame(style).x)),
   "\u043c": (style) => finish(frame(style), cyrEm(frame(style), frame(style).x)),

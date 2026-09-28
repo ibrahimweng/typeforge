@@ -623,7 +623,7 @@ export interface Frame {
 export const ASIDE = 0.53;
 
 /** The superness an oval face draws its bowls with: see `Frame.curve`. */
-const OVAL_CURVE = OVAL / 10;
+export const OVAL_CURVE = OVAL / 10;
 
 /** How much narrower down the middle a held bowl is at the Black: see `frame`. */
 const HEAVY_GIVE = 0.03;
@@ -692,6 +692,15 @@ export function frame(drawn: Style): Frame {
     : heavierHeld
       ? Math.max(capBowlH, (metrics.capHeight / 2 + metrics.overshoot - heldUpright) * heavyKeep)
       : capBowlH;
+  /*
+   * On a face that keeps its rounds round at a heavy weight
+   * (`metrics.heavyFloor`), a bowl as wide in its ink as it is tall: the pen
+   * reaches further across than up once it takes contrast, and a skeleton
+   * circle drawn with it was an o a third wider than tall at an Ultra.
+   */
+  const across = Math.abs(reachAlong(at(1, 0), penReach(pen)).x);
+  const inkRound = (h: number): number =>
+    metrics.heavyFloor === undefined ? h : Math.max(h + upright - across, least);
   return {
     style,
     half,
@@ -707,7 +716,7 @@ export function frame(drawn: Style): Frame {
       // A joined hand's arches open with its bowls at a Black: see `heldOpen`.
       style.parts.script.on ? heldOpen(style, bowlH, upright) : 0,
     ),
-    bowl: Math.max(bowlAcross * wide, least, heldOpen(style, bowlH, upright)),
+    bowl: Math.max(inkRound(bowlAcross) * wide, least, heldOpen(style, bowlH, upright)),
     grownBowl: Math.max(
       (heavierHeld ? bowlH : bowlAcross) * wide,
       least,
@@ -792,7 +801,13 @@ function heldOpen(style: Style, bowlH: number, upright: number): number {
    * slit between two slanted stems. A written Black runs wide instead: its
    * bowls and its arches are held open to most of a stem.
    */
-  const least = style.parts.script.on ? SCRIPT_COUNTER : 0.62;
+  /*
+   * And a face that closes its counters further to keep its rounds round
+   * (`metrics.heavyFloor`) keeps less than that open.
+   */
+  const least = style.parts.script.on
+    ? SCRIPT_COUNTER
+    : 0.62 * Math.min(1, (metrics.heavyFloor ?? 0.2) / 0.2);
   /*
    * A superelliptic bowl is drawn narrower than a circle because its flat
    * sides make it look as wide as one; at a Black the counter it keeps is the
@@ -3057,13 +3072,33 @@ export function cyrZe(f: Frame, top: number): Stroke[] {
   // Never so narrow the counters close: a fat face's small ze was two slits.
   const wide = Math.max(bendWidth(f, radius) + f.gain * 0.5, stemSide(f) * 1.75);
   const cx = f.edge + wide * 0.643;
-  const waist = (crest + base) / 2;
   const upperWide = wide * 0.92;
   const tongue = wide * 0.32;
+  /*
+   * Each bowl carried on along the waist into the tongue, as the three's are,
+   * rather than the tongue laid across the two as a bar of its own: the two
+   * cut ends and the bar's met in a notch at every weight, and at a Black the
+   * counters ended in square steps against the bar.
+   */
   return [
-    ink(f, bend(f, at(cx, crest - radius), radius, 150, -90, upperWide), f.end, BUTT),
-    ink(f, bend(f, at(cx, base + radius), radius, 90, -150, wide), BUTT, f.end),
-    ink(f, straight(at(cx - tongue, waist), at(cx + 1, waist)), BUTT, BUTT),
+    ink(
+      f,
+      chain(
+        bend(f, at(cx, crest - radius), radius, 150, -90, upperWide),
+        straight(at(cx, crest - radius * 2), at(cx - tongue, crest - radius * 2)),
+      ),
+      f.end,
+      BUTT,
+    ),
+    ink(
+      f,
+      chain(
+        straight(at(cx - tongue, base + radius * 2), at(cx, base + radius * 2)),
+        bend(f, at(cx, base + radius), radius, 90, -150, wide),
+      ),
+      BUTT,
+      f.end,
+    ),
   ];
 }
 
@@ -3300,7 +3335,15 @@ export function cyrDzhe(f: Frame, top: number): Stroke[] {
 /** The ge with a tick turned up at the end of its arm. */
 export function cyrGheUpturn(f: Frame, top: number): Stroke[] {
   const stem = f.edge;
-  const reach = cyrWide(f, top) * 1.05;
+  /*
+   * Longer and lighter at a heavy weight. Held to the regular's reach, a
+   * Black's arm was shorter than the tick was wide, and the tick stood
+   * against the stem's head as a block beside it: the letter read as an r
+   * with a lump on it. The upturn is a flick, not a second stem.
+   */
+  const heavy = Math.min(1, heaviness(f));
+  const reach = cyrWide(f, top) * 1.05 + f.half * 1.5 * heavy;
+  const flick = 1 - 0.3 * heavy;
   const tick = Math.max(top * 0.16, f.half * 1.4);
   /*
    * The arm set down by the height of its own tick.
@@ -3322,11 +3365,14 @@ export function cyrGheUpturn(f: Frame, top: number): Stroke[] {
     // Begun under the arm, so the tick and the arm share one square corner:
     // begun on the arm's centre-line, the tick's outer half stood below the
     // arm's end as a step.
-    ink(
-      f,
-      straight(at(stem + reach, bar - f.upright * f.bar), at(stem + reach, f.hangs(top, f.bar))),
-      BUTT,
-      f.end,
+    lighter(
+      ink(
+        f,
+        straight(at(stem + reach, bar - f.upright * f.bar), at(stem + reach, f.hangs(top, f.bar))),
+        BUTT,
+        f.end,
+      ),
+      flick,
     ),
   ];
 }

@@ -302,7 +302,17 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   K: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    const reach = stem + f.capBowl * 1.15 + openVee(f) * 1.5;
+    /*
+     * And wider at a heavy weight on a slab face: the stem's head serif and
+     * the arm's own meet on the cap line, and held to the regular's reach a
+     * Black's filled solid between the stem and the arm down to the joint.
+     */
+    const slabbed = f.style.parts.slab.on && f.style.parts.slab.shape !== "wedge";
+    const reach =
+      stem +
+      f.capBowl * 1.15 +
+      openVee(f) * 1.5 +
+      (slabbed ? f.half * 0.7 * Math.min(heaviness(f), 1.5) : 0);
     const waist = f.cap * 0.44;
     const arm = at(reach, f.cap);
     const leg = at(reach, 0);

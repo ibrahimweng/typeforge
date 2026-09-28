@@ -628,7 +628,12 @@ describe("the Serif at a black weight, joined cleanly", () => {
     for (const weight of WEIGHTS) {
       const drawn = draw("s", { ...DIDONE, pen: { ...DIDONE.pen, weight } });
       const [run, ...rest] = drawn;
-      for (const piece of rest) {
+      // The slivers, not the balls the Didone now finishes its curves with.
+      const slivers = rest.filter((piece) => {
+        const box = contoursBounds([piece]);
+        return Math.min(box.xMax - box.xMin, box.yMax - box.yMin) < 4;
+      });
+      for (const piece of slivers) {
         for (const node of piece.nodes) {
           expect(inkAt([run], node.point.x, node.point.y), `${weight}`).toBe(true);
         }

@@ -18,13 +18,18 @@ import { BASES, blackness, spacingOf, type Style } from "./style";
 
 /**
  * A letter in the form its face draws it by default -- the Sans's grotesque
- * s, e, a, and the Serif's Lora-shaped ones (see `letters/humanist.ts`).
+ * s, e, a, and the Serif's Lora-shaped ones (see `letters/humanist.ts`), and
+ * the Geometric's grotesque c, e, s and G: its construction c is an
+ * alternate nobody is given by default, and at an Ultra's narrower counter
+ * it is a bracket.
  */
 const drawnAs = (name: string, style: Style) =>
   drawLetter(
     name,
     style,
-    style.name === "Sans" || style.name === "Serif" ? style.forms?.[name] : undefined,
+    style.name === "Sans" || style.name === "Serif" || style.name === "Geometric"
+      ? style.forms?.[name]
+      : undefined,
   );
 
 beforeAll(async () => {

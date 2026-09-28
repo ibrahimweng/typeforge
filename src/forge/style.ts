@@ -109,6 +109,12 @@ export interface Metrics {
    */
   heavyCounter?: number;
   /**
+   * The least a heavy weight's counter closes to, against the x-height, where
+   * `heavyCounter` closes it: a fifth when left out. A geometric face goes
+   * lower, keeping its rounds round rather than its counters open.
+   */
+  heavyFloor?: number;
+  /**
    * Below the pen `from`, each bowl and arch is held as wide through its
    * middle as at `from`, widening by `grow` of it over the whole way to no pen
    * at all: see `frame` in `letters/common.ts`. Left out, a lighter pen widens
@@ -362,6 +368,8 @@ export interface Parts {
     size: number;
     /** How far past the end its middle sits, as a share of its own radius. */
     drop: number;
+    /** Only on curved ends: a straight end in mid-air is left cut. */
+    curved?: boolean;
   };
   /**
    * The flare: a stroke that widens as it arrives at its own end.
@@ -829,6 +837,7 @@ export const SANS: Style = {
     slash: "grotesque",
     numbersign: "grotesque",
     percent: "grotesque",
+    section: "grotesque",
     asterisk: "grotesque",
     at: "grotesque",
     zero: "grotesque",
@@ -1297,7 +1306,22 @@ export const GEOMETRIC: Style = {
     xHeight: 500,
     counterWidth: 380,
     sidebearing: 58,
-    heavyCounter: 1.1,
+    heavyCounter: 1.4,
+    /*
+     * And closing further than that past the Black: a pen a quarter of the
+     * em wide leaves an o no rounder than its counter lets it, and held to a
+     * counter a fifth of the x-height across, an Ultra's o stood a third as
+     * wide again as it was tall.
+     */
+    heavyFloor: 0.14,
+    /*
+     * Spaced by what each side leaves inside its own box (see `fitted` in
+     * `build.ts`), as the Sans is: at one sidebearing for every side, the A,
+     * V, W and Y stood as far off their neighbours as an H, and LATVAWAY was
+     * a row of holes.
+     */
+    fit: 1,
+    sides: { T: [0.3, 0.3] },
   },
   pen: { weight: 86, contrast: 0, angle: 0 },
   /*
@@ -1325,6 +1349,7 @@ export const GEOMETRIC: Style = {
     s: "grotesque",
     at: "grotesque",
     percent: "grotesque",
+    section: "grotesque",
     numbersign: "grotesque",
     question: "grotesque",
     t: "grotesque",
@@ -1680,6 +1705,7 @@ export const GROTESQUE: Style = {
     G: "grotesque",
     at: "grotesque",
     percent: "grotesque",
+    section: "grotesque",
     numbersign: "grotesque",
     question: "grotesque",
     t: "grotesque",
@@ -1759,19 +1785,16 @@ export const DIDONE: Style = {
       head: "flag",
     },
     /*
-     * No balls, and this is the thing this face was most supposed to get.
+     * Balls: a disc on every curved end that stops in mid-air -- the a, the c,
+     * the f, the r, the j, the ear of the g, the 2, the 3, the 5, the 9 and
+     * the C, G, J and S -- which is half of what makes a didone read as one
+     * at a glance. Without them every one of those ends was a flat cut and the
+     * face read as a high-contrast sans with serifs added.
      *
-     * A ball on the `a`, the `c`, the `f`, the `r` and the `y` is half of what
-     * makes a didone read as one at a glance, and the part has sat unused since
-     * it was written with only the Psychedelic reaching for it. It cannot go on
-     * here: a ball goes wherever a stroke stops in mid-air, the tail of a `Q` is
-     * such a stop, and at every size tried -- from seven tenths of a stem to a
-     * stem and a sixth -- it comes away as a disc of its own and the letter is
-     * in two pieces. Hung below the bowl instead of crossing it, the same.
-     *
-     * So it waits for somewhere a base can say "not on this letter". A face is
-     * a set of decisions and this is one it cannot make yet.
+     * The Q's tail once came away as a disc of its own when this was tried;
+     * it stops on the line now, so the ball on it is buried (see `ballsFor`).
      */
+    ball: { size: 1, drop: 0.35, curved: true },
     bowl: { width: 0.96, squareness: 0, aperture: 0.9, superness: 0 },
     crossbar: { height: 0.52, weight: 0.9 },
   },
@@ -1790,7 +1813,15 @@ export const SLAB: Style = {
   name: "Slab",
   family: "serif",
   blurb: "Serifs as heavy as the stems, and no contrast to soften them.",
-  metrics: { ...PLAIN.metrics, xHeight: 528, width: 1.02, counterWidth: 340 },
+  // Fitted by its sides, as the Geometric is: see there.
+  metrics: {
+    ...PLAIN.metrics,
+    xHeight: 528,
+    width: 1.02,
+    counterWidth: 340,
+    fit: 1,
+    sides: { T: [0.3, 0.3] },
+  },
   pen: { weight: 112, contrast: 0.05, angle: 0 },
   /*
    * The two-storey a, which is what most text faces use and what none of them
@@ -1816,6 +1847,7 @@ export const SLAB: Style = {
     G: "grotesque",
     at: "grotesque",
     percent: "grotesque",
+    section: "grotesque",
     numbersign: "grotesque",
     question: "grotesque",
     t: "grotesque",
@@ -1852,7 +1884,15 @@ export const TYPEWRITER: Style = {
   name: "Typewriter",
   family: "serif",
   blurb: "One advance for every letter, wide or narrow, and serifs to fill it.",
-  metrics: { ...SLAB.metrics, monospaced: true, width: 0.95, sidebearing: 40 },
+  // One advance for every letter: nothing fitted by its sides.
+  metrics: {
+    ...SLAB.metrics,
+    monospaced: true,
+    width: 0.95,
+    sidebearing: 40,
+    fit: undefined,
+    sides: undefined,
+  },
   pen: { weight: 96, contrast: 0.04, angle: 0 },
   /*
    * The two-storey a, which is what most text faces use and what none of them
@@ -1881,6 +1921,7 @@ export const TYPEWRITER: Style = {
     G: "grotesque",
     at: "grotesque",
     percent: "grotesque",
+    section: "grotesque",
     numbersign: "grotesque",
     question: "grotesque",
     t: "grotesque",
@@ -3111,6 +3152,19 @@ export function blackness(style: Style): number {
 }
 
 /**
+ * The pen at which a face reaches a given `blackness`: the same measure turned
+ * round, for a letter that wants to know where along its axis a Black falls.
+ */
+export function weightAtBlackness(style: Style, black: number): number {
+  const { metrics } = style;
+  const base = BASES.find((one) => one.name === style.name);
+  const own = base ? base.pen.weight / base.metrics.xHeight : TEXT_STEM;
+  const from = Math.max(own, TEXT_STEM);
+  const span = Math.max(TEXT_STEM + BLACK_SPAN - from, BLACK_SPAN / 4);
+  return (from + black * span) * metrics.xHeight;
+}
+
+/**
  * What a joined face measures its joins in, which is its pen -- held near the
  * pen the face was designed at.
  *
@@ -3446,8 +3500,12 @@ export function narrowed(style: Style): number {
    * at 0.26 of the em the n stood half as wide again as the Black's.
    */
   const linear = drawn - give * gained;
-  const floor = Math.min(drawn, Math.max(metrics.xHeight * 0.2, pen.weight * 0.34));
-  const ease = metrics.xHeight * 0.1;
+  const least = metrics.heavyFloor ?? 0.2;
+  const floor = Math.min(
+    drawn,
+    Math.max(metrics.xHeight * least, pen.weight * 0.34 * (least / 0.2)),
+  );
+  const ease = metrics.xHeight * 0.1 * (least / 0.2);
   if (linear >= floor + ease) return linear;
   return floor + ease * Math.exp((linear - floor - ease) / ease);
 }

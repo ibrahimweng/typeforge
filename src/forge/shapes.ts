@@ -940,11 +940,33 @@ const EVEN_ENOUGH = 0.01;
  * crown level are then two linear conditions on the side's radius and the
  * crown's. Null where no split keeps every radius positive.
  */
-function ovalCorner(
-  w: number,
-  h: number,
-  pen = 0,
-): { side: number; tight: number; crown: number; sideTurn: number; crownTurn: number } | null {
+function ovalCorner(w: number, h: number, pen = 0): OvalSplit | null {
+  /*
+   * Remembered, because the split it searches for is the same every time the
+   * same box is asked about, and an S asks about the same few boxes dozens of
+   * times over while it looks for its spine.
+   */
+  const key = `${w}|${h}|${pen}`;
+  const known = OVAL_SPLITS.get(key);
+  if (known !== undefined) return known;
+  const found = searchOvalCorner(w, h, pen);
+  if (OVAL_SPLITS.size > 4096) OVAL_SPLITS.clear();
+  OVAL_SPLITS.set(key, found);
+  return found;
+}
+
+type OvalSplit = {
+  side: number;
+  tight: number;
+  crown: number;
+  sideTurn: number;
+  crownTurn: number;
+};
+
+/** The splits `ovalCorner` has already found, by box and pen. */
+const OVAL_SPLITS = new Map<string, OvalSplit | null>();
+
+function searchOvalCorner(w: number, h: number, pen: number): OvalSplit | null {
   /*
    * The side's arc turning `a` and the crown's `b`, the middle one the rest:
    * leaving upright and arriving level are then

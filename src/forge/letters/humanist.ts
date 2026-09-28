@@ -1043,7 +1043,17 @@ function bookSpine(
    * letter's, a spine with some fall to it, and the bowls' sides rounder
    * than the pen, whose inside otherwise folds to a point in the counter.
    */
-  const roundest = half * 1.05;
+  /*
+   * And on a face with a didone's contrast, rounder still and the spine as
+   * steep as it will stand: the pen there is five times as wide as it is
+   * deep, a side turned on no more than it lay flat against the counter as a
+   * straight wall with a corner either end, and a spine at a text face's
+   * slope took so little of the pen across it that the bowls outweighed it.
+   * A Bodoni's spine is the heaviest stroke in its S.
+   */
+  const didone = Math.max(0, f.style.pen.contrast - 0.6) / 0.2;
+  const roundest = half * (1.05 + 0.45 * Math.min(1, didone));
+  const slope = 30 - S_BEND - (30 - S_BEND) * Math.min(1, didone);
   let shape = laid(width / 2, width / 2.6, 30);
   let best = Infinity;
   for (let k = 0; k <= 10; k++) {
@@ -1058,7 +1068,7 @@ function bookSpine(
         const cost =
           ((tried.across - 2 * a) / a) ** 2 * 40 +
           (a / b - 1.3) ** 2 +
-          ((30 - degrees - S_BEND) / 30) ** 2 * 0.5 +
+          ((slope - degrees) / 30) ** 2 * 0.5 +
           (k / 10) ** 2 * 3 +
           (Math.max(0, roundest - tried.r.side) / roundest) ** 2 * 200 +
           (Math.max(0, tall * 0.05 - tried.fall) / tall) ** 2 * 400;

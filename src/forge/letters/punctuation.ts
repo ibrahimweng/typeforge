@@ -11,6 +11,7 @@ import { penReach, reachAlong } from "../sweep";
 import { blackness, type Style } from "../style";
 import type { Vec2 } from "@/font/types";
 import type { Spine, Stroke, Terminal } from "../types";
+import { stackedPen } from "./grotesque";
 import {
   arm,
   at,
@@ -613,17 +614,23 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
    * them, which holds at every weight.
    */
   plusminus: (style) => {
-    const f = frame(style);
+    // Lighter past the Black, as the s is: two marks stacked in the height.
+    const f = frame(stackedPen(style, 0.4));
     const w = signWidth(f);
     const bar = f.style.pen.weight * f.bar;
     /*
      * The rule never under the baseline: at a Black the gap under the plus
-     * grew with the bars and put it there. The plus stands shorter instead.
+     * grew with the bars and put it there. The plus stands shorter instead --
+     * and where even that leaves less than half a bar of daylight between its
+     * stem and the rule, stands higher: at an Ultra the stem ran down into the
+     * rule and the two read as one block.
      */
     const under = Math.max(axis(f) - signWidth(f) * 0.5 - bar * 1.15, bar * 0.5);
-    const y = axis(f) + bar * 0.35;
     const half = w / 2;
-    const rise = Math.max(Math.min(half * 0.86, y - under - bar * 1.3), bar * 0.6);
+    const least = bar * 0.8;
+    const low = axis(f) + bar * 0.35;
+    const y = Math.max(low, under + bar * 1.5 + least);
+    const rise = Math.max(Math.min(half * 0.86, y - under - bar * 1.5), least);
     return finish(f, [
       thin(f, straight(at(f.edge, y), at(f.edge + w, y)), f.plain, f.plain),
       thin(
@@ -967,7 +974,8 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
    * on a different line, which is why it is not drawn again from scratch.
    */
   asciitilde: (style) => {
-    const f = frame(style);
+    // Lighter past the Black, as the s is: a Black's pen filled each hump.
+    const f = frame(stackedPen(style, 0.4));
     // Held above what the bar drawing it can turn round, which is not the same
     // number as what the stem can: a face whose bars are heavier than its stems
     // asked this arc for a radius narrower than its own pen.
