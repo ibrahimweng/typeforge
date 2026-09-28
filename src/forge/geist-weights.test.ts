@@ -209,6 +209,30 @@ describe("the s's counters from the Black on", () => {
   });
 });
 
+describe("the eight past the Black", () => {
+  it("keeps its upper counter an oval, not a slot with square ends", () => {
+    for (const weight of [200, 260]) {
+      const { contours } = draw("eight", weight);
+      const box = contoursBounds(contours);
+      const middle = (box.xMin + box.xMax) / 2;
+      const down = filled(contours, middle, "x");
+      // The foot, the waist and the head: the upper counter under the head.
+      const y = (down[down.length - 2][1] + down[down.length - 1][0]) / 2;
+      const across = filled(contours, y);
+      const at = across.findIndex(
+        (run, one) => one > 0 && across[one - 1][1] <= middle && run[0] >= middle,
+      );
+      const [start, end] = [across[at - 1][1], across[at][0]];
+      const tall = (x: number) => {
+        const runs = filled(contours, x, "x");
+        const gap = runs.findIndex((run, one) => one > 0 && runs[one - 1][1] <= y && run[0] >= y);
+        return runs[gap][0] - runs[gap - 1][1];
+      };
+      expect(tall(start + 5) / tall((start + end) / 2), `eight at ${weight}`).toBeLessThan(0.75);
+    }
+  });
+});
+
 describe("the a at the Light", () => {
   it("springs its spur out of the crotch the bowl makes with the stem", () => {
     // Geist Thin: under the bowl's join, the bowl's foot and the spur's turn

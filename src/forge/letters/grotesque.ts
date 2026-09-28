@@ -1571,11 +1571,35 @@ export function grotesqueEight(style: Style): Recipe {
   return finish(
     f,
     [
-      ink(f, ring(f, at(X(302), waist + upperH), held(f, 184 * u), upperH)),
-      ink(f, ring(f, at(X(302), waist - lowerH), held(f, 218 * u), lowerH)),
+      ...swollenRing(f, at(X(302), waist + upperH), held(f, 184 * u), upperH),
+      ...swollenRing(f, at(X(302), waist - lowerH), held(f, 218 * u), lowerH),
     ],
     true,
   );
+}
+
+/**
+ * A ring heavier on its outside than its inside, as a heavy grotesque's
+ * small bowls are: drawn with a pen lighter across, and again a little wider
+ * round the same centre with the same pen, so its sides keep the stem's
+ * weight and its crowns their own while the inside of every turn is round.
+ * With the stem's own pen across, the eight's upper counter past the Black
+ * was a slot with square ends; the lighter pen leaves it an oval. Two rings
+ * at every weight, the second no wider below a Bold, so the eight has the
+ * same points at every weight.
+ */
+function swollenRing(f: Frame, centre: Vec2, halfW: number, halfH: number): Stroke[] {
+  const t = heaviness(f) / 0.67;
+  const share = SPLIT_SIDES * Math.min(1, Math.max(0, (t - 0.3) / 0.7));
+  const { pen } = f.style;
+  const along = pen.weight * (1 - Math.min(Math.max(pen.contrast, 0), 0.95));
+  const lighter = pen.weight * (1 - share);
+  const light = { ...pen, weight: lighter, contrast: Math.max(0, 1 - along / lighter) };
+  const out = (pen.weight - lighter) / 2;
+  return [
+    ink(f, ring(f, centre, halfW, halfH)),
+    ink(f, ring(f, centre, halfW + out, halfH)),
+  ].map((one) => inherit(one, { ...one, pen: light }));
 }
 
 /** A point part of the way along a straight run, found by its height. */
@@ -3093,7 +3117,7 @@ export function grotesqueE(style: Style): Recipe {
   const bar = H(272 - 15 * past) + (f.style.parts.crossbar.height - SANS_CROSSBAR) * f.x;
   // And past the Black the foot is cut lower too, or the aperture between
   // it and the bar closed to a crack across the letter.
-  const foot = angleAt(f, centre, halfW, f.bowlH, H(lerp(158, 168) - 20 * past), false);
+  const foot = angleAt(f, centre, halfW, f.bowlH, H(lerp(158, 168) - 28 * past), false);
   uses("crossbar");
   /*
    * And lighter than the bowl's crown, as Geist's is: 76 on the Regular's 82,
