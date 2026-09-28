@@ -245,3 +245,19 @@ describe("the Serif's bracket control", () => {
     }
   });
 });
+
+describe("the Serif's spacing", () => {
+  it("closes up at the Bold as Lora Bold does", () => {
+    // Lora Bold sets its o 31 a side against the Regular's 41, and its e
+    // 31 and 27 against 42 and 39.
+    const side = (name: string, weight: number) => {
+      const drawn = draw(name, weight);
+      const b = contoursBounds(drawn.contours);
+      return [b.xMin, drawn.advanceWidth - b.xMax];
+    };
+    expect(side("o", 142)[0]).toBeLessThan(side("o", 87)[0] - 5);
+    expect(side("e", 142)[1]).toBeLessThan(side("e", 87)[1] - 4);
+    // And the Regular's where they were.
+    expect(side("o", 87)[0]).toBeCloseTo(41, -1);
+  });
+});

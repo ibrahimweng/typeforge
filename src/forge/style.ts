@@ -193,6 +193,12 @@ export interface Metrics {
      * Black face keeps, against its own H and o. Left out, one.
      */
     past?: Record<string, number>;
+    /**
+     * The sidebearings at the Bold against the Regular's, reached by the
+     * Bold and held past it: Lora Bold sets its rounds a quarter tighter
+     * than its Regular (an o 31 a side against 41) and its stems a little.
+     */
+    spacing?: number;
   };
   /** The counter the face was drawn with, once `heavier` has narrowed it. */
   drawnCounter?: number;
@@ -968,6 +974,7 @@ export const SERIF: Style = {
     bold: {
       at: 0.47,
       kept: 0.5,
+      spacing: 0.82,
       widths: {
         a: 0.879,
         b: 0.929,
@@ -3457,7 +3464,12 @@ function rounder(style: Style): Style["parts"] {
  * about a quarter of what its stem gains.
  */
 export function spacingOf(style: Style): number {
-  const { sidebearing, xHeight } = style.metrics;
+  const { sidebearing, xHeight, bold } = style.metrics;
+  // A face drawn to its Bold closes up to the Bold's spacing: see `bold.spacing`.
+  const tighter =
+    bold?.spacing === undefined
+      ? 1
+      : 1 + (bold.spacing - 1) * Math.min(1, blackness(style) / bold.at);
   /*
    * A face whose heavy weights close their counters closes its spacing with
    * them, about as the square root of the counter: Geist Black sets its n 61
@@ -3466,10 +3478,10 @@ export function spacingOf(style: Style): number {
    */
   if (style.metrics.heavyCounter) {
     const drawn = style.metrics.drawnCounter ?? style.metrics.counterWidth;
-    return sidebearing * (narrowed(style) / drawn) ** 0.55;
+    return sidebearing * (narrowed(style) / drawn) ** 0.55 * tighter;
   }
   const gained = blackness(style) * BLACK_SPAN * xHeight;
-  return sidebearing + gained * 0.25;
+  return (sidebearing + gained * 0.25) * tighter;
 }
 
 /**
