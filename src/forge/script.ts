@@ -407,9 +407,11 @@ export function seamsOf(
    * between the seam and half a pen under the x-height, and at a Black that
    * half pen came down past the seam: the band was empty, the search fell back
    * to the nearest thing, and the `b` of `brown` left from its own stem and ran
-   * level across its bowl into the `r`.
+   * level across its bowl into the `r`. A band a tenth of a pen tall was no
+   * better -- the skeleton is sampled more coarsely than that, and stepped
+   * straight over the side of the bowl.
    */
-  return { low, high: Math.max(low, Math.min(high * x, x - half * 1.1)) };
+  return { low, high: Math.max(low, Math.min(high * x, x - half * 1.5)) };
 }
 
 /**
@@ -1165,24 +1167,51 @@ function run(
   knit: number,
   end: "in" | "out",
 ): Spine {
-  const body =
-    end === "in"
-      ? biarc(seam, along, hold, holding, room, "from")
-      : biarc(hold, holding, seam, along, room, "to");
   /*
-   * And out past the seam along the heading, so the straight run is a
-   * continuation of the stroke rather than a shelf hung off it. This is the
-   * part both halves share: the run either side of a seam is the same line,
-   * because `along` is the same number on every letter of the face.
+   * Straight on this side of the seam for as far as the other half carries
+   * past it, and only then into the arc.
+   *
+   * Each half reaches over the seam by the weld, straight along the heading,
+   * and lies along the other half there. Along it only if the other half is
+   * itself straight there: both halves bend the same way at the seam -- the
+   * join is a valley -- so an arc that leaves the seam at once had already
+   * curved away from the run laid over it, and the run's square end stood
+   * out under the join. With an angled nib the end is the nib's whole length
+   * across, and on the Formal Script at a Black there was a step under every
+   * join in the word. Straight on both sides, the two runs are the same line
+   * whatever letter is on the other side.
+   *
+   * No further than half-way to where the join takes hold of the letter, so a
+   * letter standing close to its seam keeps its arc.
    */
   const far = level + knit;
+  const toward = (hold.x - seam.x) * along.x + (hold.y - seam.y) * along.y;
+  /*
+   * And no further than leaves the join room to climb without dipping. The
+   * hand has to get from the letter to the start of the straight run by a
+   * run along the line and one turn up, and that needs the run's start to
+   * stand above the letter's end by a turn the pen can make. Taken the whole
+   * weld regardless, the Casual Script's `E` and `Z` dipped under their own
+   * baseline on the way to the seam.
+   */
+  const rise = (end === "in" ? hold.y - seam.y : seam.y - hold.y) - (room.join ?? room.half) * 0.55;
+  const climbs = along.y > 1e-6 ? Math.max(0, rise / along.y) : far;
+  const own = Math.max(0, Math.min(far, (end === "in" ? toward : -toward) * 0.5, climbs));
+  const inner =
+    end === "in"
+      ? at(seam.x + along.x * own, seam.y + along.y * own)
+      : at(seam.x - along.x * own, seam.y - along.y * own);
+  const body =
+    end === "in"
+      ? biarc(inner, along, hold, holding, room, "from")
+      : biarc(hold, holding, inner, along, room, "to");
   const out = at(seam.x + along.x * far, seam.y + along.y * far);
   const back = at(seam.x - along.x * far, seam.y - along.y * far);
   const tail = (from: Vec2, to: Vec2): Spine => ({
     segments: [{ kind: "line", from, to }],
     closed: false,
   });
-  return end === "in" ? chained(tail(back, seam), body) : chained(body, tail(seam, out));
+  return end === "in" ? chained(tail(back, inner), body) : chained(body, tail(inner, out));
 }
 
 /**
@@ -1274,10 +1303,63 @@ function biarc(
    * folds. Either half like that and the whole biarc goes.
    */
   const bent = (spine: Spine) => spine.segments.every((part) => part.kind === "arc");
+  /*
+   * And never an S where one bend and a straight run will do.
+   *
+   * Where the chord is flatter than half the turn the two headings ask for,
+   * the equal-tangent biarc bends one way and then the other: it dips before
+   * it climbs. A lead-out leaving the foot of a `T` along the line and asked
+   * to be at the seam's heading by the seam went down under the baseline
+   * first, by thirteen units on the Monoline. The hand does not do that -- it
+   * runs along the line and then turns up, flat at the bottom and steepening
+   * towards the top -- and that is a straight run and one arc, tangent at both
+   * ends, whichever of the two ends the straight run belongs to.
+   */
+  const sweep = (spine: Spine) => {
+    const part = spine.segments.find((one) => one.kind === "arc");
+    return part && part.kind === "arc" ? Math.sign(part.endAngle - part.startAngle) : 0;
+  };
+  if (sweep(opening) * sweep(closing) < 0) {
+    const straightened = runThenTurn(from, first, to, last, room);
+    if (straightened) return straightened;
+  }
   if (!bent(opening) || !bent(closing) || turn(opening) > MOST_TURN || turn(closing) > MOST_TURN) {
     return one();
   }
   return chained(opening, closing);
+}
+
+/**
+ * A straight run and one arc from `from` leaving along `first` to `to`
+ * arriving along `last`, tangent at both ends -- or null where the two
+ * headings never meet ahead of the one and behind the other.
+ */
+function runThenTurn(from: Vec2, first: Vec2, to: Vec2, last: Vec2, room: Room): Spine | null {
+  const cross = first.x * last.y - first.y * last.x;
+  if (Math.abs(cross) < 1e-6) return null;
+  // Where the line out of `from` meets the line into `to`.
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const ahead = (dx * last.y - dy * last.x) / cross;
+  const behind = (dy * first.x - dx * first.y) / cross;
+  if (!(ahead > 1e-6) || !(behind > 1e-6)) return null;
+  const meet = at(from.x + first.x * ahead, from.y + first.y * ahead);
+  const line = (a: Vec2, b: Vec2): Spine => ({
+    segments: [{ kind: "line", from: a, to: b }],
+    closed: false,
+  });
+  if (ahead >= behind) {
+    // Straight first, then the turn into `to`.
+    const turnsAt = at(meet.x - first.x * behind, meet.y - first.y * behind);
+    const arc = levelArc(turnsAt, to, room, first);
+    if (!arc.segments.every((part) => part.kind === "arc")) return null;
+    return chained(line(from, turnsAt), arc);
+  }
+  // The turn out of `from` first, then straight into `to`.
+  const turnsAt = at(meet.x + last.x * ahead, meet.y + last.y * ahead);
+  const arc = levelArc(from, turnsAt, room, first);
+  if (!arc.segments.every((part) => part.kind === "arc")) return null;
+  return chained(arc, line(turnsAt, to));
 }
 
 /**
@@ -1460,7 +1542,7 @@ export function planJoin(
   const ending = leavesAt
     ? nearest(points, (point) => Math.hypot(point.x - leavesAt.x, point.y - leavesAt.y))[0]
     : null;
-  const leaves = ending
+  const banded = ending
     ? ending
     : exitAt > seams.low
       ? attach(
@@ -1475,6 +1557,38 @@ export function planJoin(
           "right",
           offBand(room.half, exitAt),
         );
+  /*
+   * And not from behind the letter. A letter whose last stroke ends low --
+   * the foot of a `c`, an `e`, the leg of a `k` or an `x` -- has nothing of
+   * its right-hand side in the band once the pen is heavy enough to push the
+   * band up past that foot, and the rightmost thing left in it is the far
+   * wall. At a pen of 260 the `c` and the `e` left from inside their own
+   * bowls and ran their lead-outs straight through their counters. Where the
+   * letter reaches well right of the band below it, the lead-out leaves from
+   * there instead, carrying on the way the stroke was going if it climbs.
+   */
+  const under =
+    ending || exitAt > seams.low
+      ? []
+      : points.filter(
+          (one) =>
+            one.point.y < room.half &&
+            one.point.x > banded.point.x + room.half &&
+            /*
+             * High enough that the lead-out's ink stays off the line -- or the
+             * end of a stroke that is already climbing, whose own ink is there
+             * before the lead-out is. A `K` left from the foot of its leg hung
+             * its lead-out under the baseline.
+             */
+            (one.point.y >= (room.join ?? room.half) * 0.85 || one.way.x * one.way.y > 0),
+        );
+  const leaves =
+    under.length > 0
+      ? under.reduce((best, one) => (one.point.x > best.point.x ? one : best))
+      : banded;
+  // Rising to the right, whichever way the recipe happened to draw the run.
+  const rightward = leaves.way.x < 0 ? at(-leaves.way.x, -leaves.way.y) : leaves.way;
+  const onward = under.length > 0 && rightward.y > 0 ? rightward : null;
 
   /*
    * How much room the letter takes, which is not the same question as where the
@@ -1842,7 +1956,16 @@ export function planJoin(
       : run(at(0, entryAt), entryWay, from, arriving, room, level, knit, "in");
   const exit = !ends.exit
     ? null
-    : run(at(width, exitAt), exitWay, to, ending ? ending.way : at(1, 0), room, level, knit, "out");
+    : run(
+        at(width, exitAt),
+        exitWay,
+        to,
+        ending ? ending.way : (onward ?? at(1, 0)),
+        room,
+        level,
+        knit,
+        "out",
+      );
 
   return { entry, exit, inset, width };
 }

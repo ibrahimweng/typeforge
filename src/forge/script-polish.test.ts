@@ -162,3 +162,44 @@ describe("every drawing of a joined letter", () => {
     expect(crossed).toEqual([]);
   }, 600_000);
 });
+
+describe("a lead-out at a heavy weight", () => {
+  /*
+   * It leaves from the right of the letter, not from inside it. At a pen of
+   * 260 the `c` and the `e` left from the far wall of their own bowls, and the
+   * `b` from its stem, and each ran its lead-out straight through its counter.
+   */
+  it("starts at the letter's right, not across its counter", () => {
+    const across: string[] = [];
+    for (const name of JOINED) {
+      const own = base(name);
+      for (const weight of [200, 260]) {
+        const style = at(own, weight);
+        for (const letter of ["b", "c", "e", "k", "o", "v", "w", "x"]) {
+          for (const high of [false, true]) {
+            if (high && !"bovw".includes(letter)) continue;
+            const recipe = joiningHigh({ exit: high }, () =>
+              recipeOf(letter as never, own.forms?.[letter])!(heavier(style)),
+            );
+            const width = recipe.width ?? 0;
+            const body = recipe.strokes
+              .slice(0, -1)
+              .flatMap((stroke) => alongSpine(stroke.spine, 32));
+            const exit = recipe.strokes[recipe.strokes.length - 1].spine;
+            const start = alongSpine(exit, 2)[0];
+            if (start.x > width) continue;
+            // The body's own right edge, around the height the lead-out leaves at.
+            const near = body.filter(
+              (one) => Math.abs(one.y - start.y) < style.metrics.xHeight * 0.35,
+            );
+            const right = Math.max(...near.map((one) => one.x));
+            if (start.x < right - style.pen.weight * 0.75) {
+              across.push(`${name} ${letter}${high ? "^" : ""} @${weight}`);
+            }
+          }
+        }
+      }
+    }
+    expect(across).toEqual([]);
+  });
+});
