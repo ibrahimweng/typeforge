@@ -191,11 +191,7 @@ function strokeOf(contours: Contour[]): number | null {
  * flat end to sit a slab on, and guessing at one would put a bar across the
  * middle of a curve.
  */
-export function findTerminals(
-  contours: Contour[],
-  maxWidth: number,
-  stem?: number,
-): Terminal[] {
+export function findTerminals(contours: Contour[], maxWidth: number, stem?: number): Terminal[] {
   const terminals: Terminal[] = [];
   /*
    * Only the ink's own outlines. A counter is wound against the letter, so the
