@@ -1198,9 +1198,14 @@ function gapBeside(
         Math.min(total, at + around),
       );
       if (piece.segments.length === 0) return null;
+      /*
+       * A little wider than the stroke: at 1.2 of its pen the knife trimmed
+       * to it left a hairline of a heavy ring's outside past its end, and a
+       * Black g's bowl stayed on its stem at one pen in ten.
+       */
       const local = sweep({
         spine: piece,
-        pen: { ...giving.pen, weight: giving.pen.weight * 1.2 + 2 },
+        pen: { ...giving.pen, weight: giving.pen.weight * 1.3 + 4 },
         start: { kind: "butt" },
         end: { kind: "butt" },
         join: "round",

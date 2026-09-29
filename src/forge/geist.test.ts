@@ -18,6 +18,7 @@ import { contourArea, contoursBounds, inkRunsAt } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import { drawLetter } from "./build";
 import { formOf, startFrom } from "./document";
+import { xGrowth } from "./letters/common";
 import { BASES, SANS, type Style } from "./style";
 
 const forge = startFrom(SANS);
@@ -298,7 +299,9 @@ describe("past Geist Black, an Ultra", () => {
     for (const weight of ultras) {
       for (const name of lowercase) {
         const box = contoursBounds(draw(name, at(weight)).contours);
-        const top = short.includes(name) ? SANS.metrics.xHeight : SANS.metrics.ascender;
+        // The x-height as the Sans draws it at this weight: see `metrics.xGrows`.
+        const x = SANS.metrics.xHeight + xGrowth(at(weight));
+        const top = short.includes(name) ? x : SANS.metrics.ascender;
         const bottom = "gjpqy".includes(name) ? SANS.metrics.descender : 0;
         const over = SANS.metrics.overshoot + 8;
         if (box.yMax > top + over || box.yMin < bottom - over) {

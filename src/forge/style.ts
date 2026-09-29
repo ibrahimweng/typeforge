@@ -104,6 +104,13 @@ export interface Metrics {
    * just that side as fast: the stem beside a b's or a d's bowl. "unopened"
    * sides are not opened towards the Thin (`lightHeld.open`).
    */
+  /**
+   * How much taller the x-height is drawn by a heavy weight (`by` units, by a
+   * blackness of `at`): Geist's rises from 542 at its Regular to 552 at its
+   * Black. Only the letters are drawn taller; the face's x-height, and the
+   * weight measured against it, stay the face's own.
+   */
+  xGrows?: { by: number; at: number };
   sides?: Record<
     string,
     [number, number] | [number, number, "closes" | "stem-left" | "stem-right" | "unopened"]
@@ -693,6 +700,7 @@ export const SANS: Style = {
     // Geist stands its accents 55 over a lowercase letter and 66 over a
     // capital, and sets its steep grave and acute by their feet.
     accents: { gap: [0.055, 0.066], byFoot: true },
+    xGrows: { by: 10, at: 0.88 },
     /* Geist Regular's own sidebearings, over 80 (a capital's over 80 after its 12 of extra). */
     sides: {
       a: [0.59, 0.24, "closes"],

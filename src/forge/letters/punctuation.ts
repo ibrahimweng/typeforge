@@ -283,7 +283,7 @@ function upperStop(f: Frame, radius: number): number {
     stem < 86
       ? 0.955 - 0.053 * Math.min(1, (86 - stem) / 56)
       : 0.955 + 0.01 * Math.min(1, (stem - 86) / 86);
-  return Math.min(Math.max(f.x * share - radius, radius * 3.7), f.x - radius);
+  return Math.min(Math.max(f.xOwn * share - radius, radius * 3.7), f.x - radius);
 }
 
 /**
@@ -340,7 +340,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     const given = f.style.metrics.wordSpace;
     if (given) {
       const t = Math.min(1, blackness(f.style) / 0.67);
-      return { strokes: [], width: f.x * (given[0] + (given[1] - given[0]) * t) };
+      return { strokes: [], width: f.xOwn * (given[0] + (given[1] - given[0]) * t) };
     }
     return { strokes: [], width: f.arch * 1.1 };
   },

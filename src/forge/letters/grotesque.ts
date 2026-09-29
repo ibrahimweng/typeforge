@@ -210,7 +210,7 @@ export function grotesqueA(style: Style): Recipe {
    * face's own size.
    */
   const base = BASES.find((one) => one.name === style.name);
-  const size = base ? f.x / base.metrics.xHeight : 1;
+  const size = base ? f.xOwn / base.metrics.xHeight : 1;
   const X = (x: number) => across0(0) + (across0(x) - across0(0)) * size;
   const k = X(1) - X(0);
   const H = (y: number) => (y / 530) * f.x;
@@ -821,7 +821,8 @@ export function grotesqueJ(style: Style): Recipe {
 export function grotesqueT(style: Style): Recipe {
   const f = frame(style);
   const [X, lerp] = squared(f);
-  const H = (y: number) => (y / 530) * f.x;
+  // On the face's own x-height: Geist's t does not grow with its x-height.
+  const H = (y: number) => (y / 530) * f.xOwn;
   // Measured from the left of the bar: Geist's stem stands 120 in on the
   // Regular and 175 on the Black, and the bar and the foot run to 305 and 303
   // there, 402 and 402 here.
@@ -3841,7 +3842,7 @@ export function grotesqueZ(style: Style): Recipe {
   const [, t] = spread(f);
   return finish(
     f,
-    zed(f, inked(f, f.x, 530), t, f.x, [
+    zed(f, inked(f, f.xOwn, 530), t, f.x, [
       [10, 13],
       [428, 492],
       [436, 499],
@@ -4094,7 +4095,7 @@ export function grotesqueHyphen(style: Style): Recipe {
   const f = frame(style);
   // Geist's: 296 long at the Thin, 332 at the Regular, 348 at the Black.
   const [X, lerp] = squared(f);
-  const y = (lerp(292, 292, 281) / 530) * f.x;
+  const y = (lerp(292, 292, 281) / 530) * f.xOwn;
   /*
    * As deep as Geist's: the stem's own depth at the Thin, 0.91 of it at the
    * Regular and 0.78 at the Black (152 on a stem of 194). On the stem's pen
@@ -4764,8 +4765,11 @@ function grotesqueTittle(f: Frame, x: number): Stroke {
     side *
     2 *
     (1 + 1.06 * l - 0.28 * Math.min(t, 1) - 0.14 * Math.min(Math.max(t - 1, 0) / 1.24, 1));
-  const top = f.asc + (16 / 530) * f.x * Math.min(t, 1) - (12 / 530) * f.x * l;
-  const y = Math.max(top - tall / 2, f.x + f.half * 0.3 + tall / 2);
+  const top = f.asc + (16 / 530) * f.xOwn * Math.min(t, 1) - (12 / 530) * f.xOwn * l;
+  // Clear of the stem's top, by a little less where the stem is drawn taller
+  // (`metrics.xGrows`), or an Ultra's dot rose past the ascender's overshoot.
+  const clear = f.half * 0.3 - (f.x - f.xOwn) * 0.5;
+  const y = Math.max(top - tall / 2, f.x + clear + tall / 2);
   const pen = { ...f.style.pen, weight: tall, contrast: 0, angle: 0 };
   return ink({ ...f, style: { ...f.style, pen } }, straight(at(x - side, y), at(x + side, y)));
 }

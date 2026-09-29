@@ -194,6 +194,23 @@ narrow at the Thin), the dollar (17 wide at UltraBlack; Geist's dollar's S is
 are fitted to Geist's widths at its five weights with `atWeights`. All are
 within 2.
 
+**The x-height at the heavy weights (shared files, Sans only).** Geist's
+lowercase grows taller with the weight: its round and arched letters top out
+at 542 at the Regular, 546 at the SemiBold, 550 at UltraBlack and 552 at the
+Black. Ours stood at 542 throughout, so every lowercase letter was 10 units
+short at the Black. The Sans now sets `metrics.xGrows`, and `frame` in
+`common.ts` draws the x-height and the bowls' heights that much taller, with
+the bowls' widths and the face's own x-height (and so the weight measured
+against it) unchanged. The punctuation, hyphen, t, space and the a's and z's
+widths keep to the face's own x-height (a new `xOwn` on the frame). No other
+face sets `xGrows`, so none changes.
+
+The split cut (shared, `cut.ts`) left a Black g's bowl on its stem at about
+one pen in ten, as a hairline of the ring's outside past the knife. The
+x-height change moved one of those pens onto 200, which a test samples. The
+knife is now trimmed to a sweep of 1.3 of the stroke's pen (it was 1.2), and
+the Black g splits cleanly at every pen from 150 to 260.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

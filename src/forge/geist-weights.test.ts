@@ -1250,3 +1250,24 @@ describe("the sides of the S, the question, the ampersand, the g and the y", () 
     }
   });
 });
+
+describe("the x-height at the heavy weights", () => {
+  it("rises as Geist's does", () => {
+    // The tops of Geist's round and arched letters: 542 at the Regular, 546
+    // at the SemiBold, 550 at UltraBlack and 552 at the Black; here they
+    // stood at 542 throughout.
+    for (const [weight, top] of [
+      [87, 542],
+      [130, 546],
+      [172, 550],
+      [194, 552],
+    ]) {
+      for (const name of ["n", "x", "o"]) {
+        const ink = box(name, weight);
+        // The n's arch and the o overshoot the line by 12; the x stands on it.
+        const line = name === "x" ? top - 12 : top;
+        expect(Math.abs(ink.yMax - line), `${name} at ${weight}`).toBeLessThan(2.5);
+      }
+    }
+  });
+});

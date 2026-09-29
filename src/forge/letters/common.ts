@@ -430,6 +430,8 @@ export interface Frame {
   /** Where ink may start, allowing for the pen's own width. */
   edge: number;
   x: number;
+  /** The face's own x-height, where `x` is drawn taller at a heavy weight (`metrics.xGrows`). */
+  xOwn: number;
   cap: number;
   asc: number;
   desc: number;
@@ -632,6 +634,18 @@ const HEAVY_GIVE = 0.03;
  * Geist's Black, a stem of 194 (1.31 of the older Black's measure): Geist's
  * o is 565 across at its UltraBlack and 584 at its Black.
  */
+/**
+ * How much taller the x-height is drawn at this weight, on a face whose
+ * x-height grows with it (`metrics.xGrows`): Geist's rises 4 units by its
+ * SemiBold, 8 by its UltraBlack and 10 by its Black.
+ */
+export function xGrowth(style: Style): number {
+  const grows = style.metrics.xGrows;
+  if (!grows) return 0;
+  const t = Math.min(1, Math.max(0, blackness(style) / grows.at));
+  return grows.by * t ** 0.8;
+}
+
 const HEAVY_GIVE_LOWER = 0.045;
 const HEAVY_GIVE_REACH = 1.31;
 
@@ -656,7 +670,11 @@ export function frame(drawn: Style): Frame {
    * overshoot, at every weight -- and, at a width of one, exactly as wide,
    * which is what a circle is.
    */
-  const bowlH = Math.max(metrics.xHeight / 2 + metrics.overshoot - upright, least);
+  const bowlH0 = Math.max(metrics.xHeight / 2 + metrics.overshoot - upright, least);
+  // Taller at a heavy weight on a face whose x-height grows (`metrics.xGrows`),
+  // its bowls as wide as before.
+  const grownX = xGrowth(style);
+  const bowlH = bowlH0 + grownX / 2;
   /*
    * Lighter than the face's own pen, on a face that holds its widths
    * (`metrics.lightHeld`): each bowl and arch as wide through its middle as
@@ -691,8 +709,8 @@ export function frame(drawn: Style): Frame {
   const bowlAcross = lighter
     ? Math.max(metrics.xHeight / 2 + metrics.overshoot - lightUpright, least) * lightGrow
     : heavierHeld
-      ? Math.max(bowlH, (metrics.xHeight / 2 + metrics.overshoot - heldUpright) * lowerKeep)
-      : bowlH;
+      ? Math.max(bowlH0, (metrics.xHeight / 2 + metrics.overshoot - heldUpright) * lowerKeep)
+      : bowlH0;
   const archWeight = lighter ? held.from : pen.weight;
   // In stem widths, and that is the whole of it: see `ASIDE`.
   const aside = style.parts.script.on ? pen.weight * ASIDE : 0;
@@ -715,7 +733,8 @@ export function frame(drawn: Style): Frame {
     style,
     half,
     edge: spacingOf(style) + half,
-    x: metrics.xHeight,
+    x: metrics.xHeight + grownX,
+    xOwn: metrics.xHeight,
     cap: metrics.capHeight,
     asc: metrics.ascender,
     desc: metrics.descender,
@@ -724,15 +743,15 @@ export function frame(drawn: Style): Frame {
       ((metrics.counterWidth + archWeight) / 2) * lightGrow * heldReach(style) * metrics.width,
       least,
       // A joined hand's arches open with its bowls at a Black: see `heldOpen`.
-      style.parts.script.on ? heldOpen(style, bowlH, upright) : 0,
+      style.parts.script.on ? heldOpen(style, bowlH0, upright) : 0,
     ),
-    bowl: Math.max(inkRound(bowlAcross) * wide, least, heldOpen(style, bowlH, upright)),
+    bowl: Math.max(inkRound(bowlAcross) * wide, least, heldOpen(style, bowlH0, upright)),
     grownBowl: Math.max(
-      (heavierHeld ? bowlH : bowlAcross) * wide,
+      (heavierHeld ? bowlH0 : bowlAcross) * wide,
       least,
-      heldOpen(style, bowlH, upright),
+      heldOpen(style, bowlH0, upright),
     ),
-    crown: metrics.xHeight * style.parts.shoulder.crest,
+    crown: (metrics.xHeight + grownX) * style.parts.shoulder.crest,
     aside,
     bowlH,
     /*
