@@ -820,5 +820,5 @@ the branch's starting point, 3050e21. `specimen-*.png` shows "sass eyes Sa8
 over the Draw fill, at the same four weights: Geist Thin at 30, Regular at 87,
 UltraBlack at 172, and Black (the heaviest Geist) at 260.
 `overlay-more-after.png` shows the letters fitted to Geist's ink in the last
-pass (2 3 4 5 6 7 9 ? , D B P R Q K k x M W f t) at 30, 87, 172 and 194,
-against Geist Thin, Regular, UltraBlack and Black.
+passes (2 3 4 5 6 7 9 ? , D B P R Q K k x M W f t e P F ( [ / z % ` é) at 30,
+87, 172 and 194, against Geist Thin, Regular, UltraBlack and Black.
