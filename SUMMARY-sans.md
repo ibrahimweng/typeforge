@@ -610,6 +610,11 @@ strokes as white; they now use a filled (nonzero) ruler.
   spine and teardrop counters. Draw's has a level spine and counters flat
   where they meet it. It covers Geist's to within 13 to 19 per cent of its
   area.
+- **The Thin &.** Its lower bowl is now a little wider at the Thin and
+  its sides open with the face's light opening. It still misses Geist
+  Thin's ink by half, and 87's by a seventh. Geist's loop is wider at its
+  crown and narrower where it crosses, and its arm is shorter. That needs
+  the loop drawn on two widths.
 - **Past 194.** Geist has nothing heavier than its Black. At 200–260 the
   letters follow their own rules for keeping counters open, not Geist.
 - **œ.** Not in the review list, and it is still poor past the Black: its o

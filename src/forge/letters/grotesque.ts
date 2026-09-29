@@ -1235,7 +1235,11 @@ export function grotesqueAmpersand(style: Style): Recipe {
   // The lower bowl.
   const bowlY = H(180);
   const bowlH = held(f, bowlY - f.dip(0));
-  const bowlW = held(f, lerp(193, 204) * u);
+  // The Sans's Thin's a little wider, as Geist Thin's is.
+  const bowlW = held(
+    f,
+    (lerp(193, 204) + (f.style.metrics.xGrows !== undefined ? 10 * thinness(f) : 0)) * u,
+  );
   const bowl = at(X(lerp(237, 290)), bowlY);
   // The leg, from its foot up to where it runs tangent into the loop's left.
   const foot = at(X(lerp(510, 600)), 0);

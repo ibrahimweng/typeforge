@@ -857,7 +857,7 @@ export const SANS: Style = {
       // Geist stands its ! 50 off either side and its bar 92.
       exclam: [0.63, 0.63],
       // Geist's ampersand stands 40 off its left and 20 off its right.
-      ampersand: [0.5, 0.25, "closes"],
+      ampersand: [0.5, 0.25, "closes", [5, 5]],
       bar: [1.15, 1.15, "closes"],
       grave: [0.55, 0.55],
       acute: [0.55, 0.55],
