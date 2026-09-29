@@ -1447,17 +1447,18 @@ export function grotesqueJay(style: Style): Recipe {
   /*
    * Geist's foot reaches the same way past the stem's left edge at every
    * weight -- 120 at the Thin, 100 at the Regular, 124 at the Black -- on a
-   * turn of about 100 down its middle, 124 at the Black. Measured from the
+   * turn of about 100 down its middle, 124 at the Black and 84 at the Thin,
+   * whose foot is also 7 shorter than the Regular's would have it. Measured from the
    * stem's middle, a Black's foot was a stub a quarter of a stem long, glued
    * square onto the turn.
    */
   const t = Math.min(heaviness(f) / 0.67, 1.5);
   const l = thinness(f);
-  const radius = held(f, (100 + 24 * t + 5 * l) * u);
+  const radius = held(f, (100 + 24 * t - 18 * l) * u);
   // The foot reaching as far as the current Geist's: 12 units further by its
   // UltraBlack than the older measures.
   const toe = Math.min(
-    stem - f.half - (100 + 36 * t + 20 * l) * u,
+    stem - f.half - (100 + 36 * t + 13 * l) * u,
     stem - radius - 1 - f.half * 0.5 * Math.max(0, heaviness(f) - 0.67),
   );
   return finish(f, [

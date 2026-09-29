@@ -792,7 +792,7 @@ export const SANS: Style = {
       g: [0.52, 1, "stem-right"],
       f: [0.75, 0.53, "closes", [0, 0], [-7, -3]],
       // Its foot reaches back under the letter before (Geist -5 to -3).
-      j: [-0.06, 1, "closes", [-5, -9]],
+      j: [-0.06, 1, "closes", [-5, -2]],
       k: [1, 0.59, "stem-left"],
       // Fitted, its arm's side closed to 20 at the Light; Geist Thin's is 50.
       r: [1, 0.55, "closes"],

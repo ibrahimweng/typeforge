@@ -820,6 +820,12 @@ weight, and their misfit at the Regular is 0.02 (Y), 0.04 (#) and 0.06 (j).
 The sidebearings test now carries Geist's real values for all three, which
 the old spacing missed by 13 to 18 units.
 
+**The Thin j.** Its foot reached 127 past the stem's left edge, against Geist
+Thin's 120. Its turn was also wider: an outside radius of about 123 to Geist's
+99. Both were Regular measures carried down to the Thin. The turn now tightens
+and the foot shortens toward the Thin. The Thin j's misfit went from 0.35 to
+0.03, and its sides and advance now match Geist's to the unit.
+
 ## What still differs from Geist
 
 - **s counters at the Black.** Close to Geist's size and shape now; Geist's

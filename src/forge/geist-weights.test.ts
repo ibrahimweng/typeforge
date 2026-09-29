@@ -146,6 +146,23 @@ describe("the Sans at its Black, against Geist Black", () => {
     expect(stem[0] - contoursBounds(contours).xMin).toBeGreaterThan(100);
   });
 
+  it("turns the Thin j's foot on Geist Thin's turn", () => {
+    // Geist Thin's stem stands 115 to 145, its foot reaching 120 past the
+    // stem's left, and its turn's outside passes 132 at 100 down and 107 at
+    // 130. The foot reached 127 and the turn stood out: 127 and 94.
+    const { contours } = draw("j", 30);
+    const left = contoursBounds(contours).xMin;
+    const stem = runs(contours, 300, "y")[0];
+    expect(Math.abs(stem[0] - left - 120)).toBeLessThan(3);
+    for (const [y, x] of [
+      [-100, 132 - 120],
+      [-130, 107 - 120],
+    ]) {
+      const row = filled(contours, y);
+      expect(Math.abs(row[row.length - 1][1] - stem[0] - x), `at ${y}`).toBeLessThan(5);
+    }
+  });
+
   it("carries the 4's bar past its stem", () => {
     for (const weight of [172, 260]) {
       const { contours } = draw("four", weight);
