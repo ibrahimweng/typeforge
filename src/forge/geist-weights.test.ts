@@ -1859,3 +1859,17 @@ describe("the parentheses", () => {
     }
   });
 });
+
+describe("the SemiBold percent", () => {
+  it("is as light as Geist's and within its lines", () => {
+    // 600 up Geist SemiBold's slash runs 88 across and its ink stays between
+    // -8 and 718; it ran 102 and reached -12 and 722.
+    const { contours } = draw("percent", 130);
+    const row = filled(contours, 600);
+    const [from, to] = row[row.length - 1];
+    expect(Math.abs(to - from - 88)).toBeLessThan(5);
+    const ink = contoursBounds(contours);
+    expect(ink.yMin).toBeGreaterThan(-10);
+    expect(ink.yMax).toBeLessThan(720);
+  });
+});

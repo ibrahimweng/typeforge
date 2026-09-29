@@ -4978,12 +4978,24 @@ export function grotesquePercent(style: Style): Recipe {
   const past = Math.max(0, stem - NOW_BLACK * (f.x / 530));
   // Past the Black no heavier at the crowns than the Black's, or the rings
   // stood past both lines and their counters closed to slits.
-  const ringWeight = stem * held3(0.83, 0.71, 1);
+  /*
+   * The Sans's rings, their crowns and its slash lighter again from the
+   * SemiBold on, as Geist's are: its rings' sides 94 on a stem of 128, where
+   * they stood 103, and its slash 88, where it stood 101. Held at the
+   * Black's past it.
+   */
+  const sansPct = f.style.metrics.xGrows !== undefined;
+  const pastBlack = f.style.pen.weight / f.xOwn > 194 / 530;
+  const sansAt = (knots: [number, number, number, number, number]) =>
+    sansPct ? (pastBlack ? knots[4] : atWeights(f, ...knots)) : knots[0];
+  const ringWeight = stem * held3(0.83, 0.71, 1) * sansAt([1, 1, 0.95, 0.95, 0.95]);
   const crowns = 172 * (f.x / 530) * 0.71 * 0.7;
   const ringPen = {
     ...f.style.pen,
     weight: ringWeight,
-    contrast: past > 0 ? Math.max(0.3, 1 - crowns / ringWeight) : held3(0.14, 0.3, 0.07),
+    contrast:
+      (past > 0 ? Math.max(0.3, 1 - crowns / ringWeight) : held3(0.14, 0.3, 0.07)) +
+      sansAt([0, 0, 0.05, 0.02, 0.05]),
     angle: 0,
   };
   const halfW = held3(118, 112.5, 109) * u + past * 0.35;
@@ -4996,7 +5008,7 @@ export function grotesquePercent(style: Style): Recipe {
   const slope = held3(0.69, 0.648, 0.717);
   const slashPen = {
     ...f.style.pen,
-    weight: stem * held3(0.76, 0.49, 0.81),
+    weight: stem * held3(0.76, 0.49, 0.81) * sansAt([1, 1, 0.85, 0.95, 0.9]),
     contrast: 0,
     angle: 0,
   };

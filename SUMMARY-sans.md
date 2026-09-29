@@ -655,6 +655,13 @@ middle, so every weight and family master has the same nodes (6+6). The
 misfit of ( falls from 0.23/0.12/0.11/0.10/0.09 to 0.14/0.04/0.04/0.02/0.02
 at the Thin, Regular, SemiBold, UltraBlack and Black.
 
+**The heavy percent.** From the SemiBold on, the % now draws its rings, their
+crowns and its slash lighter, as Geist's are. At 128 its ring sides had
+stood 103 against Geist's 94, and its slash 101 against 88. The rings also
+reached 4 units past both lines; they now stay within them. Its misfit falls
+from 0.12/0.07/0.12 to 0.05/0.06/0.07 at the SemiBold, UltraBlack and Black.
+At the Black the lower ring still sits 10 units left of Geist's.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular
