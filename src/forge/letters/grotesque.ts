@@ -2166,16 +2166,26 @@ function sixStrokes(f: Frame, sans: boolean, cut = 552, fit = sixFit(f)): Stroke
   const hoodH = held(f, top - hoodY);
   // Held in at the heavy weights, where cut lower the hood's end reached
   // past the bowl's side; Geist keeps it inside.
-  const out = 25 * u - (sans ? now(0, 9, 0) : 0);
+  const out = 25 * u - (sans ? now(0, 9, 0) + 4 : 0);
   const hood = at(centre.x + out, hoodY);
   const hoodW = wide + out;
-  const end = angleAt(f, hood, hoodW, hoodH, Math.max(up(f, cut), hoodY + f.half), false);
+  /*
+   * The Sans's hood fuller than the face's round, and fuller over its crown
+   * to the right than down its left, as Geist's is from the Regular on: at
+   * the face's fullness Geist's stood 9 to 23 units out past it either side
+   * 700 up and the hood's left side 5 to 10 units in from Geist's. Split at
+   * its crown at every weight, so the hood has as many points at each.
+   */
+  const overRight = sans ? { ...f, curve: atWeights(f, 0.15, 0.25, 0.25, 0.35, 0.35) } : f;
+  const downLeft = sans ? { ...f, curve: atWeights(f, 0.15, 0.2, 0.25, 0.25, 0.2) } : f;
+  const end = angleAt(overRight, hood, hoodW, hoodH, Math.max(up(f, cut), hoodY + f.half), false);
   return [
     ...sixBowl(f, sans, centre, wide, radius, figureCrown(f)),
     ink(
       f,
       chain(
-        bend(f, hood, hoodH, end, 180, hoodW),
+        bend(overRight, hood, hoodH, end, 90, hoodW),
+        bend(downLeft, hood, hoodH, 90, 180, hoodW),
         straight(at(hood.x - hoodW, hoodY), at(hood.x - hoodW, centre.y)),
       ),
       f.end,

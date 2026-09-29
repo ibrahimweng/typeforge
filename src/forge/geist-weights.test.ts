@@ -1437,3 +1437,14 @@ describe("the six's and nine's bowls", () => {
     expect(Math.abs(nine[1] - 479)).toBeLessThan(12);
   });
 });
+
+describe("the six's hood", () => {
+  it("rises and rounds over as Geist's does at the heavy weights", () => {
+    // At the UltraBlack Geist's hood reaches 478 700 up and its left side
+    // stands 67 in 500 up, where at the face's fullness it reached 455 and
+    // stood at 74.
+    const six = draw("six", 172).contours;
+    expect(Math.abs(filled(six, 700)[0][1] - 478)).toBeLessThan(16);
+    expect(Math.abs(filled(six, 500)[0][0] - 67)).toBeLessThan(5);
+  });
+});

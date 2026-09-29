@@ -311,6 +311,15 @@ and 0.2 anticlockwise from the upper right), and the nine, the six turned,
 takes it too. Fitted across the Thin to the Black, this took 10 to 25 per
 cent off both figures' misfit against Geist.
 
+**The 6's hood.** Geist's hood is fuller than the face's round from the
+Regular on, and fuller over its crown to the right than down its left. At the
+face's fullness it stood 9 to 23 units inside Geist's either side 700 up, with
+its left side 5 to 10 units in from Geist's. The Sans's hood is now split at
+its crown, with each half as full as Geist's. Its cut is found on the fuller
+curve, so the terminal still ends 520 up at the Black, and its reach is held
+4 units in so the figure keeps Geist's width. The nine's tail, the hood
+turned, fits Geist's nine up to a fifth better.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across
@@ -461,10 +470,10 @@ strokes as white; they now use a filled (nonzero) ruler.
 - **The ?'s terminal.** Geist cuts its hook's left end on a slant at the
   heavy weights, so its lower corner stands about 24 units in from Draw's
   level cut 500 up.
-- **The 6's hood and the 9's bowl.** Geist's hood rises straighter and a
-  little lighter than Draw's (7 units further left 500 up at the
-  UltraBlack), so it meets the bowl lower. The 9's upper right still stands
-  about 10 units past Geist's at the UltraBlack.
+- **The 6's hood and the 9's bowl.** Geist's hood is a little lighter than
+  Draw's at the heavy weights (165 across 500 up at the UltraBlack against
+  175). The 9's upper right still stands about 10 units past Geist's at the
+  UltraBlack.
 - **Past 194.** Geist has nothing heavier than its Black. At 200–260 the
   letters follow their own rules for keeping counters open, not Geist.
 - **œ.** Not in the review list, and it is still poor past the Black: its o
