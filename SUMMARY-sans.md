@@ -359,6 +359,15 @@ weight. Draw's left from the middle of the foot, so 40 under the line it
 stood 12 units left of Geist's at the Regular and 21 to 35 at the
 UltraBlack. It is now within 3 units of Geist's at every weight.
 
+**The 7's stroke.** It lands upright on one arc from under the arm. It
+landed at one place for every weight, so it stood 14 units right of Geist's
+near the foot at the Regular, 26 at the Black, and 12 left of it under the
+arm. Its landing is now fitted to Geist's ink at each weight: further right
+at the Thin and further left from the Regular on. That halved its misfit at
+every weight from the Regular to the Black and took three fifths off the
+Thin's. Geist's stroke is also lighter where it leaves the arm at the heavy
+weights: 550 up at the Black it is 186 across, where Draw's is 221.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

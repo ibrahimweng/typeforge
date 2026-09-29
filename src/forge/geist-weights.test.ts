@@ -1570,3 +1570,19 @@ describe("the comma's tail", () => {
     }
   });
 });
+
+describe("the seven's stroke", () => {
+  it("lands where Geist's does", () => {
+    // 100 up Geist's seven runs from 200 at the Thin, 185 at the Regular and
+    // 161 at the Black; landing at one place for every weight it ran from
+    // 197, 199 and 187.
+    for (const [weight, from] of [
+      [30, 200],
+      [87, 185],
+      [194, 161],
+    ]) {
+      const left = filled(draw("seven", weight).contours, 100)[0][0];
+      expect(Math.abs(left - from), `7 at ${weight}`).toBeLessThan(10);
+    }
+  });
+});

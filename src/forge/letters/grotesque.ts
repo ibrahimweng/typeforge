@@ -1166,7 +1166,13 @@ export function grotesqueSeven(style: Style): Recipe {
   const pen = penReach(style.pen);
   const line = f.hangs(f.cap);
   const end = X(545);
-  const foot = X(257);
+  /*
+   * Where it lands, fitted to Geist's ink at each weight: further right at
+   * the Thin and further left from the Regular on, where one landing for
+   * every weight left the Regular's curve 14 units right of Geist's near the
+   * foot and 12 left of it under the arm.
+   */
+  const foot = X(atWeights(f, 270, 243, 238, 232, 232));
   const corner = at(end, f.cap - f.upright * 2);
   let lean = (40 * Math.PI) / 180;
   let from = corner;
