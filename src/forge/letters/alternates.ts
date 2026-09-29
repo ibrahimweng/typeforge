@@ -82,6 +82,7 @@ import {
   grotesqueSix,
   grotesqueFiveSided,
   grotesqueSixSided,
+  grotesqueSmallM,
   grotesqueSmallX,
   grotesqueThreeSided,
   grotesqueSmallR,
@@ -1591,6 +1592,7 @@ const GROTESQUE: Array<[LetterName, string, (style: Style) => Recipe]> = [
   ["U", "Set wide, with a round trough.", grotesqueCapitalU],
   ["i", "A square dot, less tall than wide at a heavy weight.", grotesqueI],
   ["x", "Two straight strokes crossing, at a neo-grotesque's width.", grotesqueSmallX],
+  ["m", "Two arches, their counters a little narrower than the n's.", grotesqueSmallM],
   ["X", "Two straight strokes crossing, at a neo-grotesque's width.", grotesqueCapitalX],
 ];
 for (const [name, hint, build] of GROTESQUE) {

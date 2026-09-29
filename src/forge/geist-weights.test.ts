@@ -714,6 +714,11 @@ describe("the widths of the letters redrawn to the current Geist", () => {
       S: [503, 530, 562, 593, 609],
       dollar: [493, 519, 550, 581, 597],
       numbersign: [493, 493, 551, 609, 638],
+      // And the arches: the n, h and u 9 wide at the SemiBold, where Geist
+      // closes its counters faster than on the way to its Black, and the m
+      // 18 wide there and 20 wide at the Thin.
+      n: [386, 421, 461, 499, 519],
+      m: [676, 717, 752, 786, 803],
     };
     for (const [name, widths] of Object.entries(geist)) {
       for (const [index, weight] of [30, 87, 130, 172, 194].entries()) {

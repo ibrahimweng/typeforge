@@ -211,6 +211,16 @@ x-height change moved one of those pens onto 200, which a test samples. The
 knife is now trimmed to a sweep of 1.3 of the stroke's pen (it was 1.2), and
 the Black g splits cleanly at every pen from 150 to 260.
 
+**Arches at the SemiBold, and the m (shared file, Sans only).** Geist closes
+its counters faster midway to its Black than a straight line from its
+Regular to its UltraBlack: its n is 9 units narrower at the SemiBold than
+that line gives, and on it at both ends. Ours followed the line, so the n,
+h and u stood 9 wide at the SemiBold and the m 18. A new
+`metrics.counterBend` (in `narrowed`, `style.ts`) bends the line for the
+Sans only. The m is drawn with its counters a little narrower than the n's
+(a new Sans form), as Geist's are; it stood 20 wide at the Thin. The n and m
+are within 3 of Geist at every weight.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across
@@ -358,8 +368,6 @@ strokes as white; they now use a filled (nonzero) ruler.
   stem's pen, so the ring's left third stands about 17 units high and the
   hook about 28 heavy. A leaning ring needs a spine of arcs fitted to a
   sheared ellipse.
-- **m.** It is the plain form, shared with every base. At pen 30 it is about
-  20 units wider than Geist Thin's, and 18 at the SemiBold.
 - **Past 194.** Geist has nothing heavier than its Black. At 200–260 the
   letters follow their own rules for keeping counters open, not Geist.
 - **œ.** Not in the review list, and it is still poor past the Black: its o

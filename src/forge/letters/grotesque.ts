@@ -1791,7 +1791,7 @@ export function grotesqueSix(style: Style): Recipe {
  */
 export function grotesqueSmallX(style: Style): Recipe {
   const f = frame(style);
-  const width = f.arch * 1.7 + openVee(f) * 2 + atWeights(f, -8, -2, -13, 9, 11);
+  const width = f.arch * 1.7 + openVee(f) * 2 + atWeights(f, -8, -2, 0, 9, 11);
   const left = f.edge;
   return finish(f, [
     ink(f, straight(at(left, f.x), at(left + width, 0)), f.end, f.end),
@@ -1808,6 +1808,34 @@ export function grotesqueCapitalX(style: Style): Recipe {
     ink(f, straight(at(left, 0), at(left + width, f.cap)), f.end, f.end),
   ]);
 }
+
+/**
+ * The m, as the plain one is drawn, with its counters at Geist's: the plain
+ * m's two counters were each the n's, and it stood 20 units wide at the
+ * Thin, where Geist Thin's m narrows further than its n does, and 9 wide at
+ * the Black.
+ */
+export function grotesqueSmallM(style: Style): Recipe {
+  const f = frame(style);
+  const give = atWeights(f, M_THIN, M_REGULAR, M_REGULAR, M_ULTRA, M_BLACK);
+  // The counter as drawn before a heavy weight narrows it, where the style
+  // has been through `heavier` already: see `narrowed`.
+  const { counterWidth, drawnCounter } = style.metrics;
+  return LETTERS.m({
+    ...style,
+    metrics: {
+      ...style.metrics,
+      counterWidth: counterWidth - give,
+      drawnCounter: drawnCounter === undefined ? undefined : drawnCounter - give,
+    },
+  });
+}
+
+/** How much narrower the m's counters are drawn than the n's, at the Thin, Regular, UltraBlack and Black. */
+const M_THIN = 10;
+const M_REGULAR = 1;
+const M_ULTRA = 1.5;
+const M_BLACK = 8.5;
 
 /** The Sans's six: its bowl as Geist's, lighter at its crown (see `sixBowl`). */
 export function grotesqueSixSided(style: Style): Recipe {

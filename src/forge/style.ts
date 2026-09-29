@@ -111,6 +111,11 @@ export interface Metrics {
    * weight measured against it, stay the face's own.
    */
   xGrows?: { by: number; at: number };
+  /**
+   * How much faster the counters close midway to the Black than the straight
+   * line `heavyCounter` gives, as a share of it at its most: see `narrowed`.
+   */
+  counterBend?: number;
   sides?: Record<
     string,
     [number, number] | [number, number, "closes" | "stem-left" | "stem-right" | "unopened"]
@@ -701,6 +706,7 @@ export const SANS: Style = {
     // capital, and sets its steep grave and acute by their feet.
     accents: { gap: [0.055, 0.066], byFoot: true },
     xGrows: { by: 10, at: 0.88 },
+    counterBend: 0.24,
     /* Geist Regular's own sidebearings, over 80 (a capital's over 80 after its 12 of extra). */
     sides: {
       a: [0.59, 0.24, "closes"],
@@ -913,6 +919,7 @@ export const SANS: Style = {
     D: "grotesque",
     x: "grotesque",
     X: "grotesque",
+    m: "grotesque",
     V: "grotesque",
     Y: "grotesque",
     s: "grotesque",
@@ -3600,6 +3607,17 @@ export function narrowed(style: Style): number {
    * Bold does as far as the Bold, and past it a quarter as fast: a Black
    * carried on at a Bold's rate had the feet of its m's serifs meeting.
    */
+  /*
+   * Bent, on a face that closes its counters faster on the way to its Black
+   * than at either end (`metrics.counterBend`): Geist's n is 9 units
+   * narrower at its SemiBold than a straight line from its Regular to its
+   * UltraBlack gives, and as wide again at both.
+   */
+  const bend = metrics.counterBend;
+  if (bend) {
+    const t = Math.min(1, blackness(style) / 0.67);
+    gained *= 1 + bend * 4 * t * (1 - t);
+  }
   const bold = metrics.bold ? metrics.bold.at * BLACK_SPAN * metrics.xHeight : Infinity;
   if (gained > bold) gained = bold + (gained - bold) * 0.25;
   /*
