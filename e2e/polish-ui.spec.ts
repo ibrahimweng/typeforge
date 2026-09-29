@@ -9,7 +9,7 @@
 
 import { expect, type Locator, type Page, test } from "@playwright/test";
 
-import { openForge, paramSlider } from "./support";
+import { goToMode, openForge, paramSlider } from "./support";
 
 /** Pick a base on the Draw page. */
 async function drawFrom(page: Page, base: string): Promise<void> {
@@ -58,8 +58,16 @@ const cropped = (found: Array<{ name: string; over: number }>) =>
   found.filter((one) => one.over > 1).map((one) => one.name);
 
 test("the alternates of g and y are shown whole", async ({ page }) => {
+  // Opened once and switched with the base buttons: loading the page a second
+  // time restores the drawing in the background, and the mode could change
+  // under the menu mid-click.
+  await drawFrom(page, "Sans");
   for (const base of ["Sans", "Serif"]) {
-    await drawFrom(page, base);
+    await page.getByRole("button", { name: base, exact: true }).click();
+    await expect(page.locator(`[data-forge-base="${base}"]`)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     for (const letter of ["g", "y"]) {
       await page.locator(`[data-forge-cell="${letter}"]`).click();
       const forms = page.locator(`[data-forge-forms="${letter}"]`);
@@ -76,6 +84,8 @@ test("the specimen line keeps accents and descenders", async ({ page }) => {
   await page.locator("input[data-forge-specimen]").fill("ÅÉgyjpQ Çą");
   const line = page.locator("svg[data-forge-specimen-line]");
   await expect(line.first()).toBeVisible();
+  // Something drawn to measure, or "nothing cropped" would be true of nothing.
+  await expect.poll(async () => (await overflowOf(line)).length).toBeGreaterThan(0);
   expect(cropped(await overflowOf(line))).toEqual([]);
 });
 
@@ -141,8 +151,11 @@ test("a widened letter stays inside its cell in the font grid", async ({ page })
   });
   await expect(width).toHaveAttribute("aria-valuenow", "1.5");
 
-  // Nothing painted in the outermost columns of the canvas: the letter was
-  // drawn smaller to fit rather than cut off at the edge.
+  // Nothing painted in the outermost columns of the canvas, so nothing was cut
+  // off at the edge. A check on the whole path rather than a test of the cap
+  // that shrinks a letter wider than its cell (`maxWidth` in glyph-render.ts):
+  // at the widest settings this font's W still fills only four fifths of the
+  // cell, so the cap never acts here. glyph-render.test.ts tests it directly.
   for (const name of ["m", "w", "W", "M"]) {
     const cell = page.locator(`[data-glyph-cell="${name}"] canvas`);
     await cell.scrollIntoViewIfNeeded();
@@ -167,4 +180,110 @@ test("a widened letter stays inside its cell in the font grid", async ({ page })
       )
       .toBe(0);
   }
+});
+
+test("a warning about an earlier font is not shown as current", async ({ page }) => {
+  await drawFrom(page, "Serif");
+  const breaks = page.locator('[data-cut-switch="split"]');
+  await breaks.scrollIntoViewIfNeeded();
+  await breaks.click();
+  const closing = page.locator("[data-forge-warnings]", { hasText: "Counters closing up" });
+  await expect(closing).toBeVisible({ timeout: 30_000 });
+  await expect(closing).not.toHaveAttribute("data-forge-warnings-stale", "yes");
+  // A chip is named with the character it shows, not a glyph name only a
+  // font file uses.
+  const chip = closing.locator("[data-forge-warning-letter]").first();
+  await expect(chip).toHaveAccessibleName(`Show ${await chip.innerText()}`);
+
+  // Switched off again: the warning was about the breaks, so the moment they
+  // are gone it is either gone too or marked as being rechecked. Clicked and
+  // read inside the page, two frames apart: the check waits six hundred
+  // milliseconds after the font settles before it even starts, so no fresh
+  // answer can have arrived in between however fast the machine is.
+  const current = await breaks.evaluate(async (button) => {
+    (button as HTMLElement).click();
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    return [...document.querySelectorAll("[data-forge-warnings]")].filter(
+      (bar) =>
+        bar.textContent?.includes("Counters closing up") &&
+        bar.getAttribute("data-forge-warnings-stale") !== "yes",
+    ).length;
+  });
+  expect(current, "a warning about the breaks shown as current after they went").toBe(0);
+  await expect(closing).toHaveCount(0, { timeout: 30_000 });
+});
+
+test("every letter is drawn at one size, and the specimen keeps its size", async ({ page }) => {
+  await drawFrom(page, "Sans");
+  // Font units per screen pixel, and where the baseline falls, for a svg.
+  const scaleOf = (svg: Locator) =>
+    svg.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const view = (element as SVGSVGElement).viewBox.baseVal;
+      const scale = Math.min(box.width / view.width, box.height / view.height);
+      return {
+        per1000: Math.round(scale * 1000),
+        baseline: Math.round(box.top + (box.height - view.height * scale) / 2 - view.y * scale),
+      };
+    });
+
+  // The stage, letter by letter: an Å used to come out a sixth smaller than A.
+  const stage = page.locator("svg[data-forge-stage]");
+  const onStage = [];
+  for (const name of ["A", "Aring", "g", "n"]) {
+    await page.locator(`[data-forge-cell="${name}"]`).click();
+    await expect(stage).toHaveAttribute("data-forge-stage", name);
+    onStage.push(await scaleOf(stage));
+  }
+  expect(new Set(onStage.map((one) => JSON.stringify(one))).size, JSON.stringify(onStage)).toBe(1);
+
+  // The strip: one scale and one baseline across the cells.
+  const cells = [];
+  for (const name of ["a", "g", "A", "Agrave", "O"]) {
+    const cell = page.locator(`[data-forge-cell="${name}"]`);
+    await cell.scrollIntoViewIfNeeded();
+    const svg = cell.locator("svg");
+    const at = await scaleOf(svg);
+    const top = (await cell.boundingBox())!.y;
+    cells.push({ per1000: at.per1000, baseline: Math.round(at.baseline - top) });
+  }
+  expect(new Set(cells.map((one) => JSON.stringify(one))).size, JSON.stringify(cells)).toBe(1);
+
+  // The specimen does not shrink when an accented capital is typed.
+  const input = page.locator("input[data-forge-specimen]");
+  const line = page.locator("svg[data-forge-specimen-line]").first();
+  await input.fill("Handgloves");
+  const plain = await scaleOf(line);
+  await input.fill("HandglovesÅ");
+  await expect.poll(async () => (await scaleOf(line)).per1000).toBe(plain.per1000);
+});
+
+test("the tool's proof keeps the ring of an Å", async ({ page }) => {
+  await drawFrom(page, "Sans");
+  const pressure = page.locator('[data-cut-switch="press"]');
+  await pressure.scrollIntoViewIfNeeded();
+  await pressure.click();
+  await page.locator('[data-forge-cell="Aring"]').click();
+  const proof = page.locator("svg[data-forge-proof-large]");
+  await expect(proof).toBeVisible();
+  // Waited for until the tool has drawn it: an empty proof has nothing to
+  // crop, and a check made before then passes whatever the frame is.
+  await expect.poll(async () => (await overflowOf(proof)).length, { timeout: 20_000 }).toBe(1);
+  expect(cropped(await overflowOf(proof))).toEqual([]);
+});
+
+test("the status bar goes back to the font when the editor is in front again", async ({ page }) => {
+  await page.goto("/");
+  await page.setInputFiles("[data-open-input]", "src/assets/typeforge-sample.ttf");
+  const document = page.locator("[data-status-bar] [data-status-document]");
+  await expect(document).toContainText("Typeforge Sample", { timeout: 45_000 });
+
+  await goToMode(page, "Draw");
+  await page.getByRole("button", { name: "Sans", exact: true }).click();
+  await expect(document).toHaveText(/drawn from Sans$/);
+  await expect(page.locator("[data-status-bar] [data-status-tool]")).toHaveCount(0);
+
+  await goToMode(page, "Edit");
+  await expect(document).toContainText("Typeforge Sample");
+  await expect(page.locator("[data-status-bar] [data-status-tool]")).toBeVisible();
 });

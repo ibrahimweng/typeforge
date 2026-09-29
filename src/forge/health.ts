@@ -138,6 +138,7 @@ function* walk(forge: Forge): Generator<void, Trouble[], void> {
   const closing: Array<{ letter: string; room: number }> = [];
   const overflowing: string[] = [];
   let over = false;
+  let overAccent = false;
   let under = false;
   const touching: string[] = [];
   const inPieces: string[] = [];
@@ -209,11 +210,16 @@ function* walk(forge: Forge): Generator<void, Trouble[], void> {
      * twenty complaints about letters that were exactly right, which is the
      * fastest way to teach somebody to stop reading the warnings.
      */
-    const roof = builtFrom(letter) ? capped : ceiling;
+    const accented = builtFrom(letter);
+    const roof = accented ? capped : ceiling;
     const high = bounds.yMax > roof;
     const low = bounds.yMin < floor;
     if (high || low) overflowing.push(letter);
-    over ||= high;
+    // Told apart because the two roofs move with different lines: the
+    // accented letters' with the cap height, everything else's with the
+    // ascender, which does nothing for an accent at all.
+    if (accented) overAccent ||= high;
+    else over ||= high;
     under ||= low;
     if (leftEdge(drawn.contours, forge, bounds) < em * 0.005) touching.push(letter);
   }
@@ -258,7 +264,7 @@ function* walk(forge: Forge): Generator<void, Trouble[], void> {
     found.push({
       what: "Reaching past the line",
       letters: overflowing,
-      fix: roomFor(over, under),
+      fix: roomFor({ ascender: over, capHeight: overAccent, descender: under }),
     });
   }
   if (touching.length > 0) {
@@ -319,10 +325,27 @@ function leftEdge(contours: Contour[], forge: Forge, bounds = contoursBounds(con
  * the weight. The advice used to end "or less weight", and said it at the
  * lightest weight there is.
  */
-export function roomFor(over: boolean, under: boolean): string {
-  if (over && under) return "A taller ascender and a deeper descender give them room.";
-  if (under) return "A deeper descender gives them room.";
-  return "A taller ascender gives them room.";
+export function roomFor(lines: {
+  ascender: boolean;
+  capHeight: boolean;
+  descender: boolean;
+}): string {
+  /*
+   * An accented letter is held to its own roof, a share above the cap height
+   * (see `capped`), so the line to move for it is the cap height. Telling it
+   * to raise the ascender was advice that made nothing better.
+   */
+  const moves = [
+    lines.ascender && "a taller ascender",
+    lines.capHeight && "a taller cap height",
+    lines.descender && "a deeper descender",
+  ].filter((move): move is string => Boolean(move));
+  if (moves.length === 0) moves.push("a taller ascender");
+  const said =
+    moves.length === 1
+      ? moves[0]
+      : `${moves.slice(0, -1).join(", ")} and ${moves[moves.length - 1]}`;
+  return `${said[0].toUpperCase()}${said.slice(1)} ${moves.length === 1 ? "gives" : "give"} them room.`;
 }
 
 /**

@@ -18,10 +18,12 @@ import { contoursToSvgPath } from "@/font/geometry";
 import { alongSpine, walkOf } from "@/quill/curve";
 import { restyle } from "@/quill/controls";
 import { drawTraced, useQuill, type Traced } from "@/state/useQuill";
+import { useShowing } from "@/state/surface";
 
 const SPECIMEN = "handwriting";
 
 export function QuillView(): React.JSX.Element {
+  useShowing("quill");
   const state = useQuill();
   const { document: doc } = state;
   const traced = doc.letters.find((one) => one.glyph.name === state.letter) ?? doc.letters[0];

@@ -30,6 +30,7 @@ import { NumberField } from "@/components/NumberField";
 import { useAssemble } from "@/state/useAssemble";
 import { useDrawing } from "@/state/drawn";
 import { useQuill } from "@/state/useQuill";
+import { useSurface } from "@/state/surface";
 import { toolInfo } from "@/font/toolset";
 import { fitCanvas, useFraming, zoomTo } from "@/state/framing";
 import { store, useAppState } from "@/state/useStore";
@@ -70,7 +71,7 @@ export function documentLine(
   }
 }
 
-export function StatusBar({ mode }: { mode: Mode }): React.JSX.Element {
+export function StatusBar(): React.JSX.Element {
   const { zoom } = useFraming();
   const typeface = useAppState((state) => state.typeface);
   const tool = useAppState((state) => state.tool);
@@ -79,6 +80,8 @@ export function StatusBar({ mode }: { mode: Mode }): React.JSX.Element {
   const drawing = useDrawing();
   const assemble = useAssemble();
   const quill = useQuill();
+  // Which generator is on screen, as the views say; none of them is the editor.
+  const mode: Mode = useSurface() ?? "edit";
   const editing = mode === "edit";
 
   return (

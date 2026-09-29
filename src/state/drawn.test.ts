@@ -148,5 +148,9 @@ describe("the base after the family's name", () => {
     expect(baseAfterName("My Serif", "Serif")).toBeNull();
     expect(baseAfterName("Harbour", "Serif")).toBe("Serif");
     expect(baseAfterName("Sansom", "Sans")).toBe("Sans");
+    // The bases named in two words, which a word-by-word match missed.
+    expect(baseAfterName("My Formal Script", "Formal Script")).toBeNull();
+    expect(baseAfterName("My  Monoline   Script", "Monoline Script")).toBeNull();
+    expect(baseAfterName("Formal Notes", "Formal Script")).toBe("Formal Script");
   });
 });

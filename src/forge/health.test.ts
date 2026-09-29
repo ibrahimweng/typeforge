@@ -90,6 +90,27 @@ describe("what has gone wrong", () => {
     expect(tight?.letters.length).toBeGreaterThan(10);
   });
 
+  it("sends an accent that stands too high to the cap height, which moves its roof", () => {
+    /*
+     * Accented letters are held to a roof above the cap height, not the
+     * ascender. The advice named the ascender, and raising the ascender left
+     * every one of them reported.
+     */
+    const withMetrics = (forge: Forge, metrics: Partial<Forge["style"]["metrics"]>): Forge => ({
+      ...forge,
+      style: { ...forge.style, metrics: { ...forge.style.metrics, ...metrics } },
+    });
+    const reaching = (forge: Forge) =>
+      troubles(forge).find((one) => one.what === "Reaching past the line");
+    const short = withMetrics(startFrom(SANS), { capHeight: 520 });
+    const said = reaching(short);
+    expect(said?.letters.length).toBeGreaterThan(0);
+    expect(said?.letters.every((letter) => builtFrom(letter))).toBe(true);
+    expect(said?.fix).toBe("A taller cap height gives them room.");
+    // And following it works.
+    expect(reaching(withMetrics(short, { capHeight: 640 }))).toBeUndefined();
+  });
+
   it("names the descender when it is the line being crossed", () => {
     const sans = startFrom(SANS);
     const shallow = {

@@ -20,7 +20,7 @@ import { CoachMark } from "@/components/CoachMark";
 import { Reference } from "@/components/Reference";
 import { contoursToSvgPath } from "@/font/geometry";
 import type { Contour } from "@/font/types";
-import { inkFrame, viewBoxOf } from "@/components/ink-frame";
+import { type Frame, inkFrame, type Placed, viewBoxOf } from "@/components/ink-frame";
 import { letterNames, skeletonOf } from "@/forge/build";
 import { cellBox, cellKey, PORTS, portAt, rowsOf, unitOf } from "@/forge/kit";
 import { anyEffect } from "@/font/effects";
@@ -49,8 +49,10 @@ import { cn } from "@/cn";
 import { followPointer } from "@/components/follow-pointer";
 import { letterLabel } from "./letter-label";
 import { useNativeWheel, zoomAbout } from "./wheel";
+import { useShowing } from "@/state/surface";
 
 export function ForgeView(): React.JSX.Element {
+  useShowing("forge");
   const state = useForge();
   const { forge, letter } = state;
 
@@ -131,6 +133,16 @@ function Stage({
   const drawn = React.useMemo(
     () => draw(letter, state.resting ? state.forge : unshaped(state.forge)),
     [letter, state.forge, state.resting, revision],
+  );
+  /*
+   * The letter as the font last held still, which is what the stage is framed
+   * by. Framed by the live drawing instead, the stage changed size mid-drag --
+   * a cast is dropped for the length of a gesture, so the frame shrank on the
+   * first frame of the drag and grew back after it.
+   */
+  const rested = React.useMemo(
+    () => draw(letter, state.settled),
+    [letter, state.settled, revision],
   );
   /*
    * A letter that came in from outside has neither.
@@ -217,9 +229,11 @@ function Stage({
    * that goes further -- a shadow thrown down past the descender, the ring of
    * an Å -- which used to run off the stage and be cut away.
    */
-  const ink = inkFrame(metrics, [{ contours: drawn.contours, x: 0 }], drawn.advanceWidth);
-  const top = Math.max(metrics.ascender + 60, -ink.y);
-  const bottom = Math.min(metrics.descender - 60, -(ink.y + ink.height));
+  const still = rested ?? drawn;
+  const ink = inkFrame(metrics, [{ contours: still.contours, x: 0 }], still.advanceWidth);
+  const span = within(reachOf(state.settled), ink);
+  const top = Math.max(metrics.ascender + 60, -span.y);
+  const bottom = Math.min(metrics.descender - 60, -(span.y + span.height));
   const pad = metrics.unitsPerEm * 0.06;
   const leftmost = Math.min(-pad, ink.x - pad / 2);
   const width =
@@ -603,6 +617,61 @@ function apply(handle: Handle, value: number, phase: Phase): void {
 }
 
 /** One line of the specimen, set in one weight of the family. */
+/**
+ * The letters that between them reach as far as any letter does: the tallest
+ * accents, the deepest tails, the brackets that go past both lines.
+ */
+const FRAME_SAMPLE = [
+  "Aring",
+  "Eacute",
+  "Ccedilla",
+  "Ograve",
+  "g",
+  "j",
+  "y",
+  "p",
+  "Q",
+  "f",
+  "parenleft",
+  "braceleft",
+  "dollar",
+];
+
+const reaches = new WeakMap<Forge, { revision: number; frame: Frame }>();
+
+/**
+ * How far the font's ink reaches above and below, as one frame for every
+ * letter shown on the page.
+ *
+ * Each letter used to be framed to its own ink, which kept every one whole
+ * and drew them at different sizes: an Å came out a sixth smaller than the A
+ * beside it, on the stage and in the strip, and the specimen shrank the moment
+ * an accented capital was typed. One frame for the font keeps them at one size
+ * and on one baseline; a letter that reaches further still grows its own.
+ *
+ * Kept per font rather than worked out per letter, since the strip asks for it
+ * once a cell.
+ */
+function reachOf(forge: Forge): Frame {
+  const revision = forgeStore.getSnapshot().revision;
+  const known = reaches.get(forge);
+  if (known && known.revision === revision) return known.frame;
+  const pieces = FRAME_SAMPLE.flatMap((name) => {
+    const drawn = draw(name, forge);
+    return drawn ? [{ contours: drawn.contours, x: 0 }] : [];
+  });
+  const frame = inkFrame(forge.style.metrics, pieces, 1);
+  reaches.set(forge, { revision, frame });
+  return frame;
+}
+
+/** The font's reach, grown to take in a frame of ink that goes further. */
+function within(reach: Frame, own: Frame): { y: number; height: number } {
+  const top = Math.min(reach.y, own.y);
+  const bottom = Math.max(reach.y + reach.height, own.y + own.height);
+  return { y: top, height: bottom - top };
+}
+
 function setLine(
   forge: Forge,
   text: string,
@@ -671,12 +740,15 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
   // accent, a heavy tail -- is shown rather than cropped.
   const tall = React.useMemo(
     () =>
-      inkFrame(
-        metrics,
-        lines.flatMap((one) => one.pieces),
-        1,
+      within(
+        reachOf(state.settled),
+        inkFrame(
+          metrics,
+          lines.flatMap((one) => one.pieces),
+          1,
+        ),
       ),
-    [lines, metrics],
+    [lines, metrics, state.settled, revision],
   );
 
   return (
@@ -789,6 +861,9 @@ function Proof({ letter }: { letter: string }): React.JSX.Element | null {
     d: string;
     width: number;
     points: number;
+    /** The font's frame, grown for anything the tool pushed further. */
+    y: number;
+    height: number;
   } | null>(null);
   React.useEffect(() => {
     if (!anyEffect(effects) || !state.resting) return;
@@ -796,11 +871,18 @@ function Proof({ letter }: { letter: string }): React.JSX.Element | null {
     const waited = window.setTimeout(() => {
       if (!live) return;
       const drawn = proof(letter, state.forge);
+      const width = drawn?.advanceWidth ?? 0;
+      const own = inkFrame(
+        state.forge.style.metrics,
+        drawn ? [{ contours: drawn.contours, x: 0 }] : [],
+        width,
+      );
       setMade({
         of: state.forge,
         d: drawn ? contoursToSvgPath(drawn.contours) : "",
-        width: drawn?.advanceWidth ?? 0,
+        width,
         points: drawn ? drawn.contours.reduce((sum, one) => sum + one.nodes.length, 0) : 0,
+        ...within(reachOf(state.forge), own),
       });
     }, PROOF_WAIT);
     return () => {
@@ -810,9 +892,13 @@ function Proof({ letter }: { letter: string }): React.JSX.Element | null {
   }, [letter, state.forge, state.resting, effects]);
 
   if (!anyEffect(effects)) return null;
+  /*
+   * The frame the tool's drawing is shown in. It was a fixed share past the
+   * ascender and descender, and an Å came out with its ring cut off.
+   */
   const { metrics } = state.forge.style;
-  const top = metrics.ascender * 1.06;
-  const bottom = metrics.descender * 1.2;
+  const top = made ? -made.y : metrics.ascender * 1.06;
+  const bottom = made ? -(made.y + made.height) : metrics.descender * 1.2;
   const stale = made !== null && made.of !== state.forge;
 
   if (!open) {
@@ -1127,7 +1213,20 @@ function Warnings({ revision }: { revision: number }): React.JSX.Element | null 
    * a moment after the letter is still a warning about the letter in front of
    * you -- whereas a slider that cannot be moved is not a slider.
    */
-  const [found, setFound] = React.useState<Trouble[]>([]);
+  /*
+   * Kept with the font it was worked out for. A walk is dropped whenever the
+   * font moves, so the last answer stays up until a new one arrives -- and
+   * with a cut or a cast on, that can be several changes later. Shown as if
+   * it were current, it named letters as closing up after the cut that closed
+   * them had been switched off again. So an answer about an earlier font is
+   * dimmed and said to be rechecking until the walk catches up.
+   */
+  const [checked, setFound] = React.useState<{ of: Forge | null; troubles: Trouble[] }>({
+    of: null,
+    troubles: [],
+  });
+  const found = checked.troubles;
+  const stale = checked.of !== state.settled;
   React.useEffect(() => {
     // Not while a hand is on a control. The walk below is polite about frames,
     // but a pass that is thrown away and restarted on every one of them is
@@ -1145,7 +1244,7 @@ function Warnings({ revision }: { revision: number }): React.JSX.Element | null 
         let step = walking.next();
         while (!step.done && performance.now() < until) step = walking.next();
         if (!live) return;
-        if (step.done) setFound(step.value);
+        if (step.done) setFound({ of: state.settled, troubles: step.value });
         else asked = window.requestAnimationFrame(slice);
       };
       asked = window.requestAnimationFrame(slice);
@@ -1159,7 +1258,20 @@ function Warnings({ revision }: { revision: number }): React.JSX.Element | null 
 
   if (found.length === 0) return null;
   return (
-    <div className="shrink-0 border-b border-border px-4 py-2" data-forge-warnings>
+    <div
+      className={cn(
+        "shrink-0 border-b border-border px-4 py-2 transition-opacity",
+        stale && "opacity-50",
+      )}
+      data-forge-warnings
+      data-forge-warnings-stale={stale ? "yes" : undefined}
+      aria-busy={stale}
+    >
+      {stale && (
+        <span className="float-right text-2xs text-muted-foreground" data-forge-rechecking>
+          Rechecking…
+        </span>
+      )}
       {found.map((trouble) => (
         <div key={trouble.what} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 py-0.5">
           <span className="text-2xs font-medium text-[color:var(--accent)]">{trouble.what}</span>
@@ -1171,7 +1283,9 @@ function Warnings({ revision }: { revision: number }): React.JSX.Element | null 
                 type="button"
                 onClick={() => forgeStore.select(letter)}
                 title={letter}
-                aria-label={`Show ${letter}`}
+                // Named with the character the button shows, so what a screen
+                // reader says is what is on screen; the glyph name is the title.
+                aria-label={`Show ${letterLabel(letter)}`}
                 data-forge-warning-letter={letter}
                 className="rounded bg-card px-1 text-2xs text-foreground transition-opacity hover:opacity-70"
               >
@@ -1300,13 +1414,17 @@ function cellOf(name: string, near: ReadonlySet<string>, forge: Forge): Cell {
     name,
     d: drawn ? contoursToSvgPath(drawn.contours) : "",
     width,
-    frame: viewBoxOf(
-      inkFrame(forge.style.metrics, drawn ? [{ contours: drawn.contours, x: 0 }] : [], width),
-    ),
+    frame: framedIn(forge, drawn ? [{ contours: drawn.contours, x: 0 }] : [], width),
     held: isException(forge, name),
     shaped: Boolean(formOf(forge, name)),
     outside: isImported(forge, name),
   };
+}
+
+/** A viewBox on the font's shared frame, grown for ink that reaches further. */
+function framedIn(forge: Forge, pieces: Placed[], width: number): string {
+  const own = inkFrame(forge.style.metrics, pieces, width);
+  return viewBoxOf({ ...own, ...within(reachOf(forge), own) });
 }
 
 function cellsOf(names: string[], near: ReadonlySet<string>, forge: Forge): Cell[] {
@@ -1435,7 +1553,10 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
               "relative flex size-14 items-center justify-center rounded-md border",
             )}
           >
-            <svg viewBox={cell.frame} className="h-9 w-9" aria-hidden>
+            {/* A size larger than it was: the frame is the whole font's reach now,
+                accents and tails included, and a cell drawn at the old size
+                showed every letter a quarter smaller. */}
+            <svg viewBox={cell.frame} className="h-11 w-11" aria-hidden>
               <g transform="scale(1,-1)">
                 <path d={cell.d} fill="var(--foreground)" fillRule="nonzero" />
               </g>

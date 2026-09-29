@@ -120,8 +120,10 @@ export const drawingSoFar = (): Drawing => drawing;
  */
 export function baseAfterName(familyName: string, base: string): string | null {
   if (!base) return null;
-  const words = familyName.trim().toLowerCase().split(/\s+/);
-  return words.includes(base.toLowerCase()) ? null : base;
+  // Matched as a run of whole words, so a base of two words -- "Formal
+  // Script" -- is found in "My Formal Script", and "Sans" is not in "Sansom".
+  const words = (text: string) => ` ${text.trim().toLowerCase().split(/\s+/).join(" ")} `;
+  return words(familyName).includes(words(base)) ? null : base;
 }
 
 /** For a component that has to re-render when the drawing changes. */
