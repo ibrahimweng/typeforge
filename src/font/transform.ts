@@ -813,14 +813,24 @@ function keptApart(
     // as far from what they were drawn apart from as they are to keep.
     // But not for a nearness the two can't mend: one still there with
     // neither weighed at all comes of a third piece, and is its to mend.
+    // They may only bring it no nearer than it is then.
     const involves = (pair: { one: number; other: number }) =>
       [one, other].includes(pair.one) || [one, other].includes(pair.other);
-    const unmendable = new Set(tooNear(at(0)).filter(involves));
+    const unweighed = at(0);
+    const unmendable = new Map(
+      tooNear(unweighed)
+        .filter(involves)
+        .map((pair) => [pair, clearance(unweighed[pair.one], unweighed[pair.other])]),
+    );
     const clear = (trial: Contour[]): boolean => {
       const still: Array<[number, number]> = [];
       overlapsMore(trial, still);
       if (still.some((pair) => pair.includes(one) || pair.includes(other))) return false;
-      return tooNear(trial).every((pair) => !involves(pair) || unmendable.has(pair));
+      return tooNear(trial).every((pair) => {
+        if (!involves(pair)) return true;
+        const least = unmendable.get(pair);
+        return least !== undefined && clearance(trial[pair.one], trial[pair.other]) >= least - 0.5;
+      });
     };
     let low = 0;
     let high = 1;

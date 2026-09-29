@@ -273,6 +273,8 @@ On the eight fonts, plain letters further from where they were drawn than a scan
 - **Slabs joined as drawn were kept apart.** Two stems drawn a crack apart are separate pieces, but their feet share one slab. Each foot was kept off the other stem and given up weight for it. Pieces whose slabs touch as drawn now count as one.
 - **A pair gave up weight for a third piece.** Taking weight off two pieces that cross, the spacing check refused any trial that left either of them too near another piece. That included nearness the pair could not mend, a third piece grown toward one of them, so the search ran down to no weight at all. Nearness that is still there with both pieces at no weight is now left for that third piece's own round.
 
+**A thirteenth review** found one fault in those fixes: a nearness the pair couldn't mend was let off altogether, so a trial could close that gap to nothing and leave it for a later round, if one came. Now the pair may bring it no nearer than it is with both at no weight. No glyph in the eight fonts comes out differently, so there is no test for it that fails on the old code.
+
 The sweep of all eight fonts under the 39 settings finds the same as before these four fixes: nothing new, and no height further out.
 
 Images: `tips-crimson-*` (1, parentheses, comma, ñ), `tips-lorabold-*` (parentheses, comma, ñ), at rest, at weight 0.06 and at 0.06 condensed to 0.6; `slabs-outfit-*` (¼ ¾) at rest, with slab 0.03, and with slab and weight 0.06.
@@ -320,7 +322,8 @@ These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vite
   - a counter going with the smallest ink round it when the letter is split into pieces (no letter in the eight fonts has an island with a counter of its own);
   - a piece lowered clear keeping its bottom and giving up height from above (the pieces lowered in the eight fonts, commas and dots below, don't need it);
   - the between-contour check being told which pairs to skip, which only saves work;
-  - a pair given up entirely keeping its lift, and the spacing check refusing a near pair with either piece in it (see the eleventh review).
+  - a pair given up entirely keeping its lift, and the spacing check refusing a near pair with either piece in it (see the eleventh review);
+  - a pair leaving a nearness it can't mend to the third piece, and bringing it no nearer (see the twelfth and thirteenth reviews).
   An independent check of every glyph under every setting confirms none of the outlines cross.
 - **Corner radius** adds points by design, since it rounds corners with new curves.
 - **Heavy counters.** At weight 0.06, Geist's B and R counters shrink to slits. That comes from Geist's own proportions at that weight.
