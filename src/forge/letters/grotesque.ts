@@ -4521,7 +4521,7 @@ export function grotesqueSmallW(style: Style): Recipe {
   // held at the Black's past it, where its counters need the room.
   const fit =
     f.style.metrics.xGrows !== undefined
-      ? Math.max(atWeights(f, -0.004, -0.003, 0.014, 0.005, -0.004), -0.004)
+      ? Math.max(atWeights(f, -0.004, 0.002, 0.024, 0.016, 0.007), -0.004)
       : 0;
   const u = wide * thinned(f, 0.034) * (1 + fit);
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
@@ -4529,9 +4529,20 @@ export function grotesqueSmallW(style: Style): Recipe {
   const outer = lerp(45.7, 87.5);
   const apex = lerp(388, 409);
   const vertex = lerp(217.25, 243.5);
-  const apart = (f.half * lerp(0.66, 0.31)) / 2 / u;
-  const stroke = (top: number, foot: number) =>
-    ink(f, straight(at(X(top), f.x), at(X(foot), 0)), LEVEL, LEVEL);
+  /*
+   * The Sans's strokes a twentieth lighter than the pen from the Regular on,
+   * and each vertex's feet closer, down to meeting at the UltraBlack, as
+   * Geist's are: its counters ran shallower than Geist's, and the w missed
+   * its ink by a seventh from the SemiBold on.
+   */
+  const sansW = f.style.metrics.xGrows !== undefined;
+  const lighter = sansW ? atWeights(f, 1, 0.95, 0.95, 0.95, 0.95) : 1;
+  const closer = sansW ? Math.max(0, atWeights(f, 1, 0.6, 0.3, 0, 0)) : 1;
+  const apart = ((f.half * lerp(0.66, 0.31)) / 2 / u) * closer;
+  const stroke = (top: number, foot: number) => {
+    const one = ink(f, straight(at(X(top), f.x), at(X(foot), 0)), LEVEL, LEVEL);
+    return inherit(one, { ...one, pen: { ...one.pen, weight: one.pen.weight * lighter } });
+  };
   /*
    * Past the Black the two inner strokes are drawn lighter than the outer
    * ones, as an Ultra's w must be to keep its three counters: at the full

@@ -327,6 +327,13 @@ Geist Thin's is. That took a fifth off its misfit. The width a heavy s gains
 is held back from the UltraBlack on. Both now sit within 1 unit of Geist's
 width.
 
+**The w's strokes.** Geist's w is drawn a twentieth lighter than its pen
+from the Regular on, and each vertex's feet close up with the weight until
+they meet at the UltraBlack. On the full pen, with its feet apart, Draw's
+counters ran shallower and the w missed Geist's ink by a seventh from the
+SemiBold on. Its width is held at Geist's. The w's misfit is now down by 40
+to 45 per cent from the Regular to the Black.
+
 **The tilde and the w.** The tilde's measures were its spine's reach, so
 its level-cut ends stood out past it and its ink ran 12 units wide at the
 Regular (9 at the SemiBold). Its reach is now fitted so the ink is Geist's

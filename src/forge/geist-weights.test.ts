@@ -1709,3 +1709,13 @@ describe("the B's waist", () => {
     expect(run[run.length - 1][1]).toBeLessThan(528);
   });
 });
+
+describe("the w's strokes", () => {
+  it("are as light as Geist's", () => {
+    // 360 up Geist UltraBlack's w's outer strokes run 73-235 and 625-787;
+    // on the pen they ran 67-243 and 616-791.
+    const run = filled(draw("w", 172).contours, 360);
+    expect(Math.abs(run[0][0] - 73)).toBeLessThan(4);
+    expect(Math.abs(run[0][1] - 235)).toBeLessThan(6);
+  });
+});
