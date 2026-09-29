@@ -34,8 +34,10 @@ import {
   splitCubic,
   contourArea,
   contourSegments,
+  crossesItself,
   cubicAt,
   cubicDerivativeAt,
+  FINE_STEPS,
   distance,
   isClockwise,
   lerp,
@@ -43,7 +45,6 @@ import {
   sub,
   type Segment,
 } from "./geometry";
-import { contoursIntersect } from "./outline";
 import type { Contour, GlyphNode, Vec2 } from "./types";
 
 /**
@@ -1416,7 +1417,9 @@ export function applyWeight(
     const rounded = roundSwallowed(out, wanted * share);
     if (!rounded) return plain;
     const filleted: Contour = { closed: true, nodes: rounded };
-    return contoursIntersect([filleted]) && !contoursIntersect([plain]) ? plain : filleted;
+    return crossesItself(filleted, FINE_STEPS) && !crossesItself(plain, FINE_STEPS)
+      ? plain
+      : filleted;
   };
 
   const facingBefore = Math.sign(contourArea(contour));
@@ -1443,16 +1446,22 @@ export function applyWeight(
           whiteKept > 0 ? meanWidth(contour) * COUNTER_KEPT : 0,
         )
       : 0;
+  /*
+   * Crossed asked finely: the quick check stops past six hundred segments and
+   * reads a curve in six chords, and the fold at the thin join of the arch of
+   * Geist's r to its stem, a light letter widened, slipped past it.
+   */
+  const crossed = (trial: Contour): boolean => crossesItself(trial, FINE_STEPS);
   const intact = (trial: Contour): boolean =>
     // Turned inside out is as broken as crossed: ink become a hole.
     Math.sign(contourArea(trial)) === facingBefore &&
-    !contoursIntersect([trial]) &&
+    !crossed(trial) &&
     (leastWidth === 0 || meanWidth(trial) >= leastWidth);
   const full = build(1);
   if (intact(full)) return full;
   // The letter already crossed itself before anything moved -- some fonts ship
   // outlines like that -- so there is nothing here to preserve.
-  if (contoursIntersect([contour])) return full;
+  if (crossed(contour)) return full;
   // Otherwise back the whole contour off evenly until it is sound; an even
   // retreat keeps the stroke even.
   let low = 0;

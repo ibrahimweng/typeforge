@@ -294,6 +294,13 @@ export function reverseContour(contour: Contour): Contour {
 }
 
 /**
+ * How finely to flatten a curve to ask whether a reshaped outline crosses
+ * itself. The fold at the join of the arch of Geist's r to its stem, a light
+ * letter widened, showed only from twenty-four pieces a curve.
+ */
+export const FINE_STEPS = 32;
+
+/**
  * Whether a contour runs back over its own ink.
  *
  * A shape is its own boundary, so an outline that crosses itself is not one:
@@ -310,9 +317,25 @@ export function reverseContour(contour: Contour): Contour {
  *
  * Segments that share an end are skipped. Every contour touches itself there,
  * and a touch is not a crossing.
+ *
+ * Curves are flattened in `steps` pieces each. Eight is enough for a letter a
+ * person drew; the loop a fold or a boolean ties where two curves nearly
+ * touch can be a unit across on a long curve, and needs `FINE_STEPS`.
  */
-export function crossesItself(contour: Contour): boolean {
-  const segments = contourSegments(contour);
+export function crossesItself(contour: Contour, steps = 8): boolean {
+  /*
+   * Without the pieces that go nowhere. A corner the weight swallows leaves
+   * its points on one spot, and a piece of no length between two others made
+   * them look like strangers rather than neighbours: they meet at a point
+   * that agrees to fifteen digits and not to all of them, and the collapsed
+   * apex of the counter of Lora's heavy A was reported crossed.
+   */
+  const segments = contourSegments(contour).filter((segment) => {
+    const ends = segment.kind === "line" ? [segment.to] : [segment.c1, segment.c2, segment.to];
+    return ends.some(
+      (point) => Math.hypot(point.x - segment.from.x, point.y - segment.from.y) > 1e-9,
+    );
+  });
   if (segments.length < 4) return false;
 
   /* The control polygon bounds the curve, which is all a rejection needs. */
@@ -329,7 +352,7 @@ export function crossesItself(contour: Contour): boolean {
     };
   });
 
-  const STEPS = 8;
+  const STEPS = steps;
   const flattened = new Map<number, Vec2[]>();
   const flatOf = (index: number): Vec2[] => {
     const had = flattened.get(index);

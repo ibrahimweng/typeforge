@@ -15,7 +15,9 @@ import {
   contoursBounds,
   contourArea,
   contourSegments,
+  crossesItself,
   cubicAt,
+  FINE_STEPS,
   splitCubic,
   cubicDerivativeAt,
   distance,
@@ -28,7 +30,7 @@ import {
   type Segment,
 } from "./geometry";
 import { resolveComponents } from "./composite";
-import { classifyContours, contoursIntersect, crossesItself } from "./outline";
+import { classifyContours, contoursIntersect } from "./outline";
 import { shiftCrossbar, shiftShoulders } from "./anatomy";
 import { pixelate } from "./pixel";
 import { addSlabs, weighSlabs } from "./slab";
@@ -360,29 +362,13 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
        */
       const scaled = contoursBounds(contours);
       const narrow = contours;
-      /*
-       * Backed off where putting the strokes back would cross the outline
-       * over itself. At the lightest weight widened to 1.5, the thin join of
-       * the arch of Geist's r to its stem took the thinning of both, and the
-       * crotch above the arch went through the arch's underside. As a
-       * counter backs off when it would cut a wall, the give is taken back
-       * in steps until the outline is sound, on that contour alone.
-       */
-      contours = contours.map((contour, index) => {
-        const given = (share: number) =>
-          unfold(
-            narrow[index],
-            applyWeight(contour, give * share, index, around, SIDEWAYS, CONDENSED_WHITE),
-            params.slant,
-          );
-        const full = given(1);
-        if (!crossesItself(full, 16) || crossesItself(contour, 16)) return full;
-        for (const share of [0.75, 0.5, 0.25]) {
-          const less = given(share);
-          if (!crossesItself(less, 16)) return less;
-        }
-        return full;
-      });
+      contours = contours.map((contour, index) =>
+        unfold(
+          narrow[index],
+          applyWeight(contour, give, index, around, SIDEWAYS, CONDENSED_WHITE),
+          params.slant,
+        ),
+      );
       /*
        * Moved over by what the strokes put back added on the left, and the
        * advance grows by both sides -- measured, as for the weight. A stem
@@ -505,7 +491,9 @@ function unfold(drawn: Contour, moved: Contour, slant: number): Contour {
    * line, which crosses nothing standing up and crossed itself leaning.
    */
   const crosses = (contour: Contour) =>
-    [0, slant, 15, -15].some((degrees) => crossesItself(applySlant(contour, degrees), 32));
+    [...new Set([0, slant])].some((degrees) =>
+      crossesItself(degrees === 0 ? contour : applySlant(contour, degrees), FINE_STEPS),
+    );
   return crosses(result) && !crosses(moved) ? moved : result;
 }
 
@@ -1585,24 +1573,25 @@ function followCounters(
       if (by.length === 0) return other;
       const shiftAt = (point: Vec2) => by.reduce((sum, map) => sum + map.shiftAt(point), 0);
       /*
-       * A straight upright run of the outline moves across whole, by what
-       * its middle is given. Between two counters one above the other the
-       * ink moves by a blend of the two maps that changes with height, and
-       * an upright edge standing in that gap -- the serif on the arm of
-       * Lora's & -- leaned by nineteen units at 1.4.
+       * A straight upright run of the outline moves across whole, by the
+       * most any of its points is given. Between two counters one above the
+       * other the ink moves by a blend of the two maps that changes with
+       * height, and an upright edge standing in that gap -- the serif on the
+       * arm of Lora's & -- leaned by nineteen units at 1.4. The most rather
+       * than the middle: where one counter's map is tried alone, the middle
+       * of a stem it shares with the counter above gets half of it, and the
+       * wall beside it would change weight.
        */
       const runs = uprightRuns(other);
       const runShift = new Map<number, number>();
       runs.forEach((run) => {
         if (run < 0 || runShift.has(run)) return;
-        const members = other.nodes.filter((_, at) => runs[at] === run).map((node) => node.point);
-        const ys = members.map((point) => point.y);
+        const shifts = other.nodes
+          .filter((_, at) => runs[at] === run)
+          .map((node) => shiftAt(node.point));
         runShift.set(
           run,
-          shiftAt({
-            x: members.reduce((sum, point) => sum + point.x, 0) / members.length,
-            y: (Math.min(...ys) + Math.max(...ys)) / 2,
-          }),
+          shifts.reduce((most, next) => (Math.abs(next) > Math.abs(most) ? next : most), 0),
         );
       });
       return {
@@ -1622,7 +1611,9 @@ function followCounters(
     });
   // Not where following would cross an outline, or two, that did not cross.
   const crosses = (moved: Contour[], from: Contour[]): boolean =>
-    moved.some((other, which) => contoursIntersect([other]) && !contoursIntersect([from[which]])) ||
+    moved.some(
+      (other, which) => crossesItself(other, FINE_STEPS) && !crossesItself(from[which], FINE_STEPS),
+    ) ||
     (contoursIntersect(moved) && !contoursIntersect(before));
   /*
    * All the counters at once, each moving the ink in its own band. One after

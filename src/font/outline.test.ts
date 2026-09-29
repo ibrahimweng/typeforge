@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { contourArea, contoursBounds } from "./geometry";
 import {
-  crossesItself,
   classifyContours,
   correctDirection,
   directionIsCorrect,
@@ -152,29 +151,5 @@ describe("correctDirection", () => {
         .sort()
         .join(" ");
     expect(key(after)).toBe(key(before));
-  });
-});
-
-describe("crossesItself", () => {
-  const around = (count: number, point: (t: number) => { x: number; y: number }): Contour => ({
-    closed: true,
-    nodes: Array.from({ length: count }, (_, k) => ({
-      point: point((k / count) * Math.PI * 2),
-      handleIn: null,
-      handleOut: null,
-      type: "corner" as const,
-    })),
-  });
-
-  // A figure-eight of a thousand points: past where the quick check stops
-  // asking, which is where the rim round a detailed letter lands.
-  it("finds a crossing in an outline of many pieces", () => {
-    const eight = around(1000, (t) => ({ x: Math.sin(2 * t) * 300, y: Math.sin(t) * 500 }));
-    expect(crossesItself(eight)).toBe(true);
-  });
-
-  it("finds none in a round outline of as many", () => {
-    const ring = around(1000, (t) => ({ x: Math.cos(t) * 300, y: Math.sin(t) * 500 }));
-    expect(crossesItself(ring)).toBe(false);
   });
 });

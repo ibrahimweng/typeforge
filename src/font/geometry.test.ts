@@ -147,3 +147,42 @@ describe("crossesItself", () => {
     ).toBe(false);
   });
 });
+
+describe("crossesItself on long and open outlines", () => {
+  const around = (count: number, point: (t: number) => { x: number; y: number }): Contour => ({
+    closed: true,
+    nodes: Array.from({ length: count }, (_, k) => ({
+      point: point((k / count) * Math.PI * 2),
+      handleIn: null,
+      handleOut: null,
+      type: "corner" as const,
+    })),
+  });
+
+  // A figure-eight of a thousand points: past where the quick check,
+  // contoursIntersect, stops asking -- where the rim round a detailed
+  // letter lands.
+  it("finds a crossing in an outline of many pieces", () => {
+    const eight = around(1000, (t) => ({ x: Math.sin(2 * t) * 300, y: Math.sin(t) * 500 }));
+    expect(crossesItself(eight)).toBe(true);
+  });
+
+  it("finds none in a round outline of as many", () => {
+    const ring = around(1000, (t) => ({ x: Math.cos(t) * 300, y: Math.sin(t) * 500 }));
+    expect(crossesItself(ring)).toBe(false);
+  });
+
+  it("does not close an open outline to find a crossing", () => {
+    const zigzag: Contour = {
+      closed: false,
+      nodes: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 0, y: 50 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 },
+      ].map((point) => ({ point, handleIn: null, handleOut: null, type: "corner" as const })),
+    };
+    expect(crossesItself(zigzag)).toBe(false);
+  });
+});
