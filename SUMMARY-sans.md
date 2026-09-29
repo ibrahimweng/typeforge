@@ -774,6 +774,27 @@ strokes as white; they now use a filled (nonzero) ruler.
   Thin's ink by half, and 87's by a seventh. Geist's loop is wider at its
   crown and narrower where it crosses, and its arm is shorter. That needs
   the loop drawn on two widths.
+- **The n, m and h shoulders.** Geist's stem stands square to about 530, and
+  its arch leaves the stem about 435 up. That leaves a notch between the two
+  that runs 70 units in from the stem at the Regular. Its arch's crown is
+  centred about 30 units further right than Draw's. Draw's arch springs from
+  the stem's middle on the pen, so it has no notch. A rounder or a taller
+  first quarter took off less than a hundredth. Starting the arch right of
+  the stem left a flat ledge under it. Matching it needs a stroke that thins
+  into the stem, which the pen cannot draw in one stroke without a step at
+  the crown.
+- **The ~'s middle.** Geist's wave is 20 units lighter than Draw's where it
+  crosses the middle (108 against 128 at the Regular), while its crests match.
+  A pen held at an angle took off almost nothing, because the difference is
+  in the path.
+- **The heavy f's left side.** The f's shape now matches Geist's at every
+  weight, but at the UltraBlack and the Black its left side is spaced 6–7
+  units wider than Geist's. The sides table closes a stem's side at the n's
+  rate and has no way to close one faster.
+- **The five's bowl at the Black.** Geist's heavy bowl is fuller at its upper
+  right and leaner at its upper left. It still stands 26 units inside Geist's
+  shoulder at the Black. Drawing that quarter separately follows it, but at
+  twice the nodes.
 - **Past 194.** Geist has nothing heavier than its Black. At 200–260 the
   letters follow their own rules for keeping counters open, not Geist.
 - **œ.** Not in the review list, and it is still poor past the Black: its o
