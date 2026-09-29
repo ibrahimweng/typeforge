@@ -60,6 +60,34 @@ the line at every weight. I measured this. Sans `(` tops out at 750 at weights
    closing up any more. An answer about an earlier font is now dimmed and
    marked "Rechecking…" until the new one arrives. (`ForgeView.tsx`)
 
+## Found in review and fixed
+
+A second check of the finished work found these. Each was confirmed in the
+browser or with a test before it was fixed.
+
+1. **Letters were drawn at different sizes.** Framing each letter to its own
+   ink kept it whole but changed its size: on the stage Å was drawn 14%
+   smaller than A and the baseline moved 11 px; in the strip À was 20%
+   smaller; the specimen shrank 15% when an Å was typed. Every letter now
+   shares one frame taken from the font's own reach (the letters that go
+   furthest), grown only for ink that goes further still. The strip letter is
+   drawn one size larger to make up for the taller frame.
+2. **The stage jumped size when a drag began.** It was framed by the live
+   drawing, and a cast is left off during a drag. It is framed by the font as
+   it last settled now.
+3. **The tool's proof cropped the ring of an Å** by 135 units. It uses the
+   same shared frame.
+4. **"My Formal Script Formal Script".** The doubled-name check matched single
+   words, so two-word styles slipped through. It matches whole phrases now.
+5. **Warning chips were named with glyph names for screen readers** ("Show
+   ccedilla" on a chip showing ç). They are named with the character shown.
+6. **Accents over their limit were told to raise the ascender.** Their limit
+   follows the cap height, and raising the ascender changed nothing. The advice
+   now says "A taller cap height", and a test checks that following it works.
+7. **One line changed in `src/App.tsx`**, outside the folders this work was
+   limited to. The views now report which one is on screen
+   (`src/state/surface.ts`), and `App.tsx` is back as it was.
+
 ## Checked and fine
 
 - On Sans and Serif, one change at a time, with a screenshot after each (113
@@ -69,7 +97,9 @@ the line at every weight. I measured this. Sans `(` tops out at 750 at weights
   finish, and Cut at 25° under Angled; every g, y and j alternate; and all 14
   cut and cast switches. Updates took 0.2 to 0.7 s, well under 2 s. Every
   alternate keeps at least 44 units of room on the stage.
-- Edit mode Weight, Width, Slant and Corner radius took 0.07 to 0.3 s.
+- Edit mode Weight, Width, Slant and Corner radius took 0.08 to 0.44 s, with
+  a screenshot after each change. A glyph opened in the editor at width 1.25
+  shows whole.
 - Layout at 768, 1024, 1440 and 2560 px wide: no horizontal page scroll and
   nothing broken. At 768 px the "Letter A" tab truncates to "Lette…" and the
   top bar wraps to two rows. Both are acceptable.
@@ -90,16 +120,18 @@ the line at every weight. I measured this. Sans `(` tops out at 750 at weights
 ## Tests
 
 - New unit tests: `ink-frame.test.ts`, `part-idle.test.ts`,
-  `letter-label.test.ts`, `StatusBar.test.ts`, plus new cases in
+  `letter-label.test.ts`, `StatusBar.test.ts`, `surface.test.ts`, plus new
+  cases in
   `health.test.ts`, `drawn.test.ts` and `forge-store.test.ts`.
-- New e2e spec: `e2e/polish-ui.spec.ts` (7 tests). On the old code, 6 of the 7
-  fail. The seventh, the Edit-grid width test, cannot fail on this font: with
-  the width cap removed, W at Width 1.5, Middle space 1.4 and full Weight still
-  fills only 78% of its cell, under the 86% where the cap starts. It stays as
-  a check that widened letters are whole. The cap itself is unit-tested in
-  `glyph-render.test.ts`.
+- New e2e spec: `e2e/polish-ui.spec.ts` (10 tests). Each fails on the code it
+  guards, except the Edit-grid width test. That bug was fixed before this work
+  and could not be brought back: with the width cap removed, the widest letter
+  at Width 1.5 fills 83.7% of its cell (in the sample font and in DejaVu
+  Sans), under the 86% where the cap starts. It stays as a check that widened
+  letters are whole; the cap itself is unit-tested in `glyph-render.test.ts`.
 - Every commit passed `npx tsc -b --noEmit`, `npx biome check .` and
   `npx vitest run src/components src/state src/views src/forge/health.test.ts`
-  (571 tests at the end). `e2e/polish-ui.spec.ts` and `e2e/workspace.spec.ts`
-  pass in Chromium. WebKit and Firefox were not run. `e2e/forge.spec.ts` passes except for the one failure
-  noted above.
+  (577 tests at the end). `e2e/polish-ui.spec.ts` (run twice over) and
+  `e2e/workspace.spec.ts` pass in Chromium. `e2e/forge.spec.ts` passes except
+  for the one failure noted above. WebKit and Firefox are not installed in this
+  container, so those two projects could not run here; CI runs them.
