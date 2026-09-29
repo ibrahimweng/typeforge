@@ -21,7 +21,7 @@ import { describe, expect, it } from "vitest";
 import { exportFont } from "./export";
 import { contourSegments, contoursBounds, cubicAt, flattenContour } from "./geometry";
 import { importFont } from "./parse";
-import { contoursIntersect } from "./outline";
+import { contoursIntersect, crossesItself } from "./outline";
 import { resolveAdvanceWidth, resolveGlyphContours } from "./transform";
 import { blankGlyph } from "./library";
 import {
@@ -846,5 +846,80 @@ describe("heights, on letters from a real font", () => {
     const light = contoursBounds(at(typeface, glyph, { weight: -40 }));
     expect(light.yMax).toBeCloseTo(700, 0);
     expect(light.yMin).toBeCloseTo(-16, 0);
+  });
+});
+
+describe("widened and lightened together", () => {
+  /** Geist's r and n, as drawn: the n is there for the stems to be measured from. */
+  const GEIST_R: Node6[][] = [
+    [
+      [164, 0, null, null, null, null],
+      [80, 0, null, null, null, null],
+      [80, 530, null, null, null, null],
+      [154, 530, null, null, null, null],
+      [157, 432, null, null, 175, 497.33],
+      [283, 530, 217, 530, null, null],
+      [335, 530, null, null, null, null],
+      [335, 450, null, null, null, null],
+      [284, 450, null, null, 204, 450],
+      [164, 320, 164, 406.67, null, null],
+    ],
+  ];
+  const GEIST_N: Node6[][] = [
+    [
+      [164, 0, null, null, null, null],
+      [80, 0, null, null, null, null],
+      [80, 530, null, null, null, null],
+      [157, 530, null, null, null, null],
+      [159, 435, null, null, 173, 471.67],
+      [223.5, 516, 194.5, 498.67, 252.5, 533.33],
+      [322, 542, 285.33, 542, 362.67, 542],
+      [422.5, 515, 396.17, 533, 448.83, 497],
+      [481.5, 442.5, 468.5, 472.83, 494.5, 412.17],
+      [501, 341, 501, 378.33, null, null],
+      [501, 0, null, null, null, null],
+      [417, 0, null, null, null, null],
+      [417, 317, null, null, 417, 366.33],
+      [390.5, 429.5, 408.17, 403.83, 372.83, 455.17],
+      [304, 468, 344, 468, 263.33, 468],
+      [203.5, 429.5, 229.83, 455.17, 177.17, 403.83],
+      [164, 317, 164, 366.33, null, null],
+    ],
+  ];
+
+  /*
+   * Regression: at the lightest weight widened to 1.5, the thin join of the
+   * arch of Geist's r to its stem took the thinning of both, and the crotch
+   * above the arch went through the arch's underside.
+   */
+  it("keeps the join of the r's arch sound", () => {
+    const typeface = emptyTypeface();
+    typeface.metrics = { ...typeface.metrics, xHeight: 530, capHeight: 710 };
+    const r = {
+      ...blankGlyph("r", [0x72]),
+      advanceWidth: 379,
+      contours: drawn(GEIST_R),
+      params: {},
+    };
+    const n = {
+      ...blankGlyph("n", [0x6e]),
+      advanceWidth: 581,
+      contours: drawn(GEIST_N),
+      params: {},
+    };
+    typeface.glyphs = [r, n];
+    typeface.glyphIndex = new Map([
+      ["r", 0],
+      ["n", 1],
+    ]);
+    // Its own stems measure 84 here rather than the whole font's 86, which
+    // moves where the crossing shows; these are where it does.
+    for (const [weight, width] of [
+      [-36, 1.5],
+      [-30, 1.4],
+    ]) {
+      const [wide] = at(typeface, r, { weight, width });
+      expect(crossesItself(wide, 32), `${weight} ${width}`).toBe(false);
+    }
   });
 });

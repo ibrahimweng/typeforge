@@ -28,7 +28,7 @@ import {
   type Segment,
 } from "./geometry";
 import { resolveComponents } from "./composite";
-import { classifyContours, contoursIntersect } from "./outline";
+import { classifyContours, contoursIntersect, crossesItself } from "./outline";
 import { shiftCrossbar, shiftShoulders } from "./anatomy";
 import { pixelate } from "./pixel";
 import { addSlabs, weighSlabs } from "./slab";
@@ -360,13 +360,29 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
        */
       const scaled = contoursBounds(contours);
       const narrow = contours;
-      contours = contours.map((contour, index) =>
-        unfold(
-          narrow[index],
-          applyWeight(contour, give, index, around, SIDEWAYS, CONDENSED_WHITE),
-          params.slant,
-        ),
-      );
+      /*
+       * Backed off where putting the strokes back would cross the outline
+       * over itself. At the lightest weight widened to 1.5, the thin join of
+       * the arch of Geist's r to its stem took the thinning of both, and the
+       * crotch above the arch went through the arch's underside. As a
+       * counter backs off when it would cut a wall, the give is taken back
+       * in steps until the outline is sound, on that contour alone.
+       */
+      contours = contours.map((contour, index) => {
+        const given = (share: number) =>
+          unfold(
+            narrow[index],
+            applyWeight(contour, give * share, index, around, SIDEWAYS, CONDENSED_WHITE),
+            params.slant,
+          );
+        const full = given(1);
+        if (!crossesItself(full, 16) || crossesItself(contour, 16)) return full;
+        for (const share of [0.75, 0.5, 0.25]) {
+          const less = given(share);
+          if (!crossesItself(less, 16)) return less;
+        }
+        return full;
+      });
       /*
        * Moved over by what the strokes put back added on the left, and the
        * advance grows by both sides -- measured, as for the weight. A stem
@@ -489,7 +505,7 @@ function unfold(drawn: Contour, moved: Contour, slant: number): Contour {
    * line, which crosses nothing standing up and crossed itself leaning.
    */
   const crosses = (contour: Contour) =>
-    [0, slant, 15, -15].some((degrees) => contoursIntersect([applySlant(contour, degrees)]));
+    [0, slant, 15, -15].some((degrees) => crossesItself(applySlant(contour, degrees), 32));
   return crosses(result) && !crosses(moved) ? moved : result;
 }
 
