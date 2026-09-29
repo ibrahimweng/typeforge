@@ -1844,3 +1844,18 @@ describe("the slash and the z's diagonal", () => {
     }
   });
 });
+
+describe("the parentheses", () => {
+  it("taper to their ends, as Geist's do", () => {
+    // 90 under the line Geist Regular's ( runs 172-248, and the Black's
+    // 162-335; at one weight all along it ran 150-249 and 129-333.
+    for (const [weight, from, to] of [
+      [87, 172, 248],
+      [194, 162, 335],
+    ]) {
+      const [run] = filled(draw("parenleft", weight).contours, -90);
+      expect(Math.abs(run[0] - from), `( at ${weight}`).toBeLessThan(8);
+      expect(Math.abs(run[1] - to), `( at ${weight}`).toBeLessThan(6);
+    }
+  });
+});

@@ -4743,7 +4743,7 @@ export function grotesqueHyphen(style: Style): Recipe {
 }
 
 /** A parenthesis: one long arc from above the ascender to below the baseline, cut level. */
-function paren(f: Frame, facing: 1 | -1): Stroke {
+function paren(f: Frame, facing: 1 | -1): Stroke[] {
   const u = large(f);
   const top = up(f, 750);
   const bottom = up(f, -110);
@@ -4751,25 +4751,54 @@ function paren(f: Frame, facing: 1 | -1): Stroke {
   // At Geist's widths (139, 214 and 305 at the Thin, Regular and Black),
   // where the Thin's stood 14 wide.
   const reach = Math.max(116.5 * u + atWeights(f, -14, 6, 4, 2, 0), f.half);
-  const radius = (half * half + reach * reach) / (2 * reach);
-  const sweep = (Math.asin(Math.min(1, half / radius)) * 180) / Math.PI;
   const middle = (top + bottom) / 2;
-  if (facing === 1) {
-    const centre = at(f.edge + radius, middle);
-    return ink(f, turn(centre, radius, 180 - sweep, 180 + sweep), f.end, f.end);
-  }
-  const centre = at(f.edge + reach - radius, middle);
-  return ink(f, turn(centre, radius, sweep, -sweep), f.end, f.end);
+  // The arc whose spine runs from its ends, at `end`, to its middle `across` away.
+  // Split at its middle where tapered, so each half is one curve at every weight.
+  const arc = (end: number, across: number, weight: number, split = false): Stroke => {
+    const radius = (half * half + across * across) / (2 * across);
+    const sweep = (Math.asin(Math.min(1, half / radius)) * 180) / Math.PI;
+    const centre = at(facing === 1 ? end - across + radius : end + across - radius, middle);
+    const [from, to] = facing === 1 ? [180 - sweep, 180 + sweep] : [sweep, -sweep];
+    const spine = split
+      ? chain(
+          turn(centre, radius, from, (from + to) / 2),
+          turn(centre, radius, (from + to) / 2, to),
+        )
+      : turn(centre, radius, from, to);
+    const drawn = ink(f, spine, f.end, f.end);
+    return weight === f.half * 2
+      ? drawn
+      : inherit(drawn, { ...drawn, pen: { ...drawn.pen, weight } });
+  };
+  const ends = facing === 1 ? f.edge + reach : f.edge;
+  const taper =
+    f.style.metrics.xGrows !== undefined
+      ? Math.min(0.75, Math.max(0.65, atWeights(f, 0.65, 0.7, 0.75, 0.75, 0.75))) +
+        0.22 * Math.min(1, Math.max(0, ((f.style.pen.weight / f.xOwn) * 530 - 194) / 106))
+      : 1;
+  if (taper >= 1) return [arc(ends, reach, f.half * 2)];
+  /*
+   * The Sans's tapers to its ends, as Geist's does, to two thirds of its
+   * middle at the Thin and three quarters from the SemiBold to the Black,
+   * less past it, where the bowed arc's inside folded: two arcs of
+   * the lighter pen cut at the same ends, the one on the inner line and the
+   * other bowed out to the full weight at the middle. At one weight all
+   * along, it carried a tenth more ink than Geist's and missed it by 0.12 at
+   * the Regular.
+   */
+  const light = f.half * 2 * taper;
+  const inner = ends + facing * (f.half - light / 2);
+  return [arc(inner, reach, light, true), arc(inner, reach + (f.half * 2 - light), light, true)];
 }
 
 export function grotesqueParenLeft(style: Style): Recipe {
   const f = frame(style);
-  return finish(f, [paren(f, 1)]);
+  return finish(f, paren(f, 1));
 }
 
 export function grotesqueParenRight(style: Style): Recipe {
   const f = frame(style);
-  return finish(f, [paren(f, -1)]);
+  return finish(f, paren(f, -1));
 }
 
 /**

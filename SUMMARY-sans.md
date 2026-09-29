@@ -644,6 +644,17 @@ slashes run a few units further across to keep Geist's widths. At the
 Regular the slash's misfit falls from 0.14 to 0.025 and the z's from 0.098
 to 0.072.
 
+**Parentheses.** Geist's parentheses taper towards their ends. Ours were one
+weight all along, so they carried a tenth more ink than Geist's. The Sans now
+draws each parenthesis as two arcs of a lighter pen that share their end
+cuts. One arc runs on the inner line; the other bows out to the full weight
+at the middle. The ends are two thirds of the middle's weight at the Thin and
+three quarters from the SemiBold to the Black, and the taper eases off past
+the Black, where the bowed arc's inside would fold. Each arc is split at its
+middle, so every weight and family master has the same nodes (6+6). The
+misfit of ( falls from 0.23/0.12/0.11/0.10/0.09 to 0.14/0.04/0.04/0.02/0.02
+at the Thin, Regular, SemiBold, UltraBlack and Black.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular
