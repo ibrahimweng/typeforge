@@ -1873,3 +1873,17 @@ describe("the SemiBold percent", () => {
     expect(ink.yMax).toBeLessThan(720);
   });
 });
+
+describe("the brackets", () => {
+  it("are as light as Geist's and as long", () => {
+    // 300 up Geist SemiBold's ] stem runs 173-295 and 60 in its bars run
+    // down to -8 and from 648; on the pen they ran 157-287, -2 and 643.
+    const { contours } = draw("bracketright", 130);
+    const [stem] = filled(contours, 300);
+    expect(Math.abs(stem[0] - 173)).toBeLessThan(4);
+    expect(Math.abs(stem[1] - 295)).toBeLessThan(4);
+    const bars = filled(contours, 60, "x");
+    expect(Math.abs(bars[0][1] - -8)).toBeLessThan(4);
+    expect(Math.abs(bars[bars.length - 1][0] - 648)).toBeLessThan(4);
+  });
+});

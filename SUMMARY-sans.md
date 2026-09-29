@@ -662,6 +662,14 @@ reached 4 units past both lines; they now stay within them. Its misfit falls
 from 0.12/0.07/0.12 to 0.05/0.06/0.07 at the SemiBold, UltraBlack and Black.
 At the Black the lower ring still sits 10 units left of Geist's.
 
+**Brackets.** The Sans's square brackets are now drawn with a sided pen, as
+the D is. Their stem and bars are lighter than the pen, as Geist's are. At
+128, Geist's stem is 122 and its bars 102, where ours had stood 130 and 107.
+At the Thin the stem is a little heavier than the pen, 32 against 30. From
+the SemiBold on the arms are a little longer, and the bars sit on the lines.
+The ] misfit falls from 0.13/0.21/0.18/0.17 to 0.009/0.010/0.009/0.004 at the
+Regular, SemiBold, UltraBlack and Black.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular

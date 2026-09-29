@@ -3413,23 +3413,35 @@ export function grotesqueDieresis(style: Style): Recipe {
 function grotesqueBracket(style: Style, way: 1 | -1): Recipe {
   const f = frame(style);
   const [X, lerp] = squaredNow(f);
-  const wide = lerp(240, 346, 172);
+  /*
+   * The Sans's stem and bars lighter than the pen, as Geist's are -- its
+   * stem 122 and its bars 102 on a stem of 128, where they stood 130 and
+   * 107 -- its arms a little longer from the SemiBold on, and its bars on
+   * the lines. Held at the Black's past it.
+   */
+  const sans = f.style.metrics.xGrows !== undefined;
+  const pastBlack = f.style.pen.weight / f.xOwn > 194 / 530;
+  const knot = (knots: [number, number, number, number, number]) =>
+    pastBlack ? knots[4] : atWeights(f, ...knots);
+  const wide = lerp(240, 346, 172) + (sans ? knot([0, 0, 10, 5, 0]) : 0);
   const x = (u: number) => (way === 1 ? X(u) : X(wide) + X(0) - X(u));
-  const stem = x(0) + way * f.half;
-  const top = f.hangs(up(f, 750));
-  const bottom = f.sits(up(f, -110));
-  return finish(f, [
-    ink(
-      f,
-      chain(
-        straight(at(x(wide), top), at(stem, top)),
-        straight(at(stem, top), at(stem, bottom)),
-        straight(at(stem, bottom), at(x(wide), bottom)),
-      ),
-      BUTT,
-      BUTT,
+  const side = f.half * 2 * (sans ? knot([1.06, 0.92, 0.93, 0.96, 0.94]) : 1);
+  const g = sans ? sidedFrame(f, side, f.half * 2 * knot([0.93, 0.78, 0.78, 0.78, 0.75])) : f;
+  const stem = x(0) + way * (side / 2);
+  const barHalf = g === f ? 0 : g.half * (1 - g.style.pen.contrast);
+  const top = g === f ? f.hangs(up(f, 750)) : up(f, 750) - barHalf;
+  const bottom = g === f ? f.sits(up(f, -110)) : up(f, -110) + barHalf;
+  const drawn = ink(
+    g,
+    chain(
+      straight(at(x(wide), top), at(stem, top)),
+      straight(at(stem, top), at(stem, bottom)),
+      straight(at(stem, bottom), at(x(wide), bottom)),
     ),
-  ]);
+    BUTT,
+    BUTT,
+  );
+  return finish(f, [g === f ? drawn : inherit(drawn, { ...drawn, pen: g.style.pen })]);
 }
 
 export const grotesqueBracketLeft = (style: Style): Recipe => grotesqueBracket(style, 1);
