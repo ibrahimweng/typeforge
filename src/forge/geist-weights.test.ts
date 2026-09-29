@@ -1680,3 +1680,14 @@ describe("the Thin M and Z, and the R's waist", () => {
     expect(filled(draw("R", 87).contours, 300)).toHaveLength(1);
   });
 });
+
+describe("the Thin's round and diagonal sides", () => {
+  it("stand where Geist Thin's do", () => {
+    // Geist Thin sets its v 24 off its left and its Black its e 32; opened
+    // with the rest the v stood 27, and closing only half as fast the e 37.
+    const v = draw("v", 30);
+    expect(Math.abs(contoursBounds(v.contours).xMin - 24)).toBeLessThan(2);
+    const e = draw("e", 194);
+    expect(Math.abs(contoursBounds(e.contours).xMin - 32)).toBeLessThan(3);
+  });
+});

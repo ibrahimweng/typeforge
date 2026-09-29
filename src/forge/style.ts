@@ -734,11 +734,13 @@ export const SANS: Style = {
     sides: {
       a: [0.59, 0.24, "closes"],
       // Geist's bowls stand 44 off at the Regular and 32 at the Black: a
-      // fitted round side gave back twice that as the bowls narrowed.
+      // fitted round side gave back twice that as the bowls narrowed. Its
+      // v, w and y stand 3 closer at the Thin than the light opening gives,
+      // and its e closes as fast as its n.
       b: [1, 0.52, "stem-left"],
       c: [0.59, 0.46, "closes"],
       d: [0.52, 1, "stem-right"],
-      e: [0.52, 0.52],
+      e: [0.545, 0.545, "closes", [1, 1]],
       o: [0.52, 0.52],
       p: [1, 0.52, "stem-left"],
       q: [0.52, 1, "stem-right"],
@@ -751,9 +753,9 @@ export const SANS: Style = {
       r: [1, 0.55, "closes"],
       // Its foot turns out nearly to the advance, as Geist's does (24 off).
       l: [1, 0.3, "closes"],
-      v: [0.28, 0.28],
-      w: [0.28, 0.28],
-      y: [0.28, 0.28],
+      v: [0.28, 0.28, "half", [-3, -3]],
+      w: [0.28, 0.28, "half", [-3, -3]],
+      y: [0.28, 0.28, "half", [-3, -3]],
       t: [0.69, 0.46, "closes"],
       x: [0.59, 0.59],
       // Geist sets its z 51 off either side from the Regular to the Black.
@@ -825,7 +827,7 @@ export const SANS: Style = {
       parenleft: [0.56, 0.19],
       parenright: [0.19, 0.56],
       // Geist closes its slashes as fast as its n, the slash's right faster.
-      slash: [0.5, 0.72, "closes"],
+      slash: [0.5, 0.72, "closes", [-5, 2]],
       // Geist closes its hyphen and underscore as fast as its n (44 off at
       // the Regular, 32 at the Black); half as fast, they stood 8 loose.
       hyphen: [0.55, 0.55, "closes"],
