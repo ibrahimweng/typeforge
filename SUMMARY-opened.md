@@ -141,9 +141,17 @@ A fourth review found that the existing check I had moved everything onto never 
 - A fresh sweep with an independent check, and one on the previous commit to prove the sweep can see these loops, shows them gone.
 - The same review also found smaller issues, now fixed. A contour that already crossed itself before the weight was handed back whole instead of backed off. The unfold guard had dropped its slanted probes. An upright run pushed both ways at once moved by the larger push. The counters' check compared against the wrong outlines. The rim retried more often than it needed to.
 
+A fifth review found that the fuller check now rejected the corner folds the width control lays flat afterwards. So the weight engine backed the whole stroke give off, and the small 4 in Lora's fractions, heavy and condensed, lost a quarter of its ink. Fixes:
+- The weight engine now judges an outline after that repair.
+- A contour that crossed itself as drawn is kept from crossing any more than it did, counted.
+- The counters' check between contours compares which pairs cross before and after.
+- Tiny spikes left where two points were brought onto one spot are removed.
+- The check is faster: it skips curves that can't loop and only compares pieces near each other.
+- The tests' own crossing check now evaluates curves itself.
+
 ## Tests
 
-Every fix has a test that fails on the old code and passes now, with one exception: the edge-only clamp (see What is left). They are in:
+Every fix has a test that fails on the old code and passes now, except the four listed under What is left. They are in:
 - `src/font/shape-controls.test.ts`
 - `src/font/weight.test.ts`
 - `src/font/slab.test.ts`
@@ -151,20 +159,22 @@ Every fix has a test that fails on the old code and passes now, with one excepti
 - `src/font/control.test.ts`
 - `src/font/geometry.test.ts`
 - `src/forge/cast.test.ts`
+- `test/outlines.test.ts`
 
 Three tests use real letters as fixtures, because their faults depend on the letters' exact geometry: Lora's N, u and a, and Geist's r and n. They live in `test/outlines.ts`. Both fonts are under the SIL Open Font License. The rim test uses Lora's a at full precision, since the loop disappears if its points move by three thousandths of a unit.
 
 Two old expectations in `weight.test.ts` described letters growing past the baseline and cap height; they now expect the letter to keep its heights. The middle-space expectations in `counter.test.ts` and `control.test.ts`, which had walls thickening or thinning by the whole change, now expect walls that keep their weight while the letter narrows or widens. The weight engine keeps each contour's point count, and slabs are still separate contours added to the letter.
 
-These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,888 tests.
+These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,892 tests.
 
 ## What is left
 
 - **Middle space and colour.** Measured as ink per unit of advance, letters with counters at 0.6 come out up to 10% denser than at rest (Lora's b, d, p, q), and at 1.4 up to 10% lighter. That is the white the control removes or adds while the strokes keep their weight. Thinning or thickening the walls to compensate is what squared the round letters earlier.
-- **Three changes have no test of their own**, because in every case I could build, and in all three fonts, they give the same outline as the code they replaced:
+- **Four changes have no test of their own**, because in every case I could build they give the same outline as the code they replaced:
   - the edge-only clamp;
   - an upright run taking its largest shift on the one-counter-at-a-time path;
-  - `crossesItself` skipping pieces of no length.
+  - `crossesItself` skipping pieces of no length;
+  - the counters' check comparing crossing pairs instead of the whole letter.
   An independent check of every weighted glyph confirms none of the outlines cross.
 - **Corner radius** adds points by design, since it rounds corners with new curves.
 - **Heavy counters.** At weight 0.06, Geist's B and R counters shrink to slits. That comes from Geist's own proportions at that weight.
