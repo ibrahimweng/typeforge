@@ -380,6 +380,13 @@ took a third off the t's misfit from the Regular to the Black and four
 fifths off the Thin's. Geist also sets its heavy t and f 6 to 8 units closer
 on the left than its n's rate gives.
 
+**The f's bar and hook.** Geist's f's bar and hook crown are lighter than
+the face's horizontals at the Regular and the SemiBold: 74 and 99 across,
+where Draw's stood 81 and 117. Its bar also sits at 534 at the SemiBold and
+538 at the UltraBlack, then drops to 506 at the Black. Both are now Geist's,
+which took a fifth to two fifths off the f's misfit from the Regular to the
+Black.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

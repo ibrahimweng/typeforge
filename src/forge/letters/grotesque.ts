@@ -1529,11 +1529,25 @@ export function grotesqueSmallR(style: Style): Recipe {
 }
 
 /**
+ * The Sans's f's horizontals as heavy as Geist's: its bar and its hook's
+ * crown are lighter than the face's at the Regular and the SemiBold (74 and
+ * 99 across, where they stood 81 and 117). The pen's contrast carries it,
+ * so its stem keeps the pen.
+ */
+function fAcross(style: Style): Style {
+  if (style.metrics.xGrows === undefined) return style;
+  const f = frame(style);
+  const k = Math.min(1, atWeights(f, 1, 0.91, 0.85, 1, 1));
+  const contrast = Math.min(0.95, Math.max(0, 1 - k * (1 - style.pen.contrast)));
+  return { ...style, pen: { ...style.pen, contrast } };
+}
+
+/**
  * The f: a stem turning over at the ascender into a flat hook cut upright,
  * and a bar across at the x-height reaching further right than left.
  */
 export function grotesqueF(style: Style): Recipe {
-  const f = frame(lighterAcross(style));
+  const f = frame(fAcross(lighterAcross(style)));
   uses("crossbar");
   const u = small(f);
   const stem = f.edge + 114 * u;
@@ -1554,7 +1568,11 @@ export function grotesqueF(style: Style): Recipe {
   const end = Math.max(stem + f.half + 136 * u + 17 * more, corner.x + f.half * 0.3);
   // Geist's bar is as heavy as the hook's crown (Black 125, Regular 76) and
   // hangs a little under the x-height at a Black (top 511).
-  const bar = f.hangs(f.x - 19 * u * Math.min(1, heaviness(f) / 0.67));
+  // The Sans's as high as the current Geist's: 534 at its SemiBold and 538
+  // at its UltraBlack, and down at 506 at its Black.
+  const raise =
+    f.style.metrics.xGrows !== undefined ? Math.max(atWeights(f, 0, 0, 7, 17, -17), -17) : 0;
+  const bar = f.hangs(f.x - 19 * u * Math.min(1, heaviness(f) / 0.67) + raise);
   return finish(f, [
     ink(
       f,

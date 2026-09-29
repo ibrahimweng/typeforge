@@ -1610,3 +1610,18 @@ describe("the t's foot", () => {
     expect(Math.abs(t[0][0] - 57)).toBeLessThan(6);
   });
 });
+
+describe("the f's bar", () => {
+  it("is as heavy and as high as Geist's", () => {
+    // 300 in Geist's f's bar runs 456-530 at the Regular and 413-538 at the
+    // UltraBlack; it ran 449-530 and 392-521.
+    for (const [weight, from, to] of [
+      [87, 456, 530],
+      [172, 413, 538],
+    ]) {
+      const bar = filled(draw("f", weight).contours, 300, "x")[0];
+      expect(Math.abs(bar[0] - from), `f at ${weight}`).toBeLessThan(6);
+      expect(Math.abs(bar[1] - to), `f at ${weight}`).toBeLessThan(4);
+    }
+  });
+});
