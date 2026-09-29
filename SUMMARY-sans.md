@@ -327,6 +327,13 @@ Geist Thin's is. That took a fifth off its misfit. The width a heavy s gains
 is held back from the UltraBlack on. Both now sit within 1 unit of Geist's
 width.
 
+**The tilde and the w.** The tilde's measures were its spine's reach, so
+its level-cut ends stood out past it and its ink ran 12 units wide at the
+Regular (9 at the SemiBold). Its reach is now fitted so the ink is Geist's
+width at every weight. The w stood 11 narrow at the SemiBold and now sits
+within 3 of Geist's at every weight. The $'s bar still stops 33 short of
+Geist's 800 at the Thin, where the health check holds it.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

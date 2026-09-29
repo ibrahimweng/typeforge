@@ -1499,3 +1499,15 @@ describe("the s at the Thin and the Black", () => {
     }
   });
 });
+
+describe("the tilde and the w", () => {
+  it("are as wide as Geist's", () => {
+    // Geist's tilde is 443 across at the Regular and its w 797 at the
+    // SemiBold; the tilde's ink stood 455 across, its cut ends past its
+    // reach, and the w 786.
+    const tilde = box("asciitilde", 87);
+    expect(Math.abs(tilde.xMax - tilde.xMin - 443)).toBeLessThan(4);
+    const w = box("w", 130);
+    expect(Math.abs(w.xMax - w.xMin - 797)).toBeLessThan(4);
+  });
+});

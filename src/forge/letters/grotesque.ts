@@ -3427,7 +3427,9 @@ export function grotesqueUnderscore(style: Style): Recipe {
 export function grotesqueTilde(style: Style): Recipe {
   return wave(style, {
     thick: [79, 126, 32],
-    wide: [443, 443, 402],
+    // Its spine's reach, not its ink's: the level cuts stand out past it, and
+    // on Geist's own reach the ink stood 12 units wide at the Regular.
+    wide: [428, 439, 401],
     low: [246, 245, 268],
     high: [420, 421, 398],
     crest: [430, 424, 404],
@@ -4350,7 +4352,13 @@ export function grotesqueCapitalA(style: Style): Recipe {
 export function grotesqueSmallW(style: Style): Recipe {
   const f = frame(style);
   const [wide, t] = smallSpread(f, 0.35);
-  const u = wide * thinned(f, 0.034);
+  // And the Sans's at Geist's widths, where it stood 11 narrow at the SemiBold;
+  // held at the Black's past it, where its counters need the room.
+  const fit =
+    f.style.metrics.xGrows !== undefined
+      ? Math.max(atWeights(f, -0.004, -0.003, 0.014, 0.005, -0.004), -0.004)
+      : 0;
+  const u = wide * thinned(f, 0.034) * (1 + fit);
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
   const X = (x: number) => f.edge + (x - lerp(43, 86)) * u;
   const outer = lerp(45.7, 87.5);
