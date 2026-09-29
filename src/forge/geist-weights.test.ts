@@ -719,6 +719,7 @@ describe("the widths of the letters redrawn to the current Geist", () => {
       // 18 wide there and 20 wide at the Thin.
       n: [386, 421, 461, 499, 519],
       m: [676, 717, 752, 786, 803],
+      u: [386, 415, 456, 496, 517],
     };
     for (const [name, widths] of Object.entries(geist)) {
       for (const [index, weight] of [30, 87, 130, 172, 194].entries()) {

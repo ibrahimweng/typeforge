@@ -218,8 +218,9 @@ that line gives, and on it at both ends. Ours followed the line, so the n,
 h and u stood 9 wide at the SemiBold and the m 18. A new
 `metrics.counterBend` (in `narrowed`, `style.ts`) bends the line for the
 Sans only. The m is drawn with its counters a little narrower than the n's
-(a new Sans form), as Geist's are; it stood 20 wide at the Thin. The n and m
-are within 3 of Geist at every weight.
+(a new Sans form), as Geist's are; it stood 20 wide at the Thin. The u, 9 narrow
+at the Thin, is fitted too. The n, m and u are within 3 of Geist at every
+weight.
 
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's

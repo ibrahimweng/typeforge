@@ -1190,7 +1190,9 @@ export function grotesqueSmallU(style: Style): Recipe {
   const height = crested(f, f.x);
   const radius = shoulderRadius(f, height);
   const left = f.edge;
-  const right = left + f.arch * 2;
+  // At Geist's width: it stood 9 narrow at the Thin, whose u is wider than
+  // its n.
+  const right = left + f.arch * 2 + atWeights(f, 9, -1, 1, 3, 1);
   // Half a pen up off the baseline and the overshoot back down: the arch's
   // crest, turned over (see `archSpine`).
   const floor = Math.min(f.sits(0) - f.over, height - radius);
