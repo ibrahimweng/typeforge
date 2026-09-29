@@ -118,7 +118,7 @@ Images: `condensed-diagonals-geist-*`, `crossbar-four-geist-*`, `dotless-j-geist
 - **Slab beaks:** the beak on the sample font's f hung below its hook at heavy weights, nearly closing on the crossbar. A slab end flush with the letter's edge now follows that edge.
 - **G spur:** its foot bar reached over the bowl it stands on. A slab no longer reaches out on a side where the stroke is joined to ink.
 - **Upright edges between stacked counters:** after the handover fix, the & serif still leaned 19 units at 1.4. Each straight upright run of the outline, however many points it has, now moves across whole, by the shift at its middle.
-- **Rim:** the boolean step that builds the rim could leave a tiny figure-eight in the outline of Lora's a and its six accented forms. Its area was right, so the existing retry never caught it. Now each solid's rim is rebuilt on a grid when it crosses itself: a thousandth of a unit, then a hundredth, then a tenth, each coarser than the last. The finished rim is checked once more after the counters are cut out and joined. This change is in `src/forge/cast.ts`, which you approved going into.
+- **Rim:** the boolean step that builds the rim could leave a tiny figure-eight in the outline of Lora's a and its six accented forms. Its area was right, so the existing retry never caught it. Now each solid's rim is rebuilt on a grid when it crosses itself: a thousandth of a unit, then a hundredth, then a tenth, each coarser than the last. The finished rim is checked once more after the counters are cut out and joined, and rebuilt once if it still crosses. This change is in `src/forge/cast.ts`, which you approved going into.
 
 Images: `folded-corners-geist-*`, `stacked-counters-lora-*`, `slab-flags-geist-*`, `slab-beak-sample-*`.
 
@@ -135,6 +135,12 @@ A second review, of the upright-edge and rim fixes, found more:
 
 A third review found my first version of the new check duplicated one that already existed in `geometry.ts`, so it was removed. It also found that a straight upright run moved by only half a counter's shift when one counter is tried alone; a run now moves by the largest shift any of its points is given.
 
+A fourth review found that the existing check I had moved everything onto never compared a curve with itself, or with the curves beside it. So it couldn't see a loop inside one curve, and loops earlier rounds had fixed came back: Lora's A, G, d, n, $, Ú and Ý, heavy and widened or condensed. Worse, my tests asked with that same check, so they couldn't see it either.
+- The check now compares each curve's own pieces, and neighbours' pieces except the two that meet at their shared end.
+- The tests now ask with `loopsAnywhere`, a check in `test/outlines.ts` that shares no code with the one under test.
+- A fresh sweep with an independent check, and one on the previous commit to prove the sweep can see these loops, shows them gone.
+- The same review also found smaller issues, now fixed. A contour that already crossed itself before the weight was handed back whole instead of backed off. The unfold guard had dropped its slanted probes. An upright run pushed both ways at once moved by the larger push. The counters' check compared against the wrong outlines. The rim retried more often than it needed to.
+
 ## Tests
 
 Every fix has a test that fails on the old code and passes now, with one exception: the edge-only clamp (see What is left). They are in:
@@ -150,7 +156,7 @@ Three tests use real letters as fixtures, because their faults depend on the let
 
 Two old expectations in `weight.test.ts` described letters growing past the baseline and cap height; they now expect the letter to keep its heights. The middle-space expectations in `counter.test.ts` and `control.test.ts`, which had walls thickening or thinning by the whole change, now expect walls that keep their weight while the letter narrows or widens. The weight engine keeps each contour's point count, and slabs are still separate contours added to the letter.
 
-These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,885 tests.
+These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,888 tests.
 
 ## What is left
 
