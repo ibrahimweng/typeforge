@@ -342,22 +342,20 @@ const looped = (contour: Contour): boolean => crossesItself(contour, FINE_STEPS)
  * Each solid's ground is checked as it is made, in `groundOf`; the unions
  * and cuts after it -- counters taken out, islands laid back on -- can lose
  * a crossing too. So the finished ground is asked once, and where it crosses
- * itself the whole sweep is made again from the shape set to a thousandth of
- * a unit, then a hundredth, then a tenth, each coarser than the last and all
- * far below anything a font file records. Failing all of them the first
+ * itself the whole sweep is made again once, from the shape set to a
+ * thousandth of a unit, far below anything a font file records: each solid
+ * inside it has already been tried on every grid. Failing that, the first
  * answer stands.
  */
 function sweptClean(shape: Contour[], convolve: (contour: Contour) => Contour): Contour[] {
   const first = swept(shape, convolve);
   if (!first.some(looped)) return first;
-  for (const grid of [1000, 100, 10]) {
-    const again = swept(
-      shape.map((contour) => onGrid(contour, grid)),
-      convolve,
-    );
-    if (!again.some(looped)) return again;
-  }
-  return first;
+  // Once: each solid inside has already been tried on every grid.
+  const again = swept(
+    shape.map((contour) => onGrid(contour, 1000)),
+    convolve,
+  );
+  return again.some(looped) ? first : again;
 }
 
 /** An outline with every point and handle set to the nearest step of `1 / per`. */

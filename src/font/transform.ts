@@ -491,7 +491,7 @@ function unfold(drawn: Contour, moved: Contour, slant: number): Contour {
    * line, which crosses nothing standing up and crossed itself leaning.
    */
   const crosses = (contour: Contour) =>
-    [...new Set([0, slant])].some((degrees) =>
+    [...new Set([0, slant, 15, -15])].some((degrees) =>
       crossesItself(degrees === 0 ? contour : applySlant(contour, degrees), FINE_STEPS),
     );
   return crosses(result) && !crosses(moved) ? moved : result;
@@ -1589,9 +1589,14 @@ function followCounters(
         const shifts = other.nodes
           .filter((_, at) => runs[at] === run)
           .map((node) => shiftAt(node.point));
+        // The most, where they all go one way; pushed both ways at once, the
+        // most of either would move the wall beside the other by both.
+        const oneWay = shifts.every((shift) => shift >= 0) || shifts.every((shift) => shift <= 0);
         runShift.set(
           run,
-          shifts.reduce((most, next) => (Math.abs(next) > Math.abs(most) ? next : most), 0),
+          oneWay
+            ? shifts.reduce((most, next) => (Math.abs(next) > Math.abs(most) ? next : most), 0)
+            : shifts.reduce((sum, next) => sum + next, 0) / shifts.length,
         );
       });
       return {
@@ -1614,7 +1619,7 @@ function followCounters(
     moved.some(
       (other, which) => crossesItself(other, FINE_STEPS) && !crossesItself(from[which], FINE_STEPS),
     ) ||
-    (contoursIntersect(moved) && !contoursIntersect(before));
+    (contoursIntersect(moved) && !contoursIntersect(from));
   /*
    * All the counters at once, each moving the ink in its own band. One after
    * another, the two bowls of a B each moved one end of its stem, which is a

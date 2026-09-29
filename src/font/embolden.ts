@@ -1452,16 +1452,20 @@ export function applyWeight(
    * Geist's r to its stem, a light letter widened, slipped past it.
    */
   const crossed = (trial: Contour): boolean => crossesItself(trial, FINE_STEPS);
+  /*
+   * A letter that already crossed itself before anything moved -- some fonts
+   * ship outlines like that -- has nothing here to preserve on that count,
+   * but still is not turned inside out nor has its counter closed.
+   */
+  const crossedAlready = crossed(contour);
+  // The cheap tests first; the crossing is asked of what passes them.
   const intact = (trial: Contour): boolean =>
     // Turned inside out is as broken as crossed: ink become a hole.
     Math.sign(contourArea(trial)) === facingBefore &&
-    !crossed(trial) &&
-    (leastWidth === 0 || meanWidth(trial) >= leastWidth);
+    (leastWidth === 0 || meanWidth(trial) >= leastWidth) &&
+    (crossedAlready || !crossed(trial));
   const full = build(1);
   if (intact(full)) return full;
-  // The letter already crossed itself before anything moved -- some fonts ship
-  // outlines like that -- so there is nothing here to preserve.
-  if (crossed(contour)) return full;
   // Otherwise back the whole contour off evenly until it is sound; an even
   // retreat keeps the stroke even.
   let low = 0;
