@@ -35,7 +35,7 @@ import {
   contourArea,
   contourSegments,
   crossesItself,
-  crossingsOf,
+  crossesMoreThan,
   cubicAt,
   cubicDerivativeAt,
   FINE_STEPS,
@@ -1456,21 +1456,12 @@ export function applyWeight(
         )
       : 0;
   /*
-   * Crossed asked finely: the quick check stops past six hundred segments and
-   * reads a curve in six chords, and the fold at the thin join of the arch of
-   * Geist's r to its stem, a light letter widened, slipped past it.
+   * Crossed asked finely, and against the letter as drawn: the fold at the
+   * thin join of the arch of Geist's r to its stem, a light letter widened,
+   * slipped past the quick check, and a letter that ships crossing itself
+   * may keep its crossings but add none.
    */
-  /*
-   * Measured against how many times the drawn letter crossed itself, asked
-   * only when it matters: some fonts ship outlines crossing themselves, and
-   * those are kept from crossing any more than they did, not let off.
-   */
-  let drawnCrossings: number | undefined;
-  const crossedMore = (trial: Contour): boolean => {
-    if (!crossesItself(trial, FINE_STEPS)) return false;
-    drawnCrossings ??= crossingsOf(contour, FINE_STEPS);
-    return drawnCrossings === 0 || crossingsOf(trial, FINE_STEPS) > drawnCrossings;
-  };
+  const crossedMore = crossesMoreThan(contour, FINE_STEPS);
   // The cheap tests first; the crossing is asked of what passes them.
   const intact = (trial: Contour): boolean =>
     // Turned inside out is as broken as crossed: ink become a hole.

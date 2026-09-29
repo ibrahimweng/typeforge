@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { crossesItself, rayHitDistance } from "./geometry";
+import { crossesItself, crossesMoreThan, crossingsOf, rayHitDistance } from "./geometry";
 import type { Contour, Vec2 } from "./types";
 import { loopsAnywhere } from "../../test/outlines";
 
@@ -262,5 +262,43 @@ describe("crossesItself on long and open outlines", () => {
       ],
     };
     expect(crossesItself(folded, 32)).toBe(true);
+  });
+});
+
+describe("crossesMoreThan", () => {
+  // A band whose two sides swap over at a twist, low or high up it.
+  const band = (twistLow: boolean, twistHigh: boolean): Contour => {
+    const left: Array<[number, number]> = [];
+    const right: Array<[number, number]> = [];
+    for (const [y, twist] of [
+      [0, false],
+      [100, twistLow],
+      [200, false],
+      [300, twistHigh],
+      [400, false],
+    ] as const) {
+      left.push(twist ? [100, y] : [0, y]);
+      right.push(twist ? [0, y] : [100, y]);
+    }
+    return corners([...left, ...right.reverse()].map(([x, y]) => ({ x, y })));
+  };
+
+  it("lets a letter drawn crossing itself keep its crossings, or lose them", () => {
+    const drawn = band(true, false);
+    expect(crossingsOf(drawn)).toBe(2);
+    expect(crossesMoreThan(drawn)(drawn)).toBe(false);
+    expect(crossesMoreThan(drawn)(band(false, false))).toBe(false);
+  });
+
+  /*
+   * Found in review: counted alone, a reshaping that undid the crossing a
+   * letter was drawn with and tied a new one elsewhere came out even, and
+   * passed. Where they are is compared, not only how many.
+   */
+  it("does not let it trade the crossing it had for one somewhere else", () => {
+    const drawn = band(true, false);
+    const moved = band(false, true);
+    expect(crossingsOf(moved)).toBe(crossingsOf(drawn));
+    expect(crossesMoreThan(drawn)(moved)).toBe(true);
   });
 });

@@ -15,8 +15,9 @@ import {
   contoursBounds,
   contourArea,
   contourSegments,
-  contoursCross,
-  crossesItself,
+  contoursCrossings,
+  crossesMoreThan,
+  pairCrossings,
   cubicAt,
   FINE_STEPS,
   splitCubic,
@@ -496,10 +497,18 @@ function unfold(drawn: Contour, moved: Contour, slant: number): Contour {
     const a = nodes[index].point;
     const b = nodes[next].point;
     if (Math.hypot(b.x - a.x, b.y - a.y) > 0.5) continue;
-    if (!nodes[index].handleOut && !nodes[next].handleIn) continue;
+    // Only a piece this brought down: one drawn short, a ball or a small
+    // loop, keeps its curve.
+    const was = distance(drawn.nodes[index].point, drawn.nodes[next].point);
+    const now = distance(moved.nodes[index].point, moved.nodes[next].point);
+    if (was <= 0.5 && now <= 0.5) continue;
+    const out = nodes[index].handleOut;
+    const into = nodes[next].handleIn;
+    const off = (handle: Vec2 | null, at: Vec2) => handle !== null && distance(handle, at) > 1e-9;
+    if (!off(out, a) && !off(into, b)) continue;
     touched = true;
-    nodes[index] = { ...nodes[index], handleOut: nodes[index].handleOut && { ...a } };
-    nodes[next] = { ...nodes[next], handleIn: nodes[next].handleIn && { ...b } };
+    nodes[index] = { ...nodes[index], handleOut: out && { ...a } };
+    nodes[next] = { ...nodes[next], handleIn: into && { ...b } };
   }
   if (!touched) return moved;
   const result = { closed: moved.closed, nodes };
@@ -511,11 +520,12 @@ function unfold(drawn: Contour, moved: Contour, slant: number): Contour {
    * nor unmakes a crossing, so upright and the letter's own slant are all
    * that is asked.
    */
-  const crosses = (contour: Contour) =>
-    [...new Set([0, slant])].some((degrees) =>
-      crossesItself(degrees === 0 ? contour : applySlant(contour, degrees), FINE_STEPS),
-    );
-  return crosses(result) && !crosses(moved) ? moved : result;
+  const lean = (contour: Contour, degrees: number) =>
+    degrees === 0 ? contour : applySlant(contour, degrees);
+  const worse = [...new Set([0, slant])].some((degrees) =>
+    crossesMoreThan(lean(moved, degrees), FINE_STEPS)(lean(result, degrees)),
+  );
+  return worse ? moved : result;
 }
 
 /** The share of the white across a condensed letter that putting its strokes back leaves. */
@@ -1170,9 +1180,7 @@ function keepHeights(
   }));
   // Left squeezed where the field would cross an outline that did not cross.
   return fielded.map((contour, which) =>
-    crossesItself(contour, FINE_STEPS) && !crossesItself(squeezed[which], FINE_STEPS)
-      ? squeezed[which]
-      : contour,
+    crossesMoreThan(squeezed[which], FINE_STEPS)(contour) ? squeezed[which] : contour,
   );
 }
 
@@ -1418,21 +1426,27 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
      * wall anyway it is backed off evenly, as weight backs off a contour,
      * rather than piece by piece, which would tear it.
      */
-    const crossedBefore = contours.map((other, which) =>
-      which === index
-        ? crossesItself(contour, FINE_STEPS)
-        : contoursCross(contour, other, FINE_STEPS),
-    );
+    const crossedMore = crossesMoreThan(contour, FINE_STEPS);
     // Against the walls where they will not follow; those that do are
-    // checked once they have moved, in `followCounters`.
+    // checked once they have moved, in `followCounters`. How often it met
+    // each as drawn is asked only once a trial is weighed against it.
     const alone = !follows.left && !follows.right;
+    const drawnMeets = new Map<number, number>();
+    const meetsBefore = (which: number) => {
+      let times = drawnMeets.get(which);
+      if (times === undefined) {
+        times = contoursCrossings(contour, contours[which], FINE_STEPS);
+        drawnMeets.set(which, times);
+      }
+      return times;
+    };
     const sound = (trial: Contour): boolean =>
       contours.every((other, which) => {
-        if (crossedBefore[which]) return true;
-        if (which !== index && !alone) return true;
-        return which === index
-          ? !crossesItself(trial, FINE_STEPS)
-          : !contoursCross(trial, other, FINE_STEPS);
+        if (which === index) return !crossedMore(trial);
+        if (!alone) return true;
+        return (
+          contoursCrossings(trial, other, FINE_STEPS, meetsBefore(which) + 1) <= meetsBefore(which)
+        );
       });
 
     const full = build(1);
@@ -1614,14 +1628,16 @@ function followCounters(
         const shifts = other.nodes
           .filter((_, at) => runs[at] === run)
           .map((node) => shiftAt(node.point));
-        // The most, where they all go one way; pushed both ways at once,
-        // halfway between the two pushes, however many points are at each.
+        // The most, where they all go one way; pushed both ways at once, the
+        // most one way less the most the other, however many points are at
+        // each -- which goes smoothly over into the first as either push
+        // goes to nothing, and to nothing for pushes equal and opposite.
         const oneWay = shifts.every((shift) => shift >= 0) || shifts.every((shift) => shift <= 0);
         runShift.set(
           run,
           oneWay
             ? shifts.reduce((most, next) => (Math.abs(next) > Math.abs(most) ? next : most), 0)
-            : (Math.max(...shifts) + Math.min(...shifts)) / 2,
+            : Math.max(...shifts) + Math.min(...shifts),
         );
       });
       return {
@@ -1643,13 +1659,17 @@ function followCounters(
   const crosses = (moved: Contour[], from: Contour[]): boolean => {
     if (
       moved.some(
-        (other, which) =>
-          crossesItself(other, FINE_STEPS) && !crossesItself(from[which], FINE_STEPS),
+        (other, which) => other !== from[which] && crossesMoreThan(from[which], FINE_STEPS)(other),
       )
     )
       return true;
-    const were = new Set(crossingPairs(from));
-    return crossingPairs(moved).some((pair) => !were.has(pair));
+    // Pair by pair: a letter whose drawn contours already overlap -- an
+    // unmerged font -- still has a wall driven through another contour, or
+    // further through the one it overlapped, refused.
+    const were = pairCrossings(from, FINE_STEPS);
+    for (const [pair, times] of pairCrossings(moved, FINE_STEPS))
+      if (times > (were.get(pair) ?? 0)) return true;
+    return false;
   };
   /*
    * All the counters at once, each moving the ink in its own band. One after
@@ -1668,20 +1688,6 @@ function followCounters(
     else result = result.map((other, which) => (which === map.index ? before[which] : other));
   }
   return result;
-}
-
-/**
- * Which pairs of a letter's contours cross each other, as "i:j". Compared
- * pair by pair before and after, so a letter whose drawn contours already
- * overlap -- an unmerged font -- still has a wall driven through another
- * contour refused.
- */
-function crossingPairs(contours: Contour[]): string[] {
-  const pairs: string[] = [];
-  for (let one = 0; one < contours.length; one++)
-    for (let other = one + 1; other < contours.length; other++)
-      if (contoursCross(contours[one], contours[other], FINE_STEPS)) pairs.push(`${one}:${other}`);
-  return pairs;
 }
 
 /**
@@ -1852,10 +1858,10 @@ function applyCornerRadius(contour: Contour, radius: number, isOuter = true): Co
    * into the one beside it. A smaller radius on that one contour is the whole
    * of the answer; the letter is never handed back crossed.
    */
-  const was = crossesItself(contour, FINE_STEPS);
+  const crossedMore = crossesMoreThan(contour, FINE_STEPS);
   for (const share of [1, 0.5, 0.25]) {
     const rounded = roundCorners(contour, radius * share, isOuter);
-    if (was || !crossesItself(rounded, FINE_STEPS)) return rounded;
+    if (!crossedMore(rounded)) return rounded;
   }
   return contour;
 }
