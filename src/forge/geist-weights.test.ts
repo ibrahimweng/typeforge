@@ -562,6 +562,20 @@ describe("the at sign", () => {
   });
 });
 
+describe("the Thin ampersand", () => {
+  it("turns its loop in to the crossing where Geist Thin's does", () => {
+    // 450 up, Geist Thin's loop has come round into the crossing: its ink
+    // there is 165 to 201 and 291 to 339 in from its left edge's 50. Ours
+    // was still coming down the loop's right side, 57 units further out.
+    const { contours } = draw("ampersand", 30);
+    const left = contoursBounds(contours).xMin;
+    const row = filled(contours, 450);
+    expect(row.length).toBe(2);
+    expect(Math.abs(row[1][0] - left - (291 - 50)), "crossing").toBeLessThan(8);
+    expect(Math.abs(row[0][0] - left - (165 - 50)), "loop's left").toBeLessThan(8);
+  });
+});
+
 describe("the Sans at its Light, against Geist Thin's widths", () => {
   it("does not widen the letters Geist Thin keeps narrow", () => {
     // Geist Thin's ink widths. The face widens its light letters as Geist

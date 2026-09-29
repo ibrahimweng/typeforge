@@ -1282,18 +1282,21 @@ export function grotesqueAmpersand(style: Style): Recipe {
    * crown down onto a loop still sat where the Regular's is, and it came out
    * a flat-sided slot with nothing round on it for the crossing to leave.
    */
-  const loopH = held(f, Math.max(f.crest(f.cap) - H(lerp(551, 540)), loopW * 0.85));
+  /*
+   * The Sans's Thin's loop 20 shorter and a little further left, and its
+   * bowl 10 further right, as Geist Thin's are: its loop turned in on the
+   * right 90 units lower than Geist's, and its crossing ran flatter.
+   */
+  const thin = f.style.metrics.xGrows !== undefined ? thinness(f) : 0;
+  const loopH = held(f, Math.max(f.crest(f.cap) - H(lerp(551, 540) + 20 * thin), loopW * 0.85));
   const loopY = f.crest(f.cap) - loopH;
-  const loop = at(X(lerp(236, 307)), loopY);
+  const loop = at(X(lerp(236, 307) - 5 * thin), loopY);
   // The lower bowl.
   const bowlY = H(180);
   const bowlH = held(f, bowlY - f.dip(0));
   // The Sans's Thin's a little wider, as Geist Thin's is.
-  const bowlW = held(
-    f,
-    (lerp(193, 204) + (f.style.metrics.xGrows !== undefined ? 10 * thinness(f) : 0)) * u,
-  );
-  const bowl = at(X(lerp(237, 290)), bowlY);
+  const bowlW = held(f, (lerp(193, 204) + 10 * thin) * u);
+  const bowl = at(X(lerp(237, 290) + 10 * thin), bowlY);
   // The leg, from its foot up to where it runs tangent into the loop's left.
   const foot = at(X(lerp(510, 600)), 0);
   const split = -40;

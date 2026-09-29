@@ -860,6 +860,12 @@ the node count stays the same across weights. The ring now drops those empty
 turns and keeps its straight runs. It has 26 segments at every weight from 30
 to 260 (as before), none crossing, and passes the family's weight-axis check.
 
+**The Thin &.** Its loop came down its right side 90 units further than Geist
+Thin's before turning into the crossing, so the crossing ran flatter and 57
+units out at 450 up. The Thin's loop is now 20 shorter and 5 further left,
+and its bowl 10 further right. The Thin's misfit went from 0.51 to 0.30. The
+Regular and heavier weights are unchanged; there, neither change helped.
+
 ## What still differs from Geist
 
 - **s counters at the Black.** Close to Geist's size and shape now; Geist's
