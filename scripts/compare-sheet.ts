@@ -1,4 +1,14 @@
-/** Lora above, a Draw-mode face below, same text, same scale. Scratch. */
+/**
+ * A reference font above, a Draw-mode face below, same text, same scale: an
+ * SVG sheet for checking a forged face against the face it is modelled on.
+ *
+ *   LORA=ref.ttf OUT=sheet.svg [FACE=Serif] [STYLE=json] [TEXT=...] [LINES=a|b|c]
+ *     npx vite-node scripts/compare-sheet.ts
+ *
+ * LORA is the reference font (any TTF/OTF/WOFF/WOFF2), FACE the Draw base by
+ * name, STYLE a JSON patch merged into that base's style (a weight, say),
+ * TEXT the first row and LINES the further rows, split on "|".
+ */
 import { readFileSync, writeFileSync } from "node:fs";
 import { contoursToSvgPath } from "@/font/geometry";
 import { importFont } from "@/font/parse";
