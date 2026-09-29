@@ -911,9 +911,16 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Loop[] {
       // the baseline. A run that stays entirely one side of the line it would
       // have crossed is a mark rather than a stroke -- which is what keeps the
       // dot of an `i` from being treated as an ascender.
-      if (end.y > room.x && lowest < room.x && (!top || end.y > top.end.y))
+      //
+      // And out by more than a curve overshoots it. A thin pen lets a curve's
+      // spine ride over the x-height it stops under at every other weight:
+      // the arm of the written `r` crossed it at the Thin and nowhere else,
+      // was asked whether it had an eye, and the letter came off the weight
+      // axis on a question the drawn weight had never been asked.
+      const past = room.x * 0.1;
+      if (end.y > room.x + past && lowest < room.x && (!top || end.y > top.end.y))
         top = { end, on: spine };
-      if (end.y < 0 && highest > 0 && (!foot || end.y < foot.end.y)) foot = { end, on: spine };
+      if (end.y < -past && highest > 0 && (!foot || end.y < foot.end.y)) foot = { end, on: spine };
     }
   }
 

@@ -378,12 +378,13 @@ describe("a join and the baseline", () => {
 
 describe("the written r", () => {
   /*
-   * Two strokes meeting in a notch: a short up-stroke into a nub, and the
-   * down-stroke from under it to the line. Drawn with a full stem standing on
-   * the line and an arm carried round and down beside it, it was two uprights
-   * and an arch -- a narrow `n` -- and `ro` read `no`.
+   * A stem standing the full x-height with an arm springing off it, as the
+   * reference scripts write it. Drawn as an up-stroke into a notch and a
+   * slanting down-stroke, the lead-in and the down-stroke made the two arms of
+   * a `v` after every low join -- `quartz` read `quavtz` -- and with the
+   * shoulder rounded over the top it read as a `c`.
    */
-  it("has no stem on the line, and its down-stroke reaches the line", () => {
+  it("stands on a full stem with an arm reaching off it", () => {
     const wrong: string[] = [];
     for (const name of JOINED) {
       const own = base(name);
@@ -392,11 +393,28 @@ describe("the written r", () => {
         const style = heavier(at(own, weight));
         const x = style.metrics.xHeight;
         const strokes = recipeOf("r", "written")!(style).strokes;
-        const lowest = (spine: Spine) => Math.min(...alongSpine(spine, 64).map((p) => p.y));
-        const up = lowest(strokes[0].spine);
-        const down = Math.min(...strokes.map((stroke) => lowest(stroke.spine)));
-        if (up < x * 0.15) wrong.push(`${name} @${weight}: up-stroke down to ${up.toFixed(0)}`);
-        if (down > x * 0.2) wrong.push(`${name} @${weight}: floats at ${down.toFixed(0)}`);
+        const points = (spine: Spine) => alongSpine(spine, 64);
+        // The stem: one stroke running from the x-height to the line.
+        const stem = strokes.find((stroke) => {
+          const ys = points(stroke.spine).map((p) => p.y);
+          // Its spine, which stands half a pen inside the ink at either end.
+          const half = style.pen.weight / 2;
+          return Math.max(...ys) >= x * 0.85 - half && Math.min(...ys) <= x * 0.15 + half;
+        });
+        if (!stem) {
+          wrong.push(`${name} @${weight}: no stem`);
+          continue;
+        }
+        const left = Math.min(...points(stem.spine).map((p) => p.x));
+        // The arm: ink in the top half reaching well right of the stem.
+        const reach = Math.max(
+          ...strokes
+            .filter((stroke) => stroke !== stem)
+            .flatMap((stroke) => points(stroke.spine))
+            .filter((p) => p.y > x * 0.5)
+            .map((p) => p.x - left),
+        );
+        if (!(reach >= x * 0.3)) wrong.push(`${name} @${weight}: arm reaches ${reach.toFixed(0)}`);
       }
     }
     expect(wrong).toEqual([]);

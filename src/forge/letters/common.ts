@@ -86,9 +86,10 @@ export interface Recipe {
    * Whether the lead-out leaves from the end of the letter's last stroke,
    * running on the way that stroke was going, rather than from its foot.
    *
-   * A written `r` hands on from the end of its arm. Left from the foot of its
-   * stem like every other letter, the lead-out ran along the writing line
-   * under the arm to reach the advance past it, and `rn` read as `Lcn`.
+   * A written `r` draws its own lead-out up out of its foot and hands on
+   * from the end of it. Left from the foot of its stem like every other
+   * letter, the lead-out ran along the writing line under the arm to reach
+   * the advance past it, and `rn` read as `Lcn`.
    */
   leaves?: boolean;
 }

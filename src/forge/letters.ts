@@ -55,8 +55,6 @@ import {
 import { bowRuns, spineEnd, waveBookAt } from "./shapes";
 import { blackness, scriptUnit } from "./style";
 import type { Style } from "./style";
-import type { Spine } from "./types";
-import type { Vec2 } from "@/font/types";
 import { LOWERCASE_RECIPES } from "./letters/lowercase";
 import { CAPITAL_RECIPES } from "./letters/capitals";
 import { FIGURE_RECIPES } from "./letters/figures";
@@ -309,11 +307,6 @@ export function joiningWithout<T>(which: Partial<Ends>, run: () => T): T {
   }
 }
 
-/** Whether the letter being drawn is drawn without its lead-in: see `joiningWithout`. */
-export function joiningWithoutEntry(): boolean {
-  return endsWithout?.entry === false;
-}
-
 export function joiningHigh<T>(which: { entry?: boolean; exit?: boolean }, run: () => T): T {
   const was = takingHigh;
   takingHigh = which;
@@ -322,17 +315,6 @@ export function joiningHigh<T>(which: { entry?: boolean; exit?: boolean }, run: 
   } finally {
     takingHigh = was;
   }
-}
-
-/** The end of whichever open stroke finishes furthest right. */
-function rightmostEnd(strokes: Array<{ spine: Spine }>): Vec2 | null {
-  let best: Vec2 | null = null;
-  for (const { spine } of strokes) {
-    if (spine.closed) continue;
-    const end = spineEnd(spine);
-    if (!best || end.x > best.x) best = end;
-  }
-  return best;
 }
 
 /**
@@ -612,7 +594,7 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
     has.entry ? f.x + lift : null,
     recipe.air,
     recipe.entered === true,
-    recipe.leaves ? rightmostEnd(body.slice(0, recipe.strokes.length)) : null,
+    recipe.leaves ? spineEnd(body[recipe.strokes.length - 1].spine) : null,
   );
   if (!plan) return recipe;
   /*
