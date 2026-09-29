@@ -3109,7 +3109,8 @@ function quoteMarks(f: Frame, count: number): Stroke[] {
    */
   const heavy =
     roundGain(f, 1.01, 0.84, 1.27) - 0.13 * Math.max(0, Math.min(heavyT(f), nowBlack()) - 0.41);
-  const apart = lerp(82.5, 68) * u + f.style.pen.weight * heavy;
+  // And 6 closer at the Thin, as Geist Thin's are.
+  const apart = lerp(82.5, 68) * u + f.style.pen.weight * heavy - 6 * thinness(f);
   const strokes: Stroke[] = [];
   for (let one = 0; one < count; one++) {
     strokes.push(
@@ -3118,8 +3119,10 @@ function quoteMarks(f: Frame, count: number): Stroke[] {
         f.edge + one * apart,
         f.cap,
         up(f, 640),
-        // And shorter at the Thin, as Geist Thin's (467).
-        up(f, lerp(447, 430) + 20 * thinness(f)),
+        // And shorter at the Thin, as Geist Thin's (464, and the single
+        // quote's 467). Their feet 3 or 4 units lower than first measured
+        // at every weight: 444 at the Regular and 422 at the Black.
+        up(f, lerp(444, 426) + (count > 1 ? 20 : 23) * thinness(f)),
         lerp(0.73, 0.83),
         heavy,
       ),
