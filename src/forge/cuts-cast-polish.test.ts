@@ -865,6 +865,32 @@ describe("the motif on a roughened face", () => {
   });
 });
 
+describe("points on a saw on the Brush", () => {
+  const pointed = (weight: number) =>
+    drawn(
+      "e",
+      forgeOf("Brush", weight, {
+        cuts: { tooth: { edge: "both" } },
+        cast: { spur: {} },
+        order: "after",
+      }),
+    );
+  const solids = (contours: Contour[]) =>
+    unite(contours, "winding", "whole").filter((contour) => contourArea(contour) > 0).length;
+
+  it("leave no hair tied off at a point", () => {
+    // Roughened, a point on a tooth came back as a spike of no width, out
+    // and back to the same point, and fused again it was a piece of its own.
+    expect(solids(pointed(200))).toBe(1);
+  });
+
+  it("leave no tooth's tip standing beside the letter", () => {
+    // The pressure thinned a tooth's neck on the light e until its tip, point
+    // and all, came away.
+    expect(solids(pointed(30))).toBe(1);
+  });
+});
+
 describe("points after the chamfer on a Formal Script", () => {
   it("leave no speck standing by the leg of the k", () => {
     // Untangled after the pressure, the k tied off a speck beside its leg,

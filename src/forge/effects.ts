@@ -209,6 +209,7 @@ export function effectInk(
    * once.
    */
   let shape = canCarve ? unite(ink, roles, "whole") : ink;
+  const given = shape.filter((contour) => contourArea(contour) > 0).length;
   if (canCarve && effects.press.on && strokes.length > 0) {
     const wedges = pressWedges(shape, strokes, effects.press, stem, groovesOf.get(ink) ?? []);
     if (wedges.length > 0) shape = takenAway(shape, wedges);
@@ -264,7 +265,22 @@ export function effectInk(
     stem,
     strokes,
     figures,
-  );
+  ).map(unpinched);
+  /*
+   * Nor more pieces than they were given, where what is new is a crumb. The
+   * pressure thinned the neck of a saw tooth on a light Brush e until its
+   * tip, point and all, stood beside the letter: just over the speck sweep's
+   * floor, and nothing the letter drew. The smallest pieces go first, and
+   * only while there are more than there were and they are under half a stem
+   * square, so the dot of an i -- given, not made -- is never one of them.
+   */
+  const solids = done
+    .filter((contour) => contourArea(contour) > 0)
+    .sort((one, other) => contourArea(one) - contourArea(other));
+  const crumbs = solids
+    .slice(0, Math.max(0, solids.length - given))
+    .filter((contour) => contourArea(contour) < stem * stem * 0.5);
+  const kept = crumbs.length > 0 ? done.filter((contour) => !crumbs.includes(contour)) : done;
   /*
    * Nor scraps of an inline's groove. A rim grown into the groove narrows it,
    * and the roughening then pinched it shut in places: the letter was left
@@ -272,8 +288,8 @@ export function effectInk(
    * the groove smaller than a tenth of a stem square is filled.
    */
   const grooves = groovesOf.get(ink) ?? [];
-  if (grooves.length === 0) return done;
-  return done.filter(
+  if (grooves.length === 0) return kept;
+  return kept.filter(
     (contour) =>
       contourArea(contour) >= 0 ||
       -contourArea(contour) >= stem * stem * 0.1 ||
@@ -298,6 +314,46 @@ function takenAway(shape: Contour[], tool: Contour[]): Contour[] {
   const lost = inkOf(shape) - inkOf(result);
   const most = inkOf(unite(tool, "winding"));
   return lost <= most * 1.02 + 1 && lost >= -1 ? result : shape;
+}
+
+/**
+ * The outline without the loops of no width it ties off at a point.
+ *
+ * Where the outline comes back to exactly a point it has passed through, the
+ * run between is a loop of its own, and one that encloses nothing is a hair:
+ * roughened, the point grown on a saw tooth of a Brush e came back as a
+ * spike four units long and no width, out and back to the same point, and
+ * anything that fused the letter again found it a piece of its own. Runs too
+ * short for the splinter sweep, which is looking for strips, not hairs.
+ */
+function unpinched(contour: Contour): Contour {
+  let nodes = contour.nodes;
+  if (!contour.closed || nodes.length < 4) return contour;
+  for (let pass = 0; pass < 4; pass++) {
+    const count = nodes.length;
+    let cut: [number, number] | null = null;
+    for (let start = 0; start < count && !cut; start++) {
+      const from = nodes[start].point;
+      for (let step = 2; step <= 8 && step < count - 1; step++) {
+        const end = (start + step) % count;
+        const to = nodes[end].point;
+        if (Math.hypot(to.x - from.x, to.y - from.y) > 0.01) continue;
+        const loop = {
+          ...contour,
+          nodes: Array.from({ length: step }, (_, k) => nodes[(start + k) % count]),
+        };
+        if (Math.abs(contourArea(loop)) < 1) cut = [start, step];
+        break;
+      }
+    }
+    if (!cut) break;
+    const [start, step] = cut;
+    const drop = new Set(Array.from({ length: step }, (_, k) => (start + 1 + k) % count));
+    const kept = nodes.filter((_, index) => !drop.has(index));
+    if (kept.length < 3) break;
+    nodes = kept;
+  }
+  return nodes === contour.nodes ? contour : { ...contour, nodes };
 }
 
 /**
