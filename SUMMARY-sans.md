@@ -705,6 +705,14 @@ the SemiBold, and 8 shorter from the UltraBlack on. The $'s misfit falls from
 0.33/0.20/0.13/0.12/0.10 to 0.20/0.15/0.10/0.11/0.10 at the Thin, Regular,
 SemiBold, UltraBlack and Black.
 
+**The heavy a's bowl.** From the Regular on, the a's bowl is now lighter along
+its crown, as Geist's is. Its join to the stem sits lower at the heavy
+weights and a little higher at the light ones. The a's rule for widening
+past the Black now starts at Geist's Black (194), not its UltraBlack. The
+a's misfit falls from 0.19/0.11/0.10/0.11/0.12 to 0.18/0.10/0.07/0.08/0.09 at
+the Thin, Regular, SemiBold, UltraBlack and Black. At the Black its bowl's
+top still stands 14 units over Geist's.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular

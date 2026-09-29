@@ -1932,3 +1932,13 @@ describe("the dollar's S", () => {
     expect(Math.abs(runs[runs.length - 1][1] - 697)).toBeLessThan(6);
   });
 });
+
+describe("the SemiBold a's bowl", () => {
+  it("is as light along its top as Geist's", () => {
+    // 250 in, Geist SemiBold's a's bowl runs 218-306 under its counter; on
+    // the pen's contrast it ran 198-308.
+    const runs = filled(draw("a", 130).contours, 250, "x");
+    expect(Math.abs(runs[1][0] - 218)).toBeLessThan(12);
+    expect(Math.abs(runs[1][1] - 306)).toBeLessThan(5);
+  });
+});

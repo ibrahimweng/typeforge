@@ -246,8 +246,19 @@ export function grotesqueA(style: Style): Recipe {
   // 1.16 at the Black, 0.84 and 0.61 of that along its foot.
   const across = pen.weight * (lerp(1.01, 1.157, 1.07) - (0.147 + 0.43) * past);
   const contrast = Math.max(pen.own ?? pen.contrast, lerp(0.16, 0.39, 0.06) - 0.23 * past);
-  const bowlPen = { ...pen, weight: across, contrast };
-  const along = across * (1 - contrast);
+  /*
+   * The Sans's bowl lighter along its crown from the Regular on, and its
+   * join lower at the heavy weights and higher at the light ones, as
+   * Geist's are; and its past-the-Black rule starting at the current
+   * Geist's Black, not its UltraBlack. At the pen's own the bowl's top
+   * stood 20 units high and 20 heavy at the UltraBlack and the Black.
+   */
+  const sansA = f.style.metrics.xGrows !== undefined;
+  const pastBlackA = f.style.pen.weight / f.xOwn > 194 / 530;
+  const knotA = (knots: [number, number, number, number, number]) =>
+    sansA ? (pastBlackA ? knots[4] : atWeights(f, ...knots)) : 0;
+  const bowlPen = { ...pen, weight: across, contrast: contrast + knotA([0, 0.03, 0.1, 0.1, 0.05]) };
+  const along = bowlPen.weight * (1 - bowlPen.contrast);
   /*
    * The last quarter's: as heavy as the bowl along its foot, and narrowing
    * as it turns up into the stem, to a third of that where it runs upright
@@ -289,9 +300,11 @@ export function grotesqueA(style: Style): Recipe {
    */
   const lip = f.upright;
   const room = crest - lip - 2 * along + f.over;
-  const onward = Math.min(1, Math.max(0, (t - 1) * 2));
+  const onward = Math.min(1, Math.max(0, (t - (sansA ? nowBlack() : 1)) * 2));
   const shared = (geist: number, share: number): number => geist + (share - geist) * onward;
-  const joinY = shared(H(lerp(300, 296, 304)), crest - lip - along / 2 - room * 0.38);
+  const joinY =
+    shared(H(lerp(300, 296, 304)), crest - lip - along / 2 - room * 0.38) -
+    knotA([-5, -10, 0, 10, 20]);
   const leftY = Math.max(
     shared(H(lerp(140, 160, 132)), bottom + (joinY - bottom) * 0.5),
     bottom + across * 0.53 + across * 0.02 * onward,
