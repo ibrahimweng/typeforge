@@ -1338,3 +1338,17 @@ describe("the l's foot", () => {
     expect(Math.abs(tail[0][1] - 137)).toBeLessThan(6);
   });
 });
+
+describe("the one's cove", () => {
+  it("carves as far into the head as Geist's, over a flag as light", () => {
+    // Geist Regular's cove leaves its ink starting 154 in from the ink's
+    // left 640 up, its Black's flag is 136 deep. Turned out of the stem on
+    // its pen, the Regular's started at 125 and the Black's flag was 196.
+    const regular = draw("one", 87).contours;
+    const left = contoursBounds(regular).xMin;
+    expect(Math.abs(filled(regular, 640)[0][0] - left - 154)).toBeLessThan(6);
+    const black = draw("one", 194).contours;
+    const flag = filled(black, contoursBounds(black).xMin + 60, "x");
+    expect(Math.abs(flag[0][1] - flag[0][0] - 136)).toBeLessThan(6);
+  });
+});

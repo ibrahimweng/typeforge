@@ -993,6 +993,7 @@ function sansEll(f: Frame, u: number): Stroke[] {
 /** The one: an upright with a flag that curves off its head. */
 export function grotesqueOne(style: Style): Recipe {
   const f = frame(style);
+  if (f.style.metrics.xGrows !== undefined) return finish(f, sansOne(f));
   const u = large(f, 1);
   const [, lerp] = squared(f);
   /*
@@ -1034,6 +1035,78 @@ export function grotesqueOne(style: Style): Recipe {
     // the corner as Geist's is, under the outside of the turn.
     ink(f, straight(at(start, flag), at(stem, flag)), f.end, BUTT),
   ]);
+}
+
+/**
+ * The Sans's one, as Geist's, measured from its ink's left at its five
+ * weights: the flag lighter than the stem as the weight grows (74 deep at
+ * the Regular, 136 at the Black on a stem of 196), and over it a cove as
+ * wide as the flag is long past its first sixty units, carved into the stem's
+ * head (ending 18 units in from its left at the Regular, 40 at the Black).
+ * Turned up out of the flag on the stem's pen, the cove was half the size and
+ * the Black's flag stood 60 units too deep.
+ *
+ * Drawn as the stem up to the flag; the flag; a turn from the flag up to the
+ * cap line on a pen lighter across, its inside the cove; the stem's head
+ * beside it, narrowed to the cove; and at a light weight a fill in the corner
+ * under the cove, which a thin turn leaves open.
+ */
+function sansOne(f: Frame): Stroke[] {
+  const k = f.cap / 710;
+  const left = f.edge - f.half;
+  const X = (x: number) => left + x * k;
+  const right = X(atWeights(f, 181, 234, 282, 330, 354));
+  const stem = right - f.half;
+  const coveStart = X(atWeights(f, 48, 60, 61, 61, 62));
+  const coveTop = X(atWeights(f, 155, 166, 179, 191, 198));
+  const flagTop = up(f, atWeights(f, 590, 600, 586, 571, 564));
+  const flagFoot = up(f, atWeights(f, 564, 526, 487, 448, 428));
+  const deep = flagTop - flagFoot;
+  const head = right - coveTop;
+  const even = (weight: number) => ({ ...f.style.pen, weight, contrast: 0, angle: 0 });
+  const penned = (stroke: Stroke, pen: Stroke["pen"]): Stroke =>
+    inherit(stroke, { ...stroke, pen });
+  const flagPen = sidedFrame(f, f.half * 2, deep);
+  const turnPen = sidedFrame(f, head, deep);
+  const centre = at(coveStart, f.cap);
+  const across = coveTop - coveStart + head / 2;
+  const tall = f.cap - flagTop + deep / 2;
+  const middle = (flagTop + flagFoot) / 2;
+  // The corner under the cove, filled along its diagonal as far as the
+  // turn's spine and no further, where the turn's own ink takes over.
+  const toward = at(centre.x - coveTop, centre.y - flagTop);
+  const length = Math.hypot(toward.x, toward.y) || 1;
+  const d = at(toward.x / length, toward.y / length);
+  const o = at((coveTop - centre.x) / across, (flagTop - centre.y) / tall);
+  const e = at(d.x / across, d.y / tall);
+  const qa = e.x * e.x + e.y * e.y;
+  const qb = 2 * (o.x * e.x + o.y * e.y);
+  const qc = o.x * o.x + o.y * o.y - 1;
+  const root = qb * qb - 4 * qa * qc;
+  const along = Math.max(qc > 0 && root > 0 ? (-qb - Math.sqrt(root)) / (2 * qa) : 1, 1);
+  const tip = at(coveTop + d.x * along, flagTop + d.y * along);
+  const fill = Math.min(deep, head) * 1.4 + 8;
+  return [
+    ink(f, straight(at(stem, 0), at(stem, flagTop)), f.end, BUTT),
+    penned(
+      ink(flagPen, straight(at(left, middle), at(stem, middle)), BUTT, BUTT),
+      flagPen.style.pen,
+    ),
+    penned(
+      ink(turnPen, bend(turnPen, centre, tall, 270, 360, across), BUTT, f.end),
+      turnPen.style.pen,
+    ),
+    penned(
+      ink(
+        f,
+        straight(at(coveTop + head / 2, flagTop - 1), at(coveTop + head / 2, f.cap)),
+        BUTT,
+        f.end,
+      ),
+      even(head),
+    ),
+    penned(ink(f, straight(at(coveTop, flagTop), tip), BUTT, BUTT), even(fill)),
+  ];
 }
 
 /**

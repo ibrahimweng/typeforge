@@ -248,6 +248,18 @@ stem, the corner and tail on a round pen as heavy as Geist's tail, the stem's
 right side carried down into the tail, and the inside round. It is within 3
 of Geist's width and within about 5 of its outline at every weight.
 
+**The 1 (rebuilt).** Geist's 1 has a cove over its flag that carves into the
+stem's head (ending 18 units in from the stem's left at the Regular, 40 at the
+Black), over a flag lighter than the stem (74 deep at the Regular, 136 at the
+Black on a stem of 196). Ours turned the flag up into the stem on the stem's
+pen: the cove was half the size and bulged, and the Black's flag stood 60
+too deep. The Sans's 1 is now five strokes: the stem up to the flag, the flag
+on Geist's depth, a turn up to the cap line on a pen lighter across whose
+inside is the cove, the stem's head narrowed to the cove, and a fill for the
+corner under the cove that a thin turn leaves open. It overlays Geist's at
+every weight, its cove within a few units (15 fuller at the Thin, whose cove
+is a little squarer than the drawn one).
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across
