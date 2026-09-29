@@ -231,9 +231,9 @@ export interface Metrics {
   overhangs?: Record<string, number>;
   /**
    * The capitals and figures that overshoot their lines by their own amount,
-   * in units, rather than by `overshoot`. Geist's O overshoots 16 where its
-   * o overshoots 12; its other round capitals were fitted to 12, and fit
-   * worse at 16.
+   * in units, rather than by `overshoot`. Geist's O and Q overshoot 16
+   * where its o overshoots 12; its other round capitals were fitted to 12,
+   * and fit worse at 16.
    */
   overshoots?: Record<string, number>;
   /** Set on the style a capital or figure is drawn with: see `capitalContrast`. Never saved. */
@@ -769,7 +769,7 @@ export const SANS: Style = {
     capitalThin: 0.067,
     // Geist's Y, j and # hang up to 10 past their left sides.
     overhangs: { Y: 0.012, j: 0.012, numbersign: 0.012 },
-    overshoots: { O: 16 },
+    overshoots: { O: 16, Q: 16 },
     contrastRise: { from: 87, to: 0.27, over: 56, past: 0.82 },
     // Geist Thin's o and n are both a little wider down the stroke than the
     // Regular's, and set 5 units further apart on either side (its figures 10).

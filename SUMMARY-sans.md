@@ -889,6 +889,15 @@ A face can now give single capitals their own amount (`metrics.overshoots`),
 and the Sans gives the O 16. It now stands at Geist's height at every
 weight, and its Thin misfit went from 0.26 to 0.14 (the Ö's from 0.28 to 0.16).
 
+**The Q.** Geist's Q ring is 6 or 7 units narrower than its O (643 against
+649 at the Regular) and overshoots 16, as the O does. Ours used the O's ring
+at the o's overshoot, so it stood 7 wide and 4 low. It now narrows by weight
+and overshoots 16. The overshoot moved the tail right with the ring (it is
+placed in the letter's own units), so the tail is set back 7 to 9 units and
+lands within 2 of Geist's at every weight. The misfit went from 0.24, 0.09,
+0.05 and 0.04 to 0.12, 0.07, 0.04 and 0.02 (Thin, Regular, UltraBlack,
+Black); the SemiBold's is 0.09, from 0.08.
+
 ## What still differs from Geist
 
 - **s counters at the Black.** Close to Geist's size and shape now; Geist's

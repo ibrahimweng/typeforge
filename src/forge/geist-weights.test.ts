@@ -596,6 +596,23 @@ describe("the O", () => {
   });
 });
 
+describe("the Q's ring", () => {
+  it("is narrower than the O's and as tall, as Geist's is", () => {
+    // Geist's Q ring is 608 across at the Thin, 643 at the Regular and 713
+    // at the Black, 6 or 7 narrower than its O, and overshoots as the O
+    // does, to 726. On the O's own ring it stood 7 wide and 4 low.
+    for (const [weight, wide] of [
+      [30, 608],
+      [87, 643],
+      [194, 713],
+    ]) {
+      const ink = box("Q", weight);
+      expect(Math.abs(ink.xMax - ink.xMin - wide), `Q at ${weight}`).toBeLessThan(3);
+      expect(Math.abs(ink.yMax - 726), `Q top at ${weight}`).toBeLessThan(2);
+    }
+  });
+});
+
 describe("the Thin ampersand", () => {
   it("turns its loop in to the crossing where Geist Thin's does", () => {
     // 450 up, Geist Thin's loop has come round into the crossing: its ink

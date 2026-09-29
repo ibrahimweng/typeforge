@@ -635,16 +635,25 @@ export function grotesqueCapitalQ(style: Style): Recipe {
   const [u, t] = spread(f);
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
   const X = (x: number) => f.edge - f.half + x * u;
-  const ring = [capitalRing(f)];
+  /*
+   * The Sans's a little narrower than its O, as Geist's is: 643 across at
+   * the Regular to the O's 649, 608 at the Thin and 713 at the Black. On
+   * the O's own ring it stood 6 or 7 units wide.
+   */
+  const ring = [
+    capitalRing(f, f.style.metrics.xGrows !== undefined ? atWeights(f, 7, 6, 0, 4, 7) : 0),
+  ];
   /*
    * The Sans's tail as light as Geist's, which lightens with the weight
    * (137 across at the UltraBlack on a stem of 172, where the pen's stood
    * 201), keeping its right side; and at the Thin as far left as Geist
-   * Thin's, where it stood 29 units right.
+   * Thin's, where it stood 29 units right -- and 7 to 9 further left from
+   * the Thin on once the ring overshot as far as Geist's does, which
+   * carried the tail right with it.
    */
   const sans = f.style.metrics.xGrows !== undefined;
   const light = sans ? Math.max(atWeights(f, 1, 0.88, 0.75, 0.7, 0.65), 0.65) : 1;
-  const shift = sans ? f.half * (1 - light) * 1.27 + atWeights(f, -29, 0, 10, 0, -12) : 0;
+  const shift = sans ? f.half * (1 - light) * 1.27 + atWeights(f, -36, -2, 1, -8, -21) : 0;
   const tail = ink(
     f,
     straight(
@@ -684,11 +693,11 @@ export function grotesqueCapitalO(style: Style): Recipe {
   return finish(f, [capitalRing(f)], true);
 }
 
-/** The O's ring, for the O and the Q. */
-function capitalRing(f: Frame): Stroke {
+/** The O's ring, for the O and the Q, `narrower` by so many of Geist's units. */
+function capitalRing(f: Frame, narrower = 0): Stroke {
   const [X, lerp] = squaredNow(f);
   const k = X(1) - X(0);
-  const wide = lerp(649, 720, 614) * k;
+  const wide = (lerp(649, 720, 614) - narrower) * k;
   const side = lerp(90, 201, 34) * k;
   const crown = lerp(84, 157, 32) * k;
   const over = f.style.metrics.overshoot;
