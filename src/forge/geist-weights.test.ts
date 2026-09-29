@@ -2004,3 +2004,11 @@ describe("the Thin H's bar", () => {
     expect(Math.abs(bar[0] - 349)).toBeLessThan(3);
   });
 });
+
+describe("the Thin s's foot", () => {
+  it("is cut as low as Geist Thin's", () => {
+    // 160 up Geist Thin's s has ink only on the right, its foot cut under
+    // it; cut at 175 the Sans's reached 160 on the left too.
+    expect(filled(draw("s", 30).contours, 160)).toHaveLength(1);
+  });
+});

@@ -772,6 +772,11 @@ from 0.179 to 0.153.
 
 **The Thin H's bar** now sits 7 units higher, where Geist Thin's does.
 
+**The Thin s.** At the Thin its foot is now cut 20 units lower and its
+spine's quarters are taller, as Geist Thin's are. Its misfit falls from 0.33
+to 0.28. The rest is in the spine's shape (see "The heavy s" below, which is
+the same difference at the other end).
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular

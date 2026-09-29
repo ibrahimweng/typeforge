@@ -4510,8 +4510,10 @@ export function grotesqueS(style: Style): Recipe {
           upper: { x: 263 + 5 * thinness(f), y: [385, 378], w: 159 - 5 * thinness(f) },
           lower: { x: 266, y: [125, 155], w: 174 },
           head: [385, 358],
-          foot: [175, 172],
-          inner: 0.42,
+          // The Thin's foot cut lower and its spine's quarters taller, as
+          // Geist Thin's are: its terminal stood 20 high and 12 left.
+          foot: [175 - 20 * thinness(f), 172],
+          inner: 0.42 + 0.15 * thinness(f),
           innerBlack: 0.5,
           blackWiden:
             11 -
