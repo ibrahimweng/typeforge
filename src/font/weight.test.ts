@@ -25,6 +25,7 @@ import { importFont } from "./parse";
 import { classifyContours, contoursIntersect } from "./outline";
 import {
   CRIMSON_FOUR,
+  CRIMSON_ONE,
   CRIMSON_N_ACUTE,
   CRIMSON_U_HORN_TILDE,
   CRIMSON_Y,
@@ -1186,6 +1187,26 @@ describe("heaviest, sharp corners at an edge", () => {
   });
 
   /*
+   * Regression: the tip where the flag of Crimson Pro's 1 meets the top of
+   * its stem has a curve on one side, and was left out of the corners put
+   * back: it ran out along its mitre and stood thirty-three units over the
+   * top of the 1. Brought back along the mitre instead, it came inside the
+   * stem and leaned it: it goes back along the stem.
+   */
+  it("brings a tip with a curve on one side back to the edge, along its stem", () => {
+    const outline = drawn(CRIMSON_ONE);
+    const { typeface, glyph } = drawnTo(outline, 1024, [587, 430], 340);
+    const drawnTop = contoursBounds(outline).yMax;
+    const nodes = outline[0].nodes;
+    const tip = nodes.findIndex((node) => node.point.y === drawnTop);
+    const [weighed] = at(typeface, glyph, { weight: 61.44 });
+    expect(contoursBounds([weighed]).yMax).toBeLessThan(drawnTop + 2);
+    // The stem's side runs on straight up into the tip.
+    const below = weighed.nodes[(tip + 1) % nodes.length].point;
+    expect(Math.abs(weighed.nodes[tip].point.x - below.x)).toBeLessThan(8);
+  });
+
+  /*
    * The weight itself, before any height is put back: each serif's flat top
    * runs out by about the weight, and by no more than a mitre.
    */
@@ -1263,6 +1284,34 @@ describe("heaviest, pieces side by side", () => {
     const out = at(made.typeface, made.glyph, { weight: 60, width: 0.6 });
     // The slash and the diagonal of the four, both standing on the baseline.
     expect(gapBetween(out[0], out[4])).toBeGreaterThan(17);
+  });
+
+  /*
+   * Regression: the slabs were weighed with their strokes and kept off
+   * nothing, and the slabs of Outfit's heavy one quarter grew into the
+   * pieces beside them: one met the one, another came within seven units of
+   * the slash.
+   */
+  it("keeps slabs off the pieces they are not on", () => {
+    const made = letter(drawn(OUTFIT_ONE_QUARTER), 676);
+    made.typeface.metrics = { ...made.typeface.metrics, xHeight: 475, capHeight: 694 };
+    // The slash, the upper slash, the one, and the four, as drawn.
+    const pieceOf = [0, 1, 2, 2, 3, 3, 3];
+    const letterCount = pieceOf.length;
+    const rest = at(made.typeface, made.glyph, { slab: 30 });
+    const owner = rest.slice(letterCount).map((slab) => {
+      const gaps = rest.slice(0, letterCount).map((contour) => gapBetween(slab, contour));
+      return pieceOf[gaps.indexOf(Math.min(...gaps))];
+    });
+    const out = at(made.typeface, made.glyph, { weight: 60, slab: 30 });
+    expect(out.length).toBe(rest.length);
+    owner.forEach((piece, index) => {
+      const slab = out[letterCount + index];
+      pieceOf.forEach((other, which) => {
+        if (other === piece) return;
+        expect(gapBetween(slab, out[which]), `slab ${index}, contour ${which}`).toBeGreaterThan(10);
+      });
+    });
   });
 
   /*

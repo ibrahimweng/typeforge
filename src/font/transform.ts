@@ -206,6 +206,8 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
   let unweightedContours: Contour[] | undefined;
   // The letter weighed as if what floats over or under it were not there.
   let freeContours: Contour[] | undefined;
+  // And how far it was then moved over for its side bearings.
+  let sideShift = 0;
   // The slabs, kept to one side until the letter has its weight.
   let slabs: Contour[] = [];
   let slabbedLetter: Contour[] = [];
@@ -322,6 +324,7 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
      */
     const loose = drawnLetter.map((_, index) => !stands.has(pieceOf[index]));
     freeContours = undefined;
+    let weighedAlone: Array<((share: number) => Contour) | undefined> | undefined;
     if (params.weight > 0 && loose.some(Boolean) && !loose.every(Boolean)) {
       const alone = {
         ...around,
@@ -340,26 +343,68 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
               pieceBoxes[other].yMax + reach < pieceBoxes[index].yMin
             ),
         );
-      freeContours = drawnLetter.map((contour, index) =>
+      weighedAlone = drawnLetter.map((contour, index) =>
         loose[index] || !inTheWay(index)
-          ? weighed[index]
-          : applyWeight(contour, params.weight, index, alone),
+          ? undefined
+          : (share: number) =>
+              share === 0 ? contour : applyWeight(contour, params.weight * share, index, alone),
       );
     }
     const lifts = clearLifts(drawnLetter, weighed, typeface.unitsPerEm, CLEAR_KEPT);
+    // What share of the weight `keptApart` last gave each piece it weighed
+    // lighter: the last it tried in a pair is the one the pair kept.
+    const shares = new Map<number, number>();
     contours = keptApart(
       drawnLetter,
       weighed.map((contour, index) => liftedBy(contour, lifts[index])),
-      (index, share) => liftedBy(weigh(index, share), lifts[index]),
+      (index, share) => {
+        shares.set(index, share);
+        return liftedBy(weigh(index, share), lifts[index]);
+      },
       drawnLetter,
       { em: typeface.unitsPerEm, kept: CLEAR_KEPT },
+      // Given up altogether, a piece goes back as drawn but still lifted, so
+      // taking the lift off below leaves it where it was drawn.
+      (index) => {
+        shares.set(index, 0);
+        return liftedBy(drawnLetter[index], lifts[index]);
+      },
     ).map((contour, index) => liftedBy(contour, -lifts[index]));
-    // Placed on the letter weighed alone too, to measure it the same way.
-    const freeSlabs =
-      freeContours && slabs.length
-        ? weighSlabs(slabs, slabbedLetter, params.weight, typeface.unitsPerEm, freeContours)
+    if (weighedAlone) {
+      const alone = weighedAlone;
+      // Weighed alone as it was weighed with the rest, at the same share.
+      freeContours = contours.map(
+        (contour, index) => alone[index]?.(shares.get(index) ?? 1) ?? contour,
+      );
+    }
+    /*
+     * Each slab weighed with its stroke, but kept off the pieces it is not
+     * on: at the heaviest the slabs of the small four of Outfit's one quarter
+     * grew to within seven units of the slash. A slab that would come nearer
+     * one than it keeps is weighed lighter, as far as it has to be.
+     */
+    const drawnSlabs = slabs;
+    const weighSlab = (index: number, share: number, on: Contour[]) =>
+      weighSlabs(
+        [drawnSlabs[index]],
+        slabbedLetter,
+        params.weight * share,
+        typeface.unitsPerEm,
+        on,
+      )[0];
+    const slabShares =
+      params.weight > 0 && slabs.length
+        ? slabsApart(slabbedLetter, drawnSlabs, contours, typeface.unitsPerEm, (index, share) =>
+            weighSlab(index, share, contours),
+          )
         : [];
-    slabs = weighSlabs(slabs, slabbedLetter, params.weight, typeface.unitsPerEm, contours);
+    const slabsOn = (on: Contour[]) =>
+      slabShares.some((share) => share < 1)
+        ? drawnSlabs.map((_, index) => weighSlab(index, slabShares[index], on))
+        : weighSlabs(drawnSlabs, slabbedLetter, params.weight, typeface.unitsPerEm, on);
+    // Placed on the letter weighed alone too, to measure it the same way.
+    const freeSlabs = freeContours && slabs.length ? slabsOn(freeContours) : [];
+    slabs = slabs.length ? slabsOn(contours) : slabs;
     /*
      * And the letter moved over by what the weight added on its left, so it
      * keeps its side bearings.
@@ -384,6 +429,7 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
       right: growth.right + counterGrowth.right,
     });
     const shift = growth.left;
+    sideShift = shift;
     contours = contours.map((contour) =>
       mapContour(contour, (point) => ({ x: point.x + shift, y: point.y })),
     );
@@ -418,6 +464,7 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
       typeface,
       unweightedContours,
       freeContours,
+      sideShift,
     );
     contours = keptClear(unweightedContours, contours, typeface.unitsPerEm, CLEAR_KEPT, true);
   }
@@ -709,6 +756,22 @@ function unfold(drawn: Contour, moved: Contour, slant: number): Contour {
 }
 
 /**
+ * Whether a drawn node is a corner, not a smooth point, whatever its sides
+ * are: see `CORNER_TURN`.
+ */
+function cornerAt(node: GlyphNode, previous: GlyphNode, next: GlyphNode): boolean {
+  const from = node.handleIn ?? previous.handleOut ?? previous.point;
+  const to = node.handleOut ?? next.handleIn ?? next.point;
+  const inX = node.point.x - from.x;
+  const inY = node.point.y - from.y;
+  const outX = to.x - node.point.x;
+  const outY = to.y - node.point.y;
+  const lengths = Math.hypot(inX, inY) * Math.hypot(outX, outY);
+  if (!(lengths > 0)) return false;
+  return (inX * outX + inY * outY) / lengths < Math.cos((CORNER_TURN * Math.PI) / 180);
+}
+
+/**
  * And the letter's contours kept off each other where the weight took one
  * through another it did not cross as drawn.
  *
@@ -726,6 +789,8 @@ function keptApart(
   weigh: (index: number, share: number) => Contour,
   asDrawn: Contour[] = drawn,
   spacing?: { em: number; kept: number },
+  /** Each contour given none of the weight; as drawn unless given. */
+  unweighted: (index: number) => Contour = (index) => drawn[index],
 ): Contour[] {
   const overlapsMore = overlapsMoreThan(
     drawn,
@@ -749,7 +814,7 @@ function keptApart(
     const at = (share: number): Contour[] =>
       result.map((contour, which) => {
         if (which !== one && which !== other) return contour;
-        return share === 0 ? drawn[which] : weigh(which, share);
+        return share === 0 ? unweighted(which) : weigh(which, share);
       });
     // Clear of the others, the two of them, as well as of each other, and
     // as far from what they were drawn apart from as they are to keep.
@@ -757,7 +822,9 @@ function keptApart(
       const still: Array<[number, number]> = [];
       overlapsMore(trial, still);
       if (still.some((pair) => pair.includes(one) || pair.includes(other))) return false;
-      return tooNear(trial).every((pair) => pair.one !== one && pair.other !== other);
+      return tooNear(trial).every(
+        (pair) => ![one, other].includes(pair.one) && ![one, other].includes(pair.other),
+      );
     };
     let low = 0;
     let high = 1;
@@ -769,6 +836,73 @@ function keptApart(
     result = at(low);
   }
   return result;
+}
+
+/**
+ * What share of the weight each slab takes to keep off the pieces of ink it
+ * is not on, as far from each as it was drawn, in the share `sideBySide`
+ * keeps; one on nothing but its own piece takes all of it. A slab is on the
+ * piece it lies nearest as drawn; one that comes too near another piece's
+ * slab gives up weight with it.
+ */
+function slabsApart(
+  drawn: Contour[],
+  drawnSlabs: Contour[],
+  weighed: Contour[],
+  em: number,
+  weigh: (index: number, share: number) => Contour,
+): number[] {
+  const shares = drawnSlabs.map(() => 1);
+  const outer = classifyContours(drawn);
+  if (outer.filter(Boolean).length < 2) return shares;
+  const { pieceOf } = piecesOf(drawn, em, outer);
+  if (new Set(pieceOf.filter((_, index) => outer[index])).size < 2) return shares;
+  const owner = drawnSlabs.map((slab) => {
+    let nearest = -1;
+    let least = Infinity;
+    drawn.forEach((contour, index) => {
+      if (!outer[index]) return;
+      const gap = clearance(slab, contour);
+      if (gap < least) [nearest, least] = [index, gap];
+    });
+    return nearest < 0 ? -1 : pieceOf[nearest];
+  });
+  const reach = em * CLEAR_OPENING * 4;
+  const most = CLEAR_KEPT * em * CLEAR_OPENING;
+  const slabs = drawnSlabs.map((_, index) => weigh(index, 1));
+  // Everything a slab keeps off: the other pieces' contours and slabs.
+  const keptOff = (index: number) => [
+    ...drawn.flatMap((contour, which) =>
+      outer[which] && pieceOf[which] !== owner[index]
+        ? [{ drawn: contour, now: () => weighed[which] }]
+        : [],
+    ),
+    ...drawnSlabs.flatMap((slab, which) =>
+      which !== index && owner[which] !== owner[index]
+        ? [{ drawn: slab, now: () => slabs[which] }]
+        : [],
+    ),
+  ];
+  drawnSlabs.forEach((slab, index) => {
+    const pairs = keptOff(index)
+      .map((other) => ({ ...other, gap: clearance(slab, other.drawn) }))
+      .filter(({ gap }) => gap > 1 && gap <= reach)
+      .map((other) => ({ ...other, need: Math.min(other.gap * CLEAR_KEPT, most) }));
+    if (!pairs.length) return;
+    const clear = (trial: Contour) =>
+      pairs.every((pair) => clearance(trial, pair.now()) >= pair.need);
+    if (clear(slabs[index])) return;
+    let low = 0;
+    let high = 1;
+    for (let step = 0; step < BACK_OFF_STEPS; step++) {
+      const middle = (low + high) / 2;
+      if (clear(weigh(index, middle))) low = middle;
+      else high = middle;
+    }
+    shares[index] = low;
+    slabs[index] = weigh(index, low);
+  });
+  return shares;
 }
 
 /**
@@ -1427,6 +1561,8 @@ function keepHeights(
   before?: Contour[],
   /** The same weighed without the pieces floating over or under them. */
   free?: Contour[],
+  /** How far the letter was moved over for its side bearings since `before`. */
+  sideShift = 0,
 ): Contour[] {
   const metrics = typeface.metrics;
   const top = isLowercase(glyph) ? metrics?.xHeight : metrics?.capHeight;
@@ -1721,18 +1857,67 @@ function keepHeights(
         // At the very edge: no neighbour further out than it.
         const further = (other: number) => (up ? other > y + 0.5 : other < y - 0.5);
         if (further(previous.point.y) || further(next.point.y)) return node;
-        const moved = (contours[which].nodes[index].point.y - y) * (up ? 1 : -1);
+        // Measured from where it was drawn, moved over as the letter was.
+        const weighedAt = contours[which].nodes[index].point;
+        const moved = Math.hypot(weighedAt.x - x - sideShift, weighedAt.y - y);
         const past = up ? node.point.y > y + 0.5 : node.point.y < y - 0.5;
         const short = up ? node.point.y < y - 0.5 : node.point.y > y + 0.5;
-        if (!straight) return node;
-        const ranOut = moved > weight * 1.1 && past;
-        const held = short && heldBackAt(which, index, up);
+        const ranOut = moved > weight * 1.1 && past && cornerAt(was, previous, next);
+        const held = straight && short && heldBackAt(which, index, up);
         if (!ranOut && !held) return node;
         changed = true;
         if (held) return { ...node, point: { x: node.point.x, y } };
-        // Run out only as far as the weight, along the way it went.
-        const share = weight / moved;
-        return { ...node, point: { x: x + (node.point.x - x) * share, y } };
+        /*
+         * Brought back to the edge along the steeper of its sides, which keeps
+         * that side's direction: along its mitre, the tip of Crimson Pro's 1,
+         * whose flag meets its upright stem there, came back inside the stem
+         * and leaned it. And no further out than the weight would take it
+         * along the mitre.
+         */
+        const pointOf = (at: number) =>
+          contour.nodes[(at + contour.nodes.length) % contour.nodes.length];
+        const sides = [
+          node.handleIn ?? pointOf(index - 1).handleOut ?? pointOf(index - 1).point,
+          node.handleOut ?? pointOf(index + 1).handleIn ?? pointOf(index + 1).point,
+        ].map((toward) => ({ x: toward.x - node.point.x, y: toward.y - node.point.y }));
+        const steepest = [0, 1]
+          .filter((side) => sides[side].y < 0 === up && Math.abs(sides[side].y) > 1e-6)
+          .sort(
+            (a, b) =>
+              Math.abs(sides[b].y) / Math.hypot(sides[b].x, sides[b].y) -
+              Math.abs(sides[a].y) / Math.hypot(sides[a].x, sides[a].y),
+          )[0];
+        const steep = steepest === undefined ? undefined : sides[steepest];
+        const along = { x: x + sideShift + (node.point.x - x - sideShift) * (weight / moved), y };
+        const slid = steep && {
+          x: node.point.x + (steep.x * (y - node.point.y)) / steep.y,
+          y,
+        };
+        const drawnX = x + sideShift;
+        const sliding =
+          !!slid &&
+          Math.abs(slid.x - drawnX) <= Math.abs(node.point.x - drawnX) &&
+          Math.abs(slid.x - along.x) <= weight;
+        const to = sliding && slid ? slid : along;
+        /*
+         * Its handles stay where they are, while they still lie beyond it: it
+         * is a corner, and has no tangent to keep. Carried with it, a curve
+         * whose far end had not moved bent back on itself, and the outer
+         * curve of Lora Bold's parenthesis turned into an S at its tip.
+         */
+        const carry = (handle: Vec2 | null) => {
+          if (!handle) return handle;
+          const ahead =
+            (handle.x - to.x) * (handle.x - node.point.x) +
+            (handle.y - to.y) * (handle.y - node.point.y);
+          return ahead > 0 ? handle : { ...to };
+        };
+        return {
+          ...node,
+          point: to,
+          handleIn: carry(node.handleIn),
+          handleOut: carry(node.handleOut),
+        };
       });
       return changed ? { ...contour, nodes } : contour;
     });

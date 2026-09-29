@@ -1224,6 +1224,32 @@ export const CRIMSON_Y: Node6[][] = [
   ],
 ];
 
+/** Crimson Pro's 1, whose flag meets the top of its upright stem in a sharp tip. */
+export const CRIMSON_ONE: Node6[][] = [
+  [
+    [219, 406, 219, 453.3333333333333, null, null],
+    [219, 197, null, null, 219, 165.66666666666666],
+    [220, 118.5, 219.33333333333334, 139.5, 220.66666666666666, 97.5],
+    [222.5, 71, 221.5, 81.66666666666667, 223.5, 60.333333333333336],
+    [225, 51, 224.33333333333334, 53.666666666666664, null, null],
+    [305, 37, null, null, null, null],
+    [302, 0, null, null, null, null],
+    [58, 0, null, null, null, null],
+    [56, 37, null, null, null, null],
+    [134, 51, null, null, 134.66666666666666, 55],
+    [136, 76.5, 135.33333333333334, 63.5, 136.66666666666666, 89.5],
+    [138, 127, 137.33333333333334, 106.33333333333334, 138.66666666666666, 147.66666666666666],
+    [139, 197, 139, 171, null, null],
+    [139, 389, null, null, 139, 407.6666666666667],
+    [137.5, 445.5, 138.5, 426.5, 136.5, 464.5],
+    [134, 497, 135.33333333333334, 481.6666666666667, null, null],
+    [49, 478, null, null, null, null],
+    [46, 521, null, null, null, null],
+    [223, 597, null, null, 222.33333333333334, 577],
+    [220.5, 522, 221.5, 552, 219.5, 492],
+  ],
+];
+
 /** Crimson Pro's 4, drawn as one contour crossing itself where the bar runs through the stem. */
 export const CRIMSON_FOUR: Node6[][] = [
   [

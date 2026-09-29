@@ -255,6 +255,19 @@ Every accented letter's base in the eight fonts now comes out within 11 units of
 
 Images: `accents-lorabold-*` (h, A, l and t with their accents, and Ŗ), `corners-outfit-*` (N, Ñ, ¼, ¾) and `corners-crimson-*` (Y, A, Δ, N, 4), each at rest, at weight 0.06, and at 0.06 condensed to 0.6.
 
+**An eleventh review, and two faults from the list.** The review of the last two commits found three faults in the weight stage:
+- **A piece given up entirely lost its lift.** Before the weight stage takes weight off two pieces that cross, a floating piece is lifted clear to see what still crosses, and the lift is taken off every piece afterwards. A pair that had to give up all its weight came back as drawn, without the lift, and taking the lift off then left an accent below where it was drawn. It now comes back as drawn and still lifted. No letter in the eight fonts reaches that case, so this has no test that fails on the old code.
+- **The spacing check let most pairs through.** While taking weight off one pair, a trial was refused for bringing pieces too near only if the near pair shared its first piece with the first of the two, or its second with the second. It is now refused if a near pair includes either of the two. The old code met the spacing anyway by fixing the pair in the next round, so nothing in the eight fonts comes out differently, and this has no test that fails on the old code either.
+- **The letter alone was weighed at the full weight.** The heights are measured from the letter weighed without its floating pieces in the way. That weighing gave every piece the full weight, even a piece the crossing check had weighed lighter, so the heights read growth that was never applied. Such a piece is now weighed alone at the same share it was given. Geist's Ỡ is an example: its horn and tilde give up a tenth of their weight, and the O under them now comes within 5 units of the O alone.
+
+And from What is left:
+- **A tip with a curve on one side ran out along its mitre.** The rule that brings a sharp corner back to its line took only corners between straight sides. The tip where the flag of Crimson Pro's 1 meets its stem has a curve on one side, and stood 33 units over the top of the 1. The rule now takes any corner that isn't smooth, and measures how far it ran by its whole move, not only upward, from where it was drawn after the letter is moved over for its side bearings. Brought back along its mitre, the tip landed inside the stem and leaned it, so a corner now goes back to its line along the steeper of its sides, as long as that is no further out than the mitre allows. Its handles stay where they were: carried with the point, they bent the outer curve of Lora Bold's parenthesis into an S. The same rule now also brings back the tips of Lora's comma, of parentheses, and of the tilde's terminals.
+- **Slabs weren't kept off the pieces they aren't on.** At weight 0.06 with slab on, the slabs of Outfit's small four came within 7 units of the slash, and one of the one met another piece. Each slab now keeps the same share of white as pieces side by side from every piece it doesn't stand on, and from those pieces' slabs. Where it would come nearer, it is weighed lighter, only as far as it has to be. In the heavy ¼, the foot slab of the one gives up its weight beside the lower slash.
+
+On the eight fonts, plain letters further from where they were drawn than a scan's tolerance go from 7 to 1 in Lora Bold and from 10 to 3 in Crimson Pro, and are the same in the rest. No accented letter comes out further from the same letter alone than before, except Crimson's Ỡ and Ờ, by the 5 units above. The sweep of all eight fonts under the 39 settings finds nothing new against the previous commit and no height further out by more than 10 units, and fewer findings in six of the eight fonts. 300 glyphs of Lora Bold at weight 0.06 take 3.0 s, against 2.8 s for the previous commit on the same machine.
+
+Images: `tips-crimson-*` (1, parentheses, comma, ñ), `tips-lorabold-*` (parentheses, comma, ñ), at rest, at weight 0.06 and at 0.06 condensed to 0.6; `slabs-outfit-*` (¼ ¾) at rest, with slab 0.03, and with slab and weight 0.06.
+
 ## Tests
 
 Every fix has a test that fails on the old code and passes now, except those listed under What is left. They are in:
@@ -273,7 +286,7 @@ Two of this round's tests pass on the code before it as well: the one of Outfit'
 
 Two old expectations in `weight.test.ts` described letters growing past the baseline and cap height; they now expect the letter to keep its heights. The middle-space expectations in `counter.test.ts` and `control.test.ts`, which had walls thickening or thinning by the whole change, now expect walls that keep their weight while the letter narrows or widens. The weight engine keeps each contour's point count, and slabs are still separate contours added to the letter.
 
-These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,940 tests.
+These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,942 tests.
 
 ## What is left
 
@@ -297,16 +310,16 @@ These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vite
   - the between-contour check ignoring ink joined through a third piece, and a counter against ink other than its own outline (no letter in the eight fonts comes out differently; the sweep's crossings on Outfit's @ and Œ were harmless).
   - a counter going with the smallest ink round it when the letter is split into pieces (no letter in the eight fonts has an island with a counter of its own);
   - a piece lowered clear keeping its bottom and giving up height from above (the pieces lowered in the eight fonts, commas and dots below, don't need it);
-  - the between-contour check being told which pairs to skip, which only saves work.
+  - the between-contour check being told which pairs to skip, which only saves work;
+  - a pair given up entirely keeping its lift, and the spacing check refusing a near pair with either piece in it (see the eleventh review).
   An independent check of every glyph under every setting confirms none of the outlines cross.
 - **Corner radius** adds points by design, since it rounds corners with new curves.
 - **Heavy counters.** At weight 0.06, Geist's B and R counters shrink to slits. That comes from Geist's own proportions at that weight.
 - **Pieces side by side.** They keep half their white, up to 18 units, by being weighed lighter; condensed, all the white the condensing leaves them. At weight 0.06 and width 0.6 that is about 14 units between the dots of Geist's ◌ and the strokes of its 〃.
 - **Heights the controls change by design.** The sweep reports every glyph whose top or bottom moves. Most of these are intended: an accent or dot keeps clear of its letter by moving; a mark that touches no line, such as a period, a comma or a subscript figure, grows both ways; a slant moves a letter's top sideways. The scans for letters against themselves alone, and plain letters against where they were drawn, are what tell real faults from these.
 - **Fractions at the heaviest weight.** The pieces of a ¼ keep clear of each other, but the one squeezes to do so: at weight 0.06 Outfit's is about a quarter shorter from below. Condensed as well, it can't keep its whole top on the cap height; it stands 37 units over it.
-- **Found and not yet fixed** (next on the list):
-  - Crimson Pro's 1 stands 33 units over its height, from the pointed tip of its flag.
-  - Slabs on the small figures of Outfit's ¼ and ¾ meet each other and the slash at weight 0.06 with slab on. The sweep's crossing check doesn't look at slab pairs.
+- **Heavy slabs on small figures.** With slab and weight 0.06 on, the slabs of the figures of a ¼ or ¾ grow as thick as their strokes, and on figures that small they pile into one another within the same figure. That is what slab and weight do to any letter at that size; they are kept off the other pieces.
+- **The tilde's terminal, heavy and condensed.** At weight 0.06 and width 0.6 the right-hand terminal of Outfit's tilde comes to a point about 25 units over the tilde's crest, which the heights squeeze down. The point now stops at the top the tilde is drawn to; before this round it stood 71 units over it.
 - **Chevrons at the heaviest weight.** The chevron of a ≥ or ≤ keeps its 18 units of white over the bar by rising, after giving up a quarter of its height. At weight 0.06 the symbol stands 145 to 155 units taller in Geist, Lora Bold, Plex and Work Sans, and 148 in Crimson Pro. Before this round the heights squeezed the chevron without that limit, and it rose 92 to 162 depending on the font, with the bar lighter.
 - **Two controls on one gap.** Each control keeps half of the white it is handed, so the crossbar and the heaviest weight together leave Geist's ť about 9 of its 22 units.
 - **Pointed ends.** At weight 0.06 the ends of a chevron's arms run out along their mitres, as the weight engine draws any sharp corner away from an edge line; that, and keeping the chevron clear of the bar, is most of the height the ≥ above gains.
