@@ -11,7 +11,7 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { unite } from "@/font/boolean";
+import { intersect, subtract, unite } from "@/font/boolean";
 import {
   contourArea,
   contourContainsPoint,
@@ -877,6 +877,87 @@ describe("a rim after the inline", () => {
       for (const hole of holes) {
         expect(hole, `${face} ${weight} ${letter}`).toBeGreaterThan(weight * weight * 0.08);
       }
+    }
+  });
+});
+
+describe("slanted slots across a join", () => {
+  it("leave no tongue of the crossbar standing on the leg", () => {
+    // A band laid across the join of an A's crossbar and leg at a slant cut
+    // most of the bar's corner away and left a tongue of it on the leg,
+    // tapering to a point, whose root turned inwards on the leg's edge.
+    const slotted = drawn("A", forgeOf("Sans", 87, { cuts: { slot: { count: 3, angle: 15 } } }));
+    expect(inwardTurns(slotted)).toBeLessThanOrEqual(3);
+  });
+});
+
+describe("fillets after slots", () => {
+  it("grow nothing into the bands the slots cut", () => {
+    // A fillet grown at a join a slot cut through reached past the band's
+    // edge into the band, and stood in it as a bump.
+    for (const [face, weight, letters] of [
+      ["Sans", 260, "HnE"],
+      ["Sans", 87, "Ak"],
+    ] as const) {
+      const slot = { slot: { count: 3, angle: 15 } };
+      for (const letter of letters) {
+        const plain = drawn(letter, forgeOf(face, weight, {}));
+        const slotted = drawn(letter, forgeOf(face, weight, { cuts: slot }));
+        const welded = drawn(letter, forgeOf(face, weight, { cuts: slot, cast: { weld: {} } }));
+        const bands = subtract(plain, slotted, "winding");
+        const added = subtract(welded, slotted, "winding");
+        const stray = intersect(added, bands, "winding").reduce(
+          (total, one) => total + Math.abs(contourArea(one)),
+          0,
+        );
+        expect(stray, `${face} ${weight} ${letter}`).toBeLessThan(2);
+      }
+    }
+  });
+});
+
+describe("breaks on a running hand", () => {
+  it("leave the stroke to or from the next letter on", () => {
+    // The exit of a Roundhand u leaves its last stem a third of the way up,
+    // and the lead-in of its a joins the bowl half way: by their shape alone
+    // each is the middle arm of an E, and each came off as a dash.
+    const weight = BASES.find((base) => base.name === "Roundhand")!.pen.weight;
+    const forge = forgeOf("Roundhand", weight, { cuts: { split: {} } });
+    for (const letter of "ua") expect(piecesOf(drawn(letter, forge)), letter).toBe(1);
+  });
+});
+
+describe("breaks through a shadow cast first", () => {
+  it("fold no outline back over itself", () => {
+    // A gap's edge ran all but along the curve of the shadow's edge, and the
+    // boolean library handed back an outline doubled back along it.
+    for (const [face, weight, letter] of [
+      ["Sans", 260, "d"],
+      ["Serif", 260, "d"],
+      ["Wavy", 0, "g"],
+    ] as const) {
+      const at = weight || BASES.find((base) => base.name === face)!.pen.weight;
+      const forge = forgeOf(face, at, {
+        cuts: { split: {} },
+        cast: { extrude: {} },
+        order: "before",
+      });
+      const folded = drawn(letter, forge).filter((contour) => crossesItself(contour));
+      expect(folded.length, `${face} ${letter}`).toBe(0);
+    }
+  });
+});
+
+describe("a chamfer on a leaning face", () => {
+  it("ties no loop once the letter leans", () => {
+    // The cut untangled the letter upright, and with no effect on to do it
+    // again the Handwriting s crossed itself once it was leaned.
+    const weight = BASES.find((base) => base.name === "Handwriting")!.pen.weight;
+    const casts: Record<string, Record<string, unknown>>[] = [{}, { spur: {} }, { weld: {} }];
+    for (const cast of casts) {
+      const forge = forgeOf("Handwriting", weight, { cuts: { chamfer: {} }, cast });
+      const folded = drawn("s", forge).filter((contour) => crossesItself(contour));
+      expect(folded.length, JSON.stringify(cast)).toBe(0);
     }
   });
 });

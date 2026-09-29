@@ -35,7 +35,7 @@ import {
   type PoolWhere,
   type RoughReach,
 } from "@/font/effects";
-import { untangled } from "./cast";
+import { groovesOf, inGroove, untangled } from "./cast";
 import type { CutScale } from "./cut";
 import { alongSpine, spineLength } from "./shapes";
 import { penReach, reachAlong, sweep } from "./sweep";
@@ -248,9 +248,23 @@ export function effectInk(
   );
   if (!canCarve) return shape;
   // And no outline left crossing itself, as after the cut and the cast.
-  return untangled(
+  const done = untangled(
     swept(shape, stem, strokes).map((contour) => unsplintered(contour, stem, hairline)),
     scale.slant,
+  );
+  /*
+   * Nor scraps of an inline's groove. A rim grown into the groove narrows it,
+   * and the roughening then pinched it shut in places: the letter was left
+   * pricked with slivers of groove, each a few units across. What is left of
+   * the groove smaller than a tenth of a stem square is filled.
+   */
+  const grooves = groovesOf.get(ink) ?? [];
+  if (grooves.length === 0) return done;
+  return done.filter(
+    (contour) =>
+      contourArea(contour) >= 0 ||
+      -contourArea(contour) >= stem * stem * 0.1 ||
+      !inGroove(contour, grooves),
   );
 }
 

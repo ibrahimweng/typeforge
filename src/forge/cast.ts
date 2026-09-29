@@ -88,15 +88,6 @@ export function reachesCast(cast: Cast | undefined, strokes: Stroke[]): boolean 
 }
 
 /**
- * The letter with the cast put on it.
- *
- * The order inside the layer is not a preference. The spur and the weld are
- * both local -- they find a place on the letter and add ink there -- so they
- * go first, and the shadow that is thrown afterwards is thrown by a letter
- * that already has them. The rim goes last of all, so that it runs round the
- * shadow too rather than round a letter the shadow then buries.
- */
-/**
  * Where the inline cut its groove, for the contours the cut handed on.
  *
  * Kept against the very list the cut returns, which is what the cast is given
@@ -106,6 +97,28 @@ export function reachesCast(cast: Cast | undefined, strokes: Stroke[]): boolean 
  */
 export const groovesOf = new WeakMap<Contour[], Contour[]>();
 
+/**
+ * Everything the cut took away, for the same list: a fillet grown at a join
+ * a slot has cut through reached into the band and stood in it as a bump.
+ */
+export const knivesOf = new WeakMap<Contour[], Contour[]>();
+
+/** Whether a hole lies mostly in an inline's groove (`groovesOf`). */
+export function inGroove(hole: Contour, grooves: Contour[]): boolean {
+  if (grooves.length === 0) return false;
+  const shared = intersect([reverseContour(hole)], grooves, "winding");
+  return shared.reduce((total, one) => total + contourArea(one), 0) > -contourArea(hole) * 0.5;
+}
+
+/**
+ * The letter with the cast put on it.
+ *
+ * The order inside the layer is not a preference. The spur and the weld are
+ * both local -- they find a place on the letter and add ink there -- so they
+ * go first, and the shadow that is thrown afterwards is thrown by a letter
+ * that already has them. The rim goes last of all, so that it runs round the
+ * shadow too rather than round a letter the shadow then buries.
+ */
 export function castInk(
   ink: Contour[],
   strokes: Stroke[],
@@ -134,13 +147,7 @@ export function castInk(
   // counted, it held the floor so low that what the rim left of the groove's
   // ends beside the terminals of a Serif s stayed as ragged pockets.
   const grooves = groovesOf.get(ink) ?? [];
-  const grooved = (hole: Contour): boolean =>
-    grooves.length > 0 &&
-    intersect([reverseContour(hole)], grooves, "winding").reduce(
-      (total, one) => total + contourArea(one),
-      0,
-    ) >
-      -contourArea(hole) * 0.5;
+  const grooved = (hole: Contour): boolean => inGroove(hole, grooves);
   const smallest = Math.min(
     Infinity,
     ...shape
@@ -151,7 +158,9 @@ export function castInk(
   const local: Contour[] = [];
   if (cast.spur.on) local.push(...spurTool(shape, cast.spur, stem, chamfered));
   if (cast.weld.on) {
-    local.push(...weldTool(strokes, cast.weld, stem, shape, breaks, grooves));
+    local.push(
+      ...weldTool(strokes, cast.weld, stem, shape, breaks, grooves, knivesOf.get(ink) ?? []),
+    );
   }
   if (local.length > 0) {
     /*
@@ -183,13 +192,27 @@ export function castInk(
 
   if (cast.extrude.on) shape = extruded(shape, cast.extrude, stem);
   if (cast.outline.on) shape = outlined(shape, cast.outline.width * stem);
-
+  /*
+   * Nor scraps of the inline's groove. A shadow or a rim grown over the
+   * groove shut most of it and left slivers of it standing in the ink, each
+   * a few units across; what is left of the groove smaller than a tenth of a
+   * stem square is filled. (The effects do the same after the roughening.)
+   */
+  if (grooves.length > 0 && (cast.extrude.on || cast.outline.on)) {
+    shape = shape.filter(
+      (contour) =>
+        contourArea(contour) >= 0 ||
+        -contourArea(contour) >= stem * stem * 0.1 ||
+        !grooved(contour),
+    );
+  }
   const done = withoutSpecks(shape, stem, smallest);
-  // No outline left crossing itself: see the same step in `cutInk`.
-  // And swept again after it, which can tie off a pinhole of its own.
-  return done.some((contour) => contoursIntersect([contour]))
-    ? withoutSpecks(untangled(done), stem, smallest)
-    : done;
+  // No outline left crossing itself, upright or leaned: see the same step in
+  // `cutInk`. And swept again after it, which can tie off a pinhole of its own.
+  const result = withoutSpecks(untangled(done, scale.slant ?? 0), stem, smallest);
+  // Handed on with the groove still known, for the effects that follow.
+  if (grooves.length > 0) groovesOf.set(result, grooves);
+  return result;
 }
 
 /**
@@ -473,7 +496,7 @@ function withoutCrumbs(shape: Contour[]): Contour[] {
 }
 
 /** An outline with every point and handle set to the nearest step of `1 / per`. */
-function onGrid(contour: Contour, per: number): Contour {
+export function onGrid(contour: Contour, per: number): Contour {
   const snap = (point: Vec2 | null): Vec2 | null =>
     point && { x: Math.round(point.x * per) / per, y: Math.round(point.y * per) / per };
   return {
@@ -1397,6 +1420,7 @@ function weldTool(
   shape: Contour[] = [],
   breaks?: Breaks,
   grooves: Contour[] = [],
+  knives: Contour[] = [],
 ): Contour[] {
   const size = weld.size * stem;
   if (size <= 0 || strokes.length < 2) return [];
@@ -1505,20 +1529,34 @@ function weldTool(
         // Only the corners between the two strokes. A stroke that bends at the
         // join has a corner of its own there, and it is not a join.
         if (from.stroke === to.stroke) continue;
-        const fillet = filletBetween(where, from, to, size, ink, edge);
-        if (
-          !fillet ||
-          (breaks && acrossBreak(fillet, breaks.knives)) ||
-          inGroove(fillet) ||
-          ties(fillet)
-        ) {
-          continue;
-        }
-        added.push(fillet);
+        const grown = filletBetween(where, from, to, size, ink, edge);
+        if (!grown || (breaks && acrossBreak(grown, breaks.knives)) || inGroove(grown)) continue;
+        // Kept out of whatever the cut took away, and never across it.
+        const kept = knives.length === 0 ? [grown] : clipped(grown, knives);
+        for (const fillet of kept) if (!ties(fillet)) added.push(fillet);
       }
     }
   }
   return added;
+}
+
+/** A fillet less what lies in a cut, in the pieces that are worth keeping. */
+function clipped(fillet: Contour, knives: Contour[]): Contour[] {
+  const box = contoursBounds([fillet]);
+  const near = knives.filter((knife) => {
+    const other = contoursBounds([knife]);
+    return !(
+      other.xMin > box.xMax ||
+      other.xMax < box.xMin ||
+      other.yMin > box.yMax ||
+      other.yMax < box.yMin
+    );
+  });
+  if (near.length === 0) return [fillet];
+  const left = subtract([fillet], near, "winding");
+  const whole = Math.abs(contourArea(fillet));
+  // A sliver of a fillet left beside a cut is not a fillet.
+  return left.filter((one) => contourArea(one) > whole * 0.2);
 }
 
 /** Where the split cuts, and which pairs of strokes it parts (`pairKey`). */
