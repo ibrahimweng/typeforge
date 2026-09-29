@@ -36,6 +36,10 @@
 import {
   clearance,
   contourContainsPoint,
+  crossesMoreThan,
+  FINE_STEPS,
+  type Layouts,
+  overlapsMoreThan,
   contourSegments,
   contoursBounds,
   cubicAt,
@@ -44,7 +48,7 @@ import {
   splitCubic,
   type Segment,
 } from "./geometry";
-import { classifyContours, contoursIntersect } from "./outline";
+import { classifyContours } from "./outline";
 import type { Contour, GlyphNode, Vec2 } from "./types";
 
 /** How far from horizontal a segment may run and still count as one. */
@@ -195,22 +199,39 @@ const SEPARATE_KEPT = 0.5;
  * above it is long, a shoulder lowered past the foot of its stem. Rather than
  * hand back a letter that crosses itself there, the move goes as far as it
  * cleanly can and stops, which on a slider reads as the part reaching the end
- * of its travel. A letter that already crossed itself as drawn -- some fonts
- * are built from overlapping pieces -- cannot be judged that way, and is moved
- * on trust.
+ * of its travel. A letter that already crosses itself as drawn, or is built
+ * from overlapping pieces, as some fonts are, keeps what it crosses and may
+ * cross no more.
  */
 function asFarAsClean(
   contours: Contour[],
   shift: number,
   attempt: (shift: number) => Contour[] | null,
 ): Contour[] {
-  const crossedAlready = contoursIntersect(contours);
+  /*
+   * Asked finely, of each outline and of each pair, against the letter as
+   * drawn: the old check sampled a curve in six chords and gave up on a
+   * detailed letter, and lowering the arch of Lora Bold's h-bar ran the
+   * join of the arch through the stem without it seeing. A letter that
+   * crosses itself as drawn may keep what it crosses.
+   */
+  const outer = classifyContours(contours);
+  const layouts: Layouts = new WeakMap();
+  const crossedMore = contours.map((contour) => crossesMoreThan(contour, FINE_STEPS, layouts));
+  const overlapsMore = overlapsMoreThan(contours, FINE_STEPS, layouts, outer);
+  const sound = (moved: Contour[]) =>
+    moved.length === contours.length &&
+    moved.every(
+      (contour, which) =>
+        contour === contours[which] ||
+        (contour.nodes.length === contours[which].nodes.length && !crossedMore[which](contour)),
+    ) &&
+    !overlapsMore(moved);
   /*
    * And clear of the separate pieces of ink beside it, by half of the white
    * between them as drawn: raised, the bar of Geist's t-caron stopped only
    * where it touched the caron.
    */
-  const outer = classifyContours(contours);
   const apart: Array<{ one: number; other: number; need: number }> = [];
   for (let one = 0; one < contours.length; one++)
     for (let other = one + 1; other < contours.length; other++) {
@@ -221,7 +242,7 @@ function asFarAsClean(
   const clear = (moved: Contour[]) =>
     apart.every(({ one, other, need }) => clearance(moved[one], moved[other]) >= need);
   const clean = (moved: Contour[] | null): moved is Contour[] =>
-    moved !== null && (crossedAlready || !contoursIntersect(moved)) && clear(moved);
+    moved !== null && sound(moved) && clear(moved);
 
   const full = attempt(shift);
   if (clean(full)) return full;

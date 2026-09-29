@@ -27,8 +27,11 @@ import {
   drawn,
   gapBetween,
   LORA_BOLD_DZHE,
+  LORA_BOLD_ETH,
   LORA_BOLD_O_HOOK,
   LORA_BOLD_R_COMMA,
+  OUTFIT_ONE_QUARTER,
+  WORK_SANS_G_CIRCUMFLEX,
   GEIST_DE,
   GEIST_N,
   GEIST_ORDFEMININE,
@@ -1024,6 +1027,47 @@ describe("a font drawn in overlapping pieces", () => {
    * it where it was, and the circumflex of Lora Bold's O with a circumflex
    * and a hook, condensed and heavy, came within three units of the hook.
    */
+  /*
+   * Regression: the height correction moved a handle by the field where the
+   * handle stood and held it by where it was drawn, so a handle lying on
+   * its own point, at a corner the weight had swallowed onto one spot, came
+   * half a unit away from it: a spike at the bar of Lora Bold's heavy eth.
+   */
+  it("keeps a corner swallowed onto one spot free of spikes when the heights go back", () => {
+    const { typeface, glyph } = lora(drawn(LORA_BOLD_ETH), 542);
+    glyph.unicodes = [0xf0];
+    for (const contour of at(typeface, glyph, { weight: 60, counterScale: 0.6 }))
+      expect(loopsAnywhere(contour)).toBe(false);
+  });
+
+  /*
+   * Regression: the upper bowl of Work Sans' g is drawn apart from its foot,
+   * over it, and was taken for an accent floating like the circumflex seven
+   * units above it: nothing kept the two apart, they touched at the heaviest
+   * weight, and condensed they crossed.
+   */
+  it("keeps an accent clear of a piece of its letter drawn apart from the rest", () => {
+    const made = letter(drawn(WORK_SANS_G_CIRCUMFLEX), 532);
+    made.typeface.metrics = { ...made.typeface.metrics, xHeight: 500, capHeight: 660 };
+    const heavy = at(made.typeface, made.glyph, { weight: 60 });
+    expect(gapBetween(heavy[0], heavy[1])).toBeGreaterThan(3);
+    const condensed = at(made.typeface, made.glyph, { weight: 60, width: 0.6 });
+    expect(crossEachOther(condensed[0], condensed[1])).toBe(false);
+  });
+
+  /*
+   * Regression: a floating piece was lifted clear of what stood under it
+   * without asking what else it came near, and a piece of Outfit's heavy
+   * slabbed one quarter was lifted into the slash beside it.
+   */
+  it("lifts a piece clear only where that takes it nearer nothing else", () => {
+    const made = letter(drawn(OUTFIT_ONE_QUARTER), 676);
+    made.typeface.metrics = { ...made.typeface.metrics, xHeight: 475, capHeight: 694 };
+    const out = at(made.typeface, made.glyph, { weight: 60, slab: 100 });
+    for (const piece of [4, 5])
+      expect(crossEachOther(out[0], out[piece]), `0:${piece}`).toBe(false);
+  });
+
   it("lifts accents side by side together", () => {
     const { typeface, glyph } = lora(drawn(LORA_BOLD_O_HOOK), 769);
     const out = at(typeface, glyph, { weight: 40, width: 0.6 });

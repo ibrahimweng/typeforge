@@ -445,7 +445,11 @@ export function crossesMoreThan(
  * far into each other they grow. Asked, the bar of an H-bar drawn across
  * its stems, grown into their serifs, read as a new crossing, and the
  * descender of a Cyrillic dzhe drawn standing on the letter's foot could not
- * be moved without one.
+ * be moved without one. Nor is a counter against ink other than the outline
+ * it is the counter of: where it crosses a stem laid over it, the stem's ink
+ * covers the white, as the stem of the E of Outfit's OE, drawn touching the
+ * counter of its O, does. A counter is still asked of its own outline, which
+ * it must not cut through, and of the other counters.
  */
 export function overlapsMoreThan(
   drawn: Contour[],
@@ -455,15 +459,60 @@ export function overlapsMoreThan(
 ): (trial: Contour[], pairs?: Array<[number, number]>) => boolean {
   const lay = (contour: Contour) => layOf(contour, steps, layouts);
   const joined = new Map<string, boolean>();
-  const inkTogether = (one: number, other: number): boolean => {
-    if (!ink?.[one] || !ink[other]) return false;
+  // The outline each counter is the counter of: the smallest ink round it.
+  const owners = new Map<number, number | undefined>();
+  const ownerOf = (hole: number): number | undefined => {
+    if (!owners.has(hole)) {
+      const at = drawn[hole].nodes[0]?.point;
+      let best: number | undefined;
+      let smallest = Infinity;
+      drawn.forEach((contour, which) => {
+        if (!ink?.[which] || !at || !contourContainsPoint(contour, at)) return;
+        const size = Math.abs(contourArea(contour));
+        if (size < smallest) {
+          smallest = size;
+          best = which;
+        }
+      });
+      owners.set(hole, best);
+    }
+    return owners.get(hole);
+  };
+  const touching = (one: number, other: number): boolean => {
     const key = `${one}:${other}`;
     let together = joined.get(key);
     if (together === undefined) {
-      together = clearance(drawn[one], drawn[other], steps) <= TOUCHING;
+      together =
+        !misses(lay(drawn[one]).box, lay(drawn[other]).box) &&
+        clearance(drawn[one], drawn[other], steps) <= TOUCHING;
       joined.set(key, together);
     }
     return together;
+  };
+  /*
+   * Ink joined as drawn, one piece to the next: the bowl and the stem of
+   * the a inside Outfit's @ each overlap a third piece, and are one piece of
+   * ink however they cross each other.
+   */
+  let pieceOf: number[] | undefined;
+  const joinedPiece = (which: number): number => {
+    if (!pieceOf) {
+      const found = drawn.map((_, index) => index);
+      const root = (at: number): number => (found[at] === at ? at : root(found[at]));
+      for (let one = 0; one < drawn.length; one++)
+        for (let other = one + 1; other < drawn.length; other++)
+          if (ink?.[one] && ink[other] && touching(one, other)) found[root(one)] = root(other);
+      pieceOf = found.map((_, index) => root(index));
+    }
+    return pieceOf[which];
+  };
+  const inkTogether = (one: number, other: number): boolean => {
+    if (!ink) return false;
+    if (ink[one] !== ink[other]) {
+      const [hole, stroke] = ink[one] ? [other, one] : [one, other];
+      return ownerOf(hole) !== stroke;
+    }
+    return ink[one] && joinedPiece(one) === joinedPiece(other);
   };
   const drawnPairs = new Map<string, Crossing[]>();
   const drawnBetween = (one: number, other: number): Crossing[] => {
@@ -925,30 +974,48 @@ function misses(a: Bounds, b: Bounds): boolean {
 
 /**
  * How close two outlines come: the least distance between them, flattened in
- * `steps` pieces a curve, and nothing if they cross. Every piece of one is
- * measured against every piece of the other that could be nearer than the
- * best found so far.
+ * `steps` pieces a curve, and nothing if they cross.
  */
 export function clearance(one: Contour, other: Contour, steps = 12): number {
+  return closestApproach(one, other, steps).distance;
+}
+
+/**
+ * Where two outlines come closest, and how close: a point on each. Every
+ * piece of one is measured against every piece of the other that could be
+ * nearer than the best found so far; where they cross, nothing apart at the
+ * crossing.
+ */
+export function closestApproach(
+  one: Contour,
+  other: Contour,
+  steps = 12,
+): { distance: number; on: Vec2; off: Vec2 } {
   const a = flattenedLoop(one, steps);
   const b = flattenedLoop(other, steps);
-  if (a.length < 2 || b.length < 2) return Infinity;
+  const none = { distance: Infinity, on: { x: 0, y: 0 }, off: { x: 0, y: 0 } };
+  if (a.length < 2 || b.length < 2) return none;
   const apart = (p: Bounds, q: Bounds) =>
     Math.max(p.xMin - q.xMax, q.xMin - p.xMax, p.yMin - q.yMax, q.yMin - p.yMax, 0);
   const boxesA = a.slice(1).map((point, index) => boundsOf([a[index], point]));
   const boxesB = b.slice(1).map((point, index) => boundsOf([b[index], point]));
-  let best = Infinity;
+  let best = none;
+  const consider = (distance: number, on: Vec2, off: Vec2) => {
+    if (distance < best.distance) best = { distance, on, off };
+  };
   for (let i = 0; i + 1 < a.length; i++)
     for (let j = 0; j + 1 < b.length; j++) {
-      if (apart(boxesA[i], boxesB[j]) >= best) continue;
-      if (crossingOf(a[i], a[i + 1], b[j], b[j + 1])) return 0;
-      best = Math.min(
-        best,
-        towards(a[i], b[j], b[j + 1]),
-        towards(a[i + 1], b[j], b[j + 1]),
-        towards(b[j], a[i], a[i + 1]),
-        towards(b[j + 1], a[i], a[i + 1]),
-      );
+      if (apart(boxesA[i], boxesB[j]) >= best.distance) continue;
+      const hit = crossingOf(a[i], a[i + 1], b[j], b[j + 1]);
+      if (hit) return { distance: 0, on: hit.at, off: hit.at };
+      for (const point of [a[i], a[i + 1]]) {
+        const near = nearestOn(point, b[j], b[j + 1]);
+        consider(distance(point, near), point, near);
+      }
+      for (const point of [b[j], b[j + 1]]) {
+        const near = nearestOn(point, a[i], a[i + 1]);
+        consider(distance(point, near), near, point);
+      }
     }
   return best;
 }
@@ -959,8 +1026,8 @@ function flattenedLoop(contour: Contour, steps: number): Vec2[] {
   return contour.closed && points.length > 0 ? [...points, points[0]] : points;
 }
 
-/** How far a point is from a straight piece. */
-function towards(point: Vec2, from: Vec2, to: Vec2): number {
+/** The nearest place to a point on a straight piece. */
+function nearestOn(point: Vec2, from: Vec2, to: Vec2): Vec2 {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const length = dx * dx + dy * dy;
@@ -968,7 +1035,7 @@ function towards(point: Vec2, from: Vec2, to: Vec2): number {
     length > 0
       ? Math.max(0, Math.min(1, ((point.x - from.x) * dx + (point.y - from.y) * dy) / length))
       : 0;
-  return Math.hypot(from.x + t * dx - point.x, from.y + t * dy - point.y);
+  return { x: from.x + t * dx, y: from.y + t * dy };
 }
 
 /** Even-odd containment test, used to tell counters from outer shapes. */

@@ -211,6 +211,19 @@ A ninth review tested on Lora Bold, a static font that ships its letters in over
 
 On Lora Bold, 300 glyphs at weight 0.06 take 2.7 s, as they did before these guards; with them misfiring it had been 4.5 s.
 
+**Five more fonts.** I then swept five more fonts, all under the SIL Open Font License: Lora Bold, IBM Plex Serif, Work Sans, Crimson Pro and Outfit. Each ran under the same 39 settings, with the independent crossing checks. Everything it found was already there before these rounds, and is now fixed:
+- **Bar and shoulder moves** were still judged with the old six-chord crossing check. Lowering the arch of Lora Bold's ħ and ћ ran its join through the stem, and the shoulder control put a spike on the bulb of its !. They now use the same fine checks, of each outline and each pair, as the other controls.
+- **A handle lying on its own point** came away from it when the heights were put back. It was moved by the field where it stood and held by where it was drawn. At a corner the weight had swallowed onto one spot, that left a half-unit spike, as on Lora Bold's and Plex's heavy ð. Such a handle now stays on its point.
+- **Pieces of one letter drawn apart.** Work Sans draws the upper bowl of its g apart from the foot, and the lift took it for an accent. The circumflex seven units above it touched it when heavy, and crossed it condensed. Pieces drawn overlapping or touching now count as one piece of the letter, standing if any of them does. Whether a piece is above or below another is now judged where the two come closest, not by their boxes: the g's ear rises past the circumflex.
+- **A lift must not bring the moved pieces nearer anything else.** On Outfit's heavy slabbed ¼ and ¾, lifting a piece clear of the 4 took it into the slash.
+- **What the between-contour check ignores.** It now ignores two things the fill doesn't show:
+  - ink joined to ink through a third piece, like the a inside Outfit's @;
+  - a counter against ink other than its own outline, like the stem of the E of Outfit's Œ, drawn touching the O's counter.
+
+  A counter is still checked against its own outline and against the other counters. The sweep's own check follows the same rules.
+
+A last sweep of all eight fonts finds one thing: Crimson Pro's u, heavy and slanted. Four of its points sit on one spot, and the sweep's check, which doesn't merge them, reads rounding after the shear as a crossing. `loopsAnywhere` and the pipeline's own check both find none.
+
 ## Tests
 
 Every fix has a test that fails on the old code and passes now, except those listed under What is left. They are in:
@@ -227,7 +240,7 @@ Three tests use real letters as fixtures, because their faults depend on the let
 
 Two old expectations in `weight.test.ts` described letters growing past the baseline and cap height; they now expect the letter to keep its heights. The middle-space expectations in `counter.test.ts` and `control.test.ts`, which had walls thickening or thinning by the whole change, now expect walls that keep their weight while the letter narrows or widens. The weight engine keeps each contour's point count, and slabs are still separate contours added to the letter.
 
-These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,913 tests.
+These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,917 tests.
 
 ## What is left
 
@@ -247,7 +260,8 @@ These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vite
   - the height correction's check between contours (the § it fixed crossed only with this round's other changes), and its backing off the whole letter together;
   - the eased check's step growing after two steps, and its budget;
   - the spike cleanup's limit of about twice the drawn handle;
-  - the rim retry's signed uncovered area.
+  - the rim retry's signed uncovered area;
+  - the between-contour check ignoring ink joined through a third piece, and a counter against ink other than its own outline (no letter in the eight fonts comes out differently; the sweep's crossings on Outfit's @ and Œ were harmless).
   An independent check of every glyph under every setting confirms none of the outlines cross.
 - **Corner radius** adds points by design, since it rounds corners with new curves.
 - **Heavy counters.** At weight 0.06, Geist's B and R counters shrink to slits. That comes from Geist's own proportions at that weight.

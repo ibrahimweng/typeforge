@@ -15,7 +15,13 @@ import { contourArea, contoursBounds, flattenContour } from "./geometry";
 import { blankGlyph } from "./library";
 import { contoursIntersect } from "./outline";
 import { resolveAdvanceWidth, resolveGlyphContours } from "./transform";
-import { drawn, GEIST_TCARON, gapBetween } from "../../test/outlines";
+import {
+  drawn,
+  GEIST_TCARON,
+  gapBetween,
+  LORA_BOLD_HBAR,
+  loopsAnywhere,
+} from "../../test/outlines";
 import {
   DEFAULT_PARAMS,
   emptyTypeface,
@@ -311,6 +317,20 @@ describe("crossbar", () => {
    * the bar of Geist's t-caron went up until it touched the caron beside the
    * top of the stem, twenty-two units above it as drawn.
    */
+  /*
+   * Regression: the bar and shoulder moves were judged by a crossing check
+   * that samples a curve in six chords, and lowering the arch of Lora
+   * Bold's h-bar, drawn in overlapping pieces, ran the join of the arch
+   * through the stem without it seeing.
+   */
+  it("lowers the arch of an h-bar drawn in pieces without running it through the stem", () => {
+    const { typeface, glyph } = font(drawn(LORA_BOLD_HBAR));
+    glyph.unicodes = [0x127];
+    glyph.advanceWidth = 621;
+    for (const contour of at(typeface, glyph, { shoulder: -80 }))
+      expect(loopsAnywhere(contour)).toBe(false);
+  });
+
   it("stops a raised bar short of a separate piece of ink above it", () => {
     const { typeface, glyph } = font(drawn(GEIST_TCARON));
     glyph.advanceWidth = 399;
