@@ -35,6 +35,7 @@ import {
   contourArea,
   contourSegments,
   crossesItself,
+  crossingsOf,
   cubicAt,
   cubicDerivativeAt,
   FINE_STEPS,
@@ -311,6 +312,14 @@ export function applyWeight(
    * opening every weight keeps.
    */
   whiteKept = 0,
+  /**
+   * A repair the caller makes to what comes back, which the checks below are
+   * asked of: putting back a condensed letter's strokes folds small inside
+   * corners that `unfold` then lays flat, and judged before that, the fold
+   * backed the whole give off. Lora's ¼ and ¾ condensed at the heaviest
+   * weight lost a quarter of their ink.
+   */
+  repair: (trial: Contour) => Contour = (trial) => trial,
 ): Contour {
   const nodes = contour.nodes;
   const count = nodes.length;
@@ -1451,20 +1460,25 @@ export function applyWeight(
    * reads a curve in six chords, and the fold at the thin join of the arch of
    * Geist's r to its stem, a light letter widened, slipped past it.
    */
-  const crossed = (trial: Contour): boolean => crossesItself(trial, FINE_STEPS);
   /*
-   * A letter that already crossed itself before anything moved -- some fonts
-   * ship outlines like that -- has nothing here to preserve on that count,
-   * but still is not turned inside out nor has its counter closed.
+   * Measured against how many times the drawn letter crossed itself, asked
+   * only when it matters: some fonts ship outlines crossing themselves, and
+   * those are kept from crossing any more than they did, not let off.
    */
-  const crossedAlready = crossed(contour);
+  let drawnCrossings: number | undefined;
+  const crossedMore = (trial: Contour): boolean => {
+    if (!crossesItself(trial, FINE_STEPS)) return false;
+    drawnCrossings ??= crossingsOf(contour, FINE_STEPS);
+    return drawnCrossings === 0 || crossingsOf(trial, FINE_STEPS) > drawnCrossings;
+  };
   // The cheap tests first; the crossing is asked of what passes them.
   const intact = (trial: Contour): boolean =>
     // Turned inside out is as broken as crossed: ink become a hole.
     Math.sign(contourArea(trial)) === facingBefore &&
     (leastWidth === 0 || meanWidth(trial) >= leastWidth) &&
-    (crossedAlready || !crossed(trial));
-  const full = build(1);
+    !crossedMore(trial);
+  const built = (by: number): Contour => repair(build(by));
+  const full = built(1);
   if (intact(full)) return full;
   // Otherwise back the whole contour off evenly until it is sound; an even
   // retreat keeps the stroke even.
@@ -1472,10 +1486,10 @@ export function applyWeight(
   let high = 1;
   for (let step = 0; step < BACK_OFF_STEPS; step++) {
     const middle = (low + high) / 2;
-    if (intact(build(middle))) low = middle;
+    if (intact(built(middle))) low = middle;
     else high = middle;
   }
-  return low === 0 ? contour : build(low);
+  return low === 0 ? contour : built(low);
 }
 
 /**

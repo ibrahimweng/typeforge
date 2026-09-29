@@ -15,6 +15,7 @@ import {
   contoursBounds,
   contourArea,
   contourSegments,
+  contoursCross,
   crossesItself,
   cubicAt,
   FINE_STEPS,
@@ -30,7 +31,7 @@ import {
   type Segment,
 } from "./geometry";
 import { resolveComponents } from "./composite";
-import { classifyContours, contoursIntersect } from "./outline";
+import { classifyContours } from "./outline";
 import { shiftCrossbar, shiftShoulders } from "./anatomy";
 import { pixelate } from "./pixel";
 import { addSlabs, weighSlabs } from "./slab";
@@ -363,10 +364,8 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
       const scaled = contoursBounds(contours);
       const narrow = contours;
       contours = contours.map((contour, index) =>
-        unfold(
-          narrow[index],
-          applyWeight(contour, give, index, around, SIDEWAYS, CONDENSED_WHITE),
-          params.slant,
+        applyWeight(contour, give, index, around, SIDEWAYS, CONDENSED_WHITE, (trial) =>
+          unfold(narrow[index], trial, params.slant),
         ),
       );
       /*
@@ -436,6 +435,7 @@ function unfold(drawn: Contour, moved: Contour, slant: number): Contour {
   const count = moved.nodes.length;
   if (drawn.nodes.length !== count || count < 3) return moved;
   const nodes = moved.nodes.map((node) => ({ ...node }));
+  let touched = false;
   const shift = (at: number) => nodes[at].point.x - drawn.nodes[at].point.x;
   const ring = (at: number) => (at + count) % count;
   // Drawn as one point: a corner the weight swallowed, or where the tail of
@@ -445,6 +445,7 @@ function unfold(drawn: Contour, moved: Contour, slant: number): Contour {
     Math.abs(drawn.nodes[a].point.y - drawn.nodes[b].point.y) < 0.5;
   const clustered = (at: number) => coincident(at, ring(at - 1)) || coincident(at, ring(at + 1));
   const take = (at: number, by: number) => {
+    touched = true;
     const along = (point: Vec2 | null): Vec2 | null =>
       point ? { x: point.x + by, y: point.y } : null;
     const node = nodes[at];
@@ -484,14 +485,34 @@ function unfold(drawn: Contour, moved: Contour, slant: number): Contour {
     }
     if (!changed) break;
   }
+  /*
+   * And a piece brought down to nothing takes its handles with it. Two points
+   * laid on one spot with a handle still reaching out between them are a
+   * spike running out and back along itself -- the heavy widened n of Lora
+   * had one where the tail of its arch meets the stem.
+   */
+  for (let index = 0; index < count; index++) {
+    const next = ring(index + 1);
+    const a = nodes[index].point;
+    const b = nodes[next].point;
+    if (Math.hypot(b.x - a.x, b.y - a.y) > 0.5) continue;
+    if (!nodes[index].handleOut && !nodes[next].handleIn) continue;
+    touched = true;
+    nodes[index] = { ...nodes[index], handleOut: nodes[index].handleOut && { ...a } };
+    nodes[next] = { ...nodes[next], handleIn: nodes[next].handleIn && { ...b } };
+  }
+  if (!touched) return moved;
   const result = { closed: moved.closed, nodes };
   /*
-   * Not where it would cross itself, now or once the letter is slanted. On
-   * the crotch of Lora's x it laid three points of a curve on one upright
-   * line, which crosses nothing standing up and crossed itself leaning.
+   * Not where it would cross itself, upright or at the letter's slant. On the
+   * crotch of Lora's x it laid three points of a curve on one upright line,
+   * and the check then in use saw that cross only leaning; leaving a unit of
+   * the drawn direction keeps points off one line, and a shear neither makes
+   * nor unmakes a crossing, so upright and the letter's own slant are all
+   * that is asked.
    */
   const crosses = (contour: Contour) =>
-    [...new Set([0, slant, 15, -15])].some((degrees) =>
+    [...new Set([0, slant])].some((degrees) =>
       crossesItself(degrees === 0 ? contour : applySlant(contour, degrees), FINE_STEPS),
     );
   return crosses(result) && !crosses(moved) ? moved : result;
@@ -1149,7 +1170,7 @@ function keepHeights(
   }));
   // Left squeezed where the field would cross an outline that did not cross.
   return fielded.map((contour, which) =>
-    contoursIntersect([contour]) && !contoursIntersect([squeezed[which]])
+    crossesItself(contour, FINE_STEPS) && !crossesItself(squeezed[which], FINE_STEPS)
       ? squeezed[which]
       : contour,
   );
@@ -1398,7 +1419,9 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
      * rather than piece by piece, which would tear it.
      */
     const crossedBefore = contours.map((other, which) =>
-      which === index ? contoursIntersect([contour]) : contoursIntersect([contour, other]),
+      which === index
+        ? crossesItself(contour, FINE_STEPS)
+        : contoursCross(contour, other, FINE_STEPS),
     );
     // Against the walls where they will not follow; those that do are
     // checked once they have moved, in `followCounters`.
@@ -1407,7 +1430,9 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
       contours.every((other, which) => {
         if (crossedBefore[which]) return true;
         if (which !== index && !alone) return true;
-        return which === index ? !contoursIntersect([trial]) : !contoursIntersect([trial, other]);
+        return which === index
+          ? !crossesItself(trial, FINE_STEPS)
+          : !contoursCross(trial, other, FINE_STEPS);
       });
 
     const full = build(1);
@@ -1589,14 +1614,14 @@ function followCounters(
         const shifts = other.nodes
           .filter((_, at) => runs[at] === run)
           .map((node) => shiftAt(node.point));
-        // The most, where they all go one way; pushed both ways at once, the
-        // most of either would move the wall beside the other by both.
+        // The most, where they all go one way; pushed both ways at once,
+        // halfway between the two pushes, however many points are at each.
         const oneWay = shifts.every((shift) => shift >= 0) || shifts.every((shift) => shift <= 0);
         runShift.set(
           run,
           oneWay
             ? shifts.reduce((most, next) => (Math.abs(next) > Math.abs(most) ? next : most), 0)
-            : shifts.reduce((sum, next) => sum + next, 0) / shifts.length,
+            : (Math.max(...shifts) + Math.min(...shifts)) / 2,
         );
       });
       return {
@@ -1615,11 +1640,17 @@ function followCounters(
       };
     });
   // Not where following would cross an outline, or two, that did not cross.
-  const crosses = (moved: Contour[], from: Contour[]): boolean =>
-    moved.some(
-      (other, which) => crossesItself(other, FINE_STEPS) && !crossesItself(from[which], FINE_STEPS),
-    ) ||
-    (contoursIntersect(moved) && !contoursIntersect(from));
+  const crosses = (moved: Contour[], from: Contour[]): boolean => {
+    if (
+      moved.some(
+        (other, which) =>
+          crossesItself(other, FINE_STEPS) && !crossesItself(from[which], FINE_STEPS),
+      )
+    )
+      return true;
+    const were = new Set(crossingPairs(from));
+    return crossingPairs(moved).some((pair) => !were.has(pair));
+  };
   /*
    * All the counters at once, each moving the ink in its own band. One after
    * another, the two bowls of a B each moved one end of its stem, which is a
@@ -1637,6 +1668,20 @@ function followCounters(
     else result = result.map((other, which) => (which === map.index ? before[which] : other));
   }
   return result;
+}
+
+/**
+ * Which pairs of a letter's contours cross each other, as "i:j". Compared
+ * pair by pair before and after, so a letter whose drawn contours already
+ * overlap -- an unmerged font -- still has a wall driven through another
+ * contour refused.
+ */
+function crossingPairs(contours: Contour[]): string[] {
+  const pairs: string[] = [];
+  for (let one = 0; one < contours.length; one++)
+    for (let other = one + 1; other < contours.length; other++)
+      if (contoursCross(contours[one], contours[other], FINE_STEPS)) pairs.push(`${one}:${other}`);
+  return pairs;
 }
 
 /**
@@ -1807,10 +1852,10 @@ function applyCornerRadius(contour: Contour, radius: number, isOuter = true): Co
    * into the one beside it. A smaller radius on that one contour is the whole
    * of the answer; the letter is never handed back crossed.
    */
-  const was = contoursIntersect([contour]);
+  const was = crossesItself(contour, FINE_STEPS);
   for (const share of [1, 0.5, 0.25]) {
     const rounded = roundCorners(contour, radius * share, isOuter);
-    if (was || !contoursIntersect([rounded])) return rounded;
+    if (was || !crossesItself(rounded, FINE_STEPS)) return rounded;
   }
   return contour;
 }

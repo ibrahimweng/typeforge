@@ -213,7 +213,9 @@ export function unite(
    * boolean given one answers nonsense. A slot cut through the traced `e` came
    * back holding 142% of the area it started with. So a self-crossing outline
    * goes the long way round and comes back resolved, which is what this
-   * function promises. `docs/audit.md` T6 has the measurements.
+   * function promises. `docs/audit.md` T6 has the measurements. A loop tied
+   * inside one curve, or a curve crossing the one beside it, counts too: the
+   * check sees those as well as passes that cross far apart.
    */
   const lapped = drawable.length === 1 && crossesItself(drawable[0]);
   if (drawable.length < 2 && !lapped) {

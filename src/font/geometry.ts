@@ -312,17 +312,30 @@ export const FINE_STEPS = 32;
  *
  * Asked of the curves rather than of a polyline, and asked cheaply: two
  * segments whose control boxes miss each other cannot meet, and on a letter
- * almost every pair misses. Only the survivors are flattened and tested, so an
- * outline that does not double back pays a few hundred rectangle comparisons.
+ * almost every pair misses. Only the survivors are flattened, and of those
+ * only the pieces that reach the other's span are compared.
  *
- * Segments that share an end are skipped. Every contour touches itself there,
- * and a touch is not a crossing.
+ * Each curve is asked of itself too, unless its control points make a convex
+ * outline, which cannot loop: the offset of a curve tighter than the weight
+ * ties a loop inside one piece. And neighbours are compared like any others
+ * but for the two pieces that meet at their shared end -- every contour
+ * touches itself there, and a touch is not a crossing -- since a fold at a
+ * corner crosses the curve beside it away from where they meet.
  *
  * Curves are flattened in `steps` pieces each. Eight is enough for a letter a
  * person drew; the loop a fold or a boolean ties where two curves nearly
  * touch can be a unit across on a long curve, and needs `FINE_STEPS`.
  */
 export function crossesItself(contour: Contour, steps = 8): boolean {
+  return crossingsOf(contour, steps, 1) > 0;
+}
+
+/**
+ * How many times an outline crosses itself, as pieces of its flattened curves
+ * crossing, up to `limit`. What a reshaping compares before and after, where a
+ * letter came in crossing itself already: whether it now crosses more.
+ */
+export function crossingsOf(contour: Contour, steps = 8, limit = Infinity): number {
   /*
    * Without the pieces that go nowhere. A corner the weight swallows leaves
    * its points on one spot, and a piece of no length between two others made
@@ -336,7 +349,7 @@ export function crossesItself(contour: Contour, steps = 8): boolean {
       (point) => Math.hypot(point.x - segment.from.x, point.y - segment.from.y) > 1e-9,
     );
   });
-  if (segments.length === 0) return false;
+  if (segments.length === 0) return 0;
 
   /* The control polygon bounds the curve, which is all a rejection needs. */
   const boxes = segments.map((segment) => {
@@ -367,16 +380,27 @@ export function crossesItself(contour: Contour, steps = 8): boolean {
   };
 
   const count = segments.length;
+  let found = 0;
   /*
    * A curve against itself: the offset of a curve tighter than the weight
    * ties a loop inside the one piece, which nothing else touches.
    */
   for (let one = 0; one < count; one++) {
-    if (segments[one].kind === "line") continue;
+    const segment = segments[one];
+    if (segment.kind === "line") continue;
+    // A curve whose control points make a convex outline cannot loop.
+    const corners = [segment.from, segment.c1, segment.c2, segment.to];
+    const turns = corners.map((point, k) => {
+      const next = corners[(k + 1) % 4];
+      const after = corners[(k + 2) % 4];
+      return (next.x - point.x) * (after.y - next.y) - (next.y - point.y) * (after.x - next.x);
+    });
+    if (turns.every((turn) => turn >= 0) || turns.every((turn) => turn <= 0)) continue;
     const points = flatOf(one);
     for (let i = 0; i + 1 < points.length; i++)
       for (let j = i + 2; j + 1 < points.length; j++)
-        if (crossing(points[i], points[i + 1], points[j], points[j + 1])) return true;
+        if (crossing(points[i], points[i + 1], points[j], points[j + 1]) && ++found >= limit)
+          return found;
   }
   for (let one = 0; one < count; one++) {
     for (let other = one + 1; other < count; other++) {
@@ -391,10 +415,30 @@ export function crossesItself(contour: Contour, steps = 8): boolean {
        */
       const after = other === one + 1;
       const around = contour.closed && one === 0 && other === count - 1;
-      if (meets(flatOf(one), flatOf(other), after, around)) return true;
+      found += meets(flatOf(one), flatOf(other), after, around, limit - found);
+      if (found >= limit) return found;
     }
   }
-  return false;
+  return found;
+}
+
+/**
+ * Whether two outlines cross each other: where the counters' walls follow
+ * them, a wall driven through the next contour. Asked the way
+ * `crossesItself` asks, finely flattened and pruned to the pieces that reach
+ * each other.
+ */
+export function contoursCross(one: Contour, other: Contour, steps = 8): boolean {
+  const a = contoursBounds([one]);
+  const b = contoursBounds([other]);
+  if (a.xMax < b.xMin || b.xMax < a.xMin || a.yMax < b.yMin || b.yMax < a.yMin) return false;
+  return meets(flattenContourClosed(one, steps), flattenContourClosed(other, steps)) > 0;
+}
+
+/** An outline flattened with its last point run back to its first, if closed. */
+function flattenContourClosed(contour: Contour, steps: number): Vec2[] {
+  const points = flattenContour(contour, steps);
+  return contour.closed && points.length > 0 ? [...points, points[0]] : points;
 }
 
 /**
@@ -402,17 +446,35 @@ export function crossesItself(contour: Contour, steps = 8): boolean {
  * when the second begins where the first ends, `around` when the first begins
  * where the second ends; the two pieces that meet there are not compared.
  */
-function meets(one: Vec2[], other: Vec2[], after = false, around = false): boolean {
+function meets(one: Vec2[], other: Vec2[], after = false, around = false, limit = 1): number {
   const last = one.length - 2;
   const end = other.length - 2;
+  // Only the pieces of each that reach the other's span can cross it: by a
+  // shared end, the few nearest it.
+  const box = (points: Vec2[]) => ({
+    xMin: Math.min(...points.map((point) => point.x)),
+    xMax: Math.max(...points.map((point) => point.x)),
+    yMin: Math.min(...points.map((point) => point.y)),
+    yMax: Math.max(...points.map((point) => point.y)),
+  });
+  const within = (a: Vec2, b: Vec2, span: ReturnType<typeof box>) =>
+    Math.max(a.x, b.x) >= span.xMin &&
+    Math.min(a.x, b.x) <= span.xMax &&
+    Math.max(a.y, b.y) >= span.yMin &&
+    Math.min(a.y, b.y) <= span.yMax;
+  const oneSpan = box(one);
+  const otherSpan = box(other);
+  let found = 0;
   for (let i = 0; i + 1 < one.length; i++) {
+    if (!within(one[i], one[i + 1], otherSpan)) continue;
     for (let j = 0; j + 1 < other.length; j++) {
       if (after && i === last && j === 0) continue;
       if (around && i === 0 && j === end) continue;
-      if (crossing(one[i], one[i + 1], other[j], other[j + 1])) return true;
+      if (!within(other[j], other[j + 1], oneSpan)) continue;
+      if (crossing(one[i], one[i + 1], other[j], other[j + 1]) && ++found >= limit) return found;
     }
   }
-  return false;
+  return found;
 }
 
 function crossing(a: Vec2, b: Vec2, c: Vec2, d: Vec2): boolean {

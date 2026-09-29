@@ -9,7 +9,6 @@
  * thousandths of a unit.
  */
 
-import { flattenContour } from "../src/font/geometry";
 import type { Contour, Vec2 } from "../src/font/types";
 
 /** A point with its handles, as a font file gives it. */
@@ -214,15 +213,38 @@ export const LORA_A: Node6[][] = [
 
 /**
  * Whether an outline crosses itself, asked independently of the code under
- * test: the whole outline flattened finely, points on one spot merged, and
- * every piece compared with every piece it does not touch. Slow, and for
- * tests: a check that shares the code it checks cannot see what that code
- * cannot see.
+ * test: its curves evaluated here from the points and handles, flattened
+ * finely, points on one spot merged, and every piece compared with every
+ * piece it does not touch. Slow, and for tests: a check that shares the
+ * code it checks cannot see what that code cannot see.
  */
 export function loopsAnywhere(contour: Contour, steps = 32): boolean {
-  const points = flattenContour(contour, steps).filter(
-    (point, index, all) =>
-      index === 0 || Math.hypot(point.x - all[index - 1].x, point.y - all[index - 1].y) > 1e-6,
+  const nodes = contour.nodes;
+  const spans = contour.closed ? nodes.length : nodes.length - 1;
+  const raw: Vec2[] = nodes.length > 0 ? [nodes[0].point] : [];
+  for (let k = 0; k < spans; k++) {
+    const a = nodes[k];
+    const b = nodes[(k + 1) % nodes.length];
+    if (!a.handleOut && !b.handleIn) {
+      raw.push(b.point);
+      continue;
+    }
+    const p0 = a.point;
+    const p1 = a.handleOut ?? a.point;
+    const p2 = b.handleIn ?? b.point;
+    const p3 = b.point;
+    for (let step = 1; step <= steps; step++) {
+      const t = step / steps;
+      const u = 1 - t;
+      raw.push({
+        x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+        y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
+      });
+    }
+  }
+  const points = raw.filter(
+    (point, index) =>
+      index === 0 || Math.hypot(point.x - raw[index - 1].x, point.y - raw[index - 1].y) > 1e-6,
   );
   if (contour.closed)
     while (
@@ -347,5 +369,34 @@ export const LORA_N_LOWER: Node6[][] = [
     [185, 38, 187, 49.33333333333333, 195.66666666666666, 38.666666666666664],
     [216.5, 39.5, 206.16666666666666, 39.166666666666664, 226.83333333333334, 39.833333333333336],
     [248, 41, 237.33333333333334, 40.333333333333336, null, null],
+  ],
+];
+
+/** The small 4 Lora builds its fractions with, as drawn. */
+export const LORA_FRACTION_FOUR: Node6[][] = [
+  [
+    [308, 305, null, null, null, null],
+    [161, 305, null, null, null, null],
+    [161, 334, null, null, 181.66666666666666, 334.6666666666667],
+    [201, 353.5, 195, 341.1666666666667, 207, 365.8333333333333],
+    [210, 400, 210, 381.3333333333333, null, null],
+    [210, 410, null, null, null, null],
+    [41, 410, null, null, null, null],
+    [41, 440, null, null, null, null],
+    [240, 716, null, null, null, null],
+    [266, 716, null, null, null, null],
+    [267, 447, null, null, null, null],
+    [323, 446, null, null, null, null],
+    [323, 410, null, null, null, null],
+    [267, 410, null, null, 267, 398],
+    [267, 373.5, 267, 385.8333333333333, 267, 361.1666666666667],
+    [267, 337, 267, 349, 274.3333333333333, 337.6666666666667],
+    [288, 338, 281.3333333333333, 338, 294.6666666666667, 338],
+    [308, 339, 301.3333333333333, 338.3333333333333, null, null],
+  ],
+  [
+    [88, 450, null, null, null, null],
+    [210, 448, null, null, null, null],
+    [210, 619, null, null, null, null],
   ],
 ];

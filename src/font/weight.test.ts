@@ -19,7 +19,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { exportFont } from "./export";
-import { contoursBounds, contourSegments, cubicAt, flattenContour } from "./geometry";
+import { contourArea, contoursBounds, contourSegments, cubicAt, flattenContour } from "./geometry";
 import { importFont } from "./parse";
 import { contoursIntersect } from "./outline";
 import {
@@ -27,6 +27,7 @@ import {
   GEIST_N,
   GEIST_R,
   LORA_D_LOWER,
+  LORA_FRACTION_FOUR,
   LORA_N,
   LORA_N_LOWER,
   LORA_U,
@@ -829,5 +830,42 @@ describe("heavy and widened", () => {
         for (const contour of out)
           expect(loopsAnywhere(contour), `${glyph.name} ${weight} ${width}`).toBe(false);
       }
+  });
+});
+
+describe("heavy and condensed", () => {
+  /*
+   * Regression: putting back the strokes of a condensed letter folds small
+   * inside corners that are then laid flat, and the check judged the fold
+   * before that: the whole give was backed off, and the small 4 of Lora's
+   * fractions, condensed at the heaviest weight, came back with none of its
+   * strokes put back -- just its width scaled, a quarter of its ink gone.
+   */
+  it("puts the strokes back on the small 4 of Lora's fractions", () => {
+    const typeface = emptyTypeface();
+    typeface.metrics = { ...typeface.metrics, xHeight: 500, capHeight: 700 };
+    const four = {
+      ...blankGlyph("four.dnom", []),
+      advanceWidth: 403,
+      contours: drawn(LORA_FRACTION_FOUR),
+      params: {},
+    };
+    const n = {
+      ...blankGlyph("n", [0x6e]),
+      advanceWidth: 607,
+      contours: drawn(LORA_N_LOWER),
+      params: {},
+    };
+    typeface.glyphs = [four, n];
+    typeface.glyphIndex = new Map([
+      ["four.dnom", 0],
+      ["n", 1],
+    ]);
+    const ink = (contours: Contour[]) => Math.abs(contourArea(contours[0]));
+    const wide = ink(at(typeface, four, { weight: 60 }));
+    const narrow = at(typeface, four, { weight: 60, width: 0.6 });
+    // Scaled alone it would be 0.6 of it; the strokes put back add a good deal.
+    expect(ink(narrow)).toBeGreaterThan(wide * 0.6 * 1.2);
+    for (const contour of narrow) expect(loopsAnywhere(contour)).toBe(false);
   });
 });

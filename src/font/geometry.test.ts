@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { crossesItself, rayHitDistance } from "./geometry";
 import type { Contour, Vec2 } from "./types";
+import { loopsAnywhere } from "../../test/outlines";
 
 /** A square, wound however; only its edges matter here. */
 const square = (x: number, y: number, size: number): Vec2[] => [
@@ -212,6 +213,32 @@ describe("crossesItself on long and open outlines", () => {
       ],
     );
     expect(crossesItself(looped, 32)).toBe(true);
+  });
+
+  it("finds the last curve crossing the first away from where they meet", () => {
+    // Round the join of the outline: the curve back to the start rises
+    // through the first piece before coming down onto its start.
+    const around: Contour = {
+      closed: true,
+      nodes: [
+        {
+          point: { x: 0, y: 0 },
+          handleIn: { x: 40, y: 60 },
+          handleOut: null,
+          type: "corner" as const,
+        },
+        { point: { x: 100, y: 0 }, handleIn: null, handleOut: null, type: "corner" as const },
+        { point: { x: 100, y: -100 }, handleIn: null, handleOut: null, type: "corner" as const },
+        {
+          point: { x: 50, y: -100 },
+          handleIn: null,
+          handleOut: { x: 50, y: 100 },
+          type: "corner" as const,
+        },
+      ],
+    };
+    expect(loopsAnywhere(around)).toBe(true);
+    expect(crossesItself(around, 32)).toBe(true);
   });
 
   it("finds a curve crossing the piece beside it", () => {
