@@ -2947,12 +2947,23 @@ function spread(f: Frame, share = 0): [number, number] {
 export function grotesqueExclam(style: Style): Recipe {
   const f = frame(style);
   const side = stopRadius(f);
-  const foot = Math.max(up(f, 225), side * 2 + f.half * 0.8);
+  /*
+   * The Sans's stem reaching as far down as Geist's -- to 205 at the Thin
+   * and the Regular, 220, 235 and 242 at the SemiBold, UltraBlack and Black
+   * -- and standing a little right of its dot's middle, 3 or 4 units at the
+   * Regular and the SemiBold. It stopped at 225 on the light weights and
+   * kept a pen's worth over the dot on the heavy ones: 274 at the Black.
+   */
+  const sans = f.style.metrics.xGrows !== undefined;
+  const pastBlack = f.style.pen.weight / f.xOwn > 194 / 530;
+  const knot = (knots: [number, number, number, number, number]) =>
+    pastBlack ? knots[4] : atWeights(f, ...knots);
+  const foot = sans
+    ? Math.max(up(f, knot([205, 205, 220, 235, 242])), side * 2 + f.half * 0.4)
+    : Math.max(up(f, 225), side * 2 + f.half * 0.8);
   const knee = Math.max(up(f, 470), foot + f.half);
-  return finish(f, [
-    ...tapered(f, f.edge, f.cap, knee, foot, 0.69),
-    dot(f, at(f.edge, side), side),
-  ]);
+  const stem = f.edge + (sans ? knot([0.5, 3.5, 3, 2, 1.5]) : 0);
+  return finish(f, [...tapered(f, stem, f.cap, knee, foot, 0.69), dot(f, at(f.edge, side), side)]);
 }
 
 /**

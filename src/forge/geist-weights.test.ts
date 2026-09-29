@@ -163,6 +163,25 @@ describe("the Sans at its Black, against Geist Black", () => {
     }
   });
 
+  it("ends the ! where Geist's does, over a stop of Geist's size", () => {
+    // Geist's stem stops 205 up at the Regular, 235 at the UltraBlack and 242
+    // at the Black; it stopped at 225, 248 and 274. Its full stop is 113
+    // across at the Regular, where it stood 110.
+    for (const [weight, foot] of [
+      [87, 205],
+      [172, 235],
+      [194, 242],
+    ]) {
+      const stem = draw("exclam", weight)
+        .contours.map((contour) => contoursBounds([contour]))
+        .filter((one) => one.yMin > 100);
+      const low = Math.min(...stem.map((one) => one.yMin));
+      expect(Math.abs(low - foot), `! at ${weight}`).toBeLessThan(4);
+    }
+    const stop = box("period", 87);
+    expect(Math.abs(stop.xMax - stop.xMin - 113)).toBeLessThan(2);
+  });
+
   it("carries the 4's bar past its stem", () => {
     for (const weight of [172, 260]) {
       const { contours } = draw("four", weight);

@@ -859,11 +859,14 @@ export const SANS: Style = {
       eight: [0.5, 0.5],
       nine: [0.5, 0.63],
       question: [0.55, 0.55, "closes"],
-      period: [0.59, 0.59, "closes"],
-      comma: [0.59, 0.59, "closes"],
-      colon: [1.15, 1.15, "closes"],
-      semicolon: [1.15, 1.15, "closes"],
-      quotesingle: [0.61, 0.61],
+      // Geist's stops and quote stand 2 to 4 closer than the first fit had
+      // them; its colons 2 to 4 closer again from the SemiBold on, and its
+      // quote closes a little slower than the n toward the Black.
+      period: [0.565, 0.565, "closes"],
+      comma: [0.565, 0.565, "closes"],
+      colon: [1.15, 1.15, "closes", [0, 0], [-4, -2]],
+      semicolon: [1.15, 1.15, "closes", [0, 0], [-4, -2]],
+      quotesingle: [0.57, 0.57, "half", [0, 0], [2, 1]],
       quotedbl: [0.56, 0.56],
       // Geist's parentheses stand 45 off the side they open from and 15 off
       // the side they close on.

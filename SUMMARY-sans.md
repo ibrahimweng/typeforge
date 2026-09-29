@@ -826,6 +826,16 @@ Thin's 120. Its turn was also wider: an outside radius of about 123 to Geist's
 and the foot shortens toward the Thin. The Thin j's misfit went from 0.35 to
 0.03, and its sides and advance now match Geist's to the unit.
 
+**The ! and the stops.** The `!` stem stopped at 225 on the light weights,
+and kept a fixed height over its dot on the heavy ones: 274 at the Black. Geist's
+reaches 205, 220, 235 and 242 from the Regular to the Black, and stands 2 to 4
+units right of its dot's middle. The Sans's does both now, and its misfit went
+from 0.04–0.11 to 0.01–0.03. The square full stop was fitted to an older
+Geist and stood 3 small at the Regular (110 to 113). Its size is now fitted to
+the current one (59, 113, 146, 180), for the Sans only. The . , ' sat 2 to 4
+units loose on both sides, and the : ; 2 to 4 loose from the SemiBold up. All
+of them now sit within 2 units of Geist's at every weight.
+
 ## What still differs from Geist
 
 - **s counters at the Black.** Close to Geist's size and shape now; Geist's

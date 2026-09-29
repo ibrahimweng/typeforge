@@ -1974,9 +1974,12 @@ export function stopRadius(f: Frame): number {
    */
   if (squareDots(f) && !f.style.parts.script.on) {
     const stem = f.half * 2;
-    const base = f.x * 0.0604;
-    const regular = base + 0.893 * Math.min(stem, 86);
-    const across = regular + 0.81 * Math.max(0, stem - 86);
+    // The current Geist's, which the Sans follows: 59, 113, 146 and 180 at
+    // the Thin, Regular, SemiBold and UltraBlack. Its Regular's stood 3 small.
+    const sans = f.style.metrics.xGrows !== undefined;
+    const base = f.x * (sans ? 0.0565 : 0.0604);
+    const regular = base + (sans ? 0.955 : 0.893) * Math.min(stem, 86);
+    const across = regular + (sans ? 0.76 : 0.81) * Math.max(0, stem - 86);
     return Math.min(across / 2, f.x * 0.2);
   }
   /*
