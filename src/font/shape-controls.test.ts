@@ -313,11 +313,6 @@ describe("crossbar", () => {
   });
 
   /*
-   * Regression: a raised bar stopped only where it would cross something, so
-   * the bar of Geist's t-caron went up until it touched the caron beside the
-   * top of the stem, twenty-two units above it as drawn.
-   */
-  /*
    * Regression: the bar and shoulder moves were judged by a crossing check
    * that samples a curve in six chords, and lowering the arch of Lora
    * Bold's h-bar, drawn in overlapping pieces, ran the join of the arch
@@ -331,6 +326,11 @@ describe("crossbar", () => {
       expect(loopsAnywhere(contour)).toBe(false);
   });
 
+  /*
+   * Regression: a raised bar stopped only where it would cross something, so
+   * the bar of Geist's t-caron went up until it touched the caron beside the
+   * top of the stem, twenty-two units above it as drawn.
+   */
   it("stops a raised bar short of a separate piece of ink above it", () => {
     const { typeface, glyph } = font(drawn(GEIST_TCARON));
     glyph.advanceWidth = 399;

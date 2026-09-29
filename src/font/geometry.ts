@@ -441,32 +441,60 @@ export function crossesMoreThan(
  * the first being looked for.
  *
  * Given which contours are ink, two of ink that overlap or touch as drawn
- * are not asked at all: what they fill together is what is drawn, however
- * far into each other they grow. Asked, the bar of an H-bar drawn across
- * its stems, grown into their serifs, read as a new crossing, and the
- * descender of a Cyrillic dzhe drawn standing on the letter's foot could not
- * be moved without one. Nor is a counter against ink other than the outline
- * it is the counter of: where it crosses a stem laid over it, the stem's ink
- * covers the white, as the stem of the E of Outfit's OE, drawn touching the
- * counter of its O, does. A counter is still asked of its own outline, which
- * it must not cut through, and of the other counters.
+ * are not asked: what they fill together is what is drawn, however far
+ * into each other they grow. Asked, the bar of an H-bar drawn across its
+ * stems, grown into their serifs, read as a new crossing, and the descender
+ * of a Cyrillic dzhe drawn standing on the letter's foot could not be moved
+ * without one. Only two that touch each other, though, not two that each
+ * touch a third with white between them -- the bowl and the stem of the a
+ * inside Outfit's @ -- and only as the letter was drawn, `asDrawn`, point
+ * for point, not as a step before this one left it: two pieces the weight
+ * had brought to touching were never asked again, and the caron of Outfit's
+ * t-caron was driven into the t. Nor is a counter asked against ink laid
+ * over it from outside -- the stem of the E of Outfit's OE, drawn touching
+ * the counter of its O, whose ink covers the white -- but it is of its own
+ * outline, of an island of ink standing in it, and of the other counters. A
+ * sharp end hidden inside ink it overlaps is not asked either, and could run
+ * out on its mitre through the far side unrefused.
  */
 export function overlapsMoreThan(
   drawn: Contour[],
   steps = 8,
   layouts: Layouts = new WeakMap(),
   ink?: boolean[],
+  asDrawn: Contour[] = drawn,
+  /** Pairs not asked at all: what the caller sees to itself. */
+  skip?: (one: number, other: number) => boolean,
 ): (trial: Contour[], pairs?: Array<[number, number]>) => boolean {
   const lay = (contour: Contour) => layOf(contour, steps, layouts);
+  const original = (which: number) => (which < asDrawn.length ? asDrawn[which] : drawn[which]);
   const joined = new Map<string, boolean>();
+  const touching = (one: number, other: number): boolean => {
+    const key = `${one}:${other}`;
+    let together = joined.get(key);
+    if (together === undefined) {
+      const a = original(one);
+      const b = original(other);
+      together = !misses(lay(a).box, lay(b).box, TOUCHING) && clearance(a, b, steps) <= TOUCHING;
+      joined.set(key, together);
+    }
+    return together;
+  };
+  // A point inside each contour, off its outline, to ask what it lies in.
+  const insides = new Map<number, Vec2 | null>();
+  const insideOf = (which: number): Vec2 | null => {
+    if (!insides.has(which)) insides.set(which, pointInside(original(which)));
+    return insides.get(which) ?? null;
+  };
   // The outline each counter is the counter of: the smallest ink round it.
   const owners = new Map<number, number | undefined>();
   const ownerOf = (hole: number): number | undefined => {
     if (!owners.has(hole)) {
-      const at = drawn[hole].nodes[0]?.point;
+      const at = insideOf(hole);
       let best: number | undefined;
       let smallest = Infinity;
-      drawn.forEach((contour, which) => {
+      drawn.forEach((_, which) => {
+        const contour = original(which);
         if (!ink?.[which] || !at || !contourContainsPoint(contour, at)) return;
         const size = Math.abs(contourArea(contour));
         if (size < smallest) {
@@ -478,41 +506,15 @@ export function overlapsMoreThan(
     }
     return owners.get(hole);
   };
-  const touching = (one: number, other: number): boolean => {
-    const key = `${one}:${other}`;
-    let together = joined.get(key);
-    if (together === undefined) {
-      together =
-        !misses(lay(drawn[one]).box, lay(drawn[other]).box) &&
-        clearance(drawn[one], drawn[other], steps) <= TOUCHING;
-      joined.set(key, together);
-    }
-    return together;
-  };
-  /*
-   * Ink joined as drawn, one piece to the next: the bowl and the stem of
-   * the a inside Outfit's @ each overlap a third piece, and are one piece of
-   * ink however they cross each other.
-   */
-  let pieceOf: number[] | undefined;
-  const joinedPiece = (which: number): number => {
-    if (!pieceOf) {
-      const found = drawn.map((_, index) => index);
-      const root = (at: number): number => (found[at] === at ? at : root(found[at]));
-      for (let one = 0; one < drawn.length; one++)
-        for (let other = one + 1; other < drawn.length; other++)
-          if (ink?.[one] && ink[other] && touching(one, other)) found[root(one)] = root(other);
-      pieceOf = found.map((_, index) => root(index));
-    }
-    return pieceOf[which];
-  };
   const inkTogether = (one: number, other: number): boolean => {
     if (!ink) return false;
-    if (ink[one] !== ink[other]) {
-      const [hole, stroke] = ink[one] ? [other, one] : [one, other];
-      return ownerOf(hole) !== stroke;
-    }
-    return ink[one] && joinedPiece(one) === joinedPiece(other);
+    if (ink[one] && ink[other]) return touching(one, other);
+    if (!ink[one] && !ink[other]) return false;
+    const [hole, stroke] = ink[one] ? [other, one] : [one, other];
+    if (ownerOf(hole) === stroke) return false;
+    // An island standing in the counter is asked; ink laid over it is not.
+    const at = insideOf(stroke);
+    return !(at && contourContainsPoint(original(hole), at));
   };
   const drawnPairs = new Map<string, Crossing[]>();
   const drawnBetween = (one: number, other: number): Crossing[] => {
@@ -571,7 +573,9 @@ export function overlapsMoreThan(
     for (let one = 0; one < trial.length; one++)
       for (let other = one + 1; other < trial.length; other++) {
         if (trial[one] === drawn[one] && trial[other] === drawn[other]) continue;
-        if (inkTogether(one, other) || !crossesMore(trial, one, other)) continue;
+        if (misses(lay(trial[one]).box, lay(trial[other]).box)) continue;
+        if (inkTogether(one, other) || skip?.(one, other)) continue;
+        if (!crossesMore(trial, one, other)) continue;
         if (!pairs) return true;
         pairs.push([one, other]);
         any = true;
@@ -968,8 +972,11 @@ function union(a: Bounds, b: Bounds): Bounds {
 }
 
 /** Whether two boxes are apart, which two things inside them then are too. */
-function misses(a: Bounds, b: Bounds): boolean {
-  return a.xMax < b.xMin || b.xMax < a.xMin || a.yMax < b.yMin || b.yMax < a.yMin;
+/** Whether two boxes lie more than `by` apart. */
+function misses(a: Bounds, b: Bounds, by = 0): boolean {
+  return (
+    a.xMax + by < b.xMin || b.xMax + by < a.xMin || a.yMax + by < b.yMin || b.yMax + by < a.yMin
+  );
 }
 
 /**
@@ -1018,6 +1025,30 @@ export function closestApproach(
       }
     }
   return best;
+}
+
+/**
+ * A point inside an outline and off it: a unit in from the middle of the
+ * first of its pieces that has one there.
+ */
+export function pointInside(contour: Contour): Vec2 | null {
+  for (const segment of contourSegments(contour)) {
+    const middle =
+      segment.kind === "line"
+        ? lerp(segment.from, segment.to, 0.5)
+        : cubicAt(segment.from, segment.c1, segment.c2, segment.to, 0.5);
+    const ahead =
+      segment.kind === "line"
+        ? sub(segment.to, segment.from)
+        : cubicDerivativeAt(segment.from, segment.c1, segment.c2, segment.to, 0.5);
+    const size = Math.hypot(ahead.x, ahead.y);
+    if (!(size > 1e-9)) continue;
+    for (const side of [1, -1]) {
+      const at = { x: middle.x - (ahead.y / size) * side, y: middle.y + (ahead.x / size) * side };
+      if (contourContainsPoint(contour, at)) return at;
+    }
+  }
+  return null;
 }
 
 /** An outline flattened, back to its first point if it closes. */

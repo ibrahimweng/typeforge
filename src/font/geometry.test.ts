@@ -508,4 +508,66 @@ describe("overlapsMoreThan", () => {
     const bulged = bar({ x: -300, y: 500 }, { x: 600, y: 100 });
     expect(overlapsMoreThan([stem, straight])([stem, bulged])).toBe(true);
   });
+
+  /*
+   * Found in review: a counter was let off against any ink but its own
+   * outline, and an island of ink standing in the counter -- the dot of a
+   * letter drawn inside another -- could be grown through the white round
+   * it and into the ring unasked. Ink laid over the counter from outside, as
+   * the stem of the E of Outfit's OE is over its O, is still let off.
+   */
+  it("refuses an island grown through the counter it stands in", () => {
+    const ring = rect(0, 0, 600, 600);
+    const counter = rect(100, 100, 400, 400);
+    const island = rect(250, 250, 100, 100);
+    const roles = [true, false, true];
+    const asked = overlapsMoreThan([ring, counter, island], 8, new WeakMap(), roles);
+    expect(asked([ring, counter, rect(200, 250, 350, 100)])).toBe(true);
+    const over = rect(-50, 200, 200, 100);
+    const laid = overlapsMoreThan([ring, counter, over], 8, new WeakMap(), roles);
+    expect(laid([ring, counter, rect(-50, 200, 250, 100)])).toBe(false);
+  });
+
+  /*
+   * Found in review: the outline a counter belongs to was found from its
+   * first point, which in a font drawn in overlapping pieces can sit inside
+   * a stem laid over the bowl, and the counter was then let off against its
+   * own bowl and could be pushed out through it.
+   */
+  it("finds the outline a counter belongs to from inside it, not from a point on it", () => {
+    const bowl = rect(0, 0, 400, 400);
+    const counter = rect(100, 100, 200, 200);
+    const stem = rect(50, 50, 100, 450);
+    const asked = overlapsMoreThan([bowl, counter, stem], 8, new WeakMap(), [true, false, true]);
+    expect(asked([bowl, rect(100, 100, 350, 200), stem])).toBe(true);
+  });
+
+  /*
+   * Found in review: ink was joined piece to piece, so two stems that each
+   * overlap a foot bar, with white between them, counted as one piece and
+   * one could be grown through the other.
+   */
+  it("refuses a stem grown through another that only a third joins it to", () => {
+    const bar = rect(0, 0, 500, 50);
+    const left = rect(50, 20, 100, 400);
+    const right = rect(350, 30, 100, 450);
+    const asked = overlapsMoreThan([bar, left, right], 8, new WeakMap(), [true, true, true]);
+    expect(asked([bar, rect(50, 20, 350, 400), right])).toBe(true);
+  });
+
+  /*
+   * Found in review: two pieces were let off if they touched in the outlines
+   * the check was given, so two a step before this had brought to touching
+   * -- the caron of Outfit's t-caron, weighed against the t -- were never
+   * asked again, and could be driven into each other. They are let off only
+   * if they touched as the letter was drawn.
+   */
+  it("asks two pieces an earlier step brought to touching as they were drawn", () => {
+    const stem = rect(0, 0, 100, 500);
+    const drawn = [stem, rect(200, 100, 200, 300)];
+    const brought = [stem, rect(100.3, 100, 199.7, 300)];
+    const crossed = [stem, rect(50, 100, 250, 300)];
+    expect(overlapsMoreThan(brought, 8, new WeakMap(), [true, true])(crossed)).toBe(false);
+    expect(overlapsMoreThan(brought, 8, new WeakMap(), [true, true], drawn)(crossed)).toBe(true);
+  });
 });

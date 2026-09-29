@@ -1069,7 +1069,27 @@ export function applyWeight(
       if (!pair) return;
       const a = out[pair.seg].point;
       const b = out[(pair.seg + 1) % count].point;
-      let direction = normalize(sub(b, a));
+      /*
+       * Turned as far as the leaned side turned, not laid parallel to it: the
+       * two sides of a wedge are not drawn parallel. Laid parallel to the
+       * sloped underside of a serif of Crimson Pro's Y, its flat top tilted
+       * and stood sixty units over the cap height. And not by a side the
+       * weight all but swallowed, whose direction says nothing: the underside
+       * of a top serif of Lora Bold's v, brought from sixty units to six,
+       * tilted the top ten degrees.
+       */
+      if (distance(a, b) < lengths[pair.seg] * 0.5) return;
+      const drawnLean = lineDirection(pair.seg);
+      const nowLean = normalize(sub(b, a));
+      const turn = Math.atan2(
+        cross(drawnLean, nowLean),
+        drawnLean.x * nowLean.x + drawnLean.y * nowLean.y,
+      );
+      const partnerWas = lineDirection(pair.partner);
+      let direction = {
+        x: partnerWas.x * Math.cos(turn) - partnerWas.y * Math.sin(turn),
+        y: partnerWas.x * Math.sin(turn) + partnerWas.y * Math.cos(turn),
+      };
       /*
        * Both sides of the stroke held in, at opposite ends -- the diagonal of
        * an M, held at the stem at the top and at the point at the bottom.

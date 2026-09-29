@@ -18,18 +18,26 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
+import { applyWeight } from "./embolden";
 import { exportFont } from "./export";
 import { contourArea, contoursBounds, contourSegments, cubicAt, flattenContour } from "./geometry";
 import { importFont } from "./parse";
-import { contoursIntersect } from "./outline";
+import { classifyContours, contoursIntersect } from "./outline";
 import {
+  CRIMSON_FOUR,
+  CRIMSON_Y,
   crossEachOther,
   drawn,
   gapBetween,
   LORA_BOLD_DZHE,
   LORA_BOLD_ETH,
   LORA_BOLD_O_HOOK,
+  LORA_BOLD_A_ACUTE,
+  LORA_BOLD_H_CIRCUMFLEX,
   LORA_BOLD_R_COMMA,
+  LORA_BOLD_T_CARON,
+  LORA_BOLD_V,
+  OUTFIT_N,
   OUTFIT_ONE_QUARTER,
   WORK_SANS_G_CIRCUMFLEX,
   GEIST_DE,
@@ -954,6 +962,40 @@ describe("heaviest, a piece of ink standing above another", () => {
       expect(Math.min(...bottom.nodes.map((node) => node.point.y))).toBeCloseTo(0, 0);
     }
   });
+
+  /*
+   * Found in review: kept clear only of what stands on the baseline, a
+   * piece over another that floats too -- a raised ≥, the bars of a =, one
+   * accent over another -- was kept clear of nothing, and the chevron came
+   * down onto the bar.
+   */
+  it("keeps a piece clear of another under it when neither stands on the baseline", () => {
+    const up = (contour: Contour): Contour => ({
+      closed: true,
+      nodes: contour.nodes.map((node) => ({
+        ...node,
+        point: { ...node.point, y: node.point.y + 40 },
+      })),
+    });
+    const chevron = polygon([
+      [504, 276],
+      [50, 112],
+      [50, 196],
+      [434, 329],
+      [50, 462],
+      [50, 546],
+      [504, 382],
+    ]);
+    const bar = polygon([
+      [504, 0],
+      [50, 0],
+      [50, 74],
+      [504, 74],
+    ]);
+    const { typeface, glyph } = letter([up(chevron), up(bar)], 544);
+    const [top, bottom] = at(typeface, glyph, { weight: 60 });
+    expect(gapBetween(top, bottom)).toBeGreaterThan(17);
+  });
 });
 
 describe("a font drawn in overlapping pieces", () => {
@@ -1017,16 +1059,16 @@ describe("a font drawn in overlapping pieces", () => {
     const { typeface, glyph } = lora(drawn(LORA_BOLD_R_COMMA), 686);
     const [outline, counter] = at(typeface, glyph, { weight: 60 });
     expect(contoursBounds([outline]).yMin).toBeCloseTo(0, 0);
-    const drawnCounter = contoursBounds([drawn(LORA_BOLD_R_COMMA)[1]]);
-    // The counter moved as much as the outline did, which is not at all.
-    expect(contoursBounds([counter]).yMin).toBeGreaterThan(drawnCounter.yMin - 1);
+    // And its counter goes with it: against the R drawn alone, each is
+    // where it would be, not one lifted off the other.
+    const alone = lora(drawn(LORA_BOLD_R_COMMA).slice(0, 2), 686);
+    const [aloneOutline, aloneCounter] = at(alone.typeface, alone.glyph, { weight: 60 });
+    const risen = (one: Contour, other: Contour) =>
+      contoursBounds([one]).yMin - contoursBounds([other]).yMin;
+    expect(Math.abs(risen(outline, aloneOutline))).toBeLessThan(1);
+    expect(Math.abs(risen(counter, aloneCounter))).toBeLessThan(1);
   });
 
-  /*
-   * Regression: one accent lifted clear of the letter left the one beside
-   * it where it was, and the circumflex of Lora Bold's O with a circumflex
-   * and a hook, condensed and heavy, came within three units of the hook.
-   */
   /*
    * Regression: the height correction moved a handle by the field where the
    * handle stood and held it by where it was drawn, so a handle lying on
@@ -1064,13 +1106,228 @@ describe("a font drawn in overlapping pieces", () => {
     const made = letter(drawn(OUTFIT_ONE_QUARTER), 676);
     made.typeface.metrics = { ...made.typeface.metrics, xHeight: 475, capHeight: 694 };
     const out = at(made.typeface, made.glyph, { weight: 60, slab: 100 });
-    for (const piece of [4, 5])
-      expect(crossEachOther(out[0], out[piece]), `0:${piece}`).toBe(false);
+    // None of the letter's separate pieces crosses another. (Its slabs, on
+    // numerals this small, still meet each other: see the summary.)
+    const pieces = drawn(OUTFIT_ONE_QUARTER);
+    for (let one = 0; one < pieces.length; one++)
+      for (let other = one + 1; other < pieces.length; other++)
+        if (gapBetween(pieces[one], pieces[other]) > 0.5)
+          expect(crossEachOther(out[one], out[other]), `${one}:${other}`).toBe(false);
   });
 
+  /*
+   * Regression: one accent lifted clear of the letter left the one beside
+   * it where it was, and the circumflex of Lora Bold's O with a circumflex
+   * and a hook, condensed and heavy, came within three units of the hook.
+   */
   it("lifts accents side by side together", () => {
     const { typeface, glyph } = lora(drawn(LORA_BOLD_O_HOOK), 769);
     const out = at(typeface, glyph, { weight: 40, width: 0.6 });
     expect(gapBetween(out[2], out[3])).toBeGreaterThan(10);
+  });
+});
+
+describe("heaviest, sharp corners at an edge", () => {
+  const drawnTo = (
+    contours: Contour[],
+    em: number,
+    [capHeight, xHeight]: [number, number],
+    advance: number,
+  ) => {
+    const made = letter(contours, advance);
+    made.typeface.unitsPerEm = em;
+    made.typeface.metrics = { ...made.typeface.metrics, capHeight, xHeight };
+    return made;
+  };
+  const heights = (contours: Contour[]) => {
+    const { yMin, yMax } = contoursBounds(contours);
+    return { yMin, yMax };
+  };
+
+  /*
+   * Regression: the tips of the diagonal of Outfit's N, drawn inside the top
+   * of one stem and the foot of the other, ran out along their mitres, and
+   * the height correction brought them back only by the weight: they stood
+   * a hundred units over the cap height and under the baseline.
+   */
+  it("keeps the hidden tips of a diagonal inside the stems they end in", () => {
+    const { typeface, glyph } = drawnTo(drawn(OUTFIT_N), 1000, [694, 475], 710);
+    const { yMin, yMax } = heights(at(typeface, glyph, { weight: 60 }));
+    expect(yMax).toBeLessThan(694 + 2);
+    expect(yMin).toBeGreaterThan(-2);
+  });
+
+  /*
+   * Regression: condensed, the strokes are given back sideways after the
+   * heights are put back, and that ran the same tips up and down their
+   * mitres again.
+   */
+  it("keeps them there condensed", () => {
+    const { typeface, glyph } = drawnTo(drawn(OUTFIT_N), 1000, [694, 475], 710);
+    const { yMin, yMax } = heights(at(typeface, glyph, { weight: 60, width: 0.6 }));
+    expect(yMax).toBeLessThan(694 + 2);
+    expect(yMin).toBeGreaterThan(-2);
+  });
+
+  /*
+   * Regression: a straight side held in at a corner turned its stroke's
+   * other side to lie parallel to it, and the two sides of a wedge serif are
+   * not drawn parallel: the flat top of a serif of Crimson Pro's Y was
+   * turned to lie along its sloped underside and stood sixty units over the
+   * cap height.
+   */
+  it("keeps the flat top of a wedge serif flat", () => {
+    const { typeface, glyph } = drawnTo(drawn(CRIMSON_Y), 1024, [587, 430], 541);
+    const { yMax } = heights(at(typeface, glyph, { weight: 61.44 }));
+    expect(yMax).toBeLessThan(587 + 8);
+  });
+
+  /*
+   * The weight itself, before any height is put back: each serif's flat top
+   * runs out by about the weight, and by no more than a mitre.
+   */
+  const weighedAlone = (contours: Contour[], em: number, weight: number) => {
+    const around = {
+      obstacles: contours.map((contour) => flattenContour(contour, 12)),
+      roles: classifyContours(contours),
+      unitsPerEm: em,
+    };
+    return contours.map((contour, which) => applyWeight(contour, weight, which, around));
+  };
+
+  it("turns a serif's flat top only as far as the side it follows turned", () => {
+    const [y] = weighedAlone(drawn(CRIMSON_Y), 1024, 61.44);
+    // The top-left corner of the right arm's serif, drawn at the cap height.
+    expect(y.nodes[30].point.y).toBeLessThan(587 + 61.44 + 12);
+  });
+
+  it("does not turn a serif's top after a side the weight swallowed", () => {
+    const [v] = weighedAlone(drawn(LORA_BOLD_V), 1000, 60);
+    // The top-left corner of the right arm's serif, drawn at the x-height.
+    expect(v.nodes[23].point.y).toBeLessThan(500 + 60 + 8);
+  });
+
+  /*
+   * Regression: turned to follow a side the weight had all but swallowed,
+   * the flat top of a serif on Lora Bold's v followed the direction of a
+   * sliver six units long and tilted ten degrees.
+   */
+  it("does not turn a side after one the weight swallowed", () => {
+    const { typeface, glyph } = drawnTo(drawn(LORA_BOLD_V), 1000, [700, 500], 538);
+    glyph.unicodes = [0x76];
+    const { yMax } = heights(at(typeface, glyph, { weight: 60 }));
+    expect(yMax).toBeLessThan(500 + 8);
+  });
+
+  /*
+   * Regression: where the weight could not move a contour at all -- Crimson
+   * Pro's 4, one contour crossing itself, for now -- the heights were still
+   * put back by the weight it would have grown, and the 4 came out fifty
+   * units shorter at each end than it is drawn.
+   */
+  it("does not squeeze a letter the weight could not move", () => {
+    const { typeface, glyph } = drawnTo(drawn(CRIMSON_FOUR), 1024, [587, 430], 523);
+    const { yMin, yMax } = heights(at(typeface, glyph, { weight: 61.44 }));
+    const was = heights(drawn(CRIMSON_FOUR));
+    expect(yMax).toBeGreaterThan(was.yMax - 1);
+    expect(yMin).toBeLessThan(was.yMin + 1);
+  });
+});
+
+describe("heaviest, pieces side by side", () => {
+  /*
+   * Regression: two pieces of ink drawn apart side by side were only kept
+   * from crossing, not given any of their white: the slash and the four of
+   * Outfit's one quarter, heavy and condensed, came within a fifth of a unit
+   * of each other. They keep the share a piece over another does.
+   */
+  it("keeps white between two pieces standing side by side", () => {
+    const made = letter(drawn(OUTFIT_ONE_QUARTER), 676);
+    made.typeface.metrics = { ...made.typeface.metrics, xHeight: 475, capHeight: 694 };
+    const out = at(made.typeface, made.glyph, { weight: 60, width: 0.6 });
+    // The slash and the diagonal of the four, both standing on the baseline.
+    expect(gapBetween(out[0], out[4])).toBeGreaterThan(17);
+  });
+
+  /*
+   * Regression: the heights were let cross a floating piece into the
+   * letter, for it to be lifted clear afterwards -- but only a piece over
+   * another is lifted, and the caron of Lora Bold's t-caron stands beside
+   * the top of the stem: brought down with the letter, it went into it.
+   */
+  it("keeps a caron beside the stem out of it", () => {
+    const made = letter(drawn(LORA_BOLD_T_CARON), 400);
+    made.glyph.unicodes = [0x165];
+    made.typeface.metrics = { ...made.typeface.metrics, xHeight: 500, capHeight: 700 };
+    const [caron, t] = at(made.typeface, made.glyph, { weight: 60 });
+    expect(crossEachOther(caron, t)).toBe(false);
+    expect(gapBetween(caron, t)).toBeGreaterThan(10);
+  });
+});
+
+describe("heaviest, a letter under an accent", () => {
+  const lora = (contours: Contour[], advance: number) => {
+    const made = letter(contours, advance);
+    made.typeface.metrics = { ...made.typeface.metrics, xHeight: 500, capHeight: 700 };
+    return made;
+  };
+  // How far each of the letter's own contours ends from where the same
+  // contours end drawn alone, at its top and at its bottom.
+  const apart = (accented: Contour[][], alone: Contour[][]) =>
+    accented.map((contours, which) => {
+      const [one, other] = [contoursBounds(contours), contoursBounds(alone[which])];
+      return Math.max(Math.abs(one.yMax - other.yMax), Math.abs(one.yMin - other.yMin));
+    });
+
+  /*
+   * Regression: the heights were put back only at the lines the whole
+   * letter was drawn to, and with an accent over it the top of an ascender
+   * is none of them: the circumflex of Lora Bold's h kept its ascender from
+   * growing, the ascender was brought down by all that the circumflex had
+   * grown, and stood fifty-four units short of the h drawn alone.
+   */
+  it("keeps an ascender under an accent as high as the letter alone", () => {
+    const { typeface, glyph } = lora(drawn(LORA_BOLD_H_CIRCUMFLEX), 621);
+    const out = at(typeface, glyph, { weight: 60 });
+    const alone = lora(drawn(LORA_BOLD_H_CIRCUMFLEX).slice(0, 1), 621);
+    const [h] = at(alone.typeface, alone.glyph, { weight: 60 });
+    expect(apart([[out[0]]], [[h]])[0]).toBeLessThan(1);
+  });
+
+  /*
+   * Regression: an edge the accent over it kept from growing did not move,
+   * and was left out of what the edge was taken to have moved; with nothing
+   * else on the line the weight was assumed, and the A of Lora Bold's Á
+   * came down fifty-four units short of its height.
+   */
+  it("keeps a top the accent held back where the letter alone has it", () => {
+    const { typeface, glyph } = lora(drawn(LORA_BOLD_A_ACUTE), 668);
+    const out = at(typeface, glyph, { weight: 60 });
+    const alone = lora(drawn(LORA_BOLD_A_ACUTE).slice(0, 2), 668);
+    const a = at(alone.typeface, alone.glyph, { weight: 60 });
+    expect(Math.max(...apart([[out[0]], [out[1]]], [[a[0]], [a[1]]]))).toBeLessThan(5);
+  });
+
+  /*
+   * Regression: a floating piece moved clear of another before the heights
+   * were put back had the move taken for weight, and the whole letter was
+   * brought down by it: the one of Outfit's heavy one quarter, lifted off
+   * the slash, took the top half of the slash sixty units under where it was
+   * drawn. Lifted afterwards instead, the one rose seventy units over the
+   * cap height it is drawn to; it keeps to it, and gives up height from
+   * below.
+   */
+  it("keeps a piece drawn to the cap height on it, clear of what is under it", () => {
+    const made = letter(drawn(OUTFIT_ONE_QUARTER), 676);
+    made.typeface.metrics = { ...made.typeface.metrics, xHeight: 475, capHeight: 694 };
+    const out = at(made.typeface, made.glyph, { weight: 60 });
+    const top = (contours: Contour[]) => contoursBounds(contours).yMax;
+    // The top half of the slash, drawn to 712, only grows.
+    expect(top([out[1]])).toBeGreaterThan(712 - 1);
+    expect(top([out[1]])).toBeLessThan(712 + 15);
+    // The one, drawn to the cap height, stays on it...
+    expect(top([out[2], out[3]])).toBeCloseTo(694, 0);
+    // ...and clear of the slash under it.
+    expect(gapBetween(out[0], out[2])).toBeGreaterThan(17);
   });
 });
