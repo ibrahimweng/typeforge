@@ -544,3 +544,32 @@ describe("the high hand-over at a heavy weight", () => {
     }
   });
 });
+
+describe("the e set in a word at a heavy weight", () => {
+  /*
+   * Its eye open by a fortieth of an x-height squared at the least. The bar
+   * of the written `e` was drawn at join weight and the Roundhand's plain one
+   * at the full stem's, and at 260 each filled the eye to a slit: a hundredth
+   * of an x-height squared on the Roundhand, not much more on the Monoline.
+   */
+  it("keeps its eye open", () => {
+    const shut: string[] = [];
+    for (const name of JOINED) {
+      const own = base(name);
+      for (const weight of [200, 260]) {
+        const style = at(own, weight);
+        const drawn = drawLetter("e", style, own.forms?.e)!;
+        const eye = Math.max(
+          0,
+          ...unite(drawn.contours, "winding")
+            .map((contour) => -contourArea(contour))
+            .filter((area) => area > 0),
+        );
+        const x = style.metrics.xHeight;
+        if (eye < x * x * 0.025)
+          shut.push(`${name} @${weight}: ${((eye / (x * x)) * 100).toFixed(1)}%`);
+      }
+    }
+    expect(shut).toEqual([]);
+  });
+});

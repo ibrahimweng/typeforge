@@ -3,7 +3,7 @@ import { joinWeight, LETTERS, writtenLead } from "../letters";
 import { seamsOf } from "../script";
 import { alongSpine, bowlBetween, bowlPoint, roundCorners, spineEnd, spineStart } from "../shapes";
 import { penReach, reachAlong } from "../sweep";
-import { scriptUnit, type Style } from "../style";
+import { blackness, scriptUnit, type Style } from "../style";
 import type { Spine, Stroke } from "../types";
 import {
   grotesqueA,
@@ -521,7 +521,14 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
       build: (style) => {
         const f = frame(style);
         const centre = at(f.edge + f.bowl, f.x / 2);
-        const eye = eyeOf(f, centre);
+        /*
+         * The rising bar at join weight, and lighter again as the pen gets
+         * heavy: a hairline across a Black. At the weight of a join it filled
+         * the eye of the e at 260, leaving a slit. And the eye placed for the
+         * bar it has, not for a crossbar of the face's own weight.
+         */
+        const barShare = joinWeight(style) * (1 - 0.8 * Math.min(1, blackness(style)));
+        const eye = eyeOf({ ...f, bar: barShare }, centre);
         const rise = Math.max(-0.85, Math.min(0.85, (eye - centre.y) / f.bowlH));
         const opens = (Math.asin(rise) * 180) / Math.PI;
         /*
@@ -566,7 +573,7 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
                */
               lighter(
                 ink(f, bowed(f, start, spineStart(belt), 0.06), f.end, BUTT),
-                joinWeight(style),
+                barShare,
               ),
               ink(f, belt, BUTT, f.end),
             ],

@@ -3045,6 +3045,12 @@ export const ROUNDHAND: Style = {
     f: "descending",
     // Hands on from its arm; see the written `r`.
     r: "written",
+    /*
+     * And the written `e`, whose rising bar goes lighter as the pen gets
+     * heavy. The plain one's bar is the stem's own weight, and from the Bold
+     * up it filled the eye: at 260 a hundredth of an x-height squared.
+     */
+    e: "written",
   },
   parts: {
     ...PLAIN.parts,
