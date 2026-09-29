@@ -327,6 +327,11 @@ Geist Thin's is. That took a fifth off its misfit. The width a heavy s gains
 is held back from the UltraBlack on. Both now sit within 1 unit of Geist's
 width.
 
+**The v's vertex.** Geist's v is a twentieth lighter at the Regular, and
+from the UltraBlack on its vertex's feet stand half as far apart: 10 up at
+the Black it runs 215-442, where Draw's ran 202-456. That halved the v's
+misfit at the Regular and took two fifths off the Black's.
+
 **The w's strokes.** Geist's w is drawn a twentieth lighter than its pen
 from the Regular on, and each vertex's feet close up with the weight until
 they meet at the UltraBlack. On the full pen, with its feet apart, Draw's

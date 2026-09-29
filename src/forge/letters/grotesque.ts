@@ -4409,16 +4409,31 @@ interface Vee {
   gap: [number, number];
 }
 
-function vee(f: Frame, u: number, t: number, v: Vee, free: number, meet: number): Stroke[] {
+function vee(
+  f: Frame,
+  u: number,
+  t: number,
+  v: Vee,
+  free: number,
+  meet: number,
+  // Its strokes' weight against the pen, and its vertex's feet against the
+  // face's, where the letter asks for its own.
+  weight = 1,
+  gap = 1,
+): Stroke[] {
   const lerp = (pair: [number, number]) => pair[0] + (pair[1] - pair[0]) * Math.min(t, 1.5);
   // From the ink to the spine by Geist's own half-pen, so a lighter weight
   // keeps Geist's skeleton rather than its ink.
   const X = (x: number) => f.edge + (x - lerp([43, 86])) * u;
   const middle = X(lerp(v.vertex));
-  const apart = (f.half * lerp(v.gap)) / 2;
+  const apart = ((f.half * lerp(v.gap)) / 2) * gap;
+  const light = (one: Stroke): Stroke =>
+    weight === 1
+      ? one
+      : inherit(one, { ...one, pen: { ...one.pen, weight: one.pen.weight * weight } });
   return [
-    ink(f, straight(at(X(lerp(v.ends[0])), free), at(middle - apart, meet)), LEVEL, LEVEL),
-    ink(f, straight(at(X(lerp(v.ends[1])), free), at(middle + apart, meet)), LEVEL, LEVEL),
+    light(ink(f, straight(at(X(lerp(v.ends[0])), free), at(middle - apart, meet)), LEVEL, LEVEL)),
+    light(ink(f, straight(at(X(lerp(v.ends[1])), free), at(middle + apart, meet)), LEVEL, LEVEL)),
   ];
 }
 
@@ -4430,6 +4445,7 @@ function smallSpread(f: Frame, share = 0): [number, number] {
 
 export function grotesqueV(style: Style): Recipe {
   const f = frame(style);
+  const sans = f.style.metrics.xGrows !== undefined;
   const [wide, t] = smallSpread(f, 0.5);
   const u = wide * thinned(f, 0.048);
   return finish(
@@ -4448,6 +4464,14 @@ export function grotesqueV(style: Style): Recipe {
       },
       f.x,
       0,
+      /*
+       * The Sans's strokes a twentieth lighter at the Regular and its
+       * vertex's feet half as far apart from the UltraBlack on, as Geist's
+       * are: that halved the v's misfit at the Regular and took two fifths
+       * off the Black's.
+       */
+      sans ? atWeights(f, 1, 0.95, 1, 1, 1) : 1,
+      sans ? Math.max(0.5, atWeights(f, 1, 1, 1, 0.5, 0.5)) : 1,
     ),
   );
 }

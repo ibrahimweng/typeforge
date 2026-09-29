@@ -1719,3 +1719,13 @@ describe("the w's strokes", () => {
     expect(Math.abs(run[0][1] - 235)).toBeLessThan(6);
   });
 });
+
+describe("the v's vertex", () => {
+  it("is as narrow as Geist's at the Black", () => {
+    // 10 up Geist Black's v runs from 215 to 442; its feet as far apart as
+    // the face's left it running 202-456.
+    const [left, right] = filled(draw("v", 194).contours, 10)[0];
+    expect(Math.abs(left - 215)).toBeLessThan(5);
+    expect(Math.abs(right - 442)).toBeLessThan(5);
+  });
+});
