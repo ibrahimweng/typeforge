@@ -158,6 +158,14 @@ each as it was are in `docs/polish/script/problems/`.
 - **The tests** now draw every fifth weight and the weights where folds were
   found, capitals included, and export all five joined faces as variable
   fonts.
+- **Printed capitals.** B D E F H I K L M N P R T U V W X Y Z have a written
+  form on the joined faces: the drawn capital entered with a hairline swash
+  that lands half a pen into its first stroke. The round capitals keep their
+  own curves, and the G and the J are left out because their first stroke
+  starts at the top left at some weights and not at others.
+- **Loop tips on a broad nib.** The eye's end is set down inside its stem by
+  about its own half-width, so the head of a looped letter is the nib's own
+  cut rather than a small horn beside it.
 
 ## Results
 
@@ -183,20 +191,14 @@ on the old code. `npx tsc -b --noEmit`, `npx biome check .` and
 
 ## What remains
 
-- **Capitals on the joined faces are print capitals.** They lean and join
-  onward, but they are the Sans's letters. Written capitals would be a new set
-  of 26 drawings, which is a design project rather than a fault, and the
-  capital recipes are shared with the other faces.
 - **Heavy scripts are squat.** A 260 pen on a 332 to 420 unit x-height is a
   stem of two thirds of the x-height or more. Every counter is open and every
-  join is clean, but the faces read as a heavy display script there. The
-  Roundhand's bowls keep a fifth of an x-height squared of counter at 260,
-  about half what the other joined faces keep.
-- **Nib-pen loop tips.** On the Handwriting and the Casual Script the eye's
-  round end stands 2 to 4 units past the corner of the stem's flat top, under
-  1% of the x-height and invisible at text size. A square end was tried and
-  is worse on the Roundhand, whose round end fills the nick at the foot of
-  every loop.
+  join is clean, but the faces read as a heavy display script there. Measured
+  in units, the counters at 260 are 35,000 to 53,000 square units on every
+  joined face, all about 160 units tall: the x-height less the pen.
+- **Round capitals.** The C, G, J, O, Q and S on the joined faces are the
+  drawn capitals, leaning; they have curves of their own rather than a stroke
+  to enter by.
 - **Node counts without the exporter's book.** Node counts are equal across
   weights through the export path, which is what a variable font uses. A
   letter drawn at an arbitrary slider weight without the book can still bow a
