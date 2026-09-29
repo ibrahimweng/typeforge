@@ -1791,6 +1791,23 @@ export function markBox(f: Frame): MarkBox {
   return { cx: f.edge + w, w, foot, top: foot + Math.min(height, w * 1.7) };
 }
 
+/**
+ * How tall a square dot is against its width at this weight: see
+ * `metrics.dotAspect`. One on every face that leaves it out.
+ */
+function dotAspect(style: Style): number {
+  const aspect = style.metrics.dotAspect;
+  if (!aspect) return 1;
+  const held = style.metrics.lightHeld;
+  const light =
+    held && style.pen.weight < held.from
+      ? Math.min(1, (held.from - style.pen.weight) / (held.from - 30))
+      : 0;
+  if (light > 0) return 1 + (aspect.thin - 1) * light;
+  const heavy = Math.min(1, Math.max(0, blackness(style) / aspect.at));
+  return 1 + (aspect.black - 1) * heavy;
+}
+
 export function dot(frame: Frame, centre: Vec2, radius: number): Stroke {
   /*
    * On a face that cuts its ends level the dots are cut level too: square,
@@ -1798,8 +1815,14 @@ export function dot(frame: Frame, centre: Vec2, radius: number): Stroke {
    * letter.
    */
   if (squareDots(frame)) {
+    /*
+     * As tall against its width as the face's own (`metrics.dotAspect`): a
+     * dot on the line keeps its foot there, one above it its top.
+     */
+    const tall = radius * 2 * dotAspect(frame.style);
+    const bottom = centre.y - radius < 1 ? centre.y - radius : centre.y + radius - tall;
     return {
-      spine: straight(at(centre.x, centre.y - radius), at(centre.x, centre.y + radius)),
+      spine: straight(at(centre.x, bottom), at(centre.x, bottom + tall)),
       pen: { ...frame.style.pen, contrast: 0, weight: radius * 2 },
       start: BUTT,
       end: BUTT,

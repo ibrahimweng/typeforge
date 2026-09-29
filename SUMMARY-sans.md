@@ -222,6 +222,13 @@ Sans only. The m is drawn with its counters a little narrower than the n's
 at the Thin, is fitted too. The n, m and u are within 3 of Geist at every
 weight.
 
+**The stops (shared file, Sans only).** Geist's full stop is a tenth taller
+than wide at its Thin, square at its Regular and 0.92 as tall as it is wide
+at its Black (180 on 196). The Sans's square dots stood 16 too tall at the
+Black. A new `metrics.dotAspect` shapes them; a dot on the line keeps its
+foot there and one above it its top, so the colon's upper dot stays level
+with Geist's. The stops are within 3 of Geist's height at every weight.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

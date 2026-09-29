@@ -112,6 +112,12 @@ export interface Metrics {
    */
   xGrows?: { by: number; at: number };
   /**
+   * How tall a square dot stands against its width at the Thin and at the
+   * Black (by a blackness of `at`): Geist's full stop is a tenth taller than
+   * wide at its Thin, square at its Regular and 0.92 as tall at its Black.
+   */
+  dotAspect?: { thin: number; black: number; at: number };
+  /**
    * How much faster the counters close midway to the Black than the straight
    * line `heavyCounter` gives, as a share of it at its most: see `narrowed`.
    */
@@ -707,6 +713,7 @@ export const SANS: Style = {
     accents: { gap: [0.055, 0.066], byFoot: true },
     xGrows: { by: 10, at: 0.88 },
     counterBend: 0.24,
+    dotAspect: { thin: 1.1, black: 0.92, at: 0.88 },
     /* Geist Regular's own sidebearings, over 80 (a capital's over 80 after its 12 of extra). */
     sides: {
       a: [0.59, 0.24, "closes"],

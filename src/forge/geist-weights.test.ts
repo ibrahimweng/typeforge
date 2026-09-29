@@ -1277,3 +1277,19 @@ describe("the x-height at the heavy weights", () => {
     }
   });
 });
+
+describe("the full stop", () => {
+  it("is as tall against its width as Geist's", () => {
+    // Geist's is 65 tall on 59 at the Thin, square at the Regular and 180
+    // on 196 at the Black; square at every weight, ours stood 197 at the
+    // Black and 59 at the Thin.
+    for (const [weight, tall] of [
+      [30, 65],
+      [87, 113],
+      [194, 180],
+    ]) {
+      const ink = box("period", weight);
+      expect(Math.abs(ink.yMax - ink.yMin - tall), `. at ${weight}`).toBeLessThan(5);
+    }
+  });
+});
