@@ -479,8 +479,19 @@ export function grotesqueY(style: Style): Recipe {
     ),
     cut,
   );
+  /*
+   * The Sans's left arm lighter than the pen from the Regular on, as
+   * Geist's is -- most at its SemiBold: fitted to Geist's ink, that took a
+   * third off the SemiBold's misfit.
+   */
+  const armLight =
+    f.style.metrics.xGrows !== undefined
+      ? Math.max(0.9, atWeights(f, 1, 0.95, 0.9, 0.95, 0.95))
+      : 1;
+  const yl = (one: Stroke): Stroke =>
+    inherit(one, { ...one, pen: { ...one.pen, weight: one.pen.weight * armLight } });
   return finish(f, [
-    ink(f, straight(leftTop, leftFoot), f.end, LEVEL),
+    yl(ink(f, straight(leftTop, leftFoot), f.end, LEVEL)),
     ink(
       f,
       chain(

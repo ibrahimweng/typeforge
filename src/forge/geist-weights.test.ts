@@ -1729,3 +1729,12 @@ describe("the v's vertex", () => {
     expect(Math.abs(right - 442)).toBeLessThan(5);
   });
 });
+
+describe("the y's left arm", () => {
+  it("is as light as Geist's at the SemiBold", () => {
+    // 300 up Geist SemiBold's y's left arm runs 125 across; on the pen it
+    // ran about 138.
+    const [left, right] = filled(draw("y", 130).contours, 300)[0];
+    expect(Math.abs(right - left - 125)).toBeLessThan(6);
+  });
+});
