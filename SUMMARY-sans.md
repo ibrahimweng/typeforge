@@ -836,6 +836,30 @@ the current one (59, 113, 146, 180), for the Sans only. The . , ' sat 2 to 4
 units loose on both sides, and the : ; 2 to 4 loose from the SemiBold up. All
 of them now sit within 2 units of Geist's at every weight.
 
+**The @.** Geist's ring is not an oval. Its outside is widest 262 units up
+on the left and 340 on the right, so it is fuller under its middle on the
+left and fuller over it on the right. Draw's single oval stood 35 units out at
+the Regular's upper left, 34 in at its lower left and 24 in at its upper right.
+The ring is now four pieces, and each meets the next where both run level or
+upright:
+- from the stem's landing over to the top, round a middle 355 up;
+- down the upper left as a circle into a straight side, as Geist's is;
+- round the lower left, round a middle 210 up;
+- round to the tail, again round the right's middle.
+
+The tail now climbs to its end as Geist's does. With the ring drawn that way,
+the stem lands on it 60 units lower (137 at the Regular). The Thin's parts are
+a stem and more across, as Geist Thin's are (they were 0.87 of it), and its
+inner a is larger and further left. Its sides are 4 units closer. The misfit
+went from 0.79, 0.29, 0.23, 0.21 and 0.18 (Thin to Black) to 0.35, 0.16, 0.12,
+0.10 and 0.10.
+
+Building it from four pieces first gave 48 empty pieces where they met.
+`bowlBetween` keeps the pieces a partial bowl does not reach, at no length, so
+the node count stays the same across weights. The ring now drops those empty
+turns and keeps its straight runs. It has 26 segments at every weight from 30
+to 260 (as before), none crossing, and passes the family's weight-axis check.
+
 ## What still differs from Geist
 
 - **s counters at the Black.** Close to Geist's size and shape now; Geist's

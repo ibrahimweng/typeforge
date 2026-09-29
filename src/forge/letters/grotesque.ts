@@ -31,7 +31,7 @@
 import type { Vec2 } from "@/font/types";
 import { BASES, blackness, type Style, weightAtBlackness } from "../style";
 import { LETTERS } from "../letters";
-import { bowlPoint, spineEnd, spineStart, superQuarter } from "../shapes";
+import { bowlPoint, hasLength, spineEnd, spineStart, superQuarter } from "../shapes";
 import { penReach, reachAlong } from "../sweep";
 import type { Spine, SpineArc, Stroke, Terminal } from "../types";
 import {
@@ -5358,6 +5358,23 @@ export function grotesquePercent(style: Style): Recipe {
  * out at its foot and runs up into a wide ring round the whole, which comes
  * over the top and round to an end under the a, as Geist's does.
  */
+/**
+ * Pieces of different bowls run on into one another, without the turns each
+ * drawn at no length that `bowlBetween` keeps so a partial bowl has the same
+ * nodes at every weight: run end to end, every one of them stood where two
+ * pieces met, and a ring of four pieces carried forty-eight. A turn out of a
+ * piece's reach is out of it at every weight, so dropping them keeps the
+ * count. Straight runs stay, reaching or not, as a run's length is what
+ * changes with the weight.
+ */
+function solid(...spines: Spine[]): Spine {
+  const run = chain(...spines);
+  return {
+    ...run,
+    segments: run.segments.filter((one) => one.kind === "line" || hasLength(one)),
+  };
+}
+
 export function grotesqueAt(style: Style): Recipe {
   const f = frame(style);
   const u = large(f, 1);
@@ -5381,8 +5398,9 @@ export function grotesqueAt(style: Style): Recipe {
     contrast,
     angle: 0,
   });
-  const bowlPen = pen(lerp(0.87, 0.81) - 0.2 * past, lerp(0, 0.25));
-  const stemPen = pen(lerp(0.87, 0.76) - 0.16 * past, lerp(0, 0.15));
+  const light = thinness(f);
+  const bowlPen = pen(lerp(0.87, 0.81) - 0.2 * past + 0.2 * light, lerp(0, 0.25));
+  const stemPen = pen(lerp(0.87, 0.76) - 0.16 * past + 0.2 * light, lerp(0, 0.15));
   /*
    * The ring lighter than the stem from a SemiBold on, as Geist 1.7.2's is:
    * its sides 0.83 of the stem at the Regular, 0.67 at the SemiBold and 0.57
@@ -5391,7 +5409,7 @@ export function grotesqueAt(style: Style): Recipe {
    * the ring's square start stood past it.
    */
   const ringShare =
-    roundGain(f, 0.83, 0.67, 0.87) -
+    roundGain(f, 0.83, 0.67, 1.07) -
     (0.1 * Math.max(0, Math.min(heavyT(f), nowBlack()) - 0.41)) / 0.9;
   const ringPen = pen(Math.min(stemPen.weight / stemW, ringShare - 0.16 * past), lerp(0.03, 0.09));
   const drawnWith = (stroke: Stroke, with_: Stroke["pen"]): Stroke =>
@@ -5400,20 +5418,19 @@ export function grotesqueAt(style: Style): Recipe {
   // And wider again towards the Thin, whose ring stands 398 out from its
   // middle against the Regular's 372: half of that is already in the face's
   // own widening of its light letters.
-  const light = thinness(f);
   // And from under the line to 710 at every weight, lower at the Black:
   // Geist's ring stands round 302 on the Thin and 291 on the Black, 816
   // tall on the Thin -- grown upward here, where the tail's end stays put.
   // The ring and its tail measured off the current Geist, whose Black is a
   // stem of 194: reached at pen 194, and UltraBlack's at 172 (see `squaredNow`).
   const [, now] = squaredNow(f);
-  const outer = at(X(now(457, 500) + 3 * light) + grow * 0.3, up(f, now(304, 291) + 7 * light));
+  const outer = at(X(now(457, 500) + 3 * light) + grow * 0.3, up(f, now(304, 291) - 2 * light));
   // Carried out by as much as the lighter ring gives back, to Geist's ring:
   // its spine 369 from its middle at the Regular and 402 at the Black.
   const lighter =
     roundGain(f, 7, 15, 0) - (5 * Math.max(0, Math.min(heavyT(f), nowBlack()) - 0.41)) / 0.9;
-  const outerW = held(f, (now(370, 400) + 14 * light + lighter) * u + grow);
-  const outerH = held(f, up(f, now(366, 363) + 22 * light + roundGain(f, 5, 5.5, 0)) + grow * 0.3);
+  const outerW = held(f, (now(370, 400) + 12 * light + lighter) * u + grow);
+  const outerH = held(f, up(f, now(366, 363) + 26 * light + roundGain(f, 5, 5.5, 0)) + grow * 0.3);
   const rf: Frame = { ...f, half: ringPen.weight / 2 };
   /*
    * The stem's turn lands on the ring's right side low down, where Geist's
@@ -5421,11 +5438,29 @@ export function grotesqueAt(style: Style): Recipe {
    * leaves along the ring's own heading there, so the two are one smooth
    * run; the turn is never tighter than the pen will go round -- past that
    * the stem stands further in. Landed at the ring's widest, the hook turned
-   * at the letter's middle, 80 units above Geist's.
+   * at the letter's middle, 80 units above Geist's; landed 60 higher than it
+   * now is (197 at the Regular), it stood 24 over Geist's once the ring was
+   * drawn tilted.
    */
-  const joins = angleAt(rf, outer, outerW, outerH, up(f, now(197, 223, 190)), false);
-  const landing = bowlPoint(outer, outerW, outerH, 1 - f.square, rf.half, joins, f.curve);
-  const ahead = bowlPoint(outer, outerW, outerH, 1 - f.square, rf.half, joins + 0.5, f.curve);
+  /*
+   * Egg-shaped, as Geist's ring is: its ink widest about 262 up at every
+   * weight, where its top and bottom would put the middle of an oval at 302,
+   * so it is fuller under its middle and rounder over it. Drawn as one oval
+   * it stood 35 units full at the Regular's upper left and 34 in at its
+   * lower left, and 40 in at the Black's. Its halves are drawn round one
+   * middle, 210 up, each as tall as its own side reaches, so they meet
+   * upright at the left; its upper left a plain ellipse, as Geist's is, and
+   * the rest the face's own superellipse.
+   */
+  const landsAt = up(f, now(137, 163, 130));
+  const egg = at(outer.x, up(f, 210));
+  const overH = outer.y + outerH - egg.y;
+  const underH = egg.y - (outer.y - outerH);
+  const tilt = at(outer.x, up(f, 355));
+  const tiltH = outer.y + outerH - tilt.y;
+  const joins = angleAt(rf, tilt, outerW, tiltH, landsAt, false);
+  const landing = bowlPoint(tilt, outerW, tiltH, 1 - f.square, rf.half, joins, f.curve);
+  const ahead = bowlPoint(tilt, outerW, tiltH, 1 - f.square, rf.half, joins + 0.5, f.curve);
   const heading = Math.atan2(ahead.y - landing.y, ahead.x - landing.x);
   const lean = Math.PI / 2 - heading;
   // The hook on the stem's pen, heavier than the ring's, lands in by half
@@ -5434,7 +5469,7 @@ export function grotesqueAt(style: Style): Recipe {
   const inset = (stemPen.weight - ringPen.weight) / 2;
   const end = at(landing.x - inset * Math.sin(heading), landing.y + inset * Math.cos(heading));
   const hookIn = Math.max(
-    (end.x - X(lerp(608, 654)) - grow * 0.3) / (1 + Math.cos(lean)),
+    (end.x - X(lerp(616, 654)) - grow * 0.3) / (1 + Math.cos(lean)),
     (stemPen.weight / 2) * 1.2,
   );
   const stem = end.x - hookIn * (1 + Math.cos(lean));
@@ -5445,11 +5480,15 @@ export function grotesqueAt(style: Style): Recipe {
    * where the ring came down to 40 under the line, a Black's tail stopped 35
    * short of Geist's.
    */
+  // Its lower right round the right side's own middle too, so the tail
+  // climbs to its end as Geist's does: round the left's, a Thin's tail
+  // ended 25 units low.
+  const heelH = tilt.y - (outer.y - outerH);
   const tailX = X(now(623, 700)) + grow * 0.3;
   let [low, high] = [-90, 0];
   for (let step = 0; step < 40; step++) {
     const mid = (low + high) / 2;
-    const point = bowlPoint(outer, outerW, outerH, 1 - f.square, rf.half, mid, f.curve);
+    const point = bowlPoint(tilt, outerW, heelH, 1 - f.square, rf.half, mid, f.curve);
     if (point.x < tailX) low = mid;
     else high = mid;
   }
@@ -5463,9 +5502,9 @@ export function grotesqueAt(style: Style): Recipe {
           bf,
           ring(
             bf,
-            at(X(lerp(442, 490)) - grow * 0.2, up(f, lerp(291, 295))),
-            held(bf, lerp(165, 154) * u),
-            held(bf, up(f, lerp(178, 158))),
+            at(X(lerp(442, 490) - 2 * light) - grow * 0.2, up(f, lerp(291, 295))),
+            held(bf, (lerp(165, 154) + 14 * light) * u),
+            held(bf, up(f, lerp(178, 158) + 16 * light)),
           ),
         ),
         bowlPen,
@@ -5491,13 +5530,34 @@ export function grotesqueAt(style: Style): Recipe {
       drawnWith(
         ink(
           rf,
-          bend(
-            rf,
-            outer,
-            outerH,
-            joins,
-            360 + Math.min(ends, joins - 20) - 360 * (ends > joins ? 1 : 0),
-            outerW,
+          solid(
+            bend(rf, tilt, tiltH, joins, 90, outerW),
+            // Round as a circle into its longer side, as Geist's is: drawn
+            // as a plain bowl's quarter this was a corner and a run, and
+            // which of its sides ran straight changed past the Black.
+            straight(
+              at(egg.x, egg.y + overH),
+              at(egg.x - outerW + Math.min(outerW, overH), egg.y + overH),
+            ),
+            turn(
+              at(egg.x - outerW + Math.min(outerW, overH), egg.y + overH - Math.min(outerW, overH)),
+              Math.min(outerW, overH),
+              90,
+              180,
+            ),
+            straight(
+              at(egg.x - outerW, egg.y + overH - Math.min(outerW, overH)),
+              at(egg.x - outerW, egg.y),
+            ),
+            bend(rf, egg, underH, 180, 270, outerW),
+            bend(
+              rf,
+              tilt,
+              heelH,
+              270,
+              360 + Math.min(ends, joins - 20) - 360 * (ends > joins ? 1 : 0),
+              outerW,
+            ),
           ),
           BUTT,
           BUTT,

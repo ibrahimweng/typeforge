@@ -516,6 +516,28 @@ describe("the eight's width", () => {
 });
 
 describe("the at sign", () => {
+  it("draws its ring egg-shaped and tilted, as Geist's is", () => {
+    // Where the ring's outside stands on the left and the right, in from its
+    // own left: Geist Regular's is widest on the left 262 up and on the right
+    // 340 up. Drawn as one oval, it stood 34 in at the left 0 up, 35 out at
+    // 600 up, and 24 in on the right at 550; its upper left still stands
+    // 13 out.
+    const geist: Array<[number, "left" | "right", number]> = [
+      [0, "left", 82],
+      [300, "left", 2],
+      [600, "left", 143],
+      [350, "right", 816],
+      [550, "right", 765],
+    ];
+    const { contours } = draw("at", 87);
+    const left = contoursBounds(contours).xMin;
+    for (const [y, side, x] of geist) {
+      const row = filled(contours, y);
+      const edge = side === "left" ? row[0][0] : row[row.length - 1][1];
+      expect(Math.abs(edge - left - x), `${side} at ${y}`).toBeLessThan(15);
+    }
+  });
+
   it("is as wide as Geist's, and its tail runs as far round", () => {
     // Geist's ink: 826 across at the Thin, 816 at the Regular, 899 at the
     // UltraBlack (a stem of 172) and 920 at the Black (194), and 40 under the

@@ -910,7 +910,7 @@ export const SANS: Style = {
       bar: [1.15, 1.15, "closes"],
       grave: [0.55, 0.55],
       acute: [0.55, 0.55],
-      at: [0.61, 0.61],
+      at: [0.56, 0.57],
     },
     /*
      * Each letter's width against the rhythm, fitted to Geist's by measuring
