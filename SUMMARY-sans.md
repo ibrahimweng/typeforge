@@ -420,6 +420,26 @@ side. The Sans asks for both through a new, optional `metrics.accents`, which
 `gapFor` and `build.ts` read. The marks that hang below, such as the cedilla
 and ogonek, keep the shared gap. Faces that do not set it are unchanged.
 
+**Spacing across the weights (shared files, Sans only).** A survey of
+every glyph found the Black drifting: stem capitals 4 units a side loose,
+the signs 6 tight, the hyphen 8 loose. At the Thin, the right sides of B, E,
+F, L, P and R were 11 to 16 loose. Four changes fix this:
+
+- A capital's extra room now closes as the sidebearing does and as fast
+  again (`metrics.capitalCloses`). Geist gives its H 12 more than its n at
+  the Regular, 7 at the UltraBlack and 6 at the Black.
+- A listed side can be `"held"` at the Regular's at every weight. Geist
+  holds its + = < > ^ ~ 40 off, and hardly closes its round and diagonal
+  capitals (O Q S C G A V W Z).
+- A listed side can carry a move at the Thin, which goes with the face's
+  light opening. This covers Geist Thin's closer B E F L P R T and the
+  looser backslash.
+- The hyphen and underscore close as fast as the n.
+
+The Y's left moves to 0, the closest the health check's "touching the
+letter before it" allows at 175 once the extra closes faster. The O, H, E,
++ and hyphen now stand within 2 units of Geist's from the Thin to the Black.
+
 **Spacing at the Light (shared file, Sans only).** Geist Thin sets its
 letters about 5 units further off either side than its Regular, and its
 figures 10. The Sans kept the Regular's spacing all the way down. It now

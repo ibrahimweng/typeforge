@@ -414,7 +414,11 @@ export function makeLetter(
    */
   const extra =
     !style.metrics.monospaced && !laid && !joinsUp && isCapitalLike(name)
-      ? spacingOf(style) * Math.max(0, (style.metrics.capitalSpacing ?? 1) - 1)
+      ? spacingOf(style) *
+        Math.max(0, (style.metrics.capitalSpacing ?? 1) - 1) *
+        (style.metrics.capitalCloses
+          ? Math.min(1, spacingOf(style) / style.metrics.sidebearing)
+          : 1)
       : 0;
   if (extra > 0) {
     centring += extra;
@@ -800,11 +804,18 @@ function fitted(
     const plain = style.metrics.sidebearing;
     const half = plain > 0 ? plain * Math.sqrt(spacingOf(style) / plain) : spacingOf(style);
     // A stem's side, where the entry names one, closes as fast as the n's.
-    const unitLeft = set[2] === "closes" || set[2] === "stem-left" ? spacingOf(style) : half;
-    const unitRight = set[2] === "closes" || set[2] === "stem-right" ? spacingOf(style) : half;
-    const open = set[2] === "unopened" ? 0 : opened;
-    const shift = unitLeft * set[0] + open - box.xMin;
-    return { shift, advance: box.xMax + shift + unitRight * set[1] + open };
+    // One the entry holds keeps the Regular's side at every weight.
+    const held = set[2] === "held" ? plain : null;
+    const unitLeft =
+      held ?? (set[2] === "closes" || set[2] === "stem-left" ? spacingOf(style) : half);
+    const unitRight =
+      held ?? (set[2] === "closes" || set[2] === "stem-right" ? spacingOf(style) : half);
+    const open = set[2] === "unopened" || held !== null ? 0 : opened;
+    // And moved at the Thin as far as the entry says, with the light opening.
+    const toThin = light?.open && opened > 0 ? opened / (light.open * (figure ? 2 : 1)) : 0;
+    const [thinLeft, thinRight] = set[3] ?? [0, 0];
+    const shift = unitLeft * set[0] + open + thinLeft * toThin - box.xMin;
+    return { shift, advance: box.xMax + shift + unitRight * set[1] + open + thinRight * toThin };
   }
   const top = figure || isCapitalLike(name) ? style.metrics.capHeight : style.metrics.xHeight;
   /*

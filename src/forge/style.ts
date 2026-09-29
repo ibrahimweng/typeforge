@@ -21,6 +21,15 @@ import type { JoinKind, Pen, SerifHead, SerifShape, Terminal, TerminalKind } fro
 import { NO_SCRIPT, type Script } from "./script";
 
 /** The heights and widths every letter is built against. */
+/**
+ * How a listed side closes at a heavy weight: as fast as the n's ("closes",
+ * or on a stem's side only), half as fast (`"half"`, as a side with no kind
+ * does), unopened at the Light, or held at the Regular's at every weight.
+ * A fourth entry moves either side by that many units at the Thin, going
+ * with the face's own light opening (`metrics.lightHeld`).
+ */
+export type SideKind = "closes" | "stem-left" | "stem-right" | "unopened" | "held" | "half";
+
 export interface Metrics {
   unitsPerEm: number;
   /** Height of the lowercase, where most of the reading happens. */
@@ -51,6 +60,12 @@ export interface Metrics {
    * capitals cramped.
    */
   capitalSpacing?: number;
+  /**
+   * Whether that extra closes at a heavy weight as the sidebearing does and
+   * as fast again: Geist gives its H 12 more than its n at the Regular, 7 at
+   * the UltraBlack and 6 at the Black.
+   */
+  capitalCloses?: boolean;
   /**
    * How wide every letter runs, as a multiple.
    *
@@ -124,7 +139,7 @@ export interface Metrics {
   counterBend?: number;
   sides?: Record<
     string,
-    [number, number] | [number, number, "closes" | "stem-left" | "stem-right" | "unopened"]
+    [number, number] | [number, number, SideKind] | [number, number, SideKind, [number, number]]
   >;
   /**
    * How much counter a heavy weight gives back for the stem it gains, unit
@@ -697,6 +712,7 @@ export const SANS: Style = {
     counterWidth: 250,
     sidebearing: 80,
     capitalSpacing: 1.15,
+    capitalCloses: true,
     fit: 1,
     // Geist's figures are proportional: its one is 385 wide, its zero 672.
     figures: "proportional",
@@ -740,41 +756,51 @@ export const SANS: Style = {
       y: [0.28, 0.28],
       t: [0.69, 0.46, "closes"],
       x: [0.59, 0.59],
-      z: [0.71, 0.71],
-      A: [0.11, 0.11],
+      // Geist sets its z 51 off either side from the Regular to the Black.
+      z: [0.64, 0.64, "held", [2, 2]],
+      A: [0.11, 0.11, "held", [5, 5]],
       // Geist closes its B, K, L, R, U and its a, c, f, j, l and r as fast
       // as its n (its B stands 62 off its bowl at the Regular, 43 at the
       // Black); closed half as fast, they stood 8 to 16 units loose there.
-      B: [1, 0.63, "closes"],
+      // Geist Thin sets the right of its B, E, F, L, P and R 7 units closer
+      // than its Regular, where opened with the rest they stood 11 to 16 loose.
+      B: [1, 0.63, "closes", [0, -12]],
       // Geist's D: 92 off its stem, 41 off its bowl; fitted, the bowl's side
       // closed to 25 at the heavy weights.
-      D: [1, 0.36, "closes"],
-      C: [0.46, 0.4],
-      G: [0.46, 0.53],
+      D: [1, 0.36, "stem-left"],
+      E: [1, 0.55, "closes", [0, -11]],
+      F: [1, 0.5, "closes", [0, -12]],
+      P: [1, 0.5, "closes", [0, -12]],
+      C: [0.41, 0.35, "held", [5, 5]],
+      G: [0.41, 0.48, "held", [5, 5]],
       J: [0.69, 0.81, "closes"],
       K: [1, 0.04, "closes"],
-      L: [1, 0.44, "closes"],
-      R: [1, 0.63, "closes"],
+      L: [1, 0.44, "closes", [0, -12]],
+      R: [1, 0.63, "closes", [0, -12]],
       // Geist stands its T 12 off either side; 15 here, which still leaves
       // the A and T enough white for the kerning to close.
-      T: [0.04, 0.04],
+      T: [0.04, 0.04, "half", [-6, -6]],
       // Set by the measured fit the O closed to 25 at the Black; Geist's is 40.
-      O: [0.41, 0.41],
-      Q: [0.41, 0.41],
+      // Geist's round and diagonal capitals hardly close at a heavy weight:
+      // theirs are held at the Regular's, and give back only the extra a
+      // capital closes by (see `capitalCloses`).
+      O: [0.41, 0.41, "held", [5, 5]],
+      Q: [0.41, 0.41, "held", [5, 5]],
       U: [0.77, 0.77, "closes"],
       // Geist's S stands 55 off either side at the Regular and 50 at the
       // Black, closing as its figures do; fitted, it closed to 40.
-      S: [0.54, 0.54],
-      V: [0.11, 0.11],
-      W: [0.33, 0.33],
+      S: [0.54, 0.54, "held", [5, 5]],
+      V: [0.11, 0.11, "held", [5, 5]],
+      W: [0.33, 0.33, "held", [5, 5]],
       X: [0.04, 0.04],
       // Geist's Y reaches 6 past both its sides: held just inside them, its
       // left as far as the health check's "touching the letter before it"
-      // allows and its right as far as its own advance (it stood 15 in).
-      Y: [-0.04, -0.1],
+      // allows at every weight and its right as far as its own advance (it
+      // stood 15 in).
+      Y: [0, -0.1],
       // Its bars reach further than the Y's arms: set as the Y was.
       yen: [0.11, 0.11],
-      Z: [0.19, 0.19],
+      Z: [0.19, 0.19, "held", [5, 5]],
       zero: [0.63, 0.63],
       one: [0.5, 1.38],
       two: [0.75, 0.75],
@@ -793,31 +819,37 @@ export const SANS: Style = {
       colon: [1.15, 1.15, "closes"],
       semicolon: [1.15, 1.15, "closes"],
       quotesingle: [0.61, 0.61],
-      quotedbl: [0.61, 0.61],
+      quotedbl: [0.56, 0.56],
       // Geist's parentheses stand 45 off the side they open from and 15 off
       // the side they close on.
       parenleft: [0.56, 0.19],
       parenright: [0.19, 0.56],
       // Geist closes its slashes as fast as its n, the slash's right faster.
       slash: [0.5, 0.72, "closes"],
-      hyphen: [0.59, 0.59],
+      // Geist closes its hyphen and underscore as fast as its n (44 off at
+      // the Regular, 32 at the Black); half as fast, they stood 8 loose.
+      hyphen: [0.55, 0.55, "closes"],
       // Geist's reaches past both its sides (-10 and -5); held just inside.
       numbersign: [0.1, 0.1],
       percent: [0.59, 0.59],
       asterisk: [0.59, 0.59],
-      asciicircum: [0.5, 0.5],
+      asciicircum: [0.5, 0.5, "held"],
       // Geist's brackets and braces stand well off the side they open from.
       bracketleft: [1.15, 0.19],
       bracketright: [0.19, 1.15],
       braceleft: [0.56, 0.19],
       braceright: [0.19, 0.56],
-      backslash: [0.5, 0.5, "closes"],
-      plus: [0.5, 0.5],
-      less: [0.5, 0.62],
-      greater: [0.62, 0.5],
-      equal: [0.5, 0.5],
-      underscore: [0.55, 0.55],
-      asciitilde: [0.5, 0.5],
+      // Geist Thin's stands 60 off either side, its Regular's 40.
+      backslash: [0.5, 0.5, "closes", [15, 15]],
+      // Geist sets its signs 40 off either side at every weight (50 off the
+      // open side of an angle); closed with the letters they stood 6 tight
+      // at the Black and opened 5 loose at the Thin.
+      plus: [0.5, 0.5, "held"],
+      less: [0.5, 0.62, "held"],
+      greater: [0.62, 0.5, "held"],
+      equal: [0.5, 0.5, "held"],
+      underscore: [0.55, 0.55, "closes"],
+      asciitilde: [0.5, 0.5, "held"],
       // Geist's stands 55 off either side at the Regular; fitted, 44 and 34.
       dollar: [0.69, 0.69],
       // Geist stands its ! 50 off either side and its bar 92.

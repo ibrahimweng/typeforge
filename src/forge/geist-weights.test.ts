@@ -892,12 +892,13 @@ describe("the Sans's sidebearings", () => {
   it("stand where Geist's do at the Regular and the Black", () => {
     // Geist's left and right sidebearings at the Regular and the Black. The
     // W stood 17 closer than Geist's, the ! 6 to 11 closer, the T, Y, 7 and
-    // X 12 to 26 further off, and the O 15 closer at the Black. Geist's Y reaches 6 past its sides,
-    // and is held just inside them.
+    // X 12 to 26 further off, and the O 15 closer at the Black. Geist's Y
+    // reaches 6 past its sides, and is held just inside them: its left as
+    // close as the health check allows at every weight, 12 in at the Regular.
     const geist: Record<string, [number, number, number, number]> = {
       W: [38, 38, 36, 36],
       T: [15, 15, 12, 12],
-      Y: [0, 0, 0, 0],
+      Y: [6, 0, 3, 0],
       X: [15, 15, 10, 10],
       O: [45, 45, 40, 40],
       seven: [20, 8, 20, 7],
@@ -1446,5 +1447,40 @@ describe("the six's hood", () => {
     const six = draw("six", 172).contours;
     expect(Math.abs(filled(six, 700)[0][1] - 478)).toBeLessThan(16);
     expect(Math.abs(filled(six, 500)[0][0] - 67)).toBeLessThan(5);
+  });
+});
+
+describe("the sides Geist holds, and the ones it closes faster", () => {
+  it("stand where Geist's do from the Thin to the Black", () => {
+    // Left and right at the Thin, the Regular and the Black. Geist holds its
+    // signs 40 off at every weight (they closed to 34 and opened to 45), closes
+    // its hyphen as fast as its n (it stood 40 off at the Black), gives a
+    // capital less extra room as it grows (the H stood 66 off at the Black),
+    // hardly closes its O (36), and sets the right of its E 7 closer at its
+    // Thin (it stood 61 off).
+    const geist: Record<string, Array<[number, number, number]>> = {
+      plus: [
+        [30, 40, 40],
+        [194, 40, 40],
+      ],
+      hyphen: [[194, 32, 32]],
+      H: [[194, 62, 62]],
+      O: [[194, 40, 40]],
+      E: [
+        [30, 96, 50],
+        [87, 92, 57],
+      ],
+    };
+    for (const [name, rows] of Object.entries(geist)) {
+      for (const [weight, left, right] of rows) {
+        const drawn = draw(name, weight);
+        const ink = contoursBounds(drawn.contours);
+        expect(Math.abs(ink.xMin - left), `${name} left at ${weight}`).toBeLessThan(3);
+        expect(
+          Math.abs(drawn.advanceWidth - ink.xMax - right),
+          `${name} right at ${weight}`,
+        ).toBeLessThan(3);
+      }
+    }
   });
 });
