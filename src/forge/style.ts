@@ -985,6 +985,8 @@ export const SANS: Style = {
     x: "grotesque",
     X: "grotesque",
     m: "grotesque",
+    n: "grotesque",
+    h: "grotesque",
     V: "grotesque",
     Y: "grotesque",
     s: "grotesque",

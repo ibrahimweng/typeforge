@@ -1951,3 +1951,14 @@ describe("the Thin r's arm", () => {
     expect(Math.abs(arm[1] - 495)).toBeLessThan(8);
   });
 });
+
+describe("the n's shoulder", () => {
+  it("leaves the stem in a notch, as Geist's does", () => {
+    // 180 in, just clear of Geist Regular's stem, its arch runs 397-476; on
+    // the plain arch, springing from the stem's middle, it ran 412-521.
+    for (const name of ["n", "h", "m"]) {
+      const [arch] = filled(draw(name, 87).contours, 180, "x").slice(-1);
+      expect(Math.abs(arch[1] - 476), name).toBeLessThan(10);
+    }
+  });
+});

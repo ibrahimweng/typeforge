@@ -722,6 +722,23 @@ still grows one point. The r's misfit falls from 0.28/0.09/0.07/0.05/0.07 to
 0.08/0.07/0.05/0.04/0.06 at the Thin, Regular, SemiBold, UltraBlack and
 Black.
 
+**The n, m and h shoulders (rebuilt).** Geist's arch leaves the stem about
+435 up, thinned, in a notch, and its crown is centred right of the arch's
+middle. The Sans now draws its own n, h and m arch (`sansArch`). Its first
+quarter is drawn on an elliptical pen that is thin across and full along. It
+leaves the stem a quarter of the pen wide (seven tenths at the Thin), with its
+inside flush with the stem and its outside diving into it. It reaches the
+crest at the crown's own weight, so it joins the second quarter without a
+step. The first quarter is also a little deeper than the second, and the
+crown sits about half a pen right of the middle. The second quarter's leg
+starts from where that quarter actually ends, so every weight keeps the same
+nodes. The misfits fall:
+- n: 0.25/0.09/0.06/0.05/0.06 to 0.14/0.06/0.03/0.03/0.04;
+- h: 0.18/0.09/0.05/0.04/0.05 to 0.11/0.06/0.03/0.02/0.03;
+- m: 0.21/0.11/0.08/0.08/0.09 to 0.14/0.06/0.05/0.04/0.06;
+
+at the Thin, Regular, SemiBold, UltraBlack and Black.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular
@@ -791,15 +808,6 @@ strokes as white; they now use a filled (nonzero) ruler.
   Thin's ink by half, and 87's by a seventh. Geist's loop is wider at its
   crown and narrower where it crosses, and its arm is shorter. That needs
   the loop drawn on two widths.
-- **The n, m and h shoulders.** Geist's stem stands square to about 530, and
-  its arch leaves the stem about 435 up. That leaves a notch between the two
-  that runs 70 units in from the stem at the Regular. Its arch's crown is
-  centred about 30 units further right than Draw's. Draw's arch springs from
-  the stem's middle on the pen, so it has no notch. A rounder or a taller
-  first quarter took off less than a hundredth. Starting the arch right of
-  the stem left a flat ledge under it. Matching it needs a stroke that thins
-  into the stem, which the pen cannot draw in one stroke without a step at
-  the crown.
 - **The ~'s middle.** Geist's wave is 20 units lighter than Draw's where it
   crosses the middle (108 against 128 at the Regular), while its crests match.
   A pen held at an angle took off almost nothing, because the difference is

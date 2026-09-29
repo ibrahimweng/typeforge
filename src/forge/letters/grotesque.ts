@@ -2297,14 +2297,91 @@ export function grotesqueSmallM(style: Style): Recipe {
   // The counter as drawn before a heavy weight narrows it, where the style
   // has been through `heavier` already: see `narrowed`.
   const { counterWidth, drawnCounter } = style.metrics;
-  return LETTERS.m({
+  const narrower = {
     ...style,
     metrics: {
       ...style.metrics,
       counterWidth: counterWidth - give,
       drawnCounter: drawnCounter === undefined ? undefined : drawnCounter - give,
     },
-  });
+  };
+  if (style.metrics.xGrows === undefined) return LETTERS.m(narrower);
+  // The Sans's arches are its n's: see `sansArch`.
+  const g = frame(narrower);
+  return finish(g, [
+    ink(g, straight(at(g.edge, 0), at(g.edge, g.crown)), g.end, g.end),
+    ...sansArch(g, g.edge, g.x),
+    ...sansArch(g, g.edge + g.arch * 2, g.x),
+  ]);
+}
+
+/** The Sans's h: the n's arch on an ascending stem. */
+export function grotesqueSmallH(style: Style): Recipe {
+  const f = frame(style);
+  return finish(f, [
+    ink(f, straight(at(f.edge, 0), at(f.edge, f.asc)), f.end, f.end),
+    ...sansArch(f, f.edge, f.x),
+  ]);
+}
+
+/**
+ * The Sans's arch: the n's, with its first quarter drawn on a pen thin
+ * across and full along, so it leaves the stem thinned -- its inside flush
+ * with the stem's and its outside diving into it -- and reaches the crest at
+ * the crown's own weight.
+ */
+function sansArch(f: Frame, fromX: number, height: number): Stroke[] {
+  uses("shoulder");
+  // Held at the Black's past it.
+  const pastBlack = f.style.pen.weight / f.xOwn > 194 / 530;
+  const knot = (knots: [number, number, number, number, number]) =>
+    pastBlack ? knots[4] : atWeights(f, ...knots);
+  const h = crested(f, height);
+  const radius = shoulderRadius(f, h);
+  const landing = fromX + f.arch * 2;
+  const crest = Math.max(f.hangs(h) + f.over, radius);
+  const top = crest - radius;
+  const { pen } = f.style;
+  const w = f.half * 2;
+  const along = w * (1 - pen.contrast);
+  /*
+   * A quarter of the pen across where it leaves the stem, seven tenths at
+   * the Thin; its crest a little right of the arch's middle, and its first
+   * quarter deeper than the second, as Geist's are. On the n's own arch,
+   * which springs from the stem's middle on the stem's pen, the Regular's
+   * missed Geist's ink by 0.09 and the Black's by 0.06.
+   */
+  const thin = w * knot([0.7, 0.25, 0.25, 0.25, 0.25]);
+  const joinPen =
+    thin < along
+      ? { ...pen, weight: along, contrast: 1 - thin / along, angle: 90 }
+      : { ...pen, weight: thin, contrast: 1 - along / thin, angle: 0 };
+  const startX = fromX + (w - thin) / 2;
+  const middle = at((fromX + landing) / 2 + knot([0.6, 0.45, 0.45, 0.6, 0.6]) * f.half, top);
+  const deeper = knot([60, 30, 30, 30, 30]);
+  const first = ink(
+    f,
+    bend(f, at(middle.x, top - deeper), radius + deeper, 180, 90, middle.x - startX),
+    BUTT,
+    BUTT,
+  );
+  // The leg from where the second quarter ends: past the Black the quarter
+  // is held to what the pen goes round, a unit or two off the landing.
+  const second = bend(f, middle, radius, 90, 0, landing - middle.x);
+  const leg = spineEnd(second);
+  return [
+    inherit(first, { ...first, pen: joinPen }),
+    ink(f, chain(second, straight(leg, at(leg.x, 0))), BUTT, f.end),
+  ];
+}
+
+/** The Sans's n: see `sansArch`. */
+export function grotesqueSmallN(style: Style): Recipe {
+  const f = frame(style);
+  return finish(f, [
+    ink(f, straight(at(f.edge, 0), at(f.edge, f.crown)), f.end, f.end),
+    ...sansArch(f, f.edge, f.x),
+  ]);
 }
 
 /** How much narrower the m's counters are drawn than the n's, at the Thin, Regular, UltraBlack and Black. */
