@@ -19,7 +19,15 @@
 import { describe, expect, it } from "vitest";
 
 import { contoursBounds } from "@/font/geometry";
-import { builtFrom, canDraw, drawLetter, letterNames, makeLetter, overhangOf, reachesOut } from "./build";
+import {
+  builtFrom,
+  canDraw,
+  drawLetter,
+  letterNames,
+  makeLetter,
+  overhangOf,
+  reachesOut,
+} from "./build";
 import { accentedNameFor, drawnAs, codepointOfAccented } from "./accents";
 import { editPart, editPen, startFrom, draw } from "./document";
 import { codepointFor } from "./typeface";
