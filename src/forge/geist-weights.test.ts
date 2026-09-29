@@ -1526,3 +1526,17 @@ describe("the Q's tail", () => {
     }
   });
 });
+
+describe("the D's crowns", () => {
+  it("run as far along the lines as Geist's before they turn", () => {
+    // 690 up Geist's D runs to 429 at the Thin and 448 at the Regular; on a
+    // round half as long as its height it turned at 385 and 427.
+    for (const [weight, reach, within] of [
+      [30, 429, 16],
+      [87, 448, 8],
+    ]) {
+      const run = filled(draw("D", weight).contours, 690)[0];
+      expect(Math.abs(run[1] - reach), `D at ${weight}`).toBeLessThan(within);
+    }
+  });
+});

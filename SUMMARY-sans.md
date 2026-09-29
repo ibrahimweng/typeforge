@@ -341,6 +341,12 @@ Geist's weight and keeps its right side at every weight, and the Thin's
 stands where Geist's does. Past the Black its lightness is held at the
 Black's.
 
+**The D's bowl.** Geist's D runs flat along its lines further than Draw's
+did before it turns: 690 up it reaches 429 at the Thin, where Draw's turned
+at 385. Its round is now 0.9 of half its height rather than 1.05. That took
+the D's misfit against Geist from a fifth of its ink to a twentieth at the
+Thin, and to half or less at every other weight.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

@@ -700,7 +700,10 @@ export function grotesqueCapitalD(style: Style): Recipe {
   const right = X(wide) - side / 2;
   const bowl = ink(
     g,
-    lobeRun(g, f.edge, top, bottom, right, ((top - bottom) / 2) * 1.05),
+    // Its round a little shorter than half its height, as Geist's is: at
+    // 1.05 its crowns turned 20 to 44 units short of Geist's and its corners
+    // stood inside them, a fifth of the Thin's ink off.
+    lobeRun(g, f.edge, top, bottom, right, ((top - bottom) / 2) * 0.9),
     BUTT,
     BUTT,
   );
