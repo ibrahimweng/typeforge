@@ -117,8 +117,8 @@ Images: `condensed-diagonals-geist-*`, `crossbar-four-geist-*`, `dotless-j-geist
 - **Slab flags:** a flag reaches out to the side of its stem, and it was tested for sitting on the letter only at its middle, which misses the stem. Heavy, every lowercase flag grew past its stem's top, and on Geist's i and j it met the dot. The test now runs along the whole edge.
 - **Slab beaks:** the beak on the sample font's f hung below its hook at heavy weights, nearly closing on the crossbar. A slab end flush with the letter's edge now follows that edge.
 - **G spur:** its foot bar reached over the bowl it stands on. A slab no longer reaches out on a side where the stroke is joined to ink.
-- **Upright edges between stacked counters:** after the handover fix, the & serif still leaned 19 units at 1.4. Straight upright edges are now moved across whole, by the mean of their two ends.
-- **Rim:** the boolean step that builds the rim could leave a tiny figure-eight in the outline, on Lora's a and the sample font's n and h. Its area was right, so the existing retry never caught it. A result that crosses itself now also goes to the next, finer grid. This change is in `src/forge/cast.ts`, which you approved going into.
+- **Upright edges between stacked counters:** after the handover fix, the & serif still leaned 19 units at 1.4. Each straight upright run of the outline, however many points it has, now moves across whole, by the shift at its middle.
+- **Rim:** the boolean step that builds the rim could leave a tiny figure-eight in the outline of Lora's a and its six accented forms. Its area was right, so the existing retry never caught it. The finished rim is now checked once, and where it crosses itself the whole rim is rebuilt from the letter snapped to a grid: a thousandth of a unit, then a hundredth, then a tenth, each coarser than the last. This change is in `src/forge/cast.ts`, which you approved going into.
 
 Images: `folded-corners-geist-*`, `stacked-counters-lora-*`, `slab-flags-geist-*`, `slab-beak-sample-*`.
 
@@ -128,18 +128,27 @@ A code review of this round's changes found two more, both fixed:
 - The edge clamp could change a stroke's weight inside a letter. It now applies only to points on the edges.
 - A slab end flush with the letter could shrink to a sliver at light weights. It now keeps the same minimum as any other slab.
 
+A second review, of the upright-edge and rim fixes, found more:
+- **The upright-edge fix** left 6 units of lean where an edge has a point in the middle. It also missed the fallback path, ran outside the crossing check, and ignored whether a contour is open. It is now part of the move itself, as described above.
+- **The crossing check** (`contoursIntersect`) stops looking past 600 segments and samples each curve with six chords. So it can't see a loop on a detailed letter, and it reported loops on the sample font's n and h that aren't there. A new check, `crossesItself`, flattens curves finely and compares only segments whose spans overlap. The rim and the stroke give now use it.
+- **A new sweep** of every glyph with the new check found four loops at width 1.5 that the old check had missed. The d and n of Lora and Geist's ª each had a loop about a unit across. Geist's r at the lightest weight had a fold where its arch meets its stem. All four are fixed. Where the width control's stroke give would make an outline cross itself, the give is now reduced in steps on that contour.
+
 ## Tests
 
-Every fix has a test that fails on the old code and passes now. They are in:
+Every fix has a test that fails on the old code and passes now, with one exception: the edge-only clamp (see What is left). They are in:
 - `src/font/shape-controls.test.ts`
 - `src/font/weight.test.ts`
 - `src/font/slab.test.ts`
 - `src/font/counter.test.ts`
 - `src/font/control.test.ts`
+- `src/font/outline.test.ts`
+- `src/forge/cast.test.ts`
+
+Three tests use real letters as fixtures, because their faults depend on the letters' exact geometry: Lora's N, u and a, and Geist's r and n. Both fonts are under the SIL Open Font License. The rim test uses Lora's a at full precision, since the loop disappears if its points move by three thousandths of a unit.
 
 Two old expectations in `weight.test.ts` described letters growing past the baseline and cap height; they now expect the letter to keep its heights. The middle-space expectations in `counter.test.ts` and `control.test.ts`, which had walls thickening or thinning by the whole change, now expect walls that keep their weight while the letter narrows or widens. The weight engine keeps each contour's point count, and slabs are still separate contours added to the letter.
 
-These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,881 tests.
+These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,884 tests.
 
 ## What is left
 
