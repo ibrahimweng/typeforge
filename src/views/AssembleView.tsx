@@ -36,10 +36,12 @@ import { tile } from "@/components/controls";
 import { assembleStore, useAssemble } from "@/state/useAssemble";
 import { useLibrary } from "@/state/useLibrary";
 import { cn } from "@/cn";
+import { useShowing } from "@/state/surface";
 
 type Built = ReturnType<typeof build>;
 
 export function AssembleView(): React.JSX.Element {
+  useShowing("assemble");
   const state = useAssemble();
   const assembled = React.useMemo(() => build(state.assembly), [state.assembly, state.revision]);
   const filled = assembled.letters.length > 0;

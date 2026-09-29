@@ -51,6 +51,28 @@ const CASES: Array<{
     values: [-25, 25],
   },
   { part: "wave", key: "depth", idle: { along: "off" }, live: { along: "both" }, values: [0, 0.6] },
+  // With a depth, or a wavelength has nothing to lengthen whether it waves or not.
+  {
+    part: "wave",
+    key: "length",
+    idle: { along: "off", depth: 40 },
+    live: { along: "both", depth: 40 },
+    values: [60, 250],
+  },
+  {
+    part: "terminal",
+    key: "angle",
+    idle: { kind: "level" },
+    live: { kind: "angled" },
+    values: [-25, 25],
+  },
+  {
+    part: "terminal",
+    key: "angle",
+    idle: { kind: "teardrop" },
+    live: { kind: "angled" },
+    values: [-25, 25],
+  },
 ];
 
 describe("the controls a part has no use for, as it is set", () => {
