@@ -302,6 +302,15 @@ weights that Draw's bowl does not. The flag's depth and the stem's weight
 are held at the Black's past it, where a deeper flag folded on the Wavy
 face.
 
+**The 6's and 9's bowls.** Geist's six bowl is lopsided: rounder than a
+superellipse at its left, where the hood rises out of it, and fuller at its
+right. Draw's was one superellipse at the face's fullness, so 100 up it
+started 13 to 16 units left of Geist's and stopped 6 short on the right. The
+Sans's bowl is now four quarters, each as full as Geist's (0.25, 0.03, 0.03
+and 0.2 anticlockwise from the upper right), and the nine, the six turned,
+takes it too. Fitted across the Thin to the Black, this took 10 to 25 per
+cent off both figures' misfit against Geist.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across
@@ -452,6 +461,10 @@ strokes as white; they now use a filled (nonzero) ruler.
 - **The ?'s terminal.** Geist cuts its hook's left end on a slant at the
   heavy weights, so its lower corner stands about 24 units in from Draw's
   level cut 500 up.
+- **The 6's hood and the 9's bowl.** Geist's hood rises straighter and a
+  little lighter than Draw's (7 units further left 500 up at the
+  UltraBlack), so it meets the bowl lower. The 9's upper right still stands
+  about 10 units past Geist's at the UltraBlack.
 - **Past 194.** Geist has nothing heavier than its Black. At 200–260 the
   letters follow their own rules for keeping counters open, not Geist.
 - **œ.** Not in the review list, and it is still poor past the Black: its o

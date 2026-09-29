@@ -1424,3 +1424,16 @@ describe("the five's stem and flag", () => {
     expect(Math.abs(thin[1][0] - 327)).toBeLessThan(4);
   });
 });
+
+describe("the six's and nine's bowls", () => {
+  it("are rounder where the hood and tail leave them, as Geist's are", () => {
+    // 100 up Geist's six's bowl starts 94 in at the Regular and the
+    // UltraBlack; as one superellipse it started at 81 and 78. Turned, its
+    // nine's reaches 479 at the UltraBlack 680 up, where it reached 498.
+    for (const weight of [87, 172]) {
+      expect(Math.abs(filled(draw("six", weight).contours, 100)[0][0] - 94)).toBeLessThan(12);
+    }
+    const nine = filled(draw("nine", 172).contours, 680)[0];
+    expect(Math.abs(nine[1] - 479)).toBeLessThan(12);
+  });
+});

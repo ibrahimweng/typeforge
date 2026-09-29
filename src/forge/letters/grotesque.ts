@@ -31,7 +31,7 @@
 import type { Vec2 } from "@/font/types";
 import { BASES, blackness, type Style, weightAtBlackness } from "../style";
 import { LETTERS } from "../letters";
-import { bowlPoint, spineEnd, spineStart } from "../shapes";
+import { bowlPoint, spineEnd, spineStart, superQuarter } from "../shapes";
 import { penReach, reachAlong } from "../sweep";
 import type { Spine, SpineArc, Stroke, Terminal } from "../types";
 import {
@@ -2202,9 +2202,39 @@ function sixBowl(
   if (!sans) return [ink(f, ring(f, centre, wide, radius))];
   const { g, bowls } = sidedPair(f, centre, radius, share);
   return bowls.map(([middle, half]) => {
-    const one = ink(g, ring(g, middle, wide, half));
+    const one = ink(g, lopsidedRing(g, middle, wide, half, SIX_BOWL));
     return inherit(one, { ...one, pen: g.style.pen });
   });
+}
+
+/**
+ * How full each quarter of the Sans's six's bowl is, anticlockwise from its
+ * upper right, fitted to Geist's six and nine from the Thin to the Black: its
+ * left, where the hood rises out of it, is rounder than a superellipse and
+ * its right fuller. As one superellipse at the face's fullness the bowl stood
+ * 10 to 16 units out past Geist's at its lower left and 6 short at its right.
+ */
+const SIX_BOWL: [number, number, number, number] = [0.25, 0.03, 0.03, 0.2];
+
+/**
+ * A ring whose quarters are each as full as asked, anticlockwise from the
+ * upper right: Geist's figure bowls are rounder on the side their stroke
+ * leaves by than on the other. Every quarter meets the next level or upright,
+ * whatever its fullness, so the ring has no corner.
+ */
+function lopsidedRing(
+  f: Frame,
+  centre: Vec2,
+  wide: number,
+  half: number,
+  fullness: [number, number, number, number],
+): Spine {
+  const segments = fullness.flatMap(
+    (curve, quarter) =>
+      superQuarter(centre, wide, half, 1 - f.square, f.half, curve, quarter) ??
+      bend(f, centre, half, quarter * 90, quarter * 90 + 90, wide).segments,
+  );
+  return { segments, closed: true };
 }
 
 /**
