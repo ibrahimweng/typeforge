@@ -406,6 +406,11 @@ higher too. Low on the stem, the Thin's arm stood 21 units right of Geist's
 leg. Both are now fitted to Geist's ink at each weight. That took five
 sixths off the Thin k's misfit and a third off the heavy weights'.
 
+**The Thin W.** Geist Thin's W sets each vee's feet closer in: 20 up they
+run 236-294 and 621-679, where Draw's stood at 225-276 and 646-697. Its
+Thin is now a hundredth narrower with the feet 13 units further in, which
+took its misfit against Geist from a half to an eighth.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

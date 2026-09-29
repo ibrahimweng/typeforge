@@ -1655,3 +1655,13 @@ describe("the K's leg", () => {
     expect(Math.abs(run[run.length - 1][1] - 558)).toBeLessThan(6);
   });
 });
+
+describe("the Thin W's feet", () => {
+  it("stand where Geist Thin's do", () => {
+    // 20 up Geist Thin's W's feet run 236-294 and 621-679; they stood at
+    // 225-276 and 646-697.
+    const run = filled(draw("W", 30).contours, 20);
+    expect(Math.abs(run[0][0] - 236)).toBeLessThan(8);
+    expect(Math.abs(run[run.length - 1][1] - 679)).toBeLessThan(8);
+  });
+});

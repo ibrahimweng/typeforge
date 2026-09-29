@@ -2699,10 +2699,16 @@ export function grotesqueQuoteDouble(style: Style): Recipe {
 export function grotesqueW(style: Style): Recipe {
   const f = frame(style);
   const [wide, t] = spread(f, 1);
-  const u = wide * refit(f, 0.022, -0.03, 0);
+  /*
+   * The Sans's Thin a hundredth narrower, with each vee's feet 13 units
+   * further in, as Geist Thin's are: they stood 15 to 20 units further apart,
+   * and the Thin W's ink missed Geist's by half.
+   */
+  const thin = f.style.metrics.xGrows !== undefined ? thinness(f) : 0;
+  const u = wide * refit(f, 0.022, -0.03, 0) * (1 - 0.01 * thin);
   const X = (x: number) => f.edge + x * u;
   const apex = 386.5 + 6.5 * t;
-  const outer = 179 + 4.4 * t;
+  const outer = 179 + 4.4 * t + 13 * thin;
   // The two feet of each vertex apart by a share of the pen, so they meet at
   // every weight: Geist's are 26 apart on a stem of 86, 33 on one of 172.
   const inner = outer + (f.half * (0.6 - 0.22 * Math.min(t, 1.5))) / u;
