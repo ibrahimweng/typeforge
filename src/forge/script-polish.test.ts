@@ -583,3 +583,29 @@ describe("the e set in a word at a heavy weight", () => {
     expect(shut).toEqual([]);
   });
 });
+
+describe("a looped ascender on a broad nib", () => {
+  /*
+   * Comes home inside its stem, so the top of the letter is the nib's own cut.
+   * The eye's round end, swept with a lighter nib than the stem, stood a few
+   * units past the stem's flat top: a small horn at the head of every looped
+   * `b`, `h`, `k` and `l` on the Handwriting, the Formal and the Casual Script.
+   */
+  it("stops under the top of its stem", () => {
+    const horned: string[] = [];
+    for (const name of ["Handwriting", "Formal Script", "Casual Script"]) {
+      const own = base(name);
+      for (const weight of [30, own.pen.weight]) {
+        const style = at(own, weight);
+        for (const letter of ["b", "h", "k", "l"]) {
+          const drawn = drawLetter(letter, style, own.forms?.[letter])!;
+          const boxes = drawn.contours.map((contour) => contoursBounds([contour]));
+          const top = boxes.reduce((most, box) => (box.yMax > most.yMax ? box : most));
+          // The stem is the one piece that reaches down to the line.
+          if (top.yMin > style.metrics.xHeight * 0.3) horned.push(`${name} @${weight} ${letter}`);
+        }
+      }
+    }
+    expect(horned).toEqual([]);
+  });
+});

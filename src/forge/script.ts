@@ -1014,7 +1014,23 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Loop[] {
     const pieces = endPieces(run);
     const atStart = Math.hypot(end.x - spineStart(run).x, end.y - spineStart(run).y) < 1e-6;
     const curls = pieces !== null && (atStart ? pieces.first : pieces.last).kind === "arc";
+    /*
+     * And on a broad nib, set down inside the stem by half a pen. The eye is
+     * swept with a lighter nib than the stem, and its round end is that nib's
+     * own shape, standing a little past the stem's flat-cut top: a small horn
+     * at the head of every looped `b`, `h`, `k` and `l` on the Handwriting and
+     * the Casual Script. Set down, the eye comes home inside the stem, and the
+     * top of the letter is the nib's own cut. A round pen's eye is its round
+     * end, and stays where it is -- as does a pen a heavy weight has only lent
+     * a little contrast to.
+     */
+    const nib = room.narrow < room.half * 0.4;
     const tip = curls ? end : at(end.x, rising ? end.y - room.upright : end.y + room.upright);
+    // Only where it is drawn: the eye is sized and tried from the tip above.
+    // By about the eye's own half-width, which is what stood out: its nib is
+    // six tenths of the stem's on these faces. Set down a whole half-pen, a
+    // heavy Formal `b` lost the top of its counter to it.
+    const drawnTip = rising && nib && !curls ? at(tip.x, tip.y - room.half * 0.6) : tip;
     /*
      * How far the eye reaches back is the pen's business until it stops
      * reaching the letter, and then it is the letter's.
@@ -1110,7 +1126,7 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Loop[] {
       // In two pieces however far it turns, so a narrow eye, a round one and
       // the one that is not there are the same points.
       spine: pinnedTo(
-        ok ? bowed(start, tip, rising ? shape : -shape) : hidden(run, tip, atStart, room),
+        ok ? bowed(start, drawnTip, rising ? shape : -shape) : hidden(run, drawnTip, atStart, room),
         2,
       ),
       on: run,
