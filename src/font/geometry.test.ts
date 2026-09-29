@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { crossesItself, crossesMoreThan, crossingsOf, rayHitDistance } from "./geometry";
+import {
+  crossesItself,
+  crossesMoreThan,
+  crossingsOf,
+  overlapsMoreThan,
+  rayHitDistance,
+} from "./geometry";
 import type { Contour, Vec2 } from "./types";
 import { loopsAnywhere } from "../../test/outlines";
 
@@ -300,5 +306,98 @@ describe("crossesMoreThan", () => {
     const moved = band(false, true);
     expect(crossingsOf(moved)).toBe(crossingsOf(drawn));
     expect(crossesMoreThan(drawn)(moved)).toBe(true);
+  });
+
+  /*
+   * Found in review: where a reshaping added points -- a corner radius does
+   * -- only how many crossings there were was compared, and the same trade
+   * went through.
+   */
+  it("does not let it trade one where the points no longer line up either", () => {
+    const drawn = band(true, false);
+    const moved = band(false, true);
+    const added: Contour = {
+      closed: true,
+      nodes: [
+        moved.nodes[0],
+        { ...moved.nodes[0], point: { x: 0, y: 50 } },
+        ...moved.nodes.slice(1),
+      ],
+    };
+    expect(crossesMoreThan(drawn)(added, 10)).toBe(true);
+  });
+
+  /*
+   * Found in review: a radius merges points and adds others, and the same
+   * number of them can come out with every curve at another place in the
+   * outline, so a crossing kept where it was read as new. Where the points
+   * do not line up, it is looked for by where it is.
+   */
+  it("finds a crossing it had by where it is where the points no longer line up", () => {
+    const drawn = band(true, false);
+    const turned: Contour = {
+      closed: true,
+      nodes: [...drawn.nodes.slice(3), ...drawn.nodes.slice(0, 3)],
+    };
+    expect(crossesMoreThan(drawn)(turned, 10)).toBe(false);
+  });
+
+  /*
+   * Found in review: counted curve by curve, three crossings where two
+   * curves meeting at a shallow angle made one -- their flattened pieces
+   * waver across each other when either is nudged by a unit -- were two new
+   * ones, and a reshaping was backed off for nothing.
+   */
+  it("takes three crossings at the one place it crossed for that one", () => {
+    const bowtie = (wavering: boolean): Contour =>
+      corners([
+        { x: 0, y: 0 },
+        { x: 48, y: 48 },
+        wavering ? { x: 50, y: 51 } : { x: 49, y: 49 },
+        wavering ? { x: 50, y: 49 } : { x: 51, y: 51 },
+        { x: 52, y: 52 },
+        { x: 100, y: 100 },
+        { x: 100, y: 0 },
+        { x: 0, y: 100 },
+      ]);
+    expect(crossingsOf(bowtie(false))).toBe(1);
+    expect(crossingsOf(bowtie(true))).toBe(3);
+    expect(crossesMoreThan(bowtie(false))(bowtie(true))).toBe(false);
+  });
+});
+
+describe("overlapsMoreThan", () => {
+  const rect = (x: number, y: number, width: number, height: number): Contour =>
+    corners([
+      { x, y },
+      { x: x + width, y },
+      { x: x + width, y: y + height },
+      { x, y: y + height },
+    ]);
+  // A stem, and a bowl drawn as a contour of its own overlapping its left
+  // side, as an unmerged font draws them.
+  const stem = rect(0, 0, 100, 500);
+  const drawn = [stem, rect(-200, 100, 220, 300)];
+
+  it("lets contours drawn overlapping carry their overlap along", () => {
+    expect(overlapsMoreThan(drawn)(drawn)).toBe(false);
+    // Grown ten units all round: the same two crossings, moved with it.
+    expect(overlapsMoreThan(drawn)([stem, rect(-210, 90, 240, 320)])).toBe(false);
+    // Or pushed further into the stem, which crosses where it did.
+    expect(overlapsMoreThan(drawn)([stem, rect(-200, 100, 260, 300)])).toBe(false);
+  });
+
+  /*
+   * Found in review: counted pair by pair, a bowl pulled off the side of
+   * the stem it overlapped and driven through the other side crossed it as
+   * often as it had, and passed.
+   */
+  it("refuses a wall pulled off one side of a stem and through the other", () => {
+    expect(overlapsMoreThan(drawn)([stem, rect(10, 100, 140, 300)])).toBe(true);
+  });
+
+  it("refuses contours that did not touch crossing", () => {
+    const apart = [stem, rect(200, 100, 200, 300)];
+    expect(overlapsMoreThan(apart)([stem, rect(50, 100, 350, 300)])).toBe(true);
   });
 });

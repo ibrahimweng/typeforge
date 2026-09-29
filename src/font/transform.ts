@@ -15,9 +15,7 @@ import {
   contoursBounds,
   contourArea,
   contourSegments,
-  contoursCrossings,
   crossesMoreThan,
-  pairCrossings,
   cubicAt,
   FINE_STEPS,
   splitCubic,
@@ -27,6 +25,7 @@ import {
   inkRunsAt,
   lerp,
   normalize,
+  overlapsMoreThan,
   rayHitDistance,
   sub,
   type Segment,
@@ -490,22 +489,30 @@ function unfold(drawn: Contour, moved: Contour, slant: number): Contour {
    * And a piece brought down to nothing takes its handles with it. Two points
    * laid on one spot with a handle still reaching out between them are a
    * spike running out and back along itself -- the heavy widened n of Lora
-   * had one where the tail of its arch meets the stem.
+   * had one where the tail of its arch meets the stem, and Lora's A one in its
+   * counter. Brought down by the weight or by the repair above alike: those
+   * two were pieces drawn a fraction of a unit long, which the weight pulled
+   * apart and gave handles and the repair laid back on one spot. A piece
+   * drawn that short keeps its handles only while they reach no further than
+   * they were drawn.
    */
   for (let index = 0; index < count; index++) {
     const next = ring(index + 1);
     const a = nodes[index].point;
     const b = nodes[next].point;
     if (Math.hypot(b.x - a.x, b.y - a.y) > 0.5) continue;
-    // Only a piece this brought down: one drawn short, a ball or a small
-    // loop, keeps its curve.
-    const was = distance(drawn.nodes[index].point, drawn.nodes[next].point);
-    const now = distance(moved.nodes[index].point, moved.nodes[next].point);
-    if (was <= 0.5 && now <= 0.5) continue;
     const out = nodes[index].handleOut;
     const into = nodes[next].handleIn;
-    const off = (handle: Vec2 | null, at: Vec2) => handle !== null && distance(handle, at) > 1e-9;
-    if (!off(out, a) && !off(into, b)) continue;
+    const off = (handle: Vec2 | null, at: Vec2) => (handle ? distance(handle, at) : 0);
+    if (off(out, a) <= 1e-9 && off(into, b) <= 1e-9) continue;
+    const drawnFrom = drawn.nodes[index];
+    const drawnTo = drawn.nodes[next];
+    const reach = Math.max(off(out, a), off(into, b));
+    const drawnReach = Math.max(
+      off(drawnFrom.handleOut, drawnFrom.point),
+      off(drawnTo.handleIn, drawnTo.point),
+    );
+    if (distance(drawnFrom.point, drawnTo.point) <= 0.5 && reach <= drawnReach + 1e-6) continue;
     touched = true;
     nodes[index] = { ...nodes[index], handleOut: out && { ...a } };
     nodes[next] = { ...nodes[next], handleIn: into && { ...b } };
@@ -1178,7 +1185,7 @@ function keepHeights(
       };
     }),
   }));
-  // Left squeezed where the field would cross an outline that did not cross.
+  // Left squeezed where the field would cross itself anywhere squeezed did not.
   return fielded.map((contour, which) =>
     crossesMoreThan(squeezed[which], FINE_STEPS)(contour) ? squeezed[which] : contour,
   );
@@ -1250,6 +1257,8 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
    */
   const outer = classifyContours(contours);
   const walls = contours.map((contour) => flattenContour(contour, 8));
+  // Each contour laid out once for every counter's trials against it.
+  const overlapsMore = overlapsMoreThan(contours, FINE_STEPS);
   const amount = Math.abs(factor - 1);
   const opening = factor > 1;
   const follow = COUNTER_FOLLOW;
@@ -1428,26 +1437,11 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
      */
     const crossedMore = crossesMoreThan(contour, FINE_STEPS);
     // Against the walls where they will not follow; those that do are
-    // checked once they have moved, in `followCounters`. How often it met
-    // each as drawn is asked only once a trial is weighed against it.
+    // checked once they have moved, in `followCounters`.
     const alone = !follows.left && !follows.right;
-    const drawnMeets = new Map<number, number>();
-    const meetsBefore = (which: number) => {
-      let times = drawnMeets.get(which);
-      if (times === undefined) {
-        times = contoursCrossings(contour, contours[which], FINE_STEPS);
-        drawnMeets.set(which, times);
-      }
-      return times;
-    };
     const sound = (trial: Contour): boolean =>
-      contours.every((other, which) => {
-        if (which === index) return !crossedMore(trial);
-        if (!alone) return true;
-        return (
-          contoursCrossings(trial, other, FINE_STEPS, meetsBefore(which) + 1) <= meetsBefore(which)
-        );
-      });
+      !crossedMore(trial) &&
+      (!alone || !overlapsMore(contours.map((other, which) => (which === index ? trial : other))));
 
     const full = build(1);
     if (sound(full)) return full;
@@ -1655,39 +1649,47 @@ function followCounters(
         }),
       };
     });
-  // Not where following would cross an outline, or two, that did not cross.
-  const crosses = (moved: Contour[], from: Contour[]): boolean => {
-    if (
-      moved.some(
-        (other, which) => other !== from[which] && crossesMoreThan(from[which], FINE_STEPS)(other),
-      )
-    )
-      return true;
-    // Pair by pair: a letter whose drawn contours already overlap -- an
-    // unmerged font -- still has a wall driven through another contour, or
-    // further through the one it overlapped, refused.
-    const were = pairCrossings(from, FINE_STEPS);
-    for (const [pair, times] of pairCrossings(moved, FINE_STEPS))
-      if (times > (were.get(pair) ?? 0)) return true;
-    return false;
+  /*
+   * Not where following would cross an outline, or two, anywhere the letter
+   * as drawn did not. Asked against the drawing rather than the counters as
+   * scaled: a counter can stand through a wall that is to follow it, and a
+   * crossing that following failed to clear was let through as one already
+   * there.
+   */
+  const crossedMore = before.map((contour) => crossesMoreThan(contour, FINE_STEPS));
+  const overlapsMore = overlapsMoreThan(before, FINE_STEPS);
+  const crosses = (moved: Contour[]): boolean =>
+    moved.some((other, which) => other !== before[which] && crossedMore[which](other)) ||
+    overlapsMore(moved);
+  // The counters chosen opened and the ink moved by their maps, and the rest
+  // of the counters that have maps as drawn.
+  const mapped = new Set(maps.map((map) => map.index));
+  const opened = (chosen: typeof maps): Contour[] => {
+    const open = new Set(chosen.map((map) => map.index));
+    const start = settled.map((contour, which) =>
+      mapped.has(which) && !open.has(which) ? before[which] : contour,
+    );
+    return moveBy(start, chosen);
   };
   /*
    * All the counters at once, each moving the ink in its own band. One after
    * another, the two bowls of a B each moved one end of its stem, which is a
    * single straight line: halfway through, the stem leaned across the lower
-   * bowl, the check below saw it cross, and the upper bowl was put back.
+   * bowl, the crossing check saw it, and the upper bowl was put back.
    */
-  const together = moveBy(settled, maps);
-  if (!crosses(together, settled)) return together;
+  const together = opened(maps);
+  if (!crosses(together)) return together;
   // Failing that, one at a time, and a counter whose walls cannot follow it
   // stays as it was drawn.
-  let result = settled;
+  let chosen: typeof maps = [];
   for (const map of maps) {
-    const moved = moveBy(result, [map]);
-    if (!crosses(moved, result)) result = moved;
-    else result = result.map((other, which) => (which === map.index ? before[which] : other));
+    const trial = [...chosen, map];
+    if (!crosses(opened(trial))) chosen = trial;
   }
-  return result;
+  const result = opened(chosen);
+  // And where even that crosses -- a counter without a map, scaled through a
+  // wall -- the letter as it came.
+  return chosen.length > 0 || !crosses(result) ? result : before;
 }
 
 /**
@@ -1856,12 +1858,14 @@ function applyCornerRadius(contour: Contour, radius: number, isOuter = true): Co
    * at the Black, where the weight has folded a stretch of outline in an
    * inside corner down to a few units and a rounding cut back along it runs
    * into the one beside it. A smaller radius on that one contour is the whole
-   * of the answer; the letter is never handed back crossed.
+   * of the answer; the letter is never handed back crossed. A rounding
+   * moves the outline by no more than its radius, and merges and adds points,
+   * so a crossing the letter had is looked for within that of where it was.
    */
   const crossedMore = crossesMoreThan(contour, FINE_STEPS);
   for (const share of [1, 0.5, 0.25]) {
     const rounded = roundCorners(contour, radius * share, isOuter);
-    if (!crossedMore(rounded)) return rounded;
+    if (!crossedMore(rounded, radius * share)) return rounded;
   }
   return contour;
 }

@@ -34,7 +34,6 @@ import {
   splitCubic,
   contourArea,
   contourSegments,
-  crossesItself,
   crossesMoreThan,
   cubicAt,
   cubicDerivativeAt,
@@ -1426,9 +1425,8 @@ export function applyWeight(
     const rounded = roundSwallowed(out, wanted * share);
     if (!rounded) return plain;
     const filleted: Contour = { closed: true, nodes: rounded };
-    return crossesItself(filleted, FINE_STEPS) && !crossesItself(plain, FINE_STEPS)
-      ? plain
-      : filleted;
+    // Unless rounding them crosses the outline anywhere it did not cross.
+    return crossesMoreThan(plain, FINE_STEPS)(filleted) ? plain : filleted;
   };
 
   const facingBefore = Math.sign(contourArea(contour));

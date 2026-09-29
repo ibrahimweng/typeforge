@@ -352,9 +352,14 @@ const looped = (contour: Contour): boolean => crossesItself(contour, FINE_STEPS)
 function sweptClean(shape: Contour[], convolve: (contour: Contour) => Contour): Contour[] {
   const first = swept(shape, convolve);
   if (!first.some(looped)) return first;
-  // And no smaller than the first answer: a retry whose unions lost a piece
-  // comes back without its loop and without the ink round it.
-  const least = first.reduce((total, one) => total + contourArea(one), 0) * 0.999;
+  /*
+   * And no smaller than the shape: the ground a shape covers includes the
+   * shape, and a retry whose unions lost a piece comes back without its loop
+   * and without the ink round it. Not the first answer's size, which is the
+   * one known to be wrong: a counter's paper left as a loop in it rather than
+   * taken out makes it larger than the right answer.
+   */
+  const least = shape.reduce((total, one) => total + contourArea(one), 0) * 0.999;
   for (const grid of [1000, 100, 10]) {
     const again = swept(
       shape.map((contour) => onGrid(contour, grid)),
