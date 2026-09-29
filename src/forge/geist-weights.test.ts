@@ -575,6 +575,15 @@ describe("the s at the Regular", () => {
   });
 });
 
+describe("the S at the Regular", () => {
+  it("hangs its upper bowl as low as Geist's", () => {
+    // 560 up, Geist Regular's S turns into its upper terminal 459 in from
+    // the origin; with its upper bowl 15 higher, ours turned 477 in.
+    const row = filled(draw("S", 87).contours, 560);
+    expect(Math.abs(row[row.length - 1][0] - 459)).toBeLessThan(9);
+  });
+});
+
 describe("the Thin ampersand", () => {
   it("turns its loop in to the crossing where Geist Thin's does", () => {
     // 450 up, Geist Thin's loop has come round into the crossing: its ink

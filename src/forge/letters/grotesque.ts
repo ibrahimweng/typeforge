@@ -4574,13 +4574,22 @@ export function grotesqueCapitalS(style: Style): Recipe {
  * their measures give.
  */
 function capitalEss(f: Frame, fit: number): Stroke[] {
+  const sans = f.style.metrics.xGrows !== undefined;
   return ess(f, {
     height: f.cap,
     geist: 710,
     unit: large(f, 1) * (1 + fit),
     left: 118,
-    upper: { x: 322, y: [540, 510], w: 204 },
-    lower: { x: 326, y: [180, 200], w: 220 },
+    // The Sans's fitted to the current Geist's, as the s's are: the upper
+    // bowl 15 lower and 10 narrower at the Regular, 10 lower at the Black,
+    // the lower 15 and 10 higher. Its misfit went from 0.15 to 0.12 at the
+    // Regular and from 0.14 to 0.12 at the UltraBlack.
+    upper: {
+      x: 322,
+      y: sans ? [525, 500] : [540, 510],
+      w: sans ? atWeights(f, 204, 194, 199, 204, 204) : 204,
+    },
+    lower: { x: 326, y: sans ? [195, 210] : [180, 200], w: 220 },
     head: [505, 465],
     foot: [225, 250],
     blackWiden: 0,

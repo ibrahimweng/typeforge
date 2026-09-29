@@ -878,6 +878,12 @@ its Black s narrowed past its limit.
 
 The crossing check for rebuilt letters now covers the @ and the & as well.
 
+**The S's and the $'s bowls.** These were refit as the s's were. The upper
+bowl is 15 lower and 10 narrower at the Regular and 10 lower at the Black; the
+lower bowl is 15 and 10 higher. The S's misfit went from 0.26, 0.15, 0.11 and
+0.14 to 0.22, 0.12, 0.08 and 0.13 (Thin to UltraBlack); the Black's is 0.12,
+from 0.11. The $, drawn on the same S, improved at every weight.
+
 ## What still differs from Geist
 
 - **s counters at the Black.** Close to Geist's size and shape now; Geist's
