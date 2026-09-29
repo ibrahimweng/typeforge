@@ -458,6 +458,7 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
       unweightedContours,
       freeContours,
       sideShift,
+      slabs.length,
     );
     contours = keptClear(unweightedContours, contours, typeface.unitsPerEm, CLEAR_KEPT, true);
   }
@@ -1587,6 +1588,8 @@ function keepHeights(
   free?: Contour[],
   /** How far the letter was moved over for its side bearings since `before`. */
   sideShift = 0,
+  /** How many of the contours, at the end, are slabs. */
+  slabCount = 0,
 ): Contour[] {
   const metrics = typeface.metrics;
   const top = isLowercase(glyph) ? metrics?.xHeight : metrics?.capHeight;
@@ -2200,7 +2203,30 @@ function keepHeights(
    * corner at the foot of the diagonal of Crimson Pro's Z folded across each
    * other.
    */
+  /*
+   * A slab flush with an end that a floating piece held back is the slab
+   * the letter alone has, put back as the letter is: its flush edge goes
+   * back to its line with the end, and the edge across from it, squeezed
+   * by all the weight the end did not grow, made the top slab of the sample
+   * font's I under its acute half as thick again as the I's own.
+   */
+  const slabHeld = (which: number) =>
+    which >= contours.length - slabCount &&
+    (stands.size === 0 || stands.has(pieceOf[which])) &&
+    contours[which].nodes.some(
+      (_, index) => heldBackAt(which, index, true) || heldBackAt(which, index, false),
+    );
   const fielded = squeezed.map((contour, which) => {
+    if (slabHeld(which)) {
+      const { map } = forLetter;
+      return {
+        ...grown[which],
+        nodes: grown[which].nodes.map((node) => ({
+          ...node,
+          point: { x: node.point.x, y: map(node.point.y) },
+        })),
+      };
+    }
     const nodes: GlyphNode[] = [];
     contour.nodes.forEach((node, index) => {
       const before = index > 0 ? contour.nodes[index - 1] : null;

@@ -507,6 +507,29 @@ describe("slabs on a letter, with the other controls", () => {
     expect(right.xMin).toBeLessThanOrEqual(left.xMax);
   });
 
+  /*
+   * Regression: the top of a stem that a mark just over it held back went
+   * back to its line, and the underside of the slab on it was squeezed by
+   * all the weight the top had not grown: the top slab of the sample font's
+   * I under its acute came out half as thick again as the I's own.
+   */
+  it("gives a stem under a mark the same top slab as the stem alone", () => {
+    const I = letter([stem(100, 0, 100, 700)], 300, "I", 73);
+    const accented = letter([stem(100, 0, 100, 700), stem(110, 760, 80, 80)], 300, "Iacute", 0xcd);
+    const top = (contours: Contour[]) =>
+      contours
+        .slice(1)
+        .map((contour) => contoursBounds([contour]))
+        .filter((box) => box.yMax > 690 && box.yMax < 710)
+        .map((box) => box.yMax - box.yMin)[0];
+    const alone = top(at(I, { slab: 30, weight: 60 }).contours);
+    const under = top(
+      at(accented, { slab: 30, weight: 60 }).contours.filter((_, index) => index !== 1),
+    );
+    expect(alone).toBeGreaterThan(0);
+    expect(Math.abs(under - alone)).toBeLessThan(alone * 0.1);
+  });
+
   it("puts no slab on a dot, nor on punctuation", () => {
     // An i: a stem and a square dot as wide as it.
     const i = letter([stem(100, 0, 100, 500), stem(100, 600, 100, 100)], 300, "i", 105);
