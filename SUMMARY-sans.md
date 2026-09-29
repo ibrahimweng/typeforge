@@ -611,6 +611,16 @@ The mean misfit falls from 0.075 to 0.070 at 130 and from 0.059 to 0.056 at
 194. Only the Sans carries the metric, so the other faces draw exactly as
 before.
 
+**The e's shoulders.** The e's upper half had been drawn as a squat quarter
+over the bar. Its shoulders stood 12 to 17 units outside Geist's on either side,
+450 units up. The Sans now draws the left quarter around the bowl's own centre,
+as the o's is. From the Regular on, the right quarter is drawn the same way; at
+the Thin it stays over the bar, where Geist's does too. The e's misfit falls
+from 0.197/0.090/0.079/0.056/0.046 to 0.178/0.060/0.056/0.031/0.025 at the
+Thin, Regular, SemiBold, UltraBlack and Black. The test that the bar's end
+drops straight into the right side now allows Geist's own 8 units at the
+Regular and 14 at the UltraBlack.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular

@@ -5192,15 +5192,30 @@ export function grotesqueE(style: Style): Recipe {
   );
   const rightW = held(f, Math.min(halfW, onTop.x - centre.x));
   const across = thin(f, straight(at(f.edge, bar), at(centre.x + rightW + side, bar)));
+  /*
+   * The Sans's upper half rounder than a squat quarter over the bar: its left
+   * quarter round the bowl's own centre, as the o's is, and from the Regular
+   * on its right one too, as Geist's are. Drawn round the bar's top, the
+   * shoulders stood 12 to 17 units outside Geist's either side 450 up and
+   * the e missed its ink by a quarter more at the Regular and a half more at
+   * the Black.
+   */
+  const sansE = f.style.metrics.xGrows !== undefined;
+  const rightDown = sansE ? Math.min(1, Math.max(0, atWeights(f, 0, 1, 1, 1, 1))) : 0;
+  const rightAt = at(centre.x, upper.y + rightDown * (lower.y - upper.y));
   return finish(
     f,
     [
       ink(
         rf,
         chain(
-          bend(f, upper, crown - upper.y, 0, 90, rightW),
-          bend(f, upper, crown - upper.y, 90, 180, halfW),
-          straight(at(centre.x - halfW, upper.y), at(centre.x - halfW, lower.y)),
+          bend(f, rightAt, crown - rightAt.y, 0, 90, rightW),
+          ...(sansE
+            ? [bend(f, lower, crown - lower.y, 90, 180, halfW)]
+            : [
+                bend(f, upper, crown - upper.y, 90, 180, halfW),
+                straight(at(centre.x - halfW, upper.y), at(centre.x - halfW, lower.y)),
+              ]),
           bend(f, lower, lower.y - base, 180, 270, halfW),
           bend(f, lower, lower.y - base, 270, 360 + foot, halfW),
         ),

@@ -296,15 +296,17 @@ describe("the y and the e at the Black, as Geist draws them", () => {
   });
 
   it("drops the e's right side straight into the end of its bar", () => {
-    // Geist's e is upright on the right from its bar up into the bowl: the
-    // bar's end neither stands out past the bowl nor is stepped under it.
+    // Geist's e is nearly upright on the right from its bar up into the
+    // bowl: the bar's end neither stands out past the bowl nor is stepped
+    // under it. 40 over its bar its Regular's comes in 8 units and its
+    // UltraBlack's 14.
     for (const weight of [30, 87, 172, 260]) {
       const { contours } = draw("e", weight);
       const right = contoursBounds(contours).xMax;
       let top = 250;
       while (filled(contours, top).length < 2 && top < 450) top += 1;
       const above = filled(contours, top + 40);
-      expect(right - above[above.length - 1][1], `e at ${weight}`).toBeLessThan(6);
+      expect(right - above[above.length - 1][1], `e at ${weight}`).toBeLessThan(15);
     }
   });
 });
@@ -1786,5 +1788,20 @@ describe("the heavy horizontals", () => {
     const e = filled(draw("e", 194).contours, 300, "x");
     const [from, to] = e[e.length - 1];
     expect(Math.abs(to - from - 134), "e at 194").toBeLessThan(5);
+  });
+});
+
+describe("the e's shoulders", () => {
+  it("round over as Geist's do", () => {
+    // 450 up Geist's e runs 97-468 at the Regular and 90-546 at the Black;
+    // drawn round its bar's top it ran 82-480 and 74-563.
+    for (const [weight, from, to] of [
+      [87, 97, 468],
+      [194, 90, 546],
+    ]) {
+      const row = filled(draw("e", weight).contours, 450);
+      expect(Math.abs(row[0][0] - from), `e at ${weight}`).toBeLessThan(6);
+      expect(Math.abs(row[row.length - 1][1] - to), `e at ${weight}`).toBeLessThan(6);
+    }
   });
 });
